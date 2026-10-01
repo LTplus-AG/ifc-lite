@@ -18,6 +18,10 @@ import type { TranslationValue } from '../types';
  * IFC EXPRESS names and single-letter/number keyboard shortcuts stay literal.
  */
 export const sharedCommandsEn = {
+  'exportCommands.ion.label': 'Cesium ion',
+  'exportCommands.ion.menuLabel': 'Upload to Cesium ion',
+  'exportCommands.ion.tooltip': 'Upload edited IFC to your Cesium ion account',
+
   'exportCommands.ifc.label': 'IFC',
   'exportCommands.ifc.menuLabel': 'Export IFC (with changes)',
   'exportCommands.ifc.tooltip': 'Export IFC (with changes)',

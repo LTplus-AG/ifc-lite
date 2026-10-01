@@ -5,7 +5,7 @@
 import type { ExportFormat, ExportSurface } from '@/lib/analytics-export-events';
 import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { stepExportProgress } from '@/lib/export/step-progress.js';
-import { prepareAppearanceSerialization } from '@/lib/appearance/serialization.js';
+import { exportModelStep } from '@/lib/export/model-step-export';
 import { packagePortableIfcAsync, assertPortableMergeSupported } from '@/lib/export/portable-ifc';
 import { lostPropertyCollisionsNote, unrepresentedPsetsNote } from '@/lib/export/changed-model-export';
 import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
@@ -38,18 +38,17 @@ import { trackExportCompleted } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { ensureModelExportReady } from '@/services/desktop-export';
-import { StepExporter, MergedExporter, Ifc5Exporter, type MergeModelInput, type ExportProgress } from '@ifc-lite/export';
+import { MergedExporter, Ifc5Exporter, type MergeModelInput, type ExportProgress } from '@ifc-lite/export';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
 import { downloadFile, modelExportFilename } from '@/lib/export/download';
 import { landXmlDownloadInput, landXmlIfcExportOutcome } from '@/lib/export/landXmlIfcDownload.js';
 import { landXmlExportPlan } from '@/lib/export/landXmlIfcPlan.js';
 import { landXmlExportExtension } from '@/lib/export/landXmlIfcImagery.js';
 import { roomExportPathPrefix } from '@/lib/collab/room-export-paths';
 import { preferredExportModelId } from './export-model-default';
-import { canExportRoomAsStep, roomStepExportSource } from '@/lib/collab/room-step-export';
+import { canExportRoomAsStep, type roomStepExportSource } from '@/lib/collab/room-step-export';
 import { roomMergeInput, roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { listExportModels, resolveExportModel } from './export-model-selection';
@@ -482,52 +481,38 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
 
       // ── Pre-IFC5 full export → STEP ──────────────────────────────────
       } else {
-        const portable = roomStepExportSource(selectedModel.ifcDataStore, mutationView || undefined, selectedModelId);
-        const exportDataStore = portable?.dataStore ?? await ensureModelExportReady(selectedModelId);
+        const exportDataStore = await ensureModelExportReady(selectedModelId);
         if (!exportDataStore) {
           throw new Error('Model data is unavailable for export');
         }
 
-        const exportView = portable ? portable.mutationView : mutationView ?? undefined;
-        const serialized = prepareAppearanceSerialization(selectedModelId, exportDataStore, applyMutations ? exportView : undefined);
-        const exporter = new StepExporter(exportDataStore, serialized.view);
-
-        const roomHidden = visibleOnly ? getLocalHiddenIds(selectedModelId) : undefined;
-        const mappedHidden = portable?.toSourceIds(roomHidden);
-        const localHidden = portable ? mappedHidden ?? undefined : roomHidden;
-        const roomIsolated = visibleOnly ? getLocalIsolatedIds(selectedModelId) : undefined;
-        const localIsolated = portable ? portable.toSourceIds(roomIsolated) : roomIsolated;
-
-        // Include georeferencing mutations if applying mutations
-        const georefMutationsForExport = applyMutations
-          ? useViewerStore.getState().georefMutations?.get(selectedModelId) ?? undefined
-          : undefined;
-
-        const result = await exporter.exportAsync({
-          schema,
-          includeGeometry,
-          applyMutations,
-          visibleOnly,
-          hiddenEntityIds: localHidden,
-          isolatedEntityIds: localIsolated,
-          georefMutations: georefMutationsForExport,
-          description: `Exported from ifc-lite with ${modifiedCount} modifications`,
-          application: 'ifc-lite',
-          onProgress: p => setExportProgress(stepExportProgress(p)),
+        const state = useViewerStore.getState();
+        const result = await exportModelStep({
+          modelId: selectedModelId,
+          dataStore: exportDataStore,
+          mutationView: mutationView ?? undefined,
+          options: {
+            schema,
+            includeGeometry,
+            applyMutations,
+            visibleOnly,
+            hiddenEntityIds: visibleOnly ? getLocalHiddenIds(selectedModelId) : undefined,
+            isolatedEntityIds: visibleOnly ? getLocalIsolatedIds(selectedModelId) : undefined,
+            georefMutations: applyMutations ? state.georefMutations?.get(selectedModelId) ?? undefined : undefined,
+            description: `Exported from ifc-lite with ${modifiedCount} modifications`,
+            application: 'ifc-lite',
+            onProgress: p => setExportProgress(stepExportProgress(p)),
+          },
+          scheduleState: {
+            scheduleData: state.scheduleData ?? null,
+            scheduleIsEdited: state.scheduleIsEdited === true,
+            scheduleSourceModelId: state.scheduleSourceModelId ?? null,
+          },
         });
-
         setExportProgress(null);
 
-        // Shared schedule splice and texture packaging keep all export surfaces consistent.
-        const state = useViewerStore.getState();
-        const spliced = spliceScheduleIntoExport(result, selectedModelId, exportDataStore, {
-          scheduleData: state.scheduleData ?? null,
-          scheduleIsEdited: state.scheduleIsEdited === true,
-          scheduleSourceModelId: state.scheduleSourceModelId ?? null,
-        });
-
         const suffix = visibleOnly ? '_visible' : '_export';
-        const artifact = await packagePortableIfcAsync(selectedModelId, spliced.content, serialized.resources);
+        const artifact = await packagePortableIfcAsync(selectedModelId, result.content, result.resources);
         downloadFile(artifact.content, modelExportFilename(selectedModel.name, artifact.ext, suffix), artifact.mime);
 
         const stepMsg = `Exported ${result.stats.entityCount} entities (${result.stats.modifiedEntityCount} modified)`;

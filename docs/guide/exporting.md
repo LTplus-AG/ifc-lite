@@ -25,6 +25,54 @@ archives may retain unused images from their source model. The STEP subset
 closure retains inverse texture maps for included faces, including maps created
 or retargeted through pending edits.
 
+## Upload to Cesium ion
+
+Choose **File → Cesium ion** (also available in the command palette and mobile
+export menu), select a STEP IFC model, and provide a Cesium ion token with
+`assets:write` permission. The viewer uploads that model's complete IFC with
+pending property, attribute, geometry, georeferencing, and schedule edits applied.
+Hidden elements remain included. Uploads go directly from your browser to Cesium
+ion and its temporary S3 storage; no IFClite server receives the model or token.
+
+Use a separate write token from the token used for viewing Cesium content. The
+upload token stays in memory and is cleared when the dialog closes; it is never
+saved to browser storage or sent to analytics.
+
+Cesium ion uses the georeferencing embedded in the exported IFC. For a model
+without georeferencing, set its location in Cesium ion after uploading. No
+undocumented heading or placement override is sent. A successful upload starts
+tiling; follow the asset link to check tiling progress and verify placement.
+
+**Cancel upload** stops pending network work. An asset already created remains
+in your account, including when upload or completion fails. Follow its link to
+inspect or remove it before retrying. The viewer does not automatically delete
+assets. IFCX, LandXML, and models with retained image resources are currently
+unsupported by direct upload; textured models should be exported as IFCZIP to
+retain their images.
+
+The integration follows the [Cesium ion upload API](https://cesium.com/learn/ion/ion-upload-rest/)
+and adapts the MPL-2.0 upload feature from
+[GeoBIM's published IFClite fork](https://github.com/christof2304/ifc-lite/releases/tag/geobim-2026-09-24).
+
+### Placement acceptance fixture
+
+The catalogued `tests/models/buildingsmart/Infra-Bridge.ifc` (fetch with
+`pnpm fixtures`) is an IFC4 model exported by SketchUp 2024 / IFC-manager 5.3.3.
+Its `IfcProjectedCRS` is EPSG:32760 with a millimetre `MapUnit`.
+`IfcMapConversion` declares eastings `729011225.8823584`, northings
+`9063960607.644705`, height `0`, axis `(1, 0)`, and scale `1`.
+After converting the map units to metres, an independent PROJ transformation
+places that origin at longitude `179.08012899993923`, latitude
+`-8.462489999999077`. Use this origin when checking Ion placement; interpreting
+those map coordinates as metres would be incorrect.
+
+For live acceptance, upload this original fixture to an authorized test account,
+wait for tiling to finish, and verify its placement and element properties.
+Then edit an element's `Name` in IFClite and confirm a second upload carries the
+edit. Check cancellation and a rejected token separately. Record the asset IDs
+and screenshots with the PR; local serialization tests do not prove Ion's tiling
+or georeferencing behavior.
+
 ## Quick Start: CDN Export (No Build Required)
 
 Export IFC to GLB directly in the browser with zero setup:

@@ -26,6 +26,7 @@ export function resolvePointerGesture(input: PointerGestureInput): PointerGestur
   if (button !== 0) return 'orbit';
   if (shiftKey || tool === 'pan') return 'pan';
   if (tool === 'select' && (ctrlKey || metaKey)) return 'tool';
+  if (tool === 'command') return 'tool';
   if (tool === 'measure' && measureMode === 'drag' && !altKey) return 'tool';
   return 'orbit';
 }

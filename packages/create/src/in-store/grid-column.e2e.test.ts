@@ -248,7 +248,7 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) for (const mm of [fa
   it('required unreadable storey frames refuse when the grid is a sibling', async () => {
     const a = await authoring(schema, mm, 'sibling');
     a.editor.setPositionalAttribute(a.anchor.storeyPlacementId!, 1, null);
-    expect(() => addColumnOnGridToStore(a.editor, a.store, a.anchor, a.params, a.binding)).toThrow(/frame|placement/i);
+    expect(() => addColumnOnGridToStore(a.editor, a.store, a.anchor, a.params, a.binding)).toThrow(/readable horizontal placement/);
     expect(a.view.getNewEntities()).toHaveLength(0);
   });
 

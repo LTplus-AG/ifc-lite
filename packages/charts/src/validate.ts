@@ -57,6 +57,10 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
   }
   str(errors, chart, 'id', path);
   str(errors, chart, 'title', path);
+  if (chart.comparisonId !== undefined) {
+    if (typeof chart.comparisonId !== 'string' || chart.comparisonId.trim().length === 0) errors.push({ path: `${path}.comparisonId`, message: 'expected a non-empty saved comparison ID' });
+    if (chart.source !== 'compare') errors.push({ path: `${path}.comparisonId`, message: 'comparisonId is only valid for the compare source' });
+  }
   if (typeof chart.source !== 'string' || !SOURCES.has(chart.source)) errors.push({ path: `${path}.source`, message: `expected one of ${[...SOURCES].join(', ')}` });
   if (typeof chart.type !== 'string' || !TYPES.has(chart.type)) errors.push({ path: `${path}.type`, message: `expected one of ${[...TYPES].join(', ')}` });
   for (const key of ['elementField', 'measureField'] as const) {

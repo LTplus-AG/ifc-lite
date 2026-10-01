@@ -138,7 +138,8 @@ function storeyLocalPayload(element: AuthoredElement): ElementMeshPayload {
       const [Width, Depth] = 'Profile' in p ? profileSectionExtent(p.Profile) : [p.Width, p.Depth];
       return {
         type: 'column', params: { Width, Depth, Height: p.Height }, position: p.Position,
-        ...(p.RefDirection ? { refDirection: [p.RefDirection[0], p.RefDirection[1]] as const } : {}),
+        // The IFC writer's default is storey-local +X, so it must turn with the frame too (#6593).
+        refDirection: p.RefDirection === undefined ? [1, 0] : [p.RefDirection[0], p.RefDirection[1]],
       };
     }
     case 'wall': {

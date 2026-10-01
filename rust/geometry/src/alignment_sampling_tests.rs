@@ -304,3 +304,14 @@ fn issue_6600_ifc4x3_gradient_reports_tessellation_and_keeps_authored_grade() {
         .iter()
         .any(|d| matches!(d.code, AlignmentSamplingDiagnosticCode::ApproximateCurve)));
 }
+
+#[test]
+fn issue_6600_composite_cycle_with_a_valid_sibling_is_reported_not_truncated() {
+    let content = model("$", "#30=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#12);#31=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#32);#32=IFCCOMPOSITECURVE((#30,#31),.F.);#33=IFCSHAPEREPRESENTATION($,'Axis',$,(#32));#34=IFCPRODUCTDEFINITIONSHAPE($,$,(#33));")
+        .replace("'Road',$,$,$,$,#12", "'Road',$,$,$,#34,$");
+    let report = sample_alignment_axes(&content, Default::default()).unwrap();
+    assert!(report.axes.is_empty());
+    assert!(report.diagnostics.iter().any(|d| d.express_id == Some(20)
+        && matches!(d.code, AlignmentSamplingDiagnosticCode::InvalidAxis)
+        && d.message.contains("Curve nesting depth")));
+}

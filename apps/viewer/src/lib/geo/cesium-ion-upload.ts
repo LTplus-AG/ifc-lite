@@ -130,9 +130,10 @@ export async function uploadToCesiumIon(input: IonUploadInput, deps: IonUploadDe
     const id = metadata.id;
     if (typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0) throw new Error('Invalid asset id');
     assetId = id;
-    // BIM/CAD tiling may create a collection and its viewable tile child.
-    // Complete the upload owner, never the child. Pick a child only when the
-    // response identifies exactly one unambiguous, valid 3D Tiles asset.
+    // BIM/CAD responses may expose both a collection and viewable tile assets.
+    // Complete assetMetadata.id using its matching onComplete instruction;
+    // that upload target can itself be a tile child. Choose a separate view
+    // link only when the response identifies one unambiguous 3D Tiles asset.
     const tiles = Array.isArray(response.assets) ? response.assets.filter((value: unknown): value is Record<string, unknown> => {
       if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
       const item = value as Record<string, unknown>;

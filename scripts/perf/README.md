@@ -2767,3 +2767,19 @@ Lesson: retain canonical f64 evaluators for station queries, report curve
 approximations and refused fallback geometry, and charge failed frames to the
 model sampling budget. Per-axis output limits alone do not bound model-wide
 sampling work or diagnostic output.
+
+## Opt-in alignment section worker (#6603)
+
+The retained WASM axis handle and dedicated evaluator worker are opened only by
+explicit alignment selection. Ordinary loading retains the existing worker-pool
+pipeline. Five interleaved fresh-browser pairs against the shared-core parent
+showed matching flat geometry payloads and canonical geometry hashes, including
+instanced entity coverage. Measured phases stayed within the observed variation;
+this is no observed default-load regression, not a speed improvement.
+
+The control used matching frozen JavaScript/WASM bundles and first-load Haus
+samples. Background Chrome contention and an earlier baseline-only renderer
+completion timeout limit the inference; the evidence preserves qualification
+failures rather than discarding them. The lesson is to measure the actual default
+worker pool even for opt-in APIs, and to separate post-timing byte witnesses from
+the completion boundary. See [the evidence](../../docs/architecture/evidence/alignment-sections-6603/README.md).

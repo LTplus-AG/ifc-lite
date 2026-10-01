@@ -2,6 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#[path = "conic_axis_tests.rs"]
+mod conic_axis_tests;
+
 use super::*;
 use super::outline::trim_polyline;
 

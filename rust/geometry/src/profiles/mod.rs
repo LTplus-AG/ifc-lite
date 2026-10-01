@@ -22,8 +22,6 @@ mod steel_shapes;
 mod simplify;
 #[cfg(test)]
 mod tests;
-#[cfg(test)]
-mod conic_axis_tests;
 
 use simplify::{mirror_profile_about_y_axis, simplify_smooth_curve_polyline};
 

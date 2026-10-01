@@ -34,11 +34,12 @@ import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/n
 import { handleMeasureTap, ignoreTouchPointers, setMeasureTapHandler } from './touchRouting.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
 import { routeCommandPointer } from './commandPointer.js';
-import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
+import { createCommandPressController } from './commandPress.js';
+import { handleSelectionClick, handleContextMenu as handleContextMenuSelection } from './selectionHandlers.js';
+import { handleMeasureDoubleClick } from './measurementDoubleClick.js';
 import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
 import { createZoomSurfacePicker } from './zoomSurface.js';
 import { createFlyController } from './flyControls.js';
-import { MIN_RADIUS_POINTS } from './tools/measure-modes/radius.js';
 
 export interface MouseState {
   isDragging: boolean;
@@ -443,10 +444,12 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }, 200);
     };
 
+    const commandPress = createCommandPressController(ctx);
     // Mouse controls - respect active tool
     // Uses pointer events + setPointerCapture so pointerup always fires,
     // even when the pointer leaves the canvas (e.g. dragging across panels).
     const handleMouseDown = async (e: PointerEvent) => {
+      commandPress.cancel();
       orbitPivotStore.end();
       invalidateSelectionPick(canvas);
       e.preventDefault();
@@ -470,6 +473,10 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         flyEnabled: useViewerStore.getState().interactionMode === 'all',
       });
       pointerGesture = gesture;
+      if (tool === 'command' && gesture === 'tool' && commandPress.begin(e)) {
+        canvas.style.cursor = 'crosshair';
+        return;
+      }
       // Right-button fly (#4868) takes priority over ordinary pan. A frozen
       // view refuses fly and falls back to the right-button pan path below.
       if (gesture === 'fly' && fly.begin(canvas)) { clearHover(); canvas.style.cursor = 'crosshair'; return; }
@@ -549,11 +556,12 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
     };
 
-    const handleMouseMove = async (e: MouseEvent) => {
+    const handleMouseMove = async (e: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const tool = activeToolRef.current;
+      if (commandPress.move(e)) return;
 
       // Rectangle-select drag: just update the visual; no orbit / pan
       // / pick / hover work happens in this branch.
@@ -650,6 +658,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
     const handleMouseUp = (e: PointerEvent) => {
       orbitPivotStore.end();
+      const commandOwned = commandPress.end(e);
       releasePointer(canvas, e.pointerId);
 
       // Clear interaction flag so the animation loop restores post-processing
@@ -659,6 +668,12 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
 
       const tool = activeToolRef.current;
+      if (commandOwned) {
+        mouseState.isDragging = false;
+        mouseState.isPanning = false;
+        canvas.style.cursor = 'default';
+        return;
+      }
       const flyEnd = e.button === 2 ? fly.end() : 'none';
       if (flyEnd === 'flew') mouseState.didDrag = true; else if (flyEnd === 'menu' && !mouseState.didDrag) void handleContextMenuSelection(ctx, e);
 
@@ -713,6 +728,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     };
 
     const handleMouseLeave = () => {
+      if (commandPress.captured()) return; // Captured command presses may finish outside the canvas.
+      commandPress.cancel(); // Capture can be refused; leaving must then abandon the press.
       orbitPivotStore.end();
       const tool = activeToolRef.current;
       mouseState.isDragging = false;
@@ -733,6 +750,9 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       canvas.style.cursor = tool === 'pan' ? 'grab' : (tool === 'walk' || tool === 'measure' || tool === 'appearance-face' ? 'crosshair' : 'default');
       clearHover();
     };
+    const handlePointerCancel = (e: PointerEvent) => { commandPress.cancel(e); handleMouseLeave(); };
+    const handleLostPointerCapture = (e: PointerEvent) => { if (commandPress.cancel(e)) handleMouseLeave(); };
+    const handleWindowBlur = () => { if (commandPress.cancel()) handleMouseLeave(); };
 
     const handleContextMenu = async (e: MouseEvent) => {
       // macOS/Linux fire this on PRESS, mid-fly; hold it until release (pointerup replays a plain click).
@@ -798,49 +818,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
     const handleClick = (e: MouseEvent) => { void handleSelectionClick(ctx, e); };
 
-    // Double-click finishes an in-progress polyline sequence as OPEN (#2199)
-    // — the same "reads the length so far, does not close the loop" outcome
-    // as pressing Enter (see useKeyboardShortcuts.ts). Closing the loop is a
-    // different gesture entirely (clicking back near the first point — see
-    // handlePolylineClick), so double-click never closes anything.
-    //
-    // Radius (#2737 item 2) shares the same double-click-to-finish gesture —
-    // it is the OTHER unbounded, explicit-finish click sequence — so this
-    // tries polyline first, then radius; at most one of `activePolyline` /
-    // `activeRadius` is ever non-null, so the two `!== null` checks below
-    // never both fire.
-    const handleDoubleClick = (e: MouseEvent) => {
-      if (activeToolRef.current !== 'measure') return;
-      // The store side lives in selectionHandlers.ts (beside
-      // handlePolylineClick / handleRadiusClick) so it is reachable from a
-      // test without a canvas — it is the one finish path allowed to drop
-      // the browser's duplicate second click, and that has to be verifiable.
-      const recordedPolyline = finishPolylineFromDoubleClick();
-      if (recordedPolyline !== null) {
-        e.preventDefault();
-        // The duplicate near-final point is dropped before the minimum is
-        // checked (see measurementSlice.ts), so double-clicking right after
-        // the very first placed point can still collapse below the 2-point
-        // minimum — same "did nothing register" gap as Enter on a 1-point
-        // sequence (useKeyboardShortcuts.ts), same fix: surface it instead of
-        // leaving it silent.
-        if (!recordedPolyline) {
-          import('@/components/ui/toast').then(({ toast }) => {
-            toast.error('Polyline needs at least 2 points');
-          });
-        }
-        return;
-      }
-
-      const recordedRadius = finishRadiusFromDoubleClick();
-      if (recordedRadius === null) return; // not this gesture — leave the event alone
-      e.preventDefault();
-      if (!recordedRadius) {
-        import('@/components/ui/toast').then(({ toast }) => {
-          toast.error(`Radius needs at least ${MIN_RADIUS_POINTS} points`);
-        });
-      }
-    };
+    const handleDoubleClick = (e: MouseEvent) => handleMeasureDoubleClick(ctx, e);
 
     // Touch belongs to useTouchControls; a Measure tap comes back through the tap handler (#5856).
     const onPointerDown = ignoreTouchPointers(handleMouseDown), onPointerMove = ignoreTouchPointers(handleMouseMove), onPointerUp = ignoreTouchPointers(handleMouseUp);
@@ -848,7 +826,9 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', onPointerUp);
-    canvas.addEventListener('pointercancel', handleMouseLeave);
+    canvas.addEventListener('pointercancel', handlePointerCancel);
+    canvas.addEventListener('lostpointercapture', handleLostPointerCapture);
+    window.addEventListener('blur', handleWindowBlur);
     canvas.addEventListener('mouseleave', handleMouseLeave);
     canvas.addEventListener('contextmenu', handleContextMenu);
     canvas.addEventListener('wheel', handleWheel, { passive: false });
@@ -862,12 +842,15 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
-      canvas.removeEventListener('pointercancel', handleMouseLeave);
+      canvas.removeEventListener('pointercancel', handlePointerCancel);
+      canvas.removeEventListener('lostpointercapture', handleLostPointerCapture);
+      window.removeEventListener('blur', handleWindowBlur);
       canvas.removeEventListener('mouseleave', handleMouseLeave);
       canvas.removeEventListener('contextmenu', handleContextMenu);
       canvas.removeEventListener('wheel', handleWheel);
       canvas.removeEventListener('click', handleClick);
       canvas.removeEventListener('dblclick', handleDoubleClick);
+      commandPress.dispose();
       fineZoomModifier.dispose();
       fly.dispose();
       if (wheelIdleTimer) clearTimeout(wheelIdleTimer);

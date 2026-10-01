@@ -184,6 +184,7 @@ export const ROOM_PLACE: ModelingCommand<RoomPlaceGesture> = {
     if (closesPolygon(draw, s.local)) return { commit: true };
     return withDraw(g, { points: [...draw.points, s.local] });
   },
+  pointerDownOnPress: (g) => g.mode === 'edit',
   pointerUp: (g) => (g.mode === 'edit' ? editPointerUp(g) : g),
   pointerCancel: (g) => (g.edit.drag ? { ...g, edit: { ...g.edit, drag: null } } : g),
   doubleClick: (g) => (g.mode === 'draw' && g.draw.mode === 'polygon' && g.draw.points.length >= 3 ? { commit: true } : g),

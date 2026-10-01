@@ -13,7 +13,8 @@ const ref = <T,>(current: T) => ({ current });
 const noop = () => {};
 
 export function mousePointer(type: string, button: number, x: number, y: number, modifiers: PointerEventInit = {}): PointerEvent {
-  const e = new PointerEvent(type, { button, pointerId: 1, bubbles: true, cancelable: true, ...modifiers });
+  const buttons = type === 'pointerdown' || type === 'pointermove' ? button === 0 ? 1 : button === 1 ? 4 : 2 : 0;
+  const e = new PointerEvent(type, { button, buttons, pointerId: 1, bubbles: true, cancelable: true, ...modifiers });
   Object.defineProperties(e, {
     clientX: { value: x, configurable: true },
     clientY: { value: y, configurable: true },
@@ -27,8 +28,16 @@ export function mountMouseControls(overrides: Partial<UseMouseControlsParams> = 
   const canvas = document.createElement('canvas');
   canvas.width = 800;
   canvas.height = 600;
-  // happy-dom does not implement pointer capture on canvas in every version.
-  Object.assign(canvas, { setPointerCapture: noop, releasePointerCapture: noop });
+  // happy-dom does not implement capture: model the DOM ownership contract,
+  // including synchronous loss on release. Native capture is checked separately.
+  const captures = new Set<number>();
+  Object.assign(canvas, {
+    setPointerCapture: (id: number) => captures.add(id),
+    hasPointerCapture: (id: number) => captures.has(id),
+    releasePointerCapture: (id: number) => {
+      if (captures.delete(id)) canvas.dispatchEvent(new PointerEvent('lostpointercapture', { pointerId: id }));
+    },
+  });
   document.body.appendChild(canvas);
 
   const camera = new Camera();

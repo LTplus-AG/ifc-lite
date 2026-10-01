@@ -15,6 +15,14 @@ tool, plain left drag starts a drag measurement; Alt + left drag orbits instead.
 In polyline, angle, and radius measurement modes, a left drag orbits and clicks
 place points. Shift + left drag always pans, even when a measurement is active.
 
+In the Model workspace, plain left movement and dragging update the active
+command preview without moving the camera. Placement commands commit on
+click; polygon placement still closes on double-click. Room shape editing
+grabs a corner on press, previews its movement, and commits on release as one
+Undo/Redo operation. A lost capture, focus loss, or command change cancels the
+owned room drag. A captured drag can finish outside the canvas. Shift + left,
+middle, and right-button navigation keep the controls above.
+
 While you orbit, a small accent marker shows the fixed point the camera is
 rotating around. The marker follows that point on screen and fades when you
 release the pointer. Panning does not show a pivot marker.

@@ -190,8 +190,8 @@ async function drawChartBlock(doc: ReportDoc, block: ReportChartBlock, aggregati
   doc.setTextColor(130);
   const subtitleX = block.chart.x + Math.min(block.chart.w - 80, block.title.length * 6 + 12);
   const measure = (text: string, size: number) => doc.textWidth?.(text) ?? text.length * size * 0.52;
-  const subtitle = block.message ? truncateToWidth(block.subtitle, block.chart.x + block.chart.w - subtitleX, 8, false, measure) : block.subtitle;
-  doc.text(subtitle, subtitleX, block.chart.y - 6);
+  const subtitle = block.message && (!aggregation || aggregation.categories.length === 0) ? '' : block.message ? truncateToWidth(block.subtitle, block.chart.x + block.chart.w - subtitleX, 8, false, measure) : block.subtitle;
+  if (subtitle) doc.text(subtitle, subtitleX, block.chart.y - 6);
   doc.setTextColor(0);
 
   if (aggregation && aggregation.categories.length > 0) {

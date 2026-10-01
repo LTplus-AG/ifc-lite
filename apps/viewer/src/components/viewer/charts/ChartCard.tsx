@@ -178,7 +178,7 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
 
   const sourceMessage = comparisonChartMessage(source, t);
   const summary = subtitleFor(spec, aggregation, filterSelector, filterState, clashRuleLabel || clashRule);
-  const subtitle = source.status === 'missing' ? sourceMessage : sourceMessage ? `${summary} · ${sourceMessage}` : summary;
+  const subtitle = source.status === 'missing' ? t('chartComparison.unavailable') : sourceMessage && aggregation && aggregation.categories.length > 0 ? `${summary} · ${sourceMessage}` : summary;
 
   return (
     <div className="flex h-full flex-col min-h-0 rounded-md border border-border bg-card" data-chart-id={spec.id}>

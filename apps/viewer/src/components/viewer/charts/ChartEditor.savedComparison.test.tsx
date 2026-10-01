@@ -276,10 +276,13 @@ describe('Saved comparison chart source (#6549)', () => {
       assert.ok(data); assert.equal(data.aggregations.get('recorded-block')?.total, 0);
       assert.match(ui.textContent ?? '', /Saved comparison unavailable/);
       const missing = await generateDocumentPdf({ document, ...data, snapshotIds: () => [] }, seams);
-      assert.equal(captures, 0); assert.match(await pdfText(missing.blob), /Choose another saved comparison/);
+      assert.equal(captures, 0); const missingText = await pdfText(missing.blob); assert.match(missingText, /Choose another saved comparison/);
+      assert.equal(missingText.split('Saved comparison unavailable in this browser.').length - 1, 1, 'the actual document PDF prints the missing source notice once');
+      assert.equal((ui.textContent ?? '').split('Saved comparison unavailable in this browser.').length - 1, 1, 'the missing source notice appears once in the actual preview');
       const missingReport = await generateReportPdf({ name: 'Missing saved source', page: document.page, titleBlock: {}, snapshots: true,
         charts: [{ id: spec.id, title: spec.title, aggregation: data.aggregations.get('recorded-block') ?? null, message: data.chartMessages.get('recorded-block') }], snapshotIds: () => [] }, seams);
-      assert.equal(captures, 0); assert.match(await pdfText(missingReport.blob), /Choose another saved comparison/);
+      assert.equal(captures, 0); const missingReportText = await pdfText(missingReport.blob); assert.match(missingReportText, /Choose another saved comparison/);
+      assert.equal(missingReportText.split('Saved comparison unavailable in this browser.').length - 1, 1, 'the actual dashboard PDF prints the missing source notice once');
     } finally { restoreParser(); pdfWindow.jspdf = previous; }
   });
 
@@ -321,6 +324,7 @@ describe('Saved comparison chart source (#6549)', () => {
       act(() => { assert.equal(useViewerStore.getState().deleteSavedComparison(saved[0].id), true); }); await settle();
       assert.match(ui.querySelector('[data-chart-empty]')?.textContent ?? '', /Saved comparison unavailable/);
       const missing = await exportFromDialog(); assert.match(missing, /Choose another saved comparison/); assert.doesNotMatch(missing, /\badded\b|\bdeleted\b/);
+      assert.equal(missing.split('Saved comparison unavailable in this browser.').length - 1, 1, 'mounted dashboard export prints one missing-source notice');
       assert.equal(captures, 0);
       act(() => useViewerStore.getState().upsertDashboard({ ...dashboard, charts: [chart()] })); await settle();
       assert.equal(ui.querySelector('[data-chart-legend]'), null, 'unbound legacy dashboard still requires loaded model data');

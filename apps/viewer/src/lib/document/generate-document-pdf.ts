@@ -153,8 +153,9 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         // from `agg`, so `chartMessages` reached `resolveBlocks` but nothing
         // here ever read it.
         const message = input.chartMessages.get(block.id);
-        const subtitle = message ?? (agg ? `${agg.categories.length} bucket${agg.categories.length === 1 ? '' : 's'} · ${agg.total.toLocaleString()} ${agg.spec.measure.agg === 'count' ? 'elements' : (agg.unit ?? '')}`.trim() : 'No data');
-        blocks.push({ kind: 'chart', id: block.id, title: blockTitle(block, block.chart.title), subtitle, hasData: !!agg && agg.categories.length > 0, snapshot: block.snapshot && !isSavedComparisonChart(block.chart), height: block.height, width: block.width, fontSize: block.fontSize });
+        const hasData = !!agg && agg.categories.length > 0;
+        const subtitle = isSavedComparisonChart(block.chart) && !hasData ? '' : message ?? (agg ? `${agg.categories.length} bucket${agg.categories.length === 1 ? '' : 's'} · ${agg.total.toLocaleString()} ${agg.spec.measure.agg === 'count' ? 'elements' : (agg.unit ?? '')}`.trim() : 'No data');
+        blocks.push({ kind: 'chart', id: block.id, title: blockTitle(block, block.chart.title), subtitle, hasData, snapshot: block.snapshot && !isSavedComparisonChart(block.chart), height: block.height, width: block.width, fontSize: block.fontSize });
         break;
       }
       case 'page-break': blocks.push(block); break;

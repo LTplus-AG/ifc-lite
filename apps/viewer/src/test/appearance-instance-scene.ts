@@ -25,7 +25,7 @@ export function appearanceInstanceScene(originals: readonly MeshData[],
   const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}),
     createTexturedBindGroup: () => ({}) } as unknown as Parameters<Scene['appendToBatches']>[2];
   const scene = new Scene();
-  scene.addInstancedShard(device, { carriesItemIds: true,
+  if (originals.length > 0) scene.addInstancedShard(device, { carriesItemIds: true,
     templates: [{ positions: template.positions, normals: template.normals, indices: template.indices, origin: [0,0,0] }],
     instances: originals.map(mesh => ({ entityId: mesh.expressId, itemId: mesh.geometryItemId, templateIndex: 0,
       color: mesh.color, transform: new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]) })),

@@ -217,13 +217,13 @@
       }
     ]
   },
-  "verdict": "FAIL: expected authored source corners are incompatible with the stored containing bounding box after a standards-valid upload. This establishes a placement/bounds discrepancy, not whether actual mesh vertices or bounding metadata are wrong.",
+  "verdict": "FAIL: expected authored source corners are incompatible with the stored containing box. Subsequent direct mesh decoding also proves actual vertices are vertically inconsistent; see actual-scale-two-mesh-comparison.json.",
   "limitations": [
     "No actual glTF vertex positions decoded; box is a containing bound, not exact vertices",
     "Tiler may subdivide geometry; independent corner oracle preserves authored8vertices",
-    "PROJ reports expected operation accuracy of 2.05 m / 4.015 m, not guaranteed error bounds; the observed vertical discrepancy is approximately 68 m.",
-    "Tiled GLB vertices were not decoded for this scale control, so incorrect geometry positions and incorrect bounding metadata are not distinguished."
+    "PROJ reports expected operation accuracy of 2.05 m / 4.015 m, not guaranteed error bounds; the observed vertical discrepancy is approximately 68 m."
   ],
   "correctedFixtureValidation": "Independent REAL lexical audit: zero invalid tokens. IfcOpenShell schema validation: zero messages. An independent IfcOpenShell extraction of the corrected scale-two slab produced eight vertices and twelve triangles. The lexical correction changes only Precision notation; checked typed attributes are unchanged. An earlier scratch geometry-equality record had empty arrays and is not used as evidence.",
-  "offlineDerivedCrsMaxMapErrorMetres": 1.862645149230957e-08
+  "offlineDerivedCrsMaxMapErrorMetres": 1.862645149230957e-08,
+  "directMeshEvidence": "actual-scale-two-mesh-comparison.json"
 }

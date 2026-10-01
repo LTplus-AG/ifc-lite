@@ -198,12 +198,31 @@ using GEOID18. Those operations report expected accuracies of 2.05 m and
 is orthonormal to floating-point precision, supporting the inverse-frame check.
 No client transform was applied. This corrected control demonstrates that the
 lexical defect did not account for the observed placement/bounds discrepancy.
-The scale control's tiled GLB vertices have not been decoded, so these bounds
-do not distinguish wrong mesh positions from wrong containing metadata.
+The containing-box test alone did not distinguish wrong mesh positions from
+wrong metadata. The subsequent direct mesh check below resolves that limitation.
 The [exact source patch](./scale-two-valid-real-from-public.patch) reconstructs
 the uploaded bytes from the catalogued public fixture; the
 [numeric result](./corrected-scale-two-provider-repro.json) records the source
 and WKT hashes, provider frame, independent corners and limitations.
+
+### Direct tiled mesh check
+
+Asset 5969891 contains one 3D Tiles 1.1 root with one GLB, no implicit tiling,
+and no tileset/tile/content extensions that add transforms. Two downloads have
+identical content hashes. Independent readers using genuine meshopt 1.1.1 and
+1.2.0 decoders agree after node dequantization and glTF Y-up to tile Z-up
+conversion. The mesh has 24 referenced vertices, eight unique corners and
+12 triangles; there is no instancing, skin, morph or extra scene.
+
+Actual root-local Z spans 65.796–68.015 m. Independently mapped source corners
+span 132.796–136.000 m using GEOID99, or 133.230–136.437 m using GEOID18.
+Every authored corner is 65.984–68.448 m from its nearest actual vertex.
+Same-horizontal-corner thickness is 0.986 m instead of the authored 2 m.
+The 0.06165 m quantization step explains small differences, including a 0.015 m
+expansion beyond the declared box, but cannot explain the vertical discrepancy.
+This proves misplaced actual geometry rather than inferring it from bounds.
+The [direct mesh comparison](./actual-scale-two-mesh-comparison.json) records
+content/source hashes, transforms, actual/expected corners and limitations.
 
 ## Original Infra-Bridge database control
 

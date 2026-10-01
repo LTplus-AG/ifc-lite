@@ -64,8 +64,14 @@ scratch equality record had empty geometry arrays and is not used as evidence. T
 source corners by up to 67.99999999948 m (GEOID99) or 68.436140759 m (GEOID18).
 The discrepancy persists using GEOID99 and GEOID18 operations and exceeds
 their reported expected accuracy. These accuracy figures are not guaranteed
-error bounds. The scale control's tiled GLB vertices were not decoded, so this
-does not distinguish wrong geometry from wrong containing metadata. API acceptance of this WKT did not establish
+error bounds. Subsequent direct GLB decoding resolves the metadata-only
+ambiguity: the actual mesh has eight unique corners and twelve triangles,
+root-local Z 65.796–68.015 m, and slab thickness 0.986 m instead of 2 m.
+All authored corners are approximately 66–68 m from their nearest actual
+vertices. Independent meshopt decoders agree after node/axis transforms;
+the quantization step is only 0.06165 m. There is no implicit content or
+additional tile transform. See the [direct mesh evidence](./actual-scale-two-mesh-comparison.json).
+API acceptance of this WKT did not establish
 support for its derived vertical conversion. No client modelMatrix was applied.
 
 ## Original SketchUp IFC4 model

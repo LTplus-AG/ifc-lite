@@ -119,6 +119,10 @@
   ],
   "productionEditedAcceptance": {
     "assetId": 5970083,
+    "maintainerVisualAcceptance": {
+      "date": "2026-10-01",
+      "statement": "cesium looks good now"
+    },
     "implementationCommit": "d7267b5c004533f9a608c4086672ee58aa12cd63",
     "route": "actual viewer load / Author Model Name edit / Cesium ion dialog / real transport",
     "metadataSourceMatch": {

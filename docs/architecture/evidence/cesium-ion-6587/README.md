@@ -152,6 +152,22 @@ The actual box remains around the unscaled local height. The 2D affine override
 therefore cannot represent IFC's scale of all three coordinates. Successful
 horizontal and vertical-datum controls do not make this route merge-ready.
 
+## Full derived vertical CRS attempt
+
+A `DerivedVerticalCRS` using the standard EPSG:9616 vertical offset, together
+with the derived vertical axis's length-unit factor, independently represented
+the complete source vertical affine transform. PROJ evaluated all six fixtures'
+eight corners against their canonical IFC map operations within 1.9e-8 m.
+This offline result is not ion acceptance.
+
+Actual source-preserving controls **5969809** (Scale = 2) and **5969808**
+(elevated, nonzero OrthogonalHeight) reached `COMPLETE` with that full compound
+WKT. Their root transforms and bounding volumes remained effectively identical
+to the earlier 2D-compound controls, including the unscaled height in the
+Scale = 2 case. The standard vertical derivation was therefore not reflected
+in this observed tiler output. Do not ship it based on API acceptance or the
+successful independent PROJ evaluation.
+
 ## Original Infra-Bridge database control
 
 Asset **5969775** (collection 5969773, iModel 5969774) used the unchanged original

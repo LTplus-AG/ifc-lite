@@ -97,3 +97,5 @@ export {
 // the exporter uses for overlay-created records. The LandXML imagery export
 // appends the appearance planner's entities with it (#5942).
 export { serializeEntityArgs } from './attribute-real-slots.js';
+// Authored property declarations share the exporter's IfcValue registry/domain rules (SDK mutation consumer).
+export { validatePropertyDataType } from './declared-property-type.js';

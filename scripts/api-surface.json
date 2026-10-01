@@ -5686,7 +5686,8 @@
     "serializeEntityArgs: function",
     "serializeEntitySubgraph: function",
     "stripNodePathPrefix: function",
-    "tableToCsv: function"
+    "tableToCsv: function",
+    "validatePropertyDataType: function"
   ],
   "@ifc-lite/extensions": [
     "ACTION_INTENTS: const",

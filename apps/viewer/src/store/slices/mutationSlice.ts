@@ -1111,7 +1111,7 @@ export const createMutationSlice: StateCreator<
     // `modelId` is the ROOM's model — the mirror gates itself on the modelId it
     // is handed, so this call site cannot get the subject wrong. See
     // `@/lib/collab/room-model-target`.)
-    get().mirrorPropertyEdit(modelId, entityId, psetName, propName, value, valueType);
+    get().mirrorPropertyEdit(modelId, entityId, psetName, propName, value, valueType, dataType);
 
     return mutation;
   },

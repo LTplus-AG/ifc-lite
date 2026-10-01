@@ -19,6 +19,9 @@
  * collab code eagerly.
  */
 
+import { propertyValueTypeFor } from './property-type';
+export { propertyValueTypeFor } from './property-type';
+import { validatePropertyDataType } from '@ifc-lite/export';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -68,25 +71,6 @@ function toScalar(value: unknown): string | number | boolean | null {
   return Array.isArray(value) ? JSON.stringify(value) : String(value);
 }
 
-/** Map a collab IFC type string back to the closest `PropertyValueType`. */
-export function propertyValueTypeFor(ifcType: string): PropertyValueType {
-  switch (ifcType) {
-    case 'IfcBoolean':
-    case 'IfcLogical':
-      return PropertyValueType.Boolean;
-    case 'IfcInteger':
-      return PropertyValueType.Integer;
-    case 'IfcReal':
-      return PropertyValueType.Real;
-    case 'IfcIdentifier':
-      return PropertyValueType.Identifier;
-    case 'IfcText':
-      return PropertyValueType.Text;
-    default:
-      return PropertyValueType.Label;
-  }
-}
-
 // ── outbound: local edit → CRDT ──────────────────────────────────────────────
 
 export function mirrorProperty(
@@ -98,12 +82,15 @@ export function mirrorProperty(
   prop: string,
   value: unknown,
   valueType: PropertyValueType,
+  dataType?: string,
 ): void {
   const path = pathForEntity(store, entityId);
   if (!path || !api.hasEntity(session.doc, path)) return;
-  const type = api.PROPERTY_TYPE_NAMES[valueType] ?? 'IfcLabel';
+  const scalar = toScalar(value);
+  const type = dataType === undefined ? api.PROPERTY_TYPE_NAMES[valueType] ?? 'IfcLabel'
+    : validatePropertyDataType(scalar, dataType).dataType;
   session.transact(() => {
-    api.setPropertyValue(session.doc, path, pset, prop, { type, value: toScalar(value), source: 'manual' });
+    api.setPropertyValue(session.doc, path, pset, prop, { type, value: scalar, source: 'manual' });
   });
 }
 
@@ -238,7 +225,7 @@ export function applyRemoteAttribute(
  */
 export interface RemoteApplyHandlers extends TombstoneGuardHandlers {
   /** Apply a remote property write to the local view (no undo tracking). */
-  onProperty(modelId: string, entityId: number, pset: string, prop: string, value: ScalarValue, type: PropertyValueType): void;
+  onProperty(modelId: string, entityId: number, pset: string, prop: string, value: ScalarValue, type: PropertyValueType, dataType?: string): void;
   /** Apply a remote property deletion. */
   onPropertyDelete(modelId: string, entityId: number, pset: string, prop: string): void;
   /** Apply a remote attribute write. */
@@ -292,6 +279,12 @@ export function attachRemoteApply(
   const handlers = guardTombstonedWrites(unguardedHandlers); // #5187: refuse writes to local tombstones
   // `entities` is inferred as Y.Map<unknown>; deriving the observer type from
   // its method signature avoids importing yjs (not a direct viewer dep).
+  const applyProperty = (modelId: string, entityId: number, pset: string, prop: string, value: ScalarValue, dataType: string) => {
+    let declaration: ReturnType<typeof validatePropertyDataType>;
+    try { declaration = validatePropertyDataType(value, dataType); }
+    catch { console.warn('Rejected remote property with an invalid IFC declaration'); return; }
+    handlers.onProperty(modelId, entityId, pset, prop, value, dataType === 'IfcLogical' ? declaration.valueType : propertyValueTypeFor(dataType), declaration.dataType);
+  };
   const entities = session.doc.getMap('entities');
   type DeepObserver = Parameters<typeof entities.observeDeep>[0];
 
@@ -350,7 +343,7 @@ export function attachRemoteApply(
           }
           const pv = target.get(prop) as { type?: string; value?: ScalarValue } | undefined;
           if (!pv) continue;
-          handlers.onProperty(modelId, entityId, psetName, prop, pv.value ?? null, propertyValueTypeFor(pv.type ?? 'IfcLabel'));
+          applyProperty(modelId, entityId, psetName, prop, pv.value ?? null, pv.type ?? 'IfcLabel');
         }
       } else if (path[1] === 'psets' && path.length === 2) {
         // A pset appearing (or vanishing) wholesale. When a remote peer writes
@@ -379,13 +372,13 @@ export function attachRemoteApply(
           added?.forEach?.((v, prop) => {
             const pv = v as { type?: string; value?: ScalarValue } | undefined;
             if (!pv) return;
-            handlers.onProperty(
+            applyProperty(
               modelId,
               entityId,
               psetName,
               prop,
               pv.value ?? null,
-              propertyValueTypeFor(pv.type ?? 'IfcLabel'),
+              pv.type ?? 'IfcLabel',
             );
           });
         }

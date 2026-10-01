@@ -13,6 +13,7 @@
  * reads when `applyMutations` is on — nothing was routed into it.
  */
 
+import { validatePropertyDataType } from '@ifc-lite/export';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { EntityRef, MutateBackendMethods } from './types.js';
@@ -143,9 +144,13 @@ export function createHeadlessMutateAdapter(
     throw new Error(`${method}: ${reason}`);
   };
   return {
-    setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean): void {
+    setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean, dataType?: string): void {
       requireEntity('setProperty', ref);
-      getView().setProperty(ref.expressId, psetName, propName, value, propertyValueTypeOf(value));
+      if (dataType === undefined) getView().setProperty(ref.expressId, psetName, propName, value, propertyValueTypeOf(value));
+      else {
+        const declaration = validatePropertyDataType(value, dataType);
+        getView().setProperty(ref.expressId, psetName, propName, value, declaration.valueType, undefined, false, declaration.dataType);
+      }
     },
     setAttribute(ref: EntityRef, attrName: string, value: string): void {
       requireEntity('setAttribute', ref);

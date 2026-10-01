@@ -1,4 +1,4 @@
-# Linked records: DBL / DPP pilot
+# Linked records and semantic queries
 
 Open **Linked records** from the viewer's workspace panel browser. Choose
 **Load pilot models and records** to load two original IFC door models through
@@ -10,6 +10,50 @@ This is an original, executable demonstration of the architecture discussed in
 [discussion 6635](https://github.com/LTplus-AG/ifc-lite/discussions/6635).
 It contains no confidential working-group material and makes no EN / ISO
 conformity claim.
+
+## Sources, arbitrary results and workspaces
+
+The panel accepts local profile JSON, Turtle, N-Quads, inline JSON-LD, HTTPS JSON,
+and SPARQL SELECT or CONSTRUCT. SELECT rows render independently of domain
+profiles, including arbitrary columns, unbound values, blank nodes, datatypes
+and language tags. Fifty rows render per page. Optional profile projection
+reports incompatible bindings without discarding the raw rows.
+
+Enter the exact allowed hostname for a remote request. A bearer credential is
+held only in the current panel session. For a configured relay, enter its HTTPS
+URL, hostname and authorized provider ID; see [headless providers](semantic-headless.md).
+Browser requests require endpoint CORS. Run/cancel bounds transport and worker
+jobs; late data from a changed model session is refused.
+
+Binding mapping names identify the resource URI, GlobalId and revision columns.
+Duplicate GlobalIds show all candidates; choose a candidate explicitly or
+associate a revision with its loaded model. Saved workspaces preserve records,
+raw rows, graphs, profile definitions and query presets. Restoration clears
+host grants, bearer credentials and model associations. Reassociate revision
+identifiers after reload; display names never establish identity.
+
+**Query records related to IFC selection** resolves current IFC selection to
+known semantic URIs and runs a bounded query for outgoing and incoming links.
+With no known subject, the selected profile's GlobalId predicate performs
+explicit discovery. Identifiers are serialized into VALUES, not executable
+query text. This is a partial supplied view and cannot establish endpoint-wide
+conformance.
+
+Load a versioned profile definition in the profile controls, generate its
+schema/context/vocabulary/shapes/dictionary, or import bSDD definitions. See
+[profiles and validation](semantic-profiles.md) for the supported subset and
+language, units and completeness contracts.
+
+Projection previews show the IFC address, GlobalId/revision, previous and new
+value, target property, mapping and conflict policy. A changed preview is
+refused. Choose reject, skip or overwrite for conflicting properties.
+FireRating targets `Pset_DoorCommon.FireRating`; thermal transmittance targets
+`Pset_WallCommon.ThermalTransmittance` in W/(m2.K), including explicit conversion
+from mW/(m2.K). Provenance records the source declaration, profile and mapping
+versions, identifiers and projection time. Retrieval time is included only
+when it was actually recorded. Grouped undo/redo and the normal IFC export
+retain the canonical editor behavior. External relationships remain in the
+workspace and semantic bundle.
 
 ## Try the complete workflow
 
@@ -28,7 +72,7 @@ conformity claim.
    context can include other installations in the same building; row actions
    use ownership links to select only the corresponding installations.
 4. Select **Installed door 1**, enable the viewer's **Edit** mode and choose
-   **Copy product FireRating to selected door**. The effective IFC overlay gets
+   **Preview projection**. Review the target and proposed value, then choose **Apply reviewed projection**. The effective IFC overlay gets
    `Pset_DoorCommon.FireRating = EI30` and `Pset_SemanticProjection` provenance
    with source, profile, product, installation, timestamp and property mapping.
    One undo reverses the whole projection. Ordinary IFC export includes these
@@ -91,7 +135,7 @@ Duplicate GlobalIds are ambiguous unless a model scope disambiguates them.
 Resolution re-reads effective attributes, created entities and tombstones at
 each action, so model removal or overlay edits cannot reuse cached addresses.
 Building/product/passport identity and arbitrary logbook relationships remain
-outside IFC. FireRating is the pilot's only deliberate IFC content projection.
+outside IFC. Supported projection mappings copy declared FireRating to IfcDoor and thermal transmittance to IfcWall / IfcWallStandardCase through the canonical mutation backend.
 
 A **complete** submission additionally checks referenced internal resources
 for presence. A **partial** view can omit related resources without producing

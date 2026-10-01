@@ -3,24 +3,61 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { create } from 'zustand';
-import type { SemanticDocument, SparqlResults, ValidationFinding } from './types';
+import type { IdentityFields } from './resolver-context';
+import { DEFAULT_PROFILE, assertProfile, sanitizeSource, exportWorkspace, importWorkspace, parseProfileDocument,
+  type ResourceIdentityLink, type ProfileDefinition, type SemanticWorkspace, type SemanticDocument, type SparqlResults, type ValidationFinding } from '@ifc-lite/semantic';
 
 interface SemanticSession {
-  document?: SemanticDocument;
-  results?: SparqlResults;
-  graph: string;
-  findings: ValidationFinding[];
-  revisions: Map<string, string>;
-  setDocument: (document: SemanticDocument) => void;
+  strategy: string; links: ResourceIdentityLink[]; identityFields: IdentityFields;
+  setStrategy: (strategy: string) => void; setLinks: (links: ResourceIdentityLink[]) => void; setIdentityFields: (fields: IdentityFields) => void;
+  document?: SemanticDocument; results?: SparqlResults; graph: string; findings: ValidationFinding[];
+  profile: ProfileDefinition; retrievedAt?: string; graphFormat: 'text/turtle' | 'application/n-quads'; pendingRevisions: SemanticWorkspace['revisions']; revisions: Map<string, string>; queries: SemanticWorkspace['queries'];
+  setDocument: (document: SemanticDocument | undefined) => void;
   setResults: (results: SparqlResults | undefined) => void;
   setGraph: (graph: string) => void;
   setFindings: (findings: ValidationFinding[]) => void;
   setRevisions: (revisions: Map<string, string>) => void;
+  setProfile: (profile: ProfileDefinition) => void;
+  setRetrievedAt: (retrievedAt: string | undefined) => void;
+  setGraphFormat: (format: 'text/turtle' | 'application/n-quads') => void;
+  setQueries: (queries: SemanticWorkspace['queries']) => void;
+  save: () => string; restore: (serialized: string) => void;
 }
-/** In-memory session only: panel switches retain records; no endpoint credentials are stored. */
-export const useSemanticSession = create<SemanticSession>(set => ({
-  graph: '', findings: [], revisions: new Map(),
+const STORAGE_KEY = 'ifc-lite.semantic.workspace.v1';
+/** Export portable identities only; endpoint grants, credentials and session addresses never persist. */
+export const useSemanticSession = create<SemanticSession>((set, get) => ({
+  strategy: 'ifc-global-id', links: [], identityFields: { GlobalId: 'GlobalId', modelRevision: 'modelRevision' },
+  setStrategy: strategy => set({ strategy }), setLinks: links => set({ links }), setIdentityFields: identityFields => set({ identityFields }),
+  graph: '', findings: [], revisions: new Map(), profile: DEFAULT_PROFILE, queries: [], pendingRevisions: [], graphFormat: 'application/n-quads',
   setDocument: document => set({ document }), setResults: results => set({ results }),
-  setGraph: graph => set({ graph }), setFindings: findings => set({ findings }),
-  setRevisions: revisions => set({ revisions }),
+  setGraph: graph => set({ graph }), setFindings: findings => set({ findings }), setRevisions: revisions => set({ revisions }),
+  setProfile: profile => { assertProfile(profile); set({ profile, document: undefined, findings: [], retrievedAt: undefined }); },
+  setRetrievedAt: retrievedAt => set({ retrievedAt }), setGraphFormat: graphFormat => set({ graphFormat }), setQueries: queries => set({ queries }),
+  save() {
+    const state = get();
+    const workspace = exportWorkspace({ version: 1, queries: state.queries, resourceLinks: state.links, revisions: [...new Set([...state.revisions.keys(), ...state.pendingRevisions.map(link => link.revision)])].map(revision => ({ revision, modelLabel: '' })),
+      datasets: [{ id: 'current', source: state.document?.source ?? 'urn:ifc-lite:local', completeness: state.document?.completeness ?? 'partial',
+        profileId: state.profile.id, rows: state.results, graph: state.graph || undefined, graphFormat: state.graph ? state.graphFormat : undefined }] });
+    const serialized = JSON.stringify({ version: 1, workspace: JSON.parse(workspace) as unknown, profile: state.profile, document: state.document ? { ...parseProfileDocument(state.document, state.profile), source: sanitizeSource(state.document.source) } : undefined, strategy: state.strategy, identityFields: { GlobalId: state.identityFields.GlobalId, modelRevision: state.identityFields.modelRevision } });
+    if (new TextEncoder().encode(serialized).length > 5 * 1024 * 1024) throw new Error('Workspace exceeds byte limit');
+    localStorage.setItem(STORAGE_KEY, serialized);
+    return serialized;
+  },
+  restore(serialized) {
+    if (new TextEncoder().encode(serialized).length > 5 * 1024 * 1024) throw new Error('Workspace exceeds byte limit');
+    const raw: unknown = JSON.parse(serialized);
+    if (!raw || typeof raw !== 'object' || !('version' in raw) || raw.version !== 1 || !('workspace' in raw) || !('profile' in raw)) throw new Error('Unsupported viewer workspace');
+    assertProfile(raw.profile);
+    const imported = importWorkspace(JSON.stringify(raw.workspace));
+    const document = 'document' in raw && raw.document !== undefined ? parseProfileDocument(raw.document, raw.profile) : undefined;
+    if (document) document.source = sanitizeSource(document.source);
+    const dataset = imported.workspace.datasets[0];
+    const strategy = 'strategy' in raw && ['ifc-global-id', 'resource-links', 'profile-fields'].includes(String(raw.strategy)) ? String(raw.strategy) : 'ifc-global-id';
+    const fields = 'identityFields' in raw ? raw.identityFields : undefined;
+    const identityFields = fields && typeof fields === 'object' && 'GlobalId' in fields && typeof fields.GlobalId === 'string'
+      && (!('modelRevision' in fields) || typeof fields.modelRevision === 'string') ? { GlobalId: fields.GlobalId, modelRevision: 'modelRevision' in fields ? fields.modelRevision as string : undefined } : { GlobalId: 'GlobalId', modelRevision: 'modelRevision' };
+    set({ strategy, identityFields, links: imported.workspace.resourceLinks ?? [], profile: raw.profile, document, results: dataset?.rows, graph: dataset?.graph ?? '', queries: imported.workspace.queries,
+      revisions: new Map(), pendingRevisions: imported.workspace.revisions, graphFormat: dataset?.graphFormat ?? 'application/n-quads', findings: [], retrievedAt: undefined });
+  },
 }));
+export function savedSemanticWorkspace(): string | null { return localStorage.getItem(STORAGE_KEY); }

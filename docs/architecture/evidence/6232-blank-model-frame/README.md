@@ -1,0 +1,20 @@
+# Empty primary IFC frame: actual browser evidence
+
+Captured on 1 October 2026 with the built viewer at source `312093dd0e49cea7c4c478b99f3a3d80625fa1b8`, based on main `9e2f15b9dd46403cc9b06bb882ee3f5c2b16f014`. Windows Chrome 154.0.8037.58 used a fresh owned profile and a nonfallback NVIDIA Blackwell adapter. The served IFC WASM SHA-256 was `9646cc889c7a5148a2a97a6b90fa4349869840aea0065bd382b3a4e3bcfd3034`, matching the qualified local runtime.
+
+The actual UI sequence was Start blank, click **Model**, choose **Wall**, click two points in the plan, Escape twice, Ctrl+Z, Ctrl+Shift+Z, File → Export IFC (with changes) → Export, and reload the completed download through a fresh page's canonical file input. No browser store actions or coordinate metadata were injected. The additional Model/Wall clicks are explicit: automatic Wall launch did not occur in this run.
+
+- [Loaded blank project](loaded-blank.png): 32 source entities, one storey, no geometry, and the exact engine frame `{x:0,y:0,z:0,needsShift:false}`. The model's spatial ID range was registered.
+- [Empty plan after entering Model](blank.png): before the two wall clicks.
+- [First wall](wall.png): the inspector shows approximately 3.191 m length, 0.20 m thickness and 3.00 m height; the plan and hardware 3D view both show it.
+- [Undo](undo.png): the CPU mesh and plan cut are removed; history changes from one Undo entry to one Redo entry. This snapshot enumerates current CPU owners, so its empty owner list is not a separate query for the former wall's resident scene allocation.
+- [Redo](redo.png): one Undo entry, one CPU mesh, the original complete serialized CPU mesh snapshot restored.
+- [Reload](reload.png): the exported wall loads in a fresh page. Its resident triangle corners exactly match Redo; its IFC world bounds match the first wall. The full-load geometry hash is added on reload, so complete CPU metadata snapshots are not asserted identical across reload.
+
+[The actual download](Untitled_Project_export.ifc) contains 2,849 bytes, SHA-256 `a97606f2be63fb95d845dca495c4e913b0a7e4f589457176d053f19f0389a1fe`. Chrome reported the native Windows download completed before those file bytes were reloaded. The renderer's own GPU color readback is preserved separately for the [first wall](wall-renderer-color.png) and [reload](reload-renderer-color.png).
+
+[Facts](facts.json) contain the producer metadata, actual history depths, complete wall CPU mesh snapshot, resident part metadata and placed triangle corners. Corner arrays come from the renderer's read-only scene-owner probe and are expressed in viewer Y-up coordinates; the derived bounds convert them to IFC Z-up. Part metadata and serialized mesh hashes are not GPU upload-byte hashes. No performance claim is made.
+
+Two genuine remaining charter findings are preserved. Primary `loadFile` can resolve before its model-registration finalizer, so Start blank's automatic workspace launch can refuse. The first wall's resident scene has **two identical flat parts** (same item 44, twelve triangles each), although the CPU model contains one twelve-triangle mesh. After Undo/Redo and reload the resident scene contains one part. Thus only bounds, and the explicitly named CPU/Redo/reload comparisons above, are claimed identical. Both findings are being investigated under #6232; this evidence does not declare the charter complete.
+
+The seven mounted real-WASM regressions independently cover metres and millimetres at one and multiple models, zero-job engine metadata, physical wall bounds, Undo/Redo and refusal without an engine frame. The official revert oracle passed seven cases with the fix and produced four assertion failures when production was reverted, then verified restoration. Qualification: full root build 61 tasks, typecheck 109 tasks and all 3,186 test files, API 9,149 exports unchanged, root lint 7,970 files with zero errors, documentation 425 snippets, and the license, test-wiring, module-size, source-text-assertion and changeset gates passed.

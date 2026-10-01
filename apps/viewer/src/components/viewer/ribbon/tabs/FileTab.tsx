@@ -25,6 +25,7 @@ import {
 } from '../primitives';
 import { RibbonCommandLargeButton, RibbonCommandSmallButton } from '../command-button';
 
+/** Renders model input/output commands, with compact setup actions beside the prominent export controls. */
 export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
   const { t } = useTranslation();
   const { handleOpenClick, handleAddModelClick, handleRefresh, canRefresh, hasModelsLoaded, openShareDialog } = fileCommands;

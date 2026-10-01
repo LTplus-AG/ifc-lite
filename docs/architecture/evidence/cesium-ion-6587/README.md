@@ -4,6 +4,17 @@ Observed on 2026-10-01 using an authorized real account and the catalogued
 IfcOpenShell `Georeferencing_georeferenced-bridge-deck.ifc` regression model.
 Fetch the model with `pnpm fixtures`. Credentials are not included here.
 
+## Real ribbon entry and dialog
+
+On source head `d90afc7362ec768c8a107544667777e1bf9349bf`, the supported
+CI browser project loaded `building-architecture.ifc`, verified all 87 ribbon
+commands at 1280 px, and opened the one Cesium ion command. The actual dialog
+selected the loaded model, used a password input and disabled Upload without
+a token. Closing it succeeded. This local browser regression passed; it made
+no account requests. The screenshot contains an empty credential field.
+
+![Actual Ion dialog with selected IFC and empty masked token input](ion-upload-dialog.png)
+
 ## Actual tiled geometry
 
 Asset **5969481**, uploaded through the viewer after changing the slab's `Name`

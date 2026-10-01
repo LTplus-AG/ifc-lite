@@ -13,16 +13,17 @@ export interface ResolverContext {
   entities: readonly LiveEntity[]; revisions: ReadonlyMap<string, string>; modelScope?: string;
 }
 export interface IdentityStrategy { id: string; resolve(record: IdentityRecord, context: ResolverContext): Resolution }
+function isRevisionIdentifier(value: unknown): value is string { return typeof value === 'string' && Boolean(value.trim()); }
 /** Generic revision identifiers are non-empty opaque strings; profiles may constrain them further. */
 export function assertRevisionIdentifier(value: unknown): asserts value is string {
-  if (typeof value !== 'string' || !value.trim()) throw new Error('Revision identifier must be a non-empty string');
+  if (!isRevisionIdentifier(value)) throw new Error('Revision identifier must be a non-empty string');
 }
 
 export const IFC_GLOBAL_ID_STRATEGY: IdentityStrategy = {
   id: 'ifc-global-id', resolve(record, { entities, revisions, modelScope }) {
     if (record.GlobalId === undefined) return { status: 'external' };
     if (typeof record.GlobalId !== 'string' || !new RegExp(GUID_PATTERN).test(record.GlobalId)
-      || (record.modelRevision !== undefined && (typeof record.modelRevision !== 'string' || !record.modelRevision.trim()))) return { status: 'invalid' };
+      || (record.modelRevision !== undefined && !isRevisionIdentifier(record.modelRevision))) return { status: 'invalid' };
     const revisionModel = record.modelRevision ? revisions.get(String(record.modelRevision)) : undefined;
     if (record.modelRevision && !revisionModel) return { status: 'unscoped' };
     if (revisionModel && modelScope && revisionModel !== modelScope) return { status: 'unmatched' };

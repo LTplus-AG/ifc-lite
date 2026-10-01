@@ -1,0 +1,28 @@
+{
+  "version": 10,
+  "id": "recorded-doc-proof",
+  "name": "Saved comparison document proof",
+  "page": {
+    "size": "A4",
+    "orientation": "portrait"
+  },
+  "blocks": [
+    {
+      "kind": "chart",
+      "id": "recorded-block",
+      "chart": {
+        "id": "chart-muovzop0-1",
+        "title": "Recorded public A to B",
+        "source": "compare",
+        "topN": 12,
+        "comparisonId": "2d9d882f-4c0a-43aa-889e-30bae3d81b73",
+        "type": "bar",
+        "dimension": "State",
+        "measure": {
+          "agg": "count"
+        }
+      },
+      "snapshot": true
+    }
+  ]
+}

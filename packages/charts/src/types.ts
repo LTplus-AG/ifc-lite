@@ -111,6 +111,11 @@ interface ChartSpecCommon {
   id: string;
   title: string;
   source: ChartSource;
+  /** Completed comparison in the viewer's canonical saved history (#6549).
+   * Only valid for `compare`. Absent preserves the legacy live comparison.
+   * Dashboard/document files retain this ID; the matching saved history is
+   * a local dependency and is not embedded into the chart specification. */
+  comparisonId?: string;
   /** IFC field used for grouping, materialized beside the built-in element columns. */
   elementField?: ElementFieldBinding;
   /** Numeric IFC field to sum independently of the grouping field. */

@@ -67,18 +67,27 @@ On 2026-10-01, an authorized test account accepted both the original IFC
 (3D Tiles asset `5969409`, collection `5969408`) and the edited-source exporter
 output (`5969447`, collection `5969446`) through the actual upload transport.
 Both reached `COMPLETE`, 100%. Export preserved all 33 entities, reported no
-warnings, and changed the file from 1,919 to 1,907 bytes. The original tileset's
-ECEF origin resolves to the independently expected longitude and latitude.
+warnings, and changed the file from 1,919 to 1,907 bytes. Both tilesets' ECEF origins resolve to the independently expected longitude
+and latitude; their transforms and bounding boxes match.
 The declared vertical CRS is EPSG:5703: a zero orthometric height does not imply
 zero ellipsoidal height. Vertical placement needs an independent datum
 transformation before it can be claimed as verified.
 
-This confirms API transport, serialization and horizontal placement for this
-fixture; it does not substitute for a Chrome UI screenshot or verification of
-an uploaded pending edit. For UI acceptance, follow the named **View … in
-Cesium ion** button, check placement and element properties, then edit a
-`Name` attribute and confirm a second upload carries it. Check cancellation
-and a rejected token separately. Record that evidence with the PR.
+The shared-browser viewer UI then uploaded the same fixture (`5969459`),
+which also reached `COMPLETE`, 100%. Its full-width named action links to the
+viewable child asset. After editing an element's `Name` to
+`Ion acceptance edited bridge deck` through the Author inspector, a second UI
+upload (`5969481`) reached `COMPLETE`, 100%; the downloaded tiled GLB contains
+that edited name. Its transform and bounding box match the unedited control.
+The credential field remained masked and closing the dialog removed it;
+mounted tests separately verify the stored token is cleared on close.
+
+This confirms real API/SDK transport, shared-browser upload/edit behavior and
+horizontal origin placement for this fixture. It does not establish a visual
+inspection inside the signed-in Ion account's own viewer or an independently
+verified vertical datum transformation. Cancellation, refusal of retained image
+resources and safe rejected-request/retry behavior are covered by mounted and
+transport regression tests.
 
 `tests/models/buildingsmart/Infra-Bridge.ifc` is a separate real SketchUp 2024 /
 IFC-manager 5.3.3 IFC4 model with EPSG:32760 and millimetre map units. Its

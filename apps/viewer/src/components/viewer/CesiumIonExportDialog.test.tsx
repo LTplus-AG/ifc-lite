@@ -111,3 +111,20 @@ test('ion shows request rejection without blaming token permissions and supports
   assert.ok(document.body.textContent?.includes('Submitted for tiling'));
   assert.equal(document.querySelector('a[href="https://ion.cesium.com/assets/88"]')?.textContent?.trim(), 'View retry in Cesium ion');
 });
+
+test('ion completion keeps a long asset name intact and accessible in the primary link (#6587)', async () => {
+  const longName = 'Georeferencing_georeferenced-bridge-deck_model_with_a_long_unbroken_filename';
+  const model = { ...fixtureModel(`${longName}.ifc`), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
+  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map(),
+    scheduleData: null, scheduleIsEdited: false, scheduleSourceModelId: null });
+  render(<CesiumIonExportDialog surface="ribbon" upload={async () => ({ assetId: 99 })} />);
+  click(button('Upload to Cesium ion'));
+  type(document.querySelector<HTMLInputElement>('#ion-token')!, 'private-test-token');
+  click(button('Upload'));
+  await waitFor(() => !!document.querySelector('a[href="https://ion.cesium.com/assets/99"]'), 'primary asset link missing');
+  const link = document.querySelector<HTMLAnchorElement>('a[href="https://ion.cesium.com/assets/99"]')!;
+  assert.equal(link.textContent?.trim(), `View ${longName} in Cesium ion`);
+  assert.equal(link.querySelector('svg')?.getAttribute('aria-hidden'), 'true');
+  assert.equal(link.target, '_blank');
+  assert.equal(link.getAttribute('rel'), 'noopener noreferrer');
+});

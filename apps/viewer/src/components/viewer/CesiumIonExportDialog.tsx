@@ -121,9 +121,9 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
     onOpenStateChange={open => { if (!open) setToken(''); else setAssetId(undefined); }}
     onExport={onUpload}
     footerLeading={({ isExporting }) => isExporting && <Button variant="outline" onClick={() => controller.current?.abort()}>{t('ionUpload.abort')}</Button>}
-    resultDetails={assetId !== undefined && <Button asChild className="w-full">
+    resultDetails={assetId !== undefined && <Button asChild className="h-auto min-h-9 w-full min-w-0 whitespace-normal">
       <a href={ionAssetUrl(assetId)} target="_blank" rel="noopener noreferrer">
-        <ExternalLink aria-hidden className="mr-2 h-4 w-4" />{t('ionUpload.openAsset', { name: assetName })}
+        <ExternalLink aria-hidden className="h-4 w-4 shrink-0" /><span className="min-w-0 break-words">{t('ionUpload.openAsset', { name: assetName })}</span>
       </a>
     </Button>}
   >{({ isExporting }) => <>

@@ -4,6 +4,7 @@
 
 export { default as AddFile } from '~icons/viewer/add-file';
 export { default as CloudSources } from '~icons/viewer/cloud-sources';
+export { default as CesiumIonUpload } from '~icons/viewer/cesium-ion-upload';
 export { default as BrowsePanels } from '~icons/viewer/browse-panels';
 export { default as Loading } from '~icons/viewer/loading';
 export { default as OpenFile } from '~icons/viewer/open-file';

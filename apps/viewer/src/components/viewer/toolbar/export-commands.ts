@@ -28,6 +28,7 @@
 import type React from 'react';
 import type { TranslationKey } from '@/i18n';
 import type { ExportSurface } from '@/lib/analytics-export-events';
+import { CesiumIonExportDialog } from '../CesiumIonExportDialog';
 import { ExportDialog } from '../ExportDialog';
 import { ExportChangesButton } from '../ExportChangesButton';
 import { AnonymizedExportDialog } from '../anonymized-export/AnonymizedExportDialog';
@@ -172,6 +173,17 @@ export const EXPORT_COMMANDS = [
     menuLabelKey: 'exportCommands.kmz.menuLabel',
     tooltipKey: 'exportCommands.kmz.tooltip',
     requires: 'model',
+    group: 1,
+    emphasis: 'small',
+  },
+  {
+    id: 'ion',
+    kind: 'dialog',
+    Dialog: CesiumIonExportDialog,
+    labelKey: 'exportCommands.ion.label',
+    menuLabelKey: 'exportCommands.ion.menuLabel',
+    tooltipKey: 'exportCommands.ion.tooltip',
+    requires: 'dataStore',
     group: 1,
     emphasis: 'small',
   },

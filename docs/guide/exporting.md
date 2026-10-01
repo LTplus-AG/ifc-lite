@@ -25,6 +25,67 @@ archives may retain unused images from their source model. The STEP subset
 closure retains inverse texture maps for included faces, including maps created
 or retargeted through pending edits.
 
+## Upload to Cesium ion
+
+Choose **File → Cesium ion** (also available in the command palette and mobile
+export menu), select a STEP IFC model, and provide a Cesium ion token with
+`assets:write` permission. The viewer uploads that model's complete IFC with
+pending property, attribute, geometry, georeferencing, and schedule edits applied.
+Hidden elements remain included. Uploads go directly from your browser to Cesium
+ion and its temporary S3 storage; no IFClite server receives the model or token.
+
+Use a separate write token from the token used for viewing Cesium content. The
+upload token stays in memory and is cleared when the dialog closes; it is never
+saved to browser storage or sent to analytics.
+
+IFC4 and IFC4X3 uploads use the canonical compatibility exporter after applying
+edits. It normalizes map units to metres and moves supported uniform map rotation
+and scale into product placements and mapped Body representations. This preserves
+physical map coordinates, project units, properties and authored shape data;
+ordinary IFC downloads retain their original coordinate representation. IFC2X3
+uploads keep their source schema and edits without an implicit upgrade.
+
+Unsupported coordinate consumers, ambiguous units or export warnings stop the
+upload before network transfer. For a model without georeferencing, set its
+location in Cesium ion. No undocumented heading or placement override is sent.
+A successful upload starts tiling; follow the asset link to check its progress.
+
+**Cancel upload** stops pending network work. An asset already created remains
+in your account, including when upload or completion fails. Follow its link to
+inspect or remove it before retrying. The viewer does not automatically delete
+assets. IFCX, LandXML, and models with retained image resources are currently
+unsupported by direct upload; textured models should be exported as IFCZIP to
+retain their images.
+
+The integration follows the [Cesium ion upload API](https://cesium.com/learn/ion/ion-upload-rest/)
+and adapts the MPL-2.0 upload feature from
+[GeoBIM's published IFClite fork](https://github.com/christof2304/ifc-lite/releases/tag/geobim-2026-09-24).
+
+### Placement acceptance evidence
+
+The catalogued `tests/models/buildingsmart/Infra-Bridge.ifc` is a real SketchUp
+2024 IFC4 model with millimetre project and map units. Canonical map-unit
+normalization preserves its engineering geometry and physical map coordinates.
+An actual viewer upload retained an edited girder `Name`; the complete tiled
+output preserved all 48 product `GlobalId` values, the other Names, and the
+normalized control's geometry and tile transforms.
+
+The catalogued `tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc`
+is an IfcOpenShell-authored IFC4X3_ADD2 model with map rotation and scale. An
+actual production SDK compatibility export retained an edited slab `Name` and
+`GlobalId`; its stored tiled geometry matches the independently checked mapped
+control. Native Cesium rendering places the deck north–south along Golden Gate
+Bridge without a display correction. These are bounded fixture checks, not a
+claim that every IFC coordinate layout or authored CRS is supported. Datum
+accuracy depends on the authored CRS and the tiler's transformation.
+
+The [acceptance evidence](https://github.com/LTplus-AG/ifc-lite/blob/d23abbac174b4c1d26d80c174bfde2e8b6366fb7/docs/architecture/evidence/cesium-ion-6587/README.md)
+retains original failed controls, corrected compatibility exports, independent
+geometry checks, actual metadata and screenshots. Mounted regressions exercise
+the selected model, pending edits, IFC2X3 schema retention, and refusal before
+transport. Earlier unchanged-source failures are historical controls; they do
+not establish a general provider defect.
+
 ## Quick Start: CDN Export (No Build Required)
 
 Export IFC to GLB directly in the browser with zero setup:

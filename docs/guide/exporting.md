@@ -498,6 +498,8 @@ physical scale are already neutral, placements and geometry remain untouched.
 
 The supported subset has one map conversion, one project, an identity 3D context,
 SI metre-based project units, local 3D placements, and Body representations.
+Type representation maps must be reachable from an actual product Body;
+orphan mapped items do not authorize uninstantiated type geometry.
 Voids/fills, annotations, alignment/grid/structural coordinate consumers,
 nonuniform scale, nonidentity contexts, ambiguous representation ownership,
 and malformed units or placements cause atomic refusal: no geometry patches

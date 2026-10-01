@@ -1,5 +1,7 @@
 # First authored mesh: actual resident scene evidence
 
+A [fresh current-main native retest](current-main/README.md) records the integrated source, new runtime, automatic launch, single resident wall, Undo/Redo and completed export/reload separately. The capture below retains its original source and runtime attribution.
+
 Captured on 1 October 2026 at source and actual full-root build `ce855180ba95a8419175474ab80225dd699ee715`, stacked on the [primary completion fix and proof](../6232-primary-load-completion/README.md) (`9c3781a18565b514c794bf480318d7e18d74b46a`), which depends on #6594. Main base was `9e2f15b9dd46403cc9b06bb882ee3f5c2b16f014`. A fresh owned Windows Chrome 154 profile used a nonfallback NVIDIA Blackwell adapter. The actually served WASM SHA-256 was `9646cc889c7a5148a2a97a6b90fa4349869840aea0065bd382b3a4e3bcfd3034`.
 
 The UI sequence was **Start blank**, two plan clicks for a wall, Escape twice, Ctrl+Z, Ctrl+Shift+Z, File → Export IFC (with changes) → Export, then reload the completed native Windows download through a fresh page's canonical file input. Start blank automatically launched Wall on its own completed model; no additional Model/Wall clicks or injected store actions were used.

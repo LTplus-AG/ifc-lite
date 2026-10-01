@@ -23,4 +23,3 @@ export function propertyValueTypeFor(ifcType: string): PropertyValueType {
       catch { console.warn('Unsupported collab property type; using the label fallback'); return PropertyValueType.Label; }
   }
 }
-

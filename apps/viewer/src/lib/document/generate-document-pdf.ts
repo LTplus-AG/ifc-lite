@@ -9,6 +9,8 @@
  * so a chart block prints exactly as it does in a report.
  */
 import { blockTitle } from './block-title.js';
+import { isSavedComparisonChart } from '../charts/comparison-source.js';
+import { drawChartSourceMessage } from '../export/report/render-source-message.js';
 import { tableHeaderStyle } from '../table-header-style';
 import { comparisonSummary } from '../compare/savedComparisonSchema';
 import type { Aggregation } from '@ifc-lite/charts';
@@ -152,7 +154,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         // here ever read it.
         const message = input.chartMessages.get(block.id);
         const subtitle = message ?? (agg ? `${agg.categories.length} bucket${agg.categories.length === 1 ? '' : 's'} · ${agg.total.toLocaleString()} ${agg.spec.measure.agg === 'count' ? 'elements' : (agg.unit ?? '')}`.trim() : 'No data');
-        blocks.push({ kind: 'chart', id: block.id, title: blockTitle(block, block.chart.title), subtitle, hasData: !!agg && agg.categories.length > 0, snapshot: block.snapshot, height: block.height, width: block.width, fontSize: block.fontSize });
+        blocks.push({ kind: 'chart', id: block.id, title: blockTitle(block, block.chart.title), subtitle, hasData: !!agg && agg.categories.length > 0, snapshot: block.snapshot && !isSavedComparisonChart(block.chart), height: block.height, width: block.width, fontSize: block.fontSize });
         break;
       }
       case 'page-break': blocks.push(block); break;
@@ -296,7 +298,10 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
             doc.setTextColor(130);
             // A resolving/refused filter (#4946) prints its own reason instead
             // of the generic line, same as `resolveBlocks`'s subtitle above.
-            doc.text(input.chartMessages.get(item.blockId) ?? 'No data for this chart.', item.x, item.y + 14);
+            const message = input.chartMessages.get(item.blockId) ?? 'No data for this chart.';
+            const block = byId.get(item.blockId);
+            if (block?.kind === 'chart' && isSavedComparisonChart(block.chart)) drawChartSourceMessage(doc, message, item, 9);
+            else doc.text(message, item.x, item.y + 14);
             doc.setTextColor(0);
           }
           break;

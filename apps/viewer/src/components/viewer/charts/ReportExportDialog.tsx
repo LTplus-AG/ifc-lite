@@ -25,6 +25,7 @@ import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { browserReportSeams, generateReportPdf, type ReportPdfSeams } from '@/lib/export/report/generate-report-pdf';
 import { createSnapshotCapture } from '@/lib/export/report/snapshots';
 import { largestBucketIds } from '@/lib/charts/buckets';
+import { comparisonChartMessage, isSavedComparisonChart, resolveComparisonChartSource } from '@/lib/charts/comparison-source';
 
 /** Title-block fields offered, in order; values seeded from the drawing sheet's title block when present. */
 const FIELDS: Array<[string, string]> = [['project', 'Project'], ['title', 'Report title'], ['author', 'Prepared by'], ['date', 'Date'], ['revision', 'Revision']];
@@ -46,6 +47,7 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const sheetFields = useViewerStore((s) => s.activeSheet?.titleBlock.fields);
+  const savedComparisons = useViewerStore((s) => s.savedComparisons);
   const projectName = useViewerStore((s) => {
     const model = s.models.get(s.activeModelId ?? '') ?? s.models.values().next().value;
     const store = model?.ifcDataStore;
@@ -81,7 +83,8 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
   const run = useCallback(async () => {
     if (!dashboard) return;
     setBusy(true);
-    const snapshot = seams ? null : createSnapshotCapture();
+    const captureNeeded = snapshots && dashboard.charts.some((chart) => !isSavedComparisonChart(chart) && (aggregations.get(chart.id)?.categories.length ?? 0) > 0);
+    const snapshot = seams || !captureNeeded ? null : createSnapshotCapture();
     try {
       const s = await (seams ? seams() : browserReportSeams(snapshots ? snapshot?.capture ?? null : null));
       const result = await generateReportPdf({
@@ -89,7 +92,11 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
         page,
         titleBlock: Object.fromEntries(FIELDS.map(([k, label]) => [label, fields[k] ?? ''])),
         snapshots,
-        charts: dashboard.charts.map((c) => ({ id: c.id, title: c.title, aggregation: aggregations.get(c.id) ?? null })),
+        charts: dashboard.charts.map((c) => {
+          const source = resolveComparisonChartSource(c, { source: c.source, columns: [], rows: [], fingerprint: '' }, savedComparisons);
+          return { id: c.id, title: c.title, aggregation: aggregations.get(c.id) ?? null,
+            snapshot: !isSavedComparisonChart(c), message: comparisonChartMessage(source, t) };
+        }),
         snapshotIds: (chartId) => largestBucketIds(aggregations.get(chartId)),
       }, s);
       downloadBlob(result.blob, `${sanitizeFilename(dashboard.name, { fallback: 'report' })}-report.pdf`);
@@ -105,7 +112,7 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
       snapshot?.restore();
       setBusy(false);
     }
-  }, [dashboard, aggregations, page, snapshots, fields, seams, onSaveReportSetup]);
+  }, [dashboard, aggregations, page, snapshots, fields, seams, onSaveReportSetup, savedComparisons, t]);
 
   const field = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs';
 

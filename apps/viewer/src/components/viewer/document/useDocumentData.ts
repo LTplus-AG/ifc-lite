@@ -12,6 +12,8 @@ import { useMemo } from 'react';
 import { aggregate, type Aggregation, type ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n/useTranslation';
+import { comparisonChartMessage, resolveComparisonChartSource } from '@/lib/charts/comparison-source';
 import type { BindingContext } from '@/lib/document/bindings';
 import type { DocumentSpec } from '@/lib/document/types';
 import { applyChartFilter, applyClashRuleFilter, chartElementFilterKey } from '@/lib/charts/source-filter';
@@ -37,6 +39,8 @@ export interface DocumentData {
 const ALL_SCOPE = { kind: 'all' as const };
 
 export function useDocumentData(document: DocumentSpec | null): DocumentData {
+  const { t, revision } = useTranslation();
+  const savedComparisons = useViewerStore((s) => s.savedComparisons);
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const mutationViews = useViewerStore((s) => s.mutationViews);
@@ -66,7 +70,10 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
         // Trimmed-empty is no filter, consistent with ChartCard (review finding).
         const filterKey = chartElementFilterKey(spec.filter);
         const filterState = filterKey ? sourceFilters.get(filterKey) : undefined;
-        const baseDataset = datasets[spec.source];
+        const source = resolveComparisonChartSource(spec, datasets[spec.source], savedComparisons);
+        const sourceMessage = comparisonChartMessage(source, t);
+        if (sourceMessage) messages.set(block.id, sourceMessage);
+        const baseDataset = source.dataset;
         // Never the unfiltered rows under a filter (#4946): resolving/erred
         // prints an EMPTY dataset, same as the dashboard card — but unlike
         // the card (which reads the status straight off the hook) the
@@ -93,7 +100,7 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
       }
     }
     return { aggregations: aggs, chartMessages: messages };
-  }, [document, datasets, sourceFilters]);
+  }, [document, datasets, sourceFilters, savedComparisons, t, revision]);
 
   const topics = useMemo(() => bcfProject?.topics ?? new Map<string, BCFTopic>(), [bcfProject]);
   const tables = useDocumentTables(document);

@@ -13,6 +13,8 @@
  * under node:test against a recording document.
  */
 import { tableHeaderStyle, type TableHeaderStyle } from '../../table-header-style';
+import { truncateToWidth } from '../../document/compose-text.js';
+import { drawChartSourceMessage } from './render-source-message.js';
 import { renderChartSvg, type Aggregation, type ChartTheme, DEFAULT_THEME } from '@ifc-lite/charts';
 import { composeReport, REPORT_MARGIN, type ComposeReportInput, type ReportChartBlock, type ReportLayout } from './compose.js';
 import type { SnapshotCapture } from './snapshots.js';
@@ -186,7 +188,10 @@ async function drawChartBlock(doc: ReportDoc, block: ReportChartBlock, aggregati
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(130);
-  doc.text(block.subtitle, block.chart.x + Math.min(block.chart.w - 80, block.title.length * 6 + 12), block.chart.y - 6);
+  const subtitleX = block.chart.x + Math.min(block.chart.w - 80, block.title.length * 6 + 12);
+  const measure = (text: string, size: number) => doc.textWidth?.(text) ?? text.length * size * 0.52;
+  const subtitle = block.message ? truncateToWidth(block.subtitle, block.chart.x + block.chart.w - subtitleX, 8, false, measure) : block.subtitle;
+  doc.text(subtitle, subtitleX, block.chart.y - 6);
   doc.setTextColor(0);
 
   if (aggregation && aggregation.categories.length > 0) {
@@ -199,7 +204,10 @@ async function drawChartBlock(doc: ReportDoc, block: ReportChartBlock, aggregati
     // full result, so `null` here can only be ChartCard's own catch — the
     // chart is broken, not merely empty of data. Same split as the
     // subtitle above (`compose.ts`), worded for the chart body.
-    doc.text(aggregation === null ? 'This chart could not be aggregated — edit it and re-export.' : 'No data for this chart.', block.chart.x, block.chart.y + 14);
+    const message = block.message ?? (aggregation === null ? 'This chart could not be aggregated — edit it and re-export.' : 'No data for this chart.');
+    if (block.message) {
+      drawChartSourceMessage(doc, message, block.chart, 8);
+    } else doc.text(message, block.chart.x, block.chart.y + 14);
     doc.setTextColor(0);
   }
 

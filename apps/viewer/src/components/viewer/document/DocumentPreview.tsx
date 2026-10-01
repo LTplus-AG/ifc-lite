@@ -9,6 +9,7 @@
  * printed as an empty string.
  */
 import { blockTitle, BLOCK_TITLE_HEIGHT } from '@/lib/document/block-title';
+import { isSavedComparisonChart } from '@/lib/charts/comparison-source';
 import { useMemo, useState } from 'react';
 import { chartFontScale, renderChartSvg, type Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
@@ -150,13 +151,14 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
       );
     }
     case 'chart': {
+      const snapshot = block.snapshot && !isSavedComparisonChart(block.chart);
       const textScale = chartFontScale(block.fontSize);
       const { height: chartHeight } = documentChartSizing({
         requestedHeight: block.height ?? CHART_BLOCK_HEIGHT_DEFAULT,
         headingExtraHeight,
         pageHeight,
         boxWidth: contentWidth / scale,
-        snapshot: block.snapshot,
+        snapshot,
         hasData: Boolean(aggregation && aggregation.categories.length > 0),
         fontSize: block.fontSize,
       });
@@ -164,7 +166,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
       // Computed once, not repeated as a JSX-expression literal in both the visible text and its
       // `title` tooltip (i18n literal-count gate: a duplicated inline ternary counts twice).
       const chartSubtitle = chartMessage ?? (aggregation ? `${aggregation.categories.length} bucket${aggregation.categories.length === 1 ? '' : 's'} · ${aggregation.total.toLocaleString()}` : 'No data');
-      const subtitle = `${chartSubtitle}${block.snapshot ? ' · 3D snapshot in the PDF' : ''}`;
+      const subtitle = `${chartSubtitle}${snapshot ? ' · 3D snapshot in the PDF' : ''}`;
       return (
         <div>
           <div className="min-w-0">

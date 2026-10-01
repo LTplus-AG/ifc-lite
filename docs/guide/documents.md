@@ -76,6 +76,16 @@ They persist in this browser after model unloading or reloading. Renaming affect
 only the library name. Historical report rows never select elements in a newly
 loaded model; rerun the pair for current 3D review.
 
+Chart blocks can also use a dashboard chart bound to a specific **Saved
+comparison**. Preview and PDF use that recorded report's rows and suppress
+3D snapshots. A chart block retains the comparison ID rather than embedding
+history, so deleting its saved source or opening the file in another browser
+without that source displays an explicit unavailable-source message. Choose
+another bound dashboard chart in the block editor to replace it. See
+[saved comparison charts](./charts.md#saved-comparison-charts) for the binding
+and import behavior; saved comparison table blocks continue to embed their
+own evidence.
+
 In Documentation, **Add block → Saved comparison** embeds the first saved report.
 Select the block and choose another saved comparison in its source picker. The
 preview and PDF show the selected pair's provenance, summary and change table.

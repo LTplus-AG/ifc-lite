@@ -32,6 +32,7 @@ import { listCopyForDocument, TABLE_ROWS_DEFAULT, type DocumentBlock, type Docum
 import { browserImageSize, generateDocumentPdf, type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
 import { browserReportSeams } from '@/lib/export/report/generate-report-pdf';
 import { createSnapshotCapture } from '@/lib/export/report/snapshots';
+import { isSavedComparisonChart } from '@/lib/charts/comparison-source';
 import { BlockEditor } from './BlockEditor';
 import { DocumentMenu } from './DocumentMenu';
 import { DocumentPreview } from './DocumentPreview';
@@ -121,7 +122,8 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const exportPdf = useCallback(async () => {
     if (!document) return;
     setBusy(true);
-    const snapshot = pdfSeams ? null : createSnapshotCapture();
+    const captureNeeded = document.blocks.some((block) => block.kind === 'chart' && block.snapshot && !isSavedComparisonChart(block.chart));
+    const snapshot = pdfSeams || !captureNeeded ? null : createSnapshotCapture();
     try {
       const seams = await (pdfSeams ? pdfSeams() : browserReportSeams(snapshot?.capture ?? null).then((s) => ({ ...s, imageSize: browserImageSize })));
       const result = await generateDocumentPdf({

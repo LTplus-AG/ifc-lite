@@ -9,6 +9,7 @@
  * live in the preview. Image, chart and topic blocks pick their source.
  */
 import { BlockTitleEditor } from './BlockTitleEditor';
+import { isSavedComparisonChart } from '@/lib/charts/comparison-source';
 import { SavedReportSource } from './SavedReportSource';
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowDown, ArrowUp, X } from 'lucide-react';
@@ -258,7 +259,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
             </select>
           </label>
           <label className="inline-flex items-center gap-1 text-muted-foreground">
-            <input type="checkbox" checked={block.snapshot} onChange={(e) => onChange({ ...block, snapshot: e.target.checked })} className="accent-[#7aa2f7]" /> {t('document.block.chartSnapshotLabel')}
+            <input type="checkbox" checked={block.snapshot && !isSavedComparisonChart(block.chart)} disabled={isSavedComparisonChart(block.chart)} onChange={(e) => onChange({ ...block, snapshot: e.target.checked })} className="accent-[#7aa2f7]" /> {t('document.block.chartSnapshotLabel')}
           </label>
           <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.heightPtLabel')}
             <ClampedNumberInput

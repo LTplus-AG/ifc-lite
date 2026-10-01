@@ -218,7 +218,7 @@ export function overriddenScaleNote(found: ExportScaleFields): string | null {
  * {@link DoubleGeoreference.factorsForExport} are sent to the authoring tool.
  */
 export function exportCorrectionInstruction(found: ExportScaleFields): string {
-  const fields = ['Eastings and Northings to 0', 'Angle to Grid North to 0'];
+  const fields = ['Eastings and Northings to 0', 'Model rotation in map coordinates to 0'];
   if (found.scaleForExport !== null) fields.push(`Scale to ${trimFloat(found.scaleForExport)}`);
   const inApp = `set ${joinSerial(fields)}, then use Export IFC (with changes).`;
   const factors = found.factorsForExport;

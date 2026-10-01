@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { validateChartSpec } from './validate.js';
-import type { ChartSource, ChartSpec } from './types.js';
+import type { ChartSource, ChartSourceFilter, ChartSpec } from './types.js';
 
 const chart: ChartSpec = { id: 'recorded', title: 'Recorded comparison', source: 'compare', type: 'bar', dimension: 'State', measure: { agg: 'count' } };
 
@@ -20,7 +20,9 @@ describe('Saved comparison binding contract (#6549)', () => {
     }
   });
   it('rejects live element selectors and rule groups on recorded comparison sources (#6549)', () => {
-    for (const filter of [{ selector: 'IfcWall' }, { selector: '', groups: [{ combinator: 'AND', rules: [{ field: 'type', operator: 'equals', value: 'IfcWall' }] }] }]) {
+    const filters: ChartSourceFilter[] = [{ selector: 'IfcWall' }, { selector: '', groups: [{ combinator: 'AND', rules: [{ kind: 'modelTag', op: 'hasAny', tagIds: ['structure'] }] }] }];
+    for (const filter of filters) {
+      expect(validateChartSpec({ ...chart, source: 'elements', filter })).toEqual([]);
       expect(validateChartSpec({ ...chart, comparisonId: 'completed-comparison', filter }).some(({ path, message }) => path.endsWith('.filter') && message.includes('not applicable'))).toBe(true);
     }
   });

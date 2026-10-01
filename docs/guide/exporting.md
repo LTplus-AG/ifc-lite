@@ -38,10 +38,11 @@ Use a separate write token from the token used for viewing Cesium content. The
 upload token stays in memory and is cleared when the dialog closes; it is never
 saved to browser storage or sent to analytics.
 
-Cesium ion uses the georeferencing embedded in the exported IFC. For a model
-without georeferencing, set its location in Cesium ion after uploading. No
-undocumented heading or placement override is sent. A successful upload starts
-tiling; follow the asset link to check tiling progress and verify placement.
+The upload preserves the georeferencing embedded in the exported IFC. After
+tiling, verify location, orientation and elevation in Cesium ion; its IFC tiler
+may require manual adjustment. For a model without georeferencing, set its
+location there. No undocumented heading or placement override is sent. A
+successful upload starts tiling; follow the asset link to check its progress.
 
 **Cancel upload** stops pending network work. An asset already created remains
 in your account, including when upload or completion fails. Follow its link to
@@ -86,9 +87,17 @@ wraps into two lines: its client and scroll widths both measured 462 px,
 with a 406 px label and a 56 px button height. The link had no horizontal overflow.
 
 This confirms real API/SDK transport, shared-browser upload/edit behavior and
-horizontal origin placement for this fixture. It does not establish a visual
-inspection inside the signed-in Ion account's own viewer or an independently
-verified vertical datum transformation. Cancellation, refusal of retained image
+horizontal origin placement for this fixture. A subsequent actual CesiumJS
+rendering of the tiled output revealed incorrect orientation: both the original
+control and edited upload run east from the south Golden Gate Bridge approach,
+while the authored IFC runs north across the bridge. GeoBIM's best-effort heading
+option did not correct it in a live control. The documented database tiler
+control also failed placement, near longitude/latitude 0/0. Automatic placement
+acceptance therefore remains failed; see the [recorded geometry oracle and
+actual screenshot](../architecture/evidence/cesium-ion-6587/README.md).
+This separate rendering is not an inspection of the signed-in Ion dashboard,
+and vertical datum transformation remains independently unverified.
+Cancellation, refusal of retained image
 resources and safe rejected-request/retry behavior are covered by mounted and
 transport regression tests.
 

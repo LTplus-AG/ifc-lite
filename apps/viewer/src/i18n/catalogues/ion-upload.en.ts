@@ -30,7 +30,7 @@ export const ionUploadEn = {
   'ionUpload.token': 'Cesium ion token (assets:write)',
   'ionUpload.tokenHelp': 'Use a separate token with assets:write permission. It is kept in memory until this dialog closes, and is never saved or sent to analytics.',
   'ionUpload.createToken': 'Create a token',
-  'ionUpload.placement': 'Cesium ion uses the georeferencing stored in the exported IFC. For models without georeferencing, set their location in Cesium ion after uploading.',
+  'ionUpload.placement': 'The upload preserves your IFC georeferencing. After tiling, verify location, orientation and elevation in Cesium ion; its IFC tiler may require manual adjustment. For models without georeferencing, set their location there.',
   'ionUpload.phase.serialize': 'Preparing edited IFC…',
   'ionUpload.phase.create': 'Creating asset…',
   'ionUpload.phase.upload': 'Uploading IFC…',

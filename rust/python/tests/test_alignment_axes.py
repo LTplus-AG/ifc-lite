@@ -32,6 +32,7 @@ def test_6600_bounds_and_invalid_parameters():
     report = ifclite_geom.alignment_axes(MODEL, spacing_m=1e-300, max_samples_per_axis=3)
     assert len(report["axes"][20]["samples"]) == 3
     assert any(d["code"] == "axis_sample_limit" for d in report["diagnostics"])
+    assert not any(d["code"] == "total_sample_limit" for d in report["diagnostics"])
     for value in [0, -1, float("nan"), float("inf")]:
         with pytest.raises(ValueError):
             ifclite_geom.alignment_axes(MODEL, spacing_m=value)

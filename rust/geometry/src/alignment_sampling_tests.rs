@@ -60,6 +60,14 @@ fn issue_6600_total_and_axis_bounds_report_coarsening_and_omission() {
     };
     let report = sample_alignment_axes(&content, options).unwrap();
     assert_eq!(report.axes.len(), 2);
+    assert!(report.diagnostics.iter().any(|d| d.express_id == Some(20)
+        && matches!(d.code, AlignmentSamplingDiagnosticCode::AxisSampleLimit)));
+    assert!(!report.diagnostics.iter().any(|d| d.express_id == Some(20)
+        && matches!(d.code, AlignmentSamplingDiagnosticCode::TotalSampleLimit)));
+    assert!(report.diagnostics.iter().any(|d| d.express_id == Some(21)
+        && matches!(d.code, AlignmentSamplingDiagnosticCode::TotalSampleLimit)));
+    assert!(!report.diagnostics.iter().any(|d| d.express_id == Some(21)
+        && matches!(d.code, AlignmentSamplingDiagnosticCode::AxisSampleLimit)));
     assert_eq!(
         report.axes.iter().map(|a| a.samples.len()).sum::<usize>(),
         5

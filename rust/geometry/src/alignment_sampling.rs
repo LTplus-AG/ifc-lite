@@ -87,8 +87,8 @@ impl AlignmentSamplingReport {
     }
 }
 
-/// Shared evaluated axis. Retains the exact evaluator, not its sampled polyline,
-/// so a future WASM consumer can request a frame at an arbitrary distance.
+/// Shared evaluated axis. Retains the canonical evaluator before renderer
+/// conversion, so a future WASM consumer can request an f64 frame at any distance.
 #[allow(non_snake_case)] // Public IFC EXPRESS attribute names are exact.
 pub struct AlignmentAxis {
     pub express_id: u32,
@@ -302,8 +302,9 @@ pub fn sample_alignment_axes(
                     samples,
                 },
                 approximate,
-                requested_segments >= options.max_samples_per_axis as f64,
-                requested_segments >= remaining as f64,
+                requested_segments >= options.max_samples_per_axis as f64
+                    && options.max_samples_per_axis <= remaining,
+                requested_segments >= remaining as f64 && remaining <= options.max_samples_per_axis,
             ))
         })();
         match result {

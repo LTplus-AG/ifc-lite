@@ -1,3 +1,7 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+     License, v. 2.0. If a copy of the MPL was not distributed with this
+     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
+
 # First authored mesh: actual resident scene evidence
 
 A [fresh current-main native retest](current-main/README.md) records the integrated source, new runtime, automatic launch, single resident wall, Undo/Redo and completed export/reload separately. The capture below retains its original source and runtime attribution.
@@ -14,10 +18,12 @@ The [first wall](wall.png) now has **one resident flat part and twelve triangles
 - [Redo](redo.png): one resident part, one CPU mesh and one Undo entry. Complete CPU mesh snapshots and placed triangle corners match the first wall.
 - [Reload](reload.png): one resident part in a fresh page, with triangle corners identical to Redo. Full-load metadata adds a geometry hash, so complete CPU metadata identity across reload is not claimed.
 
-First Wall, Redo and reload have the same IFC Z-up bounds: X approximately `[-1.595744133, 1.595744133]`, Y `[-0.1000000015, 0.1000000015]`, Z `[0, 3]` metres. These derive from world-placed renderer triangle corners, converted from viewer Y-up. [Facts](facts.json) preserve the native adapter, actual automatic-launch model IDs, producer frame, CPU mesh arrays, scene metadata, history depths and completed download events.
+First Wall, Redo and reload have the same IFC Z-up bounds: X approximately `[-1.595744133, 1.595744133]`, Y `[-0.1000000015, 0.1000000015]`, Z `[0, 3]` metres. These derive from world-placed renderer triangle corners, converted from viewer Y-up. [Facts](facts.json.gz) preserve the native adapter, actual automatic-launch model IDs, producer frame, CPU mesh arrays, scene metadata, history depths and completed download events.
 
 [The completed IFC download](Untitled_Project_export.ifc) contains 2,849 bytes, SHA-256 `17093c5499fb4f4317ef1c5b53714b8ff70add4dd1ea416692a2e7ca9be21569`. Chrome reported completion before those actual bytes were reloaded. Hardware GPU color readbacks succeeded at all six captured states; [Wall](wall-renderer-color.png), [Undo](undo-renderer-color.png) and [reload](reload-renderer-color.png) are committed. Flat-part metadata and triangle-corner data are not GPU upload-byte hashes. No rendering performance or timing claim is made.
 
 Seven mounted cases use the real canonical IFC loader, real WASM author/remesh output, federation merger, edit drain, streaming reconciler, Scene and Camera. Four genuine baseline failures reproduce the duplicate in metres/millimetres at one/two models. Positive invariants preserve a triangle partition of the actual engine output under one item, a failed GPU allocation followed by retry, and two real wall meshes in a mixed append/replacement commit. Only GPU allocation and presentation are replaced in those mounted tests. The official production revert oracle observed seven passes with the fix, then two passes and five assertion failures when all three production paths were reverted, with restoration verified.
 
 Qualification at ce855: root build 61 tasks, plain root typecheck 109 tasks and all 3,188 test files, root lint 7,975 files with no errors, API snapshot 9,149 exports unchanged, and MPL/test-wiring/module-size/source-text-assertion/changeset/bump-level gates passed. Twenty-nine focused cases passed with zero skips: seven residency, four existing drain, eleven completion and seven real-WASM blank-frame cases. An unintended regression shard was interrupted and excluded from qualification; the corrected drain shard passed. This layer addresses duplicate resident uploads; #6232 remains open for its remaining charter work.
+
+The [lossless facts archive](facts.json.gz) preserves the exact original UTF-8 JSON (79,569 bytes), SHA-256 `61af624cc0fa4f699a22aed3027cffbf2fcbdb20199c2cd15e4b4cec7da12e37`. Decompress with `gzip -dc facts.json.gz > facts.json`; no fields, mesh arrays or evidence were removed. All source/runtime and observation limits above remain unchanged.

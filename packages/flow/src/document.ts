@@ -13,12 +13,20 @@
 
 import type { Lacing } from './values.js';
 
-export const FLOW_VERSION = 1;
+export const FLOW_VERSION = 2;
 
 export type TrackingMode = 'update' | 'replace' | 'disabled';
 
 /** Player input kinds — what a form can ask for (Dynamo Player parity). */
-export type InputKind = 'scalar' | 'enum' | 'entitySet' | 'storey' | 'file' | 'table';
+export type InputKind = 'scalar' | 'enum' | 'entitySet' | 'storey' | 'file' | 'files' | 'table';
+
+export interface FlowFileSlot {
+  readonly id: string;
+  readonly label: string;
+  readonly accept: string;
+  readonly multiple: boolean;
+  readonly required: boolean;
+}
 
 export interface FlowNode {
   readonly id: string;
@@ -44,6 +52,7 @@ export interface FlowInput {
   readonly label: string;
   readonly kind: InputKind;
   readonly options?: readonly string[];
+  readonly fileSlots?: readonly FlowFileSlot[];
 }
 
 /** "Is Output": a node port shown as a result. */
@@ -74,7 +83,7 @@ export interface DocumentProblem {
 
 const LACINGS: readonly string[] = ['shortest', 'longest', 'cross'];
 const TRACKINGS: readonly string[] = ['update', 'replace', 'disabled'];
-const INPUT_KINDS: readonly string[] = ['scalar', 'enum', 'entitySet', 'storey', 'file', 'table'];
+const INPUT_KINDS: readonly string[] = ['scalar', 'enum', 'entitySet', 'storey', 'file', 'files', 'table'];
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === 'object' && !Array.isArray(v);
@@ -159,6 +168,17 @@ export function validateFlowDocument(value: unknown): DocumentProblem[] {
     if (!str(inp.label)) add(`${p}.label`, 'must be a non-empty string');
     if (!INPUT_KINDS.includes(inp.kind as string)) add(`${p}.kind`, `must be one of ${INPUT_KINDS.join(', ')}`);
     if (inp.options !== undefined && !(Array.isArray(inp.options) && inp.options.every(str))) add(`${p}.options`, 'must be an array of strings');
+    if (inp.kind === 'files') {
+      if (!Array.isArray(inp.fileSlots) || inp.fileSlots.length === 0 || inp.fileSlots.length > 100) add(`${p}.fileSlots`, 'must contain 1–100 slots');
+      else {
+        const slots = new Set<string>();
+        for (const slot of inp.fileSlots) {
+          if (!isRecord(slot) || !str(slot.id) || slots.has(slot.id) || !str(slot.label)
+            || typeof slot.accept !== 'string' || typeof slot.multiple !== 'boolean' || typeof slot.required !== 'boolean') add(`${p}.fileSlots`, 'invalid or duplicate file slot');
+          else slots.add(slot.id);
+        }
+      }
+    } else if (inp.fileSlots !== undefined) add(`${p}.fileSlots`, 'only files inputs may define slots');
   });
   (value.outputs as unknown[]).forEach((o, i) => {
     const p = `outputs[${i}]`;
@@ -187,8 +207,8 @@ export function parseFlowDocument(text: string): FlowDocument {
 }
 
 /**
- * Migration chain: each step lifts `flowVersion` by one. There is only
- * version 1 today; the chain exists so a v1 file keeps opening after v2.
+ * Migration chain: each step lifts `flowVersion` by one. Version 2 adds
+ * local file-slot metadata; existing v1 inputs and nodes retain their meaning.
  */
 export function migrateFlowDocument(value: unknown): unknown {
   if (!isRecord(value)) return value;
@@ -201,4 +221,6 @@ export function migrateFlowDocument(value: unknown): unknown {
   return doc;
 }
 
-const MIGRATIONS: Readonly<Record<number, (doc: Record<string, unknown>) => Record<string, unknown>>> = {};
+const MIGRATIONS: Readonly<Record<number, (doc: Record<string, unknown>) => Record<string, unknown>>> = {
+  1: (doc) => ({ ...doc, flowVersion: 2 }),
+};

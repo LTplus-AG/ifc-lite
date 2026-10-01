@@ -99,9 +99,10 @@ test('mounted ion upload refuses unsupported edited map scale before network tra
   view.setAttribute(38, 'Scale', '-1', '0.9996');
   let transfers = 0;
   begin(source, view, async () => { transfers++; return { assetId: 42 }; });
-  await waitFor(() => document.body.textContent?.includes('IFC preparation reported') === true,
-    'canonical normalization warning was not reported by the mounted dialog');
+  await waitFor(() => transfers > 0 || document.body.textContent?.includes('IFC preparation reported') === true,
+    'mounted dialog neither reported its warning nor completed transport');
   assert.equal(transfers, 0, 'a refused map normalization must never reach upload transport');
+  assert.ok(document.body.textContent?.includes('IFC preparation reported'), 'canonical warning is reported');
   assert.equal(attrs(source, 38)[7], 0.9996, 'source remains authored');
   assert.deepEqual(view.getAttributeMutationsForEntity(38), [{ name: 'Scale', value: '-1' }]);
 });

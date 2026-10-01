@@ -8,7 +8,7 @@
  */
 
 import React from 'react';
-import { AddFile, CloudSources, Loading, OpenFile, Refresh, Share, CollabsRoom } from '@/icons';
+import { AddFile, CloudSources, Loading, OpenFile, SaveFederationSetup, Refresh, Share, CollabsRoom } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { isCollabEnabled } from '@/lib/collab/config';
@@ -86,6 +86,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
         </RibbonSmallStack>
         <RibbonCommandLargeButton
           commandId={saveSetup.id}
+          icon={SaveFederationSetup}
           tooltip={t(saveSetup.labelKey)}
           disabled={!saveSetup.enabled({ canEditInSession })}
         />

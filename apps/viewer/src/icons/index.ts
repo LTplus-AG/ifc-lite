@@ -7,6 +7,7 @@ export { default as CloudSources } from '~icons/viewer/cloud-sources';
 export { default as BrowsePanels } from '~icons/viewer/browse-panels';
 export { default as Loading } from '~icons/viewer/loading';
 export { default as OpenFile } from '~icons/viewer/open-file';
+export { default as SaveFederationSetup } from '~icons/viewer/save-federation-setup';
 export { default as Refresh } from '~icons/viewer/refresh';
 export { default as Screenshot } from '~icons/viewer/screenshot';
 export { default as FileIfc } from '~icons/viewer/file-ifc';

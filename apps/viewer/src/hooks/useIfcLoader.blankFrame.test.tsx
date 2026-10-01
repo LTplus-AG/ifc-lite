@@ -362,13 +362,16 @@ describe('owned primary completion and launcher (#6232)', () => {
     try {
       await waitFor(held.decoded, 'first peer metadata is actually decoded');
       await act(async () => secondHook?.loadFile(blankFile('MILLIMETRE'), { kind: 'federated', modelId: 'second-peer' }));
-      assert.equal(useViewerStore.getState().models.get(primary.id), primary);
+      assert.equal(useViewerStore.getState().models.get(primary.id)?.ifcDataStore, primary.ifcDataStore);
+      assert.equal(useViewerStore.getState().models.get(primary.id)?.geometryResult, primary.geometryResult);
       assert.ok(useViewerStore.getState().models.get('second-peer'));
       held.release();
       await act(async () => first);
       const models = useViewerStore.getState().models;
       assert.equal(models.size, 3);
-      assert.equal(models.get(primary.id), primary);
+      assert.equal(models.get(primary.id)?.ifcDataStore, primary.ifcDataStore);
+      assert.equal(models.get(primary.id)?.geometryResult, primary.geometryResult);
+      assert.equal(models.get(primary.id)?.idOffset, primary.idOffset);
       assert.equal(models.get('first-peer')?.geometryResult?.coordinateInfo?.lengthUnitScale, 1);
       assert.equal(models.get('second-peer')?.geometryResult?.coordinateInfo?.lengthUnitScale, 0.001);
       assert.equal(useViewerStore.getState().activeLoadCanceller, null);

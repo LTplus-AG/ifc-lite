@@ -8,7 +8,11 @@ from typing import Any, Dict, List, Literal, Optional, Set, TypedDict, Union, ov
 
 Quality = Literal["lowest", "low", "medium", "high", "highest"]
 
-class ElementBuffers(TypedDict):
+class ElementColorBuffers(TypedDict, total=False):
+    palette: List[List[float]]  # distinct RGBA; present only for multi-color elements
+    face_colors: bytes  # u64 little-endian palette index per face
+
+class ElementBuffers(ElementColorBuffers):
     ifc_type: str
     global_id: Optional[str]
     name: Optional[str]

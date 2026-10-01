@@ -83,6 +83,8 @@ you can hand them straight to `numpy.frombuffer` with zero parsing.
       "color":     [r, g, b, a],      # 0..1
       "vertices":  <bytes>,           # f64 little-endian, xyz triplets
       "faces":     <bytes>,           # u32 little-endian, triangle indices
+      "palette":   [[r, g, b, a], ...], # optional, per-face color overrides
+      "face_colors": <bytes>,         # optional, u64 little-endian palette indices
     },
     ...
   }
@@ -95,6 +97,15 @@ Decode the buffers with:
 verts = np.frombuffer(el["vertices"], dtype=np.float64).reshape(-1, 3)  # (V, 3)
 faces = np.frombuffer(el["faces"],    dtype=np.uint32 ).reshape(-1, 3)  # (F, 3)
 ```
+
+Elements whose surviving faces cannot be represented by the fallback `color` also
+carry `palette` and `face_colors`.
+Decode `face_colors` using `np.frombuffer(el["face_colors"], dtype="<u8")`:
+there is one palette index per surviving triangle, including transparency.
+The JSON form carries the same indices as an array of integers. Both fields are
+omitted when `color` represents all surviving faces; `color` remains the first
+submesh's RGBA for existing consumers.
+Palette order follows first occurrence and supports more than 65,536 colors.
 
 ### `geometry_data_json(ifc_bytes: bytes, quality: str | None = None, ids: set[int] | None = None, *, include_directrices: bool = False) -> str`
 

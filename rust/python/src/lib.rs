@@ -23,8 +23,8 @@
 //! attribute model, the same one behind the wasm `exportCsv` / `exportJson`.
 
 use ifc_lite_processing::{
-    build_geometry_data_export, extract_swept_disk_descriptions,
-    process_geometry_filtered_with_quality_and_ids, GeometryDataExport, MeshCoordinateSpace,
+    build_colored_geometry_data_export, extract_swept_disk_descriptions,
+    process_geometry_filtered_with_quality_and_ids, ColoredGeometryDataExport, MeshCoordinateSpace,
     OpeningFilterMode, SweptDiskDescriptions, TessellationQuality,
 };
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -40,7 +40,7 @@ mod entity_data;
 mod swept_disk_checks;
 
 struct GeometryExportResult {
-    meshes: GeometryDataExport,
+    meshes: ColoredGeometryDataExport,
     swept_disks: Option<SweptDiskDescriptions>,
 }
 
@@ -93,7 +93,7 @@ fn run_export(
             } else {
                 None
             };
-            let meshes = build_geometry_data_export(&result.meshes, rtc, site_rotation);
+            let meshes = build_colored_geometry_data_export(&result.meshes, rtc, site_rotation);
             let swept_disks = include_directrices
                 .then(|| extract_swept_disk_descriptions(&ifc_bytes, ids.as_ref()));
             GeometryExportResult { meshes, swept_disks }
@@ -139,7 +139,8 @@ fn geometry_data_buffers(
     out.set_item("element_count", export.meshes.element_count)?;
 
     let els = PyDict::new(py);
-    for (id, el) in &export.meshes.elements {
+    for (id, colored) in &export.meshes.elements {
+        let el = &colored.geometry;
         let d = PyDict::new(py);
         d.set_item("ifc_type", &el.ifc_type)?;
         // Mirror the JSON path so both exports carry the same identity fields;
@@ -163,6 +164,11 @@ fn geometry_data_buffers(
         };
         d.set_item("vertices", PyBytes::new(py, vbytes))?;
         d.set_item("faces", PyBytes::new(py, fbytes))?;
+        if !colored.palette.is_empty() {
+            d.set_item("palette", colored.palette.iter().map(|c| c.to_vec()).collect::<Vec<_>>())?;
+            let colors: Vec<u8> = colored.face_colors.iter().flat_map(|index| index.to_le_bytes()).collect();
+            d.set_item("face_colors", PyBytes::new(py, &colors))?;
+        }
         els.set_item(*id, d)?;
     }
     out.set_item("elements", els)?;

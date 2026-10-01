@@ -1,0 +1,206 @@
+[
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/assets/openjpeg-MeY6OQBn.wasm",
+    "bytes": 252032,
+    "sha256": "004a0e62db930ba9ff2a22212f4554d0bb57a0635a8287caf70f98117cee14ba"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/assets/jbig2-CNFLgX9F.wasm",
+    "bytes": 104852,
+    "sha256": "e6bee67724a7b5436fe8162638e3708cfc8d52b6342db69a49715e30ff27cfdc"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/assets/emscripten-module-uFzwHH0Y.wasm",
+    "bytes": 503134,
+    "sha256": "105c3bed22d457e43e3d1c3c1c6959fda62a8fe06f0fc8a985303c3a2be72232"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/assets/laz-perf-CFJp03W6.wasm",
+    "bytes": 214351,
+    "sha256": "9c1802bc31b567dd4aa1ce9ab010e7e51e095dc42af8379b474ae6f221a9327f"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/assets/esbuild-BaXVPFT2.wasm",
+    "bytes": 13978850,
+    "sha256": "b1831a5c0f6cf688034fb94d0419812f165ea316a3380d3fc00a151e562d2eaf"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/assets/parquet_wasm_bg-BHq48xsW.wasm",
+    "bytes": 4951555,
+    "sha256": "7636a31df453d8c73aacbed5ae9fd262a71136258f420fa0d97016b8da9e8aa1"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/assets/ifc-lite_bg-Bk6KCJsY.wasm",
+    "bytes": 9472263,
+    "sha256": "039415545e2448ce8b1e40b14306524ee60cff29dabd97448080ac0d9e170610"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/assets/automerge_wasm_bg-LjMxZKTS.wasm",
+    "bytes": 3644225,
+    "sha256": "2a613b3ba557689889eadd66a54732223859be0f9a45b933d1512d8f2686367a"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/assets/quickjs-eval-zJSp5SB4.wasm",
+    "bytes": 469105,
+    "sha256": "7bcacc9f22cacf7e9b23866d2a6d1639693d40c7f144e41b7c69ed37ba9cbe8f"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/assets/qcms_bg-3PJi_GXR.wasm",
+    "bytes": 96589,
+    "sha256": "663d86126d5f5fcb1c61490f94353e2a8375660b8c5498ab3ebab5a34b08800e"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/assets/emscripten-module-DHbYPfAp.wasm",
+    "bytes": 1510753,
+    "sha256": "e346c792a99a6a3a5886a1b173015b3a7839d6800a7378695eb49db1a470160c"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/assets/emscripten-module-B1g2L2eS.wasm",
+    "bytes": 1027523,
+    "sha256": "b790f3842eef48d154984cea48d35303b5c3c3696fedab4dc79f314bde005dba"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/assets/emscripten-module-ZrHFMo7O.wasm",
+    "bytes": 1218626,
+    "sha256": "4d2f9f8adf28c48ed273515b815e05ae9a698b54955f7348e951faf43b1febc3"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/cesium/ThirdParty/draco_decoder.wasm",
+    "bytes": 285948,
+    "sha256": "2516a4e43526d71787bf2f678f951329f7f858f8f15f42d4bc9e370b31a0da3a"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/cesium/ThirdParty/wasm_splats_bg.wasm",
+    "bytes": 26522,
+    "sha256": "530cb068ddd94b7267db1e1690ebdfcd94c552b2886d79398438841c42a1a14d"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/cesium/ThirdParty/zip-module.wasm",
+    "bytes": 43347,
+    "sha256": "078ffa2acf6a911f040746a2cb848123ae919236a3f8de7ddd823750bfb23f17"
+  },
+  {
+    "side": "base",
+    "relative": "apps/viewer/dist/cesium/ThirdParty/basis_transcoder.wasm",
+    "bytes": 500839,
+    "sha256": "96849a2719b431008533806199ad4e513ef5a5f632b87e452fb1eea961d5730e"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/assets/openjpeg-MeY6OQBn.wasm",
+    "bytes": 252032,
+    "sha256": "004a0e62db930ba9ff2a22212f4554d0bb57a0635a8287caf70f98117cee14ba"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/assets/jbig2-CNFLgX9F.wasm",
+    "bytes": 104852,
+    "sha256": "e6bee67724a7b5436fe8162638e3708cfc8d52b6342db69a49715e30ff27cfdc"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/assets/emscripten-module-uFzwHH0Y.wasm",
+    "bytes": 503134,
+    "sha256": "105c3bed22d457e43e3d1c3c1c6959fda62a8fe06f0fc8a985303c3a2be72232"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/assets/laz-perf-CFJp03W6.wasm",
+    "bytes": 214351,
+    "sha256": "9c1802bc31b567dd4aa1ce9ab010e7e51e095dc42af8379b474ae6f221a9327f"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/assets/esbuild-BaXVPFT2.wasm",
+    "bytes": 13978850,
+    "sha256": "b1831a5c0f6cf688034fb94d0419812f165ea316a3380d3fc00a151e562d2eaf"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/assets/parquet_wasm_bg-BHq48xsW.wasm",
+    "bytes": 4951555,
+    "sha256": "7636a31df453d8c73aacbed5ae9fd262a71136258f420fa0d97016b8da9e8aa1"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/assets/ifc-lite_bg-Bk6KCJsY.wasm",
+    "bytes": 9472263,
+    "sha256": "039415545e2448ce8b1e40b14306524ee60cff29dabd97448080ac0d9e170610"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/assets/automerge_wasm_bg-LjMxZKTS.wasm",
+    "bytes": 3644225,
+    "sha256": "2a613b3ba557689889eadd66a54732223859be0f9a45b933d1512d8f2686367a"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/assets/quickjs-eval-zJSp5SB4.wasm",
+    "bytes": 469105,
+    "sha256": "7bcacc9f22cacf7e9b23866d2a6d1639693d40c7f144e41b7c69ed37ba9cbe8f"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/assets/qcms_bg-3PJi_GXR.wasm",
+    "bytes": 96589,
+    "sha256": "663d86126d5f5fcb1c61490f94353e2a8375660b8c5498ab3ebab5a34b08800e"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/assets/emscripten-module-DHbYPfAp.wasm",
+    "bytes": 1510753,
+    "sha256": "e346c792a99a6a3a5886a1b173015b3a7839d6800a7378695eb49db1a470160c"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/assets/emscripten-module-B1g2L2eS.wasm",
+    "bytes": 1027523,
+    "sha256": "b790f3842eef48d154984cea48d35303b5c3c3696fedab4dc79f314bde005dba"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/assets/emscripten-module-ZrHFMo7O.wasm",
+    "bytes": 1218626,
+    "sha256": "4d2f9f8adf28c48ed273515b815e05ae9a698b54955f7348e951faf43b1febc3"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/cesium/ThirdParty/draco_decoder.wasm",
+    "bytes": 285948,
+    "sha256": "2516a4e43526d71787bf2f678f951329f7f858f8f15f42d4bc9e370b31a0da3a"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/cesium/ThirdParty/wasm_splats_bg.wasm",
+    "bytes": 26522,
+    "sha256": "530cb068ddd94b7267db1e1690ebdfcd94c552b2886d79398438841c42a1a14d"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/cesium/ThirdParty/zip-module.wasm",
+    "bytes": 43347,
+    "sha256": "078ffa2acf6a911f040746a2cb848123ae919236a3f8de7ddd823750bfb23f17"
+  },
+  {
+    "side": "branch",
+    "relative": "apps/viewer/dist/cesium/ThirdParty/basis_transcoder.wasm",
+    "bytes": 500839,
+    "sha256": "96849a2719b431008533806199ad4e513ef5a5f632b87e452fb1eea961d5730e"
+  }
+]

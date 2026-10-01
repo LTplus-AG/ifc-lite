@@ -1,0 +1,446 @@
+{
+  "input": "/tmp/6232-takeover/6537-affinity-main940-native-controls-v1",
+  "source": {
+    "base": "9400cb6c952ba200e165c1dadbd95f9d28fca927",
+    "branch": "982da209b3a07da924d4c0af566aebbe7fe749e9"
+  },
+  "expectedSource": {
+    "base": "9400cb6c952ba200e165c1dadbd95f9d28fca927",
+    "branch": "982da209b3a07da924d4c0af566aebbe7fe749e9"
+  },
+  "observedRows": 11,
+  "expectedRows": 50,
+  "qualification": "UNQUALIFIED",
+  "issues": [
+    "Expected 50 rows, observed 11; incomplete run",
+    "Row 10 is unqualified",
+    "Row 10 lacks clean actual hostPreflightAfter",
+    "Observed pair groups differ from complete five AA and twenty AB pairs",
+    "AB/ac20/0 has missing or repeated side"
+  ],
+  "rowQualification": {
+    "0": {
+      "qualified": true,
+      "issues": [],
+      "reportedModelPhases": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "loadState": "complete",
+          "geometryLoadState": "opening",
+          "metadataLoadState": "idle"
+        }
+      ]
+    },
+    "1": {
+      "qualified": true,
+      "issues": [],
+      "reportedModelPhases": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "loadState": "complete",
+          "geometryLoadState": "opening",
+          "metadataLoadState": "idle"
+        }
+      ]
+    },
+    "2": {
+      "qualified": true,
+      "issues": [],
+      "reportedModelPhases": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "loadState": "complete",
+          "geometryLoadState": "opening",
+          "metadataLoadState": "idle"
+        }
+      ]
+    },
+    "3": {
+      "qualified": true,
+      "issues": [],
+      "reportedModelPhases": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "loadState": "complete",
+          "geometryLoadState": "opening",
+          "metadataLoadState": "idle"
+        }
+      ]
+    },
+    "4": {
+      "qualified": true,
+      "issues": [],
+      "reportedModelPhases": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "loadState": "complete",
+          "geometryLoadState": "opening",
+          "metadataLoadState": "idle"
+        }
+      ]
+    },
+    "5": {
+      "qualified": true,
+      "issues": [],
+      "reportedModelPhases": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "loadState": "complete",
+          "geometryLoadState": "opening",
+          "metadataLoadState": "idle"
+        }
+      ]
+    },
+    "6": {
+      "qualified": true,
+      "issues": [],
+      "reportedModelPhases": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "loadState": "complete",
+          "geometryLoadState": "opening",
+          "metadataLoadState": "idle"
+        }
+      ]
+    },
+    "7": {
+      "qualified": true,
+      "issues": [],
+      "reportedModelPhases": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "loadState": "complete",
+          "geometryLoadState": "opening",
+          "metadataLoadState": "idle"
+        }
+      ]
+    },
+    "8": {
+      "qualified": true,
+      "issues": [],
+      "reportedModelPhases": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "loadState": "complete",
+          "geometryLoadState": "opening",
+          "metadataLoadState": "idle"
+        }
+      ]
+    },
+    "9": {
+      "qualified": true,
+      "issues": [],
+      "reportedModelPhases": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "loadState": "complete",
+          "geometryLoadState": "opening",
+          "metadataLoadState": "idle"
+        }
+      ]
+    },
+    "10": {
+      "qualified": false,
+      "issues": [
+        "Row 10 is unqualified",
+        "Row 10 lacks clean actual hostPreflightAfter"
+      ],
+      "reportedModelPhases": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "loadState": "complete",
+          "geometryLoadState": "opening",
+          "metadataLoadState": "idle"
+        }
+      ]
+    }
+  },
+  "groups": {
+    "AA/ac20": {
+      "qualification": "COMPLETE_QUALIFIED_FAMILY",
+      "observedPairGroups": 5,
+      "completedPairs": 5,
+      "qualifiedPairs": 5,
+      "pairs": [
+        {
+          "pair": 0,
+          "sides": [
+            "A1",
+            "A2"
+          ],
+          "rowIndices": [
+            0,
+            1
+          ],
+          "geometryIdentity": true,
+          "fixtureIdentity": true,
+          "deltas": {
+            "fullReadyAfterInputMs": {
+              "left": 1896.625,
+              "right": 1872.4000000003725,
+              "absolute": -24.22499999962747,
+              "percent": -1.2772688327754549
+            },
+            "streamAfterInputMs": {
+              "left": 1839.0099999997765,
+              "right": 1836.0250000003725,
+              "absolute": -2.9849999994039536,
+              "percent": -0.16231559368379272
+            },
+            "workerStreamWallMs": {
+              "left": 1536.0750000011176,
+              "right": 1530.304999999702,
+              "absolute": -5.77000000141561,
+              "percent": -0.37563270031811025
+            },
+            "metadataAfterInputMs": {
+              "left": 1749.1399999987334,
+              "right": 1747.9949999991804,
+              "absolute": -1.1449999995529652,
+              "percent": -0.06546074068135166
+            },
+            "heapPeak": {
+              "left": 127137094,
+              "right": 127288646,
+              "absolute": 151552,
+              "percent": 0.1192036055189369
+            }
+          },
+          "qualified": true
+        },
+        {
+          "pair": 1,
+          "sides": [
+            "A1",
+            "A2"
+          ],
+          "rowIndices": [
+            3,
+            2
+          ],
+          "geometryIdentity": true,
+          "fixtureIdentity": true,
+          "deltas": {
+            "fullReadyAfterInputMs": {
+              "left": 1892.855000000447,
+              "right": 1869.3650000002235,
+              "absolute": -23.490000000223517,
+              "percent": -1.240982536972878
+            },
+            "streamAfterInputMs": {
+              "left": 1850.2700000014156,
+              "right": 1830.7400000002235,
+              "absolute": -19.530000001192093,
+              "percent": -1.0555216266370395
+            },
+            "workerStreamWallMs": {
+              "left": 1547.440000001341,
+              "right": 1528.745000001043,
+              "absolute": -18.695000000298023,
+              "percent": -1.2081243861010327
+            },
+            "metadataAfterInputMs": {
+              "left": 1743.2599999997765,
+              "right": 1724.019999999553,
+              "absolute": -19.240000000223517,
+              "percent": -1.1036793134831284
+            },
+            "heapPeak": {
+              "left": 148554550,
+              "right": 143479237,
+              "absolute": -5075313,
+              "percent": -3.416464187734405
+            }
+          },
+          "qualified": true
+        },
+        {
+          "pair": 2,
+          "sides": [
+            "A1",
+            "A2"
+          ],
+          "rowIndices": [
+            4,
+            5
+          ],
+          "geometryIdentity": true,
+          "fixtureIdentity": true,
+          "deltas": {
+            "fullReadyAfterInputMs": {
+              "left": 1880.5649999994785,
+              "right": 1882.25,
+              "absolute": 1.6850000005215406,
+              "percent": 0.08960073172275396
+            },
+            "streamAfterInputMs": {
+              "left": 1843.3499999996275,
+              "right": 1838.1749999988824,
+              "absolute": -5.175000000745058,
+              "percent": -0.2807388722025716
+            },
+            "workerStreamWallMs": {
+              "left": 1602.7599999997765,
+              "right": 1535.324999999255,
+              "absolute": -67.43500000052154,
+              "percent": -4.20742968382858
+            },
+            "metadataAfterInputMs": {
+              "left": 1742.324999999255,
+              "right": 1747.394999999553,
+              "absolute": 5.070000000298023,
+              "percent": 0.2909904868666977
+            },
+            "heapPeak": {
+              "left": 131008819,
+              "right": 115656451,
+              "absolute": -15352368,
+              "percent": -11.718575983804572
+            }
+          },
+          "qualified": true
+        },
+        {
+          "pair": 3,
+          "sides": [
+            "A1",
+            "A2"
+          ],
+          "rowIndices": [
+            7,
+            6
+          ],
+          "geometryIdentity": true,
+          "fixtureIdentity": true,
+          "deltas": {
+            "fullReadyAfterInputMs": {
+              "left": 1874.9350000005215,
+              "right": 1895.640000000596,
+              "absolute": 20.705000000074506,
+              "percent": 1.1043049492419068
+            },
+            "streamAfterInputMs": {
+              "left": 1839.0649999994785,
+              "right": 1849.5999999996275,
+              "absolute": 10.535000000149012,
+              "percent": 0.5728454404902491
+            },
+            "workerStreamWallMs": {
+              "left": 1532.4599999990314,
+              "right": 1548.480000000447,
+              "absolute": 16.02000000141561,
+              "percent": 1.0453780197477087
+            },
+            "metadataAfterInputMs": {
+              "left": 1737.484999999404,
+              "right": 1740.625,
+              "absolute": 3.1400000005960464,
+              "percent": 0.18072098467596115
+            },
+            "heapPeak": {
+              "left": 120133700,
+              "right": 138998361,
+              "absolute": 18864661,
+              "percent": 15.703055012873158
+            }
+          },
+          "qualified": true
+        },
+        {
+          "pair": 4,
+          "sides": [
+            "A1",
+            "A2"
+          ],
+          "rowIndices": [
+            8,
+            9
+          ],
+          "geometryIdentity": true,
+          "fixtureIdentity": true,
+          "deltas": {
+            "fullReadyAfterInputMs": {
+              "left": 1904.664999999106,
+              "right": 1891.254999998957,
+              "absolute": -13.410000000149012,
+              "percent": -0.7040608191023254
+            },
+            "streamAfterInputMs": {
+              "left": 1862.2599999997765,
+              "right": 1853.109999999404,
+              "absolute": -9.150000000372529,
+              "percent": -0.49133848122032514
+            },
+            "workerStreamWallMs": {
+              "left": 1560.9000000003725,
+              "right": 1549.5800000000745,
+              "absolute": -11.320000000298023,
+              "percent": -0.7252226279899623
+            },
+            "metadataAfterInputMs": {
+              "left": 1748.449999999255,
+              "right": 1756.4749999996275,
+              "absolute": 8.025000000372529,
+              "percent": 0.45897795192175633
+            },
+            "heapPeak": {
+              "left": 147733750,
+              "right": 152394734,
+              "absolute": 4660984,
+              "percent": 3.154989296623148
+            }
+          },
+          "qualified": true
+        }
+      ],
+      "metrics": {
+        "fullReadyAfterInputMs": {
+          "medianLeft": 1892.855000000447,
+          "medianRight": 1882.25,
+          "medianPairedDeltaPercent": -0.7040608191023254,
+          "pairedDeltaPercentRange": [
+            -1.2772688327754549,
+            1.1043049492419068
+          ]
+        },
+        "streamAfterInputMs": {
+          "medianLeft": 1843.3499999996275,
+          "medianRight": 1838.1749999988824,
+          "medianPairedDeltaPercent": -0.2807388722025716,
+          "pairedDeltaPercentRange": [
+            -1.0555216266370395,
+            0.5728454404902491
+          ]
+        },
+        "workerStreamWallMs": {
+          "medianLeft": 1547.440000001341,
+          "medianRight": 1535.324999999255,
+          "medianPairedDeltaPercent": -0.7252226279899623,
+          "pairedDeltaPercentRange": [
+            -4.20742968382858,
+            1.0453780197477087
+          ]
+        },
+        "metadataAfterInputMs": {
+          "medianLeft": 1743.2599999997765,
+          "medianRight": 1747.394999999553,
+          "medianPairedDeltaPercent": 0.18072098467596115,
+          "pairedDeltaPercentRange": [
+            -1.1036793134831284,
+            0.45897795192175633
+          ]
+        },
+        "heapPeak": {
+          "medianLeft": 131008819,
+          "medianRight": 138998361,
+          "medianPairedDeltaPercent": 0.1192036055189369,
+          "pairedDeltaPercentRange": [
+            -11.718575983804572,
+            15.703055012873158
+          ]
+        }
+      }
+    }
+  },
+  "scope": "Derived paired observations only; no automatic speed verdict. All completed pairs, including invalid pairs, remain in descriptive metrics; incomplete groups remain explicit issues and every observed row keeps its validity record. Use family qualification explicitly and never substitute missing samples. Heap is rAF-sampled Chrome-reported usedJSHeapSize, not exact held-array bytes or unsampled allocation peak. Served-resource witness hashes are outside timing and are not original worker-response body hashes. Actual primary loads retain geometryLoadState opening/metadataLoadState idle; these misleading phase fields are disclosed and are not treated as readiness signals."
+}

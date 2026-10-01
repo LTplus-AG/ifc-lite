@@ -1,0 +1,70 @@
+{
+  "README.md": {
+    "sha256": "58d3115c3142d38c38fd9e38f5d76c84439dea13b84816a54a35b6d40bd8ecba",
+    "bytes": 7859
+  },
+  "affinity-static-provenance.json": {
+    "sha256": "3feed9e21a3b087c86c56a02078202461f7d60974f9aecbd7ffebd1a47a54f08",
+    "bytes": 1378
+  },
+  "affinity-v1-derived.json": {
+    "sha256": "c5a306f9b2dd45ba1906cbb37f6394f6a78e47c404fa1770b58ce904d222eb97",
+    "bytes": 13292
+  },
+  "analyze.py": {
+    "sha256": "ad580dc5e9010fc8798cfe9df8650ac92c0c2905ad82a96566044d5a898f773a",
+    "bytes": 11808
+  },
+  "built-wasm-assets.json": {
+    "sha256": "be673c63f761ee2aa5ea796d347c12cf6fbace0f0dab2657029aba1c22231bb8",
+    "bytes": 6911
+  },
+  "packing-v3-derived.json": {
+    "sha256": "3f2cf853d7afea019ab08e8b45654f069b5490fb0a2a544384cb2e830aa2f41e",
+    "bytes": 58054
+  },
+  "raw-cohorts.tar.gz": {
+    "sha256": "cd01108c5ba43261d2f9b8f554876e9946313a04272e98e53c1693eaf4d32aea",
+    "bytes": 3302722
+  },
+  "remaining-mechanisms-source-plan.json": {
+    "sha256": "fa16427ba284651134694d4d42af20fefc89b986b1c5dcb2c9db876a5a2823ff",
+    "bytes": 4469
+  },
+  "source-correctness/6537-direct-packing-final-frozen-abi-green.log.gz": {
+    "sha256": "f7b8973a1f19b77f34ae961de626a6295da82825cc189cd716e94c6eaec888d6",
+    "bytes": 69683
+  },
+  "source-correctness/6537-direct-packing-main940-normal-green.log.gz": {
+    "sha256": "3fcf440f17cf2254a8c3add0c491c6e4de6c1c66130597fc35395997de56f0a1",
+    "bytes": 72040
+  },
+  "source-correctness/6537-direct-packing-test-main-red.log.gz": {
+    "sha256": "c71583be97586ed97454e267442823f8d06f30bb7eac2dcb33b22407dd1ea763",
+    "bytes": 72750
+  },
+  "source-correctness/6537-frozen-81fc-gpu-abi-witness.jsonl": {
+    "sha256": "7735b52a78b772494f3a63b380419e6f8dbadd21f7b139f6a694d71157eb6b94",
+    "bytes": 2264
+  },
+  "source-correctness/6537-frozen-gpu-abi-witness.log.gz": {
+    "sha256": "340c09aa668504567b893be3efb2828420eca32c487dd8de8a7a812a27322d3e",
+    "bytes": 70336
+  },
+  "source-correctness/6537-packing-baseline-main940-full-build.log.gz": {
+    "sha256": "1f22b5c2cad47bb784bc0cdb5057f3ac869a005bd5429c170fe1cebb84772f54",
+    "bytes": 20097
+  },
+  "source-correctness/6537-packing-main940-premeasure-runtime-provenance.json": {
+    "sha256": "217fa9e04a3e56760cdb421351e6353ab9e584b8a18fc10d72581e348f0a0635",
+    "bytes": 1049
+  },
+  "source-correctness/source-qualification.json": {
+    "sha256": "f31c16599c5c90298b103741309ec039ba7cc2b79ba9819e89d795985e461e3b",
+    "bytes": 3505
+  },
+  "unshipped-packing-candidate.patch.gz": {
+    "sha256": "66a2b2b218457fec61460be6fd440ae171bf975bc5870c473c4f848904f4a589",
+    "bytes": 8136
+  }
+}

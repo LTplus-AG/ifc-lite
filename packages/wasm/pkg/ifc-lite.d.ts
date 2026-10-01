@@ -954,6 +954,11 @@ export class IfcAPI {
      */
     planCapturedMesh(content: Uint8Array, request_json: string): Uint8Array;
     /**
+     * Plan opt-in map similarity normalization on a completed STEP export.
+     * Returns entity patches, allocated IDs and atomic refusal warnings as JSON.
+     */
+    planMapConversionNormalization(content: Uint8Array): string;
+    /**
      * Registered mesh observations over canonical target albedo. Host verifies
      * original GLB identity against decoded source mesh/image and freezes frames.
      * Run in an owned cancellable worker. IFPA output adds `transfer` coverage;
@@ -2536,6 +2541,7 @@ export interface InitOutput {
     readonly ifcapi_planAnnotationPlane: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planAppearance: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planCapturedMesh: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly ifcapi_planMapConversionNormalization: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_planMeshTransfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_planPageAppearance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_planPdfFillAnnotation: (a: number, b: number, c: number, d: number, e: number, f: number) => void;

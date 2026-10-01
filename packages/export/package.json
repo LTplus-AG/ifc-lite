@@ -31,6 +31,7 @@
     "@ifc-lite/ifcx": "workspace:^"
   },
   "devDependencies": {
+    "@ifc-lite/wasm": "workspace:^",
     "jszip": "^3.10.2",
     "typescript": "^6.0.3",
     "vitest": "^5.0.2"

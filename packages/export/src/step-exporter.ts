@@ -27,6 +27,8 @@ import {
 import { type GeorefContext } from './step-georeferencing.js';
 import { collectModifications, type CollectionContext } from './step-collection.js';
 import { normalizeMapUnitsToMetres } from './step-map-unit-normalization.js';
+import { normalizeMapGeometry } from './step-map-transform.js';
+import { reportStepExportProgress } from './step-export-progress.js';
 import { assembleExportResult } from './step-header.js';
 import { applySourceLineMutations } from './step-attribute-mutations.js';
 
@@ -98,6 +100,14 @@ export class StepExporter {
    * Export to STEP format
    */
   export(options: StepExportOptions): StepExportResult {
+    if (options.normalizeMapGeometry) {
+      throw new Error('Map geometry normalization requires exportAsync().');
+    }
+    const prepared = this.preparePass(options);
+    return 'result' in prepared ? prepared.result : assembleExportResult(prepared.pass);
+  }
+
+  private preparePass(options: StepExportOptions): { pass: ExportPass } | { result: StepExportResult } {
     // Both owner-history caches are per-EXPORT, not per-exporter: they now
     // depend on `willBeEmitted`, which depends on this call's options. Reusing
     // one exporter for a `visibleOnly` export and then a full one would
@@ -187,6 +197,9 @@ export class StepExporter {
     if (options.normalizeMapUnitsToMetres && (options.deltaOnly || converting || (schema !== 'IFC4' && schema !== 'IFC4X3'))) {
       throw new Error('Map-unit normalization requires a full export to the source IFC4 or IFC4X3 schema.');
     }
+    if (options.normalizeMapGeometry && (options.deltaOnly || converting || excludeGeometry || (schema !== 'IFC4' && schema !== 'IFC4X3'))) {
+      throw new Error('Map geometry normalization requires a full geometry export to the source IFC4 or IFC4X3 schema.');
+    }
     collectModifications(pass, options, applyMutations, this.collectionContext());
 
     // Which ids this export may still NAME, now that the collection phase has
@@ -201,7 +214,7 @@ export class StepExporter {
       this.mutationView,
     );
     // A deltaOnly export with nothing to say is already finished.
-    if (omission.kind === 'short-circuit') return omission.result;
+    if (omission.kind === 'short-circuit') return { result: omission.result };
     const { isOmittedFromOutput, mayNameOmittedRefs } = omission;
 
     // The owner history an IFC2X3 downgrade reuses for `$` OwnerHistory slots
@@ -242,10 +255,9 @@ export class StepExporter {
       buildOverlayEntitiesContext(this.mutationView),
     );
 
-    // Settle the ledger, build the header, assemble the finished bytes —
-    // `step-header.ts` (#2475 header/assembly tail).
+    // Complete map-unit adaptation before optional Rust planning and assembly.
     if (options.normalizeMapUnitsToMetres) normalizeMapUnitsToMetres(pass, () => this.nextExpressId++);
-    return assembleExportResult(pass);
+    return { pass };
   }
 
   /**
@@ -253,22 +265,20 @@ export class StepExporter {
    * UI responsive during large exports. Calls onProgress with live stats.
    */
   async exportAsync(options: StepExportOptions): Promise<StepExportResult> {
-    const onProgress = options.onProgress;
-
-    // Report preparing phase
     const totalEntities = getCompleteEntityIndex(this.dataStore).size;
-    if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
-    await new Promise(r => setTimeout(r, 0));
+    await reportStepExportProgress(options.onProgress, 'preparing', 0, totalEntities);
+    // Sync and async share the mutation-resolved pass. Optional Rust domain
+    // planning happens before the shared ledger/header assembly.
+    await reportStepExportProgress(options.onProgress, 'entities', 0.1, totalEntities);
 
-    // The sync export does the heavy lifting — we can't easily break it into
-    // chunks without duplicating the entire method, so we report phases around it.
-    if (onProgress) onProgress({ phase: 'entities', percent: 0.1, entitiesProcessed: 0, entitiesTotal: totalEntities });
-    await new Promise(r => setTimeout(r, 0));
+    const prepared = this.preparePass(options);
+    if ('pass' in prepared && options.normalizeMapGeometry) {
+      await normalizeMapGeometry(prepared.pass, id => { this.nextExpressId = Math.max(this.nextExpressId, id + 1); });
+    }
 
-    const result = this.export(options);
+    const result = 'result' in prepared ? prepared.result : assembleExportResult(prepared.pass);
 
-    if (onProgress) onProgress({ phase: 'assembling', percent: 0.95, entitiesProcessed: totalEntities, entitiesTotal: totalEntities });
-    await new Promise(r => setTimeout(r, 0));
+    await reportStepExportProgress(options.onProgress, 'assembling', 0.95, totalEntities);
 
     return result;
   }

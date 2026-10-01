@@ -1190,6 +1190,9 @@ importers:
         specifier: ^0.8.0
         version: 0.8.0
     devDependencies:
+      '@ifc-lite/wasm':
+        specifier: workspace:^
+        version: link:../wasm
       jszip:
         specifier: ^3.10.2
         version: 3.10.2

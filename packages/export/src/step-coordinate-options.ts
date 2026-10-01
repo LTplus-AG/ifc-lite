@@ -12,6 +12,14 @@ export interface StepCoordinateNormalizationOptions {
    * Requires a full export to the source STEP schema (not deltaOnly).
    */
   normalizeMapUnitsToMetres?: boolean;
+  /**
+   * Canonical Rust compatibility export, requiring exportAsync and a metre
+   * MapUnit. Uniform map rotation/scale moves into logical placements and
+   * mapped Body geometry; project/property units remain authored. Unsupported
+   * coordinate consumers produce atomic warnings; upload must refuse these.
+   * Default: preserve. Requires full geometry in the unchanged source schema.
+   */
+  normalizeMapGeometry?: boolean;
 }
 
 /** Authored coordinate-system edits applied before compatibility phases. */

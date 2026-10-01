@@ -471,6 +471,40 @@ when all those operations can be normalized safely. Delta exports and schema
 conversions reject this option. Ordinary IFC file exports retain their original
 map units unless this option is enabled.
 
+#### Map rotation and scale for interoperability
+
+`normalizeMapGeometry` is a separate, opt-in asynchronous compatibility export.
+It requires a full IFC4 or IFC4X3 export using the source schema and a metre
+map unit. Enable unit normalization first when the authored map unit differs:
+
+```typescript
+const compatibleMap = await new StepExporter(dataStore, mutationView).exportAsync({
+  schema: 'IFC4',
+  normalizeMapUnitsToMetres: true,
+  normalizeMapGeometry: true,
+});
+if (compatibleMap.stats.warnings.length) {
+  throw new Error(compatibleMap.stats.warnings.join('\n'));
+}
+await saveFile('compatible-map.ifc', compatibleMap.content);
+```
+
+Canonical Rust resolves the emitted model after edits. It moves uniform map
+rotation and scale into absolute logical product placements and `IfcMappedItem`
+Body representations, preserving physical map coordinates, logical placement
+origins, GUIDs, properties, and authored project/property units. The coordinate
+operation then retains only project-to-metre unit conversion. If rotation and
+physical scale are already neutral, placements and geometry remain untouched.
+
+The supported subset has one map conversion, one project, an identity 3D context,
+SI metre-based project units, local 3D placements, and Body representations.
+Voids/fills, annotations, alignment/grid/structural coordinate consumers,
+nonuniform scale, nonidentity contexts, ambiguous representation ownership,
+and malformed units or placements cause atomic refusal: no geometry patches
+are applied and warnings explain the limitation. Inspect warnings before
+sending the result to another service. Synchronous export rejects this option.
+Ordinary exports preserve their existing coordinate structure and bytes.
+
 #### Which schema identifier is written
 
 A re-export that does not change schema keeps the source file's own

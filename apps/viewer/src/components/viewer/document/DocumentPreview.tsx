@@ -5,7 +5,7 @@
 /** Paper preview uses the existing resolved-block/PDF composer (#6610).
  * Text, tables and reports overflow onto actual pages; explicit sections do
  * not stand in for page numbers. Selection still targets the authored block. */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { useTranslation } from '@/i18n';
@@ -49,6 +49,8 @@ export function DocumentPreview(props: DocumentPreviewProps) {
     const url = topic ? topicSnapshotDataUrl(topic) : null;
     return url ? [url] : [];
   })), [props.document, props.topics]);
+  const activeImageUrls = useRef(imageUrls);
+  activeImageUrls.current = imageUrls;
   useEffect(() => {
     setImageFailures(prior => [...prior].every(url => imageUrls.has(url))
       ? prior : new Set([...prior].filter(url => imageUrls.has(url))));
@@ -56,8 +58,7 @@ export function DocumentPreview(props: DocumentPreviewProps) {
       ? prior : new Map([...prior].filter(([url]) => imageUrls.has(url))));
   }, [imageUrls]);
   const recordImageSize = useCallback((url: string, size: PreviewImageSize) => {
-    setImageFailures(prior => [...prior].every(url => imageUrls.has(url))
-      ? prior : new Set([...prior].filter(url => imageUrls.has(url))));
+    if (!activeImageUrls.current.has(url)) return;
     setImageSizes(prior => {
       const stored = prior.get(url);
       if (stored?.w === size.w && stored.h === size.h) return prior;
@@ -65,6 +66,7 @@ export function DocumentPreview(props: DocumentPreviewProps) {
     });
   }, []);
   const recordImageError = useCallback((url: string) => {
+    if (!activeImageUrls.current.has(url)) return;
     console.warn('[Documents] preview image could not be decoded');
     setImageFailures(prior => new Set(prior).add(url));
     recordImageSize(url, { w: 1, h: 1 });
@@ -76,7 +78,7 @@ export function DocumentPreview(props: DocumentPreviewProps) {
   const { value, error } = useDocumentLayout(input, imageSizes);
   const blocks = useMemo(() => new Map(props.document.blocks.map(block => [block.id, block])), [props.document]);
   if (error) return <div role="alert" className="p-3 text-xs text-destructive">{labels('document.print.layoutError', { message: error })}</div>;
-  if (!value) return <div aria-busy="true" className="p-3 text-xs text-muted-foreground">{labels('document.print.preparing')}</div>;
+  if (!value) return <div data-document-preview aria-busy="true" className="p-3 text-xs text-muted-foreground">{labels('document.print.preparing')}</div>;
   const { layout, measure } = value;
   const width = 560;
   const scale = width / layout.size.w;

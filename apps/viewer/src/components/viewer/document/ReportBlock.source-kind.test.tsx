@@ -9,6 +9,7 @@
  * the kind — and refresh must refuse a report of the other kind.
  */
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -161,6 +162,7 @@ describe('report block editor refresh (#6372)', () => {
 describe('report block add menu (#6372)', () => {
   async function settle(): Promise<void> {
     for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+    await documentPreviewReady();
   }
   function openMenu(ui: HTMLElement): void {
     const trigger = [...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!;

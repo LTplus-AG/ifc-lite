@@ -21,6 +21,7 @@ import { layoutManualReport, type ManualReportLayoutBlock, type RingDrawnItem } 
 import { blockTitle, BLOCK_TITLE_HEIGHT } from './block-title.js';
 import { TEXT_STYLES, wrapText, truncateToWidth, layoutText, textBackground } from './compose-text.js';
 export { TEXT_STYLES, wrapText, truncateToWidth } from './compose-text.js';
+import type { ResolvedBindingSpan } from './bindings.js';
 import { splitDocumentSections } from './page-sections.js';
 
 import { resolvePageHeading, type PageHeading, type ResolvedPageHeading } from './page-heading.js';
@@ -64,7 +65,7 @@ export function documentImageHeight(block: { height: number; title?: string; cap
 
 /** A block after its bindings were resolved and its assets measured — what layout needs. */
 export type ResolvedBlock =
-  | TextBlock
+  | (TextBlock & { bindingSpans?: ResolvedBindingSpan[] })
   | PageBreakBlock
   | { kind: 'image'; id: string; height: number; align: 'left' | 'center' | 'right'; caption?: string; title?: string; /** natural width / height */ aspect: number; width?: BlockWidth }
   | { kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth; fontSize?: number }
@@ -237,7 +238,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     };
   };
 
-  const textLayout = (block: TextBlock, x: number, width: number) => layoutText(block, x, width, input.measure);
+  const textLayout = (block: Extract<ResolvedBlock, { kind: 'text' }>, x: number, width: number) => layoutText(block, x, width, input.measure);
   const layoutPairable = (block: Extract<ResolvedBlock, { kind: 'text' | 'image' | 'chart' }>, boxX: number, boxW: number) =>
     block.kind === 'text' ? textLayout(block, boxX, boxW)
       : block.kind === 'chart' ? layoutChart(block, boxX, boxW)
@@ -272,7 +273,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       }
       switch (block.kind) {
         case 'text': {
-          const { style, size, lineH, lines, title, titleHeight } = textLayout(block, REPORT_MARGIN, contentW);
+          const { style, size, lineH, lines, rows, title, titleHeight } = textLayout(block, REPORT_MARGIN, contentW);
           if (!title && !block.backgroundColor && lines.every((l) => l.length === 0)) {
             page.emptyBlocks?.push({ blockId: block.id, x: REPORT_MARGIN, y, w: contentW, h: lineH });
             y += lineH;
@@ -286,9 +287,10 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           y += style.gapBefore;
           // A heading is not left alone at the bottom of a page: the first two lines move together.
           ensure(lineH * Math.min(lines.length, 2));
-          for (const line of lines) {
+          for (const row of rows) {
+            const line = row.text;
             if (y + lineH > bottom) newPage();
-            push(...textBackground(block, REPORT_MARGIN, y, contentW, lineH), { kind: 'text', x: REPORT_MARGIN, y: y + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font, color: block.textColor });
+            push(...textBackground(block, REPORT_MARGIN, y, contentW, lineH), { kind: 'text', x: REPORT_MARGIN, y: y + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font, color: block.textColor, ...(row.bindingMarks?.length ? { bindingMarks: row.bindingMarks } : {}) });
             y += lineH;
           }
           y += BLOCK_GAP;

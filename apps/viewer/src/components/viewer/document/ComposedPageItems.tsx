@@ -53,11 +53,24 @@ function Item({ item, block, origin, props, lineBreak }: { item: DrawnItem; bloc
   const { scale, measure, labels: t } = props;
   const box = itemBox(item, measure);
   const style = position(box, origin, scale);
+  const markedText = () => {
+    if (item.kind !== 'text' || !item.bindingMarks?.length) return item.kind === 'text' ? item.text : '';
+    let end = 0;
+    const nodes = item.bindingMarks.map((mark, index) => {
+      const prefix = item.text.slice(end, mark.start);
+      end = mark.end;
+      const content = item.text.slice(mark.start, mark.end);
+      return <span key={index}>{prefix}{mark.unresolved
+        ? <mark data-unresolved title={mark.tooltip} className="bg-amber-200/70 text-amber-950">{content}</mark>
+        : <span title={mark.tooltip} className="bg-sky-100/70">{content}</span>}</span>;
+    });
+    return <>{nodes}{item.text.slice(end)}</>;
+  };
   switch (item.kind) {
     case 'text': return <span style={{ ...style, width: undefined, whiteSpace: 'pre', lineHeight: 1.25,
       fontSize: item.size * scale, fontFamily: DOCUMENT_FONT_FAMILIES[item.font ?? 'helvetica'],
       fontWeight: item.bold ? 700 : 400, color: item.color ?? `rgb(${item.gray}, ${item.gray}, ${item.gray})` }}
-      data-table-message={item.role === 'table-message' ? '' : undefined} title={item.tooltip ?? item.text}>{item.text}{lineBreak ? '\n' : ''}</span>;
+      data-table-message={item.role === 'table-message' ? '' : undefined} title={item.tooltip ?? item.text}>{markedText()}{lineBreak ? '\n' : ''}</span>;
     case 'rect':
     case 'text-background': return <span aria-hidden="true" style={{ ...style, backgroundColor: item.color }} />;
     case 'image':
@@ -141,7 +154,7 @@ export function ComposedPageItems(props: ComposedPageItemsProps) {
     return (
       // The selectable region contains images, text and tables, so it cannot be a native button.
       // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
-      <div key={value.id} role="button" tabIndex={0} data-preview-block={value.id} title={'title' in block ? block.title : undefined}
+      <div key={value.id} role="button" tabIndex={0} data-preview-block={value.id} data-unresolved={block.kind === 'topic' && !props.topics.has(block.guid) ? '' : undefined} title={'title' in block ? block.title : undefined}
         aria-label={block.kind === 'spacer' ? props.labels('document.addBlock.spacer') : block.kind === 'image' && !block.caption ? props.labels('document.addBlock.image') : undefined}
         className={`cursor-pointer rounded ring-offset-1 hover:ring-1 hover:ring-sky-300 ${props.selectedBlockId === value.id ? 'ring-1 ring-sky-500' : ''}`}
         style={position(box, { x: 0, y: 0, w: 0, h: 0 }, props.scale)}
@@ -154,6 +167,7 @@ export function ComposedPageItems(props: ComposedPageItemsProps) {
             fontFamily: DOCUMENT_FONT_FAMILIES[block.font ?? 'helvetica'], fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * props.scale } : undefined}>
           {value.items.map((item, index) => <Item key={index} item={item} block={block} origin={box} props={props}
             lineBreak={index < lastText} />)}
+          {block.kind === 'text' && !block.text.trim() && <span className="text-neutral-500">{props.labels('document.preview.textEmpty')}</span>}
           {block.kind === 'spacer' && <span data-block-spacer style={{ display: 'block', height: box.h * props.scale }} />}
         </div>
       </div>

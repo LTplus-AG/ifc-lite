@@ -52,7 +52,8 @@ export interface TableLayoutBlock {
 }
 
 /** A line of text on the page; `compose.ts` draws the same shape for every block. */
-export interface TextDrawnItem { kind: 'text'; x: number; y: number; size: number; bold: boolean; gray: number; text: string; font?: TextFont; color?: string; role?: 'table-message'; tooltip?: string }
+export interface BindingMark { start: number; end: number; unresolved: boolean; tooltip?: string }
+export interface TextDrawnItem { kind: 'text'; x: number; y: number; size: number; bold: boolean; gray: number; text: string; font?: TextFont; color?: string; role?: 'table-message'; tooltip?: string; bindingMarks?: BindingMark[] }
 
 /** A filled rectangle (the IDS report's compact pass bars, #6470); `color` is `#rrggbb`, drawn by the same `fillRect` as a text background. */
 export interface RectDrawnItem { kind: 'rect'; x: number; y: number; w: number; h: number; color: string }

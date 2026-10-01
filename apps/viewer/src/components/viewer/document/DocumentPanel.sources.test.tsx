@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import { beforeEach, afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -42,6 +43,7 @@ ENDSEC; END-ISO-10303-21;`;
 }
 async function settle(): Promise<void> {
   for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+  await documentPreviewReady();
 }
 async function choose(select: HTMLSelectElement, value: string): Promise<void> {
   await act(async () => {

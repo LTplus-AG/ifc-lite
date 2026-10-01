@@ -10,6 +10,7 @@
  */
 
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -24,6 +25,7 @@ import { DocumentPanel } from './DocumentPanel.js';
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+  await documentPreviewReady();
 }
 
 function openMenu(trigger: Element): void {

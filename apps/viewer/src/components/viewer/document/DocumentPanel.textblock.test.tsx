@@ -11,6 +11,7 @@
  * keyboard is never trapped.
  */
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -48,6 +49,7 @@ function seedDocument(style: TextBlock['style'], text = ''): void {
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+  await documentPreviewReady();
 }
 
 const storedText = (): string => (useViewerStore.getState().documents[0].blocks[0] as TextBlock).text;

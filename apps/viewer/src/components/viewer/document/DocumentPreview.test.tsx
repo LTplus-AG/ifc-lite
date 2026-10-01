@@ -218,3 +218,38 @@ it('clamps a tall chart to the same printable-page height as PDF composition (#4
   assert.ok(chartBox);
   assert.ok(Math.abs(Number.parseFloat(chartBox.style.height) - expected) < 0.01, `preview SVG height ${svg.getAttribute('height')} matches the PDF clamp ${expected}`);
 });
+
+
+it('keeps a replacement-image decode failure settled and ignores late old-image events (#6610)', async () => {
+  const old = await render('data:image/png;base64,old');
+  const replacement = await render('data:image/png;base64,replacement');
+  act(() => replacement.dispatchEvent(new Event('error')));
+  await ready();
+  assert.equal(container?.querySelector('[data-document-preview]')?.getAttribute('aria-busy'), 'false', 'failed decoding does not leave pagination permanently pending');
+  assert.match(container?.textContent ?? '', /The image could not be decoded/);
+  assert.match(container?.querySelector('[data-page-counter]')?.textContent ?? '', /Page 1 \/ 1/);
+  act(() => { old.dispatchEvent(new Event('error')); old.dispatchEvent(new Event('load')); });
+  await ready();
+  assert.match(container?.textContent ?? '', /The image could not be decoded/, 'late callbacks cannot revive or clear the replacement failure');
+  const next = await render('data:image/png;base64,next');
+  Object.defineProperties(next, { naturalWidth: { configurable: true, value: 40 }, naturalHeight: { configurable: true, value: 20 } });
+  act(() => next.dispatchEvent(new Event('load')));
+  await ready();
+  assert.equal(container?.querySelector('[data-document-preview]')?.getAttribute('aria-busy'), 'false');
+  assert.doesNotMatch(container?.textContent ?? '', /The image could not be decoded/, 'a valid replacement clears the removed asset failure');
+});
+
+it('keeps blank text and missing topics accessible and selectable without changing their composed ink (#6610)', async () => {
+  const selections: string[] = [];
+  container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
+  act(() => root?.render(<DocumentPreview document={{ ...baseDocument, blocks: [
+    { kind: 'text', id: 'empty', text: '', style: 'body' },
+    { kind: 'topic', id: 'missing', guid: 'deleted-topic', snapshot: false },
+  ] }} bindings={{ models: [], activeModelId: null, today: new Date(0) }} aggregations={new Map()}
+    chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={id => selections.push(id)} />));
+  await ready();
+  const empty = container.querySelector('[data-preview-block="empty"]'); assert.ok(empty); assert.match(empty.textContent ?? '', /\(empty\)/);
+  const missing = container.querySelector('[data-preview-block="missing"][data-unresolved]'); assert.ok(missing);
+  assert.match(missing.textContent ?? '', /BCF topic deleted-topic: not among the loaded topics/);
+  click(empty); activate(missing, 'Enter'); assert.deepEqual(selections, ['empty', 'missing']);
+});

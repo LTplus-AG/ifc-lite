@@ -115,7 +115,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
       case 'text': {
         const rendered = renderTemplate(block.text, input.bindings);
         for (const b of rendered.bindings) if (!b.ok) result.unresolved.push(b.path);
-        blocks.push({ ...block, text: rendered.text });
+        blocks.push({ ...block, text: rendered.text, bindingSpans: rendered.spans });
         break;
       }
       case 'image': {

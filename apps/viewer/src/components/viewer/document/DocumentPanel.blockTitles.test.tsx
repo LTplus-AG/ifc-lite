@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -39,7 +40,7 @@ const originalRules: RuleSetFile = { version: 1, name: 'Original information sou
 }] };
 const originalState = useViewerStore.getState();
 let spec: DocumentSpec;
-const settle = async () => { for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); }); };
+const settle = async () => { for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); }); await documentPreviewReady(); };
 
 beforeEach(async () => {
   localStorage.clear();

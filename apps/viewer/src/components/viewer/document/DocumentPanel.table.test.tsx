@@ -10,6 +10,7 @@
  * it was computed from.
  */
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useState } from 'react';
@@ -75,6 +76,7 @@ async function parsedModel(): Promise<FederatedModel> {
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+  await documentPreviewReady();
 }
 
 // The hook runs one list per animation frame; frames are captured here and fired on demand, so a

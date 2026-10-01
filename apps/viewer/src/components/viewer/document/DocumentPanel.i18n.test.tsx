@@ -6,6 +6,7 @@
  *  header chrome, "Add block" menu, empty state, and the pluralized export-result toast all read
  *  the catalogue and re-render in a registered locale. */
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -39,6 +40,7 @@ const TEST_LOCALE: Catalogue = {
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+  await documentPreviewReady();
 }
 
 function openMenu(trigger: HTMLElement): void {

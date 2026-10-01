@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/lib/document/bindings.ts
++++ b/apps/viewer/src/lib/document/bindings.ts
+@@ -68,7 +68,7 @@
+ 
+ /** Double braces represent literal braces, leaving ordinary authored fields live. */
+ export function literalTemplateText(text: string): string {
+-  return text;
++  return text.replace(/[{}]/g, (brace) => brace + brace);
+ }
+ 
+ export interface RenderedTemplate {

@@ -11,16 +11,13 @@
  * render frame the panel does.
  */
 import { useMemo } from 'react';
-import { extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { type ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import type { ListDataProvider } from '@ifc-lite/lists';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets';
-import { createListDataProvider } from '@/lib/lists';
+import { prepareListProviders } from '@/lib/lists/prepare-providers';
 import type { ModelProviderPair } from '@/lib/lists/run-list';
-import { makeWorldPositionGetter } from '@/lib/geo/entity-world-position';
-import { zoneVolumeSiScale } from '@/lib/units/zone-volume-scale';
-import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 
 export interface ListProviders {
   /** {modelId, provider, store} triples, built in one pass so they can never drift out of alignment. */
@@ -47,67 +44,7 @@ export function useListProviders(): ListProviders {
   const mutationViews = useViewerStore((s) => s.mutationViews);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
-  // Declared VOLUMEUNIT scale per model (#2508), memoized on MODELS alone so
-  // zone/assignment changes don't re-derive a value that cannot have moved.
-  const volumeScaleByModelId = useMemo(() => {
-    const map = new Map<string, number>();
-    const scaleOf = (store: IfcDataStore) => (store.source.length > 0
-      ? zoneVolumeSiScale(extractProjectUnits(store.source, store.entityIndex)) : 1);
-    if (models.size > 0) {
-      for (const [modelId, model] of models) {
-        if (!model.ifcDataStore) continue;
-        map.set(modelId, scaleOf(model.ifcDataStore));
-      }
-    } else if (ifcDataStore) {
-      map.set('default', scaleOf(ifcDataStore));
-    }
-    return map;
-  }, [models, ifcDataStore]);
-
-  const pairs = useMemo(() => {
-    const out: ModelProviderPair[] = [];
-    if (models.size > 0) {
-      for (const [modelId, model] of models) {
-        if (!model.ifcDataStore) continue; // native-metadata model, nothing to query
-        const zoneContext = {
-          zoneSets, zoneAssignments,
-          apportionment: zoneApportionment,
-          volumeSiScale: volumeScaleByModelId.get(modelId) ?? 1,
-          toGlobalId: (expressId: number) => toGlobalId(modelId, expressId),
-          getWorldPosition: makeWorldPositionGetter(model.ifcDataStore, model.geometryResult ?? geometryResult, renderFrame, (id) => toGlobalId(modelId, id)),
-        };
-        const mutationView = mutationViews.get(modelId);
-        out.push({ modelId, provider: createListDataProvider(model.ifcDataStore, model.name, zoneContext, mutationView), store: model.ifcDataStore, mutationView });
-      }
-    } else if (ifcDataStore) {
-      const zoneContext = {
-        zoneSets, zoneAssignments,
-        apportionment: zoneApportionment,
-        volumeSiScale: volumeScaleByModelId.get('default') ?? 1,
-        toGlobalId: (expressId: number) => toGlobalId('default', expressId),
-        getWorldPosition: makeWorldPositionGetter(ifcDataStore, geometryResult, renderFrame, (id) => toGlobalId('default', id)),
-      };
-      const view = mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID);
-      out.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore, '', zoneContext, view), store: ifcDataStore, mutationView: view });
-    }
-    return out;
-  }, [models, ifcDataStore, geometryResult, renderFrame, zoneSets, zoneAssignments, zoneApportionment, volumeScaleByModelId, toGlobalId, mutationViews, mutationVersion]);
-
-  const providers = useMemo(() => pairs.map((p) => p.provider), [pairs]);
-  const stores = useMemo(() => pairs.map((p) => p.store), [pairs]);
-
-  // The single per-model source both the on-screen table and the export
-  // resolve quantity/measure columns against (`resolveListColumnUnits`), so
-  // a federation of models with different declared units converts each row
-  // from ITS OWN model's unit rather than assuming every row shares the
-  // first model's units.
-  const modelUnits = useMemo(() => {
-    const map = new Map<string, ProjectUnits>();
-    for (const { modelId, store } of pairs) {
-      map.set(modelId, store.source.length > 0 ? extractProjectUnits(store.source, store.entityIndex) : ProjectUnits.empty());
-    }
-    return map;
-  }, [pairs]);
-
-  return { pairs, providers, stores, modelUnits, hasData: pairs.length > 0 };
+  return useMemo(() => prepareListProviders({ models, ifcDataStore, geometryResult, zoneSets,
+    zoneAssignments, zoneApportionment, toGlobalId, mutationViews }, renderFrame),
+  [models, ifcDataStore, geometryResult, renderFrame, zoneSets, zoneAssignments, zoneApportionment, toGlobalId, mutationViews, mutationVersion]);
 }

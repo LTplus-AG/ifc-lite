@@ -185,6 +185,9 @@ nav:
     - Privacy: guide/privacy.md
   - Architecture:
     - Overview: architecture/overview.md
+    - Session Automation:
+        - Specification: architecture/session-automation-6612.md
+        - Implementation Plan: architecture/session-automation-6612-implementation.md
     - Data Flow: architecture/data-flow.md
     - Parsing Pipeline: architecture/parsing-pipeline.md
     - Geometry Pipeline: architecture/geometry-pipeline.md

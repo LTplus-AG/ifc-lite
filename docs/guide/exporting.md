@@ -439,6 +439,38 @@ returns the STEP text as a string (defaults `schema` to the source model's own
 schema, so a round-trip preserves it; pass `schema` explicitly to convert.
 Prefer `StepExporter` and its `Uint8Array` output for very large files).
 
+#### Map units for interoperability
+
+STEP export preserves authored map units by default. For a consumer that needs
+metre-valued map coordinates, enable `normalizeMapUnitsToMetres` on a full
+IFC4 or IFC4X3 export using the source schema:
+
+```typescript
+const metreMap = new StepExporter(dataStore, mutationView).export({
+  schema: 'IFC4',
+  normalizeMapUnitsToMetres: true,
+});
+if (metreMap.stats.warnings.length) {
+  throw new Error(metreMap.stats.warnings.join('\n'));
+}
+await saveFile('metre-map.ifc', metreMap.content);
+```
+
+The exporter resolves the emitted model after session edits, changes
+`IfcProjectedCRS.MapUnit` to a separate metre unit, and scales every referencing
+`IfcMapConversion.Eastings`, `Northings`, `OrthogonalHeight` and `Scale` together.
+An omitted `Scale` means 1 before conversion. The engineering geometry and
+`IfcProject.UnitsInContext` remain unchanged, as do rotation and
+`IfcMapConversionScaled.FactorX`, `FactorY` and `FactorZ`.
+
+A missing map unit is resolved through the source context's owning project.
+Ambiguous owners, unsupported or cyclic conversion units, invalid numeric
+values, unsupported coordinate operations and retained WKT unit definitions
+are preserved with warnings. A CRS shared by multiple operations changes only
+when all those operations can be normalized safely. Delta exports and schema
+conversions reject this option. Cesium ion uploads enable it; ordinary IFC
+file exports retain their original map units.
+
 #### Which schema identifier is written
 
 A re-export that does not change schema keeps the source file's own

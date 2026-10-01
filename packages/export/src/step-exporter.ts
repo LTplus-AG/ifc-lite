@@ -26,6 +26,7 @@ import {
 } from './step-property-set-readers.js';
 import { type GeorefContext } from './step-georeferencing.js';
 import { collectModifications, type CollectionContext } from './step-collection.js';
+import { normalizeMapUnitsToMetres } from './step-map-unit-normalization.js';
 import { assembleExportResult } from './step-header.js';
 import { applySourceLineMutations } from './step-attribute-mutations.js';
 
@@ -183,6 +184,9 @@ export class StepExporter {
     // edits — everything `pass` needs before the omission predicates below,
     // and before the output passes that consume them, can run (#2475, the
     // collection block).
+    if (options.normalizeMapUnitsToMetres && (options.deltaOnly || converting || (schema !== 'IFC4' && schema !== 'IFC4X3'))) {
+      throw new Error('Map-unit normalization requires a full export to the source IFC4 or IFC4X3 schema.');
+    }
     collectModifications(pass, options, applyMutations, this.collectionContext());
 
     // Which ids this export may still NAME, now that the collection phase has
@@ -240,6 +244,7 @@ export class StepExporter {
 
     // Settle the ledger, build the header, assemble the finished bytes —
     // `step-header.ts` (#2475 header/assembly tail).
+    if (options.normalizeMapUnitsToMetres) normalizeMapUnitsToMetres(pass, () => this.nextExpressId++);
     return assembleExportResult(pass);
   }
 

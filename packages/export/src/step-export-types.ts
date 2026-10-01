@@ -10,13 +10,8 @@
  * behaviour lives here beyond one message builder -- which is why they could
  * move without touching a single guard.
  *
- * Two ways in, deliberately. The seven sibling modules that already imported
- * `ExportPass` / `SourceLineMutations` still import them from
- * `step-exporter.js`, which re-exports this file, so no existing call site
- * moved and the package's public entry point is untouched. Code written since
- * the split imports straight from here instead -- `step-pass-builder.ts` does
- * -- because the re-export exists to avoid churning callers, not as a channel
- * anything new should be routed through.
+ * Existing internal callers may import through step-exporter.js, which
+ * re-exports these types. New internal callers import this module directly.
  */
 
 import type { IfcAttributeValue, IfcSourceHeader, MapConversion, ProjectedCRS } from '@ifc-lite/parser';
@@ -103,6 +98,13 @@ export interface StepExportOptions {
    *  to KEEP georeferencing and addresses: dropping them anyway left an
    *  `IfcSite.SiteAddress` pointing at a line that was never written (#3351). */
   subsetIdentifyingTypes?: ReadonlySet<string>;
+
+  /** Normalize emitted IfcProjectedCRS map units to metres, preserving the
+   * complete map transformation and all project geometry/units. Default false.
+   * Unsupported or ambiguous units/operations are preserved with warnings.
+   * Requires a full export to the source STEP schema (not deltaOnly).
+   */
+  normalizeMapUnitsToMetres?: boolean;
 
   /** Georeferencing mutations to apply (IfcProjectedCRS / IfcMapConversion edits) */
   georefMutations?: {

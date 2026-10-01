@@ -133,49 +133,6 @@ describe('owned primary completion and launcher (#6232)', () => {
     assert.equal(useViewerStore.getState().session, null);
   });
 
-  it('failed federated metadata is owned while real geometry completion is still in flight', { skip }, async () => {
-    assert.ok(hook);
-    const primary = await load(blankFile('METRE'));
-    const adaptive = GeometryProcessor.prototype.processAdaptive;
-    let release!: () => void;
-    const gate = new Promise<void>(resolve => { release = resolve; });
-    let geometryHeld = false;
-    mock.method(GeometryProcessor.prototype, 'processAdaptive', async function* (
-      this: GeometryProcessor, ...args: Parameters<typeof adaptive>
-    ) {
-      for await (const event of adaptive.apply(this, args)) {
-        if (event.type === 'complete') { geometryHeld = true; await gate; }
-        yield event;
-      }
-    });
-    const parse = IfcParser.prototype.parseColumnar;
-    let failed = false;
-    mock.method(IfcParser.prototype, 'parseColumnar', async function (
-      this: IfcParser, ...args: Parameters<typeof parse>
-    ) {
-      await parse.apply(this, args);
-      failed = true;
-      throw new Error('early peer metadata delivery failure (#6232)');
-    });
-    const pending = hook.loadFile(blankFile('METRE'), { kind: 'federated', modelId: 'failed-peer' });
-    try {
-      await waitFor(() => failed && geometryHeld, 'real peer decoding fails before held geometry completion');
-      // No finalizer exists yet. The metadata promise must already have its
-      // failure owner, rather than emit an unhandled rejection until geometry
-      // completes. node:test treats such an unhandled rejection as a failure.
-      await advance(100);
-      assert.equal(useViewerStore.getState().models.get(primary.id)?.ifcDataStore, primary.ifcDataStore);
-      release();
-      await act(async () => pending);
-      const state = useViewerStore.getState();
-      assert.equal(state.models.has('failed-peer'), false);
-      assert.equal(state.models.get(primary.id)?.ifcDataStore, primary.ifcDataStore);
-      assert.equal(state.loading, false);
-      assert.equal(state.activeLoadCanceller, null);
-      assert.ok(state.error?.includes('early peer metadata delivery failure'));
-    } finally { release(); await act(async () => pending); }
-  });
-
   it('resolves only after real metadata registers the exact requested primary, then launches Wall', { skip }, async () => {
     assert.ok(hook);
     const held = holdFirstMetadata();
@@ -253,7 +210,11 @@ describe('owned primary completion and launcher (#6232)', () => {
           assert.equal(after.models.get(currentId), currentModel);
           assert.equal(after.loading, false);
           assert.equal(after.error, null);
-        } finally { held.release(); await act(async () => oldLoad); }
+        } finally {
+          held.release();
+          if (oldSettled) await act(async () => oldLoad);
+          else await advance(20); // Release the decoded callback even when the baseline finalizer never settles.
+        }
       });
     }
   }
@@ -308,5 +269,47 @@ describe('owned primary completion and launcher (#6232)', () => {
       assert.equal(useViewerStore.getState().activeLoadCanceller, null);
     } finally { held.release(); await act(async () => first); }
   });
-});
+  it('failed federated metadata is owned while real geometry completion is still in flight', { skip }, async () => {
+    assert.ok(hook);
+    const primary = await load(blankFile('METRE'));
+    const adaptive = GeometryProcessor.prototype.processAdaptive;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let geometryHeld = false;
+    mock.method(GeometryProcessor.prototype, 'processAdaptive', async function* (
+      this: GeometryProcessor, ...args: Parameters<typeof adaptive>
+    ) {
+      for await (const event of adaptive.apply(this, args)) {
+        if (event.type === 'complete') { geometryHeld = true; await gate; }
+        yield event;
+      }
+    });
+    const parse = IfcParser.prototype.parseColumnar;
+    let failed = false;
+    mock.method(IfcParser.prototype, 'parseColumnar', async function (
+      this: IfcParser, ...args: Parameters<typeof parse>
+    ) {
+      await parse.apply(this, args);
+      failed = true;
+      throw new Error('early peer metadata delivery failure (#6232)');
+    });
+    const pending = hook.loadFile(blankFile('METRE'), { kind: 'federated', modelId: 'failed-peer' });
+    try {
+      await waitFor(() => failed && geometryHeld, 'real peer decoding fails before held geometry completion');
+      // No finalizer exists yet. The metadata promise must already have its
+      // failure owner, rather than emit an unhandled rejection until geometry
+      // completes. node:test treats such an unhandled rejection as a failure.
+      await advance(100);
+      assert.equal(useViewerStore.getState().models.get(primary.id)?.ifcDataStore, primary.ifcDataStore);
+      release();
+      await act(async () => pending);
+      const state = useViewerStore.getState();
+      assert.equal(state.models.has('failed-peer'), false);
+      assert.equal(state.models.get(primary.id)?.ifcDataStore, primary.ifcDataStore);
+      assert.equal(state.loading, false);
+      assert.equal(state.activeLoadCanceller, null);
+      assert.ok(state.error?.includes('early peer metadata delivery failure'));
+    } finally { release(); await act(async () => pending); }
+  });
 
+});

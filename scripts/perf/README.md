@@ -2734,3 +2734,21 @@ export overhead, not claiming zero runtime variation or browser worker throughpu
 The PR records both native runs and the actual API timings. The lesson is to
 measure the consuming API, preserve the old accumulation path, and allocate
 optional metadata only when a distinct material requires it.
+
+## Canonical alignment sampling (#6600)
+
+The new retained alignment evaluator and bounded Python sampling API are opt-in;
+ordinary mesh production and the existing WASM alignment line sampler continue
+using the original permissive curve policy. An otherwise-idle, interleaved
+base-versus-branch native worker-pool probe on the default Haus fixture found
+unchanged median parse, geometry and total time, with identical ordered mesh
+fingerprints and mesh/vertex/triangle counts. Verdict: no measured regression
+in the existing full-load path; this is an isolation result, not a speed win.
+
+The real OIP infrastructure fixture was also timed through the installed Python
+binding, including Rust parsing/evaluation and Python result conversion. That
+cost belongs to the newly requested sampling feature, not ordinary mesh loads.
+Lesson: retain canonical f64 evaluators for station queries, report curve
+approximations and refused fallback geometry, and charge failed frames to the
+model sampling budget. Per-axis output limits alone do not bound model-wide
+sampling work or diagnostic output.

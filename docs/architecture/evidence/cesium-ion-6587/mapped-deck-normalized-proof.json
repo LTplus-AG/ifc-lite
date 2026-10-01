@@ -90,9 +90,31 @@
     }
   ],
   "verdict": "PASS full physicalplacement for original publicdeck after legitimate IfcMappedItem normalization: directdecoded8corners12triangles agree independentGEOID99 fullXYZsourceoracle withinquantization; headingcorrect. GEOID18 expected differences disclosed, notusedtoassertverticaldatum failure. Original VerticalDatumCRScode5703 retaineddiagnostically; no derivedinputCRS.",
+  "productionSDKAcceptance": {
+    "implementationCommit": "3217508b67b871c65d9e30106e6fa6afcdf8d01c",
+    "route": "actual StepExporter.exportAsync with effective Name edit and both normalization options, fresh canonical WASM, real production upload transport; final combined UI caller still pending",
+    "sourceSha256": "6b1de724ceb436759d9cdbe7ce7f4c71734065dfde8cc8786b6239de347de1b1",
+    "outputSha256": "23a178542a0d9173f9af319b066e717f394dbe651d0daf345a9c3628978cf194",
+    "exportStats": {"entityCount":54,"newEntityCount":21,"modifiedEntityCount":5,"warnings":[]},
+    "independentSourceOracle": {"engine":"IfcOpenShell 0.8.2","vertices":8,"triangles":12,"maxBidirectionalMapCornerErrorMetres":0,"expressValidationMessages":[]},
+    "assetId": 5970221,
+    "tilingStatus": "COMPLETE",
+    "fullDownload": {"glbs":1,"totalFetchedBytes":5757,"externalSchemaRetrieved":true},
+    "contentSha256": "c640b37468536b2ab34a536513bedf5fd6f2d94bb150a684bd443a8a7e4c3160",
+    "actualStoredMetadata": {"Name":"IFC Lite compatibility export proof","GlobalId":"1BvdN7mUjD7A_lI6KfHKqB"},
+    "referenceAssetId": 5970076,
+    "referenceCornerOracleAssetId": 5970044,
+    "allEncodedPrimitivePayloadsAndDecoderParametersExact": true,
+    "allAccessorDescriptorsMaterialsFeaturesNodesScenesExact": true,
+    "allTileTransformChainsAxesAndBoundsExact": true,
+    "geometryIdentityContract": "Actual POSITION/index/normal/feature-id encoded byte blocks, decoder parameters and accessor descriptors, scene/node/material/feature contracts, and complete tile frames. Metadata strings are compared separately; whole GLB hashes may differ.",
+    "cesiumRender": {"version":"1.145","readyPrimitives":1,"triangles":12,"errors":[]},
+    "visualAcceptance": "Actual production-uploaded deck follows Golden Gate north-south against Esri imagery; camera reset to world coordinates at 4500m, heading 0, pitch -90deg, roll 0; geometry uses only downloaded cumulative tile matrix.",
+    "screenshot": "production-deck-normalized.png"
+  },
   "limitations": [
     "Original VerticalDatum=EPSG5703 identifies a verticalCRS rather than datum5103; control intentionally preserves metadata to isolate mapped geometry normalization.",
     "PROJ operation accuracy is expected accuracy, not rigorous bound; provider geoid grid/version notidentified.",
-    "Fixture-specific similarity mappeditem tested; no claim a generic geometrynormalizer exists or handles all IFC mapped/reused representations yet."
+    "Production SDK compatibility export is verified for the public deck; unsupported coordinate consumers, frames and nonuniform factors are explicitly refused. This does not establish support for every IFC representation or final combined upload UI acceptance."
   ]
 }

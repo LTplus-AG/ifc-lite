@@ -61,8 +61,18 @@ The full GLB and external schema render in CesiumJS with the actual tile
 transform and no additional placement correction. The deck follows the
 Golden Gate Bridge north–south. Original `VerticalDatum = EPSG:5703` was
 retained to isolate geometry normalization; this control does not certify
-that metadata as semantically correct. A generic export implementation,
-federation/placement coverage, and edited-model acceptance remain pending.
+that metadata as semantically correct.
+
+Production SDK asset **5970221** now verifies the generic Rust-backed export
+with both normalization options and an effective Name edit. IfcOpenShell
+confirms exact mapped-corner equivalence and no EXPRESS validation messages.
+The downloaded tiles retain the edited Name and GlobalId; their actual geometry
+payloads, decoder parameters, accessors, materials, scene and tile frames exactly
+match the independently verified control. CesiumJS renders the deck along the
+Golden Gate Bridge using only its downloaded transform. The [numeric proof](./mapped-deck-normalized-proof.json)
+records this SDK route separately; final combined upload-dialog acceptance remains pending.
+
+![Production SDK export tiled at the Golden Gate Bridge](production-deck-normalized.png)
 
 ![Actual mapped deck following the Golden Gate Bridge](mapped-deck-normalized.png)
 

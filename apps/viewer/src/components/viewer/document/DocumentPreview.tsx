@@ -17,6 +17,8 @@ import { renderTemplate, type BindingContext } from '@/lib/document/bindings';
 import { REPORT_THEME } from '@/lib/export/report/generate-report-pdf';
 import { topicLines, topicSnapshotDataUrl } from '@/lib/document/generate-document-pdf';
 import { pageBox, REPORT_MARGIN } from '@/lib/export/report/compose';
+import { DOCUMENT_FONT_FAMILIES } from '@/lib/document/text-typography';
+import { pageHeadingStyle } from '@/lib/document/page-heading';
 import { BLOCK_GAP, documentChartSizing, documentImageHeight, halfTextFitsPage, TEXT_STYLES } from '@/lib/document/compose';
 import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type DocumentBlock, type DocumentSpec, type TextBlock } from '@/lib/document/types';
 import type { TableState } from '@/lib/document/resolve-table';
@@ -51,10 +53,10 @@ const TEXT_CLASS: Record<TextBlock['style'], string> = {
 };
 
 /** Consecutive text/chart/image blocks both at `width: 'half'` render two-up (#4940). */
-function groupBlocks(blocks: readonly DocumentBlock[], bindings: BindingContext, pageHeight: number, contentWidth: number): Array<DocumentBlock | [DocumentBlock, DocumentBlock]> {
+function groupBlocks(blocks: readonly DocumentBlock[], bindings: BindingContext, pageHeight: number, contentWidth: number, headingExtraHeight = 0): Array<DocumentBlock | [DocumentBlock, DocumentBlock]> {
   const groups: Array<DocumentBlock | [DocumentBlock, DocumentBlock]> = [];
   const colW = (contentWidth - BLOCK_GAP) / 2;
-  const fits = (block: DocumentBlock): boolean => block.kind !== 'text' || halfTextFitsPage({ ...block, text: renderTemplate(block.text, bindings).text }, pageHeight, colW);
+  const fits = (block: DocumentBlock): boolean => block.kind !== 'text' || halfTextFitsPage({ ...block, text: renderTemplate(block.text, bindings).text }, pageHeight, colW, headingExtraHeight);
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
     const next = blocks[i + 1];
@@ -121,7 +123,7 @@ function PreviewImage({ dataUrl, alt, height, contentWidth }: { dataUrl: string;
   }} />;
 }
 
-function Block({ block, bindings, aggregation, chartMessage, topic, table, contentWidth, scale, pageHeight }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; chartMessage: string | undefined; topic: BCFTopic | undefined; table: TableState | undefined; contentWidth: number; scale: number; pageHeight: number }) {
+function Block({ block, bindings, aggregation, chartMessage, topic, table, contentWidth, scale, pageHeight, headingExtraHeight }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; chartMessage: string | undefined; topic: BCFTopic | undefined; table: TableState | undefined; contentWidth: number; scale: number; pageHeight: number; headingExtraHeight: number }) {
   const { t } = useTranslation();
   switch (block.kind) {
     case 'text':
@@ -129,11 +131,11 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
       // tab indents (same tab stop as the PDF) and runs of spaces. Title, heading and subheading
       // once collapsed a typed line break into a space.
       return <div>{blockTitle(block) && <div className="truncate font-semibold" style={{ fontSize: 11 * scale, height: BLOCK_TITLE_HEIGHT * scale }} title={blockTitle(block)}>{blockTitle(block)}</div>}
-        <div className={TEXT_CLASS[block.style]} style={{ color: block.textColor, backgroundColor: block.backgroundColor, whiteSpace: 'pre-wrap', tabSize: TAB_SIZE, fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * scale, fontFamily: block.font === 'times' ? 'Times New Roman, serif' : block.font === 'courier' ? 'Courier New, monospace' : 'Helvetica, Arial, sans-serif' }} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>{t('document.preview.textEmpty')}</span>}</div></div>;
+        <div className={TEXT_CLASS[block.style]} style={{ color: block.textColor, backgroundColor: block.backgroundColor, whiteSpace: 'pre-wrap', tabSize: TAB_SIZE, fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * scale, fontFamily: DOCUMENT_FONT_FAMILIES[block.font ?? 'helvetica'] }} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>{t('document.preview.textEmpty')}</span>}</div></div>;
 
     case 'image': {
       const title = blockTitle(block);
-      const height = (title ? documentImageHeight(block, pageHeight) : block.height) * scale;
+      const height = (title || headingExtraHeight > 0 ? documentImageHeight(block, pageHeight, headingExtraHeight) : block.height) * scale;
       const justify = block.align === 'left' ? 'justify-start' : block.align === 'right' ? 'justify-end' : 'justify-center';
       return (
         <figure className={`flex flex-col ${block.align === 'center' ? 'items-center' : block.align === 'right' ? 'items-end' : 'items-start'}`}>
@@ -151,6 +153,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
       const textScale = chartFontScale(block.fontSize);
       const { height: chartHeight } = documentChartSizing({
         requestedHeight: block.height ?? CHART_BLOCK_HEIGHT_DEFAULT,
+        headingExtraHeight,
         pageHeight,
         boxWidth: contentWidth / scale,
         snapshot: block.snapshot,
@@ -212,6 +215,9 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
   // `contentWidth`, which is narrower than the page for a half-width column (review finding: a
   // landscape or half-width block was rendered off the PDF's actual scale).
   const scale = width / size.w;
+  const heading = document.pageHeading;
+  const headingStyle = pageHeadingStyle(heading);
+  const headingExtraHeight = headingStyle.extraHeight;
   const sections = splitDocumentSections(document.blocks);
   return (
     <div className="flex flex-col items-center gap-4 p-3" data-document-preview>
@@ -222,9 +228,13 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
         className={`${DOCUMENT_PREVIEW_PAPER_CLASS} shadow-md`}
         style={{ width, minHeight: width * (size.h / size.w), padding: `${(40 / size.w) * width}px`, fontFamily: 'Helvetica, Arial, sans-serif' }}
       >
-        <div className={`mb-3 text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>{document.name}</div>
+        <div data-page-heading title={heading?.text ?? document.name}
+          className={`mb-3 ${heading ? 'truncate' : ''} text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}
+          style={heading ? { color: headingStyle.textColor, fontFamily: DOCUMENT_FONT_FAMILIES[headingStyle.font],
+            fontSize: headingStyle.fontSize * scale, lineHeight: 1.25, minHeight: headingStyle.fontSize * 1.25 * scale } : undefined}
+        >{heading?.text ?? document.name}</div>
         <div className="flex flex-col gap-2.5">
-          {groupBlocks(blocks, bindings, size.h, size.w - 2 * REPORT_MARGIN).map((group) => {
+          {groupBlocks(blocks, bindings, size.h, size.w - 2 * REPORT_MARGIN, headingExtraHeight).map((group) => {
             const wrap = (block: DocumentBlock) => (
               /* DocumentBlock renders figures and divs, which cannot be nested in a button. */
               // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
@@ -242,7 +252,7 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
                 }}
                 data-preview-block={block.id}
               >
-                <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} table={tables?.get(block.id)} contentWidth={Array.isArray(group) ? (contentWidth - BLOCK_GAP * scale) / 2 : contentWidth} scale={scale} pageHeight={size.h} />
+                <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} table={tables?.get(block.id)} contentWidth={Array.isArray(group) ? (contentWidth - BLOCK_GAP * scale) / 2 : contentWidth} scale={scale} pageHeight={size.h} headingExtraHeight={headingExtraHeight} />
               </div>
             );
             return Array.isArray(group)

@@ -35,6 +35,7 @@ import { createSnapshotCapture } from '@/lib/export/report/snapshots';
 import { BlockEditor } from './BlockEditor';
 import { DocumentMenu } from './DocumentMenu';
 import { DocumentPreview } from './DocumentPreview';
+import { PageHeadingEditor } from './PageHeadingEditor';
 import { useDocumentData } from './useDocumentData';
 import { useManualReportSource } from './useManualReportSource';
 
@@ -229,6 +230,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
       {document && (
         <div className="flex min-h-0 flex-1">
           <div className="flex w-[420px] shrink-0 flex-col gap-2 overflow-y-auto overflow-x-hidden border-r border-border p-2" data-document-blocks>
+            <PageHeadingEditor document={document} onChange={update} />
             {document.blocks.map((block, index) => (
               <div key={block.id} className={selectedBlockId === block.id ? 'rounded-md ring-1 ring-sky-500' : undefined} onFocusCapture={() => setSelectedBlockId(block.id)}>
                 <BlockEditor

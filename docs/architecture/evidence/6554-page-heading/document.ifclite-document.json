@@ -1,0 +1,35 @@
+{
+  "version": 10,
+  "id": "page-heading-proof",
+  "name": "Public IFC handover library",
+  "page": {
+    "size": "A4",
+    "orientation": "portrait"
+  },
+  "blocks": [
+    {
+      "kind": "text",
+      "id": "project",
+      "style": "body",
+      "title": "Authored project block",
+      "text": "Loaded project: {IfcProject.Name}"
+    },
+    {
+      "kind": "page-break",
+      "id": "second-page"
+    },
+    {
+      "kind": "text",
+      "id": "evidence",
+      "style": "body",
+      "title": "Authored evidence block",
+      "text": "Second page retains the same authored page heading."
+    }
+  ],
+  "pageHeading": {
+    "text": "Authored IFC handover",
+    "font": "times",
+    "fontSize": 32,
+    "textColor": "#6b21a8"
+  }
+}

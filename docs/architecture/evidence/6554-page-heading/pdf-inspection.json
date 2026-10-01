@@ -1,0 +1,331 @@
+{
+  "reader": "Actual PyMuPDF 1.28.2",
+  "pages": [
+    {
+      "page": 1,
+      "size": [
+        595.280029296875,
+        841.8900146484375
+      ],
+      "spans": [
+        {
+          "size": 32.0,
+          "flags": 4,
+          "bidi": 0,
+          "char_flags": 16,
+          "font": "Times-Roman",
+          "color": 7020968,
+          "alpha": 255,
+          "ascender": 1.0529999732971191,
+          "descender": -0.2809999883174896,
+          "text": "Authored IFC handover",
+          "origin": [
+            40.0,
+            56.0
+          ],
+          "bbox": [
+            40.0,
+            22.304000854492188,
+            345.7280578613281,
+            64.99199676513672
+          ]
+        },
+        {
+          "size": 8.0,
+          "flags": 0,
+          "bidi": 0,
+          "char_flags": 16,
+          "font": "Helvetica",
+          "color": 9868950,
+          "alpha": 255,
+          "ascender": 1.0750000476837158,
+          "descender": -0.29899999499320984,
+          "text": "Generated 10/1/2026, 1:15:11 AM \u00b7 ifc-lite",
+          "origin": [
+            40.0,
+            813.8900146484375
+          ],
+          "bbox": [
+            40.0,
+            805.2900390625,
+            188.52796936035156,
+            816.2820434570312
+          ]
+        },
+        {
+          "size": 8.0,
+          "flags": 0,
+          "bidi": 0,
+          "char_flags": 16,
+          "font": "Helvetica",
+          "color": 9868950,
+          "alpha": 255,
+          "ascender": 1.0750000476837158,
+          "descender": -0.29899999499320984,
+          "text": "Page 1 / 2",
+          "origin": [
+            495.2799987792969,
+            813.8900146484375
+          ],
+          "bbox": [
+            495.2799987792969,
+            805.2900390625,
+            531.7520141601562,
+            816.2820434570312
+          ]
+        },
+        {
+          "size": 11.0,
+          "flags": 16,
+          "bidi": 0,
+          "char_flags": 24,
+          "font": "Helvetica-Bold",
+          "color": 0,
+          "alpha": 255,
+          "ascender": 1.0700000524520874,
+          "descender": -0.3070000112056732,
+          "text": "Authored project block",
+          "origin": [
+            40.0,
+            105.0
+          ],
+          "bbox": [
+            40.0,
+            93.22999572753906,
+            160.40597534179688,
+            108.37699890136719
+          ]
+        },
+        {
+          "size": 10.0,
+          "flags": 0,
+          "bidi": 0,
+          "char_flags": 16,
+          "font": "Helvetica",
+          "color": 0,
+          "alpha": 255,
+          "ascender": 1.0750000476837158,
+          "descender": -0.29899999499320984,
+          "text": "Loaded project: ifc silly sample scene - project",
+          "origin": [
+            40.0,
+            120.0
+          ],
+          "bbox": [
+            40.0,
+            109.25,
+            244.5199737548828,
+            122.98999786376953
+          ]
+        }
+      ],
+      "heading": {
+        "size": 32.0,
+        "flags": 4,
+        "bidi": 0,
+        "char_flags": 16,
+        "font": "Times-Roman",
+        "color": 7020968,
+        "alpha": 255,
+        "ascender": 1.0529999732971191,
+        "descender": -0.2809999883174896,
+        "text": "Authored IFC handover",
+        "origin": [
+          40.0,
+          56.0
+        ],
+        "bbox": [
+          40.0,
+          22.304000854492188,
+          345.7280578613281,
+          64.99199676513672
+        ]
+      },
+      "footer": {
+        "size": 8.0,
+        "flags": 0,
+        "bidi": 0,
+        "char_flags": 16,
+        "font": "Helvetica",
+        "color": 9868950,
+        "alpha": 255,
+        "ascender": 1.0750000476837158,
+        "descender": -0.29899999499320984,
+        "text": "Page 1 / 2",
+        "origin": [
+          495.2799987792969,
+          813.8900146484375
+        ],
+        "bbox": [
+          495.2799987792969,
+          805.2900390625,
+          531.7520141601562,
+          816.2820434570312
+        ]
+      }
+    },
+    {
+      "page": 2,
+      "size": [
+        595.280029296875,
+        841.8900146484375
+      ],
+      "spans": [
+        {
+          "size": 32.0,
+          "flags": 4,
+          "bidi": 0,
+          "char_flags": 16,
+          "font": "Times-Roman",
+          "color": 7020968,
+          "alpha": 255,
+          "ascender": 1.0529999732971191,
+          "descender": -0.2809999883174896,
+          "text": "Authored IFC handover",
+          "origin": [
+            40.0,
+            56.0
+          ],
+          "bbox": [
+            40.0,
+            22.304000854492188,
+            345.7280578613281,
+            64.99199676513672
+          ]
+        },
+        {
+          "size": 8.0,
+          "flags": 0,
+          "bidi": 0,
+          "char_flags": 16,
+          "font": "Helvetica",
+          "color": 9868950,
+          "alpha": 255,
+          "ascender": 1.0750000476837158,
+          "descender": -0.29899999499320984,
+          "text": "Generated 10/1/2026, 1:15:11 AM \u00b7 ifc-lite",
+          "origin": [
+            40.0,
+            813.8900146484375
+          ],
+          "bbox": [
+            40.0,
+            805.2900390625,
+            188.52796936035156,
+            816.2820434570312
+          ]
+        },
+        {
+          "size": 8.0,
+          "flags": 0,
+          "bidi": 0,
+          "char_flags": 16,
+          "font": "Helvetica",
+          "color": 9868950,
+          "alpha": 255,
+          "ascender": 1.0750000476837158,
+          "descender": -0.29899999499320984,
+          "text": "Page 2 / 2",
+          "origin": [
+            495.2799987792969,
+            813.8900146484375
+          ],
+          "bbox": [
+            495.2799987792969,
+            805.2900390625,
+            531.7520141601562,
+            816.2820434570312
+          ]
+        },
+        {
+          "size": 11.0,
+          "flags": 16,
+          "bidi": 0,
+          "char_flags": 24,
+          "font": "Helvetica-Bold",
+          "color": 0,
+          "alpha": 255,
+          "ascender": 1.0700000524520874,
+          "descender": -0.3070000112056732,
+          "text": "Authored evidence block",
+          "origin": [
+            40.0,
+            105.0
+          ],
+          "bbox": [
+            40.0,
+            93.22999572753906,
+            170.8119659423828,
+            108.37699890136719
+          ]
+        },
+        {
+          "size": 10.0,
+          "flags": 0,
+          "bidi": 0,
+          "char_flags": 16,
+          "font": "Helvetica",
+          "color": 0,
+          "alpha": 255,
+          "ascender": 1.0750000476837158,
+          "descender": -0.29899999499320984,
+          "text": "Second page retains the same authored page heading.",
+          "origin": [
+            40.0,
+            120.0
+          ],
+          "bbox": [
+            40.0,
+            109.25,
+            284.0399475097656,
+            122.98999786376953
+          ]
+        }
+      ],
+      "heading": {
+        "size": 32.0,
+        "flags": 4,
+        "bidi": 0,
+        "char_flags": 16,
+        "font": "Times-Roman",
+        "color": 7020968,
+        "alpha": 255,
+        "ascender": 1.0529999732971191,
+        "descender": -0.2809999883174896,
+        "text": "Authored IFC handover",
+        "origin": [
+          40.0,
+          56.0
+        ],
+        "bbox": [
+          40.0,
+          22.304000854492188,
+          345.7280578613281,
+          64.99199676513672
+        ]
+      },
+      "footer": {
+        "size": 8.0,
+        "flags": 0,
+        "bidi": 0,
+        "char_flags": 16,
+        "font": "Helvetica",
+        "color": 9868950,
+        "alpha": 255,
+        "ascender": 1.0750000476837158,
+        "descender": -0.29899999499320984,
+        "text": "Page 2 / 2",
+        "origin": [
+          495.2799987792969,
+          813.8900146484375
+        ],
+        "bbox": [
+          495.2799987792969,
+          805.2900390625,
+          531.7520141601562,
+          816.2820434570312
+        ]
+      }
+    }
+  ]
+}

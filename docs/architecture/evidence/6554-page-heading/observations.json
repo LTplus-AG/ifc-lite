@@ -1,0 +1,137 @@
+{
+  "source": "85d23caeb76588bc8fb1ad9cc1d649e0557b9dcc",
+  "capturedAt": "2026-09-30T23:15:16.814Z",
+  "chrome": "153.0.8010.36",
+  "model": {
+    "name": "building-architecture.ifc",
+    "fingerprint": "building-architecture.ifc:f778982157aa24e",
+    "entities": 444,
+    "schema": "IFC4"
+  },
+  "before": {
+    "document": {
+      "version": 10,
+      "id": "page-heading-proof",
+      "name": "Public IFC handover library",
+      "page": {
+        "size": "A4",
+        "orientation": "portrait"
+      },
+      "blocks": [
+        {
+          "kind": "text",
+          "id": "project",
+          "style": "body",
+          "title": "Authored project block",
+          "text": "Loaded project: {IfcProject.Name}"
+        },
+        {
+          "kind": "page-break",
+          "id": "second-page"
+        },
+        {
+          "kind": "text",
+          "id": "evidence",
+          "style": "body",
+          "title": "Authored evidence block",
+          "text": "Second page retains the same authored page heading."
+        }
+      ],
+      "pageHeading": {
+        "text": "Authored IFC handover",
+        "font": "times",
+        "fontSize": 32,
+        "textColor": "#6b21a8"
+      }
+    },
+    "headings": [
+      {
+        "text": "Authored IFC handover",
+        "color": "rgb(107, 33, 168)",
+        "font": "\"Times New Roman\", serif",
+        "size": "30.1035px"
+      },
+      {
+        "text": "Authored IFC handover",
+        "color": "rgb(107, 33, 168)",
+        "font": "\"Times New Roman\", serif",
+        "size": "30.1035px"
+      }
+    ],
+    "body": [
+      "Loaded project: ifc silly sample scene - project",
+      "Second page retains the same authored page heading."
+    ]
+  },
+  "persisted": {
+    "version": 10,
+    "id": "page-heading-proof",
+    "name": "Public IFC handover library",
+    "page": {
+      "size": "A4",
+      "orientation": "portrait"
+    },
+    "blocks": [
+      {
+        "kind": "text",
+        "id": "project",
+        "style": "body",
+        "title": "Authored project block",
+        "text": "Loaded project: {IfcProject.Name}"
+      },
+      {
+        "kind": "page-break",
+        "id": "second-page"
+      },
+      {
+        "kind": "text",
+        "id": "evidence",
+        "style": "body",
+        "title": "Authored evidence block",
+        "text": "Second page retains the same authored page heading."
+      }
+    ],
+    "pageHeading": {
+      "text": "Authored IFC handover",
+      "font": "times",
+      "fontSize": 32,
+      "textColor": "#6b21a8"
+    }
+  },
+  "reset": [
+    "Public IFC handover library",
+    "Public IFC handover library"
+  ],
+  "download": {
+    "bytes": 4341,
+    "sha256": "c897a21c2ed4a6ff67933e289d84044cd324c6a807e8614bcc270fcb579ded4a",
+    "suggestedFilename": "Public IFC handover library.pdf"
+  },
+  "route": "User-authorized own-profile Chrome; canonical IFC file input, mounted controls, actual PDF download, reload and reset. No PDF seam, mocked model or download suppression.",
+  "limits": "Software WebGPU, document DOM/PDF behavior only; no 3D render or performance verdict.",
+  "logs": [
+    "Could not compile fragment shader: "
+  ],
+  "publicModel": {
+    "path": "apps/viewer/public/samples/building-architecture.ifc",
+    "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5"
+  },
+  "verification": {
+    "actualDownloadViewed": true,
+    "actualPdfReader": "PyMuPDF1.28.2",
+    "headingOnBothPages": {
+      "text": "Authored IFC handover",
+      "font": "Times-Roman",
+      "size": 32,
+      "color": "#6b21a8"
+    },
+    "footerOnBothPages": {
+      "font": "Helvetica",
+      "size": 8,
+      "color": "#969696"
+    },
+    "mountedCases": 5,
+    "existingDocumentRegressions": 83,
+    "skipped": 0
+  }
+}

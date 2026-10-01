@@ -372,6 +372,17 @@ describe('Saved comparison chart source (#6549)', () => {
         chartMessages: new Map([[block.id, 'Legacy selector refused']]), snapshotIds: input.snapshotIds,
         topics: input.topics, tables: input.tables }, seams);
       assert.ok(documentPdfWarnings(legacyResult).some((warning) => warning.includes('Legacy selector refused')), 'old callers without classification retain message-to-failure behavior');
+      const refused: DocumentSpec = { ...document, blocks: [
+        { ...block, id: 'filter-refused', chart: { ...chart(), title: 'Refused live filter', source: 'elements', dimension: 'Type', filter: { selector: 'not-an-ifc-selector()' } } },
+        { ...block, id: 'column-refused', chart: { ...chart(), title: 'Refused column', source: 'elements', dimension: 'MissingDimension' } },
+      ] };
+      const refusedInput = await prepareDocument(refused, state);
+      const refusedResult = await exportPreparedDocument(refusedInput, { seams });
+      const refusedWarnings = documentPdfWarnings(refusedResult);
+      assert.ok(refusedWarnings.some((warning) => warning.startsWith('Chart unavailable: Refused live filter:')));
+      assert.ok(refusedWarnings.some((warning) => warning.includes('Refused column:') && warning.includes('MissingDimension')));
+      const refusedText = await pdfText(refusedResult.blob);
+      assert.match(refusedText, /MissingDimension/); assert.match(refusedText, /selector/i);
       assert.equal(captures, 0);
     } finally { restoreParser(); pdfWindow.jspdf = previous; }
   });

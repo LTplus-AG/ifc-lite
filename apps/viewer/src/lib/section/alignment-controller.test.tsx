@@ -105,9 +105,10 @@ test('real alignment binding survives unrelated updates, detaches on drag, reacq
     const edited = AxisWorker.instances.at(-1); assert.ok(edited);
     const distanceField = pendingUi.querySelector<HTMLElement>('[role="spinbutton"][aria-label="Horizontal distance from start"]');
     assert.ok(distanceField); assert.equal(distanceField.getAttribute('aria-disabled'), 'true');
-    await setAlignmentDistance(6);
+    const queuedIntent = setAlignmentDistance(6);
     press(distanceField, 'ArrowUp');
     assert.equal(edited.queued.length, 1, 'no station RPC can overtake the pending open');
+    await queuedIntent;
     edited.flush();
     await new Promise<void>(resolve => setTimeout(resolve, 0)); edited.flush();
     await new Promise<void>(resolve => setTimeout(resolve, 0));

@@ -39,3 +39,10 @@ The actual production viewer selected axis #39 in the original OIP 2017 model
 flip. The section point matched the independent circular oracle. Closing retained
 the exact custom plane and flip while releasing its binding; explicit selection
 reacquired station 0. [The captured viewer](./oip-station20.png) shows distance 20.
+
+Two surgical regression controls retain the public APIs and real WASM fixture.
+Removing the busy distance-queue guard fails directly with an extra RPC before
+open acknowledgment. Forcing same-owner reopening to enable the cut fails the
+disabled-Cut invariant. Both restore to a passing controller suite. The station
+RPC-count assertion precedes awaiting its promise, so the first defect is detected
+without waiting for the request timeout.

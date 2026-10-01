@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import '@/test/setup-dom.js';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,7 +19,9 @@ test('charter #6643: neutral dictionary import projects supported fields and kee
   input(textarea, serialized);
   const button = [...ui.querySelectorAll('button')].find(element => element.textContent === 'Use neutral dictionary'); assert.ok(button);
   click(button);
-  assert.deepEqual(errors, []); assert.deepEqual(profiles, [DEFAULT_PROFILE]);
+  assert.deepEqual(errors, []);
+  // The portable JSON dictionary omits undefined optional members.
+  assert.deepEqual(profiles, [JSON.parse(JSON.stringify(DEFAULT_PROFILE))]);
   assert.equal(textarea.value, serialized);
   assert.ok(ui.textContent?.includes('Unsupported relation 1 retained in raw dictionary'));
   assert.ok(ui.textContent?.includes('generated profiles contain the supported subset'));

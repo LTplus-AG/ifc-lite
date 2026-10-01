@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { LIMITS, assertIri, isObject, type SemanticDataset } from './types.js';
-import { GUID_PATTERN, type ResourceIdentityLink } from './resolver.js';
+import { GUID_PATTERN, assertRevisionIdentifier, type ResourceIdentityLink } from './resolver.js';
 import { parseResults } from './results.js';
 export interface WorkspaceQuery {
   id: string; endpoint: string; kind: 'json' | 'select' | 'construct'; query?: string;
@@ -25,8 +25,14 @@ function safeEndpoint(value: unknown): string {
 }
 export function sanitizeSource(value: unknown): string {
   const source = string(value, 'source');
-  if (!/^https?:/u.test(source)) return source;
-  const url = new URL(source); url.username = ''; url.password = ''; url.search = ''; url.hash = '';
+  let url: URL;
+  try { url = new URL(source); }
+  catch {
+    if (/^[A-Za-z][A-Za-z0-9+.-]*:\/\//u.test(source)) throw new Error('Invalid workspace source URL');
+    return source;
+  }
+  if (!url.host && !/^[A-Za-z][A-Za-z0-9+.-]*:\/\//u.test(source)) return source;
+  url.username = ''; url.password = ''; url.search = ''; url.hash = '';
   return url.href;
 }
 function parseWorkspace(value: unknown): SemanticWorkspace {
@@ -74,9 +80,13 @@ function parseWorkspace(value: unknown): SemanticWorkspace {
     }
     return query;
   });
+  const declaredRevisions = new Set<string>();
   const revisions = value.revisions.map(raw => {
     if (!isObject(raw)) throw new Error('Invalid revision link');
-    return { revision: string(raw.revision, 'revision'), modelLabel: string(raw.modelLabel, 'model label') };
+    assertRevisionIdentifier(raw.revision);
+    if (declaredRevisions.has(raw.revision)) throw new Error('Duplicate workspace revision identifier');
+    declaredRevisions.add(raw.revision);
+    return { revision: raw.revision, modelLabel: string(raw.modelLabel, 'model label') };
   });
   let resourceLinks: ResourceIdentityLink[] | undefined;
   if (value.resourceLinks !== undefined) {
@@ -84,7 +94,8 @@ function parseWorkspace(value: unknown): SemanticWorkspace {
     resourceLinks = value.resourceLinks.map(raw => {
       if (!isObject(raw)) throw new Error('Invalid resource identity link');
       const resourceId = string(raw.resourceId, 'resource URI'); const modelRevision = string(raw.modelRevision, 'model revision'); const GlobalId = string(raw.GlobalId, 'IFC GlobalId');
-      assertIri(resourceId); assertIri(modelRevision);
+      assertIri(resourceId); assertRevisionIdentifier(modelRevision);
+      if (!declaredRevisions.has(modelRevision)) throw new Error('Resource identity link refers to an undeclared revision');
       if (!new RegExp(GUID_PATTERN).test(GlobalId)) throw new Error('Invalid linked IFC GlobalId');
       return { resourceId, modelRevision, GlobalId };
     });

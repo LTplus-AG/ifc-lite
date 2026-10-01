@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { assertReadOnlyQuery, relatedResourceQuery } from './query.js';
+import { assertReadOnlyQuery, relatedResourceQuery, relatedIdentityQuery } from './query.js';
+import { LIMITS } from './types.js';
 import { parseResults, recordsFromResults } from './results.js';
 import { recordsFromGraph } from './graph.js';
 import { createSemanticProvider } from './provider.js';
@@ -51,6 +52,15 @@ describe('semantic core charter #6643', () => {
     expect(() => relatedResourceQuery(['https://example.org/x> } SERVICE <https://evil.org> { ?s ?p ?o'])).toThrow();
     expect(() => relatedResourceQuery([], 1)).toThrow();
   });
+  it('counts distinct related identities against the query budget (#6643 review)', () => {
+    const repeated = Array<string>(LIMITS.rows + 1).fill('https://example.org/item');
+    expect(relatedResourceQuery(repeated)).toBe(relatedResourceQuery(['https://example.org/item']));
+    expect(relatedIdentityQuery('https://example.org/identity', repeated)).toBe(relatedIdentityQuery('https://example.org/identity', ['https://example.org/item']));
+    const distinct = repeated.map((_, index) => `https://example.org/item/${index}`);
+    expect(() => relatedResourceQuery(distinct)).toThrow('bounds');
+    expect(() => relatedIdentityQuery('https://example.org/identity', distinct)).toThrow('bounds');
+    expect(() => relatedIdentityQuery('https://example.org/identity', [])).toThrow('bounds');
+  });
   it('requires explicit host grants before calling a transport', async () => {
     let calls = 0;
     const provider = createSemanticProvider(async () => { calls++; return new Response('{}'); });
@@ -92,7 +102,7 @@ describe('semantic core charter #6643', () => {
   });
   it('round-trips portable rows/links while stripping auth, grants and model sessions', () => {
     const workspace: SemanticWorkspace = { version: 1, datasets: [{ id: 'd', source: 'local', completeness: 'partial', rows: parseResults(envelope), resources: recordsFromResults(parseResults(envelope)) }],
-      queries: [{ id: 'q', endpoint: 'https://example.org/query', kind: 'select', query: 'SELECT * WHERE {?s ?p ?o}' }], revisions: [{ revision: 'rev', modelLabel: 'Door model' }], resourceLinks: [{ resourceId: 'https://example.org/product', modelRevision: 'https://example.org/rev', GlobalId: '0000000000000000000001' }] };
+      queries: [{ id: 'q', endpoint: 'https://example.org/query', kind: 'select', query: 'SELECT * WHERE {?s ?p ?o}' }], revisions: [{ revision: 'rev', modelLabel: 'Door model' }], resourceLinks: [{ resourceId: 'https://example.org/product', modelRevision: 'rev', GlobalId: '0000000000000000000001' }] };
     Object.assign(workspace.queries[0], { bearer: 'SECRET', grantedHost: 'example.org' });
     Object.assign(workspace.revisions[0], { modelId: 'old-session' });
     const exported = exportWorkspace(workspace); expect(exported).not.toContain('SECRET'); expect(exported).not.toContain('old-session');

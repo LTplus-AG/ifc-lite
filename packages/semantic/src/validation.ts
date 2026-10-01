@@ -7,11 +7,12 @@ import type { NodeObject } from 'jsonld';
 import jsonld from 'jsonld';
 import { Parser, Store } from 'n3';
 import SHACLValidator from 'rdf-validate-shacl';
+import ShapesGraph from 'rdf-validate-shacl/src/shapes-graph.js';
 import { DEFAULT_PROFILE, assertProfile, assertBoundedPattern, isUri, type ProfileDefinition } from './profiles.js';
 import { exchangeSchema, resourceSchema, profileContext, shapesTurtle } from './profile-artifacts.js';
 import type { SemanticDocument, SemanticResource, ValidationFinding } from './profile-types.js';
 import { LIMITS } from './types.js';
-import { assertBoundedSubclasses, countShapeTargets } from './shacl-targets.js';
+import { assertBoundedSubclasses, assertBoundedPropertyShapes, countShapeTargets } from './shacl-targets.js';
 
 export { isUri } from './profiles.js';
 function compiler() { const ajv = new Ajv({ allErrors: true }); ajv.addFormat('uri', isUri); return ajv; }
@@ -34,6 +35,7 @@ export function parseImport(value: unknown, profile = DEFAULT_PROFILE): Semantic
   return parseProfileDocument(value && typeof value === 'object' && 'document' in value ? value.document : value, profile);
 }
 export function validateJson(document: SemanticDocument, profile = DEFAULT_PROFILE): ValidationFinding[] {
+  assertProfile(profile);
   const ajv = compiler(); const validators = new Map<string, ValidateFunction>();
   const findings: ValidationFinding[] = [];
   for (const resource of document.resources) {
@@ -53,6 +55,7 @@ export function validateJson(document: SemanticDocument, profile = DEFAULT_PROFI
   return findings;
 }
 export function validateLinks(document: SemanticDocument, profile = DEFAULT_PROFILE): ValidationFinding[] {
+  assertProfile(profile);
   const byId = new Map(document.resources.map(record => [record.id, record]));
   const findings: ValidationFinding[] = [];
   for (const record of document.resources) for (const key of Object.keys(profile.types[record.type]?.fields ?? {})) {
@@ -88,7 +91,7 @@ const SH = 'http://www.w3.org/ns/shacl#';
 const RDF = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
 /** Intentionally bounded SHACL Core subset; reject executable, recursive and complex paths. */
 const supported = new Set(['IRI', 'Literal', 'BlankNode', 'BlankNodeOrIRI', 'BlankNodeOrLiteral', 'IRIOrLiteral', 'Violation', 'Warning', 'Info', 'NodeShape', 'PropertyShape', 'targetClass', 'targetNode', 'targetSubjectsOf', 'targetObjectsOf', 'property', 'path', 'closed', 'ignoredProperties',
-  'minCount', 'maxCount', 'datatype', 'nodeKind', 'class', 'pattern', 'flags', 'in', 'minInclusive', 'maxInclusive', 'uniqueLang', 'languageIn', 'severity', 'message', 'name', 'description', 'deactivated']);
+  'minCount', 'maxCount', 'maxLength', 'datatype', 'nodeKind', 'class', 'pattern', 'flags', 'in', 'minInclusive', 'maxInclusive', 'uniqueLang', 'languageIn', 'severity', 'message', 'name', 'description', 'deactivated']);
 function parseBounded(text: string, maxBytes: number, maxQuads: number): Store {
   if (new TextEncoder().encode(text).byteLength > maxBytes) throw new Error(`RDF exceeds the ${maxBytes} byte limit`);
   const parsed = new Parser().parse(text);
@@ -106,10 +109,16 @@ export async function validateGraph(rdf: string, options: GraphValidationOptions
   const data = parseBounded(rdf, bytes, quads);
   const shapes = parseBounded(opts.shapes ?? await shapesTurtle(profile), bytes, quads);
   for (const quad of shapes) {
-    for (const term of [quad.predicate, quad.object]) if (term.value.startsWith(SH) && !supported.has(term.value.slice(SH.length))) throw new Error(`Unsupported SHACL constraint: ${term.value}`);
+    if (quad.predicate.value.startsWith(SH) && !supported.has(quad.predicate.value.slice(SH.length))) throw new Error(`Unsupported SHACL constraint: ${quad.predicate.value}`);
+    // RDF type declarations can introduce unsupported SHACL execution models.
+    // Other objects (enum values, paths, messages and class IRIs) are data terms.
+    if (quad.predicate.value === RDF + 'type' && quad.object.termType === 'NamedNode' && quad.object.value.startsWith(SH)
+      && !supported.has(quad.object.value.slice(SH.length))) throw new Error(`Unsupported SHACL shape declaration: ${quad.object.value}`);
     if (quad.predicate.value === SH + 'path' && quad.object.termType !== 'NamedNode') throw new Error('Only direct IRI property paths are supported');
     if (quad.predicate.value === SH + 'pattern') assertBoundedPattern(quad.object.value, 'SHACL shape');
     if (quad.predicate.value === SH + 'flags' && !/^[imsu]*$/.test(quad.object.value)) throw new Error('Unsupported SHACL regular-expression flags');
+    if (quad.predicate.value === SH + 'maxLength' && (quad.object.termType !== 'Literal' || quad.object.datatype.value !== 'http://www.w3.org/2001/XMLSchema#integer' || !/^\+?\d+$/.test(quad.object.value)
+      || !Number.isSafeInteger(Number(quad.object.value)))) throw new Error('SHACL maxLength must be a non-negative integer');
   }
   // Malformed/cyclic RDF lists otherwise let validators traverse file-controlled loops.
   const verifiedLists = new Set<string>();
@@ -132,9 +141,26 @@ export async function validateGraph(rdf: string, options: GraphValidationOptions
     for (const node of visited) verifiedLists.add(node);
   }
   assertBoundedSubclasses(data);
+  assertBoundedPropertyShapes(shapes);
   const targets = countShapeTargets(data, shapes);
   if (!targets) throw new Error('No targets found for SHACL; validation would have no focus nodes');
-  const report = await new SHACLValidator(shapes, { maxErrors }).validate(data);
+  const validator = new SHACLValidator(shapes, { maxErrors });
+  // rdf-validate-shacl 0.6.5 counts UTF-16 units. SHACL and JSON Schema
+  // count Unicode codepoints; correct only this trusted built-in component.
+  validator.validators.set(validator.ns.sh.MaxLengthConstraintComponent, {
+    validate(context, _focusNode, valueNode, constraint) {
+      if (valueNode.termType === 'BlankNode') return false;
+      const limit = Number(constraint.getParameterValue(context.ns.sh.maxLength).value);
+      let count = 0;
+      for (const _character of valueNode.value) if (++count > limit) return false;
+      return true;
+    },
+    validationMessage: 'Value has more than {$maxLength} characters',
+  });
+  // Components bind their registry callbacks at construction, so rebuild the
+  // typed library graph after installing the correction, before any validation.
+  validator.shapesGraph = new ShapesGraph(validator);
+  const report = await validator.validate(data);
   return report.results.map(result => ({ engine: 'SHACL', resourceId: result.focusNode.value, path: result.path?.value ?? '',
     severity: result.severity.value === SH + 'Warning' ? 'Warning' : result.severity.value === SH + 'Info' ? 'Info' : 'Violation',
     message: result.message.map(term => term.value).join('; ') || result.sourceConstraintComponent.value }));

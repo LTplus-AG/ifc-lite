@@ -92,7 +92,9 @@ without that source displays an explicit unavailable-source message. Choose
 another bound dashboard chart in the block editor to replace it. See
 [saved comparison charts](./charts.md#saved-comparison-charts) for the binding
 and import behavior; saved comparison table blocks continue to embed their
-own evidence.
+own evidence. Recorded-source provenance remains an informational caption;
+missing history, refused filters and aggregation errors are reported as PDF
+export problems.
 
 In Documentation, **Add block → Saved comparison** embeds the first saved report.
 Select the block and choose another saved comparison in its source picker. The

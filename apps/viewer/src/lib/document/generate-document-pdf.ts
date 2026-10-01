@@ -34,11 +34,13 @@ export interface DocumentPdfInput {
   bindings: BindingContext;
   /** Chart block id → its aggregation over the loaded model (`null`: cannot aggregate). */
   aggregations: Map<string, Aggregation | null>;
-  /** Chart block id → its filter's resolving/refused message (#4946), when
-   *  one applies — printed instead of the generic "No data" so a broken or
-   *  still-running filter cannot look like a selector that legitimately
-   *  matched nothing. */
+  /** Chart block id → source provenance or a resolving/refused error caption.
+   * Errors print instead of generic "No data"; chartErrors distinguishes
+   * them from informative recorded-source captions (#4946 / #6549). */
   chartMessages: Map<string, string>;
+  /** IDs whose chartMessages are failures; absent retains legacy message-only diagnostics.
+   * Recorded-source provenance is informative and is not included in this set (#6549). */
+  chartErrors?: ReadonlySet<string>;
   /** Ids of the elements of a chart block's largest bucket, for the snapshot. */
   snapshotIds: (blockId: string) => readonly number[];
   /** BCF topics by GUID. */
@@ -59,7 +61,7 @@ export interface DocumentPdfResult {
   imageFailures: string[];
   /** Table blocks whose list did not run (no model, still resolving, or an error); the page says so in their place. */
   tableFailures: string[];
-  /** Refused filters and aggregation errors printed in the chart's place. */
+  /** Missing sources, refused filters and aggregation errors printed in the chart's place. */
   chartFailures?: string[];
 }
 
@@ -256,6 +258,7 @@ function placeImage(doc: ReportDoc, dataUrl: string | null, label: string, box: 
 export async function generateDocumentPdf(input: DocumentPdfInput, seams: DocumentPdfSeams): Promise<DocumentPdfResult> {
   const result: DocumentPdfResult = { blob: new Blob(), pages: 0, unresolved: [], missingTopics: [], snapshotFailures: [], imageFailures: [], tableFailures: [],
     chartFailures: input.document.blocks.flatMap((block) => block.kind === 'chart' && input.chartMessages.has(block.id)
+      && (input.chartErrors === undefined || input.chartErrors.has(block.id))
       ? [`${block.chart.title}: ${input.chartMessages.get(block.id)}`] : []),
   };
   const format = input.document.page.size === 'A3' ? 'a3' : 'a4';

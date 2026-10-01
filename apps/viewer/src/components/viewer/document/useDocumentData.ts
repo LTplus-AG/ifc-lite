@@ -25,11 +25,12 @@ import { useDocumentTables } from './useDocumentTables';
 export interface DocumentData {
   bindings: BindingContext;
   aggregations: Map<string, Aggregation | null>;
-  /** Set for a chart block whose `filter` is still resolving or was refused
-   *  (#4946): the preview and the PDF export must tell that apart from a
-   *  selector that legitimately matched nothing — both print an empty
-   *  `Aggregation`, so the message is the only thing that distinguishes them. */
+  /** Chart block id → source provenance or a resolving/refused error caption.
+   * Failure identities travel in chartErrors so recorded-source captions
+   * stay informational while refused filters remain explicit (#4946 / #6549). */
   chartMessages: Map<string, string>;
+  /** Failure identities classified once with chartMessages; provenance captions stay informational. */
+  chartErrors?: ReadonlySet<string>;
   topics: Map<string, BCFTopic>;
   /** Table block id → its list run (#5142); preview and PDF print the same rows. */
   tables: ReadonlyMap<string, TableState>;
@@ -59,12 +60,12 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
     return { models: bound, activeModelId, today: new Date() };
   }, [models, activeModelId, mutationViews, mutationVersion]);
 
-  const { aggregations, chartMessages } = useMemo(() => {
+  const { aggregations, chartMessages, chartErrors } = useMemo(() => {
     return prepareDocumentCharts(document, datasets, sourceFilters, savedComparisons);
   }, [document, datasets, sourceFilters, savedComparisons, revision]);
 
   const topics = useMemo(() => bcfProject?.topics ?? new Map<string, BCFTopic>(), [bcfProject]);
   const tables = useDocumentTables(document);
 
-  return { bindings, aggregations, chartMessages, topics, tables };
+  return { bindings, aggregations, chartMessages, chartErrors, topics, tables };
 }

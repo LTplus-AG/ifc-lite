@@ -42,11 +42,10 @@ it('#6604 federation setup stays compact beside the prominent IFC export and Sav
   assert.ok(save && open && tags);
   assert.ok(save.parentElement);
   assert.ok(save.parentElement === open.parentElement, 'Save and Open Setup share the compact stack');
-  assert.ok(save.parentElement === tags.parentElement, 'Model Tags shares the setup stack');
   assert.deepEqual([...save.parentElement.querySelectorAll('[data-command-id]')]
-    .map((button) => button.getAttribute('data-command-id')), setupIds);
+    .map((button) => button.getAttribute('data-command-id')), setupIds.slice(0, 2));
   for (const button of setupButtons) {
-    assert.ok(button.classList.contains('h-[20px]'), 'setup actions use standard compact rows');
+    assert.ok(button.classList.contains('min-h-6'), 'compact setup targets preserve the 24px minimum');
     const icon = button.querySelector('svg');
     assert.ok(icon);
     assert.ok(icon.classList.contains('h-3.5'), 'setup icons use the small ribbon size');

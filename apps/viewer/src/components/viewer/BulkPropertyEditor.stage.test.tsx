@@ -152,6 +152,8 @@ describe('construction-stage preset (#6598)', () => {
     assert.deepEqual([...useViewerStore.getState().lensRuleEntityIds.values()].flat(), [1]);
     act(() => replayWorkspaceHistory(useViewerStore.getState(), 'undo')); await advance(0);
     assert.equal(useViewerStore.getState().lensRuleEntityIds.size, 0);
+    act(() => replayWorkspaceHistory(useViewerStore.getState(), 'redo')); await advance(0);
+    assert.ok(useViewerStore.getState().lensColorMap.size > 0);
     act(() => useViewerStore.getState().clearAllModels()); await advance(0);
     assert.equal(useViewerStore.getState().lensColorMap.size, 0);
   });

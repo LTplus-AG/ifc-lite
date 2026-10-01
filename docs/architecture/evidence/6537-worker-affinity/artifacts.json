@@ -1,8 +1,8 @@
 [
   {
     "path": "README.md",
-    "bytes": 3291,
-    "sha256": "d09ac24fc1f1914d5859c094e04bf50c9b03f8b8d86a1838672300957da2dcc2"
+    "bytes": 3297,
+    "sha256": "35a399fb55611f36ab27f77a3cddd1740c63288ec1ea1b03c01ea45511658431"
   },
   {
     "path": "capture-v2.cjs",
@@ -15,9 +15,9 @@
     "sha256": "408b9eab534a71fceb2cbf464382079f302daeae1c62462fe705d1b0fe8fc9cc"
   },
   {
-    "path": "holter-call-boundaries-v2.json",
-    "bytes": 56401,
-    "sha256": "1d3636e04c53f7bb407d807d714544123fb1c67bef95d0f69a7627321c4d05c9"
+    "path": "holter-call-boundaries-v2.json.gz",
+    "bytes": 4330,
+    "sha256": "c7f66f926a02d57a048643f24a10a80e28059fc6b21fb861478c63c8c06aa477"
   },
   {
     "path": "holter-color-frame.png",

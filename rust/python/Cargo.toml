@@ -24,6 +24,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 ifc-lite-processing = { path = "../processing" }
+ifc-lite-geometry = { path = "../geometry" }
 # Attribute / property-set / quantity extraction (`entity_data`). The crate's
 # default feature set is already empty; `default-features = false` states that
 # explicitly so a future default cannot silently drag `parquet-bos`

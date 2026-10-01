@@ -676,3 +676,35 @@ def entity_data(
         RuntimeError: the extraction pipeline failed.
     """
     ...
+
+class AlignmentSample(TypedDict):
+    geometric_horizontal_distance_m: float
+    point: List[float]  # absolute world IFC Z-up metres, f64
+    tangent: List[float]  # unit world-space tangent
+
+class SampledAlignmentAxis(TypedDict):
+    express_id: int
+    GlobalId: Optional[str]
+    Name: Optional[str]
+    geometric_horizontal_length_m: float
+    samples: List[AlignmentSample]
+
+class AlignmentSamplingDiagnostic(TypedDict):
+    express_id: Optional[int]
+    code: Literal["unit_resolution", "invalid_axis", "approximate_curve", "axis_sample_limit", "total_sample_limit"]
+    message: str
+
+class AlignmentAxes(TypedDict):
+    axes: Dict[int, SampledAlignmentAxis]
+    diagnostics: List[AlignmentSamplingDiagnostic]
+    diagnostics_omitted: int
+
+def alignment_axes(
+    ifc_bytes: bytes,
+    *,
+    spacing_m: float = ...,
+    max_samples_per_axis: int = ...,
+    max_total_samples: int = ...,
+) -> AlignmentAxes:
+    """Bounded samples in geometric horizontal metres from each physical start, not authored chainage."""
+    ...

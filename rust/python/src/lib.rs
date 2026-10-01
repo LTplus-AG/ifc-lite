@@ -33,6 +33,7 @@ use pyo3::types::{PyBytes, PyDict};
 use std::collections::HashSet;
 
 mod swept_disks;
+mod alignment_axes;
 mod analytic_definitions;
 mod quantity_analysis;
 mod rebar_schedule;
@@ -210,6 +211,7 @@ fn geometry_data_json(
 
 #[pymodule]
 fn ifclite_geom(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(alignment_axes::alignment_axes, m)?)?;
     m.add_function(wrap_pyfunction!(geometry_data_buffers, m)?)?;
     m.add_function(wrap_pyfunction!(geometry_data_json, m)?)?;
     m.add_function(wrap_pyfunction!(analytic_definitions::swept_disk_definitions, m)?)?;

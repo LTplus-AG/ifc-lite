@@ -77,6 +77,9 @@
 pub(crate) mod alignment;
 pub(crate) mod alignment_arc_length;
 pub(crate) mod alignment_axis;
+mod alignment_sampling;
+mod alignment_sampling_curve;
+mod alignment_sampling_placement;
 pub mod analytic;
 mod curve_source;
 mod trimmed_curve;
@@ -225,6 +228,7 @@ pub use processors::{
 };
 pub use alignment::{AlignmentCurve, AlignmentFrame};
 pub use alignment_axis::locate_axis_curve;
+pub use alignment_sampling::{sample_alignment_axes, AlignmentAxis, AlignmentSample, AlignmentSamplingOptions, AlignmentSamplingReport};
 pub use analytic::{
     extract_analytic_extrusion, extract_analytic_profile, extract_swept_disk,
     AnalyticCurveSegment, AnalyticExtrusion, AnalyticProfile, AnalyticProfileLoop,

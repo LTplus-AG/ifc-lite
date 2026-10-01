@@ -236,13 +236,29 @@ impl AlignmentCurve {
     /// recognised input (e.g. an `IfcAlignmentCurve` missing
     /// `Horizontal`).
     pub fn parse(directrix: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Option<Self>> {
+        Self::parse_with_policy(directrix, decoder, false)
+    }
+
+    pub(crate) fn parse_for_sampling(directrix: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Option<Self>> {
+        Self::parse_with_policy(directrix, decoder, true)
+    }
+
+    fn parse_with_policy(directrix: &DecodedEntity, decoder: &mut EntityDecoder, strict: bool) -> Result<Option<Self>> {
         if directrix.ifc_type == IfcType::IfcPolyline {
-            return Self::from_polyline(directrix, decoder).map(Some);
+            return Self::from_polyline(directrix, decoder, strict).map(Some);
         }
         if directrix.ifc_type == IfcType::IfcGradientCurve {
+            if strict {
+                crate::alignment_sampling_curve::validate_composite(directrix, decoder)?;
+                for attr in directrix.get_list(0).ok_or_else(|| Error::geometry("GradientCurve missing Segments"))? {
+                    let id = attr.as_entity_ref().ok_or_else(|| Error::geometry("Gradient segment must be a reference"))?;
+                    decoder.decode_by_id(id)?;
+                }
+            }
             return Self::from_gradient_curve(directrix, decoder);
         }
         if directrix.ifc_type == IfcType::IfcCompositeCurve {
+            if strict { crate::alignment_sampling_curve::validate_composite(directrix, decoder)?; }
             return Self::from_sampled_curve(directrix, decoder);
         }
         if directrix.ifc_type != t_alignment_curve() {
@@ -262,18 +278,24 @@ impl AlignmentCurve {
         // needed to rebase the vertical segments (whose `StartDistAlong`
         // are authored as absolute chainages in the same domain) onto
         // that same 0-origin axis. See `parse_vertical`.
-        let (horizontal, horizontal_base) = parse_horizontal(h_id, decoder, angle_scale)?;
+        let (horizontal, horizontal_base) = parse_horizontal(h_id, decoder, angle_scale, strict)?;
 
         // attr 1 = Vertical (optional)
         let vertical = match directrix.get(1) {
             Some(v) if !v.is_null() => match v.as_entity_ref() {
-                Some(v_id) => parse_vertical(v_id, decoder, horizontal_base)?,
+                Some(v_id) => parse_vertical(v_id, decoder, horizontal_base, strict)?,
+                None if strict => return Err(Error::geometry("Vertical must be a reference")),
                 None => Vec::new(),
             },
             _ => Vec::new(),
         };
 
         Ok(Some(Self { horizontal, vertical, gradient: None }))
+    }
+
+    pub(crate) fn uses_approximation(&self) -> bool {
+        self.gradient.is_some() || self.horizontal.iter().any(|segment| matches!(segment,
+            HSeg::Transition { kind: TransitionKind::CubicParabola | TransitionKind::BiquadraticParabola, .. }))
     }
 
     /// Total length of the horizontal alignment (sum of segment lengths).
@@ -309,7 +331,7 @@ impl AlignmentCurve {
     /// polyline edge becomes one horizontal Line segment plus one
     /// vertical Line segment so the unified `evaluate(station)` path
     /// works without special-casing in the processor.
-    fn from_polyline(curve: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Self> {
+    fn from_polyline(curve: &DecodedEntity, decoder: &mut EntityDecoder, strict: bool) -> Result<Self> {
         let points_attr = curve
             .get(0)
             .ok_or_else(|| Error::geometry("IfcPolyline missing Points".to_string()))?;
@@ -327,13 +349,22 @@ impl AlignmentCurve {
                 .as_entity_ref()
                 .ok_or_else(|| Error::geometry("Polyline point is not an entity ref".to_string()))?;
             let p = decoder.decode_by_id(pid)?;
+            if strict && p.ifc_type != IfcType::IfcCartesianPoint {
+                return Err(Error::geometry(format!("Polyline point #{} is not IfcCartesianPoint", pid)));
+            }
             let coords = p
                 .get_list(0)
                 .ok_or_else(|| Error::geometry("CartesianPoint missing Coordinates".to_string()))?;
+            if strict && (!(2..=3).contains(&coords.len()) || coords.iter().any(|v| v.as_float().is_none_or(|n| !n.is_finite()))) {
+                return Err(Error::geometry(format!("Malformed CartesianPoint #{}", pid)));
+            }
             let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
             let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
             let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
             pts.push((x, y, z));
+        }
+        if strict && pts.windows(2).any(|p| (p[1].0 - p[0].0).hypot(p[1].1 - p[0].1) < 1e-12 && (p[1].2 - p[0].2).abs() > 1e-12) {
+            return Err(Error::geometry("A vertical polyline edge cannot use horizontal-distance stationing"));
         }
         Self::from_points(&pts)
     }
@@ -563,6 +594,7 @@ fn parse_horizontal(
     h_id: u32,
     decoder: &mut EntityDecoder,
     angle_scale: f64,
+    strict: bool,
 ) -> Result<(Vec<HSeg>, f64)> {
     let h_entity = decoder.decode_by_id(h_id)?;
     if h_entity.ifc_type != t_alignment_2d_horizontal() {
@@ -573,6 +605,9 @@ fn parse_horizontal(
     }
     // attr 0 = StartDistAlong (optional); attr 1 = Segments.
     let start_dist_along = h_entity.get_float(0).unwrap_or(0.0);
+    if strict && h_entity.get(0).is_some_and(|a| !a.is_null() && a.as_float().is_none_or(|v| !v.is_finite())) {
+        return Err(Error::geometry("Invalid horizontal StartDistAlong"));
+    }
     let segs_attr = h_entity
         .get(1)
         .ok_or_else(|| Error::geometry("IfcAlignment2DHorizontal missing Segments".to_string()))?;
@@ -613,6 +648,9 @@ fn parse_horizontal(
         let coords = sp
             .get_list(0)
             .ok_or_else(|| Error::geometry("StartPoint missing Coordinates".to_string()))?;
+        if strict && (sp.ifc_type != IfcType::IfcCartesianPoint || coords.len() != 2 || coords.iter().any(|v| v.as_float().is_none_or(|n| !n.is_finite()))) {
+            return Err(Error::geometry("Horizontal StartPoint must contain two finite CartesianPoint coordinates"));
+        }
         let sx = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
         let sy = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
         let heading_raw = curve.get_float(1).ok_or_else(|| {
@@ -622,6 +660,7 @@ fn parse_horizontal(
             ))
         })?;
         let heading = heading_raw * angle_scale;
+        if strict && !heading.is_finite() { return Err(Error::geometry("Nonfinite horizontal heading")); }
         let length = curve.get_float(2).ok_or_else(|| {
             Error::geometry(format!("CurveSegment #{} missing SegmentLength", curve_id))
         })?;
@@ -671,6 +710,9 @@ fn parse_horizontal(
             //   5: IsStartRadiusCCW
             //   6: IsEndRadiusCCW
             //   7: TransitionCurveType (enum — dispatches κ(s) profile)
+            if strict && !matches!(curve.get(7).and_then(|v| v.as_enum()), Some("CLOTHOIDCURVE" | "BLOSSCURVE" | "COSINECURVE" | "SINECURVE" | "CUBICPARABOLA" | "BIQUADRATICPARABOLA")) {
+                return Err(Error::geometry("Unknown TransitionCurveType"));
+            }
             let start_radius = curve.get_float(3);
             let end_radius = curve.get_float(4);
             let start_ccw = read_bool(curve.get(5));
@@ -721,6 +763,7 @@ fn parse_vertical(
     v_id: u32,
     decoder: &mut EntityDecoder,
     horizontal_base: f64,
+    strict: bool,
 ) -> Result<Vec<VSeg>> {
     let v_entity = decoder.decode_by_id(v_id)?;
     if v_entity.ifc_type != t_alignment_2d_vertical() {
@@ -821,6 +864,9 @@ fn parse_vertical(
                 is_convex,
             }
         } else {
+            if strict {
+                return Err(Error::geometry(format!("Unsupported vertical segment #{}: {}", seg_id, seg.ifc_type)));
+            }
             // Unknown vertical subtype — degrade to a straight gradient
             // segment so the sweep at least continues sensibly through it.
             // (The horizontal sibling hard-errors on an unknown curve

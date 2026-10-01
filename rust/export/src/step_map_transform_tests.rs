@@ -171,6 +171,50 @@ fn issue_6587_shared_product_definition_rewrites_once_and_allocated_ids_are_uniq
 }
 
 #[test]
+fn issue_6587_type_maps_require_actual_body_reachability_not_orphan_items() {
+    let extra = "#170=IFCSHAPEREPRESENTATION(#10,'Body','SweptSolid',(#42));\n#171=IFCREPRESENTATIONMAP(#11,#170);\n#172=IFCBUILDINGELEMENTPROXYTYPE('0M7tQ9Jbj1BAeHd7rqnDmS',$,'Type',$,$,$,(#171),$,$,.NOTDEFINED.);\n#174=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#12,1.,$);\n";
+    let source = model(1., false).replace("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"));
+    let orphan = source.replace("ENDSEC;\nEND-ISO", "#173=IFCMAPPEDITEM(#171,#174);\nENDSEC;\nEND-ISO");
+    for input in [&source, &orphan] {
+        let plan = plan_map_conversion_normalization(input.as_bytes()).unwrap();
+        assert!(plan.warnings.iter().any(|warning| warning.contains("uninstantiated geometry")));
+        assert!(plan.replacements.is_empty());
+        assert!(plan.new_entities.is_empty());
+    }
+    let used = orphan.replace("'Body','SweptSolid',(#42));\n#45", "'Body','MappedRepresentation',(#173));\n#45");
+    let plan = plan_map_conversion_normalization(used.as_bytes()).unwrap();
+    assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+    assert!(!plan.replacements.is_empty(), "a genuinely used type map remains supported");
+    let before = world_mesh(&used);
+    let after = world_mesh(&apply(&used, &plan));
+    assert_eq!(before.elements[&50].faces.len(), after.elements[&50].faces.len());
+    let mut decoder = EntityDecoder::new(&used);
+    let geo = GeoRefExtractor::extract(&mut decoder, &[(61, IfcType::IfcMapConversion), (60, IfcType::IfcProjectedCRS)]).unwrap().unwrap();
+    for point in &before.elements[&50].vertices {
+        let expected = geo.local_to_map(point[0], point[1], point[2]);
+        assert!(after.elements[&50].vertices.iter().any(|actual|
+            (actual[0] - expected.0).hypot(actual[1] - expected.1).hypot(actual[2] - expected.2) < 0.0001));
+    }
+    let cycle = used.replace("#170=IFCSHAPEREPRESENTATION(#10,'Body','SweptSolid',(#42))", "#170=IFCSHAPEREPRESENTATION(#10,'Body','MappedRepresentation',(#173))");
+    let refused = plan_map_conversion_normalization(cycle.as_bytes()).unwrap();
+    assert!(refused.warnings.iter().any(|warning| warning.contains("cyclic")));
+    assert!(refused.replacements.is_empty() && refused.new_entities.is_empty());
+    let siblings = used.replace("'MappedRepresentation',(#173))", "'MappedRepresentation',(#173,#176))")
+        .replace("#170=IFCSHAPEREPRESENTATION(#10,'Body','SweptSolid',(#42))", "#170=IFCSHAPEREPRESENTATION(#10,'Body','MappedRepresentation',(#176))")
+        .replace("ENDSEC;\nEND-ISO", "#176=IFCMAPPEDITEM(#181,#174);\n#177=IFCMAPPEDITEM(#171,#174);\n#180=IFCSHAPEREPRESENTATION(#10,'Body','MappedRepresentation',(#177));\n#181=IFCREPRESENTATIONMAP(#11,#180);\nENDSEC;\nEND-ISO");
+    let refused = plan_map_conversion_normalization(siblings.as_bytes()).unwrap();
+    assert!(refused.warnings.iter().any(|warning| warning.contains("cyclic")), "mutually cyclic sibling roots must report refusal");
+    assert!(refused.replacements.is_empty() && refused.new_entities.is_empty());
+    let roots = HashSet::from([44]);
+    let mut decoder = EntityDecoder::new(&used);
+    assert!(preflight::body_mapped_sources(&roots, 10, &mut decoder, 1).unwrap_err().contains("reference-work bound"));
+    let repeated = used.replace("'MappedRepresentation',(#173))", &format!("'MappedRepresentation',({}))", vec!["#173"; 4_000].join(",")));
+    let refused = plan_map_conversion_normalization(repeated.as_bytes()).unwrap();
+    assert!(refused.warnings.iter().any(|warning| warning.contains("reference-work bound")));
+    assert!(refused.replacements.is_empty() && refused.new_entities.is_empty());
+}
+
+#[test]
 fn issue_6587_public_bridge_deck_uses_the_same_canonical_normalization() {
     let source = fixture_or_skip!("ifc5/Georeferencing_georeferenced-bridge-deck.ifc");
     let plan = plan_map_conversion_normalization(&source).unwrap();

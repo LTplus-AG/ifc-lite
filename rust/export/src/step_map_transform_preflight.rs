@@ -83,7 +83,7 @@ pub(super) fn model(records: &[Record<'_>], context: u32, decoder: &mut EntityDe
     }
     let mut owners: HashMap<u32, u32> = HashMap::new();
     let mut body_shapes = HashSet::new();
-    let mut mapped_sources = HashSet::new();
+    let mut used_representations = HashSet::new();
     for record in records {
         let kind = &record.kind;
         if kind.is_subtype_of(IfcType::IfcAnnotation) || kind.is_subtype_of(IfcType::IfcAlignment)
@@ -91,10 +91,6 @@ pub(super) fn model(records: &[Record<'_>], context: u32, decoder: &mut EntityDe
             || matches!(kind, IfcType::IfcShapeAspect | IfcType::IfcRelVoidsElement | IfcType::IfcRelFillsElement |
                 IfcType::IfcGrid | IfcType::IfcGridPlacement | IfcType::IfcLinearPlacement) {
             return Err(format!("{} #{} has coordinate consumers not supported by body normalization", kind.name(), record.id));
-        }
-        if *kind == IfcType::IfcMappedItem {
-            let item = decoder.decode_by_id(record.id).map_err(|error| error.to_string())?;
-            mapped_sources.insert(item.get_ref(0).ok_or("mapped item has no MappingSource")?);
         }
         if *kind == IfcType::IfcProductDefinitionShape {
             let shape = decoder.decode_by_id(record.id).map_err(|error| error.to_string())?;
@@ -115,12 +111,6 @@ pub(super) fn model(records: &[Record<'_>], context: u32, decoder: &mut EntityDe
                 return Err(format!("representation map #{} shares a product body representation", record.id));
             }
         }
-        if record.kind.is_subtype_of(IfcType::IfcTypeProduct) {
-            let product = decoder.decode_by_id(record.id).map_err(|error| error.to_string())?;
-            if product.get_refs(6).is_some_and(|maps| maps.iter().any(|id| !mapped_sources.contains(id))) {
-                return Err(format!("type product #{} has uninstantiated geometry", record.id));
-            }
-        }
         if record.kind.is_subtype_of(IfcType::IfcProduct) {
             let product = decoder.decode_by_id(record.id).map_err(|error| error.to_string())?;
             if let Some(attr) = product.get(6).filter(|attr| !attr.is_null()) {
@@ -129,10 +119,57 @@ pub(super) fn model(records: &[Record<'_>], context: u32, decoder: &mut EntityDe
                 if shape.ifc_type != IfcType::IfcProductDefinitionShape {
                     return Err(format!("product #{} does not use a ProductDefinitionShape", product.id));
                 }
+                used_representations.extend(shape.get_refs(2).ok_or("product shape has no Representations")?);
             }
         }
     }
+    let allowance = records.len().saturating_mul(ifc_lite_core::limits::MAX_MAPPED_ITEM_DEPTH as usize);
+    let mapped_sources = body_mapped_sources(&used_representations, context, decoder, allowance)?;
+    for record in records.iter().filter(|record| record.kind.is_subtype_of(IfcType::IfcTypeProduct)) {
+        let product = decoder.decode_by_id(record.id).map_err(|error| error.to_string())?;
+        if product.get_refs(6).is_some_and(|maps| maps.iter().any(|id| !mapped_sources.contains(id))) {
+            return Err(format!("type product #{} has uninstantiated geometry", record.id));
+        }
+    }
     Ok(())
+}
+
+/// Pure reachable-ID set: memoization is global, unlike mesh accumulation.
+/// Only actual product Body roots confer ownership; orphan items do not.
+pub(super) fn body_mapped_sources(roots: &HashSet<u32>, context: u32, decoder: &mut EntityDecoder, max_work: usize) -> Result<HashSet<u32>, String> {
+    let mut pending: Vec<_> = roots.iter().map(|id| (*id, false)).collect();
+    let mut seen = HashSet::new();
+    let mut active = HashSet::new();
+    let mut sources = HashSet::new();
+    let mut work = pending.len();
+    while let Some((id, exiting)) = pending.pop() {
+        if exiting { active.remove(&id); continue; }
+        if work > max_work { return Err("Body map reachability exceeded its reference-work bound".into()); }
+        if !seen.insert(id) { continue; }
+        active.insert(id);
+        pending.push((id, true));
+        representation(id, context, decoder)?;
+        let rep = decoder.decode_by_id(id).map_err(|error| error.to_string())?;
+        let items = rep.get_refs(3).ok_or("Body representation has no Items")?;
+        work = work.checked_add(items.len()).filter(|value| *value <= max_work)
+            .ok_or("Body map reachability exceeded its reference-work bound")?;
+        for item_id in items {
+            let item = decoder.decode_by_id(item_id).map_err(|error| error.to_string())?;
+            if !item.ifc_type.is_subtype_of(IfcType::IfcRepresentationItem) {
+                return Err(format!("Body item #{item_id} is not an IfcRepresentationItem"));
+            }
+            if item.ifc_type != IfcType::IfcMappedItem { continue; }
+            let source = required(&item, 0, decoder)?;
+            if source.ifc_type != IfcType::IfcRepresentationMap { return Err("mapped MappingSource is not a RepresentationMap".into()); }
+            let child = source.get_ref(1).ok_or("map has no MappedRepresentation")?;
+            if active.contains(&child) { return Err(format!("Body mapped representation #{child} is cyclic")); }
+            sources.insert(source.id);
+            work = work.checked_add(1).filter(|value| *value <= max_work)
+                .ok_or("Body map reachability exceeded its reference-work bound")?;
+            pending.push((child, false));
+        }
+    }
+    Ok(sources)
 }
 
 fn representation(id: u32, context: u32, decoder: &mut EntityDecoder) -> Result<(), String> {

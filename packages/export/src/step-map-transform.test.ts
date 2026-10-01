@@ -111,6 +111,28 @@ describe.skipIf(!wasmAvailable)('real canonical WASM export planning (#6587)', (
       expect(refused.stats.newEntityCount).toBe(0);
     }
   });
+  it('refuses uninstantiated type geometry even when an orphan mapped item references it', async () => {
+    const typeGeometry = data.replace('.MILLI.', '$') + `
+#70=IFCSHAPEREPRESENTATION(#10,'Body','SweptSolid',(#22));
+#71=IFCREPRESENTATIONMAP(#9,#70);
+#72=IFCBUILDINGELEMENTPROXYTYPE('0M7tQ9Jbj1BAeHd7rqnDmS',$,'Type',$,$,$,(#71),$,$,.NOTDEFINED.);
+#74=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#6,1.,$);`;
+    for (const orphan of ['', '\n#73=IFCMAPPEDITEM(#71,#74);']) {
+      const store = await parse(file(typeGeometry + orphan));
+      const ordinary = new StepExporter(store).export(options);
+      const refused = await new StepExporter(store).exportAsync({ ...options, normalizeMapGeometry: true });
+      expect(refused.stats.warnings.some(warning => warning.includes('uninstantiated geometry'))).toBe(true);
+      expect(refused.content).toEqual(ordinary.content);
+      expect(refused.stats.modifiedEntityCount).toBe(0);
+      expect(refused.stats.newEntityCount).toBe(0);
+    }
+    // The same type is supported when its map is actually reachable from a product Body.
+    const used = typeGeometry.replace("#23=IFCSHAPEREPRESENTATION(#10,'Body','SweptSolid',(#22));",
+      "#23=IFCSHAPEREPRESENTATION(#10,'Body','MappedRepresentation',(#73));") + '\n#73=IFCMAPPEDITEM(#71,#74);';
+    const accepted = await new StepExporter(await parse(file(used))).exportAsync({ ...options, normalizeMapGeometry: true });
+    expect(accepted.stats.warnings).toEqual([]);
+    expect(accepted.stats.newEntityCount).toBeGreaterThan(0);
+  });
   it('leaves all output geometry byte-identical on an unsupported context and frees the real handle', async () => {
     const store = await parse(file(data.replace("'Body','SweptSolid'", "'Axis','SweptSolid'")));
     const { IfcAPI } = await import('@ifc-lite/wasm');

@@ -4,6 +4,7 @@
 
 // In-store builders — emit elements into an existing parsed IfcDataStore
 // via a `StoreEditor` overlay (closes the merge-roundtrip gap from #592).
+export { addOrdinaryElementInStore, type OrdinaryInStoreElement } from './ordinary-element.js';
 export {
   addColumnToStore,
   type ColumnInStoreParams,

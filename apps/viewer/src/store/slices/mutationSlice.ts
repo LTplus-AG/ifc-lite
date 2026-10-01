@@ -13,13 +13,8 @@ import { StoreEditor } from '@ifc-lite/mutations';
 import type { Mutation, ChangeSet, PropertyValue } from '@ifc-lite/mutations';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import {
-  addBeamToStore,
-  addColumnToStore,
   addDoorToStore,
-  addMemberToStore,
-  addPlateToStore,
-  addRoofToStore,
-  addSlabToStore,
+  addOrdinaryElementInStore,
   addSpaceToStore,
   addWallToStore,
   addWindowToStore,
@@ -850,7 +845,6 @@ function runInStoreElementBuilder(
   modelId: string,
   storeyExpressId: number,
   element: AuthoredElement,
-  build: (editor: StoreEditor, anchor: ReturnType<typeof resolveSpatialAnchor>) => number,
 ): { expressId: number } | { error: string } {
   const denial = mutationDenial(get(), modelId);
   if (denial) return { error: denial };
@@ -865,19 +859,19 @@ function runInStoreElementBuilder(
   const editor = getOrCreateStoreEditor(get, set, modelId);
   if (!editor) return { error: 'Failed to create store editor' };
 
-  // Some source IFC files leave IfcBuildingStorey.ObjectPlacement
-  // null (it's optional in the schema). Without a placement,
-  // resolveSpatialAnchor throws "storey #N has no resolvable
-  // IfcLocalPlacement" — but a fresh IfcLocalPlacement at the
-  // origin is a valid default. Materialise one before the anchor
-  // walk so the user's authoring action doesn't get blocked by
-  // missing-but-recoverable IFC structure.
-  ensureStoreyPlacement(dataStore, editor, storeyExpressId);
-
   let entityId: number;
   try {
-    const anchor = resolveSpatialAnchor(dataStore, storeyExpressId, view);
-    entityId = build(editor, anchor);
+    const prepareAnchor = (draft: StoreEditor) => {
+      // Preserve the UI's existing optional-placement policy, but include its
+      // helper writes in the same transaction as the builder (#6232 D5).
+      ensureStoreyPlacement(dataStore, draft, storeyExpressId);
+      return resolveSpatialAnchor(dataStore, storeyExpressId, draft.getMutationView());
+    };
+    entityId = element.kind === 'door'
+      ? editor.runAtomic(draft => addDoorToStore(draft, prepareAnchor(draft), element.params).doorId)
+      : element.kind === 'window'
+        ? editor.runAtomic(draft => addWindowToStore(draft, prepareAnchor(draft), element.params).windowId)
+        : addOrdinaryElementInStore(editor, prepareAnchor, element);
   } catch (err) {
     return { error: err instanceof Error ? err.message : `Failed to add ${element.kind}` };
   }
@@ -1631,54 +1625,44 @@ export const createMutationSlice: StateCreator<
 
   addColumn: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, { kind: 'column', params },
-    (editor, anchor) => addColumnToStore(editor, anchor, params).columnId,
   ),
 
   addWall: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, { kind: 'wall', params },
-    (editor, anchor) => addWallToStore(editor, anchor, params).wallId,
   ),
 
   addSlab: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, { kind: 'slab', params },
-    (editor, anchor) => addSlabToStore(editor, anchor, params).slabId,
   ),
 
   addBeam: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, { kind: 'beam', params },
-    (editor, anchor) => addBeamToStore(editor, anchor, params).beamId,
   ),
 
   addDoor: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, { kind: 'door', params },
-    (editor, anchor) => addDoorToStore(editor, anchor, params).doorId,
   ),
 
   addWindow: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, { kind: 'window', params },
-    (editor, anchor) => addWindowToStore(editor, anchor, params).windowId,
   ),
 
   addHostedFill: (modelId, hostExpressId, spec, batchId) => addHostedFillIn(api, modelId, hostExpressId, spec, { batchId }),
 
   addSpace: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, { kind: 'space', params },
-    (editor, anchor) => addSpaceToStore(editor, anchor, params).spaceId,
   ),
 
   addRoof: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, { kind: 'roof', params },
-    (editor, anchor) => addRoofToStore(editor, anchor, params).roofId,
   ),
 
   addPlate: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, { kind: 'plate', params },
-    (editor, anchor) => addPlateToStore(editor, anchor, params).plateId,
   ),
 
   addMember: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, { kind: 'member', params },
-    (editor, anchor) => addMemberToStore(editor, anchor, params).memberId,
   ),
 
   recordAuthoredElement: (modelId, storeyExpressId, entityId, element, options) => {

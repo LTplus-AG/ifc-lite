@@ -81,7 +81,7 @@ beforeEach(async () => {
 });
 afterEach(() => { cleanup(); setLocale('en'); useViewerStore.setState(original); localStorage.clear(); });
 
-const chart = (): ChartSpec => ({ id: 'chosen-comparison', title: 'Selected comparison', source: 'compare', type: 'bar', dimension: 'State', measure: { agg: 'count' } });
+const chart = (): ChartSpec & { type: 'bar' } => ({ id: 'chosen-comparison', title: 'Selected comparison', source: 'compare', type: 'bar', dimension: 'State', measure: { agg: 'count' } });
 function documentFor(spec: ChartSpec): DocumentSpec {
   return { version: DOCUMENT_VERSION, id: 'recorded-document', name: 'Recorded comparison proof', page: { size: 'A4', orientation: 'portrait' },
     blocks: [{ kind: 'chart', id: 'recorded-block', chart: spec, snapshot: true }] };
@@ -383,7 +383,7 @@ describe('Saved comparison chart source (#6549)', () => {
         { ...block, id: 'filter-refused', snapshot: false, chart: { ...chart(), title: 'Refused live filter', source: 'elements', dimension: ELEMENT_COLUMNS.ifcType, filter: { selector: 'not-an-ifc-selector()' } } },
         { ...block, id: 'column-refused', snapshot: false, chart: { ...chart(), title: 'Refused column', source: 'elements', dimension: 'MissingDimension' } },
       ] };
-      const unfiltered = await prepareDocument({ ...refused, blocks: refused.blocks.map((item) => item.kind === 'chart'
+      const unfiltered = await prepareDocument({ ...refused, blocks: refused.blocks.map((item) => item.kind === 'chart' && item.chart.type !== 'elementCount'
         ? { ...item, chart: { ...item.chart, dimension: ELEMENT_COLUMNS.ifcType, filter: undefined } } : item) }, state);
       assert.ok((unfiltered.aggregations.get('filter-refused')?.total ?? 0) > 0, 'the real parsed elements can aggregate without the refused selector');
       assert.equal(unfiltered.chartMessages.size, 0);

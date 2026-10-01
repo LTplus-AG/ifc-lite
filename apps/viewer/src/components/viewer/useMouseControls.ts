@@ -750,7 +750,9 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       canvas.style.cursor = tool === 'pan' ? 'grab' : (tool === 'walk' || tool === 'measure' || tool === 'appearance-face' ? 'crosshair' : 'default');
       clearHover();
     };
-    const handlePointerCancel = (e: PointerEvent) => { commandPress.cancel(e); handleMouseLeave(); };
+    const handlePointerCancel = (e: PointerEvent) => {
+      if (!commandPress.hasPress() || commandPress.cancel(e)) handleMouseLeave();
+    };
     const handleLostPointerCapture = (e: PointerEvent) => { if (commandPress.cancel(e)) handleMouseLeave(); };
     const handleWindowBlur = () => { if (commandPress.cancel()) handleMouseLeave(); };
 

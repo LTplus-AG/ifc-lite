@@ -40,6 +40,7 @@ export function createCommandPressController(ctx: MouseHandlerContext) {
     if (press && (!sameRuntime(press) || useViewerStore.getState().activeTool !== 'command')) cancel();
   });
   return {
+    hasPress: () => press !== null,
     captured: () => press !== null && ctx.canvas.hasPointerCapture(press.pointerId),
     begin(event: PointerEvent): boolean {
       cancel();

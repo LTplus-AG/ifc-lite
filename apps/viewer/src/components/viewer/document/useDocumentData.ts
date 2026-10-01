@@ -13,6 +13,8 @@ import { type Aggregation, type ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
+import { captureTranslation } from '@/i18n/registry';
+import type { DocumentLabelFormatter } from '@/lib/document/document-labels';
 import type { BindingContext } from '@/lib/document/bindings';
 import type { DocumentSpec } from '@/lib/document/types';
 import { prepareDocumentCharts } from '@/lib/document/prepare-charts';
@@ -23,6 +25,7 @@ import { useChartSourceFilters } from '../charts/useChartSourceFilters';
 import { useDocumentTables } from './useDocumentTables';
 
 export interface DocumentData {
+  labels: DocumentLabelFormatter;
   bindings: BindingContext;
   aggregations: Map<string, Aggregation | null>;
   /** Chart block id → source provenance or a resolving/refused error caption.
@@ -40,6 +43,7 @@ const ALL_SCOPE = { kind: 'all' as const };
 
 export function useDocumentData(document: DocumentSpec | null): DocumentData {
   const { revision } = useTranslation();
+  const labels = useMemo(() => captureTranslation(), [revision]);
   const savedComparisons = useViewerStore((s) => s.savedComparisons);
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
@@ -67,5 +71,5 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
   const topics = useMemo(() => bcfProject?.topics ?? new Map<string, BCFTopic>(), [bcfProject]);
   const tables = useDocumentTables(document);
 
-  return { bindings, aggregations, chartMessages, chartErrors, topics, tables };
+  return { bindings, aggregations, chartMessages, chartErrors, topics, tables, labels };
 }

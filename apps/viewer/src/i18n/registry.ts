@@ -101,12 +101,27 @@ function interpolate(template: string, params: TranslationParameters): string {
   });
 }
 
-export function resolve(key: TranslationKey, params: TranslationParameters = {}): string {
-  const catalogue = catalogues.get(activeLocale);
+function resolveFromCatalogue(key: TranslationKey, params: TranslationParameters, locale: Locale, catalogue: Catalogue | undefined): string {
   const value = catalogue?.[key];
   const resolved = value !== undefined ? value : en[key];
-  const template = typeof resolved === 'string' ? resolved : pluralForm(resolved, params, value !== undefined ? activeLocale : 'en');
+  const template = typeof resolved === 'string' ? resolved : pluralForm(resolved, params, value !== undefined ? locale : 'en');
   return interpolate(template, params);
+}
+
+export function resolve(key: TranslationKey, params: TranslationParameters = {}): string {
+  return resolveFromCatalogue(key, params, activeLocale, catalogues.get(activeLocale));
+}
+
+/** Freeze a label context for an asynchronous document layout/export (#6610).
+ * Locale or catalogue replacement must not mix languages halfway through a PDF. */
+export function captureTranslation(): typeof resolve {
+  const locale = activeLocale;
+  const catalogue = { ...catalogues.get(locale) };
+  for (const key of Object.keys(catalogue) as TranslationKey[]) {
+    const value = catalogue[key];
+    if (value !== undefined && typeof value !== 'string') catalogue[key] = { ...value };
+  }
+  return (key, params = {}) => resolveFromCatalogue(key, params, locale, catalogue);
 }
 
 /** Resolve directly from the canonical English catalogue, bypassing an active

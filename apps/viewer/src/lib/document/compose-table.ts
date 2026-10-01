@@ -52,7 +52,7 @@ export interface TableLayoutBlock {
 }
 
 /** A line of text on the page; `compose.ts` draws the same shape for every block. */
-export interface TextDrawnItem { kind: 'text'; x: number; y: number; size: number; bold: boolean; gray: number; text: string; font?: TextFont; color?: string }
+export interface TextDrawnItem { kind: 'text'; x: number; y: number; size: number; bold: boolean; gray: number; text: string; font?: TextFont; color?: string; role?: 'table-message'; tooltip?: string }
 
 /** A filled rectangle (the IDS report's compact pass bars, #6470); `color` is `#rrggbb`, drawn by the same `fillRect` as a text background. */
 export interface RectDrawnItem { kind: 'rect'; x: number; y: number; w: number; h: number; color: string }
@@ -120,7 +120,7 @@ export function layoutTable(block: TableLayoutBlock, cursor: LayoutCursor, conte
 
   if (hasMessage) {
     cursor.ensure(MESSAGE_HEIGHT);
-    cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 10, bold: false, gray: 130, text: cursor.truncate(block.message ?? '', contentW, 10, false) });
+    cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 10, bold: false, gray: 130, text: cursor.truncate(block.message ?? '', contentW, 10, false), role: 'table-message', tooltip: block.message });
     cursor.y += MESSAGE_HEIGHT;
   } else {
     const widths = tableColumnWidths(block.columns, rows, contentW, measure);

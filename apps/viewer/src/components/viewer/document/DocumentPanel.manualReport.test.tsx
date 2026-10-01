@@ -94,10 +94,11 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.equal(stored().modelName, 'tower.ifc');
     assert.deepEqual(stored().summary, { total: 2, pass: 1, fail: 0, warning: 1, unanswered: 0 });
 
-    const preview = ui.querySelector('[data-block-manual-report]')!;
+    let preview = ui.querySelector('[data-block-manual-report]')!;
     assert.match(preview.textContent ?? '', /Manual validation: Coordination round 3/);
-    assert.deepEqual([...preview.querySelectorAll('li[data-status]')].map((li) => li.getAttribute('data-status')), ['pass', 'warning']);
-    assert.ok(preview.querySelector('svg[aria-label="Overall: 1 passed, 1 with warnings, 0 failed, 0 not checked"]'));
+    assert.match(preview.textContent ?? '', /PASS\nUploaded on time/);
+    assert.match(preview.textContent ?? '', /WARNING\nNaming convention/);
+    assert.ok(preview.querySelector('img[alt*="1 passed, 1 with warnings, 0 failed, 0 not checked"]'));
     assert.match(preview.textContent ?? '', /Old prefix/);
 
     // Authored headings survive a real checklist refresh (#6547 review).
@@ -114,6 +115,7 @@ describe('Document panel manual validation report (#6401)', () => {
     click([...ui.querySelectorAll('button')].find((b) => b.textContent === 'Refresh from current checklist')!);
     await settle();
     assert.equal(stored().title, 'Authored manual heading', 'refresh preserves the heading while replacing checklist evidence');
+    preview = ui.querySelector('[data-block-manual-report]')!;
     assert.match(preview.textContent ?? '', /Authored manual heading/);
     assert.equal(stored().groups[0].items[1].status, 'fail');
     assert.deepEqual(stored().summary, { total: 2, pass: 1, fail: 1, warning: 0, unanswered: 0 });
@@ -227,11 +229,12 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.ok(checkbox);
     click(checkbox);
     await settle();
-    const preview = ui.querySelector('[data-block-manual-report]')!;
+    let preview = ui.querySelector('[data-block-manual-report]')!;
     assert.equal(stored().benchmarks, false);
     assert.equal(preview.querySelector('[data-manual-report-benchmarks]'), null);
     assert.ok(!preview.textContent?.includes('Structure-only observation'), 'short layout keeps verdicts while omitting review detail');
-    assert.deepEqual([...preview.querySelectorAll('li[data-status]')].map((item) => item.getAttribute('data-status')), ['fail', 'warning']);
+    assert.match(preview.textContent ?? '', /FAIL\nUploaded on time/);
+    assert.match(preview.textContent ?? '', /WARNING\nNaming convention/);
     act(() => {
       useViewerStore.getState().selectManualChecklist(structureId);
       useViewerStore.getState().setManualAnswer(fingerprint, 'b', { status: 'pass' });

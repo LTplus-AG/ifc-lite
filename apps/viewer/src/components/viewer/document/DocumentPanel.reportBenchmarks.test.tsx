@@ -113,7 +113,7 @@ function assertRing(root: Element, report: ValidationReport): void {
     start += count / report.summary.totalEntitiesChecked * 2 * Math.PI;
   }
   assert.ok(image.getAttribute('alt')?.includes(`${report.summary.overallPassRate}%`), 'accessible label retains the engine pass rate');
-  assert.ok(benchmark.textContent?.includes(`${report.summary.overallPassRate}%`), 'visible rate retains the engine rounding');
+  assert.ok((benchmark.closest('[data-preview-block]') ?? benchmark).textContent?.includes(`${report.summary.overallPassRate}%`), 'visible rate retains the engine rounding');
 }
 
 describe('IDS and information-validation ring benchmarks (#6552)', () => {

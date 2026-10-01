@@ -24,6 +24,8 @@ export { TEXT_STYLES, wrapText, truncateToWidth } from './compose-text.js';
 import { splitDocumentSections } from './page-sections.js';
 
 import { resolvePageHeading, type PageHeading, type ResolvedPageHeading } from './page-heading.js';
+import { resolveEnglish } from '@/i18n/registry';
+import type { DocumentLabelFormatter } from './document-labels.js';
 
 const HEADER_HEIGHT = 30;
 const FOOTER_HEIGHT = 24;
@@ -85,6 +87,10 @@ export type DrawnItem =
 export interface DocumentPage {
   index: number;
   items: DrawnItem[];
+  /** Parallel source identities let preview select the authored block on every overflow page (#6610). */
+  blockIds?: string[];
+  /** Blank text and spacers retain an interactive region without adding PDF ink. */
+  emptyBlocks?: Array<{ blockId: string; x: number; y: number; w: number; h: number }>;
 }
 
 export interface DocumentLayout {
@@ -94,6 +100,8 @@ export interface DocumentLayout {
   header: string;
   pageHeading?: ResolvedPageHeading;
   footer: string;
+  /** Already formatted counter text for each composed page. */
+  pageCounters?: string[];
 }
 
 export interface ComposeDocumentInput {
@@ -102,6 +110,7 @@ export interface ComposeDocumentInput {
   page: ReportPageSetup;
   blocks: ResolvedBlock[];
   generatedAt: string;
+  labels?: DocumentLabelFormatter;
   /** Width of `text` at `size` points, in points. */
   measure: (text: string, size: number, bold: boolean, font?: TextFont) => number;
 }
@@ -121,6 +130,7 @@ export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'font
 }
 
 export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
+  const labels = input.labels ?? resolveEnglish;
   const size = pageBox(input.page);
   const contentW = size.w - 2 * REPORT_MARGIN;
   const pageHeading = input.pageHeading ? resolvePageHeading(input.name, input.pageHeading, contentW, input.measure) : undefined;
@@ -128,12 +138,17 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
   const top = REPORT_MARGIN + HEADER_HEIGHT + headingExtraHeight;
   const bottom = size.h - REPORT_MARGIN - FOOTER_HEIGHT;
   const pages: DocumentPage[] = [];
-  let page: DocumentPage = { index: 0, items: [] };
+  let page: DocumentPage = { index: 0, items: [], blockIds: [], emptyBlocks: [] };
   let y = top;
+  let sourceBlockId = '';
+  const push = (...items: DrawnItem[]): void => {
+    page.items.push(...items);
+    page.blockIds?.push(...items.map(() => sourceBlockId));
+  };
 
   const newPage = (): void => {
     pages.push(page);
-    page = { index: pages.length, items: [] };
+    page = { index: pages.length, items: [], blockIds: [], emptyBlocks: [] };
     y = top;
   };
   const ensure = (h: number): void => {
@@ -153,7 +168,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     bottom,
     ensure,
     newPage,
-    push: (...items) => { page.items.push(...items); },
+    push,
     truncate: (text, width, size, bold) => truncateToWidth(text, width, size, bold, input.measure),
   };
 
@@ -234,6 +249,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     if (sectionIndex > 0 && (page.items.length > 0 || y > top)) newPage();
     for (let i = 0; i < blocks.length; i++) {
       const block = blocks[i];
+      sourceBlockId = block.id;
       const next = blocks[i + 1];
       if (next && isHalfPairable(block) && isHalfPairable(next)) {
         const colW = (contentW - BLOCK_GAP) / 2;
@@ -245,7 +261,9 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           // An oversized text column falls back to the ordinary paginated text path.
           if (rowH <= bottom - top) {
             ensure(rowH + BLOCK_GAP);
-            page.items.push(...a.draw(y), ...b.draw(y));
+            push(...a.draw(y));
+            sourceBlockId = next.id;
+            push(...b.draw(y));
             y += rowH + BLOCK_GAP;
             i += 1;
             continue;
@@ -256,12 +274,13 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
         case 'text': {
           const { style, size, lineH, lines, title, titleHeight } = textLayout(block, REPORT_MARGIN, contentW);
           if (!title && !block.backgroundColor && lines.every((l) => l.length === 0)) {
+            page.emptyBlocks?.push({ blockId: block.id, x: REPORT_MARGIN, y, w: contentW, h: lineH });
             y += lineH;
             break;
           }
           if (title) {
             ensure(titleHeight + style.gapBefore + lineH * Math.min(lines.length, 2));
-            page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + 11, size: 11, bold: true, gray: 0, text: truncateToWidth(title, contentW, 11, true, input.measure) });
+            push({ kind: 'text', x: REPORT_MARGIN, y: y + 11, size: 11, bold: true, gray: 0, text: truncateToWidth(title, contentW, 11, true, input.measure) });
             y += titleHeight;
           }
           y += style.gapBefore;
@@ -269,7 +288,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           ensure(lineH * Math.min(lines.length, 2));
           for (const line of lines) {
             if (y + lineH > bottom) newPage();
-            page.items.push(...textBackground(block, REPORT_MARGIN, y, contentW, lineH), { kind: 'text', x: REPORT_MARGIN, y: y + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font, color: block.textColor });
+            push(...textBackground(block, REPORT_MARGIN, y, contentW, lineH), { kind: 'text', x: REPORT_MARGIN, y: y + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font, color: block.textColor });
             y += lineH;
           }
           y += BLOCK_GAP;
@@ -280,6 +299,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           // the footer, since `ensure` only starts one fresh page (review finding).
           const height = Math.min(block.height, bottom - top);
           ensure(height);
+          page.emptyBlocks?.push({ blockId: block.id, x: REPORT_MARGIN, y, w: contentW, h: height });
           y += height;
           break;
         }
@@ -287,7 +307,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
         case 'chart': {
           const single = block.kind === 'chart' ? layoutChart(block, REPORT_MARGIN, contentW) : layoutImage(block, REPORT_MARGIN, contentW);
           ensure(single.height + BLOCK_GAP);
-          page.items.push(...single.draw(y));
+          push(...single.draw(y));
           y += single.height + BLOCK_GAP;
           break;
         }
@@ -296,11 +316,11 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           break;
         }
         case 'ids-report': {
-          layoutIdsReport(block, cursor, contentW, BLOCK_GAP, wrap, (ring) => page.items.push(ring));
+          layoutIdsReport(block, cursor, contentW, BLOCK_GAP, wrap, (ring) => push(ring), labels);
           break;
         }
         case 'manual-report': {
-          layoutManualReport(block, cursor, contentW, BLOCK_GAP, wrap, (ring) => { page.items.push(ring); });
+          layoutManualReport(block, cursor, contentW, BLOCK_GAP, wrap, (ring) => { push(ring); }, labels);
           break;
         }
         case 'topic': {
@@ -311,8 +331,8 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           const lines = block.lines.flatMap((l) => wrapText(l, textW, 10, false, input.measure));
           // Title, snapshot and the first lines move together; a long description then continues page by page.
           ensure(Math.max(16 + Math.min(lines.length, 3) * lineH, snapshotH) + BLOCK_GAP);
-          page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + 11, size: 11, bold: true, gray: 0, text: block.authoredTitle ? truncateToWidth(block.title, textW, 11, true, input.measure) : block.title });
-          if (block.snapshotAspect) page.items.push({ kind: 'topic-snapshot', blockId: block.id, x: size.w - REPORT_MARGIN - snapshotW, y, w: snapshotW, h: snapshotH });
+          push({ kind: 'text', x: REPORT_MARGIN, y: y + 11, size: 11, bold: true, gray: 0, text: block.authoredTitle ? truncateToWidth(block.title, textW, 11, true, input.measure) : block.title });
+          if (block.snapshotAspect) push({ kind: 'topic-snapshot', blockId: block.id, x: size.w - REPORT_MARGIN - snapshotW, y, w: snapshotW, h: snapshotH });
           const snapshotBottom = y + snapshotH;
           let ty = y + 16;
           for (const line of lines) {
@@ -320,7 +340,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
               newPage();
               ty = y;
             }
-            page.items.push({ kind: 'text', x: REPORT_MARGIN, y: ty + 10, size: 10, bold: false, gray: 60, text: line });
+            push({ kind: 'text', x: REPORT_MARGIN, y: ty + 10, size: 10, bold: false, gray: 60, text: line });
             ty += lineH;
           }
           y = Math.max(ty, page.items.some((i) => i.kind === 'topic-snapshot' && i.blockId === block.id) ? snapshotBottom : ty) + BLOCK_GAP;
@@ -331,5 +351,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
   }
   pages.push(page);
 
-  return { page: input.page, size, pages, header: input.name, ...(pageHeading ? { pageHeading } : {}), footer: `Generated ${input.generatedAt} · ifc-lite` };
+  return { page: input.page, size, pages, header: input.name, ...(pageHeading ? { pageHeading } : {}),
+    footer: labels('document.print.footer', { timestamp: input.generatedAt }),
+    pageCounters: pages.map(page => labels('document.print.pageCounter', { page: page.index + 1, total: pages.length })) };
 }

@@ -34,7 +34,7 @@ import { ClampedNumberInput, field } from './BlockEditor.parts';
 import { OptionalColorPicker } from './OptionalColorPicker';
 import { DEFAULT_TABLE_HEADER_BACKGROUND, tableHeaderStyle } from '@/lib/table-header-style';
 import { ComparisonSourceEditor } from './ComparisonSourceEditor';
-import { TABLE_COLUMN_LABEL_KEY } from './table-column-labels';
+import { TABLE_COLUMN_LABEL_KEY } from '@/lib/document/table-column-labels';
 
 /** Above this many columns a portrait page ellipsizes most cells. */
 const MANY_COLUMNS = 10;

@@ -27,6 +27,31 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Opt-in map geometry compatibility export (#6587)
+
+Fresh main-versus-branch native full loads and actual browser worker-pool loads
+on the house fixture retained byte-identical geometry, including the browser's
+instanced payloads. Default parse, geometry and worker-stream timings showed
+no reproducible slowdown in the interleaved cohort. Browser readiness varied
+within overlapping sample ranges; fresh tabs used distinct origins but shared
+the native browser runtime, so this does not establish cold-process performance.
+The actual default asynchronous STEP API also retained identical output bytes
+and timings within the observed spread.
+
+The opt-in export has an explicit cost: it parses the mutation-resolved emitted
+model and produces canonical placement/representation patches. Its first call
+also imports and initializes the geometry backend. The WASM binary grows to
+carry the planner. These measurements establish bounded default-path evidence,
+not an optimization or a universal zero-cost claim. Raw witnesses and supported
+mutation proofs are under `scripts/perf/evidence/map-normalization-6587/`.
+
+Lesson: benchmark the real export API as well as the untouched load path.
+Keep unit conversion separate from physical map scale, reuse the strict Rust
+placement resolver, and settle changed entity IDs through the existing export
+ledger. Removing strict target-unit validation or reversing affine/placement
+order is detected by actual behavioral regressions, rather than merely making
+the new API disappear at import time.
+
 ## Planar conic handedness (#6597)
 
 Interleaved base-versus-branch native full-load runs on the house fixture and

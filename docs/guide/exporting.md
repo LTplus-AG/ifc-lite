@@ -94,7 +94,7 @@ while the authored IFC runs north across the bridge. GeoBIM's best-effort headin
 option did not correct it in a live control. The documented database tiler
 control also failed placement, near longitude/latitude 0/0. Automatic placement
 acceptance therefore remains failed; see the [recorded geometry oracle and
-actual screenshot](../architecture/evidence/cesium-ion-6587/README.md).
+actual screenshot](https://github.com/LTplus-AG/ifc-lite/blob/57811ccf132b3d89256df0473e5dc3e05d4d40be/docs/architecture/evidence/cesium-ion-6587/README.md).
 This separate rendering is not an inspection of the signed-in Ion dashboard,
 and vertical datum transformation remains independently unverified.
 Cancellation, refusal of retained image

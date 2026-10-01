@@ -182,6 +182,22 @@ export interface ExtrusionDefinitionsJs {
 
 
 
+export class AlignmentAxisJs {
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * [horizontal distance, IFC Z-up point XYZ, normalized world tangent XYZ].
+     * Coordinates remain f64 absolute metres; no renderer origin is applied.
+     */
+    evaluate(distance_m: number): Float64Array;
+    constructor(content: string, express_id: number);
+    readonly GlobalId: string | undefined;
+    readonly Name: string | undefined;
+    readonly approximate: boolean;
+    readonly expressId: number;
+    readonly geometricHorizontalLengthMeters: number;
+}
+
 /**
  * The overlap solid of one clashing pair, or the reason there is none.
  */
@@ -2402,6 +2418,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly __wbg_alignmentaxisjs_free: (a: number, b: number) => void;
     readonly __wbg_clashintersectionsolidjs_free: (a: number, b: number) => void;
     readonly __wbg_clashrunresult_free: (a: number, b: number) => void;
     readonly __wbg_clashsession_free: (a: number, b: number) => void;
@@ -2425,6 +2442,13 @@ export interface InitOutput {
     readonly __wbg_symbolictext_free: (a: number, b: number) => void;
     readonly __wbg_zonepiecejs_free: (a: number, b: number) => void;
     readonly __wbg_zonesplitjs_free: (a: number, b: number) => void;
+    readonly alignmentaxisjs_GlobalId: (a: number, b: number) => void;
+    readonly alignmentaxisjs_Name: (a: number, b: number) => void;
+    readonly alignmentaxisjs_approximate: (a: number) => number;
+    readonly alignmentaxisjs_evaluate: (a: number, b: number, c: number) => void;
+    readonly alignmentaxisjs_expressId: (a: number) => number;
+    readonly alignmentaxisjs_geometricHorizontalLengthMeters: (a: number) => number;
+    readonly alignmentaxisjs_new: (a: number, b: number, c: number, d: number) => void;
     readonly clashIntersectionSolid: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;
     readonly clashintersectionsolidjs_degenerateReason: (a: number, b: number) => void;
     readonly clashintersectionsolidjs_indices: (a: number, b: number) => void;

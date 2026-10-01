@@ -70,6 +70,7 @@ import { relationshipCardEn } from './catalogues/relationship-card.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { scheduleEn } from './catalogues/schedule.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
+import { alignmentSectionEn } from './catalogues/alignment-section.en';
 import { section2dEn } from './catalogues/section-2d.en';
 import { sheetsPdfEn } from './catalogues/sheets-pdf.en';
 import { searchModalEn } from './catalogues/search-modal.en';
@@ -116,6 +117,7 @@ export const en = {
   ...appearanceAssignmentListEn,
   ...appearanceAssignmentMembersEn,
   ...sectionToolEn,
+  ...alignmentSectionEn,
   ...section2dEn,
   ...costPanelEn,
   ...ribbonToolbarEn,

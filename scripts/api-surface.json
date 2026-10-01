@@ -9181,6 +9181,7 @@
     "startViewerServer: function"
   ],
   "@ifc-lite/wasm": [
+    "AlignmentAxisJs: class",
     "AnalyticCurveSegmentJs: type",
     "AnalyticExtrusionJs: interface",
     "AnalyticProfileJs: interface",

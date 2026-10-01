@@ -368,8 +368,9 @@ describe('Saved comparison chart source (#6549)', () => {
       const missingResult = await exportPreparedDocument(missing, { seams });
       assert.ok(documentPdfWarnings(missingResult).some((warning) => warning.includes('Saved comparison unavailable')));
       assert.equal((await pdfText(missingResult.blob)).split('Saved comparison unavailable in this browser.').length - 1, 1);
-      const { chartMessages: _messages, ...legacy } = input;
-      const legacyResult = await generateDocumentPdf({ ...legacy, chartMessages: new Map([[block.id, 'Legacy selector refused']]) }, seams);
+      const legacyResult = await generateDocumentPdf({ document, bindings: input.bindings, aggregations: input.aggregations,
+        chartMessages: new Map([[block.id, 'Legacy selector refused']]), snapshotIds: input.snapshotIds,
+        topics: input.topics, tables: input.tables }, seams);
       assert.ok(documentPdfWarnings(legacyResult).some((warning) => warning.includes('Legacy selector refused')), 'old callers without classification retain message-to-failure behavior');
       assert.equal(captures, 0);
     } finally { restoreParser(); pdfWindow.jspdf = previous; }

@@ -1,0 +1,541 @@
+{
+  "scope": "#6537 worker critical-path investigation, no scheduling change or speed claim",
+  "observations": [
+    {
+      "fixture": "snowdon",
+      "input": {
+        "bytes": 8714606,
+        "sha256": "fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4"
+      },
+      "productionSource": "a695734678d5c78206807921b4d173b8977f7162",
+      "loadPathsMain": "e79f27342beb01a6f30d9b63c44795ecd118f4de",
+      "runtime": {
+        "url": "http://localhost:5332/assets/ifc-lite_bg-Bk6KCJsY.wasm",
+        "status": 200,
+        "sha256": "039415545e2448ce8b1e40b14306524ee60cff29dabd97448080ac0d9e170610"
+      },
+      "geometry": {
+        "meshes": 7151,
+        "vertices": 565928,
+        "triangles": 612080
+      },
+      "environment": {
+        "visible": "visible",
+        "focus": true,
+        "crossOriginIsolated": true,
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "blackwell",
+          "fallback": false
+        }
+      },
+      "processingWorkers": [
+        {
+          "workerId": 0,
+          "jobsDispatched": 183,
+          "sliceCount": 2,
+          "wasmCallBoundaryCount": 2,
+          "firstCallMs": 8593.659912109375,
+          "lastSliceDoneMs": 8852.14501953125,
+          "lastMainDispatchMs": 8605.554999999702,
+          "distinctObservedRoutingKeys": 178
+        },
+        {
+          "workerId": 1,
+          "jobsDispatched": 202,
+          "sliceCount": 2,
+          "wasmCallBoundaryCount": 2,
+          "firstCallMs": 8593.659912109375,
+          "lastSliceDoneMs": 8872.169921875,
+          "lastMainDispatchMs": 8605.60999999987,
+          "distinctObservedRoutingKeys": 178
+        },
+        {
+          "workerId": 2,
+          "jobsDispatched": 179,
+          "sliceCount": 2,
+          "wasmCallBoundaryCount": 2,
+          "firstCallMs": 8593.729736328125,
+          "lastSliceDoneMs": 8875.44482421875,
+          "lastMainDispatchMs": 8605.625,
+          "distinctObservedRoutingKeys": 178
+        },
+        {
+          "workerId": 3,
+          "jobsDispatched": 178,
+          "sliceCount": 2,
+          "wasmCallBoundaryCount": 2,
+          "firstCallMs": 8593.800048828125,
+          "lastSliceDoneMs": 8856.300048828125,
+          "lastMainDispatchMs": 8605.659999999683,
+          "distinctObservedRoutingKeys": 178
+        },
+        {
+          "workerId": 4,
+          "jobsDispatched": 180,
+          "sliceCount": 2,
+          "wasmCallBoundaryCount": 2,
+          "firstCallMs": 8593.83984375,
+          "lastSliceDoneMs": 8866.374755859375,
+          "lastMainDispatchMs": 8605.68499999959,
+          "distinctObservedRoutingKeys": 178
+        },
+        {
+          "workerId": 5,
+          "jobsDispatched": 236,
+          "sliceCount": 2,
+          "wasmCallBoundaryCount": 2,
+          "firstCallMs": 8593.83984375,
+          "lastSliceDoneMs": 8889.010009765625,
+          "lastMainDispatchMs": 8605.704999999609,
+          "distinctObservedRoutingKeys": 178
+        },
+        {
+          "workerId": 6,
+          "jobsDispatched": 200,
+          "sliceCount": 2,
+          "wasmCallBoundaryCount": 2,
+          "firstCallMs": 8593.894775390625,
+          "lastSliceDoneMs": 8860.479736328125,
+          "lastMainDispatchMs": 8605.724999999627,
+          "distinctObservedRoutingKeys": 178
+        },
+        {
+          "workerId": 7,
+          "jobsDispatched": 247,
+          "sliceCount": 2,
+          "wasmCallBoundaryCount": 2,
+          "firstCallMs": 8593.925048828125,
+          "lastSliceDoneMs": 8947.1650390625,
+          "lastMainDispatchMs": 8605.75,
+          "distinctObservedRoutingKeys": 178
+        }
+      ],
+      "processingEnvelopeMs": 353.505126953125,
+      "sumFinalIdleTailWorkerMs": 558.23095703125,
+      "allSlicesPostedBeforeAnyWorkerFinalIdle": true,
+      "workerInjection": [
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790884933770.155
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790884933796.16
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790884933887.9648
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790884934099.2102
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790884934193.3948
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790884934412.985
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790884934507.025
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790884934724.2
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790884934968.48
+          }
+        }
+      ],
+      "performanceVerdict": "Exploratory instrumented trace while other graphs were running; not a clean A/B or throughput result.",
+      "publicFixture": {
+        "cataloguedPath": "various/01_Snowdon_Towers_Sample_Structural(1).ifc",
+        "bytes": 8714606,
+        "download": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4"
+      }
+    },
+    {
+      "fixture": "holter",
+      "input": {
+        "bytes": 177465622,
+        "sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8"
+      },
+      "productionSource": "a695734678d5c78206807921b4d173b8977f7162",
+      "loadPathsMain": "e79f27342beb01a6f30d9b63c44795ecd118f4de",
+      "runtime": {
+        "url": "http://localhost:5332/assets/ifc-lite_bg-Bk6KCJsY.wasm",
+        "status": 200,
+        "sha256": "039415545e2448ce8b1e40b14306524ee60cff29dabd97448080ac0d9e170610"
+      },
+      "geometry": {
+        "meshes": 56697,
+        "vertices": 1556858,
+        "triangles": 755426
+      },
+      "environment": {
+        "visible": "visible",
+        "focus": true,
+        "crossOriginIsolated": true,
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "blackwell",
+          "fallback": false
+        }
+      },
+      "processingWorkers": [
+        {
+          "workerId": 0,
+          "jobsDispatched": 8848,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 19,
+          "firstCallMs": 9432.76513671875,
+          "lastSliceDoneMs": 11216.43505859375,
+          "lastMainDispatchMs": 10487.100000000093,
+          "distinctObservedRoutingKeys": 230
+        },
+        {
+          "workerId": 1,
+          "jobsDispatched": 10963,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 23,
+          "firstCallMs": 9432.1201171875,
+          "lastSliceDoneMs": 11443.469970703125,
+          "lastMainDispatchMs": 10492.274999999907,
+          "distinctObservedRoutingKeys": 230
+        },
+        {
+          "workerId": 2,
+          "jobsDispatched": 6204,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 13,
+          "firstCallMs": 9432.119873046875,
+          "lastSliceDoneMs": 11130.4599609375,
+          "lastMainDispatchMs": 10494.92500000028,
+          "distinctObservedRoutingKeys": 230
+        },
+        {
+          "workerId": 3,
+          "jobsDispatched": 3617,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 8,
+          "firstCallMs": 9432.175048828125,
+          "lastSliceDoneMs": 11279.830078125,
+          "lastMainDispatchMs": 10497.620000000112,
+          "distinctObservedRoutingKeys": 230
+        },
+        {
+          "workerId": 4,
+          "jobsDispatched": 14545,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 30,
+          "firstCallMs": 9432.190185546875,
+          "lastSliceDoneMs": 11171.97509765625,
+          "lastMainDispatchMs": 10497.85999999987,
+          "distinctObservedRoutingKeys": 230
+        },
+        {
+          "workerId": 5,
+          "jobsDispatched": 2407,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 6,
+          "firstCallMs": 9432.250244140625,
+          "lastSliceDoneMs": 10802.4951171875,
+          "lastMainDispatchMs": 10499.660000000149,
+          "distinctObservedRoutingKeys": 230
+        },
+        {
+          "workerId": 6,
+          "jobsDispatched": 8046,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 18,
+          "firstCallMs": 9432.365234375,
+          "lastSliceDoneMs": 11224.395263671875,
+          "lastMainDispatchMs": 10499.85999999987,
+          "distinctObservedRoutingKeys": 230
+        },
+        {
+          "workerId": 7,
+          "jobsDispatched": 6794,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 15,
+          "firstCallMs": 9432.385009765625,
+          "lastSliceDoneMs": 11169.125,
+          "lastMainDispatchMs": 10500.26500000013,
+          "distinctObservedRoutingKeys": 230
+        }
+      ],
+      "processingEnvelopeMs": 2011.35009765625,
+      "sumFinalIdleTailWorkerMs": 2109.57421875,
+      "allSlicesPostedBeforeAnyWorkerFinalIdle": true,
+      "workerInjection": [
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885006266.49
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885006390.0398
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885006566.7048
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885006676.31
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885006887.555
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885006980.3252
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885007192.24
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885007282.94
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "failure": "worker.evaluate: Target page, context or browser has been closed"
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry-compression.worker-DOZXkOFU.js",
+          "installed": {
+            "epoch": 1790885012307.875
+          }
+        }
+      ],
+      "performanceVerdict": "Exploratory instrumented trace while other graphs were running; not a clean A/B or throughput result.",
+      "publicFixture": {
+        "cataloguedPath": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "bytes": 177465622,
+        "download": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8"
+      }
+    },
+    {
+      "fixture": "os1",
+      "input": {
+        "bytes": 342657851,
+        "sha256": "e91ddbbd672bbde946af14631de4c732f0cf8a7cfae5dbbf06fbeab03b5c46df"
+      },
+      "productionSource": "a695734678d5c78206807921b4d173b8977f7162",
+      "loadPathsMain": "e79f27342beb01a6f30d9b63c44795ecd118f4de",
+      "runtime": {
+        "url": "http://localhost:5332/assets/ifc-lite_bg-Bk6KCJsY.wasm",
+        "status": 200,
+        "sha256": "039415545e2448ce8b1e40b14306524ee60cff29dabd97448080ac0d9e170610"
+      },
+      "geometry": {
+        "meshes": 39290,
+        "vertices": 2379331,
+        "triangles": 1464746
+      },
+      "environment": {
+        "visible": "visible",
+        "focus": true,
+        "crossOriginIsolated": true,
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "blackwell",
+          "fallback": false
+        }
+      },
+      "processingWorkers": [
+        {
+          "workerId": 0,
+          "jobsDispatched": 2187,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 6,
+          "firstCallMs": 9736.695068359375,
+          "lastSliceDoneMs": 11492.614990234375,
+          "lastMainDispatchMs": 10092.540000000037,
+          "distinctObservedRoutingKeys": 530
+        },
+        {
+          "workerId": 1,
+          "jobsDispatched": 2091,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 6,
+          "firstCallMs": 9736.7451171875,
+          "lastSliceDoneMs": 11515.449951171875,
+          "lastMainDispatchMs": 10092.57499999972,
+          "distinctObservedRoutingKeys": 530
+        },
+        {
+          "workerId": 2,
+          "jobsDispatched": 2200,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 6,
+          "firstCallMs": 9736.840087890625,
+          "lastSliceDoneMs": 11398.43994140625,
+          "lastMainDispatchMs": 10092.589999999851,
+          "distinctObservedRoutingKeys": 530
+        },
+        {
+          "workerId": 3,
+          "jobsDispatched": 2257,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 7,
+          "firstCallMs": 9736.820068359375,
+          "lastSliceDoneMs": 11401.05517578125,
+          "lastMainDispatchMs": 10092.604999999981,
+          "distinctObservedRoutingKeys": 530
+        },
+        {
+          "workerId": 4,
+          "jobsDispatched": 2138,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 6,
+          "firstCallMs": 9736.824951171875,
+          "lastSliceDoneMs": 11435.195068359375,
+          "lastMainDispatchMs": 10092.725000000093,
+          "distinctObservedRoutingKeys": 530
+        },
+        {
+          "workerId": 5,
+          "jobsDispatched": 2038,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 6,
+          "firstCallMs": 9736.9150390625,
+          "lastSliceDoneMs": 11424.615234375,
+          "lastMainDispatchMs": 10092.73499999987,
+          "distinctObservedRoutingKeys": 529
+        },
+        {
+          "workerId": 6,
+          "jobsDispatched": 1958,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 6,
+          "firstCallMs": 9736.9599609375,
+          "lastSliceDoneMs": 11454.60986328125,
+          "lastMainDispatchMs": 10092.745000000112,
+          "distinctObservedRoutingKeys": 529
+        },
+        {
+          "workerId": 7,
+          "jobsDispatched": 2121,
+          "sliceCount": 3,
+          "wasmCallBoundaryCount": 6,
+          "firstCallMs": 9737.0,
+          "lastSliceDoneMs": 11407.06005859375,
+          "lastMainDispatchMs": 10092.754999999888,
+          "distinctObservedRoutingKeys": 529
+        }
+      ],
+      "processingEnvelopeMs": 1778.7548828125,
+      "sumFinalIdleTailWorkerMs": 594.559326171875,
+      "allSlicesPostedBeforeAnyWorkerFinalIdle": true,
+      "workerInjection": [
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885139270.775
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885139370.7349
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885139566.265
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885139666.79
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885139866.52
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885139978.385
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885140180.855
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "installed": {
+            "epoch": 1790885140280.5398
+          }
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry.worker-DOP58_Zu.js",
+          "failure": "worker.evaluate: Target page, context or browser has been closed"
+        },
+        {
+          "url": "http://localhost:5332/assets/geometry-compression.worker-DOZXkOFU.js",
+          "installed": {
+            "epoch": 1790885144263.6401
+          }
+        }
+      ],
+      "performanceVerdict": "Exploratory instrumented trace while other graphs were running; not a clean A/B or throughput result.",
+      "publicFixture": {
+        "cataloguedPath": "various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc",
+        "bytes": 342657851,
+        "download": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/e91ddbbd672bbde946af14631de4c732f0cf8a7cfae5dbbf06fbeab03b5c46df"
+      }
+    }
+  ]
+}

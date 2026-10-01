@@ -2820,3 +2820,21 @@ completion timeout limit the inference; the evidence preserves qualification
 failures rather than discarding them. The lesson is to measure the actual default
 worker pool even for opt-in APIs, and to separate post-timing byte witnesses from
 the completion boundary. See [the evidence](../../docs/architecture/evidence/alignment-sections-6603/README.md).
+
+## Worker affinity critical path investigation (#6537)
+
+Exploratory native-Chrome traces on public Revit and ARCHICAD fixtures show that
+all remaining slices were posted before any processing worker finished its final
+queue. Equal routing-key counts do not imply equal cost, and job count does not
+predict the completion order. The initial entity-ID wave is included in those
+key counts; it must not be mistaken for geometry-prototype coverage.
+
+Verdict: scheduling remains unshipped. A least-outstanding policy applied only
+to newly arriving keys cannot rebalance an already posted tail. A useful next
+experiment must retain unstarted groups on the host, preserve ownership after
+processing starts, and account for cache reuse and watchdog/retry ledgers. These
+instrumented observations ran alongside validation graphs and establish no
+throughput improvement or recoverable wall-clock saving. Worker call boundaries
+also include output flushing and bookkeeping, so they do not price individual
+geometry keys. Preserve the [raw traces, actual GPU frames and limitations](../../docs/architecture/evidence/6537-worker-affinity/README.md)
+before making an interleaved end-to-end claim.

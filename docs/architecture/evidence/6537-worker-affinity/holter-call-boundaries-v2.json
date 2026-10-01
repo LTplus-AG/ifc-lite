@@ -1,0 +1,3431 @@
+{
+  "scope": "Instrumented worker-local call boundary includes flush/bookkeeping, not isolated kernel time. No throughput verdict.",
+  "source": "a695734678d5c78206807921b4d173b8977f7162",
+  "runtime": {
+    "url": "http://localhost:5332/assets/ifc-lite_bg-Bk6KCJsY.wasm",
+    "status": 200,
+    "sha256": "039415545e2448ce8b1e40b14306524ee60cff29dabd97448080ac0d9e170610"
+  },
+  "rows": [
+    {
+      "worker": 3,
+      "seq": 11,
+      "processedJobs": 0,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 1083.3798828125,
+      "distinctKeys": 39,
+      "topKeys": [
+        [
+          1223273639,
+          222
+        ],
+        [
+          1029434442,
+          89
+        ],
+        [
+          1347897457,
+          30
+        ],
+        [
+          307449914,
+          18
+        ]
+      ]
+    },
+    {
+      "worker": 7,
+      "seq": 15,
+      "processedJobs": 0,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 758.530029296875,
+      "distinctKeys": 27,
+      "topKeys": [
+        [
+          1207146824,
+          183
+        ],
+        [
+          338338212,
+          60
+        ],
+        [
+          2565046534,
+          60
+        ],
+        [
+          1088008106,
+          56
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 0,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 748.010009765625,
+      "distinctKeys": 27,
+      "topKeys": [
+        [
+          707854131,
+          214
+        ],
+        [
+          1969454720,
+          75
+        ],
+        [
+          4151762594,
+          72
+        ],
+        [
+          3633132103,
+          56
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 14,
+      "processedJobs": 0,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 728.9501953125,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          355656403,
+          256
+        ],
+        [
+          3884676901,
+          212
+        ],
+        [
+          1830189359,
+          6
+        ],
+        [
+          3911835097,
+          4
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 8,
+      "processedJobs": 0,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 721.844970703125,
+      "distinctKeys": 27,
+      "topKeys": [
+        [
+          3855735517,
+          152
+        ],
+        [
+          2467226662,
+          132
+        ],
+        [
+          1315913369,
+          107
+        ],
+        [
+          1624116098,
+          74
+        ]
+      ]
+    },
+    {
+      "worker": 2,
+      "seq": 10,
+      "processedJobs": 0,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 704.39501953125,
+      "distinctKeys": 36,
+      "topKeys": [
+        [
+          381287208,
+          168
+        ],
+        [
+          763775673,
+          111
+        ],
+        [
+          1502726291,
+          62
+        ],
+        [
+          2931958591,
+          50
+        ]
+      ]
+    },
+    {
+      "worker": 5,
+      "seq": 13,
+      "processedJobs": 0,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 514.544921875,
+      "distinctKeys": 42,
+      "topKeys": [
+        [
+          3952133900,
+          154
+        ],
+        [
+          4013252545,
+          48
+        ],
+        [
+          4248475860,
+          32
+        ],
+        [
+          4158719027,
+          32
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 0,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 506.14501953125,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          1377723803,
+          212
+        ],
+        [
+          2206244568,
+          106
+        ],
+        [
+          2603519250,
+          76
+        ],
+        [
+          637639172,
+          36
+        ]
+      ]
+    },
+    {
+      "worker": 7,
+      "seq": 7,
+      "processedJobs": 0,
+      "callJobs": 128,
+      "durationWithBookkeepingMs": 238.324951171875,
+      "distinctKeys": 128,
+      "topKeys": [
+        [
+          1460,
+          1
+        ],
+        [
+          2332,
+          1
+        ],
+        [
+          3204,
+          1
+        ],
+        [
+          4076,
+          1
+        ]
+      ]
+    },
+    {
+      "worker": 2,
+      "seq": 2,
+      "processedJobs": 0,
+      "callJobs": 128,
+      "durationWithBookkeepingMs": 195.364990234375,
+      "distinctKeys": 128,
+      "topKeys": [
+        [
+          846,
+          1
+        ],
+        [
+          1787,
+          1
+        ],
+        [
+          2659,
+          1
+        ],
+        [
+          3531,
+          1
+        ]
+      ]
+    },
+    {
+      "worker": 3,
+      "seq": 3,
+      "processedJobs": 0,
+      "callJobs": 128,
+      "durationWithBookkeepingMs": 177.489990234375,
+      "distinctKeys": 128,
+      "topKeys": [
+        [
+          1024,
+          1
+        ],
+        [
+          1896,
+          1
+        ],
+        [
+          2768,
+          1
+        ],
+        [
+          3640,
+          1
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 4,
+      "processedJobs": 0,
+      "callJobs": 128,
+      "durationWithBookkeepingMs": 155.425048828125,
+      "distinctKeys": 128,
+      "topKeys": [
+        [
+          1133,
+          1
+        ],
+        [
+          2005,
+          1
+        ],
+        [
+          2877,
+          1
+        ],
+        [
+          3749,
+          1
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 6,
+      "processedJobs": 0,
+      "callJobs": 128,
+      "durationWithBookkeepingMs": 155.02490234375,
+      "distinctKeys": 128,
+      "topKeys": [
+        [
+          1351,
+          1
+        ],
+        [
+          2223,
+          1
+        ],
+        [
+          3095,
+          1
+        ],
+        [
+          3967,
+          1
+        ]
+      ]
+    },
+    {
+      "worker": 5,
+      "seq": 5,
+      "processedJobs": 0,
+      "callJobs": 128,
+      "durationWithBookkeepingMs": 154.820068359375,
+      "distinctKeys": 128,
+      "topKeys": [
+        [
+          1242,
+          1
+        ],
+        [
+          2114,
+          1
+        ],
+        [
+          2986,
+          1
+        ],
+        [
+          3858,
+          1
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 1,
+      "processedJobs": 0,
+      "callJobs": 128,
+      "durationWithBookkeepingMs": 154.6201171875,
+      "distinctKeys": 128,
+      "topKeys": [
+        [
+          781,
+          1
+        ],
+        [
+          1678,
+          1
+        ],
+        [
+          2550,
+          1
+        ],
+        [
+          3422,
+          1
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 0,
+      "processedJobs": 0,
+      "callJobs": 128,
+      "durationWithBookkeepingMs": 142.1650390625,
+      "distinctKeys": 128,
+      "topKeys": [
+        [
+          755,
+          1
+        ],
+        [
+          1569,
+          1
+        ],
+        [
+          2441,
+          1
+        ],
+        [
+          3313,
+          1
+        ]
+      ]
+    },
+    {
+      "worker": 5,
+      "seq": 13,
+      "processedJobs": 512,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 89.10986328125,
+      "distinctKeys": 30,
+      "topKeys": [
+        [
+          3952133900,
+          176
+        ],
+        [
+          4013252545,
+          56
+        ],
+        [
+          2516900661,
+          28
+        ],
+        [
+          4248475860,
+          28
+        ]
+      ]
+    },
+    {
+      "worker": 5,
+      "seq": 13,
+      "processedJobs": 1024,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 72.835205078125,
+      "distinctKeys": 32,
+      "topKeys": [
+        [
+          3952133900,
+          154
+        ],
+        [
+          4013252545,
+          59
+        ],
+        [
+          2516900661,
+          32
+        ],
+        [
+          4248475860,
+          32
+        ]
+      ]
+    },
+    {
+      "worker": 5,
+      "seq": 21,
+      "processedJobs": 0,
+      "callJobs": 472,
+      "durationWithBookkeepingMs": 52.72509765625,
+      "distinctKeys": 53,
+      "topKeys": [
+        [
+          3952133900,
+          76
+        ],
+        [
+          1518264422,
+          60
+        ],
+        [
+          730777636,
+          40
+        ],
+        [
+          566062488,
+          35
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 512,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 50.39990234375,
+      "distinctKeys": 28,
+      "topKeys": [
+        [
+          707854131,
+          146
+        ],
+        [
+          1969454720,
+          112
+        ],
+        [
+          3633132103,
+          112
+        ],
+        [
+          4151762594,
+          57
+        ]
+      ]
+    },
+    {
+      "worker": 5,
+      "seq": 13,
+      "processedJobs": 1536,
+      "callJobs": 271,
+      "durationWithBookkeepingMs": 47.69482421875,
+      "distinctKeys": 36,
+      "topKeys": [
+        [
+          3952133900,
+          102
+        ],
+        [
+          4013252545,
+          21
+        ],
+        [
+          2516900661,
+          14
+        ],
+        [
+          886289763,
+          12
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 16,
+      "processedJobs": 1536,
+      "callJobs": 505,
+      "durationWithBookkeepingMs": 47.3798828125,
+      "distinctKeys": 24,
+      "topKeys": [
+        [
+          103706664,
+          374
+        ],
+        [
+          402267835,
+          32
+        ],
+        [
+          3475732549,
+          32
+        ],
+        [
+          3855735517,
+          16
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 5120,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 46.2099609375,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          707854131,
+          129
+        ],
+        [
+          3633132103,
+          112
+        ],
+        [
+          1969454720,
+          101
+        ],
+        [
+          4151762594,
+          63
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 2048,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 45.880126953125,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          707854131,
+          164
+        ],
+        [
+          1969454720,
+          82
+        ],
+        [
+          4151762594,
+          79
+        ],
+        [
+          3633132103,
+          56
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 1024,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 43.81005859375,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          707854131,
+          164
+        ],
+        [
+          4151762594,
+          105
+        ],
+        [
+          1969454720,
+          56
+        ],
+        [
+          3633132103,
+          56
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 4096,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 43.35986328125,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          707854131,
+          146
+        ],
+        [
+          3633132103,
+          104
+        ],
+        [
+          1969454720,
+          84
+        ],
+        [
+          4151762594,
+          63
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 22,
+      "processedJobs": 512,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 43.300048828125,
+      "distinctKeys": 33,
+      "topKeys": [
+        [
+          3884676901,
+          242
+        ],
+        [
+          1132603174,
+          63
+        ],
+        [
+          4285066848,
+          40
+        ],
+        [
+          77729242,
+          24
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 7168,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 42.97998046875,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          707854131,
+          142
+        ],
+        [
+          1969454720,
+          112
+        ],
+        [
+          3633132103,
+          112
+        ],
+        [
+          4151762594,
+          54
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 16,
+      "processedJobs": 1024,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 41.795166015625,
+      "distinctKeys": 22,
+      "topKeys": [
+        [
+          103706664,
+          198
+        ],
+        [
+          3475732549,
+          84
+        ],
+        [
+          2467226662,
+          69
+        ],
+        [
+          1315913369,
+          60
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 3072,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 39.804931640625,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          707854131,
+          155
+        ],
+        [
+          1969454720,
+          84
+        ],
+        [
+          3633132103,
+          79
+        ],
+        [
+          4151762594,
+          72
+        ]
+      ]
+    },
+    {
+      "worker": 2,
+      "seq": 10,
+      "processedJobs": 512,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 38.84521484375,
+      "distinctKeys": 28,
+      "topKeys": [
+        [
+          381287208,
+          168
+        ],
+        [
+          763775673,
+          111
+        ],
+        [
+          3406869099,
+          99
+        ],
+        [
+          1502726291,
+          48
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 7680,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 38.6298828125,
+      "distinctKeys": 27,
+      "topKeys": [
+        [
+          707854131,
+          164
+        ],
+        [
+          4151762594,
+          108
+        ],
+        [
+          1969454720,
+          56
+        ],
+        [
+          3633132103,
+          56
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 14,
+      "processedJobs": 512,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 38.510009765625,
+      "distinctKeys": 29,
+      "topKeys": [
+        [
+          355656403,
+          214
+        ],
+        [
+          3884676901,
+          198
+        ],
+        [
+          1830189359,
+          12
+        ],
+        [
+          464467776,
+          12
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 1536,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 37.06982421875,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          707854131,
+          136
+        ],
+        [
+          1969454720,
+          112
+        ],
+        [
+          3633132103,
+          112
+        ],
+        [
+          4151762594,
+          83
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 14,
+      "processedJobs": 2048,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 36.780029296875,
+      "distinctKeys": 29,
+      "topKeys": [
+        [
+          3884676901,
+          201
+        ],
+        [
+          355656403,
+          184
+        ],
+        [
+          4285066848,
+          24
+        ],
+        [
+          2847041430,
+          16
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 6144,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 36.47998046875,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          707854131,
+          121
+        ],
+        [
+          1969454720,
+          112
+        ],
+        [
+          3633132103,
+          112
+        ],
+        [
+          4151762594,
+          63
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 4608,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 35.675048828125,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          707854131,
+          171
+        ],
+        [
+          4151762594,
+          99
+        ],
+        [
+          1969454720,
+          84
+        ],
+        [
+          3633132103,
+          64
+        ]
+      ]
+    },
+    {
+      "worker": 7,
+      "seq": 15,
+      "processedJobs": 2048,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 35.429931640625,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1207146824,
+          230
+        ],
+        [
+          2565046534,
+          90
+        ],
+        [
+          338338212,
+          88
+        ],
+        [
+          4070227592,
+          20
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 2560,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 35.125,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          707854131,
+          145
+        ],
+        [
+          3633132103,
+          112
+        ],
+        [
+          4151762594,
+          90
+        ],
+        [
+          1969454720,
+          86
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 8,
+      "processedJobs": 512,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 35.10498046875,
+      "distinctKeys": 27,
+      "topKeys": [
+        [
+          2467226662,
+          140
+        ],
+        [
+          1315913369,
+          140
+        ],
+        [
+          3855735517,
+          92
+        ],
+        [
+          1624116098,
+          83
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 20,
+      "processedJobs": 1536,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 34.9599609375,
+      "distinctKeys": 24,
+      "topKeys": [
+        [
+          1377723803,
+          196
+        ],
+        [
+          2206244568,
+          84
+        ],
+        [
+          2603519250,
+          42
+        ],
+        [
+          637639172,
+          36
+        ]
+      ]
+    },
+    {
+      "worker": 3,
+      "seq": 11,
+      "processedJobs": 1536,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 34.954833984375,
+      "distinctKeys": 31,
+      "topKeys": [
+        [
+          1223273639,
+          217
+        ],
+        [
+          1029434442,
+          50
+        ],
+        [
+          1347897457,
+          36
+        ],
+        [
+          307449914,
+          30
+        ]
+      ]
+    },
+    {
+      "worker": 2,
+      "seq": 10,
+      "processedJobs": 1536,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 34.580078125,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          381287208,
+          152
+        ],
+        [
+          3406869099,
+          108
+        ],
+        [
+          763775673,
+          83
+        ],
+        [
+          1502726291,
+          66
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 14,
+      "processedJobs": 5632,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 34.25,
+      "distinctKeys": 28,
+      "topKeys": [
+        [
+          3884676901,
+          200
+        ],
+        [
+          355656403,
+          184
+        ],
+        [
+          4285066848,
+          20
+        ],
+        [
+          2847041430,
+          16
+        ]
+      ]
+    },
+    {
+      "worker": 2,
+      "seq": 10,
+      "processedJobs": 1024,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 34.009765625,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          381287208,
+          168
+        ],
+        [
+          763775673,
+          102
+        ],
+        [
+          3406869099,
+          81
+        ],
+        [
+          1502726291,
+          66
+        ]
+      ]
+    },
+    {
+      "worker": 2,
+      "seq": 10,
+      "processedJobs": 3584,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 33.03515625,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          381287208,
+          155
+        ],
+        [
+          3406869099,
+          108
+        ],
+        [
+          763775673,
+          80
+        ],
+        [
+          1502726291,
+          66
+        ]
+      ]
+    },
+    {
+      "worker": 2,
+      "seq": 10,
+      "processedJobs": 4096,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 32.31982421875,
+      "distinctKeys": 27,
+      "topKeys": [
+        [
+          381287208,
+          131
+        ],
+        [
+          763775673,
+          111
+        ],
+        [
+          3406869099,
+          108
+        ],
+        [
+          1502726291,
+          56
+        ]
+      ]
+    },
+    {
+      "worker": 3,
+      "seq": 11,
+      "processedJobs": 1024,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 32.175048828125,
+      "distinctKeys": 31,
+      "topKeys": [
+        [
+          1223273639,
+          213
+        ],
+        [
+          1029434442,
+          60
+        ],
+        [
+          307449914,
+          36
+        ],
+        [
+          1347897457,
+          30
+        ]
+      ]
+    },
+    {
+      "worker": 2,
+      "seq": 10,
+      "processedJobs": 2048,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 30.875,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          381287208,
+          128
+        ],
+        [
+          763775673,
+          111
+        ],
+        [
+          3406869099,
+          108
+        ],
+        [
+          1502726291,
+          60
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 5632,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 30.010009765625,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          707854131,
+          191
+        ],
+        [
+          4151762594,
+          99
+        ],
+        [
+          1969454720,
+          67
+        ],
+        [
+          3633132103,
+          56
+        ]
+      ]
+    },
+    {
+      "worker": 3,
+      "seq": 11,
+      "processedJobs": 512,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 29.985107421875,
+      "distinctKeys": 34,
+      "topKeys": [
+        [
+          1223273639,
+          194
+        ],
+        [
+          1029434442,
+          51
+        ],
+        [
+          307449914,
+          36
+        ],
+        [
+          1347897457,
+          36
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 14,
+      "processedJobs": 1024,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 29.89990234375,
+      "distinctKeys": 30,
+      "topKeys": [
+        [
+          3884676901,
+          205
+        ],
+        [
+          355656403,
+          184
+        ],
+        [
+          4285066848,
+          20
+        ],
+        [
+          2847041430,
+          16
+        ]
+      ]
+    },
+    {
+      "worker": 3,
+      "seq": 11,
+      "processedJobs": 2048,
+      "callJobs": 503,
+      "durationWithBookkeepingMs": 29.7900390625,
+      "distinctKeys": 37,
+      "topKeys": [
+        [
+          1223273639,
+          198
+        ],
+        [
+          1029434442,
+          60
+        ],
+        [
+          1210995293,
+          54
+        ],
+        [
+          1347897457,
+          36
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 14,
+      "processedJobs": 3584,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 29.699951171875,
+      "distinctKeys": 29,
+      "topKeys": [
+        [
+          3884676901,
+          200
+        ],
+        [
+          355656403,
+          187
+        ],
+        [
+          4285066848,
+          20
+        ],
+        [
+          2847041430,
+          19
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 14,
+      "processedJobs": 3072,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 29.655029296875,
+      "distinctKeys": 29,
+      "topKeys": [
+        [
+          3884676901,
+          202
+        ],
+        [
+          355656403,
+          186
+        ],
+        [
+          4285066848,
+          20
+        ],
+        [
+          2847041430,
+          17
+        ]
+      ]
+    },
+    {
+      "worker": 7,
+      "seq": 15,
+      "processedJobs": 5120,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 29.60498046875,
+      "distinctKeys": 32,
+      "topKeys": [
+        [
+          1207146824,
+          316
+        ],
+        [
+          3842328787,
+          51
+        ],
+        [
+          4070227592,
+          30
+        ],
+        [
+          338338212,
+          30
+        ]
+      ]
+    },
+    {
+      "worker": 7,
+      "seq": 15,
+      "processedJobs": 1024,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 29.5048828125,
+      "distinctKeys": 27,
+      "topKeys": [
+        [
+          1207146824,
+          246
+        ],
+        [
+          2565046534,
+          89
+        ],
+        [
+          338338212,
+          67
+        ],
+        [
+          4070227592,
+          20
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 5120,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 29.469970703125,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          1377723803,
+          224
+        ],
+        [
+          2206244568,
+          80
+        ],
+        [
+          637639172,
+          63
+        ],
+        [
+          2603519250,
+          55
+        ]
+      ]
+    },
+    {
+      "worker": 2,
+      "seq": 10,
+      "processedJobs": 3072,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 29.27001953125,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          381287208,
+          168
+        ],
+        [
+          763775673,
+          105
+        ],
+        [
+          3406869099,
+          81
+        ],
+        [
+          1502726291,
+          66
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 6656,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 29.235107421875,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          707854131,
+          182
+        ],
+        [
+          4151762594,
+          108
+        ],
+        [
+          1969454720,
+          56
+        ],
+        [
+          3633132103,
+          56
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 1024,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 29.215087890625,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          242
+        ],
+        [
+          2206244568,
+          94
+        ],
+        [
+          637639172,
+          65
+        ],
+        [
+          2603519250,
+          46
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 8,
+      "processedJobs": 5120,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 29.14990234375,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          2467226662,
+          170
+        ],
+        [
+          1315913369,
+          113
+        ],
+        [
+          3855735517,
+          95
+        ],
+        [
+          1624116098,
+          74
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 3584,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 28.9951171875,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          707854131,
+          154
+        ],
+        [
+          4151762594,
+          99
+        ],
+        [
+          3633132103,
+          89
+        ],
+        [
+          1969454720,
+          84
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 2048,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 28.945068359375,
+      "distinctKeys": 27,
+      "topKeys": [
+        [
+          1377723803,
+          224
+        ],
+        [
+          2603519250,
+          73
+        ],
+        [
+          2206244568,
+          64
+        ],
+        [
+          829202203,
+          60
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 512,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 28.869873046875,
+      "distinctKeys": 21,
+      "topKeys": [
+        [
+          1377723803,
+          218
+        ],
+        [
+          2206244568,
+          106
+        ],
+        [
+          2603519250,
+          76
+        ],
+        [
+          637639172,
+          36
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 8192,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 28.735107421875,
+      "distinctKeys": 21,
+      "topKeys": [
+        [
+          707854131,
+          157
+        ],
+        [
+          3633132103,
+          92
+        ],
+        [
+          4151762594,
+          90
+        ],
+        [
+          1969454720,
+          82
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 14,
+      "processedJobs": 5120,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 28.690185546875,
+      "distinctKeys": 30,
+      "topKeys": [
+        [
+          3884676901,
+          200
+        ],
+        [
+          355656403,
+          189
+        ],
+        [
+          4285066848,
+          20
+        ],
+        [
+          2847041430,
+          16
+        ]
+      ]
+    },
+    {
+      "worker": 2,
+      "seq": 18,
+      "processedJobs": 512,
+      "callJobs": 490,
+      "durationWithBookkeepingMs": 28.6650390625,
+      "distinctKeys": 37,
+      "topKeys": [
+        [
+          4146124118,
+          73
+        ],
+        [
+          381287208,
+          72
+        ],
+        [
+          3406869099,
+          63
+        ],
+        [
+          3898140833,
+          44
+        ]
+      ]
+    },
+    {
+      "worker": 7,
+      "seq": 15,
+      "processedJobs": 3072,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 28.25,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1207146824,
+          236
+        ],
+        [
+          338338212,
+          90
+        ],
+        [
+          2565046534,
+          90
+        ],
+        [
+          4070227592,
+          20
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 4608,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 27.784912109375,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          224
+        ],
+        [
+          637639172,
+          90
+        ],
+        [
+          2206244568,
+          80
+        ],
+        [
+          2603519250,
+          51
+        ]
+      ]
+    },
+    {
+      "worker": 7,
+      "seq": 23,
+      "processedJobs": 512,
+      "callJobs": 439,
+      "durationWithBookkeepingMs": 27.7001953125,
+      "distinctKeys": 39,
+      "topKeys": [
+        [
+          3526577986,
+          132
+        ],
+        [
+          1207146824,
+          98
+        ],
+        [
+          768587033,
+          49
+        ],
+        [
+          2822849759,
+          20
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 14,
+      "processedJobs": 4096,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 27.5751953125,
+      "distinctKeys": 29,
+      "topKeys": [
+        [
+          3884676901,
+          200
+        ],
+        [
+          355656403,
+          188
+        ],
+        [
+          4285066848,
+          20
+        ],
+        [
+          2847041430,
+          18
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 14,
+      "processedJobs": 2560,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 27.094970703125,
+      "distinctKeys": 29,
+      "topKeys": [
+        [
+          3884676901,
+          206
+        ],
+        [
+          355656403,
+          184
+        ],
+        [
+          4285066848,
+          20
+        ],
+        [
+          2847041430,
+          16
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 14,
+      "processedJobs": 1536,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 27.034912109375,
+      "distinctKeys": 29,
+      "topKeys": [
+        [
+          3884676901,
+          200
+        ],
+        [
+          355656403,
+          184
+        ],
+        [
+          4285066848,
+          26
+        ],
+        [
+          2847041430,
+          16
+        ]
+      ]
+    },
+    {
+      "worker": 7,
+      "seq": 15,
+      "processedJobs": 1536,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 26.60498046875,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          1207146824,
+          284
+        ],
+        [
+          338338212,
+          62
+        ],
+        [
+          2565046534,
+          60
+        ],
+        [
+          4070227592,
+          30
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 4096,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 26.41015625,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          1377723803,
+          277
+        ],
+        [
+          2206244568,
+          72
+        ],
+        [
+          637639172,
+          54
+        ],
+        [
+          2603519250,
+          46
+        ]
+      ]
+    },
+    {
+      "worker": 7,
+      "seq": 15,
+      "processedJobs": 3584,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 26.2900390625,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          1207146824,
+          287
+        ],
+        [
+          338338212,
+          60
+        ],
+        [
+          2565046534,
+          60
+        ],
+        [
+          4070227592,
+          20
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 14,
+      "processedJobs": 6144,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 26.044921875,
+      "distinctKeys": 34,
+      "topKeys": [
+        [
+          3884676901,
+          266
+        ],
+        [
+          355656403,
+          120
+        ],
+        [
+          4285066848,
+          30
+        ],
+        [
+          1830189359,
+          18
+        ]
+      ]
+    },
+    {
+      "worker": 2,
+      "seq": 10,
+      "processedJobs": 2560,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 25.56494140625,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          381287208,
+          168
+        ],
+        [
+          763775673,
+          111
+        ],
+        [
+          3406869099,
+          99
+        ],
+        [
+          1502726291,
+          50
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 14,
+      "processedJobs": 4608,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 25.4248046875,
+      "distinctKeys": 28,
+      "topKeys": [
+        [
+          3884676901,
+          200
+        ],
+        [
+          355656403,
+          188
+        ],
+        [
+          4285066848,
+          20
+        ],
+        [
+          2847041430,
+          18
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 3584,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 25.039794921875,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          291
+        ],
+        [
+          2206244568,
+          58
+        ],
+        [
+          637639172,
+          54
+        ],
+        [
+          2603519250,
+          46
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 8,
+      "processedJobs": 3584,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 24.974853515625,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          2467226662,
+          136
+        ],
+        [
+          1315913369,
+          132
+        ],
+        [
+          1624116098,
+          92
+        ],
+        [
+          3855735517,
+          92
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 2560,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 24.77490234375,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          260
+        ],
+        [
+          637639172,
+          63
+        ],
+        [
+          2206244568,
+          58
+        ],
+        [
+          2603519250,
+          56
+        ]
+      ]
+    },
+    {
+      "worker": 3,
+      "seq": 19,
+      "processedJobs": 512,
+      "callJobs": 426,
+      "durationWithBookkeepingMs": 24.704833984375,
+      "distinctKeys": 38,
+      "topKeys": [
+        [
+          1938336686,
+          147
+        ],
+        [
+          4263083795,
+          104
+        ],
+        [
+          532058879,
+          24
+        ],
+        [
+          1075754142,
+          24
+        ]
+      ]
+    },
+    {
+      "worker": 7,
+      "seq": 15,
+      "processedJobs": 512,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 24.695068359375,
+      "distinctKeys": 27,
+      "topKeys": [
+        [
+          1207146824,
+          261
+        ],
+        [
+          338338212,
+          83
+        ],
+        [
+          2565046534,
+          61
+        ],
+        [
+          4070227592,
+          30
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 8,
+      "processedJobs": 1024,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 24.41015625,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          2467226662,
+          136
+        ],
+        [
+          1315913369,
+          112
+        ],
+        [
+          1624116098,
+          102
+        ],
+        [
+          3855735517,
+          101
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 8,
+      "processedJobs": 4096,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 24.3701171875,
+      "distinctKeys": 27,
+      "topKeys": [
+        [
+          2467226662,
+          136
+        ],
+        [
+          1315913369,
+          112
+        ],
+        [
+          3855735517,
+          103
+        ],
+        [
+          1624116098,
+          93
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 6144,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 24.06982421875,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          292
+        ],
+        [
+          2206244568,
+          58
+        ],
+        [
+          637639172,
+          54
+        ],
+        [
+          2603519250,
+          46
+        ]
+      ]
+    },
+    {
+      "worker": 2,
+      "seq": 18,
+      "processedJobs": 0,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 23.72998046875,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          381287208,
+          120
+        ],
+        [
+          3406869099,
+          90
+        ],
+        [
+          763775673,
+          74
+        ],
+        [
+          1110542044,
+          50
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 6656,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 23.489990234375,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          291
+        ],
+        [
+          2206244568,
+          58
+        ],
+        [
+          637639172,
+          54
+        ],
+        [
+          2603519250,
+          46
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 9216,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 23.375,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          260
+        ],
+        [
+          637639172,
+          63
+        ],
+        [
+          2206244568,
+          58
+        ],
+        [
+          2603519250,
+          55
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 7168,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 23.2900390625,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          292
+        ],
+        [
+          2206244568,
+          58
+        ],
+        [
+          637639172,
+          54
+        ],
+        [
+          2603519250,
+          46
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 5632,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 23.2001953125,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          228
+        ],
+        [
+          2603519250,
+          78
+        ],
+        [
+          637639172,
+          63
+        ],
+        [
+          2206244568,
+          58
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 20,
+      "processedJobs": 512,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 22.97509765625,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          196
+        ],
+        [
+          2206244568,
+          107
+        ],
+        [
+          637639172,
+          65
+        ],
+        [
+          2603519250,
+          59
+        ]
+      ]
+    },
+    {
+      "worker": 7,
+      "seq": 15,
+      "processedJobs": 2560,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 22.670166015625,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1207146824,
+          284
+        ],
+        [
+          338338212,
+          60
+        ],
+        [
+          2565046534,
+          60
+        ],
+        [
+          4070227592,
+          30
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 8192,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 21.85009765625,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          224
+        ],
+        [
+          637639172,
+          87
+        ],
+        [
+          2206244568,
+          75
+        ],
+        [
+          2603519250,
+          55
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 7680,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 21.8349609375,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          241
+        ],
+        [
+          2206244568,
+          94
+        ],
+        [
+          637639172,
+          66
+        ],
+        [
+          2603519250,
+          46
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 8,
+      "processedJobs": 1536,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 21.5048828125,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          2467226662,
+          136
+        ],
+        [
+          3855735517,
+          121
+        ],
+        [
+          1315913369,
+          112
+        ],
+        [
+          1624116098,
+          74
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 8,
+      "processedJobs": 5632,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 21.4951171875,
+      "distinctKeys": 30,
+      "topKeys": [
+        [
+          2467226662,
+          130
+        ],
+        [
+          1315913369,
+          119
+        ],
+        [
+          3855735517,
+          84
+        ],
+        [
+          1624116098,
+          74
+        ]
+      ]
+    },
+    {
+      "worker": 7,
+      "seq": 15,
+      "processedJobs": 4096,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 21.44482421875,
+      "distinctKeys": 27,
+      "topKeys": [
+        [
+          1207146824,
+          235
+        ],
+        [
+          338338212,
+          86
+        ],
+        [
+          2565046534,
+          83
+        ],
+        [
+          4070227592,
+          30
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 11264,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 21.43017578125,
+      "distinctKeys": 18,
+      "topKeys": [
+        [
+          1377723803,
+          220
+        ],
+        [
+          2206244568,
+          94
+        ],
+        [
+          2603519250,
+          76
+        ],
+        [
+          637639172,
+          73
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 1536,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 21.199951171875,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          224
+        ],
+        [
+          637639172,
+          88
+        ],
+        [
+          2206244568,
+          74
+        ],
+        [
+          2603519250,
+          55
+        ]
+      ]
+    },
+    {
+      "worker": 3,
+      "seq": 19,
+      "processedJobs": 0,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 20.795166015625,
+      "distinctKeys": 29,
+      "topKeys": [
+        [
+          4263083795,
+          126
+        ],
+        [
+          1223273639,
+          103
+        ],
+        [
+          1210995293,
+          54
+        ],
+        [
+          532058879,
+          36
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 3072,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 20.7451171875,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          292
+        ],
+        [
+          2206244568,
+          58
+        ],
+        [
+          637639172,
+          54
+        ],
+        [
+          2603519250,
+          46
+        ]
+      ]
+    },
+    {
+      "worker": 2,
+      "seq": 10,
+      "processedJobs": 4608,
+      "callJobs": 466,
+      "durationWithBookkeepingMs": 20.335205078125,
+      "distinctKeys": 16,
+      "topKeys": [
+        [
+          763775673,
+          148
+        ],
+        [
+          381287208,
+          138
+        ],
+        [
+          3406869099,
+          54
+        ],
+        [
+          1502726291,
+          36
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 8,
+      "processedJobs": 2560,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 20.294921875,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          2467226662,
+          147
+        ],
+        [
+          1315913369,
+          140
+        ],
+        [
+          3855735517,
+          92
+        ],
+        [
+          1624116098,
+          74
+        ]
+      ]
+    },
+    {
+      "worker": 7,
+      "seq": 15,
+      "processedJobs": 4608,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 19.85009765625,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          1207146824,
+          272
+        ],
+        [
+          2565046534,
+          67
+        ],
+        [
+          338338212,
+          64
+        ],
+        [
+          4070227592,
+          20
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 8,
+      "processedJobs": 4608,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 19.81005859375,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          2467226662,
+          136
+        ],
+        [
+          3855735517,
+          124
+        ],
+        [
+          1315913369,
+          112
+        ],
+        [
+          1624116098,
+          74
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 22,
+      "processedJobs": 0,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 19.735107421875,
+      "distinctKeys": 29,
+      "topKeys": [
+        [
+          3884676901,
+          306
+        ],
+        [
+          355656403,
+          54
+        ],
+        [
+          4285066848,
+          40
+        ],
+        [
+          1830189359,
+          22
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 20,
+      "processedJobs": 1024,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 19.18505859375,
+      "distinctKeys": 17,
+      "topKeys": [
+        [
+          1377723803,
+          236
+        ],
+        [
+          2206244568,
+          84
+        ],
+        [
+          637639172,
+          43
+        ],
+        [
+          2603519250,
+          42
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 8,
+      "processedJobs": 2048,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 19.114990234375,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          2467226662,
+          163
+        ],
+        [
+          1315913369,
+          112
+        ],
+        [
+          3855735517,
+          100
+        ],
+        [
+          1624116098,
+          74
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 17,
+      "processedJobs": 1024,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 18.034912109375,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          707854131,
+          180
+        ],
+        [
+          3633132103,
+          72
+        ],
+        [
+          1969454720,
+          66
+        ],
+        [
+          4151762594,
+          54
+        ]
+      ]
+    },
+    {
+      "worker": 7,
+      "seq": 23,
+      "processedJobs": 0,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 17.7998046875,
+      "distinctKeys": 24,
+      "topKeys": [
+        [
+          1207146824,
+          326
+        ],
+        [
+          3842328787,
+          54
+        ],
+        [
+          4070227592,
+          30
+        ],
+        [
+          2345381498,
+          24
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 8,
+      "processedJobs": 3072,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 17.55517578125,
+      "distinctKeys": 27,
+      "topKeys": [
+        [
+          2467226662,
+          166
+        ],
+        [
+          1315913369,
+          120
+        ],
+        [
+          3855735517,
+          92
+        ],
+        [
+          1624116098,
+          74
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 9728,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 17.090087890625,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          292
+        ],
+        [
+          2206244568,
+          58
+        ],
+        [
+          637639172,
+          54
+        ],
+        [
+          2603519250,
+          46
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 17,
+      "processedJobs": 512,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 16.26513671875,
+      "distinctKeys": 25,
+      "topKeys": [
+        [
+          707854131,
+          147
+        ],
+        [
+          4151762594,
+          85
+        ],
+        [
+          3633132103,
+          84
+        ],
+        [
+          1969454720,
+          72
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 8704,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 16.2548828125,
+      "distinctKeys": 27,
+      "topKeys": [
+        [
+          1377723803,
+          224
+        ],
+        [
+          2603519250,
+          74
+        ],
+        [
+          2206244568,
+          63
+        ],
+        [
+          829202203,
+          60
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 17,
+      "processedJobs": 1536,
+      "callJobs": 178,
+      "durationWithBookkeepingMs": 16.2451171875,
+      "distinctKeys": 24,
+      "topKeys": [
+        [
+          1724059721,
+          42
+        ],
+        [
+          707854131,
+          42
+        ],
+        [
+          1356241054,
+          20
+        ],
+        [
+          4151762594,
+          16
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 9,
+      "processedJobs": 8704,
+      "callJobs": 417,
+      "durationWithBookkeepingMs": 15.89990234375,
+      "distinctKeys": 16,
+      "topKeys": [
+        [
+          707854131,
+          128
+        ],
+        [
+          4151762594,
+          81
+        ],
+        [
+          1969454720,
+          72
+        ],
+        [
+          3633132103,
+          72
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 8,
+      "processedJobs": 6144,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 15.4599609375,
+      "distinctKeys": 14,
+      "topKeys": [
+        [
+          3475732549,
+          116
+        ],
+        [
+          2467226662,
+          106
+        ],
+        [
+          1315913369,
+          90
+        ],
+        [
+          1624116098,
+          88
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 20,
+      "processedJobs": 2048,
+      "callJobs": 163,
+      "durationWithBookkeepingMs": 14.840087890625,
+      "distinctKeys": 24,
+      "topKeys": [
+        [
+          2047826030,
+          39
+        ],
+        [
+          637639172,
+          22
+        ],
+        [
+          1202352817,
+          20
+        ],
+        [
+          4103603920,
+          20
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 10752,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 14.784912109375,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          237
+        ],
+        [
+          2206244568,
+          94
+        ],
+        [
+          637639172,
+          71
+        ],
+        [
+          2603519250,
+          46
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 10240,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 14.375,
+      "distinctKeys": 26,
+      "topKeys": [
+        [
+          1377723803,
+          291
+        ],
+        [
+          2206244568,
+          58
+        ],
+        [
+          637639172,
+          54
+        ],
+        [
+          2603519250,
+          46
+        ]
+      ]
+    },
+    {
+      "worker": 1,
+      "seq": 17,
+      "processedJobs": 0,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 14.344970703125,
+      "distinctKeys": 15,
+      "topKeys": [
+        [
+          707854131,
+          195
+        ],
+        [
+          1969454720,
+          72
+        ],
+        [
+          3633132103,
+          72
+        ],
+        [
+          4151762594,
+          59
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 20,
+      "processedJobs": 0,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 13.804931640625,
+      "distinctKeys": 16,
+      "topKeys": [
+        [
+          1377723803,
+          212
+        ],
+        [
+          2206244568,
+          94
+        ],
+        [
+          637639172,
+          83
+        ],
+        [
+          2603519250,
+          76
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 16,
+      "processedJobs": 512,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 13.369873046875,
+      "distinctKeys": 22,
+      "topKeys": [
+        [
+          3475732549,
+          141
+        ],
+        [
+          2467226662,
+          115
+        ],
+        [
+          1315913369,
+          78
+        ],
+        [
+          3855735517,
+          72
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 16,
+      "processedJobs": 0,
+      "callJobs": 512,
+      "durationWithBookkeepingMs": 12.64501953125,
+      "distinctKeys": 12,
+      "topKeys": [
+        [
+          3475732549,
+          159
+        ],
+        [
+          3855735517,
+          105
+        ],
+        [
+          2467226662,
+          96
+        ],
+        [
+          1315913369,
+          72
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 14,
+      "processedJobs": 6656,
+      "callJobs": 191,
+      "durationWithBookkeepingMs": 12.43505859375,
+      "distinctKeys": 19,
+      "topKeys": [
+        [
+          3884676901,
+          119
+        ],
+        [
+          355656403,
+          26
+        ],
+        [
+          1830189359,
+          12
+        ],
+        [
+          4285066848,
+          10
+        ]
+      ]
+    },
+    {
+      "worker": 4,
+      "seq": 12,
+      "processedJobs": 11776,
+      "callJobs": 430,
+      "durationWithBookkeepingMs": 12.0498046875,
+      "distinctKeys": 16,
+      "topKeys": [
+        [
+          1377723803,
+          212
+        ],
+        [
+          2206244568,
+          101
+        ],
+        [
+          637639172,
+          52
+        ],
+        [
+          2603519250,
+          38
+        ]
+      ]
+    },
+    {
+      "worker": 7,
+      "seq": 15,
+      "processedJobs": 5632,
+      "callJobs": 83,
+      "durationWithBookkeepingMs": 8.89990234375,
+      "distinctKeys": 9,
+      "topKeys": [
+        [
+          1207146824,
+          62
+        ],
+        [
+          4070227592,
+          10
+        ],
+        [
+          3842328787,
+          3
+        ],
+        [
+          1293269394,
+          2
+        ]
+      ]
+    },
+    {
+      "worker": 6,
+      "seq": 22,
+      "processedJobs": 1024,
+      "callJobs": 47,
+      "durationWithBookkeepingMs": 6.2900390625,
+      "distinctKeys": 20,
+      "topKeys": [
+        [
+          3884676901,
+          16
+        ],
+        [
+          661567723,
+          7
+        ],
+        [
+          1132603174,
+          3
+        ],
+        [
+          2387143447,
+          2
+        ]
+      ]
+    },
+    {
+      "worker": 0,
+      "seq": 8,
+      "processedJobs": 6656,
+      "callJobs": 23,
+      "durationWithBookkeepingMs": 4.58984375,
+      "distinctKeys": 1,
+      "topKeys": [
+        [
+          1624116098,
+          23
+        ]
+      ]
+    }
+  ]
+}

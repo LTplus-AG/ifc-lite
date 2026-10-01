@@ -30,3 +30,9 @@ recorded refs, then use `scripts/perf/browser-cold-ab.mts` with `--dist-base`,
 The additional payload witness was collected from the canonical viewer store
 only after timing, without altering the loading or geometry path. The temporary
 harness supplied tsx's serialized-function name helper after timing as well.
+
+The actual production viewer selected axis #39 in the original OIP 2017 model
+`844_terrain_and_alignment.ifc`, moved through distances 0, 10 and 20, and retained
+flip. The section point matched the independent circular oracle. Closing retained
+the exact custom plane and flip while releasing its binding; explicit selection
+reacquired station 0. [The captured viewer](./oip-station20.png) shows distance 20.

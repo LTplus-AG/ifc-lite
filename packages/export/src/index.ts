@@ -85,10 +85,11 @@ export { captureAppearanceDependencies } from './appearance-dependencies.js';
 // exporter's own pipeline: read models that must agree with the exported
 // bytes (the cost read model, #4857) read this instead of re-serializing.
 export { effectiveSourceRecord, type EffectiveSourceRecord, effectiveCreatedRecord } from './effective-source-record.js';
-// O(affected) mini STEP file for re-meshing edited elements in the wasm
-// mesher (#6232 WP1): the viewer's re-mesh service is the consumer.
+// Mini STEP and inverse grid placement context for the shared viewer re-mesh
+// service (#6232). Grid-relative context also scans effective grid ownership.
 export {
   serializeEntitySubgraph,
+  gridPlacementDependents,
   remeshContextRoots,
   type EntitySubgraph,
   type EntitySubgraphRequest,

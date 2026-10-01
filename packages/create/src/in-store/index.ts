@@ -10,6 +10,7 @@ export {
   type ProfiledColumnInStoreParams,
   type ColumnBuildResult,
 } from './column.js';
+export { addColumnOnGridToStore, type GridColumnBinding, type GridColumnBuildResult } from './grid-column.js';
 export { addWallToStore, emitWallAxisRepresentation, emitWallBodyProfile, wallJoinWallFromParams, type WallInStoreParams, type WallBuildResult } from './wall.js';
 // Wall joins (L / T / butt) and the IfcRelConnectsPathElements they write; the read side sits in wall-join-read.
 export { computeWallJoin, reshapeWallAxis, wallBodyLateralRange, wallBodyOutline } from './wall-join.js';

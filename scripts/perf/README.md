@@ -29,14 +29,19 @@ Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
 ## Opt-in map geometry compatibility export (#6587)
 
-Fresh main-versus-branch native full loads and actual browser worker-pool loads
-on the house fixture retained byte-identical geometry, including the browser's
-instanced payloads. Default parse, geometry and worker-stream timings showed
-no reproducible slowdown in the interleaved cohort. Browser readiness varied
-within overlapping sample ranges; fresh tabs used distinct origins but shared
-the native browser runtime, so this does not establish cold-process performance.
-The actual default asynchronous STEP API also retained identical output bytes
-and timings within the observed spread.
+The qualified comparison uses the actual main-based package prerequisite and
+the corrected implementation. Native loads, real browser worker-pool loads,
+and the default asynchronous STEP API retained byte-identical payloads,
+including browser instances. Their interleaved timings showed no consistent
+regression within the bounded cohort. Fresh tabs used distinct origins in a
+shared native browser runtime; DOM visibility was recorded, but physical panel
+foreground and cold-process performance were not established. Unrelated user
+applications remained open, so this is not a claim of an idle operating system.
+
+Earlier cohorts are retained as diagnostics: a later audit found continuous
+GPU work in validation tabs. Those timings are not pooled with the replacement
+cohort or used to establish the verdict. Agent-controlled builds, uploads and
+GPU evidence work were held during the qualified replacement measurements.
 
 The opt-in export has an explicit cost: it parses the mutation-resolved emitted
 model and produces canonical placement/representation patches. Its first call
@@ -50,7 +55,8 @@ Keep unit conversion separate from physical map scale, reuse the strict Rust
 placement resolver, and settle changed entity IDs through the existing export
 ledger. Removing strict target-unit validation or reversing affine/placement
 order is detected by actual behavioral regressions, rather than merely making
-the new API disappear at import time.
+the new API disappear at import time. Audit background render loops before
+granting a timing window; stopping new actions alone does not stop old loops.
 
 ## Planar conic handedness (#6597)
 

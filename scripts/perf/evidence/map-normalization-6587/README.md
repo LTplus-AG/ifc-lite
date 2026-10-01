@@ -1,6 +1,6 @@
 # Map geometry compatibility export (#6587)
 
-Implementation head `3217508b67b871c65d9e30106e6fa6afcdf8d01c` adds an
+Original implementation head `3217508b67b871c65d9e30106e6fa6afcdf8d01c` adds an
 opt-in canonical Rust planner and asynchronous STEP application seam. Default
 geometry is unchanged. The supported subset and atomic warning contract are
 documented in `docs/guide/exporting.md`.
@@ -14,7 +14,8 @@ IfcOpenShell mesh vertices against the original source's map transform, checks
 both nearest-distance directions, validates EXPRESS, and verifies edited Name
 and GlobalId preservation. These are physical-coordinate checks, not bounds.
 
-The two `*-oracle.json` reports are from the repository's supported
+The two `*-oracle.json` reports were refreshed against actual main prerequisite
+`7780cb058` and corrected head `d30838cd8` using the repository's supported
 `check-test-revert-oracle.mjs --mutation` lane. Each retains the complete API and
 tests, has an attributable green baseline, observes runtime assertion failure,
 and verifies source restoration. The patches intentionally reverse transform
@@ -22,16 +23,36 @@ order or omit strict target-unit validation; neither relies on an import or
 compile failure. Reproduce from the implementation head with:
 
 ```bash
-node scripts/check-test-revert-oracle.mjs --base d7267b5c0 --head HEAD \
+node scripts/check-test-revert-oracle.mjs --base 7780cb058 --head HEAD \
   --only rust/export/src/step_map_transform.rs \
   --test rust/export/src/step_map_transform_tests.rs \
   --mutation scripts/perf/evidence/map-normalization-6587/transform-order-mutation.patch \
   --json
 ```
 
-Use `strict-map-unit-mutation.patch` for the second proof. A later main-based
-port uses its own actual base/head; the retained tests and mutation API remain
-the same.
+Use `strict-map-unit-mutation.patch` for the second proof. These preserve the
+planner API, including the corrected product-Body ownership guard.
+
+`qualified-default-cohorts.json` retains every replacement native/STEP call,
+every native-browser sample, artifact hash, summary, and sanitized hardware
+qualification. Base is `7780cb058`, corrected Rust code is `c592decc8`, and the
+frozen branch head is `d30838cd8`. A later follow-up fixes only an incomplete
+MPL notice in the JS contract harness and records this evidence; it changes no
+Rust or load/export behavior. Final WASM is regenerated after mutation-proof
+restoration and its freshness is checked before acceptance.
+
+Four continuous-GPU Cesium validation tabs were stopped before replacement
+measurements. Agent-controlled builds, uploads, and GPU checks were held;
+unrelated user applications were not closed. DOM visibility history is retained,
+but the native panel reported not physically visible despite open/show requests.
+This measures emitted readiness boundaries in the actual shared native browser,
+not physical foreground painting or a cold browser process.
+
+`unqualified-default-cohorts.json` retains both earlier exact-base browser
+cohorts and their native/STEP counterparts. The later GPU audit disqualifies
+their timing claims. They remain diagnostic, are not pooled, and are not silently
+discarded. The older original-base records below predate this qualification and
+are historical witnesses; only the qualified replacement establishes the verdict.
 
 `native-default-pairs.json` contains five alternating base/branch pairs, each
 running `scripts/perf/probe.sh` with five iterations and ordered mesh

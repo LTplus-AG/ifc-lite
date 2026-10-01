@@ -1,33 +1,20 @@
 {
   "observer": "tests",
-  "baseline": {
-    "kind": "pass",
-    "passed": 6,
-    "total": 6
-  },
-  "reverted": {
-    "kind": "assertion-failure",
-    "passed": 5,
-    "failed": 1,
-    "total": 6,
-    "evidence": []
-  },
+  "baseline": {"kind":"pass","passed":7,"total":7},
+  "reverted": {"kind":"assertion-failure","passed":5,"failed":2,"total":7,"evidence":[]},
   "ledger": [
-    {"file":"rust/export/src/step_map_transform_tests.rs","role":"executable","runKey":"cargo:ifc-lite-export:step_map_transform::tests","adapter":"cargo","runner":{"family":"cargo","command":["cargo","test","--no-fail-fast","-p","ifc-lite-export","--lib","--","step_map_transform::tests::"]},"features":[],"attribution":"cargo-module-filter","baseline":{"kind":"pass","passed":6,"failed":0,"total":6,"exitCode":0,"signal":null,"toolchain":"cargo 1.93.0-nightly (2d4fa1395 2025-11-12)","attributed":true,"files":["rust/export/src/step_map_transform_tests.rs"],"testIdentities":["step_map_transform::tests::issue_6587_direct_planner_never_authorizes_a_tolerant_target_unit_fallback","step_map_transform::tests::issue_6587_map_similarity_preserves_mesh_style_and_logical_points_in_metre_and_mm_projects","step_map_transform::tests::issue_6587_neutral_project_conversion_preserves_original_map_offsets_without_geometry_work","step_map_transform::tests::issue_6587_public_bridge_deck_uses_the_same_canonical_normalization","step_map_transform::tests::issue_6587_shared_product_definition_rewrites_once_and_allocated_ids_are_unique","step_map_transform::tests::issue_6587_unsupported_coordinate_consumers_and_bad_frames_refuse_atomically"],"evidence":[]},"reverted":{"kind":"assertion-failure","passed":5,"failed":1,"total":6,"exitCode":101,"signal":null,"toolchain":"cargo 1.93.0-nightly (2d4fa1395 2025-11-12)","attributed":true,"files":["rust/export/src/step_map_transform_tests.rs"],"testIdentities":["step_map_transform::tests::issue_6587_direct_planner_never_authorizes_a_tolerant_target_unit_fallback","step_map_transform::tests::issue_6587_map_similarity_preserves_mesh_style_and_logical_points_in_metre_and_mm_projects","step_map_transform::tests::issue_6587_neutral_project_conversion_preserves_original_map_offsets_without_geometry_work","step_map_transform::tests::issue_6587_public_bridge_deck_uses_the_same_canonical_normalization","step_map_transform::tests::issue_6587_shared_product_definition_rewrites_once_and_allocated_ids_are_unique","step_map_transform::tests::issue_6587_unsupported_coordinate_consumers_and_bad_frames_refuse_atomically"],"evidence":[]}}
+    {"file":"rust/export/src/step_map_transform_tests.rs","role":"executable","runKey":"cargo:ifc-lite-export:step_map_transform::tests","adapter":"cargo","runner":{"family":"cargo","command":["cargo","test","--no-fail-fast","-p","ifc-lite-export","--lib","--","step_map_transform::tests::"]},"features":[],"attribution":"cargo-module-filter","baseline":{"kind":"pass","passed":7,"failed":0,"total":7,"exitCode":0,"signal":null,"toolchain":"cargo 1.93.0-nightly (2d4fa1395 2025-11-12)","attributed":true,"files":["rust/export/src/step_map_transform_tests.rs"],"testIdentities":["step_map_transform::tests::issue_6587_direct_planner_never_authorizes_a_tolerant_target_unit_fallback","step_map_transform::tests::issue_6587_map_similarity_preserves_mesh_style_and_logical_points_in_metre_and_mm_projects","step_map_transform::tests::issue_6587_neutral_project_conversion_preserves_original_map_offsets_without_geometry_work","step_map_transform::tests::issue_6587_public_bridge_deck_uses_the_same_canonical_normalization","step_map_transform::tests::issue_6587_shared_product_definition_rewrites_once_and_allocated_ids_are_unique","step_map_transform::tests::issue_6587_type_maps_require_actual_body_reachability_not_orphan_items","step_map_transform::tests::issue_6587_unsupported_coordinate_consumers_and_bad_frames_refuse_atomically"],"evidence":[]},"reverted":{"kind":"assertion-failure","passed":5,"failed":2,"total":7,"exitCode":101,"signal":null,"toolchain":"cargo 1.93.0-nightly (2d4fa1395 2025-11-12)","attributed":true,"files":["rust/export/src/step_map_transform_tests.rs"],"testIdentities":["step_map_transform::tests::issue_6587_direct_planner_never_authorizes_a_tolerant_target_unit_fallback","step_map_transform::tests::issue_6587_map_similarity_preserves_mesh_style_and_logical_points_in_metre_and_mm_projects","step_map_transform::tests::issue_6587_neutral_project_conversion_preserves_original_map_offsets_without_geometry_work","step_map_transform::tests::issue_6587_public_bridge_deck_uses_the_same_canonical_normalization","step_map_transform::tests::issue_6587_shared_product_definition_rewrites_once_and_allocated_ids_are_unique","step_map_transform::tests::issue_6587_type_maps_require_actual_body_reachability_not_orphan_items","step_map_transform::tests::issue_6587_unsupported_coordinate_consumers_and_bad_frames_refuse_atomically"],"evidence":[]}}
   ],
   "schemaVersion": 2,
   "channel": "pull-request",
   "verdict": "OBSERVED",
   "exitCode": 0,
   "reason": "reverting production turned an assertion RED in rust/export/src/step_map_transform_tests.rs; that file has a green, attributable baseline.",
-  "base": "d7267b5c004533f9a608c4086672ee58aa12cd63",
-  "head": "3217508b67b871c65d9e30106e6fa6afcdf8d01c",
+  "base": "7780cb05878c574ebd2a9f631ca6757233e845d3",
+  "head": "d30838cd8256338886435be69026e2c8ea5a4a6c",
   "production": ["rust/export/src/step_map_transform.rs"],
   "tests": ["rust/export/src/step_map_transform_tests.rs"],
-  "invocationId": "f223bfb4-5d6d-47e8-8833-0d107efc8b3d",
-  "timing": {
-    "startedAt": "2026-10-01T13:42:10.718Z",
-    "finishedAt": "2026-10-01T13:42:14.328Z"
-  },
+  "invocationId": "eeb83a3e-6a96-48d3-bbce-b5cdd3035682",
+  "timing": {"startedAt":"2026-10-01T16:28:48.067Z","finishedAt":"2026-10-01T16:28:53.104Z"},
   "restoration": "verified"
 }

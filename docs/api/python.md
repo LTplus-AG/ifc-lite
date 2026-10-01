@@ -651,7 +651,8 @@ from 3D arc length on graded paths. Placement and declared length units use the
 shared Rust resolvers. Missing or unsupported axes, unresolved units and invalid
 placements produce diagnostics instead of fabricated identity or metre values.
 The strict sampling API accepts absent placement or a valid finite, nondegenerate
-`IfcLocalPlacement` chain; grid/linear axis placements are explicitly unsupported.
+`IfcLocalPlacement` chain with 3D relative placements; grid/linear axis placements
+and 2D relative placements are explicitly unsupported.
 IFC4x3 gradient/composite curves use the canonical medium-quality tessellation;
 this approximation is reported, as are the canonical cubic-parabola and
 biquadratic-parabola transition approximations. Horizontal distance is measured

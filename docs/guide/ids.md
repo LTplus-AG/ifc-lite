@@ -64,6 +64,17 @@ The bridge mirrors IfcOpenShell `ifctester` semantics (classification sub-refere
 
 Other options in `ValidatorOptions`: `translator` (see below), `includePassingEntities` (default `true`), and `yieldEveryMs` to keep the thread responsive on large models.
 
+### Understanding the viewer summary
+
+The viewer shows two different units:
+
+- **Requirement checks** count each applicable entity's individual requirements, matching IFC Tester's checks summary. A requirement passes overall when none of its applicable entities fails it; a required specification with no matching entities fails its requirements.
+- **Entity–specification results** count each entity once per applicable specification. An entity passes that specification only when all its requirements pass. The same entity can be counted again under another specification. These are the counts in `report.summary.totalEntitiesChecked`, `totalEntitiesPassed`, and `totalEntitiesFailed`.
+
+For example, if two walls each have two requirements and one wall fails one requirement, three of four requirement checks pass (75%), but only one of two entity–specification results passes (50%). Specification cardinality failures still fail the delivery even when individual requirement checks pass. An empty check population displays no evaluated checks.
+
+Both percentages use IFC Lite's shared rounding policy: partial results stay between 1% and 99%, so 0% means nothing passed and 100% means everything passed. IFC Tester floors percentages and can therefore show 0% for a small nonzero passing count. Capped or unevaluable reports do not show an aggregate requirement-check summary.
+
 ### Custom Data Sources
 
 If your IFC data does not come from `@ifc-lite/parser`, implement the `IFCDataAccessor` interface yourself. It requires `getAllEntityIds`, `getEntitiesByType`, `getEntityType`, `getEntityName`, `getGlobalId`, `getDescription`, `getObjectType`, `getPropertyValue`, `getPropertySets`, `getClassifications`, `getMaterials`, `getParent`, and `getAttribute`, plus optional methods (`getAncestors`, `getAttributeNames`, `getAttributeXsdTypes`, `getPredefinedTypeRaw`) that improve spec fidelity when provided.

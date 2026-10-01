@@ -235,6 +235,18 @@ This proves misplaced actual geometry rather than inferring it from bounds.
 The [direct mesh comparison](./actual-scale-two-mesh-comparison.json) records
 content/source hashes, transforms, actual/expected corners and limitations.
 
+### Rejected three-axis CRS shortcut
+
+Promoting the tested horizontal CRS to three axes retained ellipsoidal height
+and left Z unchanged in the offline affine check. It did not add NAVD88.
+[OGC Topic 2, sections 9.2 and 9.3.2](https://docs.ogc.org/as/18-005r5/18-005r5.html)
+specifies inherited reference frames and prohibits redundant axes in compound
+CRSs; a three-dimensional projected CRS plus NAVD88 is not that permitted
+horizontal-plus-vertical combination. A [PROJ affine operation](https://proj.org/en/stable/operations/transformations/affine.html)
+can scale Z, but an operation alone does not supply the missing datum semantics.
+This promotion test established no distinct supported remedy and does not
+address the original SketchUp model's ingestion failure.
+
 ## Original Infra-Bridge database control
 
 Asset **5969775** (collection 5969773, iModel 5969774) used the unchanged original

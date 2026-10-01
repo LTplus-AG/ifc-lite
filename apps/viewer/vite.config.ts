@@ -271,6 +271,7 @@ export default defineConfig({
       '@ifc-lite/wasm': path.resolve(__dirname, '../../packages/wasm/pkg/ifc-lite.js'),
       '@ifc-lite/sdk': path.resolve(__dirname, '../../packages/sdk/src'),
       '@ifc-lite/create': path.resolve(__dirname, '../../packages/create/src'),
+      '@ifc-lite/sandbox/network': path.resolve(__dirname, '../../packages/sandbox/src/network-request.ts'),
       '@ifc-lite/sandbox/schema': path.resolve(__dirname, '../../packages/sandbox/src/bridge-schema.ts'),
       '@ifc-lite/sandbox': path.resolve(__dirname, '../../packages/sandbox/src'),
       '@ifc-lite/lens': path.resolve(__dirname, '../../packages/lens/src'),

@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { StateCreator } from 'zustand';
-import { carryReleasedMesh, retainReleasedMeshProvenance } from '@/lib/released-mesh-provenance';
+import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
+import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { pruneMeshesFromGeometry } from './data-mesh-prune.js';
 import { replaceEntityMeshesPatch, type PendingMeshEdits } from './data-mesh-replace.js';
 import type { PreAlignmentMeshBaseline } from './data-mesh-prealign.js';
@@ -195,10 +196,6 @@ function withActiveModelGeometry(
   return { geometryResult, models };
 }
 
-const EMPTY_POSITIONS = new Float32Array(0);
-const EMPTY_NORMALS = new Float32Array(0);
-const EMPTY_INDICES = new Uint32Array(0);
-
 export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], [], DataSlice> = (set, _get) => ({
   // Initial state
   ifcDataStore: null,
@@ -263,13 +260,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
     }
 
     const meshes = state.geometryResult.meshes;
-    for (let i = 0; i < meshes.length; i++) {
-      retainReleasedMeshProvenance(meshes[i]);
-      meshes[i].positions = EMPTY_POSITIONS;
-      meshes[i].normals = EMPTY_NORMALS;
-      meshes[i].indices = EMPTY_INDICES;
-      delete meshes[i].appearanceSource;
-    }
+    releaseCpuMeshBuffers(meshes);
 
     const geometryResult = {
       ...state.geometryResult,

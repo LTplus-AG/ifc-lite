@@ -1,7 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import type { GeometryResult } from '@ifc-lite/geometry';
 
 /** Retained GPU instance templates must keep their owner index after another
  * model is removed. Never compact indices in a live federation. */
@@ -16,9 +15,3 @@ export function createModelIndexAllocator() {
   };
 }
 export const modelIndices = createModelIndexAllocator();
-
-export function geometryWithModelIndex(geometry: GeometryResult | null, index: number): GeometryResult | null {
-  return geometry ? { ...geometry, meshes: geometry.meshes.map((mesh) => ({ ...mesh, modelIndex: index })),
-    pointClouds: geometry.pointClouds?.map((asset) => ({ ...asset, modelIndex: index })) } : null;
-}
-

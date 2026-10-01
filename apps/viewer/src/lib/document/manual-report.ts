@@ -13,6 +13,13 @@
 import type { ChecklistTemplate, ManualAnswerMap } from '../validation/manual/checklist.js';
 import { summarizeChecklist, EMPTY_MANUAL_COUNTS } from '../validation/manual/checklist-summary.js';
 import type { ManualReportBlock, ManualReportItem } from './manual-report-types.js';
+import { reportScopeText } from './report-provenance.js';
+
+/** #6566: one stamp visibility contract for the preview and PDF. Frozen source
+ * identity and recording time remain in the report even when not printed. */
+export function manualReportStamp(block: ManualReportBlock): { modelName: string | undefined; generatedAt: string; models: string } | null {
+  return block.showStamp === false ? null : { modelName: block.modelName, generatedAt: block.generatedAt, models: reportScopeText(block) };
+}
 
 export interface ManualReportSource {
   checklist: ChecklistTemplate;

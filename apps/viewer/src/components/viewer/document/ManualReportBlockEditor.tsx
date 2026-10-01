@@ -29,7 +29,7 @@ export function ManualReportBlockEditor({ block, onChange }: { block: ManualRepo
     if (missing) return false;
     const next = source.snapshot(block.id, chosen, checklistId);
     if (!next) return false;
-    onChange({ ...next, title: block.title, variant: block.variant, benchmarks: block.benchmarks });
+    onChange({ ...next, title: block.title, variant: block.variant, benchmarks: block.benchmarks, showStamp: block.showStamp });
     return true;
   };
 
@@ -87,6 +87,10 @@ export function ManualReportPresentation({ block, onChange }: { block: ManualRep
       <label className="inline-flex items-center gap-1 text-muted-foreground">
         <input type="checkbox" checked={block.benchmarks !== false} onChange={(event) => onChange({ ...block, benchmarks: event.target.checked })} />
         {t('manualValidation.report.benchmarks')}
+      </label>
+      <label className="inline-flex items-center gap-1 text-muted-foreground">
+        <input type="checkbox" checked={block.showStamp !== false} onChange={(event) => onChange({ ...block, showStamp: event.target.checked })} />
+        {t('manualValidation.report.showStamp')}
       </label>
   </>;
 }

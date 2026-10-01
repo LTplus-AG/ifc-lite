@@ -81,6 +81,9 @@ upload (`5969481`) reached `COMPLETE`, 100%; the downloaded tiled GLB contains
 that edited name. Its transform and bounding box match the unedited control.
 The credential field remained masked and closing the dialog removed it;
 mounted tests separately verify the stored token is cleared on close.
+A final shared-browser submission (`5969543`) verified the long filename action
+wraps into two lines: its client and scroll widths both measured 462 px,
+with a 406 px label and a 56 px button height. The link had no horizontal overflow.
 
 This confirms real API/SDK transport, shared-browser upload/edit behavior and
 horizontal origin placement for this fixture. It does not establish a visual

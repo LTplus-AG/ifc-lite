@@ -180,6 +180,22 @@ and Northings 9063960.607644705. Tiling this real model is demonstrated;
 placement acceptance is still failed. This is a control, not a replacement
 transport shipped by the PR.
 
+Two further unchanged-source database controls also tiled. **5969795** supplied
+the documented `inputCrs: EPSG:32760`; its root translation was approximately
+ECEF (26124.15, 498478.42, -6337257.45), far from the authored location, and its
+second transform basis was all zero. **5969814** supplied only the independently
+calculated longitude/latitude position (179.08012899993923,
+-8.462489999999077, 0). Its output was identical to the native database control,
+still near 0/0. Neither passed placement acceptance. Position is documented as
+inapplicable when embedded georeferencing is present, so its being ignored does
+not establish an API contract violation.
+
+An independent IfcOpenShell run produced 48 source meshes with no geometry
+errors. Their SI-metre bounds were approximately (-0.965763, -0.904192, -3.5)
+to (44.401270, 56.905256, 7.774582), with project and map units both 0.001 metre.
+The source dimensions and canonical map conversion, rather than a matching
+origin alone, remain the placement oracle for any proposed replacement.
+
 ## Verdict
 
 Real upload, retained edits, completion handling and named asset navigation are

@@ -66,8 +66,8 @@ describe('owned primary completion and launcher (#6232)', () => {
       assert.equal(useViewerStore.getState().models.get(modelId)?.loadState, 'complete');
       assert.equal(useViewerStore.getState().activeLoadCanceller, null);
       run.release();
-      useViewerStore.getState().enterModelWorkspace({ modelId });
-      assert.equal(launchModelCommand('Wall'), true);
+      assert.equal(useViewerStore.getState().enterModelWorkspace({ modelId }), true);
+      assert.equal(launchModelCommand('wall.place'), true);
       assert.equal(useViewerStore.getState().session?.modelId, modelId, 'launcher retains the completed owner after workflow release');
     } finally {
       held.release();

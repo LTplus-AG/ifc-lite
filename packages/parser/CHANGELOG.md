@@ -1,5 +1,21 @@
 # @ifc-lite/parser
 
+## 9.2.0
+
+### Minor Changes
+
+- [#6625](https://github.com/LTplus-AG/ifc-lite/pull/6625) [`7780cb0`](https://github.com/LTplus-AG/ifc-lite/commit/7780cb05878c574ebd2a9f631ca6757233e845d3) Thanks [@louistrue](https://github.com/louistrue)! - Add opt-in STEP map-unit normalization to metres while preserving physical map coordinates, project geometry and project units. Export the immutable shared IFC SI-prefix factors for the normalization consumer, so readers and writers use the same factors. Unsupported coordinate operations, ambiguous project units and retained WKT unit definitions are preserved with explicit export warnings.
+
+- [#6522](https://github.com/LTplus-AG/ifc-lite/pull/6522) [`ec983d3`](https://github.com/LTplus-AG/ifc-lite/commit/ec983d378bfccc2b65fb636a76e321a2c9482aa4) Thanks [@louistrue](https://github.com/louistrue)! - Preserve per-model spatial metadata in collaboration rooms and allow reconstructed stores to retain pre-extracted georeferencing through worker transport. Synchronize subsequent georeference edits through the same room metadata and expose the canonical computeTransformMatrix helper to keep derived transforms coherent. Older rooms remain readable without fabricated coordinate offsets.
+
+### Patch Changes
+
+- [#6472](https://github.com/LTplus-AG/ifc-lite/pull/6472) [`e01487f`](https://github.com/LTplus-AG/ifc-lite/commit/e01487ff2f40fa758b73b3ec9a6abba9f9ff646b) Thanks [@louistrue](https://github.com/louistrue)! - The Model workspace rail gets Room ([#6232](https://github.com/LTplus-AG/ifc-lite/issues/6232) M4). Room reads the storey's walls on demand and shows every area they enclose, with its area, in the plan and in 3D. Click inside one to make it an IfcSpace, or switch to Draw and outline a free room as a rectangle or a polygon. Auto makes every enclosed area that has no room yet a room, as one undo step, and never lays a second room over one the model already has. Rooms follow the walls' inner faces, axes or outer faces. A room is a snapshot of the walls when it is made: select rooms and press Update rooms to re-derive their outlines (and floor areas) from the walls as they are now. Shift+O or "Make rooms" in the command palette starts the tool. It replaces the interim "Draw spaces" command, whose rectangle and polygon drawing is now the Room tool's Draw mode.
+  
+  `effectiveStoreyId` now puts an IfcSpace its storey aggregates on that storey while edits are pending, as it already did without them. Split and Update rooms refused every IfcSpace of an edited model before.
+- Updated dependencies [[`89be760`](https://github.com/LTplus-AG/ifc-lite/commit/89be760d4eb8adba93e9f5660f6e4ceda0c507d5), [`dd8e27c`](https://github.com/LTplus-AG/ifc-lite/commit/dd8e27cccbfd27cc6c16f09d66542c1c9bd17075), [`526a91b`](https://github.com/LTplus-AG/ifc-lite/commit/526a91bdf33e2be2d6167df95a68db343b5337c0), [`4c0ebf2`](https://github.com/LTplus-AG/ifc-lite/commit/4c0ebf24c8c7b8470602300d56f0b1bd7c2a01e0)]:
+  - @ifc-lite/wasm@10.3.0
+
 ## 9.1.0
 
 ### Minor Changes

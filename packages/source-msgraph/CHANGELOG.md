@@ -1,5 +1,16 @@
 # @ifc-lite/source-msgraph
 
+## 0.3.0
+
+### Minor Changes
+
+- [#6460](https://github.com/LTplus-AG/ifc-lite/pull/6460) [`9bbe599`](https://github.com/LTplus-AG/ifc-lite/commit/9bbe599a1d256bff7648584517eb258bbe42cb65) Thanks [@louistrue](https://github.com/louistrue)! - Report download progress from the Dropbox, OneDrive/SharePoint and Dalux providers. `@ifc-lite/plugin-api` gains `readWithProgress(response, onProgress, fallbackTotal)`, which streams a response body and calls `DownloadOptions.onProgress` about ten times a second, starting at `(0, total)` and ending at `(byteLength, byteLength)`. When `Content-Length` is missing, the total falls back to the file's listed size. The `@ifc-lite/source-fixture` conformance suite now checks that a provider's download progress only increases and ends at the byte length.
+
+### Patch Changes
+
+- Updated dependencies [[`9bbe599`](https://github.com/LTplus-AG/ifc-lite/commit/9bbe599a1d256bff7648584517eb258bbe42cb65)]:
+  - @ifc-lite/plugin-api@0.4.0
+
 ## 0.2.1
 
 ### Patch Changes

@@ -28,6 +28,12 @@ See the [numeric proof](./infra-map-unit-normalized-proof.json). A production
 implementation and edited-model acceptance remain pending. No manual display transform was
 introduced.
 
+A second client-side control, **5970044**, uses standard mapped geometry
+to carry the deck's full similarity transform. Actual corners agree with the
+source/GEOID99 oracle within 1.75 cm (quantization 3.08 cm), and the rendered
+deck follows the bridge without a display correction. See the [numeric proof](./mapped-deck-normalized-proof.json).
+A generic implementation remains pending.
+
 The report is retained as an investigation record, not a request to attribute
 fault to the provider. See [the updated acceptance record](./README.md).
 

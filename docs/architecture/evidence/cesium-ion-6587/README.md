@@ -33,6 +33,27 @@ geometry with datum EPSG:5103 (5970020), produced `DATA_ERROR` at 5%, so those
 controls do not establish correct placement. Further client integration tests
 are active; this work is not blocked on provider support.
 
+
+## Equivalent mapped geometry fixes the deck
+
+Control **5970044** preserved the original deck CRS metadata and source
+profile, wrapped its representation in a standard `IfcMappedItem` carrying
+the full authored similarity transform, and reset `IfcMapConversion` rotation
+and scale to identity. Its independently mapped source corners are exactly
+equal to the original fixture. The actual tiled GLB's eight unique corners
+agree with the full source/GEOID99 oracle within 1.75 cm, below its 3.08 cm
+quantization step. The alternative GEOID18 residual (0.451 m) is disclosed;
+provider geoid selection is not identified. See the [numeric proof](./mapped-deck-normalized-proof.json).
+
+The full GLB and external schema render in CesiumJS with the actual tile
+transform and no additional placement correction. The deck follows the
+Golden Gate Bridge north–south. Original `VerticalDatum = EPSG:5703` was
+retained to isolate geometry normalization; this control does not certify
+that metadata as semantically correct. A generic export implementation,
+federation/placement coverage, and edited-model acceptance remain pending.
+
+![Actual mapped deck following the Golden Gate Bridge](mapped-deck-normalized.png)
+
 ## Real ribbon entry and dialog
 
 On source head `d90afc7362ec768c8a107544667777e1bf9349bf`, the supported

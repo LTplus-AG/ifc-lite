@@ -42,6 +42,27 @@ This is a viewer workspace adjustment: it does not rewrite the source IFC
 placements. Existing measurements retain their recorded workspace points and
 are marked stale after movement; remeasure them in the new arrangement.
 
+## Projection Depth
+
+Enable **Projection** to show geometry beyond the section cut, then open its
+settings button. **Auto** uses the existing model and floor/ceiling bands.
+Turn Auto off to enter a finite background depth in the selected display length
+unit. The setting is stored in metres and remembered with the drawing options.
+Zero keeps the section cut without background projection. Negative or non-finite
+input does not replace the last valid setting.
+
+Manual depth clips triangles and edges at the depth boundary before creating
+projected outlines. Hidden-line occluders use the same clipped band, so geometry
+outside the selected range cannot hide geometry inside it. Cardinal Down, Front
+and Side sections support this control; arbitrary-plane placement has no manual
+projection-depth control in this viewer workflow.
+
+For SDK callers, set `SectionConfig.clipProjectionBands` to `true` alongside
+`projectionBelowDepth` and `projectionAboveDepth` to request this bounded
+projection behavior. Omitting the flag preserves the existing outline behavior.
+For bounded projections, `includeHiddenLines: false` excludes occluded lines
+behind the section while keeping dashed overhead outlines.
+
 ## Saved Sheet Setup
 
 The viewer remembers each model's sheet setup in this browser: paper size,

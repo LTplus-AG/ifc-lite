@@ -18,7 +18,6 @@
   "apps/viewer/src/components/viewer/ClashModelTagNotice.tsx": 1,
   "apps/viewer/src/components/viewer/dock/FloatingPanel.tsx": 3,
   "apps/viewer/src/components/viewer/document/TableBlockEditor.tsx": 1,
-  "apps/viewer/src/components/viewer/drawing/DrawingToolbar.tsx": 2,
   "apps/viewer/src/components/viewer/drawing/DrawingToolbarControls.tsx": 1,
   "apps/viewer/src/components/viewer/IDSPanelStatus.tsx": 1,
   "apps/viewer/src/components/viewer/MobileBottomSheet.tsx": 1,

@@ -10,6 +10,7 @@
 import type { StateCreator } from 'zustand';
 import type { Drawing2D, DxfPlacement, DxfUnderlay, GraphicOverrideRule, GraphicOverridePreset } from '@ifc-lite/drawing-2d';
 import { BUILT_IN_PRESETS, DEFAULT_DXF_PLACEMENT } from '@ifc-lite/drawing-2d';
+import { validateDrawingDisplayOptions } from '@/lib/drawing/projection-depth';
 import { DEFAULT_SCAN_SECTION_THICKNESS } from '@/hooks/scanSectionMath';
 import { isDegenerateMeasurement, isDegenerateArea, isDegenerateCloud } from './drawing2DDegenerateGuards';
 
@@ -156,10 +157,12 @@ export interface Drawing2DState {
     /**
      * Construction projection (issue #979): project geometry beyond the cut
      * as reference lines — thin solid for the visible floor side, dashed for
-     * overhead elements (beams, roofs, eaves). Plan ('down') sections only.
+     * overhead elements (beams, roofs, eaves). Cardinal Down, Front and Side sections.
      * Off by default; the section view stays cut-only until enabled.
      */
     showConstructionProjection: boolean;
+    /** Manual background depth in metres; null selects automatic bands (#6615). */
+    constructionProjectionDepth: number | null;
     /**
      * Point-cloud "scan" overlay on the 2D section view (issue #1805): a
      * thin band of loaded scan points around the cut plane, projected into
@@ -361,6 +364,7 @@ const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] =
   scale: 100, // 1:100 default
   useSymbolicRepresentations: false, // Default to section cut (Body geometry)
   showIfcAnnotations: true, // Mirror the 3D Class Visibility default
+  constructionProjectionDepth: null,
   showConstructionProjection: false, // Optional reference projection (issue #979), off by default
   showScanSection: true, // Scan overlay (issue #1805) — on by default, no-op without a loaded point cloud
   scanSectionThickness: DEFAULT_SCAN_SECTION_THICKNESS,
@@ -437,7 +441,7 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
   setDrawing2DSvgContent: (svg) => set({ drawing2DSvgContent: svg }),
 
   updateDrawing2DDisplayOptions: (options) => set((state) => ({
-    drawing2DDisplayOptions: { ...state.drawing2DDisplayOptions, ...options },
+    drawing2DDisplayOptions: { ...state.drawing2DDisplayOptions, ...validateDrawingDisplayOptions(options) },
   })),
 
   // Only the drawing-generation fields, NOT the whole slice: this is called

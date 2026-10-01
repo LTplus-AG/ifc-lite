@@ -6,6 +6,12 @@ import type { TranslationValue } from '../types';
 
 /** The Drawing panel's chrome (header, toolbar, export menu, status line), guidance, and error states. */
 export const section2dEn = {
+  'section2d.projection.settings': 'Projection settings',
+  'section2d.projection.depth': 'View depth behind cut',
+  'section2d.projection.auto': 'Automatic depth',
+  'section2d.projection.distance': 'Depth ({unit})',
+  'section2d.projection.invalid': 'Enter a finite distance of zero or more.',
+  'section2d.projection.help': 'Depth is measured behind the cut. Zero shows cut geometry only. Plan views retain their separate overhead band.',
   'section2d.tip.trackpad': 'Drag or scroll to pan · Pinch or Ctrl/Cmd+scroll to zoom · Click markup to select',
   'section2d.heading': 'Drawing',
   'section2d.overlay.toggleTitle': 'Toggle 3D overlay',

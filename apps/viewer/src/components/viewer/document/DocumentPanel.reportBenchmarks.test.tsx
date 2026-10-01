@@ -6,6 +6,8 @@ import '@/test/setup-dom.js';
 import { beforeEach, afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { act } from 'react';
 import * as jspdf from 'jspdf';
 import { IfcParser } from '@ifc-lite/parser';
@@ -25,6 +27,7 @@ import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types';
 import { validationReportSnapshot } from '@/lib/validation/reports/history';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { RING_COLORS } from '@/lib/validation/manual/ring';
+import { REPORT_MARGIN } from '@/lib/export/report/compose';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { render, cleanup, click, type as typeInput } from '@/test/render';
@@ -293,6 +296,63 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     assert.deepEqual(block.summary, { checked: 12, passed: 6, failed: 3, warnings: 3, passRate: 50 });
     assert.equal(block.variant, first.variant); assert.equal(block.id, first.id); assert.equal(block.benchmarks, false);
     assert.equal(ui.querySelector('[data-validation-benchmark]'), null, 'selecting another source does not re-enable a hidden ring');
+  });
+
+  it('keeps actual mixed-result rings below an enlarged page heading and prints both fonts and outcome colors (#6552 / #6554)', async () => {
+    const document = { ...spec, pageHeading: { text: 'Mixed validation handover', font: 'times' as const, fontSize: 48, textColor: '#6b21a8' },
+      blocks: spec.blocks.map((block) => ({ ...block, benchmarks: true })) };
+    const measuring = new jspdf.jsPDF({ unit: 'pt' });
+    const layout = composeDocument({ name: document.name, page: document.page, pageHeading: document.pageHeading,
+      blocks: document.blocks.filter((block) => block.kind === 'ids-report'), generatedAt: '',
+      measure: (text, size, bold, font) => { measuring.setFont(font ?? 'helvetica', bold ? 'bold' : 'normal'); measuring.setFontSize(size); return measuring.getTextWidth(text); } });
+    assert.ok(layout.pageHeading);
+    const headingText = layout.pageHeading.text;
+    assert.ok(headingText.startsWith('Mixed validation'), 'the enlarged authored heading uses the canonical measured one-line truncation');
+    const rings = layout.pages.flatMap((page) => page.items).filter((item) => item.kind === 'ring');
+    assert.equal(rings.length, 4);
+    for (const ring of rings) {
+      assert.ok(ring.y >= REPORT_MARGIN + 30 + layout.pageHeading.extraHeight, 'ring starts below the enlarged heading reservation');
+      assert.ok(ring.y + ring.size <= layout.size.h - REPORT_MARGIN - 24, 'ring stays above the unchanged footer');
+    }
+    const pdfWindow = window as Window & { jspdf?: typeof jspdf };
+    const prior = pdfWindow.jspdf; pdfWindow.jspdf = jspdf;
+    let result: Awaited<ReturnType<typeof generateDocumentPdf>>;
+    try {
+      result = await generateDocumentPdf({ document, bindings: { models: [], activeModelId: null, today: new Date(0) },
+        aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map() },
+      { ...await browserReportSeams(null), imageSize: browserImageSize });
+    } finally { pdfWindow.jspdf = prior; }
+    const reader = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const require = createRequire(import.meta.url);
+    const task = reader.getDocument({ data: new Uint8Array(await result.blob.arrayBuffer()), stopAtErrors: true,
+      standardFontDataUrl: `${join(dirname(require.resolve('pdfjs-dist/package.json')), 'standard_fonts')}/` });
+    const printed: string[] = [], strokes: unknown[] = [];
+    try {
+      const parsed = await task.promise;
+      for (let number = 1; number <= parsed.numPages; number++) {
+        const page = await parsed.getPage(number);
+        try {
+          const text = await page.getTextContent();
+          const heading = text.items.find((item) => 'str' in item && item.str === headingText);
+          assert.ok(heading && 'str' in heading); assert.equal(heading.transform[0], 48);
+          assert.equal(text.styles[heading.fontName].fontFamily, 'serif');
+          const footer = text.items.find((item) => 'str' in item && item.str.startsWith('Page '));
+          assert.ok(footer && 'str' in footer); assert.equal(footer.transform[0], 8);
+          printed.push(...text.items.flatMap((item) => 'str' in item ? [item.str] : []));
+          const operators = await page.getOperatorList();
+          strokes.push(...operators.fnArray.flatMap((op, index) => op === reader.OPS.setStrokeRGBColor ? [operators.argsArray[index][0]] : []));
+        } finally { page.cleanup(); }
+      }
+    } finally { await task.destroy(); }
+    for (const verdict of ['62% passed', '50% passed']) assert.ok(printed.some((text) => text.includes(verdict)), `${verdict} actual engine summary survives header rendering`);
+    const rgb = (hex: string) => [1, 3, 5].map((index) => Number.parseInt(hex.slice(index, index + 2), 16));
+    for (const bucket of ['pass', 'warning', 'fail'] as const) {
+      const expected = rgb(RING_COLORS[bucket]);
+      // jsPDF's three-decimal normalized RGB operands round by at most one
+      // 8-bit channel when the independent PDF reader expands them again.
+      assert.ok(strokes.some((color) => typeof color === 'string' && rgb(color).every((channel, index) => Math.abs(channel - expected[index]) <= 1)),
+        `${bucket} actual ring ink remains after the header font/color changes: ${JSON.stringify(strokes)}`);
+    }
   });
 
 });

@@ -396,7 +396,12 @@ describe('Saved comparison chart source (#6549)', () => {
       assert.ok(refusedWarnings.some((warning) => warning.startsWith('Chart unavailable: Refused live filter:') && warning.includes(filterMessage)));
       assert.ok(refusedWarnings.some((warning) => warning.includes('Refused column:') && warning.includes('MissingDimension')));
       const refusedText = await pdfText(refusedResult.blob);
-      assert.match(refusedText, /MissingDimension/); assert.ok(refusedText.replace(/\s+/g, ' ').includes(filterMessage.replace(/\s+/g, ' ')));
+      // Existing live-chart text clips long reasons to its frame. The warning
+      // above retains the full error; the actual PDF must show its actionable
+      // selector/query diagnosis instead of substituting the generic empty state.
+      assert.match(refusedText, /MissingDimension/);
+      assert.match(refusedText, /Character 1 \(at "not-an-ifc-selector\(\)"\): "not-an-ifc-selector\(\)" is not an IFC class name/);
+      assert.doesNotMatch(refusedText, /No data for this chart\./);
       assert.equal(captures, 0);
     } finally { restoreParser(); pdfWindow.jspdf = previous; }
   });

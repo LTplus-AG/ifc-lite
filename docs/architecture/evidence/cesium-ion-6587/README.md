@@ -99,6 +99,34 @@ independent verification before claiming full placement acceptance.
 Option contract: [Cesium ion OpenAPI](https://ion.cesium.com/openapi.yaml).
 Affine operation: [PROJ affine transformation documentation](https://proj.org/en/stable/operations/transformations/affine.html).
 
+## Compound vertical CRS control
+
+Asset **5969770** (collection 5969769) retained the unchanged IFC and supplied
+the same anchored horizontal CRS within a `CompoundCRS` with EPSG:5703 NAVD88.
+It reached `COMPLETE`, 100%. Its actual tiled center was longitude
+-122.47856287106673, latitude 37.819795881485646, ellipsoidal height
+34.438104219298346 metres. It retained the northward alignment. The horizontal
+center still agrees with the independent source midpoint within a millimetre.
+
+![Actual compound CRS tiles following the bridge](compound-crs-control.png)
+
+For an independent vertical check, PROJ 9.3 / pyproj 3.6.1 used the source
+EPSG:32610 + EPSG:5703 compound CRS, target EPSG:4979, a San Francisco area of
+interest, and `allow_ballpark=False`. Downloaded public PROJ/NOAA grids made real
+vertical operations available. At the nominal source midpoint and
+`0.9996 * 67.5` metre orthometric height, the available GEOID99 operation
+returned 34.4881148179993 metres (stated accuracy 2.05 metres); GEOID18 returned
+34.924909672373786 metres (stated accuracy 4.015 metres). The tiled center is
+consistent with those independently bounded operations, but this does not
+identify ion's exact grid, establish centimetre elevation accuracy, or prove
+that its handling of vertical map scale is correct. A bounding-sphere center
+is also not an exact mesh-vertex oracle.
+
+The compound override restores a plausible vertical conversion that the
+horizontal-only experiment lost. Both experiments remain test-only until
+source-unit, map-scale, coordinate-frame and original Infra-Bridge acceptance
+cases are verified.
+
 ## Verdict
 
 Real upload, retained edits, completion handling and named asset navigation are

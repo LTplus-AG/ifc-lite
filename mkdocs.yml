@@ -169,6 +169,7 @@ nav:
     - Clash Detection: guide/clash-detection.md
     - Model Diff: guide/model-diff.md
     - Stable Element Identity: guide/stable-identity.md
+    - Linked Records (DBL / DPP Pilot): guide/semantic-pilot.md
     - Real-Time Collaboration: guide/collaboration.md
     - Collab Engine (API): guide/collaboration-api.md
     - Collaboration Server: guide/collab-server.md

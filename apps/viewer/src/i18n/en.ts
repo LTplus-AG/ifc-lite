@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { automationEditorEn } from './catalogues/automation-editor.en';
+import { semanticEn } from './catalogues/semantic.en';
 import { flowStartupEn } from './catalogues/flow-startup.en';
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
@@ -110,6 +111,7 @@ import { zonesPanelEn } from './catalogues/zones-panel.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
+  ...semanticEn,
   ...analysisPanelEn,
   ...annotationsEn,
   ...anonymizedExportEn,

@@ -20,7 +20,7 @@
 // lucide only, never `@/icons`: the store imports this module, so it sits in
 // the viewer-embed bundle too, which has no unplugin-icons resolver for the
 // `~icons/viewer/*` virtual modules (#6315 broke that build).
-import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, DraftingCompass, FileText, FileWarning, GitBranch, GitCompareArrows, History, Info, Layers as LayersIcon, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
+import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, DraftingCompass, FileText, FileWarning, GitBranch, GitCompareArrows, History, Info, Link2, Layers as LayersIcon, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
 import type { TranslationKey } from '@/i18n';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
@@ -58,7 +58,8 @@ export type WorkspacePanelId =
   | 'presentation'
   | 'changes'
   | 'model'
-  | 'changeSets';
+  | 'changeSets'
+  | 'semantic';
 
 /** Shared task grouping for the rail, ribbon panel browser, and palette commands (#5873). */
 export type PanelGroup = 'coordinate' | 'check' | 'quantify' | 'automate' | 'site' | 'author';
@@ -200,6 +201,7 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Named change sets (#6232 D4): the active set collects new edits; export /
   // import as files. Flag-free like 'changes' / 'model'. APPENDED (no Alt shortcut).
   { id: 'changeSets', titleKey: 'changeSets.panel.title', Icon: GitBranch, group: 'author', region: 'side' },
+  { id: 'semantic', titleKey: 'semantic.title', Icon: Link2, group: 'coordinate', region: 'side', prefersWide: true },
 ];
 
 // The bottom strip (Script / Schedule / Lists) is table-driven; the id union and

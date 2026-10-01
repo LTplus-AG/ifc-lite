@@ -13,7 +13,7 @@ import * as jspdf from 'jspdf';
 import { IfcParser } from '@ifc-lite/parser';
 import { diffModels } from '@ifc-lite/diff';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { aggregate, renderChartSvg, type ChartDataset, type ChartSource, type ChartSpec } from '@ifc-lite/charts';
+import { aggregate, ELEMENT_COLUMNS, renderChartSvg, type ChartDataset, type ChartSource, type ChartSpec } from '@ifc-lite/charts';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types';
 import { browserImageSize, generateDocumentPdf } from '@/lib/document/generate-document-pdf';
@@ -380,16 +380,23 @@ describe('Saved comparison chart source (#6549)', () => {
         topics: input.topics, tables: input.tables }, seams);
       assert.ok(documentPdfWarnings(legacyResult).some((warning) => warning.includes('Legacy selector refused')), 'old callers without classification retain message-to-failure behavior');
       const refused: DocumentSpec = { ...document, blocks: [
-        { ...block, id: 'filter-refused', snapshot: false, chart: { ...chart(), title: 'Refused live filter', source: 'elements', dimension: 'Type', filter: { selector: 'not-an-ifc-selector()' } } },
+        { ...block, id: 'filter-refused', snapshot: false, chart: { ...chart(), title: 'Refused live filter', source: 'elements', dimension: ELEMENT_COLUMNS.ifcType, filter: { selector: 'not-an-ifc-selector()' } } },
         { ...block, id: 'column-refused', snapshot: false, chart: { ...chart(), title: 'Refused column', source: 'elements', dimension: 'MissingDimension' } },
       ] };
+      const unfiltered = await prepareDocument({ ...refused, blocks: refused.blocks.map((item) => item.kind === 'chart'
+        ? { ...item, chart: { ...item.chart, dimension: ELEMENT_COLUMNS.ifcType, filter: undefined } } : item) }, state);
+      assert.ok((unfiltered.aggregations.get('filter-refused')?.total ?? 0) > 0, 'the real parsed elements can aggregate without the refused selector');
+      assert.equal(unfiltered.chartMessages.size, 0);
       const refusedInput = await prepareDocument(refused, state);
+      const filterMessage = refusedInput.chartMessages.get('filter-refused'); assert.ok(filterMessage);
+      assert.doesNotMatch(filterMessage, /dimension column/, 'a valid dimension preserves the actual selector refusal');
+      assert.equal(refusedInput.aggregations.get('filter-refused')?.total, 0);
       const refusedResult = await exportPreparedDocument(refusedInput, { seams });
       const refusedWarnings = documentPdfWarnings(refusedResult);
-      assert.ok(refusedWarnings.some((warning) => warning.startsWith('Chart unavailable: Refused live filter:')));
+      assert.ok(refusedWarnings.some((warning) => warning.startsWith('Chart unavailable: Refused live filter:') && warning.includes(filterMessage)));
       assert.ok(refusedWarnings.some((warning) => warning.includes('Refused column:') && warning.includes('MissingDimension')));
       const refusedText = await pdfText(refusedResult.blob);
-      assert.match(refusedText, /MissingDimension/); assert.match(refusedText, /selector/i);
+      assert.match(refusedText, /MissingDimension/); assert.ok(refusedText.replace(/\s+/g, ' ').includes(filterMessage.replace(/\s+/g, ' ')));
       assert.equal(captures, 0);
     } finally { restoreParser(); pdfWindow.jspdf = previous; }
   });

@@ -10,8 +10,10 @@ projection and raycasts, the actual command runtime, IFC mutation writer and
 WebGPU renderer. `native-facts.json.gz` contains the lossless input header/hash,
 source/base identity, served WASM hash, native pointer events, runtime/camera/history
 observations, canonical physical wall endpoints, console messages and adapter facts.
-The manifest hashes each archived artifact. The recorded source precedes only this
-evidence commit; no functional paths changed while packaging it.
+The manifest hashes each archived artifact. The capture retains source
+`a695734678d5c78206807921b4d173b8977f7162`; its original evidence commit changed
+no functional paths. The later foreign-cancellation fix is qualified separately
+through mounted real-engine tests and does not relabel this native capture.
 
 Windows Chrome 154 used a fresh owned context/tab on the native NVIDIA Blackwell
 adapter, with cross-origin isolation, visible/focused page and no page errors.
@@ -36,7 +38,9 @@ The run covers one actual loaded model. Mounted tests additionally use one and t
 models, actual parsed IFC mutation views and the real room-layout WASM: room edits
 commit one tagged undo batch, preserve quantities through Undo/Redo, and cancel on
 pointer cancellation, lost capture, refused capture plus departure, window blur,
-lost buttons, unmount and command replacement. Native room pointer capture,
+lost buttons, unmount and command replacement. With capture refused, a foreign
+touch or pen cancellation preserves the owned mouse drag and its single commit.
+Native room pointer capture,
 federation interaction and Firefox are not established by these screenshots.
 
 ## Excluded diagnostic
@@ -51,11 +55,17 @@ raycast, IFC writer or command handler was patched to make it pass.
 
 ## Qualification
 
-Against the recorded current main, normal root Turbo build and typecheck completed
-successfully; 15 new mounted cases and nine related regression suites passed.
-The official production-revert oracle had 44 passing assertions on the branch and
-31 passing / 13 failing assertions after reverting production, with restoration
-verified. The original test-only checkpoint independently reproduced camera/room
-routing defects, before implementation. Lint, API surface, module-size, test-wiring
-and source-assertion gates passed. Required CI and review are checked separately
-on the final published PR head; this archive does not assert their outcome.
+The native capture source passed 15 mounted cases, nine related regression suites
+and its recorded root checks. The successor at
+`fb5cc7619929741daaf8c9780209241b48e9135e`, against main
+`e79f27342beb01a6f30d9b63c44795ecd118f4de`, passed the full normal root Turbo
+build (61 tasks), plain root typecheck (109 tasks, 3,234 test files), and 16
+mounted command cases with no skips. Its production-revert oracle observed 45
+passes, then 31 passes and 14 assertion failures, with restoration verified.
+The surgical owner-cancellation oracle observed 16 passes, then 15 passes and
+one assertion failure; the untouched test-only checkpoint independently
+reproduced that same real room-drag failure before the fix. The original
+test-only checkpoint also reproduced the camera/room routing defects.
+Changed-file lint, module-size, MPL and source-assertion gates passed. Complete
+CI, root lint and all review feedback are checked separately on the published
+head before merge; this archive does not assert their outcome.

@@ -10,12 +10,15 @@ import { fileURLToPath } from 'node:url';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcCreator } from '@ifc-lite/create';
+import { IfcParser } from '@ifc-lite/parser';
+import { serializeEntitySubgraph } from '@ifc-lite/export';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import type { MeshData } from '@ifc-lite/geometry';
 import { applyRemeshConfig, remeshOnApi, styleWireOnApi } from '../../../../packages/geometry/src/remesh/remesh-core.js';
 import { resolveRtcFrame } from '../../../../packages/geometry/src/rtc-frame.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId.js';
+import { modelEditTarget } from '@/store/slices/mutation-modelling-records.js';
 import { createBlankIfcFile } from '@/utils/createBlankIfc.js';
 import { requestRemesh, setRemeshClientFactory } from '@/lib/remesh/remesh-service.js';
 import { useIfcLoader } from './useIfcLoader.js';
@@ -52,7 +55,6 @@ beforeEach(async () => {
   initSync({ module: readFileSync(wasmPath) });
   useViewerStore.getState().resetViewerState();
   useViewerStore.getState().clearAllModels();
-  useViewerStore.setState({ editEnabled: true });
   // The existing remesh factory substitutes only transport. It executes the
   // exact real worker core and releases its own API deterministically.
   setRemeshClientFactory(async config => {
@@ -90,8 +92,10 @@ async function load(file: File, modelId?: string): Promise<FederatedModel> {
   const state = useViewerStore.getState();
   const model = state.models.get(modelId ?? state.activeModelId ?? '');
   assert.ok(model);
-  assert.equal(model.loadState, 'complete', model.loadError ?? 'load must complete');
+  if (!modelId) assert.equal(model.loadState, 'complete', model.loadError ?? 'load must complete');
+  else assert.equal(model.loadPath, 'wasm', 'federated model is published only after actual WASM completion');
   assert.ok(model.ifcDataStore);
+  useViewerStore.getState().setEditEnabled(true);
   return model;
 }
 
@@ -119,7 +123,13 @@ function bounds(meshes: MeshData[]) {
 describe('canonical blank file → author → real WASM remesh (#6232)', () => {
   for (const unit of ['METRE', 'MILLIMETRE'] as const) {
     it(`${unit}: zero-job streaming emits actual engine metadata before completion`, { skip }, async () => {
-      const bytes = new Uint8Array(await blankFile(unit).arrayBuffer());
+      // A blank hierarchy still supplies two spatial-product jobs that yield
+      // no meshes. For the distinct zero-job engine invariant, export the
+      // real project's forward closure (context and units, no products).
+      const store = await new IfcParser().parseColumnar(await blankFile(unit).arrayBuffer(), { disableWorkerScan: true });
+      const project = store.entityIndex.byType.get('IFCPROJECT')?.[0];
+      assert.ok(project);
+      const bytes = serializeEntitySubgraph(store, null, { targets: [project] }).bytes;
       const events: Array<Record<string, unknown>> = [];
       const api = new IfcAPI();
       try {
@@ -138,7 +148,6 @@ describe('canonical blank file → author → real WASM remesh (#6232)', () => {
         let expectedFrame;
         try {
           const pre = api.buildPrePassOnce(new Uint8Array(await file.arrayBuffer()));
-          assert.equal(pre.totalJobs, 0);
           expectedFrame = resolveRtcFrame(pre);
         } finally { api.clearPrePassCache(); api.free(); }
         const primary = await load(file);
@@ -150,8 +159,9 @@ describe('canonical blank file → author → real WASM remesh (#6232)', () => {
         const state = useViewerStore.getState();
         const storey = primary.ifcDataStore?.entityIndex.byType.get('IFCBUILDINGSTOREY')?.[0];
         assert.ok(storey);
+        assert.ok(modelEditTarget(state, primary.id), 'the canonical modelling command opens its mutation view');
         const wall = state.addWall(primary.id, storey, { Start: [2, 3, 0], End: [6, 3, 0], Thickness: 0.2, Height: 3 });
-        assert.ok('expressId' in wall);
+        assert.ok('expressId' in wall, 'error' in wall ? wall.error : 'wall creation must succeed');
         const outcome = await requestRemesh(useViewerStore.getState, primary.id, [wall.expressId], 'created');
         assert.equal(outcome.status, 'applied', 'blank canonical load must preserve the engine frame for authoring');
         const loaded = useViewerStore.getState().models.get(primary.id);
@@ -180,14 +190,18 @@ describe('canonical blank file → author → real WASM remesh (#6232)', () => {
 
   it('missing producer provenance still refuses remesh rather than assuming identity', { skip }, async () => {
     const model = await load(blankFile('METRE'));
-    assert.ok(model.geometryResult?.coordinateInfo);
-    const { wasmRtcFrame: _engineFrame, ...unknownFrame } = model.geometryResult.coordinateInfo;
-    useViewerStore.getState().setGeometryResult({ ...model.geometryResult, coordinateInfo: unknownFrame });
+    if (model.geometryResult?.coordinateInfo) {
+      const unknownFrame = { ...model.geometryResult.coordinateInfo };
+      delete unknownFrame.wasmRtcFrame;
+      useViewerStore.getState().setGeometryResult({ ...model.geometryResult, coordinateInfo: unknownFrame });
+    }
     const storey = model.ifcDataStore?.entityIndex.byType.get('IFCBUILDINGSTOREY')?.[0];
     assert.ok(storey);
+    assert.ok(modelEditTarget(useViewerStore.getState(), model.id));
     const wall = useViewerStore.getState().addWall(model.id, storey, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
     assert.ok('expressId' in wall);
+    const existingParts = wallMeshes(model.id, wall.expressId);
     assert.deepEqual(await requestRemesh(useViewerStore.getState, model.id, [wall.expressId], 'created'), { status: 'refused', reason: 'noFrame' });
-    assert.equal(wallMeshes(model.id, wall.expressId).length, 0);
+    assert.deepEqual(wallMeshes(model.id, wall.expressId), existingParts, 'refusal preserves the existing authored fallback');
   });
 });

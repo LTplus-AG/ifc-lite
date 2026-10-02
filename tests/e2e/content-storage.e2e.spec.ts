@@ -198,7 +198,8 @@ test('#6695 an unfinished image round-trips as raw evidence without poisoning va
     const restoredPanel = restored.locator('[data-document-panel]').first();
     await restoredPanel.getByLabel('Import library backup', { exact: true }).setInputFiles({ name: 'unfinished.json', mimeType: 'application/json', buffer: Buffer.from(text) });
     await expect(restored.getByText('Preserved 1 incomplete draft as raw recovery evidence.', { exact: false })).toBeVisible();
-    expect(await restored.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents.find(entry => entry.id === 'complete-6695'))).toEqual(saved);
+    // The persistence notice precedes the asynchronous visible-library refresh.
+    await expect.poll(() => restored.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents.find(entry => entry.id === 'complete-6695'))).toEqual(saved);
     expect(await restored.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents.some(entry => entry.id === 'unfinished-6695'))).toBe(false);
     await restored.reload(); await ready(restored); await openDocument(restored, saved.id);
     await restoredPanel.locator('summary').filter({ hasText: 'Storage and backup' }).click();

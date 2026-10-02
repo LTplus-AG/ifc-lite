@@ -44,7 +44,7 @@ patchedDependencies:
     hash: f503a4ec701f193ef8db43cf396349b5ef3d39508fa6469bf0f36ab31f549c24
     path: patches/@swc__core@1.15.8.patch
   vite-plugin-top-level-await@1.6.0:
-    hash: e3885502f2b79c9fbb025297d669c445e8f13d129a4b231519ea03469efc69cb
+    hash: 623974a52d27420c80972a0c5b93427d3208cc4bc31d93b1505d3fc59fb430ce
     path: patches/vite-plugin-top-level-await@1.6.0.patch
 
 importers:
@@ -457,7 +457,7 @@ importers:
         version: 4.1.1(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
       vite-plugin-top-level-await:
         specifier: ^1.6.0
-        version: 1.6.0(patch_hash=e3885502f2b79c9fbb025297d669c445e8f13d129a4b231519ea03469efc69cb)(@swc/helpers@0.5.21)(rollup@4.62.2)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+        version: 1.6.0(patch_hash=623974a52d27420c80972a0c5b93427d3208cc4bc31d93b1505d3fc59fb430ce)(@swc/helpers@0.5.21)(rollup@4.62.2)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
       vite-plugin-wasm:
         specifier: ^3.6.0
         version: 3.6.0(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -620,7 +620,7 @@ importers:
         version: 8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
       vite-plugin-top-level-await:
         specifier: ^1.6.0
-        version: 1.6.0(patch_hash=e3885502f2b79c9fbb025297d669c445e8f13d129a4b231519ea03469efc69cb)(@swc/helpers@0.5.21)(rollup@4.62.2)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+        version: 1.6.0(patch_hash=623974a52d27420c80972a0c5b93427d3208cc4bc31d93b1505d3fc59fb430ce)(@swc/helpers@0.5.21)(rollup@4.62.2)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
       vite-plugin-wasm:
         specifier: ^3.6.0
         version: 3.6.0(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -667,7 +667,7 @@ importers:
         version: 8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
       vite-plugin-top-level-await:
         specifier: ^1.6.0
-        version: 1.6.0(patch_hash=e3885502f2b79c9fbb025297d669c445e8f13d129a4b231519ea03469efc69cb)(@swc/helpers@0.5.21)(rollup@4.62.2)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+        version: 1.6.0(patch_hash=623974a52d27420c80972a0c5b93427d3208cc4bc31d93b1505d3fc59fb430ce)(@swc/helpers@0.5.21)(rollup@4.62.2)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
       vite-plugin-wasm:
         specifier: ^3.6.0
         version: 3.6.0(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -695,7 +695,7 @@ importers:
         version: 8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
       vite-plugin-top-level-await:
         specifier: ^1.5.0
-        version: 1.6.0(patch_hash=e3885502f2b79c9fbb025297d669c445e8f13d129a4b231519ea03469efc69cb)(@swc/helpers@0.5.21)(rollup@4.62.2)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+        version: 1.6.0(patch_hash=623974a52d27420c80972a0c5b93427d3208cc4bc31d93b1505d3fc59fb430ce)(@swc/helpers@0.5.21)(rollup@4.62.2)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
       vite-plugin-wasm:
         specifier: ^3.6.0
         version: 3.6.0(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -11413,7 +11413,7 @@ snapshots:
       tinyglobby: 0.2.17
       vite: 8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
 
-  vite-plugin-top-level-await@1.6.0(patch_hash=e3885502f2b79c9fbb025297d669c445e8f13d129a4b231519ea03469efc69cb)(@swc/helpers@0.5.21)(rollup@4.62.2)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)):
+  vite-plugin-top-level-await@1.6.0(patch_hash=623974a52d27420c80972a0c5b93427d3208cc4bc31d93b1505d3fc59fb430ce)(@swc/helpers@0.5.21)(rollup@4.62.2)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)):
     dependencies:
       '@jridgewell/remapping': 2.3.5
       '@rollup/plugin-virtual': 3.0.2(rollup@4.62.2)

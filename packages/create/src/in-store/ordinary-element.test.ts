@@ -10,8 +10,10 @@ import { EntityExtractor, IfcParser, extractPropertiesOnDemand } from '@ifc-lite
 import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { addOrdinaryElementInStore, type OrdinaryInStoreElement } from './ordinary-element.js';
+import * as inStore from './index.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 
+const { replaceElementInStore } = inStore;
 const SAMPLE = new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
 const STOREY = 42;
 const WALL = { kind: 'wall' as const, params: {
@@ -28,8 +30,9 @@ const ELEMENTS: OrdinaryInStoreElement[] = [
   { kind: 'member', params: { Start: [0, 0, 3], End: [4, 0, 3], Width: .2, Height: .4 } },
 ];
 
-async function session(withOwnerHistory = false) {
-  const source = await readFile(SAMPLE, 'utf8');
+async function session(withOwnerHistory = false, wallType: 'IfcWall' | 'IfcWallStandardCase' = 'IfcWall') {
+  const source = (await readFile(SAMPLE, 'utf8'))
+    .replace('#1222=IFCWALL(', `#1222=${wallType.toUpperCase()}(`);
   // A valid optional owner-history control, inserted into the actual parsed
   // Bonsai file. Neither schema nor metadata is overridden after parsing.
   const records = [
@@ -66,6 +69,81 @@ async function session(withOwnerHistory = false) {
 }
 
 describe('#6232 D5 ordinary atomic commit', () => {
+  for (const wallType of ['IfcWall', 'IfcWallStandardCase'] as const) {
+    it(`#6710 still replaces a parsed ${wallType} source without weakening schema subtype admission`, async () => {
+      const s = await session(false, wallType), before = s.snapshot();
+      expect(new EntityExtractor(s.store.source).extractEntity(s.store.entityIndex.byId.get(1222)!)?.type)
+        .toBe(wallType.toUpperCase());
+      const replacement = replaceElementInStore(s.store, s.editor, 1222,
+        draft => resolveSpatialAnchor(s.store, STOREY, draft.getMutationView()), WALL);
+      expect(replacement.removedIds).toEqual([1222]);
+      const bytes = s.saved();
+      const parsed = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+      expect(parsed.entityIndex.byId.has(1222)).toBe(false);
+      expect(parsed.entityIndex.byId.has(s.prior)).toBe(true);
+      const extractor = new EntityExtractor(parsed.source);
+      const wall = extractor.extractEntity(parsed.entityIndex.byId.get(replacement.expressId)!);
+      expect(wall?.type).toBe('IFCWALL');
+      expect(extractor.extractEntity(parsed.entityIndex.byId.get(wall!.attributes[6] as number)!)?.type)
+        .toBe('IFCPRODUCTDEFINITIONSHAPE');
+      expect(parsed.spatialHierarchy?.elementToStorey.get(replacement.expressId)).toBe(STOREY);
+      expect(s.view.getMutations().slice(0, before.journal.length)).toEqual(before.journal);
+    });
+  }
+
+  for (const sourceKind of ['curtain assembly', 'bound grid', 'spatial storey', 'ordinary aggregate root'] as const) {
+    it(`#6710 refuses unsupported ${sourceKind} replacement before preparation or graph changes`, async () => {
+      const s = await session(), anchor = resolveSpatialAnchor(s.store, STOREY, s.view);
+      let oldId: number;
+      let relatedIds: number[] = [];
+      if (sourceKind === 'curtain assembly') {
+        const built = inStore.addCurtainWallToStore(s.editor, anchor, {
+          Start: [0, 0, 0], End: [4, 0, 0], Height: 3, UGrid: 2, VGrid: 1,
+        });
+        oldId = built.curtainWallId;
+        relatedIds = [...built.mullionIds, ...built.transomIds, ...built.panelIds];
+        expect(relatedIds.length).toBeGreaterThan(0);
+      } else if (sourceKind === 'bound grid') {
+        const built = inStore.addGridToStore(s.editor, anchor, {
+          UAxes: [{ Tag: 'U', Start: [0, -1], End: [0, 1] }],
+          VAxes: [{ Tag: 'V', Start: [-1, 0], End: [1, 0] }],
+        });
+        const bound = inStore.addColumnOnGridToStore(s.editor, s.store, anchor,
+          { Position: [0, 0, 0], Width: .2, Depth: .2, Height: 3 },
+          { GridId: built.gridId, IntersectingAxes: [built.uAxisIds[0], built.vAxisIds[0]] });
+        oldId = built.gridId;
+        relatedIds = [bound.columnId, bound.gridPlacement.placementId,
+          bound.gridPlacement.intersectionId, ...built.uAxisIds, ...built.vAxisIds];
+      } else if (sourceKind === 'ordinary aggregate root') {
+        oldId = 1222; // Actual parsed Bonsai wall, not a fabricated type.
+        const child = addOrdinaryElementInStore(s.editor, anchor, {
+          kind: 'beam', params: { Start: [0, 0, 3], End: [4, 0, 3], Width: .2, Height: .4 },
+        });
+        relatedIds = [child, s.editor.addEntity('IfcRelAggregates', [
+          '0g8fBOlnn55vW74SLxb0PA', null, null, null, `#${oldId}`, [`#${child}`],
+        ]).expressId];
+      } else {
+        oldId = STOREY; // Source spatial structure owns the real fixture's walls.
+        relatedIds = [1222];
+      }
+      const beforeBytes = s.saved(), before = s.snapshot(), next = s.view.peekNextExpressId();
+      const parsed = await new IfcParser().parseColumnar(beforeBytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+      expect(parsed.entityIndex.byId.has(oldId)).toBe(true);
+      for (const id of relatedIds) expect(parsed.entityIndex.byId.has(id)).toBe(true);
+      let prepared = false;
+      expect(() => replaceElementInStore(s.store, s.editor, oldId, draft => {
+        prepared = true;
+        draft.addEntity('IfcCartesianPoint', [[99, 88, 77]]);
+        return resolveSpatialAnchor(s.store, STOREY, draft.getMutationView());
+      }, WALL)).toThrow(/replaceElementInStore:.*(unsupported|assembly)/);
+      expect(prepared).toBe(false);
+      expect(s.snapshot()).toEqual(before);
+      expect(s.view.peekNextExpressId()).toBe(next);
+      expect(s.view.isDeleted(oldId)).toBe(false);
+      expect(s.saved()).toEqual(beforeBytes);
+    });
+  }
+
   for (const element of ELEMENTS) {
     it(`${element.kind} exports a readable product/body and refuses a malformed GUID without helpers`, async () => {
       const s = await session(), before = s.snapshot(), next = s.view.peekNextExpressId();
@@ -87,6 +165,23 @@ describe('#6232 D5 ordinary atomic commit', () => {
       expect(typeof representation).toBe('number');
       expect(extractor.extractEntity(parsed.entityIndex.byId.get(representation as number)!)?.type).toBe('IFCPRODUCTDEFINITIONSHAPE');
       expect(parsed.entityIndex.byId.has(s.prior)).toBe(true);
+      const existing = s.snapshot(), nextId = s.view.peekNextExpressId();
+      expect(() => replaceElementInStore(s.store, s.editor, id, draft => {
+        draft.addEntity('IfcCartesianPoint', [[99, 88, 77]]);
+        return resolveSpatialAnchor(s.store, STOREY, draft.getMutationView());
+      }, invalid)).toThrow(/not a valid 22-character IFC GUID/);
+      expect(s.snapshot()).toEqual(existing);
+      expect(s.view.peekNextExpressId()).toBe(nextId);
+      expect(s.view.isDeleted(id)).toBe(false);
+      const replacement = replaceElementInStore(s.store, s.editor, id,
+        draft => resolveSpatialAnchor(s.store, STOREY, draft.getMutationView()), element);
+      expect(replacement.removedIds).toEqual([id]);
+      expect(s.view.isDeleted(id)).toBe(true);
+      expect(s.view.getNewEntity(replacement.expressId)?.type.toUpperCase()).toBe(`IFC${element.kind.toUpperCase()}`);
+      const replaced = await new IfcParser().parseColumnar(s.saved().slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+      expect(replaced.entityIndex.byId.has(id)).toBe(false);
+      expect(replaced.entityIndex.byId.has(replacement.expressId)).toBe(true);
+      expect(replaced.entityIndex.byId.has(s.prior)).toBe(true);
     });
   }
 

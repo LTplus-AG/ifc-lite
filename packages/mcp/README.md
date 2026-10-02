@@ -37,6 +37,14 @@ record each call as one complete public `mutation_undo` operation. Late schema
 refusals leave no partial helpers. These embedded methods are distinct from
 the JSON-RPC tool names; see the [programmatic embedding guide](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/guide/mcp.md#programmatic-embedding).
 
+`addStair`, `addRailing` and `removeStair` use the same canonical SDK factory.
+`removeStair` removes a uniquely owned parent/flight pair atomically, retaining
+shared shape/style leaves and refusing ambiguous ownership or foreign product
+references. Public `run_flow` routes `element.stair` / `element.railing` through
+`model.addElement`; each successful graph creation has one `mutation_undo`.
+Tracking is fresh per RPC call, so cross-call update/remove needs a persistent
+caller-owned tracking store. No separate creation or Redo RPC is added.
+
 ## 3D viewer integration
 
 The server bundles the same WebGL viewer used by `ifc-lite view`. Once it is

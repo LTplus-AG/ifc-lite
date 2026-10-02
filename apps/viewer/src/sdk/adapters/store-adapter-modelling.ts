@@ -22,6 +22,7 @@
 
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { removeStairInStore } from '@ifc-lite/create';
 import type { createModellingStoreBackend, EntityRef } from '@ifc-lite/sdk';
 import { createStoreMutationTracker } from './store-adapter-cost.js';
 import { normalizeMutationModelId } from './mutation-view.js';
@@ -30,6 +31,9 @@ import type { StoreApi } from './types.js';
 import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
+import { addStairIn, addRailingIn } from '@/store/slices/mutation-stair-railing';
+import { replaceElementIn } from '@/store/slices/mutation-element-replacement';
+import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
 
 type ModellingMethods = ReturnType<typeof createModellingStoreBackend>;
 
@@ -54,6 +58,45 @@ export function withModellingMutationTracking(
       return { modelId: normalized, expressId: outcome.expressId };
     };
   return {
+    replaceElement(ref, storeyExpressId, element) {
+      const normalized = normalizeMutationModelId(store.getState(), ref.modelId);
+      const setState = store.setState;
+      if (!setState) throw new Error('bim.store.replaceElement: the adapter requires a writable store');
+      const expressId = replaceElementIn({ ...store, setState }, normalized, ref.expressId, storeyExpressId, element);
+      return { modelId: normalized, expressId };
+    },
+    removeStair(ref) {
+      const normalized = normalizeMutationModelId(store.getState(), ref.modelId);
+      const denial = mutationDenial(store.getState(), normalized);
+      if (denial) throw new Error(`bim.store.removeStair: ${denial}`);
+      const setState = store.setState;
+      if (!setState) throw new Error('bim.store.removeStair: the adapter requires a writable store');
+      const resolved = resolve(normalized);
+      if (!resolved) throw new Error(`bim.store.removeStair: no model loaded for id "${ref.modelId}"`);
+      const removed = recordModellingEdit({ ...store, setState }, normalized, (_methods, draft) =>
+        removeStairInStore(resolved.dataStore, draft, ref.expressId));
+      for (const id of [removed.stairId, removed.flightId]) {
+        completeEntityRemoval(store.getState, setState, normalized, id,
+          store.getState().removedNewEntities.get(`${normalized}:${id}`));
+      }
+      return true;
+    },
+    addStair(modelId, storeyExpressId, params) {
+      const normalized = normalizeMutationModelId(store.getState(), modelId);
+      const setState = store.setState;
+      if (!setState) throw new Error('bim.store.addStair: the adapter requires a writable store');
+      const outcome = addStairIn({ ...store, setState }, normalized, storeyExpressId, params);
+      if ('error' in outcome) throw new Error(`bim.store.addStair: ${outcome.error}`);
+      return { modelId: normalized, expressId: outcome.expressId };
+    },
+    addRailing(modelId, storeyExpressId, params) {
+      const normalized = normalizeMutationModelId(store.getState(), modelId);
+      const setState = store.setState;
+      if (!setState) throw new Error('bim.store.addRailing: the adapter requires a writable store');
+      const outcome = addRailingIn({ ...store, setState }, normalized, storeyExpressId, params);
+      if ('error' in outcome) throw new Error(`bim.store.addRailing: ${outcome.error}`);
+      return { modelId: normalized, expressId: outcome.expressId };
+    },
     joinWalls(modelId, aExpressId, bExpressId, options) {
       const normalized = normalizeMutationModelId(store.getState(), modelId);
       const denial = mutationDenial(store.getState(), normalized);

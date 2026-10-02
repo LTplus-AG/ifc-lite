@@ -27,10 +27,10 @@
  * tracked set yet — out of scope here; a future MCP-side sidecar (keyed per
  * session or per model) would close that gap.
  *
- * Existing wall/column/slab/beam creation nodes use the shared ordinary SDK
+ * Wall/column/slab/beam/stair/railing creation nodes use the shared SDK
  * backend and create-package builders. Each creation is recorded as one
  * compound mutation for public mutation_undo, retaining earlier overlay work.
- * This does not add further ElementSpec kinds or persistent flow tracking.
+ * Stair/railing specs use their canonical builders; tracking remains per call.
  *
  * `run_flow` is the OTHER caller (besides `ifc-lite flow run`) allowed to
  * read `process.env` for a flow graph (#5167 phase 3.5), following the same

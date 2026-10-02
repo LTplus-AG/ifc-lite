@@ -13,8 +13,12 @@ import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import * as jspdf from 'jspdf';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
+import { IfcParser } from '@ifc-lite/parser';
+import { aggregate, type ChartSpec } from '@ifc-lite/charts';
 import { cleanup, render } from '@/test/render';
 import { documentPreviewReady } from '@/test/document-preview';
+import { installSvgCdataEnvironmentConversion } from '@/test/svg-cdata';
 import { pageBox } from '@/lib/export/report/compose';
 import { DocumentPreview } from './DocumentPreview';
 import { dirname, join } from 'node:path';
@@ -92,4 +96,41 @@ it('places scaled table cells at the same font factor as the actual PDF (#6548, 
     assert.deepEqual(Array.from(table.querySelectorAll('tbody td')).map(node => node.textContent), ['Row one', 'Row two']);
     cleanup();
   }
+});
+
+it('prints a scaled public-model chart with the same enlarged plot labels as its composed preview (#6548, #6660)', async () => {
+  // Read the real SketchUp sample; the aggregation is formed from its actual IFC classes.
+  const bytes = readFileSync(new URL('../../../../public/samples/building-architecture.ifc', import.meta.url));
+  const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  const ids = Array.from(store.entities.expressId).filter(id => ['IfcWall', 'IfcDoor'].includes(store.entities.getTypeName(id)));
+  assert.equal(ids.filter(id => store.entities.getTypeName(id) === 'IfcWall').length, 4);
+  const chart: ChartSpec = { id: 'public-classes', title: 'Public IFC classes', source: 'elements', type: 'bar', dimension: 'IfcType', measure: { agg: 'count' } };
+  const aggregation = aggregate(chart, { source: 'elements', columns: [{ id: 'IfcType', label: 'IFC class', kind: 'category' }],
+    rows: ids.map(id => ({ ids: [id], values: [store.entities.getTypeName(id)] })), fingerprint: 'public-source-classes' });
+  const printedSizes: number[] = [];
+  const restoreParser = installSvgCdataEnvironmentConversion();
+  const pdfWindow = window as Window & { jspdf?: typeof jspdf };
+  const prior = pdfWindow.jspdf; pdfWindow.jspdf = jspdf;
+  try {
+    for (const factor of [1, 2]) {
+      const document: DocumentSpec = { version: DOCUMENT_VERSION, id: `chart-${factor}`, name: 'Public chart scale',
+        page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'chart', id: 'chart', chart, scale: factor, height: 150, snapshot: false }] };
+      const input = { document, bindings: { models: [], activeModelId: null, today: new Date('2026-10-01') },
+        aggregations: new Map([['chart', aggregation]]), chartMessages: new Map<string, string>(), topics: new Map(), tables: new Map(), snapshotIds: () => [] };
+      const ui = render(<DocumentPreview {...input} selectedBlockId={null} onSelectBlock={() => {}} />);
+      await documentPreviewReady();
+      const svg = ui.querySelector<SVGSVGElement>('[data-chart-svg] svg'); assert.ok(svg);
+      const label = Array.from(svg.querySelectorAll('text')).find(node => node.textContent === 'IfcWall'); assert.ok(label);
+      const authoredFontSize = parseFloat(label.style.fontSize); assert.ok(authoredFontSize > 0);
+      const result = await generateDocumentPdf(input, { ...await browserReportSeams(null), imageSize: browserImageSize });
+      const printed = (await pdfText(result.blob)).find(item => item.str === 'IfcWall'); assert.ok(printed);
+      assert.ok(Math.abs(printed.size - authoredFontSize * factor) < 0.1, 'real svg2pdf operator scales the unchanged SVG label by the block factor');
+      printedSizes.push(printed.size);
+      const frame = svg.parentElement; assert.ok(frame);
+      const pageScale = 560 / pageBox(document.page).w;
+      assert.ok(Math.abs(parseFloat(frame.style.height) - Number(svg.getAttribute('height')) * factor * pageScale) < 0.01);
+      cleanup();
+    }
+    assert.ok(Math.abs(printedSizes[1] - printedSizes[0] * 2) < 0.1, 'doubling the block doubles its actual PDF plot label');
+  } finally { restoreParser(); pdfWindow.jspdf = prior; }
 });

@@ -30,8 +30,9 @@ const ELEMENTS: OrdinaryInStoreElement[] = [
   { kind: 'member', params: { Start: [0, 0, 3], End: [4, 0, 3], Width: .2, Height: .4 } },
 ];
 
-async function session(withOwnerHistory = false) {
-  const source = await readFile(SAMPLE, 'utf8');
+async function session(withOwnerHistory = false, wallType: 'IfcWall' | 'IfcWallStandardCase' = 'IfcWall') {
+  const source = (await readFile(SAMPLE, 'utf8'))
+    .replace('#1222=IFCWALL(', `#1222=${wallType.toUpperCase()}(`);
   // A valid optional owner-history control, inserted into the actual parsed
   // Bonsai file. Neither schema nor metadata is overridden after parsing.
   const records = [
@@ -68,6 +69,28 @@ async function session(withOwnerHistory = false) {
 }
 
 describe('#6232 D5 ordinary atomic commit', () => {
+  for (const wallType of ['IfcWall', 'IfcWallStandardCase'] as const) {
+    it(`#6710 still replaces a parsed ${wallType} source without weakening schema subtype admission`, async () => {
+      const s = await session(false, wallType), before = s.snapshot();
+      expect(new EntityExtractor(s.store.source).extractEntity(s.store.entityIndex.byId.get(1222)!)?.type)
+        .toBe(wallType.toUpperCase());
+      const replacement = replaceElementInStore(s.store, s.editor, 1222,
+        draft => resolveSpatialAnchor(s.store, STOREY, draft.getMutationView()), WALL);
+      expect(replacement.removedIds).toEqual([1222]);
+      const bytes = s.saved();
+      const parsed = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+      expect(parsed.entityIndex.byId.has(1222)).toBe(false);
+      expect(parsed.entityIndex.byId.has(s.prior)).toBe(true);
+      const extractor = new EntityExtractor(parsed.source);
+      const wall = extractor.extractEntity(parsed.entityIndex.byId.get(replacement.expressId)!);
+      expect(wall?.type).toBe('IFCWALL');
+      expect(extractor.extractEntity(parsed.entityIndex.byId.get(wall!.attributes[6] as number)!)?.type)
+        .toBe('IFCPRODUCTDEFINITIONSHAPE');
+      expect(parsed.spatialHierarchy?.elementToStorey.get(replacement.expressId)).toBe(STOREY);
+      expect(s.view.getMutations().slice(0, before.journal.length)).toEqual(before.journal);
+    });
+  }
+
   for (const sourceKind of ['curtain assembly', 'bound grid', 'spatial storey', 'ordinary aggregate root'] as const) {
     it(`#6710 refuses unsupported ${sourceKind} replacement before preparation or graph changes`, async () => {
       const s = await session(), anchor = resolveSpatialAnchor(s.store, STOREY, s.view);

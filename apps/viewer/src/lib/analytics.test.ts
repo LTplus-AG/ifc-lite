@@ -212,6 +212,7 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
         recent: 'file:recent',
         local: 'file:///srv/share/plans',
         local_short: 'file:/srv/share/plans',
+        drive: 'file:c:/projects/plans.rvt',
         blob: 'blob:https://www.ifclite.com/0b6e9a8c-5d1f-4c3e-9a1b-2f4d6e8a0c1e',
       },
     });
@@ -219,6 +220,7 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
     assert.equal(out?.properties?.recent, 'file:recent');
     assert.equal(out?.properties?.local, '[redacted]');
     assert.equal(out?.properties?.local_short, '[redacted]');
+    assert.equal(out?.properties?.drive, '[redacted]');
     assert.equal(out?.properties?.blob, '[redacted]');
   });
 

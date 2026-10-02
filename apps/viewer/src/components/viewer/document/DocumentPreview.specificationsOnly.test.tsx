@@ -7,7 +7,7 @@ import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
-import { jsPDF } from 'jspdf';
+import * as jspdf from 'jspdf';
 import { cleanup, render } from '@/test/render';
 import { documentPreviewReady } from '@/test/document-preview';
 import { captureTranslation, registerLocale, setLocale } from '@/i18n/registry';
@@ -15,6 +15,7 @@ import { DOCUMENT_VERSION, type DocumentSpec, type IdsReportBlock } from '@/lib/
 import { generateDocumentPdf } from '@/lib/document/generate-document-pdf';
 import { browserReportSeams } from '@/lib/export/report/generate-report-pdf';
 import { pageBox } from '@/lib/export/report/compose';
+import { RING_COLORS } from '@/lib/validation/manual/ring';
 import { DocumentPreview } from './DocumentPreview';
 
 // Declared frozen report invariant: two specifications, three requirements.
@@ -22,7 +23,7 @@ import { DocumentPreview } from './DocumentPreview';
 const requirement = (id: string, name: string) => ({ id, name, shortDescription: `${name} must exist`,
   checked: 6, passed: 6, failed: 0, passRate: 100 });
 const report: IdsReportBlock = { kind: 'ids-report', id: 'report', variant: 'compact', scale: 1.5,
-  sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z',
+  sourceName: 'Design IDS', benchmarks: true, generatedAt: '2026-01-15T10:00:00.000Z',
   summary: { checked: 12, passed: 12, failed: 0, passRate: 100 },
   checks: [
     { id: 's1', severity: 'warning', shortDescription: 'Geschoss', checked: 6, passed: 6, failed: 0,
@@ -42,11 +43,29 @@ async function printedText(blob: Blob): Promise<Array<{ str: string; size: numbe
   try {
     const parsed = await task.promise;
     const text: Array<{ str: string; size: number }> = [];
+    let paintedRing = false;
     for (let number = 1; number <= parsed.numPages; number++) {
       const page = await parsed.getPage(number);
-      try { text.push(...(await page.getTextContent()).items.flatMap(item => 'str' in item ? [{ str: item.str, size: item.transform[0] }] : [])); }
+      try {
+        text.push(...(await page.getTextContent()).items.flatMap(item => 'str' in item ? [{ str: item.str, size: item.transform[0] }] : []));
+        const operators = await page.getOperatorList();
+        let strokeColor = ''; const savedColors: string[] = [];
+        for (let i = 0; i < operators.fnArray.length; i++) {
+          const op = operators.fnArray[i], args = operators.argsArray[i];
+          if (op === pdf.OPS.save) savedColors.push(strokeColor);
+          else if (op === pdf.OPS.restore) strokeColor = savedColors.pop() ?? '';
+          else if (op === pdf.OPS.setStrokeRGBColor) strokeColor = args[0];
+          else if (op === pdf.OPS.constructPath && args[0] === pdf.OPS.stroke && strokeColor === RING_COLORS.pass) {
+            const bounds = args[2];
+            // 44pt ring × 1.5 scale, minus its 8pt stroke: a 58pt circle, unlike the thin compact bars.
+            paintedRing ||= bounds != null && Math.abs(bounds[2] - bounds[0] - 58) < 0.01
+              && Math.abs(bounds[3] - bounds[1] - 58) < 0.01;
+          }
+        }
+      }
       finally { page.cleanup(); }
     }
+    assert.ok(paintedRing, 'actual PDF paints the scaled circular pass ring with its status colour (#6610)');
     return text;
   } finally { await task.destroy(); }
 }
@@ -55,8 +74,8 @@ it('preserves specifications-only, captured locale and block scale in canonical 
   registerLocale('ids-canonical-union-x', { 'document.preview.idsReportWarningTag': 'Achtung' });
   setLocale('ids-canonical-union-x');
   const labels = captureTranslation();
-  const pdfWindow = window as Window & { jspdf?: { jsPDF: typeof jsPDF } };
-  const prior = pdfWindow.jspdf; pdfWindow.jspdf = { jsPDF };
+  const pdfWindow = window as Window & { jspdf?: typeof jspdf };
+  const prior = pdfWindow.jspdf; pdfWindow.jspdf = jspdf;
   try {
     const seams = await browserReportSeams(null);
     for (const specificationsOnly of [false, true]) {
@@ -67,6 +86,7 @@ it('preserves specifications-only, captured locale and block scale in canonical 
       const ui = render(<DocumentPreview {...input} selectedBlockId={null} onSelectBlock={() => {}} />);
       await documentPreviewReady();
       const glyphs = Array.from(ui.querySelectorAll('[data-preview-block="report"] span'), node => node.textContent?.trim() ?? '');
+      assert.ok(ui.querySelector('[data-validation-benchmark] img'), 'the actual composed benchmark ring remains visible');
       const pdf = await generateDocumentPdf(input, seams);
       const printed = await printedText(pdf.blob);
       for (const items of [glyphs, printed.map(item => item.str)]) {

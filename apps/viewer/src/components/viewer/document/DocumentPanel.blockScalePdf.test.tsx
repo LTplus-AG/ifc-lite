@@ -11,7 +11,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { jsPDF } from 'jspdf';
+import * as jspdf from 'jspdf';
 import { createRequire } from 'node:module';
 import { cleanup, render } from '@/test/render';
 import { documentPreviewReady } from '@/test/document-preview';
@@ -34,9 +34,9 @@ async function tableText(scale?: number): Promise<Array<{ str: string; size: num
   const document: DocumentSpec = { version: DOCUMENT_VERSION, id: 'd', name: 'Doc', page: { size: 'A4', orientation: 'portrait' },
     blocks: [{ kind: 'table', id: 'tb', ...(scale ? { scale } : {}), source: { kind: 'validation', rows: 'failed', columns: ['rule'] } }] };
   // svg2pdf's Node UMD entry looks for its jsPDF dependency on the DOM window.
-  const pdfWindow = window as Window & { jspdf?: { jsPDF: typeof jsPDF } };
+  const pdfWindow = window as Window & { jspdf?: typeof jspdf };
   const prior = pdfWindow.jspdf;
-  pdfWindow.jspdf = { jsPDF };
+  pdfWindow.jspdf = jspdf;
   let result: Awaited<ReturnType<typeof generateDocumentPdf>>;
   try {
     result = await generateDocumentPdf({ document, bindings: { models: [], activeModelId: null, today: new Date('2026-10-01') },

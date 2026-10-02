@@ -7,7 +7,7 @@ import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
-import { jsPDF } from 'jspdf';
+import * as jspdf from 'jspdf';
 import { act } from 'react';
 import { useState } from 'react';
 import { captureTranslation } from '@/i18n/registry';
@@ -29,9 +29,9 @@ const spec = (blocks: DocumentSpec['blocks']): DocumentSpec => ({
 async function printedPages(document: DocumentSpec, labels?: DocumentLabelFormatter): Promise<string[]> {
   // Node's svg2pdf UMD resolves its actual jsPDF dependency from the DOM
   // window; browser ESM resolves it directly. No SVG/PDF output is replaced.
-  const pdfWindow = window as Window & { jspdf?: { jsPDF: typeof jsPDF } };
+  const pdfWindow = window as Window & { jspdf?: typeof jspdf };
   const prior = pdfWindow.jspdf;
-  pdfWindow.jspdf = { jsPDF };
+  pdfWindow.jspdf = jspdf;
   let result: Awaited<ReturnType<typeof generateDocumentPdf>>;
   try {
     result = await generateDocumentPdf({ document, labels, bindings, aggregations: new Map(),

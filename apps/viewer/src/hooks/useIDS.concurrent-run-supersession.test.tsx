@@ -26,7 +26,7 @@
  */
 
 import '@/test/setup-dom.js';
-import '@/test/content-fixture.js';
+import { waitForValidationReportsCommit } from '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -206,6 +206,7 @@ describe('useIDS - concurrent-run supersession (#2802)', () => {
     const save = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Save report');
     assert.ok(save);
     click(save);
+    await waitForValidationReportsCommit();
     const saved = (await loadValidationReports());
     assert.equal(saved.length, 1);
     assert.deepEqual(saved[0].snapshot.reportModels, [{ name: 'Fast.ifc' }]);

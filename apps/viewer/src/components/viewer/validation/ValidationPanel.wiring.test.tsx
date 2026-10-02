@@ -21,7 +21,7 @@
  */
 
 import '@/test/setup-dom.js';
-import '@/test/content-fixture.js';
+import { waitForValidationReportsCommit } from '@/test/content-fixture.js';
 import { beforeEach, afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -263,6 +263,7 @@ describe('ValidationPanel wiring (#5138)', () => {
     assert.ok(save);
     click(save);
     click(save);
+    await waitForValidationReportsCommit();
     assert.equal((await loadValidationReports()).length, 1);
     const saved = (await loadValidationReports()).at(-1);
     assert.ok(saved);
@@ -299,6 +300,7 @@ describe('ValidationPanel wiring (#5138)', () => {
     const saveAgain = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save report');
     assert.ok(saveAgain);
     click(saveAgain);
+    await waitForValidationReportsCommit();
     assert.equal((await loadValidationReports()).length, 2);
     assert.notEqual((await loadValidationReports())[0].id, (await loadValidationReports())[1].id);
 

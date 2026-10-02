@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import { clearContentDatabase, refuseContentWrites, readPreservedContent } from '@/test/content-fixture.js';
+import { clearContentDatabase, refuseContentWrites, readPreservedContent, waitForValidationReportsCommit } from '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -22,13 +22,14 @@ import { parseDocumentFile } from '@/lib/document/persistence';
 import { blankDocument } from '@/lib/document/presets';
 import type { DocumentSpec } from '@/lib/document/types';
 import { generateDocumentPdf, type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
-import { savedReportBlock, validationReportSnapshot, newSavedReport } from '@/lib/validation/reports/history';
+import { savedReportBlock, validationReportSnapshot, newSavedReport, validateSavedReport } from '@/lib/validation/reports/history';
 import { loadValidationReports, VALIDATION_REPORTS_STORAGE_KEY } from '@/lib/validation/reports/persistence';
 import { DocumentPanel } from '../document/DocumentPanel';
 import { ManualValidationTab } from './ManualValidationTab';
 import { fixtureModel } from '@/test/store-fixture';
 import { SavedValidationReports } from './SavedValidationReports';
 import { IDSPanelResults } from '../IDSPanelResults';
+import { Toaster } from '@/components/ui/toast';
 
 const WALL_IFC = `ISO-10303-21;
 HEADER;
@@ -146,6 +147,7 @@ describe('saved validation evidence (#6500)', () => {
     await waitFor(() => useViewerStore.getState().idsValidationReport !== first, 'second IDS run replaces the live result');
     assert.equal((await loadValidationReports()).length, 1, 'a later check does not automatically add another report');
     click(reportButton(ui, 'Save report'));
+    await waitForValidationReportsCommit();
     const history = (await loadValidationReports());
     assert.equal(history.length, 2);
     assert.notEqual(history[0].id, history[1].id);
@@ -175,6 +177,59 @@ describe('saved validation evidence (#6500)', () => {
     assert.deepEqual((await loadValidationReports())[0].snapshot.reportModels, [{ name: 'tower.ifc', fingerprint: 'fp-tower' }]);
   });
 
+  it('#6679 rejects a permanently invalid JSON snapshot instead of reporting its save as accepted', async () => {
+    const report = await checkedWall('tower', 'Sparse check evidence');
+    const snapshot = validationReportSnapshot(report, new Map([['tower', { name: 'tower.ifc' }]]), 'sparse-run');
+    // Array iteration accepts an empty slot; portable JSON turns that slot into an invalid null check.
+    snapshot.checks = new Array<typeof snapshot.checks[number]>(1);
+    const entry = newSavedReport(snapshot);
+    assert.equal(validateSavedReport(entry), true);
+    assert.equal(validateSavedReport(JSON.parse(JSON.stringify(entry))), false);
+    assert.equal(await useViewerStore.getState().saveValidationReportEntry(entry), null);
+    assert.equal(useViewerStore.getState().validationReportsStorage.items[entry.id], 'invalid');
+    assert.equal(await useViewerStore.getState().retryValidationReportsSave(), false, 'retry cannot repair invalid evidence');
+    assert.deepEqual(await loadValidationReports(), []);
+    assert.equal(useViewerStore.getState().savedValidationReports.length, 1, 'raw evidence remains available for export');
+  });
+
+  it('#6679 explicit Save reports JSON-invalid evidence rejection and never shows saved success', async () => {
+    await seedRun();
+    let ui = render(<RunCheck />);
+    click(reportButton(ui, 'Run IDS'));
+    await waitFor(() => useViewerStore.getState().currentValidationReport !== null, 'IDS run should finish');
+    const current = useViewerStore.getState().currentValidationReport!;
+    assert.equal(current.snapshot.kind, 'ids-report');
+    if (current.snapshot.kind !== 'ids-report') assert.fail();
+    const snapshot = { ...current.snapshot, checks: new Array<typeof current.snapshot.checks[number]>(1) };
+    cleanup();
+    act(() => useViewerStore.setState({ currentValidationReport: { ...current, snapshot } }));
+    ui = render(<><RunCheck /><Toaster /></>);
+    click(reportButton(ui, 'Save report'));
+    await waitFor(() => ui.textContent?.includes('This report could not be saved.') ?? false, 'actual Save rejects invalid portable evidence');
+    assert.ok(![...ui.querySelectorAll('button')].some(button => button.textContent === 'Report saved'));
+    assert.equal(Object.values(useViewerStore.getState().validationReportsStorage.items)[0], 'invalid');
+    assert.deepEqual(await loadValidationReports(), []);
+    click(reportButton(ui, 'Save pending'));
+    assert.equal(useViewerStore.getState().savedValidationReports.length, 1, 'repeat clicks cannot duplicate rejected raw evidence');
+  });
+
+  for (const reason of ['QuotaExceededError', 'SecurityError']) it(`#6679 ${reason} preserves the same report ID for a durable retry without duplication`, async () => {
+    const report = await checkedWall('tower', 'Transient refused evidence');
+    const entry = newSavedReport(validationReportSnapshot(report, new Map([['tower', { name: 'tower.ifc' }]]), 'retry-run'));
+    const refused = refuseContentWrites(reason);
+    try {
+      assert.equal(await useViewerStore.getState().saveValidationReportEntry(entry), entry.id);
+      assert.equal(useViewerStore.getState().validationReportsStorage.items[entry.id], reason === 'QuotaExceededError' ? 'quota' : 'unavailable');
+      assert.deepEqual(await loadValidationReports(), []);
+    } finally { refused.mock.restore(); }
+    assert.equal(await useViewerStore.getState().retryValidationReportsSave(), true);
+    assert.equal(await useViewerStore.getState().saveValidationReportEntry(entry), entry.id);
+    const saved = await loadValidationReports();
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].id, entry.id);
+    assert.deepEqual(saved[0].snapshot, JSON.parse(JSON.stringify(entry.snapshot)), 'durable evidence matches its portable JSON representation');
+  });
+
   it('captures meaningful scope for unnamed actual IDS models and refuses blank stored scope (#6500 review)', async () => {
     const report = await checkedWall('tower', 'Name boundary');
     for (const name of ['', '   ']) {
@@ -197,6 +252,7 @@ describe('saved validation evidence (#6500)', () => {
     const ui = render(<ManualValidationTab manual={{ checklist: useViewerStore.getState().manualChecklist, recent: [], error: null, newChecklist: () => {}, save: () => {}, close: () => {}, loadFromRecent: () => {}, openFromFile: async () => ({ ok: true }) }} />);
     const save = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save report'); assert.ok(save);
     click(save);
+    await waitForValidationReportsCommit();
     const manual = (await loadValidationReports()).at(-1)!;
     assert.deepEqual(manual.snapshot.reportModels, [{ name: 'tower', fingerprint: 'fp-tower' }]);
     assert.equal(manual.snapshot.kind, 'manual-report');
@@ -355,6 +411,7 @@ describe('saved validation evidence (#6500)', () => {
       const ui = render(<ManualValidationTab manual={{ checklist, recent: [], error: null, newChecklist: () => {}, save: () => {}, close: () => {}, loadFromRecent: () => {}, openFromFile: async () => ({ ok: true }) }} />);
       const save = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save report'); assert.ok(save);
       click(save);
+      await waitForValidationReportsCommit();
       const saved = (await loadValidationReports());
       assert.equal(saved.length, 1, 'actual Save persists a validator-accepted snapshot');
       assert.equal(saved[0].snapshot.kind, 'manual-report');
@@ -408,6 +465,7 @@ describe('saved validation evidence (#6500)', () => {
     select(picker, 'structure');
     const button = [...ui.querySelectorAll('button')].find((element) => element.textContent === 'Save report'); assert.ok(button);
     click(button);
+    await waitForValidationReportsCommit();
     const report = (await loadValidationReports())[0];
     assert.equal(report.snapshot.kind, 'manual-report');
     if (report.snapshot.kind !== 'manual-report') assert.fail();

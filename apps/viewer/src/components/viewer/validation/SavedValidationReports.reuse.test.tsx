@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import '@/test/content-fixture.js';
+import { waitForValidationReportsCommit } from '@/test/content-fixture.js';
 import { beforeEach, afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -70,6 +70,7 @@ async function saveThenReopenHistory(count: number): Promise<{ source: Federated
   setValidationSourceChoice('manual');
   const previous = render(<ValidationPanel />);
   click(button(previous, 'Save report'));
+  await waitForValidationReportsCommit();
   assert.equal((await loadValidationReports()).length, 1, 'actual Save report persisted evidence');
   const original = JSON.stringify((await loadValidationReports())[0]);
   cleanup();

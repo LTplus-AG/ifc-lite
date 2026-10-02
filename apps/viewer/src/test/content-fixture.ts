@@ -7,6 +7,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, mock } from 'node:test';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
+import { waitFor } from './render.js';
 import { createDocumentSlice } from '@/store/slices/documentSlice';
 import { createValidationReportsSlice } from '@/store/slices/validationReportsSlice';
 import { createSavedComparisonsSlice } from '@/store/slices/savedComparisonsSlice';
@@ -38,6 +39,13 @@ export function refuseContentWrites(name = 'QuotaExceededError') {
     }
     return original.call(this, stores, mode, options);
   });
+}
+
+/** Wait for these staged report writes, including later saves beside already committed rows. */
+export async function waitForValidationReportsCommit(): Promise<void> {
+  const ids = useViewerStore.getState().savedValidationReports.map(entry => entry.id);
+  await waitFor(() => ids.length > 0 && ids.every(id => useViewerStore.getState().validationReportsStorage.items[id] === 'saved'),
+    'staged validation report writes must commit before durable reads');
 }
 
 /** Fresh library controllers and transactions for mounted persistence tests (#6679). */

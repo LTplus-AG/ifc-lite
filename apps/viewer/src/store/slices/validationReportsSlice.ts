@@ -40,7 +40,8 @@ export const createValidationReportsSlice: StateCreator<ValidationReportsSlice, 
       if (existing && !sameReportEvidence({ ...existing, name: entry.name }, entry)) {
         console.warn('[Validation reports] Refusing conflicting evidence ID', entry.id); return null;
       }
-      await library.put(entry.id, entry);
+      const saved = await library.put(entry.id, entry);
+      if (!saved && get().validationReportsStorage.items[entry.id] === 'invalid') return null;
       // The ID also identifies memory-only evidence, so a retry cannot duplicate it.
       return entry.id;
     },

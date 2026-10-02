@@ -18,6 +18,7 @@
 import { useSyncExternalStore, type ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+import { reloadKeepingOpenModels } from '@/lib/reload-resume';
 import { isStaleDeploymentReported, subscribeStaleDeployment } from '@/lib/stale-deployment';
 
 export function StaleDeploymentNotice(): ReactNode {
@@ -32,7 +33,7 @@ export function StaleDeploymentNotice(): ReactNode {
       <span>{t('viewerShell.staleDeployment.notice')}</span>
       <button
         type="button"
-        onClick={() => window.location.reload()}
+        onClick={() => reloadKeepingOpenModels('user')}
         className="inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors hover:bg-accent"
       >
         <RefreshCw className="h-3 w-3" aria-hidden />

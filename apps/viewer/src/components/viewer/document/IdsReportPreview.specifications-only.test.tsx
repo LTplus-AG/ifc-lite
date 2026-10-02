@@ -38,7 +38,7 @@ const liveReport = {
 } as unknown as ValidationReport;
 
 function editor(block: IdsReportBlock, onChange: (b: DocumentBlock) => void = noop, report: ValidationReport | null = null) {
-  return render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={report} onChange={onChange} onMove={noop} onRemove={noop} />);
+  return render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={report} onChange={onChange} onMove={noop} onCopy={noop} onRemove={noop} />);
 }
 const toggle = (ui: HTMLElement): HTMLInputElement | undefined =>
   [...ui.querySelectorAll('label')].find((l) => l.textContent?.includes('Specifications only'))?.querySelector('input') as HTMLInputElement | undefined;

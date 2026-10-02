@@ -8,7 +8,7 @@ import { composeResolvedDocument, documentTextMeasure } from '@/lib/document/doc
 import type { ComposeDocumentInput, DocumentLayout } from '@/lib/document/compose';
 
 export interface PreviewImageSize { w: number; h: number }
-export interface PreviewLayout { layout: DocumentLayout; measure: ComposeDocumentInput['measure'] }
+interface PreviewLayout { layout: DocumentLayout; measure: ComposeDocumentInput['measure'] }
 interface PreparedLayout extends PreviewLayout { input: DocumentPdfInput; imageSizes: ReadonlyMap<string, PreviewImageSize> }
 interface LayoutError { input: DocumentPdfInput; imageSizes: ReadonlyMap<string, PreviewImageSize>; message: string }
 let metrics: Promise<ComposeDocumentInput['measure']> | undefined;

@@ -4,11 +4,10 @@
 
 /**
  * One translation key per `TableColumnId` (#5138 review), shared by the
- * validation column-toggle editor (`TableBlockEditor.tsx`) and the on-screen
- * table (`ComposedPageItems.tsx`) — both are interactive UI, so both translate.
- * The printed PDF keeps `resolve-validation-table.ts`'s plain-English
- * `VALIDATION_COLUMN_LABEL`, the same way every other fallback string
- * `generate-document-pdf.ts` draws is unlocalized.
+ * validation column-toggle editor and the canonical document table labels.
+ * A supplied captured formatter translates preview/PDF columns before layout
+ * measures them. Callers omitting labels retain `resolve-validation-table.ts`'s
+ * plain-English `VALIDATION_COLUMN_LABEL` (#6610).
  */
 import type { TranslationKey } from '@/i18n';
 import type { TableColumnId } from '@/lib/document/types';

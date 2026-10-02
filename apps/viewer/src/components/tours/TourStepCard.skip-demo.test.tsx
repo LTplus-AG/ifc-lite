@@ -20,7 +20,10 @@ import { TourStepCard } from './TourStepCard.js';
 
 const originalState = useViewerStore.getState();
 after(() => { useViewerStore.setState(originalState, true); });
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  useViewerStore.setState(originalState, true);
+});
 
 const buttons = (root: HTMLElement) => [...root.querySelectorAll('button')].map((b) => b.textContent ?? '');
 
@@ -45,7 +48,7 @@ describe('welcome tour load step Skip label (#6720)', () => {
   });
 
   it('never relabels a step that does not load the demo when skipped', () => {
-    useViewerStore.setState({ models: new Map(), loading: false });
+    useViewerStore.setState({ models: new Map(), ifcDataStore: null, loading: false });
     const tour = getTour('welcome')!;
     const orbit = tour.steps.find((s) => s.id === 'orbit')!;
     const root = render(<TourStepCard tour={tour} step={orbit} stepIndex={1} targetEl={null} />);

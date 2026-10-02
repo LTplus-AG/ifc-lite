@@ -37,6 +37,7 @@ import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { render, cleanup, click } from '@/test/render';
 import { ChartEditor } from './ChartEditor';
+import { installSvgCdataEnvironmentConversion } from '@/test/svg-cdata';
 
 const original = useViewerStore.getState();
 const catalog = { attributes: [], properties: new Map(), quantities: new Map(), relations: [] };
@@ -116,27 +117,6 @@ async function pdfText(blob: Blob): Promise<string> {
     }
     return text.join(' ');
   } finally { await task.destroy(); }
-}
-
-function installSvgCdataEnvironmentConversion(): () => void {
-  const originalParser = globalThis.DOMParser;
-  // HappyDOM 20's XML parser rejects CDATA in ECharts' valid SVG stylesheet.
-  // Only the test parser encodes that same text as XML entities; the actual
-  // renderer output, CSS content, elements and geometry remain unchanged.
-  globalThis.DOMParser = class extends originalParser {
-    override parseFromString(...[source, type]: Parameters<DOMParser['parseFromString']>): Document {
-      const encoded = type === 'image/svg+xml' && typeof source === 'string'
-        ? source.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_whole, text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))
-        : source;
-      const parsed = super.parseFromString(encoded, type);
-      if (type === 'image/svg+xml' && typeof source === 'string') {
-        const stylesheet = /<style[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/style>/.exec(source);
-        if (stylesheet) assert.equal(parsed.querySelector('style')?.textContent, stylesheet[1], 'test XML conversion retains actual renderer CSS text');
-      }
-      return parsed;
-    }
-  };
-  return () => { globalThis.DOMParser = originalParser; };
 }
 
 describe('Saved comparison chart source (#6549)', () => {

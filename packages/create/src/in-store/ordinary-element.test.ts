@@ -64,7 +64,8 @@ async function session(withOwnerHistory = false, wallType: 'IfcWall' | 'IfcWallS
     named: view.getAttributeMutationsForEntity(1222), deleted: view.isDeleted(removed),
     properties: view.getForEntity(1222),
   });
-  const saved = () => new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content;
+  // #6710: compare all bytes without an elapsed wall-clock header changing them.
+  const saved = () => new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true, timeStamp: '2026-10-02T00:00:00' }).content;
   return { store, view, editor, prior, removed, snapshot, saved };
 }
 

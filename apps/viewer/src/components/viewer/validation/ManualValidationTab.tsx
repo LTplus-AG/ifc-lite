@@ -71,8 +71,40 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
 
   const overallName = t('manualValidation.overall');
 
+  // Growing library/editor controls belong to the scrollable summary (#6690).
+  const controls = (<>
+      <ManualChecklistLibrary model={activeModel} active onNew={() => { manual.newChecklist(); setEditing(true); }} onSelected={setEditing} />
+      <div className="flex items-center gap-1.5 border-b p-2">
+        <Input
+          aria-label={t('manualValidation.name.label')}
+          placeholder={t('manualValidation.name.placeholder')}
+          value={checklist.name}
+          onChange={(e) => renameChecklist(e.target.value)}
+          className="h-7 min-w-0 flex-1 px-2 text-xs font-medium"
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant={editing ? 'default' : 'outline'}
+          className="h-7 shrink-0 gap-1 text-xs"
+          aria-pressed={editing}
+          onClick={() => setEditing(!editing)}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          {editing ? t('manualValidation.doneEditing') : t('manualValidation.edit')}
+        </Button>
+        <IconButton label={t('manualValidation.save')} className="h-7 w-7 shrink-0" onClick={manual.save}>
+          <Save className="h-3.5 w-3.5" />
+        </IconButton>
+        <IconButton label={t('manualValidation.close')} className="h-7 w-7 shrink-0" onClick={manual.close}>
+          <X className="h-3.5 w-3.5" />
+        </IconButton>
+      </div>
+  </>);
+
   const overview = (
     <div className="p-3 space-y-3">
+      {controls}
       {(models.length > 1 || (!!preferredFingerprint && !activeModel && models.length > 0)) && (
         <label className="flex items-center gap-2 text-xs">
           <span className="text-muted-foreground">{t('manualValidation.model.label')}</span>
@@ -137,34 +169,6 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <ManualChecklistLibrary model={activeModel} active onNew={() => { manual.newChecklist(); setEditing(true); }} onSelected={setEditing} />
-      <div className="flex items-center gap-1.5 border-b p-2">
-        <Input
-          aria-label={t('manualValidation.name.label')}
-          placeholder={t('manualValidation.name.placeholder')}
-          value={checklist.name}
-          onChange={(e) => renameChecklist(e.target.value)}
-          className="h-7 min-w-0 flex-1 px-2 text-xs font-medium"
-        />
-        <Button
-          type="button"
-          size="sm"
-          variant={editing ? 'default' : 'outline'}
-          className="h-7 shrink-0 gap-1 text-xs"
-          aria-pressed={editing}
-          onClick={() => setEditing(!editing)}
-        >
-          <Pencil className="h-3.5 w-3.5" />
-          {editing ? t('manualValidation.doneEditing') : t('manualValidation.edit')}
-        </Button>
-        <IconButton label={t('manualValidation.save')} className="h-7 w-7 shrink-0" onClick={manual.save}>
-          <Save className="h-3.5 w-3.5" />
-        </IconButton>
-        <IconButton label={t('manualValidation.close')} className="h-7 w-7 shrink-0" onClick={manual.close}>
-          <X className="h-3.5 w-3.5" />
-        </IconButton>
-      </div>
-
       {checklist.groups.length > 0 ? (
         <ValidationResultsSplit summary={overview}>
           <div className="flex-1 min-h-0 overflow-auto">{checks}</div>

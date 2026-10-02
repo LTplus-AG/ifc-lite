@@ -143,6 +143,12 @@ for (const kind of ['ids', 'rules'] as const) {
       const summary = ui.querySelector('[data-validation-summary-pane]');
       const results = ui.querySelector('[data-validation-results-pane]');
       assert.ok(handle && summary && results);
+      if (kind === 'rules') {
+        const selectors = ui.querySelectorAll('select[aria-label="Select rule set"]');
+        assert.equal(selectors.length, 1, 'one actual imported definition control is rendered');
+        assert.ok(summary.contains(selectors[0]), 'the growing library belongs to the upper scroll pane');
+        assert.ok(summary.contains(buttonByText(ui, 'Edit rules')));
+      }
       assert.equal(handle.tabIndex, 0);
       assert.equal(handle.getAttribute('aria-orientation'), 'horizontal');
       const startingSize = Number(handle.getAttribute('aria-valuenow'));

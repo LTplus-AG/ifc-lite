@@ -208,7 +208,7 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
       staleFor={report}
     >
       <div className="flex-1 min-h-0 flex flex-col">
-        <DefinitionLibraryToolbar kind="ids" onImport={() => { void handleLoadIdsClick(); }} />
+        {!report && <DefinitionLibraryToolbar kind="ids" onImport={() => { void handleLoadIdsClick(); }} />}
         <IDSPanelStates
           ids={ids}
           fileInputRef={fileInputRef}
@@ -218,6 +218,7 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
         <AnalysisStaleRegion className="flex-1 min-h-0 flex flex-col">
           <IDSPanelResults
             results={ids}
+            summaryControls={<DefinitionLibraryToolbar kind="ids" onImport={() => { void handleLoadIdsClick(); }} />}
             runValidation={runValidation}
             auditReport={ids.auditReport}
             multiModel={idsMultiModel}

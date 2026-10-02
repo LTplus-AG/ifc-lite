@@ -17,7 +17,7 @@
  * targeted (it already ran across all of them in one pass).
  */
 
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { ValidationBenchmark } from './validation/ValidationBenchmark';
 import { ValidationResultsSplit } from './validation/ValidationResultsSplit';
 import { validationReportSummary } from '@/lib/validation/report-summary';
@@ -43,6 +43,8 @@ import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 interface IDSPanelResultsProps {
   results: UseValidationResults;
+  /** Growing definition/editor controls scroll with the summary (#6690). */
+  summaryControls?: ReactNode;
   /** IDS-only: re-run against a different federated model. Unused (never
    *  called) for a rule-set report — its switcher does not render. */
   runValidation: (targetModelId?: string) => Promise<ValidationReport | null>;
@@ -63,6 +65,7 @@ interface IDSPanelResultsProps {
 
 export function IDSPanelResults({
   results,
+  summaryControls,
   runValidation,
   auditReport = null,
   multiModel: idsMultiModel = false,
@@ -103,6 +106,7 @@ export function IDSPanelResults({
 
   return (
     <ValidationResultsSplit summary={<>
+      {summaryControls}
       {auditReport && auditReport.status !== 'valid' && (
         <div className="p-3 border-b">
           <IDSAuditSummary report={auditReport} auditing={false} />

@@ -72,8 +72,9 @@
  * below runs over an empty set, so "0 violations" would mean "0 chunks
  * examined". Its own behaviour is pinned by check-tla-chunk-await.test.mjs.
  *
- * It also fails if the plugin re-printed any `__tla`-wrapped chunk
- * unminified (see `unminified` below).
+ * It also fails if the plugin re-printed any chunk it rewrote (every chunk
+ * that mentions `__tla`, entry and worker chunks included) unminified (see
+ * `unminified` below).
  *
  * Run via `pnpm check:tla-chunk-await` (wired into the viewer-e2e CI job,
  * right after the viewer build it inspects). Requires a built viewer
@@ -200,31 +201,45 @@ if (tlaExporters.size === 0) {
   process.exit(1);
 }
 
-// Every `__tla`-wrapped chunk is one the plugin RE-PRINTED with SWC after the
+// Every chunk the plugin touched is one it RE-PRINTED with SWC after the
 // bundler had already minified it, so its formatting is the plugin's, not
 // Vite's. Upstream 1.6.0 read `build.minify` from the user config, where an
 // unset value is `undefined`, and so printed all of them (main, store,
-// exporters, ~85 in all) pretty: production shipped a 167k-line, 8.2 MB
-// main chunk where a minified one is 4.3 MB (patched in
-// patches/vite-plugin-top-level-await@1.6.0.patch). The wrapper declaration
-// the plugin injects is the fingerprint: `let __tla=Promise.all(` when it
-// minified, `let __tla = Promise.all(` when it did not. Whitespace inside
-// string and template literals cannot be told apart from code by a
-// line-count heuristic (the script templates and the esbuild-wasm chunk are
-// legitimately multi-line), the plugin's own declaration can.
-const unminified = [];
-for (const file of tlaExporters) {
-  if (/\b(?:let|const|var)\s+__tla\s=/.test(sources.get(file))) unminified.push(file);
-}
+// exporters, the workers, ~100 in all) pretty: production shipped a
+// 167k-line, 8.2 MB main chunk where a minified one is 4.3 MB (patched in
+// patches/vite-plugin-top-level-await@1.6.0.patch).
+//
+// Scope: every chunk whose text mentions `__tla`, not only the ones that
+// export it. Entry chunks (main-*.js) and workers are rewritten too but export
+// nothing, and each worker build runs its OWN plugin instance, so a worker
+// can regress on its own.
+//
+// Fingerprints are the plugin's own injected code, which SWC prints with
+// spaces and line breaks only when it is not minifying:
+//   wrapper   `let __tla = Promise.all(`          vs `let __tla=Promise.all(`
+//   importer  `try {\n  return __tla_0;`        vs `try{return __tla_0}`
+//   import()  `.then(async (m)=>{\n  await m.__tla;\n` vs `await m.__tla;return m`
+// A line-count heuristic cannot do this: whitespace inside string and
+// template literals is indistinguishable from code by counting lines (the
+// script templates and the esbuild-wasm chunk are legitimately multi-line).
+const PRETTY_FINGERPRINTS = [
+  /\b(?:let|const|var)\s+__tla\s=/,
+  /try\s*\{\s+return __tla_\d+/,
+  /await m\.__tla;\s*$/m,
+];
+const tlaChunks = [...sources.keys()].filter((file) => sources.get(file).includes('__tla'));
+const unminified = tlaChunks.filter((file) =>
+  PRETTY_FINGERPRINTS.some((re) => re.test(sources.get(file))),
+);
 if (unminified.length > 0) {
   console.error(
-    `❌ ${unminified.length} of ${tlaExporters.size} __tla-wrapped chunk(s) were re-printed ` +
+    `❌ ${unminified.length} of ${tlaChunks.length} chunk(s) rewritten by the plugin were re-printed ` +
       `UNMINIFIED by vite-plugin-top-level-await:\n`,
   );
   for (const file of unminified.slice(0, 10)) console.error(`   ${file}`);
   if (unminified.length > 10) console.error(`   ... and ${unminified.length - 10} more`);
   console.error(
-    `\nThe plugin re-prints every chunk it wraps, and prints it pretty unless it\n` +
+    `\nThe plugin re-prints every chunk it rewrites, and prints it pretty unless it\n` +
       `sees a truthy \`build.minify\`. patches/vite-plugin-top-level-await@1.6.0.patch\n` +
       `makes it read the RESOLVED config (configResolved), where Vite's default\n` +
       `minifier is filled in. Check that the patch is still applied (pnpm install)\n` +
@@ -331,7 +346,7 @@ console.log(
     `${staticTlaImports} static import(s) of a __tla-wrapped chunk checked ` +
     `(${tlaExporters.size} __tla-wrapped chunk(s) among ${files.length} emitted chunk(s)); ` +
     `${sideEffectImports} bare side-effect import(s) checked; ` +
-    `all ${tlaExporters.size} __tla-wrapped chunk(s) minified.`,
+    `all ${tlaChunks.length} plugin-rewritten chunk(s) minified.`,
 );
 
 function fixHint() {

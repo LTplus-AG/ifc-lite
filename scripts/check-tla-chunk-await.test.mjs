@@ -193,7 +193,7 @@ test('RED: a __tla-wrapped chunk the plugin re-printed unminified is caught', ()
   const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'main-def.js': PRETTY_TLA_CHUNK });
   assert.equal(status, 1, out);
   assert.doesNotMatch(out, /✅/);
-  assert.match(out, /1 of 2 __tla-wrapped chunk\(s\) were re-printed UNMINIFIED/);
+  assert.match(out, /1 of 2 chunk\(s\) rewritten by the plugin were re-printed UNMINIFIED/);
   assert.match(out, /main-def\.js/);
 });
 
@@ -208,5 +208,58 @@ test('multi-line string content in a minified __tla chunk is not mistaken for pr
 \`})();let s;export{s,__tla};`;
   const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'templates-def.js': withTemplate });
   assert.equal(status, 0, out);
-  assert.match(out, /all 2 __tla-wrapped chunk\(s\) minified/);
+  assert.match(out, /all 2 plugin-rewritten chunk\(s\) minified/);
+});
+
+// Entry chunks (main-*.js) and workers are rewritten by the plugin too, but
+// export no `__tla`, and each worker build runs its own plugin instance. These
+// are the plugin's pretty shapes for them, as the pre-patch build emitted.
+const PRETTY_ENTRY = `import { z as C, __tla as __tla_0 } from "./store-abc.js";
+Promise.all([
+    (()=>{
+        try {
+            return __tla_0;
+        } catch  {}
+    })()
+]).then(async ()=>{
+    C();
+});
+`;
+const PRETTY_WORKER = `(async ()=>{
+    self.onmessage = async (e)=>{
+        const m = await import(e.data).then(async (m)=>{
+            await m.__tla;
+            return m;
+        });
+        m.run();
+    };
+})();
+`;
+const MINIFIED_ENTRY =
+  `import{z as C,__tla as __tla_0}from"./store-abc.js";` +
+  `Promise.all([(()=>{try{return __tla_0}catch{}})()]).then(async()=>{C()});`;
+const MINIFIED_WORKER =
+  `(async()=>{self.onmessage=async e=>{(await import(e.data).then(async m=>{await m.__tla;return m})).run()}})();`;
+
+test('RED: an unminified entry chunk that exports no __tla is still caught', () => {
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'main-def.js': PRETTY_ENTRY });
+  assert.equal(status, 1, out);
+  assert.match(out, /1 of 2 chunk\(s\) rewritten by the plugin were re-printed UNMINIFIED/);
+  assert.match(out, /main-def\.js/);
+});
+
+test('RED: an unminified worker chunk (dynamic-import rewrite only) is caught', () => {
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'parser.worker-def.js': PRETTY_WORKER });
+  assert.equal(status, 1, out);
+  assert.match(out, /parser\.worker-def\.js/);
+});
+
+test('minified entry and worker chunks pass and are counted', () => {
+  const { status, out } = runOn({
+    'store-abc.js': TLA_CHUNK,
+    'main-def.js': MINIFIED_ENTRY,
+    'parser.worker-def.js': MINIFIED_WORKER,
+  });
+  assert.equal(status, 0, out);
+  assert.match(out, /all 3 plugin-rewritten chunk\(s\) minified/);
 });

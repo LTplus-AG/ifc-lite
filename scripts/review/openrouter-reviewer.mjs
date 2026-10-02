@@ -70,42 +70,57 @@ export function responseText(message) {
 export async function requestOpenRouterReviewWithUsage({
   prompt, apiKey, model = OPENROUTER_REVIEW_MODEL, fetchImpl = fetch, timeoutMs = OPENROUTER_TIMEOUT_MS_DEFAULT,
 }) {
-  const response = await fetchImpl('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      'content-type': 'application/json',
-      'HTTP-Referer': 'https://github.com/LTplus-AG/ifc-lite',
-      'X-Title': 'ifc-lite review lane',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 32768,
-      reasoning: { effort: 'high' },
-    }),
-    // A per-model failure, not a hang: `requestOpenRouterReviewChain` below
-    // already treats ANY thrown error here (HTTP, network, this abort) as
-    // "this model failed, try the next one", so timing out needs no new catch
-    // path -- it just needs to fire before the chain's caller's own timeout
-    // (the failover loop, ultimately the job) does.
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  const body = await response.text();
-  let parsed;
-  try { parsed = JSON.parse(body); } catch { parsed = null; }
-  if (!response.ok) {
-    // Redacted before it ever reaches an Error message: this string is logged
-    // verbatim (see requestOpenRouterReviewChain and runOpenRouterFallback's
-    // stderr forwarding), which lands in the public Actions log. OpenRouter is
-    // not expected to echo the Authorization header back in an error body, but
-    // this is the backstop for the day some upstream provider does.
-    const detail = redactSecrets(String(parsed?.error?.message ?? body ?? '(empty)').slice(0, 2000));
-    throw new Error(`OpenRouter chat completions API returned HTTP ${response.status}: ${detail}`);
+  // #6702: the 402 affordability check reserves max_tokens up front, even
+  // when a small review would use much less. Retry ONCE at the reported limit;
+  // concurrent ensemble requests can consume the remaining credit meanwhile.
+  // Both attempts share the original per-model timeout and unchanged prompt.
+  const signal = AbortSignal.timeout(timeoutMs);
+  let maxTokens = 32768;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await fetchImpl('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+        'HTTP-Referer': 'https://github.com/LTplus-AG/ifc-lite',
+        'X-Title': 'ifc-lite review lane',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: maxTokens,
+        reasoning: { effort: 'high' },
+      }),
+      signal,
+    });
+    const body = await response.text();
+    let parsed;
+    try { parsed = JSON.parse(body); } catch { parsed = null; }
+    if (!response.ok) {
+      const detail = redactSecrets(String(parsed?.error?.message ?? body ?? '(empty)').slice(0, 2000));
+      // Only this explicit affordability error permits a smaller budget. Other
+      // 402s (no credits, key disabled, in-flight limits) still fail over.
+      const match = detail.match(/requested up to (\d+) tokens, but can only afford (\d+)\b/i);
+      const affordable = Number(match?.[2]);
+      if (attempt === 0 && response.status === 402 && Number(match?.[1]) === maxTokens &&
+          Number.isSafeInteger(affordable) && affordable > 0 && affordable < maxTokens) {
+        console.error(`provider openrouter: ${model} cannot reserve ${maxTokens} tokens; retrying once with max_tokens=${affordable}.`);
+        maxTokens = affordable;
+        continue;
+      }
+      throw new Error(`OpenRouter chat completions API returned HTTP ${response.status}: ${detail}`);
+    }
+    const choice = parsed?.choices?.[0];
+    // A smaller budget must never turn incomplete output into a usable review,
+    // even if the provider returns non-empty, syntactically valid JSON.
+    if (choice?.finish_reason === 'length') {
+      throw new Error(`OpenRouter response was truncated at max_tokens=${maxTokens}.`);
+    }
+    const text = responseText(choice?.message);
+    if (!text) throw new Error('OpenRouter response completed without output text.');
+    return { text, usage: parsed?.usage ?? null };
   }
-  const text = responseText(parsed?.choices?.[0]?.message);
-  if (!text) throw new Error('OpenRouter response completed without output text.');
-  return { text, usage: parsed?.usage ?? null };
+  throw new Error('OpenRouter affordability retry exhausted.');
 }
 
 export async function requestOpenRouterReview(opts) {

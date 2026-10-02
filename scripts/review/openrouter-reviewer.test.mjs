@@ -10,6 +10,7 @@ import {
   OPENROUTER_JUDGE_MODELS_DEFAULT,
   OPENROUTER_TIMEOUT_MS_DEFAULT,
   requestOpenRouterReview,
+  requestOpenRouterReviewWithUsage,
   requestOpenRouterReviewChain,
   responseText,
   parseModelChain,
@@ -290,4 +291,73 @@ test('runOpenRouterFallback reports a killed child as a named timeout failure, n
     }),
     /killed by signal SIGTERM/,
   );
+});
+
+const affordabilityError = (requested, affordable) => reply({
+  error: { message: `This request requires more credits, or fewer max_tokens. You requested up to ${requested} tokens, but can only afford ${affordable}.` },
+}, { ok: false, status: 402 });
+
+test('#6702: retry the same model and prompt once at the affordable budget, retaining usage', async () => {
+  const requests = [];
+  const usage = { prompt_tokens: 100, completion_tokens: 300 };
+  const result = await requestOpenRouterReviewWithUsage({
+    prompt: 'unchanged review input', apiKey: 'k', model: 'cheap/model',
+    fetchImpl: async (url, init) => {
+      requests.push({ body: JSON.parse(init.body), signal: init.signal });
+      if (requests.length === 1) return affordabilityError(32768, 1647);
+      return reply({ choices: [{ finish_reason: 'stop', message: { content: 'complete review' } }], usage });
+    },
+  });
+  assert.deepEqual(result, { text: 'complete review', usage });
+  assert.deepEqual(requests.map(({ body }) => body.max_tokens), [32768, 1647]);
+  assert.deepEqual(requests[1].body, { ...requests[0].body, max_tokens: 1647 });
+  assert.equal(requests[1].signal, requests[0].signal, 'retry shares the original timeout');
+});
+
+test('#6702: a second affordability error falls through to the next model without another retry', async () => {
+  const requests = [];
+  const result = await requestOpenRouterReviewChain({
+    prompt: 'p', apiKey: 'k', models: ['poor/model', 'working/model'],
+    fetchImpl: async (url, init) => {
+      const body = JSON.parse(init.body);
+      requests.push([body.model, body.max_tokens]);
+      return body.model === 'poor/model'
+        ? affordabilityError(body.max_tokens, body.max_tokens === 32768 ? 1647 : 1000)
+        : reply({ choices: [{ message: { content: 'review' } }] });
+    },
+  });
+  assert.equal(result.model, 'working/model');
+  assert.deepEqual(requests, [['poor/model', 32768], ['poor/model', 1647], ['working/model', 32768]]);
+});
+
+test('#6702: generic or invalid credit errors never trigger an affordability retry', async () => {
+  for (const response of [
+    reply({ error: { message: 'No credits remaining' } }, { ok: false, status: 402 }),
+    affordabilityError(32768, 0),
+    affordabilityError(32768, -1),
+    affordabilityError(32768, 32768),
+    affordabilityError(32768, 999999999999999999999),
+    affordabilityError(10000, 1647),
+    reply({ error: { message: 'You requested up to 32768 tokens, but can only afford 1647.' } }, { ok: false, status: 429 }),
+  ]) {
+    let calls = 0;
+    await assert.rejects(requestOpenRouterReview({
+      prompt: 'p', apiKey: 'k', fetchImpl: async () => { calls += 1; return response; },
+    }), /HTTP (402|429)/);
+    assert.equal(calls, 1);
+  }
+});
+
+test('#6702: a budget-limited response is rejected even when its text is complete JSON', async () => {
+  for (const retry of [false, true]) {
+    let calls = 0;
+    await assert.rejects(requestOpenRouterReview({
+      prompt: 'p', apiKey: 'k', fetchImpl: async () => {
+        calls += 1;
+        if (retry && calls === 1) return affordabilityError(32768, 1647);
+        return reply({ choices: [{ finish_reason: 'length', message: { content: '{"verdict":"clean"}' } }] });
+      },
+    }), /truncated at max_tokens=/);
+    assert.equal(calls, retry ? 2 : 1);
+  }
 });

@@ -19,7 +19,8 @@
  * Agreement with the neutral spatial-reference boundary
  * (`packages/geometry/src/spatial-reference.ts`, whose private `normalizedAxis`
  * already divided by the length) is pinned by
- * `map-axis-direction.agreement.test.ts`, which feeds both the same vectors
+ * the "agrees with the spatial-reference boundary" block of
+ * `map-axis-direction.test.ts`, which feeds both the same vectors
  * including the degenerate ones.
  */
 

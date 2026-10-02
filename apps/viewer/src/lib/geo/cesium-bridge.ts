@@ -267,10 +267,6 @@ export async function createCesiumBridge(
     resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale),
     coordinateInfo,
   );
-  const axis = resolveMapAxisDirection(mapConversion.xAxisAbscissa, mapConversion.xAxisOrdinate);
-  if (!axis) return null;
-  const { a: absc, b: ordi } = axis; // scalars: narrowing is lost inside `viewerToGeodetic`
-  const rotAngle = Math.atan2(ordi, absc);
 
   const bounds = coordinateInfo?.originalBounds;
   const modelVX = bounds ? (bounds.min.x + bounds.max.x) / 2 : 0;
@@ -288,6 +284,9 @@ export async function createCesiumBridge(
     heightsAreEllipsoidal,
   );
   if (!origin) return null;
+  // A non-null origin means the axis resolved, so this cannot be null.
+  const { a: absc, b: ordi } = resolveMapAxisDirection(mapConversion.xAxisAbscissa, mapConversion.xAxisOrdinate)!;
+  const rotAngle = Math.atan2(ordi, absc);
   const modelOrigin: GeodesicPosition = {
     longitude: origin.longitude,
     latitude: origin.latitude,

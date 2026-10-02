@@ -166,6 +166,22 @@ describe('a vector with no direction is refused by every consumer that can refus
   });
 });
 
+describe('a geographic CRS never reaches the projected-axis arithmetic (#6700)', () => {
+  // `reprojectToLatLon` returns the authored degrees from its geographic
+  // branch, before any engineering-axis transform. That predates this change
+  // and is why a zero-length axis still yields a pin here while it yields
+  // none for a projected CRS. Pinned so the two stay distinct on purpose.
+  const GEO: ProjectedCRS = { id: 1, name: 'EPSG:4326', mapProjection: 'Geographic', geodeticDatum: 'WGS84', mapUnit: 'DEGREE' };
+  for (const [a, b] of [[1, 0], [2, 0], [0, 0], [Number.NaN, 0]] as const) {
+    it(`axis (${a}, ${b}): the pin is the authored longitude/latitude`, async () => {
+      const pin = await reprojectToLatLon(
+        conversion({ eastings: 5.38, northings: 52.15, xAxisAbscissa: a, xAxisOrdinate: b }), GEO, box(1000, 2000, 30, 5), 1);
+      assert.ok(pin, 'pin');
+      assert.ok(Math.abs(pin.lon - 5.38) < 1e-12 && Math.abs(pin.lat - 52.15) < 1e-12, `got (${pin.lat}, ${pin.lon})`);
+    });
+  }
+});
+
 describe('unit axes produce the numbers they produced before #6700 (no regression)', () => {
   // EXPECTED VALUES ARE WHAT `upstream/main` PRODUCES, captured by running the
   // same calls on main and on the fix and comparing the printed JSON byte for

@@ -113,11 +113,8 @@ describe.skipIf(!AVAILABLE)('#6232 schema-aware SDK/public run_flow stair and ra
           if (route === 'MCP') {
             const refusal = await call('run_flow', { model_id: target.id, flow: document(kind, true) });
             expect(refusal.isError).not.toBe(true);
-            const text = refusal.content.find(item => item.type === 'text');
-            if (!text || text.type !== 'text') throw new Error('Missing public flow refusal payload');
-            const payload: unknown = JSON.parse(text.text);
-            expect(payload).toMatchObject({ ok: false });
-            expect(text.text).toContain(kind === 'stair' ? 'NumberOfRisers must be a positive integer' : 'PostSpacing must be a finite positive number');
+            expect(refusal.structuredContent).toMatchObject({ ok: false });
+            expect(JSON.stringify(refusal.structuredContent)).toContain(kind === 'stair' ? 'NumberOfRisers must be a positive integer' : 'PostSpacing must be a finite positive number');
           }
           else expect(() => kind === 'stair' ? bim.store.addStair(target.id, storey, { Position: [0, 0, 0], NumberOfRisers: 0, RiserHeight: .2, TreadLength: .3, Width: 1 })
             : bim.store.addRailing(target.id, storey, { Path: [[0, 0, 0], [2, 0, 0]], Height: 1, PostSpacing: 0 })).toThrow();

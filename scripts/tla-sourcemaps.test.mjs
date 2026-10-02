@@ -91,6 +91,7 @@ async function buildFixture({ sourcemap }) {
   writeFileSync(join(dir, 'entry.js'), [
     'import { explode, ready } from "./tla.js";',
     'export function run() {',
+    '  console.log("tla-entry-marker");',
     '  return import("./lazy.js").then((m) => (ready ? explode(m.lazy()) : 0));',
     '}',
     '',
@@ -110,39 +111,81 @@ async function buildFixture({ sourcemap }) {
   return dir;
 }
 
+// These tests read BUILD OUTPUT, never a source file: the chunks and maps the
+// real plugin emitted for a fixture written above. Every text predicate on
+// `code` below is therefore a check of produced artefacts (is this chunk one
+// the plugin wrapped, where is the frame), which is why each carries a
+// marker (see scripts/check-source-text-assertions.mjs) rather than an allowlist row.
 function emitted(dir) {
   const assets = join(dir, 'dist', 'assets');
   return readdirSync(assets).filter((f) => f.endsWith('.js')).map((f) => {
     const file = join(assets, f);
     const mapFile = `${file}.map`;
     const map = existsSync(mapFile) ? JSON.parse(readFileSync(mapFile, 'utf8')) : null;
-    return { name: f, code: readFileSync(file, 'utf8'), map };
+    const code = readFileSync(file, 'utf8');
+    // @source-text-assertion-ok predicate on emitted build output, not source
+    const wrapped = code.includes('__tla');
+    // @source-text-assertion-ok predicate on emitted build output, not source
+    const dynamicImport = code.includes('import(');
+    return { name: f, code, map, wrapped, dynamicImport };
   });
 }
 
-test('a frame inside a TLA-rewritten chunk resolves to its original source line', async () => {
+// Resolve the first occurrence of `token` in an emitted chunk through the map
+// that shipped with it, as a frame symbolicator would.
+function resolveFrame(chunk, token) {
+  const codeLines = chunk.code.split('\n');
+  // @source-text-assertion-ok locating a frame in emitted build output
+  const line = codeLines.findIndex((l) => l.includes(token));
+  assert.ok(line >= 0, `${chunk.name} has no ${token}`);
+  // @source-text-assertion-ok locating a frame in emitted build output
+  const column = codeLines[line].indexOf(token);
+  return originalFor(chunk.map, decodeMappings(chunk.map.mappings), line, column);
+}
+
+// @source-text-assertion-ok selects an emitted chunk by a marker it contains
+const chunkWith = (chunks, needle) => chunks.find((c) => c.code.includes(needle));
+
+test('a frame inside a TLA-rewritten chunk that Vite never touches again resolves', async () => {
+  // Pins the patch's rewrite of the emitted `.map` ASSET: for this chunk
+  // nothing after the plugin rewrites the asset, so without that hunk the
+  // stale pre-rewrite map is what ships.
   const dir = await buildFixture({ sourcemap: true });
   try {
     const chunks = emitted(dir);
-    const wrapped = chunks.filter((c) => c.code.includes('__tla'));
-    assert.ok(wrapped.length > 0, 'fixture must make the plugin rewrite at least one chunk, or this proves nothing');
-
-    const thrower = chunks.find((c) => c.code.includes('tla-sourcemap-marker'));
+    const thrower = chunkWith(chunks, 'tla-sourcemap-marker');
     assert.ok(thrower, 'the throwing function must be in an emitted chunk');
-    assert.ok(thrower.code.includes('__tla'), 'the throwing chunk must be one the plugin rewrote');
-    assert.ok(!thrower.code.includes('import('), 'the throwing chunk must be one Vite does not rewrite again afterwards');
+    assert.ok(thrower.wrapped, 'the throwing chunk must be one the plugin rewrote');
+    assert.ok(!thrower.dynamicImport, 'the throwing chunk must be one Vite does not rewrite again afterwards');
     assert.ok(thrower.map, `${thrower.name} must ship a .map`);
 
-    // The plugin re-prints a one-line minified chunk across many lines, so a
-    // map of the pre-rewrite code has no segments at all past its first lines.
-    const codeLines = thrower.code.split('\n');
-    const decoded = decodeMappings(thrower.map.mappings);
-    const line = codeLines.findIndex((l) => l.includes('throw'));
-    const column = codeLines[line].indexOf('throw');
-    const original = originalFor(thrower.map, decoded, line, column);
-    assert.ok(original, `no mapping for the throw at ${line + 1}:${column + 1}`);
-    assert.match(original.source, /tla\.js$/);
-    assert.match(original.text, /^throw new Error\("tla-sourcemap-marker "/);
+    const original = resolveFrame(thrower, 'throw');
+    assert.ok(original, 'no mapping for the throw');
+    assert.equal(original.source.split('/').pop(), 'tla.js');
+    assert.equal(original.text.slice(0, 41), 'throw new Error("tla-sourcemap-marker " +');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a frame inside a TLA-rewritten chunk that Vite rewrites afterwards resolves', async () => {
+  // Pins the patch's `chunk.map = map`: Vite's import analysis rewrites the
+  // entry chunk (its dynamic import) AFTER the plugin and composes onto
+  // chunk.map, so it must be handed the plugin's map, not the stale one.
+  const dir = await buildFixture({ sourcemap: true });
+  try {
+    const chunks = emitted(dir);
+    const entry = chunkWith(chunks, 'tla-entry-marker');
+    assert.ok(entry, 'the entry chunk must be emitted');
+    assert.ok(entry.wrapped, 'the entry chunk must be one the plugin rewrote');
+    assert.ok(entry.dynamicImport, 'the entry chunk must be one Vite rewrites again afterwards');
+    assert.ok(entry.map, `${entry.name} must ship a .map`);
+
+    // `explode` is mangled in the output; the console.log call is not.
+    const original = resolveFrame(entry, 'console.log');
+    assert.ok(original, 'no mapping for the console.log call');
+    assert.equal(original.source.split('/').pop(), 'entry.js');
+    assert.equal(original.text, 'console.log("tla-entry-marker");');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -152,7 +195,7 @@ test('without source maps the plugin still rewrites and emits no map', async () 
   const dir = await buildFixture({ sourcemap: false });
   try {
     const chunks = emitted(dir);
-    assert.ok(chunks.some((c) => c.code.includes('__tla')));
+    assert.ok(chunks.some((c) => c.wrapped));
     assert.ok(chunks.every((c) => c.map === null), 'no .map may be emitted when maps are off');
   } finally {
     rmSync(dir, { recursive: true, force: true });

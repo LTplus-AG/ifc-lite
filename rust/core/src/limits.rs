@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Bounds on walks over file-supplied entity references, plus the
+//! Bounds on speculative index reservation and file-supplied reference walks, plus the
 //! large-coordinate threshold every crate gates the RTC re-base on
 //! ([`LARGE_COORD_THRESHOLD_METERS`]).
 //!
@@ -181,4 +181,16 @@ mod tests {
     fn placement_depth_is_the_documented_100() {
         assert_eq!(MAX_PLACEMENT_DEPTH, 100);
     }
+}
+
+/// Initial entity-index entry budget before any records have been observed.
+///
+/// Source bytes include comments and long attributes, so their length is not
+/// evidence that the same number of index entries will be needed (#6537).
+/// Keep small-file estimates, bound speculation, and grow from actual records.
+/// This is a requested reservation, never a limit on accepted entity count;
+/// collection capacity rounds upward and native/WASM entry sizes differ.
+#[inline]
+pub fn initial_entity_index_capacity(source_bytes: usize) -> usize {
+    (source_bytes / 50).min(65_536)
 }

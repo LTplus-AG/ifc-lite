@@ -43,7 +43,7 @@ where
     T: AsRef<[u8]> + ?Sized,
 {
     let content = content.as_ref();
-    let estimated_entities = content.len() / 50;
+    let estimated_entities = crate::limits::initial_entity_index_capacity(content.len());
     let mut index = FxHashMap::with_capacity_and_hasher(estimated_entities, Default::default());
     let mut scanner = EntityScanner::new(content);
     while let Some((id, _type_name, start, end)) = scanner.next_entity() {

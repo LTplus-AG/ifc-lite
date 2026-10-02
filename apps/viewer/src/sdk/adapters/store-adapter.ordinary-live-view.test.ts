@@ -13,7 +13,7 @@ import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { placedBodyExtent, resolveSpatialAnchor } from '@ifc-lite/create';
 import { StepExporter } from '@ifc-lite/export';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { installScriptedMesher, settleRemesh } from '@/test/scripted-mesher';
 import { createStoreAdapter } from './store-adapter.js';
@@ -61,7 +61,7 @@ function physicalBounds(bytes: Uint8Array, ids: readonly number[]) {
 for (const count of [1, 2]) {
   it(`#6232 D5 legacy free fills and ordinary wall follow a live storey placement with ${count} model(s)`,
     { skip: existsSync(WASM) ? false : 'run pnpm build:wasm for native physical placement proof' }, async () => {
-    const models = [];
+    const models: FederatedModel[] = [];
     for (const [index, id] of ['alpha', 'beta'].slice(0, count).entries()) {
       const bytes = readFileSync(SAMPLE);
       const store = await new IfcParser().parseColumnar(

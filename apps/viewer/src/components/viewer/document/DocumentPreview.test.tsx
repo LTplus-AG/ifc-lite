@@ -5,6 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { activate, click, waitFor } from '@/test/render.js';
@@ -23,7 +24,8 @@ afterEach(() => {
   container = undefined;
 });
 
-const ready = () => waitFor(() => container?.querySelector('[data-preview-section]') !== null && !!container?.querySelector('[data-preview-section]'), 'shared document layout ready');
+const ready = () => waitFor(() => !!container?.querySelector('[data-preview-section]')
+  && container.querySelector('[data-layout-pending="true"]') === null, 'shared document layout ready');
 
 function assertAspectRatio(frame: HTMLElement, ratio: number, message: string): void {
   const w = Number.parseFloat(frame.style.width), h = Number.parseFloat(frame.style.height);
@@ -33,10 +35,16 @@ function assertAspectRatio(frame: HTMLElement, ratio: number, message: string): 
   assert.ok(Math.abs(h - w / ratio) < 0.01, `${message}: ${w} by ${h}`);
 }
 
+// A real committed PNG survives automatic HappyDOM decoding. Distinct URL
+// fragments select replacement assets without fabricating undecodable bytes;
+// each size-event invariant below still supplies its stated natural dimensions.
+const icon = readFileSync(new URL('../../../../public/favicon-16x16-cropped.png', import.meta.url));
+const imageDataUrl = (name: string) => `data:image/png;base64,${icon.toString('base64')}#${name}`;
+
 const imageBlock = {
   id: 'image',
   kind: 'image',
-  dataUrl: 'data:image/png;base64,first',
+  dataUrl: imageDataUrl('first'),
   height: 400,
   align: 'left',
 } satisfies Extract<DocumentSpec['blocks'][number], { kind: 'image' }>;
@@ -61,8 +69,9 @@ it('keeps a failed BCF snapshot at the canonical PDF fallback proportion (#6610)
     aggregations={new Map()} chartMessages={new Map()} topics={new Map([[topic.guid, topic]])}
     selectedBlockId={null} onSelectBlock={() => {}} />));
   await ready();
-  const image = container.querySelector('[data-preview-block="topic"] img'); assert.ok(image);
-  act(() => image.dispatchEvent(new Event('error', { bubbles: true })));
+  const image = container.querySelector('[data-preview-block="topic"] img');
+  // The real initial zero-size load may already have settled this bad asset.
+  if (image) act(() => image.dispatchEvent(new Event('error', { bubbles: true })));
   await ready();
   const placeholder = container.querySelector<HTMLElement>('[data-preview-block="topic"] .border-dashed'); assert.ok(placeholder);
   // A missing/undecodable BCF snapshot uses the existing resolver's 4:3 PDF
@@ -123,7 +132,7 @@ async function render(dataUrl: string): Promise<HTMLImageElement> {
 }
 
 it('resets an image preview intrinsic aspect when its data URL changes (#4983)', async () => {
-  const first = await render('data:image/png;base64,first');
+  const first = await render(imageDataUrl('first'));
   const requestedHeight = first.style.height;
   Object.defineProperties(first, {
     naturalWidth: { configurable: true, value: 4_000 },
@@ -135,7 +144,7 @@ it('resets an image preview intrinsic aspect when its data URL changes (#4983)',
   assert.ok(resized);
   assert.notEqual(resized.style.height, requestedHeight, 'a very wide image clamps to the available content width');
 
-  const second = await render('data:image/png;base64,second');
+  const second = await render(imageDataUrl('second'));
   assert.notStrictEqual(second, first, 'a new data URL remounts the intrinsic-size state');
   assert.equal(second.style.height, requestedHeight, 'the old image aspect cannot constrain the replacement before it loads');
 });
@@ -251,8 +260,8 @@ it('clamps a tall chart to the same printable-page height as PDF composition (#4
 
 
 it('keeps a replacement-image decode failure settled and ignores late old-image events (#6610)', async () => {
-  const old = await render('data:image/png;base64,old');
-  const replacement = await render('data:image/png;base64,replacement');
+  const old = await render(imageDataUrl('old'));
+  const replacement = await render(imageDataUrl('replacement'));
   act(() => replacement.dispatchEvent(new Event('error')));
   await ready();
   assert.equal(container?.querySelector('[data-document-preview]')?.getAttribute('aria-busy'), 'false', 'failed decoding does not leave pagination permanently pending');
@@ -263,7 +272,7 @@ it('keeps a replacement-image decode failure settled and ignores late old-image 
   act(() => { old.dispatchEvent(new Event('error')); old.dispatchEvent(new Event('load')); });
   await ready();
   assert.match(container?.textContent ?? '', /The image could not be decoded/, 'late callbacks cannot revive or clear the replacement failure');
-  const next = await render('data:image/png;base64,next');
+  const next = await render(imageDataUrl('next'));
   Object.defineProperties(next, { naturalWidth: { configurable: true, value: 40 }, naturalHeight: { configurable: true, value: 20 } });
   act(() => next.dispatchEvent(new Event('load')));
   await ready();

@@ -260,12 +260,13 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
     new MutationObserver(observe).observe(document, { childList: true, subtree: true, characterData: true });
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
+  let scan: { name: string; mimeType: string; buffer: Buffer };
   if (scanFirst) {
     // The scan is synthetic and derived from the real IFC fixture. Generate it
     // in a disposable page so the workflow under test genuinely starts with a
     // fresh viewer and the scan first; reloading a live GPU page tests teardown
     // timing instead of federation load order.
-    const scan = { name: 'known-offset.xyz', mimeType: 'text/plain', buffer: await deriveDiagnosticScan(context, errors) };
+    scan = { name: 'known-offset.xyz', mimeType: 'text/plain', buffer: await deriveDiagnosticScan(context, errors) };
     // The seed page is closed now and logged its own `[WebGPU] Device lost:
     // Device was destroyed` on the way out; the device-loss verdict in load()
     // must only ever see what the page under test logs.
@@ -277,7 +278,7 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
   } else {
     await page.goto('/');
     await load(page, IFC, 1);
-    const scan = { name: 'known-offset.xyz', mimeType: 'text/plain', buffer: await diagnosticScan(page) };
+    scan = { name: 'known-offset.xyz', mimeType: 'text/plain', buffer: await diagnosticScan(page) };
     await load(page, scan, 2);
   }
   await gpu.requireLiveGpu('the reposition dialog', async () => {

@@ -72,8 +72,11 @@ function originalFor(map, decoded, line, column) {
 async function buildFixture({ sourcemap }) {
   const dir = mkdtempSync(join(tmpdir(), 'ifc-lite-tla-maps-'));
   // A real top-level await (wraps the chunk) plus a dynamic import (wraps its
-  // importer too), with enough lines that a one-line minified map cannot
-  // accidentally line up with the re-printed multi-line output.
+  // importer too), with enough distinct lines in the SOURCE that a frame can
+  // only resolve to the right original line through a correctly chained map.
+  // The build uses Vite's default minifier, so the plugin's re-print is
+  // minified too (see the configResolved hunk in the patch); a stale map of
+  // the bundler's pre-rewrite output would not line up with it.
   writeFileSync(join(dir, 'tla.js'), [
     'export const ready = await Promise.resolve(1);',
     'export function explode(reason) {',

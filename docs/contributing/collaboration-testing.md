@@ -147,6 +147,10 @@ curl -s -XPOST localhost:1234/collab/revoke -H "authorization: Bearer $ADMIN" \
   -H 'content-type: application/json' -d "{\"token\":\"<shareToken>\"}"
 curl -s -XPOST localhost:1234/collab/kick -H "authorization: Bearer $ADMIN" \
   -H 'content-type: application/json' -d '{"roomId":"r1","clientId":123}'
+
+# Nobody has joined r1, so its creator can hand the claim back (409 after a join):
+curl -s -XPOST localhost:1234/collab/release -H "authorization: Bearer $ADMIN" \
+  -H 'content-type: application/json' -d '{"roomId":"r1"}'
 ```
 
 ---

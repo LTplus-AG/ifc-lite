@@ -8,7 +8,8 @@
  * SSR SVG the PDF gets; an unresolved binding is marked in place, never
  * printed as an empty string.
  */
-import { blockTitle, BLOCK_TITLE_HEIGHT } from '@/lib/document/block-title';
+import { blockTitle, blockTitleStyle, BLOCK_TITLE_HEIGHT, BLOCK_TITLE_SIZE_DEFAULT } from '@/lib/document/block-title';
+import { BlockHeading } from './BlockHeading';
 import { isSavedComparisonChart } from '@/lib/charts/comparison-source';
 import { useMemo, useState } from 'react';
 import { chartFontScale, renderChartSvg, type Aggregation } from '@ifc-lite/charts';
@@ -135,7 +136,7 @@ function BlockBody({ block, bindings, aggregation, chartMessage, topic, table, c
       // Every style keeps the text as typed, like the PDF's `wrapText` (#6370): line breaks,
       // tab indents (same tab stop as the PDF) and runs of spaces. Title, heading and subheading
       // once collapsed a typed line break into a space.
-      return <div>{blockTitle(block) && <div className="truncate font-semibold" style={{ fontSize: 11 * scale, height: BLOCK_TITLE_HEIGHT * scale }} title={blockTitle(block)}>{blockTitle(block)}</div>}
+      return <div>{blockTitle(block) && <BlockHeading block={block} text={blockTitle(block)} pointScale={scale} className="truncate font-semibold" style={{ fontSize: 11 * scale, height: BLOCK_TITLE_HEIGHT * scale }} title={blockTitle(block)} />}
         <div className={TEXT_CLASS[block.style]} style={{ color: block.textColor, backgroundColor: block.backgroundColor, whiteSpace: 'pre-wrap', tabSize: TAB_SIZE, fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * scale, lineHeight: TEXT_STYLES[block.style].lineHeight, fontFamily: DOCUMENT_FONT_FAMILIES[block.font ?? 'helvetica'] }} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>{t('document.preview.textEmpty')}</span>}</div></div>;
 
     case 'image': {
@@ -144,7 +145,7 @@ function BlockBody({ block, bindings, aggregation, chartMessage, topic, table, c
       const justify = block.align === 'left' ? 'justify-start' : block.align === 'right' ? 'justify-end' : 'justify-center';
       return (
         <figure className={`flex flex-col ${block.align === 'center' ? 'items-center' : block.align === 'right' ? 'items-end' : 'items-start'}`}>
-          {title && <div className="w-full truncate font-semibold" style={{ fontSize: 11 * scale, height: BLOCK_TITLE_HEIGHT * scale }} title={title}>{title}</div>}
+          {title && <BlockHeading block={block} text={title} pointScale={scale} className="w-full truncate font-semibold" style={{ fontSize: 11 * scale, height: BLOCK_TITLE_HEIGHT * scale }} title={title} />}
           <div className={`flex w-full ${justify}`}>
             {block.dataUrl
               ? <PreviewImage key={block.dataUrl} dataUrl={block.dataUrl} alt={block.caption ?? ''} height={height} contentWidth={contentWidth} />
@@ -167,6 +168,7 @@ function BlockBody({ block, bindings, aggregation, chartMessage, topic, table, c
         hasData,
         fontSize: block.fontSize,
         layoutScale: blockScale(block),
+        titleExtraHeight: blockTitleStyle(block, BLOCK_TITLE_SIZE_DEFAULT * textScale).extra,
       });
       const height = chartHeight * scale;
       // Computed once, not repeated as a JSX-expression literal in both the visible text and its
@@ -176,7 +178,7 @@ function BlockBody({ block, bindings, aggregation, chartMessage, topic, table, c
       return (
         <div>
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold" title={blockTitle(block, block.chart.title)} style={textScale === 1 ? undefined : { fontSize: 11 * textScale * scale, lineHeight: `${16 * textScale * scale}px` }}>{blockTitle(block, block.chart.title)}</div>
+            <BlockHeading block={block} text={blockTitle(block, block.chart.title)} pointScale={scale} unit={textScale} className="truncate text-sm font-semibold" title={blockTitle(block, block.chart.title)} style={textScale === 1 ? undefined : { fontSize: 11 * textScale * scale, lineHeight: `${16 * textScale * scale}px` }} />
             <div className="truncate text-2xs text-neutral-500" title={subtitle} style={textScale === 1 ? undefined : { fontSize: 8 * textScale * scale, lineHeight: `${16 * textScale * scale}px` }}>{subtitle}</div>
           </div>
           <ChartSvg aggregation={aggregation} message={chartMessage} width={contentWidth} height={height} fontSize={block.fontSize} scale={scale} />
@@ -191,18 +193,18 @@ function BlockBody({ block, bindings, aggregation, chartMessage, topic, table, c
       // does (review finding). A negative margin cancels the container's second gap.
       return <div style={{ height: block.height * scale, marginBottom: '-0.625rem' }} data-block-spacer />;
     case 'table':
-      return <TablePreview block={block} state={table} />;
+      return <TablePreview block={block} state={table} pointScale={scale} />;
     case 'ids-report':
-      return <IdsReportPreview block={block} />;
+      return <IdsReportPreview block={block} pointScale={scale} />;
     case 'manual-report':
-      return <ManualReportPreview block={block} />;
+      return <ManualReportPreview block={block} pointScale={scale} />;
     case 'topic': {
-      if (!topic) return <div>{blockTitle(block) && <div className="truncate text-sm font-semibold">{blockTitle(block)}</div>}<div className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" data-unresolved>{t('document.preview.topicNotLoaded', { guid: block.guid })}</div></div>;
+      if (!topic) return <div>{blockTitle(block) && <BlockHeading block={block} text={blockTitle(block)} pointScale={scale} className="truncate text-sm font-semibold" />}<div className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" data-unresolved>{t('document.preview.topicNotLoaded', { guid: block.guid })}</div></div>;
       const snapshot = block.snapshot ? topicSnapshotDataUrl(topic) : null;
       return (
         <div className="flex gap-3">
           <div className="min-w-0 flex-1">
-            <div className={`${blockTitle(block) ? 'truncate ' : ''}text-sm font-semibold`} title={blockTitle(block) || undefined}>{blockTitle(block, topic.title)}</div>
+            <BlockHeading block={block} text={blockTitle(block, topic.title)} pointScale={scale} className={`${blockTitle(block) ? 'truncate ' : ''}text-sm font-semibold`} title={blockTitle(block) || undefined} />
             {topicLines(topic).map((line, i) => <div key={i} className="text-xs text-neutral-700">{line}</div>)}
           </div>
           {snapshot && <img src={snapshot} alt="" className="h-28 rounded border border-neutral-200 object-cover" />}

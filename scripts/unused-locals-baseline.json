@@ -13,7 +13,7 @@
   "packages/cli": 6,
   "packages/codegen": 5,
   "packages/collab": 4,
-  "packages/collab-server": 3,
+  "packages/collab-server": 2,
   "packages/create": 0,
   "packages/create-ifc-lite": 0,
   "packages/data": 0,

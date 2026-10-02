@@ -42,7 +42,9 @@
  * `release-version-changed.mjs` (the verifier gate, measured 60/60 on release
  * commits and 0/40 on ordinary pushes), narrowed to packages that EXISTED at
  * the parent. A brand-new workspace package is a bump there, deliberately, so
- * its first publish is verified. Here it would be a false positive: an
+ * its first publish is verified. The release verifier explicitly defers an
+ * introduction-only tree with pending changesets until its version PR.
+ * Here a new package would be a false positive: an
  * ordinary PR that adds a package ships a changeset for it, and "new package
  * plus pending changeset" is the normal shape of that PR, not a stale release.
  *
@@ -61,37 +63,11 @@
  * real throwaway git repositories.
  */
 
-import { appendFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync } from 'node:fs';
+import { pendingChangesets } from './lib/pending-changesets.mjs';
+export { pendingChangesets } from './lib/pending-changesets.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { versionChanged } from './release-version-changed.mjs';
-
-/** @changesets/read's `ignoredMdFiles`, verbatim. */
-const IGNORED_MD = [/^README\.md$/i, 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md'];
-
-/**
- * The pending changeset file names in `<repoRoot>/.changeset`, sorted. An
- * absent `.changeset` directory is zero pending; any other read error throws.
- */
-export function pendingChangesets(repoRoot) {
-  let entries;
-  try {
-    entries = readdirSync(join(repoRoot, '.changeset'), { withFileTypes: true });
-  } catch (err) {
-    if (err.code === 'ENOENT') return [];
-    throw err;
-  }
-  return entries
-    .filter((e) => e.isFile())
-    .map((e) => e.name)
-    .filter(
-      (name) =>
-        !name.startsWith('.') &&
-        name.endsWith('.md') &&
-        !IGNORED_MD.some((p) => (typeof p === 'string' ? p === name : p.test(name)))
-    )
-    .sort();
-}
 
 /**
  * The verdict for the checked-out tree against `previousRev`, which may be

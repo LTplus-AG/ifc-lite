@@ -8,7 +8,7 @@
  * the same jsPDF + svg2pdf + snapshot path the coordination report uses,
  * so a chart block prints exactly as it does in a report.
  */
-import { blockTitle } from './block-title.js';
+import { blockTitle, blockHeaderStyleFields } from './block-title.js';
 import { isSavedComparisonChart } from '../charts/comparison-source.js';
 import { drawChartSourceMessage } from '../export/report/render-source-message.js';
 import { tableHeaderStyle } from '../table-header-style';
@@ -147,7 +147,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         } catch (err) {
           console.warn('[Documents] image could not be measured; printed square', err);
         }
-        blocks.push({ kind: 'image', id: block.id, height: block.height, align: block.align, caption: block.caption, title: block.title, aspect, width: block.width, scale: block.scale });
+        blocks.push({ kind: 'image', id: block.id, height: block.height, align: block.align, caption: block.caption, title: block.title, aspect, width: block.width, scale: block.scale, ...blockHeaderStyleFields(block) });
         break;
       }
       case 'chart': {
@@ -159,7 +159,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         const message = input.chartMessages.get(block.id);
         const hasData = !!agg && agg.categories.length > 0;
         const subtitle = isSavedComparisonChart(block.chart) && !hasData ? '' : message ?? (agg ? `${agg.categories.length} bucket${agg.categories.length === 1 ? '' : 's'} · ${agg.total.toLocaleString()} ${agg.spec.measure.agg === 'count' ? 'elements' : (agg.unit ?? '')}`.trim() : 'No data');
-        blocks.push({ kind: 'chart', id: block.id, title: blockTitle(block, block.chart.title), subtitle, hasData, snapshot: block.snapshot && !isSavedComparisonChart(block.chart), height: block.height, width: block.width, fontSize: block.fontSize, scale: block.scale });
+        blocks.push({ kind: 'chart', id: block.id, title: blockTitle(block, block.chart.title), subtitle, hasData, snapshot: block.snapshot && !isSavedComparisonChart(block.chart), height: block.height, width: block.width, fontSize: block.fontSize, scale: block.scale, ...blockHeaderStyleFields(block) });
         break;
       }
       case 'page-break': blocks.push(block); break;
@@ -176,12 +176,12 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
           const flat = state.kind === 'validation' || state.kind === 'comparison'
             ? flattenRawModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS)
             : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS, block.groupOrder);
-          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, headerStyle, scale: block.scale, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, columns: flat.columns, rows: flat.rows });
+          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, headerStyle, scale: block.scale, ...blockHeaderStyleFields(block), summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, columns: flat.columns, rows: flat.rows });
           break;
         }
         if (state?.status !== 'ok') result.tableFailures.push(block.id);
         // `tableMessage` is non-null for every non-ok state; the fallback only satisfies the types.
-        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, headerStyle, scale: block.scale, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, message: message ?? 'No rows to print.', columns: [], rows: [] });
+        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, headerStyle, scale: block.scale, ...blockHeaderStyleFields(block), summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, message: message ?? 'No rows to print.', columns: [], rows: [] });
         break;
       }
       case 'ids-report': {
@@ -198,7 +198,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         const topic = input.topics.get(block.guid);
         if (!topic) {
           result.missingTopics.push(block.guid);
-          blocks.push({ kind: 'topic', id: block.id, authoredTitle: !!blockTitle(block), title: blockTitle(block, `[BCF topic ${block.guid}: not among the loaded topics]`), lines: blockTitle(block) ? [`[BCF topic ${block.guid}: not among the loaded topics]`] : [], snapshotAspect: null, scale: block.scale });
+          blocks.push({ kind: 'topic', id: block.id, authoredTitle: !!blockTitle(block), title: blockTitle(block, `[BCF topic ${block.guid}: not among the loaded topics]`), lines: blockTitle(block) ? [`[BCF topic ${block.guid}: not among the loaded topics]`] : [], snapshotAspect: null, scale: block.scale, ...blockHeaderStyleFields(block) });
           break;
         }
         let snapshotAspect: number | null = null;
@@ -212,7 +212,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
             snapshotAspect = 4 / 3;
           }
         }
-        blocks.push({ kind: 'topic', id: block.id, authoredTitle: !!blockTitle(block), title: blockTitle(block, topic.title), lines: topicLines(topic), snapshotAspect, scale: block.scale });
+        blocks.push({ kind: 'topic', id: block.id, authoredTitle: !!blockTitle(block), title: blockTitle(block, topic.title), lines: topicLines(topic), snapshotAspect, scale: block.scale, ...blockHeaderStyleFields(block) });
         break;
       }
     }

@@ -110,6 +110,26 @@ to load. The Session panel appears only when collaboration is enabled.
 
 ### Georeferencing rotation and scale
 
+The model information panel's **Location** pin and **Origin Lat/Lon** show
+the declared georeference origin: `IfcMapConversion.Eastings` and
+`Northings` transformed from `IfcProjectedCRS` to WGS84. Picking or searching
+for a new origin writes that position back to Eastings/Northings. The origin
+does not depend on the geometry bounds, RTC rebasing, model rotation, or Scale.
+For files whose geometry is already in absolute map coordinates, editing a
+nearby origin can leave the footprint stationary under the existing
+double-georeference correction; relocate that geometry through source placements.
+
+If terrain elevation is available for a picked origin, applying it also sets
+the model base at that sampled elevation. This derives `OrthogonalHeight`
+using the geometry elevation; the sampled height is not copied directly to
+`OrthogonalHeight`. The elevation label explains this behavior.
+
+The footprint, 3D world and geometry exports also apply the element placements
+and map conversion. They can differ from the declared origin. A geometry
+centre at least 100 km from the origin raises a distance message; check the
+source model's placements before treating a correct origin pin as evidence
+that the geometry itself is correctly georeferenced.
+
 The georeferencing field **Model rotation in map coordinates** is the
 counterclockwise angle from map East to the model's local X-axis, viewed from
 above in IFC's Z-up coordinates. Positive values rotate counterclockwise;

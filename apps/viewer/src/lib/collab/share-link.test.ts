@@ -26,6 +26,7 @@ import {
   mintRoomId,
   mintRoomToken,
   revokeRoomToken,
+  releaseRoomClaim,
   kickRoomPeer,
   parseRoleFromToken,
   buildShareUrl,
@@ -139,6 +140,51 @@ describe('revokeRoomToken', () => {
     setServerUrl('wss://collab.example.test');
     stubFetch(async () => new Response(null, { status: 401 }));
     assert.equal(await revokeRoomToken('tok', 'bearer'), false);
+  });
+});
+
+describe('releaseRoomClaim (#6581)', () => {
+  it('posts the room id with the admin token as bearer to /collab/release', async () => {
+    setServerUrl('wss://collab.example.test');
+    const seen: Array<{ url: string; init?: RequestInit }> = [];
+    stubFetch(async (input, init) => {
+      seen.push({ url: String(input), init });
+      return new Response(JSON.stringify({ released: true }), { status: 200 });
+    });
+    assert.equal(await releaseRoomClaim('room-9', 'admin.jwt.token'), true);
+    assert.equal(seen.length, 1, 'one release request');
+    assert.equal(seen[0].url, 'https://collab.example.test/collab/release');
+    assert.equal(seen[0].init?.method, 'POST');
+    assert.equal(new Headers(seen[0].init?.headers).get('authorization'), 'Bearer admin.jwt.token');
+    assert.deepEqual(JSON.parse(String(seen[0].init?.body)), { roomId: 'room-9' });
+  });
+
+  it('reports a refused release (a room someone joined, or a server without the route) as false', async () => {
+    setServerUrl('wss://collab.example.test');
+    stubFetch(async () => new Response(JSON.stringify({ error: 'room-in-use' }), { status: 409 }));
+    assert.equal(await releaseRoomClaim('room-9', 'tok'), false);
+    stubFetch(async () => new Response(null, { status: 404 }));
+    assert.equal(await releaseRoomClaim('room-9', 'tok'), false);
+  });
+
+  it('never rejects: a network failure resolves false', async (t) => {
+    setServerUrl('wss://collab.example.test');
+    const warned = t.mock.method(console, 'warn', () => {});
+    stubFetch(async () => {
+      throw new TypeError('network down');
+    });
+    assert.equal(await releaseRoomClaim('room-9', 'tok'), false);
+    assert.equal(warned.mock.calls.length, 1, 'the failure is logged, not swallowed');
+  });
+
+  it('is a no-op (false) in local-only mode', async () => {
+    let called = false;
+    stubFetch(async () => {
+      called = true;
+      return new Response(null, { status: 200 });
+    });
+    assert.equal(await releaseRoomClaim('room-9', 'tok'), false);
+    assert.equal(called, false, 'no network call in local-only mode');
   });
 });
 

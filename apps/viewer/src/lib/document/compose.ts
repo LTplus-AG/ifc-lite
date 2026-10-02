@@ -20,7 +20,8 @@ import { blockScale, CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth
 import { layoutTable, type LayoutCursor, type TableLayoutBlock, type TableDrawnItem } from './compose-table.js';
 import { layoutIdsReport, type IdsReportLayoutBlock } from './compose-ids-report.js';
 import { layoutManualReport, type ManualReportLayoutBlock, type RingDrawnItem } from './compose-manual-report.js';
-import { blockTitle, BLOCK_TITLE_HEIGHT } from './block-title.js';
+import { blockTitle, blockTitleStyle, BLOCK_TITLE_HEIGHT, BLOCK_TITLE_SIZE_DEFAULT, type BlockHeaderStyleFields } from './block-title.js';
+import { blockTitleItems } from './compose-block-title.js';
 import { TEXT_STYLES, wrapText, truncateToWidth, layoutText, textBackground } from './compose-text.js';
 export { TEXT_STYLES, wrapText, truncateToWidth } from './compose-text.js';
 import { splitDocumentSections } from './page-sections.js';
@@ -46,9 +47,9 @@ function zoomItem(item: DrawnItem, scale: number, map: { x: (v: number) => numbe
 export type ResolvedBlock =
   | TextBlock
   | PageBreakBlock
-  | { kind: 'image'; id: string; height: number; align: 'left' | 'center' | 'right'; caption?: string; title?: string; /** natural width / height */ aspect: number; width?: BlockWidth; scale?: number }
-  | { kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth; fontSize?: number; scale?: number }
-  | { kind: 'topic'; id: string; title: string; authoredTitle?: boolean; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null; scale?: number }
+  | ({ kind: 'image'; id: string; height: number; align: 'left' | 'center' | 'right'; caption?: string; title?: string; /** natural width / height */ aspect: number; width?: BlockWidth; scale?: number } & BlockHeaderStyleFields)
+  | ({ kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth; fontSize?: number; scale?: number } & BlockHeaderStyleFields)
+  | ({ kind: 'topic'; id: string; title: string; authoredTitle?: boolean; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null; scale?: number } & BlockHeaderStyleFields)
   | { kind: 'spacer'; id: string; height: number }
   | ({ kind: 'table' } & TableLayoutBlock)
   | ({ kind: 'ids-report' } & IdsReportLayoutBlock)
@@ -95,12 +96,12 @@ export const estimateTextWidth = (text: string, size: number, bold: boolean): nu
 /** A conservative, font-independent bound keeps preview/PDF pairing identical.
  * Standard PDF font glyphs fit within one em; this can choose full width early,
  * but never puts a two-column row through the footer for a wide glyph string. */
-export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'fontSize' | 'title'>, pageHeight: number, columnWidth: number, headingExtraHeight = 0): boolean {
+export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'fontSize' | 'title' | keyof BlockHeaderStyleFields>, pageHeight: number, columnWidth: number, headingExtraHeight = 0): boolean {
   const style = TEXT_STYLES[block.style];
   const size = block.fontSize ?? style.size;
   const lines = wrapText(block.text, columnWidth, size, style.bold, (text, fontSize) => text.length * fontSize);
   const frameHeight = pageFrameHeight(pageHeight, headingExtraHeight);
-  return (blockTitle(block) ? BLOCK_TITLE_HEIGHT : 0) + style.gapBefore + lines.length * size * style.lineHeight <= frameHeight;
+  return (blockTitle(block) ? BLOCK_TITLE_HEIGHT + blockTitleStyle(block).extra : 0) + style.gapBefore + lines.length * size * style.lineHeight <= frameHeight;
 }
 
 export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
@@ -136,7 +137,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     // is clamped (review finding: a tall image + caption could still clamp to the full frame, then
     // draw the caption past `bottom`, in the footer band).
     const title = blockTitle(block);
-    const titleH = title ? BLOCK_TITLE_HEIGHT : 0;
+    const titleH = title ? BLOCK_TITLE_HEIGHT + blockTitleStyle(block).extra : 0;
     const captionH = block.caption ? 14 : 0;
     const h = documentImageHeight(block, pageH, headingExtraHeight);
     const w = Math.min(boxW, h * block.aspect);
@@ -145,7 +146,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     return {
       height: drawnH + captionH + titleH,
       draw: (y) => {
-        const items: DrawnItem[] = title ? [{ kind: 'text', x: boxX, y: y + 11, size: 11, bold: true, gray: 0, text: truncateToWidth(title, boxW, 11, true, input.measure) }] : [];
+        const items: DrawnItem[] = title ? blockTitleItems(block, title, boxX, y, boxW, (text, width, size, bold) => truncateToWidth(text, width, size, bold, input.measure)) : [];
         y += titleH;
         items.push({ kind: 'image', blockId: block.id, x, y, w, h: drawnH });
         // A long caption must not cross the inter-column gap into the paired half-width block, and
@@ -159,6 +160,8 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
 
   const layoutChart = (block: Extract<ResolvedBlock, { kind: 'chart' }>, boxX: number, boxW: number, pageH = size.h, layoutScale = 1): { height: number; draw: (y: number) => DrawnItem[] } => {
     const textScale = chartFontScale(block.fontSize);
+    // A chart's heading defaults to its text size; an authored heading size overrides it (#6632).
+    const heading = blockTitleStyle(block, BLOCK_TITLE_SIZE_DEFAULT * textScale);
     // The configured height (up to CHART_BLOCK_HEIGHT_MAX, 600pt) must still fit a single page next to its
     // title strip and, when stacked, its snapshot — otherwise the SVG is clipped past the footer (review finding).
     const { height: chartHeight, sideBySide, stacked, snapshotHeight, totalHeight: totalH } = documentChartLayout({
@@ -170,6 +173,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       hasData: block.hasData,
       fontSize: block.fontSize,
       layoutScale,
+      titleExtraHeight: heading.extra,
     });
     const chartW = sideBySide ? Math.round(boxW * 0.6) - BLOCK_GAP / 2 : boxW;
     return {
@@ -177,13 +181,12 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       draw: (y) => {
         // Give each line the column width. The old 80pt subtitle slot cut ordinary totals
         // such as "13 buckets · 12,623 elements" even on a full-width A4 chart (#4940).
-        const title = truncateToWidth(block.title, boxW - 4, 11 * textScale, true, input.measure);
         const subtitle = truncateToWidth(block.subtitle, boxW - 4, 8 * textScale, false, input.measure);
         const items: DrawnItem[] = [
-          { kind: 'text', x: boxX, y: y + 11 * textScale, size: 11 * textScale, bold: true, gray: 0, text: title },
-          { kind: 'text', x: boxX, y: y + 24 * textScale, size: 8 * textScale, bold: false, gray: 130, text: subtitle },
+          ...blockTitleItems(block, block.title, boxX, y, boxW - 4, (text, width, size, bold) => truncateToWidth(text, width, size, bold, input.measure), textScale),
+          { kind: 'text', x: boxX, y: y + 24 * textScale + heading.extra, size: 8 * textScale, bold: false, gray: 130, text: subtitle },
         ];
-        const chartY = y + 32 * textScale;
+        const chartY = y + 32 * textScale + heading.extra;
         items.push({ kind: 'chart', blockId: block.id, x: boxX, y: chartY, w: chartW, h: chartHeight });
         if (sideBySide) items.push({ kind: 'snapshot', blockId: block.id, x: boxX + chartW + BLOCK_GAP, y: chartY, w: boxW - chartW - BLOCK_GAP, h: snapshotHeight });
         else if (stacked) items.push({ kind: 'snapshot', blockId: block.id, x: boxX, y: chartY + chartHeight + BLOCK_GAP, w: boxW, h: snapshotHeight });
@@ -261,7 +264,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           }
           if (title) {
             f.ensure(titleHeight + style.gapBefore + lineH * Math.min(lines.length, 2));
-            f.push({ kind: 'text', x: REPORT_MARGIN, y: f.y + 11, size: 11, bold: true, gray: 0, text: truncateToWidth(title, f.w, 11, true, input.measure) });
+            f.push(...blockTitleItems(block, title, REPORT_MARGIN, f.y, f.w, (text, width, size, bold) => truncateToWidth(text, width, size, bold, input.measure)));
             f.y += titleHeight;
           }
           f.y += style.gapBefore;
@@ -316,11 +319,12 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           const textW = f.w - (snapshotW ? snapshotW + BLOCK_GAP : 0);
           const lines = block.lines.flatMap((l) => wrapText(l, textW, 10, false, input.measure));
           // Title, snapshot and the first lines move together; a long description then continues page by page.
-          f.ensure(Math.max(16 + Math.min(lines.length, 3) * lineH, snapshotH) + BLOCK_GAP);
-          f.push({ kind: 'text', x: REPORT_MARGIN, y: f.y + 11, size: 11, bold: true, gray: 0, text: block.authoredTitle ? truncateToWidth(block.title, textW, 11, true, input.measure) : block.title });
+          const titleHeight = BLOCK_TITLE_HEIGHT + blockTitleStyle(block).extra;
+          f.ensure(Math.max(titleHeight + Math.min(lines.length, 3) * lineH, snapshotH) + BLOCK_GAP);
+          f.push(...blockTitleItems(block, block.title, REPORT_MARGIN, f.y, textW, (text, width, size, bold) => (block.authoredTitle ? truncateToWidth(text, width, size, bold, input.measure) : text)));
           if (block.snapshotAspect) f.push({ kind: 'topic-snapshot', blockId: block.id, x: REPORT_MARGIN + f.w - snapshotW, y: f.y, w: snapshotW, h: snapshotH });
           const snapshotBottom = f.y + snapshotH;
-          let ty = f.y + 16;
+          let ty = f.y + titleHeight;
           for (const line of lines) {
             if (ty + lineH > f.bottom) {
               newPage();

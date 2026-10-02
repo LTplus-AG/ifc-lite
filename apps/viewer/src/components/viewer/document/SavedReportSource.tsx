@@ -6,7 +6,9 @@ import { useTranslation } from '@/i18n';
 import { SavedHistoryNotice } from '../SavedHistoryNotice';
 import { useViewerStore } from '@/store';
 import { savedReportBlock, savedReportLabel, type ValidationReportSnapshot } from '@/lib/validation/reports/history';
+import { keepCommonReportChoices } from '@/lib/document/report-provenance';
 import { replaceManualReportSnapshot } from '@/lib/document/manual-report';
+import { replaceIdsReportSnapshot } from '@/lib/document/ids-report';
 
 /** Select frozen evidence without changing its block id or reading any live
  * checklist/report. Existing documents keep their embedded snapshot (#6500). */
@@ -28,8 +30,8 @@ export function SavedReportSource({ block, onChange }: { block: ValidationReport
               onChange(block.kind === 'manual-report' && next.kind === 'manual-report'
                 ? replaceManualReportSnapshot(block, next)
                 : block.kind === 'ids-report' && next.kind === 'ids-report'
-                  ? { ...next, title: block.title, variant: block.variant, benchmarks: block.benchmarks, scale: block.scale }
-                  : { ...next, title: block.title, scale: block.scale });
+                  ? replaceIdsReportSnapshot(block, next)
+                  : keepCommonReportChoices(block, next));
             }
           }}>
           <option value="" disabled>{t('validationPanel.history.embedded')}</option>

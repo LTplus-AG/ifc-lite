@@ -12,11 +12,11 @@ export function costRecord(model, usage) {
 export function summarizeCalls(results, failures, validation) {
   return [
     ...results.map((r) => ({
-      model: r.model, answered: true, elapsedMs: r.elapsedMs, usage: r.usage, finishReason: r.finishReason,
+      model: r.model, answered: true, elapsedMs: r.elapsedMs, usage: r.usage, reasoning: r.reasoning, finishReason: r.finishReason,
       ...costRecord(r.model, r.usage),
       poolValidation: validation.get(r.model),
     })),
-    ...failures.map((r) => ({ model: r.model, answered: false, elapsedMs: r.elapsedMs, usage: r.usage, finishReason: r.finishReason, ...costRecord(r.model, r.usage) })),
+    ...failures.map((r) => ({ model: r.model, answered: false, elapsedMs: r.elapsedMs, usage: r.usage, reasoning: r.reasoning, finishReason: r.finishReason, ...costRecord(r.model, r.usage) })),
   ];
 }
 

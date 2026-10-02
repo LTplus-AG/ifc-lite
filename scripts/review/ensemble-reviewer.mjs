@@ -66,9 +66,9 @@ export const REVIEW_ENSEMBLE_MODELS_DEFAULT = [
  */
 export const REVIEW_ENSEMBLE_STRONG_MODEL = 'anthropic/claude-opus-5.5';
 
-import { estimateCostUsd } from './lib/review-cost.mjs';
 export { estimateCostUsd, MODEL_PRICES_PER_MTOK } from './lib/review-cost.mjs';
-import { appendTelemetry, summarizeCalls } from './lib/review-telemetry.mjs';
+import { reviewReasoning } from './lib/review-reasoning.mjs';
+import { appendTelemetry, summarizeCalls, costRecord } from './lib/review-telemetry.mjs';
 
 /**
  * `REVIEW_ENSEMBLE_MODELS` unset or empty means the ensemble is OFF: this
@@ -109,26 +109,27 @@ async function runWithConcurrency(tasks, limit) {
  *
  * @returns {Promise<{results: {model: string, text: string, usage: object|null, elapsedMs: number}[], failures: {model: string, error: string}[]}>}
  */
-export async function runEnsemble({ prompt, apiKey, models, minSuccess = 1, concurrency, fetchImpl = fetch }) {
+export async function runEnsemble({ prompt, apiKey, models, minSuccess = 1, concurrency, fetchImpl = fetch, reasoningProfile = 'high' }) {
   if (!Array.isArray(models) || models.length === 0) {
     throw new Error('runEnsemble requires at least one model.');
   }
   const tasks = models.map((model) => async () => {
     const startedAt = Date.now();
+    const reasoning = reviewReasoning(model, reasoningProfile);
     try {
-      const { text, usage, finishReason } = await requestOpenRouterReviewWithUsage({ prompt, apiKey, model, fetchImpl });
+      const { text, usage, finishReason } = await requestOpenRouterReviewWithUsage({ prompt, apiKey, model, fetchImpl, reasoning });
       const elapsedMs = Date.now() - startedAt;
-      const cost = estimateCostUsd(model, usage);
+      const { costUsd: cost, costSource } = costRecord(model, usage);
       console.log(
         `ensemble: ${model} answered in ${elapsedMs}ms, ${text.length} chars` +
-          (cost !== null ? `, ~$${cost.toFixed(4)}` : ''),
+          (cost !== null ? `, ${costSource === 'estimated' ? '~' : ''}$${cost.toFixed(4)} (${costSource})` : ''),
       );
-      return { ok: true, model, text, usage: usage ?? null, finishReason, elapsedMs };
+      return { ok: true, model, text, usage: usage ?? null, finishReason, reasoning, elapsedMs };
     } catch (error) {
       const elapsedMs = Date.now() - startedAt;
       const message = error instanceof Error ? error.message : String(error);
       console.log(`ensemble: ${model} failed after ${elapsedMs}ms: ${message}`);
-      return { ok: false, model, error: message, elapsedMs, usage: error?.usage ?? null, finishReason: error?.finishReason ?? null };
+      return { ok: false, model, error: message, elapsedMs, usage: error?.usage ?? null, finishReason: error?.finishReason ?? null, reasoning };
     }
   });
   const outcomes = await runWithConcurrency(tasks, concurrency ?? models.length);
@@ -268,8 +269,8 @@ export function poolFindings(results, expectedFiles = null, validation = new Map
  *
  * @returns {Promise<{text: string, models: string[], failed: {model: string, error: string}[]} | null>}
  */
-export async function runEnsembleReview({ prompt, apiKey, models, minSuccess = 1, concurrency, fetchImpl = fetch, expectedFiles = null, onTelemetry = () => {} }) {
-  const { results, failures } = await runEnsemble({ prompt, apiKey, models, minSuccess, concurrency, fetchImpl });
+export async function runEnsembleReview({ prompt, apiKey, models, minSuccess = 1, concurrency, fetchImpl = fetch, expectedFiles = null, onTelemetry = () => {}, reasoningProfile = 'high' }) {
+  const { results, failures } = await runEnsemble({ prompt, apiKey, models, minSuccess, concurrency, fetchImpl, reasoningProfile });
   const validation = new Map();
   const pooled = poolFindings(results, expectedFiles, validation);
   onTelemetry(summarizeCalls(results, failures, validation));
@@ -325,14 +326,15 @@ export function resolveEnsemblePlan(env, input) {
  * "do nothing, fall through unchanged" -- disabled, unconfigured, or every
  * model failed.
  */
-export async function maybeRunEnsemble({ env, input, prompt, outPath }) {
+export async function maybeRunEnsemble({ env, input, prompt, outPath, fetchImpl = fetch }) {
   const plan = resolveEnsemblePlan(env, input);
   if (!plan) return false;
   console.log(`ensemble: asking ${plan.models.join(', ')} in parallel.`);
   // `input.files` here is the raw review-input.json array (path objects), the
   // same roster `checkProofOfWork` later compares against.
   const expectedFiles = Array.isArray(input?.files) ? input.files.map((f) => f.path) : null;
-  const outcome = await runEnsembleReview({ prompt, apiKey: plan.apiKey, models: plan.models, minSuccess: 1, expectedFiles,
+  const outcome = await runEnsembleReview({ prompt, apiKey: plan.apiKey, models: plan.models, minSuccess: 1, expectedFiles, fetchImpl,
+    reasoningProfile: String(env.REVIEW_ENSEMBLE_REASONING_PROFILE ?? '').trim() || 'cheap-defaults',
     onTelemetry: (calls) => appendTelemetry(`${outPath}.telemetry.jsonl`, { pr: input.pr, headSha: input.headSha, calls }),
   });
   if (!outcome) {

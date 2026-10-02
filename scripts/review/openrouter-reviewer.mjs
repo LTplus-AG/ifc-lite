@@ -3,6 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { appendTelemetry, costRecord } from './lib/review-telemetry.mjs';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -156,21 +157,26 @@ export function resolveModelChain({ modelsRaw, modelRaw, defaults }) {
  * reports it in the posted envelope rather than leaving "which model" a
  * mystery on a run that used the third choice.
  */
-export async function requestOpenRouterReviewChain({ prompt, apiKey, models, fetchImpl = fetch, timeoutMs = OPENROUTER_TIMEOUT_MS_DEFAULT }) {
-  if (!Array.isArray(models) || models.length === 0) {
-    throw new Error('No OpenRouter model configured.');
-  }
+export async function requestOpenRouterReviewChain({ prompt, apiKey, models, fetchImpl = fetch, timeoutMs = OPENROUTER_TIMEOUT_MS_DEFAULT, onTelemetry = () => {} }) {
+  if (!Array.isArray(models) || models.length === 0) throw new Error('No OpenRouter model configured.');
   const failures = [];
   for (const [i, model] of models.entries()) {
+    const startedAt = Date.now();
+    let answer;
     try {
-      const text = await requestOpenRouterReview({ prompt, apiKey, model, fetchImpl, timeoutMs });
-      return { text, model };
+      answer = await requestOpenRouterReviewWithUsage({ prompt, apiKey, model, fetchImpl, timeoutMs });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      onTelemetry({ model, answered: false, elapsedMs: Date.now() - startedAt,
+        usage: error?.usage ?? null, finishReason: error?.finishReason ?? null, ...costRecord(model, error?.usage) });
       const next = models[i + 1] ?? '(no more models)';
       console.error(`provider openrouter: ${model} failed: ${message}; trying ${next}`);
       failures.push(`${model}: ${message}`);
+      continue;
     }
+    onTelemetry({ model, answered: true, elapsedMs: Date.now() - startedAt,
+      usage: answer.usage, finishReason: answer.finishReason, ...costRecord(model, answer.usage) });
+    return { text: answer.text, model };
   }
   throw new Error(`Every OpenRouter model failed:\n${failures.join('\n')}`);
 }
@@ -239,7 +245,11 @@ if (isMainEntry(import.meta.url)) {
       defaults: OPENROUTER_REVIEW_MODELS_DEFAULT,
     });
     const timeoutMs = resolveTimeoutMs(process.env.OPENROUTER_TIMEOUT_MS);
-    const { text, model } = await requestOpenRouterReviewChain({ prompt: readFileSync(0, 'utf8'), apiKey, models, timeoutMs });
+    const { text, model } = await requestOpenRouterReviewChain({ prompt: readFileSync(0, 'utf8'), apiKey, models, timeoutMs,
+      onTelemetry: (call) => {
+        if (process.env.OPENROUTER_TELEMETRY_PATH) appendTelemetry(process.env.OPENROUTER_TELEMETRY_PATH, { provider: 'openrouter-fallback', calls: [call] });
+      },
+    });
     process.stderr.write(`MODEL_USED:${model}\n`);
     process.stdout.write(text);
   } catch (error) {

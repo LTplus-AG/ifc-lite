@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -558,4 +558,28 @@ test('a paid empty response retains billed cost and finish reason when the ensem
   assert.equal(calls[0].costUsd, 0.02);
   assert.equal(calls[0].costSource, 'billed');
   assert.equal(calls[0].finishReason, 'length');
+});
+
+
+test('production default applies tested cheap settings, retains strong reasoning, and appends attempts', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'review-profile-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  // This exercises the real request path and filesystem artifact, not a preset
+  // table alone: omitting the profile in maybeRunEnsemble would fail this test.
+  const outPath = join(dir, 'raw-review.txt');
+  const sent = [];
+  const fetchImpl = async (_url, init) => {
+    sent.push(JSON.parse(init.body));
+    return reply({ choices: [{ message: { content: JSON.stringify(clean()) }, finish_reason: 'stop' }], usage: { cost: 0.01 } });
+  };
+  const env = { OPENROUTER_API_KEY: 'k', REVIEW_ENSEMBLE_MODELS: 'openai/gpt-6-luna,anthropic/claude-opus-5.5' };
+  const input = { files: [{ path: 'a.ts' }], headSha: 'a'.repeat(40) };
+  await maybeRunEnsemble({ env, input, prompt: 'p', outPath, fetchImpl });
+  await maybeRunEnsemble({ env: { ...env, REVIEW_ENSEMBLE_REASONING_PROFILE: 'high' }, input, prompt: 'retry', outPath, fetchImpl });
+  assert.deepEqual(sent.map((r) => r.reasoning), [{ effort: 'medium' }, { effort: 'high' }, { effort: 'high' }, { effort: 'high' }]);
+  const records = readFileSync(`${outPath}.telemetry.jsonl`, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+  assert.equal(records.length, 2);
+  assert.equal(records[0].calls[0].reasoning.effort, 'medium');
+  assert.equal(records[1].calls[0].reasoning.effort, 'high');
+  assert.equal(records[0].calls[1].costSource, 'billed');
 });

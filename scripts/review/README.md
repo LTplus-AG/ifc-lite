@@ -1,6 +1,11 @@
 # Review provider measurement
 
 The `Claude review` workflow starts with the OpenRouter ensemble when configured.
+Its default `cheap-defaults` reasoning profile uses the measured settings below.
+Set `REVIEW_ENSEMBLE_REASONING_PROFILE=high` to replay the previous policy; the
+reviewer, corrective retry, and daily canary all read the same variable. Strong
+reviewers retain high reasoning, and Opus remains the default strong seat.
+Both ensemble and sequential OpenRouter fallback calls append to the same sidecar.
 Its `review-outcomes-*` artifact retains per-call billed `usage.cost` (including
 cache/reasoning charges), token details, elapsed time, and pool-validation outcomes.
 Token-price fallbacks are labelled `estimated`; absent usage is unknown, never free.
@@ -21,7 +26,7 @@ the selected reasoning profile, 32,768 output-token limit, context pack, mechani
 and one corrective retry. `reasoning_profile=high` is the original baseline. `cheap-defaults` tests Luna's
 medium effort, Gemini's minimal effort, and DeepSeek with optional reasoning off;
 strong seats keep high effort. The profile and exact reasoning object are recorded,
-and cache reuse refuses different generation settings. Reasoning shares the output
+and cache reuse refuses a different reasoning setting. Reasoning shares the output
 budget, so an empty response can consume tokens without producing a review ([OpenRouter reasoning documentation](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens)).
 There is no failover to another model, ensemble pooling,
 or paid judge. Scores measure generation plus validation, not the final posted

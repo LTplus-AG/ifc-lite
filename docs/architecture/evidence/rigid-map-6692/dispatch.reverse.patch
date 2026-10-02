@@ -1,0 +1,11 @@
+--- a/rust/export/src/step_map_transform.rs
++++ b/rust/export/src/step_map_transform.rs
+@@ -111,7 +111,7 @@
+             return Ok(MapConversionNormalizationPlan::default());
+         }
+         let context = operation.get_ref(0).ok_or("map SourceCRS is missing")?;
+-        if false {
++        if scale == 1.0 {
+             return rigid::plan(&records, &ids, map, context, unit, &affine, &mut decoder);
+         }
+         preflight::model(&records, context, &mut decoder)?;

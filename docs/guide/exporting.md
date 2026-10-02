@@ -560,6 +560,9 @@ Body, Axis, FootPrint, Box, annotations, opening/fill relationships and supporte
 endpoint-local connection geometry. Root frames are cloned, so shared geometry
 points and directions are not mutated. TrueNorth directions, including the
 implicit +Y default, rotate into the new engineering frame using cloned metadata.
+This metadata adjustment covers the coordinate-operation context and contexts
+reachable from represented products. Unused definition contexts retain their
+original TrueNorth and representation records.
 
 Non-unit uniform physical scale uses absolute logical product placements and
 scaled `IfcMappedItem` Body representations. Both paths preserve physical map

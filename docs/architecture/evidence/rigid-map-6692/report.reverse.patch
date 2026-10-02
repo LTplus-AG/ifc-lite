@@ -1,0 +1,11 @@
+--- a/rust/export/src/step_map_rigid_contexts.rs
++++ b/rust/export/src/step_map_rigid_contexts.rs
+@@ -67,7 +67,7 @@
+                 })
+             })?;
+             if depth >= ifc_lite_core::limits::MAX_MAPPED_ITEM_DEPTH as usize {
+-                return Err("unsupported mapped representation".into());
++                return Err("mapped representation exceeds the renderer depth bound".into());
+             }
+             depths.insert(id, depth);
+             active.remove(&id);

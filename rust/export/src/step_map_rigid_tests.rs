@@ -232,6 +232,31 @@ fn issue_6692_true_north_covaries_without_mutating_shared_direction() {
 }
 
 #[test]
+fn issue_6692_unused_definition_context_north_remains_in_its_original_frame() {
+    let source = with_entities(
+        &rigid_model(1.).replace("(#10),#4", "(#10,#96),#4"),
+        "#96=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',3,1.E-5,#11,#98);\n\
+#97=IFCSHAPEREPRESENTATION(#96,'Body','SweptSolid',(#42));\n\
+#98=IFCDIRECTION((0.3,0.4));\n\
+#99=IFCREPRESENTATIONMAP(#11,#97);",
+    );
+    let plan = plan_map_conversion_normalization(source.as_bytes()).unwrap();
+    assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+    assert!(plan.replacements.iter().any(|patch| patch.express_id == 10));
+    assert!(!plan.replacements.iter().any(|patch| patch.express_id == 96));
+    let output = apply(&source, &plan);
+    let mut decoder = EntityDecoder::new(&output);
+    assert_eq!(decoder.decode_by_id(96).unwrap().get_ref(5), Some(98));
+    for record in [
+        "#97=IFCSHAPEREPRESENTATION(#96,'Body','SweptSolid',(#42));",
+        "#98=IFCDIRECTION((0.3,0.4));",
+        "#99=IFCREPRESENTATIONMAP(#11,#97);",
+    ] {
+        assert!(output.contains(record), "unused definition changed: {record}");
+    }
+}
+
+#[test]
 fn issue_6692_only_declared_identity_sibling_contexts_share_the_engineering_frame() {
     let source = with_entities(
         &rigid_model(1.).replace("(#10),#4", "(#10,#96),#4"),

@@ -103,6 +103,7 @@ export const validationPanelEn = {
   'contentStorage.export': 'Download library backup',
   'contentStorage.import': 'Import library backup',
   'contentStorage.imported': 'Imported {count} items. Existing conflicting items were kept; imported versions are separate copies.',
+  'contentStorage.refreshFailed': 'The import was saved, but the visible libraries could not refresh. Reload this page to view the saved content.',
   'contentStorage.draftsPreserved': {
     one: 'Preserved {count} incomplete draft as raw recovery evidence. Download preserved originals to inspect or recover it; complete the unfinished fields before adding it to a library.',
     other: 'Preserved {count} incomplete drafts as raw recovery evidence. Download preserved originals to inspect or recover them; complete the unfinished fields before adding them to a library.',

@@ -2,18 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { sameReportEvidence } from '../flow/report-provenance.js';
-import { newSavedReport, type SavedValidationReport } from '../validation/reports/history.js';
+import type { SavedValidationReport } from '../validation/reports/history.js';
 import { validationContent } from '../validation/reports/persistence.js';
 import { comparisonContent } from '../compare/savedComparisonPersistence.js';
 import type { SavedComparison } from '../compare/savedComparisonSchema.js';
-import { documentContent, parseDocumentFile } from '../document/persistence.js';
+import { documentContent } from '../document/persistence.js';
 import type { DocumentSpec } from '../document/types.js';
-import { computeFullSourceHash } from '../../utils/sourceContentHash.js';
-import { contentTransaction, contentCreatedAt, transactionDone, requestValue, type ContentRow, type MigrationRow, type RecoveryRow } from './content-database.js';
+import { contentTransaction, transactionDone, requestValue, type ContentRow, type MigrationRow, type RecoveryRow } from './content-database.js';
+import type { ContentCommitReceipt } from './content-library.js';
 import { announceContentChange } from './content-events.js';
+import { sameReportEvidence } from '../flow/report-provenance.js';
 import { readLegacyOriginals } from './content-migration.js';
-import { rebindContentDocument } from './content-backup-references.js';
+import { forgetContentImports, pendingContentImports, planContentImport, prepareContentImport, rememberContentImports } from './content-import-plan.js';
 import { BACKUP_DRAFT_PREFIX, draftRecoveryRows, forgetContentDrafts, mergeContentDrafts, parseContentDrafts,
   pendingContentDrafts, stageContentDrafts, type ContentDraftEvidence } from './content-backup-drafts.js';
 
@@ -38,9 +38,9 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
   const copied = structuredClone(libraries), drafts: ContentDraftEvidence[] = [];
   const partition = <T extends { id: string }>(kind: ContentRow['kind'], entries: T[], decode: (raw: unknown) => T | null): T[] =>
     entries.flatMap(entry => {
-      const valid = decode(entry);
+      const raw = JSON.stringify(entry), valid = decode(JSON.parse(raw));
       if (valid) return [valid];
-      drafts.push({ kind, id: entry.id, raw: JSON.stringify(entry) });
+      drafts.push({ kind, id: entry.id, raw });
       return [];
     });
   return { version: 1, exportedAt: new Date().toISOString(), status, libraries: {
@@ -77,56 +77,77 @@ export function parseContentBackup(text: string): ContentBackup {
   }, drafts: parseContentDrafts(backup.drafts) };
 }
 
-/** Preserve originals on ID conflicts by importing a separately identified copy. */
-export async function importContentBackup(backup: ContentBackup): Promise<number> {
-  // Validate even when a caller constructs the object directly.
-  const parsed = parseContentBackup(JSON.stringify(backup)), libraries = parsed.libraries, drafts = parsed.drafts ?? [];
-  // Refusal leaves the raw evidence exportable for this session as well.
+/** A refused commit carries the canonical independent drafts; UI does not re-plan it. */
+export class ContentImportFailure extends Error {
+  constructor(cause: unknown, readonly entries: ContentLibraries) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+  }
+}
+
+async function readImportRows(): Promise<ContentRow[]> {
+  const tx = await contentTransaction('items', 'readonly'), done = transactionDone(tx);
+  const [rows] = await Promise.all([requestValue(tx.objectStore('items').getAll()) as Promise<ContentRow[]>, done]);
+  return rows;
+}
+
+/** Preserve originals on conflicts; atomic commit and refusal use one canonical plan. */
+export async function importContentBackup(backup: ContentBackup, readVisible?: () => ContentLibraries, allowCommit = true,
+  committed?: (rows: readonly ContentCommitReceipt[]) => void): Promise<number> {
+  const parsed = parseContentBackup(JSON.stringify(backup)), drafts = parsed.drafts ?? [];
   stageContentDrafts(drafts);
-  const recovery = await draftRecoveryRows(drafts);
-  // Hash before opening a transaction: Web Crypto must not let IDB auto-commit.
-  const fingerprints = new Map<object, string>();
-  await Promise.all((['validation', 'comparison', 'document'] as const).flatMap(kind => libraries[kind].map(async entry => {
-    const canonical = JSON.stringify(entry, (_key, value: unknown) => value && typeof value === 'object' && !Array.isArray(value)
-      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : value);
-    const hash = await computeFullSourceHash(new TextEncoder().encode(canonical));
-    if (!hash) throw new Error('Web Crypto is required to import library backups');
-    fingerprints.set(entry, `${kind}:${hash}`);
-  })));
-  const tx = await contentTransaction(['items', 'recovery'], 'readwrite');
-  const done = transactionDone(tx);
-  const store = tx.objectStore('items');
-  let imported = 0;
-  const read = store.getAll();
-  read.onsuccess = () => {
-    const known = new Map((read.result as ContentRow[]).map(row => [`${row.kind}:${row.id}`, row]));
-    const importedSources = new Map((read.result as ContentRow[]).map(row => [row.importedFrom, row]));
-    const put = (kind: ContentRow['kind'], original: { id: string }, copy: () => { id: string }, prepared = original): string => {
-      const current = known.get(`${kind}:${original.id}`);
-      if (current && !current.deleted && sameReportEvidence(current.payload, prepared)) return current.id;
-      const importedFrom = fingerprints.get(original);
-      const previous = importedSources.get(importedFrom);
-      if (previous) return previous.id;
-      const payload = current ? copy() : prepared;
-      const row: ContentRow = { kind, id: payload.id, version: 1, revision: 1, createdAt: contentCreatedAt(),
-        modifiedAt: Date.now(), deleted: false, payload, importedFrom };
-      store.add(row); known.set(`${kind}:${row.id}`, row); importedSources.set(importedFrom, row); imported++;
-      return row.id;
+  const prepared = await prepareContentImport(parsed.libraries), recovery = await draftRecoveryRows(drafts);
+  let planned: ContentRow[] = [];
+  let receipts: ContentCommitReceipt[] = [];
+  try {
+    if (!allowCommit) throw new Error('Existing libraries could not be safely initialized');
+    const tx = await contentTransaction(['items', 'recovery'], 'readwrite'), done = transactionDone(tx);
+    const read = tx.objectStore('items').getAll();
+    read.onsuccess = () => {
+      const visible = readVisible?.();
+      planned = planContentImport(prepared, read.result as ContentRow[], visible);
+      receipts = planned.map(row => {
+        const staged = visible?.[row.kind].find(entry => entry.id === row.id);
+        return { ...row, ...(staged ? { stagedPayload: structuredClone(staged) } : {}) };
+      });
+      rememberContentImports(planned);
+      for (const row of planned) tx.objectStore('items').add(row);
+      for (const original of recovery) tx.objectStore('recovery').put(original);
     };
-    const validation = new Map(libraries.validation.map(entry => [entry.id,
-      put('validation', entry, () => newSavedReport(entry.snapshot, entry.name, entry.automation))]));
-    const comparison = new Map(libraries.comparison.map(entry => [entry.id,
-      put('comparison', entry, () => ({ ...entry, id: crypto.randomUUID() }))]));
-    for (const entry of libraries.document) {
-      const rebound = rebindContentDocument(entry, comparison, validation);
-      put('document', entry, () => parseDocumentFile(JSON.stringify(rebound)), rebound);
+    await done;
+  } catch (error) {
+    let existing: ContentRow[] = [], trusted = false;
+    try { existing = await readImportRows(); trusted = allowCommit; }
+    catch (readError) { console.warn('[User content] Existing import identities could not be read; preserving independent local copies', readError); }
+    const visible = readVisible?.();
+    planned = planContentImport(prepared, existing, visible, trusted);
+    rememberContentImports(planned);
+    const entries: ContentLibraries = { validation: [], comparison: [], document: [] };
+    for (const row of planned) {
+      // Keep newer edits to an already-staged identity. Reimport is not an undo.
+      const current = visible?.[row.kind].find(entry => entry.id === row.id);
+      if (current && (row.kind !== 'document' || sameReportEvidence(current, row.payload))) continue;
+      if (row.kind === 'document') { const entry = documentContent.decode(row.payload); if (entry) entries.document.push(entry); }
+      if (row.kind === 'comparison') { const entry = comparisonContent.decode(row.payload); if (entry) entries.comparison.push(entry); }
+      if (row.kind === 'validation') { const entry = validationContent.decode(row.payload); if (entry) entries.validation.push(entry); }
     }
-    for (const original of recovery) tx.objectStore('recovery').put(original);
-  };
-  await done;
-  forgetContentDrafts(drafts);
+    throw new ContentImportFailure(error, entries);
+  }
+  forgetContentDrafts(drafts); forgetContentImports(planned);
+  committed?.(receipts);
   for (const kind of ['validation', 'comparison', 'document'] as const) announceContentChange(kind);
-  return imported;
+  return planned.length;
+}
+
+/** Verify first-write provenance before claiming a whole refused import was saved. */
+export async function retryContentImports(): Promise<boolean> {
+  const pending = pendingContentImports();
+  if (!pending.length) return true;
+  try {
+    const rows = new Map((await readImportRows()).map(row => [`${row.kind}:${row.id}`, row]));
+    const completed = pending.filter(source => rows.get(`${source.kind}:${source.id}`)?.importedFrom === source.importedFrom);
+    forgetContentImports(completed);
+    return completed.length === pending.length;
+  } catch (error) { console.warn('[User content] Imported source identities could not be verified', error); return false; }
 }
 
 async function readStoredRecovery(): Promise<RecoveryRow[]> {

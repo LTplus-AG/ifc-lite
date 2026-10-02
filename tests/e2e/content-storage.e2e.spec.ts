@@ -126,6 +126,44 @@ test('#6679 refused commits remain exportable and two tabs cannot overwrite draf
   await other.close();
 });
 
+test('#6695 repeated quota-refused backup imports preserve one edited draft through retry and reload', async ({ page }, info) => {
+  await page.goto('/'); await ready(page); await openDocument(page, 'import-dedup-panel');
+  const entry = documentEntry('external-6695', 'Import once'), backup: ContentBackup = { version: 1,
+    exportedAt: '2026-01-01T00:00:00.000Z', libraries: { document: [entry], comparison: [], validation: [] } };
+  const file = { name: 'same-backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)) };
+  await page.evaluate(() => {
+    const original = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function (this: IDBDatabase, stores: string | string[], mode?: IDBTransactionMode, options?: IDBTransactionOptions) {
+      if (mode === 'readwrite' && (stores === 'items' || Array.isArray(stores) && stores.includes('items'))) throw new DOMException('Storage full', 'QuotaExceededError');
+      return original.call(this, stores, mode, options);
+    };
+    (globalThis as { restoreContentTransaction?: () => void }).restoreContentTransaction = () => { IDBDatabase.prototype.transaction = original; };
+  });
+  const panel = page.locator('[data-document-panel]').first(), input = panel.getByLabel('Import library backup', { exact: true });
+  await input.setInputFiles(file);
+  await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__.getState().documents.length === 1);
+  const refusedNotice = page.locator('[data-toast-seq]').filter({ hasText: 'The backup was not saved.' });
+  await expect(refusedNotice).toBeVisible();
+  await refusedNotice.getByRole('button', { name: 'Dismiss notification' }).click();
+  await expect(panel.getByRole('button', { name: 'Retry save', exact: true })).toBeEnabled();
+  await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    state.stageDocument({ ...state.documents[0], name: 'Author edit kept' });
+  });
+  await input.setInputFiles(file);
+  await expect(refusedNotice).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Retry save', exact: true })).toBeEnabled();
+  expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents.map(entry => entry.name))).toEqual(['Author edit kept']);
+  await page.screenshot({ path: info.outputPath('repeated-quota-import-one-draft.png') });
+  await page.evaluate(() => (globalThis as { restoreContentTransaction?: () => void }).restoreContentTransaction?.());
+  await panel.getByRole('button', { name: 'Retry save', exact: true }).click();
+  await page.waitForFunction(() => Object.values(globalThis.__ifc_lite_viewer_store__.getState().documentsStorage.items).every(value => value === 'saved'));
+  await page.reload(); await ready(page); await openDocument(page, entry.id);
+  await input.setInputFiles(file);
+  await expect(page.getByText('Imported 0 items.', { exact: false })).toBeVisible();
+  expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents.map(entry => entry.name))).toEqual(['Author edit kept']);
+});
+
 test('#6695 an unfinished image round-trips as raw evidence without poisoning valid library imports', async ({ page, browser }, info) => {
   await page.goto('/'); await ready(page);
   const saved = documentEntry('complete-6695', 'Complete document beside unfinished image');

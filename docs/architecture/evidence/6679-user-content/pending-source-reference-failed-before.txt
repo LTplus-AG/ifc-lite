@@ -1,0 +1,24 @@
+PR #6695 scoped native IndexedDB failed-before witness
+
+Command: TEST_PATTERN=content-import-plan.test pnpm test --filter=@ifc-lite/viewer --env-mode=loose --only
+Baseline correction under review: canonical refused-import planner before current-visible-document rebind correction.
+Actual native peer items transaction claimed a formerly staged comparison ID with different evidence. Reimport allocated an independent source but left the authored document pointing to the peer.
+Results: five pass, one genuine assertion failure; no build errors.
+
+@ifc-lite/viewer:test: ✖ #6695 a source collision discovered after refusal remaps pending document references without discarding author edits (19.523434ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: the authored document follows the reallocated source instead of the other tab evidence
+@ifc-lite/viewer:test:   + actual - expected
+@ifc-lite/viewer:test:   
+@ifc-lite/viewer:test:   + 'external-comparison'
+@ifc-lite/viewer:test:   - '9df587b7-c31d-4b98-adf2-03042ea9aed0'
+@ifc-lite/viewer:test:   
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/tmp/ifc6679-backup-pr/apps/viewer/src/lib/storage/content-import-plan.test.ts:195:10)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: false,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: 'external-comparison',
+@ifc-lite/viewer:test:     expected: '9df587b7-c31d-4b98-adf2-03042ea9aed0',
+@ifc-lite/viewer:test:     operator: 'strictEqual',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }

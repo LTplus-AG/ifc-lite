@@ -9,16 +9,20 @@ import { useDialogs } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { downloadFile } from '@/lib/export/download';
+import type { ContentCommitReceipt } from '@/lib/storage/content-library';
 import type { ContentStatus } from '@/lib/storage/content-library';
-import { rebindContentDocument } from '@/lib/storage/content-backup-references';
-import { cleanupContentLegacy, createContentBackup, importContentBackup, parseContentBackup, readBackupDrafts,
-  readContentRecovery, retryContentDrafts } from '@/lib/storage/content-backup';
+import { cleanupContentLegacy, ContentImportFailure, createContentBackup, importContentBackup, parseContentBackup, readBackupDrafts,
+  readContentRecovery, retryContentDrafts, retryContentImports } from '@/lib/storage/content-backup';
 import { stageContentDrafts } from '@/lib/storage/content-backup-drafts';
 
 const messages = {
   quota: 'contentStorage.quota', unavailable: 'contentStorage.unavailable',
   conflict: 'contentStorage.conflict', invalid: 'contentStorage.invalid',
 } as const satisfies Record<string, TranslationKey>;
+const visibleLibraries = () => {
+  const state = useViewerStore.getState();
+  return { validation: state.savedValidationReports, comparison: state.savedComparisons, document: state.documents };
+};
 
 /** Per-library save status; backup includes all three libraries and unsaved drafts. */
 export function ContentStorageNotice({ status, retry, restore }: {
@@ -46,8 +50,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
   const backup = async () => {
     const state = useViewerStore.getState();
     const preserved = await readBackupDrafts();
-    downloadFile(JSON.stringify(createContentBackup({ validation: state.savedValidationReports,
-      comparison: state.savedComparisons, document: state.documents }, {
+    downloadFile(JSON.stringify(createContentBackup(visibleLibraries(), {
       validation: state.validationReportsStorage, comparison: state.savedComparisonsStorage, document: state.documentsStorage,
     }, preserved.drafts), null, 2), 'ifc-lite-library-backup.json', 'application/json');
     if (!preserved.complete) toast.info(t('contentStorage.draftReadUnavailable'));
@@ -58,34 +61,38 @@ export function ContentStorageNotice({ status, retry, restore }: {
     stageContentDrafts(drafts);
     const state = useViewerStore.getState();
     const initialized = await Promise.all([state.initializeValidationReports(), state.initializeSavedComparisons(), state.initializeDocuments()]);
+    let count: number, committed: readonly ContentCommitReceipt[] = [];
     try {
-      if (!initialized.every(Boolean)) throw new Error('Existing libraries could not be safely read');
-      const count = await importContentBackup(parsed);
-      await Promise.all([state.refreshValidationReports(), state.refreshSavedComparisons(), state.refreshDocuments()]);
-      toast.success(t('contentStorage.imported', { count }));
-      if (drafts.length) toast.info(t('contentStorage.draftsPreserved', { count: drafts.length }));
+      count = await importContentBackup(parsed, visibleLibraries, initialized.every(Boolean), rows => { committed = rows; });
     } catch (error) {
-      // Explicit import keeps validated content exportable even when IDB refuses it.
+      if (!(error instanceof ContentImportFailure)) throw error;
+      // The canonical import plan owns identities, conflicts, deduplication and bindings.
       console.warn('[User content] Import remains in memory', error);
-      const { newSavedReport } = await import('@/lib/validation/reports/history');
-      const { parseDocumentFile } = await import('@/lib/document/persistence');
-      const validation = new Map(parsed.libraries.validation.map(entry => {
-        const copy = newSavedReport(entry.snapshot, entry.name, entry.automation); state.stageValidationReport(copy);
-        return [entry.id, copy.id] as const;
-      }));
-      const comparison = new Map(parsed.libraries.comparison.map(entry => {
-        const copy = { ...entry, id: crypto.randomUUID() }; state.stageComparison(copy);
-        return [entry.id, copy.id] as const;
-      }));
-      for (const entry of parsed.libraries.document) state.stageDocument(parseDocumentFile(JSON.stringify(rebindContentDocument(entry, comparison, validation))));
+      for (const entry of error.entries.validation) state.stageValidationReport(entry);
+      for (const entry of error.entries.comparison) state.stageComparison(entry);
+      for (const entry of error.entries.document) state.stageDocument(entry);
       toast.error(t('contentStorage.importFailed'));
       if (drafts.length) toast.error(t('contentStorage.draftsUnsaved', { count: drafts.length }));
+      return;
+    }
+    toast.success(t('contentStorage.imported', { count }));
+    if (drafts.length) toast.info(t('contentStorage.draftsPreserved', { count: drafts.length }));
+    // A committed import is never restaged just because refreshing its UI failed.
+    try {
+      const refreshed = await Promise.all([state.refreshValidationReports(committed), state.refreshSavedComparisons(committed), state.refreshDocuments(committed)]);
+      if (!refreshed.every(Boolean)) toast.info(t('contentStorage.refreshFailed'));
+    }
+    catch (error) {
+      console.warn('[User content] Import saved but the visible libraries could not refresh', error);
+      toast.info(t('contentStorage.refreshFailed'));
     }
   };
   return <div className="shrink-0 px-2 py-1 text-xs" data-content-storage>
     {key && <p role={problem || status.phase === 'unavailable' ? 'alert' : 'status'}>{t(key)}</p>}
     {status.recovered && <p role="alert">{t('contentStorage.recovered')}</p>}
-    {(problem || status.phase === 'unavailable') && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => { await retry(); })}>{t('validationPanel.history.retrySave')}</Button>}
+    {(problem || status.phase === 'unavailable') && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
+      if (await retry()) await retryContentImports();
+    })}>{t('validationPanel.history.retrySave')}</Button>}
     <details>
       <summary className="cursor-pointer">{t('contentStorage.controls')}</summary>
       <div className="flex flex-wrap gap-1 py-1">
@@ -97,7 +104,8 @@ export function ContentStorageNotice({ status, retry, restore }: {
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           const live = useViewerStore.getState();
           const saved = await Promise.all([live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons(), retryContentDrafts()]);
-          if (saved.every(Boolean)) toast.success(t('contentStorage.saved'));
+          const identitiesSaved = await retryContentImports();
+          if (saved.every(Boolean) && identitiesSaved) toast.success(t('contentStorage.saved'));
           else toast.error(t('contentStorage.someUnsaved'));
         })}>{t('contentStorage.retryAll')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {

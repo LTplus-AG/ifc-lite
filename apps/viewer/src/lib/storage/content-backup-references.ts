@@ -19,3 +19,24 @@ export function rebindContentDocument(document: DocumentSpec,
     return block;
   }) };
 }
+
+/** Carry own-commit source remaps into newer authored content without undoing it. */
+export function rebindCommittedDocument(current: DocumentSpec, before: unknown, committed: DocumentSpec): DocumentSpec {
+  const comparisons = new Map<string, string>(), validation = new Map<string, string>();
+  const blocks = new Map<string, DocumentSpec['blocks'][number]>();
+  for (const block of committed.blocks) if (!blocks.has(block.id)) blocks.set(block.id, block);
+  if (!before || typeof before !== 'object' || !('blocks' in before) || !Array.isArray(before.blocks)) return current;
+  for (const raw of before.blocks as unknown[]) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const block = raw as Record<string, unknown>;
+    const next = typeof block.id === 'string' ? blocks.get(block.id) : undefined;
+    if (block.kind === 'chart' && next?.kind === 'chart' && block.chart && typeof block.chart === 'object') {
+      const id = (block.chart as Record<string, unknown>).comparisonId;
+      if (typeof id === 'string' && next.chart.comparisonId && id !== next.chart.comparisonId) comparisons.set(id, next.chart.comparisonId);
+    }
+    if ((block.kind === 'ids-report' || block.kind === 'manual-report') && (next?.kind === 'ids-report' || next?.kind === 'manual-report')
+      && next.kind === block.kind && typeof block.savedReportId === 'string' && next.savedReportId
+      && block.savedReportId !== next.savedReportId) validation.set(block.savedReportId, next.savedReportId);
+  }
+  return rebindContentDocument(current, comparisons, validation);
+}

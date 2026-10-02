@@ -6,13 +6,14 @@ import type { StateCreator } from 'zustand';
 import { isSavedComparison, type SavedComparison } from '@/lib/compare/savedComparisons';
 import { sameReportEvidence } from '@/lib/flow/report-provenance';
 import { comparisonContent } from '@/lib/compare/savedComparisonPersistence';
+import type { ContentCommitReceipt } from '@/lib/storage/content-library';
 import { createContentLibrary, initialContentStatus, type ContentStatus } from '@/lib/storage/content-library';
 
 export interface SavedComparisonsSlice {
   savedComparisons: SavedComparison[];
   savedComparisonsStorage: ContentStatus;
   initializeSavedComparisons: () => Promise<boolean>;
-  refreshSavedComparisons: () => Promise<void>;
+  refreshSavedComparisons: (committed?: readonly ContentCommitReceipt[]) => Promise<boolean>;
   restoreSavedComparisons: () => Promise<boolean>;
   retrySaveComparisons: () => Promise<boolean>;
   saveComparison: (comparison: SavedComparison) => Promise<boolean>;

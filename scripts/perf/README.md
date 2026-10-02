@@ -1712,7 +1712,8 @@ The existing prepass can publish the exact full-byte source key through a fresh 
   CPU load. So "the geomWorkers probe is predicted clean" holds for rendered
   geometry, not for these two telemetry fields. A small `mesh_count` delta with a
   LARGE `total_triangles` delta is the other signature: a skipped element (see
-  "In-call geometry heartbeat" below); read `hung_elements_skipped` first.
+  the "In-call geometry heartbeat replaces wall-clock element skips" section near
+  the top of this file); read `hung_elements_skipped` first.
 - **`total_elapsed_ms` is not pure compute — it contained an unbounded hidden-tab
   stall** (#2385, fixed). `useIfcLoader` awaited a bare `requestAnimationFrame`
   at stream-complete; rAF is never serviced while the document is hidden, so a

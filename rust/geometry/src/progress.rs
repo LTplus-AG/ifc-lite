@@ -56,21 +56,39 @@ pub fn tick_strided(counter: &mut u32, stride_mask: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::cell::Cell;
 
-    static TICKS: AtomicU64 = AtomicU64::new(0);
+    thread_local! {
+        // Per thread: the hook is process-wide, and other tests in this binary
+        // tick it concurrently from their own threads (every boolean, CDT and
+        // consolidation calls `tick`). Counting only this thread's calls keeps
+        // the exact-delta assertion exact.
+        static TICKS: Cell<u64> = const { Cell::new(0) };
+    }
     fn count() {
-        TICKS.fetch_add(1, Ordering::Relaxed);
+        TICKS.with(|t| t.set(t.get() + 1));
     }
 
     #[test]
     fn hook_receives_ticks_and_the_first_installation_wins() {
-        tick(); // before installation: a no-op, not a panic
-        assert!(set_hook(count));
+        // Either test in this module may install `count` first; the tick
+        // delta below proves it is the installed hook.
+        let _ = set_hook(count);
         assert!(!set_hook(|| panic!("a second hook must not replace the first")));
-        let before = TICKS.load(Ordering::Relaxed);
+        let before = TICKS.with(Cell::get);
         tick();
         tick();
-        assert_eq!(TICKS.load(Ordering::Relaxed) - before, 2);
+        assert_eq!(TICKS.with(Cell::get) - before, 2);
+    }
+
+    #[test]
+    fn tick_strided_reports_once_per_stride() {
+        let _ = set_hook(count);
+        let before = TICKS.with(Cell::get);
+        let mut calls = 0u32;
+        for _ in 0..64 {
+            tick_strided(&mut calls, 0xF);
+        }
+        assert_eq!(TICKS.with(Cell::get) - before, 4);
     }
 }

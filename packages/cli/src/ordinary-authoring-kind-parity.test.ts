@@ -43,7 +43,7 @@ async function parsed(content: string | Uint8Array) {
 }
 async function records(content: string | Uint8Array) {
   const store = await parsed(content), extractor = new EntityExtractor(store.source);
-  return [...store.entityIndex.byId].map(([id, ref]) => [id, extractor.extractEntity(ref)]).sort((a, b) => Number(a[0]) - Number(b[0]));
+  return [...store.entityIndex.byId].map(([id, ref]) => [id, extractor.extractEntity(ref)] as const).sort((a, b) => a[0] - b[0]);
 }
 async function assertProducts(content: string | Uint8Array, refs: readonly EntityRef[]) {
   const data = bytes(content), store = await parsed(data), extractor = new EntityExtractor(store.source);
@@ -128,6 +128,20 @@ describe.skipIf(!AVAILABLE)('#6232 D5 all ordinary methods on actual loaded back
           snapshots.push(await records(target.bim.export.ifc()));
         }
         await assertProducts(target.bim.export.ifc(), refs);
+        // Diagnostic before narrowing any Undo comparison: identical source
+        // and authored overlay must survive two consecutive read-only exports.
+        const view = target.backend.getMutationView()!;
+        const known = new Set([...before.map(([expressId]) => expressId), ...view.getNewEntities().map(entity => entity.expressId)]);
+        const overlay = structuredClone(view.getNewEntities()), history = structuredClone(view.getMutations());
+        const first = await records(target.bim.export.ifc()), second = await records(target.bim.export.ifc());
+        expect(second.filter(([expressId]) => known.has(expressId))).toEqual(first.filter(([expressId]) => known.has(expressId)));
+        expect(view.getNewEntities()).toEqual(overlay);
+        expect(view.getMutations()).toEqual(history);
+        const generated = (saved: typeof first) => saved.filter(([expressId]) => !known.has(expressId));
+        console.info('D5 identical-state repeated-export diagnostic', JSON.stringify({ models: count,
+          recordCounts: [first.length, second.length], knownRecordCount: first.filter(([expressId]) => known.has(expressId)).length,
+          rawEqual: JSON.stringify(first) === JSON.stringify(second),
+          generated: [generated(first), generated(second)] }));
         // Compound history retains raw records; its public contract is one
         // Undo operation per builder, restoring every helper and relationship.
         for (let i = 7; i >= 0; i--) {

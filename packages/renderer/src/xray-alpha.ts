@@ -100,6 +100,7 @@ export class XRayAlpha {
   // Resolved-per-batch results. Classification and the uniform write both need
   // them each frame, and recomputing would walk every id twice per batch.
   private readonly batchCache = new WeakMap<object, { alpha: number; groups: AlphaGroup[] | null }>();
+  private readonly ghostCache = new WeakMap<object, boolean>();
 
   constructor(options: RenderOptions, selectedExpressIds: ReadonlySet<number>) {
     const src = options.transparencyOverrides;
@@ -133,6 +134,28 @@ export class XRayAlpha {
   forBatch(batch: AlphaBatchLike, fallback: number): number {
     if (!this.active) return fallback;
     return this.resolve(batch, fallback).alpha;
+  }
+
+  /**
+   * Whether every id in the batch is an X-Ray context ghost: outside
+   * `ghostExceptIds`, not selected and not overridden. Such a batch draws with
+   * the ghost fragment stage (ghost.wgsl.ts). Independent of the fallback
+   * alpha, so it caches apart from {@link resolve}.
+   */
+  isGhostBatch(batch: AlphaBatchLike): boolean {
+    if (this.ghostExcept == null) return false;
+    let ghost = this.ghostCache.get(batch);
+    if (ghost === undefined) {
+      ghost = batch.expressIds.length > 0;
+      for (const eid of batch.expressIds) {
+        if (this.ghostExcept.has(eid) || this.selected.has(eid) || this.overrides?.has(eid)) {
+          ghost = false;
+          break;
+        }
+      }
+      this.ghostCache.set(batch, ghost);
+    }
+    return ghost;
   }
 
   /**

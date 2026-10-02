@@ -8,6 +8,8 @@ The shared composer reserves the measured bands before laying out body blocks. P
 
 ## Blocks
 
+Use **Copy block** beside the move and remove buttons to place an independent copy immediately after any block. The copy keeps its text, formatting, fields and source references, and is selected for editing. Editing or removing it leaves the original unchanged.
+
 | Block | What it holds | In the PDF |
 |-------|---------------|------------|
 | **Text with fields** | `title`, `heading`, `subheading`, `body`, `small` or `caption` text; optional Helvetica, Times or Courier font and 6–48 pt size; free RGB text and background colours; `Full` or `Half` width. `{path}` placeholders resolve against the model (below). *Insert field* drops one at the caret: project, site, storeys, the selected element's attributes and property values. | Wrapped, paginated; a heading never sits alone at the bottom of a page |
@@ -33,7 +35,7 @@ The preview on the right resolves fields against the loaded models and uses the 
 
 Each chart block has a **Text size** control. Smaller text makes room for longer axis labels and tighter legend rows; the renderer measures and fits the selected font before drawing. The setting scales chart titles, subtitles, axes, legends, pie/treemap labels and the count display while retaining their relative sizes. It is saved with the block and applies to both preview and PDF. Clear the field or use **Reset chart text size** to restore the existing default appearance.
 
-PDF export captures the interface language when it starts. Generated table and validation labels, footers and page counters keep that language throughout export, including while images are prepared. Authored text keeps its own wording. Callers that omit a captured label context retain the existing English PDF labels.
+PDF export captures the interface language when it starts. Generated table and validation labels, footers and page counters keep that language throughout export, including while images are prepared. Generated French counts use a PDF-supported nonbreaking grouping space, keeping the grouped digits intact. Authored text keeps its own wording. Callers that omit a captured label context retain the existing English PDF labels.
 
 ## Bindings
 

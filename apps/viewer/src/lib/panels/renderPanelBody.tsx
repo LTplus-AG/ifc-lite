@@ -59,6 +59,11 @@ const DrawingPanel = lazy(() => import('@/components/viewer/drawing/DrawingPanel
 // Lazy: the filmstrip of saved basket views (#5508), out of the first-paint bundle like the other bottom panels.
 const PresentationPanel = lazy(() => import('@/components/viewer/presentation/PresentationPanel').then((m) => ({ default: m.PresentationPanel })));
 
+const SemanticPanel = lazy(() => import('@/components/viewer/SemanticPanel').then(m => ({ default: m.SemanticPanel })));
+function SemanticPanelBody() {
+  return <ChunkErrorBoundary label="Linked records panel"><Suspense fallback={null}><SemanticPanel /></Suspense></ChunkErrorBoundary>;
+}
+
 const AppearancePanel = lazy(() => import('@/components/viewer/appearance/AppearancePanel').then(m => ({ default: m.AppearancePanel })));
 
 // Each lazy panel needs its own stable host identity. Reusing the boundary
@@ -160,6 +165,7 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'measurements': return <MeasurementsPanel onClose={onClose} />;
     case 'placement': return <PlacementPanel onClose={onClose} />;
     case 'model': return <ModelInspectorPanel onClose={onClose} />;
+    case 'semantic': return <SemanticPanelBody />;
     case 'changeSets': return <ChangeSetPanel onClose={onClose} />;
   }
 }

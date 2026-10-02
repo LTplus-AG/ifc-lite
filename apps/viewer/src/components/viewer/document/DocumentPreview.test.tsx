@@ -10,6 +10,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { activate, click } from '@/test/render.js';
 import { aggregate } from '@ifc-lite/charts';
 import { DocumentPreview } from './DocumentPreview.js';
+import { TEXT_STYLES } from '@/lib/document/compose.js';
 import { pageBox } from '@/lib/export/report/compose.js';
 import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types.js';
 
@@ -195,4 +196,23 @@ it('clamps a tall chart to the same printable-page height as PDF composition (#4
   // to sit beside the chart, so it consumes no additional vertical space.
   const expected = (size.h - 40 - 30 - 40 - 24 - 32) * scale;
   assert.ok(Math.abs(Number(svg.getAttribute('height')) - expected) < 0.01, `preview SVG height ${svg.getAttribute('height')} matches the PDF clamp ${expected}`);
+});
+
+// #6548: CSS line boxes must use the same pitch as the compositor's half-page fit calculation.
+it('keeps scaled preview text line pitch consistent with PDF layout (#6548)', () => {
+  container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+  const styles = Object.keys(TEXT_STYLES) as Array<keyof typeof TEXT_STYLES>;
+  for (const factor of [0.5, 1, 2]) {
+    const doc: DocumentSpec = { ...baseDocument, blocks: styles.map((style) => ({
+      kind: 'text', id: style, style, text: 'First line\nSecond line', scale: factor,
+    })) };
+    act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />));
+    for (const style of styles) {
+      const text: HTMLElement | null = container.querySelector<HTMLElement>(`[data-preview-block="${style}"] [data-block-text]`);
+      assert.ok(text);
+      assert.equal(Number(window.getComputedStyle(text).lineHeight), TEXT_STYLES[style].lineHeight, `${style} at ${factor}x uses the PDF line-height multiplier`);
+    }
+  }
 });

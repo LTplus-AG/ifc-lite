@@ -9,20 +9,15 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager, type PeerConnection, type VerifyMessageFn } from './room-manager.js';
 import { startExpirySweep } from './principal-expiry.js';
-import { FilePersistence, MemoryPersistence, type Persistence } from './persistence.js';
+import { MemoryPersistence, type Persistence } from './persistence.js';
 import { allowAnonymousEditor, canWrite, type AuthenticateFn, type Principal } from './auth.js';
 import { type AuditSink } from './audit-log.js';
 import { type RateLimitOptions } from './rate-limit.js';
 import { handleBlobRequest, type BlobAuthorizeFn } from './blob-route.js';
 import { InMemoryBlobStorage, type ServerBlobStorage } from './blob-storage.js';
-import {
-  handleTokenMintRequest,
-  handleRevokeRequest,
-  handleKickRequest,
-  type TokenEndpointOptions,
-  type RevokeEndpointOptions,
-  type KickEndpointOptions,
-} from './room-token.js';
+import { handleTokenMintRequest, type TokenEndpointOptions } from './room-token.js';
+import { handleKickRequest, handleReleaseRequest, handleRevokeRequest } from './room-admin-routes.js';
+import type { KickEndpointOptions, ReleaseEndpointOptions, RevokeEndpointOptions } from './room-admin-routes.js';
 import { MemoryLayerRegistry, type LayerRegistryStore } from './layer-registry.js';
 import type { RegistryWebhook } from './registry-webhooks.js';
 import {
@@ -176,6 +171,8 @@ export interface StartCollabServerOptions {
    * only the verifying `secret` is supplied here. Omit to disable (404).
    */
   kickEndpoint?: Pick<KickEndpointOptions, 'secret' | 'isRevoked'>;
+  /** Enable `POST /collab/release` (hand back an unused fresh-room claim). Omit to disable (404). */
+  releaseEndpoint?: ReleaseEndpointOptions;
   /**
    * Cross-origin access for the HTTP routes. Default: enabled with origin
    * reflection (permissive). Pass an allow-list to restrict, or `false` to
@@ -392,6 +389,9 @@ export async function startCollabServer(
             },
           });
           if (handled) return;
+        }
+        if (opts.releaseEndpoint && pathname === '/collab/release') {
+          if (await handleReleaseRequest(req, res, opts.releaseEndpoint)) return;
         }
         // Blob route: PUT / GET / HEAD / DELETE on /blobs/<hash>, GET /blobs.
         if (pathname.startsWith('/blobs')) {

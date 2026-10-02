@@ -50,6 +50,7 @@ import { gymCommand } from './commands/gym.js';
 import { deliveryCommand } from './commands/delivery.js';
 import { checkCommand } from './commands/check.js';
 import { flowCommand } from './commands/flow.js';
+import { semanticCommand } from './commands/semantic.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readPackageVersion } from '@ifc-lite/data/node';
@@ -222,6 +223,9 @@ async function main(): Promise<void> {
       break;
     case 'check':
       await checkCommand(commandArgs);
+      break;
+    case 'semantic':
+      await semanticCommand(commandArgs);
       break;
     case 'flow':
       await flowCommand(commandArgs);

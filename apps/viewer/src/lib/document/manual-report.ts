@@ -13,19 +13,11 @@
 import type { ChecklistTemplate, ManualAnswerMap } from '../validation/manual/checklist.js';
 import { summarizeChecklist, EMPTY_MANUAL_COUNTS } from '../validation/manual/checklist-summary.js';
 import type { ManualReportBlock, ManualReportItem } from './manual-report-types.js';
-import { reportScopeText } from './report-provenance.js';
-
-/** #6566: one stamp visibility contract for the preview and PDF. Frozen source
- * identity and recording time remain in the report even when not printed. */
-export function manualReportStamp(block: ManualReportBlock): { modelName: string | undefined; generatedAt: string; models: string } | null {
-  return block.showStamp === false ? null : { modelName: block.modelName, generatedAt: block.generatedAt, models: reportScopeText(block) };
-}
+import { replaceReportSnapshot } from './report-provenance.js';
 
 /** #6566: changing the recorded evidence preserves the destination block's
  * identity and presentation, whether reading live answers or saved history. */
-export function replaceManualReportSnapshot(current: ManualReportBlock, snapshot: ManualReportBlock): ManualReportBlock {
-  return { ...snapshot, id: current.id, title: current.title, variant: current.variant, benchmarks: current.benchmarks, showStamp: current.showStamp };
-}
+export const replaceManualReportSnapshot = (current: ManualReportBlock, snapshot: ManualReportBlock): ManualReportBlock => replaceReportSnapshot(current, snapshot);
 
 export interface ManualReportSource {
   checklist: ChecklistTemplate;

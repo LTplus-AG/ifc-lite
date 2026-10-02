@@ -19,6 +19,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { act } from 'react';
 import type { SetResult, SpecificationResult, ValidationReport } from '@ifc-lite/ids';
 import { cleanup, click, render } from '@/test/render.js';
@@ -251,6 +252,33 @@ async function mountAll(): Promise<Set<string>> {
   // file input to be replaced by the authoring view. Locale-independent
   // (unlike matching a button's text, which is marked under pseudo).
   await waitFor(() => !document.body.contains(input));
+  collect();
+  cleanup();
+
+  // #6567: the shared library controls are real reachable states, including
+  // a newly authored unnamed check and the original IDS download action.
+  // Exercise them under both locales rather than exempting catalogue keys.
+  const rulesHost = render(<ValidationPanel />);
+  const newRuleSet = [...rulesHost.querySelectorAll('button')].find(button =>
+    button.textContent?.includes(String(validationPanelEn['validationPanel.library.new'])));
+  assert.ok(newRuleSet, 'the active imported rule set exposes New rule set');
+  click(newRuleSet);
+  collect();
+  const copy = [...rulesHost.querySelectorAll('button')].find(button =>
+    button.textContent?.includes(String(validationPanelEn['validationPanel.library.copy'])));
+  assert.ok(copy);
+  click(copy);
+  collect();
+  cleanup();
+
+  setValidationSourceChoice('ids');
+  const idsHost = render(<ValidationPanel />);
+  const idsInput = idsHost.querySelector<HTMLInputElement>('input[accept=".ids,.xml"]');
+  assert.ok(idsInput, 'the canonical IDS import is available in its mounted panel');
+  const idsXml = readFileSync(new URL('../../../../public/samples/building-architecture.ids', import.meta.url), 'utf8');
+  Object.defineProperty(idsInput, 'files', { value: [new File([idsXml], 'building-architecture.ids')], configurable: true });
+  await act(async () => { idsInput.dispatchEvent(new Event('change', { bubbles: true })); });
+  await waitFor(() => idsHost.querySelector('select') !== null);
   collect();
   cleanup();
 

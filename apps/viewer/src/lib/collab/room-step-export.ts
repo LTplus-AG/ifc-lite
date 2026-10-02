@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { validatePropertyDataType } from '@ifc-lite/export';
+import { PROPERTY_TYPE_NAMES } from '@ifc-lite/ifcx';
 import { getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
 import type { Property, PropertyValue, Quantity } from '@ifc-lite/data';
 import { MutablePropertyView, StoreEditor, type Mutation } from '@ifc-lite/mutations';
@@ -27,7 +29,7 @@ function propertyEqual(left: Property, right: Property): boolean {
   if (Array.isArray(right.value) && typeof left.value === 'string') {
     return left.value === JSON.stringify(right.value);
   }
-  return valuesEqual(left.value, right.value);
+  return valuesEqual(left.value, right.value) && (left.dataType ?? PROPERTY_TYPE_NAMES[left.type])?.toUpperCase() === (right.dataType ?? PROPERTY_TYPE_NAMES[right.type])?.toUpperCase();
 }
 
 function quantityEqual(left: Quantity, right: Quantity): boolean {
@@ -78,17 +80,23 @@ function snapshotView(
     }
     for (const [psetName, properties] of Object.entries(roomPsets)) for (const [propName, value] of Object.entries(properties)) {
       const original = originalPsetsByName.get(psetName)?.properties.find(item => item.name === propName);
-      const current: Property = { name: propName, type: propertyValueTypeFor(value.type), value: value.value, unit: value.unit };
+      const scalar = value.value;
+      let declaration: ReturnType<typeof validatePropertyDataType> | undefined;
+      if (scalar === null || typeof scalar === 'string' || typeof scalar === 'number' || typeof scalar === 'boolean') {
+        try { declaration = validatePropertyDataType(scalar, value.type); }
+        catch { console.warn('Rejected room export property with an invalid IFC declaration'); continue; }
+      }
+      const current: Property = { name: propName, type: declaration?.valueType ?? propertyValueTypeFor(value.type), value: scalar, unit: value.unit, dataType: declaration?.dataType };
       if (original && propertyEqual(current, original)) continue;
       view.setProperty(
         sourceId,
         psetName,
         propName,
         value.value,
-        original?.type ?? current.type,
+        declaration?.valueType ?? original?.type ?? current.type,
         original?.unit ?? value.unit,
         false,
-        original?.dataType ?? value.type,
+        declaration?.dataType,
       );
     }
 
@@ -113,7 +121,7 @@ function snapshotView(
         qsetName,
         quantityName,
         value,
-        current.type,
+        original?.type ?? current.type,
         original?.unit ?? displayed?.unit,
       );
     }

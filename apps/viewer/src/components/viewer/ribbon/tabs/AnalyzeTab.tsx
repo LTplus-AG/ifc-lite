@@ -49,6 +49,7 @@ export function AnalyzeTab() {
   // taxonomy beside the rail and Browse menu.
   const featuredPanels: FeaturedPanel[] = [
     { id: 'bcf', commandId: 'panel:bcf', icon: Issue },
+    { id: 'semantic', commandId: 'panel:semantic', icon: Flow },
     { id: 'validation', commandId: 'panel:ids', icon: Check, tooltipKey: 'ribbon.analyze.idsTooltip' },
     { id: 'clash', commandId: 'panel:clash', icon: Clash, tooltipKey: 'ribbon.analyze.clashTooltip' },
     { id: 'compare', commandId: 'panel:compare', icon: Compare, tooltipKey: 'ribbon.analyze.compareTooltip' },

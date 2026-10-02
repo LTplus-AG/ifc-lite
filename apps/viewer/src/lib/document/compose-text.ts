@@ -6,7 +6,8 @@
 import type { ComposeDocumentInput, DrawnItem } from './compose.js';
 import type { TextBlock, TextFont } from './types.js';
 import { tabFill } from './text-tabs.js';
-import { blockTitle, BLOCK_TITLE_HEIGHT } from './block-title.js';
+import { blockTitle, blockTitleStyle, BLOCK_TITLE_HEIGHT } from './block-title.js';
+import { blockTitleItems } from './compose-block-title.js';
 
 export const TEXT_STYLES: Record<TextBlock['style'], { size: number; bold: boolean; lineHeight: number; gapBefore: number; gray: number }> = {
   title: { size: 20, bold: true, lineHeight: 1.3, gapBefore: 6, gray: 0 },
@@ -82,10 +83,10 @@ export function layoutText(block: TextBlock, boxX: number, boxW: number, measure
   const lineH = size * style.lineHeight;
   const lines = wrapText(block.text, boxW, size, style.bold, measure, block.font);
   const title = blockTitle(block);
-  const titleHeight = title ? BLOCK_TITLE_HEIGHT : 0;
+  const titleHeight = title ? BLOCK_TITLE_HEIGHT + blockTitleStyle(block).extra : 0;
   return { style, size, lineH, lines, title, titleHeight, height: titleHeight + style.gapBefore + lines.length * lineH,
     draw: (atY: number): DrawnItem[] => [
-      ...(title ? [{ kind: 'text' as const, x: boxX, y: atY + 11, size: 11, bold: true, gray: 0, text: truncateToWidth(title, boxW, 11, true, measure) }] : []),
+      ...(title ? blockTitleItems(block, title, boxX, atY, boxW, (text, width, size, bold) => truncateToWidth(text, width, size, bold, measure)) : []),
       ...textBackground(block, boxX, atY + titleHeight + style.gapBefore, boxW, lines.length * lineH),
       ...lines.map<DrawnItem>((line, index) => ({ kind: 'text', x: boxX, y: atY + titleHeight + style.gapBefore + index * lineH + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font, color: block.textColor })),
     ],

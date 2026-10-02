@@ -109,6 +109,41 @@ fn issue_6587_neutral_project_conversion_preserves_original_map_offsets_without_
 }
 
 #[test]
+fn issue_6691_zero_angle_roundoff_is_a_source_preserving_noop_not_a_consumer_guard_bypass() {
+    let source = model(1., false).replace("ENDSEC;\nEND-ISO",
+        "#170=IFCCONNECTIONSURFACEGEOMETRY(#171,$);\n#171=IFCPLANE(#11);\nENDSEC;\nEND-ISO");
+    for ordinate in [0.0, 6.12323399573677e-17, -6.12323399573677e-17, f64::EPSILON, -f64::EPSILON] {
+        for direction_length in [1.0, 2.0] {
+            let rotation = format!("{},{},1.", writer::real(direction_length).unwrap(), writer::real(ordinate * direction_length).unwrap());
+            let input = source.replace("0.6,0.8,0.9996", &rotation);
+            let plan = plan_map_conversion_normalization(input.as_bytes()).unwrap();
+            assert!(plan.warnings.is_empty(), "{rotation}: {:?}", plan.warnings);
+            assert!(plan.replacements.is_empty() && plan.new_entities.is_empty(), "authored offsets/ordinate must remain untouched");
+        }
+    }
+    // A one-ULP increase above either boundary must still enter the unchanged
+    // semantic preflight, not silence an unsupported connection consumer.
+    for operation in [
+        format!("1.,{},1.", writer::real(f64::EPSILON.next_up()).unwrap()),
+        format!("1.,{},1.", writer::real(-f64::EPSILON.next_up()).unwrap()),
+        format!("1.,0.,{}", writer::real(1.0_f64.next_up()).unwrap()),
+        format!("1.,0.,{}", writer::real(1.0_f64.next_down()).unwrap()),
+        format!("{},0.,1.", writer::real(1.0_f64.next_down()).unwrap()),
+        "0.9659258262890683,0.25881904510252074,1.".into(),
+    ] {
+        let input = source.replace("0.6,0.8,0.9996", &operation);
+        let plan = plan_map_conversion_normalization(input.as_bytes()).unwrap();
+        assert!(plan.warnings.iter().any(|warning| warning.contains("IfcConnectionSurfaceGeometry")), "{operation}: {:?}", plan.warnings);
+        assert!(plan.replacements.is_empty() && plan.new_entities.is_empty());
+    }
+    let scaled = source.replace("IFCMAPCONVERSION(", "IFCMAPCONVERSIONSCALED(")
+        .replace("0.6,0.8,0.9996)", &format!("1.,0.,1.,{},1.,1.)", writer::real(1.0_f64.next_up()).unwrap()));
+    let plan = plan_map_conversion_normalization(scaled.as_bytes()).unwrap();
+    assert!(plan.warnings.iter().any(|warning| warning.contains("per-axis map factors")));
+    assert!(plan.replacements.is_empty() && plan.new_entities.is_empty());
+}
+
+#[test]
 fn issue_6587_unsupported_coordinate_consumers_and_bad_frames_refuse_atomically() {
     let source = model(1., false);
     let cases = [

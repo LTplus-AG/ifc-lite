@@ -231,6 +231,24 @@ describe('useReloadResume', () => {
     assert.equal(takeResumeIntent()?.reopen, false, 'reopened automatically: the next automatic reload only prompts');
   });
 
+  it('with more open models than the auto-reopen cap, reopens five and names the rest, counting all of them (#6721 review)', async () => {
+    const all = ['a.ifc', 'b.ifc', 'c.ifc', 'd.ifc', 'e.ifc', 'f.ifc', 'g.ifc'];
+    previousPageReloaded(all);
+    const routed: string[][] = [];
+    const notices: string[] = [];
+    const deps: ReloadResumeDeps = {
+      readCached: async (name) => new File(['x'], name),
+      notify: (text) => notices.push(text),
+    };
+    render(<Host ready route={(files) => routed.push(files.map((f) => f.name))} deps={deps} />);
+    await flush();
+    assert.deepEqual(routed, [all.slice(0, 5)]);
+    assert.equal(notices.length, 1);
+    assert.match(notices[0], /"f\.ifc", "g\.ifc"/);
+    const event = captured.find((c) => c.event === 'stale_reload_resumed');
+    assert.deepEqual(event?.properties, { reopened_count: 5, prompted_count: 2, auto_reopen: true });
+  });
+
   it('does nothing on an ordinary boot', async () => {
     const routed: string[][] = [];
     render(<Host ready route={(files) => routed.push(files.map((f) => f.name))} deps={{ readCached: async () => null, notify: () => {} }} />);

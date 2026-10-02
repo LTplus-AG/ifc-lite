@@ -47,7 +47,10 @@ const KEY = 'ifclite:reload-resume';
 const MAX_AGE_MS = 2 * 60_000;
 /** Loop guard, a different job: how long after an automatic reopen a further automatic reload only prompts. */
 export const AUTO_REOPEN_COOLDOWN_MS = 10 * 60_000;
-const MAX_FILES = 5;
+/** At most this many files reopen from the cache automatically; the rest are named in the prompt. */
+export const MAX_AUTO_REOPEN = 5;
+/** Bound on the stored list (names are small; this only keeps sessionStorage bounded). */
+const MAX_STORED_FILES = 50;
 
 export type ReloadTrigger = 'automatic' | 'user';
 
@@ -128,7 +131,7 @@ export function resumableFiles(models: Iterable<OpenModelSnapshot>): ResumeFile[
   const sameAs = (a: File, b: File) => a.name === b.name && a.size === b.size;
   for (const file of inFlight) if (![...files].some((held) => sameAs(held, file))) files.add(file);
   return [...files].filter((file) => localFiles.has(file))
-    .slice(0, MAX_FILES).map((file) => ({ name: file.name, size: file.size }));
+    .slice(0, MAX_STORED_FILES).map((file) => ({ name: file.name, size: file.size }));
 }
 
 export interface PersistDeps {
@@ -185,7 +188,7 @@ export function takeResumeIntent(deps: PersistDeps = defaultDeps()): ResumeInten
   if (!Array.isArray(files)) return null;
   const entries = files.filter((f): f is ResumeFile => typeof f === 'object' && f !== null
     && typeof (f as ResumeFile).name === 'string' && (f as ResumeFile).name.length > 0
-    && Number.isSafeInteger((f as ResumeFile).size) && (f as ResumeFile).size >= 0).slice(0, MAX_FILES);
+    && Number.isSafeInteger((f as ResumeFile).size) && (f as ResumeFile).size >= 0).slice(0, MAX_STORED_FILES);
   if (entries.length === 0) return null;
   return {
     files: entries.map(({ name, size }) => ({ name, size })),

@@ -13,7 +13,7 @@ import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { posthog } from '@/lib/analytics';
 import { getCachedFile } from '@/lib/recent-files';
-import { noteAutomaticReopen, setOpenModelsSource, takeResumeIntent } from '@/lib/reload-resume';
+import { MAX_AUTO_REOPEN, noteAutomaticReopen, setOpenModelsSource, takeResumeIntent } from '@/lib/reload-resume';
 import { useViewerStore } from '@/store';
 
 export interface ReloadResumeDeps {
@@ -60,10 +60,11 @@ export function useReloadResume(
       // size matches too; another file of the same name is prompted, not loaded.
       // Two entries with the same name AND size share one cache key: reopen the
       // first from the cache and prompt for the rest, never one blob twice.
+      // Past MAX_AUTO_REOPEN, files are prompted (named), never dropped.
       const seen = new Set<string>();
-      const cached = await Promise.all(intent.files.map(async (entry) => {
+      const cached = await Promise.all(intent.files.map(async (entry, index) => {
         const key = `${entry.size}:${entry.name}`;
-        if (!intent.reopen || seen.has(key)) return null;
+        if (!intent.reopen || index >= MAX_AUTO_REOPEN || seen.has(key)) return null;
         seen.add(key);
         const file = await deps.readCached(entry.name).catch((err: unknown) => {
           console.warn('[reload-resume] could not read a cached model for the resume', err);

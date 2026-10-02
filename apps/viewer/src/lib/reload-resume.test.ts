@@ -203,6 +203,12 @@ describe('reload resume', () => {
     assert.equal(takeResumeIntent(deps()), null);
   });
 
+  it('stores every open local model past the auto-reopen cap (#6721 review)', () => {
+    const all = ['a.ifc', 'b.ifc', 'c.ifc', 'd.ifc', 'e.ifc', 'f.ifc', 'g.ifc'];
+    all.forEach((name, i) => openLocal(String(i), name));
+    assert.deepEqual(names(reloadAndTake()), all);
+  });
+
   it('ignores an intent older than two minutes or stamped in the future', () => {
     openLocal('a', 'tower.ifc');
     persistResumeIntent('automatic', deps());

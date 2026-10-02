@@ -106,17 +106,11 @@ fn issue_6692_real_house_and_minibim_all_product_frames_and_original_records_are
             [90770., 435320., 3.5],
         ),
     ] {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/models")
-            .join(path);
-        let original = match std::fs::read_to_string(&path) {
-            Ok(source) => source,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                eprintln!("SKIP #6692: {} absent; run pnpm fixtures", path.display());
-                continue;
-            }
-            Err(error) => panic!("cannot read producer fixture {}: {error}", path.display()),
+        let Some(bytes) = crate::test_support::fixture_opt(path) else {
+            continue;
         };
+        let original = String::from_utf8(bytes)
+            .unwrap_or_else(|error| panic!("producer fixture {path} is not UTF-8: {error}"));
         let source = authored_map(&original, angle, offset);
         verify_source(&source, count);
         let plan = plan_map_conversion_normalization(source.as_bytes()).unwrap();
@@ -205,7 +199,7 @@ fn issue_6692_real_house_and_minibim_all_product_frames_and_original_records_are
                     assert!(
                         distance < 0.001,
                         "{} product {id}: physical surface distance {distance}",
-                        path.display()
+                        path
                     );
                 }
             }

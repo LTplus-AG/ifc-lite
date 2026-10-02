@@ -110,3 +110,42 @@ it('#6677 unresolved metadata clears a previous origin and distance, then recove
   assert.equal(probe.read().geometryDistanceKm, null);
   assert.equal(probe.read().errorKey, null);
 });
+
+const OUTSIDE_UTM_ORIGIN: Inputs = {
+  // Stated invariant: tmerc cannot invert this declared anchor, but the
+  // authored geometry placement cancels it into an ordinary UTM coordinate.
+  // This exercises the same projection-coverage class as #6698's actual
+  // EPSG:28992 MiniBIM, without a network-dependent precision-grid download.
+  conversion: { id: 1, sourceCRS: 2, targetCRS: 3, eastings: 100_000_000, northings: 4_000_000, orthogonalHeight: 0 },
+  crs: { id: 3, name: 'EPSG:32610', mapUnitScale: 1 },
+};
+const PHYSICAL_UTM_FRAME: CoordinateInfo = {
+  originShift: { x: 0, y: 0, z: 0 },
+  originalBounds: { min: { x: -1, y: 0, z: -1 }, max: { x: 1, y: 2, z: 1 } },
+  shiftedBounds: { min: { x: -1, y: 0, z: -1 }, max: { x: 1, y: 2, z: 1 } },
+  hasLargeCoordinates: false,
+  wasmRtcOffset: { x: -99_500_000, y: 0, z: 10 },
+};
+
+it('#6698 physical location becomes ready when RTC metadata arrives outside the declared origin coverage', async () => {
+  const probe = harness(OUTSIDE_UTM_ORIGIN);
+  await waitFor(() => probe.read().mapState === 'error', 'the unprojectable origin must be reported before geometry exists');
+  assert.equal(probe.read().latLon, null);
+  probe.update({ ...OUTSIDE_UTM_ORIGIN, coordinateInfo: PHYSICAL_UTM_FRAME });
+  await waitFor(() => probe.read().mapState === 'ready', 'physical geometry must become locatable after RTC publication');
+  assert.equal(probe.read().locationKind, 'geometry');
+  assert.equal(probe.read().errorKey, null);
+  assert.ok(Math.abs(probe.read().latLon!.lon - -123) < 1e-8);
+  // PROJ UTM zone10 reference at E500000/N4000000.
+  assert.ok(Math.abs(probe.read().latLon!.lat - 36.14471809978956) < 1e-7);
+  assert.equal(probe.read().geometryDistanceKm, null, 'an unresolved origin must not produce an invented distance');
+  // Metadata disappearance and model replacement cannot retain the old centre.
+  probe.update(OUTSIDE_UTM_ORIGIN);
+  await waitFor(() => probe.read().mapState === 'error', 'removing geometry clears the physical location');
+  assert.equal(probe.read().latLon, null);
+  assert.equal(probe.read().locationKind, null);
+  probe.update(swiss);
+  await waitFor(() => probe.read().geometryDistanceKm !== null, 'a replacement model retains the declared-origin diagnostic');
+  assert.equal(probe.read().locationKind, 'origin');
+  assert.ok(probe.read().geometryDistanceKm! > 2800);
+});

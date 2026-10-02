@@ -8,7 +8,8 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { reprojectPointToLatLon, reprojectToLatLon, type LatLon } from '@/lib/geo/reproject';
 import type { TranslationKey } from '@/i18n';
 
-/** Location describes the declared CRS origin, independently of the mesh frame (#6677). */
+/** Prefer the declared CRS origin (#6677); identify a physical geometry location
+ * separately when that origin is outside the projection coverage (#6698). */
 export function useLocationGeoreference(
   conversion: MapConversion | undefined,
   crs: ProjectedCRS | undefined,
@@ -18,10 +19,12 @@ export function useLocationGeoreference(
   const [latLon, setLatLon] = useState<LatLon | null>(null);
   const [mapState, setMapState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [errorKey, setErrorKey] = useState<TranslationKey | null>(null);
+  const [locationKind, setLocationKind] = useState<'origin' | 'geometry' | null>(null);
   const [geometryDistanceKm, setGeometryDistanceKm] = useState<number | null>(null);
 
   useEffect(() => {
     setGeometryDistanceKm(null);
+    setLocationKind(null);
     if (!conversion || !crs) {
       setLatLon(null);
       setErrorKey(null);
@@ -31,9 +34,22 @@ export function useLocationGeoreference(
     let cancelled = false;
     setMapState('loading');
     setErrorKey(null);
-    reprojectPointToLatLon(conversion.eastings, conversion.northings, crs, lengthUnitScale).then(origin => {
+    reprojectPointToLatLon(conversion.eastings, conversion.northings, crs, lengthUnitScale).then(async origin => {
       if (cancelled) return;
+      if (!origin && coordinateInfo) {
+        // An unresolved declared origin does not invalidate geometry already
+        // placed inside the CRS. This is a display choice, never a placement
+        // repair; origin editing still writes the picked projected coordinate.
+        const center = await reprojectToLatLon(conversion, crs, coordinateInfo, lengthUnitScale);
+        if (cancelled) return;
+        setLatLon(center);
+        setLocationKind(center ? 'geometry' : null);
+        setMapState(center ? 'ready' : 'error');
+        setErrorKey(center ? null : 'properties.locationMap.projectionUnresolved');
+        return;
+      }
       setLatLon(origin);
+      setLocationKind(origin ? 'origin' : null);
       setMapState(origin ? 'ready' : 'error');
       setErrorKey(origin ? null : 'properties.locationMap.projectionUnresolved');
       if (!origin || !coordinateInfo) return;
@@ -57,11 +73,12 @@ export function useLocationGeoreference(
       if (cancelled) return;
       console.warn('[location-map] georeference resolution failed:', error);
       setLatLon(null);
+      setLocationKind(null);
       setMapState('error');
       setErrorKey('properties.locationMap.projectionUnresolved');
     });
     return () => { cancelled = true; };
   }, [conversion, crs, coordinateInfo, lengthUnitScale]);
 
-  return { latLon, mapState, errorKey, geometryDistanceKm };
+  return { latLon, mapState, errorKey, geometryDistanceKm, locationKind };
 }

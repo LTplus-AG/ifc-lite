@@ -2851,10 +2851,10 @@ the completion boundary. See [the evidence](../../docs/architecture/evidence/ali
 
 The [canonical-parser census](evidence/prepass-projection-6537/README.md) found
 no unused nested attribute containers in the screened direct prepass record
-families across the small, CSG, heavy and large public controls. Separate Revit
-medical and Snowdon structural captures also
-found no unused nested void/fill containers; their other unused fields are not
-classified by that screen. The dominant
+families across the small, CSG, heavy and large public controls. The separate Revit
+medical capture had no covered void/fill records. Snowdon's covered pairs had
+no unused nested void/fill containers. Other unused fields are not classified
+by that screen. The dominant
 styled-item population's unused name field had no string payload. Do not
 prototype removing unused nested value trees on this evidence or revisit the
 rejected general constructor. A different worker capture must first establish

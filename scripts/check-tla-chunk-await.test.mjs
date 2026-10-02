@@ -311,3 +311,15 @@ test('RED: a __tla chunk with too little leading code to judge fails instead of 
   assert.doesNotMatch(out, /✅/);
   assert.match(out, /too little leading code/);
 });
+
+test('an untouched chunk that only mentions __tla inside a string is not scanned', () => {
+  // Its prologue (`const help=`) is too short to judge, so scanning it would
+  // fail a healthy build. The plugin never rewrote it: no __tla in its leading
+  // code, no __tla export, no dynamic-import rewrite.
+  const { status, out } = runOn({
+    'store-abc.js': TLA_CHUNK,
+    'help-def.js': 'const help="docs __tla";export{help};',
+  });
+  assert.equal(status, 0, out);
+  assert.match(out, /all 1 plugin-rewritten chunk\(s\) minified/);
+});

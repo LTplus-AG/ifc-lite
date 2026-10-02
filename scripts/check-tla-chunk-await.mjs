@@ -83,7 +83,7 @@
 
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { deploymentAssetsDir } from './lib/deployment-assets-dir.mjs';
-import { chunkFormatting, MIN_PUNCTUATION } from './lib/tla-chunk-prologue.mjs';
+import { chunkFormatting, MIN_PUNCTUATION, rewrittenByPlugin } from './lib/tla-chunk-prologue.mjs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -204,11 +204,15 @@ if (tlaExporters.size === 0) {
 
 // Every chunk the plugin rewrote must have been re-printed minified. Why, and
 // how its formatting is read without a tokenizer: scripts/lib/tla-chunk-prologue.mjs.
-// Every exporter mentions `__tla` in its own export clause, so tlaChunks is a
-// superset of tlaExporters, and tlaExporters was asserted non-empty above. The
+// Chunks the plugin rewrote are picked by structure (rewrittenByPlugin), not by
+// a `__tla` substring, which an untouched chunk can carry inside a string.
+// tlaChunks includes every exporter by construction, and tlaExporters was
+// asserted non-empty above. The
 // guard below is that same invariant stated where it is relied on: if it ever
 // broke, the scan would run over nothing and "all 0 minified" would be a pass.
-const tlaChunks = [...sources.keys()].filter((file) => sources.get(file).includes('__tla'));
+const tlaChunks = [...sources.keys()].filter(
+  (file) => tlaExporters.has(file) || rewrittenByPlugin(sources.get(file)),
+);
 if (tlaChunks.length === 0 || tlaChunks.length < tlaExporters.size) {
   console.error(
     `❌ Only ${tlaChunks.length} chunk(s) mention \`__tla\` but ${tlaExporters.size} export it, so the\n` +

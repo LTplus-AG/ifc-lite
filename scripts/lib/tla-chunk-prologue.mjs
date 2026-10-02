@@ -61,6 +61,24 @@ export function prologue(text) {
   return code + (literal === -1 ? rest : rest.slice(0, literal));
 }
 
+// The plugin's rewrite of a dynamic import of a wrapped chunk, minified
+// (`.then(async m=>{await m.__tla;return m})`) or pretty (spread over lines).
+const DYNAMIC_IMPORT_REWRITE = /\.then\(async\s*\(?m\)?\s*=>\s*\{\s*await m\.__tla;\s*return m;?\s*\}\)/;
+
+/**
+ * Whether the plugin itself put `__tla` code in this chunk, judged by
+ * structure rather than by the substring (which a string literal in an
+ * untouched chunk can contain): `__tla` in the prologue (the wrapper
+ * declaration, or `__tla as __tla_N` in a leading import), or the plugin's
+ * dynamic-import rewrite. The gate adds chunks whose export clause exports
+ * `__tla`. On the viewer build these select exactly the 103 chunks that
+ * mention `__tla` at all: 101 by prologue, the remaining workers by the
+ * dynamic-import rewrite.
+ */
+export function rewrittenByPlugin(text) {
+  return prologue(text).includes('__tla') || DYNAMIC_IMPORT_REWRITE.test(text);
+}
+
 /** @returns {'pretty' | 'minified' | 'unknown'} */
 export function chunkFormatting(text) {
   const code = prologue(text);

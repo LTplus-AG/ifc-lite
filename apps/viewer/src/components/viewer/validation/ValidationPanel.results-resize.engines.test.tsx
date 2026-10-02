@@ -143,6 +143,18 @@ for (const kind of ['ids', 'rules'] as const) {
       const summary = ui.querySelector('[data-validation-summary-pane]');
       const results = ui.querySelector('[data-validation-results-pane]');
       assert.ok(handle && summary && results);
+      if (kind === 'ids') {
+        // #6690: a fixed IDS header stole 53px outside the split in a 300px
+        // dock. The shared actions/status must own the upper scroll pane.
+        const selectors = ui.querySelectorAll('select[aria-label="Select IDS document"]');
+        assert.equal(selectors.length, 1);
+        assert.ok(summary.contains(selectors[0]));
+        for (const label of ['Re-run validation', 'Clear results', 'Load New IDS', 'Unload IDS']) {
+          const controls = ui.querySelectorAll(`button[aria-label="${label}"]`);
+          assert.equal(controls.length, 1, `one shared ${label} action`);
+          assert.ok(summary.contains(controls[0]), `${label} belongs to the upper scroll pane`);
+        }
+      }
       if (kind === 'rules') {
         const selectors = ui.querySelectorAll('select[aria-label="Select rule set"]');
         assert.equal(selectors.length, 1, 'one actual imported definition control is rendered');
@@ -185,11 +197,31 @@ for (const kind of ['ids', 'rules'] as const) {
       assert.ok(restoredResults?.textContent?.includes('Wall tag 12'));
 
       if (kind === 'ids') {
+        const rerun = ui.querySelector<HTMLButtonElement>('button[aria-label="Re-run validation"]');
+        assert.ok(rerun);
+        click(rerun);
+        const runningSummary = ui.querySelector('[data-validation-summary-pane]');
+        const cancel = ui.querySelector('button[aria-label="Cancel validation"]');
+        const progress = ui.querySelector('output');
+        assert.ok(runningSummary && cancel && progress);
+        assert.ok(runningSummary.contains(cancel), 'the shared action changes to Cancel inside the scroll pane');
+        assert.ok(runningSummary.contains(progress), 'real in-flight progress stays inside the scroll pane');
+        await waitFor(() => useViewerStore.getState().idsValidationReport !== report,
+          'the shared scroll-pane action publishes a fresh real IDS report');
+        const rerunReport = useViewerStore.getState().idsValidationReport;
+        assert.ok(rerunReport);
+        assertInvariant(rerunReport, 1);
+        assert.equal(rerunReport.modelInfo[0].modelId, 'm0');
         const clear = ui.querySelector<HTMLButtonElement>('button[aria-label="Clear results"]');
         assert.ok(clear);
         click(clear);
         assert.equal(useViewerStore.getState().idsValidationReport, null);
         assert.equal(useViewerStore.getState().idsDocument, ids);
+        const unload = ui.querySelector<HTMLButtonElement>('button[aria-label="Unload IDS"]');
+        assert.ok(unload);
+        click(unload);
+        assert.equal(useViewerStore.getState().idsDocument, null);
+        assert.equal(useViewerStore.getState().idsValidationReport, null);
       } else {
         click(buttonByText(ui, 'Edit rules'));
         assert.equal(useViewerStore.getState().idsValidationReport, report);

@@ -69,21 +69,29 @@ function runOn(chunks, { assetsRel = ASSETS_REL, env = {} } = {}) {
 }
 
 /**
- * A `__tla`-wrapped chunk, in the plugin's real emitted shape: the deferred
- * binding is exported literally, unmangled, alongside the mangled real
- * exports.
+ * A `__tla`-wrapped chunk, in the plugin's real emitted (minified) shape: the
+ * deferred binding is exported literally, unmangled, alongside the mangled
+ * real exports.
  */
-const TLA_CHUNK = `let __tla = Promise.resolve().then(async () => { z = () => 1; });
-let z;
-export { z, __tla };
-`;
+const TLA_CHUNK = `let __tla=Promise.resolve().then(async()=>{z=()=>1});let z;export{z,__tla};`;
 
 /** The correctly-propagated importer: imports `__tla` aliased and folds it in. */
-const GOOD_IMPORTER = `import { z as C, __tla as __tla_0 } from "./store-abc.js";
-let __tla = Promise.all([
-  (() => { try { return __tla_0; } catch {} })(),
-]).then(async () => { C(); });
-export { __tla };
+const GOOD_IMPORTER =
+  `import{z as C,__tla as __tla_0}from"./store-abc.js";` +
+  `let __tla=Promise.all([(()=>{try{return __tla_0}catch{}})()]).then(async()=>{C()});export{__tla};`;
+
+/**
+ * The same wrapped chunk as the plugin printed it before the minify patch:
+ * SWC's pretty printer, one statement per line (production main-*.js shipped
+ * 167k lines like this).
+ */
+const PRETTY_TLA_CHUNK = `let __tla = Promise.all([
+    (()=>{ try { return __tla_0; } catch  {} })()
+]).then(async ()=>{
+    z = ()=>1;
+});
+let z;
+export { z, __tla };
 `;
 
 test('a healthy bundle -- a __tla chunk and an importer that awaits it -- passes', () => {
@@ -153,6 +161,8 @@ test('RED: chunks emitted but not one __tla-wrapped chunk must fail, not tick', 
   assert.equal(status, 1, out);
   assert.doesNotMatch(out, /✅/);
   assert.match(out, /NOT ONE of\s*\n?them exports a `__tla` binding/);
+  // ...and it never reaches the minification scan to report "all 0 minified".
+  assert.doesNotMatch(out, /plugin-rewritten chunk\(s\) minified/);
   assert.match(out, /2 \.js chunk\(s\)/);
 });
 
@@ -179,4 +189,137 @@ test('RED: a missing assets dir must fail', () => {
   assert.equal(status, 1, out);
   assert.doesNotMatch(out, /✅/);
   assert.match(out, /does not exist/);
+});
+
+test('RED: a __tla-wrapped chunk the plugin re-printed unminified is caught', () => {
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'main-def.js': PRETTY_TLA_CHUNK });
+  assert.equal(status, 1, out);
+  assert.doesNotMatch(out, /✅/);
+  assert.match(out, /1 of 2 chunk\(s\) rewritten by the plugin were re-printed UNMINIFIED/);
+  assert.match(out, /main-def\.js/);
+});
+
+test('multi-line string content in a minified __tla chunk is not mistaken for pretty-printing', () => {
+  // The script templates and the esbuild-wasm chunk carry legitimately
+  // multi-line template literals; only the plugin's own declaration counts.
+  const withTemplate = `let s,t;let __tla=(async()=>{s=\`
+    const x = 1
+    if (x) {
+      return x
+    }
+\`})();let s;export{s,__tla};`;
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'templates-def.js': withTemplate });
+  assert.equal(status, 0, out);
+  assert.match(out, /all 2 plugin-rewritten chunk\(s\) minified/);
+});
+
+// Entry chunks (main-*.js) and workers are rewritten by the plugin too, but
+// export no `__tla`, and each worker build runs its own plugin instance. These
+// are the plugin's pretty shapes for them, as the pre-patch build emitted.
+const PRETTY_ENTRY = `import { z as C, __tla as __tla_0 } from "./store-abc.js";
+Promise.all([
+    (()=>{
+        try {
+            return __tla_0;
+        } catch  {}
+    })()
+]).then(async ()=>{
+    C();
+});
+`;
+const PRETTY_WORKER = `(async ()=>{
+    self.onmessage = async (e)=>{
+        const m = await import(e.data).then(async (m)=>{
+            await m.__tla;
+            return m;
+        });
+        m.run();
+    };
+})();
+`;
+const MINIFIED_ENTRY =
+  `import{z as C,__tla as __tla_0}from"./store-abc.js";` +
+  `Promise.all([(()=>{try{return __tla_0}catch{}})()]).then(async()=>{C()});`;
+const MINIFIED_WORKER =
+  `(async()=>{self.onmessage=async e=>{(await import(e.data).then(async m=>{await m.__tla;return m})).run()}})();`;
+
+test('RED: an unminified entry chunk that exports no __tla is still caught', () => {
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'main-def.js': PRETTY_ENTRY });
+  assert.equal(status, 1, out);
+  assert.match(out, /1 of 2 chunk\(s\) rewritten by the plugin were re-printed UNMINIFIED/);
+  assert.match(out, /main-def\.js/);
+});
+
+test('RED: an unminified worker chunk (dynamic-import rewrite only) is caught', () => {
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'parser.worker-def.js': PRETTY_WORKER });
+  assert.equal(status, 1, out);
+  assert.match(out, /parser\.worker-def\.js/);
+});
+
+test('minified entry and worker chunks pass and are counted', () => {
+  const { status, out } = runOn({
+    'store-abc.js': TLA_CHUNK,
+    'main-def.js': MINIFIED_ENTRY,
+    'parser.worker-def.js': MINIFIED_WORKER,
+  });
+  assert.equal(status, 0, out);
+  assert.match(out, /all 3 plugin-rewritten chunk\(s\) minified/);
+});
+
+test('a minified chunk that merely QUOTES the pretty wrapper is not flagged', () => {
+  // E.g. the bundled changelog describing this fix, both inline and inside a
+  // multi-line template literal where it lands at a line start.
+  const quoting =
+    'let __tla=Promise.resolve().then(async()=>{z=()=>1});let z;' +
+    'const a="the plugin printed let __tla = Promise.all( pretty",b=`fixed:\n' +
+    'let __tla = Promise.all([\n    try {\n        return __tla_0;\n    await m.__tla;\n`;' +
+    'export{z,a,b,__tla};';
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'changelog-def.js': quoting });
+  assert.equal(status, 0, out);
+  assert.match(out, /all 2 plugin-rewritten chunk\(s\) minified/);
+});
+
+test('RED: a PRETTY chunk that quotes the minified forms is still caught', () => {
+  // The mirror case: the chunk really was re-printed pretty, but a string in
+  // it happens to contain every minified form. Only the prologue is judged.
+  const quotingMinified = `import { z as C, __tla as __tla_0 } from "./store-abc.js";
+let __tla = Promise.all([
+    (()=>{
+        try {
+            return __tla_0;
+        } catch  {}
+    })()
+]).then(async ()=>{
+    s = "let __tla=Promise.all( try{return __tla_0} await m.__tla;return m}";
+    C();
+});
+let s;
+export { s, __tla };
+`;
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'changelog-def.js': quotingMinified });
+  assert.equal(status, 1, out);
+  assert.match(out, /1 of 2 chunk\(s\) rewritten by the plugin were re-printed UNMINIFIED/);
+  assert.match(out, /changelog-def\.js/);
+});
+
+test('RED: a __tla chunk with too little leading code to judge fails instead of passing blind', () => {
+  // Starts with a literal, so its prologue is empty: neither pretty nor
+  // minified can be read off it, and that must not count as minified.
+  const opaque = `\`let __tla=\`;export{__tla};`;
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'other-def.js': opaque });
+  assert.equal(status, 1, out);
+  assert.doesNotMatch(out, /✅/);
+  assert.match(out, /too little leading code/);
+});
+
+test('an untouched chunk that only mentions __tla inside a string is not scanned', () => {
+  // Its prologue (`const help=`) is too short to judge, so scanning it would
+  // fail a healthy build. The plugin never rewrote it: no __tla in its leading
+  // code, no __tla export, no dynamic-import rewrite.
+  const { status, out } = runOn({
+    'store-abc.js': TLA_CHUNK,
+    'help-def.js': 'const help="docs __tla";export{help};',
+  });
+  assert.equal(status, 0, out);
+  assert.match(out, /all 1 plugin-rewritten chunk\(s\) minified/);
 });

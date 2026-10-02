@@ -140,7 +140,7 @@ function BlockBody({ block, bindings, aggregation, chartMessage, topic, table, c
 
     case 'image': {
       const title = blockTitle(block);
-      const height = (title || headingExtraHeight > 0 ? documentImageHeight(block, pageHeight, headingExtraHeight) : block.height) * scale;
+      const height = documentImageHeight(block, pageHeight, headingExtraHeight) * scale;
       const justify = block.align === 'left' ? 'justify-start' : block.align === 'right' ? 'justify-end' : 'justify-center';
       return (
         <figure className={`flex flex-col ${block.align === 'center' ? 'items-center' : block.align === 'right' ? 'items-end' : 'items-start'}`}>
@@ -166,6 +166,7 @@ function BlockBody({ block, bindings, aggregation, chartMessage, topic, table, c
         snapshot,
         hasData,
         fontSize: block.fontSize,
+        layoutScale: blockScale(block),
       });
       const height = chartHeight * scale;
       // Computed once, not repeated as a JSX-expression literal in both the visible text and its

@@ -11,6 +11,7 @@ import { effectiveMapConversionForGeometry } from './map-absolute';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 import { divideByAxisScale, viewerUpScaleForGeometry } from './viewer-up-scale';
 import { ifcToViewerAxes } from './coordinate-frame';
+import { refusedAxisDelta, resolveMapAxisDirection } from './map-axis-direction';
 
 export function getMapUnitScale(
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
@@ -225,8 +226,13 @@ export function viewerDeltaToProjectedDelta(
 ): { eastings: number; northings: number } {
   const mapScale = getMapUnitScale(projectedCRS, lengthUnitScale);
   const { x: scaleX, y: scaleY } = getEffectiveAxisScales(mapConversion, mapScale, lengthUnitScale);
-  const abscissa = mapConversion.xAxisAbscissa ?? 1;
-  const ordinate = mapConversion.xAxisOrdinate ?? 0;
+  // The axis is a DIRECTION: its length is not a second scale (#6700).
+  const axis = resolveMapAxisDirection(mapConversion.xAxisAbscissa, mapConversion.xAxisOrdinate);
+  if (!axis) {
+    const refused = refusedAxisDelta(mapConversion.xAxisAbscissa, mapConversion.xAxisOrdinate);
+    return { eastings: refused, northings: refused };
+  }
+  const { a: abscissa, b: ordinate } = axis;
   const eastMeters = abscissa * scaleX * deltaX + ordinate * scaleY * deltaZ;
   const northMeters = ordinate * scaleX * deltaX - abscissa * scaleY * deltaZ;
 
@@ -296,15 +302,21 @@ export function projectedDeltaToViewerDelta(
 ): { x: number; z: number } {
   const mapScale = getMapUnitScale(projectedCRS, lengthUnitScale);
   const { x: scaleX, y: scaleY } = getEffectiveAxisScales(mapConversion, mapScale, lengthUnitScale);
-  const abscissa = mapConversion.xAxisAbscissa ?? 1;
-  const ordinate = mapConversion.xAxisOrdinate ?? 0;
+  // Inverse of `viewerDeltaToProjectedDelta`: the unit direction is
+  // orthonormal, so its transpose is its inverse and no division by the
+  // vector's squared length remains (#6700).
+  const axis = resolveMapAxisDirection(mapConversion.xAxisAbscissa, mapConversion.xAxisOrdinate);
+  if (!axis) {
+    const refused = refusedAxisDelta(mapConversion.xAxisAbscissa, mapConversion.xAxisOrdinate);
+    return { x: refused, z: refused };
+  }
+  const { a: abscissa, b: ordinate } = axis;
   const eastMeters = mapUnitsToMeters(eastingsDelta, projectedCRS, lengthUnitScale);
   const northMeters = mapUnitsToMeters(northingsDelta, projectedCRS, lengthUnitScale);
-  const norm = Math.max(abscissa * abscissa + ordinate * ordinate, 1e-12);
 
   return {
-    x: divideByAxisScale((abscissa * eastMeters + ordinate * northMeters) / norm, scaleX),
-    z: divideByAxisScale((ordinate * eastMeters - abscissa * northMeters) / norm, scaleY),
+    x: divideByAxisScale(abscissa * eastMeters + ordinate * northMeters, scaleX),
+    z: divideByAxisScale(ordinate * eastMeters - abscissa * northMeters, scaleY),
   };
 }
 

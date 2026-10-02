@@ -80,6 +80,7 @@ import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { cargoLockPatchPaths, normalizeRestoredPaths, partialCargoManifestSelection } from './lib/revert-oracle-cargo-lock.mjs';
 import { parseRevertOracleArgs } from './lib/revert-oracle-args.mjs';
+import { productionRevertPaths, unsupportedProductionRenames } from './lib/revert-oracle-paths.mjs';
 import {
   parseNameStatus,
   classifyDiff,
@@ -247,6 +248,8 @@ if (baseSha === headSha) die(EXIT_NOTHING_CHECKED, 'base and head are the same c
 const mergeBase = gitOrDie(['merge-base', baseSha, headSha]).trim();
 const entries = parseNameStatus(gitOrDie(['diff', '--name-status', `${mergeBase}`, headSha]));
 if (entries.length === 0) die(EXIT_NOTHING_CHECKED, 'the diff is empty; nothing to check.');
+const unsupportedRenames = unsupportedProductionRenames(entries, opts.only);
+if (unsupportedRenames.length) die(EXIT_INCONCLUSIVE, 'unsupported cross-category production rename; non-production sources must stay pinned.', unsupportedRenames, { verdict: 'INCONCLUSIVE' });
 
 if (opts.ci && isDependabotDependencyOnly(process.env.PR_AUTHOR_LOGIN, entries)) {
   notApplicable(
@@ -298,10 +301,9 @@ if (
   );
 }
 
-let prodPaths = production.map((e) => e.path);
+const prodPaths = productionRevertPaths(production, opts.only);
 if (opts.only.length > 0) {
-  const before = prodPaths.length;
-  prodPaths = prodPaths.filter((p) => opts.only.some((o) => p === o || p.startsWith(o.endsWith('/') ? o : `${o}/`)));
+  const before = productionRevertPaths(production).length;
   console.log(`  --only narrowed the revert set from ${before} to ${prodPaths.length} production file(s)`);
   if (prodPaths.length === 0) die(EXIT_NOTHING_CHECKED, `--only matched none of the ${before} changed production files.`);
 }

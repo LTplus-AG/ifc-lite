@@ -1,0 +1,238 @@
+{
+  "qualifiedSource": "fb2626532fce115e8ecc9df273c7159e0177f9f4",
+  "actualBase": "bd0d02782b92581ed8e007effc9d00e37a09476e",
+  "baseline": {
+    "head": "b3bcf846037e797f88a1d99852378f8c2ec2a4c2",
+    "base": "9153b4cb6054cd780646670fab526b5c2e0b69f7",
+    "command": "TEST_SHARD=529028 TEST_SHARDS=1000003 pnpm test --filter=@ifc-lite/viewer --env-mode=loose",
+    "exitCode": 1,
+    "dependencyBuilds": 49,
+    "passCount": 0,
+    "assertionFailures": 7,
+    "skipCount": 0,
+    "reason": "All seven cases fail actual missing Edit a copy after real IFC Save report/history setup",
+    "log": "/tmp/6611-manual-report-reuse-baseline-normal-red.log",
+    "runtimeSha256": "a52aa07fecb3c0d3daecd2540742bc361c3ed388baa79129a59b51ba02ff9979",
+    "rustTree": "14b997e32f528eb3a916b6c320c9cebb901bafbe"
+  },
+  "meaningfulExistingRegression": {
+    "source": "292edd1660dbba97aec6dcf03b11a767618336ef",
+    "file": "ManualValidationTab.test.tsx",
+    "pass": 11,
+    "assertionFailures": 1,
+    "reason": "Blanket per-instance key reset ordinary unbound current model; fb uses shared unbound key and distinct fingerprint-bound key. Existing assertion unchanged."
+  },
+  "finalTests": {
+    "rootCommand": "TEST_SHARD=<file hash> TEST_SHARDS=1000003 pnpm test --filter=@ifc-lite/viewer --env-mode=loose",
+    "newMounted": 10,
+    "newInvariants": 4,
+    "existingAffected": 75,
+    "pass": 89,
+    "fail": 0,
+    "skip": 0,
+    "scope": "Eight actual singleton root Turbo runs; ordinary full viewer suite is left to fresh CI."
+  },
+  "officialOracle": {
+    "command": "node scripts/check-test-revert-oracle.mjs --base bd0d02782b92581ed8e007effc9d00e37a09476e --ci --json",
+    "green": 14,
+    "revertedPass": 0,
+    "revertedAssertionFailures": 14,
+    "skip": 0,
+    "exitCode": 0,
+    "restoration": "verified",
+    "productionFiles": 10
+  },
+  "typecheck": {
+    "command": "pnpm typecheck",
+    "tasks": 109,
+    "testFiles": 3249,
+    "exitCode": 0
+  },
+  "build": {
+    "command": "pnpm build",
+    "tasks": 61,
+    "cached": 60,
+    "exitCode": 0
+  },
+  "lint": {
+    "command": "pnpm lint",
+    "files": 8139,
+    "errors": 0,
+    "exitCode": 0,
+    "warningScope": "Incoming global example/script warnings visible; touched source warnings clear."
+  },
+  "lightGates": {
+    "apiSurface": {
+      "packages": 51,
+      "surfaces": 82,
+      "exports": 9169
+    },
+    "docsSamples": {
+      "snippets": 428,
+      "documents": 100,
+      "explicitIllustrativeSkips": 12
+    },
+    "passed": [
+      "MPL",
+      "changesets",
+      "module size",
+      "test wiring",
+      "source assertions",
+      "docs generated",
+      "package readmes"
+    ]
+  },
+  "changesetCli": {
+    "CLI": "pnpm changeset (Changesets3.0.3)",
+    "session": 51499,
+    "exitCode": 0,
+    "package": "@ifc-lite/viewer",
+    "bump": "minor",
+    "generatedPath": ".changeset/wacky-dragons-visit.md",
+    "canceledAttempt": {
+      "session": 32464,
+      "written": false,
+      "reason": "Wrong timing-ladder selection canceled before write"
+    }
+  },
+  "runtime": {
+    "rustTree": "14b997e32f528eb3a916b6c320c9cebb901bafbe",
+    "baselineWasmSha256": "a52aa07fecb3c0d3daecd2540742bc361c3ed388baa79129a59b51ba02ff9979",
+    "browserWasmSha256": "039415545e2448ce8b1e40b14306524ee60cff29dabd97448080ac0d9e170610",
+    "browserWasmBytes": 9472263,
+    "scope": "Actual normal root dev Turbo cache restored runtime; no artifact copying. Hash changed from historical baseline: no runtime byte-parity claim. Browser witness is a separate post-operation HTTP fetch, not original worker response body."
+  },
+  "excludedAttempts": [
+    {
+      "path": "/tmp/6611-session6503/proof-v1",
+      "reason": "Two mounted manual-report previews made unscoped locator ambiguous; context closed."
+    },
+    {
+      "path": "/tmp/6611-session6503/proof-v2",
+      "reason": "Harness assumed adding peer changed active model; canonical loader retains original. Context closed."
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-key-consumer-run.log",
+      "reason": "Wrong shard manifest filename before any tests launched."
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-evidence-source-assertions.log",
+      "reason": "Fresh evidence worktree initially lacked TypeScript dependency; legitimate frozen-lockfile install completed, then gate rerun."
+    }
+  ],
+  "logs": [
+    {
+      "path": "/tmp/6611-manual-report-reuse-baseline-normal-red.log",
+      "bytes": 81632,
+      "sha256": "f621c64f2984d34c28a2a25b3e5486744c48ed55d0310980a0c7b6246fbe689b"
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-consumer-694489.log",
+      "bytes": 73404,
+      "sha256": "7f23786f18ec1580a271b892139a6b500fd127857be2d73cf2d4420c77b4cc23"
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-key-original-consumer-green.log",
+      "bytes": 72048,
+      "sha256": "d0593bed32415d6462b0faa71ef63153674cf89c061728f612bda5c05a45a6c5"
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-key-mounted-green.log",
+      "bytes": 75801,
+      "sha256": "15e3692a7b61f1b704f645f37e62acf470f7cc4260deaa65de8ad35eda848cd2"
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-key-invariants-green.log",
+      "bytes": 70938,
+      "sha256": "b72615ec86b6463620b3a29da40d176eb2bdf9f82be799d1d32702b925192cd8"
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-key-consumer-90110.log",
+      "bytes": 115441,
+      "sha256": "476dccc2e11ed46b10a2f77b6bfb5e31df1d79c80316e63e096dee50e4e349b4"
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-key-consumer-381462.log",
+      "bytes": 69858,
+      "sha256": "7b46751745ef8860c38cd381e6c911dddc03f0cfed78baabb509571c90913410"
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-key-consumer-183045.log",
+      "bytes": 73774,
+      "sha256": "a2c7848a1f594657714e76d3327ad050956d4b499be270d55f6571ce33fc03a4"
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-key-consumer-100883.log",
+      "bytes": 73316,
+      "sha256": "7732391a9514194e295516850b082abcbc09383bb0fd0bec14f0ad4a5ab55c5c"
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-key-consumer-295745.log",
+      "bytes": 74147,
+      "sha256": "dd57d5bf902a25da721f01dc49c6545e21f7b4368ce7e0d85978b755174e201b"
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-key-official-oracle.log",
+      "bytes": 8210,
+      "sha256": "21372478ac6b99df792f19060eb4277850028afa61693bcaa23348c91fdb69a0"
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-key-root-typecheck.log",
+      "bytes": 56482,
+      "sha256": "d3b68176980d16b7439822f04413b2c4fb1d327d4172760cc8c9a7a0cfb524ff"
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-key-root-build.log",
+      "bytes": 110634,
+      "sha256": "e5fe503080ed84b4fbca2788d05d2115ebfcbbe27bda22c7160067f73fee6c26"
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-key-root-lint.log",
+      "bytes": 176962,
+      "sha256": "2f7e700177bba5c07315b7333dbb9a604fc89c6c411b27d5b4db8d3a5c2b267b"
+    },
+    {
+      "path": "/tmp/6611-manual-report-reuse-key-owned-dev.log",
+      "bytes": 134999,
+      "sha256": "cb22d4dcfca322eda8c82ceea553247d980f34c11f2ddcc713b311cc2bbf75bf"
+    }
+  ],
+  "postArchiveGates": [
+    {
+      "command": "node scripts/add-license-headers.mjs --check",
+      "exitCode": 0,
+      "log": "/tmp/6611-manual-report-reuse-evidence-mpl-final.log",
+      "sha256": "1c7cf644b10a2d3e5de3321e4792841ab02b16f086da40a5e5d5baec61288d71"
+    },
+    {
+      "command": "node scripts/check-module-size.mjs",
+      "exitCode": 0,
+      "log": "/tmp/6611-manual-report-reuse-evidence-module-size-final.log",
+      "sha256": "998b4ee77a5c4abca2e8f2b5aebe68cb735a8cae541ba622c49b02a4b1badfc3"
+    },
+    {
+      "command": "node scripts/check-test-wiring.mjs",
+      "exitCode": 0,
+      "log": "/tmp/6611-manual-report-reuse-evidence-test-wiring-final.log",
+      "sha256": "dd879f3c9f2a4500cbcf7a04a6d608bca9339beef25e311acb6e358ea6de3eb8"
+    },
+    {
+      "command": "node scripts/check-source-text-assertions.mjs",
+      "exitCode": 0,
+      "log": "/tmp/6611-manual-report-reuse-evidence-source-assertions-final.log",
+      "sha256": "7c886a07550860ff87d846f305b0693fee705e9860ef6fc6c0c64c32668817ef"
+    },
+    {
+      "command": "node scripts/check-changesets.mjs",
+      "exitCode": 0,
+      "log": "/tmp/6611-manual-report-reuse-evidence-changesets.log",
+      "sha256": "4ba22b655c444bc8db7c3b57a1cc06e39300996c84e771248c5984889030ac40"
+    },
+    {
+      "command": "uv run --with-requirements requirements-docs.txt mkdocs build --strict --site-dir /tmp/6611-session6503/evidence-docs-site",
+      "exitCode": 0,
+      "log": "/tmp/6611-manual-report-reuse-evidence-mkdocs.log",
+      "sha256": "e61c7d170ab2b7b6006950f5def5a7f0f1bcc3c48b6b980d6ea837eba6ca40fb"
+    }
+  ]
+}

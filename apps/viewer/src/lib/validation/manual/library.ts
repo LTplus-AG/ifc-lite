@@ -12,6 +12,8 @@ export interface ManualChecklistInstance {
   id: string;
   template: ChecklistTemplate;
   answers: ManualAnswersByModel;
+  /** Saved-report copies reopen on their recorded source, even when a peer is active. */
+  preferredModelFingerprint?: string;
 }
 
 export interface ManualChecklistLibrary {

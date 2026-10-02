@@ -26,6 +26,7 @@ import { IfcParser, detectFormat, unwrapIfcZipWithResources, type IfcDataStore }
 import { attachTextureBitmaps, type TextureBitmapStore } from '../utils/textureResources.js';
 import { modelAppearanceAssets } from '../lib/appearance/model-assets.js';
 import { WorkerParser } from '@ifc-lite/parser/browser';
+import { createModelLoadCompletion } from './ingest/modelLoadCompletion.js';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import {
   GeometryProcessor,
@@ -125,7 +126,7 @@ import { surfaceStaleDeployment } from '../lib/stale-deployment.js';
  * Default is `primary`.
  */
 export type LoadTarget =
-  | { kind: 'primary' }
+  | { kind: 'primary'; modelId?: string }
   | {
       kind: 'federated';
       modelId: string;
@@ -276,23 +277,23 @@ export function useIfcLoader() {
     assertWorkflowOwner(options?.workflowOwner);
     const draping = drapeIfGeoRaster(file, setLoading); if (draping) return draping; // #5942: imagery, never a model
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
-    // Only a primary (destructive, replace-everything) load bumps the session.
-    // Federated adds are independent and run concurrently — they capture the
-    // current session without invalidating each other; a subsequent primary
-    // load still bumps it and aborts any in-flight federated adds.
+    // A primary supersedes every outstanding hook owner via the shared canceller.
+    // Federated additions capture this hook's session and remain independent.
     const currentSession = target.kind === 'primary'
       ? ++loadSessionRef.current
       : loadSessionRef.current;
-    // Federated adds carry a pre-allocated id; primary loads mint a fresh one.
-    const modelId = target.kind === 'federated' ? target.modelId : crypto.randomUUID();
+    const modelId = target.modelId ?? crypto.randomUUID();
     let cancelled = false;
     const isCurrent = () => !cancelled && loadSessionRef.current === currentSession;
     const isStale = () => !isCurrent();
     let abortGeometry: (() => void) | null = null; // set once the geometry pool starts
     let cancelOwnedStream: (() => void) | null = null;
+    const metadataAbort = new AbortController();
+    let modelCompletion: ReturnType<typeof createModelLoadCompletion> | undefined;
     const releaseCanceller = installModelLoadCanceller(target.kind, () => {
       cancelled = true;
-      if (target.kind === 'primary') loadSessionRef.current += 1;
+      if (target.kind === 'primary' && loadSessionRef.current === currentSession) loadSessionRef.current += 1;
+      metadataAbort.abort();
       abortGeometry?.();
     }, () => cancelOwnedStream); // #5849: federated cancellation preserves loaded models
 
@@ -687,6 +688,7 @@ export function useIfcLoader() {
           ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
           ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
         });
+        modelCompletion?.settleModel();
       };
       // Point clouds stream from Blob; only their head is needed for detection.
       const headBuf = await file.slice(0, 4096).arrayBuffer();
@@ -1363,12 +1365,9 @@ export function useIfcLoader() {
       // workers + main share the same SharedArrayBuffer source, and the
       // main thread never blocks on parse.
       // Fall back to main-thread parsing when isolation or worker startup fails.
-      let resolveDataStore: (dataStore: IfcDataStore) => void;
-      let rejectDataStore: (err: unknown) => void;
-      const dataStorePromise = new Promise<IfcDataStore>((resolve, reject) => {
-        resolveDataStore = resolve;
-        rejectDataStore = reject;
-      });
+      modelCompletion = createModelLoadCompletion(metadataAbort.signal,
+        err => console.error('[useIfc] Data model parsing failed:', err));
+      const dataStorePromise = modelCompletion.metadata;
       if (target.kind === 'primary') void appearanceLoad?.finishAfter(dataStorePromise, () => useViewerStore.getState().models.get(modelId));
 
       const onPartialDataStore = (partialStore: IfcDataStore) => {
@@ -1399,13 +1398,11 @@ export function useIfcLoader() {
           }
         }
         // PRIMARY only (active-model write); federated wires via finalizeModel.
-        // resolveDataStore stays unconditional so the federated finalizePromise
-        // still resolves and registers the model.
         if (target.kind === 'primary') setIfcDataStore(dataStore);
         console.log(`[useIfc] Data model parsing complete for ${file.name}: ${metadataCompleteMs.toFixed(0)}ms`);
         memoryAccounting.endPhase('parser-worker');
         memoryAccounting.recordPhase({ phase: 'parser-complete' });
-        resolveDataStore(dataStore);
+        modelCompletion?.setMetadata(dataStore);
       };
 
       const runMainThreadParser = async (): Promise<IfcDataStore> => {
@@ -1442,6 +1439,10 @@ export function useIfcLoader() {
         && fileSizeMB >= ADAPTIVE_SYNC_THRESHOLD_MB;
 
       const startDataModelParsing = () => {
+        if (metadataAbort.signal.aborted || isStale()) {
+          geometryHandle?.parseSettled();
+          return;
+        }
         metadataStartMs = performance.now() - totalStartTime;
         console.log(`[useIfc] Data model parsing start for ${file.name}: ${metadataStartMs.toFixed(0)}ms (${useParserWorker ? 'worker' : 'main-thread'})`);
         memoryAccounting.beginPhase('parser-worker');
@@ -1455,6 +1456,7 @@ export function useIfcLoader() {
           const worker = new WorkerParser();
           workerParserInstance = worker;
           return worker.parseColumnar(sharedSource, {
+            signal: metadataAbort.signal,
             sourceFingerprint,
             onSpatialReady: onPartialDataStore,
             // Hold the parser's WASM scan until the pre-pass hands over
@@ -1475,23 +1477,22 @@ export function useIfcLoader() {
 
         workerAttempt()
           .catch((err) => {
+            if (metadataAbort.signal.aborted || isStale()) throw err;
             console.warn('[useIfc] Parser worker failed, falling back to main-thread parse:', err);
             memoryAccounting.recordPhase({ phase: 'parser-worker-fallback' });
             return runMainThreadParser();
           })
           .then(onFullDataStore)
           .catch((err) => {
+            if (metadataAbort.signal.aborted || isStale()) return;
             metadataFailedMs = performance.now() - totalStartTime;
-            console.error('[useIfc] Data model parsing failed:', err);
             console.log(`[useIfc] Data model parsing failed for ${file.name}: ${metadataFailedMs.toFixed(0)}ms`);
             memoryAccounting.recordPhase({ phase: 'parser-failed' });
-            rejectDataStore(err);
+            modelCompletion?.failMetadata(err);
           })
           // The parser is done with the raw handle here on EVERY ending —
-          // including the one `dataStorePromise` never reports: a stale
-          // `onFullDataStore` returns without resolving it (#1959). Gating
-          // disposal on the chain rather than on the promise is what keeps a
-          // superseded load from leaking its handle.
+          // A cancelled main-thread parse can still hold its raw WASM API;
+          // release that handle only after this actual consumer settles.
           .finally(() => {
             geometryHandle?.parseSettled();
           });
@@ -1840,12 +1841,12 @@ export function useIfcLoader() {
               if (skippedHungElements) reportSkippedHungElements(file.name, skippedHungElements, toast.info);
 
               if (target.kind === 'primary') {
-                // Active-model writes — PRIMARY only. Federated meshes already
-                // carry colours (applied during streaming) and their coordinate
-                // info rides the geometryResult handed to addModel at finalize.
+                // Finalize the primary slot; federated geometry is published by addModel.
                 if (cumulativeColorUpdates.size > 0) {
                   updateMeshColors(cumulativeColorUpdates);
                 }
+                // Empty models still need the exact producer metadata for authoring.
+                if (!useViewerStore.getState().geometryResult && finalCoordinateInfo) appendGeometryBatch(modelId, [], finalCoordinateInfo);
                 updateCoordinateInfo(finalCoordinateInfo);
                 // #924 compare parity: the streamed geometryResult holds flat
                 // meshes only, so fold the instanced-only entity hashes onto it
@@ -1900,7 +1901,7 @@ export function useIfcLoader() {
               // Finalize once the data model is ready (parses in parallel).
               finalizePromise = dataStorePromise.then(async dataStore => {
                 // Guard: skip if user loaded a new file since this load started
-                if (isStale()) {
+                if (!dataStore || isStale()) {
                   console.warn(`[useIfc] finalize ABORTED: stale session (mine=${currentSession}, current=${loadSessionRef.current}) — model will blank`);
                   return;
                 }
@@ -2022,7 +2023,7 @@ export function useIfcLoader() {
                     loadError: formatLoadError(err, file.name, 'geometry_processing'),
                   });
                 }
-              });
+              }).finally(() => modelCompletion?.settleModel());
               if (target.kind === 'federated') void appearanceLoad?.finishAfter(finalizePromise, () => useViewerStore.getState().models.get(modelId));
               break;
           }
@@ -2072,14 +2073,15 @@ export function useIfcLoader() {
         return;
       }
 
-      // Federated adds register the model inside finalizePromise (georef align
-      // → id offset → addModel). Await it so loadFile resolves
-      // only AFTER the model is in the map — loadFilesSequentially loads the
-      // next file serially and relies on this ordering for id-offset assignment.
+      // Both callers need a registered model. Primary cache writes stay in
+      // the existing background finalizer; federation awaits its alignment.
       loadStage = 'finalize';
       if (target.kind === 'federated' && finalizePromise) {
         await finalizePromise;
+      } else if (finalizePromise) {
+        await modelCompletion.modelReady;
       }
+      if (isStale()) return;
 
       if (firstVisibleGeometryMs === null && firstAppendGeometryBatchMs !== null) {
         await new Promise<void>((resolve) => {
@@ -2197,12 +2199,9 @@ export function useIfcLoader() {
       setLoading(false);
       setGeometryStreamingActive(false);
     } finally {
-      // #1959: the one release point that no exit path can skip. Every early
-      // `return` in this function — stale session, resource retry, the inner
-      // geometry catch, the cache and server fast paths — runs through here,
-      // and a `dispose()` placed after the last statement would miss all of
-      // them. The free itself still waits on the parse chain; see
-      // createGeometryProcessorDisposer.
+      metadataAbort.abort();
+      // #1959: every exit releases its ownership; actual freeing still waits
+      // for the parser to stop using the raw handle (geometryHandleDisposal).
       releaseCanceller();
       try { appearanceLoad?.finishForModel(useViewerStore.getState().models.get(modelId)); }
       finally { geometryHandle?.release(); }

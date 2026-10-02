@@ -72,6 +72,8 @@ New IDS and information-validation document blocks include the ring. **Show benc
 
 IDS and information validation checks show their results without adding to history. Choose **Save report** in the results toolbar to retain a completed check in **Data validation → Saved reports**, including the names and source fingerprints of the models evaluated when that check finished. Saving the same result again does not duplicate it; a later run can be saved separately. In Manual validation, **Save report** records the currently selected model's checklist answers. Rename or remove saved reports from the history. Reports are stored in this browser; a storage failure displays a warning before you reload. Unreadable history has a separate notice: the original data is preserved before valid reports are recovered, or saving stays blocked if a backup is unavailable. **Retry save** keeps your current in-memory reports. A successful retry also restores reports discovered after a temporarily unavailable read; reports you explicitly removed stay removed.
 
+For a saved manual report, **Edit a copy** opens an independent editable checklist with its recorded decisions, comments and guidance. Load the same source file first: the copy follows its stored fingerprint after reload, even when another model is active. A report without a recorded model identity remains readable but cannot supply an editable copy. Editing, repeating the copy, or deleting its live checklist leaves the saved report unchanged. If its model is removed, answer controls stay disabled until that source is loaded again or you explicitly choose another model for a separate review. Browser storage failures leave the current copy editable with a visible warning.
+
 Use **Add block → Saved validation report** in Documentation, then choose the specific report in **Saved report source**. Each block embeds a copy of that result with its original model scope. Later checks, model removal, or deleting a report from history do not alter an existing document. Saved evidence does not apply historical entity identifiers to the current 3D scene. Live checklist editing remains separate from saved report snapshots.
 
 ### Saved model comparisons
@@ -83,6 +85,18 @@ provenance, product/type counts, excluded IFC classes and geometry limitations.
 They persist in this browser after model unloading or reloading. Renaming affects
 only the library name. Historical report rows never select elements in a newly
 loaded model; rerun the pair for current 3D review.
+
+Chart blocks can also use a dashboard chart bound to a specific **Saved
+comparison**. Preview and PDF use that recorded report's rows and suppress
+3D snapshots. A chart block retains the comparison ID rather than embedding
+history, so deleting its saved source or opening the file in another browser
+without that source displays an explicit unavailable-source message. Choose
+another bound dashboard chart in the block editor to replace it. See
+[saved comparison charts](./charts.md#saved-comparison-charts) for the binding
+and import behavior; saved comparison table blocks continue to embed their
+own evidence. Recorded-source provenance remains an informational caption;
+missing history, refused filters and aggregation errors are reported as PDF
+export problems.
 
 In Documentation, **Add block → Saved comparison** embeds the first saved report.
 Select the block and choose another saved comparison in its source picker. The
@@ -109,6 +123,8 @@ In **Data validation → Manual validation**, **New checklist** creates another 
 **Close checklist** leaves the review in the selector for later. Reopening the same saved template selects its existing review and decisions. **Delete checklist** removes that editable review; previously saved reports and document snapshots remain unchanged. Existing open checklists and their decisions migrate automatically. Decisions retained after an older checklist was closed are kept until an imported template supplies matching check identifiers. The old data contains no template or discipline identity, so that recovery cannot establish which discipline originally supplied a decision; unmatched decisions remain available for another template. If browser storage refuses a write, the current review remains visible with a warning.
 
 In Documentation, a manual report’s **Checklist** selector chooses the specific review without changing the checklist open in Data validation. **Refresh from current checklist** reads that chosen review and the block’s selected model. Choose **Long** to print guidance and comments, or **Short** for questions and verdicts. **Show benchmark scores** controls the progress rings and numerical summaries in both preview and PDF. A report still embeds its last snapshot: deleting the live checklist leaves its printed evidence intact and disables Refresh. Older manual blocks retain their original detailed layout and active-checklist refresh behavior until you select a specific source.
+
+**Show stamp information** controls the model name, recording time and evaluated-model names below a manual report’s title in both preview and PDF. Turn it off to omit those rows; the recorded identity, timestamp and answers remain in the saved document. Refreshing or choosing another manual saved report preserves this display choice. Existing documents show their stamp until you turn it off.
 
 
 ## Workflow report documents

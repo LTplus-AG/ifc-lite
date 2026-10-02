@@ -1,0 +1,63 @@
+{
+  "sourceHead": "50a2e628aee94c683cb9ed555428553876de34d2",
+  "sourceBase": "9ccb2e49a527a7109c86a5ce0fd8644883e3dcc2",
+  "actualMain": "e79f27342beb01a6f30d9b63c44795ecd118f4de",
+  "runtimeSha256": "039415545e2448ce8b1e40b14306524ee60cff29dabd97448080ac0d9e170610",
+  "rustTree": "14b997e32f528eb3a916b6c320c9cebb901bafbe",
+  "fullBuild": {
+    "passedTasks": 61,
+    "cachedTasks": 60
+  },
+  "plainRootTypecheck": {
+    "passedTasks": 109,
+    "testFiles": 3236
+  },
+  "api": {
+    "exports": 9165,
+    "snapshotChanged": false
+  },
+  "focused": {
+    "passed": 35,
+    "skipped": 0
+  },
+  "officialRevertOracle": {
+    "baselinePass": 7,
+    "revertedPass": 2,
+    "revertedAssertionFail": 5,
+    "skipped": 0,
+    "restoration": "verified",
+    "verdict": "OBSERVED"
+  },
+  "logsPrefix": "/tmp/6232-takeover/first-edit-residency-e79-",
+  "historicalBrowserEvidence": "Retains actual historical source/runtime attribution; not relabeled as current main.",
+  "lint": {
+    "sourceHead": "50a2e628aee94c683cb9ed555428553876de34d2",
+    "files": 8110,
+    "errors": 0,
+    "existingWarnings": 2,
+    "scope": "Full final-stack root lint; completion production/test paths byte-identical in that stack."
+  },
+  "docs": {
+    "compiledSnippets": 428,
+    "files": 100,
+    "illustrativeSkips": 12,
+    "strictMkdocs": "PASS",
+    "samplesSourceHead": "50a2e628aee94c683cb9ed555428553876de34d2"
+  },
+  "browserEvidence": {
+    "sourceHead": "50a2e628aee94c683cb9ed555428553876de34d2",
+    "servedRuntimeVerified": true,
+    "adapter": "nonfallback NVIDIA Blackwell",
+    "chrome": "154.0.8037.58",
+    "states": 6,
+    "hardwareGpuColorReadbacks": 6,
+    "automaticOwnModelWallLaunch": true,
+    "firstWallCpuParts": 1,
+    "firstWallResidentParts": 1,
+    "firstWallTriangles": 12,
+    "nativeIfcDownloadBytes": 2849,
+    "nativeIfcDownloadSha256": "3fb3b862454090ec4536a75b9617f841629a6022d88358f8b92cfc7db511e029",
+    "completedDownloadReloaded": true,
+    "performanceClaim": false
+  }
+}

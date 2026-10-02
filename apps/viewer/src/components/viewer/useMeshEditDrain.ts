@@ -34,6 +34,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { watchModelUnloads } from '@/lib/remesh/remesh-service';
 import { runGpuUpload } from './gpu-upload-guard';
+import { geometryMeshKey } from './geometry-mesh-key';
 
 export interface MeshEditDrainParams {
   rendererRef: MutableRefObject<Renderer | null>;
@@ -116,7 +117,13 @@ export function useMeshEditDrain(params: MeshEditDrainParams): void {
     // left to remove); it also retires an instanced occurrence of the id,
     // whose re-mesh arrives as flat geometry.
     scene.removeMeshesForEntities(ids);
-    const fresh = geometry.filter((mesh) => ids.has(mesh.expressId));
+    const fresh: MeshData[] = [];
+    const freshKeys: string[] = [];
+    geometry.forEach((mesh, index) => {
+      if (!ids.has(mesh.expressId)) return;
+      fresh.push(mesh);
+      freshKeys.push(geometryMeshKey(mesh, index));
+    });
     const uploaded = runGpuUpload('appendToBatches:mesh-edits', () => {
       if (fresh.length > 0) scene.appendToBatches(fresh, device, pipeline, false);
       else if (scene.hasPendingBatches()) scene.rebuildPendingBatches(device, pipeline);
@@ -126,6 +133,10 @@ export function useMeshEditDrain(params: MeshEditDrainParams): void {
     if (!uploaded) return;
 
     if (renderedTickRef.current === since && useViewerStore.getState().geometryUpdateTick === tick) {
+      // Camera fitting can still scan the same-length source after this drain.
+      // Claim only the parts whose upload succeeded, using the same source-slot
+      // identity as the main effect; neither item IDs nor coordinates dedupe parts.
+      for (const key of freshKeys) processedMeshIdsRef.current.add(key);
       lastGeometryLengthRef.current = geometry.length;
       lastGeometryRef.current = geometry;
     } else {

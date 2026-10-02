@@ -174,14 +174,14 @@ function ValidationSourceEditor({ block, source, onChange }: { block: TableBlock
           </select>
         </label>
       </div>
-      <div className="flex flex-wrap gap-x-2 gap-y-1" role="group" aria-label={t('document.block.tableColumnsLabel')} data-table-columns>
+      <fieldset className="m-0 flex min-w-0 flex-wrap gap-x-2 gap-y-1 border-0 p-0" aria-label={t('document.block.tableColumnsLabel')} data-table-columns>
         {TABLE_COLUMN_IDS.map((c) => (
           <label key={c} className="inline-flex items-center gap-1 text-muted-foreground">
             <input type="checkbox" checked={source.columns.includes(c)} onChange={() => toggleColumn(c)} className="accent-[#7aa2f7]" />
             {t(TABLE_COLUMN_LABEL_KEY[c])}
           </label>
         ))}
-      </div>
+      </fieldset>
     </>
   );
 }

@@ -97,7 +97,7 @@ describe('DocumentPanel localization (#4918)', () => {
   it('shows the "no blocks yet" empty state translated once every seeded block is removed', async () => {
     const ui = render(<DocumentPanel />);
     await settle();
-    for (const button of [...ui.querySelectorAll('button[aria-label="Remove block"]')]) click(button);
+    for (const button of ui.querySelectorAll('button[aria-label="Remove block"]')) click(button);
     await settle();
     assert.equal(ui.textContent?.includes('No blocks yet'), true);
 

@@ -25,7 +25,7 @@ import type { BindingContext } from '@/lib/document/bindings';
 import { idsReportBlockFromReport } from '@/lib/document/ids-report';
 import { TAB_SIZE, tabEdit } from '@/lib/document/text-tabs';
 import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, reportBlockSourceKind, type DocumentBlock, type IdsReportBlock, type IdsReportVariant, type TextBlock, type TextFont } from '@/lib/document/types';
-import { ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
+import { BlockScaleEditor, ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
 import { TableBlockEditor } from './TableBlockEditor';
 import { ManualReportBlockEditor, ManualReportPresentation } from './ManualReportBlockEditor';
 import { TextColorEditor } from './TextColorEditor';
@@ -81,7 +81,7 @@ function ReportBlockSource({ block, report, onChange }: { block: IdsReportBlock;
         title={refreshable ? undefined : t(kind === 'rules' ? 'document.block.rulesReportRefreshDisabledTitle' : 'document.block.idsReportRefreshDisabledTitle')}
         onClick={() => {
           if (!report || report.source.kind !== kind) return;
-          onChange({ ...idsReportBlockFromReport(report, block.id, block.variant), title: block.title, benchmarks: block.benchmarks });
+          onChange({ ...idsReportBlockFromReport(report, block.id, block.variant), title: block.title, benchmarks: block.benchmarks, scale: block.scale });
           toast.success(t('document.block.idsReportRefreshed'));
         }}
       >
@@ -221,6 +221,8 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
 
       {block.kind !== 'table' && block.kind !== 'spacer' && block.kind !== 'page-break' && <BlockTitleEditor block={block} onChange={onChange} />}
 
+      {block.kind !== 'spacer' && block.kind !== 'page-break' && <BlockScaleEditor scale={block.scale} onChange={(scale) => onChange({ ...block, scale })} />}
+
       {block.kind === 'text' && <TextEditor block={block} bindings={bindings} onChange={onChange} />}
 
       {block.kind === 'image' && (
@@ -249,7 +251,9 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
 
       {block.kind === 'chart' && (
         <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex min-w-0 flex-1 items-center gap-1 text-muted-foreground">{t('document.block.kindChart')}
+          {/* `basis-48` (12rem) is the label's own floor: with `flex-1` alone its basis is 0, so in this wrapping row it never
+              wraps to a new line and the picker gets only what the sibling controls leave over, which can be ~0 (#6629). */}
+          <label className="inline-flex min-w-0 basis-48 grow items-center gap-1 text-muted-foreground">{t('document.block.kindChart')}
             <select
               className={`${field} min-w-0 flex-1`}
               value=""

@@ -198,7 +198,6 @@ export function addSlabToStore(
     [`#${shapeRepId}`],
   ]).expressId;
 
-  // `IfcSlab.PredefinedType` only exists from IFC4 onward.
   const slabAttrs: Array<unknown> = [
     productGuid(params, anchor.guidRandom),
     ownerHistoryRef(ownerHistoryId),
@@ -208,10 +207,8 @@ export function addSlabToStore(
     `#${placementId}`,
     `#${productShapeId}`,
     params.Tag ?? null,
+    '.FLOOR.',
   ];
-  if ((anchor.schema ?? 'IFC4') !== 'IFC2X3') {
-    slabAttrs.push('.FLOOR.');
-  }
   const slabId = editor.addEntity('IfcSlab', slabAttrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
 
   const relContainedId = editor.addEntity('IfcRelContainedInSpatialStructure', [

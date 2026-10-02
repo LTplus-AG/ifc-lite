@@ -38,15 +38,16 @@ export function useManualReportSource(): ManualReportSourceHandle {
   const storeModels = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const models = useMemo(() => manualModelOptions(storeModels), [storeModels]);
-  const defaultModelId = pickManualModel(models, null, activeModelId)?.id ?? null;
   const defaultChecklistId = library.activeId ?? library.checklists[0]?.id ?? null;
+  const defaultEntry = library.checklists.find(entry => entry.id === defaultChecklistId);
+  const defaultModelId = pickManualModel(models, null, activeModelId, defaultEntry?.preferredModelFingerprint)?.id ?? null;
   const checklists = useMemo(() => library.checklists.map((entry) => ({ id: entry.id, name: entry.template.name })), [library.checklists]);
 
   const snapshot = useCallback((id: string, modelId: string | null = null, checklistId?: string) => {
     const entry = library.checklists.find((candidate) => candidate.id === (checklistId ?? library.activeId));
     if (!entry) return null;
-    const model = modelId === null ? pickManualModel(models, null, activeModelId) : models.find((m) => m.id === modelId);
-    if (model === undefined) return null;
+    const model = modelId === null ? pickManualModel(models, null, activeModelId, entry.preferredModelFingerprint) : models.find((m) => m.id === modelId);
+    if (model === undefined || (model === null && entry.preferredModelFingerprint)) return null;
     const scope = model ? reportModelScope(model.name, model.id, model.fingerprint) : null;
     return {
       ...manualReportBlockFromChecklist({

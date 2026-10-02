@@ -27,6 +27,7 @@
  */
 
 import { SavedValidationReports } from './SavedValidationReports';
+import { DefinitionLibraryToolbar } from './DefinitionLibraryToolbar';
 import { X } from 'lucide-react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -62,8 +63,13 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   const info = useInformationValidation();
   const results = useValidationResults();
   const manual = useManualValidation();
+  const manualEditorKey = useViewerStore((state) => {
+    const entry = state.manualLibrary.checklists.find(candidate => candidate.id === state.manualLibrary.activeId);
+    return entry?.preferredModelFingerprint ? entry.id : 'manual-unbound';
+  });
   const hasManualChecklists = useViewerStore((state) => state.manualLibrary.checklists.length > 0);
   const idsDocument = useViewerStore((s) => s.idsDocument);
+  const definitions = useViewerStore((s) => s.validationDefinitions);
   const validationSource = useViewerStore((s) => s.validationSource);
   const storeModels = useViewerStore((s) => s.models);
 
@@ -73,8 +79,8 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   // IDS first, then Information, then Manual validation (#6401). All three
   // survive remounts. Once the user picks a source, the toggle drives it.
   const effectiveSource: Source | null =
-    activeSource ?? (idsDocument ? 'ids'
-      : (info.file || validationSource === 'rules') ? 'rules'
+    activeSource ?? ((idsDocument || definitions.entries.some(entry => entry.kind === 'ids')) ? 'ids'
+      : (info.file || definitions.entries.some(entry => entry.kind === 'rules') || validationSource === 'rules') ? 'rules'
         : (manual.checklist || hasManualChecklists) ? 'manual' : null);
 
   const modelsForPicker: RuleModelPickerModel[] = [...storeModels.values()].map((m) => ({
@@ -152,6 +158,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
         <IDSPanel embedded />
       </TabsContent>
       <TabsContent value="rules" className="mt-0 flex-1 min-h-0 flex flex-col">
+      <DefinitionLibraryToolbar kind="rules" onNew={handleNewRuleSet} onImportFile={handleOpenRuleSetFile} />
       {info.running ? (
         <RunningState progress={info.progress} totalRules={info.file?.rules.length ?? 0} onCancel={info.cancel} />
       ) : hasResults ? (
@@ -184,7 +191,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
       )}
       </TabsContent>
       <TabsContent value="manual" className="mt-0 flex-1 min-h-0 flex flex-col">
-        <ManualValidationTab manual={manual} />
+        <ManualValidationTab key={manualEditorKey} manual={manual} />
       </TabsContent>
     </Tabs>
   );

@@ -81,6 +81,15 @@ describe('report document preparation (#6612)', () => {
     assert.notEqual(document.id, source.id);
     assert.deepEqual(document.page, source.page);
   });
+  it('builds from a template saved at the previous format version and keeps the block size its author chose (#6548)', () => {
+    const saved = { ...template(), version: DOCUMENT_VERSION - 1 } as unknown as DocumentSpec;
+    saved.blocks[1] = { ...saved.blocks[1], scale: 1.5 } as DocumentSpec['blocks'][number];
+    assert.deepEqual(validateReportDocumentTemplate(saved, [{ blockId: 'mapped', jobId: 'ids' }], [{ jobId: 'ids', kind: 'validation' }]), []);
+    const document = buildReportDocument({ template: saved, results: results(), mappings: [{ blockId: 'mapped', jobId: 'ids' }] });
+    assert.equal(document.version, DOCUMENT_VERSION, 'the built document is saved at the current version');
+    assert.deepEqual(document.blocks.slice(1).map((block) => block.kind === 'ids-report' && block.scale), [1.5, 1.5]);
+    assert.deepEqual(validateDocumentSpec(document), []);
+  });
   it('rejects unmapped evidence, unknown results and incompatible block mappings before export', () => {
     assert.throws(() => buildReportDocument({ template: template(), results: results() }), /requires a result mapping/);
     assert.throws(() => buildReportDocument({ template: template(), results: results(), mappings: [{ blockId: 'mapped', jobId: 'absent' }] }), /Unknown or disabled document job/);

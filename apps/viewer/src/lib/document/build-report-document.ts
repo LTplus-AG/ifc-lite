@@ -4,7 +4,7 @@
 import type { SavedComparison } from '../compare/savedComparisonSchema';
 import { isSavedComparisonChart } from '../charts/comparison-source';
 import { savedReportBlock, type SavedValidationReport } from '../validation/reports/history';
-import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type DocumentBlock, type IdsReportBlock } from './types';
+import { DOCUMENT_VERSION, migrateDocumentSpec, validateDocumentSpec, type DocumentSpec, type DocumentBlock, type IdsReportBlock } from './types';
 import { freshBlockId, freshDocumentId, freshListCopyId } from './persistence';
 import { literalTemplateText } from './bindings';
 
@@ -34,9 +34,13 @@ export interface BuildReportDocumentOptions {
 }
 
 /** Validate the saved template against enabled jobs before any model loading starts. */
-export function validateReportDocumentTemplate(template: DocumentSpec,
+export function validateReportDocumentTemplate(saved: DocumentSpec,
   mappings: readonly DocumentResultMapping[], jobs: readonly DocumentMappingJob[],
 ): string[] {
+  // A workflow carries its template as it was saved, so an older format version is upgraded
+  // here exactly as a saved document is on load (#6548); validating it as-is refused every
+  // template saved before a format bump.
+  const template = migrateDocumentSpec(saved) as DocumentSpec;
   const errors = validateDocumentSpec(template).map((error) => `${error.path} ${error.message}`);
   if (errors.length) return errors;
   const byJob = new Map<string, DocumentMappingJob>();
@@ -107,6 +111,7 @@ function resultBlock(result: DocumentReportResult, presentation?: DocumentBlock)
     return { ...structuredClone(result.snapshot), id,
       variant: presentation?.variant ?? result.snapshot.variant ?? 'compact', benchmarks: presentation?.benchmarks ?? result.snapshot.benchmarks ?? true,
       ...(presentation?.title !== undefined ? { title: presentation.title } : {}),
+      ...(presentation?.scale !== undefined ? { scale: presentation.scale } : {}),
     };
   }
   if (presentation && (presentation.kind !== 'table' || presentation.source.kind !== 'comparison')) {
@@ -118,7 +123,7 @@ function resultBlock(result: DocumentReportResult, presentation?: DocumentBlock)
 
 /** Job order is input order; an IDS job with N results expands adjacent report blocks. */
 export function buildReportDocument(options: BuildReportDocumentOptions): DocumentSpec {
-  const { template, mappings = [], results } = options;
+  const { mappings = [], results } = options;
   if (results.length === 0) throw new Error('A report document requires at least one completed result');
   const identities = new Set<string>();
   for (const result of results) {
@@ -129,11 +134,12 @@ export function buildReportDocument(options: BuildReportDocumentOptions): Docume
       throw new Error(`Job ${result.jobId} contains execution errors`);
     }
   }
-  if (!template) return { version: DOCUMENT_VERSION, id: freshDocumentId(), name: options.name ?? 'Workflow report',
+  if (!options.template) return { version: DOCUMENT_VERSION, id: freshDocumentId(), name: options.name ?? 'Workflow report',
     page: { size: 'A4', orientation: 'portrait' }, blocks: [...defaultCover(options), ...results.map((result) => resultBlock(result))] };
   const jobs = [...new Map(results.map((result) => [result.jobId, { jobId: result.jobId, kind: result.kind }])).values()];
-  const errors = validateReportDocumentTemplate(template, mappings, jobs);
+  const errors = validateReportDocumentTemplate(options.template, mappings, jobs);
   if (errors.length) throw new Error(`Invalid document template: ${errors.join('; ')}`);
+  const template = migrateDocumentSpec(options.template) as DocumentSpec;
   const byBlock = new Map(mappings.map((mapping) => [mapping.blockId, mapping]));
   const blocks: DocumentBlock[] = [];
   for (const block of template.blocks) {

@@ -106,19 +106,30 @@ export function addMaterialLayerSetToStore(
       throw new Error(`${op}: MaterialLayers[${index}].Material #${layer.Material} is ${type ? `an ${type}` : 'not a live entity'}, not an IfcMaterial`);
     }
   });
-  const layerIds = params.MaterialLayers.map((layer) => {
+  // Prepare every schema field before creating helpers: an unsupported late
+  // layer or set attribute must leave the live overlay and allocator intact.
+  const layerAttributes = params.MaterialLayers.map((layer) => {
     const { Material, ...rest } = layer;
-    return add(editor, 'IfcMaterialLayer', schemaAttributes(registry, 'IfcMaterialLayer', {
+    return schemaAttributes(registry, 'IfcMaterialLayer', {
       ...rest,
       Material: Material === undefined ? undefined : `#${Material}`,
       LayerThickness: toNativeLength(anchor, layer.LayerThickness),
-    }, op));
+    }, op);
   });
-  const layerSetId = add(editor, 'IfcMaterialLayerSet', schemaAttributes(registry, 'IfcMaterialLayerSet', {
-    MaterialLayers: layerIds.map((id) => `#${id}`),
+  // schemaAttributes retains this reference list; fill it only after all
+  // declarations are validated and each actual layer ID is known.
+  const layerReferences: string[] = [];
+  const layerSetAttributes = schemaAttributes(registry, 'IfcMaterialLayerSet', {
+    MaterialLayers: layerReferences,
     LayerSetName: params.LayerSetName,
     Description: params.Description,
-  }, op));
+  }, op);
+  const layerIds = layerAttributes.map(attributes => {
+    const id = add(editor, 'IfcMaterialLayer', attributes);
+    layerReferences.push(`#${id}`);
+    return id;
+  });
+  const layerSetId = add(editor, 'IfcMaterialLayerSet', layerSetAttributes);
   return { layerSetId, layerIds };
 }
 

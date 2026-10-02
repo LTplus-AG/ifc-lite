@@ -37,7 +37,7 @@ export function resourcesFromResults(results: SparqlResults, source: string, map
     const id = row[mapping.id ?? 'id']; const type = row[mapping.type ?? 'type']; const label = row[mapping.label ?? 'label'];
     if (id?.type !== 'uri' || !type || type.type === 'bnode' || label?.type !== 'literal') throw new Error('Project resource id, type and label columns explicitly');
     const typeName = type.type === 'uri' ? Object.keys(profile.types).find(key => profile.types[key].iri === type.value) : type.value;
-    if (!typeName || !profile.types[typeName]) throw new Error(`Unsupported profile type: ${type.value}`);
+    if (!typeName || !Object.hasOwn(profile.types, typeName)) throw new Error(`Unsupported profile type: ${type.value}`);
     const projectedLabel = projected(label, 'string', 'label');
     if (typeof projectedLabel !== 'string') throw new Error('Label must be a profile string');
     const record: SemanticResource = { id: id.value, type: typeName, label: projectedLabel };

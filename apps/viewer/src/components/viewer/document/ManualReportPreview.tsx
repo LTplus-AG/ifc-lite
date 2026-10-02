@@ -9,6 +9,7 @@
  * component, so the preview, the panel and the PDF share one geometry.
  */
 
+import { BlockHeading } from './BlockHeading';
 import { blockTitle } from '@/lib/document/block-title';
 import { manualReportStamp } from '@/lib/document/manual-report';
 import { useTranslation, type TranslationKey } from '@/i18n';
@@ -23,7 +24,8 @@ const VERDICT_LABEL: Record<'pass' | 'fail' | 'warning' | 'unanswered', Translat
   unanswered: 'manualValidation.verdict.unanswered',
 };
 
-export function ManualReportPreview({ block }: { block: ManualReportBlock }) {
+/** `pointScale`: browser pixels per point of the sheet, for an authored heading size. */
+export function ManualReportPreview({ block, pointScale = 1 }: { block: ManualReportBlock; pointScale?: number }) {
   const { t } = useTranslation();
   const name = block.checklistName.trim() || t('manualValidation.name.placeholder');
   const heading = blockTitle(block, t('manualValidation.report.heading', { name }));
@@ -35,7 +37,7 @@ export function ManualReportPreview({ block }: { block: ManualReportBlock }) {
 
   return (
     <div data-block-manual-report>
-      <div className="truncate text-sm font-semibold" title={heading}>{heading}</div>
+      <BlockHeading block={block} text={heading} pointScale={pointScale} className="truncate text-sm font-semibold" title={heading} />
       {stamp && <>
         <div className={`text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>
           {stamp.modelName

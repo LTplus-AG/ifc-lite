@@ -56,6 +56,12 @@ export const documentEn = {
   'document.block.textColorReset': 'Reset text colour',
   'document.block.backgroundColorReset': 'Clear background colour',
   'document.block.colorReset': 'Reset',
+  'document.block.titleSizeLabel': 'Heading size (pt)',
+  'document.block.titleSizeAriaLabel': 'Heading text size',
+  'document.block.titleTextColorLabel': 'Heading colour',
+  'document.block.titleTextColorReset': 'Reset heading colour',
+  'document.block.titleBackgroundColorLabel': 'Heading background',
+  'document.block.titleBackgroundColorReset': 'Clear heading background',
 
   // BlockEditor.tsx (#4918 doc slice): the block-kind badge, and every
   // field/control each block kind renders.

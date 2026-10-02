@@ -14,6 +14,7 @@ import type { ChecklistTemplate, ManualAnswerMap } from '../validation/manual/ch
 import { summarizeChecklist, EMPTY_MANUAL_COUNTS } from '../validation/manual/checklist-summary.js';
 import type { ManualReportBlock, ManualReportItem } from './manual-report-types.js';
 import { reportScopeText } from './report-provenance.js';
+import { blockTitleFields } from './block-title.js';
 
 /** #6566: one stamp visibility contract for the preview and PDF. Frozen source
  * identity and recording time remain in the report even when not printed. */
@@ -24,7 +25,7 @@ export function manualReportStamp(block: ManualReportBlock): { modelName: string
 /** #6566: changing the recorded evidence preserves the destination block's
  * identity and presentation, whether reading live answers or saved history. */
 export function replaceManualReportSnapshot(current: ManualReportBlock, snapshot: ManualReportBlock): ManualReportBlock {
-  return { ...snapshot, id: current.id, title: current.title, variant: current.variant, benchmarks: current.benchmarks, showStamp: current.showStamp, scale: current.scale };
+  return { ...snapshot, id: current.id, ...blockTitleFields(current), variant: current.variant, benchmarks: current.benchmarks, showStamp: current.showStamp, scale: current.scale };
 }
 
 export interface ManualReportSource {

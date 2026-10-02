@@ -69,7 +69,9 @@ export function DocumentPreview(props: DocumentPreviewProps) {
     if (!activeImageUrls.current.has(url)) return;
     console.warn('[Documents] preview image could not be decoded');
     setImageFailures(prior => new Set(prior).add(url));
-    recordImageSize(url, { w: 1, h: 1 });
+    // Let the shared resolver choose its existing failed-measurement fallback:
+    // square for ordinary images and 4:3 for BCF snapshots.
+    recordImageSize(url, { w: 0, h: 0 });
   }, [recordImageSize]);
   const input = useMemo<DocumentPdfInput>(() => ({ document: props.document, bindings: props.bindings,
     aggregations: props.aggregations, chartMessages: props.chartMessages, topics: props.topics,

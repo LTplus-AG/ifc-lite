@@ -31,6 +31,13 @@
  *
  * The ledger is pure bookkeeping (no Worker, no timers) so the policy is
  * unit-testable; {@link startHungJobMonitor} applies it to a live pool.
+ *
+ * Silence is measured against the worker's in-call heartbeat
+ * (`in-call-heartbeat.ts`): the kernel reports progress from inside a long
+ * call, so a slow element keeps its worker "heard" and is neither replayed nor
+ * skipped. Only a call that stops reporting reaches this recovery. Without the
+ * heartbeat, the 45 s / 90 s wall-clock budgets below decided whether a slow
+ * element loaded at all, so its geometry varied with the user's CPU speed.
  */
 
 /** Silence budget for one busy worker inside a MULTI-job call before it is

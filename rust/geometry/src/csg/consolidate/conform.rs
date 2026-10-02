@@ -21,50 +21,16 @@
 //! Split out of `consolidate.rs` to keep both files under the module-size ratchet.
 
 mod emit;
+mod open_edges;
 mod raw;
 mod snap;
 
 pub(super) use emit::emit_plans;
+pub(super) use open_edges::count_open_boundary_edges_at;
 use raw::conform_raw_triangles;
 use snap::snap_near_duplicates;
 
-use crate::mesh::Mesh;
 use nalgebra::{Point3, Vector3};
-use rustc_hash::FxHashMap;
-
-/// [`count_open_boundary_edges`] on an explicit merge grid. The 1 mm default hides
-/// the T-junction the cross-bucket conform targets (a 0.1 mm-scale chord deviation
-/// merges away), so the conform's accept/reject decision uses 0.1 mm — the same grid
-/// the #098 / #217 measurements are taken on.
-pub(super) fn count_open_boundary_edges_at(mesh: &Mesh, scale: f64) -> usize {
-    if mesh.positions.len() < 9 || mesh.indices.len() < 3 {
-        return 0;
-    }
-    let q = |v: f32| (v as f64 * scale).round() as i64;
-    let mut vid: FxHashMap<(i64, i64, i64), u32> = FxHashMap::default();
-    let mut id_of = |i: usize| -> u32 {
-        let k = (
-            q(mesh.positions[i * 3]),
-            q(mesh.positions[i * 3 + 1]),
-            q(mesh.positions[i * 3 + 2]),
-        );
-        let next = vid.len() as u32;
-        *vid.entry(k).or_insert(next)
-    };
-    let mut bal: FxHashMap<(u32, u32), i32> = FxHashMap::default();
-    for tri in mesh.indices.chunks_exact(3) {
-        let (a, b, c) = (
-            id_of(tri[0] as usize),
-            id_of(tri[1] as usize),
-            id_of(tri[2] as usize),
-        );
-        for (x, y) in [(a, b), (b, c), (c, a)] {
-            let (key, s) = if x < y { ((x, y), 1) } else { ((y, x), -1) };
-            *bal.entry(key).or_insert(0) += s;
-        }
-    }
-    bal.values().filter(|&&v| v != 0).count()
-}
 
 /// Perpendicular / endpoint tolerance for the cross-bucket conform (0.1 mm) — the
 /// same 0.1 mm as the seam-vertex quantisation, and two orders below the smallest
@@ -267,6 +233,7 @@ pub(super) fn build_seam_map(plans: &[PlanBucket]) -> SeamMap {
 pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
     let mut changed = false;
     for plan in plans.iter_mut() {
+        crate::progress::tick();
         if plan.regions.is_empty() && plan.raw.is_empty() {
             continue;
         }
@@ -365,13 +332,18 @@ pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
                 plan.v_axis,
             );
             for hole in region.holes_conformed.iter_mut() {
+                crate::progress::tick();
                 this |= snap_near_duplicates(hole, &cands, plan.origin, plan.u_axis, plan.v_axis);
             }
             // A candidate this region ALREADY carries must not be re-inserted: a
             // duplicate ring vertex fails the CDT and would drop the whole region.
+            // Each candidate scans every ring vertex, so a many-hole face can
+            // spend seconds here: report progress every 64 candidates.
+            let mut scanned = 0u32;
             let local: Vec<nalgebra::Point2<f64>> = cands
                 .iter()
                 .copied()
+                .inspect(|_| crate::progress::tick_strided(&mut scanned, 0x3F))
                 .filter(|q| {
                     !region
                         .outer
@@ -385,6 +357,7 @@ pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
             if !local.is_empty() {
                 this |= conform_ring(&mut region.outer_conformed, &local);
                 for hole in region.holes_conformed.iter_mut() {
+                    crate::progress::tick();
                     this |= conform_ring(hole, &local);
                 }
             }

@@ -114,6 +114,13 @@ export async function resolveMatchers(validatedResults, results, { env = process
   if (!available(env)) {
     return { forValidated: fallback, forPosted: fallback, semantic: false, note: 'stem matcher (set TYPESAFE_API_KEY for the semantic matcher)' };
   }
+  // With no judge/cap change these are the identical reviews. Asking the
+  // probabilistic matcher twice can invent a recall change with no code change.
+  if (JSON.stringify(validatedResults) === JSON.stringify(results)) {
+    const sem = await semanticMatcher(validatedResults, { env, fetchImpl, fallback, log });
+    return { forValidated: sem.matcher, forPosted: sem.matcher, semantic: true,
+      note: `semantic matcher, ${sem.calls} TypeSafe match(es), identical stages reused${sem.failures ? `, ${sem.failures} fell back to stems` : ''}` };
+  }
   const sem = await semanticMatcher([...validatedResults, ...results], { env, fetchImpl, fallback, log });
   const offset = validatedResults.length;
   return {

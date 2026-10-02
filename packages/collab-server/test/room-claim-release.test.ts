@@ -21,6 +21,7 @@ import { createAccessControl, type AccessControl, type AccessControlOptions } fr
 import { startCollabServer, type CollabServerHandle } from '../src/server.js';
 import { MemoryPersistence } from '../src/persistence.js';
 import { signRoomToken, verifyRoomToken, type RoomTokenClaims } from '../src/room-token.js';
+import { createRoomClaims } from '../src/room-claims.js';
 
 const SECRET = 'test-secret-6581';
 
@@ -466,5 +467,88 @@ describe('#6581 durable claim state', () => {
       JSON.stringify({ claimedRooms: ['r'], pendingClaims: { r: { at: 'yesterday', tokens: {} } } }),
     );
     expect(() => createAccessControl({ secret: SECRET, dir })).toThrow(/refusing to start open/);
+  });
+});
+
+/** An unpaired UTF-16 surrogate: `encodeURIComponent` throws on it. */
+const ILL_FORMED = '\ud800';
+
+describe('#6581 room ids that cannot be encoded', () => {
+  it('the token and release routes refuse an ill-formed room id at the door', async () => {
+    const base = await serve(create(freshDir()));
+    const res = await post(`${base}/collab/token`, { roomId: ILL_FORMED, role: 'admin' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'invalid-request' });
+    const forged = signRoomToken({ roomId: ILL_FORMED, role: 'admin', secret: SECRET, now });
+    expect(await release(base, ILL_FORMED, forged)).toBe(400);
+    expect((await mint(base, 'well-formed 😀')).status, 'a paired surrogate is fine').toBe(200);
+  });
+
+  it('a claim whose data dir entry cannot be checked is treated as in use, never released or expired', async () => {
+    const dir = freshDir();
+    const at = Math.floor(clock / 1000) - 7200;
+    const token = signRoomToken({ roomId: ILL_FORMED, role: 'admin', secret: SECRET, now });
+    const { jti, exp } = claimsOf(token);
+    // Written by a build that accepted such ids; its token is still live.
+    fs.writeFileSync(
+      path.join(dir, 'access-control.json'),
+      JSON.stringify({ claimedRooms: [ILL_FORMED], pendingClaims: { [ILL_FORMED]: { at, tokens: { [jti]: exp } } } }),
+    );
+    const ac = create(dir);
+    expect(await ac.serverOptions.releaseEndpoint!.release(claimsOf(token))).toBe('in-use');
+    clock += 8 * 24 * 3600_000; // past every token it recorded
+    await ac.serverOptions.tokenEndpoint!.authorize(
+      { roomId: 'sweep-trigger', role: 'admin' },
+      { bearerClaims: null, clientIp: '192.0.2.9', mint: { jti: 'trigger', exp: Math.floor(clock / 1000) + 60 } },
+    );
+    await ac.flush();
+    expect(stateOf(dir).claimedRooms).toContain(ILL_FORMED);
+  });
+
+  it('a content check that throws keeps that one claim and lets the pass finish (ledger level)', () => {
+    const past = Math.floor(clock / 1000) - 3600;
+    const ledger = createRoomClaims({
+      maxClaimedRooms: 10,
+      claimedRooms: [],
+      pendingClaims: {
+        throws: { at: past, tokens: { a: past } },
+        plain: { at: past, tokens: { b: past } },
+      },
+      hasContent: (room) => {
+        if (room === 'throws') throw new Error('cannot check');
+        return false;
+      },
+    });
+    expect(() => ledger.expire(Math.floor(clock / 1000))).not.toThrow();
+    expect(ledger.has('plain'), 'the other claim still expired').toBe(false);
+    expect(ledger.has('throws')).toBe(true);
+    expect(ledger.isPending('throws'), 'kept as in use, never evaluated again').toBe(false);
+  });
+
+  it('one such claim neither stops the server starting nor blocks every later state write', async () => {
+    const dir = freshDir();
+    const expired = Math.floor(clock / 1000) - 3600;
+    fs.writeFileSync(
+      path.join(dir, 'access-control.json'),
+      JSON.stringify({
+        claimedRooms: [ILL_FORMED, 'ordinary'],
+        pendingClaims: {
+          [ILL_FORMED]: { at: expired - 60, tokens: { bad: expired } },
+          ordinary: { at: expired - 60, tokens: { ok: expired } },
+        },
+      }),
+    );
+    let ac: AccessControl | undefined;
+    expect(() => {
+      ac = create(dir);
+    }, 'the server starts').not.toThrow();
+    const base = await serve(ac!);
+    const bystander = await mint(base, 'bystander');
+    expect(await join(base, 'bystander', bystander.token!), 'an unrelated join still gets its confirmation written').toBe('admitted');
+    await ac!.flush();
+    const state = stateOf(dir);
+    expect(state.claimedRooms, 'the ordinary expired claim was still swept').not.toContain('ordinary');
+    expect(state.claimedRooms).toContain(ILL_FORMED);
+    expect(() => create(dir), 'and the server starts again from what it wrote').not.toThrow();
   });
 });

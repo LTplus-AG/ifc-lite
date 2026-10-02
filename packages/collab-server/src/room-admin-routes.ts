@@ -10,7 +10,14 @@
  */
 
 import type * as http from 'node:http';
-import { bearerToken, readJsonBody, verifyRoomToken, type RoomTokenClaims, type SecretResolver } from './room-token.js';
+import {
+  bearerToken,
+  isIllFormedRoomId,
+  readJsonBody,
+  verifyRoomToken,
+  type RoomTokenClaims,
+  type SecretResolver,
+} from './room-token.js';
 
 // ── HTTP revoke route ────────────────────────────────────────────────────────
 
@@ -265,7 +272,7 @@ export async function handleReleaseRequest(
     return reply(reason === 'body-too-large' ? 413 : 400, { error: reason });
   }
   const roomId = (body as Partial<ReleaseRequestBody>)?.roomId;
-  if (typeof roomId !== 'string' || !roomId) return reply(400, { error: 'invalid-request' });
+  if (typeof roomId !== 'string' || !roomId || isIllFormedRoomId(roomId)) return reply(400, { error: 'invalid-request' });
 
   const bearer = verifyRoomToken(bearerToken(req) ?? '', { secret: opts.secret, room: roomId, now: opts.now });
   if (!bearer || bearer.role !== 'admin' || (opts.isRevoked && (await opts.isRevoked(bearer.jti)))) {

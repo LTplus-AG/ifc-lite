@@ -20,12 +20,31 @@ import { FALLBACK_TOKEN_RETENTION_SEC, type PendingClaimRecord } from './room-cl
 /**
  * Whether `FilePersistence` would load a log for `roomId` from `dir`: under
  * its encoded name, or under the pre-encoding sanitized name it still reads.
+ * Answers `true` whenever it cannot tell (an id with no encoded form, an I/O
+ * error): the caller never releases or expires a room that has a log, so
+ * "cannot tell" must land on the side that keeps the claim.
  */
 export function hasPersistedRoomLog(dir: string, roomId: string): boolean {
-  return (
-    fs.existsSync(path.join(dir, `${encodeURIComponent(roomId)}.log`)) ||
-    fs.existsSync(path.join(dir, `${roomId.replace(/[^a-zA-Z0-9._-]/g, '_')}.log`))
-  );
+  const exists = (name: string): boolean => {
+    try {
+      return fs.statSync(path.join(dir, name), { throwIfNoEntry: false }) !== undefined;
+    } catch (err) {
+      // A name too long for the file system can hold no log.
+      if ((err as NodeJS.ErrnoException).code === 'ENAMETOOLONG') return false;
+      // eslint-disable-next-line no-console
+      console.warn(`[collab-server] cannot check ${name} in the data dir; keeping its claim:`, err);
+      return true;
+    }
+  };
+  let encoded: string;
+  try {
+    encoded = encodeURIComponent(roomId);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[collab-server] room id has no encoded form; keeping its claim:', err);
+    return true;
+  }
+  return exists(`${encoded}.log`) || exists(`${roomId.replace(/[^a-zA-Z0-9._-]/g, '_')}.log`);
 }
 
 /**

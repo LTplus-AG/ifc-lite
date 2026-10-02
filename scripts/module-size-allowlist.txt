@@ -178,7 +178,7 @@
    415 packages/collab-server/src/access-control.ts
    805 packages/collab-server/src/layer-registry-route.ts
    691 packages/collab-server/src/room-manager.ts
-   489 packages/collab-server/src/room-token.ts
+   499 packages/collab-server/src/room-token.ts
    673 packages/collab-server/src/server.ts
    653 packages/collab/src/doc/entity.ts
    591 packages/create-ifc-lite/src/templates/react.ts

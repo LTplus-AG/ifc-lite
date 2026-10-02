@@ -340,6 +340,15 @@ export function readJsonBody(req: http.IncomingMessage, maxBytes: number): Promi
   });
 }
 
+/**
+ * Whether a room id holds an unpaired UTF-16 surrogate. No storage key can be
+ * derived from one (`encodeURIComponent` throws) and no websocket path decodes
+ * to one, so such a room could be claimed but never used.
+ */
+export function isIllFormedRoomId(roomId: string): boolean {
+  return /\p{Cs}/u.test(roomId);
+}
+
 export function bearerToken(req: http.IncomingMessage): string | undefined {
   const header = req.headers['authorization'];
   if (typeof header !== 'string') return undefined;
@@ -422,6 +431,7 @@ export async function handleTokenMintRequest(
   if (
     typeof reqBody?.roomId !== 'string' ||
     !reqBody.roomId ||
+    isIllFormedRoomId(reqBody.roomId) ||
     typeof reqBody.role !== 'string' ||
     !VALID_ROLES.has(reqBody.role)
   ) {

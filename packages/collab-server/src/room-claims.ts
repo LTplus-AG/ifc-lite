@@ -67,7 +67,11 @@ export interface RoomClaims {
   /** Pending to confirmed. Returns whether it was pending. */
   confirm(room: string): boolean;
   release(room: string, bearerJti: string): ReleaseOutcome;
-  /** Drop pending claims whose tokens have all expired; returns how many. */
+  /**
+   * Drop pending claims whose tokens have all expired (one claim, or all).
+   * Returns how many claims changed: expired, or confirmed because the room
+   * turned out to hold data.
+   */
   expire(nowSec: number, room?: string): number;
   snapshot(): { claimedRooms: string[]; pendingClaims: Record<string, PendingClaimRecord> };
 }
@@ -100,11 +104,28 @@ export function createRoomClaims(opts: {
     if (claim.tokens.size === 0) return claim.at + FALLBACK_TOKEN_RETENTION_SEC;
     return Math.max(...claim.tokens.values());
   };
-  const expireOne = (room: string, claim: PendingClaim, nowSec: number): boolean => {
-    if (expiresAt(claim) + EXPIRY_SLACK_SEC >= nowSec || opts.hasContent(room)) return false;
+  // A room with data is in use for good, so its claim is confirmed and never
+  // evaluated again. A check that throws counts as data, for this one claim
+  // only: a single bad entry cannot abort a pass over all of them.
+  const inUse = (room: string): boolean => {
+    let found: boolean;
+    try {
+      found = opts.hasContent(room);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[collab-server] could not check a pending claim for room data; keeping it:', err);
+      found = true;
+    }
+    if (found) pending.delete(room);
+    return found;
+  };
+  /** 'expired', 'confirmed' (it holds data), or null when it stays pending. */
+  const expireOne = (room: string, claim: PendingClaim, nowSec: number): 'expired' | 'confirmed' | null => {
+    if (expiresAt(claim) + EXPIRY_SLACK_SEC >= nowSec) return null;
+    if (inUse(room)) return 'confirmed';
     pending.delete(room);
     claimed.delete(room);
-    return true;
+    return 'expired';
   };
 
   return {
@@ -133,7 +154,7 @@ export function createRoomClaims(opts: {
       const claim = pending.get(room);
       if (!claim) return claimed.has(room) ? { kind: 'in-use' } : { kind: 'not-holder' };
       if (!claim.tokens.has(bearerJti)) return { kind: 'not-holder' };
-      if (opts.hasContent(room)) return { kind: 'in-use' };
+      if (inUse(room)) return { kind: 'in-use' };
       pending.delete(room);
       claimed.delete(room);
       return { kind: 'released', tokens: claim.tokens };
@@ -144,6 +165,7 @@ export function createRoomClaims(opts: {
         return claim && expireOne(room, claim, nowSec) ? 1 : 0;
       }
       let n = 0;
+      // Deleting the visited entry while iterating a Map is well defined.
       for (const [r, claim] of pending) if (expireOne(r, claim, nowSec)) n++;
       return n;
     },

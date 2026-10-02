@@ -175,7 +175,7 @@
    457 packages/codegen/src/express-parser.ts
    660 packages/codegen/src/rust-generator.ts
    640 packages/codegen/src/typescript-generator.ts
-   415 packages/collab-server/src/access-control.ts
+   426 packages/collab-server/src/access-control.ts
    805 packages/collab-server/src/layer-registry-route.ts
    691 packages/collab-server/src/room-manager.ts
    499 packages/collab-server/src/room-token.ts

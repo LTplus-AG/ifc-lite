@@ -73,6 +73,14 @@ Set `COLLAB_TOKEN_SECRET` to switch on **signed room tokens**:
   all of its tokens have expired. A room that was joined, or has data on disk,
   is never released or expired: the release answers `409`.
 
+The CLI server enables pending claims. When embedding `createAccessControl`
+yourself, pass `claimsPendingUntilJoin: true` only if the server authenticates
+joins with `accessControl.serverOptions.authenticate`, as is or wrapped by a
+function that calls it: a join through that function is what confirms a room.
+With your own `authenticate` (or custom persistence that the data-dir check
+cannot see), leave the option off. Every claim is then permanent from its first
+mint, as before, and `POST /collab/release` answers `409`.
+
 ```sh
 COLLAB_TOKEN_SECRET="$(openssl rand -hex 32)" \
 COLLAB_DATA_DIR=/var/lib/ifc-collab \

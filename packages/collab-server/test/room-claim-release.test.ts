@@ -45,10 +45,34 @@ function freshDir(): string {
   return dir;
 }
 
+/** The bin's configuration: the server uses `serverOptions.authenticate` as is. */
 function create(dir: string, extra: Partial<AccessControlOptions> = {}): AccessControl {
-  const ac = createAccessControl({ secret: SECRET, dir, now, persistDebounceMs: 1, mintRateCapacity: 100, ...extra });
+  const ac = createAccessControl({
+    secret: SECRET,
+    dir,
+    now,
+    persistDebounceMs: 1,
+    mintRateCapacity: 100,
+    claimsPendingUntilJoin: true,
+    ...extra,
+  });
   instances.push(ac);
   return ac;
+}
+
+/** A deployment that keeps the token and release routes but authenticates joins itself. */
+async function serveWithOwnAuthenticate(ac: AccessControl): Promise<string> {
+  const handle = await startCollabServer({
+    port: 0,
+    persistence: new MemoryPersistence(),
+    ...ac.serverOptions,
+    authenticate: (token, room) => {
+      const claims = verifyRoomToken(token ?? '', { secret: SECRET, room, now });
+      return claims ? { userId: `own-${claims.jti}`, role: claims.role } : null;
+    },
+  });
+  handles.push(handle);
+  return `http://127.0.0.1:${(handle.httpServer.address() as { port: number }).port}`;
 }
 
 async function serve(ac: AccessControl): Promise<string> {
@@ -468,6 +492,43 @@ describe('#6581 durable claim state', () => {
       JSON.stringify({ claimedRooms: ['r'], pendingClaims: { r: { at: 'yesterday', tokens: {} } } }),
     );
     expect(() => createAccessControl({ secret: SECRET, dir })).toThrow(/refusing to start open/);
+  });
+});
+
+describe('#6581 deployments that do not opt in keep every claim (as before #6581)', () => {
+  it('with its own authenticate, a joined room is never released', async () => {
+    const base = await serveWithOwnAuthenticate(create(freshDir(), { claimsPendingUntilJoin: undefined }));
+    const admin = await mint(base, 'own-auth', { ttlSeconds: 60 });
+    expect(await join(base, 'own-auth', admin.token!)).toBe('admitted');
+    expect(await release(base, 'own-auth', admin.token)).toBe(409);
+  });
+
+  it('with its own authenticate, a joined room never expires into a stranger\'s hands', async () => {
+    const base = await serveWithOwnAuthenticate(create(freshDir(), { claimsPendingUntilJoin: undefined }));
+    const admin = await mint(base, 'own-auth-2', { ttlSeconds: 60 });
+    expect(await join(base, 'own-auth-2', admin.token!)).toBe('admitted');
+    clock += 200_000;
+    expect((await mint(base, 'own-auth-2')).status).toBe(403);
+  });
+
+  it('even with the stock authenticate, a claim is permanent unless the deployment opts in', async () => {
+    const dir = freshDir();
+    const base = await serve(create(dir, { claimsPendingUntilJoin: undefined, maxClaimedRooms: 1 }));
+    const admin = await mint(base, 'not-opted-in', { ttlSeconds: 60 });
+    expect(await release(base, 'not-opted-in', admin.token)).toBe(409);
+    clock += 200_000;
+    expect((await mint(base, 'other')).status, 'the slot is held, as on main').toBe(403);
+    await instances[0].flush();
+    expect(stateOf(dir).pendingClaims).toEqual({});
+  });
+
+  it('turning the option off confirms the claims a previous run left pending', async () => {
+    const dir = freshDir();
+    const ac = create(dir);
+    const admin = await mint(await serve(ac), 'left-pending');
+    await ac.flush();
+    const restarted = create(dir, { claimsPendingUntilJoin: undefined });
+    expect(await restarted.serverOptions.releaseEndpoint!.release(claimsOf(admin.token!))).toBe('in-use');
   });
 });
 

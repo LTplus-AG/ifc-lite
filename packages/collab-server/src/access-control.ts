@@ -15,9 +15,8 @@
  *     hand it back (`POST /collab/release`, which revokes every token minted
  *     for it), and it expires on its own once all of those tokens have. The
  *     join that confirms a claim is admitted only once that is on disk.
- *     Joins confirm claims through `serverOptions.authenticate`: a deployment
- *     that replaces it leaves its claims pending, so each expires with its
- *     tokens unless the room has a log in `dir`.
+ *     Only with `claimsPendingUntilJoin`, since joins confirm claims through
+ *     `serverOptions.authenticate`; without it every claim is permanent.
  *
  * The deny-list + claim ledger persist to `access-control.json` in the data
  * dir so they survive restarts (needs a durable volume to actually persist).
@@ -69,6 +68,15 @@ export interface AccessControlOptions {
   maxRateLimiters?: number;
   /** Clock in ms since epoch (default `Date.now`), for minting, verifying and claim expiry. */
   now?: () => number;
+  /**
+   * Keep a fresh room's claim pending until its first join, so a failed
+   * creation can be released (`POST /collab/release`) or expire (#6581).
+   * Set it only when the server authenticates joins with
+   * `serverOptions.authenticate` (as is, or a wrapper that calls it): that
+   * is what confirms a joined room. Default off: every claim is permanent
+   * from its first mint, and a release answers 409.
+   */
+  claimsPendingUntilJoin?: boolean;
 }
 
 export interface AccessControl {
@@ -131,10 +139,13 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
   // every serialized write — without limit. Legitimate multi-room deployments
   // stay well under the default 100k cap.
   const maxClaimedRooms = opts.maxClaimedRooms ?? 100_000;
+  const pendingUntilJoin = opts.claimsPendingUntilJoin === true;
+  // Not opted in: claims an earlier run left pending become permanent too.
+  const confirmedOnLoad = pendingUntilJoin ? 0 : loadedPending.size;
   const roomClaims = createRoomClaims({
     maxClaimedRooms,
-    claimedRooms: loadedRooms,
-    pendingClaims: loadedPending,
+    claimedRooms: pendingUntilJoin ? loadedRooms : [...loadedRooms, ...loadedPending.keys()],
+    pendingClaims: pendingUntilJoin ? loadedPending : new Map(),
     hasContent: (room) => hasPersistedRoomLog(dir, room),
   });
   /** Drop revocations whose tokens have expired on their own (bounded set). */
@@ -233,7 +244,7 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
   // Rooms adopted from a missing-state migration (see above), and claims that
   // expired while the server was down, must reach disk without waiting for
   // the next claim to trigger a write.
-  if ((stateRaw === null && roomClaims.size > 0) || expiredOnLoad > 0) persist();
+  if ((stateRaw === null && roomClaims.size > 0) || expiredOnLoad + confirmedOnLoad > 0) persist();
 
   // Per-IP rate limiter for the unauthenticated mint path. A fresh room's first
   // mint needs no bearer, so without this an attacker can loop `POST
@@ -361,6 +372,7 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
           expired += roomClaims.expire(t);
           outcome = roomClaims.claim(room, t, mint);
         }
+        if (outcome === 'claimed' && !pendingUntilJoin) roomClaims.confirm(room);
         if (expired > 0 || outcome === 'claimed') persist();
         if (outcome === 'full') {
           // eslint-disable-next-line no-console

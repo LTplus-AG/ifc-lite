@@ -30,6 +30,37 @@ Source CSG may retriangulate: Haus wall #17040 changes 20 vertices/36 faces to
 The native oracle samples vertices and triangle centroids, requires the actual
 opening cut, checks surface area, and retains GUID/Name/style ownership.
 
+## Committed real-WASM boundary coverage
+
+CI exposed two outdated exporter assertions that the earlier local native and
+scratch boundary runs had not exercised. This was a local boundary-test coverage
+gap, not a CI flake. Genuine unit-scale rotations, including an ordinate just
+above `f64::EPSILON`, now assert unsnapped affine placement and immutable source,
+edits and orphan geometry; nonunit-scale refusals remain tested. Modified entity
+accounting is derived from actual changed original IDs, separately from new IDs.
+
+The committed exporter fixture contract authors 15°/50° map operations in memory
+on the original catalogued MiniBIM/Haus files. It checks all 2,668/127 product
+identities and placement/representation references, changed root frames,
+canonical neutral map attributes, retained CRS/map units, selected edits, and
+ordinary-export immutability. Real geometry processing checks the complete mesh
+identity set, retained colors and bidirectional vertex/triangle-centroid surface
+distance for three distinct opening hosts and a door per model:
+
+| Fixture | Sampled ExpressIds | Maximum surface distance |
+| --- | --- | --- |
+| Haus | 17040, 18698, 21966, 17468 | 0.000010791 m |
+| MiniBIM | 135719, 135923, 137489, 136868 | 0.000288835 m |
+
+The full root Turbo exporter suite passed 1,731 tests across 142 files with one
+existing skip. The final affected boundary files passed 14/14 with zero skips,
+using required fixture mode and the accepted `f2114e…` runtime verified before
+and after the run. These authored-map fixture tests complement, rather than
+replace, the actual downloaded writer-file/provider acceptance below.
+In an isolated checkout with both fixture paths absent, optional mode skipped
+both tests with the download/build instruction; required mode failed both
+direct missing-fixture assertions after successful dependency builds.
+
 ## Actual browser and provider acceptance, 2026-10-02
 
 Fresh first-load tabs at the frozen production preview loaded the original

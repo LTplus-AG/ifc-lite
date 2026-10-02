@@ -80,7 +80,7 @@ import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { cargoLockPatchPaths, normalizeRestoredPaths, partialCargoManifestSelection } from './lib/revert-oracle-cargo-lock.mjs';
 import { parseRevertOracleArgs } from './lib/revert-oracle-args.mjs';
-import { productionRevertPaths } from './lib/revert-oracle-paths.mjs';
+import { productionRevertPaths, unsupportedProductionRenames } from './lib/revert-oracle-paths.mjs';
 import {
   parseNameStatus,
   classifyDiff,
@@ -262,6 +262,8 @@ resultContext = {
   tests: testEntries.map((entry) => entry.path),
 };
 for (const w of warnings) console.log(`  WARNING: ${w}`);
+const unsupportedRenames = unsupportedProductionRenames(entries, opts.only);
+if (unsupportedRenames.length) die(EXIT_INCONCLUSIVE, 'unsupported cross-category production rename; non-production sources must stay pinned.', unsupportedRenames, { verdict: 'INCONCLUSIVE' });
 
 // The changesets release PR ("chore: version packages") changes only
 // package.json `"version"` fields and the matching Cargo.toml version

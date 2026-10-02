@@ -197,7 +197,7 @@ describe('heading style in what the PDF draws (#6632)', () => {
       { ...IDS, title: 'H:ids', ...STYLE },
       { ...MANUAL, title: 'H:manual', ...STYLE },
     ]);
-    await generateDocumentPdf({ document, aggregations: new Map(), chartMessages: new Map(), topics: new Map(), tables: new Map([['rows', { status: 'ok' as const, kind: 'validation' as const, model: { columns: [{ label: 'Rule', numeric: false }], rows: rows(2), totalRows: 2 } }]]), bindings: { get: () => undefined } as never, snapshotIds: () => [] } as never, seams);
+    await generateDocumentPdf({ document, aggregations: new Map(), chartMessages: new Map(), topics: new Map(), tables: new Map([['rows', { status: 'ok' as const, kind: 'validation' as const, model: { columns: [{ label: 'Rule', numeric: false }], rows: rows(2), totalRows: 2 } }]]), bindings: { models: [], activeModelId: null, today: new Date(0) }, snapshotIds: () => [] }, seams);
     for (const kind of ['text', 'image', 'chart', 'table', 'rows', 'ids', 'manual']) {
       const op = ops.find((o) => o.text === `H:${kind}`);
       assert.ok(op, `${kind} heading reached the PDF`);
@@ -209,7 +209,7 @@ describe('heading style in what the PDF draws (#6632)', () => {
 });
 
 describe('heading style in the saved format (#6632)', () => {
-  const doc = (block: object): unknown => ({ version: DOCUMENT_VERSION, id: 'd', name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'text', id: 't', style: 'body', text: 'x', ...block }] });
+  const doc = (block: object) => ({ version: DOCUMENT_VERSION, id: 'd', name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'text', id: 't', style: 'body', text: 'x', ...block }] });
   it('accepts the bounds and refuses a size outside them or a colour that is not #RRGGBB, naming the field', () => {
     assert.deepEqual(validateDocumentSpec(doc({ titleFontSize: BLOCK_TITLE_SIZE_MIN })), []);
     assert.deepEqual(validateDocumentSpec(doc({ titleFontSize: BLOCK_TITLE_SIZE_MAX, titleTextColor: '#aabbcc', titleBackgroundColor: '#000000' })), []);

@@ -31,6 +31,21 @@ const authored = () => parseDocumentFile(JSON.stringify({ ...base,
     logo: { ...logo, height: 40 }, showDate: true, showPageNumbers: true },
 }));
 
+// Import owns fresh identities; every authored value and binding is otherwise preserved.
+function assertImportedPayload(imported: DocumentSpec, source: DocumentSpec): void {
+  assert.notEqual(imported.id, source.id);
+  assert.match(imported.id, /^document-/);
+  assert.equal(imported.blocks.length, source.blocks.length);
+  assert.equal(new Set(imported.blocks.map(block => block.id)).size, source.blocks.length);
+  for (const block of imported.blocks) {
+    assert.match(block.id, /^block-/);
+    assert.ok(source.blocks.every(original => original.id !== block.id));
+  }
+  assert.deepEqual({ ...imported, id: source.id,
+    blocks: imported.blocks.map((block, index) => ({ ...block, id: source.blocks[index].id })),
+  }, source, 'import preserves the full authored payload, including unresolved template bindings (#6610)');
+}
+
 afterEach(() => { cleanup(); localStorage.clear(); });
 
 async function print(document: DocumentSpec, captured = today) {
@@ -128,7 +143,7 @@ it('authors and resets an actual footer through the mounted editor, persisted im
   }
   const stored = useViewerStore.getState().documents[0];
   const imported = parseDocumentFile(JSON.stringify(stored));
-  assert.deepEqual(imported, stored);
+  assertImportedPayload(imported, stored);
   await useViewerStore.getState().retryDocumentsSave();
   assert.deepEqual((await loadDocuments())[0], stored);
   const pages = await print(imported);
@@ -171,10 +186,13 @@ it('preserves existing no-band PDF text, counters, frame positions and overflow 
 
 
 it('migrates an old version-11 document without inventing authored footer content (#6610)', () => {
-  const old = { ...base, version: 11, pageHeading: { text: 'Existing heading', font: 'times', fontSize: 12 } };
+  const old: DocumentSpec = { ...base, version: 11,
+    pageHeading: { text: 'Existing {project.name} heading', font: 'times', fontSize: 12 },
+    blocks: [{ kind: 'text', id: 'evidence', style: 'body', text: `${lines}\n{project.name}` }],
+  };
   const migrated = parseDocumentFile(JSON.stringify(old));
   assert.equal(migrated.version, DOCUMENT_VERSION);
   assert.deepEqual(migrated.pageHeading, old.pageHeading);
   assert.equal(migrated.pageFooter, undefined);
-  assert.deepEqual(migrated.blocks, old.blocks);
+  assertImportedPayload(migrated, { ...old, version: DOCUMENT_VERSION });
 });

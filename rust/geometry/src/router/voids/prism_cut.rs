@@ -2905,6 +2905,7 @@ impl GeometryRouter {
         const REFINE_REGION_PAD: f64 = 1.0e-3;
         let mut refine_boxes: Vec<([f64; 3], [f64; 3])> = Vec::new();
         for (cand, veto) in cands.iter().zip(&vetoed) {
+            crate::progress::tick();
             let mut ok = false;
             if *veto {
                 defer(6);

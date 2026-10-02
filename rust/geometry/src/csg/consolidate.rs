@@ -262,6 +262,7 @@ impl ClippingProcessor {
             if tris.is_empty() {
                 continue;
             }
+            crate::progress::tick();
             let bid = bid as u32;
             // Use the FIRST triangle's normal/anchor for a stable 2D basis;
             // all tris in this bucket share the plane by construction. EXCEPT

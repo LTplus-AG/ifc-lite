@@ -4,6 +4,8 @@ The **Document** panel is a page over the model: text whose fields read the load
 
 ## Blocks
 
+Use **Copy block** beside the move and remove buttons to place an independent copy immediately after any block. The copy keeps its text, formatting, fields and source references, and is selected for editing. Editing or removing it leaves the original unchanged.
+
 | Block | What it holds | In the PDF |
 |-------|---------------|------------|
 | **Text with fields** | `title`, `heading`, `subheading`, `body`, `small` or `caption` text; optional Helvetica, Times or Courier font and 6–48 pt size; free RGB text and background colours; `Full` or `Half` width. `{path}` placeholders resolve against the model (below). *Insert field* drops one at the caret: project, site, storeys, the selected element's attributes and property values. | Wrapped, paginated; a heading never sits alone at the bottom of a page |

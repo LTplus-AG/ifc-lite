@@ -2349,6 +2349,14 @@ export function meshOutline2d(positions: Float32Array, indices: Uint32Array, axi
 export function resolve2d(a: Contours2D): Contours2D;
 
 /**
+ * Install (or, with `undefined`, remove) the callback invoked at most once a
+ * second while geometry work is in progress inside a WASM call. It runs
+ * synchronously inside that call, so it must only do something cheap such as
+ * `postMessage`, and must not call back into this module.
+ */
+export function setGeometryProgressCallback(callback?: Function | null): void;
+
+/**
  * Split a mesh into one closed solid per zone, plus the remainder.
  *
  * `positions` is flat XYZ (f64, caller's frame), `indices` flat triangle
@@ -2650,6 +2658,7 @@ export interface InitOutput {
     readonly profileentryjs_outerPoints: (a: number) => number;
     readonly profileentryjs_transform: (a: number) => number;
     readonly resolve2d: (a: number) => number;
+    readonly setGeometryProgressCallback: (a: number) => void;
     readonly simplifiedmeshes_cavitiesDropped: (a: number, b: number) => void;
     readonly simplifiedmeshes_elementIds: (a: number, b: number) => void;
     readonly simplifiedmeshes_indexCounts: (a: number, b: number) => void;

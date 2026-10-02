@@ -15,6 +15,7 @@ import { useWindowFileDrop } from './useWindowFileDrop';
 import { ViewportOverlays } from './ViewportOverlays';
 import { WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
 import { ViewportWelcomeCard } from './ViewportWelcomeCard';
+import { useReloadResume } from '@/hooks/useReloadResume';
 import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
 import { WelcomeFooterChips } from './WelcomeFooterChips';
 import { useTranslation } from '@/i18n';
@@ -512,6 +513,9 @@ export function ViewportContainer() {
     const files = supported.map((o) => o.file);
     prepareAndRoute(files, supported.map((o) => o.handle));
   }, [prepareAndRoute, isSupportedFile, guardWebGpu]);
+
+  // After a stale-deployment reload, reopen what was open (or ask for it).
+  useReloadResume(webgpu.supported && !webgpu.checking, routeLoad, () => { void handleOpenClick(); });
 
   const handleStartBlank = useCallback(async () => {
     if (!guardWebGpu(() => { void handleStartBlank(); })) return;

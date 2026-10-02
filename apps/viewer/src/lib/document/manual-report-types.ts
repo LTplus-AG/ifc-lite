@@ -56,6 +56,8 @@ export interface ManualReportBlock extends ReportProvenance, BlockTitle {
   variant?: 'long' | 'compact';
   /** Missing on older documents: display their existing rings and scores. */
   benchmarks?: boolean;
+  /** Whole-block size, 0.5-2 (#6548); absent is 1. */
+  scale?: number;
   /** Missing on older documents: show their model/recording stamp. Evidence stays saved when hidden. */
   showStamp?: boolean;
   /** The model the answers were recorded against, when there was one (display only). */

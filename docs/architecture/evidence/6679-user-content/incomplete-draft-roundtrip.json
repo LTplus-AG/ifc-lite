@@ -33,7 +33,13 @@
     "coveredPackages": 57
   },
   "limitations": [
-    "Third browser regression is added but awaits final-stack browser run.",
+    "The passedAfter and typecheck fields above record the historical scoped run; final four-browser verification and current source hashes are recorded in evidence.json.",
     "Scoped raw-draft evidence does not certify 3D raster output."
-  ]
+  ],
+  "finalBrowserVerification": {
+    "evidence": "evidence.json",
+    "passed": 4,
+    "failed": 0,
+    "unfinishedDraftRoundtrip": "passed through export, import, reload, re-export and preserved-original download"
+  }
 }

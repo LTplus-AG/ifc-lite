@@ -17,7 +17,7 @@
       "result": "passed; all 50 tasks"
     },
     {
-      "command": "TEST_PATTERN='(content-library|ContentStorageNotice|content-import-plan)' pnpm test --filter=@ifc-lite/viewer --env-mode=loose --only",
+      "command": "TEST_PATTERN='(content-controller|content-library|ContentStorageNotice|content-import-plan)' pnpm test --filter=@ifc-lite/viewer --env-mode=loose --only",
       "result": "42 passed, 0 failed; workspace dependencies freshly built; includes 11 native import-planner tests"
     },
     {

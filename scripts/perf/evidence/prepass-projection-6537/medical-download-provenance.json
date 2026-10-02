@@ -1,0 +1,25 @@
+{
+  "downloadedAt": "2026-10-01T23:39:46.500768+00:00",
+  "sourceUrl": "https://tib.eu/data/duraark/BuildingData/01_IFC/NBU_MedicalClinic_ifc.zip",
+  "catalogUrl": "https://github.com/bimdata/BIMData-Research-and-Development/blob/master/pages/IFC_FILES.md",
+  "archiveBytes": 82736494,
+  "archiveSha256": "32b5f8008a39bd7510adc8cae35179ad40a48d13a339e6aa0208ef43d6220a5c",
+  "archiveHeaders": {
+    "Date": "Thu, 01 Oct 2026 23:39:43 GMT",
+    "Server": "Apache/2.4.37 (Red Hat Enterprise Linux)",
+    "Last-Modified": "Mon, 05 Oct 2015 07:50:19 GMT",
+    "ETag": "\"105f5e1d8-4ee756e-52156c3c624c0\"",
+    "Accept-Ranges": "bytes",
+    "Content-Length": "82736494",
+    "Vary": "Accept-Encoding,User-Agent",
+    "Content-Type": "application/zip",
+    "Via": "1.1 tib.eu",
+    "Cache-Control": "max-age=0, no-store",
+    "Connection": "close"
+  },
+  "member": "NBU_MedicalClinic/NBU_MedicalClinic_Eng-MEP.ifc",
+  "bytes": 207337174,
+  "sha256": "b6a007ca9ee852f6579aa1aa2c6982e9219f236873b1f21674d69b6c3503ec0b",
+  "memberCrc32": "24d68e17",
+  "qualification": "Downloaded and CRC/SHA verified only; not loaded, profiled or benchmarked"
+}

@@ -1,0 +1,33 @@
+    Updating crates.io index
+     Locking 31 packages to latest compatible versions
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.26
+   Compiling lexical-util v1.0.7
+   Compiling memchr v2.8.3
+   Compiling thiserror v2.0.21
+   Compiling zmij v1.0.23
+   Compiling serde_core v1.0.229
+   Compiling futures-core v0.3.34
+   Compiling serde_json v1.0.151
+   Compiling minimal-lexical v0.2.1
+   Compiling futures-task v0.3.34
+   Compiling pin-project-lite v0.2.17
+   Compiling slab v0.4.12
+   Compiling rustc-hash v2.1.3
+   Compiling itoa v1.0.18
+   Compiling fast-float2 v0.2.4
+   Compiling smallvec v1.16.2
+   Compiling lexical-write-integer v1.0.6
+   Compiling lexical-parse-integer v1.0.6
+   Compiling nom v7.1.3
+   Compiling lexical-parse-float v1.0.6
+   Compiling lexical-write-float v1.0.6
+   Compiling lexical-core v1.0.6
+   Compiling syn v3.0.6
+   Compiling futures-macro v0.3.34
+   Compiling thiserror-impl v2.0.21
+   Compiling futures-util v0.3.34
+   Compiling ifc-lite-core v20.2.0 (/home/louistrue/wt/6537-owner-cache-review-session6503/rust/core)
+   Compiling ifclite-prepass-projection-census-6537 v0.0.0 (/tmp/6232-takeover/6537-prepass-projection-census)
+    Finished `release` profile [optimized + debuginfo] target(s) in 8.85s

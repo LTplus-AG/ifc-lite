@@ -1,0 +1,10 @@
+    Checking ifc-lite-core v20.3.0 (/home/louistrue/wt/6537-projection-verdict-main29e-session6503/rust/core)
+    Checking ifc-lite-clash v20.3.0 (/home/louistrue/wt/6537-projection-verdict-main29e-session6503/rust/clash)
+    Checking ifc-lite-geometry v20.3.0 (/home/louistrue/wt/6537-projection-verdict-main29e-session6503/rust/geometry)
+    Checking ifc-lite-processing v20.3.0 (/home/louistrue/wt/6537-projection-verdict-main29e-session6503/rust/processing)
+    Checking ifc-lite-export v20.3.0 (/home/louistrue/wt/6537-projection-verdict-main29e-session6503/rust/export)
+    Checking ifc-lite-landxml v20.3.0 (/home/louistrue/wt/6537-projection-verdict-main29e-session6503/rust/landxml)
+    Checking ifc-lite-wasm v20.3.0 (/home/louistrue/wt/6537-projection-verdict-main29e-session6503/rust/wasm-bindings)
+    Checking ifc-lite-ffi v20.3.0 (/home/louistrue/wt/6537-projection-verdict-main29e-session6503/rust/ffi)
+    Checking ifc-lite-server v20.3.0 (/home/louistrue/wt/6537-projection-verdict-main29e-session6503/apps/server)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 39.43s

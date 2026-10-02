@@ -1,0 +1,20 @@
+{
+  "capturedAt": "2026-10-02T01:13:42Z",
+  "loadavg": "0.45 1.58 1.67 1/1156 94859",
+  "activeGraphs": [],
+  "observedIdleDevServers": [
+    {
+      "pid": 7386,
+      "cmd": "node ./node_modules/.bin/../vite/bin/vite.js --host 0.0.0.0 --port 5330 --strictPort",
+      "devServer": true,
+      "cpuSecondsObserved": 0.0
+    },
+    {
+      "pid": 55907,
+      "cmd": "node /home/louistrue/.t3/worktrees/ifc-lite/t3code-0aeb09b2/apps/viewer/node_modules/.bin/../vite/bin/vite.js --host 0.0.0.0 --port 5178 --strictPort",
+      "devServer": true,
+      "cpuSecondsObserved": 0.0
+    }
+  ],
+  "scope": "Observable Linux build/test graphs and one-second dev-server CPU; idle dev servers disclosed, not proof of full Windows/host background inactivity"
+}

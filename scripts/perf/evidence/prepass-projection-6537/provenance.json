@@ -1,0 +1,55 @@
+{
+  "capturedAt": "2026-09-30T20:10:36.020334+00:00",
+  "sourceHead": "0d4168887dd099f36b5d9eb6460d940533b4a2d0",
+  "harness": "standalone diagnostic linked to unmodified frozen ifc-lite-core; distinct Cargo dependency lock retained",
+  "artifacts": {
+    "src/main.rs": {
+      "bytes": 3987,
+      "sha256": "6cc2c2450da54ac12e04e5e4983a8104a98442cd3b09844c0764d9d2b4c98e4e"
+    },
+    "Cargo.toml": {
+      "bytes": 251,
+      "sha256": "029217c6f31d9c565876bec282b7a99e80ef01e3ff16f8a24758dcc55f3f0a53"
+    },
+    "Cargo.lock": {
+      "bytes": 7263,
+      "sha256": "b045d9fb615dbbedbad11f85adec8e6a806cc1072f253f728b630c9ea87152ae"
+    },
+    "results.json": {
+      "bytes": 14242,
+      "sha256": "2183d62c1d61b876f622ba892b807a60e5b60b5732e83876b64b8e5712c93922"
+    },
+    "build.log": {
+      "bytes": 1287,
+      "sha256": "359a382421f09c5790ba9b0d1915298e8705ffd421b5edf72cd05068e18329a6"
+    }
+  },
+  "fixtures": [
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-41de0393/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "bytes": 2526544,
+      "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d"
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-41de0393/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "bytes": 12030684,
+      "sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131"
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-41de0393/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "bytes": 177465622,
+      "sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8"
+    },
+    {
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-41de0393/tests/models/various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc",
+      "bytes": 342657851,
+      "sha256": "e91ddbbd672bbde946af14631de4c732f0cf8a7cfae5dbbf06fbeab03b5c46df"
+    }
+  ],
+  "limits": [
+    "Native direct-record opportunity screen only; no browser or native whole-pipeline speedup claim",
+    "All seven covered prepass record families are a superset: conditional canonical branches can skip some records",
+    "Canonical parser creates its existing complete token tree before counting/conversion; no replacement grammar",
+    "Indirect style/material records, entity allocation, decoder memo and geometry are excluded; native clocks include diagnostic overhead"
+  ]
+}

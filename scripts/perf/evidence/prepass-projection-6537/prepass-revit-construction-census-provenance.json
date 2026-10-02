@@ -1,0 +1,33 @@
+{
+  "at": "2026-10-02T01:16:50.207578+00:00",
+  "base": "5101bf33e053d1a4f1af6d86df4bda59a20ec6bb",
+  "productionChange": false,
+  "scope": "New public Revit medical207MB and Snowdon8MB coverage only, reuse prior four-family rejection; no renewed projection prototype or E2E win. Entire canonical parser is retained. Each5 conversion samples retained includingallocation/drop, tokens already retained. Not completeprepass or workercriticalpath measurement.",
+  "verdict": "No material narrow void/fill AttributeValue projection opportunity on new families: medicalhas zero covered void/fill records; Snowdon139 voidrecords, zero unusedlists,3058unused stringbytes, allconversion~0.012ms vs~0.0022ms pair. Does not rule out indirect style work or fullsource repeatedreads.",
+  "artifacts": {
+    "rust/processing/examples/prepass_construction_census.rs": {
+      "bytes": 6688,
+      "sha256": "d5de5060008eeb9ff7be2de00cacfe0d2f7b56a000edb332623314a46ad61142"
+    },
+    "target/release/examples/prepass_construction_census": {
+      "bytes": 581280,
+      "sha256": "8e064266ed35a9ea9f3be3a60a1be32b43a2c219a621b7a5fef681e836340e29"
+    },
+    "6537-prepass-revit-construction-census.json": {
+      "bytes": 7737,
+      "sha256": "6b1a6d2147aa968a919cdef8bb03445beac0d299405d7a1b7a604e42e99bd27f"
+    },
+    "6537-prepass-revit-census-preflight.json": {
+      "bytes": 750,
+      "sha256": "38b78cbee25d7739a700f34199d8fe77556c0ae0cdbd7471cea6a2fff0a638f9"
+    },
+    "6537-prepass-revit-census-postflight.json": {
+      "bytes": 750,
+      "sha256": "87b4bfdfac2d627345ff772b4cbc83de9551350171ffd2458c8c0f0c99fa4242"
+    },
+    "6537-prepass-construction-census-build.log": {
+      "bytes": 3014,
+      "sha256": "77e876e298c334a8b3e4621e4d9538b84b91b7841eed748c219f0c7f9440d520"
+    }
+  }
+}

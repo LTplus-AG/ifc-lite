@@ -2846,3 +2846,17 @@ completion timeout limit the inference; the evidence preserves qualification
 failures rather than discarding them. The lesson is to measure the actual default
 worker pool even for opt-in APIs, and to separate post-timing byte witnesses from
 the completion boundary. See [the evidence](../../docs/architecture/evidence/alignment-sections-6603/README.md).
+
+### Checked direct-record prepass projection screen (#6537)
+
+The [canonical-parser census](evidence/prepass-projection-6537/README.md) found
+no unused nested attribute containers in the screened direct prepass record
+families across the small, CSG, heavy and large public controls. Separate Revit
+medical and Snowdon structural captures also
+found no unused nested void/fill containers; their other unused fields are not
+classified by that screen. The dominant
+styled-item population's unused name field had no string payload. Do not
+prototype removing unused nested value trees on this evidence or revisit the
+rejected general constructor. A different worker capture must first establish
+substantial unused materialization on the critical path. This native opportunity
+screen is not a browser speedup or a measurement of indirect style decoding.

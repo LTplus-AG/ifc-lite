@@ -1,0 +1,122 @@
+{
+  "workspaceClippy": {
+    "exit": 0,
+    "log": "/tmp/6232-takeover/6537-projection-main29e-workspace-clippy.log",
+    "scope": "Exact current main29e native workspace strict Clippy; standalone retained diagnostic evidence harnesses are not workspace targets",
+    "resourceGuardKiB": 46105880,
+    "CARGO_BUILD_JOBS": 2,
+    "CI": 1
+  },
+  "sourceAndFixtures": {
+    "at": "2026-10-02T09:50:09.927428+00:00",
+    "publicationBase": "29e1088dda6777f7086bd122208ce7bda8db1d89",
+    "productionChange": false,
+    "originalFourModelSource": "0d4168887dd099f36b5d9eb6460d940533b4a2d0",
+    "additionalTwoModelSource": "5101bf33e053d1a4f1af6d86df4bda59a20ec6bb",
+    "canonicalParserAndDirectReaderPathsUnchangedFromFourModelSource": true,
+    "canonicalParserUnchangedFromAdditionalSource": true,
+    "harnessBodyOriginalPlusMPLOnly": true,
+    "additionalHarnessUnmodified": true,
+    "actualHistoricalBuildLogsRetained": true,
+    "freshBuildClaim": false,
+    "artifacts": {
+      "construction-census.rs": {
+        "bytes": 6688,
+        "sha256": "d5de5060008eeb9ff7be2de00cacfe0d2f7b56a000edb332623314a46ad61142"
+      },
+      "prepass-revit-construction-census.json": {
+        "bytes": 7737,
+        "sha256": "6b1a6d2147aa968a919cdef8bb03445beac0d299405d7a1b7a604e42e99bd27f"
+      },
+      "README.md": {
+        "bytes": 4204,
+        "sha256": "9aae6981927351126a57f9ad7361103edee47972b1b0e16a79326c227896826a"
+      },
+      "clippy.log": {
+        "bytes": 1012,
+        "sha256": "6c8bd7ae5f278e3757fdc706f4d310a7bf722161b86b0ae65fa753a8cf534752"
+      },
+      "provenance.json": {
+        "bytes": 2443,
+        "sha256": "bf8ee5041bd17d25a396cfaafc172b1a3858885a3481a729a91eb34318c26eb6"
+      },
+      "prepass-revit-census-postflight.json": {
+        "bytes": 750,
+        "sha256": "87b4bfdfac2d627345ff772b4cbc83de9551350171ffd2458c8c0f0c99fa4242"
+      },
+      "results.json": {
+        "bytes": 14242,
+        "sha256": "2183d62c1d61b876f622ba892b807a60e5b60b5732e83876b64b8e5712c93922"
+      },
+      "build.log": {
+        "bytes": 1287,
+        "sha256": "359a382421f09c5790ba9b0d1915298e8705ffd421b5edf72cd05068e18329a6"
+      },
+      "prepass-construction-census-build.log": {
+        "bytes": 3014,
+        "sha256": "77e876e298c334a8b3e4621e4d9538b84b91b7841eed748c219f0c7f9440d520"
+      },
+      "prepass-revit-census-preflight.json": {
+        "bytes": 750,
+        "sha256": "38b78cbee25d7739a700f34199d8fe77556c0ae0cdbd7471cea6a2fff0a638f9"
+      },
+      "census.rs": {
+        "bytes": 4191,
+        "sha256": "2ff410a6f7d9e08486594f65b8e5ad04d8e5f1607cc7b68da036a35b863efa9c"
+      },
+      "prepass-revit-construction-census-provenance.json": {
+        "bytes": 1794,
+        "sha256": "3bd804d26d7cdaac1f9b5cfdee5977c65b1c23eb13433ef9f845e2615eda4cf4"
+      },
+      "Cargo.lock": {
+        "bytes": 7263,
+        "sha256": "b045d9fb615dbbedbad11f85adec8e6a806cc1072f253f728b630c9ea87152ae"
+      }
+    }
+  },
+  "lightGates": {
+    "checkerSourceMatchesCurrent": true,
+    "checkerDeps": "existing own frozen9af dependency graph; official --root selects current publication tree, no dependency or compiledartifact copy",
+    "checks": [
+      {
+        "command": [
+          "node",
+          "/home/louistrue/wt/6537-index-reserve-current-main-session6503/scripts/check-source-text-assertions.mjs",
+          "--root",
+          "/home/louistrue/wt/6537-projection-verdict-main29e-session6503"
+        ],
+        "exit": 0,
+        "log": "/tmp/6232-takeover/6537-projection-main29e-supported-root-gate-0.log",
+        "sha256": "79cded850bc3b8b5442fff407cf5eeabf76f6d0a5a4efdc1255f9f6528209740"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/check-test-wiring.mjs"
+        ],
+        "exit": 0,
+        "log": "/tmp/6232-takeover/6537-projection-main29e-supported-root-gate-1.log",
+        "sha256": "5e1330f5b2fd0fe09b5a55b892a05e2d435e19808a30182f3d9af4235a2399cd"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/add-license-headers.mjs",
+          "--check"
+        ],
+        "exit": 0,
+        "log": "/tmp/6232-takeover/6537-projection-main29e-supported-root-gate-2.log",
+        "sha256": "35a8f1442b740eb9d3cee6e8e84508ff1725b7a1be42f8f077e27e5110c90532"
+      }
+    ]
+  },
+  "moduleSize": {
+    "exit": 0,
+    "logSHA256": "d371a5789df7732bc7b13445f9431dd249a127eb80f8d55d83aeb549d1c8b06b"
+  },
+  "excludedSetupAttempts": [
+    "initial dependency-free checker missing TypeScript; no assertions ran",
+    "two install resource-guard EXIT75 refusals; no job launched"
+  ],
+  "scope": "Current evidence-only publication; native workspace linted, retained diagnostic runs attributed to their historical sources, no fresh runtime or speed claim"
+}

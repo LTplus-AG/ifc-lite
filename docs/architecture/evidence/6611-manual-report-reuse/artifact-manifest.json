@@ -69,8 +69,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 4295,
-      "sha256": "8ce81782c6cca34c314538b0a00228adfd858e5b186dfe1ae80728ae209881fd"
+      "bytes": 5334,
+      "sha256": "0ff528fde9a1f681506903cf92faa6700403ca45a8433135c9a90d6e882c3a57"
     },
     {
       "path": "browser-capture.cjs",
@@ -96,6 +96,12 @@
       "path": "read-pdfs.py",
       "bytes": 1856,
       "sha256": "3821044a47992df0f9eb4cd23cc8dcb311bcd57b4cd73ffc884fcb2b23b15fb9"
+    },
+    {
+      "path": "readiness-qualification.json",
+      "bytes": 10395,
+      "sha256": "edbc1d29d6bc493065129874fdcb72562a786e8dcd8fd0bcf7ef1abbe5eda0d0"
     }
-  ]
+  ],
+  "readinessQualifiedSource": "086418ac845bffb1be376b407d8c4c163d351a55"
 }

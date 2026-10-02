@@ -63,3 +63,21 @@ old assertion. The official production-revert oracle changes 14 pass to 14
 assertion failures and verifies restoration. Plain root typecheck covers all 3,249
 test files; full build runs 61 tasks, and root lint reports 8,139 files and no errors.
 The ordinary full viewer suite remains required in fresh PR CI.
+
+
+## Source readiness followup
+
+[Readiness qualification](readiness-qualification.json) records the valid review
+finding and exact source `086418ac845bffb1be376b407d8c4c163d351a55`. Recovery,
+automatic recorded-model defaults and bound document Refresh share one readiness
+predicate: a matching model must be complete, or a legacy model with no load
+state. A completed identical-file instance wins over an earlier failed/loading
+instance. Explicit selections and ordinary unbound defaults retain their policy.
+
+Real mounted one-/two-model controls cover pending, streaming, hydrating, error,
+complete and legacy states, plus duplicate-file selection and actual Refresh.
+All 105 focused cases pass; the readiness production-revert oracle changes 30
+passes to 18 passes and 12 assertion failures, with restoration verified.
+The browser/PDF archive above remains attributed to its original `fb2626532`
+source. Those original facts, images, downloads and PDF inspection bytes are
+unchanged; this followup does not claim a new browser capture.

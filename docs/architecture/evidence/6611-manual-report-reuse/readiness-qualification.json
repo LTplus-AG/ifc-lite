@@ -1,0 +1,272 @@
+{
+  "qualifiedSource": "086418ac845bffb1be376b407d8c4c163d351a55",
+  "base": "85f6bf916ba9203c4b56dcd65291cc0cd4f150f3",
+  "actualMain": "bd0d02782b92581ed8e007effc9d00e37a09476e",
+  "reviewThread": "https://github.com/LTplus-AG/ifc-lite/pull/6661#discussion_r4162312272",
+  "contract": "Only unified loadState complete or absent qualifies a matching fingerprint. ONE isManualModelReady predicate governs recovery, automatic fingerprint-bound editor defaults and bound document Refresh. Explicit and ordinary unbound model-selection policies remain unchanged; opening/idle individual phase flags do not override unified completion.",
+  "sourceDelta": {
+    "productionModules": 3,
+    "testFiles": 2,
+    "original89CasesPreserved": true,
+    "sourceClassification": "Source readiness and same-file duplicate defaults; no loader, parser, geometry, document-layout or PDF-export production changes."
+  },
+  "genuineStages": [
+    {
+      "source": "f51997ce75081f0f447a2abebc55822e000b3ad1",
+      "mountedPass": 14,
+      "mountedAssertionFail": 8,
+      "unitPass": 4,
+      "unitAssertionFail": 1,
+      "reason": "Pending, streaming, hydrating and error source accepted in UI/shared helper at1/N."
+    },
+    {
+      "source": "40aa715b5c6a67bd88176cf92956062768978c2b",
+      "mountedPass": 22,
+      "mountedAssertionFail": 2,
+      "unitPass": 5,
+      "unitAssertionFail": 1,
+      "reason": "First pending/error identical-file model selected despite another completed instance."
+    },
+    {
+      "source": "260bfa0222789eb62fe02bb4b75d9d7a9cc34658",
+      "mountedPass": 22,
+      "mountedAssertionFail": 2,
+      "unitPass": 5,
+      "unitAssertionFail": 1,
+      "reason": "Automatic bound document Refresh still selected the pending/error identical-file instance."
+    }
+  ],
+  "finalTests": {
+    "rootCommand": "TEST_SHARD=<file hash> TEST_SHARDS=1000003 pnpm test --filter=@ifc-lite/viewer --env-mode=loose",
+    "mounted": 24,
+    "invariants": 6,
+    "existingAffected": 75,
+    "totalPass": 105,
+    "fail": 0,
+    "skip": 0,
+    "scope": "Eight singleton root Turbo selections; ordinary full viewer suite remains required in fresh CI."
+  },
+  "officialOracle": {
+    "command": "node scripts/check-test-revert-oracle.mjs --base 85f6bf916ba9203c4b56dcd65291cc0cd4f150f3 --ci --json",
+    "green": 30,
+    "revertedPass": 18,
+    "revertedAssertionFail": 12,
+    "exitCode": 0,
+    "restoration": "verified",
+    "invocationId": "bc6f2c7b-74e7-4234-84ee-7d0992ac62e3"
+  },
+  "typecheck": {
+    "command": "pnpm typecheck",
+    "tasks": 109,
+    "testFiles": 3249,
+    "exitCode": 0
+  },
+  "build": {
+    "command": "pnpm build",
+    "tasks": 61,
+    "cached": 60,
+    "exitCode": 0
+  },
+  "lint": {
+    "command": "pnpm lint",
+    "files": 8139,
+    "errors": 0,
+    "exitCode": 0,
+    "scope": "Untouched global warnings visible; touched warnings clear."
+  },
+  "gates": {
+    "apiExports": 9169,
+    "docSnippets": 428,
+    "docFiles": 100,
+    "explicitIllustrativeDocSkips": 12,
+    "passed": [
+      "MPL",
+      "module size",
+      "test wiring",
+      "source assertions",
+      "changesets",
+      "API snapshot",
+      "docs samples",
+      "generated docs",
+      "package readmes"
+    ]
+  },
+  "nativeAttribution": {
+    "source": "fb2626532fce115e8ecc9df273c7159e0177f9f4",
+    "browserFactsAndPngPdfInspectionByteExact85": true,
+    "browserReRun": false,
+    "currentBuildWasmSha256": "039415545e2448ce8b1e40b14306524ee60cff29dabd97448080ac0d9e170610",
+    "scope": "Historical real1/N browser/PDF flow remains attributed to fb. This narrow source followup adds readiness refusal and ready duplicate defaults; all PDF projection/export production modules and archived downloads remain unchanged. No new GPU/performance claim."
+  },
+  "unexecutedDraft": {
+    "source": "3345bc4a5671cc5f42c0b24feb97358882298966",
+    "reason": "Draft Refresh assertion referenced nonexistent reportModels.id; corrected before any tests ran to canonical name/fingerprint plus actual picker UUID."
+  },
+  "logs": [
+    {
+      "path": "/tmp/6611-manual-report-readiness-baseline-mounted-red.log",
+      "bytes": 86729,
+      "sha256": "aa4021935824d27269f51c411f68d07f1407b8477eb925326ae4474b3697f55f"
+    },
+    {
+      "path": "/tmp/6611-manual-report-readiness-baseline-unit-red.log",
+      "bytes": 75286,
+      "sha256": "9ba1c04efa26bf1820ad2aa21b2ba7e4709bdf53210d0e025eddb1851f66b671"
+    },
+    {
+      "path": "/tmp/6611-manual-report-duplicate-readiness-baseline-mounted-red.log",
+      "bytes": 84697,
+      "sha256": "d10ed157b5c8d277e8a6c2546f13cbe1d8de936c2b46d020ea5f4b3b6de25445"
+    },
+    {
+      "path": "/tmp/6611-manual-report-duplicate-readiness-baseline-unit-red.log",
+      "bytes": 77312,
+      "sha256": "e447dce624f162ea085c229f211981fc989222609d0ae78ba3a9be6820ae558f"
+    },
+    {
+      "path": "/tmp/6611-manual-report-refresh-readiness-baseline-mounted-red.log",
+      "bytes": 80605,
+      "sha256": "9655841472cca6cb122d6d92af8d7218ac1b4f12884b9df2f87e73640634518e"
+    },
+    {
+      "path": "/tmp/6611-manual-report-refresh-readiness-baseline-unit-red.log",
+      "bytes": 73806,
+      "sha256": "9f5d376d01abb6d448a4d62c924f369aa8d439254a043f39e584f7d33d7fc208"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-mounted-green.log",
+      "bytes": 77420,
+      "sha256": "77e06809d68af8d8bd9405741a1314c40bf61dded75b0227f471c83b4b4d9d1b"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-unit-green.log",
+      "bytes": 71226,
+      "sha256": "3c442ba595c9e391ab94e75b2ea545b0ac359cfade1d72ec9b51f10fbd3cd3d5"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-root-typecheck.log",
+      "bytes": 56483,
+      "sha256": "a313bab000cb714580f7d2a2232ce343adb98eba3d3a22e9fcdaa3337c489092"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-root-build.log",
+      "bytes": 111736,
+      "sha256": "1c02f5fcb7b2c23274806e9136dff6b37cc921877911a3afb7e76072bea8c2ce"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-root-lint.log",
+      "bytes": 176964,
+      "sha256": "7ea925ceff99f14bbbc99adb1e6dcb2142b98713a696ad44a9f13b09700cefc4"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-official-oracle.log",
+      "bytes": 6751,
+      "sha256": "db2eb53ed54fc61dfc453141edd182095068ca24038e7072c5c9484a5cbe8f21"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-api-surface.log",
+      "bytes": 82,
+      "sha256": "c57861de162d39d7db1a1023a3171bc70a7bcf0625f045f43562c86fe8177b3a"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-docs-samples.log",
+      "bytes": 235,
+      "sha256": "c0e038dfd2fc2c2842930f43ab1f6265e5adbaa69b4ad7eaed1d0a70b43692ab"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-docs-generated.log",
+      "bytes": 208,
+      "sha256": "f0823a5fac2d28597a51905dfbfeaf11a24211056e4c8795f3dfa089f9cf9fb9"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-docs-readmes.log",
+      "bytes": 197,
+      "sha256": "d6ea5c3aefd3451357eac866d8c6660abc7452f401299e42762d236ced6f8d9d"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-mpl.log",
+      "bytes": 169,
+      "sha256": "8b042b7e548ef2a19f1ccafe3fca5fe9ba987e67a4c0a6195ab75054ed7f5652"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-module-size.log",
+      "bytes": 12954,
+      "sha256": "998b4ee77a5c4abca2e8f2b5aebe68cb735a8cae541ba622c49b02a4b1badfc3"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-test-wiring.log",
+      "bytes": 859,
+      "sha256": "dd879f3c9f2a4500cbcf7a04a6d608bca9339beef25e311acb6e358ea6de3eb8"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-source-assertions.log",
+      "bytes": 30223,
+      "sha256": "7c886a07550860ff87d846f305b0693fee705e9860ef6fc6c0c64c32668817ef"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-changesets.log",
+      "bytes": 55,
+      "sha256": "4ba22b655c444bc8db7c3b57a1cc06e39300996c84e771248c5984889030ac40"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-consumer-694489.log",
+      "bytes": 72034,
+      "sha256": "8c0d4341eb2b9c0189ca5453ff27395052f4118929325f361fa1c69eb7cbe02c"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-consumer-90110.log",
+      "bytes": 115839,
+      "sha256": "cd759f16c6968e8eae29aa16f3225a4d2119f53958a3460e1d055f9ba3cd44cb"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-consumer-381462.log",
+      "bytes": 70642,
+      "sha256": "b7cefc8a63e72b367879885fd7a7e97167ce6adf55cb1a41e5991e6ef88ebb6a"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-consumer-183045.log",
+      "bytes": 74568,
+      "sha256": "567938b845ba988d76d74f7fea5035c93d219232ab8070f300c72b340b34b7cc"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-consumer-100883.log",
+      "bytes": 74094,
+      "sha256": "85300f977565b2ddafdeb99b477d89b0ea32fa41ff3bf193068a32b719651b73"
+    },
+    {
+      "path": "/tmp/6611-manual-report-ready-refresh-consumer-295745.log",
+      "bytes": 74934,
+      "sha256": "4416e4d0b137909017b2840c37fcb446b92ece48388363b32a11c541b9191f70"
+    }
+  ],
+  "postarchiveGates": [
+    {
+      "command": "node scripts/add-license-headers.mjs --check",
+      "exitCode": 0,
+      "log": "/tmp/6611-manual-report-readiness-evidence-mpl.log",
+      "bytes": 169,
+      "sha256": "1c7cf644b10a2d3e5de3321e4792841ab02b16f086da40a5e5d5baec61288d71"
+    },
+    {
+      "command": "node scripts/check-module-size.mjs",
+      "exitCode": 0,
+      "log": "/tmp/6611-manual-report-readiness-evidence-module-size.log",
+      "bytes": 12954,
+      "sha256": "998b4ee77a5c4abca2e8f2b5aebe68cb735a8cae541ba622c49b02a4b1badfc3"
+    },
+    {
+      "command": "node scripts/check-test-wiring.mjs",
+      "exitCode": 0,
+      "log": "/tmp/6611-manual-report-readiness-evidence-test-wiring.log",
+      "bytes": 859,
+      "sha256": "dd879f3c9f2a4500cbcf7a04a6d608bca9339beef25e311acb6e358ea6de3eb8"
+    },
+    {
+      "command": "uv run --with-requirements requirements-docs.txt mkdocs build --strict --site-dir /tmp/6611-session6503/readiness-docs-site",
+      "exitCode": 0,
+      "log": "/tmp/6611-manual-report-readiness-evidence-mkdocs.log",
+      "bytes": 1139,
+      "sha256": "bc5d9ce0307f192062887f25cbd6887b81da98b81f81c9c755ff0d0ec22c2c48"
+    }
+  ]
+}

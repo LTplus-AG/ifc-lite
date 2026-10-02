@@ -256,9 +256,16 @@ describe('#6581 releasing an unused fresh-room claim', () => {
   });
 });
 
+/**
+ * Every state write also sweeps expired claims. With the 1 ms test debounce a
+ * write can land after the clock jumps and do the expiring itself, which
+ * would hide the claim-path expiry under test.
+ */
+const NO_BACKGROUND_SWEEP = { persistDebounceMs: 60_000 } as const;
+
 describe('#6581 expiry of claims nobody released', () => {
   it('frees the slot once every token minted for the claim has expired', async () => {
-    const base = await serve(create(freshDir(), { maxClaimedRooms: 1 }));
+    const base = await serve(create(freshDir(), { maxClaimedRooms: 1, ...NO_BACKGROUND_SWEEP }));
     const admin = await mint(base, 'abandoned', { ttlSeconds: 3600 });
     expect(admin.status).toBe(200);
     // The client crashed: no release ever arrives.
@@ -270,7 +277,7 @@ describe('#6581 expiry of claims nobody released', () => {
   });
 
   it("frees the expired claim's own room id below the cap, and its token stays dead", async () => {
-    const base = await serve(create(freshDir()));
+    const base = await serve(create(freshDir(), NO_BACKGROUND_SWEEP));
     const admin = await mint(base, 'lapsed', { ttlSeconds: 60 });
     clock += 60_000 + 61_000;
     const next = await mint(base, 'lapsed');
@@ -280,7 +287,7 @@ describe('#6581 expiry of claims nobody released', () => {
   });
 
   it('waits for the longest-lived token the claim minted', async () => {
-    const base = await serve(create(freshDir(), { maxClaimedRooms: 1 }));
+    const base = await serve(create(freshDir(), { maxClaimedRooms: 1, ...NO_BACKGROUND_SWEEP }));
     const admin = await mint(base, 'long', { ttlSeconds: 60 });
     await mint(base, 'long', { role: 'viewer', bearer: admin.token, ttlSeconds: 7200 });
     clock += 3600_000;
@@ -290,7 +297,7 @@ describe('#6581 expiry of claims nobody released', () => {
   });
 
   it('a slow but legitimate seed joins at any point before its token expires', async () => {
-    const base = await serve(create(freshDir(), { maxClaimedRooms: 1 }));
+    const base = await serve(create(freshDir(), { maxClaimedRooms: 1, ...NO_BACKGROUND_SWEEP }));
     const admin = await mint(base, 'slow', { ttlSeconds: 3600 });
     clock += 3600_000 - 1_000;
     expect((await mint(base, 'next')).status, 'a sweep at the cap leaves it').toBe(403);

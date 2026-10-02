@@ -1,0 +1,16 @@
+
+== finding1-landscape-snapshot-200-main.pdf: 1 page(s), page 841.89 x 595.28 pt, printable frame bottom 531.3, right 801.9
+  image (snapshot) page 1: x 40.0..801.9, y 234.0..594.0 => CROSSES the frame bottom by 62.7 pt
+  lowest word between header and footer: "Walls" page 1, bottom 206.7
+
+== finding1-landscape-snapshot-200-branch.pdf: 1 page(s), page 841.89 x 595.28 pt, printable frame bottom 531.3, right 801.9
+  image (snapshot) page 1: x 508.0..801.9, y 134.0..494.0 => inside the frame (37.3 pt to spare)
+  lowest word between header and footer: "W" page 1, bottom 522.6
+
+== finding2-two-half-charts-150-main.pdf: 2 page(s), page 595.28 x 841.89 pt, printable frame bottom 777.9, right 555.3
+  title "Chart A": page 1, x 40.0..99.6, y 74.7..89.9
+  title "Chart B": page 2, x 40.0..99.6, y 74.7..89.9
+
+== finding2-two-half-charts-150-branch.pdf: 1 page(s), page 595.28 x 841.89 pt, printable frame bottom 777.9, right 555.3
+  title "Chart A": page 1, x 40.0..99.6, y 74.7..89.9
+  title "Chart B": page 1, x 302.6..362.2, y 74.7..89.9

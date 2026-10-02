@@ -24,7 +24,7 @@ const state = { status: 'ok' as const, kind: 'validation' as const, model: {
   totalRows: 2,
 } };
 
-async function tableText(scale?: number): Promise<Array<{ str: string; size: number; baseline: number }>> {
+async function tableText(scale?: number): Promise<Array<{ str: string; size: number; baseline: number; left: number }>> {
   const document: DocumentSpec = { version: DOCUMENT_VERSION, id: 'd', name: 'Doc', page: { size: 'A4', orientation: 'portrait' },
     blocks: [{ kind: 'table', id: 'tb', ...(scale ? { scale } : {}), source: { kind: 'validation', rows: 'failed', columns: ['rule'] } }] };
   // svg2pdf's Node UMD entry looks for its jsPDF dependency on the DOM window.
@@ -45,7 +45,7 @@ async function tableText(scale?: number): Promise<Array<{ str: string; size: num
     const page = await (await task.promise).getPage(1);
     const content = await page.getTextContent();
     page.cleanup();
-    return content.items.flatMap((item) => ('str' in item && item.str.startsWith('Row') ? [{ str: item.str, size: item.transform[0], baseline: item.transform[5] }] : []));
+    return content.items.flatMap((item) => ('str' in item && item.str.startsWith('Row') ? [{ str: item.str, size: item.transform[0], baseline: item.transform[5], left: item.transform[4] }] : []));
   } finally { await task.destroy(); }
 }
 
@@ -59,4 +59,7 @@ it('draws a scaled table block with its font and row pitch scaled by the factor 
   const pitch = (rows: typeof one) => Math.abs(rows[0].baseline - rows[1].baseline);
   assert.ok(Math.abs(pitch(one) - 13.2) < 0.1, `row pitch at 1x is ${pitch(one)}`);
   assert.ok(Math.abs(pitch(two) - 26.4) < 0.1, `row pitch at 2x is ${pitch(two)}`);
+  // The cell padding grows with the block too: the text starts one padding in from the table's left edge.
+  assert.ok(Math.abs((one[0].left - 40) - 2) < 0.1, `padding at 1x is ${one[0].left - 40}`);
+  assert.ok(Math.abs((two[0].left - 40) - 4) < 0.1, `padding at 2x is ${two[0].left - 40}`);
 });

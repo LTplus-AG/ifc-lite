@@ -13,6 +13,10 @@
  * `compose.ts` so a document and a report share a frame.
  */
 import { chartFontScale, type ReportPageSetup } from '@ifc-lite/charts';
+import { FOOTER_HEIGHT, HEADER_HEIGHT, scaledPageHeight } from './compose-scale.js';
+export { scaledPageHeight } from './compose-scale.js';
+import { BLOCK_GAP, documentChartLayout, documentImageHeight, pageFrameHeight, rowFitsFrame } from './compose-sizing.js';
+export { BLOCK_GAP, documentChartSizing, documentImageHeight, pageFrameHeight, rowFitsFrame } from './compose-sizing.js';
 import { pageBox, REPORT_MARGIN } from '../export/report/compose.js';
 import { blockScale, CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type PageBreakBlock, type TextBlock, type TextFont } from './types.js';
 import { layoutTable, type LayoutCursor, type TableLayoutBlock, type TableDrawnItem } from './compose-table.js';
@@ -26,52 +30,8 @@ import { splitDocumentSections } from './page-sections.js';
 
 import { resolvePageHeading, type PageHeading, type ResolvedPageHeading } from './page-heading.js';
 
-const HEADER_HEIGHT = 30;
-const FOOTER_HEIGHT = 24;
-export const BLOCK_GAP = 10;
 const CHART_HEIGHT = CHART_BLOCK_HEIGHT_DEFAULT;
-const SNAPSHOT_HEIGHT = 180;
 const TOPIC_SNAPSHOT_HEIGHT = 160;
-
-export interface DocumentChartSizingInput {
-  requestedHeight: number;
-  pageHeight: number;
-  boxWidth: number;
-  snapshot: boolean;
-  hasData: boolean;
-  fontSize?: number;
-  headingExtraHeight?: number;
-  /** Extra height of an enlarged block heading (`blockTitleStyle(...).extra`), #6632. */
-  titleExtraHeight?: number;
-}
-
-/** One chart-height rule shared by PDF composition and the browser preview (#4940). */
-export function documentChartSizing(input: DocumentChartSizingInput): { height: number; sideBySide: boolean; stacked: boolean } {
-  const sideBySide = input.snapshot && input.hasData && input.boxWidth >= 640;
-  const stacked = input.snapshot && input.hasData && !sideBySide;
-  const overhead = 32 * chartFontScale(input.fontSize) + (input.titleExtraHeight ?? 0) + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0);
-  const printableHeight = input.pageHeight - (REPORT_MARGIN + HEADER_HEIGHT + (input.headingExtraHeight ?? 0)) - (REPORT_MARGIN + FOOTER_HEIGHT);
-  return {
-    height: Math.max(40, Math.min(input.requestedHeight, printableHeight - overhead)),
-    sideBySide,
-    stacked,
-  };
-}
-
-/** The image and its optional heading/caption fit inside the printable frame. */
-export function documentImageHeight(block: BlockHeaderStyleFields & { height: number; title?: string; caption?: string }, pageHeight: number, headingExtraHeight = 0): number {
-  return Math.min(block.height, pageHeight - 2 * REPORT_MARGIN - HEADER_HEIGHT - FOOTER_HEIGHT - headingExtraHeight - (blockTitle(block) ? BLOCK_TITLE_HEIGHT + blockTitleStyle(block).extra : 0) - (block.caption ? 14 : 0));
-}
-
-/**
- * Page height a block laid out at `scale` sees (#6548). A scaled block is laid out as if the
- * printable frame were `1 / scale` as tall and wide and then drawn `scale` times larger, so the
- * frame shrinks while the margins, header and footer around it do not.
- */
-export function scaledPageHeight(pageHeight: number, headingExtraHeight: number, scale: number): number {
-  const fixed = 2 * REPORT_MARGIN + HEADER_HEIGHT + FOOTER_HEIGHT + headingExtraHeight;
-  return fixed + (pageHeight - fixed) / scale;
-}
 
 /** Map an item laid out at `scale` to the page: positions follow `map`, extents and type sizes grow by `scale`. */
 function zoomItem(item: DrawnItem, scale: number, map: { x: (v: number) => number; y: (v: number) => number }): DrawnItem {
@@ -142,7 +102,7 @@ export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'font
   const style = TEXT_STYLES[block.style];
   const size = block.fontSize ?? style.size;
   const lines = wrapText(block.text, columnWidth, size, style.bold, (text, fontSize) => text.length * fontSize);
-  const frameHeight = pageHeight - 2 * REPORT_MARGIN - HEADER_HEIGHT - FOOTER_HEIGHT - headingExtraHeight;
+  const frameHeight = pageFrameHeight(pageHeight, headingExtraHeight);
   return (blockTitle(block) ? BLOCK_TITLE_HEIGHT + blockTitleStyle(block).extra : 0) + style.gapBefore + lines.length * size * style.lineHeight <= frameHeight;
 }
 
@@ -200,13 +160,13 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     };
   };
 
-  const layoutChart = (block: Extract<ResolvedBlock, { kind: 'chart' }>, boxX: number, boxW: number, pageH = size.h): { height: number; draw: (y: number) => DrawnItem[] } => {
+  const layoutChart = (block: Extract<ResolvedBlock, { kind: 'chart' }>, boxX: number, boxW: number, pageH = size.h, layoutScale = 1): { height: number; draw: (y: number) => DrawnItem[] } => {
     const textScale = chartFontScale(block.fontSize);
     // A chart's heading defaults to its text size; an authored heading size overrides it (#6632).
     const heading = blockTitleStyle(block, BLOCK_TITLE_SIZE_DEFAULT * textScale);
     // The configured height (up to CHART_BLOCK_HEIGHT_MAX, 600pt) must still fit a single page next to its
     // title strip and, when stacked, its snapshot — otherwise the SVG is clipped past the footer (review finding).
-    const { height: chartHeight, sideBySide, stacked } = documentChartSizing({
+    const { height: chartHeight, sideBySide, stacked, snapshotHeight, totalHeight: totalH } = documentChartLayout({
       headingExtraHeight,
       requestedHeight: block.height ?? CHART_HEIGHT,
       pageHeight: pageH,
@@ -214,10 +174,10 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       snapshot: block.snapshot,
       hasData: block.hasData,
       fontSize: block.fontSize,
+      layoutScale,
       titleExtraHeight: heading.extra,
     });
     const chartW = sideBySide ? Math.round(boxW * 0.6) - BLOCK_GAP / 2 : boxW;
-    const totalH = 32 * textScale + heading.extra + (sideBySide ? Math.max(chartHeight, SNAPSHOT_HEIGHT) : chartHeight + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0));
     return {
       height: totalH,
       draw: (y) => {
@@ -230,8 +190,8 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
         ];
         const chartY = y + 32 * textScale + heading.extra;
         items.push({ kind: 'chart', blockId: block.id, x: boxX, y: chartY, w: chartW, h: chartHeight });
-        if (sideBySide) items.push({ kind: 'snapshot', blockId: block.id, x: boxX + chartW + BLOCK_GAP, y: chartY, w: boxW - chartW - BLOCK_GAP, h: SNAPSHOT_HEIGHT });
-        else if (stacked) items.push({ kind: 'snapshot', blockId: block.id, x: boxX, y: chartY + chartHeight + BLOCK_GAP, w: boxW, h: SNAPSHOT_HEIGHT });
+        if (sideBySide) items.push({ kind: 'snapshot', blockId: block.id, x: boxX + chartW + BLOCK_GAP, y: chartY, w: boxW - chartW - BLOCK_GAP, h: snapshotHeight });
+        else if (stacked) items.push({ kind: 'snapshot', blockId: block.id, x: boxX, y: chartY + chartHeight + BLOCK_GAP, w: boxW, h: snapshotHeight });
         return items;
       },
     };
@@ -245,7 +205,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     const scale = blockScale(block);
     const pageH = scaledPageHeight(size.h, headingExtraHeight, scale);
     const lay = (x: number, w: number) => block.kind === 'text' ? textLayout(block, x, w)
-      : block.kind === 'chart' ? layoutChart(block, x, w, pageH)
+      : block.kind === 'chart' ? layoutChart(block, x, w, pageH, scale)
       : layoutImage(block, x, w, pageH);
     if (scale === 1) return lay(boxX, boxW);
     const inner = lay(0, boxW / scale);
@@ -287,7 +247,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           const b = layoutPairable(next, REPORT_MARGIN + colW + BLOCK_GAP, colW);
           const rowH = Math.max(a.height, b.height);
           // An oversized text column falls back to the ordinary paginated text path.
-          if (rowH <= bottom - top) {
+          if (rowFitsFrame(rowH, bottom - top)) {
             ensure(rowH + BLOCK_GAP);
             page.items.push(...a.draw(y), ...b.draw(y));
             y += rowH + BLOCK_GAP;

@@ -37,7 +37,7 @@ import {
 import { posthog } from '@/lib/analytics';
 import { addFootprintToMap, removeFootprintFromMap } from './location-map-footprint';
 import { geocodeSearch, type GeocodeResult } from './location-map-geocode';
-import { loadMaplibre, disposeMap, purgeMapContainer } from './location-map-lifecycle';
+import { loadMaplibre, disposeMap, purgeMapContainer, updateOriginMarker } from './location-map-lifecycle';
 import { LocationMapSearchBar } from './location-map-search';
 import { useLocationGeoreference } from './use-location-georeference';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -126,7 +126,7 @@ export function LocationMap({
     }
   }, [editable]);
 
-  const { latLon, mapState, errorKey, geometryDistanceKm } = useLocationGeoreference(
+  const { latLon, mapState, errorKey, geometryDistanceKm, locationKind } = useLocationGeoreference(
     mapConversion, projectedCRS, coordinateInfo, lengthUnitScale,
   );
 
@@ -348,9 +348,7 @@ export function LocationMap({
       // If map already exists, just fly to new position
       if (mapRef.current) {
         mapRef.current.flyTo({ center: [latLon.lon, latLon.lat], zoom: 15, duration: 1200 });
-        if (markerRef.current) {
-          markerRef.current.setLngLat([latLon.lon, latLon.lat]);
-        }
+        markerRef.current = updateOriginMarker(maplibregl, mapRef.current, markerRef.current, latLon, locationKind === 'origin');
         return;
       }
 
@@ -459,11 +457,7 @@ export function LocationMap({
       map.addControl(new maplibregl.AttributionControl({ compact: false }), 'bottom-right');
 
       // Teal marker is the declared origin, independent of geometry bounds.
-      const marker = new maplibregl.Marker({ color: '#14b8a6' })
-        .setLngLat([latLon.lon, latLon.lat])
-        .addTo(map);
-
-      // The origin marker remains visible independently of the geometry footprint.
+      const marker = updateOriginMarker(maplibregl, map, null, latLon, locationKind === 'origin');
 
       // Map click to place pin (only in edit mode)
       map.on('click', handleMapClick);
@@ -491,7 +485,7 @@ export function LocationMap({
     return () => {
       cancelled = true;
     };
-  }, [latLon, handleMapClick, mapUnavailable, degradeMap]);
+  }, [latLon, locationKind, handleMapClick, mapUnavailable, degradeMap]);
 
   // Add/update building footprint GeoJSON layer when footprint or style changes
   useEffect(() => {
@@ -611,7 +605,7 @@ export function LocationMap({
           {t('properties.locationMap.heading')}
         </span>
         {latLon && !searchOpen && (
-          <span className="text-xs font-mono text-teal-600/70 dark:text-teal-500/60">
+          <span className="text-xs font-mono text-teal-600/70 dark:text-teal-500/60" title={t(locationKind === 'geometry' ? 'properties.locationMap.geometryLatLon' : 'properties.locationMap.latLon')}>
             {formatLocaleNumber(locale, latLon.lat, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}, {formatLocaleNumber(locale, latLon.lon, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}
           </span>
         )}
@@ -638,6 +632,12 @@ export function LocationMap({
           onSelect={handleSearchSelect}
           onClose={() => { setSearchOpen(false); setSearchQuery(''); setSearchResults([]); }}
         />
+      )}
+
+      {locationKind === 'geometry' && (
+        <p className="px-3 pb-2 text-xs text-zinc-500 dark:text-zinc-400">
+          {t('properties.locationMap.geometryLocation')}
+        </p>
       )}
 
       {geometryDistanceKm !== null && (
@@ -775,7 +775,7 @@ export function LocationMap({
                     {t('properties.locationMap.googleMaps')}
                   </a>
                 </TooltipTrigger>
-                <TooltipContent>{t('properties.locationMap.googleMapsTooltip')}</TooltipContent>
+                <TooltipContent>{t(locationKind === 'geometry' ? 'properties.locationMap.geometryGoogleMapsTooltip' : 'properties.locationMap.googleMapsTooltip')}</TooltipContent>
               </Tooltip>
             )}
             {openStreetMapUrl && (
@@ -791,7 +791,7 @@ export function LocationMap({
                     {t('properties.locationMap.openStreetMap')}
                   </a>
                 </TooltipTrigger>
-                <TooltipContent>{t('properties.locationMap.openStreetMapTooltip')}</TooltipContent>
+                <TooltipContent>{t(locationKind === 'geometry' ? 'properties.locationMap.geometryOpenStreetMapTooltip' : 'properties.locationMap.openStreetMapTooltip')}</TooltipContent>
               </Tooltip>
             )}
             {geometryResult && (

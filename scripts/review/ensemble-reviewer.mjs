@@ -19,12 +19,9 @@
  * failover path in run-reviewer.mjs, which only fires when this ensemble is
  * disabled, unconfigured, or fails outright.
  *
- * COST, not correctness, is why this exists. Prices below are USD per million
- * tokens, hardcoded from OpenRouter's published rates at the time this was
- * written -- never fetched live, because a review lane must not grow a network
- * dependency on a pricing API just to print a log line. A run's own `usage`
- * field (prompt_tokens/completion_tokens) is what `estimateCostUsd` actually
- * multiplies; the table only supplies the per-token rate.
+ * Actual billed usage.cost is preferred; static token pricing is an explicitly
+ * labelled fallback when the provider omits it. Calls and pool-validation
+ * outcomes are retained in a sidecar even when the ensemble falls through.
  *
  * POOLING IS AT THE FINDINGS LEVEL, not by concatenating raw text. Each
  * model's JSON is parsed independently and its `findings` array is tagged with
@@ -69,33 +66,9 @@ export const REVIEW_ENSEMBLE_MODELS_DEFAULT = [
  */
 export const REVIEW_ENSEMBLE_STRONG_MODEL = 'anthropic/claude-opus-5.5';
 
-/**
- * USD per MILLION tokens, { in, out }. A cost TABLE, not a cost CALL: see the
- * module docblock for why this is never fetched. Extend this table, never
- * invent a price for a model absent from it -- `estimateCostUsd` returns `null`
- * rather than guess.
- */
-export const MODEL_PRICES_PER_MTOK = {
-  'openai/gpt-6-luna': { in: 0.10, out: 0.50 },
-  'openai/gpt-5.6-luna': { in: 0.20, out: 1.20 },
-  'deepseek/deepseek-v4.1-flash': { in: 0.04, out: 0.29 },
-  'deepseek/deepseek-v4-flash': { in: 0.05, out: 0.09 },
-  'openai/gpt-5.4-nano': { in: 0.20, out: 1.25 },
-  'anthropic/claude-haiku-4.5': { in: 1.00, out: 5.00 },
-  'anthropic/claude-sonnet-5': { in: 2.00, out: 10.00 },
-  'anthropic/claude-opus-5.5': { in: 4.00, out: 20.00 },
-  'openai/gpt-6-sol': { in: 2.00, out: 10.00 },
-  'openai/gpt-5.6-sol': { in: 2.00, out: 10.00 },
-};
-
-/** @returns {number|null} USD, or null when the model or the usage field is unknown. */
-export function estimateCostUsd(model, usage) {
-  const price = MODEL_PRICES_PER_MTOK[model];
-  if (!price || !usage) return null;
-  const promptTok = Number(usage.prompt_tokens ?? 0);
-  const completionTok = Number(usage.completion_tokens ?? 0);
-  return (promptTok / 1e6) * price.in + (completionTok / 1e6) * price.out;
-}
+export { estimateCostUsd, MODEL_PRICES_PER_MTOK } from './lib/review-cost.mjs';
+import { reviewReasoning } from './lib/review-reasoning.mjs';
+import { appendTelemetry, summarizeCalls, costRecord } from './lib/review-telemetry.mjs';
 
 /**
  * `REVIEW_ENSEMBLE_MODELS` unset or empty means the ensemble is OFF: this
@@ -136,31 +109,32 @@ async function runWithConcurrency(tasks, limit) {
  *
  * @returns {Promise<{results: {model: string, text: string, usage: object|null, elapsedMs: number}[], failures: {model: string, error: string}[]}>}
  */
-export async function runEnsemble({ prompt, apiKey, models, minSuccess = 1, concurrency, fetchImpl = fetch }) {
+export async function runEnsemble({ prompt, apiKey, models, minSuccess = 1, concurrency, fetchImpl = fetch, reasoningProfile = 'high' }) {
   if (!Array.isArray(models) || models.length === 0) {
     throw new Error('runEnsemble requires at least one model.');
   }
   const tasks = models.map((model) => async () => {
     const startedAt = Date.now();
+    const reasoning = reviewReasoning(model, reasoningProfile);
     try {
-      const { text, usage } = await requestOpenRouterReviewWithUsage({ prompt, apiKey, model, fetchImpl });
+      const { text, usage, finishReason } = await requestOpenRouterReviewWithUsage({ prompt, apiKey, model, fetchImpl, reasoning });
       const elapsedMs = Date.now() - startedAt;
-      const cost = estimateCostUsd(model, usage);
+      const { costUsd: cost, costSource } = costRecord(model, usage);
       console.log(
         `ensemble: ${model} answered in ${elapsedMs}ms, ${text.length} chars` +
-          (cost !== null ? `, ~$${cost.toFixed(4)}` : ''),
+          (cost !== null ? `, ${costSource === 'estimated' ? '~' : ''}$${cost.toFixed(4)} (${costSource})` : ''),
       );
-      return { ok: true, model, text, usage: usage ?? null, elapsedMs };
+      return { ok: true, model, text, usage: usage ?? null, finishReason, reasoning, elapsedMs };
     } catch (error) {
       const elapsedMs = Date.now() - startedAt;
       const message = error instanceof Error ? error.message : String(error);
       console.log(`ensemble: ${model} failed after ${elapsedMs}ms: ${message}`);
-      return { ok: false, model, error: message };
+      return { ok: false, model, error: message, elapsedMs, usage: error?.usage ?? null, finishReason: error?.finishReason ?? null, reasoning };
     }
   });
   const outcomes = await runWithConcurrency(tasks, concurrency ?? models.length);
   const results = outcomes.filter((o) => o.ok).map(({ ok: _ok, ...rest }) => rest);
-  const failures = outcomes.filter((o) => !o.ok).map(({ model, error }) => ({ model, error }));
+  const failures = outcomes.filter((o) => !o.ok).map(({ ok: _ok, ...rest }) => rest);
   if (results.length < minSuccess) {
     console.log(`ensemble: only ${results.length}/${models.length} model(s) succeeded, below minSuccess=${minSuccess}.`);
   }
@@ -190,10 +164,11 @@ export async function runEnsemble({ prompt, apiKey, models, minSuccess = 1, conc
  * supplies it, and mechanical validation downstream still checks that set
  * against the diff we actually sent, not against anything asserted here.
  */
-export function poolFindings(results, expectedFiles = null) {
+export function poolFindings(results, expectedFiles = null, validation = new Map()) {
   const parsed = [];
   const expected = Array.isArray(expectedFiles) ? new Set(expectedFiles) : null;
   for (const r of results) {
+    validation.set(r.model, { accepted: false, reason: 'RAW_UNPARSEABLE', findings: 0 });
     let obj;
     try {
       obj = JSON.parse(stripFence(r.text).trim());
@@ -212,6 +187,7 @@ export function poolFindings(results, expectedFiles = null) {
     // fails this check is excluded from the pool the same way a schema-invalid
     // one is: logged, and counted as a per-model failure, not silently patched.
     if (obj?.end !== SENTINEL) {
+      validation.set(r.model, { accepted: false, reason: 'RESPONSE_TRUNCATED', findings: 0 });
       console.log(
         `ensemble: ${r.model} answer has no valid terminal sentinel (RESPONSE_TRUNCATED-shaped); excluded from the pool.`,
       );
@@ -227,6 +203,7 @@ export function poolFindings(results, expectedFiles = null) {
       // omits `riskiest_change`, is not a source of truth for anything else
       // it said either.
       const reason = error instanceof ValidateFindingsError ? error.reason : 'UNKNOWN';
+      validation.set(r.model, { accepted: false, reason, findings: 0 });
       console.log(`ensemble: ${r.model} answer failed schema validation (${reason}): ${error.message}`);
       continue;
     }
@@ -238,6 +215,7 @@ export function poolFindings(results, expectedFiles = null) {
       const claimed = new Set(Array.isArray(obj.files_reviewed) ? obj.files_reviewed : []);
       const mismatch = [...expected].some((f) => !claimed.has(f)) || [...claimed].some((f) => !expected.has(f));
       if (mismatch) {
+        validation.set(r.model, { accepted: false, reason: 'PROOF_OF_WORK_FAILED', findings: 0 });
         console.log(`ensemble: ${r.model} files_reviewed is not the set that was sent (PROOF_OF_WORK-shaped); excluded from the pool.`);
         continue;
       }
@@ -247,9 +225,11 @@ export function poolFindings(results, expectedFiles = null) {
     // complete one it would be laundered into a posted clean, so it is
     // excluded here instead of silently dropped by mergeClassPass.
     if (obj.verdict === 'clean' && !Array.isArray(obj.class_pass)) {
+      validation.set(r.model, { accepted: false, reason: 'CLASS_PASS_INCOMPLETE', findings: 0 });
       console.log(`ensemble: ${r.model} said clean without a class_pass (CLASS_PASS_INCOMPLETE-shaped); excluded from the pool.`);
       continue;
     }
+    validation.set(r.model, { accepted: true, reason: null, findings: obj.findings.length });
     parsed.push({ model: r.model, obj });
   }
   if (parsed.length === 0) return null;
@@ -289,14 +269,16 @@ export function poolFindings(results, expectedFiles = null) {
  *
  * @returns {Promise<{text: string, models: string[], failed: {model: string, error: string}[]} | null>}
  */
-export async function runEnsembleReview({ prompt, apiKey, models, minSuccess = 1, concurrency, fetchImpl = fetch, expectedFiles = null }) {
-  const { results, failures } = await runEnsemble({ prompt, apiKey, models, minSuccess, concurrency, fetchImpl });
+export async function runEnsembleReview({ prompt, apiKey, models, minSuccess = 1, concurrency, fetchImpl = fetch, expectedFiles = null, onTelemetry = () => {}, reasoningProfile = 'high' }) {
+  const { results, failures } = await runEnsemble({ prompt, apiKey, models, minSuccess, concurrency, fetchImpl, reasoningProfile });
+  const validation = new Map();
+  const pooled = poolFindings(results, expectedFiles, validation);
+  onTelemetry(summarizeCalls(results, failures, validation));
   if (results.length < minSuccess) return null;
-  const pooled = poolFindings(results, expectedFiles);
   if (!pooled) return null;
   return {
     text: JSON.stringify(pooled),
-    models: results.map((r) => r.model),
+    models: results.filter((r) => validation.get(r.model)?.accepted).map((r) => r.model),
     failed: failures,
   };
 }
@@ -322,15 +304,16 @@ export function resolveEnsemblePlan(env, input) {
   const apiKey = String(env.OPENROUTER_API_KEY ?? '').trim();
   if (!apiKey) return null;
   const withStrong = [...models];
+  const strongModel = String(env.REVIEW_ENSEMBLE_STRONG_MODEL ?? '').trim() || REVIEW_ENSEMBLE_STRONG_MODEL;
   if (String(env.REVIEW_ENSEMBLE_STRONG_ON_RISK ?? '').trim() === 'true') {
     const paths = [
       ...(input.files ?? []).map((f) => f.path),
       ...(input.unreviewable ?? []).map((u) => u.path),
     ];
     const risk = classifyPrRisk(paths);
-    if (!risk.lowRisk && !withStrong.includes(REVIEW_ENSEMBLE_STRONG_MODEL)) {
-      console.log(`ensemble: high-risk PR (${risk.why}); adding ${REVIEW_ENSEMBLE_STRONG_MODEL}.`);
-      withStrong.push(REVIEW_ENSEMBLE_STRONG_MODEL);
+    if (!risk.lowRisk && !withStrong.includes(strongModel)) {
+      console.log(`ensemble: high-risk PR (${risk.why}); adding ${strongModel}.`);
+      withStrong.push(strongModel);
     }
   }
   return { models: withStrong, apiKey };
@@ -343,14 +326,17 @@ export function resolveEnsemblePlan(env, input) {
  * "do nothing, fall through unchanged" -- disabled, unconfigured, or every
  * model failed.
  */
-export async function maybeRunEnsemble({ env, input, prompt, outPath }) {
+export async function maybeRunEnsemble({ env, input, prompt, outPath, fetchImpl = fetch }) {
   const plan = resolveEnsemblePlan(env, input);
   if (!plan) return false;
   console.log(`ensemble: asking ${plan.models.join(', ')} in parallel.`);
   // `input.files` here is the raw review-input.json array (path objects), the
   // same roster `checkProofOfWork` later compares against.
   const expectedFiles = Array.isArray(input?.files) ? input.files.map((f) => f.path) : null;
-  const outcome = await runEnsembleReview({ prompt, apiKey: plan.apiKey, models: plan.models, minSuccess: 1, expectedFiles });
+  const outcome = await runEnsembleReview({ prompt, apiKey: plan.apiKey, models: plan.models, minSuccess: 1, expectedFiles, fetchImpl,
+    reasoningProfile: String(env.REVIEW_ENSEMBLE_REASONING_PROFILE ?? '').trim() || 'cheap-defaults',
+    onTelemetry: (calls) => appendTelemetry(`${outPath}.telemetry.jsonl`, { pr: input.pr, headSha: input.headSha, calls }),
+  });
   if (!outcome) {
     console.log('ensemble: no model produced a usable answer; falling through to the CLI/failover chain.');
     return false;

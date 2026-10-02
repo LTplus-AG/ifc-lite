@@ -6,35 +6,59 @@ name: Rubric eval
 
 # MANUAL ONLY, AND THAT IS THE POINT.
 #
-# Every case is one model call against the same subscription pool the review lane
-# uses, so running this per-PR would spend the reviewer's quota measuring the
-# reviewer. It answers one question, asked deliberately: did a rubric change
+# Cases spend subscription quota or paid provider credits, so running this
+# per-PR would spend the reviewer's quota measuring the reviewer. It answers one question, asked deliberately: did a rubric change
 # recover recall, or only move the prose around?
 #
 # The ground truth is real: defects CodeRabbit found on this repository's own PRs
-# and the Claude lane, running the current rubric, MISSED. Recall against them is
-# currently zero, so the only direction that matters is up.
+# and earlier versions of the review lane missed. Extra findings still require
+# adjudication; the historical defects are not an exhaustive oracle.
 on:
   workflow_dispatch:
     inputs:
+      provider:
+        description: 'Claude subscription or paid OpenRouter comparison'
+        type: choice
+        options: [claude, openrouter]
+        default: claude
+      comparison:
+        description: 'OpenRouter seats to compare'
+        type: choice
+        options: [strong, cheap]
+        default: strong
+      reasoning_profile:
+        description: 'High reasoning baseline or model-specific cheap defaults'
+        type: choice
+        options: [high, cheap-defaults]
+        default: high
+      context_ref:
+        description: 'HEAD or a pinned 40-hex tree for identical context across comparisons'
+        required: false
+        default: HEAD
+      resume_run_id:
+        description: 'Optional completed comparison run whose artifacts should be resumed'
+        required: false
+        default: ''
       rubric:
         description: 'Path to the rubric to score (default: the shipped one)'
         required: false
         default: 'scripts/review/rubric.md'
       model:
-        description: 'Model to score with'
+        description: 'Claude model (OpenRouter uses fixed comparison candidates)'
         required: false
         default: 'sonnet'
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: rubric-eval
+  group: rubric-eval-${{ inputs.comparison || 'strong' }}-${{ inputs.reasoning_profile || 'high' }}
   cancel-in-progress: false
 
 jobs:
   eval:
+    if: inputs.provider != 'openrouter'
     name: Rubric eval
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -82,3 +106,78 @@ jobs:
         # this line is the only thing standing between the eval and silently
         # scoring a pack that was never built.
         run: node scripts/review/rubric-eval.mjs --rubric "$EVAL_RUBRIC" --base HEAD
+
+  openrouter:
+    if: inputs.provider == 'openrouter'
+    name: Compare ${{ matrix.model }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJSON(inputs.comparison == 'cheap'
+            && '[{"model":"openai/gpt-6-luna","artifact":"gpt-6-luna"},{"model":"deepseek/deepseek-v4-flash","artifact":"deepseek-v4-flash"},{"model":"google/gemini-3.5-flash-lite","artifact":"gemini-3.5-flash-lite"}]'
+            || '[{"model":"openai/gpt-6.1-sol","artifact":"gpt-6.1-sol"},{"model":"anthropic/claude-sonnet-5.5","artifact":"claude-sonnet-5.5"},{"model":"anthropic/claude-opus-5.5","artifact":"claude-opus-5.5"}]') }}
+    env:
+      EVAL_CONTEXT_BASE: ${{ inputs.context_ref || 'HEAD' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          lfs: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Test evaluation adapters
+        run: node --test scripts/review/rubric-eval.test.mjs scripts/review/openrouter-eval-reviewer.test.mjs scripts/review/lib/eval-cache.test.mjs scripts/review/semantic-match.test.mjs scripts/review/lib/review-reasoning.test.mjs
+      - name: Fetch a pinned context tree when requested
+        if: inputs.context_ref != '' && inputs.context_ref != 'HEAD'
+        run: |
+          [[ "$EVAL_CONTEXT_BASE" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          git fetch --depth=1 origin "$EVAL_CONTEXT_BASE"
+      - name: Restore completed cases and their cost ledger
+        if: inputs.resume_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+          EVAL_ARTIFACT: ${{ matrix.artifact }}
+          EVAL_RUBRIC: ${{ inputs.rubric }}
+        run: |
+          [[ "$RESUME_RUN_ID" =~ ^[0-9]+$ ]] || exit 1
+          source_sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RESUME_RUN_ID" --jq .head_sha)
+          git fetch --depth=1 origin "$source_sha"
+          git show "$source_sha:$EVAL_RUBRIC" > "$RUNNER_TEMP/source-rubric.md"
+          cmp "$RUNNER_TEMP/source-rubric.md" "$EVAL_RUBRIC"
+          gh run download "$RESUME_RUN_ID" --name "review-eval-$EVAL_ARTIFACT" --dir "$RUNNER_TEMP" --repo "$GITHUB_REPOSITORY"
+          context_sha=$(node --input-type=module -e 'import { readEvalContext } from "./scripts/review/lib/eval-cache.mjs"; console.log(readEvalContext(process.env.RUNNER_TEMP))')
+          git fetch --depth=1 origin "$context_sha"
+          echo "EVAL_CONTEXT_BASE=$context_sha" >> "$GITHUB_ENV"
+      - name: Record the context tree before any paid attempt
+        run: git rev-parse "$EVAL_CONTEXT_BASE^{commit}" > "$RUNNER_TEMP/eval-context.txt"
+      - name: Compare generator recall with the production validator and retry
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          EVAL_MODEL: ${{ matrix.model }}
+          EVAL_REASONING_PROFILE: ${{ inputs.reasoning_profile }}
+          EVAL_RUBRIC: ${{ inputs.rubric }}
+          EVAL_COST_LEDGER: ${{ runner.temp }}/eval-cost.txt
+          # Three serial case loops, each with a conservative $10 reservation
+          # limit including corrective retries. No paid judge in this comparison.
+          EVAL_BUDGET_USD: '10'
+        run: >-
+          node scripts/review/rubric-eval.mjs --rubric "$EVAL_RUBRIC" --base "${EVAL_CONTEXT_BASE:-HEAD}"
+          --reviewer scripts/review/openrouter-eval-reviewer.mjs --no-judge
+          --output-dir "$RUNNER_TEMP/eval" --resume
+      - name: Preserve scores, usage, and raw evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: review-eval-${{ matrix.artifact }}
+          path: |
+            ${{ runner.temp }}/eval/
+            ${{ runner.temp }}/eval-cost.txt
+            ${{ runner.temp }}/eval-context.txt
+          if-no-files-found: error
+          retention-days: 30

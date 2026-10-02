@@ -69,7 +69,7 @@ describe('manual report snapshot (#6401)', () => {
       const blocks: DocumentSpec['blocks'] = [manual, { kind: 'page-break', id: 'page' }];
       if (version === 9) blocks.push({ kind: 'table', id: 'comparison', source: { kind: 'comparison', comparison } });
       const imported = parseDocumentFile(JSON.stringify({ ...docWith(blocks), version }));
-      assert.equal(imported.version, 10);
+      assert.equal(imported.version, DOCUMENT_VERSION);
       assert.deepEqual(imported.blocks.map(({ id: _id, ...payload }) => payload), blocks.map(({ id: _id, ...payload }) => payload));
       const reopened = imported.blocks[0] as ManualReportBlock;
       assert.equal(reopened.checklistId, undefined, 'older snapshots keep active-source semantics until explicit choice');

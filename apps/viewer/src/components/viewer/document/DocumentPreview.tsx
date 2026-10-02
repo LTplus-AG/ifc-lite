@@ -20,8 +20,8 @@ import { topicLines, topicSnapshotDataUrl } from '@/lib/document/generate-docume
 import { pageBox, REPORT_MARGIN } from '@/lib/export/report/compose';
 import { DOCUMENT_FONT_FAMILIES } from '@/lib/document/text-typography';
 import { pageHeadingStyle } from '@/lib/document/page-heading';
-import { BLOCK_GAP, documentChartSizing, documentImageHeight, halfTextFitsPage, TEXT_STYLES } from '@/lib/document/compose';
-import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type DocumentBlock, type DocumentSpec, type TextBlock } from '@/lib/document/types';
+import { BLOCK_GAP, documentChartSizing, documentImageHeight, halfTextFitsPage, scaledPageHeight, TEXT_STYLES } from '@/lib/document/compose';
+import { blockScale, CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type DocumentBlock, type DocumentSpec, type TextBlock } from '@/lib/document/types';
 import type { TableState } from '@/lib/document/resolve-table';
 import { TAB_SIZE } from '@/lib/document/text-tabs';
 import { splitDocumentSections } from '@/lib/document/page-sections';
@@ -57,7 +57,11 @@ const TEXT_CLASS: Record<TextBlock['style'], string> = {
 function groupBlocks(blocks: readonly DocumentBlock[], bindings: BindingContext, pageHeight: number, contentWidth: number, headingExtraHeight = 0): Array<DocumentBlock | [DocumentBlock, DocumentBlock]> {
   const groups: Array<DocumentBlock | [DocumentBlock, DocumentBlock]> = [];
   const colW = (contentWidth - BLOCK_GAP) / 2;
-  const fits = (block: DocumentBlock): boolean => block.kind !== 'text' || halfTextFitsPage({ ...block, text: renderTemplate(block.text, bindings).text }, pageHeight, colW, headingExtraHeight);
+  const fits = (block: DocumentBlock): boolean => {
+    if (block.kind !== 'text') return true;
+    const factor = blockScale(block);
+    return halfTextFitsPage({ ...block, text: renderTemplate(block.text, bindings).text }, scaledPageHeight(pageHeight, headingExtraHeight, factor), colW / factor, headingExtraHeight);
+  };
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
     const next = blocks[i + 1];
@@ -124,7 +128,7 @@ function PreviewImage({ dataUrl, alt, height, contentWidth }: { dataUrl: string;
   }} />;
 }
 
-function Block({ block, bindings, aggregation, chartMessage, topic, table, contentWidth, scale, pageHeight, headingExtraHeight }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; chartMessage: string | undefined; topic: BCFTopic | undefined; table: TableState | undefined; contentWidth: number; scale: number; pageHeight: number; headingExtraHeight: number }) {
+function BlockBody({ block, bindings, aggregation, chartMessage, topic, table, contentWidth, scale, pageHeight, headingExtraHeight }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; chartMessage: string | undefined; topic: BCFTopic | undefined; table: TableState | undefined; contentWidth: number; scale: number; pageHeight: number; headingExtraHeight: number }) {
   const { t } = useTranslation();
   switch (block.kind) {
     case 'text':
@@ -132,7 +136,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
       // tab indents (same tab stop as the PDF) and runs of spaces. Title, heading and subheading
       // once collapsed a typed line break into a space.
       return <div>{blockTitle(block) && <div className="truncate font-semibold" style={{ fontSize: 11 * scale, height: BLOCK_TITLE_HEIGHT * scale }} title={blockTitle(block)}>{blockTitle(block)}</div>}
-        <div className={TEXT_CLASS[block.style]} style={{ color: block.textColor, backgroundColor: block.backgroundColor, whiteSpace: 'pre-wrap', tabSize: TAB_SIZE, fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * scale, fontFamily: DOCUMENT_FONT_FAMILIES[block.font ?? 'helvetica'] }} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>{t('document.preview.textEmpty')}</span>}</div></div>;
+        <div className={TEXT_CLASS[block.style]} style={{ color: block.textColor, backgroundColor: block.backgroundColor, whiteSpace: 'pre-wrap', tabSize: TAB_SIZE, fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * scale, lineHeight: TEXT_STYLES[block.style].lineHeight, fontFamily: DOCUMENT_FONT_FAMILIES[block.font ?? 'helvetica'] }} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>{t('document.preview.textEmpty')}</span>}</div></div>;
 
     case 'image': {
       const title = blockTitle(block);
@@ -205,6 +209,22 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
       );
     }
   }
+}
+
+/**
+ * A block with a size factor (#6548) is laid out at its authored sizes in a column `scale` times wider
+ * and a frame `scale` times shorter, and then zoomed by `scale`, as `compose.ts` does for the PDF: its
+ * text and graphics grow by one factor. CSS `zoom` is the whole mechanism here, so a table, report or
+ * topic block, whose text is styled by classes, follows too.
+ */
+function Block(props: Parameters<typeof BlockBody>[0]) {
+  const factor = blockScale(props.block);
+  if (factor === 1) return <BlockBody {...props} />;
+  return (
+    <div style={{ zoom: factor }} data-block-scale={factor}>
+      <BlockBody {...props} contentWidth={props.contentWidth / factor} pageHeight={scaledPageHeight(props.pageHeight, props.headingExtraHeight, factor)} />
+    </div>
+  );
 }
 
 export function DocumentPreview({ document, bindings, aggregations, chartMessages, topics, tables, selectedBlockId, onSelectBlock }: DocumentPreviewProps) {

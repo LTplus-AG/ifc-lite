@@ -682,7 +682,11 @@ bridge methods or a public MCP Redo tool.
 
 `bim.store.replaceElement(ref, storeyId, element)` is another optional backend
 capability. It accepts the existing eight ordinary builder kinds plus `stair`
-and `railing`, with their canonical params. Removal and creation share one
+and `railing`, with their canonical params. The existing product must belong to
+one of those supported classes or their schema subtypes. Curtain walls, grids,
+spatial structure and ordinary aggregate roots refuse before placement
+preparation or graph changes; only uniquely owned single-flight stairs have
+an assembly removal contract. Removal and creation share one
 atomic draft; a late builder, placement or ownership refusal leaves the old
 products, prior overlay, journal and allocator intact. The viewer completes
 mesh/tree changes after commit and records one Undo/Redo batch; loaded MCP

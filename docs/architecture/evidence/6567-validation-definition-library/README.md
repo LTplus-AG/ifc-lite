@@ -24,6 +24,6 @@ The 57 affected tests (39 new, 18 unchanged) passed without skips on source `9cc
 
 ## Reproduce and inspect
 
-Run `pnpm dev --host 127.0.0.1 --port 52725` from the captured source, then `node browser-capture.cjs <worktree> <output-directory> 52725`. The harness requires the repository's Playwright dependency and `/usr/bin/google-chrome`; use fresh output/profile directories.
+Run `pnpm dev --host 127.0.0.1 --port 52725` from the captured source, then `node docs/architecture/evidence/6567-validation-definition-library/browser-capture.cjs <worktree> <output-directory> 52725`. The harness requires the repository's Playwright dependency and `/usr/bin/google-chrome`; use fresh output/profile directories.
 
 Archives are lossless. Use `gzip -dc facts.json.gz`, `gzip -dc final-qualification.json.gz`, or `gzip -dc 2-quota-control.ids.gz > quota-control.ids`. [The artifact manifest](artifact-manifest.json) records every archived and original byte count and SHA-256, including both original rules downloads. No functional source or test is compacted into an archive.

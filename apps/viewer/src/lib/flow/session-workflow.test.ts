@@ -20,6 +20,9 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { buildReportDocument, type DocumentReportResult } from '@/lib/document/build-report-document';
 import { loadValidationReports, VALIDATION_REPORTS_STORAGE_KEY } from '@/lib/validation/reports/persistence';
 import { validateChecks, compareChecks } from './check-host';
+import { snapshotComparison } from '@/lib/compare/savedComparisons';
+import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixture';
+import { readContentRows } from '@/lib/storage/content-database';
 import { loadSavedComparisons } from '@/lib/compare/savedComparisonPersistence';
 import { preflightWorkflow } from './preflight';
 import { createAutomationHost } from './automation-host';
@@ -88,6 +91,29 @@ afterEach(() => {
 });
 
 describe('session validation pipeline through native engines (#6612)', () => {
+  it('imports deleted historical comparison evidence under independent local identity and reuses its next import (#6694)', async () => {
+    const external = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Historical evidence');
+    assert.equal(await useViewerStore.getState().saveComparison(external), true);
+    assert.equal(await useViewerStore.getState().deleteSavedComparison(external.id), true);
+    run = startWorkflowRun();
+    const host = createAutomationHost(run, { ...inputGraph([]), capabilities: ['storage.write:savedComparisons'] },
+      async () => assert.fail('historical evidence import must not load a model'), () => assert.fail('import must not export an artifact'));
+    const files = run.put('files', { history: [new File([JSON.stringify(external)], 'historical-comparison.json')] });
+    const first = run.get<DocumentReportResult[]>(await host.importComparisons(files), 'reports');
+    assert.ok(first[0]?.kind === 'comparison');
+    const copy = first[0].comparison;
+    assert.notEqual(copy.id, external.id);
+    assert.deepEqual(copy.report, external.report);
+    assert.deepEqual(run.warnings, [], 'the imported evidence must commit, not remain in permanent conflict');
+    assert.deepEqual((await loadSavedComparisons()).map(entry => entry.id), [copy.id]);
+    const repeated = run.get<DocumentReportResult[]>(await host.importComparisons(files), 'reports');
+    assert.ok(repeated[0]?.kind === 'comparison');
+    assert.equal(repeated[0].comparison.id, copy.id);
+    assert.deepEqual((await loadSavedComparisons()).map(entry => entry.id), [copy.id]);
+    assert.equal((await readContentRows('comparison')).find(row => row.id === external.id)?.deleted, true,
+      'an explicit import must not resurrect the deleted library identity');
+  });
+
   it('retains failed quality evidence and builds an ordinary document without recoloring or publishing live results', async () => {
     run = startWorkflowRun();
     const previousLiveReport = useViewerStore.getState().idsValidationReport;

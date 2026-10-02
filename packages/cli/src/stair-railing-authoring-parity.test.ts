@@ -146,7 +146,9 @@ describe.skipIf(!AVAILABLE)('#6232 D5 canonical stair/railing SDK and public MCP
             && !before.some(([old]) => old === id));
           expect(products).toHaveLength(1);
           await assertProduct(target.bim, { modelId: target.id, expressId: products[0][0] }, kind);
-          const journal = target.backend.getOrCreateMutationView().getMutations();
+          const view = target.backend.getOrCreateMutationView();
+          const journal = view.getMutations(), nextId = view.peekNextExpressId();
+          const tracked = structuredClone(options.tracking.load(`d5-${kind}`));
           const kept = await runFlow(original, options);
           expect(kept.ok, JSON.stringify(kept.reports)).toBe(true);
           expect(kept.reports.find(report => report.nodeId === 'create')?.tracking)
@@ -160,6 +162,8 @@ describe.skipIf(!AVAILABLE)('#6232 D5 canonical stair/railing SDK and public MCP
           const second = await runFlow(next, options);
           if (operation === 'invalid update') {
             expect(second.ok).toBe(false);
+            expect(options.tracking.load(`d5-${kind}`)).toEqual(tracked);
+            expect(view.peekNextExpressId()).toBe(nextId);
             expect((await records(target.bim.export.ifc())).all).toEqual(firstSaved);
             expect(target.backend.getOrCreateMutationView().getMutations()).toEqual(journal);
             expect((await records(models.get('alpha')!.bim.export.ifc())).all).toEqual(peer);

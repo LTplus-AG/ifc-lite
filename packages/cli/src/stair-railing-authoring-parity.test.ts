@@ -14,7 +14,8 @@ import {
 import { StoreEditor } from '@ifc-lite/mutations';
 import { EntityExtractor, getSchemaRegistryForVersion, IfcParser } from '@ifc-lite/parser';
 import { createBimContext, type EntityRef } from '@ifc-lite/sdk';
-import type { FlowDocument } from '@ifc-lite/flow';
+import { MemoryTrackingStore, runFlow, type FlowDocument } from '@ifc-lite/flow';
+import { createStandardRegistry, headlessFeatures, type FlowHost } from '@ifc-lite/flow-nodes';
 import { createMCPServer, fullScope, InMemoryModelRegistry, InProcessTransport,
   loadIfcModel, type CallToolResult } from '@ifc-lite/mcp';
 import { meshStairs, stairMeshBounds, stairWasmAvailable } from '../../create/src/in-store/__test__/stair-mesh.oracle.js';
@@ -128,6 +129,44 @@ async function session(count: number) {
 
 describe.skipIf(!AVAILABLE)('#6232 D5 canonical stair/railing SDK and public MCP', () => {
   for (const kind of ['stair', 'railing'] as const) {
+    for (const operation of ['update', 'remove'] as const) {
+      it(`persistent flow ${operation}: ${kind} leaves no live orphan or dangling relationship`, async () => {
+        const { registry: models, target, transport } = await session(2);
+        try {
+          target.bim.store.addEntity(target.id, { type: 'IfcCartesianPoint', attributes: [[7, 8, 9]] });
+          const before = (await records(target.bim.export.ifc())).all;
+          const peer = (await records(models.get('alpha')!.bim.export.ifc())).all;
+          const host: FlowHost = { bim: target.bim, defaultModelId: target.id };
+          const options = { host, registry: createStandardRegistry(), tracking: new MemoryTrackingStore(), features: headlessFeatures() };
+          const original = flow(kind);
+          const first = await runFlow(original, options);
+          expect(first.ok, JSON.stringify(first.reports)).toBe(true);
+          const firstSaved = (await records(target.bim.export.ifc())).all;
+          const products = firstSaved.filter(([id, e]) => e.type === (kind === 'stair' ? 'IFCSTAIR' : 'IFCRAILING')
+            && !before.some(([old]) => old === id));
+          expect(products).toHaveLength(1);
+          await assertProduct(target.bim, { modelId: target.id, expressId: products[0][0] }, kind);
+          const next: FlowDocument = operation === 'update'
+            ? { ...original, nodes: original.nodes.map(node => node.id === 'spec'
+              ? { ...node, params: { ...node.params, ...(kind === 'stair' ? { Width: 1.2 } : { Height: 1.4 }) } } : node) }
+            : { ...original, nodes: [], edges: [], outputs: [] };
+          const second = await runFlow(next, options);
+          expect(second.ok, JSON.stringify(second.reports)).toBe(true);
+          const saved = (await records(target.bim.export.ifc())).all, ids = new Set(saved.map(([id]) => id));
+          const authored = saved.filter(([id]) => !before.some(([old]) => old === id));
+          const dangling = authored.flatMap(([id, entity]) => {
+            const refs = entity.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE' ? entity.attributes[4]
+              : entity.type === 'IFCRELAGGREGATES' ? [entity.attributes[4], ...(Array.isArray(entity.attributes[5]) ? entity.attributes[5] : [])] : [];
+            return Array.isArray(refs) ? refs.filter(ref => typeof ref === 'number' && !ids.has(ref)).map(ref => ({ relationship: id, target: ref })) : [];
+          });
+          expect({ products: authored.filter(([, e]) => e.type === (kind === 'stair' ? 'IFCSTAIR' : 'IFCRAILING')).length,
+            flights: authored.filter(([, e]) => e.type === 'IFCSTAIRFLIGHT').length, dangling })
+            .toEqual({ products: operation === 'update' ? 1 : 0, flights: kind === 'stair' && operation === 'update' ? 1 : 0, dangling: [] });
+          expect(saved.filter(([id]) => before.some(([old]) => old === id))).toEqual(before);
+          expect((await records(models.get('alpha')!.bim.export.ifc())).all).toEqual(peer);
+        } finally { transport.close(); }
+      });
+    }
     it(`${kind}: existing canonical Bonsai builder saves real relationships and native bounds`, async () => {
       const loaded = await loadIfcModel(SAMPLE, { modelId: 'control' });
       const editor = new StoreEditor(loaded.store, loaded.backend.getOrCreateMutationView());

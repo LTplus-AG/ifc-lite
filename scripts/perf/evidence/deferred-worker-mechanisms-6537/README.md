@@ -10,11 +10,13 @@ whole-load improvement. This evidence-only record changes no production code,
 parser grammar, runtime, worker count or ownership policy. It does not close
 #6537 or establish private-file, all-model, physical-memory or lifetime success.
 
-The [artifact manifest](artifact-manifest.json) records exact archived and
+The [artifact index](ARTIFACTS.md) records exact archived and
 original SHA-256/size. Every payload uses lossless gzip with zero timestamp.
 Schedules, row order, contaminated rows and original dispositions remain
 unchanged. Original per-sample JSON objects match their archived JSONL rows;
-duplicate JSON files are omitted. Decompression does not execute a capture.
+duplicate JSON files are omitted. Decompression does not execute a capture. The two original worker-diagnostic
+`.json.gz` payloads retain their exact bytes inside an outer `.gz`; they need
+two decodes to inspect JSON, as documented in the artifact index.
 
 ## Affinity admission: defer shipping
 
@@ -117,7 +119,8 @@ From the repository root:
 ```sh
 gzip -dc scripts/perf/evidence/deferred-worker-mechanisms-6537/affinity-v2/runs.jsonl.gz
 gzip -dc scripts/perf/evidence/deferred-worker-mechanisms-6537/compact-source/census-os1.json.gz | sha256sum
+gzip -dc scripts/perf/evidence/deferred-worker-mechanisms-6537/os1-diagnostic/base-worker-diagnostics.json.gz.gz | gzip -dc
 ```
 
-Compare with `originalSHA256` in the manifest. The archive preserves raw
+Compare with `originalSHA256` in the artifact index. The archive preserves raw
 reviews, censuses and attempts, not new measurements or an optimization claim.

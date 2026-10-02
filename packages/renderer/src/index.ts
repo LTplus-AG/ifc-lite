@@ -2573,6 +2573,9 @@ export class Renderer {
                     batch: typeof allBatchedMeshes[0],
                     kind: 'opaque' | 'transparent',
                 ): GPURenderPipeline => {
+                    const ghost = kind === 'transparent' && xray.isGhostBatch(batch)
+                        ? this.pipeline!.getGhostPipeline(!!batch.quantized, () => this.requestRender()) : null;
+                    if (ghost) return ghost;
                     const base = kind === 'opaque' ? this.pipeline!.getPipeline() : this.pipeline!.getTransparentPipeline();
                     if (!batch.quantized) return base;
                     return this.pipeline!.getQuantizedPipelineVariant(kind) ?? base;

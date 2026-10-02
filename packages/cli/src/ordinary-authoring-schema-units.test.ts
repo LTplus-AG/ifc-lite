@@ -7,6 +7,9 @@
  * SDK and public MCP commits are witnessed by saved records and native bounds.
  */
 import { existsSync, readFileSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { IfcCreator } from '@ifc-lite/create';
@@ -15,7 +18,7 @@ import { createBimContext } from '@ifc-lite/sdk';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import {
   createMCPServer, fullScope, InMemoryModelRegistry, InProcessTransport,
-  loadIfcModelFromBytes, type CallToolResult,
+  loadIfcModel, type CallToolResult,
 } from '@ifc-lite/mcp';
 import type { FlowDocument } from '@ifc-lite/flow';
 import { HeadlessBackend } from './headless-backend.js';
@@ -27,14 +30,18 @@ const WASM = fileURLToPath(new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.met
 const AVAILABLE = existsSync(WASM);
 if (!AVAILABLE) console.warn('skip: native schema/unit controls need pnpm build:wasm');
 let api: IfcAPI | undefined;
+const fixtureDirectories: string[] = [];
 beforeAll(() => {
   if (!AVAILABLE) return;
   initSync({ module: new Uint8Array(readFileSync(WASM)) });
   api = new IfcAPI();
 });
-afterAll(() => api?.free());
+afterAll(async () => {
+  try { api?.free(); }
+  finally { await Promise.all(fixtureDirectories.map(path => rm(path, { recursive: true, force: true }))); }
+});
 
-function fixture(schema: Schema, millimetres: boolean) {
+async function fixture(schema: Schema, millimetres: boolean) {
   const native = millimetres ? 1000 : 1;
   const creator = new IfcCreator({ Schema: schema, LengthUnit: millimetres ? 'MILLIMETRE' : 'METRE', Timestamp: 0, Name: 'D5 generated unit/frame control' });
   const storey = creator.addIfcBuildingStorey({ Name: 'D5 floor', Elevation: 2 * native });
@@ -51,7 +58,12 @@ function fixture(schema: Schema, millimetres: boolean) {
     return `${start}${slots.join(',')}${end}`;
   });
   expect(replacements, 'one actual source storey ObjectPlacement was authored').toBe(1);
-  return { bytes: new TextEncoder().encode(source), storey, frame };
+  const bytes = new TextEncoder().encode(source);
+  const directory = await mkdtemp(join(tmpdir(), 'ifc-lite-d5-ordinary-'));
+  fixtureDirectories.push(directory);
+  const filePath = join(directory, `${schema}-${millimetres ? 'mm' : 'm'}.ifc`);
+  await writeFile(filePath, bytes);
+  return { bytes, storey, frame, filePath };
 }
 
 function bytes(content: string | Uint8Array): Uint8Array {
@@ -131,7 +143,7 @@ describe.skipIf(!AVAILABLE)('#6232 D5 source-native schema/unit/frame controls',
   for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) for (const millimetres of [false, true]) {
     const label = `${schema}/${millimetres ? 'mm' : 'm'}`;
     it(`${label}: public CLI SDK saves four physical primitives and atomically refuses a late invalid GUID`, async () => {
-      const f = fixture(schema, millimetres), loaded = await loadIfcModelFromBytes(f.bytes, `${label}.ifc`, 'control');
+      const f = await fixture(schema, millimetres), loaded = await loadIfcModel(f.filePath, { modelId: 'control' });
       expect(loaded.store.schemaVersion).toBe(schema);
       const bim = createBimContext({ backend: new HeadlessBackend(loaded.store, 'control') });
       const refs = [
@@ -172,7 +184,7 @@ describe.skipIf(!AVAILABLE)('#6232 D5 source-native schema/unit/frame controls',
     });
 
     it(`${label}: public MCP run_flow produces the same transformed wall and one complete undo`, async () => {
-      const f = fixture(schema, millimetres), target = await loadIfcModelFromBytes(f.bytes, `${label}.ifc`, 'control');
+      const f = await fixture(schema, millimetres), target = await loadIfcModel(f.filePath, { modelId: 'control' });
       const registry = new InMemoryModelRegistry();
       registry.add(target);
       const transport = new InProcessTransport();

@@ -69,7 +69,9 @@ export function effectiveTypeAssignments(
     if (relation.relationshipType !== 'IfcRelDefinesByType') continue;
     for (const typeId of relation.relating) {
       const bucket = byType.get(typeId) ?? [];
-      bucket.push(...relation.related);
+      // Not `push(...related)`: one relation can relate the whole model, and
+      // spreading it as call arguments overflows the stack past ~120k ids.
+      for (const id of relation.related) bucket.push(id);
       byType.set(typeId, bucket);
     }
   }

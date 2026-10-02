@@ -47,6 +47,8 @@ async function parsed(content: string | Uint8Array) {
   const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
   return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { disableWorkerScan: true });
 }
+// Every export stamps its FILE_NAME timestamp. Peer/Undo checks retain exact
+// DATA IDs, GUIDs, attributes and enum token kinds rather than export instants.
 async function records(content: string | Uint8Array) {
   const store = await parsed(content), extractor = new EntityExtractor(store.source);
   return [...store.entityIndex.byId].map(([id, location]) => [id, extractor.extractEntity(location)] as const).sort((a, b) => a[0] - b[0]);
@@ -161,19 +163,19 @@ describe.skipIf(!AVAILABLE)('#6232 D5 six type/material routes on real loaded mo
         const loaded = await loadIfcModel(filePath, { modelId: id });
         contexts.push({ id, bim: createBimContext({ backend: new HeadlessBackend(loaded.store, id) }) });
       }
-      const target = contexts.at(-1)!, peer = count === 2 ? contexts[0].bim.export.ifc() : null;
+      const target = contexts.at(-1)!, peer = count === 2 ? await records(contexts[0].bim.export.ifc()) : null;
       await assertLayeredWall(target.bim.export.ifc());
       for (const route of ROUTES) {
         const ref = route.add(target.bim, target.id, seed);
         expect(ref.modelId).toBe(target.id);
         await assertResult(target.bim.export.ifc(), route, ref);
       }
-      if (count === 2) expect(contexts[0].bim.export.ifc()).toEqual(peer);
+      if (count === 2) expect(await records(contexts[0].bim.export.ifc())).toEqual(peer);
     });
     for (const route of ROUTES) it(`MCP ${route.name} saves and completely undoes with ${count} model(s)`, async () => {
       const registry = new InMemoryModelRegistry();
       for (const id of ['alpha', 'beta'].slice(0, count)) registry.add(await loadIfcModel(filePath, { modelId: id }));
-      const target = registry.get(count === 2 ? 'beta' : 'alpha')!, peer = count === 2 ? registry.get('alpha')!.bim.export.ifc() : null;
+      const target = registry.get(count === 2 ? 'beta' : 'alpha')!, peer = count === 2 ? await records(registry.get('alpha')!.bim.export.ifc()) : null;
       const transport = new InProcessTransport();
       await transport.connect(createMCPServer({ registry, scope: fullScope() }));
       let id = 0;
@@ -198,7 +200,7 @@ describe.skipIf(!AVAILABLE)('#6232 D5 six type/material routes on real loaded mo
         expect(target.backend.getMutationView()!.getMutations()).toEqual(journal);
         expect(target.backend.getMutationView()!.getNewEntities()).toEqual(overlay);
         await assertLayeredWall(target.bim.export.ifc());
-        if (count === 2) expect(registry.get('alpha')!.bim.export.ifc()).toEqual(peer);
+        if (count === 2) expect(await records(registry.get('alpha')!.bim.export.ifc())).toEqual(peer);
       } finally { transport.close(); }
     });
   }
@@ -231,6 +233,29 @@ describe.skipIf(!AVAILABLE)('#6232 D5 six type/material routes on real loaded mo
         }
         expect(saved.lengthUnitScale).toBe(millimetres ? .001 : 1);
       }
+    });
+  }
+  for (const millimetres of [false, true]) {
+    it(`IFC2X3/${millimetres ? 'mm' : 'm'}: late layer-set Description refusal leaves the prior authored model intact`, async () => {
+      if (!directory) throw new Error('Fixture directory not initialized');
+      const creator = new IfcCreator({ Schema: 'IFC2X3', LengthUnit: millimetres ? 'MILLIMETRE' : 'METRE', Timestamp: 0 });
+      const storey = creator.addIfcBuildingStorey({ Name: 'D5 late layer-set refusal', Elevation: 0 });
+      const path = join(directory, `IFC2X3-late-${millimetres ? 'mm' : 'm'}.ifc`);
+      await writeFile(path, creator.toIfc().content);
+      const loaded = await loadIfcModel(path, { modelId: 'late' });
+      expect(loaded.store.schemaVersion).toBe('IFC2X3');
+      const bim = createBimContext({ backend: new HeadlessBackend(loaded.store, 'late') });
+      const fixture = authorSeed(bim, 'late', storey);
+      await assertLayeredWall(bim.export.ifc(), fixture);
+      const before = await records(bim.export.ifc());
+      // The valid layer definitions precede the unsupported set-level field.
+      // A refusal must not leave those orphan helpers in the live overlay.
+      expect(() => bim.store.addMaterialLayerSet('late', {
+        LayerSetName: 'D5 refused set', Description: 'IFC2X3 has no set Description',
+        MaterialLayers: [{ Material: fixture.concrete, LayerThickness: .2 }, { Material: fixture.wool, LayerThickness: .1 }],
+      })).toThrow(new Error('addMaterialLayerSetToStore: IfcMaterialLayerSet has no attribute Description in IFC2X3'));
+      expect(await records(bim.export.ifc())).toEqual(before);
+      await assertLayeredWall(bim.export.ifc(), fixture);
     });
   }
 });

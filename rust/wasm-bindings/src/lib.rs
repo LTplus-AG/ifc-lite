@@ -67,6 +67,7 @@ pub use utils::stash_location_parts;
 pub use wasm_bindgen_rayon::init_thread_pool;
 
 mod api;
+mod progress_hook;
 #[cfg(feature = "opening-perf-trace")]
 mod opening_perf_trace;
 #[cfg(feature = "console-tracing")]
@@ -75,6 +76,7 @@ mod utils;
 mod zero_copy;
 
 pub use api::IfcAPI;
+pub use progress_hook::set_geometry_progress_callback;
 mod alignment_axis;
 pub use alignment_axis::AlignmentAxisJs;
 pub use utils::set_panic_hook as init_panic_hook;

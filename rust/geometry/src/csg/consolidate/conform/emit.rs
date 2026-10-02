@@ -39,6 +39,7 @@ pub(in crate::csg::consolidate) fn emit_plans(
         }
         let basis = (plan.origin, plan.u_axis, plan.v_axis, plan.normal);
         for region in plan.regions.iter_mut() {
+            crate::progress::tick();
             let (outer, holes) = if conformed {
                 (&region.outer_conformed, &region.holes_conformed)
             } else {

@@ -659,6 +659,7 @@
     "init": "fn",
     "init_panic_hook": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "init_thread_pool": "external re-export",
+    "set_geometry_progress_callback": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "set_panic_hook": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "stash_location_parts": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "version": "fn"

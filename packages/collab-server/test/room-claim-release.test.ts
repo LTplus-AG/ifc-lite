@@ -16,12 +16,13 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { WebSocket } from 'ws';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAccessControl, type AccessControl, type AccessControlOptions } from '../src/access-control.js';
 import { startCollabServer, type CollabServerHandle } from '../src/server.js';
 import { MemoryPersistence } from '../src/persistence.js';
 import { signRoomToken, verifyRoomToken, type RoomTokenClaims } from '../src/room-token.js';
 import { createRoomClaims } from '../src/room-claims.js';
+import { hasPersistedRoomLog } from '../src/access-control-state.js';
 
 const SECRET = 'test-secret-6581';
 
@@ -503,6 +504,24 @@ describe('#6581 room ids that cannot be encoded', () => {
     );
     await ac.flush();
     expect(stateOf(dir).claimedRooms).toContain(ILL_FORMED);
+  });
+
+  it('the room-log check answers "has data" when the data dir cannot be read, and only then', () => {
+    const dir = freshDir();
+    const notADir = path.join(dir, 'plain-file');
+    fs.writeFileSync(notADir, 'x');
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      expect(hasPersistedRoomLog(notADir, 'room'), 'ENOTDIR: cannot tell').toBe(true);
+      expect(hasPersistedRoomLog(dir, ILL_FORMED), 'no encoded form: cannot tell').toBe(true);
+      expect(warned).toHaveBeenCalledTimes(2);
+    } finally {
+      warned.mockRestore();
+    }
+    expect(hasPersistedRoomLog(dir, 'room'), 'no log').toBe(false);
+    expect(hasPersistedRoomLog(dir, 'x'.repeat(400)), 'a name too long to exist').toBe(false);
+    fs.writeFileSync(path.join(dir, 'room.log'), 'x');
+    expect(hasPersistedRoomLog(dir, 'room')).toBe(true);
   });
 
   it('a content check that throws keeps that one claim and lets the pass finish (ledger level)', () => {

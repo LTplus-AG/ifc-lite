@@ -1,0 +1,39 @@
+{
+  "issue": 6679,
+  "pullRequest": 6695,
+  "failedBefore": {
+    "head": "f14cb707c4596c6db4725555e9c965b70fb1e214",
+    "command": "TEST_PATTERN='content-library.test' pnpm test --filter=@ifc-lite/viewer --env-mode=loose",
+    "passed": 16,
+    "failed": 1,
+    "failure": "Invalid document entry",
+    "test": "#6695 an unfinished image remains recoverable beside valid document, comparison and validation evidence",
+    "rawLogSHA256": "c00cc244cecf6728a02eb0f37d989d6cd0b45edd5d9f7e685629f20ec531de66"
+  },
+  "passedAfter": {
+    "command": "TEST_PATTERN='(content-library.test|ContentStorageNotice.test)' pnpm test --filter=@ifc-lite/viewer --env-mode=loose",
+    "passed": 25,
+    "failed": 0,
+    "rawLogSHA256": "5ad8963f702d82f3d9116ce59c836ecdb22dee1e40940ecf00226dc907aea1ac"
+  },
+  "behavior": [
+    "strict validated libraries import despite an unfinished image",
+    "exact unfinished draft JSON retained in raw evidence",
+    "native item+recovery transaction abort rolls back both",
+    "malformed raw envelope rejects whole import before writes",
+    "raw archives survive re-export without duplicates",
+    "mounted actual downloads expose raw evidence",
+    "unreadable archives still allow export with warning",
+    "refused raw imports remain downloadable and Retry all archives them"
+  ],
+  "typecheck": {
+    "command": "pnpm typecheck",
+    "successfulTasks": 111,
+    "coveredTestFiles": 3302,
+    "coveredPackages": 57
+  },
+  "limitations": [
+    "Third browser regression is added but awaits final-stack browser run.",
+    "Scoped raw-draft evidence does not certify 3D raster output."
+  ]
+}

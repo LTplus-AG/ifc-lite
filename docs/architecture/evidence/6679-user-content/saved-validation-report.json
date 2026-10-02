@@ -1,0 +1,36 @@
+{
+  "id": "validation-report-741c6163-cd1b-4aee-aebf-4dc2da7966ea",
+  "name": "Storage witness 6679",
+  "snapshot": {
+    "kind": "ids-report",
+    "id": "validation-report-741c6163-cd1b-4aee-aebf-4dc2da7966ea",
+    "sourceKind": "rules",
+    "sourceName": "Storage witness 6679",
+    "generatedAt": "2026-10-02T12:23:26.986Z",
+    "summary": {
+      "checked": 4,
+      "passed": 2,
+      "failed": 2,
+      "passRate": 50,
+      "warnings": 0
+    },
+    "checks": [
+      {
+        "id": "wall-names",
+        "shortDescription": "Wall names",
+        "checked": 4,
+        "passed": 2,
+        "failed": 2,
+        "passRate": 50,
+        "rules": []
+      }
+    ],
+    "reportModels": [
+      {
+        "name": "building-architecture.ifc",
+        "fingerprint": "building-architecture.ifc:f778982157aa24e"
+      }
+    ],
+    "savedReportId": "validation-report-741c6163-cd1b-4aee-aebf-4dc2da7966ea"
+  }
+}

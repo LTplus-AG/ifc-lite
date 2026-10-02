@@ -59,7 +59,9 @@ export function effectiveGroupAssignments(
     if (!GROUP_RELATIONS.has(relation.relationshipType.toUpperCase())) continue;
     for (const groupId of relation.relating) {
       const bucket = byGroup.get(groupId) ?? [];
-      bucket.push(...relation.related);
+      // Not `push(...related)`: one relation can relate the whole model, and
+      // spreading it as call arguments overflows the stack past ~120k ids.
+      for (const id of relation.related) bucket.push(id);
       byGroup.set(groupId, bucket);
     }
   }

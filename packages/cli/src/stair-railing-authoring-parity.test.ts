@@ -37,7 +37,11 @@ async function records(content: string | Uint8Array) {
   const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
   const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { disableWorkerScan: true });
   const extractor = new EntityExtractor(store.source);
-  return { store, all: [...store.entityIndex.byId].map(([id, location]) => [id, extractor.extractEntity(location)] as const).sort((a, b) => a[0] - b[0]) };
+  return { store, all: [...store.entityIndex.byId].map(([id, location]) => {
+    const entity = extractor.extractEntity(location);
+    if (!entity) throw new Error(`Could not decode actual IFC record #${id}`);
+    return [id, entity] as const;
+  }).sort((a, b) => a[0] - b[0]) };
 }
 async function assertProduct(bim: Bim, ref: EntityRef, kind: Kind) {
   const exported = bim.export.ifc();
@@ -47,10 +51,12 @@ async function assertProduct(bim: Bim, ref: EntityRef, kind: Kind) {
   if (schema !== 'IFC2X3' && schema !== 'IFC4' && schema !== 'IFC4X3') throw new Error(`Unexpected schema ${schema}`);
   const registry = getSchemaRegistryForVersion(schema);
   const field = (id: number, type: string, name: string) => {
-    const entity = byId.get(id), index = registry.entities[type]?.allAttributes.findIndex(a => a.name === name);
-    expect(entity?.type).toBe(type.toUpperCase());
+    const entity = byId.get(id), attributes = registry.entities[type]?.allAttributes;
+    if (!entity || !attributes) throw new Error(`Missing actual ${type} #${id} or schema attribute table`);
+    const index = attributes.findIndex(a => a.name === name);
+    expect(entity.type).toBe(type.toUpperCase());
     expect(index).toBeGreaterThanOrEqual(0);
-    return entity!.attributes[index!];
+    return entity.attributes[index];
   };
   const type = kind === 'stair' ? 'IfcStair' : 'IfcRailing';
   expect(field(ref.expressId, type, 'Name')).toBe(kind === 'stair' ? STAIR.Name : RAILING.Name);

@@ -227,6 +227,9 @@ importers:
       '@ifc-lite/sdk':
         specifier: workspace:^
         version: link:../../packages/sdk
+      '@ifc-lite/semantic':
+        specifier: workspace:*
+        version: link:../../packages/semantic
       '@ifc-lite/server-client':
         specifier: workspace:^
         version: link:../../packages/server-client
@@ -299,9 +302,6 @@ importers:
       '@xyflow/react':
         specifier: ^12.12.0
         version: 12.12.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      ajv:
-        specifier: ^8.20.0
-        version: 8.20.0
       apache-arrow:
         specifier: ^21.2.0
         version: 21.2.0
@@ -332,9 +332,6 @@ importers:
       geotiff:
         specifier: ^3.0.5
         version: 3.0.5
-      jsonld:
-        specifier: ^9.0.0
-        version: 9.0.0
       jspdf:
         specifier: ^4.2.1
         version: 4.2.1
@@ -347,9 +344,6 @@ importers:
       maplibre-gl:
         specifier: ^6.11.2
         version: 6.11.2
-      n3:
-        specifier: ^2.7.12
-        version: 2.7.12
       parquet-wasm:
         specifier: ^0.8.0
         version: 0.8.0
@@ -365,9 +359,6 @@ importers:
       proj4:
         specifier: ^2.22.0
         version: 2.22.0(geotiff@3.0.5)
-      rdf-validate-shacl:
-        specifier: ^0.6.5
-        version: 0.6.5
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -386,9 +377,6 @@ importers:
       remark-gfm:
         specifier: ^4.0.0
         version: 4.0.1
-      sparqljs:
-        specifier: ^3.7.4
-        version: 3.7.4
       svg2pdf.js:
         specifier: ^2.8.1
         version: 2.8.1(jspdf@4.2.1)
@@ -420,21 +408,12 @@ importers:
       '@types/geojson':
         specifier: ^7946.0.16
         version: 7946.0.16
-      '@types/jsonld':
-        specifier: ^1.5.15
-        version: 1.5.15
-      '@types/n3':
-        specifier: ^1.26.4
-        version: 1.26.4
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
       '@types/react-dom':
         specifier: ^19.3.0
         version: 19.3.0(@types/react@19.3.0)
-      '@types/sparqljs':
-        specifier: ^3.1.12
-        version: 3.1.12
       '@types/three':
         specifier: ^0.186.0
         version: 0.186.0
@@ -582,6 +561,9 @@ importers:
       '@ifc-lite/sdk':
         specifier: workspace:^
         version: link:../../packages/sdk
+      '@ifc-lite/semantic':
+        specifier: workspace:^
+        version: link:../../packages/semantic
       '@ifc-lite/server-client':
         specifier: workspace:^
         version: link:../../packages/server-client
@@ -931,6 +913,9 @@ importers:
       '@ifc-lite/sdk':
         specifier: workspace:^
         version: link:../sdk
+      '@ifc-lite/semantic':
+        specifier: workspace:^
+        version: link:../semantic
       '@ifc-lite/viewer-core':
         specifier: workspace:^
         version: link:../viewer
@@ -1849,6 +1834,9 @@ importers:
       '@types/n3':
         specifier: ^1.26.1
         version: 1.26.4
+      '@types/node':
+        specifier: ^26.6.2
+        version: 26.6.2
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -3572,9 +3560,6 @@ packages:
   '@rdfjs/to-ntriples@3.0.1':
     resolution: {integrity: sha512-gjoPAvh4j7AbGMjcDn/8R4cW+d/FPtbfbMM0uQXkyfBFtNUW2iVgrqsgJ65roLc54Y9A2TTFaeeTGSvY9a0HCQ==}
 
-  '@rdfjs/types@1.1.2':
-    resolution: {integrity: sha512-wqpOJK1QCbmsGNtyzYnojPU8gRDPid2JO0Q0kMtb4j65xhCK880cnKAfEOwC+dX85VJcCByQx5zOwyyfCjDJsg==}
-
   '@rdfjs/types@2.0.1':
     resolution: {integrity: sha512-uyAzpugX7KekAXAHq26m3JlUIZJOC0uSBhpnefGV5i15bevDyyejoB7I+9MKeUrzXD8OOUI3+4FeV1wwQr5ihA==}
 
@@ -4234,9 +4219,6 @@ packages:
 
   '@types/react@19.3.0':
     resolution: {integrity: sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==}
-
-  '@types/sparqljs@3.1.12':
-    resolution: {integrity: sha512-zg/sdKKtYI0845wKPSuSgunyU1o/+7tRzMw85lHsf4p/0UbA6+65MXAyEtv1nkaqSqrq/bXm7+bqXas+Xo5dpQ==}
 
   '@types/stats.js@0.17.4':
     resolution: {integrity: sha512-jIBvWWShCvlBqBNIZt0KAshWpvSjhkwkEu4ZUcASoAvhmrgAUI2t1dXrjSL4xXVLB4FznPrIsX3nKXFl/Dt4vA==}
@@ -5964,9 +5946,6 @@ packages:
     resolution: {integrity: sha512-g8OUrgMXAR9ys/ZuJVfBr05sPPoMA7nHIVs8VEvg9QwM5W4GR2qSFEEHjsyHF1eWlBaf8Ev40WNjQFQ+nJTO3w==}
     engines: {node: '>=18'}
 
-  rdf-data-factory@1.1.3:
-    resolution: {integrity: sha512-ny6CI7m2bq4lfQQmDYvcb2l1F9KtGwz9chipX4oWu2aAtVoXjb7k3d8J1EsgAsEbMXnBipB/iuRen5H2fwRWWQ==}
-
   rdf-data-factory@2.1.0:
     resolution: {integrity: sha512-q81ZuJvrNLHD4x6qPnNKRKYn1VqYkxZ9zFI8I4JwIfAxlfduNNstmO8i0dRIZemORQDbuVEDoKCo4aOwINmUqQ==}
 
@@ -6191,12 +6170,6 @@ packages:
 
   space-separated-tokens@2.0.2:
     resolution: {integrity: sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q==}
-
-  sparqljs@3.7.4:
-    resolution: {integrity: sha512-hb4C84gf7KM7vz+iG595mPwvqxOvBJCm9L3dCxtV2zZDht6ZMmMG0tHeeqFeqwb9875yU9U4lhYe4LYRvWj0BQ==}
-    engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
-    hasBin: true
 
   specificity@0.4.1:
     resolution: {integrity: sha512-1klA3Gi5PD1Wv9Q0wUoOQN1IWAuPu0D1U03ThXTr0cJ20+/iq2tHSDnK7Kk/0LXJ1ztUB2/1Os0wKmfyNgUQfg==}
@@ -8361,10 +8334,6 @@ snapshots:
 
   '@rdfjs/to-ntriples@3.0.1': {}
 
-  '@rdfjs/types@1.1.2':
-    dependencies:
-      '@types/node': 26.6.2
-
   '@rdfjs/types@2.0.1':
     dependencies:
       '@types/node': 26.6.2
@@ -8886,10 +8855,6 @@ snapshots:
   '@types/react@19.3.0':
     dependencies:
       csstype: 3.2.3
-
-  '@types/sparqljs@3.1.12':
-    dependencies:
-      '@rdfjs/types': 2.0.1
 
   '@types/stats.js@0.17.4': {}
 
@@ -10824,10 +10789,6 @@ snapshots:
     dependencies:
       setimmediate: 1.0.5
 
-  rdf-data-factory@1.1.3:
-    dependencies:
-      '@rdfjs/types': 1.1.2
-
   rdf-data-factory@2.1.0:
     dependencies:
       '@rdfjs/types': 2.0.1
@@ -11132,10 +11093,6 @@ snapshots:
   source-map-js@1.2.1: {}
 
   space-separated-tokens@2.0.2: {}
-
-  sparqljs@3.7.4:
-    dependencies:
-      rdf-data-factory: 1.1.3
 
   specificity@0.4.1: {}
 

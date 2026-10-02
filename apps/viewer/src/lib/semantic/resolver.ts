@@ -2,23 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { GUID_PATTERN } from './profile';
-import type { LiveEntity, Resolution, SemanticResource } from './types';
-
-/** Revision identifiers are explicitly associated with current loaded model ids. */
-export function resolveResource(resource: SemanticResource, entities: readonly LiveEntity[],
-  revisions: ReadonlyMap<string, string>, modelScope?: string): Resolution {
-  if (!resource.GlobalId) return { status: 'external' };
-  if (!new RegExp(GUID_PATTERN).test(resource.GlobalId)) return { status: 'invalid' };
-  const revisionModel = resource.modelRevision ? revisions.get(resource.modelRevision) : undefined;
-  if (resource.modelRevision && !revisionModel) return { status: 'unscoped' };
-  if (revisionModel && modelScope && revisionModel !== modelScope) return { status: 'unmatched' };
-  const scope = revisionModel ?? modelScope;
-  const candidates = entities.filter(entity => entity.GlobalId === resource.GlobalId && (!scope || entity.modelId === scope))
-    .map(({ modelId, expressId }) => ({ modelId, expressId }));
-  return candidates.length === 1 ? { status: 'resolved', ref: candidates[0] }
-    : candidates.length ? { status: 'ambiguous', candidates } : { status: 'unmatched' };
+import type { IdentityRecord, ResolverContext } from '@ifc-lite/semantic';
+import { resolveWithStrategy, type ResolverSettings } from './resolver-context';
+import { useSemanticSession } from './session';
+export function resolveResource(resource: IdentityRecord, entities: ResolverContext['entities'], revisions: ReadonlyMap<string, string>, modelScope?: string, settings: ResolverSettings = useSemanticSession.getState()) {
+  return resolveWithStrategy(resource, { entities, revisions, modelScope }, settings);
 }
+import type { SemanticResource } from './types';
 /** Selection follows ownership links, rather than the whole connected building. */
 export function selectionTargets(resources: readonly SemanticResource[], resource: SemanticResource): SemanticResource[] {
   if (resource.type === 'Installation') return [resource];
@@ -40,7 +30,7 @@ export function relatedResources(resources: readonly SemanticResource[], startId
   const connect = (a: string, b: string) => { const set = adjacency.get(a) ?? new Set<string>(); set.add(b); adjacency.set(a, set); };
   for (const resource of resources) for (const key of links) {
     const target = resource[key];
-    if (target && byId.has(target)) { connect(resource.id, target); connect(target, resource.id); }
+    if (typeof target === 'string' && byId.has(target)) { connect(resource.id, target); connect(target, resource.id); }
   }
   const pending = [...startIds]; const seen = new Set<string>();
   while (pending.length && seen.size < 5000) {

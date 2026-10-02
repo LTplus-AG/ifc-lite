@@ -1574,6 +1574,8 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 
 ## Command Reference
 
+The `semantic` command reads JSON/SPARQL providers, generates shared profile artifacts, validates JSON or RDF, and operates an authenticated HTTPS relay. See [Headless semantic records](semantic-headless.md) for flags, result formats, credential references, and reproduction examples.
+
 <!-- BEGIN GENERATED: cli-commands -->
 | Command | Description |
 |---------|-------------|
@@ -1613,5 +1615,6 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `gym` | reset/step/reward environment loop (JSONL over stdin/stdout) |
 | `delivery` | Repeatable delivery check (structural + IDS + rule sets) from a saved recipe |
 | `check` | Run a .rules.json information-validation rule set (same engine as the viewer) |
+| `semantic` | Shared semantic profiles, SHACL and JSON/SPARQL providers |
 | `flow` | Evaluate a node graph headlessly |
 <!-- END GENERATED: cli-commands -->

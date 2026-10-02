@@ -168,6 +168,12 @@
       ],
       "@ifc-lite/plugin-api/*": [
         "packages/plugin-api/dist/*"
+      ],
+      "@ifc-lite/semantic": [
+        "packages/semantic/dist/index.d.ts"
+      ],
+      "@ifc-lite/semantic/*": [
+        "packages/semantic/dist/*"
       ]
     }
   },

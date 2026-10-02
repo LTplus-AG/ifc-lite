@@ -310,3 +310,24 @@ export function serializeNominalValue(
   if (declared === null) return serializePropertyValue(value, type);
   return serializeTypedMarker(declared, value as string | number | boolean);
 }
+
+/** Validate an explicitly authored IfcValue declaration before a mutation can be written.
+ * Unlike regeneration's loss-tolerant fallback, an authored declaration must be exact and representable.
+ */
+export function validatePropertyDataType(value: string | number | boolean | null, dataType: string): { valueType: PropertyValueType; dataType: string } {
+  const leaf = lookupNominalValueLeaf(dataType.toUpperCase());
+  if (!leaf) throw new Error('Property dataType must name a defined member of IfcValue');
+  const [name, base] = leaf;
+  if (!['STRING', 'REAL', 'NUMBER', 'INTEGER', 'BOOLEAN', 'LOGICAL'].includes(base)) throw new Error('Property declaration requires a scalar IfcValue member');
+  if (value !== null && !valueFitsBase(value, base)) throw new Error(`Property value does not fit ${name}`);
+  const constraint = CONSTRAINED_MEMBERS.get(name);
+  if (value !== null && constraint && !constraint(value as number)) throw new Error(`Property value violates the domain of ${name}`);
+  const width = SCHEMA_REGISTRY.types[name]?.match(/^STRING\((\d+)\)/i);
+  if (width && typeof value === 'string') {
+    let count = 0;
+    for (const _character of value) if (++count > Number(width[1])) throw new Error(`Property value exceeds the string width of ${name}`);
+  }
+  const valueType = base === 'STRING' ? PropertyValueType.String : base === 'INTEGER' ? PropertyValueType.Integer
+    : base === 'BOOLEAN' ? PropertyValueType.Boolean : base === 'LOGICAL' ? PropertyValueType.Logical : PropertyValueType.Real;
+  return { valueType, dataType: name };
+}

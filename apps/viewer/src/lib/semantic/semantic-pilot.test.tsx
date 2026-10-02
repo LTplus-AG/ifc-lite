@@ -23,10 +23,14 @@ import { createMutateAdapter } from '@/sdk/adapters/mutate-adapter';
 import { createExportAdapter } from '@/sdk/adapters/export-adapter';
 import { SemanticPanel } from '@/components/viewer/SemanticPanel';
 import { DEMO_BASE, DEMO_REVISIONS, PILOT_QUERY, pilotDocument, pilotModel } from './demo';
-import { assertSelect, parseResults, request, resourcesFromResults } from './transport';
-import { parseDocument, parseImport, toRdf, validateGraph, validateJson, validateLinks } from './validation';
+import { assertReadOnlyQuery, parseResults, request, resourcesFromResults } from '@ifc-lite/semantic';
+const assertSelect = (query: string) => { if (assertReadOnlyQuery(query) !== 'select') throw new Error('Expected SELECT'); };
+import { parseDocument, parseImport, toRdf, validateGraph, validateJson, validateLinks } from '@ifc-lite/semantic';
 import { relatedResources, resolveResource, selectionTargets } from './resolver';
-import { liveEntities, projectFireRating, selectResources } from './viewer';
+import { liveEntities, selectResources } from './viewer';
+import { previewProjection, applyProjection } from './projection';
+import { executeValidation } from './validation-job';
+function projectFireRating(resource: import('./types').SemanticResource, product: import('./types').SemanticResource, revisions: ReadonlyMap<string, string>, source: string, profile: string, scope?: string) { applyProjection(previewProjection({ mappingId: 'door-fire-rating', resource, product, revisions, source, profile, profileVersion: '1', scope, policy: 'overwrite' }), revisions, scope); }
 import { PROFILE_ID, VOCAB } from './types';
 import { useSemanticSession } from './session';
 
@@ -57,7 +61,7 @@ test('discussion #6635: real SPARQL SELECT and JSON retain the same records and 
   assert.deepEqual(sorted(projected.resources), sorted(document.resources));
   assert.equal(projected.completeness, 'partial');
   const connected = relatedResources(projected.resources, [DEMO_BASE + 'installation/1']);
-  assert.ok(connected.some(record => record.type === 'Inspection' && record.evidenceId?.endsWith('inspection.pdf')));
+  assert.ok(connected.some(record => record.type === 'Inspection' && typeof record.evidenceId === 'string' && record.evidenceId.endsWith('inspection.pdf')));
   assert.ok(connected.some(record => record.id === DEMO_BASE + 'batch-passport'));
   assert.ok(rdf.includes(VOCAB + 'replacesId'));
 });
@@ -86,8 +90,9 @@ test('SELECT transport preserves RDF terms and refuses updates, federation, conf
       label: { type: 'literal', value: 'Gebäude', 'xml:lang': 'de' }, extra: { type: 'bnode', value: 'evidence' } },
   ] } });
   assert.equal(results.rows[0].label['xml:lang'], 'de'); assert.equal(results.rows[0].extra.type, 'bnode');
-  assert.equal(resourcesFromResults(results, DEMO_BASE).resources[0].label, 'Gebäude');
-  assert.throws(() => resourcesFromResults({ ...results, rows: [...results.rows, { ...results.rows[0], label: { type: 'literal', value: 'Conflict' } }] }, DEMO_BASE), /Conflicting/);
+  assert.throws(() => resourcesFromResults(results, DEMO_BASE), /language/);
+  assert.equal(results.rows[0].label['xml:lang'], 'de');
+  assert.throws(() => resourcesFromResults({ ...results, rows: [{ ...results.rows[0], label: { type: 'literal', value: 'Original' } }, { ...results.rows[0], label: { type: 'literal', value: 'Conflict' } }] }, DEMO_BASE), /Conflicting/);
   await assert.rejects(request('https://denied.example/data', 'example.org', new AbortController().signal), /not covered/);
   await assert.rejects(request('http://example.org/data', 'example.org', new AbortController().signal), /https/i);
 });
@@ -156,7 +161,7 @@ test('FireRating projection writes provenance, reverses in one undo, and follows
   const exported = createExportAdapter(useViewerStore).ifc([ref], { includeMutations: true });
   const bytes = typeof exported === 'string' ? new TextEncoder().encode(exported) : new Uint8Array(exported);
   const reopened = await new IfcParser().parseColumnar(bytes.slice().buffer, { disableWorkerScan: true });
-  const exportedDoor = reopened.entities.getExpressIdByGlobalId(installation.GlobalId!);
+  const exportedDoor = reopened.entities.getExpressIdByGlobalId(String(installation.GlobalId));
   const exportedProperties = new EntityNode(reopened, exportedDoor).properties();
   assert.ok(exportedProperties.some(pset => pset.name === 'Pset_DoorCommon' && pset.properties.some(property => property.name === 'FireRating' && property.value === 'EI30')));
   assert.ok(exportedProperties.some(pset => pset.name === 'Pset_SemanticProjection' && pset.properties.some(property => property.name === 'ProductId' && property.value === product.id)));
@@ -172,7 +177,7 @@ test('FireRating projection writes provenance, reverses in one undo, and follows
 });
 test('mounted panel loads records, shows validation, selects linked IFC geometry and filters from viewport selection', async () => {
   const { authored } = await seed(1);
-  const ui = render(<SemanticPanel />);
+  const ui = render(<SemanticPanel validationExecutor={executeValidation} />);
   const button = (label: string) => { const found = [...ui.querySelectorAll('button')].find(node => node.textContent === label); assert.ok(found, label); return found; };
   click(button('Use example records'));
   for (let index = 0; index < 100 && !ui.textContent?.includes('Validation findings'); index++) await advance(20);
@@ -199,7 +204,7 @@ test('mounted panel loads records, shows validation, selects linked IFC geometry
   click(button('Installed door 1'));
   assert.deepEqual(createSelectionAdapter(useViewerStore).get(), [{ modelId: 'm0', expressId: authored.doors[0] }]);
   cleanup();
-  const reopened = render(<SemanticPanel />);
+  const reopened = render(<SemanticPanel validationExecutor={executeValidation} />);
   assert.ok(reopened.querySelector('tbody')?.textContent?.includes('Installed door 1'));
 });
 test('authored pilot doors produce real WASM meshes in both revision positions', async () => {

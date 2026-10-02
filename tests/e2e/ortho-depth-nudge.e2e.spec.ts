@@ -20,6 +20,7 @@
 
 import { expect, test } from '@playwright/test';
 import { decodePng, rendererColorFrame } from './federation-control-triplet.rendering';
+import { watchGpuDeviceLoss } from './gpu-device-loss';
 
 /** Four stacked rows of ten beam/rod pairs, so all forty fit the 512 px capture. */
 const ROWS = 4;
@@ -80,15 +81,16 @@ function modelIfc(): string {
 }
 
 test('orthographic: rods inside beams stay hidden on a 1 km site (#6729)', async ({ page }, info) => {
+  const gpu = await watchGpuDeviceLoss(page);
   await page.goto('/');
   await page.locator('#file-input-open').setInputFiles({
     name: 'ortho-depth-nudge.ifc', mimeType: 'application/octet-stream', buffer: Buffer.from(modelIfc()),
   });
-  await page.waitForFunction(() => {
+  await gpu.requireLiveGpu('the model load', () => page.waitForFunction(() => {
     const state = globalThis.__ifc_lite_viewer_store__?.getState();
     return !!state && !state.loading && state.models.size === 1 && !!state.cameraCallbacks.getViewpoint?.()
       && !!globalThis.__ifc_lite_capture_color_frame__;
-  }, undefined, { timeout: 180_000 });
+  }, undefined, { timeout: 180_000 }));
 
   // Viewer space is Y-up: the beams' front faces (IFC y = -0.2) look toward +z.
   await page.evaluate(({ orthoSize, y }) => {
@@ -103,7 +105,7 @@ test('orthographic: rods inside beams stay hidden on a 1 km site (#6729)', async
 
   // The capture is a central crop of the drawing buffer at native resolution.
   const bufferHeight = await page.evaluate(() => document.querySelector<HTMLCanvasElement>('canvas[data-viewport="main"]')!.height);
-  const png = await rendererColorFrame(page);
+  const png = await gpu.requireLiveGpu('the orthographic rod frame', () => rendererColorFrame(page));
   await info.attach('ortho-rods.png', { body: png, contentType: 'image/png' });
   const { width, height, rgba } = decodePng(png);
   const isRed = (i: number) => rgba[i]! > 90 && rgba[i]! > rgba[i + 1]! * 1.8 && rgba[i]! > rgba[i + 2]! * 1.8;

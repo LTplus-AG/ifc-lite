@@ -8,8 +8,9 @@ import { readSpecularMaterial } from './mesh-specular.js';
 import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-source-fingerprint.js';
 import { canReuseWorkerSource, type BytePrepassApi, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
 import { applyStyleFinishes } from './style-finishes.js';
-import init, { initSync, IfcAPI, setGeometryProgressCallback } from '@ifc-lite/wasm';
-import { createInCallHeartbeat, postWorkerHeartbeat } from './in-call-heartbeat.js';
+import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
+import * as wasmBindings from '@ifc-lite/wasm';
+import { createInCallHeartbeat, installInCallHeartbeat, postWorkerHeartbeat } from './in-call-heartbeat.js';
 import { initWasmWithRetry } from './wasm-init-retry.js';
 import { largeFilePrepassError } from './huge-file-error.js';
 import { isWasmRuntimeTrap } from './wasm-runtime-trap.js';
@@ -498,7 +499,7 @@ let cachedWasmUrl: string | undefined = undefined;
 async function ensureInit(): Promise<IfcAPI> {
   if (api) return api;
   await initWasmWithRetry(() => init(cachedWasmUrl), { label: 'geometry.worker' });
-  setGeometryProgressCallback(inCallHeartbeat.callback);
+  installInCallHeartbeat(wasmBindings, inCallHeartbeat);
   api = new IfcAPI();
   mergeLayersApplied = false;
   applyMergeLayersToApi();
@@ -1578,7 +1579,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         // `undefined` and threw `new WebAssembly.Module(undefined)`, which is
         // why the shared-module path was never actually taken.
         initSync({ module: e.data.wasmModule });
-        setGeometryProgressCallback(inCallHeartbeat.callback);
+        installInCallHeartbeat(wasmBindings, inCallHeartbeat);
         api = new IfcAPI();
         mergeLayersApplied = false;
         applyMergeLayersToApi();

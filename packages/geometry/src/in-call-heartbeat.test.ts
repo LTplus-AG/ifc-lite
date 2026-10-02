@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { createInCallHeartbeat } from './in-call-heartbeat.js';
+import { createInCallHeartbeat, installInCallHeartbeat } from './in-call-heartbeat.js';
 import { DEFAULT_HUNG_JOB_TIMEOUT_MS, WorkerJobLedger } from './hung-job-recovery.js';
 
 describe('in-call geometry heartbeat', () => {
@@ -19,6 +19,14 @@ describe('in-call geometry heartbeat', () => {
     expect(posted).toBe(2);
     heartbeat.callback();
     expect(posted).toBe(2);
+  });
+
+  it('installs through the binding when present, and tolerates an older wasm without it', () => {
+    const heartbeat = createInCallHeartbeat(() => {});
+    const installed: Array<(() => void) | null | undefined> = [];
+    expect(installInCallHeartbeat({ setGeometryProgressCallback: (cb) => installed.push(cb) }, heartbeat)).toBe(true);
+    expect(installed).toEqual([heartbeat.callback]);
+    expect(installInCallHeartbeat({}, heartbeat)).toBe(false);
   });
 
   it('stops posting after a call that throws', async () => {

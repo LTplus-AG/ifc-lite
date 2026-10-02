@@ -100,6 +100,7 @@ describe('geometry.worker.ts in-call heartbeat', () => {
         .filter(([m]) => isInCallHeartbeat(m))
         .map(([, i]) => i);
       expect(callStart).toBeGreaterThanOrEqual(0);
+      expect(sliceDone).toBeGreaterThan(callStart);
       expect(beats).toHaveLength(2);
       expect(beats.every((i) => i > callStart && i < sliceDone)).toBe(true);
 

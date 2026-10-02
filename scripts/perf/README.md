@@ -146,7 +146,11 @@ at coarse points of every long path (each boolean, analytic prism cut,
 consolidation bucket and region, conform loop, strided CDT and exact-predicate
 work). The binding rate-limits that to one JS callback a second, and the worker
 forwards it as its existing liveness message only while a batch call runs. A
-call that stops reporting is still recovered exactly as before. With no hook
+call that stops reporting is still recovered exactly as before, and every call
+keeps an absolute 10-minute bound (`MAX_GEOMETRY_CALL_MS`) however often it
+reports: past it the pool recovers the call like a silent one, and with
+recovery off it stops counting heartbeats as liveness so the stream watchdog
+still fires. With no hook
 installed (every native target) a tick is one atomic load; ordered native mesh
 fingerprints are unchanged on AC20, ISSUE_129 and Holter.
 

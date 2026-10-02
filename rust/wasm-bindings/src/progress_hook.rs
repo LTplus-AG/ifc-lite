@@ -16,6 +16,11 @@ use wasm_bindgen::prelude::*;
 /// callback (a `postMessage`) off every hot path.
 const MIN_INTERVAL_MS: f64 = 1_000.0;
 
+// Thread-local on purpose: a JS `Function` is bound to the thread (worker)
+// that created it, so only geometry work on the thread that installed the
+// callback reports. In the unpublished `threads` (pkg-threaded) build, rayon
+// pool threads see no callback and stay silent; their parent call still ticks
+// on its own thread between parallel sections.
 thread_local! {
     static CALLBACK: RefCell<Option<Function>> = const { RefCell::new(None) };
     static LAST_CALL_MS: Cell<f64> = const { Cell::new(f64::NEG_INFINITY) };

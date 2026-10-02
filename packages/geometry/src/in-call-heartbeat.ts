@@ -55,3 +55,18 @@ export function createInCallHeartbeat(postHeartbeat: () => void): InCallHeartbea
     },
   };
 }
+
+/**
+ * Install the heartbeat on a freshly initialised WASM module. Probed with
+ * `typeof` (the house pattern for optional bindings such as `setMergeLayers`):
+ * an older WASM build without `setGeometryProgressCallback` keeps the previous
+ * behaviour, no in-call heartbeat, instead of failing the worker.
+ */
+export function installInCallHeartbeat(
+  bindings: { setGeometryProgressCallback?: (callback?: (() => void) | null) => void },
+  heartbeat: InCallHeartbeat,
+): boolean {
+  if (typeof bindings.setGeometryProgressCallback !== 'function') return false;
+  bindings.setGeometryProgressCallback(heartbeat.callback);
+  return true;
+}

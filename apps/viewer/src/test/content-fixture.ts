@@ -10,13 +10,22 @@ import { useViewerStore } from '@/store';
 import { createDocumentSlice } from '@/store/slices/documentSlice';
 import { createValidationReportsSlice } from '@/store/slices/validationReportsSlice';
 import { createSavedComparisonsSlice } from '@/store/slices/savedComparisonsSlice';
-import { contentTransaction, transactionDone } from '@/lib/storage/content-database';
+import { contentTransaction, transactionDone, requestValue, type RecoveryRow } from '@/lib/storage/content-database';
 
 export async function clearContentDatabase(): Promise<void> {
   const tx = await contentTransaction(['items', 'migrations', 'recovery'], 'readwrite');
   const done = transactionDone(tx);
   for (const name of ['items', 'migrations', 'recovery']) tx.objectStore(name).clear();
   await done;
+}
+
+/** Inspect committed migration originals without the later backup feature (#6679). */
+export async function readPreservedContent(): Promise<RecoveryRow[]> {
+  const tx = await contentTransaction('recovery', 'readonly');
+  const done = transactionDone(tx);
+  const request = requestValue(tx.objectStore('recovery').getAll()) as Promise<RecoveryRow[]>;
+  const [rows] = await Promise.all([request, done]);
+  return rows;
 }
 
 /** Refuse real database write transactions, rather than mocking the saved result. */

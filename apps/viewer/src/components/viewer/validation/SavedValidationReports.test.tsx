@@ -3,8 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import { clearContentDatabase, refuseContentWrites } from '@/test/content-fixture.js';
-import { readContentRecovery } from '@/lib/storage/content-backup';
+import { clearContentDatabase, refuseContentWrites, readPreservedContent } from '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -434,10 +433,10 @@ describe('saved validation evidence (#6500)', () => {
         assert.match(library.querySelector('[role="alert"]')?.textContent ?? '', /original data is preserved/);
         assert.equal(store.getState().savedValidationReports.length, malformed === 'partial and duplicate' ? 1 : 0);
         assert.equal(localStorage.getItem(VALIDATION_REPORTS_STORAGE_KEY), raw, 'migration does not erase legacy content');
-        assert.equal((await readContentRecovery()).find(entry => entry.key === VALIDATION_REPORTS_STORAGE_KEY)?.raw, raw);
+        assert.equal((await readPreservedContent()).find(entry => entry.key === VALIDATION_REPORTS_STORAGE_KEY)?.raw, raw);
         await act(async () => { await store.getState().saveValidationReport(valid.snapshot, 'New check'); });
         assert.ok((await loadValidationReports()).some(entry => entry.name === 'New check'));
-        assert.equal((await readContentRecovery()).find(entry => entry.key === VALIDATION_REPORTS_STORAGE_KEY)?.raw, raw);
+        assert.equal((await readPreservedContent()).find(entry => entry.key === VALIDATION_REPORTS_STORAGE_KEY)?.raw, raw);
       } finally { stop(); }
     });
   }

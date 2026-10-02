@@ -3,8 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import { clearContentDatabase, refuseContentWrites } from '@/test/content-fixture.js';
-import { readContentRecovery } from '@/lib/storage/content-backup';
+import { clearContentDatabase, refuseContentWrites, readPreservedContent } from '@/test/content-fixture.js';
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -65,7 +64,7 @@ describe('Multiple saved pairs in mounted UI and documentation (#6506)', () => {
     assert.equal(ui.querySelectorAll('[role="alert"]').length, 2);
     assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /original data is preserved/);
     assert.equal(localStorage.getItem(SAVED_COMPARISONS_KEY), raw);
-    assert.equal((await readContentRecovery()).find(entry => entry.key === SAVED_COMPARISONS_KEY)?.raw, raw);
+    assert.equal((await readPreservedContent()).find(entry => entry.key === SAVED_COMPARISONS_KEY)?.raw, raw);
     assert.deepEqual((await loadSavedComparisons()).map(entry => entry.id), [saved.id]);
   });
 

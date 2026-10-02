@@ -353,7 +353,7 @@ test('#6500/#6568 explicitly saved real IFC checks survive reload and remain ind
   expect(text).toContain('Confirm survey origin');
 });
 
-test('#6506 three real model pairs survive reload and export the selected saved comparison', async ({ page }, testInfo) => {
+test('#6506 three real model pairs survive reload and export the selected saved comparison', async ({ page, browser }, testInfo) => {
   test.setTimeout(180000);
   await page.setViewportSize({ width: 1680, height: 1050 });
   const settle = async (count: number) => page.waitForFunction((n) => {
@@ -451,26 +451,57 @@ test('#6506 three real model pairs survive reload and export the selected saved 
     expect(text).toContain(row.name.slice(0, 10));
   }
   expect(text).not.toContain('Architecture B / Bridge C');
-  // Real persisted reports plus damaged/duplicate neighbours must remain
-  // visible after the production store's next initial read, with an explicit
-  // recovery notice and the complete original bytes safely archived.
+  // Initial migration imports valid real reports once and preserves the complete
+  // damaged legacy source. A separate context cannot reuse the migration marker
+  // committed earlier by this test's original browser session (#6679).
   const damagedHistory = JSON.stringify([...history, null, history[0]]);
-  await page.evaluate((raw) => localStorage.setItem('ifc-lite-saved-comparisons', raw), damagedHistory);
-  await page.reload(); await settle(1); await openCompare();
-  const library = page.locator('[data-saved-comparisons]');
-  await expect(library.getByRole('alert')).toContainText('The original data was preserved');
-  const noticeColors = await opaqueTextColors(library.getByRole('alert'));
-  const noticeContrast = contrastOfTextOnSurface(noticeColors.foreground, noticeColors.background);
-  expect(noticeContrast).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
-  const contrastPath = testInfo.outputPath('saved-model-comparison-recovery-contrast.json');
-  await writeFile(contrastPath, JSON.stringify({ ...noticeColors, contrast: noticeContrast }, null, 2));
-  await testInfo.attach('recovered-history-contrast', {
-    path: contrastPath, contentType: 'application/json',
-  });
-  expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().savedComparisons)).toEqual(history);
-  expect(await page.evaluate(() => localStorage.getItem('ifc-lite-saved-comparisons:unreadable'))).toBe(damagedHistory);
-  await page.getByRole('combobox', { name: 'Saved comparison', exact: true }).selectOption(history[0].id);
-  await library.screenshot({ path: testInfo.outputPath('saved-model-comparison-recovery.png') });
+  const recoveryContext = await browser.newContext({ viewport: { width: 1680, height: 1050 } });
+  try {
+    await recoveryContext.addInitScript((raw) => localStorage.setItem('ifc-lite-saved-comparisons', raw), damagedHistory);
+    const recoveryPage = await recoveryContext.newPage();
+    await recoveryPage.goto(`${viewerUrl}?model=/samples/building-architecture.ifc`);
+    await recoveryPage.waitForFunction(() => {
+      const state = globalThis.__ifc_lite_viewer_store__?.getState();
+      return state && state.models.size === 1 && !state.loading && !state.geometryStreamingActive
+        && state.savedComparisonsStorage.phase === 'ready';
+    }, undefined, { timeout: 120000 });
+    await recoveryPage.getByRole('tab', { name: 'Analyze', exact: true }).click();
+    await recoveryPage.getByRole('button', { name: /^Compare/ }).first().click();
+    const library = recoveryPage.locator('[data-saved-comparisons]');
+    await expect(library).toBeVisible();
+    const notice = library.getByRole('alert');
+    await expect(notice).toContainText('Some older entries could not be imported. Their original data is preserved');
+    const noticeColors = await opaqueTextColors(notice);
+    const noticeContrast = contrastOfTextOnSurface(noticeColors.foreground, noticeColors.background);
+    expect(noticeContrast).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
+    const contrastPath = testInfo.outputPath('saved-model-comparison-recovery-contrast.json');
+    await writeFile(contrastPath, JSON.stringify({ ...noticeColors, contrast: noticeContrast }, null, 2));
+    await testInfo.attach('recovered-history-contrast', { path: contrastPath, contentType: 'application/json' });
+    expect(await recoveryPage.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().savedComparisons)).toEqual(history);
+    expect(await recoveryPage.evaluate(() => localStorage.getItem('ifc-lite-saved-comparisons'))).toBe(damagedHistory);
+    const archivedRaw = await recoveryPage.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const open = indexedDB.open('ifc-lite-user-content', 1);
+        open.onsuccess = () => resolve(open.result);
+        open.onerror = () => reject(open.error);
+      });
+      try {
+        return await new Promise<string | null>((resolve, reject) => {
+          const tx = db.transaction('recovery', 'readonly');
+          const request: IDBRequest<{ raw: string } | undefined> = tx.objectStore('recovery').get('ifc-lite-saved-comparisons');
+          let raw: string | null = null;
+          request.onsuccess = () => { raw = request.result?.raw ?? null; };
+          tx.oncomplete = () => resolve(raw);
+          tx.onabort = () => reject(tx.error ?? new Error('Recovery read aborted'));
+          tx.onerror = () => reject(tx.error ?? new Error('Recovery read failed'));
+        });
+      } finally { db.close(); }
+    });
+    expect(archivedRaw).toBe(damagedHistory);
+    await recoveryPage.getByRole('combobox', { name: 'Saved comparison', exact: true }).selectOption(history[0].id);
+    await library.screenshot({ path: testInfo.outputPath('saved-model-comparison-recovery.png') });
+  } finally { await recoveryContext.close(); }
+
 });
 
 test('#6489 real IFC document tables retain independent ordering and coloured repeated PDF headers', async ({ page }, testInfo) => {

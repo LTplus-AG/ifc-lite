@@ -45,6 +45,53 @@ async function records(content: string | Uint8Array) {
   const store = await parsed(content), extractor = new EntityExtractor(store.source);
   return [...store.entityIndex.byId].map(([id, ref]) => [id, extractor.extractEntity(ref)] as const).sort((a, b) => a[0] - b[0]);
 }
+// Only this fixture's exporter-generated Space Pset/Qto graph is compared by
+// meaning. Repeated identical-state exports change these four synthetic GUIDs;
+// Undo also keeps the allocator monotonic. Every source/authored record retains
+// its exact id, GUID and attributes. Unknown helpers or associations fail.
+function metadataSnapshot(saved: Awaited<ReturnType<typeof records>>, known: ReadonlySet<number>, spaceId?: number) {
+  const all = new Map(saved), generated = new Map(saved.filter(([id]) => !known.has(id)));
+  const consumed = new Set<number>();
+  const consume = (id: unknown) => {
+    if (typeof id !== 'number') throw new Error('Generated metadata has no numeric reference');
+    const entity = generated.get(id);
+    if (!entity) throw new Error(`Generated metadata reference #${id} is missing or is an authored entity`);
+    expect(consumed.has(id), `duplicate generated helper #${id}`).toBe(false);
+    consumed.add(id);
+    return entity;
+  };
+  const metadata = [];
+  for (const [id, entity] of generated) {
+    if (entity?.type !== 'IFCRELDEFINESBYPROPERTIES') continue;
+    const relation = consume(id);
+    expect(relation.attributes).toHaveLength(6);
+    expect(relation.attributes[0]).toMatch(/^[0-9A-Za-z_$]{22}$/);
+    if (spaceId === undefined) throw new Error('Generated metadata has no authored Space owner');
+    expect(relation.attributes[4]).toEqual([spaceId]);
+    expect(all.get(spaceId)?.type).toBe('IFCSPACE');
+    const definition = consume(relation.attributes[5]);
+    expect(definition.attributes[0]).toMatch(/^[0-9A-Za-z_$]{22}$/);
+    const propertySet = definition.type === 'IFCPROPERTYSET';
+    expect(definition.type).toBe(propertySet ? 'IFCPROPERTYSET' : 'IFCELEMENTQUANTITY');
+    expect(definition.attributes).toHaveLength(propertySet ? 5 : 6);
+    expect(definition.attributes[2]).toBe(propertySet ? 'Pset_SpaceCommon' : 'Qto_SpaceBaseQuantities');
+    const leafIds = definition.attributes.at(-1);
+    if (!Array.isArray(leafIds)) throw new Error('Generated metadata has no property/quantity aggregate');
+    expect(leafIds).toHaveLength(propertySet ? 4 : 5);
+    const leaves = leafIds.map(leafId => {
+      const leaf = consume(leafId);
+      expect(leaf.type).toMatch(propertySet ? /^IFCPROPERTYSINGLEVALUE$/ : /^IFCQUANTITY(AREA|LENGTH|VOLUME)$/);
+      expect(leaf.attributes).toHaveLength(propertySet ? 4 : 5);
+      return { type: leaf.type, attributes: leaf.attributes };
+    }).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    metadata.push({ relation: relation.attributes.slice(1, 5), type: definition.type,
+      definition: definition.attributes.slice(1, -1), leaves });
+  }
+  expect(generated.size).toBe(spaceId !== undefined && all.has(spaceId) ? 13 : 0);
+  expect(consumed.size).toBe(generated.size);
+  return { count: saved.length, known: saved.filter(([id]) => known.has(id)),
+    metadata: metadata.sort((a, b) => a.type.localeCompare(b.type)) };
+}
 async function assertProducts(content: string | Uint8Array, refs: readonly EntityRef[]) {
   const data = bytes(content), store = await parsed(data), extractor = new EntityExtractor(store.source);
   refs.forEach((ref, i) => {
@@ -122,10 +169,13 @@ describe.skipIf(!AVAILABLE)('#6232 D5 all ordinary methods on actual loaded back
         const prior = await call('entity_create', { model_id: target.id, type: 'IfcCartesianPoint', attributes: [[7, 8, 9]] });
         expect(prior.isError).not.toBe(true);
         const before = await records(target.bim.export.ifc()), journal = target.backend.getMutationView()!.getMutations();
-        const refs: EntityRef[] = [], snapshots = [before];
+        const refs: EntityRef[] = [], sourceIds = before.map(([expressId]) => expressId);
+        const knownIds = () => new Set([...sourceIds, ...target.backend.getMutationView()!.getNewEntities().map(entity => entity.expressId)]);
+        const snapshot = async () => metadataSnapshot(await records(target.bim.export.ifc()), knownIds(), refs[4]?.expressId);
+        const snapshots = [metadataSnapshot(before, knownIds())];
         for (const kind of KINDS) {
           refs.push(kind.add(target.bim, target.id));
-          snapshots.push(await records(target.bim.export.ifc()));
+          snapshots.push(await snapshot());
         }
         await assertProducts(target.bim.export.ifc(), refs);
         // Diagnostic before narrowing any Undo comparison: identical source
@@ -137,6 +187,7 @@ describe.skipIf(!AVAILABLE)('#6232 D5 all ordinary methods on actual loaded back
         expect(second.filter(([expressId]) => known.has(expressId))).toEqual(first.filter(([expressId]) => known.has(expressId)));
         expect(view.getNewEntities()).toEqual(overlay);
         expect(view.getMutations()).toEqual(history);
+        expect(metadataSnapshot(second, known, refs[4].expressId)).toEqual(metadataSnapshot(first, known, refs[4].expressId));
         const generated = (saved: typeof first) => saved.filter(([expressId]) => !known.has(expressId));
         console.info('D5 identical-state repeated-export diagnostic', JSON.stringify({ models: count,
           recordCounts: [first.length, second.length], knownRecordCount: first.filter(([expressId]) => known.has(expressId)).length,
@@ -146,7 +197,7 @@ describe.skipIf(!AVAILABLE)('#6232 D5 all ordinary methods on actual loaded back
         // Undo operation per builder, restoring every helper and relationship.
         for (let i = 7; i >= 0; i--) {
           expect((await call('mutation_undo', { model_id: target.id })).isError).not.toBe(true);
-          expect(await records(target.bim.export.ifc())).toEqual(snapshots[i]);
+          expect(await snapshot()).toEqual(snapshots[i]);
         }
         expect(await records(target.bim.export.ifc())).toEqual(before);
         expect(target.backend.getMutationView()!.getMutations()).toEqual(journal);

@@ -360,6 +360,33 @@ describe('#6581 races', () => {
     }
   });
 
+  it('revoke vs join: a revocation landing while the join waits for its confirmation write wins', async () => {
+    const ac = create(freshDir());
+    const admin = await mint(await serve(ac), 'revoked-mid-write');
+    await ac.flush();
+    const claims = claimsOf(admin.token!);
+    // Park the confirmation write at its rename until the revocation has landed.
+    let openGate!: () => void;
+    const gate = new Promise<void>((resolve) => (openGate = resolve));
+    let parked!: () => void;
+    const isParked = new Promise<void>((resolve) => (parked = resolve));
+    const rename = fs.promises.rename;
+    fs.promises.rename = (async (...args: Parameters<typeof rename>) => {
+      parked();
+      await gate;
+      return rename(...args);
+    }) as typeof rename;
+    try {
+      const joining = ac.serverOptions.authenticate!(admin.token, 'revoked-mid-write');
+      await isParked;
+      await ac.serverOptions.revokeEndpoint!.recordRevocation(claims.jti, claims.room, claims.exp);
+      openGate();
+      expect(await joining).toBeNull();
+    } finally {
+      fs.promises.rename = rename;
+    }
+  });
+
   it('expiry vs join: a token that expires while its join is being verified is refused', async () => {
     const ac = create(freshDir());
     const base = await serve(ac);
@@ -382,10 +409,15 @@ describe('#6581 races', () => {
     const base = await serve(ac);
     const held = await mint(base, 'slot-holder');
     const [released, newcomer] = await Promise.all([release(base, 'slot-holder', held.token), mint(base, 'newcomer')]);
-    expect(released).toBe(200);
-    if (newcomer.status === 200) expect(await join(base, 'slot-holder', held.token!)).toBe('refused');
+    expect(released, 'the holder releases in either order').toBe(200);
+    expect([200, 403], 'the newcomer either fits after the release or was refused before it').toContain(newcomer.status);
+    expect(await join(base, 'slot-holder', held.token!), 'the released claim is dead either way').toBe('refused');
     await ac.flush();
-    expect(stateOf(dir).claimedRooms!.length).toBeLessThanOrEqual(1);
+    expect(stateOf(dir).claimedRooms, 'exactly what won the slot, and nothing else').toEqual(
+      newcomer.status === 200 ? ['newcomer'] : [],
+    );
+    if (newcomer.status === 200) expect(await join(base, 'newcomer', newcomer.token!)).toBe('admitted');
+    else expect((await mint(base, 'newcomer')).status, 'the freed slot is usable').toBe(200);
   });
 });
 
@@ -439,12 +471,16 @@ describe('#6581 durable claim state', () => {
     const ac = create(dir);
     const admin = await mint(await serve(ac), 'unwritable');
     await ac.flush();
-    fs.chmodSync(dir, 0o500);
+    // A directory where the temp file goes makes the write fail for any user,
+    // root included (a read-only chmod would not stop root).
+    const tmp = path.join(dir, 'access-control.json.tmp');
+    fs.mkdirSync(tmp);
     try {
       expect(await ac.serverOptions.authenticate!(admin.token, 'unwritable')).toBeNull();
     } finally {
-      fs.chmodSync(dir, 0o700);
+      fs.rmdirSync(tmp);
     }
+    expect(await ac.serverOptions.authenticate!(admin.token, 'unwritable'), 'admitted once it can be written').not.toBeNull();
   });
 
   it('a state file from before pending claims loads every claim as in use', async () => {

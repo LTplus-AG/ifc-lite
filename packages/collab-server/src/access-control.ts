@@ -249,7 +249,10 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
       console.warn(`[collab-server] refusing a join: the room's claim could not be persisted:`, err);
       return null;
     }
-    return awaitingDurable.has(roomId) || revoked.has(claims.jti) ? null : principal;
+    // A flush that resolved wrote this confirmation: it was recorded before
+    // the flush began, and flush() returns only after a successful pass that
+    // started later. A revocation may have landed while it waited.
+    return revoked.has(claims.jti) ? null : principal;
   };
 
   const serverOptions: Partial<StartCollabServerOptions> = {

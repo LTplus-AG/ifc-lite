@@ -46,6 +46,7 @@ const wasmMocks = vi.hoisted(() => {
 vi.mock('@ifc-lite/wasm', () => ({
   default: wasmMocks.init,
   initSync: wasmMocks.initSync,
+  setGeometryProgressCallback: () => undefined,
   IfcAPI: wasmMocks.MockIfcAPI,
 }));
 

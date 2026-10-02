@@ -486,6 +486,10 @@ export async function* processParallel(
           ledger.onCallStart(workerIndex, msg.seq, msg.processedJobs, msg.callJobs ?? 1, performance.now());
         }
         if (msg.diagnostics) diagnostics = mergeGeometryDiagnostics(diagnostics, msg.diagnostics);
+        // An in-call heartbeat (no seq) past the absolute call bound no longer
+        // counts as liveness, so with recovery off the consumer watchdog still
+        // bounds a call that reports progress forever (MAX_GEOMETRY_CALL_MS).
+        if (typeof msg.seq !== 'number' && ledger.callOverCap(workerIndex, performance.now())) return;
         eventQueue.push({ type: 'progress', phase: 'workers' });
         wake();
         return;

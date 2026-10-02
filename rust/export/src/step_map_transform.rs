@@ -95,9 +95,11 @@ pub fn plan_map_conversion_normalization(content: &[u8]) -> Result<MapConversion
         if !scale.is_finite() || scale <= 0.0 || !affine.iter().all(|value| value.is_finite()) {
             return Err("map similarity is not positive and finite".into());
         }
-        // Exact neutral test: even a tiny authored rotation can move a distant
-        // point. Keep offsets on the map conversion when no geometry work is needed.
-        if scale == 1.0 && geo.x_axis_abscissa == 1.0 && geo.x_axis_ordinate == 0.0 {
+        // Zero-angle exporters can retain a sine roundoff (for example cos(PI/2)).
+        // Recognize only machine-precision direction noise; physical scale and
+        // cosine stay exact. Preserve the authored operation, including the tiny
+        // ordinate and offsets: this returns no patches, not a snapped transform.
+        if scale == 1.0 && geo.x_axis_abscissa == 1.0 && geo.x_axis_ordinate.abs() <= f64::EPSILON {
             return Ok(MapConversionNormalizationPlan::default());
         }
         let context = operation.get_ref(0).ok_or("map SourceCRS is missing")?;

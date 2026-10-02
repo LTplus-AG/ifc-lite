@@ -45,10 +45,11 @@ async function savedIndex(content: string | Uint8Array) {
   return parsed.entityIndex;
 }
 
-async function assertSavedWall(content: string | Uint8Array, expressId: number): Promise<void> {
+async function assertSavedWall(content: string | Uint8Array, expressId: number,
+  expected = { type: 'IFCWALL', centre: [2, 5, 1.5], size: [4, 0.2, 3] }): Promise<void> {
   const buffer = bytes(content);
   const parsed = await new IfcParser().parseColumnar(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer, { disableWorkerScan: true });
-  expect(parsed.entityIndex.byType.get('IFCWALL')).toContain(expressId);
+  expect(parsed.entityIndex.byType.get(expected.type)).toContain(expressId);
   expect(parsed.spatialHierarchy?.elementToStorey.get(expressId)).toBe(STOREY);
   if (!api) throw new Error('Native API was not initialized');
   const pre = api.buildPrePassOnce(buffer);
@@ -79,13 +80,13 @@ async function assertSavedWall(content: string | Uint8Array, expressId: number):
     } finally { collection.free(); }
   } finally { api.clearPrePassCache(); }
   expect(vertices).toBeGreaterThan(0);
-  // Source site/building/storey placements are identity. These expected values
-  // come from the supplied four-metre wall, not another placement resolver.
+  // Source site/building/storey placements are identity. Expected tuples come
+  // from the supplied parameters, not another placement resolver.
   const centre = minimum.map((value, axis) => (value + maximum[axis]) / 2);
   const size = minimum.map((value, axis) => maximum[axis] - value);
   for (let axis = 0; axis < 3; axis++) {
-    expect(centre[axis]).toBeCloseTo([2, 5, 1.5][axis], 4);
-    expect(size[axis]).toBeCloseTo([4, 0.2, 3][axis], 4);
+    expect(centre[axis]).toBeCloseTo(expected.centre[axis], 4);
+    expect(size[axis]).toBeCloseTo(expected.size[axis], 4);
   }
 }
 
@@ -131,6 +132,36 @@ async function session(count: number) {
 
 describe.skipIf(!AVAILABLE)('#6232 D5 ordinary loaded SDK / public MCP parity', () => {
   for (const count of [1, 2]) {
+    it(`the other three public flow kinds save native geometry and complete undo with ${count} model(s)`, async () => {
+      const { registry, transport, call } = await session(count);
+      try {
+        const target = registry.get(count === 2 ? 'beta' : 'alpha')!;
+        const peer = count === 2 ? registry.get('alpha')!.bim.export.ifc() : null;
+        const kinds = [
+          { kind: 'column', params: { width: .3, depth: .4, height: 3 }, centre: [0, 5, 1.5], size: [.3, .4, 3] },
+          { kind: 'beam', params: { width: .2, height: .4 }, centre: [2, 5, 0], size: [4, .2, .4] },
+          { kind: 'slab', params: { width: 4, depth: 3, thickness: .2 }, centre: [2, 6.5, .1], size: [4, 3, .2] },
+        ];
+        for (const k of kinds) {
+          const before = await savedIndex(target.bim.export.ifc());
+          const base = wallFlow(), linear = k.kind === 'beam';
+          const flow: FlowDocument = { ...base, id: `d5-${k.kind}`,
+            nodes: base.nodes.map(node => node.id === 'spec' ? { ...node, type: `element.${k.kind}`, params: k.params }
+              : node.id === 'create' ? { ...node, trackingKey: `d5-${k.kind}` } : node),
+            edges: linear ? base.edges : base.edges.filter(edge => !(edge.to[0] === 'spec' && edge.to[1] === 'end'))
+              .map(edge => edge.to[0] === 'spec' && edge.to[1] === 'start' ? { ...edge, to: ['spec', 'position'] as const } : edge),
+          };
+          const result = await call('run_flow', { model_id: target.id, flow });
+          expect(result.structuredContent?.ok, JSON.stringify(result.structuredContent?.errors)).toBe(true);
+          const product = target.backend.getMutationView()!.getNewEntities().find(entity => entity.type === `Ifc${k.kind[0].toUpperCase()}${k.kind.slice(1)}`);
+          expect(product).toBeDefined();
+          await assertSavedWall(target.bim.export.ifc(), product!.expressId, { type: `IFC${k.kind.toUpperCase()}`, centre: k.centre, size: k.size });
+          expect((await call('mutation_undo', { model_id: target.id })).isError).not.toBe(true);
+          expect((await savedIndex(target.bim.export.ifc())).byId).toEqual(before.byId);
+        }
+        if (count === 2) expect(registry.get('alpha')!.bim.export.ifc()).toEqual(peer);
+      } finally { transport.close(); }
+    });
     it(`the existing SDK creates the canonical physical wall with ${count} model(s)`, async () => {
       const contexts = [];
       for (const id of ['alpha', 'beta'].slice(0, count)) {

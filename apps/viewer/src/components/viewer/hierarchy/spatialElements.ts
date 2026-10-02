@@ -44,7 +44,9 @@ export function indexSpatialNodes(root: SpatialNode): Map<number, SpatialNode> {
   while (pending.length > 0) {
     const node = pending.pop()!;
     nodes.set(node.expressId, node);
-    pending.push(...(node.children ?? []));
+    // One push per child: a spread puts every child on the stack as an
+    // argument and overflows it on a node with ~120k+ children.
+    for (const child of node.children ?? []) pending.push(child);
   }
   return nodes;
 }

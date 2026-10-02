@@ -155,7 +155,7 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130,
     text: cursor.truncate(t('document.preview.idsReportGeneratedAt', { timestamp: block.generatedAt }), contentW, 8, false) });
   cursor.y += DATE_HEIGHT;
-  layoutReportProvenance(scopeLines, cursor, keepAfter);
+  layoutReportProvenance(scopeLines, cursor, keepAfter, 'report-model-scope');
 
   /** Compact row: name on the left, then the bar and `passed/checked · n%` (or plain detail text when there is no bar). */
   const compactRow = (x: number, w: number, name: string, size: number, bold: boolean, gray: number, bar: ChildRow['bar'] | undefined, detail?: string): void => {

@@ -83,7 +83,7 @@ export function layoutManualReport(
     text({ x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130, text: cursor.truncate(meta, contentW, 8, false) });
     cursor.y += stampHeight;
   }
-  layoutReportProvenance(scopeLines, cursor, keepAfter);
+  layoutReportProvenance(scopeLines, cursor, keepAfter, 'report-model-scope');
 
   if (benchmarks) {
     cursor.y += 4;

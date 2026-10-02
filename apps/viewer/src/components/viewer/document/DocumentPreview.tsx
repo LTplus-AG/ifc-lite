@@ -15,10 +15,10 @@ import type { DocumentSpec } from '@/lib/document/types';
 import type { DocumentLabelFormatter } from '@/lib/document/document-labels';
 import type { DocumentPdfInput } from '@/lib/document/generate-document-pdf';
 import { topicSnapshotDataUrl } from '@/lib/document/generate-document-pdf';
-import { REPORT_MARGIN } from '@/lib/export/report/compose';
+import { pageBox, REPORT_MARGIN } from '@/lib/export/report/compose';
 import { DOCUMENT_FONT_FAMILIES } from '@/lib/document/text-typography';
 import type { TableState } from '@/lib/document/resolve-table';
-import { DOCUMENT_PREVIEW_PAPER_CLASS } from './preview-theme';
+import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS, DOCUMENT_PREVIEW_PAPER_CLASS } from './preview-theme';
 import { ComposedPageItems } from './ComposedPageItems';
 import { useDocumentLayout, type PreviewImageSize } from './useDocumentLayout';
 
@@ -80,14 +80,24 @@ export function DocumentPreview(props: DocumentPreviewProps) {
   const { value, error } = useDocumentLayout(input, imageSizes);
   const blocks = useMemo(() => new Map(props.document.blocks.map(block => [block.id, block])), [props.document]);
   if (error) return <div role="alert" className="p-3 text-xs text-destructive">{labels('document.print.layoutError', { message: error })}</div>;
-  if (!value) return <div data-document-preview aria-busy="true" className="p-3 text-xs text-muted-foreground">{labels('document.print.preparing')}</div>;
-  const { layout, measure } = value;
   const width = 560;
+  if (!value) {
+    // Keep the fixed print surface while the shared font metrics load, also
+    // during server rendering. No provisional body pagination is invented.
+    const size = pageBox(props.document.page);
+    return <div data-document-preview aria-busy="true" className="flex flex-col items-center gap-4 p-3">
+      <section data-document-preview-paper className={`${DOCUMENT_PREVIEW_PAPER_CLASS} relative shadow-md`}
+        style={{ width, height: size.h * width / size.w }}>
+        <span className={`${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS} block p-3 text-xs`}>{labels('document.print.preparing')}</span>
+      </section>
+    </div>;
+  }
+  const { layout, measure } = value;
   const scale = width / layout.size.w;
   const pendingImages = [...imageUrls].some(url => !imageSizes.has(url));
   const heading = layout.pageHeading;
   return <div className="flex flex-col items-center gap-4 p-3" data-document-preview aria-busy={pendingImages}>
-    {layout.pages.map(page => <section key={page.index} data-preview-section={page.index + 1}
+    {layout.pages.map(page => <section key={page.index} data-document-preview-paper data-preview-section={page.index + 1}
       aria-label={labels('document.preview.sectionLabel', { section: String(page.index + 1) })}
       className={`${DOCUMENT_PREVIEW_PAPER_CLASS} relative shadow-md`}
       style={{ width, height: layout.size.h * scale, fontFamily: DOCUMENT_FONT_FAMILIES.helvetica, overflow: 'hidden' }}>

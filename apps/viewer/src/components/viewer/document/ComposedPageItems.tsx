@@ -93,7 +93,8 @@ function Item({ item, block, origin, props, lineBreak }: { item: DrawnItem; bloc
     case 'text': return <span style={{ ...style, width: undefined, whiteSpace: 'pre', lineHeight: 1.25,
       fontSize: item.size * scale, fontFamily: DOCUMENT_FONT_FAMILIES[item.font ?? 'helvetica'],
       fontWeight: item.bold ? 700 : 400, color: item.color ?? `rgb(${item.gray}, ${item.gray}, ${item.gray})` }}
-      data-table-message={item.role === 'table-message' ? '' : undefined} title={item.tooltip}>{markedText()}{lineBreak ? '\n' : ''}</span>;
+      data-table-message={item.role === 'table-message' ? '' : undefined}
+      data-report-model-scope={item.role === 'report-model-scope' ? '' : undefined} title={item.tooltip}>{markedText()}{lineBreak ? '\n' : ''}</span>;
     case 'rect':
     case 'text-background': return <span aria-hidden="true" style={{ ...style, backgroundColor: item.color }} />;
     case 'image':
@@ -176,9 +177,10 @@ export function ComposedPageItems(props: ComposedPageItemsProps) {
           if (event.currentTarget === event.target && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); props.onSelectBlock(value.id); }
         }}>
         <div data-block-text={block.kind === 'text' ? '' : undefined} data-block-table={block.kind === 'table' ? '' : undefined}
-          data-block-ids-report={block.kind === 'ids-report' ? '' : undefined} data-block-manual-report={block.kind === 'manual-report' ? '' : undefined}
-          style={block.kind === 'text' ? { color: block.textColor, backgroundColor: block.backgroundColor, whiteSpace: 'pre-wrap',
-            fontFamily: DOCUMENT_FONT_FAMILIES[block.font ?? 'helvetica'], fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * props.scale } : undefined}>
+          data-block-ids-report={block.kind === 'ids-report' ? '' : undefined}
+          data-ids-report-variant={block.kind === 'ids-report' ? block.variant : undefined} data-block-manual-report={block.kind === 'manual-report' ? '' : undefined}
+          style={{ width: '100%', height: '100%', ...(block.kind === 'text' ? { color: block.textColor, backgroundColor: block.backgroundColor, whiteSpace: 'pre-wrap',
+            fontFamily: DOCUMENT_FONT_FAMILIES[block.font ?? 'helvetica'], fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * props.scale } : {}) }}>
           {value.items.map((item, index) => <Item key={index} item={item} block={block} origin={box} props={props}
             lineBreak={index < lastText} />)}
           {block.kind === 'text' && !block.text.trim() && <span className="text-neutral-500">{props.labels('document.preview.textEmpty')}</span>}

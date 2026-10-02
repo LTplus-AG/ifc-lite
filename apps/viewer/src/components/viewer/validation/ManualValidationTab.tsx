@@ -119,9 +119,9 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
         {!editing && activeModel && !fingerprint && <p className="text-xs text-muted-foreground">{t('manualValidation.model.noIdentity')}</p>}
         {saveError && <p role="alert" className="text-xs text-red-600">{saveErrorMessage}</p>}
 
-        <Button type="button" variant="outline" size="sm" className="h-7 w-fit text-xs" onClick={() => {
+        <Button type="button" variant="outline" size="sm" className="h-7 w-fit text-xs" onClick={async () => {
           const scope = activeModel ? reportModelScope(activeModel.name, activeModel.id, fingerprint) : null;
-          useViewerStore.getState().saveValidationReport({
+          await useViewerStore.getState().saveValidationReport({
             ...manualReportBlockFromChecklist({ checklist, answers, modelName: scope?.name, modelFingerprint: fingerprint }, 'run'),
             reportModels: scope ? [scope] : [],
           });

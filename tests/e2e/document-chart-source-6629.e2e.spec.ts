@@ -46,9 +46,9 @@ test('#6629 the chart source picker keeps a usable width in a narrow editor card
   await page.setViewportSize({ width: 1400, height: 1000 });
   await page.goto(viewerUrl);
   await page.waitForFunction(() => Boolean(globalThis.__ifc_lite_viewer_store__));
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
-    state.upsertDocument({ version: 1, id: 'chart-6629', name: 'Report', page: { size: 'A4', orientation: 'portrait' }, blocks: [] });
+    if (!(await state.upsertDocument({ version: 1, id: 'chart-6629', name: 'Report', page: { size: 'A4', orientation: 'portrait' }, blocks: [] }))) throw new Error('Canonical document setup was not committed');
     state.setActiveDocumentId('chart-6629');
     state.showWorkspacePanel('document');
     state.setSidebarActivePanel('document');

@@ -486,10 +486,10 @@ The viewer's **Start blank** action opens an empty IFC project with a storey, wa
 
 | Builder | Signature highlights | Profile modes |
 |---|---|---|
-| `addColumnToStore` | `Position`, `Width × Depth × Height` | rectangle |
+| `addColumnToStore` | `Position`, `Height`, optional `RefDirection` | rectangle / parameterised `Profile` |
 | `addWallToStore` | `Start`, `End`, `Thickness`, `Height` (planar XY axis enforced) | linear |
-| `addBeamToStore` | `Start`, `End`, `Width × Height` cross-section | linear |
-| `addMemberToStore` | `Start`, `End`, `Width × Height`, `PredefinedType` | linear |
+| `addBeamToStore` | `Start`, `End`, `Width × Height` or `Profile` | rectangle / parameterised `Profile` |
+| `addMemberToStore` | `Start`, `End`, `Width × Height` or `Profile`, `PredefinedType` | rectangle / parameterised `Profile` |
 | `addSlabToStore` | `Position` + `Width × Depth × Thickness` **or** `OuterCurve` polygon | rectangle / polygon |
 | `addRoofToStore` | same shape as slab; emits `.FLAT_ROOF.` PredefinedType | rectangle / polygon |
 | `addPlateToStore` | same shape as slab — thin extruded plate | rectangle / polygon |
@@ -679,6 +679,26 @@ const col = bim.store.addColumn('default', storey, {
   Position: [1, 1, 0],
   Width: 0.3, Depth: 0.4, Height: 3,
   Name: 'Column 1',
+});
+```
+
+`bim.store.addColumn`, `addBeam` and `addMember` also accept the existing
+`@ifc-lite/create` parameterised `Profile` types instead of rectangular dimensions.
+Columns accept `RefDirection`, a finite non-zero horizontal vector in storey-local
+coordinates; the canonical builder normalises it and defaults to `[1, 0, 0]`.
+Profile dimensions and positions remain metres, including in millimetre models.
+The SDK, viewer adapter and loaded-model MCP backend use the same
+builders and validation. For example:
+
+```typescript
+const storeyId = bim.query().byType('IfcBuildingStorey').refs()[0].expressId;
+const sectionColumn = bim.store.addColumn('default', storeyId, {
+  Position: [2, 1, 0], Height: 3, RefDirection: [0, 1, 0],
+  Profile: {
+    Type: 'I', OverallWidth: 0.4, OverallDepth: 0.6,
+    WebThickness: 0.05, FlangeThickness: 0.07,
+  },
+  Name: 'Turned I column',
 });
 ```
 

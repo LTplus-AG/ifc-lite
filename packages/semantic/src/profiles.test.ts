@@ -1,0 +1,219 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { describe, it, expect } from 'vitest';
+import { Parser } from 'n3';
+import { assertProfile, assertBoundedPattern, DEFAULT_PROFILE, type ProfileDefinition } from './profiles.js';
+import { generateArtifacts } from './profile-artifacts.js';
+import { parseProfileDocument, validateJson, validateLinks, toRdf, validateGraph } from './validation.js';
+import { profileToDictionary, dictionaryToProfile } from './dictionary.js';
+import { profileFromBsdd } from './bsdd.js';
+import { LIMITS } from './types.js';
+const profile = (): ProfileDefinition => ({ id: 'https://example.org/profile/2', version: '2', vocabulary: 'https://example.org/vocab#',
+  fields: { label: { iri: 'https://example.org/vocab#label', kind: 'string' },
+    labels: { iri: 'https://example.org/vocab#labels', kind: 'language' },
+    value: { iri: 'https://example.org/vocab#value', kind: 'number', minimum: 0, maximum: 10, unit: 'm' },
+    tags: { iri: 'https://example.org/vocab#tags', kind: 'string', enum: ['a', 'b'] },
+    enabled: { iri: 'https://example.org/vocab#enabled', kind: 'boolean' },
+    link: { iri: 'https://example.org/vocab#link', kind: 'iri', targetType: 'Thing' } },
+  types: { Thing: { iri: 'https://example.org/vocab#Thing', fields: { label: { minCount: 1 }, labels: {}, value: { minCount: 1 }, tags: { minCount: 1, maxCount: 2 }, enabled: {}, link: {} } } } });
+const document = () => ({ profile: profile().id, source: 'https://example.org/data', completeness: 'complete' as const,
+  resources: [{ id: 'https://example.org/a', type: 'Thing', label: 'A', labels: { en: 'English', de: 'Deutsch' }, value: 2.5, tags: ['a', 'b'], enabled: true }] });
+describe('charter #6643 shared profile standards', () => {
+  it('PR #6645 Q9Yj: rejects nonportable shorthand/property classes while retaining escaped literal backslashes', async () => {
+    for (const escape of ['d', 'D', 'w', 'W', 's', 'S', 'p', 'P']) {
+      for (const pattern of [`^\\${escape}{3}$`, `^[\\${escape}]{3}$`]) {
+        const p = profile(); p.fields.label.pattern = pattern;
+        expect(() => assertProfile(p)).toThrow('explicit character ranges');
+      }
+    }
+    const p = profile(); p.fields.label.pattern = '^\\\\d$';
+    const doc = parseProfileDocument({ ...document(), resources: [{ ...document().resources[0], label: '\\d' }] }, p);
+    expect(validateJson(doc, p)).toEqual([]);
+    expect(await validateGraph(await toRdf(doc, p), p)).toEqual([]);
+  });
+  it('PR #6645 Q9Yj: profile patterns count Unicode codepoints in both JSON Schema and generated SHACL', async () => {
+    const p = profile(); p.fields.label.pattern = '^.{1,3}$';
+    const artifacts = await generateArtifacts(p);
+    expect(new Parser().parse(artifacts.shapes).filter(quad => quad.predicate.value === 'http://www.w3.org/ns/shacl#flags')).toEqual([]);
+    const accepted = parseProfileDocument({ ...document(), resources: [{ ...document().resources[0], label: '😀😀' }] }, p);
+    expect(validateJson(accepted, p)).toEqual([]);
+    expect(await validateGraph(await toRdf(accepted, p), p)).toEqual([]);
+    const rejected = { ...accepted, resources: [{ ...accepted.resources[0], label: '😀😀😀😀' }] };
+    expect(validateJson(rejected, p).some(finding => finding.path === '/label')).toBe(true);
+    expect((await validateGraph(await toRdf(rejected, p), p)).some(finding => finding.path === p.fields.label.iri)).toBe(true);
+    p.fields.label.pattern = '^\\-?[0-9]{3}$';
+    expect(() => assertProfile(p)).toThrow();
+    expect(() => parseProfileDocument(document(), p)).toThrow();
+  });
+  it('#6643 self-review: rejects combinatorial optional/ranged patterns before either validator executes them', async () => {
+    for (const pattern of ['^a{0,5000}a{0,5000}a{0,5000}b$', '^a?a?a?a?aaaa$', '^a+a?b$', 'a*b', '^a*b|c']) {
+      const p = profile(); p.fields.label.pattern = pattern;
+      expect(() => assertProfile(p)).toThrow('bounded regular-expression subset');
+      const shapes = `<urn:shape> a <http://www.w3.org/ns/shacl#NodeShape>; <http://www.w3.org/ns/shacl#targetNode> <urn:a>; <http://www.w3.org/ns/shacl#property> [ <http://www.w3.org/ns/shacl#path> <urn:p>; <http://www.w3.org/ns/shacl#pattern> ${JSON.stringify(pattern)} ].`;
+      await expect(validateGraph('<urn:a> <urn:p> "aaaa".', { shapes })).rejects.toThrow('bounded regular-expression subset');
+    }
+    const multiline = '<urn:shape> a <http://www.w3.org/ns/shacl#NodeShape>; <http://www.w3.org/ns/shacl#targetNode> <urn:a>; <http://www.w3.org/ns/shacl#property> [ <http://www.w3.org/ns/shacl#path> <urn:p>; <http://www.w3.org/ns/shacl#pattern> "^a*b"; <http://www.w3.org/ns/shacl#flags> "m" ].';
+    await expect(validateGraph('<urn:a> <urn:p> "aaaa".', { shapes: multiline })).rejects.toThrow('Unsupported SHACL regular-expression flags');
+    for (const pattern of ['^[A-Z]{2}[0-9]{3}$', '^a{2,2}b{3,3}$', '^[?+*]+$', '^a\\?b\\?$', '^a?b$']) {
+      expect(() => assertBoundedPattern(pattern, 'fixture')).not.toThrow();
+    }
+  });
+  it('#6643 self-review: rejects malformed SHACL scalar constraints and honors boolean lexical aliases', async () => {
+    const prefix = '@prefix sh:<http://www.w3.org/ns/shacl#>. @prefix xsd:<http://www.w3.org/2001/XMLSchema#>. ';
+    const shape = (constraint: string) => prefix + `<urn:s> a sh:NodeShape; sh:targetNode <urn:a>; sh:property [sh:path <urn:p>; ${constraint}].`;
+    for (const constraint of ['sh:minCount -1', 'sh:maxCount "100"', 'sh:minCount "NaN"^^xsd:integer',
+      'sh:maxLength 1.5', 'sh:uniqueLang "true"', 'sh:pattern <urn:pattern>', 'sh:flags "i"@en', 'sh:flags "ii"',
+      'sh:minCount 0, 1']) {
+      await expect(validateGraph('<urn:a> <urn:other> "value".', { shapes: shape(constraint) })).rejects.toThrow(/SHACL/);
+    }
+    const closed = prefix + '<urn:s> a sh:NodeShape; sh:targetNode <urn:a>; sh:closed "1"^^xsd:boolean.';
+    expect(await validateGraph('<urn:a> <urn:other> "value".', { shapes: closed })).toEqual([expect.objectContaining({ engine: 'SHACL', path: 'urn:other' })]);
+    const opened = closed.replace('"1"', '"0"');
+    expect(await validateGraph('<urn:a> <urn:other> "value".', { shapes: opened })).toEqual([]);
+  });
+  it('#6643 self-review: profile references must name declared own fields and types', () => {
+    for (const inherited of ['constructor', 'toString', '__proto__']) {
+      const p = profile(); p.fields.link.targetType = inherited;
+      expect(() => assertProfile(p)).toThrow('Invalid target type');
+      const unknownField = profile(); unknownField.types.Thing.fields = { ...unknownField.types.Thing.fields, [inherited]: {} };
+      expect(() => assertProfile(unknownField)).toThrow('Unknown field');
+    }
+    const reserved = profile();
+    reserved.types = { ...reserved.types, constructor: { iri: 'urn:reserved', fields: { label: { minCount: 1 } } } };
+    expect(() => assertProfile(reserved)).toThrow('Invalid type');
+    for (const type of ['constructor', 'toString', '__proto__']) {
+      const invalid = { ...document(), resources: [{ ...document().resources[0], type }] };
+      expect(validateJson(invalid, profile())).toEqual([expect.objectContaining({ path: 'type', message: `Unknown type: ${type}` })]);
+    }
+  });
+  it('PR #6648 review: validates profile definitions before JSON or graph validation', async () => {
+    const invalid = { ...profile(), version: '' };
+    expect(() => validateJson(document(), invalid)).toThrow();
+    expect(() => validateLinks(document(), invalid)).toThrow();
+    await expect(validateGraph('<urn:a> <urn:p> "x".', invalid)).rejects.toThrow();
+  });
+  it('PR #6652 review: literal, language and IRI length bounds agree across JSON Schema and generated SHACL', async () => {
+    const p = profile(); p.fields.link.external = true;
+    const boundary = '😀'.repeat(LIMITS.literalCharacters);
+    const accepted = parseProfileDocument({ ...document(), resources: [{ ...document().resources[0], label: boundary, labels: { en: boundary } }] }, p);
+    expect(validateJson(accepted, p)).toEqual([]);
+    expect(await validateGraph(await toRdf(accepted, p), p)).toEqual([]);
+    for (const values of [{ label: boundary + 'x' }, { labels: { en: boundary + 'x' } }, { link: 'urn:' + 'x'.repeat(LIMITS.literalCharacters) }]) {
+      const oversized = { ...document(), resources: [{ ...document().resources[0], ...values }] };
+      expect(validateJson(oversized, p)).not.toEqual([]);
+      // A generic graph import can bypass the profile JSON parser. Validate
+      // that the published SHACL artifact still rejects the same values.
+      const field = Object.keys(values)[0];
+      const value = field === 'labels' ? boundary + 'x' : Object.values(values)[0];
+      const object = field === 'link' ? `<${value}>` : JSON.stringify(value) + (field === 'labels' ? '@en' : '');
+      const data = `<urn:a> a <${p.types.Thing.iri}>; <${p.fields.label.iri}> "A"; <${p.fields.value.iri}> "2.5E0"^^<http://www.w3.org/2001/XMLSchema#double>; <${p.fields.tags.iri}> "a". <urn:a> <${p.fields[field].iri}> ${object}.`;
+      expect((await validateGraph(data, p)).some(finding => finding.path === p.fields[field].iri && finding.message.includes('characters'))).toBe(true);
+    }
+  });
+  it('review: rejects unknown profile members and inconsistent common label cardinalities', () => {
+    const original = profile();
+    for (const invalid of [
+      { ...original, bearer: 'secret' },
+      { ...original, fields: { ...original.fields, value: { ...original.fields.value, secret: 'token' } } },
+      { ...original, types: { Thing: { ...original.types.Thing, inferredRelations: [] } } },
+      { ...original, types: { Thing: { ...original.types.Thing, fields: { ...original.types.Thing.fields, label: { minCount: 0 } } } } },
+      { ...original, types: { Thing: { ...original.types.Thing, fields: { ...original.types.Thing.fields, label: { minCount: 1, maxCount: 2 } } } } },
+      { ...original, types: { Thing: { ...original.types.Thing, fields: { ...original.types.Thing.fields, value: { minCount: 1, unsupported: true } } } } },
+    ]) expect(() => assertProfile(invalid)).toThrow(/Unsupported|exactly one/);
+  });
+  it('review: caps JSON and link findings before aggregation on bounded large submissions', () => {
+    const p = profile(); const doc = parseProfileDocument({ ...document(), resources: Array.from({ length: 1500 }, (_, index) => ({
+      id: `https://example.org/${index}`, type: 'Thing', label: 'Item', link: 'https://example.org/missing' })) }, p);
+    expect(validateJson(doc, p)).toHaveLength(LIMITS.findings);
+    expect(validateLinks(doc, p)).toHaveLength(LIMITS.findings);
+  });
+  it('review: narrow integer profile values stay within exact JSON numbers and valid RDF integer lexical forms', async () => {
+    const p = profile(); p.fields.count = { iri: p.vocabulary + 'count', kind: 'integer' }; p.types.Thing.fields.count = {};
+    const valid = parseProfileDocument({ ...document(), resources: [{ ...document().resources[0], count: Number.MAX_SAFE_INTEGER }] }, p);
+    expect(validateJson(valid, p)).toEqual([]);
+    const validRdf = await toRdf(valid, p);
+    expect(await validateGraph(validRdf, p)).toEqual([]);
+    expect(await validateGraph(validRdf.replace(String(Number.MAX_SAFE_INTEGER), '9007199254740992'), p)).toEqual([expect.objectContaining({ path: p.fields.count.iri })]);
+    for (const count of [1e21, Number.MAX_SAFE_INTEGER + 1, Number.MIN_SAFE_INTEGER - 1]) {
+      expect(() => parseProfileDocument({ ...document(), resources: [{ ...document().resources[0], count }] }, p)).toThrow();
+    }
+    expect(() => assertProfile({ ...p, fields: { ...p.fields, count: { ...p.fields.count, maximum: 1e21 } } })).toThrow('safe integers');
+    expect(() => assertProfile({ ...p, fields: { ...p.fields, count: { ...p.fields.count, enum: [1e21] } } })).toThrow('Enum values');
+  });
+  it('review: string and IRI enumeration values in the SHACL namespace remain data rather than executable constraints', async () => {
+    const p = profile(); const text = 'http://www.w3.org/ns/shacl#custom-text';
+    p.fields.tags.enum = [text]; p.fields.link.enum = [text]; p.fields.link.external = true; delete p.fields.link.targetType;
+    const doc = parseProfileDocument({ ...document(), resources: [{ ...document().resources[0], tags: [text], link: text }] }, p);
+    expect(validateJson(doc, p)).toEqual([]); expect(await validateGraph(await toRdf(doc, p), p)).toEqual([]);
+  });
+  it('generates equivalent bounded JSON/RDF constraints, preserves language tags and primitive datatypes', async () => {
+    const p = profile(); const doc = parseProfileDocument(document(), p); expect(validateJson(doc, p)).toEqual([]);
+    const rdf = await toRdf(doc, p); expect(await validateGraph(rdf, p)).toEqual([]);
+    const quads = new Parser().parse(rdf);
+    expect(quads.filter(q => q.predicate.value.endsWith('#labels')).map(q => q.object)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ language: 'en', value: 'English' }), expect.objectContaining({ language: 'de', value: 'Deutsch' })]));
+    expect(quads.find(q => q.predicate.value.endsWith('#enabled'))?.object).toMatchObject({ datatype: { value: 'http://www.w3.org/2001/XMLSchema#boolean' } });
+    const artifacts = await generateArtifacts(p); expect(artifacts.dictionary.version).toBe('2');
+    expect(new Parser().parse(artifacts.vocabulary).length).toBeGreaterThan(5);
+  });
+  it('reports number bounds and required cardinalities in both engines', async () => {
+    const input = document(); input.resources[0].value = -1; input.resources[0].tags = [];
+    const doc = parseProfileDocument(input, profile()); expect(validateJson(doc, profile()).map(f => f.path)).toEqual(expect.arrayContaining(['/value', '/tags']));
+    const findings = await validateGraph(await toRdf(doc, profile()), profile());
+    expect(findings.map(f => f.path)).toEqual(expect.arrayContaining(['https://example.org/vocab#value', 'https://example.org/vocab#tags']));
+  });
+  it('rejects unknown keys, duplicate identifiers and incorrect primitive types before graph conversion', () => {
+    expect(() => parseProfileDocument({ ...document(), resources: [{ ...document().resources[0], unknown: 1 }] }, profile())).toThrow();
+    expect(() => parseProfileDocument({ ...document(), resources: [document().resources[0], document().resources[0]] }, profile())).toThrow('Duplicate');
+    expect(() => parseProfileDocument({ ...document(), resources: [{ ...document().resources[0], value: '2.5' }] }, profile())).toThrow();
+    expect(() => parseProfileDocument({ ...document(), resources: [{ ...document().resources[0], id: 'https://example.org/a>' }] }, profile())).toThrow();
+  });
+  it('checks internal relation types in partial submissions and absence only for complete submissions', () => {
+    const input = { ...document(), resources: [{ ...document().resources[0], link: 'https://example.org/missing' }] };
+    expect(validateLinks(parseProfileDocument(input, profile()), profile())).toHaveLength(1);
+    expect(validateLinks(parseProfileDocument({ ...input, completeness: 'partial' }, profile()), profile())).toEqual([]);
+    const p = profile(); p.types.Other = { iri: p.vocabulary + 'Other', fields: { label: { minCount: 1 } } };
+    const doc = parseProfileDocument({ ...input, completeness: 'partial', resources: [...input.resources, { id: 'https://example.org/missing', type: 'Other', label: 'Wrong type' }] }, p);
+    expect(validateLinks(doc, p)[0].message).toContain('Expected Thing');
+  });
+  it('keeps the original DBL/DPP exchange readable and allows the second numeric projection', async () => {
+    const doc = parseProfileDocument({ profile: DEFAULT_PROFILE.id, source: 'https://example.org/data', completeness: 'partial', resources: [
+      { id: 'https://example.org/product', type: 'Product', label: 'Wall', granularity: 'item', thermalTransmittance: 0.3 }] });
+    expect(validateJson(doc)).toEqual([]); expect(await validateGraph(await toRdf(doc))).toEqual([]);
+  });
+  it('roundtrips supported dictionary constraints and preserves unsupported relationships without inferring IFC links', () => {
+    const original = profileToDictionary(profile(), [{ relation: 'arbitrary', target: 'https://example.org/external' }]);
+    const result = dictionaryToProfile(original); expect(result.profile).toEqual(profile()); expect(result.raw).toEqual(original);
+    expect(result.diagnostics).toHaveLength(1); expect(profileToDictionary(result.profile, result.raw.unsupported)).toEqual(original);
+  });
+  it('rejects executable shapes, cycles, complex paths, oversized inputs and zero-target validations', async () => {
+    const rdf = await toRdf(parseProfileDocument(document(), profile()), profile());
+    for (const shapes of [
+      '@prefix sh:<http://www.w3.org/ns/shacl#>. <urn:s> sh:sparql [sh:select "SELECT * {}"].',
+      '@prefix sh:<http://www.w3.org/ns/shacl#>. <urn:s> sh:path [sh:inversePath <urn:p>].',
+      '@prefix sh:<http://www.w3.org/ns/shacl#>. @prefix rdf:<http://www.w3.org/1999/02/22-rdf-syntax-ns#>. <urn:s> sh:in _:a. _:a rdf:first "x";rdf:rest _:a.',
+    ]) await expect(validateGraph(rdf, { profile: profile(), shapes })).rejects.toThrow();
+    await expect(validateGraph(rdf, { profile: profile(), maxBytes: 2 })).rejects.toThrow('byte limit');
+    await expect(validateGraph(rdf, { profile: profile(), maxQuads: 2 })).rejects.toThrow('quad limit');
+    await expect(validateGraph('<urn:a> <urn:p> "x".', profile())).rejects.toThrow('No targets');
+  });
+  it('consumes a versioned bSDD provider, keeps unsupported metadata and typed allowed values', async () => {
+    const raw = { uri: 'https://example.org/class', code: 'Wall', name: 'Wall', definition: null, parentClassUri: 'https://example.org/parent', relatedIfcEntityNames: ['IfcWall'],
+      classProperties: [ { uri: 'https://example.org/height', name: 'height', description: null, dataType: 'Real', propertySet: null, allowedValues: [{ value: '2.5' }], units: ['m'] },
+        { uri: 'https://example.org/complex', name: 'complex', description: null, dataType: 'Complex', propertySet: null, allowedValues: null, units: null } ] };
+    const result = await profileFromBsdd({ fetchClassByUri: async () => raw }, raw.uri, { id: 'https://example.org/profile/bsdd', version: '1', vocabulary: 'https://example.org/bsdd#' });
+    expect(result.raw).toEqual(raw); expect(result.profile.fields.height).toMatchObject({ kind: 'number', enum: [2.5], unit: 'm' });
+    expect(result.diagnostics).toHaveLength(2);
+    const doc = parseProfileDocument({ profile: result.profile.id, source: raw.uri, completeness: 'partial', resources: [{ id: 'https://example.org/wall', type: 'Wall', label: 'Wall', height: 3 }] }, result.profile);
+    expect(validateJson(doc, result.profile)[0].path).toBe('/height');
+    const allowed = parseProfileDocument({ ...doc, resources: [{ ...doc.resources[0], height: 2.5 }] }, result.profile);
+    expect(await validateGraph(await toRdf(allowed, result.profile), result.profile)).toEqual([]);
+    const unsupported = { ...raw, classProperties: [{ ...raw.classProperties[0], dataType: 'Integer', allowedValues: [{ value: '1e21' }, { value: '' }] }] };
+    const partial = await profileFromBsdd({ fetchClassByUri: async () => unsupported }, raw.uri, { id: 'https://example.org/profile/bsdd', version: '1', vocabulary: 'https://example.org/bsdd#' });
+    expect(partial.profile.fields.height.enum).toBeUndefined();
+    expect(partial.raw.classProperties[0].allowedValues).toEqual(unsupported.classProperties[0].allowedValues);
+    expect(partial.diagnostics).toEqual(expect.arrayContaining([expect.stringContaining('Unsupported bSDD enumeration')]));
+  });
+});

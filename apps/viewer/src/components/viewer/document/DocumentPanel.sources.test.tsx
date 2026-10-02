@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { beforeEach, afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -97,7 +98,7 @@ describe('Document field source and page-break UI (#6485)', () => {
     act(() => useViewerStore.setState({ activeModelId: 'a' }));
     await settle();
     assert.equal(preview?.textContent, 'Structure / REI120');
-    const saved = loadDocuments()[0];
+    const saved = (await loadDocuments())[0];
     assert.ok(saved);
     const imported = parseDocumentFile(JSON.stringify(saved));
     assert.ok(imported.blocks[0].kind === 'text');
@@ -131,7 +132,7 @@ describe('Document field source and page-break UI (#6485)', () => {
     type(textareas[1], 'After the break');
     await settle();
     assert.equal(ui.querySelectorAll('[data-preview-section]').length, 2);
-    const saved = loadDocuments()[0];
+    const saved = (await loadDocuments())[0];
     assert.ok(saved.blocks.some((block) => block.kind === 'page-break'));
     assert.ok(parseDocumentFile(JSON.stringify(saved)).blocks.some((block) => block.kind === 'page-break'));
     const exportButton = ui.querySelector('[data-document-export]');

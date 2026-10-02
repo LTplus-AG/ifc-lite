@@ -1,0 +1,86 @@
+{
+  "observer": "tests",
+  "baseline": {
+    "kind": "pass",
+    "passed": 11,
+    "total": 11
+  },
+  "reverted": {
+    "kind": "assertion-failure",
+    "passed": 10,
+    "failed": 1,
+    "total": 11,
+    "evidence": []
+  },
+  "ledger": [
+    {
+      "file": "apps/viewer/src/lib/storage/content-import-plan.test.ts",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/lib/storage/content-import-plan.test.ts",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/lib/storage/content-import-plan.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 11,
+        "failed": 0,
+        "total": 11,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/lib/storage/content-import-plan.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 10,
+        "failed": 1,
+        "total": 11,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/lib/storage/content-import-plan.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    }
+  ],
+  "schemaVersion": 2,
+  "channel": "pull-request",
+  "verdict": "OBSERVED",
+  "exitCode": 0,
+  "reason": "reverting production turned an assertion RED in apps/viewer/src/lib/storage/content-import-plan.test.ts; that file has a green, attributable baseline.",
+  "base": "6abfd08a327d55ec0e95716a8150317d1fdcb110",
+  "head": "ac538c4a6eb9f3809b2a315ce595f13f52ff1e17",
+  "production": [
+    "apps/viewer/src/lib/storage/content-library.ts"
+  ],
+  "tests": [
+    "apps/viewer/src/lib/storage/content-import-plan.test.ts"
+  ],
+  "invocationId": "e015e56a-559a-46cc-9f72-c4de30874a31",
+  "timing": {
+    "startedAt": "2026-10-02T14:39:24.744Z",
+    "finishedAt": "2026-10-02T14:39:52.557Z"
+  },
+  "restoration": "verified"
+}

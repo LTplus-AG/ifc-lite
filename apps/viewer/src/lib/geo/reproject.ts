@@ -24,6 +24,7 @@ import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from
 import { ifcToViewerAxes } from './coordinate-frame';
 import { wellKnownCrsCode } from './well-known-crs';
 import { isGeographicProj4, utmProj4String } from './proj4-utils';
+import { resolveMapAxisDirection } from './map-axis-direction';
 
 export { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
 import { PRECISION_GRIDS, resolvePrecisionDef } from './precision-grids';
@@ -401,13 +402,17 @@ export async function resolveProjectionId(
  * Then the projected CRS coordinates are:
  *   easting  = mapConversion.eastings + scale * (cos*ifc_x - sin*ifc_y)
  *   northing = mapConversion.northings + scale * (sin*ifc_x + cos*ifc_y)
+ *
+ * (cos, sin) is the UNIT direction of XAxisAbscissa/XAxisOrdinate
+ * ({@link resolveMapAxisDirection}); the vector's length is not a scale (#6700).
+ * Returns null when the authored vector carries no direction.
  */
 function computeProjectedCenter(
   rawConversion: MapConversion,
   coordinateInfo: CoordinateInfo | undefined,
   mapUnitScale: number,
   lengthUnitScale: number,
-): { easting: number; northing: number } {
+): { easting: number; northing: number } | null {
   // Map-absolute geometry (#2526): neutralise a conversion the geometry
   // already carries, or the offsets/rotation get applied twice.
   const conversion = effectiveMapConversionForGeometry(rawConversion, mapUnitScale, coordinateInfo);
@@ -420,8 +425,9 @@ function computeProjectedCenter(
   // for mm→m); since geometry is already in metres, use the effective scale —
   // see issue #595.
   const { x: scaleX, y: scaleY } = getEffectiveAxisScales(conversion, mapUnitScale, lengthUnitScale);
-  const abscissa = conversion.xAxisAbscissa ?? 1.0;
-  const ordinate = conversion.xAxisOrdinate ?? 0.0;
+  const axis = resolveMapAxisDirection(conversion.xAxisAbscissa, conversion.xAxisOrdinate);
+  if (!axis) return null;
+  const { a: abscissa, b: ordinate } = axis;
 
   const easting = conversion.eastings * mapUnitScale + abscissa * scaleX * ifcX - ordinate * scaleY * ifcY;
   const northing = conversion.northings * mapUnitScale + ordinate * scaleX * ifcX + abscissa * scaleY * ifcY;
@@ -462,7 +468,9 @@ export async function reprojectToLatLon(
   // MapConversion values use the unit from IfcProjectedCRS.MapUnit. If MapUnit
   // is not specified, the IFC spec defaults to the project's length unit.
   const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
-  const { easting, northing } = computeProjectedCenter(conversion, coordinateInfo, mapScale, lengthUnitScale);
+  const center = computeProjectedCenter(conversion, coordinateInfo, mapScale, lengthUnitScale);
+  if (!center) return null;
+  const { easting, northing } = center;
 
   try {
     const [lon, lat] = proj4(projDef, 'WGS84', [easting, northing]);
@@ -562,18 +570,13 @@ export function reprojectionInputKey(
 }
 
 /**
- * Reverse-project a WGS84 lat/lon into the IfcMapConversion eastings/northings
- * values that would place the model center at the given location.
- *
- * This accounts for the model's local geometry offset, rotation, and scale:
- *   projected = eastings + scale * (cos*ifcX - sin*ifcY)
- *   ⟹ eastings = projected - scale * (cos*ifcX - sin*ifcY)
+ * Reverse-project a WGS84 point to the declared origin's map-unit coordinates.
+ * This is the inverse of reprojectPointToLatLon, independent of mesh placement
+ * (#6677). Geometry-aware inverse placement lives in the shared spatial reference.
  */
 export async function reprojectFromLatLon(
   latLon: LatLon,
   crs: ProjectedCRS,
-  conversion?: MapConversion,
-  coordinateInfo?: CoordinateInfo,
   lengthUnitScale = 1,
 ): Promise<{ easting: number; northing: number } | null> {
   const projDef = await resolveProjection(crs);
@@ -588,32 +591,8 @@ export async function reprojectFromLatLon(
     const [projE, projN] = proj4('WGS84', projDef, [latLon.lon, latLon.lat]);
     if (!Number.isFinite(projE) || !Number.isFinite(projN)) return null;
 
-    // Convert projected metres back to MapConversion's unit.
-    // Geometry offsets (ifcX/Y) are already in metres.
     const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
-    // Map-absolute geometry (#2526): this inverse DELIBERATELY uses the
-    // AUTHORED conversion, not `effectiveMapConversionForGeometry`. Its only
-    // consumer is the map-pick Apply flow, which SAVES the returned E/N into
-    // the mutated MapConversion while the authored rotation stays. Inverting
-    // the authored conversion keeps that loop self-consistent: the saved
-    // anchor moves the mutated conversion out of the map-absolute detection
-    // window, and the forward math then applies the authored rotation to the
-    // same values this inverse accounted for — the pin lands where picked.
-    // Inverting the NEUTRALISED conversion instead would save a near-zero
-    // anchor next to the authored rotation, un-fire the detection, and fling
-    // the model by the double-applied rotation on the very next recompute.
-    const invScale = mapScale !== 0 ? 1 / mapScale : 1;
-    const { ifcX, ifcY } = computeModelCenterInIfcMeters(coordinateInfo);
-    // Effective horizontal scale for metre-converted geometry — see issue #595.
-    const { x: scaleX, y: scaleY } = getEffectiveAxisScales(conversion ?? {}, mapScale, lengthUnitScale);
-    const abscissa = conversion?.xAxisAbscissa ?? 1.0;
-    const ordinate = conversion?.xAxisOrdinate ?? 0.0;
-
-    // Result is in IFC native units (the reverse of: E_native * mapScale + geom_offset = E_metres)
-    const easting = (projE - (abscissa * scaleX * ifcX - ordinate * scaleY * ifcY)) * invScale;
-    const northing = (projN - (ordinate * scaleX * ifcX + abscissa * scaleY * ifcY)) * invScale;
-
-    return { easting, northing };
+    return { easting: projE / mapScale, northing: projN / mapScale };
   } catch {
     return null;
   }
@@ -655,8 +634,12 @@ export async function computeFootprintGeoJSON(
   // Map-absolute geometry (#2526): same neutralisation as the centre pin.
   const conversion = effectiveMapConversionForGeometry(rawConversion, mapScale, coordinateInfo);
   const { x: scaleX, y: scaleY } = getEffectiveAxisScales(conversion, mapScale, lengthUnitScale);
-  const abscissa = conversion.xAxisAbscissa ?? 1.0;
-  const ordinate = conversion.xAxisOrdinate ?? 0.0;
+  const axis = resolveMapAxisDirection(conversion.xAxisAbscissa, conversion.xAxisOrdinate);
+  if (!axis) {
+    console.warn('[footprint] IfcMapConversion axis has no usable direction:', conversion.xAxisAbscissa, conversion.xAxisOrdinate);
+    return null;
+  }
+  const { a: abscissa, b: ordinate } = axis;
 
   const shift = coordinateInfo.originShift;
   const rtcYup = ifcToViewerAxes(coordinateInfo.wasmRtcOffset ?? { x: 0, y: 0, z: 0 });

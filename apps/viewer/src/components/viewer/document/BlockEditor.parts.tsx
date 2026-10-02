@@ -35,6 +35,7 @@ export function BlockScaleEditor({ scale, onChange }: { scale: number | undefine
         max={BLOCK_SCALE_MAX * 100}
         placeholder="100"
         allowUndefined
+        integer
         ariaLabel={t('document.block.scaleAriaLabel')}
         onCommit={(percent) => onChange(percent === undefined || percent === 100 ? undefined : percent / 100)}
       />
@@ -48,7 +49,7 @@ export function BlockScaleEditor({ scale, onChange }: { scale: number | undefine
  * then the "0" landed on "120" making "1200"), so a typed value like 300 could never be reached.
  * The raw text is kept in local state; `onCommit` only fires the clamped number once editing ends.
  */
-export function ClampedNumberInput({ value, min, max, placeholder, ariaLabel, allowUndefined, onCommit }: { value: number | undefined; min: number; max: number; placeholder?: string; ariaLabel: string; allowUndefined?: boolean; onCommit: (value: number | undefined) => void }) {
+export function ClampedNumberInput({ value, min, max, placeholder, ariaLabel, allowUndefined, integer, onCommit }: { value: number | undefined; min: number; max: number; placeholder?: string; ariaLabel: string; allowUndefined?: boolean; /** Whole numbers only: a typed 120.5 is committed, and shown, as 121 (the field's own `step`). */ integer?: boolean; onCommit: (value: number | undefined) => void }) {
   const [text, setText] = useState(value === undefined ? '' : String(value));
   useEffect(() => { setText(value === undefined ? '' : String(value)); }, [value]);
   const commit = (): void => {
@@ -60,7 +61,7 @@ export function ClampedNumberInput({ value, min, max, placeholder, ariaLabel, al
       return;
     }
     const raw = Number(trimmed);
-    const clamped = Number.isFinite(raw) ? Math.min(max, Math.max(min, raw)) : (value ?? min);
+    const clamped = Number.isFinite(raw) ? Math.min(max, Math.max(min, integer ? Math.round(raw) : raw)) : (value ?? min);
     setText(String(clamped));
     onCommit(clamped);
   };

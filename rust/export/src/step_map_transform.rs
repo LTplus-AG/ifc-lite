@@ -12,6 +12,14 @@ use serde::Serialize;
 mod preflight;
 #[path = "step_map_transform_writer.rs"]
 mod writer;
+#[path = "step_map_rigid.rs"]
+mod rigid;
+#[path = "step_map_rigid_ownership.rs"]
+mod rigid_ownership;
+#[path = "step_map_rigid_contexts.rs"]
+mod rigid_contexts;
+#[path = "step_map_context_metadata.rs"]
+mod context_metadata;
 
 /// A complete replacement or newly allocated STEP entity. IDs let the host
 /// exporter settle its existing modification ledger without counting edits twice.
@@ -95,12 +103,17 @@ pub fn plan_map_conversion_normalization(content: &[u8]) -> Result<MapConversion
         if !scale.is_finite() || scale <= 0.0 || !affine.iter().all(|value| value.is_finite()) {
             return Err("map similarity is not positive and finite".into());
         }
-        // Exact neutral test: even a tiny authored rotation can move a distant
-        // point. Keep offsets on the map conversion when no geometry work is needed.
-        if scale == 1.0 && geo.x_axis_abscissa == 1.0 && geo.x_axis_ordinate == 0.0 {
+        // Zero-angle exporters can retain a sine roundoff (for example cos(PI/2)).
+        // Recognize only machine-precision direction noise; physical scale and
+        // cosine stay exact. Preserve the authored operation, including the tiny
+        // ordinate and offsets: this returns no patches, not a snapped transform.
+        if scale == 1.0 && geo.x_axis_abscissa == 1.0 && geo.x_axis_ordinate.abs() <= f64::EPSILON {
             return Ok(MapConversionNormalizationPlan::default());
         }
         let context = operation.get_ref(0).ok_or("map SourceCRS is missing")?;
+        if scale == 1.0 {
+            return rigid::plan(&records, &ids, map, context, unit, &affine, &mut decoder);
+        }
         preflight::model(&records, context, &mut decoder)?;
         let router = GeometryRouter::with_scale(unit);
         let mut plan = MapConversionNormalizationPlan::default();
@@ -137,6 +150,7 @@ pub fn plan_map_conversion_normalization(content: &[u8]) -> Result<MapConversion
             edits.extend([(8, "1.".into()), (9, "1.".into()), (10, "1.".into())]);
         }
         plan.replacements.push(writer::replace(map, &edits)?);
+        context_metadata::transform_north(&records, &ids, &std::collections::HashSet::from([context]), &affine, &mut decoder, &mut output, &mut plan)?;
         plan.new_entities = output.finish();
         Ok(plan)
     };
@@ -149,3 +163,11 @@ pub fn plan_map_conversion_normalization(content: &[u8]) -> Result<MapConversion
 #[cfg(test)]
 #[path = "step_map_transform_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "step_map_rigid_tests.rs"]
+mod rigid_tests;
+
+#[cfg(test)]
+#[path = "step_map_rigid_fixture_tests.rs"]
+mod rigid_fixture_tests;

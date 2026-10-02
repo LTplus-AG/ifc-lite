@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -49,7 +50,7 @@ beforeEach(async () => {
   useViewerStore.setState({ ...fixtureModels(model), documents: [], activeDocumentId: null, dashboards: [],
     selectedEntityIds: new Set(), mutationViews: new Map(), mutationVersion: 0,
     bcfProject: { version: '3.0', topics: new Map([['topic', { guid: 'topic', title: 'Original topic source', description: 'Wall coordination', viewpoints: [], comments: [] }]]) },
-    savedValidationReports: [], validationReportsLoadIssue: null });
+    savedValidationReports: [] });
   const ids = await validateIDS(originalIds, createDataAccessor(store, model.id),
     { modelId: model.id, schemaVersion: store.schemaVersion, entityCount: store.entityCount }, { includePassingEntities: true });
   const rules = await runRuleSet({ ruleSet: originalRules, models: evaluatorModelsFromState(useViewerStore.getState()), definedModelTagIds: new Set() });
@@ -87,7 +88,7 @@ describe('Document content-block title overrides (#6547)', () => {
       const preview = ui.querySelector(`[data-preview-block="${block.id}"]`);
       assert.ok(preview?.textContent?.includes(`Authored ${block.id} heading`), `${block.kind} renders the authored heading`);
     }
-    const saved = loadDocuments().find((d) => d.id === spec.id);
+    const saved = (await loadDocuments()).find((d) => d.id === spec.id);
     assert.ok(saved);
     const imported = parseDocumentFile(JSON.stringify(saved));
     cleanup();
@@ -113,7 +114,7 @@ describe('Document content-block title overrides (#6547)', () => {
     typeInput(title, 'Temporary chart heading'); await settle();
     typeInput(title, '   '); await settle();
     await waitFor(() => !!ui.querySelector('[data-preview-block="chart"]')?.textContent?.includes('Original chart source'), 'cleared title restores the original heading');
-    assert.equal(loadDocuments()[0].blocks.find((b) => b.kind === 'chart')?.chart.title, 'Original chart source');
+    assert.equal((await loadDocuments())[0].blocks.find((b) => b.kind === 'chart')?.chart.title, 'Original chart source');
   });
   it('rejects non-string imported headings for every content kind and accepts existing v10 documents unchanged', () => {
     assert.deepEqual(validateDocumentSpec(spec), []);
@@ -139,13 +140,13 @@ describe('Document content-block title overrides (#6547)', () => {
     click(refresh); await settle();
     assert.ok(ui.querySelector('[data-preview-block="ids"]')?.textContent?.includes('Independent audit heading'));
     const manual = spec.blocks.find((block) => block.kind === 'manual-report'); assert.ok(manual?.kind === 'manual-report');
-    act(() => { useViewerStore.getState().saveValidationReport(manual); });
+    (await act(async () => { (await useViewerStore.getState().saveValidationReport(manual)); }));
     const savedId = useViewerStore.getState().savedValidationReports[0]?.id;
     assert.ok(savedId);
     const source = editor.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]'); assert.ok(source);
-    act(() => { source.value = savedId; source.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    act(() => { source.value = `saved:${savedId}`; source.dispatchEvent(new window.Event('change', { bubbles: true })); });
     await settle();
-    const replaced = loadDocuments()[0].blocks.find((block) => block.id === 'ids');
+    const replaced = (await loadDocuments())[0].blocks.find((block) => block.id === 'ids');
     assert.ok(replaced?.kind === 'manual-report'); assert.equal(replaced.title, 'Independent audit heading');
     assert.equal(replaced.checklistName, 'Original checklist source');
     assert.ok(ui.querySelector('[data-preview-block="ids"]')?.textContent?.includes('Independent audit heading'));

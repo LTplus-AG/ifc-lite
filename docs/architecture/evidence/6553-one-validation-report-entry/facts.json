@@ -1,0 +1,36 @@
+{
+  "errors": [],
+  "menuItems": [
+    "Text with fields",
+    "Image / logo",
+    "Chart",
+    "BCF topic",
+    "Page break",
+    "Spacer",
+    "Saved comparison",
+    "Table (from a list)",
+    "Validation report"
+  ],
+  "pickerOptions": [
+    "Current document snapshot",
+    "Saved IDS · 2026-01-15T10:00:00.000Z",
+    "Saved information validation · 2026-01-16T10:00:00.000Z",
+    "Saved manual · 2026-01-17T10:00:00.000Z",
+    "Current IDS validation run (live)",
+    "Current manual checklist (live)"
+  ],
+  "addedBlock": {
+    "kind": "manual-report",
+    "savedReportId": "set",
+    "name": "Site review"
+  },
+  "afterLive": {
+    "kind": "ids-report",
+    "savedReportId": null,
+    "name": "Current IDS run"
+  },
+  "refreshButtons": [
+    "Refresh",
+    "Refresh from current validation report"
+  ]
+}

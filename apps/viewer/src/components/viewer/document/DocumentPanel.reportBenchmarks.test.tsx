@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { beforeEach, afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -64,7 +65,7 @@ beforeEach(async () => {
   const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
   const model = { ...fixtureModel('m'), name: 'building-architecture.ifc', sourceFingerprint: 'public-sketchup-4-walls', ifcDataStore: store };
   useViewerStore.setState({ ...fixtureModels(model), documents: [], activeDocumentId: null, mutationViews: new Map(), mutationVersion: 0,
-    idsDocument: null, idsValidationReport: null, validationSource: null, savedValidationReports: [], validationReportsLoadIssue: null });
+    idsDocument: null, idsValidationReport: null, validationSource: null, savedValidationReports: [] });
   reports = [await validateIDS(ids, createDataAccessor(store, model.id),
     { modelId: model.id, schemaVersion: store.schemaVersion, entityCount: store.entityCount }, { includePassingEntities: true }),
     await runRuleSet({ ruleSet: rules, models: evaluatorModelsFromState(useViewerStore.getState()), definedModelTagIds: new Set() })];
@@ -148,7 +149,8 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
       const preview = ui.querySelector(`[data-preview-block="${block.id}"]`); assert.ok(preview);
       assertRing(preview, reports.find((report) => report.source.kind === block.sourceKind)!);
     }
-    const saved = loadDocuments().find((document) => document.id === spec.id); assert.ok(saved);
+    await act(async () => { await useViewerStore.getState().retryDocumentsSave(); });
+    const saved = (await loadDocuments()).find((document) => document.id === spec.id); assert.ok(saved);
     const imported = parseDocumentFile(JSON.stringify(saved));
     const blocks = imported.blocks.filter((block) => block.kind === 'ids-report');
     const layout = composeDocument({ name: imported.name, page: imported.page, generatedAt: '', measure: estimateTextWidth, blocks });
@@ -204,7 +206,8 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     const label = [...ui.querySelectorAll('label')].find((entry) => entry.textContent?.includes('Ring anzeigen'));
     const input = label?.querySelector<HTMLInputElement>('input[type="checkbox"]'); assert.ok(input); click(input); await settle();
     assert.equal(ui.querySelector('[data-validation-benchmark]'), null);
-    const saved = loadDocuments().find((doc) => doc.id === spec.id); assert.ok(saved);
+    await act(async () => { await useViewerStore.getState().retryDocumentsSave(); });
+    const saved = (await loadDocuments()).find((doc) => doc.id === spec.id); assert.ok(saved);
     assert.deepEqual(saved.blocks[0], JSON.parse(JSON.stringify({ ...block, benchmarks: false })), 'hiding the ring preserves all serializable frozen source numbers and identifiers');
     const printed = composeDocument({ name: spec.name, page: spec.page, generatedAt: '', measure: estimateTextWidth, blocks: saved.blocks.filter((entry) => entry.kind === 'ids-report') });
     assert.equal(printed.pages.flatMap((page) => page.items).filter((item) => item.kind === 'ring').length, 0);
@@ -264,18 +267,53 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     assert.ok(pdf.includes('62% passed') && pdf.includes('50% passed'), 'the exported labels retain both actual engine verdicts');
   });
 
+  it('a refresh and a saved-source choice keep a hidden stamp and specifications-only together, and preview and PDF agree on both (#6678)', async () => {
+    const first = { ...spec.blocks[0], variant: 'compact' as const, benchmarks: false, specificationsOnly: true, showStamp: false }; assert.ok(first.kind === 'ids-report');
+    assert.ok(first.checks.some((check) => check.rules.length > 0), 'the real engine report has requirement rows to omit');
+    let savedId: string | null = null;
+    await act(async () => {
+      useViewerStore.setState({ documents: [{ ...spec, blocks: [first] }], activeDocumentId: spec.id });
+      useViewerStore.getState().setIdsValidationReport(reports[0], validationReportSnapshot(reports[0], useViewerStore.getState().models, 'live'));
+      savedId = await useViewerStore.getState().saveValidationReport(validationReportSnapshot(reports[0], useViewerStore.getState().models, 'saved'), 'Frozen IDS run');
+    });
+    assert.ok(savedId);
+    const ui = render(<DocumentPanel />); await settle();
+    const stored = () => { const block = useViewerStore.getState().documents[0].blocks[0]; assert.ok(block.kind === 'ids-report'); return block; };
+    const agree = (when: string) => {
+      const block = stored();
+      const preview = ui.querySelector(`[data-preview-block="${first.id}"]`); assert.ok(preview);
+      const pdf = composeDocument({ name: spec.name, page: spec.page, generatedAt: '', measure: estimateTextWidth, blocks: [block] })
+        .pages.flatMap((page) => page.items).flatMap((item) => item.kind === 'text' ? [item.text] : []);
+      assert.equal(block.showStamp, false, `${when}: stamp choice kept`); assert.equal(block.specificationsOnly, true, `${when}: specifications-only kept`);
+      assert.ok(!/Validation run|Models:/.test(preview.textContent ?? '') && !pdf.some((text) => /^(Validation run|Models:)/.test(text)), `${when}: both outputs omit the stamp`);
+      assert.equal(preview.querySelector('[data-ids-report-requirements]'), null, `${when}: the preview omits requirement rows`);
+      const names = block.checks.flatMap((check) => check.rules.map((rule) => rule.name ?? rule.shortDescription));
+      assert.ok(names.length > 0 && !pdf.some((text) => names.includes(text)), `${when}: the PDF omits requirement rows`);
+      assert.ok(block.checks.every((check) => pdf.includes(check.shortDescription)), `${when}: both outputs keep every specification`);
+    };
+    agree('before');
+    const refresh = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Refresh from current validation report');
+    assert.ok(refresh); click(refresh); await settle();
+    agree('after Refresh');
+    const select = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]'); assert.ok(select);
+    act(() => { select.value = `saved:${savedId!}`; select.dispatchEvent(new window.Event('change', { bubbles: true })); }); await settle();
+    assert.equal(stored().savedReportId, savedId);
+    agree('after choosing a saved report');
+  });
+
   it('preserves the authored title and hidden-ring choice when refreshing a real IDS run and replacing it with actual saved information evidence', async () => {
-    const first = { ...spec.blocks[0], benchmarks: false }; assert.ok(first.kind === 'ids-report');
+    const style = { titleFontSize: 14, titleTextColor: '#112233', titleBackgroundColor: '#ddeeff' };
+    const first = { ...spec.blocks[0], benchmarks: false, variant: "compact" as const, specificationsOnly: true, scale: 1.5, showStamp: false, ...style }; assert.ok(first.kind === "ids-report");
     const model = useViewerStore.getState().models.get('m'); assert.ok(model?.ifcDataStore);
     const definition = { ...ids, info: { title: 'Updated IDS definition' } };
     const updated = await validateIDS(definition, createDataAccessor(model.ifcDataStore, model.id),
       { modelId: model.id, schemaVersion: model.ifcDataStore.schemaVersion, entityCount: model.ifcDataStore.entityCount }, { includePassingEntities: true });
     let saved: string | null = null;
-    act(() => {
+    (await act(async () => {
       useViewerStore.setState({ documents: [{ ...spec, blocks: [first] }], activeDocumentId: spec.id });
       useViewerStore.getState().setIdsValidationReport(updated, validationReportSnapshot(updated, useViewerStore.getState().models, 'current'));
-      saved = useViewerStore.getState().saveValidationReport(validationReportSnapshot(reports[1], useViewerStore.getState().models, 'information'), 'Frozen information run');
-    });
+      saved = (await useViewerStore.getState().saveValidationReport(validationReportSnapshot(reports[1], useViewerStore.getState().models, 'information'), 'Frozen information run'));
+    }));
     assert.ok(saved, 'the actual canonical writer accepted the engine snapshot');
     const ui = render(<DocumentPanel />); await settle();
     const title = ui.querySelector<HTMLInputElement>(`[data-block-editor="${first.id}"] input[aria-label="Block title"]`);
@@ -286,16 +324,74 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     let block = stored(); assert.ok(block.kind === 'ids-report');
     assert.equal(block.sourceName, definition.info.title, 'refresh really replaced the source evidence');
     assert.equal(block.title, 'Authored validation heading', 'refresh preserves the independently authored title');
-    assert.equal(block.benchmarks, false); assert.equal(ui.querySelector('[data-validation-benchmark]'), null);
+    assert.deepEqual([block.titleFontSize, block.titleTextColor, block.titleBackgroundColor, block.showStamp], [14, '#112233', '#ddeeff', false], 'refresh keeps the heading style and the hidden stamp together with the title');
+    assert.equal(block.benchmarks, false); assert.equal(ui.querySelector('[data-validation-benchmark]'), null); assert.equal(block.specificationsOnly, true, "refresh preserves the specifications-only choice (#6560)"); assert.equal(block.scale, 1.5, "refresh also preserves the block size (#6548)");
     const select = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]'); assert.ok(select);
-    act(() => { select.value = saved!; select.dispatchEvent(new window.Event('change', { bubbles: true })); }); await settle();
+    act(() => { select.value = `saved:${saved!}`; select.dispatchEvent(new window.Event('change', { bubbles: true })); }); await settle();
     block = stored(); assert.ok(block.kind === 'ids-report');
     assert.equal(block.sourceKind, 'rules'); assert.equal(block.sourceName, rules.name);
     assert.equal(block.title, 'Authored validation heading', 'source selection preserves the independently authored title');
     assert.ok(ui.querySelector(`[data-preview-block="${first.id}"]`)?.textContent?.includes('Authored validation heading'));
     assert.deepEqual(block.summary, { checked: 12, passed: 6, failed: 3, warnings: 3, passRate: 50 });
-    assert.equal(block.variant, first.variant); assert.equal(block.id, first.id); assert.equal(block.benchmarks, false);
+    assert.deepEqual([block.titleFontSize, block.titleTextColor, block.titleBackgroundColor, block.showStamp], [14, '#112233', '#ddeeff', false], 'source selection keeps the heading style and the hidden stamp');
+    assert.equal(block.variant, first.variant); assert.equal(block.id, first.id); assert.equal(block.benchmarks, false); assert.equal(block.specificationsOnly, true, "source selection preserves the specifications-only choice (#6560)"); assert.equal(block.scale, 1.5, "source selection also preserves the block size (#6548)");
     assert.equal(ui.querySelector('[data-validation-benchmark]'), null, 'selecting another source does not re-enable a hidden ring');
+  });
+
+  it('hides and shows the stamp of both report kinds identically in the preview and the PDF layout, and keeps the choice through refresh and saved-source replacement (#6678)', async () => {
+    const ui = render(<DocumentPanel />); await settle();
+    const stored = (id: string) => { const block = useViewerStore.getState().documents[0].blocks.find((candidate) => candidate.id === id); assert.ok(block?.kind === 'ids-report'); return block; };
+    const printed = (id: string) => composeDocument({ name: spec.name, page: spec.page, generatedAt: '', measure: estimateTextWidth, blocks: [stored(id)] })
+      .pages.flatMap((page) => page.items).flatMap((item) => item.kind === 'text' ? [item.text] : []).join('\n');
+    const preview = (id: string) => { const node = ui.querySelector(`[data-preview-block="${id}"]`); assert.ok(node); return node; };
+    const control = (id: string) => {
+      const label = [...ui.querySelectorAll(`[data-block-editor="${id}"] label`)].find((entry) => entry.textContent?.includes('Show stamp information'));
+      const input = label?.querySelector<HTMLInputElement>('input[type="checkbox"]'); assert.ok(input, 'every report block offers the stamp control'); return input;
+    };
+    const stampShown = (id: string) => {
+      const block = stored(id); const model = 'building-architecture.ifc';
+      const shownInPreview = preview(id).textContent?.includes(`Validation run: ${block.generatedAt}`) === true && preview(id).textContent?.includes(`Models: ${model}`) === true;
+      const shownInPdf = printed(id).includes(`Validation run: ${block.generatedAt}`) && printed(id).includes(`Models: ${model}`);
+      assert.equal(shownInPreview, shownInPdf, `${id}: preview and PDF agree on the stamp`);
+      const hiddenInPreview = !/Validation run|Models:/.test(preview(id).textContent ?? ''); const hiddenInPdf = !/Validation run|Models:/.test(printed(id));
+      assert.equal(hiddenInPreview, hiddenInPdf, `${id}: preview and PDF agree that the stamp is hidden`);
+      assert.ok(shownInPreview || hiddenInPreview, `${id}: the stamp is wholly shown or wholly hidden`);
+      return shownInPreview;
+    };
+    for (const block of spec.blocks) {
+      assert.ok(block.kind === 'ids-report');
+      assert.equal(control(block.id).checked, true, 'existing blocks keep printing their stamp');
+      assert.equal(stampShown(block.id), true);
+      click(control(block.id)); await settle();
+      assert.equal(stored(block.id).showStamp, false);
+      assert.equal(stampShown(block.id), false, `${block.sourceKind} ${block.variant}: the control hides the stamp in both outputs`);
+      assert.equal(stored(block.id).generatedAt, block.generatedAt, 'the recorded time stays in the document');
+      assert.deepEqual(stored(block.id).reportModels, block.reportModels, 'and the recorded models');
+      click(control(block.id)); await settle();
+      assert.equal(stampShown(block.id), true, 'showing it again restores both outputs');
+      click(control(block.id)); await settle();
+    }
+    const imported = parseDocumentFile(JSON.stringify(useViewerStore.getState().documents[0]));
+    assert.deepEqual(imported.blocks.map((block) => block.kind === 'ids-report' && block.showStamp), [false, false, false, false], 'the choice survives export and import');
+
+    for (const report of reports) {
+      const id = `${report.source.kind}-compact`;
+      let savedId: string | null = null;
+      await act(async () => {
+        useViewerStore.getState().setIdsValidationReport(report, validationReportSnapshot(report, useViewerStore.getState().models, 'live'));
+        savedId = await useViewerStore.getState().saveValidationReport({ ...validationReportSnapshot(report, useViewerStore.getState().models, 'saved'), showStamp: true }, `Saved ${report.source.kind}`);
+      });
+      assert.ok(savedId);
+      const refresh = [...ui.querySelectorAll(`[data-block-editor="${id}"] button`)].find((button) => button.textContent === 'Refresh from current validation report');
+      assert.ok(refresh); click(refresh); await settle();
+      assert.equal(control(id).checked, false, `${report.source.kind}: Refresh keeps the stamp hidden`);
+      assert.equal(stampShown(id), false);
+      const select = ui.querySelector<HTMLSelectElement>(`[data-block-editor="${id}"] select[aria-label="Saved report source"]`); assert.ok(select);
+      act(() => { select.value = `saved:${savedId!}`; select.dispatchEvent(new window.Event('change', { bubbles: true })); }); await settle();
+      assert.equal(stored(id).savedReportId, savedId, 'the saved report really replaced the evidence');
+      assert.equal(control(id).checked, false, `${report.source.kind}: choosing a saved report that shows its stamp does not override the destination's choice`);
+      assert.equal(stampShown(id), false);
+    }
   });
 
   it('keeps actual mixed-result rings below an enlarged page heading and prints both fonts and outcome colors (#6552 / #6554)', async () => {

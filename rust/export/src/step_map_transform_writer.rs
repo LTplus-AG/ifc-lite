@@ -21,11 +21,15 @@ impl Writer {
         Ok(id)
     }
 
-    pub(super) fn placement(&mut self, matrix: &Matrix4<f64>) -> Result<u32, String> {
+    pub(super) fn frame(&mut self, matrix: &Matrix4<f64>) -> Result<u32, String> {
         let point = self.entity("IFCCARTESIANPOINT", triple(matrix[(0, 3)], matrix[(1, 3)], matrix[(2, 3)])?)?;
         let axis = self.entity("IFCDIRECTION", triple(matrix[(0, 2)], matrix[(1, 2)], matrix[(2, 2)])?)?;
         let reference = self.entity("IFCDIRECTION", triple(matrix[(0, 0)], matrix[(1, 0)], matrix[(2, 0)])?)?;
-        let frame = self.entity("IFCAXIS2PLACEMENT3D", format!("#{point},#{axis},#{reference}"))?;
+        self.entity("IFCAXIS2PLACEMENT3D", format!("#{point},#{axis},#{reference}"))
+    }
+
+    pub(super) fn placement(&mut self, matrix: &Matrix4<f64>) -> Result<u32, String> {
+        let frame = self.frame(matrix)?;
         self.entity("IFCLOCALPLACEMENT", format!("$,#{frame}"))
     }
 
@@ -45,6 +49,10 @@ impl Writer {
         let context = attribute_of(source.line, 0).ok_or("invalid representation ContextOfItems")?;
         let identifier = attribute_of(source.line, 1).ok_or("invalid representation identifier")?;
         self.entity("IFCSHAPEREPRESENTATION", format!("{context},{identifier},'MappedRepresentation',(#{item})"))
+    }
+
+    pub(super) fn direction_2d(&mut self, x: f64, y: f64) -> Result<u32, String> {
+        self.entity("IFCDIRECTION", format!("({},{})", real(x)?, real(y)?))
     }
 
     pub(super) fn finish(self) -> Vec<MapConversionEntityPatch> { self.entities }

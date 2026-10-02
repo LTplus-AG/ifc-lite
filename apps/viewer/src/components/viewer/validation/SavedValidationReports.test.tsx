@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import { afterEach, beforeEach, describe, it, mock } from 'node:test';
+import { clearContentDatabase, refuseContentWrites, readPreservedContent, waitForValidationReportsCommit } from '@/test/content-fixture.js';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
@@ -12,7 +13,6 @@ import { DEFAULT_THEME } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store';
 import { createStore } from 'zustand/vanilla';
 import { createValidationReportsSlice, type ValidationReportsSlice } from '@/store/slices/validationReportsSlice';
-import { SavedReportSource } from '../document/SavedReportSource';
 import { createDataAccessor } from '@/hooks/ids/idsDataAccessor';
 import { cleanup, click, render, waitFor } from '@/test/render';
 import { useIDS } from '@/hooks/useIDS';
@@ -22,13 +22,14 @@ import { parseDocumentFile } from '@/lib/document/persistence';
 import { blankDocument } from '@/lib/document/presets';
 import type { DocumentSpec } from '@/lib/document/types';
 import { generateDocumentPdf, type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
-import { savedReportBlock, validationReportSnapshot, newSavedReport } from '@/lib/validation/reports/history';
+import { savedReportBlock, validationReportSnapshot, newSavedReport, validateSavedReport } from '@/lib/validation/reports/history';
 import { loadValidationReports, VALIDATION_REPORTS_STORAGE_KEY } from '@/lib/validation/reports/persistence';
 import { DocumentPanel } from '../document/DocumentPanel';
 import { ManualValidationTab } from './ManualValidationTab';
 import { fixtureModel } from '@/test/store-fixture';
 import { SavedValidationReports } from './SavedValidationReports';
 import { IDSPanelResults } from '../IDSPanelResults';
+import { Toaster } from '@/components/ui/toast';
 
 const WALL_IFC = `ISO-10303-21;
 HEADER;
@@ -59,7 +60,7 @@ async function checkedWall(modelId: string, title: string) {
 const initial = useViewerStore.getState();
 beforeEach(() => {
   localStorage.clear();
-  useViewerStore.setState({ savedValidationReports: [], validationReportsSaveFailed: false, validationReportsLoadIssue: null, documents: [], activeDocumentId: null, models: new Map(), dashboards: [], listDefinitions: [], bcfProject: null, idsValidationReport: null, currentValidationReport: null, idsLoading: false, manualChecklist: null });
+  useViewerStore.setState({ savedValidationReports: [], documents: [], activeDocumentId: null, models: new Map(), dashboards: [], listDefinitions: [], bcfProject: null, idsValidationReport: null, currentValidationReport: null, idsLoading: false, manualChecklist: null });
 });
 afterEach(() => { cleanup(); useViewerStore.setState(initial); });
 
@@ -78,7 +79,7 @@ function openAddMenu(ui: HTMLElement) {
 
 function addSavedBlock(ui: HTMLElement) {
   openAddMenu(ui);
-  const item = [...document.body.querySelectorAll('[role="menuitem"]')].find((element) => element.textContent === 'Saved validation report');
+  const item = [...document.body.querySelectorAll('[role="menuitem"]')].find((element) => element.textContent === 'Validation report');
   assert.ok(item);
   click(item);
 }
@@ -135,17 +136,19 @@ describe('saved validation evidence (#6500)', () => {
     const save = reportButton(ui, 'Save report');
     click(save);
     click(save);
+    await waitFor(() => useViewerStore.getState().validationReportsStorage.items[useViewerStore.getState().currentValidationReport?.savedReportId ?? ''] === 'saved', 'save must commit');
     assert.equal(reportButton(ui, 'Report saved').disabled, true);
-    assert.equal(loadValidationReports().length, 1, 'rapid repeat clicks keep one saved entry');
-    const original = loadValidationReports()[0].snapshot;
+    assert.equal((await loadValidationReports()).length, 1, 'rapid repeat clicks keep one saved entry');
+    const original = (await loadValidationReports())[0].snapshot;
     assert.equal(original.kind, 'ids-report');
     if (original.kind !== 'ids-report') assert.fail();
     assert.equal(original.summary.passed, 1, 'saved evidence retains the original result');
     click(reportButton(ui, 'Run IDS'));
     await waitFor(() => useViewerStore.getState().idsValidationReport !== first, 'second IDS run replaces the live result');
-    assert.equal(loadValidationReports().length, 1, 'a later check does not automatically add another report');
+    assert.equal((await loadValidationReports()).length, 1, 'a later check does not automatically add another report');
     click(reportButton(ui, 'Save report'));
-    const history = loadValidationReports();
+    await waitForValidationReportsCommit();
+    const history = (await loadValidationReports());
     assert.equal(history.length, 2);
     assert.notEqual(history[0].id, history[1].id);
     assert.deepEqual(history.map((entry) => entry.snapshot.reportModels), [
@@ -158,18 +161,73 @@ describe('saved validation evidence (#6500)', () => {
     const ui = render(<RunCheck />);
     click(reportButton(ui, 'Run IDS'));
     await waitFor(() => useViewerStore.getState().idsValidationReport !== null, 'IDS run should finish');
-    const write = mock.method(localStorage, 'setItem', () => { throw new DOMException('Storage full', 'QuotaExceededError'); });
+    const write = refuseContentWrites();
     try {
       click(reportButton(ui, 'Save report'));
       assert.equal(reportButton(ui, 'Save pending').disabled, true);
       assert.equal(useViewerStore.getState().savedValidationReports.length, 1);
-      assert.equal(loadValidationReports().length, 0);
+      assert.equal((await loadValidationReports()).length, 0);
+      await waitFor(() => Object.values(useViewerStore.getState().validationReportsStorage.items).some(state => state !== 'saving' && state !== 'saved'), 'refused transaction must report failure');
       assert.ok([...ui.querySelectorAll('[role="alert"]')].some((alert) => /storage|lost on reload/.test(alert.textContent ?? '')));
     } finally { write.mock.restore(); }
     click(reportButton(ui, 'Retry save'));
+    await waitFor(() => useViewerStore.getState().validationReportsStorage.items[useViewerStore.getState().currentValidationReport?.savedReportId ?? ''] === 'saved', 'save must commit');
     assert.equal(reportButton(ui, 'Report saved').disabled, true);
-    assert.equal(loadValidationReports().length, 1);
-    assert.deepEqual(loadValidationReports()[0].snapshot.reportModels, [{ name: 'tower.ifc', fingerprint: 'fp-tower' }]);
+    assert.equal((await loadValidationReports()).length, 1);
+    assert.deepEqual((await loadValidationReports())[0].snapshot.reportModels, [{ name: 'tower.ifc', fingerprint: 'fp-tower' }]);
+  });
+
+  it('#6679 rejects a permanently invalid JSON snapshot instead of reporting its save as accepted', async () => {
+    const report = await checkedWall('tower', 'Sparse check evidence');
+    const snapshot = validationReportSnapshot(report, new Map([['tower', { name: 'tower.ifc' }]]), 'sparse-run');
+    // Array iteration accepts an empty slot; portable JSON turns that slot into an invalid null check.
+    snapshot.checks = new Array<typeof snapshot.checks[number]>(1);
+    const entry = newSavedReport(snapshot);
+    assert.equal(validateSavedReport(entry), true);
+    assert.equal(validateSavedReport(JSON.parse(JSON.stringify(entry))), false);
+    assert.equal(await useViewerStore.getState().saveValidationReportEntry(entry), null);
+    assert.equal(useViewerStore.getState().validationReportsStorage.items[entry.id], 'invalid');
+    assert.equal(await useViewerStore.getState().retryValidationReportsSave(), false, 'retry cannot repair invalid evidence');
+    assert.deepEqual(await loadValidationReports(), []);
+    assert.equal(useViewerStore.getState().savedValidationReports.length, 1, 'raw evidence remains available for export');
+  });
+
+  it('#6679 explicit Save reports JSON-invalid evidence rejection and never shows saved success', async () => {
+    await seedRun();
+    let ui = render(<RunCheck />);
+    click(reportButton(ui, 'Run IDS'));
+    await waitFor(() => useViewerStore.getState().currentValidationReport !== null, 'IDS run should finish');
+    const current = useViewerStore.getState().currentValidationReport!;
+    assert.equal(current.snapshot.kind, 'ids-report');
+    if (current.snapshot.kind !== 'ids-report') assert.fail();
+    const snapshot = { ...current.snapshot, checks: new Array<typeof current.snapshot.checks[number]>(1) };
+    cleanup();
+    act(() => useViewerStore.setState({ currentValidationReport: { ...current, snapshot } }));
+    ui = render(<><RunCheck /><Toaster /></>);
+    click(reportButton(ui, 'Save report'));
+    await waitFor(() => ui.textContent?.includes('This report could not be saved.') ?? false, 'actual Save rejects invalid portable evidence');
+    assert.ok(![...ui.querySelectorAll('button')].some(button => button.textContent === 'Report saved'));
+    assert.equal(Object.values(useViewerStore.getState().validationReportsStorage.items)[0], 'invalid');
+    assert.deepEqual(await loadValidationReports(), []);
+    click(reportButton(ui, 'Save pending'));
+    assert.equal(useViewerStore.getState().savedValidationReports.length, 1, 'repeat clicks cannot duplicate rejected raw evidence');
+  });
+
+  for (const reason of ['QuotaExceededError', 'SecurityError']) it(`#6679 ${reason} preserves the same report ID for a durable retry without duplication`, async () => {
+    const report = await checkedWall('tower', 'Transient refused evidence');
+    const entry = newSavedReport(validationReportSnapshot(report, new Map([['tower', { name: 'tower.ifc' }]]), 'retry-run'));
+    const refused = refuseContentWrites(reason);
+    try {
+      assert.equal(await useViewerStore.getState().saveValidationReportEntry(entry), entry.id);
+      assert.equal(useViewerStore.getState().validationReportsStorage.items[entry.id], reason === 'QuotaExceededError' ? 'quota' : 'unavailable');
+      assert.deepEqual(await loadValidationReports(), []);
+    } finally { refused.mock.restore(); }
+    assert.equal(await useViewerStore.getState().retryValidationReportsSave(), true);
+    assert.equal(await useViewerStore.getState().saveValidationReportEntry(entry), entry.id);
+    const saved = await loadValidationReports();
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].id, entry.id);
+    assert.deepEqual(saved[0].snapshot, JSON.parse(JSON.stringify(entry.snapshot)), 'durable evidence matches its portable JSON representation');
   });
 
   it('captures meaningful scope for unnamed actual IDS models and refuses blank stored scope (#6500 review)', async () => {
@@ -177,8 +235,8 @@ describe('saved validation evidence (#6500)', () => {
     for (const name of ['', '   ']) {
       const snapshot = validationReportSnapshot(report, new Map([['tower', { name, sourceFingerprint: '' }]]), 'run');
       assert.deepEqual(snapshot.reportModels, [{ name: 'tower' }]);
-      useViewerStore.getState().saveValidationReport(snapshot);
-      const document = { ...blankDocument(), blocks: [savedReportBlock(loadValidationReports().at(-1)!, 'b')] };
+      (await useViewerStore.getState().saveValidationReport(snapshot));
+      const document = { ...blankDocument(), blocks: [savedReportBlock((await loadValidationReports()).at(-1)!, 'b')] };
       assert.ok((await printedPdf(document)).includes('Models: tower'));
     }
     const exact = validationReportSnapshot(await checkedWall('tower', 'Exact original name'), new Map([['tower', { name: '  original model.ifc  ', sourceFingerprint: 'fp-tower' }]]), 'run');
@@ -187,14 +245,15 @@ describe('saved validation evidence (#6500)', () => {
     for (const name of ['', '   ']) {
       const invalid = newSavedReport({ ...exact, reportModels: [{ name }] });
       localStorage.setItem(VALIDATION_REPORTS_STORAGE_KEY, JSON.stringify([invalid, valid]));
-      assert.deepEqual(loadValidationReports().map((entry) => entry.id), [valid.id]);
+      assert.equal(await useViewerStore.getState().saveValidationReportEntry(invalid), null, 'blank scope is refused');
       assert.throws(() => parseDocumentFile(JSON.stringify({ ...blankDocument(), blocks: [invalid.snapshot] })), /expected non-empty model names/);
     }
     useViewerStore.setState({ models: new Map([['tower', { ...fixtureModel('tower'), name: '   ', sourceFingerprint: 'fp-tower' }]]), activeModelId: 'tower', manualChecklist: { version: CHECKLIST_VERSION, name: 'Unnamed source review', groups: [] } });
     const ui = render(<ManualValidationTab manual={{ checklist: useViewerStore.getState().manualChecklist, recent: [], error: null, newChecklist: () => {}, save: () => {}, close: () => {}, loadFromRecent: () => {}, openFromFile: async () => ({ ok: true }) }} />);
     const save = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save report'); assert.ok(save);
     click(save);
-    const manual = loadValidationReports().at(-1)!;
+    await waitForValidationReportsCommit();
+    const manual = (await loadValidationReports()).at(-1)!;
     assert.deepEqual(manual.snapshot.reportModels, [{ name: 'tower', fingerprint: 'fp-tower' }]);
     assert.equal(manual.snapshot.kind, 'manual-report');
     if (manual.snapshot.kind !== 'manual-report') assert.fail();
@@ -209,9 +268,9 @@ describe('saved validation evidence (#6500)', () => {
       ['structure', { name: 'structure.ifc', sourceFingerprint: 'fp-structure' }],
       ['unrelated', { name: 'unrelated.ifc', sourceFingerprint: 'fp-other' }],
     ]);
-    useViewerStore.getState().saveValidationReport(validationReportSnapshot(first, models, 'a'));
-    useViewerStore.getState().saveValidationReport(validationReportSnapshot(second, models, 'b'));
-    const restored = loadValidationReports();
+    (await useViewerStore.getState().saveValidationReport(validationReportSnapshot(first, models, 'a')));
+    (await useViewerStore.getState().saveValidationReport(validationReportSnapshot(second, models, 'b')));
+    const restored = (await loadValidationReports());
     assert.equal(restored.length, 2);
     assert.deepEqual(restored.map((entry) => entry.snapshot.reportModels), [[{ name: 'tower.ifc', fingerprint: 'fp-tower' }], [{ name: 'structure.ifc', fingerprint: 'fp-structure' }]]);
     assert.equal(restored[0].snapshot.kind, 'ids-report');
@@ -234,40 +293,40 @@ describe('saved validation evidence (#6500)', () => {
   it('selects two saved checks in documents and prints frozen evidence after history deletion', async () => {
     for (const [modelId, name] of [['tower', 'First check'], ['structure', 'Second check']]) {
       const report = await checkedWall(modelId, name);
-      useViewerStore.getState().saveValidationReport(validationReportSnapshot(report, new Map([[modelId, { name: `${modelId}.ifc` }]]), 'run'));
+      (await useViewerStore.getState().saveValidationReport(validationReportSnapshot(report, new Map([[modelId, { name: `${modelId}.ifc` }]]), 'run')));
     }
     const reports = useViewerStore.getState().savedValidationReports;
     const document = blankDocument();
     document.blocks = [];
-    useViewerStore.getState().upsertDocument(document);
+    (await useViewerStore.getState().upsertDocument(document));
     useViewerStore.getState().setActiveDocumentId(document.id);
     const ui = render(<DocumentPanel />); await settle();
     addSavedBlock(ui); await settle();
     const picker = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]'); assert.ok(picker);
     assert.ok(picker.querySelector<HTMLOptionElement>('option[value=""]')?.disabled, 'retained snapshot placeholder cannot trigger a no-op selection');
-    select(picker, reports[0].id); await settle();
+    select(picker, `saved:${reports[0].id}`); await settle();
     assert.match(ui.querySelector('[data-block-ids-report]')?.textContent ?? '', /First check/);
     addSavedBlock(ui); await settle();
     const doc = useViewerStore.getState().documents[0];
     assert.equal(doc.blocks.length, 2);
-    act(() => { for (const entry of reports) useViewerStore.getState().removeValidationReport(entry.id); });
+    (await act(async () => { for (const entry of reports) (await useViewerStore.getState().removeValidationReport(entry.id)); }));
     const printed = await printedPdf(doc);
     assert.ok(printed.includes('IDS report: First check'));
     assert.ok(printed.includes('IDS report: Second check'));
     assert.ok(printed.includes('Models: tower.ifc'));
     assert.ok(printed.includes('Models: structure.ifc'));
-    assert.equal(loadValidationReports().length, 0);
+    assert.equal((await loadValidationReports()).length, 0);
   });
 
   it('keeps compact/long presentation editable for frozen IDS sources without live refresh (#6500)', async () => {
     for (const name of ['First issued check', 'Second issued check']) {
       const report = await checkedWall('tower', name);
       report.specificationResults[0].specification.description = 'Authored long guidance';
-      useViewerStore.getState().saveValidationReport(validationReportSnapshot(report, new Map([['tower', { name: 'tower.ifc' }]]), 'run'));
+      (await useViewerStore.getState().saveValidationReport(validationReportSnapshot(report, new Map([['tower', { name: 'tower.ifc' }]]), 'run')));
     }
     const reports = useViewerStore.getState().savedValidationReports;
     const document = { ...blankDocument(), blocks: [] };
-    useViewerStore.getState().upsertDocument(document);
+    (await useViewerStore.getState().upsertDocument(document));
     useViewerStore.getState().setActiveDocumentId(document.id);
     const ui = render(<DocumentPanel />); await settle();
     addSavedBlock(ui); await settle();
@@ -279,12 +338,12 @@ describe('saved validation evidence (#6500)', () => {
     assert.ok((await printedPdf(useViewerStore.getState().documents[0])).includes('Authored long guidance'));
     select(layout, 'compact'); await settle();
     assert.ok(ui.querySelector('[data-ids-report-variant="compact"]'));
-    select(picker, reports[0].id); await settle();
+    select(picker, `saved:${reports[0].id}`); await settle();
     assert.equal(layout.value, 'compact', 'changing frozen IDS source retains presentation');
     assert.ok(ui.querySelector('[data-ids-report-variant="compact"]'));
     select(layout, 'long'); await settle();
     assert.match(ui.querySelector('[data-block-ids-report]')?.textContent ?? '', /Authored long guidance/);
-    act(() => { for (const entry of reports) useViewerStore.getState().removeValidationReport(entry.id); });
+    (await act(async () => { for (const entry of reports) (await useViewerStore.getState().removeValidationReport(entry.id)); }));
     const retained = useViewerStore.getState().documents[0];
     assert.equal(retained.blocks[0].id, originalId);
     assert.ok((await printedPdf(retained)).includes('Authored long guidance'));
@@ -305,10 +364,10 @@ describe('saved validation evidence (#6500)', () => {
         reportModels: [{ name: 'structure.ifc' }],
       };
       const order = latestKind === 'ids-report' ? [manual, ids] : [ids, manual];
-      for (const snapshot of order) useViewerStore.getState().saveValidationReport(snapshot);
+      for (const snapshot of order) (await useViewerStore.getState().saveValidationReport(snapshot));
       const reports = useViewerStore.getState().savedValidationReports;
       const document = { ...blankDocument(), blocks: [] };
-      useViewerStore.getState().upsertDocument(document);
+      (await useViewerStore.getState().upsertDocument(document));
       useViewerStore.getState().setActiveDocumentId(document.id);
       assert.equal(useViewerStore.getState().models.size, 0);
       assert.equal(useViewerStore.getState().idsValidationReport, null);
@@ -317,14 +376,14 @@ describe('saved validation evidence (#6500)', () => {
       addSavedBlock(ui); await settle();
       const blockId = useViewerStore.getState().documents[0].blocks[0].id;
       const picker = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]'); assert.ok(picker);
-      select(picker, reports[0].id); await settle();
+      select(picker, `saved:${reports[0].id}`); await settle();
       const chosen = useViewerStore.getState().documents[0].blocks[0];
       assert.equal(chosen.id, blockId, 'changing report kind preserves document block identity');
       assert.equal(chosen.kind, order[0].kind);
       addSavedBlock(ui); await settle();
       assert.ok(ui.querySelector('[data-block-ids-report]'));
       assert.ok(ui.querySelector('[data-block-manual-report]'));
-      act(() => { for (const entry of reports) useViewerStore.getState().removeValidationReport(entry.id); });
+      (await act(async () => { for (const entry of reports) (await useViewerStore.getState().removeValidationReport(entry.id)); }));
       const printed = await printedPdf(useViewerStore.getState().documents[0]);
       for (const evidence of ['IDS report: Archived IDS', 'Manual validation: Mechanical review', 'Models: tower.ifc', 'Models: structure.ifc', 'WARNING', 'Comment: Confirm fire stop']) assert.ok(printed.includes(evidence), `embedded PDF retains ${evidence}`);
     });
@@ -345,14 +404,15 @@ describe('saved validation evidence (#6500)', () => {
   });
 
   for (const loaded of [false, true]) {
-    it(`saves valid manual evidence when a ${loaded ? 'loaded model has no source fingerprint' : 'checklist has no loaded model'} (#6500 review)`, () => {
+    it(`saves valid manual evidence when a ${loaded ? 'loaded model has no source fingerprint' : 'checklist has no loaded model'} (#6500 review)`, async () => {
       const checklist: ChecklistTemplate = { version: CHECKLIST_VERSION, name: 'Unanswered review', groups: [{ id: 'g', name: 'Delivery', items: [{ id: 'i', text: 'Origin approved' }] }] };
       const model = { ...fixtureModel('unnamed'), name: 'unidentified.ifc', sourceFingerprint: null };
       useViewerStore.setState({ models: loaded ? new Map([[model.id, model]]) : new Map(), activeModelId: loaded ? model.id : null, manualChecklist: checklist, manualAnswers: {} });
       const ui = render(<ManualValidationTab manual={{ checklist, recent: [], error: null, newChecklist: () => {}, save: () => {}, close: () => {}, loadFromRecent: () => {}, openFromFile: async () => ({ ok: true }) }} />);
       const save = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save report'); assert.ok(save);
       click(save);
-      const saved = loadValidationReports();
+      await waitForValidationReportsCommit();
+      const saved = (await loadValidationReports());
       assert.equal(saved.length, 1, 'actual Save persists a validator-accepted snapshot');
       assert.equal(saved[0].snapshot.kind, 'manual-report');
       if (saved[0].snapshot.kind !== 'manual-report') assert.fail();
@@ -371,11 +431,11 @@ describe('saved validation evidence (#6500)', () => {
     firstSnapshot.reportModels![0].name = 'edited history copy';
     useViewerStore.setState({ idsValidationReport: first, models: new Map([['tower', { ...fixtureModel('tower'), ifcDataStore, name: 'replacement.ifc', sourceFingerprint: 'replacement-source' }]]) });
     const document = { ...blankDocument(), blocks: [] };
-    useViewerStore.getState().upsertDocument(document);
+    (await useViewerStore.getState().upsertDocument(document));
     useViewerStore.getState().setActiveDocumentId(document.id);
     const ui = render(<DocumentPanel />); await settle();
     openAddMenu(ui);
-    const add = [...globalThis.document.querySelectorAll('[role="menuitem"]')].find((element) => element.textContent === 'IDS validation report'); assert.ok(add);
+    const add = [...globalThis.document.querySelectorAll('[role="menuitem"]')].find((element) => element.textContent === 'Validation report'); assert.ok(add);
     click(add); await settle();
     assert.match(ui.querySelector('[data-report-model-scope]')?.textContent ?? '', /original-tower.ifc/);
     assert.doesNotMatch(ui.querySelector('[data-report-model-scope]')?.textContent ?? '', /replacement|renamed|edited/);
@@ -390,7 +450,7 @@ describe('saved validation evidence (#6500)', () => {
     assert.ok((await printedPdf(current)).includes('Models: second-tower.ifc'));
   });
 
-  it('the manual save button snapshots the explicitly picked model in a federation (#6500)', () => {
+  it('the manual save button snapshots the explicitly picked model in a federation (#6500)', async () => {
     const checklist: ChecklistTemplate = { version: CHECKLIST_VERSION, name: 'Discipline review', groups: [{ id: 'g', name: 'Checks', items: [{ id: 'i', text: 'Correct origin' }] }] };
     useViewerStore.setState({
       models: new Map([
@@ -405,7 +465,8 @@ describe('saved validation evidence (#6500)', () => {
     select(picker, 'structure');
     const button = [...ui.querySelectorAll('button')].find((element) => element.textContent === 'Save report'); assert.ok(button);
     click(button);
-    const report = loadValidationReports()[0];
+    await waitForValidationReportsCommit();
+    const report = (await loadValidationReports())[0];
     assert.equal(report.snapshot.kind, 'manual-report');
     if (report.snapshot.kind !== 'manual-report') assert.fail();
     assert.equal(report.snapshot.modelFingerprint, 'fp-structure');
@@ -416,133 +477,25 @@ describe('saved validation evidence (#6500)', () => {
   });
 
   for (const malformed of ['invalid JSON', 'non-array', 'partial and duplicate'] as const) {
-    it(`reports ${malformed} history in library and source chooser while preserving original bytes (#6500)`, async () => {
+    it(`migrates ${malformed} legacy history with a visible recovery notice and preserved originals (#6500, #6679)`, async () => {
+      await clearContentDatabase();
       const valid = newSavedReport(validationReportSnapshot(await checkedWall('tower', 'Valid neighbor'), new Map(), 'run'));
       const raw = malformed === 'invalid JSON' ? '{broken' : malformed === 'non-array' ? JSON.stringify({ report: valid }) : JSON.stringify([valid, { id: 'broken' }, valid]);
       localStorage.setItem(VALIDATION_REPORTS_STORAGE_KEY, raw);
-      const loaded = createStore<ValidationReportsSlice>()(createValidationReportsSlice).getState();
-      useViewerStore.setState({ savedValidationReports: loaded.savedValidationReports, validationReportsLoadIssue: loaded.validationReportsLoadIssue });
-      const library = render(<SavedValidationReports />);
-      assert.match(library.querySelector('[role="alert"]')?.textContent ?? '', /some entries could not be read|Saving is blocked/);
-      assert.equal(loaded.savedValidationReports.length, malformed === 'partial and duplicate' ? 1 : 0);
-      cleanup();
-      const source = render(<SavedReportSource block={valid.snapshot} onChange={() => {}} />);
-      assert.match(source.querySelector('[role="alert"]')?.textContent ?? '', /original data was preserved/);
-      assert.equal(localStorage.getItem(`${VALIDATION_REPORTS_STORAGE_KEY}:unreadable`), raw, 'complete original survives byte-for-byte');
-      assert.deepEqual(loadValidationReports().map((entry) => entry.id), malformed === 'partial and duplicate' ? [valid.id] : []);
-      act(() => useViewerStore.getState().saveValidationReport(valid.snapshot, 'New check'));
-      assert.equal(localStorage.getItem(`${VALIDATION_REPORTS_STORAGE_KEY}:unreadable`), raw, 'later save never destroys preserved evidence');
-      assert.ok(loadValidationReports().some((entry) => entry.name === 'New check'));
+      const store = createStore<ValidationReportsSlice>()(createValidationReportsSlice);
+      await store.getState().initializeValidationReports();
+      useViewerStore.setState(store.getState());
+      const stop = store.subscribe(state => useViewerStore.setState(state));
+      try {
+        const library = render(<SavedValidationReports />);
+        assert.match(library.querySelector('[role="alert"]')?.textContent ?? '', /original data is preserved/);
+        assert.equal(store.getState().savedValidationReports.length, malformed === 'partial and duplicate' ? 1 : 0);
+        assert.equal(localStorage.getItem(VALIDATION_REPORTS_STORAGE_KEY), raw, 'migration does not erase legacy content');
+        assert.equal((await readPreservedContent()).find(entry => entry.key === VALIDATION_REPORTS_STORAGE_KEY)?.raw, raw);
+        await act(async () => { await store.getState().saveValidationReport(valid.snapshot, 'New check'); });
+        assert.ok((await loadValidationReports()).some(entry => entry.name === 'New check'));
+        assert.equal((await readPreservedContent()).find(entry => entry.key === VALIDATION_REPORTS_STORAGE_KEY)?.raw, raw);
+      } finally { stop(); }
     });
   }
-
-  it('publishes newly recovered external corruption through both live history consumers (#6500)', async () => {
-    const valid = newSavedReport(validationReportSnapshot(await checkedWall('tower', 'Original in-memory evidence'), new Map(), 'run'));
-    localStorage.setItem(VALIDATION_REPORTS_STORAGE_KEY, JSON.stringify([valid]));
-    const loaded = createStore<ValidationReportsSlice>()(createValidationReportsSlice).getState();
-    useViewerStore.setState({ savedValidationReports: loaded.savedValidationReports, validationReportsLoadIssue: loaded.validationReportsLoadIssue });
-    const ui = render(<><SavedValidationReports /><SavedReportSource block={valid.snapshot} onChange={() => {}} /></>);
-    assert.equal(ui.querySelectorAll('[role="alert"]').length, 0);
-    const damaged = '{external corruption';
-    localStorage.setItem(VALIDATION_REPORTS_STORAGE_KEY, damaged);
-    act(() => useViewerStore.getState().saveValidationReport(valid.snapshot, 'Later check'));
-    assert.equal(useViewerStore.getState().validationReportsLoadIssue, 'recovered');
-    assert.equal(ui.querySelectorAll('[data-saved-history-issue="recovered"]').length, 2);
-    assert.equal(localStorage.getItem(`${VALIDATION_REPORTS_STORAGE_KEY}:unreadable`), damaged);
-    assert.deepEqual(loadValidationReports().map((entry) => entry.name), ['Original in-memory evidence', 'Later check']);
-    act(() => useViewerStore.getState().retryValidationReportsSave());
-    assert.equal(ui.querySelectorAll('[role="alert"]').length, 0, 'healthy retry clears prior recovery notices');
-  });
-
-  for (const partial of [false, true]) {
-    it(`retains unknown stored neighbors after an unavailable read and respects later deletion during ${partial ? 'blocked backup' : 'write quota'} (#6500)`, async () => {
-      const valid = newSavedReport(validationReportSnapshot(await checkedWall('tower', 'Unknown stored neighbor'), new Map(), 'run'));
-      const raw = JSON.stringify(partial ? [valid, { id: 'damaged' }] : [valid]);
-      localStorage.setItem(VALIDATION_REPORTS_STORAGE_KEY, raw);
-      const actualGet = localStorage.getItem.bind(localStorage);
-      const inaccessible = mock.method(localStorage, 'getItem', (key: string) => {
-        if (key === VALIDATION_REPORTS_STORAGE_KEY) throw new DOMException('Read blocked', 'SecurityError');
-        return actualGet(key);
-      });
-      let library: HTMLElement;
-      try {
-        const loaded = createStore<ValidationReportsSlice>()(createValidationReportsSlice).getState();
-        useViewerStore.setState({ savedValidationReports: loaded.savedValidationReports, validationReportsLoadIssue: loaded.validationReportsLoadIssue });
-        library = render(<SavedValidationReports />);
-        assert.match(library.querySelector('[role="alert"]')?.textContent ?? '', /could not be read or updated/);
-        act(() => useViewerStore.getState().saveValidationReport(valid.snapshot, 'Pending in-memory check'));
-      } finally { inaccessible.mock.restore(); }
-      const actualSet = localStorage.setItem.bind(localStorage);
-      const quota = mock.method(localStorage, 'setItem', (key: string, value: string) => {
-        if (partial ? key.includes(':unreadable') : key === VALIDATION_REPORTS_STORAGE_KEY) throw new DOMException('Storage full', 'QuotaExceededError');
-        actualSet(key, value);
-      });
-      const retry = () => {
-        const button = [...library.querySelectorAll('button')].find((candidate) => candidate.textContent === 'Retry save'); assert.ok(button);
-        click(button);
-      };
-      try {
-        retry();
-        assert.deepEqual(useViewerStore.getState().savedValidationReports.map((entry) => entry.name), ['Unknown stored neighbor', 'Pending in-memory check'], 'failed write still publishes discovered neighbors');
-        const picker = library.querySelector<HTMLSelectElement>('select[aria-label="Select saved validation report"]'); assert.ok(picker);
-        select(picker, valid.id);
-        const remove = [...library.querySelectorAll('button')].find((button) => button.textContent === 'Remove report'); assert.ok(remove);
-        click(remove);
-        assert.deepEqual(useViewerStore.getState().savedValidationReports.map((entry) => entry.name), ['Pending in-memory check']);
-        assert.equal(localStorage.getItem(VALIDATION_REPORTS_STORAGE_KEY), raw, 'failed writes leave original bytes intact');
-      } finally { quota.mock.restore(); }
-      retry();
-      assert.deepEqual(loadValidationReports().map((entry) => entry.name), ['Pending in-memory check'], 'healthy retry never resurrects the explicitly removed known neighbor');
-      assert.equal(useViewerStore.getState().validationReportsSaveFailed, false);
-      if (partial) assert.equal(localStorage.getItem(`${VALIDATION_REPORTS_STORAGE_KEY}:unreadable`), raw);
-    });
-  }
-
-  it('refuses a later save when quota prevents archiving damaged validation history, then safely retries (#6500)', async () => {
-    const valid = newSavedReport(validationReportSnapshot(await checkedWall('tower', 'Quota neighbor'), new Map(), 'run'));
-    const raw = JSON.stringify([valid, { id: 'broken' }]);
-    localStorage.setItem(VALIDATION_REPORTS_STORAGE_KEY, raw);
-    const actualSet = localStorage.setItem.bind(localStorage);
-    const blocked = mock.method(localStorage, 'setItem', (key: string, value: string) => {
-      if (key.includes(':unreadable')) throw new DOMException('Storage full', 'QuotaExceededError');
-      actualSet(key, value);
-    });
-    try {
-      const loaded = createStore<ValidationReportsSlice>()(createValidationReportsSlice).getState();
-      useViewerStore.setState({ savedValidationReports: loaded.savedValidationReports, validationReportsLoadIssue: loaded.validationReportsLoadIssue });
-      const library = render(<SavedValidationReports />);
-      assert.match(library.querySelector('[role="alert"]')?.textContent ?? '', /some entries could not be read|Saving is blocked/);
-      act(() => useViewerStore.getState().saveValidationReport(valid.snapshot, 'Pending check'));
-      assert.equal(localStorage.getItem(VALIDATION_REPORTS_STORAGE_KEY), raw, 'unarchived original cannot be overwritten');
-      assert.ok(useViewerStore.getState().validationReportsSaveFailed);
-      assert.ok(library.textContent?.includes('storage refused the save'));
-    } finally { blocked.mock.restore(); }
-    const retry = [...document.body.querySelectorAll('button')].find((button) => button.textContent === 'Retry save'); assert.ok(retry);
-    click(retry);
-    assert.equal(useViewerStore.getState().validationReportsLoadIssue, 'recovered');
-    assert.equal(useViewerStore.getState().validationReportsSaveFailed, false);
-    act(() => useViewerStore.getState().renameValidationReport(useViewerStore.getState().savedValidationReports.at(-1)!.id, 'Recovered check'));
-    assert.equal(useViewerStore.getState().validationReportsLoadIssue, null, 'healthy write clears stale recovery status');
-    assert.equal(localStorage.getItem(`${VALIDATION_REPORTS_STORAGE_KEY}:unreadable`), raw);
-    assert.ok(loadValidationReports().some((entry) => entry.name === 'Recovered check'));
-  });
-
-  it('a refused storage write keeps evidence visible and reports it before reload (#6500)', async () => {
-    const snapshot = validationReportSnapshot(await checkedWall('tower', 'Quota check'), new Map(), 'run');
-    const write = mock.method(localStorage, 'setItem', () => { throw new DOMException('Storage full', 'QuotaExceededError'); });
-    try {
-      useViewerStore.getState().saveValidationReport(snapshot);
-      const ui = render(<SavedValidationReports />);
-      assert.ok([...ui.querySelectorAll('[role="alert"]')].some((alert) => /lost on reload/.test(alert.textContent ?? '')), 'quota failure explicitly warns that unsaved evidence is lost on reload');
-      assert.match(ui.textContent ?? '', /Quota check/);
-      assert.equal(loadValidationReports().length, 0);
-    } finally { write.mock.restore(); }
-  });
-
-  it('rejects malformed stored scope and duplicate ids without losing valid evidence', async () => {
-    const valid = newSavedReport(validationReportSnapshot(await checkedWall('tower', 'Keep'), new Map(), 'run'));
-    const broken = { ...valid, id: 'bad', snapshot: { ...valid.snapshot, reportModels: [{ name: 7 }] } };
-    localStorage.setItem(VALIDATION_REPORTS_STORAGE_KEY, JSON.stringify([broken, valid, valid]));
-    assert.deepEqual(loadValidationReports().map((entry) => entry.id), [valid.id]);
-  });
 });

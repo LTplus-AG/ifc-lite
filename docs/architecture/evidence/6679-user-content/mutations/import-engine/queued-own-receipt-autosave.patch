@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/lib/storage/content-library.ts
++++ b/apps/viewer/src/lib/storage/content-library.ts
+@@ -122,7 +122,7 @@
+       // Only an own commit receipt can advance a dirty row's expected revision.
+       // Retry once with its latest reference-merged draft, never the stale snapshot.
+       const acknowledged = revisions.get(id) ?? 0;
+-      if (!result.ok && result.reason === 'conflict' && false && acknowledged > expected && generations.get(id) === generation) {
++      if (!result.ok && result.reason === 'conflict' && acknowledged > expected && generations.get(id) === generation) {
+         if (!dirty.has(id)) result = { ok: true, revision: acknowledged };
+         else {
+           const draft = dirty.get(id);

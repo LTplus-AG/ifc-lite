@@ -10,6 +10,7 @@
  * paginate (text never did either); the composer's tests cover chunking.
  */
 import { blockTitle } from '@/lib/document/block-title';
+import { BlockHeading } from './BlockHeading';
 import { tableHeaderStyle } from '@/lib/table-header-style';
 import { comparisonSummary } from '@/lib/compare/savedComparisonSchema';
 import { useMemo } from 'react';
@@ -30,9 +31,11 @@ const ROW_CLASS: Record<TableRowRole, string> = {
 export interface TablePreviewProps {
   block: TableBlock;
   state: TableState | undefined;
+  /** Browser pixels per point of the sheet, for an authored heading size. */
+  pointScale?: number;
 }
 
-export function TablePreview({ block, state }: TablePreviewProps) {
+export function TablePreview({ block, state, pointScale = 1 }: TablePreviewProps) {
   const { t, locale } = useTranslation();
   const header = tableHeaderStyle(block.headerBackground, block.headerTextColor);
   // The PDF's `tableTitle` fallback ("Validation results") is plain English on purpose (every other
@@ -63,7 +66,7 @@ export function TablePreview({ block, state }: TablePreviewProps) {
 
   return (
     <div data-block-table>
-      <div className="truncate text-sm font-semibold" title={title}>{title}</div>
+      <BlockHeading block={block} text={title} pointScale={pointScale} className="truncate text-sm font-semibold" title={title} />
       {block.source.kind === 'comparison' && <div className="my-1 space-y-0.5 text-2xs" data-comparison-summary>{comparisonSummary(block.source.comparison).map((line, i) => <p key={i}>{line}</p>)}</div>}
       {message !== null || !table ? (
         <div className={`rounded border border-dashed border-neutral-300 px-3 py-2 text-xs ${state?.status === 'error' ? 'text-amber-900' : 'text-neutral-500'}`} data-table-message>{message}</div>

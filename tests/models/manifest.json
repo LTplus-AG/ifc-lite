@@ -346,6 +346,11 @@
       "size": 2505
     },
     {
+      "path": "georeferencer/MiniBIM-3.1-DO_01_VORM.ifc",
+      "sha256": "7d3ae097a2f1ca5e63f7698d12215cb58427cdb6a932e75e6bf1ca222bcf873b",
+      "size": 7459201
+    },
+    {
       "path": "ifc5/ACCA_Building_esempio_01_edificius.ifcx",
       "sha256": "cdb3e35b3f833af94fadb918665ea1b14a970abe0cd6873bb245f1f0a13ad8db",
       "size": 7243221

@@ -5,7 +5,7 @@ use super::*;
 use std::collections::HashSet;
 use ifc_lite_processing::{build_geometry_data_export, process_geometry, MeshCoordinateSpace};
 
-fn model(unit: f64, site: bool) -> String {
+pub(super) fn model(unit: f64, site: bool) -> String {
     let number = |value: f64| writer::real(value / unit).unwrap();
     let parent = if site { "#80" } else { "$" };
     let spatial = if site { "#80=IFCLOCALPLACEMENT($,#11);\n#81=IFCSITE('0M7tQ9Jbj1BAeHd7rqnDmP',$,'Site',$,$,#80,$,$,.ELEMENT.,$,$,$,$,$);" } else { "" };
@@ -30,7 +30,7 @@ ENDSEC;\nEND-ISO-10303-21;\n",
         number(4.), number(2.), number(3.), writer::real(0.9996 * unit).unwrap())
 }
 
-fn apply(source: &str, plan: &MapConversionNormalizationPlan) -> String {
+pub(super) fn apply(source: &str, plan: &MapConversionNormalizationPlan) -> String {
     let patches: HashMap<_, _> = plan.replacements.iter().map(|patch| (patch.express_id, patch.line.as_str())).collect();
     let mut scanner = EntityScanner::new(source);
     let mut entities = Vec::new();
@@ -41,7 +41,7 @@ fn apply(source: &str, plan: &MapConversionNormalizationPlan) -> String {
     format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n", entities.join("\n"))
 }
 
-fn world_mesh(source: &str) -> ifc_lite_processing::GeometryDataExport {
+pub(super) fn world_mesh(source: &str) -> ifc_lite_processing::GeometryDataExport {
     let result = process_geometry(&source.as_bytes());
     let rotation = (result.mesh_coordinate_space == MeshCoordinateSpace::SiteLocal)
         .then_some(result.site_transform.as_deref()).flatten();
@@ -106,6 +106,41 @@ fn issue_6587_neutral_project_conversion_preserves_original_map_offsets_without_
     assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
     assert!(plan.replacements.is_empty());
     assert!(plan.new_entities.is_empty());
+}
+
+#[test]
+fn issue_6691_zero_angle_roundoff_is_a_source_preserving_noop_not_a_consumer_guard_bypass() {
+    let source = model(1., false).replace("ENDSEC;\nEND-ISO",
+        "#170=IFCGRIDPLACEMENT($,$);\nENDSEC;\nEND-ISO");
+    for ordinate in [0.0, 6.12323399573677e-17, -6.12323399573677e-17, f64::EPSILON, -f64::EPSILON] {
+        for direction_length in [1.0, 2.0] {
+            let rotation = format!("{},{},1.", writer::real(direction_length).unwrap(), writer::real(ordinate * direction_length).unwrap());
+            let input = source.replace("0.6,0.8,0.9996", &rotation);
+            let plan = plan_map_conversion_normalization(input.as_bytes()).unwrap();
+            assert!(plan.warnings.is_empty(), "{rotation}: {:?}", plan.warnings);
+            assert!(plan.replacements.is_empty() && plan.new_entities.is_empty(), "authored offsets/ordinate must remain untouched");
+        }
+    }
+    // A one-ULP increase above either boundary must still enter the unchanged
+    // semantic preflight, not silence an unsupported grid consumer.
+    for operation in [
+        format!("1.,{},1.", writer::real(f64::EPSILON.next_up()).unwrap()),
+        format!("1.,{},1.", writer::real(-f64::EPSILON.next_up()).unwrap()),
+        format!("1.,0.,{}", writer::real(1.0_f64.next_up()).unwrap()),
+        format!("1.,0.,{}", writer::real(1.0_f64.next_down()).unwrap()),
+        format!("{},0.,1.", writer::real(1.0_f64.next_down()).unwrap()),
+        "0.9659258262890683,0.25881904510252074,1.".into(),
+    ] {
+        let input = source.replace("0.6,0.8,0.9996", &operation);
+        let plan = plan_map_conversion_normalization(input.as_bytes()).unwrap();
+        assert!(plan.warnings.iter().any(|warning| warning.contains("IfcGridPlacement")), "{operation}: {:?}", plan.warnings);
+        assert!(plan.replacements.is_empty() && plan.new_entities.is_empty());
+    }
+    let scaled = source.replace("IFCMAPCONVERSION(", "IFCMAPCONVERSIONSCALED(")
+        .replace("0.6,0.8,0.9996)", &format!("1.,0.,1.,{},1.,1.)", writer::real(1.0_f64.next_up()).unwrap()));
+    let plan = plan_map_conversion_normalization(scaled.as_bytes()).unwrap();
+    assert!(plan.warnings.iter().any(|warning| warning.contains("per-axis map factors")));
+    assert!(plan.replacements.is_empty() && plan.new_entities.is_empty());
 }
 
 #[test]
@@ -214,7 +249,7 @@ fn issue_6587_type_maps_require_actual_body_reachability_not_orphan_items() {
     assert!(refused.replacements.is_empty() && refused.new_entities.is_empty());
 }
 
-fn styled_mapped_chain(depth: usize) -> String {
+pub(super) fn styled_mapped_chain(depth: usize) -> String {
     let mut extra = String::from("#900=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#12,1.,$);\n\
 #240=IFCCARTESIANPOINT((6.,0.,0.));\n#241=IFCAXIS2PLACEMENT3D(#240,$,$);\n\
 #242=IFCEXTRUDEDAREASOLID(#41,#241,#43,3.);\n\

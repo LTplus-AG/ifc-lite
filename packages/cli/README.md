@@ -100,3 +100,5 @@ Determinism: the same model plus the same op sequence yields byte-identical rewa
 ## License
 
 MPL-2.0
+
+Semantic datasets use the same shared profile and provider engine as the viewer. Run `ifc-lite semantic --help` for `validate`, `query`, `assets`, and authenticated HTTPS `serve`; see the [headless semantic guide](https://ifclite.dev/docs/guide/semantic-headless/).

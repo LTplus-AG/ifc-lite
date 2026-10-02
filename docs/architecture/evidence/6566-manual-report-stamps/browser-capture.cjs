@@ -32,7 +32,7 @@ fs.mkdirSync(out, { recursive: true });
    s.setManualChecklist({ version: 1, name: 'Delivery review ' + count, groups: [{ id: 'delivery', name: 'Delivery', items: [{ id: 'uploaded', text: 'Uploaded on time' }, { id: 'names', text: 'Naming convention' }] }] });
    s.setManualAnswer(model.sourceFingerprint, 'uploaded', { status: 'pass' });
    s.setManualAnswer(model.sourceFingerprint, 'names', { status: 'warning', comment: 'Review retained prefix' });
-   if (!s.upsertDocument({ version: DOCUMENT_VERSION, id: 'stamp-proof-' + count, name: 'Manual stamp proof ' + count, page: { size: 'A4', orientation: 'portrait' }, blocks: [] })) throw Error('Canonical document writer refused setup');
+   if (!(await s.upsertDocument({ version: DOCUMENT_VERSION, id: 'stamp-proof-' + count, name: 'Manual stamp proof ' + count, page: { size: 'A4', orientation: 'portrait' }, blocks: [] }))) throw Error('Canonical document writer refused setup');
    s.setActiveDocumentId('stamp-proof-' + count); s.floatPanel('document'); s.setFloatingPanelRect('document', { x: 20, y: 65, w: 1470, h: 950 });
    return models.map(m => ({ name: m.name, fingerprint: m.sourceFingerprint, entities: m.ifcDataStore.entityCount }));
   }, count);
@@ -43,7 +43,7 @@ fs.mkdirSync(out, { recursive: true });
   for (const count of [1, 2]) {
    if (count === 2) { await page.evaluate(async () => { const { loadDemoRevB } = await import('/src/lib/tours/demo-kit.ts'); await loadDemoRevB(); }); await page.waitForFunction(() => { const s = __ifc_lite_viewer_store__.getState(); return [...s.models.values()].filter(m => m.ifcDataStore && m.sourceFingerprint).length === 2 && !s.isLoading; }, null, { timeout: 90000 }); }
    facts.models = await setup(count);
-   await page.getByTitle('Add a block to the page', { exact: true }).click(); await page.getByRole('menuitem', { name: 'Manual validation report', exact: true }).click();
+   await page.getByTitle('Add a block to the page', { exact: true }).click(); await page.getByRole('menuitem', { name: 'Validation report', exact: true }).click();
    await page.waitForFunction(() => document.querySelector('[data-block-manual-report]')?.textContent.includes('Review retained prefix'));
    const before = await observe(count + '-shown'); assert.ok(!('showStamp' in before) || before.showStamp === undefined);
    assert.match(facts.states.at(-1).preview, /Model:.*Recorded:.*Models:/s);
@@ -56,7 +56,7 @@ fs.mkdirSync(out, { recursive: true });
     await page.getByRole('button', { name: 'Refresh from current checklist', exact: true }).click();
     const refreshed = await observe('2-refreshed'); assert.equal(refreshed.showStamp, false); assert.equal(refreshed.groups[0].items[1].status, 'pass');
     const savedId = await page.evaluate(() => { const s = __ifc_lite_viewer_store__.getState(); const b = s.documents.find(d => d.id === s.activeDocumentId).blocks[0]; return s.saveValidationReport({ ...b, showStamp: true, checklistName: 'Saved review evidence' }, 'Saved review evidence'); }); assert.ok(savedId);
-    await page.getByLabel('Saved report source', { exact: true }).selectOption(savedId);
+    await page.getByLabel('Saved report source', { exact: true }).selectOption(`saved:${savedId}`);
     const selected = await observe('2-saved-source'); assert.equal(selected.showStamp, false); assert.equal(selected.checklistName, 'Saved review evidence');
     const event = page.waitForEvent('download'); await page.getByRole('button', { name: 'Document actions', exact: true }).click(); await page.getByRole('menuitem', { name: 'Export template…', exact: true }).click(); const download = await event; const path = out + '/hidden.ifclite-document.json'; await download.saveAs(path); assert.equal(await download.failure(), null); facts.artifacts.push(artifact(path));
     assert.equal(JSON.parse(fs.readFileSync(path)).blocks[0].showStamp, false);

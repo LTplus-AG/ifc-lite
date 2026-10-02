@@ -32,10 +32,13 @@ The frozen candidate is `9c9132fd12301250a88dfc6d08eac8ebc19e4e2e`, based on
 `bd0d02782b92581ed8e007effc9d00e37a09476e`. Its production WASM is SHA-256
 `f2f35ff9284bfa8ff57aaa31d724462a44f50bb573cdedb3d7ada33ff1d8547a`.
 The main integration preserves its four changed production modules and dense/
-commented test file exactly. Current main `02eb22edd5b050b48ac8944e4a8a2a97316c6976`
-adds unrelated viewer validation and other changes. All incoming changed files
-stay byte-identical. The existing performance ledger gains one new section
-while retaining all earlier text. No compiled artifacts are copied into this integration.
+commented test file exactly. This successor integrates main `c1f50fb6632c68b70d6972721e155ad14ea5dc58`.
+The four production modules and regression test remain byte-identical to the
+previously qualified `9af8964367895b53904189f1d62e8a07a08e10fd` integration.
+All unrelated main files remain byte-identical. The performance ledger retains
+the subsequently landed reject/defer lessons and adds this reservation section.
+No compiled artifacts are copied into this successor; the historical runtime
+above does not identify its unbuilt WASM.
 The committed WASM declaration surface and existing public JS contracts stay
 unchanged. Release metadata targets the consuming WASM package as a patch.
 
@@ -54,12 +57,19 @@ An interrupted heavy cohort retains its qualified rows and contaminated row;
 it does not establish a completed five-pair verdict. No speedup, all-model,
 physical-memory or private-file success claim is made.
 
-## Pending current-main checks
+## Qualification and remaining work
 
-The integration is prepared for source review. Its own dependency graph,
-current WASM contracts, exact plain root typecheck, official production revert
-oracle and documentation/license gates have not run yet. They must report
-actual terminal outcomes and source/runtime identities before publication.
-The test plan is kept alongside the source-review handoff; no performance run
-is authorized by that plan. Numeric evidence and final measured disposition
-will be archived with their raw samples after independent review.
+The prior `9af896436` integration passed its two actual Rust regression cases,
+full root build, WASM contracts, root typecheck including the test audit, strict
+workspace Clippy and official core inverse. The inverse passed both cases on
+the candidate and failed one actual assertion when production was restored;
+restoration was verified. Those results belong to its source and runtime,
+not this current-main successor.
+
+This successor has source-union review only. Its own build, WASM contracts,
+root typecheck, runtime tests, inverse and strict workspace Clippy remain
+pending. Completed source-matched public corpus/default-pool A/B, retained
+output identities and an end-to-end verdict also remain pending. A draft PR
+may run those correctness gates remotely while measurement resources are
+busy; it must stay unmerged until the final source, review and performance
+verdict qualify. Numeric evidence will retain every excluded attempt.

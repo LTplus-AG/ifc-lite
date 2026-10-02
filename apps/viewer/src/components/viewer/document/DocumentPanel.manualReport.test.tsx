@@ -3,13 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * "Add block › Manual validation report" (#6401) in the real Document panel:
+ * "Add block › Validation report" with the manual checklist as its source (#6401) in the real Document panel:
  * the block snapshots the Manual validation tab's checklist and the active
  * model's answers, the preview shows the rings and every verdict, and the
  * snapshot stays frozen until Refresh.
  */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -52,7 +53,7 @@ async function parsedModel(id: string, name: string, sourceFingerprint: string):
   const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
   return { ...fixtureModel(id), name, sourceFingerprint, ifcDataStore: store, maxExpressId: 2 } as FederatedModel;
 }
-const towerModel = (): Promise<FederatedModel> => parsedModel('m1', 'tower.ifc', 'fp-tower');
+const towerModel = async (): Promise<Promise<FederatedModel>> => (await parsedModel('m1', 'tower.ifc', 'fp-tower'));
 const initial = useViewerStore.getState();
 
 beforeEach(async () => {
@@ -92,7 +93,7 @@ describe('Document panel manual validation report (#6401)', () => {
     const ui = render(<DocumentPanel />);
     await settle();
     openMenu([...ui.querySelectorAll('button')].find((button) => button.title === 'Add a block to the page')!);
-    click(menuItem('Manual validation report')!);
+    click(menuItem('Validation report')!);
     await settle();
     const stored = (): ManualReportBlock => useViewerStore.getState().documents[0].blocks.find((candidate): candidate is ManualReportBlock => candidate.kind === 'manual-report')!;
     const preview = (): Element => ui.querySelector('[data-block-manual-report]')!;
@@ -125,11 +126,11 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.equal(stored().groups[0].items[1].status, 'pass');
     assert.ok(!/Model:|Models:|Recorded:/.test(preview().textContent ?? ''));
     let savedId: string | null = null;
-    act(() => { savedId = useViewerStore.getState().saveValidationReport(Object.assign({}, stored(), { checklistName: 'Later review', showStamp: true }), 'Later review'); });
+    (await act(async () => { savedId = (await useViewerStore.getState().saveValidationReport(Object.assign({}, stored(), { checklistName: 'Later review', showStamp: true }), 'Later review')); }));
     assert.ok(savedId);
     const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]');
     assert.ok(source);
-    act(() => { source.value = savedId!; source.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    act(() => { source.value = `saved:${savedId!}`; source.dispatchEvent(new window.Event('change', { bubbles: true })); });
     await settle();
     assert.equal(stored().checklistName, 'Later review');
     assert.equal(stampControl()!.checked, false, 'choosing frozen evidence retains the stamp choice');
@@ -145,8 +146,8 @@ describe('Document panel manual validation report (#6401)', () => {
     const ui = render(<DocumentPanel />);
     await settle();
     openMenu([...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!);
-    const item = menuItem('Manual validation report');
-    assert.ok(item, 'the menu offers a manual validation report');
+    const item = menuItem('Validation report');
+    assert.ok(item, 'the menu offers the one validation report entry');
     click(item);
     await settle();
 
@@ -192,7 +193,7 @@ describe('Document panel manual validation report (#6401)', () => {
     const ui = render(<DocumentPanel />);
     await settle();
     openMenu([...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!);
-    click(menuItem('Manual validation report')!);
+    click(menuItem('Validation report')!);
     await settle();
     const stored = (): ManualReportBlock => useViewerStore.getState().documents[0].blocks.find((b): b is ManualReportBlock => b.kind === 'manual-report')!;
     assert.equal(stored().modelFingerprint, 'fp-annex');
@@ -243,7 +244,7 @@ describe('Document panel manual validation report (#6401)', () => {
     const ui = render(<DocumentPanel />);
     await settle();
     openMenu([...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!);
-    const item = menuItem('Manual validation report');
+    const item = menuItem('Validation report');
     assert.equal(item?.getAttribute('aria-disabled'), 'true');
   });
 
@@ -265,7 +266,7 @@ describe('Document panel manual validation report (#6401)', () => {
     const ui = render(<DocumentPanel />);
     await settle();
     openMenu([...ui.querySelectorAll('button')].find((button) => button.title === 'Add a block to the page')!);
-    click(menuItem('Manual validation report')!);
+    click(menuItem('Validation report')!);
     await settle();
     const stored = (): ManualReportBlock => useViewerStore.getState().documents[0].blocks.find((block): block is ManualReportBlock => block.kind === 'manual-report')!;
     const blockId = stored().id;
@@ -329,13 +330,13 @@ describe('Document panel manual validation report (#6401)', () => {
     // live Refresh, even after the originating checklist was deleted (#6507).
     let firstSaved: string | null = null;
     let secondSaved: string | null = null;
-    act(() => {
-      firstSaved = useViewerStore.getState().saveValidationReport(frozen, 'Structure evidence');
-      secondSaved = useViewerStore.getState().saveValidationReport({ ...frozen, checklistName: 'Later structure evidence', title: 'Source review heading', variant: 'long', benchmarks: true, showStamp: true }, 'Later evidence');
-    });
+    (await act(async () => {
+      firstSaved = (await useViewerStore.getState().saveValidationReport(frozen, 'Structure evidence'));
+      secondSaved = (await useViewerStore.getState().saveValidationReport({ ...frozen, checklistName: 'Later structure evidence', title: 'Source review heading', variant: 'long', benchmarks: true, showStamp: true }, 'Later evidence'));
+    }));
     assert.ok(firstSaved && secondSaved);
-    await choose('Saved report source', firstSaved);
-    await choose('Saved report source', secondSaved);
+    await choose('Saved report source', `saved:${firstSaved}`);
+    await choose('Saved report source', `saved:${secondSaved}`);
     assert.equal(stored().id, blockId);
     assert.equal(stored().variant, 'compact');
     assert.equal(stored().benchmarks, false);
@@ -345,7 +346,7 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.equal(ui.querySelector('[data-manual-report-benchmarks]'), null);
     assert.ok(!/Model:|Models:|Recorded:/.test(ui.querySelector('[data-block-manual-report]')?.textContent ?? ''));
     assert.equal(refresh(), undefined, 'frozen history has no live Refresh action');
-    act(() => useViewerStore.getState().removeValidationReport(secondSaved!));
+    (await act(async () => (await useViewerStore.getState().removeValidationReport(secondSaved!))));
     await settle();
     assert.equal(stored().checklistName, 'Later structure evidence', 'removing history retains the selected embedded evidence');
   });
@@ -360,7 +361,7 @@ describe('Document panel manual validation report (#6401)', () => {
     await settle();
     const addManual = async () => {
       openMenu([...ui.querySelectorAll('button')].find((button) => button.title === 'Add a block to the page')!);
-      click(menuItem('Manual validation report')!);
+      click(menuItem('Validation report')!);
       await settle();
     };
     await addManual();

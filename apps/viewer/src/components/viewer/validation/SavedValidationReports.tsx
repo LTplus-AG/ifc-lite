@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
-import { SavedHistoryNotice } from '../SavedHistoryNotice';
+import { ContentStorageNotice } from '../ContentStorageNotice';
 import { IdsReportPreview } from '../document/IdsReportPreview';
 import { ManualReportPreview } from '../document/ManualReportPreview';
 import { reportScopeText } from '@/lib/document/report-provenance';
@@ -19,9 +19,9 @@ import { setValidationSourceChoice } from '@/lib/validation/validation-source-ch
  * these snapshots never install old entity ids in the live 3D scene (#6500). */
 export function SavedValidationReports() {
   const { t } = useTranslation();
+  useEffect(() => { void useViewerStore.getState().initializeValidationReports(); }, []);
   const reports = useViewerStore((s) => s.savedValidationReports);
-  const loadIssue = useViewerStore((s) => s.validationReportsLoadIssue);
-  const failed = useViewerStore((s) => s.validationReportsSaveFailed);
+  const storage = useViewerStore((s) => s.validationReportsStorage);
   const fingerprints = useViewerStore(useShallow((s) => [...s.models.values()].map(model => model.sourceFingerprint || null)));
   const loadStates = useViewerStore(useShallow((s) => [...s.models.values()].map(model => model.loadState)));
   const reuseReport = useViewerStore((s) => s.reuseManualValidationReport);
@@ -36,8 +36,7 @@ export function SavedValidationReports() {
 
   return (
     <>
-      <SavedHistoryNotice issue={loadIssue} subject={t('validationPanel.history.title')} onRetry={() => useViewerStore.getState().retryValidationReportsSave()} />
-      {failed && <p role="alert" className="shrink-0 px-2 py-1 text-xs text-destructive">{t('validationPanel.history.unsaved')}</p>}
+      <ContentStorageNotice status={storage} restore={() => useViewerStore.getState().restoreValidationReports()} retry={() => useViewerStore.getState().retryValidationReportsSave()} />
       <details className="shrink-0 border-b p-2 text-xs" data-saved-validation-reports>
         <summary className="cursor-pointer font-medium">{t('validationPanel.history.title')} ({reports.length})</summary>
         {report ? (

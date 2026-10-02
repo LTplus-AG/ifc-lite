@@ -6,6 +6,7 @@
  *  header chrome, "Add block" menu, empty state, and the pluralized export-result toast all read
  *  the catalogue and re-render in a registered locale. */
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -95,7 +96,7 @@ describe('DocumentPanel localization (#4918)', () => {
   it('shows the "no blocks yet" empty state translated once every seeded block is removed', async () => {
     const ui = render(<DocumentPanel />);
     await settle();
-    for (const button of [...ui.querySelectorAll('button[aria-label="Remove block"]')]) click(button);
+    for (const button of ui.querySelectorAll('button[aria-label="Remove block"]')) click(button);
     await settle();
     assert.equal(ui.textContent?.includes('No blocks yet'), true);
 
@@ -127,7 +128,7 @@ describe('DocumentPanel localization (#4918)', () => {
     let toastText = '';
     for (let i = 0; i < 20 && !toastText; i++) {
       await settle();
-      toastText = document.body.querySelector('[data-sonner-toast], [role="status"]')?.textContent ?? document.body.textContent ?? '';
+      toastText = document.body.querySelector('[data-sonner-toast], [data-toast]')?.textContent ?? document.body.textContent ?? '';
       if (!/exportiert|Dokument/.test(toastText)) toastText = '';
     }
     assert.match(toastText, /Dokument exportiert: 1 Seite \(1 Bindung nicht aufgelöst\)/);

@@ -49,6 +49,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { isMainEntry } from './lib/is-main-entry.mjs';
+import { pendingChangesets } from './lib/pending-changesets.mjs';
 
 /**
  * Workspace roots, matching `sync-versions.js`, which walks exactly these two.
@@ -144,6 +145,8 @@ export function versionAtRev(repoRoot, rev, relPath) {
  * `previousRev` does not resolve (root commit, shallow clone): unknown must
  * read as CHANGED, because a false `false` skips verification on a real
  * release while a false `true` costs a handful of registry queries.
+ * The opt-in can return reason `'pending-introductions'` with changed false
+ * while retaining the introduction list in bumps for diagnostics.
  *
  * THROWS rather than returning a verdict when the tree itself cannot be read
  * — no root `package.json`, a root or workspace manifest that is not JSON, no
@@ -151,8 +154,15 @@ export function versionAtRev(repoRoot, rev, relPath) {
  * them here would put a `false` in front of a caller. Every caller must treat
  * a throw as "assume a bump"; `main()` below does exactly that, which is what
  * makes the CLI fail OPEN.
+ *
+ * `deferPendingIntroductions` is an explicit release-workflow opt-in. A tree
+ * containing only new workspace manifests and pending changesets takes the
+ * version-PR path, so its new versions are not due on npm yet. Existing/root
+ * version changes still require verification, even with pending changesets.
+ * Missing paths are proved from the parent tree: `from === null` alone also
+ * covers corrupt prior manifests and must never suppress verification.
  */
-export function versionChanged(repoRoot, { previousRev = 'HEAD~1' } = {}) {
+export function versionChanged(repoRoot, { previousRev = 'HEAD~1', deferPendingIntroductions = false } = {}) {
   const current = currentVersions(repoRoot);
   let parentResolves = true;
   try {
@@ -168,13 +178,20 @@ export function versionChanged(repoRoot, { previousRev = 'HEAD~1' } = {}) {
     const from = versionAtRev(repoRoot, previousRev, path);
     if (from !== to) bumps.push({ path, from, to });
   }
+  if (deferPendingIntroductions && bumps.length > 0 && bumps.every(bump =>
+    bump.from === null && typeof bump.to === 'string' && bump.to.trim().length > 0
+    && /^(packages|apps)\/[^/]+\/package\.json$/.test(bump.path)
+    && git(repoRoot, ['ls-tree', '--name-only', previousRev, '--', bump.path]).trim() === ''
+  ) && pendingChangesets(repoRoot).length > 0) {
+    return { changed: false, reason: 'pending-introductions', bumps };
+  }
   return { changed: bumps.length > 0, reason: bumps.length > 0 ? 'bump' : 'none', bumps };
 }
 
 function main() {
   let result;
   try {
-    result = versionChanged(process.cwd());
+    result = versionChanged(process.cwd(), { deferPendingIntroductions: process.argv.includes('--defer-pending-introductions') });
   } catch (err) {
     // Fail OPEN. Any unexpected failure here — no `git`, a missing root
     // `package.json`, a manifest that is not JSON — must not quietly answer
@@ -188,6 +205,8 @@ function main() {
   }
   if (result.reason === 'no-parent') {
     process.stderr.write('no readable parent commit — assuming a version bump\n');
+  } else if (result.reason === 'pending-introductions') {
+    process.stderr.write('only new workspace packages with pending changesets — publication deferred to the version PR\n');
   } else if (result.changed) {
     process.stderr.write(
       `version bump on this commit (${result.bumps.length} package(s)):\n` +

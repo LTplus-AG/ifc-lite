@@ -1,0 +1,24 @@
+{
+  "verdict": "OBSERVED",
+  "exitCode": 0,
+  "base": "12c20a6790f76863767fdb14ac86891f7fc0d870",
+  "head": "b587b75c07cb0b7c17120ba20e85b629fd10c4d4",
+  "invocationId": "4aa50c19-626a-4402-9e04-ac8446fa0a87",
+  "timing": {
+    "startedAt": "2026-10-02T12:42:02.745Z",
+    "finishedAt": "2026-10-02T12:43:29.528Z"
+  },
+  "restoration": "verified",
+  "baseline": {
+    "kind": "pass",
+    "passed": 9,
+    "total": 9
+  },
+  "reverted": {
+    "kind": "assertion-failure",
+    "passed": 3,
+    "failed": 6,
+    "total": 9,
+    "evidence": []
+  }
+}

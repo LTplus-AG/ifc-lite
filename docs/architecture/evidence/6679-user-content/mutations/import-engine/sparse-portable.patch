@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/lib/storage/content-backup.ts
++++ b/apps/viewer/src/lib/storage/content-backup.ts
+@@ -37,7 +37,7 @@
+   const copied = structuredClone(libraries), drafts: ContentDraftEvidence[] = [];
+   const partition = <T extends { id: string }>(kind: ContentRow['kind'], entries: T[], decode: (raw: unknown) => T | null): T[] =>
+     entries.flatMap(entry => {
+-      const raw = JSON.stringify(entry), valid = decode(entry);
++      const raw = JSON.stringify(entry), valid = decode(JSON.parse(raw));
+       if (valid) return [valid];
+       drafts.push({ kind, id: entry.id, raw });
+       return [];

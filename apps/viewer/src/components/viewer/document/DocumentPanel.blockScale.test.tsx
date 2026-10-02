@@ -8,6 +8,7 @@
  * is saved.
  */
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -49,7 +50,7 @@ const commit = async (input: HTMLInputElement, value: string) => {
   act(() => input.dispatchEvent(new window.FocusEvent('focusout', { bubbles: true })));
   await settle();
 };
-const saved = (id: string) => loadDocuments().find((d) => d.id === doc.id)?.blocks.find((b) => b.id === id) as { scale?: number } | undefined;
+const saved = async (id: string) => { await act(async () => { await useViewerStore.getState().retryDocumentsSave(); }); return (await loadDocuments()).find((d) => d.id === doc.id)?.blocks.find((b) => b.id === id) as { scale?: number } | undefined; };
 
 describe('Document block size (#6548)', () => {
   beforeEach(async () => {
@@ -83,7 +84,7 @@ describe('Document block size (#6548)', () => {
     assert.equal(wrapper.style.zoom, '1.5');
     assert.ok(Math.abs(Number(svg().getAttribute('width')) - width / 1.5) < 1, 'the column the plot is laid out in is 1.5 times narrower');
     assert.equal(Number(svg().getAttribute('height')), height, 'at the authored height, which the zoom then scales with the text');
-    assert.equal(saved('c1')?.scale, 1.5);
+    assert.equal((await saved('c1'))?.scale, 1.5);
   });
 
   it('zooms a text block, clamps the entry to 50-200 and clears the override at 100', async () => {
@@ -92,11 +93,11 @@ describe('Document block size (#6548)', () => {
     const input = () => ui.querySelector<HTMLInputElement>(`[data-block-editor="t1"] ${SIZE}`)!;
     await commit(input(), '999');
     assert.equal(ui.querySelector<HTMLElement>('[data-preview-block="t1"] [data-block-scale]')?.style.zoom, '2');
-    assert.equal(saved('t1')?.scale, 2);
+    assert.equal((await saved('t1'))?.scale, 2);
     await commit(input(), '1');
     assert.equal(ui.querySelector<HTMLElement>('[data-preview-block="t1"] [data-block-scale]')?.style.zoom, '0.5');
     await commit(input(), '100');
     assert.equal(ui.querySelector('[data-preview-block="t1"] [data-block-scale]'), null);
-    assert.equal('scale' in (saved('t1') ?? {}), false, 'the saved block carries no scale again');
+    assert.equal('scale' in ((await saved('t1')) ?? {}), false, 'the saved block carries no scale again');
   });
 });

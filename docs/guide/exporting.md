@@ -39,10 +39,13 @@ upload token stays in memory and is cleared when the dialog closes; it is never
 saved to browser storage or sent to analytics.
 
 IFC4 and IFC4X3 uploads use the canonical compatibility exporter after applying
-edits. It normalizes map units to metres and moves supported uniform map rotation
-and scale into product placements and mapped Body representations. This preserves
-physical map coordinates, project units, properties and authored shape data;
-ordinary IFC downloads retain their original coordinate representation. IFC2X3
+edits. It normalizes map units to metres. When the physical scale is one, supported
+map rotation and translation move into the original root `IfcLocalPlacement`
+frames; child placements, representations, openings and fills retain their
+original relationships. Other supported uniform scales use mapped Body
+representations under stricter ownership checks. These transformations preserve
+physical map coordinates, project units, properties and authored shape data.
+Ordinary IFC downloads retain their original coordinate representation. IFC2X3
 uploads keep their source schema and edits without an implicit upgrade.
 
 Unsupported coordinate consumers, ambiguous units or export warnings stop the
@@ -553,26 +556,47 @@ if (compatibleMap.stats.warnings.length) {
 await saveFile('compatible-map.ifc', compatibleMap.content);
 ```
 
-Canonical Rust resolves the emitted model after edits. It moves uniform map
-rotation and scale into absolute logical product placements and `IfcMappedItem`
-Body representations, preserving physical map coordinates, logical placement
-origins, GUIDs, properties, and authored project/property units. The coordinate
-operation then retains only project-to-metre unit conversion. If rotation and
-physical scale are already neutral, placements and geometry remain untouched.
+Canonical Rust resolves the emitted model after edits. A rigid map rotation
+with exactly unit physical scale moves into the original `IfcLocalPlacement`
+roots. Child placements and all representation records remain intact, including
+Body, Axis, FootPrint, Box, annotations, opening/fill relationships and supported
+endpoint-local connection geometry. Root frames are cloned, so shared geometry
+points and directions are not mutated. TrueNorth directions, including the
+implicit +Y default, rotate into the new engineering frame using cloned metadata.
+This metadata adjustment covers the coordinate-operation context and contexts
+reachable from represented products. Unused definition contexts retain their
+original TrueNorth and representation records.
 
-The supported subset has one map conversion, one project, an identity 3D context,
-SI metre-based project units, local 3D placements, and Body representations.
-Type representation maps must be reachable from an actual product Body;
-orphan mapped items do not authorize uninstantiated type geometry.
-Body mapped paths with 31 or more existing wrappers are refused atomically: the
-new wrapper and terminal leaf must both fit the canonical submesh depth limit,
-so normalization preserves per-leaf styles as well as aggregate geometry.
-Voids/fills, annotations, alignment/grid/structural coordinate consumers,
-nonuniform scale, nonidentity contexts, ambiguous representation ownership,
-and malformed units or placements cause atomic refusal: no geometry patches
-are applied and warnings explain the limitation. Inspect warnings before
-sending the result to another service. Synchronous export rejects this option.
-Ordinary exports preserve their existing coordinate structure and bytes.
+TrueNorth, when provided, must have exactly two direction ratios under the
+IFC4/IFC4X3 `North2D` constraint. Malformed metadata is refused atomically;
+the ordinary edited IFC content is retained without normalization patches.
+
+Non-unit uniform physical scale uses absolute logical product placements and
+scaled `IfcMappedItem` Body representations. Both paths preserve physical map
+coordinates, logical placement origins, GUIDs, properties and authored units.
+The remaining coordinate operation retains only project-to-metre conversion.
+Exactly neutral rotation/physical scale preserves the original operation and
+geometry; machine-epsilon sine roundoff with exact neutral cosine/scale also
+remains untouched.
+
+Both paths require one map conversion, one project, SI metre-based project units,
+validated local 3D placements and identity 3D engineering contexts. The rigid
+path also accepts identity 3D sibling contexts explicitly declared by that same
+project, preserving the common Model/Plan engineering frame. Foreign contexts,
+unknown placement or connection-geometry consumers, malformed metadata and
+alignment/grid/structural consumers refuse atomically with explanatory warnings.
+Represented products without placements are refused.
+
+The scaled Body path additionally requires unambiguous Body ownership and type
+maps reachable from actual products. It refuses voids/fills, annotations and
+other coordinate consumers it cannot preserve. Its added wrapper requires fewer
+than 31 existing mapped levels. The rigid path adds no wrapper: 31 mapped levels
+can retain their original per-leaf styles; cycles, excessive depth and reference
+work are still refused. Nonuniform scale remains unsupported.
+
+Inspect warnings before sending the result to another service. Synchronous
+export rejects this option. Ordinary exports preserve their existing coordinate
+structure and bytes.
 
 #### Which schema identifier is written
 

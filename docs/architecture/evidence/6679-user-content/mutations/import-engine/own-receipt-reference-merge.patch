@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/lib/storage/content-library.ts
++++ b/apps/viewer/src/lib/storage/content-library.ts
+@@ -142,7 +142,7 @@
+       revisions.set(row.id, row.revision);
+       const current = dirty.get(row.id), committedEntry = definition.decode(row.payload);
+       if (current && row.stagedPayload !== undefined && committedEntry && definition.mergeCommitted) {
+-        const merged = current;
++        const merged = definition.mergeCommitted(current, row.stagedPayload, committedEntry);
+         dirty.set(row.id, merged); change(row.id, merged);
+       }
+       if (!sameReportEvidence(dirty.get(row.id), row.deleted ? null : row.payload)) continue;

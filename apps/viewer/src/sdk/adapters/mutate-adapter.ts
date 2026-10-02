@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { validatePropertyDataType } from '@ifc-lite/export';
 import { propertyValueTypeOf, type EntityRef, type MutateBackendMethods } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
@@ -23,8 +24,9 @@ export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
   // scopes fold into the outermost one: the outer tag is written last.
   const openBatches: Array<{ label: string; capture: BackendWriteCapture }> = [];
   const methods: MutateBackendMethods = {
-    setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean) {
+    setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean, dataType?: string) {
       assertCanEdit('setProperty', ref.modelId);
+      const declaration = dataType === undefined ? undefined : validatePropertyDataType(value, dataType);
       const state = store.getState();
       const normalizedModelId = normalizeMutationModelId(state, ref.modelId);
       if (!getOrCreateMutationView(store, ref.modelId)) return undefined;
@@ -32,7 +34,7 @@ export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
       // String, so a bare forward wrote IFCLABEL('true') for a boolean — the
       // same defect the headless adapter documents.
       state.setProperty?.(
-        normalizedModelId, ref.expressId, psetName, propName, value, propertyValueTypeOf(value),
+        normalizedModelId, ref.expressId, psetName, propName, value, declaration?.valueType ?? propertyValueTypeOf(value), declaration?.dataType,
       );
       return undefined;
     },

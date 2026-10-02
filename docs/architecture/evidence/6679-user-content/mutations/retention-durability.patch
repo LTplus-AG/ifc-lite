@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/lib/flow/report-retention.ts
++++ b/apps/viewer/src/lib/flow/report-retention.ts
+@@ -28,7 +28,7 @@
+   const existing = state.savedValidationReports.find((saved) => saved.id === entry.id);
+   if (existing && !sameReportEvidence(savedReportWithProvenance(existing), entry)) throw new Error(`Validation evidence ID collision: ${entry.id}`);
+   if (await state.saveValidationReportEntry(entry) === null) throw new Error('Validation evidence was refused');
+-  return outcome(entry.id, true, !!existing);
++  return outcome(entry.id, host.getState().validationReportsStorage.items[entry.id] === 'saved', !!existing);
+ }
+ 
+ export async function retainComparisonReport(entry: SavedComparison, host: ReportRetentionHost): Promise<ReportRetentionResult> {

@@ -45,6 +45,7 @@
     "@ifc-lite/rules": "workspace:^",
     "@ifc-lite/sandbox": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
+    "@ifc-lite/semantic": "workspace:^",
     "@ifc-lite/server-client": "workspace:^",
     "@ifc-lite/solar": "workspace:^",
     "@ifc-lite/source-dalux": "workspace:^",

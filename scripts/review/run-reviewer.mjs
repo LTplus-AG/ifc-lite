@@ -510,10 +510,10 @@ async function main() {
   const input = JSON.parse(readFileSync(args.input, 'utf8'));
   const prompt = buildPrompt(rubric, input, { retryNote: args.retryNote ? readFileSync(args.retryNote, 'utf8') : null, retryReason: args.retryReason ?? 'PROOF_OF_WORK_FAILED' }); // default: #3652 wording for an older caller with no --retry-reason
 
-  // THE PARALLEL CHEAP ENSEMBLE RUNS FIRST, before the Claude CLI -- see
-  // ensemble-reviewer.mjs, which owns the design and this feature's module-size
-  // budget. Unset/empty `REVIEW_ENSEMBLE_MODELS` is the unchanged path: `false`
-  // means every line below behaves exactly as it did before this existed.
+  // The configured parallel ensemble runs before the Claude/failover path.
+  // Both OpenRouter paths append paid attempts to the output sidecar; disabled
+  // ensembles still leave the existing provider selection intact.
+  process.env.OPENROUTER_TELEMETRY_PATH = `${args.out}.telemetry.jsonl`;
   if (await maybeRunEnsemble({ env: process.env, input, prompt, outPath: args.out })) return;
 
   const tokens = resolveTokens(process.env);

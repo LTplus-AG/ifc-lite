@@ -14,7 +14,7 @@
     "build": "vite build && node ../../scripts/check-tla-chunk-await.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "test": "tsx --import ./src/test/vite-module-hooks.mjs --test --test-timeout=120000 --test-concurrency=1 $(find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) | sort | awk -v s=\"${TEST_SHARD:-0}\" -v n=\"${TEST_SHARDS:-1}\" '{h=0; for(i=1;i<=length($0);i++) h=(h*31+index(\" !\\\"#$%&()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_abcdefghijklmnopqrstuvwxyz{|}~\", substr($0,i,1)))%1000003} h%n==s')",
+    "test": "tsx --import ./src/test/vite-module-hooks.mjs --test --test-timeout=120000 --test-concurrency=1 $(find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) | sort | awk -v p=\"${TEST_PATTERN:-.}\" '$0 ~ p' | awk -v s=\"${TEST_SHARD:-0}\" -v n=\"${TEST_SHARDS:-1}\" '{h=0; for(i=1;i<=length($0);i++) h=(h*31+index(\" !\\\"#$%&()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_abcdefghijklmnopqrstuvwxyz{|}~\", substr($0,i,1)))%1000003} h%n==s')",
     "check:templates": "tsc -p src/lib/scripts/templates/tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -113,7 +113,8 @@
     "tailwind-merge": "^3.7.0",
     "tailwindcss": "^4.3.3",
     "three": "^0.186.1",
-    "zustand": "^5.0.15"
+    "zustand": "^5.0.15",
+    "@ifc-lite/semantic": "workspace:*"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
@@ -129,6 +130,7 @@
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.14.5",
     "jszip": "^3.10.2",
+    "oxigraph": "^0.5.11",
     "svgo": "^4.1.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",

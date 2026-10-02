@@ -9,6 +9,7 @@
  * `setPositionalAttribute`) into the QuickJS sandbox.
  */
 
+import type { AddBeamInStoreParams } from '@ifc-lite/sdk';
 import type { NamespaceSchema } from './bridge-schema.js';
 import { toRef } from './bridge-helpers.js';
 import { buildStoreCostMethods } from './bridge-store-cost.js';
@@ -160,7 +161,7 @@ export function buildStoreNamespace(): NamespaceSchema {
         tsReturn: '{ modelId: string; expressId: number }',
         call: (sdk, args) => {
           const storeyExpressId = requireStoreyId(args[1] as number, 'addBeam');
-          const params = args[2] as Parameters<typeof sdk.store.addBeam>[2];
+          const params = args[2] as AddBeamInStoreParams;
           if (
             !params
             || !Array.isArray(params.Start) || params.Start.length !== 3

@@ -1,0 +1,13 @@
+--- a/rust/export/src/step_map_context_metadata.rs
++++ b/rust/export/src/step_map_context_metadata.rs
+@@ -50,8 +50,8 @@
+                 [x / length, y / length]
+             }
+         };
+-        let x = direction[0] + 0. * affine[(0, 0)];
+-        let y = direction[1];
++        let x = affine[(0, 0)] * direction[0] + affine[(0, 1)] * direction[1];
++        let y = affine[(1, 0)] * direction[0] + affine[(1, 1)] * direction[1];
+         let length = x.hypot(y);
+         if !length.is_finite() || length == 0. {
+             return Err("transformed TrueNorth is zero or unbounded".into());

@@ -48,10 +48,10 @@ function validate({ validatePath, outPath, inputPath, findingsPath }) {
 
 /** Run the same single corrective validation retry as claude-review.yml. */
 export function validateWithOneRetry({
-  reviewer, rubric, inputPath, outPath, findingsPath, model, validatePath, retryLogPath,
+  reviewer, rubric, inputPath, outPath, findingsPath, model, validatePath, retryLogPath, allowRetry = true,
 }) {
   const first = validate({ validatePath, outPath, inputPath, findingsPath });
-  if (first.processResult.status === 0 || !RETRYABLE_VALIDATION_REASONS.has(first.reason)) {
+  if (!allowRetry || first.processResult.status === 0 || !RETRYABLE_VALIDATION_REASONS.has(first.reason)) {
     return { ...first, attempts: 1, reviewerFailure: null };
   }
 

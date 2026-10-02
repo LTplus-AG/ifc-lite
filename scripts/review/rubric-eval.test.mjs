@@ -16,7 +16,7 @@ import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { matches, score, validatorReason, REVIEWER_FAULT, INSTRUMENT_FAULT, JUDGE_LOG_RE } from './rubric-eval.mjs';
-import { REASONS } from './validate-findings.mjs';
+import { REASONS, stripFence } from './validate-findings.mjs';
 import { DEFECT_CLASSES, notApplicableClasses } from './lib/defect-classes.mjs'; // #3831
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -788,5 +788,23 @@ test('comparison preserves validation evidence and a score without deleting outp
   const validation = JSON.parse(readFileSync(join(output, 'case.json.validation.json'), 'utf8'));
   assert.equal(validation.attempts, 1);
   assert.equal(validation.reason, null);
-  assert.ok(readFileSync(join(output, 'case.json.out.txt'), 'utf8').includes('ifc-lite-review-v1'));
+  const raw = JSON.parse(stripFence(readFileSync(join(output, 'case.json.out.txt'), 'utf8')));
+  assert.equal(raw.end, 'ifc-lite-review-v1');
+});
+
+
+test('resume revalidates saved evidence without invoking the reviewer again', (t) => {
+  const dir = tmpCase(t);
+  evalCase(dir, { expected: [] });
+  const output = join(dir, 'evidence');
+  const reviewer = stubReviewer(dir, fenced([], 'clean', { class_pass: classPass() }));
+  assert.equal(runHarness(dir, reviewer, ['--output-dir', output]).status, 0);
+  writeFileSync(join(output, 'case.json.out.txt.telemetry.jsonl'), `${JSON.stringify({ model: process.env.EVAL_MODEL || 'sonnet' })}\n`);
+  // Invoking this process again would fail, so success proves the cached model
+  // output goes through the actual validator without a second generation.
+  writeFileSync(reviewer, 'process.exit(91);');
+  const r = runHarness(dir, reviewer, ['--output-dir', output, '--resume']);
+  assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+  const report = JSON.parse(readFileSync(join(output, 'score.json'), 'utf8'));
+  assert.equal(report.results[0].verdict, 'clean');
 });

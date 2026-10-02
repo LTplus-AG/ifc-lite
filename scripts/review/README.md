@@ -6,7 +6,8 @@ cache/reasoning charges), token details, elapsed time, and pool-validation outco
 Token-price fallbacks are labelled `estimated`; absent usage is unknown, never free.
 Sidecars append corrective attempts instead of overwriting the original cost.
 `poolValidation` measures acceptance into the pool, not final finding validity.
-The artifact also carries validated and judged findings and validator diagnostics;
+The artifact also carries initial/final raw pooled answers, findings before dedup,
+judged findings, and validator diagnostics;
 findings retain their source model for attribution. Transport failures have unknown
 cost because an interrupted provider may still bill a request.
 
@@ -16,11 +17,19 @@ GPT-6.1 Sol, Sonnet 5.5, and Opus 5.5. Each candidate uses the production prompt
 high reasoning effort, 32,768 output-token limit, context pack, mechanical validator,
 and one corrective retry. There is no failover to another model, ensemble pooling,
 or paid judge. Scores measure generation plus validation, not the final posted
-production ensemble. Each model has a $3 ledger covering retries: before requesting,
+production ensemble. Each model has a $10 ledger covering retries: before requesting,
 the adapter reserves input UTF-8 bytes at the static input rate and maximum output
 tokens at the output rate. Failed calls retain their reservation; successful calls
 settle against billed cost or a labelled estimate. This is a conservative client
 reservation, not a provider-enforced billing cap, and rates can change.
+
+A stopped run can be resumed with `resume_run_id`: the workflow restores each
+model's artifacts and cumulative cost ledger and requires the same rubric. Cases
+whose model attempts completed are revalidated from their saved historical context
+without another model call; mismatched model/corpus evidence is refused. Costs
+remain cumulative across runs. The initial $3 probe stopped Opus after five cases
+because the next full-token reservation exceeded remaining headroom; $10 allows
+more room for the historical corpus's long context packs.
 
 Download all `review-eval-*` artifacts. Compare `score.json`, per-case validation
 records, and usage sidecars; a failed or budget-limited job is incomplete and must

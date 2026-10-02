@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { buildPack, retrievalFailed, retrievalFailedMessage } from './build-context-pack.mjs';
 import { validateWithOneRetry, validatorReason, REVIEWER_FAULT } from './eval-validation.mjs';
+import { readEvalCache } from './lib/eval-cache.mjs';
 import { ensureEvalCommit } from './eval-commit.mjs';
 import { MAX_POSTED_FINDINGS } from './post-review.mjs';
 import { stripFence } from './validate-findings.mjs';
@@ -138,11 +139,13 @@ async function main() {
     const validatedResults = [];
     for (const f of files) {
       const c = JSON.parse(readFileSync(join(caseDir, f), 'utf8'));
+      const cached = process.argv.includes('--resume') ? readEvalCache(tmp, f, c.input, model) : null;
+      if (cached) { c.input = cached.input; console.log(`  ${f}: reusing completed model attempts; revalidating without another paid call.`); }
       // THE CONTEXT PACK, built per case so the eval measures the pipeline the
     // lane actually runs rather than a diff-only ghost of it. `--base` names
     // the tree siblings are retrieved from; without it the eval measures the
     // old behaviour, which is exactly what the baseline run did.
-    if (baseRef) {
+    if (baseRef && !cached) {
       ensureEvalCommit(c.input.headSha);
       try {
         // `body` MATTERS, and its absence was not merely an untested prompt
@@ -173,7 +176,8 @@ async function main() {
     const inputPath = join(tmp, `${f}.input.json`);
       const outPath = join(tmp, `${f}.out.txt`);
       writeFileSync(inputPath, JSON.stringify(c.input));
-      const r = spawnSync(
+      console.log(`  ${f}: ${cached ? 'cached' : 'requesting'} ${model}`);
+      const r = cached ? { status: 0 } : spawnSync(
         process.execPath,
         [reviewer, '--rubric', rubric, '--input', inputPath, '--out', outPath, '--model', model],
         { encoding: 'utf8' },
@@ -201,6 +205,7 @@ async function main() {
       // the reviewer for findings that would have been dropped for quoting a line
       // that is not in the diff.
       const findingsPath = join(tmp, `${f}.findings.json`);
+      writeFileSync(join(tmp, `${f}.initial.out.txt`), readFileSync(outPath));
       const validation = validateWithOneRetry({
         reviewer,
         rubric,
@@ -210,8 +215,10 @@ async function main() {
         model,
         validatePath: join(HERE, 'validate-findings.mjs'),
         retryLogPath: join(tmp, `${f}.validate.log`),
+        allowRetry: !cached,
       });
-      writeFileSync(join(tmp, `${f}.validation.json`), JSON.stringify({ attempts: validation.attempts, reason: validation.reason, diagnostics: validation.said }));
+      if (cached) validation.attempts = cached.attempts;
+      writeFileSync(join(tmp, `${f}.validation.json`), JSON.stringify({ attempts: validation.attempts, reason: validation.reason, reviewerFailure: Boolean(validation.reviewerFailure), diagnostics: validation.said }));
       const v = validation.processResult;
       // A non-zero exit is not one thing: see REVIEWER_FAULT above for which
       // refusals are the model answering badly (scored zero, the eval carries on)

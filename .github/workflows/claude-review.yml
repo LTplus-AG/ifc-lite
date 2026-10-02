@@ -316,6 +316,7 @@ jobs:
             --input "$RUNNER_TEMP/review-input.json" \
             --out "$RUNNER_TEMP/raw-review.txt" \
             --model sonnet
+          cp "$RUNNER_TEMP/raw-review.txt" "$RUNNER_TEMP/raw-review.initial.txt"
 
       # Mechanical validation before anything is posted: verbatim quotes, added-
       # line anchoring, the cap, and the sanitisation that stops a steered model
@@ -468,6 +469,7 @@ jobs:
         env:
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
         run: |
+          cp "$RUNNER_TEMP/findings.json" "$RUNNER_TEMP/validated-findings.json"
           if node "$GITHUB_WORKSPACE/scripts/review/dedup-findings.mjs" \
                --findings "$RUNNER_TEMP/findings.json" \
                --out "$RUNNER_TEMP/deduped.json" && [ -s "$RUNNER_TEMP/deduped.json" ]; then
@@ -857,6 +859,8 @@ jobs:
           name: review-outcomes-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/raw-review*.telemetry.jsonl
+            ${{ runner.temp }}/raw-review*.txt
+            ${{ runner.temp }}/validated-findings.json
             ${{ runner.temp }}/findings*.json
             ${{ runner.temp }}/judged.json
             ${{ runner.temp }}/deduped.json

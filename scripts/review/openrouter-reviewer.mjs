@@ -68,7 +68,7 @@ export function responseText(message) {
  * depends on, so it stays a thin wrapper rather than changing shape.
  */
 export async function requestOpenRouterReviewWithUsage({
-  prompt, apiKey, model = OPENROUTER_REVIEW_MODEL, fetchImpl = fetch, timeoutMs = OPENROUTER_TIMEOUT_MS_DEFAULT,
+  prompt, apiKey, model = OPENROUTER_REVIEW_MODEL, fetchImpl = fetch, timeoutMs = OPENROUTER_TIMEOUT_MS_DEFAULT, maxTokens = 32768,
 }) {
   const response = await fetchImpl('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -81,7 +81,7 @@ export async function requestOpenRouterReviewWithUsage({
     body: JSON.stringify({
       model,
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 32768,
+      max_tokens: maxTokens,
       reasoning: { effort: 'high' },
     }),
     // A per-model failure, not a hang: `requestOpenRouterReviewChain` below
@@ -209,7 +209,7 @@ export function runOpenRouterFallback({
   }
   const stderr = String(result.stderr ?? '');
   for (const line of stderr.split('\n')) {
-    if (line && !/^MODEL_USED:/.test(line)) console.log(`openrouter-fallback (child): ${line}`);
+    if (line && !line.startsWith('MODEL_USED:')) console.log(`openrouter-fallback (child): ${line}`);
   }
   if (result.status !== 0) {
     throw new Error(`OpenRouter fallback exited ${result.status}: ${stderr.trim() || '(empty)'}`);

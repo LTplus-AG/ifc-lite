@@ -415,7 +415,7 @@ writeFileSync(countPath, String(calls + 1));
   return { path: p, count };
 }
 
-const runHarness = (dir, reviewer) => spawnSync(
+const runHarness = (dir, reviewer, extraArgs = []) => spawnSync(
   process.execPath,
   // `--no-judge`, or this unit test SPAWNS THE REAL MODEL. spawnSync inherits
   // process.env, so on any machine with CLAUDE_CODE_OAUTH_TOKEN exported -- the
@@ -424,7 +424,7 @@ const runHarness = (dir, reviewer) => spawnSync(
   // discretion. It passes today only because an absent token fails soft. This
   // test is about the validate-then-score wiring; run-judge has its own suite.
   [join(HERE, 'rubric-eval.mjs'), '--cases', dir, '--reviewer', reviewer,
-   '--rubric', join(HERE, 'rubric.md'), '--no-judge'],
+   '--rubric', join(HERE, 'rubric.md'), '--no-judge', ...extraArgs],
   { encoding: 'utf8' },
 );
 
@@ -771,4 +771,22 @@ test('#3831 round 2: notApplicableClasses reads nothing off a verdict the pass n
   assert.deepEqual(notApplicableClasses({ verdict: 'findings', class_pass: rows }), []);
   assert.deepEqual(notApplicableClasses({ class_pass: rows }), []);
   assert.deepEqual(notApplicableClasses({ verdict: 'clean' }), []);
+});
+
+
+test('comparison preserves validation evidence and a score without deleting output-dir', (t) => {
+  const dir = tmpCase(t);
+  evalCase(dir, { expected: [] });
+  const reviewer = stubReviewer(dir, fenced([], 'clean', { class_pass: classPass() }));
+  const output = join(dir, 'evidence');
+  const r = runHarness(dir, reviewer, ['--output-dir', output]);
+  assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+  const report = JSON.parse(readFileSync(join(output, 'score.json'), 'utf8'));
+  assert.equal(report.judged, false);
+  assert.equal(report.results.length, 1);
+  assert.equal(report.results[0].verdict, 'clean');
+  const validation = JSON.parse(readFileSync(join(output, 'case.json.validation.json'), 'utf8'));
+  assert.equal(validation.attempts, 1);
+  assert.equal(validation.reason, null);
+  assert.ok(readFileSync(join(output, 'case.json.out.txt'), 'utf8').includes('ifc-lite-review-v1'));
 });

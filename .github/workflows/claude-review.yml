@@ -308,6 +308,7 @@ jobs:
           # no-op and this step behaves exactly as it did before it existed.
           REVIEW_ENSEMBLE_MODELS: ${{ vars.REVIEW_ENSEMBLE_MODELS }}
           REVIEW_ENSEMBLE_STRONG_ON_RISK: ${{ vars.REVIEW_ENSEMBLE_STRONG_ON_RISK }}
+          REVIEW_ENSEMBLE_STRONG_MODEL: ${{ vars.REVIEW_ENSEMBLE_STRONG_MODEL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           node "$GITHUB_WORKSPACE/scripts/review/run-reviewer.mjs" \
@@ -392,6 +393,7 @@ jobs:
           OPENROUTER_REVIEW_MODELS: ${{ vars.OPENROUTER_REVIEW_MODELS }}
           REVIEW_ENSEMBLE_MODELS: ${{ vars.REVIEW_ENSEMBLE_MODELS }}
           REVIEW_ENSEMBLE_STRONG_ON_RISK: ${{ vars.REVIEW_ENSEMBLE_STRONG_ON_RISK }}
+          REVIEW_ENSEMBLE_STRONG_MODEL: ${{ vars.REVIEW_ENSEMBLE_STRONG_MODEL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set +e
@@ -847,3 +849,17 @@ jobs:
           gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels/llm-reviewed" \
             --method DELETE --silent \
             || echo "Nothing to clear."
+
+      - name: Preserve model usage and validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: review-outcomes-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/raw-review*.telemetry.jsonl
+            ${{ runner.temp }}/findings*.json
+            ${{ runner.temp }}/judged.json
+            ${{ runner.temp }}/deduped.json
+            ${{ runner.temp }}/*validate*.log
+          if-no-files-found: ignore
+          retention-days: 30

@@ -55,11 +55,6 @@ test('all models succeed: every result is captured, no failures', async () => {
 });
 
 test('one model fails: the other still returns, and the failure is recorded', async () => {
-  const fetchImpl = async (_url, init) => {
-    const model = JSON.parse(init.body).model;
-    if (model === 'bad/model') return reply({ error: { message: 'no credits' } });
-    return { ok: false, status: 429, text: async () => JSON.stringify({ error: { message: 'no credits' } }) };
-  };
   // Make one succeed and one fail explicitly.
   const fetchImpl2 = async (_url, init) => {
     const model = JSON.parse(init.body).model;
@@ -504,4 +499,49 @@ test('maybeRunEnsemble returns false and writes nothing when disabled', async ()
   const handled = await maybeRunEnsemble({ env: {}, input: { files: [] }, prompt: 'p', outPath });
   assert.equal(handled, false);
   assert.equal(wrote, false);
+});
+
+
+test('provider billed cost overrides stale token estimates, including cached zero-cost calls', () => {
+  assert.equal(estimateCostUsd('unknown/model', { cost: 0.031, prompt_tokens: 1_000_000 }), 0.031);
+  assert.equal(estimateCostUsd('openai/gpt-6-luna', { cost: 0, prompt_tokens: 1_000_000 }), 0);
+  assert.equal(estimateCostUsd('unknown/model', { cost: -1 }), null);
+  assert.equal(estimateCostUsd('unknown/model', { cost: '0.02' }), null);
+});
+
+test('telemetry records rejected paid answers and HTTP failures before falling through', async () => {
+  let calls;
+  const fetchImpl = async (_url, init) => {
+    if (JSON.parse(init.body).model === 'bad/json') return reply({ choices: [{ message: { content: '{}' } }], usage: { cost: 0.012 } });
+    return { ok: false, status: 402, text: async () => 'no credits' };
+  };
+  const outcome = await runEnsembleReview({ prompt: 'p', apiKey: 'k', models: ['bad/json', 'bad/http'], fetchImpl, onTelemetry: (value) => { calls = value; } });
+  assert.equal(outcome, null);
+  assert.equal(calls[0].costUsd, 0.012);
+  assert.equal(calls[0].costSource, 'billed');
+  assert.equal(calls[0].poolValidation.reason, 'RESPONSE_TRUNCATED');
+  assert.equal(calls[1].answered, false);
+  assert.equal(typeof calls[1].elapsedMs, 'number');
+  assert.equal(calls[1].costUsd, null);
+});
+
+test('pooled model roster excludes a paid answer rejected by schema validation', async () => {
+  const fetchImpl = async (_url, init) => reply({ choices: [{ message: { content: JSON.stringify(JSON.parse(init.body).model === 'good' ? clean() : { end: SENTINEL }) } }] });
+  const outcome = await runEnsembleReview({ prompt: 'p', apiKey: 'k', models: ['good', 'bad'], fetchImpl });
+  assert.deepEqual(outcome.models, ['good']);
+});
+
+
+test('strong-seat override changes only the risk-added model and avoids duplicates', () => {
+  const env = { OPENROUTER_API_KEY: 'k', REVIEW_ENSEMBLE_MODELS: 'cheap', REVIEW_ENSEMBLE_STRONG_ON_RISK: 'true', REVIEW_ENSEMBLE_STRONG_MODEL: 'openai/gpt-6.1-sol' };
+  const input = { files: [{ path: 'scripts/review/run-reviewer.mjs' }] };
+  assert.deepEqual(resolveEnsemblePlan(env, input).models, ['cheap', 'openai/gpt-6.1-sol']);
+  assert.deepEqual(resolveEnsemblePlan({ ...env, REVIEW_ENSEMBLE_MODELS: 'openai/gpt-6.1-sol' }, input).models, ['openai/gpt-6.1-sol']);
+  assert.deepEqual(resolveEnsemblePlan(env, { files: [{ path: 'docs/guide/foo.md' }] }).models, ['cheap']);
+});
+
+test('missing and malformed token accounting is unknown rather than free', () => {
+  for (const usage of [{}, { prompt_tokens: 'garbage' }, { completion_tokens: -1 }]) {
+    assert.equal(estimateCostUsd('openai/gpt-6-luna', usage), null);
+  }
 });

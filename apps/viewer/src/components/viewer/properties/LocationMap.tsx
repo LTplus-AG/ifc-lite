@@ -257,7 +257,7 @@ export function LocationMap({
     });
 
     return () => { cancelled = true; };
-  }, [pickedLatLon, projectedCRS, mapConversion, coordinateInfo, lengthUnitScale]);
+  }, [pickedLatLon, projectedCRS, lengthUnitScale]);
 
   // Place or move the picked marker on the map
   const updatePickedMarker = useCallback((pos: LatLon, maplibregl: typeof import('maplibre-gl')) => {

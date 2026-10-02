@@ -22,12 +22,14 @@ const document = () => ({ profile: profile().id, source: 'https://example.org/da
   resources: [{ id: 'https://example.org/a', type: 'Thing', label: 'A', labels: { en: 'English', de: 'Deutsch' }, value: 2.5, tags: ['a', 'b'], enabled: true }] });
 describe('charter #6643 shared profile standards', () => {
   it('#6643 self-review: rejects combinatorial optional/ranged patterns before either validator executes them', async () => {
-    for (const pattern of ['^a{0,5000}a{0,5000}a{0,5000}b$', '^a?a?a?a?aaaa$', '^a+a?b$']) {
+    for (const pattern of ['^a{0,5000}a{0,5000}a{0,5000}b$', '^a?a?a?a?aaaa$', '^a+a?b$', 'a*b', '^a*b|c']) {
       const p = profile(); p.fields.label.pattern = pattern;
       expect(() => assertProfile(p)).toThrow('bounded regular-expression subset');
       const shapes = `<urn:shape> a <http://www.w3.org/ns/shacl#NodeShape>; <http://www.w3.org/ns/shacl#targetNode> <urn:a>; <http://www.w3.org/ns/shacl#property> [ <http://www.w3.org/ns/shacl#path> <urn:p>; <http://www.w3.org/ns/shacl#pattern> ${JSON.stringify(pattern)} ].`;
       await expect(validateGraph('<urn:a> <urn:p> "aaaa".', { shapes })).rejects.toThrow('bounded regular-expression subset');
     }
+    const multiline = '<urn:shape> a <http://www.w3.org/ns/shacl#NodeShape>; <http://www.w3.org/ns/shacl#targetNode> <urn:a>; <http://www.w3.org/ns/shacl#property> [ <http://www.w3.org/ns/shacl#path> <urn:p>; <http://www.w3.org/ns/shacl#pattern> "^a*b"; <http://www.w3.org/ns/shacl#flags> "m" ].';
+    await expect(validateGraph('<urn:a> <urn:p> "aaaa".', { shapes: multiline })).rejects.toThrow('Unsupported SHACL regular-expression flags');
     for (const pattern of ['^[A-Z]{2}[0-9]{3}$', '^a{2,2}b{3,3}$', '^[?+*]+$', '^a\\?b\\?$', '^a?b$']) {
       expect(() => assertBoundedPattern(pattern, 'fixture')).not.toThrow();
     }

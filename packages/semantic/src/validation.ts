@@ -116,7 +116,7 @@ export async function validateGraph(rdf: string, options: GraphValidationOptions
       && !supported.has(quad.object.value.slice(SH.length))) throw new Error(`Unsupported SHACL shape declaration: ${quad.object.value}`);
     if (quad.predicate.value === SH + 'path' && quad.object.termType !== 'NamedNode') throw new Error('Only direct IRI property paths are supported');
     if (quad.predicate.value === SH + 'pattern') assertBoundedPattern(quad.object.value, 'SHACL shape');
-    if (quad.predicate.value === SH + 'flags' && !/^[imsu]*$/.test(quad.object.value)) throw new Error('Unsupported SHACL regular-expression flags');
+    if (quad.predicate.value === SH + 'flags' && !/^[isu]*$/.test(quad.object.value)) throw new Error('Unsupported SHACL regular-expression flags');
     if (quad.predicate.value === SH + 'maxLength' && (quad.object.termType !== 'Literal' || quad.object.datatype.value !== 'http://www.w3.org/2001/XMLSchema#integer' || !/^\+?\d+$/.test(quad.object.value)
       || !Number.isSafeInteger(Number(quad.object.value)))) throw new Error('SHACL maxLength must be a non-negative integer');
   }

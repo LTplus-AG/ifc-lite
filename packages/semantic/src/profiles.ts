@@ -52,12 +52,13 @@ export function isUri(value: string): boolean {
 export function assertBoundedPattern(pattern: string, location: string): void {
   // Several optional/ranged repetitions can backtrack combinatorially even
   // without groups. Count actual quantifiers, ignoring escapes and classes.
-  let variableRepetitions = 0; let inClass = false;
+  let variableRepetitions = 0; let inClass = false; let alternation = false;
   for (let index = 0; index < pattern.length; index++) {
     const character = pattern[index];
     if (character === '\\') { index++; continue; }
     if (inClass) { if (character === ']') inClass = false; continue; }
     if (character === '[') { inClass = true; continue; }
+    if (character === '|') alternation = true;
     if ('+*?'.includes(character)) variableRepetitions++;
     if (character === '{') {
       const range = /^\{(\d+)(?:,(\d+))?\}/.exec(pattern.slice(index));
@@ -68,7 +69,7 @@ export function assertBoundedPattern(pattern: string, location: string): void {
     }
   }
   if (pattern.length > 256 || /[()]|\\[1-9]/.test(pattern) || /[{}]/.test(pattern.replace(/\{[0-9]+(?:,[0-9]+)?\}/g, ''))
-    || variableRepetitions > 1
+    || variableRepetitions > 1 || variableRepetitions > 0 && (!pattern.startsWith('^') || alternation)
     || [...pattern.matchAll(/\{([0-9]+)(?:,([0-9]+))?\}/g)].some(match => Number(match[1]) > 5000 || Number(match[2] ?? 0) > 5000)) {
     throw new Error(`Pattern for ${location} exceeds the supported bounded regular-expression subset`);
   }

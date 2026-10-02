@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { SavedComparison } from '../compare/savedComparisonSchema';
+import { isSavedComparisonChart } from '../charts/comparison-source';
 import { savedReportBlock, type SavedValidationReport } from '../validation/reports/history';
 import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type DocumentBlock, type IdsReportBlock } from './types';
 import { freshBlockId, freshDocumentId, freshListCopyId } from './persistence';
@@ -68,7 +69,7 @@ export function validateReportDocumentTemplate(template: DocumentSpec,
     if (block.kind === 'table' && block.source.kind === 'validation') {
       errors.push(`Live validation table ${block.id} must be replaced with a mapped validation report block`);
     }
-    if (block.kind === 'chart' && (block.chart.source === 'ids' || block.chart.source === 'compare')) {
+    if (block.kind === 'chart' && (block.chart.source === 'ids' || (block.chart.source === 'compare' && !isSavedComparisonChart(block.chart)))) {
       errors.push(`Live ${block.chart.source} chart ${block.id} cannot use workflow evidence; use a mapped report block`);
     }
   }

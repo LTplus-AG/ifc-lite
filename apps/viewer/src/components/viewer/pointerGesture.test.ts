@@ -49,9 +49,10 @@ describe('pointer gesture mapping (#5887)', () => {
     }
   });
 
-  it('Pan claims plain left; other tools leave plain left for orbit', () => {
+  it('Pan claims plain left; modelling owns left; other tools leave it for orbit (#6232)', () => {
     assert.equal(gesture({ tool: 'pan' }), 'pan');
-    for (const tool of ['walk', 'section', 'command', 'appearance-face']) {
+    assert.equal(gesture({ tool: 'command' }), 'tool');
+    for (const tool of ['walk', 'section', 'appearance-face']) {
       assert.equal(gesture({ tool }), 'orbit');
     }
   });

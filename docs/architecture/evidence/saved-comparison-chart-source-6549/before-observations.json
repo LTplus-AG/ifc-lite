@@ -1,0 +1,9 @@
+{
+  "source": "aed543e56f1b9020663b91bc0261e6e2bc66d65a",
+  "capturedAt": "2026-10-01T01:29:55.560Z",
+  "artifact": "before-missing-source.pdf",
+  "bytes": 3835,
+  "sha256": "becbd51ad83429423ef9dd9c98de7cb1a0029354ade5580a3bf55d1e398a2b17",
+  "fullNoticeOccurrences": 2,
+  "reason": "Actual native output duplicated the full notice as subtitle and empty-chart body; the narrow correction suppresses the empty subtitle while retaining the body."
+}

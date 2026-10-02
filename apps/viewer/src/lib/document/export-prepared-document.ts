@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { browserReportSeams } from '../export/report/generate-report-pdf';
 import { createSnapshotCapture } from '../export/report/snapshots';
+import { isSavedComparisonChart } from '../charts/comparison-source';
 import { browserImageSize, generateDocumentPdf, type DocumentPdfInput, type DocumentPdfResult, type DocumentPdfSeams } from './generate-document-pdf';
 
 /** Uses the native renderer and always restores the viewport capture resources. */
@@ -10,7 +11,8 @@ export async function exportPreparedDocument(input: DocumentPdfInput,
   options: { signal?: AbortSignal; seams?: DocumentPdfSeams } = {},
 ): Promise<DocumentPdfResult> {
   options.signal?.throwIfAborted();
-  const snapshot = options.seams ? null : createSnapshotCapture();
+  const captureNeeded = input.document.blocks.some((block) => block.kind === 'chart' && block.snapshot && !isSavedComparisonChart(block.chart));
+  const snapshot = options.seams || !captureNeeded ? null : createSnapshotCapture();
   try {
     const seams = options.seams ?? { ...await browserReportSeams(snapshot?.capture ?? null), imageSize: browserImageSize };
     options.signal?.throwIfAborted();

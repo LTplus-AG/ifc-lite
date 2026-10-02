@@ -38,6 +38,10 @@ const { content } = creator.toIfc(); // IFC STEP text
 - Property sets, element quantities, materials, and colors
 - 4D scheduling entities: IfcWorkSchedule, IfcTask, IfcRelSequence
 - In-store builders (`addWallToStore`, `addSlabToStore`, ...) that emit elements into an existing parsed model
+- `addOrdinaryElementInStore(editor, anchor, element)` commits the eight ordinary
+  builders atomically. Its anchor can be resolved or supplied by a synchronous
+  draft-editor callback so existing host preparation shares that transaction.
+  Failed creation leaves no helpers, journal entries or consumed IDs.
 - `resolveSpatialAnchor(store, storeyId, view)` reads the live mutation view when
   authoring into an edited model. Pass the same view as the `StoreEditor` so a
   created storey or placement, and deletions or retypes of source anchors, are

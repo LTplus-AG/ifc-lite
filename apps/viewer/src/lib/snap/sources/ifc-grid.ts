@@ -27,6 +27,7 @@ import { closestOnSegment } from './linework.js';
 export interface GridAxisLine {
   /** The IfcGrid the axis belongs to. */
   gridId: number;
+  axisId: number;
   AxisTag: string;
   family: 'U' | 'V' | 'W';
   a: Vec2;
@@ -35,6 +36,7 @@ export interface GridAxisLine {
 
 export interface GridIntersectionPoint {
   gridId: number;
+  IntersectingAxes: readonly [number, number];
   /** Tags of the two crossing axes, first family first ('2', 'B'). */
   tags: readonly [string, string];
   at: Vec2;
@@ -62,7 +64,7 @@ export function gridAxisIntersections(axes: readonly GridAxisLine[], slack = 1e-
       const u = (qpx * ry - qpy * rx) / denom;
       const lo = -slack, hi = 1 + slack;
       if (t < lo || t > hi || u < lo || u > hi) continue;
-      out.push({ gridId: p.gridId, tags: [p.AxisTag, q.AxisTag], at: [p.a[0] + t * rx, p.a[1] + t * ry] });
+      out.push({ gridId: p.gridId, IntersectingAxes: [p.axisId, q.axisId], tags: [p.AxisTag, q.AxisTag], at: [p.a[0] + t * rx, p.a[1] + t * ry] });
     }
   }
   return out;
@@ -111,7 +113,8 @@ export function createIfcGridSource(deps: IfcGridSourceDeps, id = 'ifc-grid'): I
       // Points first, like every source: the solver's last tie-break is collection order.
       for (const c of crossings) {
         if (!near(c.at)) continue;
-        out.push({ kind: 'gridIntersection', local: c.at, source: 'ifc-grid', entity: { modelId: deps.modelId, expressId: c.gridId } });
+        out.push({ kind: 'gridIntersection', local: c.at, source: 'ifc-grid', entity: { modelId: deps.modelId, expressId: c.gridId },
+          gridIntersection: { IntersectingAxes: c.IntersectingAxes } });
       }
       for (const axis of axes) {
         if (!near(axis.a, axis.b)) continue;

@@ -179,17 +179,23 @@ describe('GeoreferencingPanel accessibility (#5812)', () => {
       />,
     );
     openCoordinateOperation(container);
-    const label = [...container.querySelectorAll('span')].find((span) => span.textContent?.endsWith('Angle to Grid North'));
+    const label = [...container.querySelectorAll('span')].find((span) => span.textContent?.endsWith('Model rotation in map coordinates'));
     assert.ok(label?.parentElement);
     const row = label.parentElement;
     const valueButton = row.querySelector('button[aria-label]');
-    assert.match(valueButton?.getAttribute('aria-label') ?? '', /^Angle to Grid North: /);
+    assert.match(valueButton?.getAttribute('aria-label') ?? '', /^Model rotation in map coordinates: /);
     assert.ok(valueButton);
     click(valueButton);
-    const input = getByRoleTextbox(row, 'Angle to Grid North');
+    const input = getByRoleTextbox(row, 'Model rotation in map coordinates');
     const noteId = input.getAttribute('aria-describedby');
     assert.ok(noteId);
-    assert.match(document.getElementById(noteId)?.textContent ?? '', /XAxisAbscissa/);
+    const guidance = noteId.split(/\s+/).map(id => {
+      const note = document.getElementById(id);
+      assert.ok(note, 'each accessible description resolves to visible guidance');
+      return note.textContent;
+    }).join(' ');
+    assert.match(guidance, /XAxisAbscissa/);
+    assert.match(guidance, /Counterclockwise from map East to model X/);
     const cancel = [...row.querySelectorAll('button')].find((button) => button.getAttribute('aria-label')?.includes('Cancel'));
     assert.ok(cancel);
     click(cancel);

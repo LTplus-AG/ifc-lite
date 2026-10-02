@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { IfcCreator } from '@ifc-lite/create';
-import { PROFILE_ID, VOCAB, type SemanticDocument } from './types';
+import { PROFILE_ID, VOCAB, type SemanticDocument } from '@ifc-lite/semantic';
 
 export const DEMO_BASE = 'https://example.org/ifc-lite/pilot/';
 export const DEMO_REVISIONS = [DEMO_BASE + 'revision/1', DEMO_BASE + 'revision/2'];

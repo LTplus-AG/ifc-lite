@@ -1,0 +1,97 @@
+[
+  {
+    "path": "1-hidden.pdf",
+    "bytes": 6426,
+    "sha256": "42131c53271766fb9d7ea491b6d994c7cd771b31ddae276033dd0ef877bf1157"
+  },
+  {
+    "path": "1-hidden.png",
+    "bytes": 95560,
+    "sha256": "998446395463b29a7f87a2a4873f38ee13b0a773a59130a731150852595b912e"
+  },
+  {
+    "path": "1-shown.pdf",
+    "bytes": 6686,
+    "sha256": "60ae4d7edb1b57c28c488a7ce73025ad2919b2d4c0d8a12c7d64a7a444b80886"
+  },
+  {
+    "path": "1-shown.png",
+    "bytes": 97560,
+    "sha256": "6d10adf1cc4a3dc2efaeed1add115c8916e203765006df3e78a1ba87448cdc5b"
+  },
+  {
+    "path": "2-hidden.pdf",
+    "bytes": 6426,
+    "sha256": "44a014bb800efd8a84fe0772e44ff59bf61276e3177cdc81d3c8a6c077c3da42"
+  },
+  {
+    "path": "2-hidden.png",
+    "bytes": 129675,
+    "sha256": "37557ec86c8220e9d9dce31c117b5cf7bd9f8ed30153f2e9aa94566cae30d338"
+  },
+  {
+    "path": "2-imported-hidden.pdf",
+    "bytes": 5807,
+    "sha256": "bef7761e3b906df51d0bc28a0c11a0426c982978bc444edbc5b173dc98309851"
+  },
+  {
+    "path": "2-imported-hidden.png",
+    "bytes": 113568,
+    "sha256": "d2d78a228ef5b23737fb309f45004abac46cf55e8ca6b304993049261dd4966f"
+  },
+  {
+    "path": "2-reshown.pdf",
+    "bytes": 6079,
+    "sha256": "0ffef657abd34938c7489ddd43fd7e9f5ed90788150679337fcb3e4a8aed6678"
+  },
+  {
+    "path": "2-shown.pdf",
+    "bytes": 6698,
+    "sha256": "470aef900d866a70d0b6bc00e7b663f268b75dd2804c0eaecb7f89365c435a4c"
+  },
+  {
+    "path": "2-shown.png",
+    "bytes": 135548,
+    "sha256": "9169026855a275230e280cc6895974674001e04ef16b3ff4d2c7be38361f5546"
+  },
+  {
+    "path": "README.md",
+    "bytes": 5176,
+    "sha256": "ec2517653681d5d7ae48550bfc22d04c5381aea4dc512941448988f50b0d3ecb"
+  },
+  {
+    "path": "browser-capture.cjs",
+    "bytes": 10327,
+    "sha256": "4e4d8beddccce6de108f335aa0cc8b608d1b722a4771bfaf0bbcf208c3a7f960"
+  },
+  {
+    "path": "downloaded-pdf-observations.json",
+    "bytes": 4338,
+    "sha256": "804bc8fe95268bbf84c60ba41f4aa64a62b57f388f617be5c1dc16708f3165ab"
+  },
+  {
+    "path": "facts.json",
+    "bytes": 17999,
+    "sha256": "3aeb5f4875ae4a1acbcab525d6cdc0a009d5be3c06c067275579364c585233b9"
+  },
+  {
+    "path": "hidden.ifclite-document.json",
+    "bytes": 1602,
+    "sha256": "9107d392255505e3c68a22109ff83c68def89265fcaac1b671dca81a505f4acd"
+  },
+  {
+    "path": "qualification.json",
+    "bytes": 10823,
+    "sha256": "306b45f0e545d6b3d47af7e33ef1d071b50b7e260f2ffc0a606b1fb0d981bca0"
+  },
+  {
+    "path": "root-turbo-oracle.cjs",
+    "bytes": 3946,
+    "sha256": "1183d0a0c1e948602718694cfebafba0fc74fd572722dbdf02902531cb9846a8"
+  },
+  {
+    "path": "verify-downloaded-pdfs.py",
+    "bytes": 2411,
+    "sha256": "5e2948c6f8cf3050073cd47a819204fd183e069324761edba11ea87ef19ab077"
+  }
+]

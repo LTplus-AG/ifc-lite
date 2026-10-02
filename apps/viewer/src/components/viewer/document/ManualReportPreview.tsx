@@ -10,7 +10,7 @@
  */
 
 import { blockTitle } from '@/lib/document/block-title';
-import { reportScopeText } from '@/lib/document/report-provenance';
+import { manualReportStamp } from '@/lib/document/manual-report';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { ManualReportBlock } from '@/lib/document/manual-report-types';
 import { ManualValidationLegend, ManualValidationRing, VerdictIcon } from '../validation/ManualValidationRing';
@@ -31,16 +31,19 @@ export function ManualReportPreview({ block }: { block: ManualReportBlock }) {
   const ink = 'fill-neutral-900';
   const benchmarks = block.benchmarks !== false;
   const detailed = block.variant !== 'compact';
+  const stamp = manualReportStamp(block);
 
   return (
     <div data-block-manual-report>
       <div className="truncate text-sm font-semibold" title={heading}>{heading}</div>
-      <div className={`text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>
-        {block.modelName
-          ? t('manualValidation.report.recordedAtModel', { model: block.modelName, timestamp: block.generatedAt })
-          : t('manualValidation.report.recordedAt', { timestamp: block.generatedAt })}
-      </div>
-      {reportScopeText(block) && <div className="text-2xs text-neutral-600" data-report-model-scope>{t('validationPanel.history.models', { models: reportScopeText(block) })}</div>}
+      {stamp && <>
+        <div className={`text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>
+          {stamp.modelName
+            ? t('manualValidation.report.recordedAtModel', { model: stamp.modelName, timestamp: stamp.generatedAt })
+            : t('manualValidation.report.recordedAt', { timestamp: stamp.generatedAt })}
+        </div>
+        {stamp.models && <div className="text-2xs text-neutral-600" data-report-model-scope>{t('validationPanel.history.models', { models: stamp.models })}</div>}
+      </>}
       {benchmarks && <div className="mt-1 flex items-center gap-3 rounded border border-neutral-200 bg-neutral-50 px-2 py-1.5" data-manual-report-benchmarks>
         <ManualValidationRing counts={block.summary} name={t('manualValidation.overall')} size={56} textClassName={ink} />
         <div className="min-w-0 flex-1">

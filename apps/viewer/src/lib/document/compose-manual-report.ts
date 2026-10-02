@@ -17,7 +17,7 @@
 import { blockTitle } from './block-title.js';
 import { resolveEnglish } from '@/i18n/registry';
 import type { DocumentLabelFormatter } from './document-labels.js';
-import { reportScopeText } from './report-provenance.js';
+import { manualReportStamp } from './manual-report.js';
 import { layoutReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, wrappedReportProvenance, type WrapLines } from './compose-report-provenance.js';
 import type { LayoutCursor, TextDrawnItem } from './compose-table.js';
 import type { ManualReportBlock, ManualReportCounts, ManualReportItem } from './manual-report-types.js';
@@ -67,18 +67,22 @@ export function layoutManualReport(
   const groupHeaderHeight = benchmarks ? GROUP_HEADER_HEIGHT : META_HEIGHT;
 
   // Heading, meta line and the overall ring move together.
-  const scope = reportScopeText(block);
+  const stamp = manualReportStamp(block);
+  const stampHeight = stamp ? META_HEIGHT : 0;
+  const scope = stamp?.models;
   const scopeLines = wrappedReportProvenance(scope ? t('validationPanel.history.models', { models: scope }) : '', contentW, wrap);
   const firstItem = block.groups[0]?.items[0];
   const keepAfter = benchmarks ? OVERALL_RING + 10 + (block.groups.length === 0 ? META_HEIGHT : 0)
     : block.groups.length ? groupHeaderHeight + (firstItem ? itemLines(firstItem, itemW, wrap, detailed, t).height : LINE + 5) : META_HEIGHT;
-  cursor.ensure(Math.min(TITLE_HEIGHT + META_HEIGHT + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter, cursor.bottom - cursor.top));
+  cursor.ensure(Math.min(TITLE_HEIGHT + stampHeight + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter, cursor.bottom - cursor.top));
   const title = blockTitle(block, t('manualValidation.report.heading', { name: block.checklistName.trim() || t('manualValidation.name.placeholder') }));
   text({ x: cursor.x, y: cursor.y + 11, size: 11, bold: true, gray: 0, text: cursor.truncate(title, contentW, 11, true) });
   cursor.y += TITLE_HEIGHT;
-  const meta = block.modelName ? t('manualValidation.report.recordedAtModel', { model: block.modelName, timestamp: block.generatedAt }) : t('manualValidation.report.recordedAt', { timestamp: block.generatedAt });
-  text({ x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130, text: cursor.truncate(meta, contentW, 8, false) });
-  cursor.y += META_HEIGHT;
+  if (stamp) {
+    const meta = stamp.modelName ? t('manualValidation.report.recordedAtModel', { model: stamp.modelName, timestamp: stamp.generatedAt }) : t('manualValidation.report.recordedAt', { timestamp: stamp.generatedAt });
+    text({ x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130, text: cursor.truncate(meta, contentW, 8, false) });
+    cursor.y += stampHeight;
+  }
   layoutReportProvenance(scopeLines, cursor, keepAfter);
 
   if (benchmarks) {

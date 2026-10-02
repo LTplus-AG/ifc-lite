@@ -1,0 +1,302 @@
+{
+  "source": "9a3999de5742c7f7e92721cdb61419bccd8f110e",
+  "actualMain": "3474bb6e8be907d6bd1fa58652addf5728bfdee7",
+  "acceptedOldSource": "972b37b1aef5ad4b0c3e7553d117dab30dbd264d",
+  "baseline": "ceea1f615aeb3624155ff07d7dfd81bd42281f6d",
+  "base": "768c46262180cd06d0d46f8b5ba67f77713f4012",
+  "integration": {
+    "base": "768c46262180cd06d0d46f8b5ba67f77713f4012",
+    "acceptedFeature": "972b37b1aef5ad4b0c3e7553d117dab30dbd264d",
+    "actualMain": "3474bb6e8be907d6bd1fa58652addf5728bfdee7",
+    "head": "9a3999de5742c7f7e92721cdb61419bccd8f110e",
+    "featurePaths": 11,
+    "incomingPaths": 17,
+    "overlap": [],
+    "featureByteExact": true,
+    "incomingByteExact": true,
+    "featurePatchExact": true,
+    "featurePatchSha256": "bc457d0f4275bf405cce55d8fdfad4212d5c5eafd92633f8f4511f30f5f313c3"
+  },
+  "oracle": {
+    "base": "768c46262180cd06d0d46f8b5ba67f77713f4012",
+    "head": "972b37b1aef5ad4b0c3e7553d117dab30dbd264d",
+    "runner": "Actual root pnpm test with normal Turbo build dependencies, explicit singleton shard environment; no package-local test bypass",
+    "production": [
+      "apps/viewer/src/components/viewer/document/ManualReportBlockEditor.tsx",
+      "apps/viewer/src/components/viewer/document/ManualReportPreview.tsx",
+      "apps/viewer/src/components/viewer/document/SavedReportSource.tsx",
+      "apps/viewer/src/i18n/catalogues/manual-validation.en.ts",
+      "apps/viewer/src/lib/document/compose-manual-report.ts",
+      "apps/viewer/src/lib/document/manual-report-types.ts",
+      "apps/viewer/src/lib/document/manual-report.ts"
+    ],
+    "green": [
+      {
+        "name": "layout",
+        "shard": 100883,
+        "log": "/tmp/6566-session6503/stamp-root-turbo-oracle-green-layout.log",
+        "exitCode": 0,
+        "signal": null,
+        "expectedTests": 24,
+        "tests": 24,
+        "pass": 24,
+        "fail": 0,
+        "skipped": 0,
+        "assertionFailurePresent": false,
+        "loadFailurePresent": false
+      },
+      {
+        "name": "mounted",
+        "shard": 295745,
+        "log": "/tmp/6566-session6503/stamp-root-turbo-oracle-green-mounted.log",
+        "exitCode": 0,
+        "signal": null,
+        "expectedTests": 8,
+        "tests": 8,
+        "pass": 8,
+        "fail": 0,
+        "skipped": 0,
+        "assertionFailurePresent": false,
+        "loadFailurePresent": false
+      }
+    ],
+    "reverted": [
+      {
+        "name": "layout",
+        "shard": 100883,
+        "log": "/tmp/6566-session6503/stamp-root-turbo-oracle-reverted-layout.log",
+        "exitCode": 1,
+        "signal": null,
+        "expectedTests": 24,
+        "tests": 24,
+        "pass": 19,
+        "fail": 5,
+        "skipped": 0,
+        "assertionFailurePresent": true,
+        "loadFailurePresent": false
+      },
+      {
+        "name": "mounted",
+        "shard": 295745,
+        "log": "/tmp/6566-session6503/stamp-root-turbo-oracle-reverted-mounted.log",
+        "exitCode": 1,
+        "signal": null,
+        "expectedTests": 8,
+        "tests": 8,
+        "pass": 6,
+        "fail": 2,
+        "skipped": 0,
+        "assertionFailurePresent": true,
+        "loadFailurePresent": false
+      }
+    ],
+    "restoredBytes": true,
+    "restored": [
+      {
+        "name": "layout",
+        "shard": 100883,
+        "log": "/tmp/6566-session6503/stamp-root-turbo-oracle-restored-layout.log",
+        "exitCode": 0,
+        "signal": null,
+        "expectedTests": 24,
+        "tests": 24,
+        "pass": 24,
+        "fail": 0,
+        "skipped": 0,
+        "assertionFailurePresent": false,
+        "loadFailurePresent": false
+      },
+      {
+        "name": "mounted",
+        "shard": 295745,
+        "log": "/tmp/6566-session6503/stamp-root-turbo-oracle-restored-mounted.log",
+        "exitCode": 0,
+        "signal": null,
+        "expectedTests": 8,
+        "tests": 8,
+        "pass": 8,
+        "fail": 0,
+        "skipped": 0,
+        "assertionFailurePresent": false,
+        "loadFailurePresent": false
+      }
+    ],
+    "clean": true
+  },
+  "qualification": {
+    "baselineNormalRootTurbo": {
+      "pass": 25,
+      "assertionFail": 7,
+      "skip": 0,
+      "buildTasksPassedEach": 49
+    },
+    "currentMainNormalRootTurbo": {
+      "pass": 32,
+      "fail": 0,
+      "skip": 0,
+      "testFiles": 2,
+      "newRegressionCases": 7,
+      "tasksEach": 50
+    },
+    "currentMainFullBuild": {
+      "tasksPassed": 61,
+      "cached": 60
+    },
+    "currentMainPlainRootTypecheck": {
+      "tasksPassed": 109,
+      "testFilesChecked": 3243
+    },
+    "currentMainApi": {
+      "packages": 51,
+      "surfaces": 82,
+      "exports": 9169
+    },
+    "rootLint": {
+      "source": "972b37b1aef5ad4b0c3e7553d117dab30dbd264d",
+      "files": 8122,
+      "errors": 0,
+      "touchedFileWarnings": 0,
+      "scope": "Prior qualified feature source;11feature paths byteexact in current integration;17incoming paths independently qualified in merged6646. Fresh PR sourceCI required."
+    },
+    "docsSamples": {
+      "compiled": 428,
+      "docs": 100,
+      "explicitSkippedSnippets": 12
+    },
+    "strictDocs": "PASS on prior qualified972; current integration adds only accepted incoming mutations guide"
+  },
+  "changesetCli": {
+    "sourceHead": "972b37b1aef5ad4b0c3e7553d117dab30dbd264d",
+    "CLI": "pnpm changeset (Changesets3.0.3)",
+    "session": 45259,
+    "exitCode": 0,
+    "package": "@ifc-lite/viewer",
+    "bump": "minor",
+    "generatedPath": ".changeset/some-experts-move.md",
+    "preparedChangesetApplied": false,
+    "canceledAttempt": {
+      "session": 89073,
+      "written": false,
+      "reason": "Canceled wrong package selection before writing; not qualification"
+    }
+  },
+  "logs": [
+    {
+      "path": "/tmp/6566-session6503/baseline-manual-report-normal-red.log",
+      "sha256": "72a169c6744fbcf778140591e742fb8f90f8c9cc2d81fd8a34f285134d2fb79e"
+    },
+    {
+      "path": "/tmp/6566-session6503/baseline-mounted-normal-red.log",
+      "sha256": "25f449d94cd637292a239575d6409f69413c650879ef4b63ebb25bdae8f230f3"
+    },
+    {
+      "path": "/tmp/6566-session6503/fix-root-typecheck.log",
+      "sha256": "3ea580b73f536e9732fe2adb84a8ce5f5f96f2eaf3745739a5e3141aa753e0d6"
+    },
+    {
+      "path": "/tmp/6566-session6503/fix-root-build.log",
+      "sha256": "3ddf300466c58517d1fe36b99549b3f4468ca3871f9c126334d39b9cceec41ba"
+    },
+    {
+      "path": "/tmp/6566-session6503/fix-root-lint.log",
+      "sha256": "9e1051c79ec5d04f1beb7bccca8b88689bc40040c1c83bef359cf167284210b5"
+    },
+    {
+      "path": "/tmp/6566-session6503/fix-api.log",
+      "sha256": "45682de9401710256299161ec39a932c2aa75294ebcbb924160e797a6f1b46d1"
+    },
+    {
+      "path": "/tmp/6566-session6503/fix-docs-samples.log",
+      "sha256": "fd2cd0e16fc67c0ec0d3d38df9560ce4e9b1f4023b0a626e028986060b83b644"
+    },
+    {
+      "path": "/tmp/6566-session6503/fix-docs-strict.log",
+      "sha256": "727e5dba28694177195e02d56f15f04959634032ecd0a8fd4b088d3218ec23c6"
+    },
+    {
+      "path": "/tmp/6566-session6503/fix-docs-generated.log",
+      "sha256": "ddfe951e821b4e1ad4524477a5812a7ec33867d254c73ed0a979563de27d6554"
+    },
+    {
+      "path": "/tmp/6566-session6503/fix-docs-readmes.log",
+      "sha256": "3c6a9a484e79525ad732acba40c027e9933274583a3584b89c90ada8227bd46c"
+    },
+    {
+      "path": "/tmp/6566-session6503/main-root-build.log",
+      "sha256": "70a9dbc615538551ca2906a2dfc1bc2e5bbdd03add1926e839ebba58252108c6"
+    },
+    {
+      "path": "/tmp/6566-session6503/main-root-typecheck.log",
+      "sha256": "36f4396e35c6450875167ffe9a01b615e42c807623dfd9f76b8e2a8696cacc3d"
+    },
+    {
+      "path": "/tmp/6566-session6503/main-layout-green.log",
+      "sha256": "9cf094c44c2246f9666a489b536e1925ef0a8c5f87bb3df129d32cfde4787570"
+    },
+    {
+      "path": "/tmp/6566-session6503/main-mounted-green.log",
+      "sha256": "3b45b8a655742b0d1ca74add203933263b6e257420385c43a75182426b48475b"
+    },
+    {
+      "path": "/tmp/6566-session6503/main-api.log",
+      "sha256": "c57861de162d39d7db1a1023a3171bc70a7bcf0625f045f43562c86fe8177b3a"
+    },
+    {
+      "path": "/tmp/6566-session6503/main-docs-samples.log",
+      "sha256": "db7a0c1a30df58eb58357ff027cdc8073825268b8e50be2d4bde63b8b7e2e0e6"
+    },
+    {
+      "path": "/tmp/6566-session6503/main-mpl.log",
+      "sha256": "80f80bdeafadd7411f87c9f43826f231cd3e0a6a4774e16f3bcc2ca439243858"
+    },
+    {
+      "path": "/tmp/6566-session6503/main-module.log",
+      "sha256": "1cf305cd883351d0e8a380d340e4c815ea6b13aaeb58f478c5219d6f1fd95662"
+    },
+    {
+      "path": "/tmp/6566-session6503/main-wiring.log",
+      "sha256": "dd879f3c9f2a4500cbcf7a04a6d608bca9339beef25e311acb6e358ea6de3eb8"
+    },
+    {
+      "path": "/tmp/6566-session6503/main-source-assertions.log",
+      "sha256": "280ffe341c74d12fa67db43e1e90626d7b0c9b9449ce975e9fb59192c1bcdf4a"
+    },
+    {
+      "path": "/tmp/6566-session6503/main-changesets.log",
+      "sha256": "cb4bec1337b8d913676e656b10cd52d2beedc7e69e5cdd052d8b42b36fb25753"
+    }
+  ],
+  "limits": [
+    "Browser proof captured separately on qualified current-main source9a; see browserEvidence.",
+    "Focused local viewer shards; does not claim full viewer/E2E coverage. All ordinary source CI required before merge.",
+    "Initial systempython docs attempt lacked mkdocs; successful strict build used existing owned docs environment."
+  ],
+  "runtime": {
+    "rustTree": "14b997e32f528eb3a916b6c320c9cebb901bafbe",
+    "pkgSha256": "039415545e2448ce8b1e40b14306524ee60cff29dabd97448080ac0d9e170610",
+    "sourceChange": "TypeScript document presentation only; no engine behavior/performance claim."
+  },
+  "qualificationSnapshotSha256": "282072f8346c81c27089023b6847c0a5e4419d37e02ba856ade81be174b8ffd7",
+  "browserEvidence": {
+    "source": "9a3999de5742c7f7e92721cdb61419bccd8f110e",
+    "facts": "facts.json",
+    "downloadedPdfCheck": "downloaded-pdf-observations.json",
+    "states": 8,
+    "completedPdfDownloads": 6,
+    "models": [
+      444,
+      474
+    ],
+    "runtime": "039415545e2448ce8b1e40b14306524ee60cff29dabd97448080ac0d9e170610",
+    "limits": "Software WebGPU document/data proof; existing fragment shader error and EPSG32760 federation-alignment toast retained. No 3D or performance claim."
+  },
+  "excludedAttempts": [
+    {
+      "path": "/tmp/6566-session6503/browser-proof-9a",
+      "reason": "Full proof stopped on harness assumption that template import keeps block identity; canonical import allocates fresh UUID and JSON omits undefined fields. Fixed assertion compares all persisted evidence except intentional new identity; fresh profile v2 completed."
+    },
+    {
+      "attempt": "Initial systempython mkdocs command exited1: No module named mkdocs. The successful final fix-docs-strict.log is the rerun through the existing owned docs environment, not a retained failed-attempt log."
+    }
+  ]
+}

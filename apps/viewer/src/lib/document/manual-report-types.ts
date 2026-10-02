@@ -56,6 +56,8 @@ export interface ManualReportBlock extends ReportProvenance, BlockTitle {
   variant?: 'long' | 'compact';
   /** Missing on older documents: display their existing rings and scores. */
   benchmarks?: boolean;
+  /** Missing on older documents: show their model/recording stamp. Evidence stays saved when hidden. */
+  showStamp?: boolean;
   /** The model the answers were recorded against, when there was one (display only). */
   modelName?: string;
   /**
@@ -91,6 +93,7 @@ export function validateManualReportBlock(block: Record<string, unknown>, at: st
   if (block.checklistId !== undefined && !(isString(block.checklistId) && block.checklistId.trim())) errors.push({ path: `${at}.checklistId`, message: 'expected a nonblank string' });
   if (block.variant !== undefined && block.variant !== 'long' && block.variant !== 'compact') errors.push({ path: `${at}.variant`, message: 'expected long or compact' });
   if (block.benchmarks !== undefined && typeof block.benchmarks !== 'boolean') errors.push({ path: `${at}.benchmarks`, message: 'expected a boolean' });
+  if (block.showStamp !== undefined && typeof block.showStamp !== 'boolean') errors.push({ path: `${at}.showStamp`, message: 'expected a boolean' });
   if (block.modelName !== undefined && !isString(block.modelName)) errors.push({ path: `${at}.modelName`, message: 'expected a string' });
   if (block.modelFingerprint !== undefined && !(isString(block.modelFingerprint) && block.modelFingerprint.length > 0)) {
     errors.push({ path: `${at}.modelFingerprint`, message: 'expected a non-empty string' });

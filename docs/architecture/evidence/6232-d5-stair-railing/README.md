@@ -1,6 +1,6 @@
 # D5 stair/railing and atomic replacement evidence (#6232)
 
-`qualification.json.gz` contains a JSON record and 34 retained log/result/patch
+`qualification.json.gz` contains a JSON record and 38 retained log/result/patch
 payloads, each with its byte count and SHA-256. Decode `contentBase64` to recover
 the original bytes. The committed public Bonsai `hello-wall.ifc` fixture's
 header, byte count and hash identify the real authoring-tool input.
@@ -10,6 +10,8 @@ The qualified source is `83b386205b52ac649d291ace76c06b6333259b65`, based on
 `2323207641c8858426faa029ed024ff28ae6685e`; all 30 feature and 103 incoming
 paths are disjoint and retain their exact blobs. This source union needs fresh
 CI/runtime qualification before readiness; interactive browser proof is pending.
+The deletion-channel gate inventory now names the extracted mesh-stash helper;
+the unchanged single-deleted-ID exemption passes the real gate and 63 gate tests.
 
 Actual runs: 62 build tasks, 111 typecheck tasks and all 3,311 test sources;
 52 CLI cases; 1,396 create cases plus 13 explicit optional fixture skips;

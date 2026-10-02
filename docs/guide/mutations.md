@@ -660,6 +660,35 @@ The detector also picks up overlay walls (placed via `addWallToStore` since the 
 
 In the viewer, **Room → More** keeps the minimum area, name pattern, and schema-specific space classification alongside read-only candidate totals. `addSpaceToStore` validates the classification before writing: IFC2X3 uses `InteriorOrExteriorSpace`, IFC4 and IFC4X3 use `PredefinedType`, and `USERDEFINED` needs an `ObjectType`. An `EXTERNAL` space sets `Pset_SpaceCommon.IsExternal` to true.
 
+The TypeScript SDK also exposes `bim.store.addStair(modelId, storeyId, params)`
+and `addRailing(modelId, storeyId, params)` using the existing `StairInStoreParams`
+and `RailingInStoreParams`. Dimensions are storey-local metres; the canonical
+builders emit each target schema's attributes and native units. CLI and loaded
+MCP backends require a readable live storey placement. The viewer preserves its
+existing placement preparation and records/remeshes the same graph as its
+Stair and Railing tools.
+
+`bim.store.removeStair(ref)` delegates to `removeStairInStore(dataStore, editor,
+stairId)`. It removes only a uniquely aggregated parent and single flight in
+one atomic edit. Ambiguous/shared flights, incoming references from another
+product, or unreadable live candidate records refuse before writing. Shared
+shape, style, material and placement leaves remain; generic `removeEntity`
+still removes one record. The viewer stashes/prunes the flight mesh and tree
+row, then restores them with one Undo; Redo removes the pair again. Loaded MCP
+records the pair as one public `mutation_undo` operation. These backend
+capabilities are optional, so third-party backends can omit them and receive an
+explicit unsupported-capability error. This slice does not register new QuickJS
+bridge methods or a public MCP Redo tool.
+
+`bim.store.replaceElement(ref, storeyId, element)` is another optional backend
+capability. It accepts the existing eight ordinary builder kinds plus `stair`
+and `railing`, with their canonical params. Removal and creation share one
+atomic draft; a late builder, placement or ownership refusal leaves the old
+products, prior overlay, journal and allocator intact. The viewer completes
+mesh/tree changes after commit and records one Undo/Redo batch; loaded MCP
+records one public Undo operation. `model.addElement` uses this capability for
+tracked updates and preserves the previous tracking entry on failure.
+
 ### `bim.store.*` — Scripting & SDK
 
 The viewer's QuickJS sandbox and the TypeScript SDK expose the core mutation surface as `bim.store`:

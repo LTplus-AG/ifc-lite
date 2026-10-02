@@ -36,6 +36,13 @@ import {
   type HostedWindowInStoreParams,
   type OpeningInStoreParams,
   type WallJoinApplyOptions,
+  addStairToStore,
+  addRailingToStore,
+  resolveSpatialAnchor,
+  type StairInStoreParams,
+  type RailingInStoreParams,
+  removeStairInStore,
+  replaceElementInStore,
 } from '@ifc-lite/create';
 import type { CostStoreModelResolution } from './cost-store-backend.js';
 import type { ModellingStoreBackendMethods } from './store-modelling-types.js';
@@ -66,6 +73,31 @@ export function createModellingStoreBackend(resolve: ModellingStoreModelResolver
   };
 
   return {
+    replaceElement(entity, storeyExpressId, element) {
+      const model = resolve(entity.modelId);
+      const built = replaceElementInStore(model.store, model.editor, entity.expressId,
+        draft => resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), element);
+      return ref(model.modelId, built.expressId);
+    },
+    removeStair(entity: EntityRef): boolean {
+      const model = resolve(entity.modelId);
+      removeStairInStore(model.store, model.editor, entity.expressId);
+      return true;
+    },
+    addStair(modelId: string, storeyExpressId: number, params: StairInStoreParams): EntityRef {
+      const model = resolve(modelId);
+      const built = model.editor.runAtomic(draft => addStairToStore(
+        draft, resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), params,
+      ));
+      return ref(model.modelId, built.stairId);
+    },
+    addRailing(modelId: string, storeyExpressId: number, params: RailingInStoreParams): EntityRef {
+      const model = resolve(modelId);
+      const built = model.editor.runAtomic(draft => addRailingToStore(
+        draft, resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), params,
+      ));
+      return ref(model.modelId, built.railingId);
+    },
     joinWalls(modelId: string, aExpressId: number, bExpressId: number, options: WallJoinApplyOptions = {}): EntityRef {
       const model = resolve(modelId);
       const joined = model.editor.runAtomic(draft => joinWallsInStore(

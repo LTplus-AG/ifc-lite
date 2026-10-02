@@ -100,8 +100,22 @@ export function loadDemoProject(): Promise<void> {
  */
 export async function ensureTourModel(): Promise<void> {
   const s = getViewerStoreApi().getState();
-  if (s.models.size === 0 && !s.loading) await loadDemoProject();
+  if (isViewerEmpty(s)) await loadDemoProject();
+  // A legacy single-model store is loaded without a `models` entry, which
+  // `waitForModelSettled` would wait on forever.
+  else if (s.models.size === 0 && !s.loading) return;
   await waitForModelSettled();
+}
+
+/**
+ * Nothing loaded and nothing loading: the one definition of an empty viewer
+ * that the tour's demo fallback, its "Skip (use demo)" label and the
+ * panels' no-model state share (#6720). A legacy single-model store
+ * (`ifcDataStore` without a `models` entry) counts as loaded, so the demo
+ * never replaces it.
+ */
+export function isViewerEmpty(s: Pick<ViewerState, 'models' | 'ifcDataStore' | 'loading'>): boolean {
+  return s.models.size === 0 && !s.ifcDataStore && !s.loading;
 }
 
 /**

@@ -117,6 +117,14 @@ describe('ensureTourModel: welcome steps after a skipped load (#6720)', () => {
     assert.equal(useViewerStore.getState().models.size, 1);
   });
 
+  it('never swaps out a legacy single-model store either, and does not wait on it', async () => {
+    useViewerStore.setState({ models: new Map(), ifcDataStore: fixtureModel('legacy').ifcDataStore, loading: false, geometryStreamingActive: false });
+    let fetched = 0;
+    globalThis.fetch = (async () => { fetched += 1; return new Response(''); }) as typeof fetch;
+    await ensureTourModel();
+    assert.equal(fetched, 0);
+  });
+
   it('never swaps out a model that is already loaded', async () => {
     seedLoaded(loadedModel(0, []));
     let fetched = 0;

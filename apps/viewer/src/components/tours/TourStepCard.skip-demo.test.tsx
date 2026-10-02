@@ -26,7 +26,7 @@ const buttons = (root: HTMLElement) => [...root.querySelectorAll('button')].map(
 
 describe('welcome tour load step Skip label (#6720)', () => {
   it('reads "Skip (use demo)" on an empty viewer, and plain "Skip step" once a model is there', () => {
-    useViewerStore.setState({ models: new Map(), loading: false });
+    useViewerStore.setState({ models: new Map(), ifcDataStore: null, loading: false });
     const tour = getTour('welcome')!;
     const load = tour.steps.find((s) => s.id === 'load')!;
     const root = render(<TourStepCard tour={tour} step={load} stepIndex={0} targetEl={null} />);
@@ -34,6 +34,14 @@ describe('welcome tour load step Skip label (#6720)', () => {
     act(() => { useViewerStore.setState({ ...fixtureModels(fixtureModel('m')) }); });
     assert.ok(buttons(root).includes('Skip step'));
     assert.ok(!buttons(root).includes('Skip (use demo)'));
+  });
+
+  it('a legacy single-model store counts as loaded (one definition of "empty" with the tour and the panels)', () => {
+    useViewerStore.setState({ models: new Map(), ifcDataStore: fixtureModel('legacy').ifcDataStore, loading: false });
+    const tour = getTour('welcome')!;
+    const load = tour.steps.find((s) => s.id === 'load')!;
+    const root = render(<TourStepCard tour={tour} step={load} stepIndex={0} targetEl={null} />);
+    assert.ok(buttons(root).includes('Skip step'));
   });
 
   it('never relabels a step that does not load the demo when skipped', () => {

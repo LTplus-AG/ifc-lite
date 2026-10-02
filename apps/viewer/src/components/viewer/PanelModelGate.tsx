@@ -36,14 +36,14 @@ import { toast } from '@/components/ui/toast';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { trackUiEvent } from '@/lib/analytics';
 import { getPanelDef, panelTitleKey, type PanelModelGateMode, type WorkspacePanelId } from '@/lib/panels/registry';
-import { loadDemoProject } from '@/lib/tours/demo-kit';
+import { isViewerEmpty, loadDemoProject } from '@/lib/tours/demo-kit';
 import { useViewerStore } from '@/store';
 
 /** No model at all: nothing loaded, nothing loading. A load in flight
  *  registers its placeholder model first, so the panel's own loading state
  *  takes over from there. */
 export function useHasNoModel(): boolean {
-  return useViewerStore((s) => s.models.size === 0 && !s.ifcDataStore && !s.loading);
+  return useViewerStore(isViewerEmpty);
 }
 
 /** What each panel is for, in one line; the header already names it. */

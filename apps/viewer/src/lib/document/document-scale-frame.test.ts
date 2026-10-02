@@ -25,7 +25,6 @@ const rowFitsFrame = composeExports.rowFitsFrame ?? ((): boolean => false);
 type Page = { size: 'A4' | 'A3'; orientation: 'portrait' | 'landscape' };
 const PAGES: Page[] = [{ size: 'A4', orientation: 'portrait' }, { size: 'A4', orientation: 'landscape' }, { size: 'A3', orientation: 'portrait' }, { size: 'A3', orientation: 'landscape' }];
 const SCALES = [0.5, 1, 1.5, 2];
-const HEADER = 30;
 const FOOTER = 24;
 
 const compose = (blocks: ResolvedBlock[], page: Page): DocumentLayout => composeDocument({ name: 'Doc', page, generatedAt: 'now', measure: estimateTextWidth, blocks });

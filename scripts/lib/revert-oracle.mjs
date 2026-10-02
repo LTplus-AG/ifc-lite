@@ -86,7 +86,7 @@ export function classifyPath(path) {
 }
 
 /**
- * @param {Array<{status: string, path: string}>} entries from `git diff --name-status`
+ * @param {Array<{status: string, path: string, oldPath?: string}>} entries from `git diff --name-status`
  */
 export function classifyDiff(entries) {
   const production = [];
@@ -94,10 +94,10 @@ export function classifyDiff(entries) {
   const ignored = [];
   const inert = [];
   const warnings = [];
-  for (const { status, path } of entries) {
-    const kind = classifyPath(path);
+  for (const entry of entries) {
+    const kind = classifyPath(entry.path);
     const bucket = kind === 'production' ? production : kind === 'test' ? test : kind === 'inert' ? inert : ignored;
-    bucket.push({ status, path });
+    bucket.push(entry);
   }
   if (production.some((e) => isRustFile(e.path))) {
     warnings.push(
@@ -116,9 +116,9 @@ export function parseNameStatus(text) {
     if (!line.trim()) continue;
     const parts = line.split('\t');
     const status = parts[0];
-    // R100 old new / C075 old new -> the NEW path is the one on disk.
+    // Keep the old rename location for a complete inverse; copy sources stay.
     const path = parts.length >= 3 ? parts[2] : parts[1];
-    if (path) out.push({ status: status[0], path });
+    if (path) out.push({ status: status[0], path, ...(status[0] === 'R' ? { oldPath: parts[1] } : {}) });
   }
   return out;
 }

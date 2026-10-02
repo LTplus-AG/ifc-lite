@@ -28,6 +28,11 @@ export const manualValidationEn = {
   'manualValidation.save': 'Save .checklist.json',
   'manualValidation.close': 'Close checklist',
 
+  'manualValidation.reuse.editCopy': 'Edit a copy',
+  'manualValidation.reuse.noIdentity': 'This report has no recorded model identity. Its saved evidence is retained.',
+  'manualValidation.reuse.modelNotLoaded': 'Load the recorded model to edit these answers. The saved evidence is retained.',
+  'manualValidation.reuse.invalid': 'This saved report cannot be recovered as an editable checklist. Its saved evidence is retained.',
+
   'manualValidation.model.label': 'Model',
   'manualValidation.model.none': 'Load a model to record verdicts. Answers are stored per model.',
   'manualValidation.model.noIdentity': 'This model has no stable identity yet, so verdicts cannot be recorded for it.',

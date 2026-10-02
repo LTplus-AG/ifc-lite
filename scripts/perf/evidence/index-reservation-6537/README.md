@@ -67,9 +67,13 @@ the candidate and failed one actual assertion when production was restored;
 restoration was verified. Those results belong to its source and runtime,
 not this current-main successor.
 
-This successor has source-union review only. Its own build, WASM contracts,
-root typecheck, runtime tests, inverse and strict workspace Clippy remain
-pending. Completed source-matched public corpus/default-pool A/B, retained
+This successor passed the two Rust scanner regressions and strict
+`cargo clippy --workspace --all-targets -- -D warnings` on its current Rust tree.
+The [current-source receipt](current-source-qualification.json) records exact
+source attribution and log hashes. These correctness runs under host load are
+not performance measurements. Its own full build, WASM contracts, root
+typecheck, workspace runtime tests and inverse remain pending.
+Completed source-matched public corpus/default-pool A/B, retained
 output identities and an end-to-end verdict also remain pending. A draft PR
 may run those correctness gates remotely while measurement resources are
 busy; it must stay unmerged until the final source, review and performance

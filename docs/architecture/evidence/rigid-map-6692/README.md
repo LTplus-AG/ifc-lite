@@ -4,7 +4,8 @@ The opt-in rigid path changes original root LocalPlacement frames, retains child
 placement and representation identities, and neutralizes the map operation.
 It applies only at exactly unit physical scale. Other scaling uses the stricter
 mapped-Body path. This evidence covers source `c8e85def040308c1ce4d52000373e53536590b6c`;
-the subsequent unused-context regression and provenance move change no production code.
+the subsequent unused-context regression, provenance move and fixture-policy
+follow-ups change no production code.
 
 ## Independent source oracle
 
@@ -14,6 +15,12 @@ products retained GUIDs, placement IDs and representation IDs. Maximum frame
 coefficient errors were 5.82e-11 and 9.31e-10, respectively. The native fixture
 tests reproduce frame, source-record and selected physical surface invariants.
 They require `pnpm fixtures` and skip only when the catalogued fixture is absent.
+With `IFC_LITE_REQUIRE_FIXTURES=1`, all 19 current planner tests pass with
+fixtures present. An isolated missing-fixture check runs the actual product
+oracle: optional mode skips with the `pnpm fixtures` instruction; required mode
+fails (exit 101). Both scratch fixture links were restored. The shared fixture
+loader owns this policy; UTF-8 decoding failures remain explicit.
+
 [MiniBIM provenance and complete license](../georeferencer-mini-bim/README.md)
 accompany the unmodified public producer fixture; IFC bytes are not committed.
 

@@ -12,7 +12,7 @@ import { IdsReportPreview } from '../document/IdsReportPreview';
 import { ManualReportPreview } from '../document/ManualReportPreview';
 import { reportScopeText } from '@/lib/document/report-provenance';
 import { savedReportLabel } from '@/lib/validation/reports/history';
-import { manualReportReuse } from '@/lib/validation/manual/report-reuse';
+import { manualReportReuse } from '@/lib/validation/manual/manual-model';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 
 /** Historical evidence is reviewable with no loaded model. In particular,

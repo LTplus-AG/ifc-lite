@@ -18,8 +18,7 @@
 import type { StateCreator } from 'zustand';
 import type { FederatedModel } from '../types.js';
 import type { SavedValidationReport } from '@/lib/validation/reports/history';
-import { manualReportReuse } from '@/lib/validation/manual/report-reuse';
-import { manualModelOptions } from '@/lib/validation/manual/manual-model';
+import { manualReportReuse, manualModelOptions } from '@/lib/validation/manual/manual-model';
 import {
   MAX_ANSWER_COMMENT,
   blankChecklist,

@@ -12,6 +12,7 @@
 import type { FederatedModel } from '@/store';
 import type { ManualAnswerMap } from './checklist.js';
 import type { ManualAnswersByModel } from './persistence.js';
+export { manualReportReuse } from './report-reuse.js';
 
 export interface ManualModelOption {
   id: string;

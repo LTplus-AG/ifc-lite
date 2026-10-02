@@ -7,7 +7,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { manualReportBlockFromChecklist } from '@/lib/document/manual-report';
 import { newSavedReport } from '../reports/history.js';
-import { manualReportReuse } from './report-reuse.js';
+import * as manualModels from './manual-model.js';
+// The canonical pre-feature module still loads in the production-revert oracle.
+// Missing recovery must fail the real projection/refusal assertions below.
+const manualReportReuse = (...args: Parameters<typeof manualModels.manualReportReuse>) => manualModels.manualReportReuse?.(...args);
 import { pickManualModel } from './manual-model.js';
 import { saveManualLibrary, loadManualLibrary } from './persistence.js';
 import type { ChecklistTemplate } from './checklist.js';
@@ -31,7 +34,7 @@ describe('Saved report recovery invariants (#6611)', () => {
     const report = recorded();
     const original = JSON.stringify(report);
     const recovered = manualReportReuse(report.snapshot, models);
-    assert.ok(recovered.ok);
+    assert.ok(recovered?.ok);
     assert.equal(recovered.template.groups[0].items[0].description, 'Recorded guidance');
     assert.equal(recovered.answers['source-fingerprint']['__proto__'].status, 'warning');
     assert.equal(recovered.answers['source-fingerprint'].note.status, null);

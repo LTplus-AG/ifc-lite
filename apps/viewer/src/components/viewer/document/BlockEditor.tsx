@@ -22,7 +22,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import { CHART_FONT_SIZE } from '@ifc-lite/charts';
 import { readImageFile } from '@/lib/document/persistence';
 import type { BindingContext } from '@/lib/document/bindings';
-import { idsReportBlockFromReport } from '@/lib/document/ids-report';
+import { idsReportBlockFromReport, replaceIdsReportSnapshot } from '@/lib/document/ids-report';
 import { TAB_SIZE, tabEdit } from '@/lib/document/text-tabs';
 import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, reportBlockSourceKind, type DocumentBlock, type IdsReportBlock, type IdsReportVariant, type TextBlock, type TextFont } from '@/lib/document/types';
 import { BlockScaleEditor, ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
@@ -81,7 +81,7 @@ function ReportBlockSource({ block, report, onChange }: { block: IdsReportBlock;
         title={refreshable ? undefined : t(kind === 'rules' ? 'document.block.rulesReportRefreshDisabledTitle' : 'document.block.idsReportRefreshDisabledTitle')}
         onClick={() => {
           if (!report || report.source.kind !== kind) return;
-          onChange({ ...idsReportBlockFromReport(report, block.id, block.variant), title: block.title, benchmarks: block.benchmarks, scale: block.scale });
+          onChange(replaceIdsReportSnapshot(block, idsReportBlockFromReport(report, block.id, block.variant)));
           toast.success(t('document.block.idsReportRefreshed'));
         }}
       >
@@ -108,9 +108,19 @@ function ReportBlockPresentation({ block, onChange }: { block: IdsReportBlock; o
           <option value="long">{t('document.block.idsReportVariantLong')}</option>
         </select>
       </label>
+      {block.variant === 'compact' && (
+        <label className="inline-flex items-center gap-1 text-muted-foreground">
+          <input type="checkbox" checked={block.specificationsOnly === true} onChange={(event) => onChange({ ...block, specificationsOnly: event.target.checked || undefined })} />
+          {t('document.block.idsReportSpecificationsOnly')}
+        </label>
+      )}
       <label className="inline-flex items-center gap-1 text-muted-foreground">
         <input type="checkbox" checked={block.benchmarks === true} onChange={(event) => onChange({ ...block, benchmarks: event.target.checked })} />
         {t('manualValidation.report.benchmarks')}
+      </label>
+      <label className="inline-flex items-center gap-1 text-muted-foreground">
+        <input type="checkbox" checked={block.showStamp !== false} onChange={(event) => onChange({ ...block, showStamp: event.target.checked })} />
+        {t('manualValidation.report.showStamp')}
       </label>
     </>
   );

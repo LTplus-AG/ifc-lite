@@ -9,8 +9,9 @@
  * component, so the preview, the panel and the PDF share one geometry.
  */
 
+import { BlockHeading } from './BlockHeading';
 import { blockTitle } from '@/lib/document/block-title';
-import { manualReportStamp } from '@/lib/document/manual-report';
+import { reportStamp } from '@/lib/document/report-provenance';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { ManualReportBlock } from '@/lib/document/manual-report-types';
 import { ManualValidationLegend, ManualValidationRing, VerdictIcon } from '../validation/ManualValidationRing';
@@ -23,7 +24,8 @@ const VERDICT_LABEL: Record<'pass' | 'fail' | 'warning' | 'unanswered', Translat
   unanswered: 'manualValidation.verdict.unanswered',
 };
 
-export function ManualReportPreview({ block }: { block: ManualReportBlock }) {
+/** `pointScale`: browser pixels per point of the sheet, for an authored heading size. */
+export function ManualReportPreview({ block, pointScale = 1 }: { block: ManualReportBlock; pointScale?: number }) {
   const { t } = useTranslation();
   const name = block.checklistName.trim() || t('manualValidation.name.placeholder');
   const heading = blockTitle(block, t('manualValidation.report.heading', { name }));
@@ -31,11 +33,11 @@ export function ManualReportPreview({ block }: { block: ManualReportBlock }) {
   const ink = 'fill-neutral-900';
   const benchmarks = block.benchmarks !== false;
   const detailed = block.variant !== 'compact';
-  const stamp = manualReportStamp(block);
+  const stamp = reportStamp(block);
 
   return (
     <div data-block-manual-report>
-      <div className="truncate text-sm font-semibold" title={heading}>{heading}</div>
+      <BlockHeading block={block} text={heading} pointScale={pointScale} className="truncate text-sm font-semibold" title={heading} />
       {stamp && <>
         <div className={`text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>
           {stamp.modelName

@@ -113,7 +113,8 @@
     "tailwind-merge": "^3.7.0",
     "tailwindcss": "^4.3.3",
     "three": "^0.186.1",
-    "zustand": "^5.0.15"
+    "zustand": "^5.0.15",
+    "@ifc-lite/semantic": "workspace:*"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
@@ -129,6 +130,7 @@
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.14.5",
     "jszip": "^3.10.2",
+    "oxigraph": "^0.5.11",
     "svgo": "^4.1.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",

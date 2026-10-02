@@ -16,11 +16,12 @@
  * rather than cut, `compact` is one row per check / requirement with a
  * coloured percent bar.
  */
-import { blockTitle } from './block-title.js';
+import { blockTitle, blockTitleStyle } from './block-title.js';
+import { blockTitleItems } from './compose-block-title.js';
 import { reportRingCounts } from '../validation/report-summary.js';
 import type { RingDrawnItem } from './compose-manual-report.js';
 import { passRateBand } from '@ifc-lite/ids';
-import { reportScopeText } from './report-provenance.js';
+import { reportStamp } from './report-provenance.js';
 import { layoutReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, wrappedReportProvenance } from './compose-report-provenance.js';
 import { reportBlockSourceKind, type IdsReportBlock, type IdsReportCardinality, type IdsReportCheckSummary } from './ids-report-types.js';
 import type { LayoutCursor } from './compose-table.js';
@@ -123,6 +124,7 @@ function emitLines(cursor: LayoutCursor, x: number, lines: Line[]): void {
 
 export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCursor, contentW: number, blockGap: number, wrap: IdsReportWrap | undefined, pushRing: (item: RingDrawnItem) => void): void {
   const compact = block.variant === 'compact';
+  const specificationsOnly = compact && block.specificationsOnly === true;
   const wrapLines = block.variant === 'long' && wrap !== undefined;
   /** A field's lines: cut to one line (original layout) or wrapped (long). */
   const fit = (text: string, width: number, size: number, bold: boolean, gray: number): Line[] =>
@@ -131,29 +133,34 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
 
   const title = idsReportTitle(block);
   const first = block.checks[0];
-  const firstChild = first ? childRows(first)[0] : undefined;
+  const firstChild = first && !specificationsOnly ? childRows(first)[0] : undefined;
   const firstRowHeight = compact ? COMPACT_ROW_HEIGHT : classicHeight(first?.longDescription);
   const firstChildHeight = firstChild ? (compact ? COMPACT_ROW_HEIGHT : classicHeight(firstChild.description)) : 0;
-  const scope = reportScopeText(block);
-  const scopeLines = wrappedReportProvenance(scope ? `Models: ${scope}` : '', contentW, wrap ?? ((text) => [text]));
+  // Stamp rows (#6678): the run time and the evaluated models, both off the block; hidden means neither is drawn nor reserved.
+  const stamp = reportStamp(block);
+  const stampHeight = stamp ? DATE_HEIGHT : 0;
+  const scopeLines = wrappedReportProvenance(stamp?.models ? `Models: ${stamp.models}` : '', contentW, wrap ?? ((text) => [text]));
   const keepAfter = firstRowHeight + firstChildHeight;
   const ringSize = 44;
   const summaryWidth = block.benchmarks ? contentW - ringSize - 12 : contentW;
   const summaryLines = block.benchmarks && wrap ? wrap(summaryLine(block.summary), summaryWidth, 9, false) : [cursor.truncate(summaryLine(block.summary), summaryWidth, 9, false)];
   const summaryHeight = block.benchmarks ? Math.max(ringSize + 6, summaryLines.length * 12 + 2) : SUMMARY_HEIGHT;
-  const lead = IDS_REPORT_TITLE_HEIGHT + summaryHeight + DATE_HEIGHT + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter;
+  const titleHeight = IDS_REPORT_TITLE_HEIGHT + blockTitleStyle(block).extra;
+  const lead = titleHeight + summaryHeight + stampHeight + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter;
   cursor.ensure(Math.min(lead, cursor.bottom - cursor.top));
-  cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 11, size: 11, bold: true, gray: 0, text: cursor.truncate(title, contentW, 11, true) });
-  cursor.y += IDS_REPORT_TITLE_HEIGHT;
+  cursor.push(...blockTitleItems(block, title, cursor.x, cursor.y, contentW, cursor.truncate));
+  cursor.y += titleHeight;
 
   if (block.benchmarks) pushRing({ kind: 'ring', x: cursor.x, y: cursor.y, size: ringSize, counts: reportRingCounts(block.summary) });
   summaryLines.forEach((text, i) => cursor.push({
     kind: 'text', x: cursor.x + (block.benchmarks ? ringSize + 12 : 0), y: cursor.y + 10 + i * 12, size: 9, bold: false, gray: 60, text,
   }));
   cursor.y += summaryHeight;
-  cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130,
-    text: cursor.truncate(`Validation run: ${block.generatedAt}`, contentW, 8, false) });
-  cursor.y += DATE_HEIGHT;
+  if (stamp) {
+    cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130,
+      text: cursor.truncate(`Validation run: ${stamp.generatedAt}`, contentW, 8, false) });
+    cursor.y += stampHeight;
+  }
   layoutReportProvenance(scopeLines, cursor, keepAfter);
 
   /** Compact row: name on the left, then the bar and `passed/checked · n%` (or plain detail text when there is no bar). */
@@ -187,7 +194,7 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
       // A check that could not be evaluated has no meaningful rate: print its error instead of a bar.
       const bar = check.error === undefined ? { passed: check.passed, checked: check.checked, rate: check.passRate } : undefined;
       compactRow(cursor.x, contentW, `${check.severity === 'warning' ? '(Warning) ' : ''}${check.shortDescription || check.id}`, 9, true, 0, bar, check.error === undefined ? undefined : checkCountsLine(check));
-      for (const row of children) compactRow(cursor.x + 10, contentW - 10, row.compactName ?? row.name, 8, false, 45, row.bar, row.detail);
+      if (!specificationsOnly) for (const row of children) compactRow(cursor.x + 10, contentW - 10, row.compactName ?? row.name, 8, false, 45, row.bar, row.detail);
       return;
     }
     const lines = fit(check.shortDescription || check.id, contentW, 9.5, true, 0);

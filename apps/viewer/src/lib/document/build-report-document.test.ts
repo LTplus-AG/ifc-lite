@@ -76,6 +76,14 @@ describe('report document preparation (#6612)', () => {
         assert.equal(block.variant, 'long'); assert.equal(block.benchmarks, false); assert.equal(block.title, 'Check detail');
       }
     }
+    const specsOnly = template();
+    const mapped = specsOnly.blocks[1];
+    if (mapped.kind === 'ids-report') { mapped.variant = 'compact'; mapped.specificationsOnly = true; mapped.scale = 1.5; }
+    const compactDoc = buildReportDocument({ template: specsOnly, results: results(), mappings: [{ blockId: 'mapped', jobId: 'ids' }] });
+    for (const block of compactDoc.blocks.slice(1)) {
+      assert.equal(block.kind === 'ids-report' && block.specificationsOnly, true, 'the authored specifications-only choice survives expansion (#6560)');
+      assert.equal(block.kind === 'ids-report' && block.scale, 1.5, 'the authored block size survives the same expansion (#6548)');
+    }
     assert.equal(source.blocks.length, 2);
     assert.equal(source.blocks[1].id, 'mapped');
     assert.notEqual(document.id, source.id);
@@ -89,6 +97,21 @@ describe('report document preparation (#6612)', () => {
     assert.equal(document.version, DOCUMENT_VERSION, 'the built document is saved at the current version');
     assert.deepEqual(document.blocks.slice(1).map((block) => block.kind === 'ids-report' && block.scale), [1.5, 1.5]);
     assert.deepEqual(validateDocumentSpec(document), []);
+  });
+  it('carries the stamp choice into workflow-built reports of both source kinds (#6678)', () => {
+    const stampOf = (document: DocumentSpec) => document.blocks.flatMap((block) => (block.kind === 'ids-report' ? [[block.sourceKind, 'showStamp' in block ? block.showStamp : 'absent']] : []));
+    const hiddenTemplate = template();
+    hiddenTemplate.blocks[1] = { ...hiddenTemplate.blocks[1], showStamp: false } as DocumentSpec['blocks'][number];
+    const mapped = buildReportDocument({ template: hiddenTemplate, results: results(), mappings: [{ blockId: 'mapped', jobId: 'ids' }] });
+    assert.deepEqual(stampOf(mapped), [['ids', false], ['ids', false]], 'the template block\'s choice reaches every expanded IDS block');
+    const rulesTemplate = template();
+    rulesTemplate.blocks[1] = { ...rulesTemplate.blocks[1], sourceKind: 'rules', showStamp: false } as DocumentSpec['blocks'][number];
+    const rules = buildReportDocument({ template: rulesTemplate, results: results(), mappings: [{ blockId: 'mapped', jobId: 'rules' }] });
+    assert.deepEqual(stampOf(rules), [['rules', false]], 'and to the information-validation block');
+    const frozenHidden: DocumentReportResult[] = [{ jobId: 'ids', resultId: 'a', kind: 'validation', snapshot: { ...snapshot('Model A'), showStamp: false } }];
+    assert.deepEqual(stampOf(buildReportDocument({ results: frozenHidden })), [['ids', false]], 'a snapshot saved with the stamp hidden stays hidden without a template');
+    assert.deepEqual(stampOf(buildReportDocument({ template: template(), results: results(), mappings: [{ blockId: 'mapped', jobId: 'ids' }] })), [['ids', 'absent'], ['ids', 'absent']], 'no choice anywhere stays absent: the stamp prints');
+    assert.deepEqual(validateDocumentSpec(mapped), []);
   });
   it('rejects unmapped evidence, unknown results and incompatible block mappings before export', () => {
     assert.throws(() => buildReportDocument({ template: template(), results: results() }), /requires a result mapping/);

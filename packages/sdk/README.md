@@ -80,3 +80,5 @@ Also exported: `BimHost` (viewer side), `RemoteBackend`, `MessagePortTransport`,
 ## License
 
 MPL-2.0
+
+Direct SDK property writes can supply an optional IFC datatype: `bim.mutate.setProperty(ref, "Pset_WallCommon", "ThermalTransmittance", 1, "IfcThermalTransmittanceMeasure")`. Declarations are schema-validated and retained through STEP export; omitted datatypes retain existing inference. See the [SDK guide](https://ifclite.dev/docs/guide/scripting-sdk/).

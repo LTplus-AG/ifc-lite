@@ -29,6 +29,7 @@ import {
 } from './camera-framing.js';
 import { presetViewTarget, resolvePresetBounds } from './camera-preset-view.js';
 import { applyImmediateCameraPose } from './camera-animation-immediate.js';
+import { inertiaStep } from './camera-inertia.js';
 
 /**
  * Manages camera animations: tweened transitions between positions,
@@ -101,9 +102,8 @@ export class CameraAnimator {
    * Update camera animation and inertia
    * Returns true if camera is still animating
    */
-  update(_deltaTime: number): boolean {
-    // deltaTime reserved for future physics-based animation smoothing
-    void _deltaTime;
+  update(deltaTime: number): boolean {
+    const step = inertiaStep(deltaTime, this.damping);
     let isAnimating = false;
 
     // Handle animation
@@ -190,10 +190,10 @@ export class CameraAnimator {
     // effects and zeroes that channel's velocity instead of letting it decay,
     // so it can't survive frozen ticks and jump once the mode lifts back.
     if (Math.abs(this.velocity.orbit.x) > this.minVelocity || Math.abs(this.velocity.orbit.y) > this.minVelocity) {
-      if (this.controls.orbit(this.velocity.orbit.x * 100, this.velocity.orbit.y * 100)) {
+      if (this.controls.orbit(this.velocity.orbit.x * 100 * step.travel, this.velocity.orbit.y * 100 * step.travel)) {
         this.resetPresetTracking();
-        this.velocity.orbit.x *= this.damping;
-        this.velocity.orbit.y *= this.damping;
+        this.velocity.orbit.x *= step.decay;
+        this.velocity.orbit.y *= step.decay;
         isAnimating = true;
       } else {
         this.velocity.orbit.x = 0;
@@ -202,9 +202,9 @@ export class CameraAnimator {
     }
 
     if (Math.abs(this.velocity.pan.x) > this.minVelocity || Math.abs(this.velocity.pan.y) > this.minVelocity) {
-      if (this.controls.pan(this.velocity.pan.x * 1000, this.velocity.pan.y * 1000)) {
-        this.velocity.pan.x *= this.damping;
-        this.velocity.pan.y *= this.damping;
+      if (this.controls.pan(this.velocity.pan.x * 1000 * step.travel, this.velocity.pan.y * 1000 * step.travel)) {
+        this.velocity.pan.x *= step.decay;
+        this.velocity.pan.y *= step.decay;
         isAnimating = true;
       } else {
         this.velocity.pan.x = 0;
@@ -213,8 +213,8 @@ export class CameraAnimator {
     }
 
     if (Math.abs(this.velocity.zoom) > this.minVelocity) {
-      if (this.controls.zoom(this.velocity.zoom * 1000)) {
-        this.velocity.zoom *= this.damping;
+      if (this.controls.zoom(this.velocity.zoom * 1000 * step.travel)) {
+        this.velocity.zoom *= step.decay;
         isAnimating = true;
       } else {
         this.velocity.zoom = 0;

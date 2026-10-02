@@ -22,6 +22,9 @@
 scripts/check-test-wiring.mjs .github/* # `.github` is a prefix fragment; the walk is `.github/workflows`, which the frontend filter now carries
 scripts/check-test-wiring.test.mjs .github/* # same fragment, in the harness that mutates a copy of the tree
 scripts/release-version-changed.test.mjs .github/* # same fragment; the gate reads .github/workflows/release.yml only
+scripts/release-version-changed.test.mjs AGENTS.md # synthetic .changeset filename under mkdtemp repo in addPending(); never reads repository AGENTS.md
+scripts/release-version-changed.test.mjs CLAUDE.md # synthetic .changeset filename under mkdtemp repo in addPending(); never reads repository CLAUDE.md
+scripts/release-version-changed.test.mjs README.md # synthetic .changeset filename under mkdtemp repo in addPending(); never reads repository README.md
 scripts/check-workflow-report-paths.mjs .github/* # `.github` is a conservative prefix fragment; the real audit input `.github/workflows/**` is carried by frontend
 scripts/check-workflow-report-paths.test.mjs .github/* # same prefix fragment, produced by the synthetic-tree harness
 scripts/lib/module-size-ratchet.test.mjs tests/* # `tests` fragment from a fixture path; the ratchet walks packages/ and apps/

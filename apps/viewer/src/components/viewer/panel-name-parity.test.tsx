@@ -69,6 +69,21 @@ describe('workspace panel name parity (#5858)', () => {
     cleanup();
   });
 
+  it('opens Linked records through its searchable palette command (#6643)', async () => {
+    setLocale('en');
+    useViewerStore.setState({ sidebarActivePanel: 'properties', sidebarHiddenIds: [], floatingPanels: [], poppedOutIds: [] });
+    render(<BimReactContext.Provider value={{} as BimContext}><CommandPalette open onOpenChange={() => {}} /></BimReactContext.Provider>);
+    const search = document.querySelector('input') as HTMLInputElement;
+    assert.ok(search);
+    typeInto(search, 'Linked records');
+    const linkedRecords = [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+      .find(option => option.textContent?.includes('Linked records'));
+    assert.ok(linkedRecords, 'Linked records is reachable through the command palette');
+    click(linkedRecords);
+    await advance(25);
+    assert.equal(useViewerStore.getState().sidebarActivePanel, 'semantic', 'the command opens the semantic workspace panel');
+  });
+
   it('renders the same localized validation name in the rail, ribbon and palette', () => {
     registerLocale('panel-name-parity-5858', { 'validationPanel.title': TITLE });
     setLocale('panel-name-parity-5858');

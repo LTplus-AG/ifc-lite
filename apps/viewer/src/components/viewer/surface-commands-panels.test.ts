@@ -14,7 +14,7 @@ import type { CommandPaletteBuildParams } from './commandPaletteCommandsTypes.js
 const PANEL_IDS = [
   'panel:script', 'panel:lists', 'panel:gantt', 'panel:charts', 'panel:flow',
   'panel:document', 'panel:drawing', 'panel:properties', 'panel:tree',
-  'panel:bcf', 'panel:ids', 'panel:clash', 'panel:compare', 'panel:changes', 'panel:model', 'panel:changeSets',
+  'panel:bcf', 'panel:ids', 'panel:clash', 'panel:compare', 'panel:changes', 'panel:model', 'panel:semantic', 'panel:changeSets',
   'panel:cost', 'panel:chat', 'panel:lens', 'panel:layers', 'panel:sources',
   'panel:zones', 'panel:loadReport', 'panel:pointclouds', 'panel:measurements',
   'panel:appearance', 'panel:collab', 'panel:extensions',

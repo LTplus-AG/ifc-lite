@@ -103,6 +103,31 @@ export async function revokeRoomToken(shareToken: string, adminBearer: string): 
 }
 
 /**
+ * Hand back a fresh room's claim after creating the room failed between the
+ * admin-token mint and the join (#6581), freeing its slot in the server's
+ * fresh-room allowance and revoking the tokens minted for it. The server
+ * refuses (409) once anyone has joined the room, so calling this for a room
+ * that did come up is harmless. Best effort: resolves false in local-only
+ * mode, against a server without the route (404), or on a network error.
+ */
+export async function releaseRoomClaim(roomId: string, adminToken: string): Promise<boolean> {
+  const serverUrl = collabServerUrl();
+  if (!serverUrl) return false;
+  try {
+    const res = await fetch(`${collabHttpBase(serverUrl)}/collab/release`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ roomId }),
+    });
+    return res.ok;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[collab] releasing the unused room claim failed:', err);
+    return false;
+  }
+}
+
+/**
  * Admin: force-disconnect a peer by its awareness clientId. Requires an admin
  * bearer token for the room. No-op (false) in local-only mode.
  */

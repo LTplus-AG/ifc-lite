@@ -417,7 +417,7 @@ export interface ViewerBackendMethods {
 }
 
 export interface MutateBackendMethods {
-  setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean): void;
+  setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean, dataType?: string): void;
   setAttribute(ref: EntityRef, attrName: string, value: string): void;
   deleteProperty(ref: EntityRef, psetName: string, propName: string): void;
   batchBegin(label: string): void;

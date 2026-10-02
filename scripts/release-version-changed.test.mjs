@@ -24,6 +24,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { versionChanged } from './release-version-changed.mjs';
+import { lateChangesets, pendingChangesets } from './check-release-late-changesets.mjs';
 
 const scriptPath = join(dirname(fileURLToPath(import.meta.url)), 'release-version-changed.mjs');
 
@@ -124,6 +125,71 @@ test('a brand-new workspace package opens the gate', (t) => {
     { 'package.json': '6.0.0', 'packages/core/package.json': '0.4.1', 'packages/brand-new/package.json': '0.1.0' }
   );
   assert.equal(versionChanged(repo).changed, true);
+});
+
+function addPending(repo, name = 'original-introduction.md') {
+  mkdirSync(join(repo, '.changeset'), { recursive: true });
+  writeFileSync(join(repo, '.changeset', name), '---\n"original-package": minor\n---\nOriginal regression fixture.\n');
+}
+const introductionBefore = { 'package.json': '6.0.0', 'packages/core/package.json': '0.4.1' };
+const introductionAfter = { ...introductionBefore, 'packages/new/package.json': '0.1.0' };
+
+test('#6643: only explicit release opt-in defers an introduction with pending changesets', t => {
+  const repo = makeRepo(t, introductionBefore, introductionAfter); addPending(repo);
+  assert.equal(versionChanged(repo).changed, true, 'generic brand-new verification remains unchanged');
+  assert.equal(versionChanged(repo, { deferPendingIntroductions: true }).changed, false);
+  assert.equal(lateChangesets(repo).verdict, 'clean');
+  const run = args => execFileSync(process.execPath, [scriptPath, ...args], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  assert.equal(run([]), 'true'); assert.equal(run(['--defer-pending-introductions']), 'false');
+});
+
+test('#6643: a new package without pending changesets still requires verification', t => {
+  const repo = makeRepo(t, introductionBefore, introductionAfter);
+  assert.equal(versionChanged(repo, { deferPendingIntroductions: true }).changed, true);
+  for (const name of ['README.md', 'readme.md', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', '.hidden.md']) addPending(repo, name);
+  mkdirSync(join(repo, '.changeset', 'nested')); writeFileSync(join(repo, '.changeset', 'nested', 'ignored.md'), 'ignored');
+  assert.deepEqual(pendingChangesets(repo), []);
+  assert.equal(versionChanged(repo, { deferPendingIntroductions: true }).changed, true);
+});
+
+for (const includeNew of [false, true]) {
+  test(`#6643: existing version bump with pending changesets is verified${includeNew ? ' alongside an introduction' : ''}`, t => {
+    const after = { ...(includeNew ? introductionAfter : introductionBefore), 'packages/core/package.json': '0.4.2' };
+    const repo = makeRepo(t, introductionBefore, after); addPending(repo);
+    assert.equal(versionChanged(repo, { deferPendingIntroductions: true }).changed, true);
+    assert.equal(lateChangesets(repo).verdict, 'late-changesets');
+  });
+}
+
+test('#6643: existing unreadable parent manifests cannot be mistaken for introductions', t => {
+  const repo = makeRepo(t, introductionBefore, introductionBefore);
+  writeFileSync(join(repo, 'packages/core/package.json'), '{');
+  git(repo, ['add', '-A']); git(repo, ['commit', '-qm', 'corrupt parent']);
+  writePackages(repo, introductionBefore); addPending(repo);
+  assert.equal(versionChanged(repo, { previousRev: 'HEAD', deferPendingIntroductions: true }).changed, true);
+});
+
+test('#6643: release opt-in preserves root bumps and verification across release recovery reruns', t => {
+  const root = makeRepo(t, introductionBefore, { ...introductionAfter, 'package.json': '6.1.0' }); addPending(root);
+  assert.equal(versionChanged(root, { deferPendingIntroductions: true }).changed, true);
+  const release = makeRepo(t, introductionBefore, { ...introductionBefore, 'packages/core/package.json': '0.4.2' });
+  for (let rerun = 0; rerun < 2; rerun++) assert.equal(versionChanged(release, { deferPendingIntroductions: true }).changed, true);
+});
+
+test('#6643: release opt-in still fails open for unknown parent or unreadable pending state', t => {
+  const root = makeRepo(t, null, introductionAfter); addPending(root);
+  assert.equal(versionChanged(root, { deferPendingIntroductions: true }).changed, true);
+  const repo = makeRepo(t, introductionBefore, introductionAfter);
+  writeFileSync(join(repo, '.changeset'), 'not a directory');
+  assert.throws(() => versionChanged(repo, { deferPendingIntroductions: true }), /ENOTDIR/);
+  assert.equal(execFileSync(process.execPath, [scriptPath, '--defer-pending-introductions'], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim(), 'true');
+});
+
+test('#6643: malformed newly introduced versions cannot suppress release verification', t => {
+  for (const version of [{ unknown: true }, 1, '   ']) {
+    const repo = makeRepo(t, introductionBefore, { ...introductionBefore, 'packages/new/package.json': version }); addPending(repo);
+    assert.equal(versionChanged(repo, { deferPendingIntroductions: true }).changed, true);
+  }
 });
 
 test('an ordinary push with no version change keeps the gate shut', (t) => {

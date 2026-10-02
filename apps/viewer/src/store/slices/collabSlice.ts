@@ -259,6 +259,7 @@ export interface CollabSlice {
     propName: string,
     value: unknown,
     valueType: PropertyValueType,
+    dataType?: string,
   ) => void;
   mirrorPropertyDelete: (
     modelId: string,
@@ -860,10 +861,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
           rejectRemoteWrite, sourceExpressId))
           set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
-      onProperty: (modelId, entityId, pset, prop, value, type) => {
+      onProperty: (modelId, entityId, pset, prop, value, type, dataType) => {
         const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
-        view.setProperty(entityId, pset, prop, value, type);
+        view.setProperty(entityId, pset, prop, value, type, undefined, false, dataType);
         get().invalidateHistoryForEntity(modelId, entityId); // clear stale history for this entity (#5223)
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
@@ -1083,11 +1084,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   // real path of the SHARED model and the mirror writes it onto an unrelated
   // peer's entity. Gating in the callee (not at the call site) means a new
   // caller cannot forget.
-  mirrorPropertyEdit: (modelId, entityId, psetName, propName, value, valueType) => {
+  mirrorPropertyEdit: (modelId, entityId, psetName, propName, value, valueType, dataType) => {
     const session = get().collabSession;
     const store = roomStoreFor(get(), modelId);
     if (!session || !store || !docApi) return;
-    mirrorProperty(docApi, session, store, entityId, psetName, propName, value, valueType);
+    mirrorProperty(docApi, session, store, entityId, psetName, propName, value, valueType, dataType);
   },
 
   mirrorPropertyDelete: (modelId, entityId, psetName, propName) => {

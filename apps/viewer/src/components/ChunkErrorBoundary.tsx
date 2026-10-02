@@ -43,6 +43,7 @@ type ChunkErrorTone = 'panel' | 'night';
 const NIGHT_TONE = { fg: '#ede4d3', dim: '#9c9486' } as const;
 
 const CHUNK_LABEL_KEYS = {
+  'Linked records panel': 'semantic.title',
   'Appearance panel': 'viewerShell.chunkLabel.appearancePanel',
   'Charts panel': 'viewerShell.chunkLabel.chartsPanel',
   'Flow panel': 'viewerShell.chunkLabel.flowPanel',

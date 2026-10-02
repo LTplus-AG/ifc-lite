@@ -6,6 +6,7 @@ import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { PropertyValueType } from '@ifc-lite/data';
 import { IfcParser } from '@ifc-lite/parser';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
@@ -106,4 +107,24 @@ describe('canonical viewer mutation permission (#5901)', () => {
       if (twoModels) assert.equal(useViewerStore.getState().dirtyModels.has(first.id), false);
     });
   }
+});
+
+describe('explicit property declarations reject before local history (#6643, Q9X8)', () => {
+  beforeEach(() => { seed(false); useViewerStore.setState({ editEnabled: true }); });
+  it('invalid declared REAL leaves effective properties, undo, dirty state and mirror untouched', context => {
+    const state = useViewerStore.getState(); const view = state.mutationViews.get(first.id); assert.ok(view);
+    const mirror = context.mock.method(state, 'mirrorPropertyEdit', () => {});
+    assert.throws(() => state.setProperty(first.id, 11, 'Pset_Test', 'Value', 'invalid', PropertyValueType.String, 'IfcReal'), /does not fit/);
+    assert.equal(view.getMutations().length, 0); assert.equal(view.getPropertyValue(11, 'Pset_Test', 'Value'), null);
+    assert.equal(useViewerStore.getState().undoStacks.size, 0); assert.equal(useViewerStore.getState().dirtyModels.size, 0);
+    assert.equal(mirror.mock.callCount(), 0);
+  });
+  it('canonicalizes an explicit valid REAL declaration before local write and mirrors the same type', context => {
+    const state = useViewerStore.getState(); const mirror = context.mock.method(state, 'mirrorPropertyEdit', () => {});
+    assert.ok(state.setProperty(first.id, 11, 'Pset_Test', 'Value', 1.25, PropertyValueType.String, 'IfcReal'));
+    const property = state.mutationViews.get(first.id)?.getForEntity(11).find(pset => pset.name === 'Pset_Test')?.properties[0];
+    assert.equal(property?.value, 1.25); assert.equal(property?.type, PropertyValueType.Real); assert.equal(property?.dataType, 'IfcReal');
+    assert.equal(mirror.mock.callCount(), 1); assert.equal(mirror.mock.calls[0]?.arguments[5], PropertyValueType.Real);
+    assert.equal(useViewerStore.getState().undoStacks.get(first.id)?.length, 1);
+  });
 });

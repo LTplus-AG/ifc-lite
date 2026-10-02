@@ -12,11 +12,11 @@ const TAB_BUTTON_COUNTS = [
   ['Home', 7],
   ['View', 20],
   ['Elements', 17], // includes the selected mesh hover outline (#5748)
-  ['Analyze', 17], // 16 commands plus the panel-browser content trigger (#5873)
+  ['Analyze', 18], // 17 commands including Linked records (#6643) plus the panel-browser content trigger (#5873)
   ['Author', 8], // includes Change sets (#6232 D4); every create kind is a Model workspace command, not a button (#6232 B1)
 ] as const;
 
-test('authored IFC keeps all 87 ribbon commands and panel browser reachable at 1280px (#5874, #5778)', async ({ page }, testInfo) => {
+test('authored IFC keeps all 88 ribbon commands and panel browser reachable at 1280px (#5874, #5778)', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e acknowledged');
   });
@@ -79,7 +79,19 @@ test('authored IFC keeps all 87 ribbon commands and panel browser reachable at 1
   const browserCount = visited.Analyze.filter((name) => name === 'Browse panels').length;
   expect(visited.View, 'View includes the selected-source centreline command (#5778)').toContain('Centreline');
   expect(browserCount, 'Analyze has one panel-browser content trigger').toBe(1);
-  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(87);
+  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(88);
+  // #6643: the new command is unique and opens the actual linked-records panel.
+  expect(visited.Analyze.filter((name) => name === 'Linked records')).toHaveLength(1);
+  await page.getByRole('tab', { name: 'Analyze', exact: true }).click();
+  await page.getByRole('tabpanel', { name: 'Analyze', exact: true })
+    .getByRole('button', { name: 'Linked records', exact: true }).click();
+  const linkedRecords = page.getByRole('region', { name: 'Linked records', exact: true });
+  await expect(linkedRecords).toBeVisible();
+  await expect(linkedRecords.getByRole('button', { name: 'Use example records', exact: true })).toBeVisible();
+  await testInfo.attach('linked-records-panel.png', {
+    body: await linkedRecords.screenshot(),
+    contentType: 'image/png',
+  });
   // #6587: the added command is unique, reachable, and dispatches to the real
   // selected-model upload dialog. Opening it never creates a remote asset.
   const ionCommandName = 'Upload edited IFC to your Cesium ion account';

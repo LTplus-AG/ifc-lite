@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { validatePropertyDataType } from '@ifc-lite/export';
 import type { BimBackend, EntityRef } from '../types.js';
 
 /** bim.mutate — Property editing with undo/redo */
 export class MutateNamespace {
-  constructor(private backend: BimBackend) {}
+  constructor(private backend: Pick<BimBackend, 'mutate'>) {}
 
   /** Asynchronous batches in flight; the backend marker is held by the first and released by the last. */
   private asyncDepth = 0;
@@ -14,9 +15,10 @@ export class MutateNamespace {
   /** Synchronous batches open right now (nested `batch` calls stack). */
   private syncDepth = 0;
 
-  /** Set a property on an entity */
-  setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean): void {
-    this.backend.mutate.setProperty(ref, psetName, propName, value);
+  /** Set a property; an optional IFC IfcValue dataType is validated before the write. */
+  setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean, dataType?: string): void {
+    if (dataType === undefined) this.backend.mutate.setProperty(ref, psetName, propName, value);
+    else this.backend.mutate.setProperty(ref, psetName, propName, value, validatePropertyDataType(value, dataType).dataType);
   }
 
   /** Set a root IFC attribute on an entity */

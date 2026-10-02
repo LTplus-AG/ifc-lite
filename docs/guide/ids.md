@@ -64,6 +64,16 @@ The bridge mirrors IfcOpenShell `ifctester` semantics (classification sub-refere
 
 Other options in `ValidatorOptions`: `translator` (see below), `includePassingEntities` (default `true`), and `yieldEveryMs` to keep the thread responsive on large models.
 
+### Reusing viewer checks
+
+The Data Validation panel keeps Information rule sets and IDS documents in separate check libraries. Import another file, then use **Select rule set** or **Select IDS document** to switch between checks. Checks with the same title remain separate entries.
+
+For Information validation, **New rule set** starts an editable check and **New from this check** copies the selected rule set. Edits apply to the copy. For IDS, **New from this check** creates an independent library entry containing the original XML; **Download IDS** exports those XML bytes. Use **Delete check** to remove the selected entry. If another check of the same kind remains, the panel selects it.
+
+The libraries survive model replacement and browser reloads on the same origin. Import or storage errors appear in the panel. An invalid replacement keeps the previously accepted check available. The newest picked file owns import completion, including when another mounted panel started the import.
+
+Selecting a different check cancels the current validation and clears its current report. Reports already saved with **Save report** remain in saved history. Run the selected check again against the currently loaded models to produce a new report.
+
 ### Understanding the viewer summary
 
 The viewer shows two different units:

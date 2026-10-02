@@ -27,6 +27,7 @@ import { useTranslation } from '@/i18n';
 import { IDSPanelResults } from './IDSPanelResults';
 import { IDSPanelStates, idsProgressState } from './IDSPanelStates';
 import { AnalysisPanel, AnalysisStaleRegion } from './analysis/AnalysisPanel';
+import { DefinitionLibraryToolbar } from './validation/DefinitionLibraryToolbar';
 
 // ============================================================================
 // Types
@@ -207,6 +208,7 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
       staleFor={report}
     >
       <div className="flex-1 min-h-0 flex flex-col">
+        <DefinitionLibraryToolbar kind="ids" onImport={() => { void handleLoadIdsClick(); }} />
         <IDSPanelStates
           ids={ids}
           fileInputRef={fileInputRef}

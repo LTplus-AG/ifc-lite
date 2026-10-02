@@ -54,6 +54,8 @@ describe('every kind of block reaches the PDF at its size (#6548)', () => {
     ['text', { kind: 'text', id: 'b', style: 'body', text: 'hello' }, new Map()],
     ['topic', { kind: 'topic', id: 'b', guid: 'G1', snapshot: false }, new Map()],
     ['table', { kind: 'table', id: 'b', source: { kind: 'validation', rows: 'all', columns: ['rule'] } }, new Map([['b', state]])],
+    ['topic that is not loaded (its placeholder)', { kind: 'topic', id: 'b', guid: 'NOT-LOADED', snapshot: false }, new Map()],
+    ['table with no rows to print (its message)', { kind: 'table', id: 'b', source: { kind: 'validation', rows: 'all', columns: ['rule'] } }, new Map()],
     ['ids-report', IDS, new Map()],
     ['manual-report', MANUAL, new Map()],
   ];

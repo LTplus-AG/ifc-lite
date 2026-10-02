@@ -18,8 +18,9 @@ rounding, reallocation during real growth and the retained source buffer remain
 costs. Lower initial reservation establishes neither physical peak RAM nor an
 end-to-end speed improvement.
 
-The real Rust regressions build a legal comment-heavy STEP input and a dense
-input larger than the initial budget. They check bounded speculative table
+The Rust regressions build scanner-focused comment-heavy STEP input and a dense
+input larger than the initial budget. These stated scanner invariants do not
+claim authoring-tool or full schema conformance. They check bounded speculative table
 capacity, ignored record-like text inside comments/strings, last duplicate
 replacement, exact entity spans and complete dense-record recovery through
 both canonical index forms. The cap is deliberately separate from the
@@ -32,7 +33,7 @@ The frozen candidate is `9c9132fd12301250a88dfc6d08eac8ebc19e4e2e`, based on
 `bd0d02782b92581ed8e007effc9d00e37a09476e`. Its production WASM is SHA-256
 `f2f35ff9284bfa8ff57aaa31d724462a44f50bb573cdedb3d7ada33ff1d8547a`.
 The main integration preserves its four changed production modules and dense/
-commented test file exactly. This successor integrates main `c1f50fb6632c68b70d6972721e155ad14ea5dc58`.
+commented test file exactly. This successor integrates main `a1b53db95e3738f8f9d9e330dd16531583e2a730`.
 The four production modules and regression test remain byte-identical to the
 previously qualified `9af8964367895b53904189f1d62e8a07a08e10fd` integration.
 All unrelated main files remain byte-identical. The performance ledger retains

@@ -33,6 +33,11 @@ bim.viewer.colorize(walls.map(w => w.ref), '#ff0000');
 
 - `bim.query()` - fluent entity queries by type, property, quantity
 - `bim.model` / `bim.mutate` / `bim.store` - model info, edits, raw store access
+- `bim.store.addWall` / `addColumn` / `addSlab` / `addBeam` / `addSpace` /
+  `addRoof` / `addPlate` / `addMember` - ordinary loaded-model creation through
+  the shared atomic core. Host adapters compose these existing methods with
+  `createOrdinaryStoreBackend(resolveModel)`; the resolver supplies the live
+  store, editor and mutation view. Existing strict anchor placement is retained.
 - `bim.store.joinWalls(modelId, aExpressId, bExpressId, options?)` - join straight
   walls through the same atomic core as the Model workspace and MCP. Returns
   `IfcRelConnectsPathElements`; `Name`, `priority`, `tolerance` and per-wall

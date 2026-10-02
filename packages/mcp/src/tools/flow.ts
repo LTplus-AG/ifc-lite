@@ -27,14 +27,10 @@
  * tracked set yet — out of scope here; a future MCP-side sidecar (keyed per
  * session or per model) would close that gap.
  *
- * Element-creation node types (`element.column`, `model.addElement`, …)
- * currently fail when run through MCP: `HeadlessLikeBackend`'s
- * `store.addColumn`/`addWall`/`addSlab`/`addBeam`/… all throw "not supported
- * in MCP v0.1; use entity_create" (`headless-backend.ts`). That is a
- * pre-existing MCP limitation, not something this change introduces — a
- * property-writing graph (like the shipped fire-rating-audit example) runs
- * fine; a column-authoring graph will report a failed node until that
- * backend gap is closed separately.
+ * Existing wall/column/slab/beam creation nodes use the shared ordinary SDK
+ * backend and create-package builders. Each creation is recorded as one
+ * compound mutation for public mutation_undo, retaining earlier overlay work.
+ * This does not add further ElementSpec kinds or persistent flow tracking.
  *
  * `run_flow` is the OTHER caller (besides `ifc-lite flow run`) allowed to
  * read `process.env` for a flow graph (#5167 phase 3.5), following the same

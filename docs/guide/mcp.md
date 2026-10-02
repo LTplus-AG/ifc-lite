@@ -273,11 +273,14 @@ Tools are grouped by capability. Everything below is registered in the default t
     output downstream of it comes back with no data rather than reporting the
     half-applied model as a success.
 
-    Element-creation node types (`element.column`, `model.addElement`, …) are
-    not yet runnable through `run_flow`: the MCP server's in-session store
-    adapter does not implement `addColumn`/`addWall`/`addSlab`/`addBeam` (use
-    `entity_create` for those today). A property-writing graph, like the
-    shipped fire-rating-audit example, runs normally.
+    `element.wall`, `element.column`, `element.slab` and `element.beam` specs
+    connected to `model.addElement` create geometry in the selected loaded
+    model through the same atomic builders as the SDK and viewer. The supplied
+    storey must have a readable placement; dimensions are metres. Each creation
+    is one compound operation for `mutation_undo`. A failed creation leaves no
+    partial helper graph or journal entries, but this does not roll back earlier
+    successful nodes in the flow. Free door/window placement remains unsupported
+    by this adapter; use the hosted placement tools with an actual host.
 
 !!! note "Planned tools return a clean error"
     `geometry_get`, `raycast`, `gherkin_check`, and `export_pdf_report` are

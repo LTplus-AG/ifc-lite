@@ -42,27 +42,11 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, storeHasSourceEntity } from '@ifc-lite/mutations';
 import type { TableAccess } from '@ifc-lite/flow-nodes';
 import {
-  addBeamToStore,
-  addColumnToStore,
   addDoorToStore,
-  addMemberToStore,
-  addPlateToStore,
-  addRoofToStore,
   applyStylesInStore,
-  addSlabToStore,
-  addSpaceToStore,
-  addWallToStore,
   addWindowToStore,
   resolveSpatialAnchor,
-  type BeamInStoreParams,
-  type ColumnInStoreParams,
   type DoorInStoreParams,
-  type MemberInStoreParams,
-  type PlateInStoreParams,
-  type RoofInStoreParams,
-  type SlabInStoreParams,
-  type SpaceInStoreParams,
-  type WallInStoreParams,
   type WindowInStoreParams,
   generateSpaces,
   listStoreys,
@@ -572,34 +556,6 @@ export class HeadlessBackend implements BimBackend {
       setPositionalAttribute(ref: EntityRef, index: number, value: unknown): void {
         get().setPositionalAttribute(ref.expressId, index, value as Parameters<StoreEditor['setPositionalAttribute']>[2]);
       },
-      addColumn(modelId: string, storeyExpressId: number, params: ColumnInStoreParams): EntityRef {
-        assertModel(modelId);
-        const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
-        const result = addColumnToStore(editor, anchor, params);
-        return { modelId, expressId: result.columnId };
-      },
-      addWall(modelId: string, storeyExpressId: number, params: WallInStoreParams): EntityRef {
-        assertModel(modelId);
-        const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
-        const result = addWallToStore(editor, anchor, params);
-        return { modelId, expressId: result.wallId };
-      },
-      addSlab(modelId: string, storeyExpressId: number, params: SlabInStoreParams): EntityRef {
-        assertModel(modelId);
-        const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
-        const result = addSlabToStore(editor, anchor, params);
-        return { modelId, expressId: result.slabId };
-      },
-      addBeam(modelId: string, storeyExpressId: number, params: BeamInStoreParams): EntityRef {
-        assertModel(modelId);
-        const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
-        const result = addBeamToStore(editor, anchor, params);
-        return { modelId, expressId: result.beamId };
-      },
       addDoor(modelId: string, storeyExpressId: number, params: DoorInStoreParams): EntityRef {
         assertModel(modelId);
         const editor = get();
@@ -613,34 +569,6 @@ export class HeadlessBackend implements BimBackend {
         const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
         const result = addWindowToStore(editor, anchor, params);
         return { modelId, expressId: result.windowId };
-      },
-      addSpace(modelId: string, storeyExpressId: number, params: SpaceInStoreParams): EntityRef {
-        assertModel(modelId);
-        const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
-        const result = addSpaceToStore(editor, anchor, params);
-        return { modelId, expressId: result.spaceId };
-      },
-      addRoof(modelId: string, storeyExpressId: number, params: RoofInStoreParams): EntityRef {
-        assertModel(modelId);
-        const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
-        const result = addRoofToStore(editor, anchor, params);
-        return { modelId, expressId: result.roofId };
-      },
-      addPlate(modelId: string, storeyExpressId: number, params: PlateInStoreParams): EntityRef {
-        assertModel(modelId);
-        const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
-        const result = addPlateToStore(editor, anchor, params);
-        return { modelId, expressId: result.plateId };
-      },
-      addMember(modelId: string, storeyExpressId: number, params: MemberInStoreParams): EntityRef {
-        assertModel(modelId);
-        const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
-        const result = addMemberToStore(editor, anchor, params);
-        return { modelId, expressId: result.memberId };
       },
       // Cost (#4857) and structural (#5167 S.1) authoring share one resolver
       // so an entity authored through either is visible to the next call on

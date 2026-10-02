@@ -219,7 +219,7 @@ describe('heading style survives replacing a report block source (#6632)', () =>
     cleanup();
     const chosen: DocumentBlock[] = [];
     const second = editor(block, (b) => chosen.push(b));
-    selectOption([...second.querySelectorAll<HTMLSelectElement>('select')].find((el) => [...el.options].some((o) => o.value === 'saved-2'))!, 'saved-2');
+    selectOption([...second.querySelectorAll<HTMLSelectElement>('select')].find((el) => [...el.options].some((o) => o.value === 'saved:saved-2'))!, 'saved:saved-2');
     for (const result of [refreshed[0], chosen[0]] as IdsReportBlock[]) {
       assert.deepEqual(blockTitleFields(result), blockTitleFields(block));
       assert.equal(result.specificationsOnly, true, 'the compact layout option survives with the heading style');
@@ -242,9 +242,9 @@ describe('heading style survives replacing a report block source (#6632)', () =>
     useViewerStore.setState({ savedValidationReports: [entry] });
     const changes: DocumentBlock[] = [];
     const ui = editor(styled, (b) => changes.push(b));
-    const source = [...ui.querySelectorAll<HTMLSelectElement>('select')].find((el) => [...el.options].some((o) => o.value === 'saved-1'));
+    const source = [...ui.querySelectorAll<HTMLSelectElement>('select')].find((el) => [...el.options].some((o) => o.value === 'saved:saved-1'));
     assert.ok(source, 'the saved report picker is present');
-    selectOption(source, 'saved-1');
+    selectOption(source, 'saved:saved-1');
     assert.equal(changes.length, 1);
     const chosen = changes[0] as IdsReportBlock;
     assert.equal(chosen.savedReportId, 'saved-1');

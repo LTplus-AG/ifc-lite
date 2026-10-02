@@ -56,7 +56,7 @@ fs.mkdirSync(out, { recursive: true });
     await page.getByRole('button', { name: 'Refresh from current checklist', exact: true }).click();
     const refreshed = await observe('2-refreshed'); assert.equal(refreshed.showStamp, false); assert.equal(refreshed.groups[0].items[1].status, 'pass');
     const savedId = await page.evaluate(() => { const s = __ifc_lite_viewer_store__.getState(); const b = s.documents.find(d => d.id === s.activeDocumentId).blocks[0]; return s.saveValidationReport({ ...b, showStamp: true, checklistName: 'Saved review evidence' }, 'Saved review evidence'); }); assert.ok(savedId);
-    await page.getByLabel('Saved report source', { exact: true }).selectOption(savedId);
+    await page.getByLabel('Saved report source', { exact: true }).selectOption(`saved:${savedId}`);
     const selected = await observe('2-saved-source'); assert.equal(selected.showStamp, false); assert.equal(selected.checklistName, 'Saved review evidence');
     const event = page.waitForEvent('download'); await page.getByRole('button', { name: 'Document actions', exact: true }).click(); await page.getByRole('menuitem', { name: 'Export template…', exact: true }).click(); const download = await event; const path = out + '/hidden.ifclite-document.json'; await download.saveAs(path); assert.equal(await download.failure(), null); facts.artifacts.push(artifact(path));
     assert.equal(JSON.parse(fs.readFileSync(path)).blocks[0].showStamp, false);

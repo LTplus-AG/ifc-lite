@@ -312,16 +312,16 @@ test('#6500/#6568 explicitly saved real IFC checks survive reload and remain ind
   for (const report of reports) {
     await panel.getByRole('button', { name: 'Add block', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Validation report', exact: true }).click();
-    await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).last().selectOption(report.id);
+    await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).last().selectOption(`saved:${report.id}`);
   }
   const layouts = panel.getByRole('combobox', { name: 'IDS report layout', exact: true });
   await expect(layouts).toHaveCount(2);
   await expect(layouts.first()).toHaveValue('');
   await layouts.first().selectOption('compact');
   await layouts.last().selectOption('long');
-  await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).first().selectOption(reports[1].id);
+  await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).first().selectOption(`saved:${reports[1].id}`);
   await expect(layouts.first()).toHaveValue('compact');
-  await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).first().selectOption(reports[0].id);
+  await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).first().selectOption(`saved:${reports[0].id}`);
   await expect(panel.locator('[data-ids-report-variant="compact"]')).toHaveCount(1);
   await expect(panel.getByRole('button', { name: 'Refresh from current validation report', exact: true })).toHaveCount(0);
   const embedded = await page.evaluate(() => {

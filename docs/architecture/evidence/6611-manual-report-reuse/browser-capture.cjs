@@ -71,7 +71,7 @@ const artifact = path => ({ path: path.split('/').at(-1), bytes: fs.statSync(pat
    await page.evaluate(async count => { const { DOCUMENT_VERSION } = await import('/src/lib/document/types.ts'); const s = __ifc_lite_viewer_store__.getState(); s.upsertDocument({ version: DOCUMENT_VERSION, id: 'reuse-proof-' + count, name: 'Saved manual reuse proof ' + count, page: { size: 'A4', orientation: 'portrait' }, blocks: [] }); s.setActiveDocumentId('reuse-proof-' + count); s.floatPanel('document'); s.setFloatingPanelRect('document', { x: 20, y: 65, w: 1470, h: 950 }); }, count);
    await page.getByTitle('Add a block to the page', { exact: true }).click(); await page.getByRole('menuitem', { name: 'Validation report', exact: true }).click();
    for (const [label, id] of [['original', originalId], ['edited', newReport.id]]) {
-    await page.getByLabel('Saved report source', { exact: true }).selectOption(id);
+    await page.getByLabel('Saved report source', { exact: true }).selectOption(`saved:${id}`);
     await page.waitForFunction(id => __ifc_lite_viewer_store__.getState().documents.find(d => d.id === __ifc_lite_viewer_store__.getState().activeDocumentId)?.blocks[0]?.savedReportId === id, id);
     const pdfEvent = page.waitForEvent('download', { timeout: 60000 }); await page.getByRole('button', { name: 'Export PDF', exact: true }).click(); const download = await pdfEvent; const path = out + '/' + count + '-' + label + '.pdf'; await download.saveAs(path); assert.equal(await download.failure(), null); facts.artifacts.push(artifact(path));
     await shot(label + '-pdf-preview');

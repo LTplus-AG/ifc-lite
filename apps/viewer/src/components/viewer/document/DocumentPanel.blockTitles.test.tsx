@@ -144,7 +144,7 @@ describe('Document content-block title overrides (#6547)', () => {
     const savedId = useViewerStore.getState().savedValidationReports[0]?.id;
     assert.ok(savedId);
     const source = editor.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]'); assert.ok(source);
-    act(() => { source.value = savedId; source.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    act(() => { source.value = `saved:${savedId}`; source.dispatchEvent(new window.Event('change', { bubbles: true })); });
     await settle();
     const replaced = (await loadDocuments())[0].blocks.find((block) => block.id === 'ids');
     assert.ok(replaced?.kind === 'manual-report'); assert.equal(replaced.title, 'Independent audit heading');

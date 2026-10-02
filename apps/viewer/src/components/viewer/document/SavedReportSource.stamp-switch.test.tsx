@@ -23,7 +23,7 @@ for (const [destination, source] of [[ids, manual], [manual, ids]] as const) {
     const replacements: ValidationReportSnapshot[] = [];
     const ui = render(<SavedReportSource block={{ ...destination, showStamp: false }} onChange={(block) => replacements.push(block)} />);
     const picker = ui.querySelector<HTMLSelectElement>('select'); assert.ok(picker);
-    act(() => { picker.value = saved.id; picker.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    act(() => { picker.value = `saved:${saved.id}`; picker.dispatchEvent(new window.Event('change', { bubbles: true })); });
     assert.equal(replacements.length, 1);
     assert.equal(replacements[0].kind, source.kind, 'the selected evidence kind really changes');
     assert.equal(replacements[0].showStamp, false, `${destination.kind} to ${source.kind}: the destination stamp choice wins`);

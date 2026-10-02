@@ -249,7 +249,7 @@ describe('saved validation evidence (#6500)', () => {
     addSavedBlock(ui); await settle();
     const picker = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]'); assert.ok(picker);
     assert.ok(picker.querySelector<HTMLOptionElement>('option[value=""]')?.disabled, 'retained snapshot placeholder cannot trigger a no-op selection');
-    select(picker, reports[0].id); await settle();
+    select(picker, `saved:${reports[0].id}`); await settle();
     assert.match(ui.querySelector('[data-block-ids-report]')?.textContent ?? '', /First check/);
     addSavedBlock(ui); await settle();
     const doc = useViewerStore.getState().documents[0];
@@ -283,7 +283,7 @@ describe('saved validation evidence (#6500)', () => {
     assert.ok((await printedPdf(useViewerStore.getState().documents[0])).includes('Authored long guidance'));
     select(layout, 'compact'); await settle();
     assert.ok(ui.querySelector('[data-ids-report-variant="compact"]'));
-    select(picker, reports[0].id); await settle();
+    select(picker, `saved:${reports[0].id}`); await settle();
     assert.equal(layout.value, 'compact', 'changing frozen IDS source retains presentation');
     assert.ok(ui.querySelector('[data-ids-report-variant="compact"]'));
     select(layout, 'long'); await settle();
@@ -321,7 +321,7 @@ describe('saved validation evidence (#6500)', () => {
       addSavedBlock(ui); await settle();
       const blockId = useViewerStore.getState().documents[0].blocks[0].id;
       const picker = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]'); assert.ok(picker);
-      select(picker, reports[0].id); await settle();
+      select(picker, `saved:${reports[0].id}`); await settle();
       const chosen = useViewerStore.getState().documents[0].blocks[0];
       assert.equal(chosen.id, blockId, 'changing report kind preserves document block identity');
       assert.equal(chosen.kind, order[0].kind);

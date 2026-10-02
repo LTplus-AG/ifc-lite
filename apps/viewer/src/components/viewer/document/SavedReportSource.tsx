@@ -34,17 +34,17 @@ export function SavedReportSource({ block, onChange }: { block: ValidationReport
       <ContentStorageNotice status={storage} restore={() => useViewerStore.getState().restoreValidationReports()} retry={() => useViewerStore.getState().retryValidationReportsSave()} />
       <label className="flex flex-col gap-1 text-muted-foreground">
         {t('validationPanel.history.documentSource')}
-        <select className="min-w-0 rounded border border-input bg-background px-1.5 py-1 text-foreground" aria-label={t('validationPanel.history.documentSource')} value={choices.some((entry) => entry.id === block.savedReportId) ? block.savedReportId : ''}
+        <select className="min-w-0 rounded border border-input bg-background px-1.5 py-1 text-foreground" aria-label={t('validationPanel.history.documentSource')} value={choices.some((entry) => entry.id === block.savedReportId) ? `saved:${block.savedReportId}` : ''}
           onChange={(e) => {
             const picked = e.target.value;
-            const entry = choices.find((candidate) => candidate.id === picked);
+            const entry = choices.find((candidate) => `saved:${candidate.id}` === picked);
             const next = picked === LIVE_IDS_SOURCE ? sources.fromLiveIds(block.id)
               : picked === LIVE_MANUAL_SOURCE ? sources.fromLiveManual(block.id)
                 : entry ? sources.fromSaved(entry, block.id) : null;
             if (next) onChange(carryPresentation(block, next));
           }}>
           <option value="" disabled>{t('validationPanel.history.embedded')}</option>
-          {choices.map((entry) => <option key={entry.id} value={entry.id}>{savedReportLabel(entry)}</option>)}
+          {choices.map((entry) => <option key={entry.id} value={`saved:${entry.id}`}>{savedReportLabel(entry)}</option>)}
           {sources.liveIds && <option value={LIVE_IDS_SOURCE}>{t(sources.liveIds.source.kind === 'rules' ? 'document.block.reportSourceLiveRules' : 'document.block.reportSourceLiveIds')}</option>}
           {sources.liveManualAvailable && <option value={LIVE_MANUAL_SOURCE}>{t('document.block.reportSourceLiveManual')}</option>}
         </select>

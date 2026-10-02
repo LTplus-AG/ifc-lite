@@ -296,7 +296,7 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     assert.ok(refresh); click(refresh); await settle();
     agree('after Refresh');
     const select = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]'); assert.ok(select);
-    act(() => { select.value = savedId!; select.dispatchEvent(new window.Event('change', { bubbles: true })); }); await settle();
+    act(() => { select.value = `saved:${savedId!}`; select.dispatchEvent(new window.Event('change', { bubbles: true })); }); await settle();
     assert.equal(stored().savedReportId, savedId);
     agree('after choosing a saved report');
   });
@@ -327,7 +327,7 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     assert.deepEqual([block.titleFontSize, block.titleTextColor, block.titleBackgroundColor, block.showStamp], [14, '#112233', '#ddeeff', false], 'refresh keeps the heading style and the hidden stamp together with the title');
     assert.equal(block.benchmarks, false); assert.equal(ui.querySelector('[data-validation-benchmark]'), null); assert.equal(block.specificationsOnly, true, "refresh preserves the specifications-only choice (#6560)"); assert.equal(block.scale, 1.5, "refresh also preserves the block size (#6548)");
     const select = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]'); assert.ok(select);
-    act(() => { select.value = saved!; select.dispatchEvent(new window.Event('change', { bubbles: true })); }); await settle();
+    act(() => { select.value = `saved:${saved!}`; select.dispatchEvent(new window.Event('change', { bubbles: true })); }); await settle();
     block = stored(); assert.ok(block.kind === 'ids-report');
     assert.equal(block.sourceKind, 'rules'); assert.equal(block.sourceName, rules.name);
     assert.equal(block.title, 'Authored validation heading', 'source selection preserves the independently authored title');
@@ -387,7 +387,7 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
       assert.equal(control(id).checked, false, `${report.source.kind}: Refresh keeps the stamp hidden`);
       assert.equal(stampShown(id), false);
       const select = ui.querySelector<HTMLSelectElement>(`[data-block-editor="${id}"] select[aria-label="Saved report source"]`); assert.ok(select);
-      act(() => { select.value = savedId!; select.dispatchEvent(new window.Event('change', { bubbles: true })); }); await settle();
+      act(() => { select.value = `saved:${savedId!}`; select.dispatchEvent(new window.Event('change', { bubbles: true })); }); await settle();
       assert.equal(stored(id).savedReportId, savedId, 'the saved report really replaced the evidence');
       assert.equal(control(id).checked, false, `${report.source.kind}: choosing a saved report that shows its stamp does not override the destination's choice`);
       assert.equal(stampShown(id), false);

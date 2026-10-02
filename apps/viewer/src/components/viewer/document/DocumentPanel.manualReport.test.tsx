@@ -130,7 +130,7 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.ok(savedId);
     const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]');
     assert.ok(source);
-    act(() => { source.value = savedId!; source.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    act(() => { source.value = `saved:${savedId!}`; source.dispatchEvent(new window.Event('change', { bubbles: true })); });
     await settle();
     assert.equal(stored().checklistName, 'Later review');
     assert.equal(stampControl()!.checked, false, 'choosing frozen evidence retains the stamp choice');
@@ -335,8 +335,8 @@ describe('Document panel manual validation report (#6401)', () => {
       secondSaved = (await useViewerStore.getState().saveValidationReport({ ...frozen, checklistName: 'Later structure evidence', title: 'Source review heading', variant: 'long', benchmarks: true, showStamp: true }, 'Later evidence'));
     }));
     assert.ok(firstSaved && secondSaved);
-    await choose('Saved report source', firstSaved);
-    await choose('Saved report source', secondSaved);
+    await choose('Saved report source', `saved:${firstSaved}`);
+    await choose('Saved report source', `saved:${secondSaved}`);
     assert.equal(stored().id, blockId);
     assert.equal(stored().variant, 'compact');
     assert.equal(stored().benchmarks, false);

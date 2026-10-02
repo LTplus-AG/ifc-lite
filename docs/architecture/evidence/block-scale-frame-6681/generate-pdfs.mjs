@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 /* Generates the evidence PDFs of #6681 through the viewer's own export path in a real Chromium:
  * `prepareDocument` + `exportPreparedDocument` (real jsPDF and svg2pdf), against a running Vite dev server.
  *   EVIDENCE_TAG=main|branch EVIDENCE_OUT=<dir> EVIDENCE_BASE=http://127.0.0.1:5178/ node docs/architecture/evidence/block-scale-frame-6681/generate-pdfs.mjs

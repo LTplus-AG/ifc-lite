@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 /* Reads facts back from the bytes of the evidence PDFs (#6681); nothing here comes from the composer.
  *   node docs/architecture/evidence/block-scale-frame-6681/readback.mjs <dir with the four PDFs>
  * Tools: `pdfinfo` (page count and page size), `pdftotext -bbox` (word boxes), and pdf.js 6.3.289 from the

@@ -5,7 +5,7 @@
 import { blockTitle } from './block-title.js';
 import type { TableBlock } from './types.js';
 import { tableMessageKind, type TableLabels, type TableMessageKind, type TableState, type TableColumnOut } from './resolve-table.js';
-import type { DocumentLabelFormatter } from './document-labels.js';
+import { capturedDocumentNumber, type DocumentLabelFormatter } from './document-labels.js';
 import { TABLE_COLUMN_LABEL_KEY } from './table-column-labels.js';
 
 const columnKeys = new Map(Object.entries(TABLE_COLUMN_LABEL_KEY));
@@ -27,8 +27,8 @@ export const TABLE_PDF_LABELS: TableLabels = {
 
 export function documentTableLabels(t?: DocumentLabelFormatter): TableLabels {
   return t ? {
-    more: count => t('document.table.moreRows', { count, countDisplay: t.formatNumber?.(count) ?? count.toLocaleString() }),
-    total: count => t('document.table.total', { count: t.formatNumber?.(count) ?? count.toLocaleString() }),
+    more: count => t('document.table.moreRows', { count, countDisplay: capturedDocumentNumber(t, count) ?? count.toLocaleString() }),
+    total: count => t('document.table.total', { count: capturedDocumentNumber(t, count) ?? count.toLocaleString() }),
   } : TABLE_PDF_LABELS;
 }
 

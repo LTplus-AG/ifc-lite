@@ -19,7 +19,7 @@
 import { blockTitle, blockTitleStyle } from './block-title.js';
 import { blockTitleItems } from './compose-block-title.js';
 import { resolveEnglish } from '@/i18n/registry';
-import type { DocumentLabelFormatter } from './document-labels.js';
+import { capturedDocumentNumber, type DocumentLabelFormatter } from './document-labels.js';
 import { reportRingCounts } from '../validation/report-summary.js';
 import type { RingDrawnItem } from './compose-manual-report.js';
 import { passRateBand } from '@ifc-lite/ids';
@@ -50,7 +50,7 @@ export type IdsReportLayoutBlock = IdsReportBlock;
 const pct = (n: number): string => `${n}%`;
 
 /** Counts share the captured UI locale; uncaptured PDF output stays raw. */
-const fmt = (t: DocumentLabelFormatter, n: number | null): string => n === null ? String(n) : t.formatNumber?.(n) ?? String(n);
+const fmt = (t: DocumentLabelFormatter, n: number | null): string => n === null ? String(n) : capturedDocumentNumber(t, n) ?? String(n);
 
 /**
  * The block heading (#6372): the report's own kind, never "IDS" for an

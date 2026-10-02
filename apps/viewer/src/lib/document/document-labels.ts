@@ -10,3 +10,10 @@ export type DocumentLabelFormatter = typeof resolveEnglish & {
   /** Bound to the same captured locale as the catalogue; absent keeps direct-export defaults. */
   readonly formatNumber?: (value: number) => string;
 };
+
+/** Paper uses standard PDF fonts: Intl's narrow nonbreaking grouping space
+ * (e.g. French) needs their supported nonbreaking space before measuring.
+ * Only generated numeric text is adapted; authored fields stay literal. */
+export function capturedDocumentNumber(labels: DocumentLabelFormatter | undefined, value: number): string | undefined {
+  return labels?.formatNumber?.(value).replaceAll('\u202f', '\u00a0');
+}

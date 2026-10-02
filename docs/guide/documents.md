@@ -29,7 +29,7 @@ The preview on the right resolves fields against the loaded models; click a bloc
 
 Each chart block has a **Text size** control. Smaller text makes room for longer axis labels and tighter legend rows; the renderer measures and fits the selected font before drawing. The setting scales chart titles, subtitles, axes, legends, pie/treemap labels and the count display while retaining their relative sizes. It is saved with the block and applies to both preview and PDF. Clear the field or use **Reset chart text size** to restore the existing default appearance.
 
-PDF export captures the interface language when it starts. Generated table and validation labels, footers and page counters keep that language throughout export, including while images are prepared. Authored text keeps its own wording. Callers that omit a captured label context retain the existing English PDF labels.
+PDF export captures the interface language when it starts. Generated table and validation labels, footers and page counters keep that language throughout export, including while images are prepared. Generated French counts use a PDF-supported nonbreaking grouping space, keeping the grouped digits intact. Authored text keeps its own wording. Callers that omit a captured label context retain the existing English PDF labels.
 
 ## Bindings
 

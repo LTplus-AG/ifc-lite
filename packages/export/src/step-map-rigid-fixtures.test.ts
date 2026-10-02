@@ -216,6 +216,15 @@ describe('real authoring-tool fixtures through fresh canonical WASM (#6692)', ()
         const oldX: Point = [ratios[0] / length, ratios[1] / length, ratios[2] / length];
         const expectedX = transform(oldX, fixture.angle, [0, 0, 0]);
         expect(Math.hypot(...sub(expectedX, vector(afterAttrs(ref(newFrame[2]))[0])))).toBeLessThan(1e-12);
+        const oldAxis = oldFrame[1] === null ? [0, 0, 1] as Point : vector(get(ref(oldFrame[1]))[0]);
+        const newAxis = newFrame[1] === null ? [0, 0, 1] as Point : vector(afterAttrs(ref(newFrame[1]))[0]);
+        const oldAxisLength = Math.hypot(...oldAxis), newAxisLength = Math.hypot(...newAxis);
+        expect(Number.isFinite(oldAxisLength) && oldAxisLength > 0).toBe(true);
+        expect(Number.isFinite(newAxisLength) && newAxisLength > 0).toBe(true);
+        const normalizedOldAxis: Point = [oldAxis[0] / oldAxisLength, oldAxis[1] / oldAxisLength, oldAxis[2] / oldAxisLength];
+        const normalizedNewAxis: Point = [newAxis[0] / newAxisLength, newAxis[1] / newAxisLength, newAxis[2] / newAxisLength];
+        const expectedAxis = transform(normalizedOldAxis, fixture.angle, [0, 0, 0]);
+        expect(Math.hypot(...sub(expectedAxis, normalizedNewAxis))).toBeLessThan(1e-12);
         changedRoots++;
       }
       expect(changedRoots).toBeGreaterThan(0);

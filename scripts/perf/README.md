@@ -149,6 +149,46 @@ handedness of local Y. Reuse the canonical placement frame rather than adding
 another direction decoder, and test both forward conic sampling and Cartesian
 trim inversion; either half alone leaves a mirrored or incorrectly trimmed arc.
 
+## In-call geometry heartbeat replaces wall-clock element skips (#4884 follow-up)
+
+Field signature: one mid-size model opened by about ten people stalled for most
+of them; when it loaded, the median `total_elapsed_ms` was about 145 s while
+first geometry appeared within seconds, and loads with the same mesh roster
+reported flat triangle totals varying almost fourfold. 145 s is the hung-call recovery budget:
+45 s until a silent multi-job call is replaced, a one-job-per-call replay, then
+90 s more until the slow element is skipped. A synthetic file with one wall
+carrying 200 tilted circular openings reproduced it exactly in the browser
+(143 s, wall skipped, identical on every run), and adding CPU load changed which
+calls were replayed and therefore the reported mesh and triangle counts.
+
+The worker could not speak while inside one WASM call, so a slow element and a
+hung call looked identical. The kernel now calls `ifc_lite_geometry::progress::tick`
+at coarse points of every long path (each boolean, analytic prism cut,
+consolidation bucket and region, conform loop, strided CDT and exact-predicate
+work). The binding rate-limits that to one JS callback a second, and the worker
+forwards it as its existing liveness message only while a batch call runs. A
+call that stops reporting is still recovered exactly as before, and every call
+keeps an absolute 10-minute bound (`MAX_GEOMETRY_CALL_MS`) however often it
+reports: past it the pool recovers the call like a silent one, and with
+recovery off it stops counting heartbeats as liveness so the stream watchdog
+still fires. With no hook
+installed (every native target) a tick is one atomic load; ordered native mesh
+fingerprints are unchanged on AC20, ISSUE_129 and Holter.
+
+Coverage was measured, not assumed: a native hook recording the longest gap
+between ticks found 7-8 s single-call stretches on the synthetic walls (a
+quadratic conform candidate scan and one large constrained triangulation)
+before those loops were covered; after, the longest gap is about 1.3 s natively
+on the synthetic walls and under 0.5 s on the heavy corpus models. Result on the
+synthetic file: 88 s with the wall present instead of 143 s with it skipped, the
+same 483 meshes and 548,428 triangles idle and under load, and no recovery.
+
+Lesson: never let a wall-clock budget decide WHAT geometry is produced. A
+recovery timer is legitimate for a call that has stopped making progress, but
+it needs a progress signal to tell that apart from a slow call. Open follow-ups:
+the analytic prism route spends most of such a wall's time before deferring to
+the exact kernel, and the flat/instanced split still follows call composition.
+
 ## Shared-buffer retries after a WASM trap (#6542)
 
 A compatibility retry must distinguish a rejected shared view from a WASM
@@ -1682,6 +1722,19 @@ The existing prepass can publish the exact full-byte source key through a fresh 
   probe on `?geomWorkers=N`: `useIfcLoader.ts` documents that worker count cannot
   affect output (disjoint deterministic element slices), so that probe is
   predicted clean by the codebase itself.
+- **`mesh_count` and `total_triangles` count FLAT meshes only, and the flat /
+  instanced split is decided per WASM batch call.** An occurrence is instanced
+  when its representation repeats often enough *within one call*, so anything
+  that changes call composition moves geometry between the flat list and the
+  instancing shards without changing what renders: the wall-clock adaptive batch
+  sizer, the device-dependent worker count, and a hung-call replay at one job per
+  call. Measured on a synthetic heavy model: identical rendered geometry came out
+  as 549 meshes / 242,052 flat triangles on an idle host and 683 / 243,660 under
+  CPU load. So "the geomWorkers probe is predicted clean" holds for rendered
+  geometry, not for these two telemetry fields. A small `mesh_count` delta with a
+  LARGE `total_triangles` delta is the other signature: a skipped element (see
+  the "In-call geometry heartbeat replaces wall-clock element skips" section near
+  the top of this file); read `hung_elements_skipped` first.
 - **`total_elapsed_ms` is not pure compute — it contained an unbounded hidden-tab
   stall** (#2385, fixed). `useIfcLoader` awaited a bare `requestAnimationFrame`
   at stream-complete; rAF is never serviced while the document is hidden, so a

@@ -12,7 +12,7 @@ import { readContentEntries } from '../storage/content-reader.js';
 import { rebindCommittedDocument } from '../storage/content-backup-references.js';
 import { trackExportCompleted } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
-import { migrateDocumentSpec, validateDocumentSpec, type DocumentSpec } from './types.js';
+import { migrateDocumentSpec, validateDocumentSpec, type DocumentBlock, type DocumentSpec } from './types.js';
 
 const DOCUMENTS_STORAGE_KEY = 'ifc-lite-documents';
 export const documentContent: ContentDefinition<DocumentSpec> = {
@@ -43,6 +43,15 @@ export const freshBlockId = (): string => `block-${crypto.randomUUID()}`;
 /** The id of the list copy a table block embeds (#5142) — never a library list's id. */
 export const freshListCopyId = (): string => `document-list-${crypto.randomUUID()}`;
 
+/** An independent block copy (#6689): authored content and source bindings survive; owned ids do not. */
+export function copyDocumentBlock(block: DocumentBlock): DocumentBlock {
+  const copy = structuredClone(block);
+  copy.id = freshBlockId();
+  if (copy.kind === 'chart') copy.chart.id = freshBlockId();
+  if (copy.kind === 'table' && copy.source.kind === 'list') copy.source.list.id = freshListCopyId();
+  return copy;
+}
+
 /**
  * Parse a document file: validated, and re-identified so the imported copy
  * never collides with the document it was exported from. Bindings are kept
@@ -58,12 +67,8 @@ export function parseDocumentFile(text: string): DocumentSpec {
   return {
     ...spec,
     id: freshDocumentId(),
-    // A table block over a list embeds a copy of it (#5142), re-identified too: it must never
-    // share an id with a list already in this browser's library. A validation-results table
-    // (#5138) has no embedded list — only its own block id changes.
-    blocks: spec.blocks.map((b) => (b.kind === 'table' && b.source.kind === 'list'
-      ? { ...b, id: freshBlockId(), source: { ...b.source, list: { ...b.source.list, id: freshListCopyId() } } }
-      : { ...b, id: freshBlockId() })),
+    // Import and in-page duplication share the same owned-id and independence contract.
+    blocks: spec.blocks.map(copyDocumentBlock),
   };
 }
 

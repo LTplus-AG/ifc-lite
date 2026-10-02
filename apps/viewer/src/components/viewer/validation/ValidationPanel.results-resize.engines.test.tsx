@@ -151,8 +151,10 @@ for (const kind of ['ids', 'rules'] as const) {
       press(handle, 'ArrowDown');
       assert.equal(Number(handle.getAttribute('aria-valuenow')), startingSize);
 
-      const finalCard = [...results.querySelectorAll('button')]
-        .find(button => button.textContent?.includes('Wall tag 12'));
+      // Read the heading itself: "Wall tag 1" followed by "2 entities"
+      // concatenates into "Wall tag 12…" in the whole button's textContent.
+      const finalCard = [...results.querySelectorAll('button')].find(button =>
+        [...button.querySelectorAll('span')].some(label => label.textContent?.trim() === 'Wall tag 12'));
       assert.ok(finalCard);
       const viewport = results.querySelector('[data-radix-scroll-area-viewport]');
       assert.ok(viewport?.contains(finalCard), 'the final card belongs to the lower scroll viewport');

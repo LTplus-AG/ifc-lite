@@ -142,24 +142,36 @@ export function installLayout(): () => void {
 }
 
 /** Opt-in offset measurements for real resizable-panel interaction (#6690).
- * The panel library measures offsets, unlike the client/rectangle consumers
- * above. Zero happy-dom offsets defer its layout and leave nothing to resize.
- * Only panel wrappers receive these synthetic sizes; other measurements keep
- * their original implementation. Native CSS scrolling still needs a browser. */
+ * The library measures panel sizes and sorts siblings by position, then size.
+ * Sizes alone put the zero-height separator before both panels in happy-dom.
+ * Stack direct group children using the measured sizes so adjacency is real.
+ * Other elements keep their implementation; native scrolling needs a browser. */
 export function installResizablePanelLayout(): () => void {
   const restoreLayout = installLayout();
   const restore: Array<() => void> = [];
-  for (const [offset, client] of [
-    ['offsetHeight', 'clientHeight'],
-    ['offsetWidth', 'clientWidth'],
+  for (const [offset, measurement, direction] of [
+    ['offsetHeight', 'clientHeight', null],
+    ['offsetWidth', 'clientWidth', null],
+    ['offsetTop', 'offsetHeight', 'column'],
+    ['offsetLeft', 'offsetWidth', 'row'],
   ] as const) {
     const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, offset);
     Object.defineProperty(HTMLElement.prototype, offset, {
       configurable: true,
       get(this: HTMLElement) {
-        return this.hasAttribute('data-panel')
-          ? this[client]
-          : descriptor?.get?.call(this) ?? 0;
+        const group = this.parentElement;
+        if (!group?.hasAttribute('data-group')) return descriptor?.get?.call(this) ?? 0;
+        if (direction === null) {
+          return this.hasAttribute('data-panel')
+            ? this[measurement]
+            : descriptor?.get?.call(this) ?? 0;
+        }
+        if (group.style.flexDirection !== direction) return 0;
+        let position = 0;
+        for (let sibling = this.previousElementSibling; sibling; sibling = sibling.previousElementSibling) {
+          if (sibling instanceof HTMLElement) position += sibling[measurement];
+        }
+        return position;
       },
     });
     restore.push(() => {

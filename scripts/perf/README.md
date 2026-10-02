@@ -53,6 +53,29 @@ reasons and unchanged output witnesses. Source controls, the unshipped patch,
 all raw attempts and paired derivations are in
 [`evidence/packing-verdict-6537/`](./evidence/packing-verdict-6537/README.md).
 
+## Affinity admission and compact worker packets: defer (#6537)
+
+The sticky-key admission pilot has meaningful pool/recovery and inverse
+controls, but both full-load cohorts stopped on detected background work.
+They retain their original contaminated rows without substitutes. A later
+O-S1 diagnostic explains flat/instance redistribution and preserves occurrence
+counts, while reconstructed positions and normals still differ. This does not
+qualify byte identity, canonical precision, GPU picking or a complete throughput
+verdict. Do not ship the pilot from worker-only or flat-only evidence.
+
+Compact worker source packets remain a feasibility question. The canonical
+forward-reference census measures reached record bytes, not every direct,
+inverse, setup and recovery access. Original offsets still reach near the file
+end. Establish conservative dependency completeness and offset addressability
+before introducing any producer; then measure construction, copies and whole
+load. A sparse reference list is not a safe packet or physical-memory result.
+
+Lesson: separate scheduling credit, dependency completeness and geometry
+representation from the final load metric. Preserve true sticky keys and the
+canonical parser; defer mechanisms whose correctness or end-to-end verdict
+remains incomplete. [Raw dispositions and prerequisites](evidence/deferred-worker-mechanisms-6537/README.md)
+retain source attribution and the excluded attempts.
+
 ## Opt-in map geometry compatibility export (#6587)
 
 The qualified comparison uses the actual main-based package prerequisite and

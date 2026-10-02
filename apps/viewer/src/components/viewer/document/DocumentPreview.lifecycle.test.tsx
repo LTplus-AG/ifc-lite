@@ -73,14 +73,14 @@ it('keeps all prepared sheets mounted during same-document reflow, then commits 
   ui.scrollTop = 500;
   const enlarge = ui.querySelector('button'); assert.ok(enlarge); click(enlarge);
   assert.equal(ui.querySelectorAll('[data-preview-section]').length, before, 'pending layout must not collapse two sheets to a placeholder');
-  assert.equal(ui.querySelector('[data-preview-section]'), first, 'the existing sheet DOM survives asynchronous measurement');
+  assert.ok(ui.querySelector('[data-preview-section]') === first, 'the existing sheet DOM survives asynchronous measurement');
   assert.equal(ui.scrollTop, 500);
   assert.equal(ui.querySelector('[data-document-preview]')?.getAttribute('aria-busy'), 'true');
   await waitFor(() => ui.querySelectorAll('[data-preview-section]').length > before
     && ui.querySelector('[data-document-preview]')?.getAttribute('aria-busy') === 'false', 'larger actual standard-font lines commit more pages');
   const pages = ui.querySelectorAll('[data-preview-section]');
   assert.match(pages[pages.length - 1].textContent ?? '', /Inspection evidence 100/);
-  assert.equal(ui.querySelector('[data-preview-section]'), first);
+  assert.ok(ui.querySelector('[data-preview-section]') === first, 'settled reflow keeps the same sheet DOM');
 });
 
 it('does not retain another document while replacement prepares (#6660 review)', async () => {
@@ -114,7 +114,7 @@ it('retains the captured failed-image fallback while a replacement URL prepares 
   const replace = Array.from(ui.querySelectorAll('button')).find(button => button.textContent === 'Replace image'); assert.ok(replace);
   click(replace);
   assert.equal(ui.querySelector('[data-document-preview]')?.getAttribute('aria-busy'), 'true');
-  assert.equal(ui.querySelector('[data-preview-section]'), paper);
+  assert.ok(ui.querySelector('[data-preview-section]') === paper, 'pending image replacement keeps the same sheet DOM');
   assert.ok(ui.querySelector('[data-preview-block="image"] .border-dashed') === fallback,
     'a retained failed measurement must not revive the old undecodable image');
   assert.equal(ui.querySelector('[data-preview-block="image"] img'), null);
@@ -125,5 +125,5 @@ it('retains the captured failed-image fallback while a replacement URL prepares 
   assert.equal(image.naturalWidth, 16); assert.equal(image.naturalHeight, 16);
   assert.ok(Math.abs(parseFloat(image.style.height) - parseFloat(image.style.width)) < 0.01);
   assert.doesNotMatch(ui.textContent ?? '', /The image could not be decoded/);
-  assert.equal(ui.querySelector('[data-preview-section]'), paper);
+  assert.ok(ui.querySelector('[data-preview-section]') === paper, 'settled image replacement keeps the same sheet DOM');
 });

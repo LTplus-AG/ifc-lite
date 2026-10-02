@@ -202,6 +202,40 @@ describe.skipIf(!wasmAvailable)('real canonical WASM export planning (#6587)', (
       expect(refused.stats.newEntityCount).toBe(0);
     }
   });
+  it('rotates valid scaled-map TrueNorth and refuses schema-invalid three-ratio North atomically (#6692)', async () => {
+    // IFC4/IFC4X3 North2D requires exactly two ratios, even for a 3D context.
+    for (const ratios of ['0.3,0.4', '0.3,0.4,0.']) {
+      const source = file(data.replace('.MILLI.', '$').replace('3,1.E-5,#9,$)', '3,1.E-5,#9,#60)')
+        + `\n#60=IFCDIRECTION((${ratios}));`);
+      const store = await parse(source);
+      const view = new MutablePropertyView(store.properties ?? null, 'scaled-north');
+      view.setAttribute(50, 'Name', 'Edited', 'Original');
+      const ordinary = new StepExporter(store, view).export(options);
+      const result = await new StepExporter(store, view).exportAsync({ ...options, normalizeMapGeometry: true });
+      const output = await parse(result.content);
+      expect(attrs(output, 50)[2]).toBe('Edited');
+      expect(attrs(store, 50)[2]).toBe('Original');
+      expect(attrs(store, 60)[0]).toEqual(ratios.split(',').map(Number));
+      expect(new StepExporter(store, view).export(options)).toEqual(ordinary);
+      if (ratios === '0.3,0.4') {
+        expect(result.stats.warnings).toEqual([]);
+        const north = attrs(output, entityRef(attrs(output, 10)[5]))[0];
+        expect(north).toEqual([-0.8, 0.6]); // Quarter-turn of normalized (.3,.4).
+        expect(attrs(output, 60)).toEqual(attrs(store, 60)); // Shared authored direction stays intact.
+        expect(result.stats.newEntityCount).toBeGreaterThan(0);
+      } else {
+        expect(result.stats.warnings.some(warning => warning.includes('TrueNorth requires exactly two direction ratios'))).toBe(true);
+        expect(result.content).toEqual(ordinary.content);
+        expect(result.stats.newEntityCount).toBe(0);
+        // The retained Name edit is the sole modification; normalization adds none.
+        expect(result.stats.modifiedEntityCount).toBe(ordinary.stats.modifiedEntityCount);
+        expect(result.stats.modifiedEntityCount).toBe(1);
+        const unchanged = await new StepExporter(store).exportAsync({ ...options, normalizeMapGeometry: true });
+        expect(unchanged.stats.newEntityCount).toBe(0);
+        expect(unchanged.stats.modifiedEntityCount).toBe(0);
+      }
+    }
+  });
   it('refuses uninstantiated type geometry even when an orphan mapped item references it', async () => {
     const typeGeometry = data.replace('.MILLI.', '$') + `
 #70=IFCSHAPEREPRESENTATION(#10,'Body','SweptSolid',(#22));

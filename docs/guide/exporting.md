@@ -567,6 +567,10 @@ This metadata adjustment covers the coordinate-operation context and contexts
 reachable from represented products. Unused definition contexts retain their
 original TrueNorth and representation records.
 
+TrueNorth, when provided, must have exactly two direction ratios under the
+IFC4/IFC4X3 `North2D` constraint. Malformed metadata is refused atomically;
+the ordinary edited IFC content is retained without normalization patches.
+
 Non-unit uniform physical scale uses absolute logical product placements and
 scaled `IfcMappedItem` Body representations. Both paths preserve physical map
 coordinates, logical placement origins, GUIDs, properties and authored units.

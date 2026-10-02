@@ -24,7 +24,26 @@ const fixtures = [
   { path: 'georeferencer/MiniBIM-3.1-DO_01_VORM.ifc', angle: 15, offset: [90770, 435320, 3.5] as Point, count: 2668, door: 136868 },
 ];
 const wasm = new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
-const required = process.env.IFC_LITE_REQUIRE_FIXTURES === '1';
+function requireFixtures(value: string | undefined): boolean {
+  if (value === undefined || value === '' || value === '0') return false;
+  if (value === '1') return true;
+  throw new Error(`IFC_LITE_REQUIRE_FIXTURES=${JSON.stringify(value)} is not recognised (use "1" or "0"); refusing to silently disable fixture coverage`);
+}
+const required = requireFixtures(process.env.IFC_LITE_REQUIRE_FIXTURES);
+
+describe('fail-closed fixture policy (#6692)', () => {
+  it('allows only the Rust policy optional values to skip missing fixtures', () => {
+    for (const value of [undefined, '', '0']) expect(requireFixtures(value)).toBe(false);
+  });
+  it('requires fixtures when explicitly enabled', () => {
+    expect(requireFixtures('1')).toBe(true);
+  });
+  it('rejects invalid configuration before missing fixtures can be skipped', () => {
+    for (const value of ['true', 'yes', 'TRUE', 'typo', ' 1', '1 ', 'false']) {
+      expect(() => requireFixtures(value)).toThrow('refusing to silently disable fixture coverage');
+    }
+  });
+});
 async function parse(content: string | Uint8Array) {
   const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
   return new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });

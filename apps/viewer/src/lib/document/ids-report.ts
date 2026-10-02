@@ -25,7 +25,7 @@
  * entity rows list failures only. An IDS snapshot is built exactly as before.
  */
 import { validationReportSummary } from '../validation/report-summary.js';
-import { capturedReportModelScope } from './report-provenance.js';
+import { capturedReportModelScope, replaceReportSnapshot } from './report-provenance.js';
 import type { SpecificationResult, ValidationReport } from '@ifc-lite/ids';
 import { boundedPassRate, formatConstraint } from '@ifc-lite/ids';
 import type { IDSConstraint, IDSFacet } from '@ifc-lite/ids';
@@ -160,3 +160,6 @@ function snapshotFromReport(report: ValidationReport, id: string): IdsReportBloc
   }));
   return { kind: 'ids-report', id, sourceKind: 'ids', sourceName: report.source.document.info.title, generatedAt, summary: totals, checks };
 }
+
+/** Refresh and saved-source replacement keep the destination's identity and presentation (#6678). */
+export const replaceIdsReportSnapshot = (current: IdsReportBlock, snapshot: IdsReportBlock): IdsReportBlock => replaceReportSnapshot(current, snapshot);

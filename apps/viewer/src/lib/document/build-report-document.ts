@@ -114,6 +114,7 @@ function resultBlock(result: DocumentReportResult, presentation?: DocumentBlock)
       ...((presentation?.specificationsOnly ?? result.snapshot.specificationsOnly) !== undefined ? { specificationsOnly: presentation?.specificationsOnly ?? result.snapshot.specificationsOnly } : {}),
       ...(presentation ? setBlockTitleFields(presentation) : {}),
       ...(presentation?.scale !== undefined ? { scale: presentation.scale } : {}),
+      ...(presentation?.showStamp !== undefined ? { showStamp: presentation.showStamp } : {}),
     };
   }
   if (presentation && (presentation.kind !== 'table' || presentation.source.kind !== 'comparison')) {

@@ -6,18 +6,19 @@ import { useTranslation } from '@/i18n';
 import { SavedHistoryNotice } from '../SavedHistoryNotice';
 import { useViewerStore } from '@/store';
 import { savedReportLabel, type ValidationReportSnapshot } from '@/lib/validation/reports/history';
-import { blockTitleFields } from '@/lib/document/block-title';
+import { keepCommonReportChoices } from '@/lib/document/report-provenance';
 import { replaceManualReportSnapshot } from '@/lib/document/manual-report';
+import { replaceIdsReportSnapshot } from '@/lib/document/ids-report';
 import { LIVE_IDS_SOURCE, LIVE_MANUAL_SOURCE, useReportSources } from './useReportSources';
 
-/** The author's choices (heading, scale, and the layout the destination kind shares) survive a change of evidence.
- * One list for every switch, saved or live; the shared helpers for these choices can replace it once they are on main. */
+/** The author's choices survive a change of evidence, saved or live, same kind or across kinds: the
+ * shared rules decide what is kept (heading, size, stamp, and the layout the destination kind shares). */
 function carryPresentation(block: ValidationReportSnapshot, next: ValidationReportSnapshot): ValidationReportSnapshot {
   return block.kind === 'manual-report' && next.kind === 'manual-report'
     ? replaceManualReportSnapshot(block, next)
     : block.kind === 'ids-report' && next.kind === 'ids-report'
-      ? { ...next, ...blockTitleFields(block), variant: block.variant, benchmarks: block.benchmarks, specificationsOnly: block.specificationsOnly, scale: block.scale }
-      : { ...next, ...blockTitleFields(block), scale: block.scale };
+      ? replaceIdsReportSnapshot(block, next)
+      : keepCommonReportChoices(block, next);
 }
 
 /** One picker for every source of a report block (#6553): any saved report, whatever its kind, or the

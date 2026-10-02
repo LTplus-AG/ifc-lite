@@ -16,7 +16,7 @@
 
 import { blockTitle, blockTitleStyle } from './block-title.js';
 import { blockTitleItems } from './compose-block-title.js';
-import { manualReportStamp } from './manual-report.js';
+import { reportStamp } from './report-provenance.js';
 import { layoutReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, wrappedReportProvenance, type WrapLines } from './compose-report-provenance.js';
 import type { LayoutCursor, TextDrawnItem } from './compose-table.js';
 import type { ManualReportBlock, ManualReportCounts, ManualReportItem } from './manual-report-types.js';
@@ -72,7 +72,7 @@ export function layoutManualReport(
   const groupHeaderHeight = benchmarks ? GROUP_HEADER_HEIGHT : META_HEIGHT;
 
   // Heading, meta line and the overall ring move together.
-  const stamp = manualReportStamp(block);
+  const stamp = reportStamp(block);
   const stampHeight = stamp ? META_HEIGHT : 0;
   const scope = stamp?.models;
   const scopeLines = wrappedReportProvenance(scope ? `Models: ${scope}` : '', contentW, wrap);

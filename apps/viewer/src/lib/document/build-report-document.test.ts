@@ -98,6 +98,21 @@ describe('report document preparation (#6612)', () => {
     assert.deepEqual(document.blocks.slice(1).map((block) => block.kind === 'ids-report' && block.scale), [1.5, 1.5]);
     assert.deepEqual(validateDocumentSpec(document), []);
   });
+  it('carries the stamp choice into workflow-built reports of both source kinds (#6678)', () => {
+    const stampOf = (document: DocumentSpec) => document.blocks.flatMap((block) => (block.kind === 'ids-report' ? [[block.sourceKind, 'showStamp' in block ? block.showStamp : 'absent']] : []));
+    const hiddenTemplate = template();
+    hiddenTemplate.blocks[1] = { ...hiddenTemplate.blocks[1], showStamp: false } as DocumentSpec['blocks'][number];
+    const mapped = buildReportDocument({ template: hiddenTemplate, results: results(), mappings: [{ blockId: 'mapped', jobId: 'ids' }] });
+    assert.deepEqual(stampOf(mapped), [['ids', false], ['ids', false]], 'the template block\'s choice reaches every expanded IDS block');
+    const rulesTemplate = template();
+    rulesTemplate.blocks[1] = { ...rulesTemplate.blocks[1], sourceKind: 'rules', showStamp: false } as DocumentSpec['blocks'][number];
+    const rules = buildReportDocument({ template: rulesTemplate, results: results(), mappings: [{ blockId: 'mapped', jobId: 'rules' }] });
+    assert.deepEqual(stampOf(rules), [['rules', false]], 'and to the information-validation block');
+    const frozenHidden: DocumentReportResult[] = [{ jobId: 'ids', resultId: 'a', kind: 'validation', snapshot: { ...snapshot('Model A'), showStamp: false } }];
+    assert.deepEqual(stampOf(buildReportDocument({ results: frozenHidden })), [['ids', false]], 'a snapshot saved with the stamp hidden stays hidden without a template');
+    assert.deepEqual(stampOf(buildReportDocument({ template: template(), results: results(), mappings: [{ blockId: 'mapped', jobId: 'ids' }] })), [['ids', 'absent'], ['ids', 'absent']], 'no choice anywhere stays absent: the stamp prints');
+    assert.deepEqual(validateDocumentSpec(mapped), []);
+  });
   it('rejects unmapped evidence, unknown results and incompatible block mappings before export', () => {
     assert.throws(() => buildReportDocument({ template: template(), results: results() }), /requires a result mapping/);
     assert.throws(() => buildReportDocument({ template: template(), results: results(), mappings: [{ blockId: 'mapped', jobId: 'absent' }] }), /Unknown or disabled document job/);

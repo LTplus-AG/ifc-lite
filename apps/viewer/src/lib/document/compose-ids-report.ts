@@ -21,7 +21,7 @@ import { blockTitleItems } from './compose-block-title.js';
 import { reportRingCounts } from '../validation/report-summary.js';
 import type { RingDrawnItem } from './compose-manual-report.js';
 import { passRateBand } from '@ifc-lite/ids';
-import { reportScopeText } from './report-provenance.js';
+import { reportStamp } from './report-provenance.js';
 import { layoutReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, wrappedReportProvenance } from './compose-report-provenance.js';
 import { reportBlockSourceKind, type IdsReportBlock, type IdsReportCardinality, type IdsReportCheckSummary } from './ids-report-types.js';
 import type { LayoutCursor } from './compose-table.js';
@@ -136,15 +136,17 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   const firstChild = first && !specificationsOnly ? childRows(first)[0] : undefined;
   const firstRowHeight = compact ? COMPACT_ROW_HEIGHT : classicHeight(first?.longDescription);
   const firstChildHeight = firstChild ? (compact ? COMPACT_ROW_HEIGHT : classicHeight(firstChild.description)) : 0;
-  const scope = reportScopeText(block);
-  const scopeLines = wrappedReportProvenance(scope ? `Models: ${scope}` : '', contentW, wrap ?? ((text) => [text]));
+  // Stamp rows (#6678): the run time and the evaluated models, both off the block; hidden means neither is drawn nor reserved.
+  const stamp = reportStamp(block);
+  const stampHeight = stamp ? DATE_HEIGHT : 0;
+  const scopeLines = wrappedReportProvenance(stamp?.models ? `Models: ${stamp.models}` : '', contentW, wrap ?? ((text) => [text]));
   const keepAfter = firstRowHeight + firstChildHeight;
   const ringSize = 44;
   const summaryWidth = block.benchmarks ? contentW - ringSize - 12 : contentW;
   const summaryLines = block.benchmarks && wrap ? wrap(summaryLine(block.summary), summaryWidth, 9, false) : [cursor.truncate(summaryLine(block.summary), summaryWidth, 9, false)];
   const summaryHeight = block.benchmarks ? Math.max(ringSize + 6, summaryLines.length * 12 + 2) : SUMMARY_HEIGHT;
   const titleHeight = IDS_REPORT_TITLE_HEIGHT + blockTitleStyle(block).extra;
-  const lead = titleHeight + summaryHeight + DATE_HEIGHT + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter;
+  const lead = titleHeight + summaryHeight + stampHeight + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter;
   cursor.ensure(Math.min(lead, cursor.bottom - cursor.top));
   cursor.push(...blockTitleItems(block, title, cursor.x, cursor.y, contentW, cursor.truncate));
   cursor.y += titleHeight;
@@ -154,9 +156,11 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
     kind: 'text', x: cursor.x + (block.benchmarks ? ringSize + 12 : 0), y: cursor.y + 10 + i * 12, size: 9, bold: false, gray: 60, text,
   }));
   cursor.y += summaryHeight;
-  cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130,
-    text: cursor.truncate(`Validation run: ${block.generatedAt}`, contentW, 8, false) });
-  cursor.y += DATE_HEIGHT;
+  if (stamp) {
+    cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130,
+      text: cursor.truncate(`Validation run: ${stamp.generatedAt}`, contentW, 8, false) });
+    cursor.y += stampHeight;
+  }
   layoutReportProvenance(scopeLines, cursor, keepAfter);
 
   /** Compact row: name on the left, then the bar and `passed/checked · n%` (or plain detail text when there is no bar). */

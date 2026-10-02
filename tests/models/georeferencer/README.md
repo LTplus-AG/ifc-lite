@@ -4,8 +4,7 @@
 [bedrock-engineer/ifc-georeferencer at 7945e1ef2ecfc04c3ae78810a9777d5c7f12d64b](https://github.com/bedrock-engineer/ifc-georeferencer/blob/7945e1ef2ecfc04c3ae78810a9777d5c7f12d64b/public/demo/MiniBIM-3.1-DO_01_VORM.ifc).
 The repository [README](https://github.com/bedrock-engineer/ifc-georeferencer/blob/7945e1ef2ecfc04c3ae78810a9777d5c7f12d64b/README.md)
 identifies this demo and declares Apache-2.0; no separate demo license is declared.
-The accompanying [license and provenance asset](https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/MiniBIM-georeferencer-Apache-2.0.txt)
-retains a copy of the source repository's license with the published fixture.
+A copy of the source repository's license is retained in `LICENSE.txt`.
 The IFC header credits VORM Holding B.V., Bonsai 0.8.2 and IfcOpenShell 0.8.2.
 The app is developed by Bedrock.engineer for buildingSMART Nederland.
 

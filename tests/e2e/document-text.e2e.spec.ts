@@ -87,9 +87,9 @@ test('#6488 a popped-out document remains usable after rename, cancel and Escape
   });
   await page.goto(`${viewerUrl}?model=/samples/building-architecture.ifc`);
   await loaded;
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
-    state.upsertDocument({ version: 1, id: 'popout-6488', name: 'Report', page: { size: 'A4', orientation: 'portrait' }, blocks: [] });
+    if (!(await state.upsertDocument({ version: 1, id: 'popout-6488', name: 'Report', page: { size: 'A4', orientation: 'portrait' }, blocks: [] }))) throw new Error('Canonical document setup was not committed');
     state.setActiveDocumentId('popout-6488');
     state.showWorkspacePanel('document');
     state.setSidebarActivePanel('document');
@@ -144,9 +144,9 @@ test('#6485 named model fields retain their source and authored page breaks expo
   const bridgeLoaded = page.waitForEvent('console', { predicate: (message) => message.text().includes('[ifc-lite] Added model infra-bridge.ifc'), timeout: 120000 });
   await page.locator('#file-input-add').setInputFiles(join(ROOT, 'apps/viewer/public/samples/infra-bridge.ifc'));
   await bridgeLoaded;
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
-    state.upsertDocument({ version: 8, id: 'sources-6485', name: 'Model sources and page breaks', page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'text', id: 'bridge', style: 'heading', text: '' }] });
+    if (!(await state.upsertDocument({ version: 8, id: 'sources-6485', name: 'Model sources and page breaks', page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'text', id: 'bridge', style: 'heading', text: '' }] }))) throw new Error('Canonical document setup was not committed');
     state.setActiveDocumentId('sources-6485');
     state.showWorkspacePanel('document');
     state.setSidebarActivePanel('document');
@@ -283,7 +283,7 @@ test('#6500/#6568 explicitly saved real IFC checks survive reload and remain ind
     if (!model) throw new Error('Real validated model missing');
     state.setModelName(model.id, 'Renamed after evaluation.ifc');
     const document = { ...blankDocument(), name: 'Live evaluated scope', blocks: [] };
-    state.upsertDocument(document);
+    if (!(await state.upsertDocument(document))) throw new Error('Canonical document setup was not committed');
     state.setActiveDocumentId(document.id);
     state.openPanelInHome('document');
   });
@@ -301,9 +301,9 @@ test('#6500/#6568 explicitly saved real IFC checks survive reload and remain ind
   await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setManualChecklist(null));
   await page.goto(viewerUrl);
   await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__ !== undefined);
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
-    state.upsertDocument({ version: 8, id: 'history-6500', name: 'Saved checks', page: { size: 'A4', orientation: 'portrait' }, blocks: [] });
+    if (!(await state.upsertDocument({ version: 8, id: 'history-6500', name: 'Saved checks', page: { size: 'A4', orientation: 'portrait' }, blocks: [] }))) throw new Error('Canonical document setup was not committed');
     state.setActiveDocumentId('history-6500');
     state.openPanelInHome('document');
   });
@@ -521,14 +521,14 @@ test('#6489 real IFC document tables retain independent ordering and coloured re
     }));
   });
   await settle(2);
-  await page.evaluate((entityTypes) => {
+  await page.evaluate(async (entityTypes) => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     const list = { id: 'ifc-products-6489', name: 'IFC products', createdAt: 1, updatedAt: 1, entityTypes, groups: [],
       columns: [{ id: 'class', source: 'attribute' as const, propertyName: 'Class' }, { id: 'name', source: 'attribute' as const, propertyName: 'Name' }],
       grouping: { columnId: 'class', sumColumnIds: [] } };
-    state.upsertDocument({ version: 9, id: 'table-options-6489', name: 'IFC table options', page: { size: 'A4', orientation: 'portrait' },
+    if (!(await state.upsertDocument({ version: 9, id: 'table-options-6489', name: 'IFC table options', page: { size: 'A4', orientation: 'portrait' },
       blocks: [{ kind: 'table', id: 'largest', source: { kind: 'list', list }, title: 'Largest first', maxRows: 500 },
-        { kind: 'table', id: 'labels', source: { kind: 'list', list: { ...list, id: 'copy-6489' } }, title: 'By label', maxRows: 500 }] });
+        { kind: 'table', id: 'labels', source: { kind: 'list', list: { ...list, id: 'copy-6489' } }, title: 'By label', maxRows: 500 }] }))) throw new Error('Canonical document setup was not committed');
     state.setActiveDocumentId('table-options-6489'); state.showWorkspacePanel('document');
   }, [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcBuildingElementProxy, IfcTypeEnum.IfcFurniture, IfcTypeEnum.IfcBeam]);
   const panel = page.locator('[data-document-panel]:visible');
@@ -645,7 +645,7 @@ test('#6507 real IFC discipline checklists remain independent and print their ch
     const moduleUrl = '/src/lib/document/types.ts';
     const { DOCUMENT_VERSION }: typeof import('../../apps/viewer/src/lib/document/types') = await import(moduleUrl);
     const state = globalThis.__ifc_lite_viewer_store__.getState();
-    state.upsertDocument({ version: DOCUMENT_VERSION, id: 'reviews-6507', name: 'Independent discipline reviews', page: { size: 'A4', orientation: 'portrait' }, blocks: [] });
+    if (!(await state.upsertDocument({ version: DOCUMENT_VERSION, id: 'reviews-6507', name: 'Independent discipline reviews', page: { size: 'A4', orientation: 'portrait' }, blocks: [] }))) throw new Error('Canonical document setup was not committed');
     state.setActiveDocumentId('reviews-6507');
     state.openPanelInHome('document');
   });

@@ -32,7 +32,7 @@ fs.mkdirSync(out, { recursive: true });
    s.setManualChecklist({ version: 1, name: 'Delivery review ' + count, groups: [{ id: 'delivery', name: 'Delivery', items: [{ id: 'uploaded', text: 'Uploaded on time' }, { id: 'names', text: 'Naming convention' }] }] });
    s.setManualAnswer(model.sourceFingerprint, 'uploaded', { status: 'pass' });
    s.setManualAnswer(model.sourceFingerprint, 'names', { status: 'warning', comment: 'Review retained prefix' });
-   if (!s.upsertDocument({ version: DOCUMENT_VERSION, id: 'stamp-proof-' + count, name: 'Manual stamp proof ' + count, page: { size: 'A4', orientation: 'portrait' }, blocks: [] })) throw Error('Canonical document writer refused setup');
+   if (!(await s.upsertDocument({ version: DOCUMENT_VERSION, id: 'stamp-proof-' + count, name: 'Manual stamp proof ' + count, page: { size: 'A4', orientation: 'portrait' }, blocks: [] }))) throw Error('Canonical document writer refused setup');
    s.setActiveDocumentId('stamp-proof-' + count); s.floatPanel('document'); s.setFloatingPanelRect('document', { x: 20, y: 65, w: 1470, h: 950 });
    return models.map(m => ({ name: m.name, fingerprint: m.sourceFingerprint, entities: m.ifcDataStore.entityCount }));
   }, count);

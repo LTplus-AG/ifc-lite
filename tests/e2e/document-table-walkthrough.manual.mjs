@@ -145,7 +145,7 @@ await shot('pdf-page-1');
 await page.goto(`${BASE}/?model=${process.env.WALKTHROUGH_LONG_MODEL ?? '/samples/_duplex-walkthrough.ifc'}`);
 await page.waitForFunction((k) => { const s = globalThis[k].getState(); return s.models.size > 0 && !s.loading && (s.geometryResult?.meshes?.length ?? 0) > 0; }, STORE, { timeout: 180000 });
 await page.waitForTimeout(3000);
-await page.evaluate((k) => {
+await page.evaluate(async (k) => {
   const s = globalThis[k].getState();
   const list = { id: 'document-list-long', name: 'Every entity', createdAt: 0, updatedAt: 0, entityTypes: [], conditions: [], columns: [
     { id: 'name', source: 'attribute', propertyName: 'Name' }, { id: 'class', source: 'attribute', propertyName: 'Class' }, { id: 'guid', source: 'attribute', propertyName: 'GlobalId' },
@@ -155,7 +155,7 @@ await page.evaluate((k) => {
     { kind: 'table', id: 'b-table', source: { kind: 'list', list }, maxRows: 120, caption: 'Capped at 120 rows' },
     { kind: 'text', id: 'b-after', style: 'body', text: 'Text after the table.' },
   ] };
-  s.upsertDocument(doc);
+  if (!(await s.upsertDocument(doc))) throw new Error('Canonical document setup was not committed');
   s.setActiveDocumentId('document-long');
 }, STORE);
 await page.getByRole('tab', { name: /analy/i }).first().click();

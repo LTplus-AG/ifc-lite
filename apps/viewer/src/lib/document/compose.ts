@@ -116,7 +116,7 @@ export interface ComposeDocumentInput {
   measure: (text: string, size: number, bold: boolean, font?: TextFont) => number;
 }
 
-/** A character estimate for Helvetica — tests and the on-screen preview use it. */
+/** A character estimate for Helvetica used by layout tests; preview/PDF use jsPDF metrics. */
 export const estimateTextWidth = (text: string, size: number, bold: boolean): number => text.length * size * (bold ? 0.56 : 0.52);
 
 /** A conservative, font-independent bound keeps preview/PDF pairing identical.

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { CSSProperties } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { renderChartSvg, type Aggregation } from '@ifc-lite/charts';
 import { REPORT_THEME } from '@/lib/export/report/generate-report-pdf';
@@ -49,6 +49,29 @@ function position(box: Box, origin: Box, scale: number): CSSProperties {
     width: box.w * scale, height: box.h * scale };
 }
 
+/** Retain the existing chart SSR cache when only block selection changes. */
+function ComposedChart({ aggregation, item, fontSize, message, savedComparison, style, scale, measure }: {
+  aggregation: Aggregation | null | undefined;
+  item: Extract<DrawnItem, { kind: 'chart' }>;
+  fontSize: number | undefined;
+  message: string;
+  savedComparison: boolean;
+  style: CSSProperties;
+  scale: number;
+  measure: ComposeDocumentInput['measure'];
+}) {
+  const { w: width, h: height } = item;
+  const svg = useMemo(() => aggregation && aggregation.categories.length > 0
+    ? renderChartSvg({ aggregation, width, height, fontSize, theme: REPORT_THEME, showTitle: false, print: true })
+    : null, [aggregation, width, height, fontSize]);
+  if (svg) return <span style={style} className="block [&_svg]:h-full [&_svg]:w-full" data-chart-svg dangerouslySetInnerHTML={{ __html: svg }} />;
+  const lines = savedComparison ? chartSourceMessageLines(message, item, 9, measure) : [{ text: message, y: 14 }];
+  return <span style={{ ...style, overflow: 'hidden' }} title={message} data-chart-empty>
+    {lines.map((line, i) => <span key={i} style={{ position: 'absolute', left: 0, top: (line.y - 9) * scale,
+      whiteSpace: 'pre', fontSize: 9 * scale, lineHeight: 1.25, color: '#828282' }}>{line.text}{'\n'}</span>)}
+  </span>;
+}
+
 function Item({ item, block, origin, props, lineBreak }: { item: DrawnItem; block: DocumentBlock; origin: Box; props: ComposedPageItemsProps; lineBreak: boolean }) {
   const { scale, measure, labels: t } = props;
   const box = itemBox(item, measure);
@@ -84,20 +107,11 @@ function Item({ item, block, origin, props, lineBreak }: { item: DrawnItem; bloc
           if (w > 0 && h > 0) props.onImageSize(dataUrl, { w, h });
         }} /> : <span style={style} className="flex items-center justify-center border border-dashed border-neutral-300 text-xs text-neutral-500">{dataUrl ? t('document.print.imageError') : t('document.preview.imageEmpty')}</span>;
     }
-    case 'chart': {
-      const aggregation = props.aggregations.get(item.blockId);
-      const svg = aggregation && aggregation.categories.length > 0 ? renderChartSvg({ aggregation,
-        width: item.w, height: item.h, fontSize: block.kind === 'chart' ? block.fontSize : undefined,
-        theme: REPORT_THEME, showTitle: false, print: true }) : null;
-      if (svg) return <span style={style} className="block [&_svg]:h-full [&_svg]:w-full" data-chart-svg dangerouslySetInnerHTML={{ __html: svg }} />;
-      const message = props.chartMessages.get(item.blockId) ?? t('document.preview.chartEmpty');
-      const lines = block.kind === 'chart' && isSavedComparisonChart(block.chart)
-        ? chartSourceMessageLines(message, item, 9, measure) : [{ text: message, y: 14 }];
-      return <span style={{ ...style, overflow: 'hidden' }} title={message} data-chart-empty>
-        {lines.map((line, i) => <span key={i} style={{ position: 'absolute', left: 0, top: (line.y - 9) * scale,
-          whiteSpace: 'pre', fontSize: 9 * scale, lineHeight: 1.25, color: '#828282' }}>{line.text}{'\n'}</span>)}
-      </span>;
-    }
+    case 'chart': return <ComposedChart aggregation={props.aggregations.get(item.blockId)} item={item}
+      fontSize={block.kind === 'chart' ? block.fontSize : undefined}
+      message={props.chartMessages.get(item.blockId) ?? t('document.preview.chartEmpty')}
+      savedComparison={block.kind === 'chart' && isSavedComparisonChart(block.chart)}
+      style={style} scale={scale} measure={measure} />;
     case 'snapshot': return <span style={style} className="flex items-center justify-center border border-dashed border-neutral-300 text-xs text-neutral-500">{t('document.print.snapshot')}</span>;
     case 'ring': {
       const name = block.kind === 'manual-report' ? block.checklistName : block.kind === 'ids-report' ? block.sourceName : '';

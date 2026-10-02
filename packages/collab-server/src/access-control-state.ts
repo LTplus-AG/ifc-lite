@@ -80,6 +80,106 @@ export function listPersistedRoomIds(dir: string): string[] {
   return ids;
 }
 
+export interface StateWriter {
+  /** Mark the state dirty and schedule a debounced write. */
+  persist(): void;
+  /** Await any pending/in-flight write; rejects when the latest state never reached disk. */
+  flush(): Promise<void>;
+}
+
+/**
+ * Debounced, atomic writer for the state file. Persistence used to be a
+ * synchronous full-file `writeFileSync` on *every* claim/revocation — a cheap
+ * way for an attacker looping mint calls to pin the event loop on disk I/O.
+ * Writes now coalesce behind a short debounce and a single in-flight drain,
+ * so a burst of claims collapses to one async write. The write is atomic
+ * (temp file in the same dir, then rename over the target) so a crash
+ * mid-write can never leave a torn/corrupt state file.
+ *
+ * `serialize` runs at write time and returns the file's text, plus an
+ * optional callback run once that text is in place.
+ */
+export function createStateWriter(opts: {
+  dir: string;
+  statePath: string;
+  debounceMs: number;
+  serialize: () => { text: string; written?: () => void };
+}): StateWriter {
+  const { dir, statePath } = opts;
+  const tmpPath = `${statePath}.tmp`;
+  let writeTimer: ReturnType<typeof setTimeout> | null = null;
+  let writing: Promise<void> | null = null;
+  let dirty = false;
+  /** Last write failure — `flush()` must not resolve as if state landed. */
+  let lastWriteError: unknown = null;
+  const writeOnce = async () => {
+    try {
+      const { text, written } = opts.serialize();
+      await fs.promises.mkdir(dir, { recursive: true });
+      await fs.promises.writeFile(tmpPath, text);
+      await fs.promises.rename(tmpPath, statePath);
+      written?.();
+      lastWriteError = null;
+    } catch (err) {
+      lastWriteError = err;
+      // eslint-disable-next-line no-console
+      console.warn('[collab-server] could not persist access-control state:', err);
+    }
+  };
+  // Serialized drain: one writer at a time; a change landing while a write is
+  // in flight re-marks `dirty`, and the loop runs one more pass so the
+  // snapshot on disk is never stale. On failure the state is still dirty
+  // (disk is stale) but the loop stops instead of spinning; the next
+  // persist()/flush() retries.
+  const drain = async () => {
+    while (dirty) {
+      dirty = false;
+      await writeOnce();
+      if (lastWriteError !== null) {
+        dirty = true;
+        break;
+      }
+    }
+  };
+  const kick = () => {
+    if (!writing) {
+      writing = drain().finally(() => {
+        writing = null;
+      });
+    }
+  };
+  return {
+    persist() {
+      dirty = true;
+      if (writeTimer || writing) return;
+      writeTimer = setTimeout(() => {
+        writeTimer = null;
+        kick();
+      }, opts.debounceMs);
+      // Don't keep the event loop alive solely for a pending persist.
+      writeTimer.unref?.();
+    },
+    async flush() {
+      if (writeTimer) {
+        clearTimeout(writeTimer);
+        writeTimer = null;
+      }
+      while (dirty || writing) {
+        kick();
+        await writing;
+        // One retry per flush call: a persistent failure (unwritable volume)
+        // must reject, not loop forever.
+        if (lastWriteError !== null) break;
+      }
+      if (lastWriteError !== null) {
+        throw new Error(
+          `[collab-server] access-control state could not be persisted to ${statePath}: ${String(lastWriteError)}`,
+        );
+      }
+    },
+  };
+}
+
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
 /** Parsed persistent state; throws on any malformed shape (fail closed). */

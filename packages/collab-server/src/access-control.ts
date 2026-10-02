@@ -39,7 +39,12 @@ import { createRoomTokenAuthenticator, createRoomTokenRegistryAuthorizer, verify
 import { createRateLimiter, type RateLimiter } from './rate-limit.js';
 import { type AuthenticateFn, type Role } from './auth.js';
 import type { StartCollabServerOptions } from './server.js';
-import { hasPersistedRoomLog, listPersistedRoomIds, parseStateFile } from './access-control-state.js';
+import {
+  createStateWriter,
+  hasPersistedRoomLog,
+  listPersistedRoomIds,
+  parseStateFile,
+} from './access-control-state.js';
 import {
   createRoomClaims,
   EXPIRY_SLACK_SEC,
@@ -157,90 +162,24 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
   };
   pruneRevoked();
   const expiredOnLoad = roomClaims.expire(nowSec());
-  // Persistence used to be a synchronous full-file `writeFileSync` on *every*
-  // claim/revocation — a cheap way for an attacker looping mint calls to pin
-  // the event loop on disk I/O. Coalesce writes behind a short debounce and a
-  // single in-flight drain so a burst of claims collapses to one async write.
-  // The write is atomic (temp file in the same dir, then rename over the
-  // target) so a crash mid-write can never leave a torn/corrupt state file.
-  const persistDebounceMs = opts.persistDebounceMs ?? 250;
-  const tmpPath = `${statePath}.tmp`;
-  let writeTimer: ReturnType<typeof setTimeout> | null = null;
-  let writing: Promise<void> | null = null;
-  let dirty = false;
-  /** Last write failure — `flush()` must not resolve as if state landed. */
-  let lastWriteError: unknown = null;
   /** Rooms whose claim was confirmed by a join that waits for it to reach disk. */
   const awaitingDurable = new Set<string>();
-  const writeOnce = async () => {
-    try {
+  const { persist, flush } = createStateWriter({
+    dir,
+    statePath,
+    debounceMs: opts.persistDebounceMs ?? 250,
+    serialize: () => {
       pruneRevoked(); // periodic pruning: every persisted snapshot is bounded
       roomClaims.expire(nowSec());
       const covered = [...awaitingDurable];
-      await fs.promises.mkdir(dir, { recursive: true });
-      await fs.promises.writeFile(
-        tmpPath,
-        JSON.stringify({ revoked: Object.fromEntries(revoked), ...roomClaims.snapshot() }),
-      );
-      await fs.promises.rename(tmpPath, statePath);
-      for (const room of covered) awaitingDurable.delete(room);
-      lastWriteError = null;
-    } catch (err) {
-      lastWriteError = err;
-      // eslint-disable-next-line no-console
-      console.warn('[collab-server] could not persist access-control state:', err);
-    }
-  };
-  // Serialized drain: one writer at a time; a claim/revocation landing while a
-  // write is in flight re-marks `dirty`, and the loop runs one more pass so the
-  // snapshot on disk is never stale. On failure the state is still dirty (disk
-  // is stale) but the loop stops instead of spinning; the next persist()/
-  // flush() retries.
-  const drain = async () => {
-    while (dirty) {
-      dirty = false;
-      await writeOnce();
-      if (lastWriteError !== null) {
-        dirty = true;
-        break;
-      }
-    }
-  };
-  const kick = () => {
-    if (!writing) {
-      writing = drain().finally(() => {
-        writing = null;
-      });
-    }
-  };
-  const persist = () => {
-    dirty = true;
-    if (writeTimer || writing) return;
-    writeTimer = setTimeout(() => {
-      writeTimer = null;
-      kick();
-    }, persistDebounceMs);
-    // Don't keep the event loop alive solely for a pending persist.
-    writeTimer.unref?.();
-  };
-  const flush = async () => {
-    if (writeTimer) {
-      clearTimeout(writeTimer);
-      writeTimer = null;
-    }
-    while (dirty || writing) {
-      kick();
-      await writing;
-      // One retry per flush call: a persistent failure (unwritable volume)
-      // must reject, not loop forever.
-      if (lastWriteError !== null) break;
-    }
-    if (lastWriteError !== null) {
-      throw new Error(
-        `[collab-server] access-control state could not be persisted to ${statePath}: ${String(lastWriteError)}`,
-      );
-    }
-  };
+      return {
+        text: JSON.stringify({ revoked: Object.fromEntries(revoked), ...roomClaims.snapshot() }),
+        written: () => {
+          for (const room of covered) awaitingDurable.delete(room);
+        },
+      };
+    },
+  });
   // Rooms adopted from a missing-state migration (see above), and claims that
   // expired while the server was down, must reach disk without waiting for
   // the next claim to trigger a write.

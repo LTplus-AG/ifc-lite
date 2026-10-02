@@ -10,13 +10,21 @@
  *     (room creation / first-touch). Afterwards only an admin token for that
  *     room may mint further links — so a link's holder can't escalate.
  *   - Admins can revoke a link by `jti` (deny-list).
+ *   - A first-touch claim stays pending until the room's first authenticated
+ *     join (`room-claims.ts`, #6581). Until then the client that claimed it can
+ *     hand it back (`POST /collab/release`, which revokes every token minted
+ *     for it), and it expires on its own once all of those tokens have. The
+ *     join that confirms a claim is admitted only once that is on disk.
+ *     Joins confirm claims through `serverOptions.authenticate`: a deployment
+ *     that replaces it leaves its claims pending, so each expires with its
+ *     tokens unless the room has a log in `dir`.
  *
- * The deny-list + claimed-room set persist to `access-control.json` in the
- * data dir so they survive restarts (needs a durable volume to actually
- * persist). Writes are debounced (a burst of claims collapses to one write)
- * and atomic (temp file + rename, so a crash mid-write never leaves a torn
- * state file); `flush()` awaits any pending/in-flight write for the shutdown
- * path and REJECTS when the final state never reached disk.
+ * The deny-list + claim ledger persist to `access-control.json` in the data
+ * dir so they survive restarts (needs a durable volume to actually persist).
+ * Writes are debounced (a burst of claims collapses to one write) and atomic
+ * (temp file + rename, so a crash mid-write never leaves a torn state file);
+ * `flush()` awaits any pending/in-flight write for the shutdown path and
+ * REJECTS when the final state never reached disk.
  *
  * Load is fail-closed: a state file that exists but cannot be read or parsed
  * throws at startup instead of silently running open. A MISSING state file
@@ -30,15 +38,22 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createRoomTokenAuthenticator, createRoomTokenRegistryAuthorizer, verifyRoomToken } from './room-token.js';
 import { createRateLimiter, type RateLimiter } from './rate-limit.js';
-import { type Role } from './auth.js';
+import { type AuthenticateFn, type Role } from './auth.js';
 import type { StartCollabServerOptions } from './server.js';
+import { hasPersistedRoomLog, listPersistedRoomIds, parseStateFile } from './access-control-state.js';
+import {
+  createRoomClaims,
+  EXPIRY_SLACK_SEC,
+  FALLBACK_TOKEN_RETENTION_SEC,
+  type PendingClaimRecord,
+} from './room-claims.js';
 
 export interface AccessControlOptions {
   /** Token signing/verification secret (`COLLAB_TOKEN_SECRET`). */
   secret: string;
   /** Data dir holding `access-control.json` (shared with rooms/blobs). */
   dir: string;
-  /** Cap on the claimed-rooms set (default 100_000). */
+  /** Cap on claimed rooms, pending and confirmed together (default 100_000). */
   maxClaimedRooms?: number;
   /**
    * Honor `X-Forwarded-For` when rate-limiting mints (default OFF). Enable
@@ -53,6 +68,8 @@ export interface AccessControlOptions {
   mintRateRefillPerSecond?: number;
   /** Bound on the per-IP limiter map (default 4096). */
   maxRateLimiters?: number;
+  /** Clock in ms since epoch (default `Date.now`), for minting, verifying and claim expiry. */
+  now?: () => number;
 }
 
 export interface AccessControl {
@@ -67,114 +84,18 @@ export interface AccessControl {
   flush(): Promise<void>;
 }
 
-/**
- * Legacy revocations (the pre exp-tracking `revoked: string[]` shape) and
- * kick-path revocations carry no token expiry. Retain them for the maximum
- * mintable token lifetime (`maxTtlSeconds` default 30 days) plus a day of
- * slack — after that the tokens they revoked have expired on their own, so
- * pruning can never resurrect a live token.
- */
-const FALLBACK_REVOCATION_RETENTION_SEC = 31 * 24 * 60 * 60;
-/** Covers the verifier's clock tolerance so pruning never races a live token. */
-const REVOCATION_PRUNE_SLACK_SEC = 60;
-
-/**
- * Enumerate room ids already persisted by `FilePersistence` in `dir`: rooms
- * live as top-level `<encodeURIComponent(roomId)>.log` files (blobs and the
- * layer registry live in subdirectories, which are skipped). Pre-encoding
- * legacy logs used a lossy sanitizer; for those the decoded name IS the
- * sanitized id (best effort — claiming under it still blocks first-touch
- * mints for the ids the server would map to that log).
- */
-function listPersistedRoomIds(dir: string): string[] {
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []; // no data dir yet: genuinely fresh
-    // Cannot tell "fresh install" from "existing rooms": fail closed rather
-    // than run a server whose rooms are silently up for first-claim grabs.
-    throw new Error(
-      `[collab-server] access-control state is missing and the data dir cannot be enumerated (${String(err)}); refusing to start open`,
-    );
-  }
-  const ids: string[] = [];
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith('.log')) continue;
-    const base = entry.name.slice(0, -'.log'.length);
-    try {
-      ids.push(decodeURIComponent(base));
-    } catch {
-      ids.push(base); // malformed escape: legacy/foreign name, claim it verbatim
-    }
-  }
-  return ids;
-}
-
-/** Parsed persistent state; throws on any malformed shape (fail closed). */
-function parseStateFile(raw: string, statePath: string): {
-  revoked: Map<string, number>;
-  claimedRooms: string[];
-} {
-  const fail = (why: string): never => {
-    throw new Error(
-      `[collab-server] access-control state at ${statePath} is ${why}; refusing to start open. ` +
-        'Restore the file from backup or delete it deliberately (deleting forgets revocations).',
-    );
-  };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return fail('not valid JSON');
-  }
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return fail('not a JSON object');
-  }
-  const rec = parsed as { revoked?: unknown; claimedRooms?: unknown };
-  const claimedRooms: string[] = [];
-  if (rec.claimedRooms !== undefined) {
-    if (!Array.isArray(rec.claimedRooms) || rec.claimedRooms.some((r) => typeof r !== 'string')) {
-      return fail('malformed (claimedRooms must be an array of strings)');
-    }
-    claimedRooms.push(...(rec.claimedRooms as string[]));
-  }
-  const revoked = new Map<string, number>();
-  const nowSec = Math.floor(Date.now() / 1000);
-  if (Array.isArray(rec.revoked)) {
-    // Legacy shape: `revoked: ["jti", ...]` (no expiries). Assign the
-    // fallback retention horizon so the entries stay prunable.
-    if (rec.revoked.some((j) => typeof j !== 'string')) {
-      return fail('malformed (legacy revoked entries must be strings)');
-    }
-    for (const jti of rec.revoked as string[]) {
-      revoked.set(jti, nowSec + FALLBACK_REVOCATION_RETENTION_SEC);
-    }
-  } else if (rec.revoked !== undefined) {
-    // Current shape: `revoked: { jti: expSeconds, ... }`.
-    if (typeof rec.revoked !== 'object' || rec.revoked === null) {
-      return fail('malformed (revoked must be an array or an object of jti -> exp)');
-    }
-    for (const [jti, exp] of Object.entries(rec.revoked as Record<string, unknown>)) {
-      if (typeof exp !== 'number' || !Number.isFinite(exp)) {
-        return fail(`malformed (revoked["${jti}"] must be a finite expiry in seconds)`);
-      }
-      revoked.set(jti, exp);
-    }
-  }
-  return { revoked, claimedRooms };
-}
-
 export function createAccessControl(opts: AccessControlOptions): AccessControl {
   const { secret, dir } = opts;
-  // Persist the revocation deny-list + claimed-room set to disk so they survive
+  const nowSec = () => Math.floor((opts.now ? opts.now() : Date.now()) / 1000);
+  // Persist the revocation deny-list + claim ledger to disk so they survive
   // restarts. Without this, a restart (a) forgets revocations and (b) lets the
   // first POST /collab/token for an already-claimed persisted room take it over
   // with a fresh admin token.
   const statePath = path.join(dir, 'access-control.json');
   /** jti -> token expiry (seconds since epoch); expired entries are pruned. */
   const revoked = new Map<string, number>();
-  const claimedRooms = new Set<string>();
+  let loadedRooms: string[] = [];
+  let loadedPending: Record<string, PendingClaimRecord> = {};
   let stateRaw: string | null = null;
   try {
     stateRaw = fs.readFileSync(statePath, 'utf8');
@@ -191,12 +112,11 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
     // file on a deployment that already has rooms. Mark any persisted rooms
     // claimed so a squatter cannot first-claim them; their admins keep
     // minting via their still-valid admin bearer tokens.
-    const existing = listPersistedRoomIds(dir);
-    if (existing.length > 0) {
-      for (const roomId of existing) claimedRooms.add(roomId);
+    loadedRooms = listPersistedRoomIds(dir);
+    if (loadedRooms.length > 0) {
       // eslint-disable-next-line no-console
       console.warn(
-        `[collab-server] access-control state missing but ${existing.length} persisted room(s) found; ` +
+        `[collab-server] access-control state missing but ${loadedRooms.length} persisted room(s) found; ` +
           'marking them claimed (their admins re-mint links with existing admin bearers)',
       );
     }
@@ -204,16 +124,29 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
   if (stateRaw !== null) {
     const loaded = parseStateFile(stateRaw, statePath);
     for (const [jti, exp] of loaded.revoked) revoked.set(jti, exp);
-    for (const r of loaded.claimedRooms) claimedRooms.add(r);
+    loadedRooms = loaded.claimedRooms;
+    loadedPending = loaded.pendingClaims;
   }
+  // Bound the claim ledger. Each fresh-room first-claim adds an entry; without
+  // a ceiling an attacker (or a very long-lived deployment) grows it — and
+  // every serialized write — without limit. Legitimate multi-room deployments
+  // stay well under the default 100k cap.
+  const maxClaimedRooms = opts.maxClaimedRooms ?? 100_000;
+  const roomClaims = createRoomClaims({
+    maxClaimedRooms,
+    claimedRooms: loadedRooms,
+    pendingClaims: loadedPending,
+    hasContent: (room) => hasPersistedRoomLog(dir, room),
+  });
   /** Drop revocations whose tokens have expired on their own (bounded set). */
   const pruneRevoked = () => {
-    const nowSec = Math.floor(Date.now() / 1000);
+    const t = nowSec();
     for (const [jti, exp] of revoked) {
-      if (exp + REVOCATION_PRUNE_SLACK_SEC < nowSec) revoked.delete(jti);
+      if (exp + EXPIRY_SLACK_SEC < t) revoked.delete(jti);
     }
   };
   pruneRevoked();
+  const expiredOnLoad = roomClaims.expire(nowSec());
   // Persistence used to be a synchronous full-file `writeFileSync` on *every*
   // claim/revocation — a cheap way for an attacker looping mint calls to pin
   // the event loop on disk I/O. Coalesce writes behind a short debounce and a
@@ -227,18 +160,20 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
   let dirty = false;
   /** Last write failure — `flush()` must not resolve as if state landed. */
   let lastWriteError: unknown = null;
+  /** Rooms whose claim was confirmed by a join that waits for it to reach disk. */
+  const awaitingDurable = new Set<string>();
   const writeOnce = async () => {
     try {
       pruneRevoked(); // periodic pruning: every persisted snapshot is bounded
+      roomClaims.expire(nowSec());
+      const covered = [...awaitingDurable];
       await fs.promises.mkdir(dir, { recursive: true });
       await fs.promises.writeFile(
         tmpPath,
-        JSON.stringify({
-          revoked: Object.fromEntries(revoked),
-          claimedRooms: [...claimedRooms],
-        }),
+        JSON.stringify({ revoked: Object.fromEntries(revoked), ...roomClaims.snapshot() }),
       );
       await fs.promises.rename(tmpPath, statePath);
+      for (const room of covered) awaitingDurable.delete(room);
       lastWriteError = null;
     } catch (err) {
       lastWriteError = err;
@@ -296,19 +231,14 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
       );
     }
   };
-  // Rooms adopted from a missing-state migration (see above) must reach disk
-  // without waiting for the next claim to trigger a write.
-  if (stateRaw === null && claimedRooms.size > 0) persist();
-
-  // Bound `claimedRooms` growth. Each fresh-room first-claim adds an entry that
-  // persists forever; without a ceiling an attacker (or a very long-lived
-  // deployment) grows the set — and every serialized write — without limit.
-  // Legitimate multi-room deployments stay well under the default 100k cap.
-  const maxClaimedRooms = opts.maxClaimedRooms ?? 100_000;
+  // Rooms adopted from a missing-state migration (see above), and claims that
+  // expired while the server was down, must reach disk without waiting for
+  // the next claim to trigger a write.
+  if ((stateRaw === null && roomClaims.size > 0) || expiredOnLoad > 0) persist();
 
   // Per-IP rate limiter for the unauthenticated mint path. A fresh room's first
   // mint needs no bearer, so without this an attacker can loop `POST
-  // /collab/token` to mint admin tokens (and grow `claimedRooms`) for free.
+  // /collab/token` to mint admin tokens (and grow the claim ledger) for free.
   // Generous burst so legitimate admins minting several links never trip it.
   const mintRateCapacity = opts.mintRateCapacity ?? 30;
   const mintRateRefillPerSecond = opts.mintRateRefillPerSecond ?? 0.5; // ~30 mints/min sustained per IP
@@ -336,9 +266,38 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
     }
     return limiter.tryConsume(1);
   };
+  // A full sweep of expired pending claims runs only at the cap, and at most
+  // once a second, so refused claims cannot turn into repeated full scans.
+  let lastSweepSec = -1;
+
+  const verifyJoin = createRoomTokenAuthenticator({ secret, isRevoked: (jti) => revoked.has(jti), now: opts.now });
+  const authenticate: AuthenticateFn = async (token, roomId) => {
+    const principal = await verifyJoin(token, roomId);
+    if (!principal) return null;
+    // Re-verified synchronously: a release that revoked this token, or the
+    // clock passing its expiry, while the check above awaited must still win.
+    const claims = verifyRoomToken(token ?? '', { secret, room: roomId, now: opts.now });
+    if (!claims || revoked.has(claims.jti)) return null;
+    if (roomClaims.confirm(roomId)) {
+      awaitingDurable.add(roomId);
+      persist();
+    }
+    if (!awaitingDurable.has(roomId)) return principal;
+    // The room is in use from here on. Admit the join only once that is on
+    // disk: a restart that lost it would reload the claim as pending, and a
+    // pending claim on a room with data could be released or expire.
+    try {
+      await flush();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`[collab-server] refusing a join: the room's claim could not be persisted:`, err);
+      return null;
+    }
+    return awaitingDurable.has(roomId) || revoked.has(claims.jti) ? null : principal;
+  };
 
   const serverOptions: Partial<StartCollabServerOptions> = {
-    authenticate: createRoomTokenAuthenticator({ secret, isRevoked: (jti) => revoked.has(jti) }),
+    authenticate,
     // Blobs are content-addressed and NOT room-scoped, but the default blob
     // authorizer reuses the WS `authenticate` with a pseudo-room scope — which
     // a room-bound token can never match. Verify signature/expiry/revocation
@@ -351,7 +310,7 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
       isRevoked: (jti) => revoked.has(jti),
     }),
     authorizeBlob: (token, method) => {
-      const claims = verifyRoomToken(token ?? '', { secret });
+      const claims = verifyRoomToken(token ?? '', { secret, now: opts.now });
       if (!claims || revoked.has(claims.jti)) return false;
       if (method === 'PUT' || method === 'DELETE') {
         return claims.role === 'editor' || claims.role === 'admin';
@@ -369,40 +328,55 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
     },
     tokenEndpoint: {
       secret,
+      now: opts.now,
       trustForwardedFor: opts.trustForwardedFor === true,
       // A revoked bearer (e.g. a kicked admin) is treated as absent before the
       // authorize policy even runs; the policy's own check below is defense in
       // depth for custom deployments that omit `isRevoked`.
       isRevoked: (jti) => revoked.has(jti),
-      authorize: (request, { bearerClaims, clientIp }): Role | null => {
+      authorize: (request, { bearerClaims, clientIp, mint }): Role | null => {
         const room = request.roomId;
         // A revoked bearer must not be able to keep minting links, even though
         // its signature + expiry still verify.
         if (bearerClaims?.jti && revoked.has(bearerClaims.jti)) return null;
         // An admin token for this room can re-mint links without tripping the
         // per-IP budget — the throttle targets the unauthenticated fresh-room
-        // path an attacker abuses, not authenticated re-mints.
-        if (bearerClaims?.room === room && bearerClaims.role === 'admin') return request.role;
+        // path an attacker abuses, not authenticated re-mints. A pending claim
+        // records each token minted for it (a release revokes them all), and
+        // refuses mints past its bound rather than leave one unrecorded.
+        if (bearerClaims?.room === room && bearerClaims.role === 'admin') {
+          if (roomClaims.isPending(room)) {
+            if (!roomClaims.record(room, mint)) return null;
+            persist();
+          }
+          return request.role;
+        }
         // Everything below is the unauthenticated "first claim of a fresh room
         // becomes admin" path: rate-limit it per IP so it can't be looped.
         if (!mintRateAllows(clientIp)) return null;
-        if (!claimedRooms.has(room)) {
-          if (claimedRooms.size >= maxClaimedRooms) {
-            // eslint-disable-next-line no-console
-            console.warn(
-              `[collab-server] claimedRooms cap (${maxClaimedRooms}) reached; refusing new fresh-room claim`,
-            );
-            return null;
-          }
-          claimedRooms.add(room);
-          persist();
-          return 'admin'; // creator of a fresh room
+        const t = nowSec();
+        let expired = roomClaims.expire(t, room);
+        let outcome = roomClaims.claim(room, t, mint);
+        if (outcome === 'full' && t !== lastSweepSec) {
+          lastSweepSec = t;
+          expired += roomClaims.expire(t);
+          outcome = roomClaims.claim(room, t, mint);
         }
-        return null; // claimed room + non-admin caller → denied
+        if (expired > 0 || outcome === 'claimed') persist();
+        if (outcome === 'full') {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[collab-server] claimedRooms cap (${maxClaimedRooms}) reached; refusing new fresh-room claim`,
+          );
+          return null;
+        }
+        // Creator of a fresh room; a claimed room + non-admin caller is denied.
+        return outcome === 'claimed' ? 'admin' : null;
       },
     },
     revokeEndpoint: {
       secret,
+      now: opts.now,
       isRevoked: (jti) => revoked.has(jti),
       recordRevocation: (jti, _room, expSec) => {
         // Retain each revocation until the token it kills has expired anyway
@@ -410,17 +384,31 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
         // live revocation. The revoke route passes the verified token's `exp`;
         // the kick path has no expiry in hand and gets the fallback horizon
         // (the max mintable TTL), which can only over-retain, never under.
-        const nowSec = Math.floor(Date.now() / 1000);
         revoked.set(
           jti,
           typeof expSec === 'number' && Number.isFinite(expSec)
             ? expSec
-            : nowSec + FALLBACK_REVOCATION_RETENTION_SEC,
+            : nowSec() + FALLBACK_TOKEN_RETENTION_SEC,
         );
         persist();
       },
     },
     kickEndpoint: { secret, isRevoked: (jti) => revoked.has(jti) },
+    releaseEndpoint: {
+      secret,
+      now: opts.now,
+      isRevoked: (jti) => revoked.has(jti),
+      release: (bearer) => {
+        // Re-checked synchronously: the route's own revocation check awaited.
+        if (revoked.has(bearer.jti)) return 'not-holder';
+        const outcome = roomClaims.release(bearer.room, bearer.jti);
+        if (outcome.kind !== 'released') return outcome.kind;
+        // The id can be claimed again; no token minted for it may follow it.
+        for (const [jti, exp] of outcome.tokens) revoked.set(jti, exp);
+        persist();
+        return 'released';
+      },
+    },
   };
 
   return { serverOptions, flush };

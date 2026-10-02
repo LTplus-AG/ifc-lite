@@ -63,6 +63,15 @@ Set `COLLAB_TOKEN_SECRET` to switch on **signed room tokens**:
   deny-list; future joins with it are refused.
 - **Kick** (`POST /collab/kick`, admin-only) force-disconnects a peer by its
   awareness client id and revokes its token so it can't reconnect.
+- **Unused claims are returned:** a room's first-touch claim stays *pending*
+  until the room's first join. If creating the room fails before that (the
+  Share dialog could not prepare the model, or the join failed), the client
+  hands the claim back with `POST /collab/release` (body `{ roomId }`, bearer:
+  an admin token minted for that claim). That frees its slot in
+  `COLLAB_MAX_CLAIMED_ROOMS` and revokes every token minted for the claim. A
+  pending claim nobody releases (a closed tab, an older viewer) expires once
+  all of its tokens have expired. A room that was joined, or has data on disk,
+  is never released or expired: the release answers `409`.
 
 ```sh
 COLLAB_TOKEN_SECRET="$(openssl rand -hex 32)" \
@@ -85,6 +94,7 @@ deployments back it with a shared store via the programmatic API.
 | `/blobs`, `/blobs/<hash>` | GET / PUT / HEAD / DELETE | Content-addressed geometry blobs. |
 | `/collab/token` | POST | Mint a signed token (only when `COLLAB_TOKEN_SECRET` is set). |
 | `/collab/revoke` | POST | Admin: invalidate a link by token. |
+| `/collab/release` | POST | Admin of a never-joined room: hand its claim back (`409` once joined). |
 | `/collab/kick` | POST | Admin: disconnect a peer by client id. |
 
 All HTTP routes send permissive CORS headers (reflecting the request `Origin`)

@@ -196,6 +196,32 @@ describe('the block source picker covers every kind and both live sources (#6553
     assert.deepEqual(refreshLabels(ui), ['Refresh from current validation report'], 'the live block can refresh again');
   });
 
+  it('every switch direction keeps the heading, its three style fields and the scale', async () => {
+    const entries = [savedIds(), savedRules(), savedManual()];
+    useViewerStore.setState({ savedValidationReports: entries, idsValidationReport: liveReport('ids') });
+    useViewerStore.getState().setManualChecklist({ version: CHECKLIST_VERSION, name: 'Site review', groups: [] });
+    seedDocument([{ ...idsBlock, id: 'b1', savedReportId: entries[0].id, variant: 'compact', specificationsOnly: true, title: 'Heading', titleFontSize: 14, titleTextColor: '#112233', titleBackgroundColor: '#ddeeff', scale: 1.25 }]);
+    const ui = render(<DocumentPanel />);
+    await settle();
+    const steps: Array<[string, string, string]> = [
+      ['saved IDS to saved information validation', entries[1].id, 'ids-report'],
+      ['saved IDS to saved manual (cross kind)', entries[2].id, 'manual-report'],
+      ['saved manual to live IDS (cross kind)', 'live:ids', 'ids-report'],
+      ['live IDS to live IDS', 'live:ids', 'ids-report'],
+      ['live IDS to saved IDS', entries[0].id, 'ids-report'],
+      ['saved IDS to live manual (cross kind)', 'live:manual', 'manual-report'],
+      ['live manual to live manual', 'live:manual', 'manual-report'],
+      ['live manual to saved manual', entries[2].id, 'manual-report'],
+    ];
+    for (const [name, value, kind] of steps) {
+      pick(sourcePicker(ui), value);
+      await settle();
+      const block = blocks()[0] as IdsReportBlock | ManualReportBlock;
+      assert.equal(block.kind, kind, name);
+      assert.deepEqual([block.id, block.title, block.titleFontSize, block.titleTextColor, block.titleBackgroundColor, block.scale], ['b1', 'Heading', 14, '#112233', '#ddeeff', 1.25], name);
+    }
+  });
+
   it('keeps the compact specifications-only choice when the source changes between IDS reports', async () => {
     const entries = [savedIds(), savedRules()];
     useViewerStore.setState({ savedValidationReports: entries, idsValidationReport: liveReport('ids') });

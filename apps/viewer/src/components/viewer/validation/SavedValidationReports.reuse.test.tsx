@@ -170,7 +170,7 @@ describe('Saved manual report editable reuse (#6611)', () => {
   for (const loadState of ['pending', 'error'] as const) {
     it(`defaults a recovered copy to the completed identical-file model instead of the first ${loadState} copy (#6611)`, async () => {
       const { source, original, ui } = await saveThenReopenHistory(2);
-      const complete = await publicModel('completed-identical-file', 'building-architecture.ifc');
+      const complete = { ...await publicModel('completed-identical-file', 'building-architecture.ifc'), name: 'Completed identical-file instance' };
       assert.equal(complete.sourceFingerprint, source.sourceFingerprint, 'actual same IFC bytes produce the same durable identity');
       act(() => {
         useViewerStore.getState().updateModel(source.id, { loadState });
@@ -199,7 +199,8 @@ describe('Saved manual report editable reuse (#6611)', () => {
         'bound Refresh also defaults to the completed exact source, not the failed first copy');
       click(button(probe, 'Refresh from current checklist'));
       assert.ok(refreshed.value);
-      assert.equal(refreshed.value.reportModels?.[0].id, complete.id);
+      assert.equal(refreshed.value.reportModels?.[0].name, complete.name);
+      assert.equal(refreshed.value.reportModels?.[0].fingerprint, source.sourceFingerprint);
       assert.equal(refreshed.value.groups[0].items[1].status, 'warning');
       assert.equal(JSON.stringify(loadValidationReports()[0]), original);
     });

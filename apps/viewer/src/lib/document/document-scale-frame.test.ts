@@ -241,7 +241,8 @@ describe('repeated page bands reserve the body frame for every scaled block kind
     const tall = { ...band, fontSize: 48, logo: { ...band.logo, height: 96 } };
     assert.throws(() => composeDocument({ name: 'Refused short frame', page: { size: 'A4', orientation: 'landscape' },
       generatedAt: 'now', stampedDate: '2026-10-02', measure: estimateTextWidth, pageHeading: tall, pageFooter: tall,
-      blocks: [chart('c', { height: 600, snapshot: true, scale: 2, fontSize: 24 })] }),
+      // A half-width column stacks its snapshot below the plot; this short frame cannot keep both.
+      blocks: [chart('c', { height: 600, snapshot: true, width: 'half', scale: 2, fontSize: 24 })] }),
     /leave too little space/, 'the same refusal is surfaced by preview and PDF');
   });
 

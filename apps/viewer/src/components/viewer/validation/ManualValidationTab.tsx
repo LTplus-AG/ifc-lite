@@ -35,6 +35,7 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
   const checklist = manual.checklist;
   const storeModels = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
+  const preferredFingerprint = useViewerStore((s) => s.manualLibrary.checklists.find(entry => entry.id === s.manualLibrary.activeId)?.preferredModelFingerprint);
   const allAnswers = useViewerStore((s) => s.manualAnswers);
   const saveError = useViewerStore((s) => s.manualSaveError);
   const saveErrorMessage = saveError && !saveError.ok && saveError.reason === 'no_checklist'
@@ -46,7 +47,7 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
   const [pickedModelId, setPickedModelId] = useState<string | null>(null);
 
   const models = useMemo(() => manualModelOptions(storeModels), [storeModels]);
-  const activeModel = pickManualModel(models, pickedModelId, activeModelId);
+  const activeModel = pickManualModel(models, pickedModelId, activeModelId, preferredFingerprint);
   const fingerprint = activeModel?.fingerprint ?? null;
   const answers = answersForModel(allAnswers, activeModel);
   const summary = useMemo(() => (checklist ? summarizeChecklist(checklist, answers) : null), [checklist, answers]);
@@ -100,7 +101,7 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto p-3 flex flex-col gap-3">
-        {models.length > 1 && (
+        {(models.length > 1 || (!!preferredFingerprint && !activeModel && models.length > 0)) && (
           <label className="flex items-center gap-2 text-xs">
             <span className="text-muted-foreground">{t('manualValidation.model.label')}</span>
             <select
@@ -109,11 +110,12 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
               value={activeModel?.id ?? ''}
               onChange={(e) => setPickedModelId(e.target.value)}
             >
+              {!activeModel && <option value="" disabled>{t('manualValidation.reuse.modelNotLoaded')}</option>}
               {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </label>
         )}
-        {!editing && !activeModel && <p className="text-xs text-muted-foreground">{t('manualValidation.model.none')}</p>}
+        {!editing && !activeModel && <p className="text-xs text-muted-foreground">{t(preferredFingerprint ? 'manualValidation.reuse.modelNotLoaded' : 'manualValidation.model.none')}</p>}
         {!editing && activeModel && !fingerprint && <p className="text-xs text-muted-foreground">{t('manualValidation.model.noIdentity')}</p>}
         {saveError && <p role="alert" className="text-xs text-red-600">{saveErrorMessage}</p>}
 

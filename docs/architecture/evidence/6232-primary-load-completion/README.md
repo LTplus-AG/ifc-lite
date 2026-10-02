@@ -1,0 +1,25 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+     License, v. 2.0. If a copy of the MPL was not distributed with this
+     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
+
+# Primary completion: actual automatic Start blank evidence
+
+Captured on 1 October 2026 with source `8541f5a8aeb580bebac8446dfa26e901b1ab82df`, stacked on the empty-frame fix `547cdc41c931d23ca3741d98d37c7ac3543e1163` (#6594), based on main `9e2f15b9dd46403cc9b06bb882ee3f5c2b16f014`. The production bundle was built at `231c0f45a`; its four changed production modules are byte-identical to source 8541 (the subsequent changes affect tests). Fresh owned Windows Chrome 154 used a nonfallback NVIDIA Blackwell adapter. The actual served WASM SHA-256 was `9646cc889c7a5148a2a97a6b90fa4349869840aea0065bd382b3a4e3bcfd3034`.
+
+The UI sequence was **Start blank**, two plan clicks to place a wall, Escape twice, Ctrl+Z, Ctrl+Shift+Z, File → Export IFC (with changes) → Export, then reload the completed native Windows download through a fresh page's canonical file input. Start blank itself automatically entered Model and launched Wall on its own completed model. There were no additional Model or Wall clicks, injected store actions, or injected coordinate metadata. The automatic-launch facts record identical active-model and authoring-session IDs, `wall.place`, a complete model, `loading: false`, and no active load canceller.
+
+- [Completed blank project with Wall automatically active](loaded-blank.png) and [empty plan](blank.png).
+- [First wall](wall.png): one CPU mesh and one plan cut; the inspector shows approximately 3.191 m length, 0.20 m thickness and 3.00 m height. The hardware 3D view shows the same wall.
+- [Undo](undo.png): CPU meshes and the plan cut are removed; history becomes zero Undo entries and one Redo entry. The owner list enumerates current CPU owners, so its empty list does not independently query the former wall's scene allocation.
+- [Redo](redo.png): one Undo entry, one CPU mesh, and the complete first-wall CPU mesh snapshot restored.
+- [Reload](reload.png): the actual exported file loads through the canonical input in a fresh page. Its placed triangle corners exactly match Redo. Full-load metadata adds a geometry hash; complete CPU metadata identity across reload is not claimed.
+
+The first wall, Redo and reload have identical IFC Z-up bounds: X approximately `[-1.595744133, 1.595744133]`, Y `[-0.1000000015, 0.1000000015]`, Z `[0, 3]` metres. These bounds derive from the renderer's world-placed triangle corners (viewer Y-up converted to IFC Z-up), not an inspector string.
+
+[The completed download](Untitled_Project_export.ifc) contains 2,849 bytes, SHA-256 `8fd9ea19609565698f26a7062354339a5a2ee7a5d194a63fd67a5ec2f04c8793`. Chrome's native download-completion events are preserved in [lossless facts archive](facts.json.gz). The renderer's actual GPU color readbacks are preserved for [Wall](wall-renderer-color.png) and [reload](reload-renderer-color.png); all six history-state readbacks succeeded during capture. No rendering timing claim is made.
+
+The archive contains the exact original UTF-8 JSON (83,383 bytes), SHA-256 `18b7f45d04cbc9298f276b0aab5d3c5f3eb18ce726ae918694c11f88b619b08a`. Decompress with `gzip -dc facts.json.gz > facts.json`; no fields, arrays or evidence were removed. Its original source/runtime attribution remains unchanged.
+
+Facts contain actual model frames, CPU mesh arrays, history depths, resident part metadata and world-placed triangle corners. Flat-part metadata is not GPU upload bytes, and the instance flag is a boolean. The known duplicate-residency finding remains open under #6232: the first wall has two identical flat scene parts while the CPU model has one mesh; Redo and reload have one part. This completion change does not fix or conceal that separate renderer bookkeeping defect.
+
+Qualification: 11 mounted completion cases, seven real-WASM blank-frame cases and five existing cancellation cases passed with zero skips. The official production revert oracle observed nine failures (14 passes) after reverting the four production paths, then verified restoration. Final root typecheck passed 109 tasks and all 3,187 test files; root build passed 61 tasks; root lint checked 7,973 files with no errors; the API surface remained 9,149 exports. Documentation samples (425, 12 existing illustrative skips), strict MkDocs, MPL, test wiring, module size, source-text assertion, changeset and bump-level gates passed. Cancellation coverage includes a real WorkerParser terminated before any metadata callback, held decoded metadata, failed metadata before the geometry finalizer, same-hook and cross-hook primary replacement, abandoned federated loads, and independent concurrent federated additions.

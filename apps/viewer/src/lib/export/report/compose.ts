@@ -15,6 +15,7 @@
  */
 import type { Aggregation, ReportPageSetup } from '@ifc-lite/charts';
 import { countRows, rowCountHeader } from '@/lib/charts/row-noun';
+import { isSavedComparisonChart } from '@/lib/charts/comparison-source';
 
 export const PAGE_SIZES_PT: Record<ReportPageSetup['size'], { w: number; h: number }> = {
   A4: { w: 595.28, h: 841.89 },
@@ -38,6 +39,8 @@ export interface ReportChartBlock {
   chartId: string;
   title: string;
   subtitle: string;
+  /** Explicit source/dependency note, also printed inside an empty chart. */
+  message?: string;
   /** Chart box, in points, on its page. */
   chart: { x: number; y: number; w: number; h: number };
   snapshot: { x: number; y: number; w: number; h: number } | null;
@@ -75,7 +78,7 @@ export interface ComposeReportInput {
   page: ReportPageSetup;
   titleBlock: Record<string, string>;
   snapshots: boolean;
-  charts: Array<{ id: string; title: string; aggregation: Aggregation | null }>;
+  charts: Array<{ id: string; title: string; aggregation: Aggregation | null; snapshot?: boolean; message?: string }>;
   generatedAt: string;
 }
 
@@ -126,7 +129,7 @@ export function composeReport(input: ComposeReportInput): ReportLayout {
   y += TITLE_HEIGHT + Math.ceil(fields.length / 2) * 14 + BLOCK_GAP;
 
   for (const chart of input.charts) {
-    const withSnapshot = input.snapshots && chart.aggregation !== null && chart.aggregation.categories.length > 0;
+    const withSnapshot = input.snapshots && chart.snapshot !== false && chart.aggregation !== null && !isSavedComparisonChart(chart.aggregation.spec) && chart.aggregation.categories.length > 0;
     // Chart and snapshot side by side when the page is wide enough, stacked otherwise.
     const sideBySide = withSnapshot && contentW >= 640;
     const chartW = sideBySide ? Math.round(contentW * 0.6) - BLOCK_GAP / 2 : contentW;
@@ -158,6 +161,7 @@ export function composeReport(input: ComposeReportInput): ReportLayout {
     page.blocks.push({
       kind: 'chart',
       chartId: chart.id,
+      ...(chart.message ? { message: chart.message } : {}),
       title: chart.title,
       // `agg === null` means `aggregate()` threw (ChartCard's own catch,
       // never a "ran and found nothing" result — see `aggregate()` in
@@ -166,9 +170,9 @@ export function composeReport(input: ComposeReportInput): ReportLayout {
       // claim from "no data" and gets a different string, matching the
       // on-screen card (`ChartCard.tsx`'s `subtitleFor`) word for word so
       // the report never disagrees with what the user saw while editing.
-      subtitle: agg
+      subtitle: chart.message ?? (agg
         ? `${plural(agg.categories.length, 'bucket')} · ${agg.spec.measure.agg === 'count' ? countRows(agg.total, agg.spec.source) : `${agg.total.toLocaleString()} ${agg.unit ?? ''}`.trim()}`
-        : 'Cannot aggregate — edit the chart',
+        : 'Cannot aggregate — edit the chart'),
       chart: chartBox,
       snapshot,
       table: { x: REPORT_MARGIN, y: tableY, w: contentW, rows: table.rows, head: table.head },

@@ -1,0 +1,547 @@
+{
+  "source": "9a3999de5742c7f7e92721cdb61419bccd8f110e",
+  "capturedAt": "2026-10-01T23:47:23.463Z",
+  "route": "Real public IFC primary/federated canonical loads. Checklist and declared human answers set through existing store actions; actual Document Add block, stamp checkbox, Refresh, saved-source picker, downloaded template import and downloaded unmodified jsPDF PDFs.",
+  "renderingLimits": "Own-profile Linux Chrome software WebGPU; document/data evidence, no hardware 3D or performance claim.",
+  "models": [
+    {
+      "name": "building-architecture.ifc",
+      "fingerprint": "building-architecture.ifc:f778982157aa24e",
+      "entities": 444
+    },
+    {
+      "name": "building-architecture-rev-b.ifc",
+      "fingerprint": "building-architecture-rev-b.ifc:b9b3a3aaa49298a8",
+      "entities": 474
+    }
+  ],
+  "states": [
+    {
+      "label": "1-shown",
+      "snapshot": {
+        "kind": "manual-report",
+        "id": "block-1769969a-2b33-40b7-bffb-28b6ccf58899",
+        "checklistName": "Delivery review 1",
+        "checklistId": "manual-checklist-86de3d2d-cdcf-4831-b318-dea704550893",
+        "modelName": "building-architecture.ifc",
+        "modelFingerprint": "building-architecture.ifc:f778982157aa24e",
+        "generatedAt": "2026-10-01T23:47:29.630Z",
+        "summary": {
+          "total": 2,
+          "pass": 1,
+          "fail": 0,
+          "warning": 1,
+          "unanswered": 0
+        },
+        "groups": [
+          {
+            "id": "delivery",
+            "name": "Delivery",
+            "counts": {
+              "total": 2,
+              "pass": 1,
+              "fail": 0,
+              "warning": 1,
+              "unanswered": 0
+            },
+            "items": [
+              {
+                "id": "uploaded",
+                "text": "Uploaded on time",
+                "status": "pass"
+              },
+              {
+                "id": "names",
+                "text": "Naming convention",
+                "status": "warning",
+                "comment": "Review retained prefix"
+              }
+            ]
+          }
+        ],
+        "reportModels": [
+          {
+            "name": "building-architecture.ifc",
+            "fingerprint": "building-architecture.ifc:f778982157aa24e"
+          }
+        ]
+      },
+      "preview": "Manual validation: Delivery review 1Model: building-architecture.ifc · Recorded: 2026-10-01T23:47:29.630ZModels: building-architecture.ifc50%50% passed (1 of 2 checks)Pass1Warning1Fail0Not checked0Delivery2 of 2 checkedPassUploaded on timeWarningNaming conventionReview retained prefix",
+      "checkbox": true
+    },
+    {
+      "label": "1-hidden",
+      "snapshot": {
+        "kind": "manual-report",
+        "id": "block-1769969a-2b33-40b7-bffb-28b6ccf58899",
+        "checklistName": "Delivery review 1",
+        "checklistId": "manual-checklist-86de3d2d-cdcf-4831-b318-dea704550893",
+        "modelName": "building-architecture.ifc",
+        "modelFingerprint": "building-architecture.ifc:f778982157aa24e",
+        "generatedAt": "2026-10-01T23:47:29.630Z",
+        "summary": {
+          "total": 2,
+          "pass": 1,
+          "fail": 0,
+          "warning": 1,
+          "unanswered": 0
+        },
+        "groups": [
+          {
+            "id": "delivery",
+            "name": "Delivery",
+            "counts": {
+              "total": 2,
+              "pass": 1,
+              "fail": 0,
+              "warning": 1,
+              "unanswered": 0
+            },
+            "items": [
+              {
+                "id": "uploaded",
+                "text": "Uploaded on time",
+                "status": "pass"
+              },
+              {
+                "id": "names",
+                "text": "Naming convention",
+                "status": "warning",
+                "comment": "Review retained prefix"
+              }
+            ]
+          }
+        ],
+        "reportModels": [
+          {
+            "name": "building-architecture.ifc",
+            "fingerprint": "building-architecture.ifc:f778982157aa24e"
+          }
+        ],
+        "showStamp": false
+      },
+      "preview": "Manual validation: Delivery review 150%50% passed (1 of 2 checks)Pass1Warning1Fail0Not checked0Delivery2 of 2 checkedPassUploaded on timeWarningNaming conventionReview retained prefix",
+      "checkbox": false
+    },
+    {
+      "label": "2-shown",
+      "snapshot": {
+        "kind": "manual-report",
+        "id": "block-052fdbda-f183-4b9e-a55b-11fc0452c309",
+        "checklistName": "Delivery review 2",
+        "checklistId": "manual-checklist-db610745-07e8-4b3b-a783-fbe1a8888f47",
+        "modelName": "building-architecture-rev-b.ifc",
+        "modelFingerprint": "building-architecture-rev-b.ifc:b9b3a3aaa49298a8",
+        "generatedAt": "2026-10-01T23:47:31.490Z",
+        "summary": {
+          "total": 2,
+          "pass": 1,
+          "fail": 0,
+          "warning": 1,
+          "unanswered": 0
+        },
+        "groups": [
+          {
+            "id": "delivery",
+            "name": "Delivery",
+            "counts": {
+              "total": 2,
+              "pass": 1,
+              "fail": 0,
+              "warning": 1,
+              "unanswered": 0
+            },
+            "items": [
+              {
+                "id": "uploaded",
+                "text": "Uploaded on time",
+                "status": "pass"
+              },
+              {
+                "id": "names",
+                "text": "Naming convention",
+                "status": "warning",
+                "comment": "Review retained prefix"
+              }
+            ]
+          }
+        ],
+        "reportModels": [
+          {
+            "name": "building-architecture-rev-b.ifc",
+            "fingerprint": "building-architecture-rev-b.ifc:b9b3a3aaa49298a8"
+          }
+        ]
+      },
+      "preview": "Manual validation: Delivery review 2Model: building-architecture-rev-b.ifc · Recorded: 2026-10-01T23:47:31.490ZModels: building-architecture-rev-b.ifc50%50% passed (1 of 2 checks)Pass1Warning1Fail0Not checked0Delivery2 of 2 checkedPassUploaded on timeWarningNaming conventionReview retained prefix",
+      "checkbox": true
+    },
+    {
+      "label": "2-hidden",
+      "snapshot": {
+        "kind": "manual-report",
+        "id": "block-052fdbda-f183-4b9e-a55b-11fc0452c309",
+        "checklistName": "Delivery review 2",
+        "checklistId": "manual-checklist-db610745-07e8-4b3b-a783-fbe1a8888f47",
+        "modelName": "building-architecture-rev-b.ifc",
+        "modelFingerprint": "building-architecture-rev-b.ifc:b9b3a3aaa49298a8",
+        "generatedAt": "2026-10-01T23:47:31.490Z",
+        "summary": {
+          "total": 2,
+          "pass": 1,
+          "fail": 0,
+          "warning": 1,
+          "unanswered": 0
+        },
+        "groups": [
+          {
+            "id": "delivery",
+            "name": "Delivery",
+            "counts": {
+              "total": 2,
+              "pass": 1,
+              "fail": 0,
+              "warning": 1,
+              "unanswered": 0
+            },
+            "items": [
+              {
+                "id": "uploaded",
+                "text": "Uploaded on time",
+                "status": "pass"
+              },
+              {
+                "id": "names",
+                "text": "Naming convention",
+                "status": "warning",
+                "comment": "Review retained prefix"
+              }
+            ]
+          }
+        ],
+        "reportModels": [
+          {
+            "name": "building-architecture-rev-b.ifc",
+            "fingerprint": "building-architecture-rev-b.ifc:b9b3a3aaa49298a8"
+          }
+        ],
+        "showStamp": false
+      },
+      "preview": "Manual validation: Delivery review 250%50% passed (1 of 2 checks)Pass1Warning1Fail0Not checked0Delivery2 of 2 checkedPassUploaded on timeWarningNaming conventionReview retained prefix",
+      "checkbox": false
+    },
+    {
+      "label": "2-refreshed",
+      "snapshot": {
+        "kind": "manual-report",
+        "id": "block-052fdbda-f183-4b9e-a55b-11fc0452c309",
+        "checklistName": "Delivery review 2",
+        "checklistId": "manual-checklist-db610745-07e8-4b3b-a783-fbe1a8888f47",
+        "modelName": "building-architecture-rev-b.ifc",
+        "modelFingerprint": "building-architecture-rev-b.ifc:b9b3a3aaa49298a8",
+        "generatedAt": "2026-10-01T23:47:32.027Z",
+        "summary": {
+          "total": 2,
+          "pass": 2,
+          "fail": 0,
+          "warning": 0,
+          "unanswered": 0
+        },
+        "groups": [
+          {
+            "id": "delivery",
+            "name": "Delivery",
+            "counts": {
+              "total": 2,
+              "pass": 2,
+              "fail": 0,
+              "warning": 0,
+              "unanswered": 0
+            },
+            "items": [
+              {
+                "id": "uploaded",
+                "text": "Uploaded on time",
+                "status": "pass"
+              },
+              {
+                "id": "names",
+                "text": "Naming convention",
+                "status": "pass",
+                "comment": "Reviewed and approved"
+              }
+            ]
+          }
+        ],
+        "reportModels": [
+          {
+            "name": "building-architecture-rev-b.ifc",
+            "fingerprint": "building-architecture-rev-b.ifc:b9b3a3aaa49298a8"
+          }
+        ],
+        "showStamp": false
+      },
+      "preview": "Manual validation: Delivery review 2100%100% passed (2 of 2 checks)Pass2Warning0Fail0Not checked0Delivery2 of 2 checkedPassUploaded on timePassNaming conventionReviewed and approved",
+      "checkbox": false
+    },
+    {
+      "label": "2-saved-source",
+      "snapshot": {
+        "kind": "manual-report",
+        "id": "block-052fdbda-f183-4b9e-a55b-11fc0452c309",
+        "checklistName": "Saved review evidence",
+        "checklistId": "manual-checklist-db610745-07e8-4b3b-a783-fbe1a8888f47",
+        "modelName": "building-architecture-rev-b.ifc",
+        "modelFingerprint": "building-architecture-rev-b.ifc:b9b3a3aaa49298a8",
+        "generatedAt": "2026-10-01T23:47:32.027Z",
+        "summary": {
+          "total": 2,
+          "pass": 2,
+          "fail": 0,
+          "warning": 0,
+          "unanswered": 0
+        },
+        "groups": [
+          {
+            "id": "delivery",
+            "name": "Delivery",
+            "counts": {
+              "total": 2,
+              "pass": 2,
+              "fail": 0,
+              "warning": 0,
+              "unanswered": 0
+            },
+            "items": [
+              {
+                "id": "uploaded",
+                "text": "Uploaded on time",
+                "status": "pass"
+              },
+              {
+                "id": "names",
+                "text": "Naming convention",
+                "status": "pass",
+                "comment": "Reviewed and approved"
+              }
+            ]
+          }
+        ],
+        "reportModels": [
+          {
+            "name": "building-architecture-rev-b.ifc",
+            "fingerprint": "building-architecture-rev-b.ifc:b9b3a3aaa49298a8"
+          }
+        ],
+        "showStamp": false,
+        "savedReportId": "validation-report-da5906e1-c7a4-4722-828c-05a76c74a21d"
+      },
+      "preview": "Manual validation: Saved review evidence100%100% passed (2 of 2 checks)Pass2Warning0Fail0Not checked0Delivery2 of 2 checkedPassUploaded on timePassNaming conventionReviewed and approved",
+      "checkbox": false
+    },
+    {
+      "label": "2-imported",
+      "snapshot": {
+        "kind": "manual-report",
+        "id": "block-a96b34ad-dd3c-42d8-a91d-1212865f1b78",
+        "checklistName": "Saved review evidence",
+        "checklistId": "manual-checklist-db610745-07e8-4b3b-a783-fbe1a8888f47",
+        "modelName": "building-architecture-rev-b.ifc",
+        "modelFingerprint": "building-architecture-rev-b.ifc:b9b3a3aaa49298a8",
+        "generatedAt": "2026-10-01T23:47:32.027Z",
+        "summary": {
+          "total": 2,
+          "pass": 2,
+          "fail": 0,
+          "warning": 0,
+          "unanswered": 0
+        },
+        "groups": [
+          {
+            "id": "delivery",
+            "name": "Delivery",
+            "counts": {
+              "total": 2,
+              "pass": 2,
+              "fail": 0,
+              "warning": 0,
+              "unanswered": 0
+            },
+            "items": [
+              {
+                "id": "uploaded",
+                "text": "Uploaded on time",
+                "status": "pass"
+              },
+              {
+                "id": "names",
+                "text": "Naming convention",
+                "status": "pass",
+                "comment": "Reviewed and approved"
+              }
+            ]
+          }
+        ],
+        "reportModels": [
+          {
+            "name": "building-architecture-rev-b.ifc",
+            "fingerprint": "building-architecture-rev-b.ifc:b9b3a3aaa49298a8"
+          }
+        ],
+        "showStamp": false,
+        "savedReportId": "validation-report-da5906e1-c7a4-4722-828c-05a76c74a21d"
+      },
+      "preview": "Manual validation: Saved review evidence100%100% passed (2 of 2 checks)Pass2Warning0Fail0Not checked0Delivery2 of 2 checkedPassUploaded on timePassNaming conventionReviewed and approved",
+      "checkbox": false
+    },
+    {
+      "label": "2-reshown",
+      "snapshot": {
+        "kind": "manual-report",
+        "id": "block-a96b34ad-dd3c-42d8-a91d-1212865f1b78",
+        "checklistName": "Saved review evidence",
+        "checklistId": "manual-checklist-db610745-07e8-4b3b-a783-fbe1a8888f47",
+        "modelName": "building-architecture-rev-b.ifc",
+        "modelFingerprint": "building-architecture-rev-b.ifc:b9b3a3aaa49298a8",
+        "generatedAt": "2026-10-01T23:47:32.027Z",
+        "summary": {
+          "total": 2,
+          "pass": 2,
+          "fail": 0,
+          "warning": 0,
+          "unanswered": 0
+        },
+        "groups": [
+          {
+            "id": "delivery",
+            "name": "Delivery",
+            "counts": {
+              "total": 2,
+              "pass": 2,
+              "fail": 0,
+              "warning": 0,
+              "unanswered": 0
+            },
+            "items": [
+              {
+                "id": "uploaded",
+                "text": "Uploaded on time",
+                "status": "pass"
+              },
+              {
+                "id": "names",
+                "text": "Naming convention",
+                "status": "pass",
+                "comment": "Reviewed and approved"
+              }
+            ]
+          }
+        ],
+        "reportModels": [
+          {
+            "name": "building-architecture-rev-b.ifc",
+            "fingerprint": "building-architecture-rev-b.ifc:b9b3a3aaa49298a8"
+          }
+        ],
+        "showStamp": true,
+        "savedReportId": "validation-report-da5906e1-c7a4-4722-828c-05a76c74a21d"
+      },
+      "preview": "Manual validation: Saved review evidenceModel: building-architecture-rev-b.ifc · Recorded: 2026-10-01T23:47:32.027ZModels: building-architecture-rev-b.ifc100%100% passed (2 of 2 checks)Pass2Warning0Fail0Not checked0Delivery2 of 2 checkedPassUploaded on timePassNaming conventionReviewed and approved",
+      "checkbox": true
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "1-shown.png",
+      "bytes": 97560,
+      "sha256": "6d10adf1cc4a3dc2efaeed1add115c8916e203765006df3e78a1ba87448cdc5b"
+    },
+    {
+      "path": "1-shown.pdf",
+      "bytes": 6686,
+      "sha256": "60ae4d7edb1b57c28c488a7ce73025ad2919b2d4c0d8a12c7d64a7a444b80886"
+    },
+    {
+      "path": "1-hidden.png",
+      "bytes": 95560,
+      "sha256": "998446395463b29a7f87a2a4873f38ee13b0a773a59130a731150852595b912e"
+    },
+    {
+      "path": "1-hidden.pdf",
+      "bytes": 6426,
+      "sha256": "42131c53271766fb9d7ea491b6d994c7cd771b31ddae276033dd0ef877bf1157"
+    },
+    {
+      "path": "2-shown.png",
+      "bytes": 135548,
+      "sha256": "9169026855a275230e280cc6895974674001e04ef16b3ff4d2c7be38361f5546"
+    },
+    {
+      "path": "2-shown.pdf",
+      "bytes": 6698,
+      "sha256": "470aef900d866a70d0b6bc00e7b663f268b75dd2804c0eaecb7f89365c435a4c"
+    },
+    {
+      "path": "2-hidden.png",
+      "bytes": 129675,
+      "sha256": "37557ec86c8220e9d9dce31c117b5cf7bd9f8ed30153f2e9aa94566cae30d338"
+    },
+    {
+      "path": "2-hidden.pdf",
+      "bytes": 6426,
+      "sha256": "44a014bb800efd8a84fe0772e44ff59bf61276e3177cdc81d3c8a6c077c3da42"
+    },
+    {
+      "path": "hidden.ifclite-document.json",
+      "bytes": 1602,
+      "sha256": "9107d392255505e3c68a22109ff83c68def89265fcaac1b671dca81a505f4acd"
+    },
+    {
+      "path": "2-imported-hidden.png",
+      "bytes": 113568,
+      "sha256": "d2d78a228ef5b23737fb309f45004abac46cf55e8ca6b304993049261dd4966f"
+    },
+    {
+      "path": "2-imported-hidden.pdf",
+      "bytes": 5807,
+      "sha256": "bef7761e3b906df51d0bc28a0c11a0426c982978bc444edbc5b173dc98309851"
+    },
+    {
+      "path": "2-reshown.pdf",
+      "bytes": 6079,
+      "sha256": "0ffef657abd34938c7489ddd43fd7e9f5ed90788150679337fcb3e4a8aed6678"
+    }
+  ],
+  "errors": [
+    {
+      "type": "pageerror",
+      "message": "Could not compile fragment shader: "
+    }
+  ],
+  "inputs": [
+    {
+      "name": "building-architecture.ifc",
+      "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5"
+    },
+    {
+      "name": "building-architecture-rev-b.ifc",
+      "sha256": "0dfb7152db0a845747d2f35ee5ba9ba3772744072cb23040353c469c2a05f366"
+    }
+  ],
+  "chrome": "153.0.8010.36",
+  "runtime": [
+    {
+      "url": "http://127.0.0.1:52701/@fs/home/louistrue/wt/6566-manual-report-stamp-main-session6503/packages/wasm/pkg/ifc-lite_bg.wasm",
+      "observedStatuses": [
+        200,
+        200,
+        200,
+        200
+      ],
+      "witnessStatus": 200,
+      "bytes": 9472263,
+      "sha256": "039415545e2448ce8b1e40b14306524ee60cff29dabd97448080ac0d9e170610",
+      "scope": "Separate served-resource byte witness after document operations; no performance measurement."
+    }
+  ]
+}

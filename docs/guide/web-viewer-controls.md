@@ -15,6 +15,14 @@ tool, plain left drag starts a drag measurement; Alt + left drag orbits instead.
 In polyline, angle, and radius measurement modes, a left drag orbits and clicks
 place points. Shift + left drag always pans, even when a measurement is active.
 
+In the Model workspace, plain left movement and dragging update the active
+command preview without moving the camera. Placement commands commit on
+click; polygon placement still closes on double-click. Room shape editing
+grabs a corner on press, previews its movement, and commits on release as one
+Undo/Redo operation. A lost capture, focus loss, or command change cancels the
+owned room drag. A captured drag can finish outside the canvas. Shift + left,
+middle, and right-button navigation keep the controls above.
+
 While you orbit, a small accent marker shows the fixed point the camera is
 rotating around. The marker follows that point on screen and fades when you
 release the pointer. Panning does not show a pivot marker.
@@ -99,3 +107,32 @@ to load. The Session panel appears only when collaboration is enabled.
 | Validation | Checking model information against rules, including IDS requirements. |
 | Clash | A spatial conflict between model objects, with clearance settings when applicable. |
 | Placement | The model's position and orientation, including georeferencing. |
+
+### Georeferencing rotation and scale
+
+The georeferencing field **Model rotation in map coordinates** is the
+counterclockwise angle from map East to the model's local X-axis, viewed from
+above in IFC's Z-up coordinates. Positive values rotate counterclockwise;
+negative values rotate clockwise. It is derived as
+`atan2(XAxisOrdinate, XAxisAbscissa)`, converted to degrees.
+
+`IfcMapConversion.XAxisAbscissa` and `XAxisOrdinate` store a direction vector,
+rather than an angle. Its length need not be 1: `(2, 2)` and `(1, 1)` both mean
+`+45°`. IFC-Lite uses the direction without adding scale from the vector's
+length. Editing the angle writes `XAxisAbscissa = cos(angle)` and
+`XAxisOrdinate = sin(angle)`. An omitted `Scale` has an effective value of 1;
+**Default: 1** distinguishes that default from an explicitly authored value.
+[IFC map conversion definition](https://standards.buildingsmart.org/IFC/RELEASE/IFC4_3/HTML/lexical/IfcMapConversion.htm).
+
+When comparing with Bonsai/IfcOpenShell, check which direction the angle
+describes. IfcOpenShell's grid-north convention describes the inverse rotation,
+from project north to grid north, so its sign is opposite. For example,
+`XAxisAbscissa = 0.995644` and `XAxisOrdinate = +0.093239` give approximately
+`+5.35°` model rotation here and `−5.35°` under the grid-north convention.
+[IfcOpenShell angle convention](https://docs.ifcopenshell.org/autoapi/ifcopenshell/util/geolocation/index.html#ifcopenshell.util.geolocation.xaxis2angle).
+
+To validate georeferencing, compare transformed model points with independently
+known survey coordinates, including units and the complete placement chain.
+Cancellation between a placement rotation and a map-conversion rotation is
+only expected when the model's original map alignment is known; it is not a
+general validity requirement.

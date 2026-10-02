@@ -305,7 +305,7 @@ describe('detectDoubleGeoreference', () => {
       assert.deepStrictEqual(found!.factorsForExport, ['FactorX']);
       assert.strictEqual(
         exportCorrectionInstruction(found!),
-        'set Eastings and Northings to 0, Angle to Grid North to 0, and Scale to 1, then use Export IFC (with changes).'
+        'set Eastings and Northings to 0, Model rotation in map coordinates to 0, and Scale to 1, then use Export IFC (with changes).'
           + ' FactorX is not editable in ifc-lite; set it to 1 in the authoring tool, or the exported file is still scaled by it.',
       );
       assert.strictEqual(
@@ -329,7 +329,7 @@ describe('detectDoubleGeoreference', () => {
       assert.deepStrictEqual(found!.factorsForExport, []);
       assert.strictEqual(
         exportCorrectionInstruction(found!),
-        'set Eastings and Northings to 0, Angle to Grid North to 0, and Scale to 0.001, then use Export IFC (with changes).',
+        'set Eastings and Northings to 0, Model rotation in map coordinates to 0, and Scale to 0.001, then use Export IFC (with changes).',
       );
       assert.strictEqual(
         overriddenScaleNote(found!),
@@ -355,7 +355,7 @@ describe('detectDoubleGeoreference', () => {
       assert.deepStrictEqual(found!.factorsForExport, ['FactorZ']);
       assert.strictEqual(
         exportCorrectionInstruction(found!),
-        'set Eastings and Northings to 0 and Angle to Grid North to 0, then use Export IFC (with changes).'
+        'set Eastings and Northings to 0 and Model rotation in map coordinates to 0, then use Export IFC (with changes).'
           + ' FactorZ is not editable in ifc-lite; set it to 1 in the authoring tool, or the exported file is still scaled by it.',
       );
       assert.strictEqual(overriddenScaleNote(found!), 'Its FactorZ is not applied either.');
@@ -376,12 +376,12 @@ describe('detectDoubleGeoreference', () => {
       assert.deepStrictEqual(found!.factorsForExport, ['FactorX', 'FactorY']);
       assert.strictEqual(
         exportCorrectionInstruction(found!),
-        'set Eastings and Northings to 0, Angle to Grid North to 0, and Scale to 1, then use Export IFC (with changes).'
+        'set Eastings and Northings to 0, Model rotation in map coordinates to 0, and Scale to 1, then use Export IFC (with changes).'
           + ' FactorX and FactorY are not editable in ifc-lite; set them to 1 in the authoring tool, or the exported file is still scaled by them.',
       );
       assert.strictEqual(
         exportCorrectionInstruction({ ...found!, scaleForExport: null, factorsForExport: [] }),
-        'set Eastings and Northings to 0 and Angle to Grid North to 0, then use Export IFC (with changes).',
+        'set Eastings and Northings to 0 and Model rotation in map coordinates to 0, then use Export IFC (with changes).',
       );
     });
 

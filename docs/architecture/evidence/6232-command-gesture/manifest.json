@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "source": "a695734678d5c78206807921b4d173b8977f7162",
+  "base": "e79f27342beb01a6f30d9b63c44795ecd118f4de",
+  "files": {
+    "redo.png": {
+      "bytes": 197872,
+      "sha256": "7f7184c83f571c9899796fee5ea30b82430e1df40af04525c1dae44661f7fdad"
+    },
+    "committed-renderer.png": {
+      "bytes": 90108,
+      "sha256": "7417bdccec3f372cbb47f853540f33cfb6f25ee1c59692882df956409430d48c"
+    },
+    "pressed-preview.png": {
+      "bytes": 180454,
+      "sha256": "7eee1ed74f51b4b59b51436809c7b6c99055281622d7e5deed693221a8828643"
+    },
+    "undo.png": {
+      "bytes": 184478,
+      "sha256": "e2deb7b9bc28adf0629fb8898f4f9be099a0b7fa8f8ea03d03c132cfeed06742"
+    },
+    "excluded-subpixel-expectation.json.gz": {
+      "bytes": 3289,
+      "sha256": "1b614ee7f44493a940d9b4bda2e70fbe4d72528030339ef965f5a4d33f804070"
+    },
+    "native-facts.json.gz": {
+      "bytes": 6195,
+      "sha256": "ae343cfd01354367943be58b45e9758264a1e1e37875b107ab9779c7835e75a1"
+    }
+  }
+}

@@ -72,6 +72,9 @@
  * below runs over an empty set, so "0 violations" would mean "0 chunks
  * examined". Its own behaviour is pinned by check-tla-chunk-await.test.mjs.
  *
+ * It also fails if the plugin re-printed any `__tla`-wrapped chunk
+ * unminified (see `unminified` below).
+ *
  * Run via `pnpm check:tla-chunk-await` (wired into the viewer-e2e CI job,
  * right after the viewer build it inspects). Requires a built viewer
  * (`pnpm turbo build --filter=@ifc-lite/viewer`).
@@ -197,6 +200,39 @@ if (tlaExporters.size === 0) {
   process.exit(1);
 }
 
+// Every `__tla`-wrapped chunk is one the plugin RE-PRINTED with SWC after the
+// bundler had already minified it, so its formatting is the plugin's, not
+// Vite's. Upstream 1.6.0 read `build.minify` from the user config, where an
+// unset value is `undefined`, and so printed all of them (main, store,
+// exporters, ~85 in all) pretty: production shipped a 167k-line, 8.2 MB
+// main chunk where a minified one is 4.3 MB (patched in
+// patches/vite-plugin-top-level-await@1.6.0.patch). The wrapper declaration
+// the plugin injects is the fingerprint: `let __tla=Promise.all(` when it
+// minified, `let __tla = Promise.all(` when it did not. Whitespace inside
+// string and template literals cannot be told apart from code by a
+// line-count heuristic (the script templates and the esbuild-wasm chunk are
+// legitimately multi-line), the plugin's own declaration can.
+const unminified = [];
+for (const file of tlaExporters) {
+  if (/\b(?:let|const|var)\s+__tla\s=/.test(sources.get(file))) unminified.push(file);
+}
+if (unminified.length > 0) {
+  console.error(
+    `❌ ${unminified.length} of ${tlaExporters.size} __tla-wrapped chunk(s) were re-printed ` +
+      `UNMINIFIED by vite-plugin-top-level-await:\n`,
+  );
+  for (const file of unminified.slice(0, 10)) console.error(`   ${file}`);
+  if (unminified.length > 10) console.error(`   ... and ${unminified.length - 10} more`);
+  console.error(
+    `\nThe plugin re-prints every chunk it wraps, and prints it pretty unless it\n` +
+      `sees a truthy \`build.minify\`. patches/vite-plugin-top-level-await@1.6.0.patch\n` +
+      `makes it read the RESOLVED config (configResolved), where Vite's default\n` +
+      `minifier is filled in. Check that the patch is still applied (pnpm install)\n` +
+      `and that apps/viewer/vite.config.ts does not set \`build.minify: false\`.\n`,
+  );
+  process.exit(1);
+}
+
 const violations = [];
 const sideEffectViolations = [];
 let staticTlaImports = 0;
@@ -294,7 +330,8 @@ console.log(
   `✅ 0 chunks importing a __tla chunk without awaiting it, ` +
     `${staticTlaImports} static import(s) of a __tla-wrapped chunk checked ` +
     `(${tlaExporters.size} __tla-wrapped chunk(s) among ${files.length} emitted chunk(s)); ` +
-    `${sideEffectImports} bare side-effect import(s) checked.`,
+    `${sideEffectImports} bare side-effect import(s) checked; ` +
+    `all ${tlaExporters.size} __tla-wrapped chunk(s) minified.`,
 );
 
 function fixHint() {

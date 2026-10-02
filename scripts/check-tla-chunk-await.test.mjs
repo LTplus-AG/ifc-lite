@@ -69,21 +69,29 @@ function runOn(chunks, { assetsRel = ASSETS_REL, env = {} } = {}) {
 }
 
 /**
- * A `__tla`-wrapped chunk, in the plugin's real emitted shape: the deferred
- * binding is exported literally, unmangled, alongside the mangled real
- * exports.
+ * A `__tla`-wrapped chunk, in the plugin's real emitted (minified) shape: the
+ * deferred binding is exported literally, unmangled, alongside the mangled
+ * real exports.
  */
-const TLA_CHUNK = `let __tla = Promise.resolve().then(async () => { z = () => 1; });
-let z;
-export { z, __tla };
-`;
+const TLA_CHUNK = `let __tla=Promise.resolve().then(async()=>{z=()=>1});let z;export{z,__tla};`;
 
 /** The correctly-propagated importer: imports `__tla` aliased and folds it in. */
-const GOOD_IMPORTER = `import { z as C, __tla as __tla_0 } from "./store-abc.js";
-let __tla = Promise.all([
-  (() => { try { return __tla_0; } catch {} })(),
-]).then(async () => { C(); });
-export { __tla };
+const GOOD_IMPORTER =
+  `import{z as C,__tla as __tla_0}from"./store-abc.js";` +
+  `let __tla=Promise.all([(()=>{try{return __tla_0}catch{}})()]).then(async()=>{C()});export{__tla};`;
+
+/**
+ * The same wrapped chunk as the plugin printed it before the minify patch:
+ * SWC's pretty printer, one statement per line (production main-*.js shipped
+ * 167k lines like this).
+ */
+const PRETTY_TLA_CHUNK = `let __tla = Promise.all([
+    (()=>{ try { return __tla_0; } catch  {} })()
+]).then(async ()=>{
+    z = ()=>1;
+});
+let z;
+export { z, __tla };
 `;
 
 test('a healthy bundle -- a __tla chunk and an importer that awaits it -- passes', () => {
@@ -179,4 +187,26 @@ test('RED: a missing assets dir must fail', () => {
   assert.equal(status, 1, out);
   assert.doesNotMatch(out, /✅/);
   assert.match(out, /does not exist/);
+});
+
+test('RED: a __tla-wrapped chunk the plugin re-printed unminified is caught', () => {
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'main-def.js': PRETTY_TLA_CHUNK });
+  assert.equal(status, 1, out);
+  assert.doesNotMatch(out, /✅/);
+  assert.match(out, /1 of 2 __tla-wrapped chunk\(s\) were re-printed UNMINIFIED/);
+  assert.match(out, /main-def\.js/);
+});
+
+test('multi-line string content in a minified __tla chunk is not mistaken for pretty-printing', () => {
+  // The script templates and the esbuild-wasm chunk carry legitimately
+  // multi-line template literals; only the plugin's own declaration counts.
+  const withTemplate = `let __tla=(async()=>{s=\`
+    const x = 1
+    if (x) {
+      return x
+    }
+\`})();let s;export{s,__tla};`;
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'templates-def.js': withTemplate });
+  assert.equal(status, 0, out);
+  assert.match(out, /all 2 __tla-wrapped chunk\(s\) minified/);
 });

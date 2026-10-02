@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * "Add block › Manual validation report" (#6401) in the real Document panel:
+ * "Add block › Validation report" with the manual checklist as its source (#6401) in the real Document panel:
  * the block snapshots the Manual validation tab's checklist and the active
  * model's answers, the preview shows the rings and every verdict, and the
  * snapshot stays frozen until Refresh.

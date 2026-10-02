@@ -322,9 +322,9 @@ it('keeps scaled preview text line pitch consistent with PDF layout (#6548)', as
       const text: HTMLElement | null = container.querySelector<HTMLElement>(`[data-preview-block="${style}"] [data-block-text]`);
       assert.ok(text);
       assert.equal(Number(window.getComputedStyle(text).lineHeight), TEXT_STYLES[style].lineHeight, `${style} at ${factor}x uses the PDF line-height multiplier`);
-      const glyphs = Array.from(text.querySelectorAll<HTMLElement>('span'));
-      const first = glyphs.find(node => node.textContent?.trim() === 'First line');
-      const second = glyphs.find(node => node.textContent?.trim() === 'Second line'); assert.ok(first && second);
+      const glyphs: HTMLElement[] = Array.from(text.querySelectorAll<HTMLElement>('span'));
+      const first: HTMLElement | undefined = glyphs.find(node => node.textContent?.trim() === 'First line');
+      const second: HTMLElement | undefined = glyphs.find(node => node.textContent?.trim() === 'Second line'); assert.ok(first && second);
       const pitch = parseFloat(second.style.top) - parseFloat(first.style.top);
       const expected = TEXT_STYLES[style].size * TEXT_STYLES[style].lineHeight * factor * pageScale;
       assert.ok(Math.abs(pitch - expected) < 0.01, `${style} at ${factor}x has the measured PDF line pitch`);

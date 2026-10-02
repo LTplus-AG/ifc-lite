@@ -177,7 +177,8 @@ describe('the block source picker covers every kind and both live sources (#6553
   it('switches a block between kinds keeping its id, title and scale, and a live choice shows Refresh', async () => {
     const entries = [savedIds(), savedManual()];
     useViewerStore.setState({ savedValidationReports: entries, idsValidationReport: liveReport('ids') });
-    seedDocument([{ ...idsBlock, id: 'b1', savedReportId: entries[0].id, title: 'Authored', scale: 1.5 }]);
+    useViewerStore.getState().setManualChecklist({ version: CHECKLIST_VERSION, name: 'Live checklist', groups: [] });
+    seedDocument([{ ...idsBlock, id: 'b1', savedReportId: entries[0].id, title: 'Authored', scale: 1.5, showStamp: false, titleFontSize: 20, titleTextColor: '#112233', titleBackgroundColor: '#ddeeff' }]);
     const ui = render(<DocumentPanel />);
     await settle();
     assert.deepEqual(refreshLabels(ui), [], 'saved evidence has no refresh');
@@ -186,6 +187,7 @@ describe('the block source picker covers every kind and both live sources (#6553
     await settle();
     const manual = blocks()[0] as ManualReportBlock;
     assert.equal(manual.kind, 'manual-report');
+    assert.deepEqual([manual.showStamp, manual.titleFontSize, manual.titleTextColor, manual.titleBackgroundColor], [false, 20, '#112233', '#ddeeff']);
     assert.deepEqual([manual.id, manual.title, manual.scale, manual.savedReportId], ['b1', 'Authored', 1.5, entries[1].id]);
 
     pick(sourcePicker(ui), 'live:ids');
@@ -194,13 +196,19 @@ describe('the block source picker covers every kind and both live sources (#6553
     assert.equal(live.kind, 'ids-report');
     assert.deepEqual([live.id, live.title, live.scale, live.savedReportId, live.sourceName], ['b1', 'Authored', 1.5, undefined, 'Live IDS']);
     assert.deepEqual(refreshLabels(ui), ['Refresh from current validation report'], 'the live block can refresh again');
+    assert.deepEqual([live.showStamp, live.titleFontSize, live.titleTextColor, live.titleBackgroundColor], [false, 20, '#112233', '#ddeeff']);
+    pick(sourcePicker(ui), 'live:manual');
+    await settle();
+    const liveManual = blocks()[0]; assert.equal(liveManual.kind, 'manual-report');
+    assert.deepEqual([liveManual.id, liveManual.title, liveManual.scale, liveManual.showStamp, liveManual.titleFontSize, liveManual.titleTextColor, liveManual.titleBackgroundColor], ['b1', 'Authored', 1.5, false, 20, '#112233', '#ddeeff']);
+    assert.equal(liveManual.savedReportId, undefined, 'a live choice clears the saved source identity');
   });
 
   it('every switch direction keeps the heading, its three style fields and the scale', async () => {
     const entries = [savedIds(), savedRules(), savedManual()];
     useViewerStore.setState({ savedValidationReports: entries, idsValidationReport: liveReport('ids') });
     useViewerStore.getState().setManualChecklist({ version: CHECKLIST_VERSION, name: 'Site review', groups: [] });
-    seedDocument([{ ...idsBlock, id: 'b1', savedReportId: entries[0].id, variant: 'compact', specificationsOnly: true, title: 'Heading', titleFontSize: 14, titleTextColor: '#112233', titleBackgroundColor: '#ddeeff', scale: 1.25 }]);
+    seedDocument([{ ...idsBlock, id: 'b1', savedReportId: entries[0].id, variant: 'compact', specificationsOnly: true, title: 'Heading', titleFontSize: 14, titleTextColor: '#112233', titleBackgroundColor: '#ddeeff', scale: 1.25, showStamp: false }]);
     const ui = render(<DocumentPanel />);
     await settle();
     const steps: Array<[string, string, string]> = [
@@ -218,7 +226,7 @@ describe('the block source picker covers every kind and both live sources (#6553
       await settle();
       const block = blocks()[0] as IdsReportBlock | ManualReportBlock;
       assert.equal(block.kind, kind, name);
-      assert.deepEqual([block.id, block.title, block.titleFontSize, block.titleTextColor, block.titleBackgroundColor, block.scale], ['b1', 'Heading', 14, '#112233', '#ddeeff', 1.25], name);
+      assert.deepEqual([block.id, block.title, block.titleFontSize, block.titleTextColor, block.titleBackgroundColor, block.scale, block.showStamp], ['b1', 'Heading', 14, '#112233', '#ddeeff', 1.25, false], name);
     }
   });
 

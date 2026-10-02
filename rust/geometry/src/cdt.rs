@@ -232,7 +232,14 @@ impl Cdt {
     /// add Steiner points and replace a segment with its two halves, then
     /// rebuild cleanly from scratch — no fragile in-place mutation).
     fn build_from(points: Vec<P2>, segments: &[(usize, usize)], steiner_cap: usize) -> Option<Cdt> {
-        Self::build_from_with_progress_mode(points, segments, steiner_cap, false, &mut || Ok(()))
+        // The progress callback never cancels here; it only forwards a strided
+        // heartbeat for a host waiting on one long triangulation.
+        let mut calls = 0u32;
+        let mut heartbeat = || {
+            crate::progress::tick_strided(&mut calls, 0xFFF);
+            Ok(())
+        };
+        Self::build_from_with_progress_mode(points, segments, steiner_cap, false, &mut heartbeat)
             .ok()
             .flatten()
     }
@@ -1353,6 +1360,9 @@ fn refine_to_fixpoint(points: Vec<P2>, segments: Vec<(usize, usize)>) -> Option<
             return None; // Steiner insertion tripped a topology invariant — ear-clip fallback
         }
         steiner += 1;
+        if steiner & 0x3FF == 0 {
+            crate::progress::tick();
+        }
     }
     Some(cdt)
 }

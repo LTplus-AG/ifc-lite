@@ -175,6 +175,7 @@ pub fn element_cap() -> Option<u64> {
 /// the cap. Call once at every public boolean entry in [`crate::csg`].
 #[inline]
 pub fn begin() {
+    crate::progress::tick();
     // Fold the just-finished op's count into the global peak (calibration).
     let prev = COUNT.with(|c| c.get());
     if prev != 0 {
@@ -327,7 +328,15 @@ pub fn reset_peak() {
 #[inline]
 pub fn note_escalation() {
     COUNT.with(|c| c.set(c.get().saturating_add(1)));
-    ELEM_COUNT.with(|c| c.set(c.get().saturating_add(1)));
+    let total = ELEM_COUNT.with(|c| {
+        let next = c.get().saturating_add(1);
+        c.set(next);
+        next
+    });
+    // A long exact-tier stretch inside ONE boolean is still progress.
+    if total & 0xFFF == 0 {
+        crate::progress::tick();
+    }
 }
 
 /// Whether the current boolean OR the current element has exceeded its

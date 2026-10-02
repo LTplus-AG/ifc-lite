@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { IfcCreator } from '@ifc-lite/create';
+import { findEntity } from '@ifc-lite/data';
 import { EntityExtractor, IfcParser } from '@ifc-lite/parser';
 import { createBimContext } from '@ifc-lite/sdk';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
@@ -26,6 +27,9 @@ import { HeadlessBackend } from './headless-backend.js';
 type Schema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
 type Vec3 = [number, number, number];
 interface Bounds { min: number[]; max: number[]; vertices: number }
+// buildingSMART IFC2X3, IFC4 and IFC4X3 share this slab declaration order.
+const SLAB_ATTRIBUTES = ['GlobalId', 'OwnerHistory', 'Name', 'Description', 'ObjectType',
+  'ObjectPlacement', 'Representation', 'Tag', 'PredefinedType'];
 const WASM = fileURLToPath(new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
 const AVAILABLE = existsSync(WASM);
 if (!AVAILABLE) console.warn('skip: native schema/unit controls need pnpm build:wasm');
@@ -149,16 +153,29 @@ describe.skipIf(!AVAILABLE)('#6232 D5 source-native schema/unit/frame controls',
       const refs = [
         bim.store.addWall('control', f.storey, WALL),
         bim.store.addColumn('control', f.storey, { Position: [1, 2, 0], Width: .3, Depth: .4, Height: 3 }),
-        bim.store.addSlab('control', f.storey, { Position: [1, 2, 0], Width: 4, Depth: 3, Thickness: .2 }),
+        bim.store.addSlab('control', f.storey, { Position: [1, 2, 0], Width: 4, Depth: 3, Thickness: .2,
+          Name: 'D5 slab', Description: 'D5 slab description', ObjectType: 'D5 slab object', Tag: 'D5 slab tag' }),
         bim.store.addBeam('control', f.storey, { Start: [0, 0, 3], End: [4, 0, 3], Width: .2, Height: .4 }),
       ];
       const saved = bim.export.ifc(), store = await parsed(saved), extractor = new EntityExtractor(store.source);
       expect(store.schemaVersion).toBe(schema);
-      const lengthUnits = (store.entityIndex.byType.get('IFCSIUNIT') ?? [])
-        .map(id => extractor.extractEntity(store.entityIndex.byId.get(id)!))
+      const projectIds = store.entityIndex.byType.get('IFCPROJECT') ?? [];
+      expect(projectIds).toHaveLength(1);
+      const project = extractor.extractEntity(store.entityIndex.byId.get(projectIds[0])!);
+      const assignmentId = project?.attributes[8]; // IfcProject.UnitsInContext
+      if (typeof assignmentId !== 'number') throw new Error('The saved project has no UnitsInContext reference');
+      const assignment = extractor.extractEntity(store.entityIndex.byId.get(assignmentId)!);
+      expect(assignment?.type).toBe('IFCUNITASSIGNMENT');
+      const units = assignment?.attributes[0]; // IfcUnitAssignment.Units
+      if (!Array.isArray(units)) throw new Error('The saved project unit assignment has no Units list');
+      const lengthUnits = units.map(id => {
+        if (typeof id !== 'number') throw new Error('An assigned unit is not an entity reference');
+        return extractor.extractEntity(store.entityIndex.byId.get(id)!);
+      })
         .filter(entity => entity?.attributes[1] === '.LENGTHUNIT.');
       expect(lengthUnits).toHaveLength(1);
       expect(lengthUnits[0]?.attributes.slice(2)).toEqual([millimetres ? '.MILLI.' : null, '.METRE.']);
+      expect((await findEntity(schema, 'IfcSlab'))?.attributes).toEqual(SLAB_ATTRIBUTES);
       for (const [index, ref] of refs.entries()) {
         expect(ref.modelId).toBe('control');
         const product = extractor.extractEntity(store.entityIndex.byId.get(ref.expressId)!);
@@ -167,6 +184,15 @@ describe.skipIf(!AVAILABLE)('#6232 D5 source-native schema/unit/frame controls',
         // acquire that occurrence attribute in IFC4. Official slab EXPRESS:
         // https://standards.buildingsmart.org/IFC/RELEASE/IFC2x3/TC1/HTML/ifcsharedbldgelements/lexical/ifcslab.htm
         expect(product?.attributes).toHaveLength(schema === 'IFC2X3' && index !== 2 ? 8 : 9);
+        if (index === 2) {
+          const named = Object.fromEntries(SLAB_ATTRIBUTES.map((name, slot) => [name, product?.attributes[slot]]));
+          expect(named.GlobalId).toMatch(/^[0-3][0-9A-Za-z_$]{21}$/);
+          expect(named).toMatchObject({ Name: 'D5 slab', Description: 'D5 slab description',
+            ObjectType: 'D5 slab object', Tag: 'D5 slab tag', PredefinedType: '.FLOOR.' });
+          const representation = named.Representation;
+          if (typeof representation !== 'number') throw new Error('The saved slab has no Representation reference');
+          expect(extractor.extractEntity(store.entityIndex.byId.get(representation)!)?.type).toBe('IFCPRODUCTDEFINITIONSHAPE');
+        }
         expect(product?.attributes[1], 'the creator file has actual mandatory owner history').toEqual(expect.any(Number));
         expect(extractor.extractEntity(store.entityIndex.byId.get(product!.attributes[1] as number)!)?.type).toBe('IFCOWNERHISTORY');
         expect(store.spatialHierarchy?.elementToStorey.get(ref.expressId)).toBe(f.storey);

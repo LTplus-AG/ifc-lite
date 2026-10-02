@@ -60,7 +60,7 @@ export function resolveReportModel(
   const pickedModel = picked === null ? undefined : options.find((m) => m.id === picked);
   if (pickedModel) return { kind: 'model', model: pickedModel };
   if (boundFingerprint) {
-    const bound = options.find((m) => m.fingerprint === boundFingerprint);
+    const bound = options.find((m) => m.fingerprint === boundFingerprint && isManualModelReady(m));
     return bound ? { kind: 'model', model: bound } : { kind: 'missing' };
   }
   return { kind: 'model', model: options.find((m) => m.id === defaultModelId) ?? null };

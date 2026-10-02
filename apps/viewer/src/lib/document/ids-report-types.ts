@@ -103,7 +103,8 @@ export interface IdsReportBlock extends ReportProvenance, BlockTitle {
   /**
    * Compact layout only (#6560): print one bar row per specification and leave out its
    * requirement rows. Optional and additive, so the document format version is unchanged;
-   * a viewer that predates it ignores it and prints the full compact report.
+   * a viewer that supports the document format but predates this field ignores it
+   * and prints the full compact report.
    */
   specificationsOnly?: boolean;
   /** Optional ring benchmark (#6552). Absent retains existing document output. */

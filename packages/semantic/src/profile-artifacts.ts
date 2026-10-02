@@ -32,7 +32,7 @@ function scalarSchema(field: ProfileField) {
 export function resourceSchema(type: string, profile = DEFAULT_PROFILE, structural = false) {
   assertProfile(profile);
   const definition = profile.types[type];
-  if (!definition) throw new Error(`Unknown resource type: ${type}`);
+  if (!Object.hasOwn(profile.types, type)) throw new Error(`Unknown resource type: ${type}`);
   return { type: 'object', additionalProperties: false, required: [...new Set(['id', 'type', 'label',
     ...(!structural ? Object.entries(definition.fields).filter(([, count]) => (count.minCount ?? 0) > 0).map(([key]) => key) : [])])],
     properties: { id: { type: 'string', format: 'uri' }, type: { const: type },

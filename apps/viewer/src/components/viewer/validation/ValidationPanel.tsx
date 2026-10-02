@@ -124,12 +124,14 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   // #6690: tabs, storage notices and expanded history must share a bounded
   // scroll area; otherwise their combined height can leave no results pane.
   const chrome = (
-    <div role="region" aria-label={t('validationPanel.title')} tabIndex={0}
+    // Native keyboard scrolling requires this scroll region to receive focus.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+    <section aria-label={t('validationPanel.title')} tabIndex={0}
       className="min-h-0 max-h-[35%] shrink-0 overflow-auto focus-visible:outline-2 focus-visible:outline-primary">
       <PanelHeader title={t('validationPanel.title')} onClose={handleClose} />
       {effectiveSource !== null && <SourceToggle />}
       <SavedValidationReports />
-    </div>
+    </section>
   );
 
   if (effectiveSource === null) {

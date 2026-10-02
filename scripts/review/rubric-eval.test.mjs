@@ -800,11 +800,14 @@ test('resume revalidates saved evidence without invoking the reviewer again', (t
   const reviewer = stubReviewer(dir, fenced([], 'clean', { class_pass: classPass() }));
   assert.equal(runHarness(dir, reviewer, ['--output-dir', output]).status, 0);
   writeFileSync(join(output, 'case.json.out.txt.telemetry.jsonl'), `${JSON.stringify({ model: process.env.EVAL_MODEL || 'sonnet' })}\n`);
+  const firstAttempt = 'invalid first attempt retained before a valid retry';
+  writeFileSync(join(output, 'case.json.initial.out.txt'), firstAttempt);
   // Invoking this process again would fail, so success proves the cached model
   // output goes through the actual validator without a second generation.
   writeFileSync(reviewer, 'process.exit(91);');
   const r = runHarness(dir, reviewer, ['--output-dir', output, '--resume']);
   assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+  assert.equal(readFileSync(join(output, 'case.json.initial.out.txt'), 'utf8'), firstAttempt);
   const report = JSON.parse(readFileSync(join(output, 'score.json'), 'utf8'));
   assert.equal(report.results[0].verdict, 'clean');
 });

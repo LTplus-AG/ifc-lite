@@ -21,3 +21,14 @@ export function readEvalCache(dir, name, input, model, profile = 'high') {
   if (validation.reason !== null && !REVIEWER_FAULT.has(validation.reason)) return null;
   return { input: saved, attempts: validation.attempts };
 }
+
+// A run's head SHA is not necessarily the tree selected by context_ref.
+// Require the saved context evidence rather than silently mixing trees.
+export function readEvalContext(dir) {
+  const receipt = join(dir, 'eval-context.txt');
+  const score = join(dir, 'eval', 'score.json');
+  const ref = existsSync(receipt) ? readFileSync(receipt, 'utf8').trim()
+    : existsSync(score) ? JSON.parse(readFileSync(score, 'utf8')).baseRef : null;
+  if (typeof ref !== 'string' || !/^[0-9a-f]{40}$/.test(ref)) throw new Error('Resumed run has no pinned context tree.');
+  return ref;
+}

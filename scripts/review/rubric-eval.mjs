@@ -205,7 +205,7 @@ async function main() {
       // the reviewer for findings that would have been dropped for quoting a line
       // that is not in the diff.
       const findingsPath = join(tmp, `${f}.findings.json`);
-      writeFileSync(join(tmp, `${f}.initial.out.txt`), readFileSync(outPath));
+      if (!cached) writeFileSync(join(tmp, `${f}.initial.out.txt`), readFileSync(outPath));
       const validation = validateWithOneRetry({
         reviewer,
         rubric,

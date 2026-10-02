@@ -147,10 +147,14 @@ jobs:
           [[ "$RESUME_RUN_ID" =~ ^[0-9]+$ ]] || exit 1
           source_sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RESUME_RUN_ID" --jq .head_sha)
           git fetch --depth=1 origin "$source_sha"
-          echo "EVAL_CONTEXT_BASE=$source_sha" >> "$GITHUB_ENV"
           git show "$source_sha:$EVAL_RUBRIC" > "$RUNNER_TEMP/source-rubric.md"
           cmp "$RUNNER_TEMP/source-rubric.md" "$EVAL_RUBRIC"
           gh run download "$RESUME_RUN_ID" --name "review-eval-$EVAL_ARTIFACT" --dir "$RUNNER_TEMP" --repo "$GITHUB_REPOSITORY"
+          context_sha=$(node --input-type=module -e 'import { readEvalContext } from "./scripts/review/lib/eval-cache.mjs"; console.log(readEvalContext(process.env.RUNNER_TEMP))')
+          git fetch --depth=1 origin "$context_sha"
+          echo "EVAL_CONTEXT_BASE=$context_sha" >> "$GITHUB_ENV"
+      - name: Record the context tree before any paid attempt
+        run: git rev-parse "$EVAL_CONTEXT_BASE^{commit}" > "$RUNNER_TEMP/eval-context.txt"
       - name: Compare generator recall with the production validator and retry
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -174,5 +178,6 @@ jobs:
           path: |
             ${{ runner.temp }}/eval/
             ${{ runner.temp }}/eval-cost.txt
-          if-no-files-found: warn
+            ${{ runner.temp }}/eval-context.txt
+          if-no-files-found: error
           retention-days: 30

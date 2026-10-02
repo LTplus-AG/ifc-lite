@@ -38,7 +38,8 @@ reservation, not a provider-enforced billing cap, and rates can change.
 
 A stopped run can be resumed with `resume_run_id`: the workflow restores each
 model's artifacts and cumulative cost ledger and requires the same rubric. It pins remaining context retrieval to the original
-run's tree, so harness updates do not change the candidate prompts. Cases
+run's recorded context tree, so harness updates do not change the candidate prompts.
+A resume without a pinned context receipt or score is refused rather than mixing trees. Cases
 whose model attempts completed are revalidated from their saved historical context
 without another model call; mismatched model/corpus evidence is refused. Costs
 remain cumulative across runs. The initial $3 probe stopped Opus after five cases

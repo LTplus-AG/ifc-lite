@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readEvalCache } from './eval-cache.mjs';
+import { readEvalCache, readEvalContext } from './eval-cache.mjs';
 
 function evidence(t, validation = { attempts: 1, reason: null }) {
   const dir = mkdtempSync(join(tmpdir(), 'eval-cache-'));
@@ -37,4 +37,14 @@ test('changing reasoning cannot reuse model answers from another profile', (t) =
   const { dir, input } = evidence(t);
   writeFileSync(join(dir, 'case.out.txt.telemetry.jsonl'), '{"model":"openai/gpt-6-luna"}\n');
   assert.throws(() => readEvalCache(dir, 'case', input, 'openai/gpt-6-luna', 'cheap-defaults'), /different reasoning profile/);
+});
+
+test('resume uses the recorded context tree and refuses missing or symbolic refs (#6706)', (t) => {
+  const { dir } = evidence(t);
+  assert.throws(() => readEvalContext(dir), /no pinned context/);
+  writeFileSync(join(dir, 'eval-context.txt'), 'HEAD');
+  assert.throws(() => readEvalContext(dir), /no pinned context/);
+  const context = 'c'.repeat(40);
+  writeFileSync(join(dir, 'eval-context.txt'), context + '\n');
+  assert.equal(readEvalContext(dir), context);
 });

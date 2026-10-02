@@ -78,6 +78,15 @@ export function DocumentPreview(props: DocumentPreviewProps) {
     tables: props.tables ?? EMPTY_TABLES, snapshotIds: EMPTY_IDS, labels }),
   [props.document, props.bindings, props.aggregations, props.chartMessages, props.topics, props.tables, labels]);
   const { value, error, pending } = useDocumentLayout(input, imageSizes);
+  const displayedImageFailures = useMemo(() => {
+    const failures = new Set(imageFailures);
+    // A retained layout keeps its failed measurement even when the current
+    // document replaces that URL and prunes the live image state.
+    for (const [url, size] of value?.imageSizes ?? []) {
+      if (size.w <= 0 || size.h <= 0) failures.add(url);
+    }
+    return failures;
+  }, [imageFailures, value?.imageSizes]);
   const displayedInput = value?.input ?? input;
   const displayedDocument = displayedInput.document;
   const displayedLabels = displayedInput.labels ?? labels;
@@ -114,7 +123,7 @@ export function DocumentPreview(props: DocumentPreviewProps) {
         fontSize: (heading?.fontSize ?? 8) * scale, lineHeight: 1.25, whiteSpace: 'pre' }}>{heading?.text ?? layout.header}</div>
       <ComposedPageItems page={page} blocks={blocks} aggregations={displayedInput.aggregations} chartMessages={displayedInput.chartMessages}
         topics={displayedInput.topics} scale={scale} measure={measure} labels={displayedLabels} selectedBlockId={props.selectedBlockId}
-        onSelectBlock={props.onSelectBlock} onImageSize={recordImageSize} imageFailures={imageFailures} onImageError={recordImageError} />
+        onSelectBlock={props.onSelectBlock} onImageSize={recordImageSize} imageFailures={displayedImageFailures} onImageError={recordImageError} />
       <div data-page-footer className={footerPaint.className} style={{ position: 'absolute', left: REPORT_MARGIN * scale,
         top: (layout.size.h - REPORT_MARGIN + 12 - 8) * scale, fontSize: 8 * scale, color: footerPaint.color, lineHeight: 1.25 }}>
         {layout.footer}

@@ -18,7 +18,7 @@ import { topicSnapshotDataUrl } from '@/lib/document/generate-document-pdf';
 import { pageBox, REPORT_MARGIN } from '@/lib/export/report/compose';
 import { DOCUMENT_FONT_FAMILIES } from '@/lib/document/text-typography';
 import type { TableState } from '@/lib/document/resolve-table';
-import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS, DOCUMENT_PREVIEW_PAPER_CLASS } from './preview-theme';
+import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS, DOCUMENT_PREVIEW_PAPER_CLASS, previewTextPaint } from './preview-theme';
 import { ComposedPageItems } from './ComposedPageItems';
 import { useDocumentLayout, type PreviewImageSize } from './useDocumentLayout';
 
@@ -96,24 +96,28 @@ export function DocumentPreview(props: DocumentPreviewProps) {
   const scale = width / layout.size.w;
   const pendingImages = [...imageUrls].some(url => !imageSizes.has(url));
   const heading = layout.pageHeading;
+  // The resolved heading contains a default PDF color even when the author
+  // supplied only text/font. Only an actual authored color overrides UI ink.
+  const headingPaint = previewTextPaint(150, props.document.pageHeading?.textColor);
+  const footerPaint = previewTextPaint(150);
   return <div className="flex flex-col items-center gap-4 p-3" data-document-preview aria-busy={pendingImages}>
     {layout.pages.map(page => <section key={page.index} data-document-preview-paper data-preview-section={page.index + 1}
       aria-label={labels('document.preview.sectionLabel', { section: String(page.index + 1) })}
       className={`${DOCUMENT_PREVIEW_PAPER_CLASS} relative shadow-md`}
       style={{ width, height: layout.size.h * scale, fontFamily: DOCUMENT_FONT_FAMILIES.helvetica, overflow: 'hidden' }}>
-      <div data-page-heading title={heading?.text ?? layout.header} style={{ position: 'absolute', left: REPORT_MARGIN * scale,
+      <div data-page-heading className={headingPaint.className} title={heading?.text ?? layout.header} style={{ position: 'absolute', left: REPORT_MARGIN * scale,
         top: ((heading?.y ?? REPORT_MARGIN - 8) - (heading?.fontSize ?? 8)) * scale,
-        color: heading?.textColor ?? '#969696', fontFamily: DOCUMENT_FONT_FAMILIES[heading?.font ?? 'helvetica'],
+        color: headingPaint.color, fontFamily: DOCUMENT_FONT_FAMILIES[heading?.font ?? 'helvetica'],
         fontSize: (heading?.fontSize ?? 8) * scale, lineHeight: 1.25, whiteSpace: 'pre' }}>{heading?.text ?? layout.header}</div>
       <ComposedPageItems page={page} blocks={blocks} aggregations={props.aggregations} chartMessages={props.chartMessages}
         topics={props.topics} scale={scale} measure={measure} labels={labels} selectedBlockId={props.selectedBlockId}
         onSelectBlock={props.onSelectBlock} onImageSize={recordImageSize} imageFailures={imageFailures} onImageError={recordImageError} />
-      <div data-page-footer style={{ position: 'absolute', left: REPORT_MARGIN * scale,
-        top: (layout.size.h - REPORT_MARGIN + 12 - 8) * scale, fontSize: 8 * scale, color: '#969696', lineHeight: 1.25 }}>
+      <div data-page-footer className={footerPaint.className} style={{ position: 'absolute', left: REPORT_MARGIN * scale,
+        top: (layout.size.h - REPORT_MARGIN + 12 - 8) * scale, fontSize: 8 * scale, color: footerPaint.color, lineHeight: 1.25 }}>
         {layout.footer}
       </div>
-      <div data-page-counter style={{ position: 'absolute', left: (layout.size.w - REPORT_MARGIN - 60) * scale,
-        top: (layout.size.h - REPORT_MARGIN + 12 - 8) * scale, fontSize: 8 * scale, color: '#969696', lineHeight: 1.25, whiteSpace: 'pre' }}>
+      <div data-page-counter className={footerPaint.className} style={{ position: 'absolute', left: (layout.size.w - REPORT_MARGIN - 60) * scale,
+        top: (layout.size.h - REPORT_MARGIN + 12 - 8) * scale, fontSize: 8 * scale, color: footerPaint.color, lineHeight: 1.25, whiteSpace: 'pre' }}>
         {pendingImages ? labels('document.print.preparing') : layout.pageCounters?.[page.index]}
       </div>
     </section>)}

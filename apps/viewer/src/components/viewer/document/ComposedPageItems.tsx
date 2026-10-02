@@ -18,6 +18,7 @@ import { ringSvg } from '@/lib/validation/manual/ring';
 import type { DocumentBlock } from '@/lib/document/types';
 import type { DocumentLabelFormatter } from '@/lib/document/document-labels';
 import type { PreviewImageSize } from './useDocumentLayout';
+import { previewTextPaint } from './preview-theme';
 
 interface Box { x: number; y: number; w: number; h: number }
 interface BlockItems { id: string; items: DrawnItem[]; boxes: Box[] }
@@ -66,9 +67,10 @@ function ComposedChart({ aggregation, item, fontSize, message, savedComparison, 
     : null, [aggregation, width, height, fontSize]);
   if (svg) return <span style={style} className="block [&_svg]:h-full [&_svg]:w-full" data-chart-svg dangerouslySetInnerHTML={{ __html: svg }} />;
   const lines = savedComparison ? chartSourceMessageLines(message, item, 9, measure) : [{ text: message, y: 14 }];
+  const paint = previewTextPaint(130);
   return <span style={{ ...style, overflow: 'hidden' }} title={message} data-chart-empty>
-    {lines.map((line, i) => <span key={i} style={{ position: 'absolute', left: 0, top: (line.y - 9) * scale,
-      whiteSpace: 'pre', fontSize: 9 * scale, lineHeight: 1.25, color: '#828282' }}>{line.text}{'\n'}</span>)}
+    {lines.map((line, i) => <span key={i} className={paint.className} style={{ position: 'absolute', left: 0, top: (line.y - 9) * scale,
+      whiteSpace: 'pre', fontSize: 9 * scale, lineHeight: 1.25, color: paint.color }}>{line.text}{'\n'}</span>)}
   </span>;
 }
 
@@ -76,6 +78,7 @@ function Item({ item, block, origin, props, lineBreak }: { item: DrawnItem; bloc
   const { scale, measure, labels: t } = props;
   const box = itemBox(item, measure);
   const style = position(box, origin, scale);
+  const paint = item.kind === 'text' ? previewTextPaint(item.gray, item.color, block.kind === 'text' ? block.backgroundColor : undefined) : null;
   const markedText = () => {
     if (item.kind !== 'text' || !item.bindingMarks?.length) return item.kind === 'text' ? item.text : '';
     let end = 0;
@@ -90,9 +93,9 @@ function Item({ item, block, origin, props, lineBreak }: { item: DrawnItem; bloc
     return <>{nodes}{item.text.slice(end)}</>;
   };
   switch (item.kind) {
-    case 'text': return <span style={{ ...style, width: undefined, whiteSpace: 'pre', lineHeight: 1.25,
+    case 'text': return <span className={paint?.className} style={{ ...style, width: undefined, whiteSpace: 'pre', lineHeight: 1.25,
       fontSize: item.size * scale, fontFamily: DOCUMENT_FONT_FAMILIES[item.font ?? 'helvetica'],
-      fontWeight: item.bold ? 700 : 400, color: item.color ?? `rgb(${item.gray}, ${item.gray}, ${item.gray})` }}
+      fontWeight: item.bold ? 700 : 400, color: paint?.color }}
       data-table-message={item.role === 'table-message' ? '' : undefined}
       data-report-model-scope={item.role === 'report-model-scope' ? '' : undefined} title={item.tooltip}>{markedText()}{lineBreak ? '\n' : ''}</span>;
     case 'rect':

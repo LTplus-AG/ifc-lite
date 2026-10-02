@@ -60,11 +60,13 @@ for (const theme of THEMES) {
   });
 
   it(`authored pale colors remain literal while existing dark body/comment ink stays intact in ${theme} (#6610)`, async () => {
-    const html = await completed({ ...sampleDocument, pageHeading: { text: 'Authored pale heading', textColor: '#969696' } });
-    await assertRenderedTextClears(theme, html, ['Ordinary body ink', /Reviewer comment ink/], WCAG_AA_NORMAL_TEXT);
+    const html = await completed({ ...sampleDocument, pageHeading: { text: 'Authored pale heading', textColor: '#969696' },
+      blocks: [...sampleDocument.blocks, { kind: 'text', id: 'dark-caption', style: 'caption',
+        text: 'Caption on authored black', backgroundColor: '#000000' }] });
+    await assertRenderedTextClears(theme, html, ['Ordinary body ink', /Reviewer comment ink/, 'Caption on authored black'], WCAG_AA_NORMAL_TEXT);
     await withThemedPage(theme, html, async page => {
       const paints = await page.evaluate(() => {
-        const text = ['Authored pale ink', 'Authored pale heading', 'Ordinary body ink'];
+        const text = ['Authored pale ink', 'Authored pale heading', 'Ordinary body ink', 'Caption on authored black'];
         return text.map(value => {
           const element = [...document.body.querySelectorAll('*')].find(el => [...el.childNodes]
             .filter(node => node.nodeType === 3).map(node => node.textContent ?? '').join('').trim() === value);
@@ -72,8 +74,13 @@ for (const theme of THEMES) {
           return getComputedStyle(element).color;
         });
       });
-      assert.deepEqual(paints, ['rgb(150, 150, 150)', 'rgb(150, 150, 150)', 'rgb(0, 0, 0)']);
+      assert.deepEqual(paints, ['rgb(150, 150, 150)', 'rgb(150, 150, 150)', 'rgb(0, 0, 0)', 'rgb(130, 130, 130)']);
     });
+  });
+
+  it(`heading text/font without authored color uses accessible default paint in ${theme} (#6610)`, async () => {
+    const html = await completed({ ...sampleDocument, pageHeading: { text: 'Partial authored heading', font: 'times', fontSize: 16 } });
+    await assertRenderedTextClears(theme, html, ['Partial authored heading'], WCAG_AA_NORMAL_TEXT);
   });
 }
 

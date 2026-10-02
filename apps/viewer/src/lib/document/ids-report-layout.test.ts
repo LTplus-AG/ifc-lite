@@ -127,6 +127,46 @@ describe('IDS report block validation (#6470)', () => {
   });
 });
 
+/** Ten specifications with twenty requirements each: the long report #6560 describes. */
+function manySpecifications(specificationsOnly?: boolean): IdsReportBlock {
+  const ids = block('compact');
+  if (specificationsOnly !== undefined) ids.specificationsOnly = specificationsOnly;
+  ids.checks = Array.from({ length: 10 }, (_, s) => ({
+    id: `s${s}`, shortDescription: `Spec ${s}`, checked: 63, passed: 55, failed: 8, passRate: 87,
+    rules: Array.from({ length: 20 }, (_, r) => ({ id: `s${s}r${r}`, name: `Req ${s}.${r}`, shortDescription: `Req ${s}.${r}`, checked: 63, passed: 63, failed: 0, passRate: 100 })),
+  }));
+  return ids;
+}
+
+describe('compact IDS report with specifications only (#6560)', () => {
+  it('prints one bar row per specification and no requirement rows', () => {
+    const { texts, rects } = compose(manySpecifications(true));
+    assert.equal(texts.filter((t) => /^Spec \d$/.test(t.text)).length, 10);
+    assert.equal(texts.filter((t) => t.text.startsWith('Req ')).length, 0, 'no requirement rows');
+    assert.equal(texts.filter((t) => t.text === '55/63 · 87%').length, 10, 'each specification keeps its own pass rate');
+    assert.equal(rects.length, 20, 'a track and a fill per specification');
+  });
+
+  it('is much shorter than the same report with requirements', () => {
+    const pages = (ids: IdsReportBlock) => composeDocument({ name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth, blocks: [ids] }).pages.length;
+    assert.equal(pages(manySpecifications(true)), 1);
+    assert.ok(pages(manySpecifications()) > 1, 'with requirements it spills onto further pages');
+  });
+
+  it('applies only to the compact layout', () => {
+    const ids = manySpecifications(true);
+    ids.variant = 'long';
+    assert.ok(compose(ids).texts.some((t) => t.text.startsWith('Req ')), 'the long layout still lists requirements');
+  });
+
+  it('is validated as a boolean, and absent in documents saved before it existed', () => {
+    const doc = (ids: unknown) => ({ version: DOCUMENT_VERSION, id: 'd', name: 'IDS', page: { size: 'A4', orientation: 'portrait' }, blocks: [ids] });
+    assert.deepEqual(validateDocumentSpec(doc({ ...block('compact'), specificationsOnly: true })), []);
+    assert.deepEqual(validateDocumentSpec(doc(block('compact'))), []);
+    assert.deepEqual(validateDocumentSpec(doc({ ...block('compact'), specificationsOnly: 'yes' })).map((e) => e.path), ['blocks[0].specificationsOnly']);
+  });
+});
+
 describe('IDS report layout edge cases (review of #6494)', () => {
   it('long paginates a requirement taller than a page without leaving the printable area', () => {
     const huge = Array.from({ length: 4000 }, (_, i) => `word${i}`).join(' ');

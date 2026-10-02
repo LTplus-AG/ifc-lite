@@ -164,7 +164,10 @@ jobs:
           # the step alive; the second line makes anything that is not
           # literally `false` — including the empty string an exit-0 run that
           # printed nothing would leave — open the gate.
-          VERSION_CHANGED=$(node scripts/release-version-changed.mjs) || VERSION_CHANGED=true
+          # An introduction-only push with pending changesets refreshes the
+          # version PR; its new packages are not due on npm yet. Existing
+          # version bumps and unknown states still open verification.
+          VERSION_CHANGED=$(node scripts/release-version-changed.mjs --defer-pending-introductions) || VERSION_CHANGED=true
           [ "${VERSION_CHANGED}" = "false" ] || VERSION_CHANGED=true
           echo "version_changed=${VERSION_CHANGED}" >> "$GITHUB_OUTPUT"
 

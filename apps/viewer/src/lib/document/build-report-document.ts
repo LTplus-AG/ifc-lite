@@ -110,6 +110,7 @@ function resultBlock(result: DocumentReportResult, presentation?: DocumentBlock)
     if (presentation && presentation.kind !== 'ids-report') throw new Error(`Block ${presentation.id} requires a validation report block`);
     return { ...structuredClone(result.snapshot), id,
       variant: presentation?.variant ?? result.snapshot.variant ?? 'compact', benchmarks: presentation?.benchmarks ?? result.snapshot.benchmarks ?? true,
+      ...((presentation?.specificationsOnly ?? result.snapshot.specificationsOnly) !== undefined ? { specificationsOnly: presentation?.specificationsOnly ?? result.snapshot.specificationsOnly } : {}),
       ...(presentation?.title !== undefined ? { title: presentation.title } : {}),
       ...(presentation?.scale !== undefined ? { scale: presentation.scale } : {}),
       ...(presentation?.showStamp !== undefined ? { showStamp: presentation.showStamp } : {}),

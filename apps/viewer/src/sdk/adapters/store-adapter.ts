@@ -19,10 +19,7 @@ import {
   type WindowInStoreParams,
 } from '@ifc-lite/create';
 import type {
-  AddBeamInStoreParams,
-  AddColumnInStoreParams,
   AddDoorInStoreParams,
-  AddMemberInStoreParams,
   AddPlateInStoreParams,
   AddRoofInStoreParams,
   AddSlabInStoreParams,
@@ -312,7 +309,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
         );
       }
     },
-    addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams): EntityRef {
+    addColumn(modelId: string, storeyExpressId: number, params: Parameters<StoreBackendMethods['addColumn']>[2]): EntityRef {
       return buildElement('addColumn', modelId, storeyExpressId, { kind: 'column', params },
         () => ordinary.addColumn(modelId, storeyExpressId, params).expressId);
     },
@@ -324,7 +321,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return buildElement('addSlab', modelId, storeyExpressId, { kind: 'slab', params },
         () => ordinary.addSlab(modelId, storeyExpressId, params).expressId);
     },
-    addBeam(modelId: string, storeyExpressId: number, params: AddBeamInStoreParams): EntityRef {
+    addBeam(modelId: string, storeyExpressId: number, params: Parameters<StoreBackendMethods['addBeam']>[2]): EntityRef {
       return buildElement('addBeam', modelId, storeyExpressId, { kind: 'beam', params },
         () => ordinary.addBeam(modelId, storeyExpressId, params).expressId);
     },
@@ -348,7 +345,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return buildElement('addPlate', modelId, storeyExpressId, { kind: 'plate', params },
         () => ordinary.addPlate(modelId, storeyExpressId, params).expressId);
     },
-    addMember(modelId: string, storeyExpressId: number, params: AddMemberInStoreParams): EntityRef {
+    addMember(modelId: string, storeyExpressId: number, params: Parameters<StoreBackendMethods['addMember']>[2]): EntityRef {
       return buildElement('addMember', modelId, storeyExpressId, { kind: 'member', params },
         () => ordinary.addMember(modelId, storeyExpressId, params).expressId);
     },

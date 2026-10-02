@@ -117,18 +117,23 @@ export {
   createRoomTokenAuthenticator,
   createRoomTokenRegistryAuthorizer,
   handleTokenMintRequest,
-  handleRevokeRequest,
-  handleKickRequest,
   type RoomTokenClaims,
   type SecretResolver,
   type SignRoomTokenOptions,
   type VerifyRoomTokenOptions,
   type RoomTokenAuthenticatorOptions,
   type TokenEndpointOptions,
-  type RevokeEndpointOptions,
-  type KickEndpointOptions,
   type MintRequestBody,
 } from './room-token.js';
+export {
+  handleRevokeRequest,
+  handleKickRequest,
+  handleReleaseRequest,
+  type RevokeEndpointOptions,
+  type KickEndpointOptions,
+  type ReleaseEndpointOptions,
+  type ReleaseResult,
+} from './room-admin-routes.js';
 export {
   createAccessControl,
   type AccessControl,

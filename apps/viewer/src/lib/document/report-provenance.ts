@@ -52,10 +52,10 @@ export function reportStamp(block: ReportProvenance & { generatedAt: string; mod
 
 /** Replacing a report's evidence (live refresh, choosing a saved report) keeps
  * the destination block's identity and everything its author chose to show:
- * heading, layout, benchmarks, stamp and size. One rule for the manual and the
+ * heading, layout, benchmarks, specifications-only, stamp and size. One rule for the manual and the
  * IDS / information-validation kinds, so their refresh paths cannot drift. */
-export function replaceReportSnapshot<B extends ReportStampChoice & { id: string; title?: string; variant?: string; benchmarks?: boolean; scale?: number }>(current: B, snapshot: B): B {
-  return { ...snapshot, id: current.id, title: current.title, variant: current.variant, benchmarks: current.benchmarks, showStamp: current.showStamp, scale: current.scale };
+export function replaceReportSnapshot<B extends ReportStampChoice & { id: string; title?: string; variant?: string; benchmarks?: boolean; scale?: number; specificationsOnly?: boolean }>(current: B, snapshot: B): B {
+  return { ...snapshot, id: current.id, title: current.title, variant: current.variant, benchmarks: current.benchmarks, showStamp: current.showStamp, specificationsOnly: current.specificationsOnly, scale: current.scale };
 }
 
 /** Keep exact nonblank model names; unnamed sources use their captured

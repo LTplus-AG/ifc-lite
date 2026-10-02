@@ -108,6 +108,12 @@ function ReportBlockPresentation({ block, onChange }: { block: IdsReportBlock; o
           <option value="long">{t('document.block.idsReportVariantLong')}</option>
         </select>
       </label>
+      {block.variant === 'compact' && (
+        <label className="inline-flex items-center gap-1 text-muted-foreground">
+          <input type="checkbox" checked={block.specificationsOnly === true} onChange={(event) => onChange({ ...block, specificationsOnly: event.target.checked || undefined })} />
+          {t('document.block.idsReportSpecificationsOnly')}
+        </label>
+      )}
       <label className="inline-flex items-center gap-1 text-muted-foreground">
         <input type="checkbox" checked={block.benchmarks === true} onChange={(event) => onChange({ ...block, benchmarks: event.target.checked })} />
         {t('manualValidation.report.benchmarks')}

@@ -38,6 +38,9 @@ bim.viewer.colorize(walls.map(w => w.ref), '#ff0000');
   the shared atomic core. Host adapters compose these existing methods with
   `createOrdinaryStoreBackend(resolveModel)`; the resolver supplies the live
   store, editor and mutation view. Existing strict anchor placement is retained.
+- `bim.store.addColumn` / `addBeam` / `addMember` accept canonical parameterised
+  `Profile` sections in place of rectangular dimensions. Columns also accept
+  storey-local `RefDirection`; dimensions remain metres in every model unit.
 - `bim.store.joinWalls(modelId, aExpressId, bExpressId, options?)` - join straight
   walls through the same atomic core as the Model workspace and MCP. Returns
   `IfcRelConnectsPathElements`; `Name`, `priority`, `tolerance` and per-wall

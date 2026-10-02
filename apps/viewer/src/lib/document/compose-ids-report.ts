@@ -123,6 +123,7 @@ function emitLines(cursor: LayoutCursor, x: number, lines: Line[]): void {
 
 export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCursor, contentW: number, blockGap: number, wrap: IdsReportWrap | undefined, pushRing: (item: RingDrawnItem) => void): void {
   const compact = block.variant === 'compact';
+  const specificationsOnly = compact && block.specificationsOnly === true;
   const wrapLines = block.variant === 'long' && wrap !== undefined;
   /** A field's lines: cut to one line (original layout) or wrapped (long). */
   const fit = (text: string, width: number, size: number, bold: boolean, gray: number): Line[] =>
@@ -131,7 +132,7 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
 
   const title = idsReportTitle(block);
   const first = block.checks[0];
-  const firstChild = first ? childRows(first)[0] : undefined;
+  const firstChild = first && !specificationsOnly ? childRows(first)[0] : undefined;
   const firstRowHeight = compact ? COMPACT_ROW_HEIGHT : classicHeight(first?.longDescription);
   const firstChildHeight = firstChild ? (compact ? COMPACT_ROW_HEIGHT : classicHeight(firstChild.description)) : 0;
   // Stamp rows (#6678): the run time and the evaluated models, both off the block; hidden means neither is drawn nor reserved.
@@ -191,7 +192,7 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
       // A check that could not be evaluated has no meaningful rate: print its error instead of a bar.
       const bar = check.error === undefined ? { passed: check.passed, checked: check.checked, rate: check.passRate } : undefined;
       compactRow(cursor.x, contentW, `${check.severity === 'warning' ? '(Warning) ' : ''}${check.shortDescription || check.id}`, 9, true, 0, bar, check.error === undefined ? undefined : checkCountsLine(check));
-      for (const row of children) compactRow(cursor.x + 10, contentW - 10, row.compactName ?? row.name, 8, false, 45, row.bar, row.detail);
+      if (!specificationsOnly) for (const row of children) compactRow(cursor.x + 10, contentW - 10, row.compactName ?? row.name, 8, false, 45, row.bar, row.detail);
       return;
     }
     const lines = fit(check.shortDescription || check.id, contentW, 9.5, true, 0);

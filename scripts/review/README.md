@@ -13,7 +13,10 @@ cost because an interrupted provider may still bill a request.
 
 To compare the strong reviewer seat, dispatch `Rubric eval` with
 `provider=openrouter`. It replays the same 18 historical cases independently with
-GPT-6.1 Sol, Sonnet 5.5, and Opus 5.5. Each candidate uses the production prompt,
+GPT-6.1 Sol, Sonnet 5.5, and Opus 5.5. Set `comparison=cheap` for the active
+Luna, DeepSeek v4 Flash, and Gemini Flash Lite seats. `context_ref` can pin both
+comparisons to the same original tree. Strong and cheap comparisons may run in
+parallel, but repeated runs of the same group are serialized. Each candidate uses the production prompt,
 high reasoning effort, 32,768 output-token limit, context pack, mechanical validator,
 and one corrective retry. There is no failover to another model, ensemble pooling,
 or paid judge. Scores measure generation plus validation, not the final posted

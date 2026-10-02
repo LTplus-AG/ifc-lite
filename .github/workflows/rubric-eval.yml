@@ -17,10 +17,19 @@ on:
   workflow_dispatch:
     inputs:
       provider:
-        description: 'Claude subscription or paid OpenRouter strong-seat comparison'
+        description: 'Claude subscription or paid OpenRouter comparison'
         type: choice
         options: [claude, openrouter]
         default: claude
+      comparison:
+        description: 'OpenRouter seats to compare'
+        type: choice
+        options: [strong, cheap]
+        default: strong
+      context_ref:
+        description: 'HEAD or a pinned 40-hex tree for identical context across comparisons'
+        required: false
+        default: HEAD
       resume_run_id:
         description: 'Optional completed comparison run whose artifacts should be resumed'
         required: false
@@ -39,7 +48,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: rubric-eval
+  group: rubric-eval-${{ inputs.comparison || 'strong' }}
   cancel-in-progress: false
 
 jobs:
@@ -101,13 +110,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - model: openai/gpt-6.1-sol
-            artifact: gpt-6.1-sol
-          - model: anthropic/claude-sonnet-5.5
-            artifact: claude-sonnet-5.5
-          - model: anthropic/claude-opus-5.5
-            artifact: claude-opus-5.5
+        include: >-
+          ${{ fromJSON(inputs.comparison == 'cheap'
+            && '[{"model":"openai/gpt-6-luna","artifact":"gpt-6-luna"},{"model":"deepseek/deepseek-v4-flash","artifact":"deepseek-v4-flash"},{"model":"google/gemini-3.5-flash-lite","artifact":"gemini-3.5-flash-lite"}]'
+            || '[{"model":"openai/gpt-6.1-sol","artifact":"gpt-6.1-sol"},{"model":"anthropic/claude-sonnet-5.5","artifact":"claude-sonnet-5.5"},{"model":"anthropic/claude-opus-5.5","artifact":"claude-opus-5.5"}]') }}
+    env:
+      EVAL_CONTEXT_BASE: ${{ inputs.context_ref || 'HEAD' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -118,6 +126,11 @@ jobs:
           node-version: 22
       - name: Test evaluation adapters
         run: node --test scripts/review/rubric-eval.test.mjs scripts/review/openrouter-eval-reviewer.test.mjs scripts/review/lib/eval-cache.test.mjs scripts/review/semantic-match.test.mjs
+      - name: Fetch a pinned context tree when requested
+        if: inputs.context_ref != '' && inputs.context_ref != 'HEAD'
+        run: |
+          [[ "$EVAL_CONTEXT_BASE" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          git fetch --depth=1 origin "$EVAL_CONTEXT_BASE"
       - name: Restore completed cases and their cost ledger
         if: inputs.resume_run_id != ''
         env:

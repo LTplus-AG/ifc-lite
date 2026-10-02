@@ -1,7 +1,7 @@
 # Block heading follow-ups to #6632: evidence
 
 PDFs exported through the viewer's own path (`prepareDocument` + `exportPreparedDocument`, real jsPDF,
-real Helvetica metrics) in the bundled Chromium, on `upstream/main` at `12c20a679` ("main") and on this
+real Helvetica metrics) in the bundled Chromium, on `upstream/main` at `5e15a26e4` ("main") and on this
 branch ("branch"), and what can be read back from their bytes. The preview screenshots and measurements are
 from the same Vite dev server in the same Chromium.
 

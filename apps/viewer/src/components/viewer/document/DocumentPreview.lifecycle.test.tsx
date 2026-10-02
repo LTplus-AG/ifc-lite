@@ -47,9 +47,14 @@ async function ready(ui: HTMLElement) {
 
 it('settles a zero-natural-size load through the existing decode failure fallback (#6660 review)', async () => {
   const ui = render(<Editable image />); await ready(ui);
-  const image = ui.querySelector<HTMLImageElement>('[data-preview-block="image"] img'); assert.ok(image);
-  Object.defineProperties(image, { naturalWidth: { configurable: true, value: 0 }, naturalHeight: { configurable: true, value: 0 } });
-  act(() => image.dispatchEvent(new Event('load')));
+  // HappyDOM emits load for this malformed data URL with natural size 0/0.
+  // The fixed pipeline may already have replaced it before layout settles.
+  // If still mounted, explicitly deliver the same observed zero-size event.
+  const image = ui.querySelector<HTMLImageElement>('[data-preview-block="image"] img');
+  if (image) {
+    assert.equal(image.naturalWidth, 0); assert.equal(image.naturalHeight, 0);
+    act(() => image.dispatchEvent(new Event('load')));
+  }
   await advance(0);
   assert.equal(ui.querySelector('[data-document-preview]')?.getAttribute('aria-busy'), 'false', 'zero-size load must settle rather than remain pending');
   assert.match(ui.textContent ?? '', /The image could not be decoded/);

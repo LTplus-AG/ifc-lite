@@ -202,7 +202,7 @@ test('RED: a __tla-wrapped chunk the plugin re-printed unminified is caught', ()
 test('multi-line string content in a minified __tla chunk is not mistaken for pretty-printing', () => {
   // The script templates and the esbuild-wasm chunk carry legitimately
   // multi-line template literals; only the plugin's own declaration counts.
-  const withTemplate = `let __tla=(async()=>{s=\`
+  const withTemplate = `let s,t;let __tla=(async()=>{s=\`
     const x = 1
     if (x) {
       return x
@@ -279,12 +279,35 @@ test('a minified chunk that merely QUOTES the pretty wrapper is not flagged', ()
   assert.match(out, /all 2 plugin-rewritten chunk\(s\) minified/);
 });
 
-test('RED: a __tla exporter in neither known shape fails instead of passing blind', () => {
-  // The plugin changed how it declares the wrapper: the gate can no longer
-  // tell minified from pretty, so it must refuse rather than tick.
-  const reshaped = `var z;__tla_promise_wrapper(async()=>{z=()=>1});export{z,__tla};`;
-  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'other-def.js': reshaped });
+test('RED: a PRETTY chunk that quotes the minified forms is still caught', () => {
+  // The mirror case: the chunk really was re-printed pretty, but a string in
+  // it happens to contain every minified form. Only the prologue is judged.
+  const quotingMinified = `import { z as C, __tla as __tla_0 } from "./store-abc.js";
+let __tla = Promise.all([
+    (()=>{
+        try {
+            return __tla_0;
+        } catch  {}
+    })()
+]).then(async ()=>{
+    s = "let __tla=Promise.all( try{return __tla_0} await m.__tla;return m}";
+    C();
+});
+let s;
+export { s, __tla };
+`;
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'changelog-def.js': quotingMinified });
+  assert.equal(status, 1, out);
+  assert.match(out, /1 of 2 chunk\(s\) rewritten by the plugin were re-printed UNMINIFIED/);
+  assert.match(out, /changelog-def\.js/);
+});
+
+test('RED: a __tla chunk with too little leading code to judge fails instead of passing blind', () => {
+  // Starts with a literal, so its prologue is empty: neither pretty nor
+  // minified can be read off it, and that must not count as minified.
+  const opaque = `\`let __tla=\`;export{__tla};`;
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'other-def.js': opaque });
   assert.equal(status, 1, out);
   assert.doesNotMatch(out, /✅/);
-  assert.match(out, /match neither the minified nor the\s+pretty-printed shape/);
+  assert.match(out, /too little leading code/);
 });

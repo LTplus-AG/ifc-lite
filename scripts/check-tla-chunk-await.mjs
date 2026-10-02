@@ -83,7 +83,7 @@
 
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { deploymentAssetsDir } from './lib/deployment-assets-dir.mjs';
-import { isMinified, isPretty } from './lib/tla-minified-fingerprints.mjs';
+import { chunkFormatting, MIN_PUNCTUATION } from './lib/tla-chunk-prologue.mjs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -203,8 +203,7 @@ if (tlaExporters.size === 0) {
 }
 
 // Every chunk the plugin rewrote must have been re-printed minified. Why, and
-// how the fingerprints below tell minified from pretty without a tokenizer:
-// scripts/lib/tla-minified-fingerprints.mjs.
+// how its formatting is read without a tokenizer: scripts/lib/tla-chunk-prologue.mjs.
 // Every exporter mentions `__tla` in its own export clause, so tlaChunks is a
 // superset of tlaExporters, and tlaExporters was asserted non-empty above. The
 // guard below is that same invariant stated where it is relied on: if it ever
@@ -218,26 +217,19 @@ if (tlaChunks.length === 0 || tlaChunks.length < tlaExporters.size) {
   );
   process.exit(1);
 }
-// Every exporter carries the wrapper declaration, so it must match one form or
-// the other. If none does, the plugin's output changed shape and this check is
-// blind: say so instead of passing.
-const unrecognised = [...tlaExporters].filter((file) => {
-  const text = sources.get(file);
-  return !isPretty(text) && !isMinified(text);
-});
+const formatting = new Map(tlaChunks.map((file) => [file, chunkFormatting(sources.get(file))]));
+// A chunk whose prologue is too short to judge is not a pass: say so.
+const unrecognised = tlaChunks.filter((file) => formatting.get(file) === 'unknown');
 if (unrecognised.length > 0) {
   console.error(
-    `❌ ${unrecognised.length} __tla-exporting chunk(s) match neither the minified nor the\n` +
-      `pretty-printed shape of the plugin's wrapper, so this gate cannot tell whether\n` +
-      `they were minified (first: ${unrecognised[0]}). Update the fingerprints in\n` +
-      `scripts/lib/tla-minified-fingerprints.mjs to the plugin's current output.\n`,
+    `❌ ${unrecognised.length} chunk(s) rewritten by the plugin have too little leading code\n` +
+      `(under ${MIN_PUNCTUATION} punctuation marks before the first literal) for this gate to tell\n` +
+      `whether they were minified (first: ${unrecognised[0]}). See\n` +
+      `scripts/lib/tla-chunk-prologue.mjs.\n`,
   );
   process.exit(1);
 }
-const unminified = tlaChunks.filter((file) => {
-  const text = sources.get(file);
-  return isPretty(text) && !isMinified(text);
-});
+const unminified = tlaChunks.filter((file) => formatting.get(file) === 'pretty');
 if (unminified.length > 0) {
   console.error(
     `❌ ${unminified.length} of ${tlaChunks.length} chunk(s) rewritten by the plugin were re-printed ` +

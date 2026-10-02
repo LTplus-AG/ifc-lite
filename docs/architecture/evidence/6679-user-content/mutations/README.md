@@ -44,3 +44,15 @@ source head and parent-layer base.
 ```sh
 node scripts/check-test-revert-oracle.mjs --base t3code/6679-storage-foundation --only apps/viewer/src/lib/flow/report-retention.ts --test apps/viewer/src/lib/flow/report-retention.test.ts --mutation docs/architecture/evidence/6679-user-content/mutations/retention-durability.patch --ci --json
 ```
+
+The backup layer qualifies source-ID remapping with an API-preserving
+mutation. Its mounted Retry all test checks the committed document bindings
+against the independently imported comparison and validation-report IDs.
+Baseline: 4 passes. Bypassing remapping: 3 passes and 1 assertion failure.
+Official verdict: OBSERVED, attributable execution, restoration verified.
+The adjacent import-reference-remapping artifacts preserve the exact source
+head, base, command and invocation output. Replay from that recorded head:
+
+```sh
+node scripts/check-test-revert-oracle.mjs --base ec050f09e973eeb2af6eabdb53642800bed393e2 --only apps/viewer/src/lib/storage/content-backup-references.ts --test apps/viewer/src/components/viewer/ContentStorageNotice.test.tsx --mutation docs/architecture/evidence/6679-user-content/mutations/import-reference-remapping.patch --ci --json
+```

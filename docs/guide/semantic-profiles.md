@@ -41,3 +41,5 @@ In the viewer, paste a neutral dictionary into the profile definition input and 
 The adapter follows buildingSMART's [official API guidance](https://technical.buildingsmart.org/services/bsdd/using-the-bsdd-api/): use the versioned Class API rather than dereferencing identifier URIs for machine communication. bSDD supplies definitions, not manufacturer instance values, product passports or building identity authorities.
 
 Patterns with variable repetitions require a start anchor and cannot contain alternation. SHACL pattern flags support `i`, `s` and `u`; multiline matching is rejected because it can restart a variable repetition at every line.
+
+Imported SHACL count/length parameters must be non-negative safe `xsd:integer` values, booleans must use valid `xsd:boolean` terms, and patterns/flags must be `xsd:string` terms. These scalar parameters allow at most one value per shape. Boolean lexical forms `1` and `0` are normalized to `true` and `false` before the engine runs; malformed parameters fail before a conformance result can be produced.

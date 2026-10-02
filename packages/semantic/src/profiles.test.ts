@@ -34,6 +34,19 @@ describe('charter #6643 shared profile standards', () => {
       expect(() => assertBoundedPattern(pattern, 'fixture')).not.toThrow();
     }
   });
+  it('#6643 self-review: rejects malformed SHACL scalar constraints and honors boolean lexical aliases', async () => {
+    const prefix = '@prefix sh:<http://www.w3.org/ns/shacl#>. @prefix xsd:<http://www.w3.org/2001/XMLSchema#>. ';
+    const shape = (constraint: string) => prefix + `<urn:s> a sh:NodeShape; sh:targetNode <urn:a>; sh:property [sh:path <urn:p>; ${constraint}].`;
+    for (const constraint of ['sh:minCount -1', 'sh:maxCount "100"', 'sh:minCount "NaN"^^xsd:integer',
+      'sh:maxLength 1.5', 'sh:uniqueLang "true"', 'sh:pattern <urn:pattern>', 'sh:flags "i"@en', 'sh:flags "ii"',
+      'sh:minCount 0, 1']) {
+      await expect(validateGraph('<urn:a> <urn:other> "value".', { shapes: shape(constraint) })).rejects.toThrow(/SHACL/);
+    }
+    const closed = prefix + '<urn:s> a sh:NodeShape; sh:targetNode <urn:a>; sh:closed "1"^^xsd:boolean.';
+    expect(await validateGraph('<urn:a> <urn:other> "value".', { shapes: closed })).toEqual([expect.objectContaining({ engine: 'SHACL', path: 'urn:other' })]);
+    const opened = closed.replace('"1"', '"0"');
+    expect(await validateGraph('<urn:a> <urn:other> "value".', { shapes: opened })).toEqual([]);
+  });
   it('#6643 self-review: profile references must name declared own fields and types', () => {
     for (const inherited of ['constructor', 'toString', '__proto__']) {
       const p = profile(); p.fields.link.targetType = inherited;

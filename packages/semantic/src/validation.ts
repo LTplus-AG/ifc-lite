@@ -8,10 +8,11 @@ import jsonld from 'jsonld';
 import { Parser, Store } from 'n3';
 import SHACLValidator from 'rdf-validate-shacl';
 import ShapesGraph from 'rdf-validate-shacl/src/shapes-graph.js';
-import { DEFAULT_PROFILE, assertProfile, assertBoundedPattern, isUri, type ProfileDefinition } from './profiles.js';
+import { DEFAULT_PROFILE, assertProfile, isUri, type ProfileDefinition } from './profiles.js';
 import { exchangeSchema, resourceSchema, profileContext, shapesTurtle } from './profile-artifacts.js';
 import type { SemanticDocument, SemanticResource, ValidationFinding } from './profile-types.js';
 import { LIMITS } from './types.js';
+import { assertShapeParameters } from './shacl-parameters.js';
 import { assertBoundedSubclasses, assertBoundedPropertyShapes, countShapeTargets } from './shacl-targets.js';
 
 export { isUri } from './profiles.js';
@@ -115,11 +116,9 @@ export async function validateGraph(rdf: string, options: GraphValidationOptions
     if (quad.predicate.value === RDF + 'type' && quad.object.termType === 'NamedNode' && quad.object.value.startsWith(SH)
       && !supported.has(quad.object.value.slice(SH.length))) throw new Error(`Unsupported SHACL shape declaration: ${quad.object.value}`);
     if (quad.predicate.value === SH + 'path' && quad.object.termType !== 'NamedNode') throw new Error('Only direct IRI property paths are supported');
-    if (quad.predicate.value === SH + 'pattern') assertBoundedPattern(quad.object.value, 'SHACL shape');
-    if (quad.predicate.value === SH + 'flags' && !/^[isu]*$/.test(quad.object.value)) throw new Error('Unsupported SHACL regular-expression flags');
-    if (quad.predicate.value === SH + 'maxLength' && (quad.object.termType !== 'Literal' || quad.object.datatype.value !== 'http://www.w3.org/2001/XMLSchema#integer' || !/^\+?\d+$/.test(quad.object.value)
-      || !Number.isSafeInteger(Number(quad.object.value)))) throw new Error('SHACL maxLength must be a non-negative integer');
+
   }
+  assertShapeParameters(shapes);
   // Malformed/cyclic RDF lists otherwise let validators traverse file-controlled loops.
   const verifiedLists = new Set<string>();
   const listRoots = [...shapes.getQuads(null, RDF + 'first', null, null).map(quad => quad.subject),

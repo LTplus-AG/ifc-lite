@@ -10,6 +10,11 @@
  * as `%E0%A4%A`. Both are errors in ONE client's request, so they are
  * returned as `null` for the caller to answer (400 / close 4400) instead of
  * being thrown into a handler that reports them as a server fault.
+ *
+ * This is the only place a request path is decoded into a room id. It is the
+ * counterpart of `isIllFormedRoomId` in `room-token.ts`, which checks a room id
+ * that arrives in a request BODY: a decoded path can never hold an unpaired
+ * surrogate, so the two checks cover disjoint inputs and neither repeats the other.
  */
 
 /** Parse a request target against a placeholder origin; null if `new URL` rejects it. */

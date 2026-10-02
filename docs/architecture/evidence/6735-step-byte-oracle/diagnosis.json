@@ -1,0 +1,115 @@
+{
+  "issue": 6735,
+  "scope": "Test-harness diagnosis and exact-byte assertion; not browser, worker-pool or product performance evidence.",
+  "fixtureBaseline": "8687a2852c9b7cb31b55159a2b72481da5297286",
+  "diagnosticSource": "943a0a6b5d553daf0936a8bf7e2b7bde8abcb40f",
+  "failedCiCheckout": "07220a1b9962ff603097eabbc80d7919861d30fc",
+  "failedCiUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/37065208613/job/111033735405",
+  "matchingMainPassedCiUrl": "https://github.com/LTplus-AG/ifc-lite/actions/runs/37063430052/job/111027497399",
+  "failedCiObservedMs": 182806,
+  "unchangedDeadlineMs": 180000,
+  "fixtureTestBlobAtBothHeads": "86da91e8719071469a2cac63bcc6933c69dc7cb4",
+  "fullRustAndBuildSourceIdentity": {
+    "files": 1411,
+    "sha256": "f5f7defb1c8dd84f81e4e8651c89c4d74c2994c7db121a1bf7b2a9a0eea0065c",
+    "changedPaths": []
+  },
+  "fixtures": [
+    {
+      "path": "ara3d/AC20-FZK-Haus.ifc",
+      "bytes": 2526544,
+      "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d"
+    },
+    {
+      "path": "georeferencer/MiniBIM-3.1-DO_01_VORM.ifc",
+      "bytes": 7459201,
+      "sha256": "7d3ae097a2f1ca5e63f7698d12215cb58427cdb6a932e75e6bf1ca222bcf873b"
+    }
+  ],
+  "wasm": {
+    "qualification": "Forced uncached build at diagnostic source 943a0a6, then verified all Rust/build inputs match baseline 8687a28. Cached artifact provenance was not assumed.",
+    "bytes": 9508246,
+    "sha256": "e1b75e9e8c365cdc3129b75404cf778a6057504fd4b0e7f94fb76e8ea4d39cae",
+    "earlierCachedBytes": 9508310,
+    "earlierCachedSHA256": "7cb28d15c4da4186dc08201f74017f599c606272efbd84c352315137e991bcc2",
+    "bindingTypeSHA256": "c754af32d1171b50ef5d15636bcb7db8b2f1507aa74e52a0908dbd8956d98e6b"
+  },
+  "diagnosticControls": [
+    {
+      "sourcePatchSHA256": "071c918321385927cd00e0ef3dfc4b1495973d8c342e7125ffe3fea0c26fe857",
+      "pass": 5,
+      "skip": 0,
+      "fail": 0,
+      "stages": [
+        {
+          "fixture": "ara3d/AC20-FZK-Haus.ifc",
+          "stagesMs": {
+            "source-parsed": 136.83707,
+            "normalized-export-complete": 373.730916,
+            "export-graph-validated": 422.975815,
+            "original-mesh-complete": 472.485654,
+            "normalized-mesh-complete": 513.351808,
+            "surface-oracle-complete": 529.648976,
+            "all-assertions-complete": 3980.583601
+          }
+        },
+        {
+          "fixture": "georeferencer/MiniBIM-3.1-DO_01_VORM.ifc",
+          "stagesMs": {
+            "source-parsed": 343.398792,
+            "normalized-export-complete": 987.171507,
+            "export-graph-validated": 1170.699896,
+            "original-mesh-complete": 1705.833579,
+            "normalized-mesh-complete": 2178.172209,
+            "surface-oracle-complete": 2775.597559,
+            "all-assertions-complete": 13780.404004
+          }
+        }
+      ]
+    },
+    {
+      "sourcePatchSHA256": "3f56bd8d889e949a30e188e509b174c565c328d540035b8d9179bb2f95c635ba",
+      "pass": 5,
+      "skip": 0,
+      "fail": 0,
+      "stages": [
+        {
+          "fixture": "ara3d/AC20-FZK-Haus.ifc",
+          "stagesMs": {
+            "source-parsed": 141.51437,
+            "normalized-export-complete": 388.097457,
+            "export-graph-validated": 436.474627,
+            "original-mesh-complete": 488.123059,
+            "normalized-mesh-complete": 530.56447,
+            "surface-oracle-complete": 547.40265,
+            "repeat-export-complete": 596.46166,
+            "full-byte-equality-complete": 3985.791235,
+            "all-assertions-complete": 3986.231178
+          }
+        },
+        {
+          "fixture": "georeferencer/MiniBIM-3.1-DO_01_VORM.ifc",
+          "stagesMs": {
+            "source-parsed": 306.322491,
+            "normalized-export-complete": 893.503619,
+            "export-graph-validated": 1060.270416,
+            "original-mesh-complete": 1596.043854,
+            "normalized-mesh-complete": 2082.95203,
+            "surface-oracle-complete": 2696.796033,
+            "repeat-export-complete": 2878.734611,
+            "full-byte-equality-complete": 13472.528553,
+            "all-assertions-complete": 13472.727003
+          }
+        }
+      ]
+    }
+  ],
+  "sameSurfaceOracleAcrossControls": true,
+  "rawTraceSHA256": {
+    "failedCi": "34a9a102a7d78893df288623e61a6f5978479fc4cea6bed8c666b5569524b59a",
+    "matchingMainCi": "9f51bdd29e3dd3deef912c04aa8351615a11cfe93d8549c689de9372309108ef",
+    "firstDiagnostic": "cda070ed8924bf9f59a1a27c764794e52917b457d1b6368763739eb047cd0e06",
+    "finalDiagnostic": "6fef018163a82c67d15046abfcf065f0b8801221ad16e5d8b52ab45ec706ca90"
+  },
+  "correctionQualification": "Pending: the changed full-byte assertion and real-model corruption controls have not yet run."
+}

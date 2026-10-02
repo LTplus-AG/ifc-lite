@@ -129,6 +129,7 @@ jobs:
           [[ "$RESUME_RUN_ID" =~ ^[0-9]+$ ]] || exit 1
           source_sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RESUME_RUN_ID" --jq .head_sha)
           git fetch --depth=1 origin "$source_sha"
+          echo "EVAL_CONTEXT_BASE=$source_sha" >> "$GITHUB_ENV"
           git show "$source_sha:$EVAL_RUBRIC" > "$RUNNER_TEMP/source-rubric.md"
           cmp "$RUNNER_TEMP/source-rubric.md" "$EVAL_RUBRIC"
           gh run download "$RESUME_RUN_ID" --name "review-eval-$EVAL_ARTIFACT" --dir "$RUNNER_TEMP" --repo "$GITHUB_REPOSITORY"
@@ -143,7 +144,7 @@ jobs:
           # limit including corrective retries. No paid judge in this comparison.
           EVAL_BUDGET_USD: '10'
         run: >-
-          node scripts/review/rubric-eval.mjs --rubric "$EVAL_RUBRIC" --base HEAD
+          node scripts/review/rubric-eval.mjs --rubric "$EVAL_RUBRIC" --base "${EVAL_CONTEXT_BASE:-HEAD}"
           --reviewer scripts/review/openrouter-eval-reviewer.mjs --no-judge
           --output-dir "$RUNNER_TEMP/eval" --resume
       - name: Preserve scores, usage, and raw evidence even on failure

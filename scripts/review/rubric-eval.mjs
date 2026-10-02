@@ -369,7 +369,7 @@ async function main() {
     console.log(`  MISSES whose defect class the review declared NOT-APPLICABLE: ${s.skippedClass} of ${s.total - s.hits}`);
     console.log('\n  Compare against the same command on the other rubric. A change that lowers');
     console.log('  recall is a regression whatever it does to EXTRA.\n');
-    writeFileSync(join(tmp, 'score.json'), JSON.stringify({ rubric, model, matcher: m.note, judged: !noJudge, validatedScore, postedScore: s, results }, null, 2));
+    writeFileSync(join(tmp, 'score.json'), JSON.stringify({ rubric, model, baseRef, corpusFiles: files, matcher: m.note, judged: !noJudge, validatedScore, postedScore: s, results }, null, 2));
     ok = true;
   } finally {
     if (ok && !outputDir) rmSync(tmp, { recursive: true, force: true });

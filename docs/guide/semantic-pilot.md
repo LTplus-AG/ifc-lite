@@ -85,11 +85,14 @@ workspace and semantic bundle.
    context, JSON-LD, N-Quads, SHACL shapes, RDFS vocabulary, neutral dictionary
    projection, SELECT query, raw bindings and session revision associations.
    Paste a record document or the downloaded bundle into **Local JSON** to
-   reload it. Imported shapes and contexts do not replace the installed profile.
+   reload it. Load a versioned profile explicitly in **Profile and dictionary**;
+   imported records never silently replace the selected profile.
 
-Loaded records survive panel switches in memory. Reloading the page clears this
-session. Export before closing the browser. Model IDs in a bundle are
-session-specific; reassociate revision URIs with newly loaded models.
+Loaded records survive panel switches. **Save and download workspace** also
+stores the versioned workspace locally. After reload, choose **Restore saved
+workspace** or import its JSON. Restored endpoints require a new hostname grant;
+credentials and session model associations are cleared. Reassociate revision
+URIs with newly loaded models.
 
 ## JSON and SPARQL sources
 
@@ -97,7 +100,8 @@ session-specific; reassociate revision URIs with newly loaded models.
 endpoint** POSTs a SELECT query as `application/x-www-form-urlencoded` and
 expects standard SPARQL Results JSON. Enter the exact hostname you allow in
 the separate hostname field. HTTPS and CORS are required; credentials are not
-stored. Redirects, SPARQL UPDATE, ASK, CONSTRUCT, SERVICE and FROM are rejected.
+stored. **SPARQL CONSTRUCT graph** retrieves Turtle using a CONSTRUCT query.
+Redirects, SPARQL UPDATE, ASK, SERVICE and unauthorized FROM datasets are rejected.
 Requests have a 15 second timeout and a 5 MiB response cap. Cancel stops an
 outstanding request and prevents late results from replacing current records.
 
@@ -133,11 +137,15 @@ Multiple installations can reference one batch product. `dictionaryUri`
 identifies a semantic concept, independently of the physical product ID.
 Ordinary absolute URIs, URNs and DIDs can be record identifiers; this pilot
 does not implement DID resolution, authentication or signatures. The neutral
-dictionary export is **not** a bSDD import file. Authoritative bSDD integration
-requires its own versioned adapter.
+dictionary format is a neutral, documented subset. The profile controls also
+import supported bSDD definitions through the existing versioned SDK adapter.
+Unsupported relations remain available in the original imported payload with
+diagnostics; dictionary definitions do not supply manufacturer instance values.
 
-Only `GlobalId` plus an explicit revision/model scope maps a record to IFC.
-Duplicate GlobalIds are ambiguous unless a model scope disambiguates them.
+Choose the GlobalId resolver, explicit resource-to-entity links, or profile
+identity fields. Each strategy resolves against effective IFC identities and
+explicit revision/model associations. Duplicate GlobalIds remain ambiguous
+unless that evidence disambiguates them.
 Resolution re-reads effective attributes, created entities and tombstones at
 each action, so model removal or overlay edits cannot reuse cached addresses.
 Building/product/passport identity and arbitrary logbook relationships remain

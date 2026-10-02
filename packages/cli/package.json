@@ -49,7 +49,8 @@
     "@ifc-lite/sandbox": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
     "@ifc-lite/viewer-core": "workspace:^",
-    "@ifc-lite/wasm": "workspace:^"
+    "@ifc-lite/wasm": "workspace:^",
+    "@ifc-lite/semantic": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

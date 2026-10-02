@@ -15,6 +15,7 @@ import {
   AUTO_REOPEN_COOLDOWN_MS,
   __resetReloadResumeForTests,
   markLocalModelFiles,
+  noteAutomaticReopen,
   noteStaleDeploymentLoadFailure,
   persistResumeIntent,
   reloadKeepingOpenModels,
@@ -67,7 +68,7 @@ describe('reload resume', () => {
   it('carries the open local models across one reload, then forgets them', () => {
     openLocal('a', 'tower.ifc');
     openLocal('b', 'structure.ifc', 'streaming-geometry'); // mid-load is the main case
-    assert.deepEqual(reloadAndTake(), { files: [{ name: 'tower.ifc', size: 13 }, { name: 'structure.ifc', size: 13 }], reopen: true });
+    assert.deepEqual(reloadAndTake(), { files: [{ name: 'tower.ifc', size: 13 }, { name: 'structure.ifc', size: 13 }], reopen: true, trigger: 'automatic' });
     // One-shot: a second boot (another reload) must not reopen again.
     assert.equal(takeResumeIntent(deps()), null);
   });
@@ -223,15 +224,30 @@ describe('reload resume', () => {
   it('loop guard: an automatic reload soon after an automatic reopen only prompts', () => {
     openLocal('a', 'huge.ifc');
     assert.equal(reloadAndTake()?.reopen, true);
+    noteAutomaticReopen(clock); // the boot reopened it from the cache
     // The reopened load fails slowly enough to outlast the reload debounce and
     // reloads automatically again: this time the boot must ask, not reload-loop.
     clock += 90_000;
-    assert.deepEqual(reloadAndTake(), { files: [{ name: 'huge.ifc', size: 13 }], reopen: false });
+    assert.deepEqual(reloadAndTake(), { files: [{ name: 'huge.ifc', size: 13 }], reopen: false, trigger: 'automatic' });
+  });
+
+  it('a boot that only prompted does not arm the loop guard (CodeRabbit review)', () => {
+    openLocal('a', 'tower.ifc');
+    assert.equal(reloadAndTake()?.reopen, true); // ...but nothing was cached, so nothing reopened
+    clock += 90_000;
+    assert.equal(reloadAndTake()?.reopen, true, 'the next automatic reload still reopens');
+  });
+
+  it('records which trigger caused the reload', () => {
+    openLocal('a', 'tower.ifc');
+    assert.equal(reloadAndTake('user')?.trigger, 'user');
+    assert.equal(reloadAndTake('automatic')?.trigger, 'automatic');
   });
 
   it('a later deployment, after the cooldown, reopens automatically again', () => {
     openLocal('a', 'tower.ifc');
     assert.equal(reloadAndTake()?.reopen, true);
+    noteAutomaticReopen(clock);
     clock += AUTO_REOPEN_COOLDOWN_MS + 1;
     assert.equal(reloadAndTake()?.reopen, true);
   });
@@ -239,6 +255,7 @@ describe('reload resume', () => {
   it('a reload the user clicked always reopens, even right after an automatic reopen', () => {
     openLocal('a', 'tower.ifc');
     reloadAndTake();
+    noteAutomaticReopen(clock);
     assert.equal(reloadAndTake('user')?.reopen, true);
   });
 

@@ -100,7 +100,9 @@ describe('chat turn telemetry', () => {
   });
 
   it('maps every registered BYOK model to a known family', () => {
-    for (const model of BYOK_MODELS) assert.notEqual(llmFamily(model.id), 'other', model.id);
+    // Not 'other' and not 'unregistered': an id missing from the registry must fail here.
+    const known = new Set(['claude', 'gpt', 'gemini', 'llama', 'mistral', 'qwen', 'deepseek', 'grok']);
+    for (const model of BYOK_MODELS) assert.ok(known.has(llmFamily(model.id)), `${model.id} -> ${llmFamily(model.id)}`);
     // A stale stored id resolves through the migration table, not as free text.
     assert.equal(llmFamily('claude-opus-4-8'), 'claude');
   });

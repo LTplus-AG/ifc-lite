@@ -15,7 +15,7 @@ import { cleanup, render } from '@/test/render.js';
 import { posthog } from '@/lib/analytics';
 import { scrubEvent } from '@/lib/analytics-scrub';
 import {
-  __resetReloadResumeForTests, markLocalModelFiles, persistResumeIntent, setOpenModelsSource, takeResumeIntent,
+  __resetReloadResumeForTests, markLocalModelFiles, noteAutomaticReopen, persistResumeIntent, setOpenModelsSource, takeResumeIntent,
 } from '@/lib/reload-resume';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
@@ -119,6 +119,7 @@ describe('useReloadResume', () => {
     setOpenModelsSource(() => [{ sourceFile: huge, loadState: 'streaming-geometry' }]);
     persistResumeIntent('automatic');
     takeResumeIntent();
+    noteAutomaticReopen(); // page 2's boot reopened it from the cache
     persistResumeIntent('automatic');
     __resetReloadResumeForTests();
 
@@ -190,6 +191,44 @@ describe('useReloadResume', () => {
     render(<Host ready route={() => assert.fail('nothing to route')} deps={deps} />);
     await flush();
     assert.equal(notices.length, 1);
+  });
+
+  it('two entries with the same name and size: reopens the cached blob once and prompts for the other (#6721 review)', async () => {
+    previousPageReloaded([new File(['site A'], 'model.ifc'), new File(['site B'], 'model.ifc')]);
+    const routed: number[] = [];
+    const notices: string[] = [];
+    let reads = 0;
+    const deps: ReloadResumeDeps = {
+      readCached: async (name) => { reads += 1; return new File(['site A'], name); },
+      notify: (text) => notices.push(text),
+    };
+    render(<Host ready route={(files) => routed.push(files.length)} deps={deps} />);
+    await flush();
+    assert.deepEqual(routed, [1], 'one blob, loaded once');
+    assert.equal(reads, 1);
+    assert.equal(notices.length, 1);
+    assert.match(notices[0], /"model\.ifc"/);
+  });
+
+  it('arms the loop guard only after an automatic reload actually reopened something', async () => {
+    previousPageReloaded(['tower.ifc']);
+    render(<Host ready route={() => {}} deps={{ readCached: async () => null, notify: () => {} }} />);
+    await flush();
+    // Nothing was reopened: a further automatic reload must still reopen.
+    const again = new File(['x'], 'tower.ifc');
+    markLocalModelFiles([again]);
+    setOpenModelsSource(() => [{ sourceFile: again, loadState: 'complete' }]);
+    persistResumeIntent('automatic');
+    assert.equal(takeResumeIntent()?.reopen, true);
+
+    cleanup();
+    __resetReloadResumeForTests();
+    previousPageReloaded(['tower.ifc']);
+    render(<Host ready route={() => {}} deps={{ readCached: async (name) => new File(['x'], name), notify: () => {} }} />);
+    await flush();
+    setOpenModelsSource(() => [{ sourceFile: again, loadState: 'complete' }]);
+    persistResumeIntent('automatic');
+    assert.equal(takeResumeIntent()?.reopen, false, 'reopened automatically: the next automatic reload only prompts');
   });
 
   it('does nothing on an ordinary boot', async () => {

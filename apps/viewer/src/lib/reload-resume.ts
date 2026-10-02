@@ -36,7 +36,8 @@
  * a reopen that fails slowly could otherwise outlast that debounce and cycle
  * load -> fail -> reload -> reopen forever. An AUTOMATIC reload within
  * {@link AUTO_REOPEN_COOLDOWN_MS} of an automatic reopen persists the names
- * with `reopen: false`, so the next boot asks instead of loading. A reload the
+ * with `reopen: false`, so the next boot asks instead of loading (the guard is
+ * armed only when an automatic reload's boot actually reopened a file). A reload the
  * user clicked always reopens, and a later deployment, after the cooldown,
  * reopens automatically again.
  */
@@ -61,6 +62,8 @@ export interface ResumeIntent {
   files: ResumeFile[];
   /** Reopen from the blob cache without asking (false: only prompt). */
   reopen: boolean;
+  /** What caused the reload. Only an automatic one arms the loop guard, and only once it reopened something. */
+  trigger: ReloadTrigger;
 }
 
 /** What the reload needs to know about one model in the viewer. */
@@ -153,7 +156,7 @@ export function persistResumeIntent(trigger: ReloadTrigger, deps: PersistDeps = 
   const inCooldown = lastAutoReopenAt !== null && now - lastAutoReopenAt >= 0 && now - lastAutoReopenAt < AUTO_REOPEN_COOLDOWN_MS;
   const reopen = trigger === 'user' || !inCooldown;
   try {
-    deps.storage.setItem(KEY, JSON.stringify({ files, at: now, reopen }));
+    deps.storage.setItem(KEY, JSON.stringify({ files, at: now, reopen, trigger }));
   } catch (err) {
     console.warn('[reload-resume] could not remember the open models across the reload', err);
   }
@@ -174,7 +177,7 @@ export function takeResumeIntent(deps: PersistDeps = defaultDeps()): ResumeInten
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { return null; }
   if (typeof parsed !== 'object' || parsed === null) return null;
-  const { files, at, reopen } = parsed as { files?: unknown; at?: unknown; reopen?: unknown };
+  const { files, at, reopen, trigger } = parsed as { files?: unknown; at?: unknown; reopen?: unknown; trigger?: unknown };
   const now = deps.now();
   const elapsed = now - Number(at);
   // A future stamp (clock change) is as untrustworthy as an old one.
@@ -184,9 +187,20 @@ export function takeResumeIntent(deps: PersistDeps = defaultDeps()): ResumeInten
     && typeof (f as ResumeFile).name === 'string' && (f as ResumeFile).name.length > 0
     && Number.isSafeInteger((f as ResumeFile).size) && (f as ResumeFile).size >= 0).slice(0, MAX_FILES);
   if (entries.length === 0) return null;
-  const intent = { files: entries.map(({ name, size }) => ({ name, size })), reopen: reopen === true };
-  if (intent.reopen) lastAutoReopenAt = now;
-  return intent;
+  return {
+    files: entries.map(({ name, size }) => ({ name, size })),
+    reopen: reopen === true,
+    trigger: trigger === 'user' ? 'user' : 'automatic',
+  };
+}
+
+/**
+ * The boot just reopened at least one cached file after an AUTOMATIC reload:
+ * arm the loop guard. Not armed by a user-clicked reload, nor by a boot that
+ * only prompted (nothing was reopened, so nothing can fail-and-reload in a loop).
+ */
+export function noteAutomaticReopen(now: number = Date.now()): void {
+  lastAutoReopenAt = now;
 }
 
 /**

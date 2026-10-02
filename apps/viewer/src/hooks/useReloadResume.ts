@@ -13,7 +13,7 @@ import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { posthog } from '@/lib/analytics';
 import { getCachedFile } from '@/lib/recent-files';
-import { setOpenModelsSource, takeResumeIntent } from '@/lib/reload-resume';
+import { noteAutomaticReopen, setOpenModelsSource, takeResumeIntent } from '@/lib/reload-resume';
 import { useViewerStore } from '@/store';
 
 export interface ReloadResumeDeps {
@@ -58,8 +58,13 @@ export function useReloadResume(
     void (async () => {
       // The cache is keyed by name, so a cached blob is only THIS file when its
       // size matches too; another file of the same name is prompted, not loaded.
+      // Two entries with the same name AND size share one cache key: reopen the
+      // first from the cache and prompt for the rest, never one blob twice.
+      const seen = new Set<string>();
       const cached = await Promise.all(intent.files.map(async (entry) => {
-        if (!intent.reopen) return null;
+        const key = `${entry.size}:${entry.name}`;
+        if (!intent.reopen || seen.has(key)) return null;
+        seen.add(key);
         const file = await deps.readCached(entry.name).catch((err: unknown) => {
           console.warn('[reload-resume] could not read a cached model for the resume', err);
           return null;
@@ -68,7 +73,10 @@ export function useReloadResume(
       }));
       const files = cached.filter((file): file is File => file !== null);
       const missing = intent.files.filter((_, i) => cached[i] === null);
-      if (files.length > 0) routeRef.current(files);
+      if (files.length > 0) {
+        routeRef.current(files);
+        if (intent.trigger === 'automatic') noteAutomaticReopen();
+      }
       if (missing.length > 0) {
         const list = missing.map(({ name }) => `"${name}"`).join(', ');
         deps.notify(

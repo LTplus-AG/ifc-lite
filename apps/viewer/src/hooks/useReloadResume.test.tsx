@@ -39,8 +39,8 @@ afterEach(() => {
 });
 
 /** A previous page's reload: what `reloadKeepingOpenModels` leaves behind. */
-function previousPageReloaded(files: string[], trigger: 'automatic' | 'user' = 'automatic'): void {
-  const open = files.map((name) => new File(['x'], name));
+function previousPageReloaded(files: Array<string | File>, trigger: 'automatic' | 'user' = 'automatic'): void {
+  const open = files.map((f) => (typeof f === 'string' ? new File(['x'], f) : f));
   markLocalModelFiles(open);
   setOpenModelsSource(() => open.map((sourceFile) => ({ sourceFile, loadState: 'complete' })));
   persistResumeIntent(trigger);
@@ -62,7 +62,7 @@ describe('useReloadResume', () => {
     const routed: string[][] = [];
     const notices: string[] = [];
     const deps: ReloadResumeDeps = {
-      readCached: async (name) => new File(['ISO-10303-21;'], name),
+      readCached: async (name) => new File(['x'], name),
       notify: (text) => notices.push(text),
     };
     const route = (files: File[]) => routed.push(files.map((f) => f.name));
@@ -146,8 +146,50 @@ describe('useReloadResume', () => {
     useViewerStore.setState({ models: new Map([['a', model('a', wall)], ['b', model('b', second)]]) });
     useViewerStore.setState({ models: new Map([['a', model('a', wall)]]) }); // removeModel('b')
     persistResumeIntent('automatic');
-    assert.deepEqual(takeResumeIntent()?.files, ['hello-wall.ifc']);
+    assert.deepEqual(takeResumeIntent()?.files.map((f) => f.name), ['hello-wall.ifc']);
     useViewerStore.setState({ models: new Map() });
+  });
+
+  it('does not load a cached blob of a different size under the same name; prompts for it instead', async () => {
+    previousPageReloaded(['tower.ifc']);
+    const routed: string[][] = [];
+    const notices: string[] = [];
+    const deps: ReloadResumeDeps = {
+      readCached: async (name) => new File(['a different, newer tower'], name),
+      notify: (text) => notices.push(text),
+    };
+    render(<Host ready route={(files) => routed.push(files.map((f) => f.name))} deps={deps} />);
+    await flush();
+    assert.deepEqual(routed, []);
+    assert.equal(notices.length, 1);
+    assert.match(notices[0], /"tower\.ifc"/);
+  });
+
+  it('two federated files with one name: the cached one reopens, the other is prompted, neither is merged away', async () => {
+    previousPageReloaded([new File(['site A'], 'model.ifc'), new File(['site B, other'], 'model.ifc')]);
+    const routed: number[][] = [];
+    const notices: string[] = [];
+    const deps: ReloadResumeDeps = {
+      readCached: async (name) => new File(['site A'], name), // the cache holds one blob per name
+      notify: (text) => notices.push(text),
+    };
+    render(<Host ready route={(files) => routed.push(files.map((f) => f.size))} deps={deps} />);
+    await flush();
+    assert.deepEqual(routed, [[6]]);
+    assert.equal(notices.length, 1);
+    assert.match(notices[0], /"model\.ifc"/);
+  });
+
+  it('a cache read that rejects is a prompt, not an unhandled rejection', async () => {
+    previousPageReloaded(['tower.ifc']);
+    const notices: string[] = [];
+    const deps: ReloadResumeDeps = {
+      readCached: async () => { throw new Error('IndexedDB blocked'); },
+      notify: (text) => notices.push(text),
+    };
+    render(<Host ready route={() => assert.fail('nothing to route')} deps={deps} />);
+    await flush();
+    assert.equal(notices.length, 1);
   });
 
   it('does nothing on an ordinary boot', async () => {

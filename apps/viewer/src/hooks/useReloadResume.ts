@@ -56,14 +56,21 @@ export function useReloadResume(
     const intent = takeResumeIntent();
     if (!intent) return;
     void (async () => {
-      const cached = intent.reopen
-        ? await Promise.all(intent.files.map((name) => deps.readCached(name)))
-        : [];
+      // The cache is keyed by name, so a cached blob is only THIS file when its
+      // size matches too; another file of the same name is prompted, not loaded.
+      const cached = await Promise.all(intent.files.map(async (entry) => {
+        if (!intent.reopen) return null;
+        const file = await deps.readCached(entry.name).catch((err: unknown) => {
+          console.warn('[reload-resume] could not read a cached model for the resume', err);
+          return null;
+        });
+        return file && file.size === entry.size ? file : null;
+      }));
       const files = cached.filter((file): file is File => file !== null);
-      const missing = intent.files.filter((name) => !files.some((file) => file.name === name));
+      const missing = intent.files.filter((_, i) => cached[i] === null);
       if (files.length > 0) routeRef.current(files);
       if (missing.length > 0) {
-        const list = missing.map((name) => `"${name}"`).join(', ');
+        const list = missing.map(({ name }) => `"${name}"`).join(', ');
         deps.notify(
           tRef.current('viewerShell.staleDeployment.reopenPrompt', { files: list }),
           { label: tRef.current('viewerShell.staleDeployment.reopenAction'), onClick: () => pickerRef.current() },

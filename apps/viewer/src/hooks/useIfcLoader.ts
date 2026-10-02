@@ -92,7 +92,7 @@ import { visibilityWitness } from '../utils/visibilityWitness.js';
 import { buildModelLoadedPayload, captureModelLoaded, clearModelLoadedSnapshot, snapshotFromGeometry } from '../utils/loadTelemetry.js';
 import { classifyLoadError, errorCaptureProps, type LoadErrorKind } from '../lib/load-errors.js';
 import { formatLoadError } from '../lib/load-error-message.js';
-import { noteStaleDeploymentLoadFailure } from '@/lib/reload-resume';
+import { beginResumableLoad, noteStaleDeploymentLoadFailure } from '@/lib/reload-resume';
 import { surfaceStaleDeployment } from '../lib/stale-deployment.js';
 /**
  * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load
@@ -445,7 +445,7 @@ export function useIfcLoader() {
     const retryThisLoad = () => { void loadFile(file, target, options); };
     const showLoadError = (message: string, code: string) =>
       reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, message, code, retryThisLoad);
-
+    const settleResumable = beginResumableLoad(file, target.kind); // carried across a stale-deployment reload
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
       // federated add must never wipe model #1; it joins the existing map.
@@ -2050,8 +2050,11 @@ export function useIfcLoader() {
         // catch — retry once at lower detail before surfacing a dead end.
         if (await tryResourceRetry(err, kind, 'geometry_processing')) return;
         // A stale deployment gets the reload notice, not a generic error (#5609).
+        const geometryError = formatLoadError(err, file.name, 'geometry_processing');
+        // Terminal, like the outer catch: a model left 'streaming-geometry' reads as still loading (and resumable).
+        updateModel(modelId, { loadState: 'error', loadError: geometryError });
         if (surfaceStaleDeployment(err)) noteStaleDeploymentLoadFailure(file); // resumed after the reload
-        else showLoadError(formatLoadError(err, file.name, 'geometry_processing'), kind);
+        else showLoadError(geometryError, kind);
         // Flat properties: posthog-js spreads this object onto the event, so a
         // wrapper key would bury `error_kind` in an unfilterable nested blob.
         posthog.captureException(err, {
@@ -2202,6 +2205,7 @@ export function useIfcLoader() {
       setLoading(false);
       setGeometryStreamingActive(false);
     } finally {
+      settleResumable();
       metadataAbort.abort();
       // #1959: every exit releases its ownership; actual freeing still waits
       // for the parser to stop using the raw handle (geometryHandleDisposal).

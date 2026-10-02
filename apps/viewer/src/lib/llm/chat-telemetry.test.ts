@@ -89,7 +89,8 @@ describe('chat turn telemetry', () => {
     const done = h.events.filter((e) => e.event === 'ai_chat_response_completed');
     assert.equal(done.length, 1);
     assert.equal(done[0].properties.outcome, 'error');
-    assert.equal(done[0].properties.error_class, 'network');
+    // The provider answered; our own handler threw. Not a provider/network error.
+    assert.equal(done[0].properties.error_class, 'handler');
 
     const ok = harness();
     const okTurn = startChatTurnTelemetry({ route: 'proxy', modelId: 'x', turnCount: 1, attachmentCount: 0, kind: 'chat' }, ok.deps);

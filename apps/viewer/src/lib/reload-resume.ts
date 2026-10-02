@@ -17,9 +17,10 @@
  * bytes are not cached.
  *
  * WHAT is carried is read at reload time from the models actually in the
- * viewer, never from a running record of load calls: a model the user closed,
- * a load that failed for its own reasons, or a federation replaced by a fresh
- * one must not come back. Two filters apply:
+ * viewer (plus loads still in flight, which have no model yet), never from a
+ * history of load calls: a model the user closed, a load that failed for its
+ * own reasons, or a federation replaced by a fresh one must not come back.
+ * Two filters apply:
  * - only a model whose source `File` the user opened from their own disk
  *   ({@link markLocalModelFiles}): a model fetched from a `?model=` URL or a
  *   cloud source is not "reopen it from your disk", and a cached local file
@@ -41,17 +42,23 @@
  */
 
 const KEY = 'ifclite:reload-resume';
-/** A stored intent older than this is ignored: it belongs to some other reload. */
+/** Freshness of the stored intent: write-to-boot is seconds, so anything older belongs to some other reload. */
 const MAX_AGE_MS = 2 * 60_000;
-/** After an automatic reopen, a further automatic reload only prompts for this long. */
+/** Loop guard, a different job: how long after an automatic reopen a further automatic reload only prompts. */
 export const AUTO_REOPEN_COOLDOWN_MS = 10 * 60_000;
 const MAX_FILES = 5;
 
 export type ReloadTrigger = 'automatic' | 'user';
 
+/** One file to bring back. The size tells the cached blob of THIS file from another file of the same name. */
+export interface ResumeFile {
+  name: string;
+  size: number;
+}
+
 export interface ResumeIntent {
-  /** File names, in load order. The first was the primary model. */
-  files: string[];
+  /** In load order. The first was the primary model. Two files may share a name. */
+  files: ResumeFile[];
   /** Reopen from the blob cache without asking (false: only prompt). */
   reopen: boolean;
 }
@@ -64,6 +71,10 @@ export interface OpenModelSnapshot {
 
 const localFiles = new WeakSet<File>();
 const staleFailures = new WeakSet<File>();
+/** Loads in flight now: a federated add is not in the store until it finalizes. */
+const inFlight = new Map<File, 'primary' | 'federated'>();
+/** Federated adds the stale deployment killed before they ever registered a model. */
+const stranded = new Set<File>();
 let lastAutoReopenAt: number | null = null;
 let readOpenModels: () => Iterable<OpenModelSnapshot> = () => [];
 
@@ -72,9 +83,20 @@ export function markLocalModelFiles(files: Iterable<File>): void {
   for (const file of files) localFiles.add(file);
 }
 
+/**
+ * Called by the canonical load path as a load starts; the returned function
+ * settles it. A primary load replaces the federation, so it forgets stranded adds.
+ */
+export function beginResumableLoad(file: File, kind: 'primary' | 'federated'): () => void {
+  if (kind === 'primary') stranded.clear();
+  inFlight.set(file, kind);
+  return () => { inFlight.delete(file); };
+}
+
 /** The load of `file` failed because this tab's deployment is gone: resume it after the reload. */
 export function noteStaleDeploymentLoadFailure(file: File): void {
   staleFailures.add(file);
+  if (inFlight.get(file) === 'federated') stranded.add(file);
 }
 
 /** Wire the source of truth: the viewer's loaded models (set once by the viewer). */
@@ -82,16 +104,23 @@ export function setOpenModelsSource(read: () => Iterable<OpenModelSnapshot>): vo
   readOpenModels = read;
 }
 
-/** Names of the local models to bring back, from the models the viewer holds now. */
-export function resumableFileNames(models: Iterable<OpenModelSnapshot>): string[] {
-  const names: string[] = [];
+/**
+ * The local files to bring back: the models the viewer holds now, plus loads
+ * still in flight and federated adds stranded by the stale deployment (neither
+ * has a model yet). Deduplicated by file identity, never by name.
+ */
+export function resumableFiles(models: Iterable<OpenModelSnapshot>): ResumeFile[] {
+  const files = new Set<File>();
   for (const model of models) {
     const file = model.sourceFile;
-    if (!file || !localFiles.has(file)) continue;
+    if (!file) continue;
     if (model.loadState === 'error' && !staleFailures.has(file)) continue;
-    if (!names.includes(file.name)) names.push(file.name);
+    files.add(file);
   }
-  return names.slice(0, MAX_FILES);
+  for (const file of inFlight.keys()) files.add(file);
+  for (const file of stranded) files.add(file);
+  return [...files].filter((file) => localFiles.has(file))
+    .slice(0, MAX_FILES).map((file) => ({ name: file.name, size: file.size }));
 }
 
 export interface PersistDeps {
@@ -113,7 +142,7 @@ const defaultDeps = (): PersistDeps => ({ now: () => Date.now(), storage: sessio
 /** Write the open local models so the next boot can restore them. Best effort: a blocked store just loses the resume. */
 export function persistResumeIntent(trigger: ReloadTrigger, deps: PersistDeps = defaultDeps()): void {
   if (!deps.storage) return;
-  const files = resumableFileNames(readOpenModels());
+  const files = resumableFiles(readOpenModels());
   if (files.length === 0) return;
   const now = deps.now();
   const inCooldown = lastAutoReopenAt !== null && now - lastAutoReopenAt >= 0 && now - lastAutoReopenAt < AUTO_REOPEN_COOLDOWN_MS;
@@ -146,9 +175,11 @@ export function takeResumeIntent(deps: PersistDeps = defaultDeps()): ResumeInten
   // A future stamp (clock change) is as untrustworthy as an old one.
   if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed > MAX_AGE_MS) return null;
   if (!Array.isArray(files)) return null;
-  const names = files.filter((f): f is string => typeof f === 'string' && f.length > 0).slice(0, MAX_FILES);
-  if (names.length === 0) return null;
-  const intent = { files: names, reopen: reopen === true };
+  const entries = files.filter((f): f is ResumeFile => typeof f === 'object' && f !== null
+    && typeof (f as ResumeFile).name === 'string' && (f as ResumeFile).name.length > 0
+    && Number.isSafeInteger((f as ResumeFile).size) && (f as ResumeFile).size >= 0).slice(0, MAX_FILES);
+  if (entries.length === 0) return null;
+  const intent = { files: entries.map(({ name, size }) => ({ name, size })), reopen: reopen === true };
   if (intent.reopen) lastAutoReopenAt = now;
   return intent;
 }
@@ -166,4 +197,6 @@ export function reloadKeepingOpenModels(trigger: ReloadTrigger, reload: () => vo
 export function __resetReloadResumeForTests(): void {
   lastAutoReopenAt = null;
   readOpenModels = () => [];
+  inFlight.clear();
+  stranded.clear();
 }

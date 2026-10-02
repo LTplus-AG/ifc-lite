@@ -20,7 +20,9 @@ import {
   reloadKeepingOpenModels,
   setOpenModelsSource,
   takeResumeIntent,
+  beginResumableLoad,
   type OpenModelSnapshot,
+  type ResumeIntent,
   type PersistDeps,
 } from './reload-resume.js';
 
@@ -38,12 +40,14 @@ let models: Map<string, OpenModelSnapshot>;
 const deps = (): PersistDeps => ({ now: () => clock, storage });
 
 /** A file the user opened from disk, loaded into the viewer as `id`. */
-function openLocal(id: string, name: string, loadState = 'complete'): File {
-  const file = new File(['ISO-10303-21;'], name);
+function openLocal(id: string, name: string, loadState = 'complete', body = 'ISO-10303-21;'): File {
+  const file = new File([body], name);
   markLocalModelFiles([file]);
   models.set(id, { sourceFile: file, loadState });
   return file;
 }
+
+const names = (intent: ResumeIntent | null) => intent?.files.map((f) => f.name);
 
 function reloadAndTake(trigger: 'automatic' | 'user' = 'automatic') {
   persistResumeIntent(trigger, deps());
@@ -63,7 +67,7 @@ describe('reload resume', () => {
   it('carries the open local models across one reload, then forgets them', () => {
     openLocal('a', 'tower.ifc');
     openLocal('b', 'structure.ifc', 'streaming-geometry'); // mid-load is the main case
-    assert.deepEqual(reloadAndTake(), { files: ['tower.ifc', 'structure.ifc'], reopen: true });
+    assert.deepEqual(reloadAndTake(), { files: [{ name: 'tower.ifc', size: 13 }, { name: 'structure.ifc', size: 13 }], reopen: true });
     // One-shot: a second boot (another reload) must not reopen again.
     assert.equal(takeResumeIntent(deps()), null);
   });
@@ -73,14 +77,14 @@ describe('reload resume', () => {
     openLocal('a', 'hello-wall.ifc');
     openLocal('b', 'second.ifc');
     models.delete('b'); // removeModel
-    assert.deepEqual(reloadAndTake()?.files, ['hello-wall.ifc']);
+    assert.deepEqual(names(reloadAndTake()), ['hello-wall.ifc']);
   });
 
   it('does not bring back a load that failed for its own reasons, but does resume a stale-deployment failure', () => {
     openLocal('a', 'broken.ifc', 'error');
     const stale = openLocal('b', 'stranded.ifc', 'error');
     noteStaleDeploymentLoadFailure(stale);
-    assert.deepEqual(reloadAndTake()?.files, ['stranded.ifc']);
+    assert.deepEqual(names(reloadAndTake()), ['stranded.ifc']);
   });
 
   it('a fresh federation after clearAllModels carries only the new models', () => {
@@ -88,7 +92,7 @@ describe('reload resume', () => {
     models.clear(); // clearAllModels() before a multi-file open on an empty viewer
     openLocal('b', 'arch.ifc');
     openLocal('c', 'mep.ifc');
-    assert.deepEqual(reloadAndTake()?.files, ['arch.ifc', 'mep.ifc']);
+    assert.deepEqual(names(reloadAndTake()), ['arch.ifc', 'mep.ifc']);
   });
 
   it('never carries a model that did not come from a local file (?model= URL, cloud source)', () => {
@@ -97,7 +101,45 @@ describe('reload resume', () => {
     persistResumeIntent('automatic', deps());
     assert.equal(takeResumeIntent(deps()), null, 'nothing local, nothing stored');
     openLocal('a', 'tower.ifc');
-    assert.deepEqual(reloadAndTake()?.files, ['tower.ifc']);
+    assert.deepEqual(names(reloadAndTake()), ['tower.ifc']);
+  });
+
+  it('carries two federated files that share a name as two entries, told apart by size', () => {
+    openLocal('a', 'model.ifc', 'complete', 'ISO-10303-21; site A');
+    openLocal('b', 'model.ifc', 'complete', 'ISO-10303-21; site B, longer');
+    assert.deepEqual(reloadAndTake()?.files, [{ name: 'model.ifc', size: 20 }, { name: 'model.ifc', size: 28 }]);
+  });
+
+  it('carries a federated add still in flight (no model yet) and forgets it once it settles', () => {
+    openLocal('a', 'arch.ifc');
+    const mep = new File(['x'], 'mep.ifc');
+    markLocalModelFiles([mep]);
+    const settle = beginResumableLoad(mep, 'federated');
+    assert.deepEqual(names(reloadAndTake()), ['arch.ifc', 'mep.ifc']);
+    settle();
+    assert.deepEqual(names(reloadAndTake('user')), ['arch.ifc']);
+  });
+
+  it('carries a federated add the stale deployment killed before it registered, until a primary load replaces the set', () => {
+    openLocal('a', 'arch.ifc');
+    const mep = new File(['x'], 'mep.ifc');
+    markLocalModelFiles([mep]);
+    const settle = beginResumableLoad(mep, 'federated');
+    noteStaleDeploymentLoadFailure(mep);
+    settle();
+    assert.deepEqual(names(reloadAndTake()), ['arch.ifc', 'mep.ifc']);
+    models.clear();
+    const next = new File(['y'], 'next.ifc');
+    markLocalModelFiles([next]);
+    beginResumableLoad(next, 'primary')();
+    models.set('n', { sourceFile: next, loadState: 'complete' });
+    assert.deepEqual(names(reloadAndTake('user')), ['next.ifc']);
+  });
+
+  it('never carries an in-flight load that is not a local file', () => {
+    beginResumableLoad(new File(['x'], 'model.ifc'), 'primary');
+    persistResumeIntent('automatic', deps());
+    assert.equal(takeResumeIntent(deps()), null);
   });
 
   it('ignores an intent older than two minutes or stamped in the future', () => {
@@ -124,7 +166,7 @@ describe('reload resume', () => {
     // The reopened load fails slowly enough to outlast the reload debounce and
     // reloads automatically again: this time the boot must ask, not reload-loop.
     clock += 90_000;
-    assert.deepEqual(reloadAndTake(), { files: ['huge.ifc'], reopen: false });
+    assert.deepEqual(reloadAndTake(), { files: [{ name: 'huge.ifc', size: 13 }], reopen: false });
   });
 
   it('a later deployment, after the cooldown, reopens automatically again', () => {

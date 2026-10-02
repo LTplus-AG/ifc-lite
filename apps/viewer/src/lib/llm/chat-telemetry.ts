@@ -22,7 +22,9 @@ export type ChatRouteKind = 'proxy' | 'anthropic' | 'openai';
 export type ChatProviderKind = 'built_in' | 'byok';
 export type ChatOutcome = 'success' | 'error' | 'aborted';
 export type ChatErrorClass =
-  | 'auth' | 'rate_limit' | 'timeout' | 'network' | 'provider' | 'http' | 'other';
+  | 'auth' | 'rate_limit' | 'timeout' | 'network' | 'provider' | 'http' | 'other'
+  /** The viewer's own completion handler threw, after the provider answered. */
+  | 'handler';
 export type ChatTurnKind = 'chat' | 'repair' | 'continue';
 
 const LLM_FAMILIES = [
@@ -75,7 +77,7 @@ export interface ChatTurnTelemetry {
   noteFirstChunk(): void;
   noteFinishReason(reason: string | null): void;
   /** Settle the turn. Only the first call is recorded. */
-  finish(outcome: ChatOutcome, details?: { error?: Error; scriptEdited?: boolean }): void;
+  finish(outcome: ChatOutcome, details?: { error?: Error; errorClass?: ChatErrorClass; scriptEdited?: boolean }): void;
 }
 
 export interface ChatTelemetryDeps {
@@ -130,7 +132,9 @@ export function startChatTurnTelemetry(start: ChatTurnStart, deps: ChatTelemetry
         script_edited: details?.scriptEdited === true,
       };
       if (firstChunkMs !== null) props.first_chunk_ms = firstChunkMs;
-      if (outcome === 'error' && details?.error) props.error_class = chatErrorClass(details.error);
+      if (outcome === 'error' && (details?.errorClass || details?.error)) {
+        props.error_class = details.errorClass ?? chatErrorClass(details.error as Error);
+      }
       deps.capture('ai_chat_response_completed', props);
     },
   };
@@ -153,7 +157,7 @@ export function settleTurnAfter(
     failure = err instanceof Error ? err : new Error(String(err));
     throw err;
   } finally {
-    if (failure) turn.finish('error', { error: failure });
+    if (failure) turn.finish('error', { error: failure, errorClass: 'handler' });
     else turn.finish('success', details());
   }
 }

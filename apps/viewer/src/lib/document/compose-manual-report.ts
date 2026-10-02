@@ -23,7 +23,7 @@ import type { LayoutCursor, TextDrawnItem } from './compose-table.js';
 import type { ManualReportBlock, ManualReportCounts, ManualReportItem } from './manual-report-types.js';
 
 /** A ring chart on the page; the PDF renders `ringSvg(counts, size)` into it. */
-export interface RingDrawnItem { kind: 'ring'; x: number; y: number; size: number; counts: ManualReportCounts }
+export interface RingDrawnItem { kind: 'ring'; x: number; y: number; size: number; counts: ManualReportCounts; role?: 'overall' | 'group' }
 
 export type ManualReportLayoutBlock = ManualReportBlock;
 
@@ -87,7 +87,7 @@ export function layoutManualReport(
 
   if (benchmarks) {
     cursor.y += 4;
-    pushRing({ kind: 'ring', x: cursor.x, y: cursor.y, size: OVERALL_RING, counts: block.summary });
+    pushRing({ kind: 'ring', x: cursor.x, y: cursor.y, size: OVERALL_RING, counts: block.summary, role: 'overall' });
     const besideX = cursor.x + OVERALL_RING + 12;
     const besideW = contentW - OVERALL_RING - 12;
     text({ x: besideX, y: cursor.y + 16, size: 9.5, bold: true, gray: 0, text: cursor.truncate(passedLine(block.summary, t), besideW, 9.5, true) });
@@ -104,7 +104,7 @@ export function layoutManualReport(
     const lines = group.items.map((item) => itemLines(item, itemW, wrap, detailed, t));
     // A group heading is never left alone at the bottom of a page.
     cursor.ensure(groupHeaderHeight + (lines[0]?.height ?? 0));
-    if (benchmarks) pushRing({ kind: 'ring', x: cursor.x, y: cursor.y + 2, size: GROUP_RING, counts: group.counts });
+    if (benchmarks) pushRing({ kind: 'ring', x: cursor.x, y: cursor.y + 2, size: GROUP_RING, counts: group.counts, role: 'group' });
     const nameX = benchmarks ? cursor.x + GROUP_RING + 8 : cursor.x;
     const nameW = contentW - (nameX - cursor.x);
     text({ x: nameX, y: cursor.y + 10, size: 10, bold: true, gray: 0, text: cursor.truncate(group.name.trim() || t('manualValidation.report.untitledGroup'), nameW, 10, true) });

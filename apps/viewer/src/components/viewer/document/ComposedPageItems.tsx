@@ -119,7 +119,7 @@ function Item({ item, block, origin, props, lineBreak }: { item: DrawnItem; bloc
       const description = item.counts.total === 0 ? t('manualValidation.ring.empty', { name })
         : t('manualValidation.ring.label', { name, ...item.counts });
       const alt = block.kind === 'ids-report' ? `${description} · ${t('document.preview.idsReportPassRate')} ${block.summary.passRate}%` : description;
-      return <span style={style} data-manual-report-benchmarks={block.kind === 'manual-report' ? '' : undefined}
+      return <span style={style} data-manual-report-benchmarks={block.kind === 'manual-report' && item.role === 'overall' ? '' : undefined}
         data-validation-benchmark={block.kind === 'ids-report' ? '' : undefined}>
         <img src={`data:image/svg+xml,${encodeURIComponent(ringSvg(item.counts, item.size))}`} alt={alt} style={{ width: '100%', height: '100%' }} />
       </span>;

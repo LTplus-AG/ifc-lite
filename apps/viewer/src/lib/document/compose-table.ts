@@ -14,6 +14,8 @@
  */
 import { AUTOTABLE_ROW_HEIGHT } from '../export/report/generate-report-pdf.js';
 import type { TableColumnOut, TableRowOut } from './resolve-table.js';
+import { blockTitleStyle, type BlockHeaderStyleFields } from './block-title.js';
+import { blockTitleItems } from './compose-block-title.js';
 import type { TableHeaderStyle } from '../table-header-style';
 import type { TextFont } from './types.js';
 import { layoutReportProvenance, wrappedReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, type WrapLines } from './compose-report-provenance.js';
@@ -38,7 +40,7 @@ export interface TableColumnLayout {
 }
 
 /** What the composer needs of a resolved table block. */
-export interface TableLayoutBlock {
+export interface TableLayoutBlock extends BlockHeaderStyleFields {
   id: string;
   title: string;
   caption?: string;
@@ -113,10 +115,11 @@ export function layoutTable(block: TableLayoutBlock, cursor: LayoutCursor, conte
   // `message` decides by presence, not truthiness: an empty error message still prints as a message line (review finding).
   const hasMessage = block.message !== undefined;
   const summary = (block.summary ?? []).flatMap((text) => wrappedReportProvenance(text, contentW, wrap));
-  const lead = Math.min(cursor.bottom - cursor.top, TABLE_TITLE_HEIGHT + summary.length * REPORT_PROVENANCE_LINE_HEIGHT + (hasMessage ? MESSAGE_HEIGHT : head + Math.min(3, rows.length) * row));
+  const titleHeight = TABLE_TITLE_HEIGHT + blockTitleStyle(block).extra;
+  const lead = Math.min(cursor.bottom - cursor.top, titleHeight + summary.length * REPORT_PROVENANCE_LINE_HEIGHT + (hasMessage ? MESSAGE_HEIGHT : head + Math.min(3, rows.length) * row));
   cursor.ensure(lead);
-  cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 11, size: 11, bold: true, gray: 0, text: cursor.truncate(block.title, contentW, 11, true) });
-  cursor.y += TABLE_TITLE_HEIGHT;
+  cursor.push(...blockTitleItems(block, block.title, cursor.x, cursor.y, contentW, cursor.truncate));
+  cursor.y += titleHeight;
 
   layoutReportProvenance(summary, cursor, hasMessage ? MESSAGE_HEIGHT : head + Math.min(1, rows.length) * row);
 

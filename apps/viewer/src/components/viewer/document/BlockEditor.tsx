@@ -9,6 +9,7 @@
  * live in the preview. Image, chart and topic blocks pick their source.
  */
 import { BlockTitleEditor } from './BlockTitleEditor';
+import { blockTitleFields } from '@/lib/document/block-title';
 import { isSavedComparisonChart } from '@/lib/charts/comparison-source';
 import { SavedReportSource } from './SavedReportSource';
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
@@ -81,7 +82,7 @@ function ReportBlockSource({ block, report, onChange }: { block: IdsReportBlock;
         title={refreshable ? undefined : t(kind === 'rules' ? 'document.block.rulesReportRefreshDisabledTitle' : 'document.block.idsReportRefreshDisabledTitle')}
         onClick={() => {
           if (!report || report.source.kind !== kind) return;
-          onChange({ ...idsReportBlockFromReport(report, block.id, block.variant), title: block.title, benchmarks: block.benchmarks, specificationsOnly: block.specificationsOnly, scale: block.scale });
+          onChange({ ...idsReportBlockFromReport(report, block.id, block.variant), ...blockTitleFields(block), benchmarks: block.benchmarks, specificationsOnly: block.specificationsOnly, scale: block.scale });
           toast.success(t('document.block.idsReportRefreshed'));
         }}
       >

@@ -6,16 +6,18 @@ import { useTranslation } from '@/i18n';
 import { SavedHistoryNotice } from '../SavedHistoryNotice';
 import { useViewerStore } from '@/store';
 import { savedReportLabel, type ValidationReportSnapshot } from '@/lib/validation/reports/history';
+import { blockTitleFields } from '@/lib/document/block-title';
 import { replaceManualReportSnapshot } from '@/lib/document/manual-report';
 import { LIVE_IDS_SOURCE, LIVE_MANUAL_SOURCE, useReportSources } from './useReportSources';
 
-/** The author's choices (title, scale, and the layout the destination kind shares) survive a change of evidence. */
+/** The author's choices (heading, scale, and the layout the destination kind shares) survive a change of evidence.
+ * One list for every switch, saved or live; the shared helpers for these choices can replace it once they are on main. */
 function carryPresentation(block: ValidationReportSnapshot, next: ValidationReportSnapshot): ValidationReportSnapshot {
   return block.kind === 'manual-report' && next.kind === 'manual-report'
     ? replaceManualReportSnapshot(block, next)
     : block.kind === 'ids-report' && next.kind === 'ids-report'
-      ? { ...next, title: block.title, variant: block.variant, benchmarks: block.benchmarks, specificationsOnly: block.specificationsOnly, scale: block.scale }
-      : { ...next, title: block.title, scale: block.scale };
+      ? { ...next, ...blockTitleFields(block), variant: block.variant, benchmarks: block.benchmarks, specificationsOnly: block.specificationsOnly, scale: block.scale }
+      : { ...next, ...blockTitleFields(block), scale: block.scale };
 }
 
 /** One picker for every source of a report block (#6553): any saved report, whatever its kind, or the

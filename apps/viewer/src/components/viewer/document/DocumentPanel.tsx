@@ -44,7 +44,8 @@ export interface DocumentPanelProps {
 /** Seeds a blank document when there is none and makes sure one is active; idempotent (StrictMode runs it twice). */
 export function ensureActiveDocument(): void {
   const live = useViewerStore.getState();
-  if (live.documentsStorage.phase !== 'ready') return;
+  // Wait for hydration, then keep editing usable even when storage is refused.
+  if (live.documentsStorage.phase === 'loading') return;
   if (live.documents.length === 0) {
     const seeded = blankDocument();
     void live.upsertDocument(seeded);

@@ -11,7 +11,7 @@
  */
 import '@/test/setup-dom.js';
 import '@/test/content-fixture.js';
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
@@ -20,12 +20,15 @@ import { DEFAULT_THEME, elementFieldColumnId, renderChartSvg, type ChartSpec } f
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { render, click, cleanup } from '@/test/render.js';
+import { render, click, cleanup, waitFor } from '@/test/render.js';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import type { DocumentPdfSeams } from '@/lib/document/generate-document-pdf.js';
 import { Toaster } from '@/components/ui/toast';
 import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types.js';
 import { LIST_PRESETS } from '@/lib/lists';
+import { createDocumentSlice } from '@/store/slices/documentSlice';
+import { blankDocument } from '@/lib/document/presets';
+import { loadDocuments } from '@/lib/document/persistence';
 import { DocumentPanel, ensureActiveDocument } from './DocumentPanel.js';
 import { useDocumentData } from './useDocumentData.js';
 
@@ -95,6 +98,40 @@ describe('DocumentPanel over a parsed model (#4594)', () => {
     });
   });
   afterEach(() => cleanup());
+
+  it('keeps an editable blank page on unavailable storage and retries without dropping unread neighbours (#6694)', async () => {
+    const neighbour = { ...blankDocument(), name: 'Unread saved neighbour' };
+    assert.equal(await useViewerStore.getState().upsertDocument(neighbour), true);
+    useViewerStore.setState(createDocumentSlice(useViewerStore.setState, useViewerStore.getState, useViewerStore));
+    const nativeTransaction = IDBDatabase.prototype.transaction;
+    const refused = mock.method(IDBDatabase.prototype, 'transaction', function (this: IDBDatabase,
+      stores: string | string[], mode?: IDBTransactionMode, options?: IDBTransactionOptions) {
+      if (mode === 'readonly' && (stores === 'items' || Array.isArray(stores) && stores.includes('items'))) {
+        throw new DOMException('Storage read refused', 'SecurityError');
+      }
+      return nativeTransaction.call(this, stores, mode, options);
+    });
+    let draftId = '';
+    try {
+      const ui = render(<DocumentPanel />);
+      await waitFor(() => useViewerStore.getState().documentsStorage.phase === 'unavailable'
+        && useViewerStore.getState().documents.length === 1, 'refused hydration must leave a usable document');
+      draftId = useViewerStore.getState().documents[0].id;
+      assert.equal(useViewerStore.getState().activeDocumentId, draftId);
+      const textarea = ui.querySelector<HTMLTextAreaElement>('textarea');
+      assert.ok(textarea, 'the memory-only document still has an editable text block');
+      await change(textarea, 'Draft while storage is unavailable');
+      await waitFor(() => useViewerStore.getState().documentsStorage.items[draftId] === 'unavailable', 'the refused edit must report its save state');
+      assert.ok(ui.querySelector('[data-document-preview]')?.textContent?.includes('Draft while storage is unavailable'));
+    } finally { refused.mock.restore(); }
+    await act(async () => { assert.equal(await useViewerStore.getState().retryDocumentsSave(), true); });
+    const saved = await loadDocuments();
+    assert.equal(saved.length, 2, 'retry keeps both the previously unread document and the session draft');
+    assert.equal(saved.find(entry => entry.id === neighbour.id)?.name, neighbour.name);
+    const draft = saved.find(entry => entry.id === draftId);
+    assert.ok(draft?.blocks[0].kind === 'text');
+    assert.equal(draft.blocks[0].text, 'Draft while storage is unavailable');
+  });
 
   it('seeds a blank page whose title reads the project name, and the seed is idempotent', async () => {
     const ui = render(<DocumentPanel />);

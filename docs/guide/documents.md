@@ -149,3 +149,20 @@ existing native format (a workflow template saved at an older version is upgrade
 warning means the document remains available in memory. Download retries reuse
 the current PDF artifact rather than rerunning checks.
 
+### Storage, backup, and migration
+
+Each saved-content library has **Storage and backup** controls. **Download library backup** downloads a self-contained JSON file with validation reports, comparison reports, documents, and the current unsaved drafts. Save-status metadata identifies drafts that have not reached browser storage. Downloading the backup works even when browser storage refuses writes. Individual document **Export template** and **Export PDF** remain available.
+
+**Import library backup** validates the entire file before saving it in one transaction. Identical existing entries are retained; conflicting IDs are imported as independent copies. Repeating the same import does not create more copies or resurrect deleted imports. If storage refuses the import, its valid entries remain in this tab as unsaved copies that you can export or retry. Finish incomplete document blocks before exporting a portable template or backup for re-import.
+
+**Retry save** retries this library. **Retry all libraries** retries pending writes in all three libraries; use it after a refused backup import so that linked report sources are also retained. The retries preserve each draft’s ID and report bindings. If any write still fails, the viewer reports that some libraries remain unsaved.
+
+An edit in another tab cannot silently overwrite your document. A conflict keeps your local draft. Export it, duplicate the document as a new copy, or choose **Reload saved versions** to explicitly discard this library’s unsaved changes and reopen the persisted versions. A failed reload leaves your drafts intact. Report copies already embedded in documents remain independent of the libraries.
+
+Older `localStorage` libraries are automatically migrated. Their IDs, model scope, evidence dates, and document content are retained; invalid and duplicate entries produce a recovery notice. The complete original data and existing unreadable backups are preserved in IndexedDB. **Download preserved originals** retrieves those values for inspection or recovery. Interrupted migrations can be retried without duplicating entries or resurrecting deleted reports.
+
+Legacy values are not removed automatically. Once migration succeeds, close older viewer tabs and choose **Remove migrated legacy copies** to reclaim their `localStorage` space. Only unchanged copies with preserved originals are removed. An older tab’s later writes are archived for recovery, rather than replayed over newer content. Older application versions do not read the new IndexedDB library; export your content before downgrading.
+
+**Check storage usage** estimates the library payloads currently in this tab and the browser’s total usage and quota for this origin. Origin usage includes model caches and other site data; it is not the saved-library size.
+
+**Protect browser storage** requests persistent storage from the browser. The browser may decline; saving still works. Persistent storage reduces automatic eviction risk, but clearing site data still deletes it. A different browser, device, or viewer origin has a separate library. Backups remain the portable way to transfer and retain your work. Model-cache cleanup does not delete saved reports or documents.

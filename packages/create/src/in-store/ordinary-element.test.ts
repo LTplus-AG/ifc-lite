@@ -74,6 +74,9 @@ describe('#6232 D5 ordinary atomic commit', () => {
       const s = await session(false, wallType), before = s.snapshot();
       expect(new EntityExtractor(s.store.source).extractEntity(s.store.entityIndex.byId.get(1222)!)?.type)
         .toBe(wallType.toUpperCase());
+      // #6710: missing public capability must fail an assertion before the
+      // real-model operation, rather than becoming an inverse load failure.
+      expect(typeof replaceElementInStore).toBe('function');
       const replacement = replaceElementInStore(s.store, s.editor, 1222,
         draft => resolveSpatialAnchor(s.store, STOREY, draft.getMutationView()), WALL);
       expect(replacement.removedIds).toEqual([1222]);

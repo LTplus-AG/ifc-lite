@@ -148,17 +148,26 @@ describe.skipIf(!AVAILABLE)('#6232 D5 canonical stair/railing SDK and public MCP
       expect(made).toHaveLength(1); expect(made[0][1].type).toBe('IFCRAILING');
       expect(rows.filter(([, e]) => e.type === 'IFCSTAIRFLIGHT')).toHaveLength(0);
       await assertProduct(target.bim, { modelId: target.id, expressId: made[0][0] }, 'railing');
-      expect((await call('mutation_undo', { model_id: target.id })).isError).not.toBe(true);
-      expect((await records(target.bim.export.ifc())).all).toEqual(created);
-      expect(target.backend.getOrCreateMutationView().getMutations()).toEqual(journal);
-      const content = target.bim.export.ifc();
-      expect(await meshStairs(typeof content === 'string' ? content : new TextDecoder().decode(content))).toEqual(nativeBefore);
-      // The tracking store belongs to the flow host, outside model Undo. Re-run
-      // against the restored GUID and changed digest must replace that stair.
+      const railingJournal = target.backend.getOrCreateMutationView().getMutations();
+      const railingBytes = target.bim.export.ifc();
+      const railingNative = await meshStairs(typeof railingBytes === 'string' ? railingBytes : new TextDecoder().decode(railingBytes));
       expect((await runFlow(original, options)).ok).toBe(true);
       const restored = (await records(target.bim.export.ifc())).all.filter(([, e]) => e.attributes[0] === globalId);
       expect(restored).toHaveLength(1); expect(restored[0][1].type).toBe('IFCSTAIR');
       await assertProduct(target.bim, { modelId: target.id, expressId: restored[0][0] }, 'stair');
+      expect((await call('mutation_undo', { model_id: target.id })).isError).not.toBe(true);
+      expect((await records(target.bim.export.ifc())).all).toEqual(rows);
+      expect(target.backend.getOrCreateMutationView().getMutations()).toEqual(railingJournal);
+      let content = target.bim.export.ifc();
+      expect(await meshStairs(typeof content === 'string' ? content : new TextDecoder().decode(content))).toEqual(railingNative);
+      expect((await call('mutation_undo', { model_id: target.id })).isError).not.toBe(true);
+      expect((await records(target.bim.export.ifc())).all).toEqual(created);
+      expect(target.backend.getOrCreateMutationView().getMutations()).toEqual(journal);
+      content = target.bim.export.ifc();
+      expect(await meshStairs(typeof content === 'string' ? content : new TextDecoder().decode(content))).toEqual(nativeBefore);
+      // External tracking and the flow address cache are not model Undo state.
+      // Reusing this TrackingStore after public Undo requires host invalidation;
+      // this control proves the two committed replacements and model Undo only.
       if (peer) expect((await records(models.get('alpha')!.bim.export.ifc())).all).toEqual(peer);
     } finally { transport.close(); }
   });

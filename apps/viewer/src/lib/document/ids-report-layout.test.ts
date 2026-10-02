@@ -146,3 +146,20 @@ describe('IDS report layout edge cases (review of #6494)', () => {
     assert.ok(!texts.some((t) => t.text.includes('123456788/')), 'no overflowing counts');
   });
 });
+
+describe('compact IDS report separates specifications from requirements (#6550)', () => {
+  it('leaves a larger gap before the next specification than between a specification and its requirements', () => {
+    const ids = block('compact');
+    const rule = (id: string, name: string) => ({ id, name, shortDescription: name, checked: 6, passed: 6, failed: 0, passRate: 100 });
+    ids.checks = [
+      { ...ids.checks[0], id: 'a', shortDescription: 'Geschoss', rules: [rule('r1', 'Status')] },
+      { ...ids.checks[0], id: 'b', shortDescription: 'Raum', rules: [rule('r2', 'Raumname')] },
+    ];
+    const { texts } = compose(ids);
+    const at = (label: string) => texts.find((t) => t.text === label)!;
+    const intoRequirements = at('Status').y - at('Geschoss').y;
+    const nextSpecification = at('Raum').y - at('Status').y;
+    assert.ok(nextSpecification > intoRequirements, `specification gap ${nextSpecification} must exceed in-group gap ${intoRequirements}`);
+    assert.ok(at('Status').x > at('Geschoss').x, 'requirements are indented');
+  });
+});

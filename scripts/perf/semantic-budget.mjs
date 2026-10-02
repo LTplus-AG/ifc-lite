@@ -70,7 +70,7 @@ try {
   try { await assert.rejects(pending, /cancelled/i); } finally { clearTimeout(timer); }
   assert.equal(slowRequests, 1);
   const cancellationMs = performance.now() - cancelStart;
-  const median = key => [...samples.map(sample => sample[key])].sort((a, b) => a - b)[Math.floor(samples.length / 2)];
+  const median = key => samples.map(sample => sample[key]).sort((a, b) => a - b)[Math.floor(samples.length / 2)];
   console.log(JSON.stringify({ charter: 'https://github.com/LTplus-AG/ifc-lite/issues/6643', command: `node scripts/perf/semantic-budget.mjs --iters ${iterations}`,
     environment: { node: process.version, platform: platform(), release: release(), arch: process.arch, cpu: cpus()[0]?.model, logicalCpus: cpus().length, memoryBytes: totalmem() },
     limits: LIMITS, input: { rows: LIMITS.rows, quads: LIMITS.rows, subjects: 500, selectBytes: Buffer.byteLength(payload), rdfBytes: Buffer.byteLength(graph) },

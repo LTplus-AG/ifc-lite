@@ -5,11 +5,14 @@
 /** #6232: assembly ownership, shared shapes and atomic refusal on actual Bonsai IFC. */
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { EntityExtractor, IfcParser } from '@ifc-lite/parser';
 import { createBimContext, type ModellingStoreBackendMethods } from '@ifc-lite/sdk';
 import { createMCPServer, fullScope, InMemoryModelRegistry, InProcessTransport,
-  loadIfcModel, loadIfcModelFromBytes, type CallToolResult } from '@ifc-lite/mcp';
+  loadIfcModel, type CallToolResult } from '@ifc-lite/mcp';
 import { meshStairs, stairWasmAvailable } from '../../create/src/in-store/__test__/stair-mesh.oracle.js';
 
 const SAMPLE = fileURLToPath(new URL('../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
@@ -31,8 +34,15 @@ async function made(dense = false) {
   // A real parsed dense geometry/property domain. These numeric coordinates
   // deliberately collide with possible product IDs; they are not references.
   const added = Array.from({ length: 4096 }, (_, i) => `#${20000 + i}=IFCCARTESIANPOINT((42.,${i}.,0.));`).join('\n');
-  const loaded = dense ? await loadIfcModelFromBytes(new TextEncoder().encode(source.replace('ENDSEC;\nEND-ISO', `${added}\nENDSEC;\nEND-ISO`)), 'dense-bonsai.ifc', 'm')
-    : await loadIfcModel(SAMPLE, { modelId: 'm' });
+  async function loadDense() {
+    const directory = await mkdtemp(join(tmpdir(), 'ifc-lite-d5-dense-stair-'));
+    try {
+      const path = join(directory, 'dense-bonsai.ifc');
+      await writeFile(path, source.replace('ENDSEC;\nEND-ISO', `${added}\nENDSEC;\nEND-ISO`));
+      return await loadIfcModel(path, { modelId: 'm' });
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  }
+  const loaded = dense ? await loadDense() : await loadIfcModel(SAMPLE, { modelId: 'm' });
   const { bim, backend } = loaded;
   bim.store.addEntity('m', { type: 'IfcCartesianPoint', attributes: [[7, 8, 9]] });
   const ref = bim.store.addStair('m', 42, PARAMS);

@@ -129,7 +129,7 @@ async function session(count: number) {
 
 describe.skipIf(!AVAILABLE)('#6232 D5 canonical stair/railing SDK and public MCP', () => {
   for (const kind of ['stair', 'railing'] as const) {
-    for (const operation of ['update', 'remove'] as const) {
+    for (const operation of ['update', 'remove', 'invalid update'] as const) {
       it(`persistent flow ${operation}: ${kind} leaves no live orphan or dangling relationship`, async () => {
         const { registry: models, target, transport } = await session(2);
         try {
@@ -153,11 +153,18 @@ describe.skipIf(!AVAILABLE)('#6232 D5 canonical stair/railing SDK and public MCP
             .toEqual({ created: 0, updated: 0, kept: 1, removed: 0 });
           expect((await records(target.bim.export.ifc())).all).toEqual(firstSaved);
           expect(target.backend.getOrCreateMutationView().getMutations()).toEqual(journal);
-          const next: FlowDocument = operation === 'update'
+          const next: FlowDocument = operation !== 'remove'
             ? { ...original, nodes: original.nodes.map(node => node.id === 'spec'
-              ? { ...node, params: { ...node.params, ...(kind === 'stair' ? { Width: 1.2 } : { Height: 1.4 }) } } : node) }
+              ? { ...node, params: { ...node.params, ...(kind === 'stair' ? { Width: operation === 'invalid update' ? 0 : 1.2 } : { Height: operation === 'invalid update' ? 0 : 1.4 }) } } : node) }
             : { ...original, nodes: [], edges: [], outputs: [] };
           const second = await runFlow(next, options);
+          if (operation === 'invalid update') {
+            expect(second.ok).toBe(false);
+            expect((await records(target.bim.export.ifc())).all).toEqual(firstSaved);
+            expect(target.backend.getOrCreateMutationView().getMutations()).toEqual(journal);
+            expect((await records(models.get('alpha')!.bim.export.ifc())).all).toEqual(peer);
+            return;
+          }
           expect(second.ok, JSON.stringify(second.reports)).toBe(true);
           const saved = (await records(target.bim.export.ifc())).all, ids = new Set(saved.map(([id]) => id));
           const authored = saved.filter(([id]) => !before.some(([old]) => old === id));

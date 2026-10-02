@@ -47,6 +47,11 @@ bim.viewer.colorize(walls.map(w => w.ref), '#ff0000');
   `priorities` use the existing `WallJoinApplyOptions` contract. Readable hosted
   cuts must fit both joined end faces. The viewer records one undo and remeshes
   both walls; headless export writes the new IFC graph.
+- `bim.store.addStair` / `addRailing` - canonical stair/railing parameters in
+  storey-local metres. `removeStair(ref)` removes a uniquely owned parent/flight
+  pair, retains shared geometry and refuses ambiguous ownership or foreign
+  product references. Backend capabilities are optional; unsupported hosts
+  refuse explicitly. Generic `removeEntity` retains its one-record contract.
 - `bim.viewer` - selection, visibility, colorization, camera, sections
 - `bim.export` - `csv`, `json`, `ifc` (STEP), `hbjson`, `dfjson`, `download`
 - `bim.ids` / `bim.bcf` / `bim.clash` - validation, collaboration, interference checks

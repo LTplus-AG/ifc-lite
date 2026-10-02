@@ -31,6 +31,16 @@ const result = await runFlow(doc, { host: { bim }, registry, features: BROWSER_F
 `host.grants` (parsed capabilities from `@ifc-lite/extensions`) gates every node;
 omit it only for a trusted caller such as the CLI running a local file.
 
+## Stair and railing authoring
+
+`element.stair` and `element.railing` produce specs for the existing tracked
+`model.addElement` node. Their PascalCase parameters reuse the canonical SDK
+builders; dimensions are storey-local metres. Stair update/removal removes the
+uniquely owned parent/flight pair, retaining shared representation leaves and
+refusing ambiguous ownership or foreign product references. Unsupported backend
+capabilities refuse explicitly. Reuse a tracking store for keep/update/remove;
+public MCP `run_flow` starts fresh tracking on each call.
+
 ## Session automation host
 
 The seven standard automation definitions call `host.automation` and pass the

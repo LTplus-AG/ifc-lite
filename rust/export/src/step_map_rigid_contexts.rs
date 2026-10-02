@@ -14,6 +14,13 @@ pub(super) fn representation_contexts(
     context: u32,
     decoder: &mut EntityDecoder,
 ) -> Result<HashSet<u32>, String> {
+    let budget = records
+        .len()
+        .saturating_mul(ifc_lite_core::limits::MAX_MAPPED_ITEM_DEPTH as usize);
+    let mut work = roots.len();
+    if work > budget {
+        return Err("representation context walk exceeded its reference-work bound".into());
+    }
     let mut pending: Vec<_> = roots.iter().map(|id| (*id, false)).collect();
     let mut validated = HashSet::from([context]);
     let mut aspect_roots = Vec::new();
@@ -35,6 +42,10 @@ pub(super) fn representation_contexts(
     }
     for shape in shapes {
         if let Some(reps) = aspects.get(shape) {
+            work = work
+                .checked_add(reps.len())
+                .filter(|value| *value <= budget)
+                .ok_or("ShapeAspect context walk exceeded its reference-work bound")?;
             pending.extend(reps.iter().map(|id| (*id, false)));
         }
     }
@@ -42,10 +53,6 @@ pub(super) fn representation_contexts(
     let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
     let mut active = HashSet::new();
     let mut seen = HashSet::new();
-    let mut work = pending.len();
-    let budget = records
-        .len()
-        .saturating_mul(ifc_lite_core::limits::MAX_MAPPED_ITEM_DEPTH as usize);
     while let Some((id, exiting)) = pending
         .pop()
         .or_else(|| aspect_roots.pop().map(|id| (id, false)))

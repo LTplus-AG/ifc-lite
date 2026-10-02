@@ -126,6 +126,17 @@ fn issue_6692_endpoint_local_connections_and_owned_aspects_preserve_original_rec
         assert!(!plan.replacements.iter().any(|patch| patch.express_id == id));
     }
     assert!(output.contains("#92=IFCCONNECTIONSURFACEGEOMETRY(#91,$);"));
+    let excessive_aspect = source.replace(
+        "((#44),'Aspect'",
+        &format!("(({}),'Aspect'", vec!["#44"; 10_000].join(",")),
+    );
+    let refused = plan_map_conversion_normalization(excessive_aspect.as_bytes()).unwrap();
+    assert!(refused
+        .warnings
+        .iter()
+        .any(|warning| warning
+            .contains("ShapeAspect context walk exceeded its reference-work bound")));
+    assert!(refused.replacements.is_empty() && refused.new_entities.is_empty());
     for invalid in [
         source.replace("#90,#50,#92", "#60,#50,#92"),
         with_entities(

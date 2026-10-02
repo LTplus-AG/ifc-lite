@@ -109,9 +109,13 @@ fn issue_6692_real_house_and_minibim_all_product_frames_and_original_records_are
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/models")
             .join(path);
-        let Ok(original) = std::fs::read_to_string(&path) else {
-            eprintln!("SKIP #6692: {} absent; run pnpm fixtures", path.display());
-            continue;
+        let original = match std::fs::read_to_string(&path) {
+            Ok(source) => source,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                eprintln!("SKIP #6692: {} absent; run pnpm fixtures", path.display());
+                continue;
+            }
+            Err(error) => panic!("cannot read producer fixture {}: {error}", path.display()),
         };
         let source = authored_map(&original, angle, offset);
         verify_source(&source, count);
@@ -287,6 +291,35 @@ pub(super) fn verify_source(source: &str, count: usize) {
     }
     for patch in &plan.replacements {
         let node = before.decode_by_id(patch.express_id).unwrap();
+        if node.ifc_type == IfcType::IfcGeometricRepresentationContext {
+            let old_north = node
+                .get_ref(5)
+                .map(|id| {
+                    let direction = before.decode_by_id(id).unwrap();
+                    let ratios = direction.get_list(0).unwrap();
+                    nalgebra::Vector3::new(
+                        ratios[0].as_float().unwrap(),
+                        ratios[1].as_float().unwrap(),
+                        0.,
+                    )
+                    .normalize()
+                })
+                .unwrap_or(nalgebra::Vector3::y());
+            let new_context = after.decode_by_id(patch.express_id).unwrap();
+            let new_north = after.decode_by_id(new_context.get_ref(5).unwrap()).unwrap();
+            let ratios = new_north.get_list(0).unwrap();
+            let actual = nalgebra::Vector3::new(
+                ratios[0].as_float().unwrap(),
+                ratios[1].as_float().unwrap(),
+                0.,
+            );
+            let expected = map.fixed_view::<3, 3>(0, 0) * old_north;
+            assert!(
+                (actual - expected.normalize()).norm() < 1e-12,
+                "real producer TrueNorth covariance #{}",
+                patch.express_id
+            );
+        }
         assert!(matches!(
             node.ifc_type,
             IfcType::IfcLocalPlacement

@@ -11,6 +11,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { activate, click, waitFor } from '@/test/render.js';
 import { aggregate } from '@ifc-lite/charts';
 import { DocumentPreview } from './DocumentPreview.js';
+import { TEXT_STYLES } from '@/lib/document/compose.js';
 import { pageBox } from '@/lib/export/report/compose.js';
 import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types.js';
 import { dataUrlToBytes } from '@/lib/export/download';
@@ -302,4 +303,23 @@ it('keeps blank text and missing topics accessible and selectable without changi
   const missing = container.querySelector<HTMLElement>('[data-preview-block="missing"][data-unresolved]'); assert.ok(missing);
   assert.match(missing.textContent ?? '', /BCF topic deleted-topic: not among the loaded topics/);
   click(empty); activate(missing, 'Enter'); assert.deepEqual(selections, ['empty', 'missing']);
+});
+
+// #6548: CSS line boxes must use the same pitch as the compositor's half-page fit calculation.
+it('keeps scaled preview text line pitch consistent with PDF layout (#6548)', () => {
+  container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+  const styles = Object.keys(TEXT_STYLES) as Array<keyof typeof TEXT_STYLES>;
+  for (const factor of [0.5, 1, 2]) {
+    const doc: DocumentSpec = { ...baseDocument, blocks: styles.map((style) => ({
+      kind: 'text', id: style, style, text: 'First line\nSecond line', scale: factor,
+    })) };
+    act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />));
+    for (const style of styles) {
+      const text: HTMLElement | null = container.querySelector<HTMLElement>(`[data-preview-block="${style}"] [data-block-text]`);
+      assert.ok(text);
+      assert.equal(Number(window.getComputedStyle(text).lineHeight), TEXT_STYLES[style].lineHeight, `${style} at ${factor}x uses the PDF line-height multiplier`);
+    }
+  }
 });

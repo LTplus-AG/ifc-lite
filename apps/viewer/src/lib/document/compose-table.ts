@@ -45,6 +45,8 @@ export interface TableLayoutBlock {
   /** Provenance and counts before the rows; wrapped and paginated with the shared text measure. */
   summary?: string[];
   headerStyle?: TableHeaderStyle;
+  /** Whole-block size factor (#6548); `compose.ts` applies it, this module lays out at 1. */
+  scale?: number;
   /** Printed instead of the table: nothing to print, still resolving, or an error. */
   message?: string;
   columns: TableColumnOut[];
@@ -61,7 +63,7 @@ export interface RectDrawnItem { kind: 'rect'; x: number; y: number; w: number; 
 export type TableDrawnItem =
   | TextDrawnItem
   | RectDrawnItem
-  | { kind: 'table'; blockId: string; x: number; y: number; w: number; columns: TableColumnLayout[]; rows: TableRowOut[]; headerStyle?: TableHeaderStyle };
+  | { kind: 'table'; blockId: string; x: number; y: number; w: number; columns: TableColumnLayout[]; rows: TableRowOut[]; headerStyle?: TableHeaderStyle; /** Set by `compose.ts` for a scaled block (#6548): the PDF draws text, padding and row height at this factor. */ scale?: number };
 
 /** The page cursor `composeDocument` lays blocks out with; `y` is the running position. */
 export interface LayoutCursor {

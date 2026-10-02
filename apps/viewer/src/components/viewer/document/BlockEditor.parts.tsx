@@ -5,7 +5,7 @@
 /** Inputs the block editors share (#4940, #5142): the field class, the width picker, the clamped number. */
 import { useEffect, useState } from 'react';
 import { useTranslation } from '@/i18n';
-import type { BlockWidth } from '@/lib/document/types';
+import { BLOCK_SCALE_MAX, BLOCK_SCALE_MIN, type BlockWidth } from '@/lib/document/types';
 
 export const field = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs';
 
@@ -17,6 +17,27 @@ export function WidthEditor({ width, onChange }: { width: BlockWidth | undefined
       <select className={field} value={width ?? 'full'} onChange={(e) => onChange(e.target.value as BlockWidth)} aria-label={t('document.block.widthAriaLabel')} title={t('document.block.widthTitle')}>
         <option value="full">{t('document.block.widthFull')}</option><option value="half">{t('document.block.widthHalf')}</option>
       </select>
+    </label>
+  );
+}
+
+/**
+ * Whole-block size (#6548), as a percentage: one control for every block that has text or graphics,
+ * so the two cannot drift apart. Clearing the field (or typing 100) removes the override.
+ */
+export function BlockScaleEditor({ scale, onChange }: { scale: number | undefined; onChange: (scale: number | undefined) => void }) {
+  const { t } = useTranslation();
+  return (
+    <label className="inline-flex items-center gap-1 text-muted-foreground" title={t('document.block.scaleTitle')}>{t('document.block.scaleLabel')}
+      <ClampedNumberInput
+        value={scale === undefined ? undefined : Math.round(scale * 100)}
+        min={BLOCK_SCALE_MIN * 100}
+        max={BLOCK_SCALE_MAX * 100}
+        placeholder="100"
+        allowUndefined
+        ariaLabel={t('document.block.scaleAriaLabel')}
+        onCommit={(percent) => onChange(percent === undefined || percent === 100 ? undefined : percent / 100)}
+      />
     </label>
   );
 }

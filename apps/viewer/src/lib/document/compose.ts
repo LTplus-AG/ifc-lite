@@ -14,8 +14,8 @@
  */
 import { chartFontScale, type ReportPageSetup } from '@ifc-lite/charts';
 import { pageBox, REPORT_MARGIN } from '../export/report/compose.js';
-import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type PageBreakBlock, type TextBlock, type TextFont } from './types.js';
-import { layoutTable, type LayoutCursor, type TableLayoutBlock, type TableDrawnItem } from './compose-table.js';
+import { blockScale, CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type PageBreakBlock, type TextBlock, type TextFont } from './types.js';
+import { layoutTable, type TableLayoutBlock, type TableDrawnItem } from './compose-table.js';
 import { layoutIdsReport, type IdsReportLayoutBlock } from './compose-ids-report.js';
 import { layoutManualReport, type ManualReportLayoutBlock, type RingDrawnItem } from './compose-manual-report.js';
 import { blockTitle, BLOCK_TITLE_HEIGHT } from './block-title.js';
@@ -28,8 +28,8 @@ import { resolvePageHeading, type PageHeading, type ResolvedPageHeading } from '
 import { resolveEnglish } from '@/i18n/registry';
 import type { DocumentLabelFormatter } from './document-labels.js';
 
-const HEADER_HEIGHT = 30;
-const FOOTER_HEIGHT = 24;
+import { HEADER_HEIGHT, FOOTER_HEIGHT, scaledPageHeight, zoomItem, scaledFrame } from './compose-scale.js';
+export { scaledPageHeight } from './compose-scale.js';
 export const BLOCK_GAP = 10;
 const CHART_HEIGHT = CHART_BLOCK_HEIGHT_DEFAULT;
 const SNAPSHOT_HEIGHT = 180;
@@ -67,9 +67,9 @@ export function documentImageHeight(block: { height: number; title?: string; cap
 export type ResolvedBlock =
   | (TextBlock & { bindingSpans?: ResolvedBindingSpan[] })
   | PageBreakBlock
-  | { kind: 'image'; id: string; height: number; align: 'left' | 'center' | 'right'; caption?: string; title?: string; /** natural width / height */ aspect: number; width?: BlockWidth }
-  | { kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth; fontSize?: number }
-  | { kind: 'topic'; id: string; title: string; authoredTitle?: boolean; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null }
+  | { kind: 'image'; id: string; height: number; align: 'left' | 'center' | 'right'; caption?: string; title?: string; /** natural width / height */ aspect: number; width?: BlockWidth; scale?: number }
+  | { kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth; fontSize?: number; scale?: number }
+  | { kind: 'topic'; id: string; title: string; authoredTitle?: boolean; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null; scale?: number }
   | { kind: 'spacer'; id: string; height: number }
   | ({ kind: 'table' } & TableLayoutBlock)
   | ({ kind: 'ids-report' } & IdsReportLayoutBlock)
@@ -81,7 +81,8 @@ export type DrawnItem =
   /** A manual-validation ring chart (#6401), drawn from its counts. */
   | RingDrawnItem
   | { kind: 'image'; blockId: string; x: number; y: number; w: number; h: number }
-  | { kind: 'chart'; blockId: string; x: number; y: number; w: number; h: number }
+  /** `scale` is the block's size factor (#6548): the chart is rendered at `w / scale` by `h / scale`, then placed into `w` by `h`. */
+  | { kind: 'chart'; blockId: string; x: number; y: number; w: number; h: number; scale?: number }
   | { kind: 'snapshot'; blockId: string; x: number; y: number; w: number; h: number }
   | { kind: 'topic-snapshot'; blockId: string; x: number; y: number; w: number; h: number };
 
@@ -161,7 +162,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     if (y + h > bottom && (page.items.length > 0 || y > top)) newPage();
   };
   // The same cursor, as an object, for block layouts that live in their own module (#5142).
-  const cursor: LayoutCursor = {
+  const cursor: Parameters<typeof scaledFrame>[0] = {
     get y() { return y; },
     set y(value: number) { y = value; },
     x: REPORT_MARGIN,
@@ -177,14 +178,14 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
   // box measured against different widths, so the size and position math is
   // computed once per block and the actual `y` (known only after a possible
   // page break) is applied last, through `draw`.
-  const layoutImage = (block: Extract<ResolvedBlock, { kind: 'image' }>, boxX: number, boxW: number): { height: number; draw: (y: number) => DrawnItem[] } => {
+  const layoutImage = (block: Extract<ResolvedBlock, { kind: 'image' }>, boxX: number, boxW: number, pageH = size.h): { height: number; draw: (y: number) => DrawnItem[] } => {
     // The caption's own row must fit the page frame too, so it is reserved before the image height
     // is clamped (review finding: a tall image + caption could still clamp to the full frame, then
     // draw the caption past `bottom`, in the footer band).
     const title = blockTitle(block);
     const titleH = title ? BLOCK_TITLE_HEIGHT : 0;
     const captionH = block.caption ? 14 : 0;
-    const h = documentImageHeight(block, size.h, headingExtraHeight);
+    const h = documentImageHeight(block, pageH, headingExtraHeight);
     const w = Math.min(boxW, h * block.aspect);
     const drawnH = w / block.aspect;
     const x = block.align === 'left' ? boxX : block.align === 'right' ? boxX + boxW - w : boxX + (boxW - w) / 2;
@@ -203,14 +204,14 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     };
   };
 
-  const layoutChart = (block: Extract<ResolvedBlock, { kind: 'chart' }>, boxX: number, boxW: number): { height: number; draw: (y: number) => DrawnItem[] } => {
+  const layoutChart = (block: Extract<ResolvedBlock, { kind: 'chart' }>, boxX: number, boxW: number, pageH = size.h): { height: number; draw: (y: number) => DrawnItem[] } => {
     const textScale = chartFontScale(block.fontSize);
     // The configured height (up to CHART_BLOCK_HEIGHT_MAX, 600pt) must still fit a single page next to its
     // title strip and, when stacked, its snapshot — otherwise the SVG is clipped past the footer (review finding).
     const { height: chartHeight, sideBySide, stacked } = documentChartSizing({
       headingExtraHeight,
       requestedHeight: block.height ?? CHART_HEIGHT,
-      pageHeight: size.h,
+      pageHeight: pageH,
       boxWidth: boxW,
       snapshot: block.snapshot,
       hasData: block.hasData,
@@ -239,10 +240,21 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
   };
 
   const textLayout = (block: Extract<ResolvedBlock, { kind: 'text' }>, x: number, width: number) => layoutText(block, x, width, input.measure);
-  const layoutPairable = (block: Extract<ResolvedBlock, { kind: 'text' | 'image' | 'chart' }>, boxX: number, boxW: number) =>
-    block.kind === 'text' ? textLayout(block, boxX, boxW)
-      : block.kind === 'chart' ? layoutChart(block, boxX, boxW)
-      : layoutImage(block, boxX, boxW);
+  // A block with a size factor (#6548) is laid out in a column `scale` times wider and a frame `scale`
+  // times shorter, at its authored point sizes, and then drawn `scale` times larger: text and graphics
+  // grow by one factor and the wrapping is what it would be at that size.
+  const layoutPairable = (block: Extract<ResolvedBlock, { kind: 'text' | 'image' | 'chart' }>, boxX: number, boxW: number): { height: number; draw: (y: number) => DrawnItem[] } => {
+    const scale = blockScale(block);
+    const pageH = scaledPageHeight(size.h, headingExtraHeight, scale);
+    const lay = (x: number, w: number) => block.kind === 'text' ? textLayout(block, x, w)
+      : block.kind === 'chart' ? layoutChart(block, x, w, pageH)
+      : layoutImage(block, x, w, pageH);
+    if (scale === 1) return lay(boxX, boxW);
+    const inner = lay(0, boxW / scale);
+    return { height: inner.height * scale, draw: (y) => inner.draw(0).map((item) => zoomItem(item, scale, { x: (v) => boxX + v * scale, y: (v) => y + v * scale })) };
+  };
+
+  const frame = (scale: number) => scaledFrame(cursor, contentW, scale);
 
   const wrap = (text: string, width: number, size: number, bold: boolean) => wrapText(text, width, size, bold, input.measure);
 
@@ -254,7 +266,11 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       const next = blocks[i + 1];
       if (next && isHalfPairable(block) && isHalfPairable(next)) {
         const colW = (contentW - BLOCK_GAP) / 2;
-        const textFits = (candidate: typeof block): boolean => candidate.kind !== 'text' || halfTextFitsPage(candidate, size.h, colW, headingExtraHeight);
+        const textFits = (candidate: typeof block): boolean => {
+          if (candidate.kind !== 'text') return true;
+          const scale = blockScale(candidate);
+          return halfTextFitsPage(candidate, scaledPageHeight(size.h, headingExtraHeight, scale), colW / scale, headingExtraHeight);
+        };
         if (textFits(block) && textFits(next)) {
           const a = layoutPairable(block, REPORT_MARGIN, colW);
           const b = layoutPairable(next, REPORT_MARGIN + colW + BLOCK_GAP, colW);
@@ -273,25 +289,26 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       }
       switch (block.kind) {
         case 'text': {
-          const { style, size, lineH, lines, rows, title, titleHeight } = textLayout(block, REPORT_MARGIN, contentW);
+          const f = frame(blockScale(block));
+          const { style, size, lineH, lines, rows, title, titleHeight } = textLayout(block, REPORT_MARGIN, f.w);
           if (!title && !block.backgroundColor && lines.every((l) => l.length === 0)) {
-            page.emptyBlocks?.push({ blockId: block.id, x: REPORT_MARGIN, y, w: contentW, h: lineH });
-            y += lineH;
+            page.emptyBlocks?.push({ blockId: block.id, x: REPORT_MARGIN, y, w: contentW, h: lineH * blockScale(block) });
+            f.y += lineH;
             break;
           }
           if (title) {
-            ensure(titleHeight + style.gapBefore + lineH * Math.min(lines.length, 2));
-            push({ kind: 'text', x: REPORT_MARGIN, y: y + 11, size: 11, bold: true, gray: 0, text: truncateToWidth(title, contentW, 11, true, input.measure) });
-            y += titleHeight;
+            f.ensure(titleHeight + style.gapBefore + lineH * Math.min(lines.length, 2));
+            f.push({ kind: 'text', x: REPORT_MARGIN, y: f.y + 11, size: 11, bold: true, gray: 0, text: truncateToWidth(title, f.w, 11, true, input.measure) });
+            f.y += titleHeight;
           }
-          y += style.gapBefore;
+          f.y += style.gapBefore;
           // A heading is not left alone at the bottom of a page: the first two lines move together.
-          ensure(lineH * Math.min(lines.length, 2));
+          f.ensure(lineH * Math.min(lines.length, 2));
           for (const row of rows) {
             const line = row.text;
-            if (y + lineH > bottom) newPage();
-            push(...textBackground(block, REPORT_MARGIN, y, contentW, lineH), { kind: 'text', x: REPORT_MARGIN, y: y + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font, color: block.textColor, ...(row.bindingMarks?.length ? { bindingMarks: row.bindingMarks } : {}) });
-            y += lineH;
+            if (f.y + lineH > f.bottom) newPage();
+            f.push(...textBackground(block, REPORT_MARGIN, f.y, f.w, lineH), { kind: 'text', x: REPORT_MARGIN, y: f.y + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font, color: block.textColor, ...(row.bindingMarks?.length ? { bindingMarks: row.bindingMarks } : {}) });
+            f.y += lineH;
           }
           y += BLOCK_GAP;
           break;
@@ -307,45 +324,52 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
         }
         case 'image':
         case 'chart': {
-          const single = block.kind === 'chart' ? layoutChart(block, REPORT_MARGIN, contentW) : layoutImage(block, REPORT_MARGIN, contentW);
+          const single = layoutPairable(block, REPORT_MARGIN, contentW);
           ensure(single.height + BLOCK_GAP);
           push(...single.draw(y));
           y += single.height + BLOCK_GAP;
           break;
         }
         case 'table': {
-          layoutTable(block, cursor, contentW, input.measure, BLOCK_GAP, (text, width, size, bold) => wrapText(text, width, size, bold, input.measure));
+          const scale = blockScale(block);
+          layoutTable(block, frame(scale), contentW / scale, input.measure, BLOCK_GAP / scale, (text, width, size, bold) => wrapText(text, width, size, bold, input.measure));
           break;
         }
         case 'ids-report': {
-          layoutIdsReport(block, cursor, contentW, BLOCK_GAP, wrap, (ring) => push(ring), labels);
+          const scale = blockScale(block);
+          const f = frame(scale);
+          layoutIdsReport(block, f, contentW / scale, BLOCK_GAP / scale, wrap, (ring) => f.push(ring), labels);
           break;
         }
         case 'manual-report': {
-          layoutManualReport(block, cursor, contentW, BLOCK_GAP, wrap, (ring) => { push(ring); }, labels);
+          const scale = blockScale(block);
+          const f = frame(scale);
+          layoutManualReport(block, f, contentW / scale, BLOCK_GAP / scale, wrap, (ring) => { f.push(ring); }, labels);
           break;
         }
         case 'topic': {
+          const f = frame(blockScale(block));
           const lineH = 10 * 1.4;
           const snapshotW = block.snapshotAspect ? Math.min(190, TOPIC_SNAPSHOT_HEIGHT * block.snapshotAspect) : 0;
           const snapshotH = block.snapshotAspect ? snapshotW / block.snapshotAspect : 0;
-          const textW = contentW - (snapshotW ? snapshotW + BLOCK_GAP : 0);
+          const textW = f.w - (snapshotW ? snapshotW + BLOCK_GAP : 0);
           const lines = block.lines.flatMap((l) => wrapText(l, textW, 10, false, input.measure));
           // Title, snapshot and the first lines move together; a long description then continues page by page.
-          ensure(Math.max(16 + Math.min(lines.length, 3) * lineH, snapshotH) + BLOCK_GAP);
-          push({ kind: 'text', x: REPORT_MARGIN, y: y + 11, size: 11, bold: true, gray: 0, text: block.authoredTitle ? truncateToWidth(block.title, textW, 11, true, input.measure) : block.title });
-          if (block.snapshotAspect) push({ kind: 'topic-snapshot', blockId: block.id, x: size.w - REPORT_MARGIN - snapshotW, y, w: snapshotW, h: snapshotH });
-          const snapshotBottom = y + snapshotH;
-          let ty = y + 16;
+          f.ensure(Math.max(16 + Math.min(lines.length, 3) * lineH, snapshotH) + BLOCK_GAP);
+          f.push({ kind: 'text', x: REPORT_MARGIN, y: f.y + 11, size: 11, bold: true, gray: 0, text: block.authoredTitle ? truncateToWidth(block.title, textW, 11, true, input.measure) : block.title });
+          if (block.snapshotAspect) f.push({ kind: 'topic-snapshot', blockId: block.id, x: REPORT_MARGIN + f.w - snapshotW, y: f.y, w: snapshotW, h: snapshotH });
+          const snapshotBottom = f.y + snapshotH;
+          let ty = f.y + 16;
           for (const line of lines) {
-            if (ty + lineH > bottom) {
+            if (ty + lineH > f.bottom) {
               newPage();
-              ty = y;
+              ty = f.y;
             }
-            push({ kind: 'text', x: REPORT_MARGIN, y: ty + 10, size: 10, bold: false, gray: 60, text: line });
+            f.push({ kind: 'text', x: REPORT_MARGIN, y: ty + 10, size: 10, bold: false, gray: 60, text: line });
             ty += lineH;
           }
-          y = Math.max(ty, page.items.some((i) => i.kind === 'topic-snapshot' && i.blockId === block.id) ? snapshotBottom : ty) + BLOCK_GAP;
+          f.y = Math.max(ty, page.items.some((i) => i.kind === 'topic-snapshot' && i.blockId === block.id) ? snapshotBottom : ty);
+          y += BLOCK_GAP;
           break;
         }
       }

@@ -24,7 +24,7 @@ export function manualReportStamp(block: ManualReportBlock): { modelName: string
 /** #6566: changing the recorded evidence preserves the destination block's
  * identity and presentation, whether reading live answers or saved history. */
 export function replaceManualReportSnapshot(current: ManualReportBlock, snapshot: ManualReportBlock): ManualReportBlock {
-  return { ...snapshot, id: current.id, title: current.title, variant: current.variant, benchmarks: current.benchmarks, showStamp: current.showStamp };
+  return { ...snapshot, id: current.id, title: current.title, variant: current.variant, benchmarks: current.benchmarks, showStamp: current.showStamp, scale: current.scale };
 }
 
 export interface ManualReportSource {

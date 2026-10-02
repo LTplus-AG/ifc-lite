@@ -15,7 +15,7 @@ import { DOCUMENT_FONT_FAMILIES } from '@/lib/document/text-typography';
 import { tableHeaderStyle } from '@/lib/table-header-style';
 import { topicSnapshotDataUrl } from '@/lib/document/generate-document-pdf';
 import { ringSvg } from '@/lib/validation/manual/ring';
-import type { DocumentBlock } from '@/lib/document/types';
+import { blockScale, type DocumentBlock } from '@/lib/document/types';
 import type { DocumentLabelFormatter } from '@/lib/document/document-labels';
 import type { PreviewImageSize } from './useDocumentLayout';
 import { previewTextPaint } from './preview-theme';
@@ -41,7 +41,7 @@ export interface ComposedPageItemsProps {
 function itemBox(item: DrawnItem, measure: ComposeDocumentInput['measure']): Box {
   if (item.kind === 'text') return { x: item.x, y: item.y - item.size, w: Math.max(4, measure(item.text, item.size, item.bold, item.font)), h: item.size * 1.25 };
   if (item.kind === 'ring') return { x: item.x, y: item.y, w: item.size, h: item.size };
-  if (item.kind === 'table') return { x: item.x, y: item.y, w: item.w, h: TABLE_ROW_HEIGHT * (item.rows.length + 1) };
+  if (item.kind === 'table') return { x: item.x, y: item.y, w: item.w, h: TABLE_ROW_HEIGHT * (item.scale ?? 1) * (item.rows.length + 1) };
   return item;
 }
 
@@ -61,7 +61,8 @@ function ComposedChart({ aggregation, item, fontSize, message, savedComparison, 
   scale: number;
   measure: ComposeDocumentInput['measure'];
 }) {
-  const { w: width, h: height } = item;
+  const factor = item.scale ?? 1;
+  const width = item.w / factor, height = item.h / factor;
   const svg = useMemo(() => aggregation && aggregation.categories.length > 0
     ? renderChartSvg({ aggregation, width, height, fontSize, theme: REPORT_THEME, showTitle: false, print: true })
     : null, [aggregation, width, height, fontSize]);
@@ -130,9 +131,10 @@ function Item({ item, block, origin, props, lineBreak }: { item: DrawnItem; bloc
     }
     case 'table': {
       const palette = item.headerStyle ?? tableHeaderStyle();
-      const cell: CSSProperties = { height: TABLE_ROW_HEIGHT * scale, padding: 2 * scale, boxSizing: 'border-box',
+      const tableScale = scale * (item.scale ?? 1);
+      const cell: CSSProperties = { height: TABLE_ROW_HEIGHT * tableScale, padding: 2 * tableScale, boxSizing: 'border-box',
         overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', border: '1px solid #e5e5e5' };
-      return <table style={{ ...style, borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 8 * scale, lineHeight: 1 }} data-table-rows={item.rows.length}>
+      return <table style={{ ...style, borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 8 * tableScale, lineHeight: 1 }} data-table-rows={item.rows.length}>
         <colgroup>{item.columns.map((column, i) => <col key={i} style={{ width: column.width * scale }} />)}</colgroup>
         <thead><tr>{item.columns.map((column, i) => <th key={i} style={{ ...cell, textAlign: column.align,
           backgroundColor: palette.backgroundColor, color: palette.textColor }}>{column.label}</th>)}</tr></thead>
@@ -184,7 +186,7 @@ export function ComposedPageItems(props: ComposedPageItemsProps) {
           data-block-ids-report={block.kind === 'ids-report' ? '' : undefined}
           data-ids-report-variant={block.kind === 'ids-report' ? block.variant : undefined} data-block-manual-report={block.kind === 'manual-report' ? '' : undefined}
           style={{ width: '100%', height: '100%', ...(block.kind === 'text' ? { color: block.textColor, backgroundColor: block.backgroundColor, whiteSpace: 'pre-wrap',
-            fontFamily: DOCUMENT_FONT_FAMILIES[block.font ?? 'helvetica'], fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * props.scale } : {}) }}>
+            fontFamily: DOCUMENT_FONT_FAMILIES[block.font ?? 'helvetica'], fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * props.scale * blockScale(block), lineHeight: TEXT_STYLES[block.style].lineHeight } : {}) }}>
           {value.items.map((item, index) => <Item key={index} item={item} block={block} origin={box} props={props}
             lineBreak={index < lastText} />)}
           {block.kind === 'text' && !block.text.trim() && <span className="text-neutral-500">{props.labels('document.preview.textEmpty')}</span>}

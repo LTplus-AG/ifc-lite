@@ -17,6 +17,8 @@ The **Document** panel is a page over the model: text whose fields read the load
 
 Each content block has an optional **Block title** (**Table title** for tables). It replaces the heading shown in preview and PDF without changing the chart, BCF topic, list, validation source or checklist name. Text and images gain a heading above their content; an image caption remains separate. Clear the field to restore the original heading. Titles travel with the document and remain when you refresh or replace a report source. Spacers and page breaks retain their layout-only controls.
 
+Every block with text or graphics (text, image, chart, BCF topic, table, IDS or rule-set report, manual validation report) has a **Block size (%)** field, 50 to 200, blank for 100. One factor scales the block's text and graphics together, so a chart keeps the proportion between its plot and its labels at any size. The text re-wraps at its new size and a table or report paginates by its larger rows. Spacing between blocks does not scale. It multiplies the block's own settings (text size, chart height and text size, image height) rather than replacing them. Spacers keep their height field and page breaks have no size.
+
 Adjacent text, chart, or image blocks set to `Half` width print two-up on the same row. An unpaired `Half` block prints full width. Long text continues through the normal paginated text path when a two-column row would exceed the page height. BCF topic blocks are full width.
 
 **Text colour** and **Background colour** accept any RGB colour through the colour picker. The background fills the text block’s full or paired half width and continues on each PDF page when the text wraps. Reset restores the style’s text colour or clears the background. Both colours travel with the saved document and exported template.
@@ -60,7 +62,7 @@ Each grouped list table has its own **Group order**: **Largest first** (the defa
 **Header background** chooses an opaque RGB colour for any document table. **Header text** optionally overrides the automatically chosen black or white ink; reset it to return to readable contrast for the current background. Resetting the background restores the default slate. Both colours appear in preview and on every repeated PDF header, and persist with the document; older documents keep the automatic text colour.
 
 
-The file is `version: 10`; versions 1–9 open and re-save as version 10 automatically (version 8 added page breaks, version 9 added saved comparison table sources, and version 10 adds live manual checklist sources and presentation options). Older viewers refuse a newer file with a clear version error. A table block embeds its list (lists otherwise live only in the browser), so a shared document brings its tables along; the copy never carries a selection snapshot (`expressIdsByModel`), which is bound to one load of one model. More than two columns per row, arbitrary font files, a per-chart legend position, page margins, and drag-resize are not currently available.
+The file is `version: 11`; versions 1–10 open and re-save as version 11 automatically (version 8 added page breaks, version 9 added saved comparison table sources, version 10 added live manual checklist sources and presentation options, and version 11 adds the optional block size). Older viewers refuse a newer file with a clear version error. A table block embeds its list (lists otherwise live only in the browser), so a shared document brings its tables along; the copy never carries a selection snapshot (`expressIdsByModel`), which is bound to one load of one model. More than two columns per row, arbitrary font files, a per-chart legend position, page margins, and drag-resize are not currently available.
 
 ### Validation result rings
 
@@ -137,6 +139,6 @@ into adjacent report blocks while retaining title, ring and layout settings.
 
 Flow awaits native list and chart-filter preparation before producing a combined
 PDF. Renderer warnings and row-limit notices remain visible. Documents use the
-existing version-10 native format and remain editable in Documentation. A storage
+existing native format (a workflow template saved at an older version is upgraded when it is used) and remain editable in Documentation. A storage
 warning means the document remains available in memory. Download retries reuse
 the current PDF artifact rather than rerunning checks.

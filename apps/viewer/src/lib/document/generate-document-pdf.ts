@@ -126,7 +126,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         } catch (err) {
           console.warn('[Documents] image could not be measured; printed square', err);
         }
-        blocks.push({ kind: 'image', id: block.id, height: block.height, align: block.align, caption: block.caption, title: block.title, aspect, width: block.width });
+        blocks.push({ kind: 'image', id: block.id, height: block.height, align: block.align, caption: block.caption, title: block.title, aspect, width: block.width, scale: block.scale });
         break;
       }
       case 'chart': {
@@ -138,7 +138,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         const message = input.chartMessages.get(block.id);
         const hasData = !!agg && agg.categories.length > 0;
         const subtitle = isSavedComparisonChart(block.chart) && !hasData ? '' : message ?? (agg ? `${agg.categories.length} bucket${agg.categories.length === 1 ? '' : 's'} · ${agg.total.toLocaleString()} ${agg.spec.measure.agg === 'count' ? 'elements' : (agg.unit ?? '')}`.trim() : 'No data');
-        blocks.push({ kind: 'chart', id: block.id, title: blockTitle(block, block.chart.title), subtitle, hasData, snapshot: block.snapshot && !isSavedComparisonChart(block.chart), height: block.height, width: block.width, fontSize: block.fontSize });
+        blocks.push({ kind: 'chart', id: block.id, title: blockTitle(block, block.chart.title), subtitle, hasData, snapshot: block.snapshot && !isSavedComparisonChart(block.chart), height: block.height, width: block.width, fontSize: block.fontSize, scale: block.scale });
         break;
       }
       case 'page-break': blocks.push(block); break;
@@ -155,12 +155,12 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
           const flat = state.kind === 'validation' || state.kind === 'comparison'
             ? flattenRawModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, documentTableLabels(input.labels))
             : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, documentTableLabels(input.labels), block.groupOrder);
-          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block, input.labels), caption: block.caption, headerStyle, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, columns: documentTableColumns(flat.columns, state.kind === 'validation' ? input.labels : undefined), rows: flat.rows });
+          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block, input.labels), caption: block.caption, headerStyle, scale: block.scale, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, columns: documentTableColumns(flat.columns, state.kind === 'validation' ? input.labels : undefined), rows: flat.rows });
           break;
         }
         if (state?.status !== 'ok') result.tableFailures.push(block.id);
         // `tableMessage` is non-null for every non-ok state; the fallback only satisfies the types.
-        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block, input.labels), caption: block.caption, headerStyle, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, message: message ?? 'No rows to print.', columns: [], rows: [] });
+        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block, input.labels), caption: block.caption, headerStyle, scale: block.scale, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, message: message ?? 'No rows to print.', columns: [], rows: [] });
         break;
       }
       case 'ids-report': {
@@ -177,7 +177,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         const topic = input.topics.get(block.guid);
         if (!topic) {
           result.missingTopics.push(block.guid);
-          blocks.push({ kind: 'topic', id: block.id, authoredTitle: !!blockTitle(block), title: blockTitle(block, `[BCF topic ${block.guid}: not among the loaded topics]`), lines: blockTitle(block) ? [`[BCF topic ${block.guid}: not among the loaded topics]`] : [], snapshotAspect: null });
+          blocks.push({ kind: 'topic', id: block.id, authoredTitle: !!blockTitle(block), title: blockTitle(block, `[BCF topic ${block.guid}: not among the loaded topics]`), lines: blockTitle(block) ? [`[BCF topic ${block.guid}: not among the loaded topics]`] : [], snapshotAspect: null, scale: block.scale });
           break;
         }
         let snapshotAspect: number | null = null;
@@ -191,7 +191,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
             snapshotAspect = 4 / 3;
           }
         }
-        blocks.push({ kind: 'topic', id: block.id, authoredTitle: !!blockTitle(block), title: blockTitle(block, topic.title), lines: topicLines(topic), snapshotAspect });
+        blocks.push({ kind: 'topic', id: block.id, authoredTitle: !!blockTitle(block), title: blockTitle(block, topic.title), lines: topicLines(topic), snapshotAspect, scale: block.scale });
         break;
       }
     }
@@ -273,7 +273,9 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
           const agg = input.aggregations.get(item.blockId);
           if (agg && agg.categories.length > 0) {
             const block = byId.get(item.blockId);
-            await doc.svg(seams.renderSvg(agg, item.w, item.h, seams.theme, block?.kind === 'chart' ? block.fontSize : undefined), item.x, item.y, item.w, item.h);
+            // A scaled chart (#6548) is rendered at its authored size and placed `scale` times larger, so its text and plot grow together.
+            const scale = item.scale ?? 1;
+            await doc.svg(seams.renderSvg(agg, item.w / scale, item.h / scale, seams.theme, block?.kind === 'chart' ? block.fontSize : undefined), item.x, item.y, item.w, item.h);
           } else {
             doc.setFontSize(9);
             doc.setTextColor(130);
@@ -331,6 +333,7 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
             columns: item.columns.map((c) => ({ width: c.width, align: c.align })),
             rowRoles: item.rows.map((r) => r.role),
             headerStyle: item.headerStyle,
+            scale: item.scale,
           });
           break;
       }

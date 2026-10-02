@@ -21,6 +21,8 @@ import { loadValidationReports, VALIDATION_REPORTS_STORAGE_KEY } from '@/lib/val
 import { validateChecks, compareChecks } from './check-host';
 import { loadSavedComparisons } from '@/lib/compare/savedComparisonPersistence';
 import { preflightWorkflow } from './preflight';
+import { createAutomationHost } from './automation-host';
+import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types';
 import { checkedModelSet, checkWorkflowModelPins, loadSessionModels, assignSessionTags } from './local-models';
 import { resolveModels } from './model-targets';
 import { startWorkflowRun, isNativeWorkflowBusy, assertWorkflowOwner, type WorkflowRun } from './run-session';
@@ -107,6 +109,20 @@ describe('session validation pipeline through native engines (#6612)', () => {
     assert.equal(doc.blocks.filter((block) => block.kind === 'ids-report').length, 1);
     assert.equal(useViewerStore.getState().idsValidationReport, previousLiveReport);
     assert.equal(useViewerStore.getState().overlayLayers, previousColors);
+  });
+
+  it('builds the document from a workflow template saved at the previous format version, keeping its block size (#6548)', async () => {
+    run = startWorkflowRun();
+    const token = await validateChecks(run, 'workflow', modelSet(run), [job(ruleSet())], undefined);
+    const workflow: FlowDocument = { ...inputGraph([]), capabilities: ['storage.write:documents'] };
+    const host = createAutomationHost(run, workflow, async () => { throw new Error('no model is loaded in this test'); }, () => {});
+    const template = { version: DOCUMENT_VERSION - 1, id: 'template', name: 'Report', page: { size: 'A4', orientation: 'portrait' }, blocks: [{
+      id: 'report', kind: 'ids-report', scale: 1.5, sourceName: 'Old', generatedAt: '2026-01-01T00:00:00.000Z', summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [],
+    }] } as unknown as DocumentSpec;
+    const built = await host.buildDocument(token, null, null, { template, mappings: [{ blockId: 'report', jobId: 'check' }] });
+    const document = run.get<DocumentSpec>(built, 'document');
+    assert.equal(document.version, DOCUMENT_VERSION);
+    assert.deepEqual(document.blocks.map((block) => block.kind === 'ids-report' && block.scale), [1.5]);
   });
 
   it('retains comparison recipe identity and every effective option beside native evidence', async () => {

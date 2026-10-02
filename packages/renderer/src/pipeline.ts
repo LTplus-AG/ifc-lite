@@ -8,6 +8,7 @@
 
 import { WebGPUDevice } from './device.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
+import { ghostShaderSource } from './shaders/ghost.wgsl.js';
 import { INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
 import { texturedShaderSource } from './shaders/textured.wgsl.js';
 import { packClipBox } from './clip-box.js';
@@ -37,6 +38,8 @@ export class RenderPipeline {
     private makeInstancedTransparentPipeline: (() => GPURenderPipeline) | null = null;  // deferred factory (see constructor)
     private makeQuantizedPipelineAsync: ((kind: 'opaque' | 'transparent') => Promise<GPURenderPipeline>) | null = null;
     private quantizedPipelines: Partial<Record<'opaque' | 'transparent' | 'overlay', GPURenderPipeline>> = {};
+    private makeGhostPipelineAsync: ((quantized: boolean) => Promise<GPURenderPipeline>) | null = null;
+    private readonly ghostPipelines = new Map<boolean, GPURenderPipeline | null>();
     private instancedTransparentPipelineTried = false;  // built-or-failed once; don't retry a rejecting backend every frame
     private selectionPipeline: GPURenderPipeline;  // Pipeline for selected meshes (renders on top)
     private transparentPipeline: GPURenderPipeline;  // Pipeline for transparent meshes with alpha blending
@@ -470,6 +473,13 @@ export class RenderPipeline {
             const base = kind === 'opaque' ? pipelineDescriptor : transparentPipelineDescriptor;
             return this.device.createRenderPipelineAsync({ ...base, vertex: quantizedVertex });
         };
+        // X-Ray ghosts: the transparent descriptor with the ghost fragment stage
+        // (ghost.wgsl.ts). Built on first use, like the instanced transparent pipeline.
+        this.makeGhostPipelineAsync = (quantized) => this.device.createRenderPipelineAsync({
+            ...transparentPipelineDescriptor,
+            ...(quantized && { vertex: quantizedVertex }),
+            fragment: { ...transparentPipelineDescriptor.fragment!, module: this.device.createShaderModule({ code: ghostShaderSource }) },
+        });
 
         // ── Textured pipeline (#961) ──
         // A separate pipeline for meshes carrying an IFC surface texture. It
@@ -816,6 +826,22 @@ export class RenderPipeline {
 
     getTransparentPipeline(): GPURenderPipeline {
         return this.transparentPipeline;
+    }
+
+    /**
+     * The X-Ray ghost pipeline, or null until it is built: the first call starts
+     * the async build and `onReady` runs when it lands. A failed build leaves
+     * ghosts on the transparent pipeline.
+     */
+    getGhostPipeline(quantized: boolean, onReady: () => void): GPURenderPipeline | null {
+        if (!this.ghostPipelines.has(quantized)) {
+            this.ghostPipelines.set(quantized, null);
+            this.makeGhostPipelineAsync?.(quantized).then(
+                (pipeline) => { this.ghostPipelines.set(quantized, pipeline); onReady(); },
+                (err) => console.warn('[Pipeline] ghost pipeline build failed; X-Ray ghosts stay on the transparent pipeline:', err),
+            );
+        }
+        return this.ghostPipelines.get(quantized) ?? null;
     }
 
     /** @deprecated Unused since #6076 (overrides shade from the entity colour table). TODO(remove-by: next major, #6076) */

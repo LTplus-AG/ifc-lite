@@ -79,3 +79,12 @@ it('#6567 preserves unreadable duplicate-ID source bytes before allowing a fresh
   assert.equal(saveDefinitionLibrary(sources(), recovered.writable), null);
   assert.equal(localStorage.getItem(`${key}:unreadable`), raw, 'the original evidence survives the next ordinary save');
 });
+
+it('#6567 reports unavailable browser storage instead of claiming persisted definition bytes', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  assert.ok(descriptor?.configurable, 'the test host permits the actual unavailable-global environment');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: undefined });
+  try {
+    assert.match(saveDefinitionLibrary(sources(), true) ?? '', /storage.*unavailable/i);
+  } finally { Object.defineProperty(globalThis, 'localStorage', descriptor); }
+});

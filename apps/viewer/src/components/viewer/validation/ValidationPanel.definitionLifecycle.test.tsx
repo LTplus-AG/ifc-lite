@@ -170,3 +170,30 @@ for (const count of [1, 2]) for (const kind of ['rules', 'ids'] as const) {
     assert.equal(persisted.library.entries.length, 2, 'both same-title sources are available after a real persistence round trip');
   });
 }
+
+for (const count of [1, 2]) for (const kind of ['rules', 'ids'] as const) {
+  it(`#6567 importing ${kind} with unavailable storage shows the warning and retains usable source at ${count} model(s)`, async () => {
+    await models(count);
+    setValidationSourceChoice(kind);
+    const ui = render(<ValidationPanel />);
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    assert.ok(descriptor?.configurable);
+    const storage = globalThis.localStorage;
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: undefined });
+    try {
+      await importFile(ui, kind, kind === 'ids' ? xml : JSON.stringify(ruleSource));
+      await waitFor(() => !useViewerStore.getState().idsAuditing);
+      const warning = useViewerStore.getState().validationDefinitionsError;
+      assert.match(warning ?? '', /storage.*unavailable/i);
+      assert.ok([...ui.querySelectorAll('[role="alert"]')].some(alert => alert.textContent?.includes(warning ?? '')),
+        'the mounted caller tells the user why the check is session-only');
+      const current = activeDefinition(useViewerStore.getState().validationDefinitions, kind);
+      assert.ok(current, 'the actual parser accepted the in-session source despite missing persistence');
+      if (current.kind === 'ids') {
+        assert.equal(current.xml, xml);
+        assert.deepEqual(useViewerStore.getState().idsDocument?.specifications, parsedIds.specifications);
+      } else assert.deepEqual(useViewerStore.getState().validationRuleSetDraft, parsedRules.file);
+      assert.equal(storage.getItem('ifc-lite:validation:definition-library'), null, 'no persisted bytes were falsely claimed');
+    } finally { Object.defineProperty(globalThis, 'localStorage', descriptor); }
+  });
+}

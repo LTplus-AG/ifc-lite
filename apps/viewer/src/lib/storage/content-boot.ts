@@ -4,6 +4,10 @@
 
 import { useViewerStore } from '../../store/index.js';
 import { subscribeContentChanges } from './content-events.js';
+import { preserveLegacyChange } from './content-backup.js';
+import { documentContent } from '../document/persistence.js';
+import { comparisonContent } from '../compare/savedComparisonPersistence.js';
+import { validationContent } from '../validation/reports/persistence.js';
 
 let installed = false;
 export function initializeUserContent(): void {
@@ -21,4 +25,14 @@ export function initializeUserContent(): void {
       : kind === 'validation' ? live.refreshValidationReports() : live.refreshSavedComparisons());
   });
   window.addEventListener('focus', refresh);
+  window.addEventListener('storage', event => {
+    if (!event.key || event.newValue === null) return;
+    void preserveLegacyChange(event.key, event.newValue).then(() => {
+      // Hydrate the controller's status too, so a later save keeps the notice.
+      const live = useViewerStore.getState();
+      if (event.key === documentContent.legacyKey) return live.refreshDocuments();
+      if (event.key === comparisonContent.legacyKey) return live.refreshSavedComparisons();
+      if (event.key === validationContent.legacyKey) return live.refreshValidationReports();
+    }).catch(error => console.warn('[User content] Could not preserve an older tab change; legacy key retained', error));
+  });
 }

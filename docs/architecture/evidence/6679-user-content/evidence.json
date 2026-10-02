@@ -1,0 +1,87 @@
+{
+  "issue": 6679,
+  "capturedAt": "2026-10-02T11:12:47.545490+00:00",
+  "baseCommit": "09745f0f3bb99ac07802ae061f13df92e865683f",
+  "model": {
+    "path": "apps/viewer/public/samples/building-architecture.ifc",
+    "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+    "exporter": "IFC manager for SketchUp 5.3.3 / SketchUp 2024 (FILE_NAME header)"
+  },
+  "verification": [
+    {
+      "command": "pnpm typecheck",
+      "result": "passed; 3289 test files covered"
+    },
+    {
+      "command": "pnpm lint",
+      "result": "passed; no new unused locals or blocking lint errors"
+    },
+    {
+      "command": "TEST_PATTERN='(content-library|ContentStorageNotice|ValidationPanel|ChartEditor.savedComparison|SavedValidationReports|SavedComparisonLibrary|DocumentPanel|ReportBlock.source-kind|useIDS.clear-during-run|useIDS.concurrent-run|report-retention|session-workflow|artifact-lifetime|savedComparisons.test|document.test|ids-report.test)' pnpm test --filter=@ifc-lite/viewer --env-mode=loose",
+      "result": "307 passed"
+    },
+    {
+      "command": "TEST_PATTERN='(content-library|ContentStorageNotice)' pnpm test --filter=@ifc-lite/viewer --env-mode=loose",
+      "result": "19 passed, including retry of all libraries and remapped document sources"
+    },
+    {
+      "command": "PLAYWRIGHT_PORT=5680 pnpm test:e2e:ci tests/e2e/content-storage.e2e.spec.ts --reporter=list",
+      "result": "2 passed against the built viewer"
+    },
+    {
+      "command": "pnpm docs:check-samples",
+      "result": "430 snippets across 104 docs passed"
+    },
+    {
+      "command": "pnpm check:module-size",
+      "result": "passed"
+    },
+    {
+      "command": "pnpm check:test-wiring",
+      "result": "passed"
+    },
+    {
+      "command": "pnpm check:source-text-assertions",
+      "result": "passed"
+    }
+  ],
+  "browserWitnesses": [
+    "Real model run checks 4 walls: 2 pass, 2 fail; saved report survives reload unchanged",
+    "Eight document payloads exceed 5 MiB and survive reload alongside the migrated document",
+    "Refused IndexedDB write keeps the document draft in memory; Retry save commits it",
+    "A second tab preserves its local draft and cannot overwrite the first tab; explicit restore loads the committed version",
+    "An older app tab changing legacy storage is archived without replay; the recovery notice survives subsequent saves"
+  ],
+  "limitations": [
+    "Automated browser evidence was captured with headless Chrome; this does not certify the 3D raster output",
+    "Workspace knip reports existing repo-wide unused items; no cleanup sweep was performed"
+  ],
+  "productionSourceSHA256": {
+    "apps/viewer/src/bootstrap.tsx": "6a2ded5ea079bf3d4448c134e8e97a0d4a58ae3f343b17d255c874c5145d5f8c",
+    "apps/viewer/src/components/viewer/ContentStorageNotice.tsx": "f35486b7f0422bdef594d7e9b69a0f8cf9ed95450cdf16634952af0f131b124b",
+    "apps/viewer/src/components/viewer/compare/SavedComparisonHistoryNotice.tsx": "b7f5bd4bb077fd49158c7ed8ac8cb9a8d58c901a0d4a934d7863228e544669bb",
+    "apps/viewer/src/components/viewer/compare/SavedComparisonLibrary.tsx": "94727825e0f96b974a25e721252f8529307e0dd9792dac1794455b4a8f96c2cd",
+    "apps/viewer/src/components/viewer/document/DocumentMenu.tsx": "9cd19c051b871b3f808723e2d8764c098e85194395ff62403fb180a334a55bd8",
+    "apps/viewer/src/components/viewer/document/DocumentPanel.tsx": "129ab45880c267a485f03567341c400e3b2587185cee65b748d9eb2ddfb789a0",
+    "apps/viewer/src/components/viewer/validation/ManualValidationTab.tsx": "0f330c8ed0f9dd55a8eeff976f6d7f5feff041d9b4b7c26299bcc769fbbe1f74",
+    "apps/viewer/src/components/viewer/validation/SaveValidationReportButton.tsx": "16f15e32e7dd86d98d492d2c289bb8dc10f30d78a13b8834a0caf4483bc14022",
+    "apps/viewer/src/components/viewer/validation/SavedValidationReports.tsx": "b74a62f575b6f7552299c69d6d56101ee1798ce6b40903f9b1f9597dc2cc8bbd",
+    "apps/viewer/src/i18n/catalogues/validation-panel.en.ts": "07b60f5c545fdbc77f8568477b18b3240fe13a319a8e444162fc439c13d1c22a",
+    "apps/viewer/src/lib/compare/savedComparisonPersistence.ts": "a8b902721d912a2e907f8bec371f76387c4b4928f240b8353d379941dae7a065",
+    "apps/viewer/src/lib/document/persistence.ts": "a208d88bc4136709189202a657617222404376fe1d57ce02017fb75fb9cd27b1",
+    "apps/viewer/src/lib/flow/automation-host.ts": "8e3c03e4e97c97ee011f21c10c480943fcb23a6cb7b64be310512a76d121c7e9",
+    "apps/viewer/src/lib/flow/check-host.ts": "de5bde0f0cc3edd3cedbd3ff0a5a0967b463d43b8d62ad816e79d9bdf6e60622",
+    "apps/viewer/src/lib/flow/report-retention.ts": "b36682aaa68643070697929c1c61457c267dae377077cd769ec44bf50f35f7ca",
+    "apps/viewer/src/lib/storage/content-backup-references.ts": "acb75d05dcf6f2eda55f9bb7f0d2dd535694e3592f84ad2fa0e688a265159c02",
+    "apps/viewer/src/lib/storage/content-backup.ts": "b6eab7a3c1c35260e9faafdc39e2454d47dbd44a5a13c9389ea29155322191ca",
+    "apps/viewer/src/lib/storage/content-boot.ts": "f816b76269f203d8a59b91d0c326796afaf08d08d0ac0bf3d7c93693ef5c839c",
+    "apps/viewer/src/lib/storage/content-database.ts": "56a9930e6e767bfe531854cc900a396eb8d397aedb331ce4631eadfbc98c68ac",
+    "apps/viewer/src/lib/storage/content-events.ts": "56acc88d6266c8f63f604e4b4ad4f196bb4a48b84a85d0c1740933d094074ede",
+    "apps/viewer/src/lib/storage/content-library.ts": "48d6e32a1e311d39e767c39a466a78393a66202bd4404c91cf61b58bab76a0db",
+    "apps/viewer/src/lib/storage/content-migration.ts": "1e82c0ad40b61b117517457c09f165911abcc07df4b9381e86636601e61e862f",
+    "apps/viewer/src/lib/validation/reports/persistence.ts": "69e823852b5fdfdeaa35e69806bcf897c1f427771f632db11126813f24c7c94f",
+    "apps/viewer/src/store/slices/documentSlice.ts": "6e1cae885b8027b2ae726f719c3d8d14137c8ae228852f76a9e17de0e2f17f07",
+    "apps/viewer/src/store/slices/savedComparisonsSlice.ts": "4e3a32e2cbb6f36d3930c9ce44e44f9569472cf99ca82c9d237a3ce32ead3dd1",
+    "apps/viewer/src/store/slices/validationReportsSlice.ts": "88c7c025e41d6b5250ab8874820b408da41f952580ed0732f7565da546f6fbbe"
+  }
+}

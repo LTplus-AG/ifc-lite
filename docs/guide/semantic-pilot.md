@@ -1,4 +1,4 @@
-# Linked records: DBL / DPP pilot
+# Linked records and semantic queries
 
 Open **Linked records** from the viewer's workspace panel browser. Choose
 **Load pilot models and records** to load two original IFC door models through
@@ -10,6 +10,51 @@ This is an original, executable demonstration of the architecture discussed in
 [discussion 6635](https://github.com/LTplus-AG/ifc-lite/discussions/6635).
 It contains no confidential working-group material and makes no EN / ISO
 conformity claim.
+
+## Sources, arbitrary results and workspaces
+
+The panel accepts local profile JSON, Turtle, N-Quads, inline JSON-LD, HTTPS JSON,
+and SPARQL SELECT or CONSTRUCT. SELECT rows render independently of domain
+profiles, including arbitrary columns, unbound values, blank nodes, datatypes
+and language tags. Fifty rows render per page. Optional profile projection
+reports incompatible bindings without discarding the raw rows.
+
+Enter the exact allowed hostname for a remote request. A bearer credential is
+held only in the current panel session. For a configured relay, enter its HTTPS
+URL, hostname and authorized provider ID; see [headless providers](semantic-headless.md).
+Browser requests require endpoint CORS. Run/cancel bounds transport and worker
+jobs; late data from a changed model session is refused.
+
+Binding mapping names identify the resource URI, GlobalId and revision columns.
+Duplicate GlobalIds show all candidates; choose a candidate explicitly or
+associate a revision with its loaded model. Saved workspaces preserve records,
+raw rows, graphs, profile definitions and query presets. Restoration clears
+host grants, bearer credentials and model associations. Reassociate revision
+identifiers after reload; display names never establish identity.
+
+**Query records related to IFC selection** resolves current IFC selection to
+known semantic URIs and runs a bounded query for outgoing and incoming links.
+With no known subject, the selected profile's GlobalId predicate performs
+explicit discovery. Identifiers are serialized into VALUES, not executable
+query text. Related query results use their `subject` URI for explicit resource links,
+while the query editor retains your analytical binding mapping. This is a partial supplied view and cannot establish endpoint-wide
+conformance.
+
+Load a versioned profile definition in the profile controls, generate its
+schema/context/vocabulary/shapes/dictionary, or import bSDD definitions. See
+[profiles and validation](semantic-profiles.md) for the supported subset and
+language, units and completeness contracts.
+
+Projection previews show the IFC address, GlobalId/revision, previous and new
+value, target property, mapping and conflict policy. A changed preview is
+refused. Choose reject, skip or overwrite for conflicting properties.
+FireRating targets `Pset_DoorCommon.FireRating`; thermal transmittance targets
+`Pset_WallCommon.ThermalTransmittance` in W/(m2.K), including explicit conversion
+from mW/(m2.K). Provenance records the source declaration, profile and mapping
+versions, identifiers and projection time. Retrieval time is included only
+when it was actually recorded. Grouped undo/redo and the normal IFC export
+retain the canonical editor behavior. External relationships remain in the
+workspace and semantic bundle.
 
 ## Try the complete workflow
 
@@ -28,7 +73,7 @@ conformity claim.
    context can include other installations in the same building; row actions
    use ownership links to select only the corresponding installations.
 4. Select **Installed door 1**, enable the viewer's **Edit** mode and choose
-   **Copy product FireRating to selected door**. The effective IFC overlay gets
+   **Preview projection**. Review the target and proposed value, then choose **Apply reviewed projection**. The effective IFC overlay gets
    `Pset_DoorCommon.FireRating = EI30` and `Pset_SemanticProjection` provenance
    with source, profile, product, installation, timestamp and property mapping.
    One undo reverses the whole projection. Ordinary IFC export includes these
@@ -40,11 +85,14 @@ conformity claim.
    context, JSON-LD, N-Quads, SHACL shapes, RDFS vocabulary, neutral dictionary
    projection, SELECT query, raw bindings and session revision associations.
    Paste a record document or the downloaded bundle into **Local JSON** to
-   reload it. Imported shapes and contexts do not replace the installed profile.
+   reload it. Load a versioned profile explicitly in **Profile and dictionary**;
+   imported records never silently replace the selected profile.
 
-Loaded records survive panel switches in memory. Reloading the page clears this
-session. Export before closing the browser. Model IDs in a bundle are
-session-specific; reassociate revision URIs with newly loaded models.
+Loaded records survive panel switches. **Save and download workspace** also
+stores the versioned workspace locally. After reload, choose **Restore saved
+workspace** or import its JSON. Restored endpoints require a new hostname grant;
+credentials and session model associations are cleared. Reassociate revision
+URIs with newly loaded models.
 
 ## JSON and SPARQL sources
 
@@ -52,7 +100,8 @@ session-specific; reassociate revision URIs with newly loaded models.
 endpoint** POSTs a SELECT query as `application/x-www-form-urlencoded` and
 expects standard SPARQL Results JSON. Enter the exact hostname you allow in
 the separate hostname field. HTTPS and CORS are required; credentials are not
-stored. Redirects, SPARQL UPDATE, ASK, CONSTRUCT, SERVICE and FROM are rejected.
+stored. **SPARQL CONSTRUCT graph** retrieves Turtle using a CONSTRUCT query.
+Redirects, SPARQL UPDATE, ASK, SERVICE and unauthorized FROM datasets are rejected.
 Requests have a 15 second timeout and a 5 MiB response cap. Cancel stops an
 outstanding request and prevents late results from replacing current records.
 
@@ -73,9 +122,14 @@ independently hand-maintained second ontology. RDFS describes the vocabulary;
 Schema and SHACL enforce the supplied profile. There is no OWL inference or
 remote-context loading. SHACL validation uses explicit resource types, rejects
 graphs with no pilot targets, and bounds graph input to 5 MiB / 50,000 quads.
-The displayed RDF is editable for independent graph validation; downloading
-the bundle regenerates canonical RDF from the records rather than exporting
-unvalidated editor changes.
+The displayed RDF is editable for independent graph validation. Editing it
+invalidates previous findings and cancels pending validation. Restored workspaces
+remain unvalidated until validation completes for the restored data. The report
+shows the actual validation scope, engines, completeness and finding-limit status;
+validating a supplied graph does not claim JSON Schema validation of the records. The bundle
+exports the current graph with its explicit `graphFormat`; the `nquads` field is
+present only when that graph is actually N-Quads. Edited graph data does not
+change the accompanying profile JSON records.
 
 The conceptual entities are Building, Logbook, Installation, Product, Passport
 and Inspection. Products and passports carry model/batch/item granularity.
@@ -83,15 +137,19 @@ Multiple installations can reference one batch product. `dictionaryUri`
 identifies a semantic concept, independently of the physical product ID.
 Ordinary absolute URIs, URNs and DIDs can be record identifiers; this pilot
 does not implement DID resolution, authentication or signatures. The neutral
-dictionary export is **not** a bSDD import file. Authoritative bSDD integration
-requires its own versioned adapter.
+dictionary format is a neutral, documented subset. The profile controls also
+import supported bSDD definitions through the existing versioned SDK adapter.
+Unsupported relations remain available in the original imported payload with
+diagnostics; dictionary definitions do not supply manufacturer instance values.
 
-Only `GlobalId` plus an explicit revision/model scope maps a record to IFC.
-Duplicate GlobalIds are ambiguous unless a model scope disambiguates them.
+Choose the GlobalId resolver, explicit resource-to-entity links, or profile
+identity fields. Each strategy resolves against effective IFC identities and
+explicit revision/model associations. Duplicate GlobalIds remain ambiguous
+unless that evidence disambiguates them.
 Resolution re-reads effective attributes, created entities and tombstones at
 each action, so model removal or overlay edits cannot reuse cached addresses.
 Building/product/passport identity and arbitrary logbook relationships remain
-outside IFC. FireRating is the pilot's only deliberate IFC content projection.
+outside IFC. Supported projection mappings copy declared FireRating to IfcDoor and thermal transmittance to IfcWall / IfcWallStandardCase through the canonical mutation backend.
 
 A **complete** submission additionally checks referenced internal resources
 for presence. A **partial** view can omit related resources without producing

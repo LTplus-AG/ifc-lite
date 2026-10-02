@@ -2,7 +2,7 @@
 
 Portable semantic datasets and profile-driven validation for browser and headless IFC applications. RDF terms retain datatype, language, blank-node identity, repeated values and unbound SELECT columns. Domain profiles are optional projections over the preserved dataset.
 
-Providers parse SPARQL with Traqula before allowing SELECT or CONSTRUCT. UPDATE and SERVICE are denied; FROM needs explicit graph authorization. HTTPS requests reuse the sandbox network capability, byte limit, cancellation and redirect policy through its small `network` entry point. Bearer tokens live only in a request. Browser endpoints still need CORS.
+Providers parse SPARQL with Traqula before allowing SELECT or CONSTRUCT. UPDATE and SERVICE are denied; FROM needs explicit graph authorization. HTTPS requests reuse the sandbox network capability, byte limit, cancellation and redirect policy through its small `network` entry point. Bearer tokens live only in a request. Browser endpoints still need CORS; the Node relay is an explicitly configured alternative.
 
 Resolution requires an explicit strategy and revision association. Duplicate IFC GlobalIds remain ambiguous. A missing revision never falls back to an unrelated loaded model. Workspace version 1 exports portable query settings, raw datasets and revision labels; import resets grants and loaded-model associations. Credentials and URL query parameters are excluded from portable endpoint configuration.
 

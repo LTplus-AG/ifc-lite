@@ -5692,7 +5692,8 @@
     "serializeEntityArgs: function",
     "serializeEntitySubgraph: function",
     "stripNodePathPrefix: function",
-    "tableToCsv: function"
+    "tableToCsv: function",
+    "validatePropertyDataType: function"
   ],
   "@ifc-lite/extensions": [
     "ACTION_INTENTS: const",
@@ -9157,6 +9158,12 @@
     "validateJson: function",
     "validateLinks: function",
     "vocabularyTurtle: function"
+  ],
+  "@ifc-lite/semantic/server": [
+    "RelayOptions: interface",
+    "RelayProvider: interface",
+    "createSemanticRelay: function",
+    "createSemanticRelayServer: function"
   ],
   "@ifc-lite/server-bin": [
     "Arch: type",

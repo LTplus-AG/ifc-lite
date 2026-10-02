@@ -414,7 +414,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     assert.strictEqual(handlers.calls.length, 1);
     assert.deepEqual(handlers.calls[0], {
       fn: 'onProperty',
-      args: [MODEL, 1, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean],
+      args: [MODEL, 1, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean, 'IfcBoolean'],
     });
   });
 
@@ -425,13 +425,12 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     // write below lands on an already-existing pset map and reliably fires
     // the `[entityPath, 'psets', psetName]` event (see the "pset already
     // exists" test above for why that matters).
-    const cases: { ifcType: string; expected: PropertyValueType }[] = [
-      { ifcType: 'IfcInteger', expected: PropertyValueType.Integer },
-      { ifcType: 'IfcReal', expected: PropertyValueType.Real },
-      { ifcType: 'IfcIdentifier', expected: PropertyValueType.Identifier },
-      { ifcType: 'IfcText', expected: PropertyValueType.Text },
-      { ifcType: 'IfcLogical', expected: PropertyValueType.Boolean },
-      { ifcType: 'SomeUnknownType', expected: PropertyValueType.Label }, // default arm
+    const cases: { ifcType: string; value: string | number | boolean; expected: PropertyValueType }[] = [
+      { ifcType: 'IfcInteger', value: 1, expected: PropertyValueType.Integer },
+      { ifcType: 'IfcReal', value: 1, expected: PropertyValueType.Real },
+      { ifcType: 'IfcIdentifier', value: 'identifier', expected: PropertyValueType.Identifier },
+      { ifcType: 'IfcText', value: 'text', expected: PropertyValueType.Text },
+      { ifcType: 'IfcLogical', value: true, expected: PropertyValueType.Logical },
     ];
     for (const { ifcType } of cases) {
       setPropertyValue(doc, '/wallA', `Pset_${ifcType}`, 'seed', { type: 'IfcLabel', value: 'x' });
@@ -441,8 +440,8 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
 
     applyAsRemoteEdit(doc, (remote) => {
-      for (const { ifcType } of cases) {
-        setPropertyValue(remote, '/wallA', `Pset_${ifcType}`, 'Value', { type: ifcType as never, value: 1 });
+      for (const { ifcType, value } of cases) {
+        setPropertyValue(remote, '/wallA', `Pset_${ifcType}`, 'Value', { type: ifcType, value });
       }
     });
 
@@ -492,7 +491,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     assert.strictEqual(handlers.calls.length, 1);
     assert.deepEqual(handlers.calls[0], {
       fn: 'onProperty',
-      args: [MODEL, 1, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean],
+      args: [MODEL, 1, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean, 'IfcBoolean'],
     });
   });
 
@@ -872,5 +871,29 @@ describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => 
 
     teardown();
     assert.deepEqual(handlers.calls, [{ fn: 'onAttribute', args: [MODEL, 1, 'Description', null] }]);
+  });
+});
+
+describe('typed property declarations (#6643)', () => {
+  it('preserves a measure declaration from mirror through a real peer update into an effective property view', (context) => {
+    const doc = createCollabDoc(); createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
+    const store = fakeStore(new Map([[1, '/wallA']]));
+    mirrorProperty(api, fakeSession(doc), store, 1, 'Pset_WallCommon', 'ThermalTransmittance', 0.25, PropertyValueType.Real, 'IfcThermalTransmittanceMeasure');
+    assert.strictEqual(getPropertyValue(doc, '/wallA', 'Pset_WallCommon', 'ThermalTransmittance')?.type, 'IfcThermalTransmittanceMeasure');
+    const view = new MutablePropertyView(null, MODEL);
+    const handlers = recordingHandlers();
+    handlers.onProperty = (_modelId, entityId, pset, prop, value, type, dataType) => { view.setProperty(entityId, pset, prop, value, type, undefined, false, dataType); };
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
+    try {
+      applyAsRemoteEdit(doc, remote => setPropertyValue(remote, '/wallA', 'Pset_WallCommon', 'ThermalTransmittance', { type: 'IfcThermalTransmittanceMeasure', value: 1 }));
+      const property = view.getForEntity(1).find(pset => pset.name === 'Pset_WallCommon')?.properties.find(prop => prop.name === 'ThermalTransmittance');
+      assert.strictEqual(property?.value, 1); assert.strictEqual(property?.type, PropertyValueType.Real);
+      assert.strictEqual(property?.dataType, 'IfcThermalTransmittanceMeasure');
+      const warning = context.mock.method(console, 'warn', () => {});
+      applyAsRemoteEdit(doc, remote => setPropertyValue(remote, '/wallA', 'Pset_WallCommon', 'ThermalTransmittance', { type: 'IfcThermalTransmittanceMeasure', value: 'invalid' }));
+      assert.strictEqual(view.getPropertyValue(1, 'Pset_WallCommon', 'ThermalTransmittance'), 1, 'invalid peer declarations cannot overwrite a valid local value');
+      assert.strictEqual(warning.mock.callCount(), 1, 'a rejected peer declaration must be reported');
+      assert.match(String(warning.mock.calls[0]?.arguments[0]), /Rejected remote property/);
+    } finally { teardown(); }
   });
 });

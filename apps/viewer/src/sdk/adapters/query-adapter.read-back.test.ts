@@ -12,6 +12,8 @@
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser } from '@ifc-lite/parser';
+import { EntityNode } from '@ifc-lite/query';
+import { createExportAdapter } from './export-adapter.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { createBimContext } from '@ifc-lite/sdk';
 import { useViewerStore, type FederatedModel } from '@/store';
@@ -87,5 +89,22 @@ describe('viewer bim.properties() reads back pending mutations', () => {
     bim.mutate.deleteProperty(ref, 'Pset_WallCommon', 'FireRating');
     assert.equal(bim.property(ref, 'Pset_WallCommon', 'FireRating'), null);
     assert.deepEqual(bim.properties(ref).map((p) => p.name), ['Pset_WallCommon']);
+  });
+});
+
+
+describe('typed SDK viewer writes (#6643)', () => {
+  beforeEach(seed);
+  it('exports and reparses an explicit whole-number IFC measure and undoes it through the canonical adapter', async () => {
+    const mutate = createMutateAdapter(useViewerStore);
+    mutate.setProperty(ref, 'Pset_WallCommon', 'ThermalTransmittance', 1, 'IfcThermalTransmittanceMeasure');
+    const exported = createExportAdapter(useViewerStore).ifc([ref], { includeMutations: true });
+    const bytes = typeof exported === 'string' ? new TextEncoder().encode(exported) : new Uint8Array(exported);
+    const reopened = await new IfcParser().parseColumnar(bytes.slice().buffer, { disableWorkerScan: true });
+    const id = reopened.entities.getExpressIdByGlobalId('1wall00000000000000000');
+    const property = new EntityNode(reopened, id).properties().find(pset => pset.name === 'Pset_WallCommon')?.properties.find(prop => prop.name === 'ThermalTransmittance');
+    assert.equal(property?.value, 1); assert.equal(property?.dataType, 'IFCTHERMALTRANSMITTANCEMEASURE');
+    assert.equal(mutate.undo(MODEL_ID), true);
+    assert.ok(!createQueryAdapter(useViewerStore).properties(ref).some(pset => pset.name === 'Pset_WallCommon' && pset.properties.some(property => property.name === 'ThermalTransmittance')));
   });
 });

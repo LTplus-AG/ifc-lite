@@ -4,6 +4,7 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
+import { Buffer } from 'node:buffer';
 import { IfcParser, EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import { SCHEMA_REGISTRY } from '@ifc-lite/codegen/ifc4';
 import { isSubtypeOf } from '@ifc-lite/codegen';
@@ -44,6 +45,11 @@ describe('fail-closed fixture policy (#6692)', () => {
     }
   });
 });
+// #6735: compare the complete real-fixture STEP bytes without a per-byte deep matcher.
+function assertIdenticalStepBytes(actual: Uint8Array, expected: Uint8Array): void {
+  expect(Buffer.compare(actual, expected), 'STEP bytes differ').toBe(0);
+}
+
 async function parse(content: string | Uint8Array) {
   const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
   return new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
@@ -260,7 +266,16 @@ describe('real authoring-tool fixtures through fresh canonical WASM (#6692)', ()
       expect([...new Set(after.meshes.map(mesh => mesh.expressId))].sort()).toEqual([...representatives].sort());
       const surfaces = representatives.map(id => ({ expressId: id, maximumDistanceMetres: assertSurface(before.meshes.filter(mesh => mesh.expressId === id), after.meshes.filter(mesh => mesh.expressId === id), before, after, fixture.angle, fixture.offset) }));
       console.info('#6692 fresh-WASM fixture oracle', JSON.stringify({ path: fixture.path, productCount: products.length, changedRoots, surfaces }));
-      expect(new StepExporter(store, view).export(options).content).toEqual(ordinary.content);
+      const repeated = new StepExporter(store, view).export(options).content;
+      assertIdenticalStepBytes(repeated, ordinary.content);
+      // Exercise this same assertion with real exports, including the last byte
+      // and a shortened common prefix, so partial comparisons cannot pass.
+      for (const index of [0, Math.floor(repeated.length / 2), repeated.length - 1]) {
+        const changed = repeated.slice();
+        changed[index] ^= 1;
+        expect(() => assertIdenticalStepBytes(changed, ordinary.content)).toThrow('STEP bytes differ');
+      }
+      expect(() => assertIdenticalStepBytes(repeated.subarray(0, repeated.length - 1), ordinary.content)).toThrow('STEP bytes differ');
       expect(get(edited)[2]).not.toBe('WASM rigid fixture edit');
     }, 180_000);
   }

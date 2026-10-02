@@ -127,6 +127,7 @@ interface Harness {
 
 const OPAQUE_PIPELINE = { label: 'opaque' };
 const TRANSPARENT_PIPELINE = { label: 'transparent' };
+const GHOST_PIPELINE = { label: 'ghost' };
 
 function makeHarness(): Harness {
     const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], createdTextures: 0, textures: [], destroyedTextures: [], boundColorTables: [] };
@@ -299,6 +300,7 @@ function makeHarness(): Harness {
                     // Stable identities so a test can tell which pipeline drew what.
                     case 'getPipeline': return () => OPAQUE_PIPELINE;
                     case 'getTransparentPipeline': return () => TRANSPARENT_PIPELINE;
+                    case 'getGhostPipeline': return () => GHOST_PIPELINE;
                     case 'setEntityColorTableBuffer': return (buffer: unknown) => { stats.boundColorTables.push(buffer); };
                     default: return () => ({});
                 }
@@ -1402,6 +1404,30 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         assert.ok(!h.stats.draws.includes(grey.vertexBuffer));
         assertAlpha(h, subBatchFor(h, [1]).uniformBuffer, DEFAULT_GHOST_ALPHA);
         assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 1);
+    });
+
+    it('draws context ghosts with the ghost pipeline, and an X-Ray override with the transparent one', () => {
+        const h = makeHarness();
+        const { red } = seedBatches(h);
+        const pipelineOfDraw = (vertexBuffer: GPUBuffer): unknown => {
+            let pipeline: unknown = null;
+            let draw = 0;
+            for (const c of h.stats.commands) {
+                if (c.op === 'setPipeline') pipeline = c.pipeline;
+                if (c.op === 'drawIndexed' && h.stats.draws[draw++] === vertexBuffer) return pipeline;
+            }
+            return undefined;
+        };
+
+        h.render({ ghostExceptIds: new Set([2]) });
+        assert.strictEqual(pipelineOfDraw(subBatchFor(h, [1]).vertexBuffer), GHOST_PIPELINE, 'the ghosted batchmate');
+        assert.strictEqual(pipelineOfDraw(red.vertexBuffer), GHOST_PIPELINE, 'a wholly ghosted batch');
+        assert.strictEqual(pipelineOfDraw(subBatchFor(h, [2]).vertexBuffer), OPAQUE_PIPELINE, 'the excepted entity');
+
+        h.stats.commands.length = 0;
+        h.stats.draws.length = 0;
+        h.render({ transparencyOverrides: new Map([[1, 0.18]]) });
+        assert.strictEqual(pipelineOfDraw(subBatchFor(h, [1]).vertexBuffer), TRANSPARENT_PIPELINE, 'an override keeps full shading');
     });
 
     it('re-splits when the X-Ray set changes and frees the clones when it clears', () => {

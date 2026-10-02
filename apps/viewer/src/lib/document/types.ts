@@ -29,7 +29,7 @@ export type { TextFont } from './text-typography.js';
 export { reportBlockSourceKind } from './ids-report-types.js';
 export type { IdsReportBlock, IdsReportCardinality, IdsReportCheckSummary, IdsReportRuleSummary, IdsReportSetRow, IdsReportVariant, ReportSourceKind } from './ids-report-types.js';
 
-export const DOCUMENT_VERSION = 10;
+export const DOCUMENT_VERSION = 11;
 
 /** A block that can sit two-up in a row (#4940); an unpaired half block prints full width. */
 export type BlockWidth = 'full' | 'half';
@@ -47,6 +47,8 @@ export interface TextBlock extends BlockTitle {
   textColor?: string;
   backgroundColor?: string;
   width?: BlockWidth;
+  /** Whole-block size, 0.5-2 (#6548): scales the block's text and graphics together; absent is 1. */
+  scale?: number;
 }
 
 export interface ImageBlock extends BlockTitle {
@@ -60,6 +62,8 @@ export interface ImageBlock extends BlockTitle {
   caption?: string;
   /** `'half'` pairs this block with the next half text/chart/image into one row (#4940). Default `'full'`. */
   width?: BlockWidth;
+  /** Whole-block size, 0.5-2 (#6548): scales the block's text and graphics together; absent is 1. */
+  scale?: number;
 }
 
 export interface ChartBlock extends BlockTitle {
@@ -75,6 +79,8 @@ export interface ChartBlock extends BlockTitle {
   fontSize?: number;
   /** `'half'` pairs this block with the next half text/chart/image into one row (#4940). Default `'full'`. */
   width?: BlockWidth;
+  /** Whole-block size, 0.5-2 (#6548): scales the block's text and graphics together; absent is 1. */
+  scale?: number;
 }
 
 export interface TopicBlock extends BlockTitle {
@@ -84,6 +90,8 @@ export interface TopicBlock extends BlockTitle {
   guid: string;
   /** Whether to print the topic's first viewpoint snapshot. */
   snapshot: boolean;
+  /** Whole-block size, 0.5-2 (#6548): scales the block's text and graphics together; absent is 1. */
+  scale?: number;
 }
 
 /** Blank vertical space between blocks, in points (#4940). Reuses the move/remove block UI; no other content. */
@@ -174,6 +182,8 @@ export interface TableBlock extends BlockTitle {
   headerBackground?: string;
   /** Optional opaque header ink; absent chooses black or white for contrast. */
   headerTextColor?: string;
+  /** Whole-block size, 0.5-2 (#6548): scales the block's text and graphics together; absent is 1. */
+  scale?: number;
 }
 
 export type DocumentBlock = TextBlock | ImageBlock | ChartBlock | TopicBlock | SpacerBlock | PageBreakBlock | TableBlock | IdsReportBlock | ManualReportBlock;
@@ -182,6 +192,17 @@ export type DocumentBlockKind = DocumentBlock['kind'];
 export const CHART_BLOCK_HEIGHT_MIN = 120;
 export const CHART_BLOCK_HEIGHT_MAX = 600;
 export const CHART_BLOCK_HEIGHT_DEFAULT = 220;
+
+/** Whole-block size bounds (#6548): below 0.5 printed text is unreadable, above 2 a block cannot share a page with anything. */
+export const BLOCK_SCALE_MIN = 0.5;
+export const BLOCK_SCALE_MAX = 2;
+
+/** The factor a block is laid out at: absent, non-finite or out-of-range reads as 1, like `chartFontScale`. */
+export function blockScale(block: { kind: string; scale?: number }): number {
+  // A spacer is blank space with its own height, and a page break has no content: neither scales.
+  const scale = block.kind === 'spacer' || block.kind === 'page-break' ? undefined : block.scale;
+  return typeof scale === 'number' && Number.isFinite(scale) && scale >= BLOCK_SCALE_MIN && scale <= BLOCK_SCALE_MAX ? scale : 1;
+}
 
 export interface DocumentSpec {
   version: typeof DOCUMENT_VERSION;
@@ -199,11 +220,11 @@ export function isHalfPairable<T extends { kind: string }>(block: T): block is T
 }
 
 /**
- * `.ifclite-document.json` version 1 -> 2 (#4940) -> 3 (#5142) -> 4 (#5138) -> 5 (#5125) -> 6 (#4940 follow ups) -> 7 (#6401) -> 8 (#6485) -> 9 (#6506) -> 10 (#6507):
+ * `.ifclite-document.json` version 1 -> 2 (#4940) -> 3 (#5142) -> 4 (#5138) -> 5 (#5125) -> 6 (#4940 follow ups) -> 7 (#6401) -> 8 (#6485) -> 9 (#6506) -> 10 (#6507) -> 11 (#6548):
  * every step is additive (v2: chart/image `width`/`height`, text styles, spacer; v3: table
  * over a list; v4: its validation source; v5: IDS report block; v6: text font, size and
  * half-width layout; v7: manual-validation report block; v8: explicit page-break block; v9: saved comparison tables; v10: live manual checklist
- * identity and optional compact/benchmark presentation). The report block's optional
+ * identity and optional compact/benchmark presentation; v11: optional whole-block `scale`). The report block's optional
  * `sourceKind` (#6372) is additive within v6: an absent value reads as `'ids'`, the label
  * every earlier block printed. An older file only has its version raised. Embedded v1 Lists
  * conditions are also normalized into Rules groups (#5894), including in a document already
@@ -214,7 +235,7 @@ export function isHalfPairable<T extends { kind: string }>(block: T): block is T
  */
 export function migrateDocumentSpec(raw: unknown): unknown {
   if (!isRecord(raw)) return raw;
-  const version = raw.version === 1 || raw.version === 2 || raw.version === 3 || raw.version === 4 || raw.version === 5 || raw.version === 6 || raw.version === 7 || raw.version === 8 || raw.version === 9
+  const version = raw.version === 1 || raw.version === 2 || raw.version === 3 || raw.version === 4 || raw.version === 5 || raw.version === 6 || raw.version === 7 || raw.version === 8 || raw.version === 9 || raw.version === 10
     ? DOCUMENT_VERSION : raw.version;
   return { ...raw, version, blocks: migrateDocumentListBlocks(raw.blocks) };
 }
@@ -264,6 +285,10 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
     else if (ids.has(block.id)) errors.push({ path: `${at}.id`, message: `duplicate block id "${block.id}"` });
     else ids.add(block.id);
     if (block.kind !== 'ids-report' && block.kind !== 'manual-report' && block.kind !== 'spacer' && block.kind !== 'page-break') validateBlockTitle(block, at, errors);
+    if (block.kind !== 'spacer' && block.kind !== 'page-break' && block.scale !== undefined
+      && (typeof block.scale !== 'number' || !Number.isFinite(block.scale) || block.scale < BLOCK_SCALE_MIN || block.scale > BLOCK_SCALE_MAX)) {
+      errors.push({ path: `${at}.scale`, message: `expected a number between ${BLOCK_SCALE_MIN} and ${BLOCK_SCALE_MAX}` });
+    }
     switch (block.kind) {
       case 'text':
         if (!isString(block.text)) errors.push({ path: `${at}.text`, message: 'expected a string' });

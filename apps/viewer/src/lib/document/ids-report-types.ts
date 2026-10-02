@@ -102,6 +102,8 @@ export interface IdsReportBlock extends ReportProvenance, BlockTitle {
   variant?: IdsReportVariant;
   /** Optional ring benchmark (#6552). Absent retains existing document output. */
   benchmarks?: boolean;
+  /** Whole-block size, 0.5-2 (#6548); absent is 1. */
+  scale?: number;
   /** Which engine produced the snapshot (#6372). Absent means `'ids'`: every block saved before this field existed was labelled IDS. */
   sourceKind?: ReportSourceKind;
   /** IDS document title, or rule-set name, printed in the block's heading. */

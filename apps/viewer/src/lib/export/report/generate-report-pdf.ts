@@ -51,6 +51,8 @@ export interface ReportTableArgs {
   /** Parallel to `body`; a row with no entry is a data row. */
   rowRoles?: ReportTableRowRole[];
   headerStyle?: TableHeaderStyle;
+  /** Size factor of a scaled document block (#6548): font size, cell padding, row height and rules grow with it. Absent is 1. */
+  scale?: number;
 }
 
 export interface ReportPdfSeams {
@@ -129,7 +131,7 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
             host.remove();
           }
         },
-        table: ({ startY, margin, head, body, columns, rowRoles, headerStyle }) => {
+        table: ({ startY, margin, head, body, columns, rowRoles, headerStyle, scale = 1 }) => {
           const palette = headerStyle ?? tableHeaderStyle();
           const columnStyles: Record<number, { halign?: 'left' | 'right'; cellWidth?: number }> = columns
             ? Object.fromEntries(columns.map((c, i) => [i, { halign: c.align, cellWidth: c.width }]))
@@ -138,7 +140,7 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
             startY, margin: { ...margin, top: REPORT_MARGIN, bottom: REPORT_MARGIN }, head, body,
             // `pageBreak: 'avoid'` is the belt to `AUTOTABLE_ROW_HEIGHT`: the document composer only
             // ever hands over a chunk that fits.
-            styles: { fontSize: 8, cellPadding: 2, minCellHeight: AUTOTABLE_ROW_HEIGHT, overflow: 'ellipsize', lineColor: [226, 232, 240], lineWidth: 0.5 },
+            styles: { fontSize: 8 * scale, cellPadding: 2 * scale, minCellHeight: AUTOTABLE_ROW_HEIGHT * scale, overflow: 'ellipsize', lineColor: [226, 232, 240], lineWidth: 0.5 * scale },
             headStyles: { fillColor: palette.backgroundColor, textColor: palette.textColor, fontStyle: 'bold' },
             columnStyles,
             pageBreak: columns ? 'avoid' : 'auto',

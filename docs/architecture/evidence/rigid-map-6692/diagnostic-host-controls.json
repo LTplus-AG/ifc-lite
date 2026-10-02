@@ -1,0 +1,149 @@
+{
+  "sourceCommit": "73adbdc65b1b42ef54f06c9012274698f890df5d",
+  "canonicalScratchRuntimeSha256": "4ac78d526b679503b923f30be0b77d19c51b52e56cb8032a6248bf34a63c6b4a",
+  "ifcOpenShellVersion": "0.8.2",
+  "diagnostics": {
+    "source": {
+      "failures": 13,
+      "products": 3,
+      "KernelError": 11,
+      "NoBoundsOverlap": 2
+    },
+    "normalized": {
+      "failures": 14,
+      "products": 7,
+      "KernelError": 8,
+      "NoBoundsOverlap": 6
+    }
+  },
+  "method": "Bidirectional vertices and triangle centroids; canonical RTC reconstruction and authored 15-degree affine. Signed triangle sums subtract a nearby origin; closure is not certified. Unvoided controls remove only the listed hosts\u2019 IfcRelVoidsElement relationships. Independent source controls toggle IfcOpenShell opening subtraction.",
+  "scope": "All seven changed-diagnostic hosts, not all MiniBIM surfaces. No lost material-removing cut found; finite-precision and retriangulation differences remain.",
+  "hosts": [
+    {
+      "ExpressId": 135923,
+      "maximumSurfaceDistanceMetres": 0.00028883472059044725,
+      "voidedVsUnvoidedSurfaceMetres": {
+        "source": 1.5614786379306887e-05,
+        "normalized": 0.00028462183077142245
+      },
+      "triangles": {
+        "source": 999,
+        "normalized": 708
+      },
+      "rebasedSignedTriangleVolumeCubicMetres": {
+        "source": 169.59427898131506,
+        "normalized": 169.5942021748547
+      },
+      "independentOpeningSubtractionVolumeDeltaCubicMetres": 5.684341886080802e-14,
+      "independentOpeningSubtractionAreaDeltaSquareMetres": -6.821210263296962e-13
+    },
+    {
+      "ExpressId": 200207,
+      "maximumSurfaceDistanceMetres": 1.1821300674173484e-05,
+      "voidedVsUnvoidedSurfaceMetres": {
+        "source": 7.3183799144510915e-06,
+        "normalized": 5.40244676510244e-06
+      },
+      "triangles": {
+        "source": 42,
+        "normalized": 42
+      },
+      "rebasedSignedTriangleVolumeCubicMetres": {
+        "source": 0.7837028254612598,
+        "normalized": 0.7837993832878908
+      },
+      "independentOpeningSubtractionVolumeDeltaCubicMetres": -5.440092820663267e-15,
+      "independentOpeningSubtractionAreaDeltaSquareMetres": 0.0
+    },
+    {
+      "ExpressId": 147941,
+      "maximumSurfaceDistanceMetres": 6.315283014681197e-07,
+      "voidedVsUnvoidedSurfaceMetres": {
+        "source": 9.44484450697849e-06,
+        "normalized": 9.812570218921794e-06
+      },
+      "triangles": {
+        "source": 36,
+        "normalized": 36
+      },
+      "rebasedSignedTriangleVolumeCubicMetres": {
+        "source": 0.7965555579457212,
+        "normalized": 0.7965553400710259
+      },
+      "independentOpeningSubtractionVolumeDeltaCubicMetres": 2.220446049250313e-16,
+      "independentOpeningSubtractionAreaDeltaSquareMetres": 0.0
+    },
+    {
+      "ExpressId": 201198,
+      "maximumSurfaceDistanceMetres": 1.1820096492400631e-05,
+      "voidedVsUnvoidedSurfaceMetres": {
+        "source": 7.3041527109809235e-06,
+        "normalized": 5.4322039556810606e-06
+      },
+      "triangles": {
+        "source": 42,
+        "normalized": 42
+      },
+      "rebasedSignedTriangleVolumeCubicMetres": {
+        "source": 0.7837028254006508,
+        "normalized": 0.7837993832878908
+      },
+      "independentOpeningSubtractionVolumeDeltaCubicMetres": 0.0,
+      "independentOpeningSubtractionAreaDeltaSquareMetres": 7.105427357601002e-15
+    },
+    {
+      "ExpressId": 148007,
+      "maximumSurfaceDistanceMetres": 8.12892136375846e-06,
+      "voidedVsUnvoidedSurfaceMetres": {
+        "source": 8.852125198151962e-06,
+        "normalized": 9.619873912053897e-06
+      },
+      "triangles": {
+        "source": 40,
+        "normalized": 40
+      },
+      "rebasedSignedTriangleVolumeCubicMetres": {
+        "source": 0.7964339700012922,
+        "normalized": 0.7965553263781661
+      },
+      "independentOpeningSubtractionVolumeDeltaCubicMetres": 0.0,
+      "independentOpeningSubtractionAreaDeltaSquareMetres": 0.0
+    },
+    {
+      "ExpressId": 201979,
+      "maximumSurfaceDistanceMetres": 8.243837582759866e-06,
+      "voidedVsUnvoidedSurfaceMetres": {
+        "source": 4.64554507084597e-06,
+        "normalized": 4.66718070607359e-06
+      },
+      "triangles": {
+        "source": 42,
+        "normalized": 42
+      },
+      "rebasedSignedTriangleVolumeCubicMetres": {
+        "source": 0.7837028452139256,
+        "normalized": 0.7837996254376216
+      },
+      "independentOpeningSubtractionVolumeDeltaCubicMetres": -1.1102230246251565e-16,
+      "independentOpeningSubtractionAreaDeltaSquareMetres": 3.552713678800501e-15
+    },
+    {
+      "ExpressId": 202696,
+      "maximumSurfaceDistanceMetres": 1.2010592741270724e-06,
+      "voidedVsUnvoidedSurfaceMetres": {
+        "source": 6.1808033610641416e-06,
+        "normalized": 5.3971833052903625e-06
+      },
+      "triangles": {
+        "source": 42,
+        "normalized": 42
+      },
+      "rebasedSignedTriangleVolumeCubicMetres": {
+        "source": 0.7837993724212373,
+        "normalized": 0.7837993832878908
+      },
+      "independentOpeningSubtractionVolumeDeltaCubicMetres": -3.3306690738754696e-16,
+      "independentOpeningSubtractionAreaDeltaSquareMetres": 3.552713678800501e-15
+    }
+  ]
+}

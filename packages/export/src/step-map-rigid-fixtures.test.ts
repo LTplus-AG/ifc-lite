@@ -7,7 +7,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import { IfcParser, EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import { SCHEMA_REGISTRY } from '@ifc-lite/codegen/ifc4';
 import { isSubtypeOf } from '@ifc-lite/codegen';
-import { GeometryProcessor, type GeometryResult, type MeshData } from '@ifc-lite/geometry';
+import { CoordinateHandler, type GeometryResult, type MeshData } from '@ifc-lite/geometry';
+import { IfcAPI } from '@ifc-lite/wasm';
+import { buildPrePassWithFinishes } from '../../geometry/src/style-finishes.js';
+import { resolveRtcFrame } from '../../geometry/src/rtc-frame.js';
+// Root Turbo's ^build supplies this internal helper without expanding the public API.
+import { convertMeshCollectionToBatch, withBuildingRotation } from '../../geometry/dist/geometry-coordinate.js';
 import { renderFrameWorldOffset, viewerToIfcAxes } from '../../geometry/src/world-frame.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { formatStepReal } from '@ifc-lite/data';
@@ -15,8 +20,8 @@ import { StepExporter } from './step-exporter.js';
 
 type Point = [number, number, number];
 const fixtures = [
-  { path: 'ara3d/AC20-FZK-Haus.ifc', angle: 50, offset: [458870.0632856814, 5438773.629049492, 110] as Point, count: 127 },
-  { path: 'georeferencer/MiniBIM-3.1-DO_01_VORM.ifc', angle: 15, offset: [90770, 435320, 3.5] as Point, count: 2668 },
+  { path: 'ara3d/AC20-FZK-Haus.ifc', angle: 50, offset: [458870.0632856814, 5438773.629049492, 110] as Point, count: 127, door: 17468 },
+  { path: 'georeferencer/MiniBIM-3.1-DO_01_VORM.ifc', angle: 15, offset: [90770, 435320, 3.5] as Point, count: 2668, door: 136868 },
 ];
 const wasm = new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
 const required = process.env.IFC_LITE_REQUIRE_FIXTURES === '1';
@@ -97,6 +102,8 @@ function points(mesh: MeshData, result: GeometryResult): Point[] {
   });
 }
 function assertSurface(source: MeshData[], target: MeshData[], before: GeometryResult, after: GeometryResult, angle: number, offset: Point) {
+  expect(source.length).toBeGreaterThan(0);
+  expect(target.length).toBeGreaterThan(0);
   let maximumDistance = 0;
   const old = source.map(mesh => ({ mesh, points: points(mesh, before).map(p => transform(p, angle, offset)) }));
   const fresh = target.map(mesh => ({ mesh, points: points(mesh, after) }));
@@ -115,6 +122,42 @@ function assertSurface(source: MeshData[], target: MeshData[], before: GeometryR
   }
   expect(maximumDistance).toBeLessThan(.003);
   return maximumDistance;
+}
+
+// #6692: exercise the canonical per-element producer for the actual oracle IDs.
+// Whole-file prepass metadata is retained; unrelated thousands of CSG jobs are
+// not required for a bounded fixture contract on slower CI hosts.
+function sampleGeometry(buffer: Uint8Array, ids: number[]): GeometryResult {
+  const api = new IfcAPI();
+  try {
+    const prePass = buildPrePassWithFinishes(api, buffer);
+    const rtc = resolveRtcFrame(prePass);
+    const wanted = new Set(ids);
+    const jobs: number[] = [];
+    expect(prePass.jobs.length % 3).toBe(0);
+    for (let i = 0; i < prePass.jobs.length; i += 3) {
+      if (wanted.has(prePass.jobs[i])) jobs.push(prePass.jobs[i], prePass.jobs[i + 1], prePass.jobs[i + 2]);
+    }
+    expect(new Set(jobs.filter((_, i) => i % 3 === 0))).toEqual(wanted);
+    const collection = api.processGeometryBatch(
+      buffer, Uint32Array.from(jobs), prePass.unitScale,
+      rtc.x, rtc.y, rtc.z, rtc.needsShift,
+      prePass.voidKeys, prePass.voidCounts, prePass.voidValues,
+      prePass.styleIds, prePass.styleColors, prePass.planeAngleToRadians,
+      prePass.materialElementIds, prePass.materialColorCounts, prePass.materialColors,
+    );
+    // This shared converter frees the collection and each MeshDataJs in finally.
+    const meshes = convertMeshCollectionToBatch(collection);
+    const handler = new CoordinateHandler();
+    handler.setWasmMetadata(prePass.unitScale, rtc.needsShift ? { x: rtc.x, y: rtc.y, z: rtc.z } : null, rtc);
+    return { meshes,
+      totalTriangles: meshes.reduce((total, mesh) => total + mesh.indices.length / 3, 0),
+      totalVertices: meshes.reduce((total, mesh) => total + mesh.positions.length / 3, 0),
+      coordinateInfo: withBuildingRotation(handler.processMeshes(meshes), prePass.buildingRotation ?? undefined),
+    };
+  } finally {
+    try { api.clearPrePassCache(); } finally { api.free(); }
+  }
 }
 
 describe('real authoring-tool fixtures through fresh canonical WASM (#6692)', () => {
@@ -176,19 +219,19 @@ describe('real authoring-tool fixtures through fresh canonical WASM (#6692)', ()
         changedRoots++;
       }
       expect(changedRoots).toBeGreaterThan(0);
-      const processor = new GeometryProcessor();
-      try {
-        await processor.init();
-        const before = await processor.process(ordinary.content);
-        const after = await processor.process(exported.content);
-        expect([...new Set(after.meshes.map(mesh => mesh.expressId))].sort()).toEqual([...new Set(before.meshes.map(mesh => mesh.expressId))].sort());
-        const representatives = [...new Set((store.entityIndex.byType.get('IFCRELVOIDSELEMENT') ?? []).map(id => ref(get(id)[4])))].filter(id => before.meshes.some(mesh => mesh.expressId === id)).slice(0, 3);
-        const door = before.meshes.find(mesh => mesh.ifcType === 'IfcDoor');
-        if (door) representatives.push(door.expressId);
-        expect(representatives.length).toBeGreaterThan(0);
-        const surfaces = representatives.map(id => ({ expressId: id, maximumDistanceMetres: assertSurface(before.meshes.filter(mesh => mesh.expressId === id), after.meshes.filter(mesh => mesh.expressId === id), before, after, fixture.angle, fixture.offset) }));
-        console.info('#6692 fresh-WASM fixture oracle', JSON.stringify({ path: fixture.path, productCount: products.length, changedRoots, surfaces }));
-      } finally { processor.dispose(); }
+      const openingHosts = [...new Set((store.entityIndex.byType.get('IFCRELVOIDSELEMENT') ?? []).map(id => ref(get(id)[4])))].slice(0, 3);
+      // #6692: include every host in the changed 13→14 CSG diagnostics,
+      // rather than inferring preservation from unrelated successful samples.
+      const diagnosticHosts = fixture.path === 'georeferencer/MiniBIM-3.1-DO_01_VORM.ifc'
+        ? [135923, 200207, 147941, 201198, 148007, 201979, 202696] : [];
+      expect(store.entities.getTypeName(fixture.door)).toBe('IfcDoor');
+      const representatives = [...new Set([...openingHosts, ...diagnosticHosts, fixture.door])];
+      const before = sampleGeometry(ordinary.content, representatives);
+      const after = sampleGeometry(exported.content, representatives);
+      expect([...new Set(before.meshes.map(mesh => mesh.expressId))].sort()).toEqual([...representatives].sort());
+      expect([...new Set(after.meshes.map(mesh => mesh.expressId))].sort()).toEqual([...representatives].sort());
+      const surfaces = representatives.map(id => ({ expressId: id, maximumDistanceMetres: assertSurface(before.meshes.filter(mesh => mesh.expressId === id), after.meshes.filter(mesh => mesh.expressId === id), before, after, fixture.angle, fixture.offset) }));
+      console.info('#6692 fresh-WASM fixture oracle', JSON.stringify({ path: fixture.path, productCount: products.length, changedRoots, surfaces }));
       expect(new StepExporter(store, view).export(options).content).toEqual(ordinary.content);
       expect(get(edited)[2]).not.toBe('WASM rigid fixture edit');
     }, 180_000);

@@ -43,23 +43,68 @@ The committed exporter fixture contract authors 15°/50° map operations in memo
 on the original catalogued MiniBIM/Haus files. It checks all 2,668/127 product
 identities and placement/representation references, changed root frames,
 canonical neutral map attributes, retained CRS/map units, selected edits, and
-ordinary-export immutability. Real geometry processing checks the complete mesh
-identity set, retained colors and bidirectional vertex/triangle-centroid surface
-distance for three distinct opening hosts and a door per model:
+ordinary-export immutability. Bounded real geometry batches check sampled mesh
+identities, retained colors and bidirectional vertex/triangle-centroid surface
+distance for three distinct opening hosts and a door per model. MiniBIM also
+checks every host in the changed CSG diagnostics described below:
+
+Geometry batches use the existing whole-file prepass, style/finish/material/void
+metadata and canonical RTC/conversion helpers, then filter only the actual sampled
+job IDs. This retains whole-file export and product-reference assertions without
+running unrelated thousands of CSG jobs twice; the earlier whole-model geometry
+test exceeded its 180-second deadline on CI. No timeout increase, fixture skip or
+production pipeline change is used. The API, prepass cache and mesh handles are
+freed in `finally`, including assertion/error paths. The sampled physical surface
+tolerance is 3 mm; this is not whole-model geometry or exact mesh identity proof.
 
 | Fixture | Sampled ExpressIds | Maximum surface distance |
 | --- | --- | --- |
 | Haus | 17040, 18698, 21966, 17468 | 0.000010791 m |
-| MiniBIM | 135719, 135923, 137489, 136868 | 0.000288835 m |
+| MiniBIM | 135719, 135923, 137489, 136868, plus the diagnostic hosts below | 0.000288835 m |
 
-The full root Turbo exporter suite passed 1,731 tests across 142 files with one
-existing skip. The final affected boundary files passed 14/14 with zero skips,
-using required fixture mode and the accepted `f2114e…` runtime verified before
-and after the run. These authored-map fixture tests complement, rather than
+Before this all-affected expansion, the full root Turbo exporter suite passed
+1,731 tests across 142 files with one existing skip. The final bounded boundary
+files passed 14/14 with zero skips in 15.68 seconds, using required fixture mode
+and the accepted `f2114e…` runtime verified before and after the run. Root
+typechecking covered all 3,301 test files. These authored-map fixture tests complement, rather than
 replace, the actual downloaded writer-file/provider acceptance below.
 In an isolated checkout with both fixture paths absent, optional mode skipped
 both tests with the download/build instruction; required mode failed both
 direct missing-fixture assertions after successful dependency builds.
+
+## Changed CSG diagnostics and all-affected controls
+
+MiniBIM's CSG diagnostics change from 13 failures across three hosts
+(11 `KernelError`, two `NoBoundsOverlap`) to 14 across seven hosts
+(eight `KernelError`, six `NoBoundsOverlap`). Those counts alone are not a
+physical preservation verdict. The isolated comparison therefore checked **all**
+affected hosts: 135923, 200207, 147941, 201198, 148007, 201979 and 202696.
+The committed WASM fixture test now includes this entire set, with deduplication
+and explicit nonempty source/output meshes.
+
+[Compact physical controls](diagnostic-host-controls.json) record canonical RTC
+reconstruction, the authored 15° affine, bidirectional vertices and triangle
+centroids, and controls removing only these hosts' `IfcRelVoidsElement` records.
+Newly reported wall hosts differ by at most 0.000011821 m; slab 135923 differs by
+0.000288835 m and retriangulates from 999 to 708 triangles. Signed triangle sums
+subtract a nearby point before triple products; they are not claimed to be
+watertight-certified volumes or computed from raw RD/UTM absolute coordinates.
+
+Independent **IfcOpenShell 0.8.2** controls, with opening subtraction enabled and
+disabled, give the same physical area and volume on all seven hosts (maximum
+differences 7e-13 m² and 5.7e-14 m³). The slab already has 14 profile inner loops;
+the walls' polygonal face sets have no `IfcIndexedPolygonalFaceWithVoids` faces.
+For these particular hosts the listed opening relationships remove no additional
+material. No lost material-removing cut was found; finite-precision and
+retriangulation differences remain. This does not prove every MiniBIM surface.
+
+To reproduce the independent source control with the catalogued fixture present:
+
+```sh
+python3 docs/architecture/evidence/rigid-map-6692/diagnostic-opening-controls.py
+```
+
+The script requires `ifcopenshell==0.8.2`; fetch the IFC via `pnpm fixtures`.
 
 ## Actual browser and provider acceptance, 2026-10-02
 

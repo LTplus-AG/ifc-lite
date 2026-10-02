@@ -62,11 +62,15 @@ for (const count of [1, 2]) {
     assert.ok(progress, 'the real validator publishes progress before yielding to paint');
     assert.equal(useViewerStore.getState().idsLoading, true);
 
-    const panel = render(<IDSPanel />);
-    assert.equal(useViewerStore.getState().idsLoading, true, 'mounting a passive caller cannot cancel another caller');
-    assert.deepEqual(useViewerStore.getState().idsProgress, progress);
-    assert.ok([...panel.querySelectorAll('button')].some(button => button.textContent?.trim() === 'Cancel'));
-    const report = await act(async () => await pending);
+    try {
+      const panel = render(<IDSPanel />);
+      assert.equal(useViewerStore.getState().idsLoading, true, 'mounting a passive caller cannot cancel another caller');
+      assert.deepEqual(useViewerStore.getState().idsProgress, progress);
+      assert.ok([...panel.querySelectorAll('button')].some(button => button.textContent?.trim() === 'Cancel validation'));
+    } finally {
+      await act(async () => { await pending; });
+    }
+    const report = await pending;
     assert.ok(report && report.specificationResults.length > 0, 'the owner completes validation of the actual IFC input');
     assert.equal(useViewerStore.getState().idsValidationReport, report);
     assert.equal(useViewerStore.getState().idsLoading, false);

@@ -186,7 +186,7 @@ it('preserves existing no-band PDF text, counters, frame positions and overflow 
 
 
 it('migrates an old version-11 document without inventing authored footer content (#6610)', () => {
-  const old: DocumentSpec = { ...base, version: 11,
+  const old: Omit<DocumentSpec, 'version'> & { version: 11 } = { ...base, version: 11,
     pageHeading: { text: 'Existing {project.name} heading', font: 'times', fontSize: 12 },
     blocks: [{ kind: 'text', id: 'evidence', style: 'body', text: `${lines}\n{project.name}` }],
   };

@@ -471,6 +471,22 @@ describe('#6581 durable claim state', () => {
   });
 });
 
+describe('#6581 room ids that collide with object keys', () => {
+  for (const room of ['__proto__', 'constructor', 'hasOwnProperty']) {
+    it(`a pending claim for "${room}" survives the state-file round trip`, async () => {
+      const dir = freshDir();
+      const ac = create(dir);
+      const admin = await mint(await serve(ac), room);
+      expect(admin.status).toBe(200);
+      await ac.flush();
+      const raw = stateOf(dir).pendingClaims!;
+      expect(Object.prototype.hasOwnProperty.call(raw, room), 'written as its own key').toBe(true);
+      const restarted = create(dir);
+      expect(await restarted.serverOptions.releaseEndpoint!.release(claimsOf(admin.token!)), 'still pending').toBe('released');
+    });
+  }
+});
+
 /** An unpaired UTF-16 surrogate: `encodeURIComponent` throws on it. */
 const ILL_FORMED = '\ud800';
 
@@ -529,10 +545,10 @@ describe('#6581 room ids that cannot be encoded', () => {
     const ledger = createRoomClaims({
       maxClaimedRooms: 10,
       claimedRooms: [],
-      pendingClaims: {
-        throws: { at: past, tokens: { a: past } },
-        plain: { at: past, tokens: { b: past } },
-      },
+      pendingClaims: new Map([
+        ['throws', { at: past, tokens: new Map([['a', past]]) }],
+        ['plain', { at: past, tokens: new Map([['b', past]]) }],
+      ]),
       hasContent: (room) => {
         if (room === 'throws') throw new Error('cannot check');
         return false;

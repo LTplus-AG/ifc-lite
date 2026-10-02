@@ -85,7 +85,8 @@ export function createRoomClaims(opts: {
   maxClaimedRooms: number;
   /** Rooms already persisted as confirmed (or adopted from the data dir). */
   claimedRooms: Iterable<string>;
-  pendingClaims: Record<string, PendingClaimRecord>;
+  /** Room -> claim time and `jti -> exp`; a Map, since room ids are client-chosen keys. */
+  pendingClaims: ReadonlyMap<string, { at: number; tokens: ReadonlyMap<string, number> }>;
   /** Whether the room has persisted data; such a room is never removed. */
   hasContent: (room: string) => boolean;
 }): RoomClaims {
@@ -95,9 +96,9 @@ export function createRoomClaims(opts: {
   // No such token can verify, so there is nothing to record.
   const recordable = (token: MintedToken | undefined): token is MintedToken =>
     token !== undefined && Number.isFinite(token.exp);
-  for (const [room, rec] of Object.entries(opts.pendingClaims)) {
+  for (const [room, rec] of opts.pendingClaims) {
     claimed.add(room);
-    pending.set(room, { at: rec.at, tokens: new Map(Object.entries(rec.tokens)) });
+    pending.set(room, { at: rec.at, tokens: new Map(rec.tokens) });
   }
 
   const expiresAt = (claim: PendingClaim): number => {
@@ -170,10 +171,11 @@ export function createRoomClaims(opts: {
       return n;
     },
     snapshot() {
-      const pendingClaims: Record<string, PendingClaimRecord> = {};
-      for (const [room, claim] of pending) {
-        pendingClaims[room] = { at: claim.at, tokens: Object.fromEntries(claim.tokens) };
-      }
+      // `Object.fromEntries` defines own keys, so a room id like `__proto__`
+      // is written as data; assigning it on a `{}` would set the prototype.
+      const pendingClaims: Record<string, PendingClaimRecord> = Object.fromEntries(
+        [...pending].map(([room, claim]) => [room, { at: claim.at, tokens: Object.fromEntries(claim.tokens) }]),
+      );
       // Pending rooms stay in `claimedRooms` too: a server that predates
       // `pendingClaims` then reads them as claimed (fail closed), never free.
       return { claimedRooms: [...claimed], pendingClaims };

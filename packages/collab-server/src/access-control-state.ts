@@ -15,7 +15,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { FALLBACK_TOKEN_RETENTION_SEC, type PendingClaimRecord } from './room-claims.js';
+import { FALLBACK_TOKEN_RETENTION_SEC } from './room-claims.js';
 
 /**
  * Whether `FilePersistence` would load a log for `roomId` from `dir`: under
@@ -86,7 +86,7 @@ const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Num
 export function parseStateFile(raw: string, statePath: string): {
   revoked: Map<string, number>;
   claimedRooms: string[];
-  pendingClaims: Record<string, PendingClaimRecord>;
+  pendingClaims: Map<string, { at: number; tokens: Map<string, number> }>;
 } {
   const fail = (why: string): never => {
     throw new Error(
@@ -111,7 +111,9 @@ export function parseStateFile(raw: string, statePath: string): {
     }
     claimedRooms.push(...(rec.claimedRooms as string[]));
   }
-  const pendingClaims: Record<string, PendingClaimRecord> = {};
+  // A Map, not `{}`: room ids are client-chosen, and assigning `__proto__`
+  // on a plain object would set its prototype instead of storing the claim.
+  const pendingClaims = new Map<string, { at: number; tokens: Map<string, number> }>();
   if (rec.pendingClaims !== undefined) {
     if (rec.pendingClaims === null || typeof rec.pendingClaims !== 'object' || Array.isArray(rec.pendingClaims)) {
       return fail('malformed (pendingClaims must be an object of room -> { at, tokens })');
@@ -128,7 +130,7 @@ export function parseStateFile(raw: string, statePath: string): {
       ) {
         return fail(`malformed (pendingClaims["${room}"] must be { at, tokens: jti -> exp })`);
       }
-      pendingClaims[room] = { at: c.at, tokens: { ...(tokens as Record<string, number>) } };
+      pendingClaims.set(room, { at: c.at, tokens: new Map(Object.entries(tokens as Record<string, number>)) });
     }
   }
   const revoked = new Map<string, number>();

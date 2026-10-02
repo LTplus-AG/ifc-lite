@@ -45,7 +45,6 @@ import {
   createRoomClaims,
   EXPIRY_SLACK_SEC,
   FALLBACK_TOKEN_RETENTION_SEC,
-  type PendingClaimRecord,
 } from './room-claims.js';
 
 export interface AccessControlOptions {
@@ -95,7 +94,7 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
   /** jti -> token expiry (seconds since epoch); expired entries are pruned. */
   const revoked = new Map<string, number>();
   let loadedRooms: string[] = [];
-  let loadedPending: Record<string, PendingClaimRecord> = {};
+  let loadedPending: ReadonlyMap<string, { at: number; tokens: ReadonlyMap<string, number> }> = new Map();
   let stateRaw: string | null = null;
   try {
     stateRaw = fs.readFileSync(statePath, 'utf8');

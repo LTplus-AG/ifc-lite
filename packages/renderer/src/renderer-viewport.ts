@@ -45,6 +45,8 @@ export interface DrawingBufferSize {
  * `maxPixelRatio` caps the ratio; a non-finite or non-positive cap falls back
  * to {@link MAX_DRAWING_BUFFER_PIXEL_RATIO}.
  *
+ * A valid frame cap can reduce this frame further without changing the persistent cap.
+ *
  * Returns null for a collapsed or non-finite layout: the caller keeps the
  * buffer it has.
  */
@@ -54,12 +56,14 @@ export function computeDrawingBufferSize(
   devicePixelRatio: number,
   maxTextureDimension: number,
   maxPixelRatio: number = MAX_DRAWING_BUFFER_PIXEL_RATIO,
+  frameMaxPixelRatio?: number,
 ): DrawingBufferSize | null {
   if (!Number.isFinite(cssWidth) || !Number.isFinite(cssHeight) || cssWidth <= 0 || cssHeight <= 0) return null;
   const dpr = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
   const maxDim = Number.isFinite(maxTextureDimension) && maxTextureDimension >= 1 ? maxTextureDimension : 8192;
   const cap = Number.isFinite(maxPixelRatio) && maxPixelRatio > 0 ? maxPixelRatio : MAX_DRAWING_BUFFER_PIXEL_RATIO;
-  const ratio = Math.min(dpr, cap, maxDim / cssWidth, maxDim / cssHeight);
+  const frameCap = typeof frameMaxPixelRatio === 'number' && Number.isFinite(frameMaxPixelRatio) && frameMaxPixelRatio > 0 ? frameMaxPixelRatio : cap;
+  const ratio = Math.min(dpr, cap, frameCap, maxDim / cssWidth, maxDim / cssHeight);
   const width = Math.min(maxDim, Math.max(1, Math.round(cssWidth * ratio)));
   const height = Math.min(maxDim, Math.max(1, Math.round(cssHeight * ratio)));
   return { width, height, pixelRatio: width / cssWidth };
@@ -73,10 +77,11 @@ export function measureDrawingBuffer(
   canvas: HTMLCanvasElement,
   maxTextureDimension: number,
   maxPixelRatio?: number,
+  frameMaxPixelRatio?: number,
 ): DrawingBufferSize | null {
   const rect = canvas.getBoundingClientRect();
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
-  return computeDrawingBufferSize(rect.width, rect.height, dpr, maxTextureDimension, maxPixelRatio);
+  return computeDrawingBufferSize(rect.width, rect.height, dpr, maxTextureDimension, maxPixelRatio, frameMaxPixelRatio);
 }
 
 export function resizeRendererViewport(

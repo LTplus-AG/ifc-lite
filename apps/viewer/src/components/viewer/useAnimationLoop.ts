@@ -135,7 +135,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     let lastRotationUpdate = 0;
     let lastScaleUpdate = 0;
     let lastRenderTime = 0;
-    let wasAnimating = false;
+    let wasInteracting = false;
     let residencyRestoreErrorLogged = false;
     let renderErrorLogged = false;
 
@@ -212,15 +212,10 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       // 2. Camera update (animation / inertia)
       const isAnimating = camera.update(deltaTime);
 
-      // Camera tweens (Home / view cube / zoom-extent) render their frames
-      // with isInteracting=true; without a settle render the last tween frame
-      // could stay on screen at degraded quality until the next incidental
-      // render. Mouse/wheel/touch paths already request their own settle
-      // frame on release — this covers the animation path.
-      if (wasAnimating && !isAnimating && !isInteractingRef.current) {
-        renderer.requestRender();
-      }
-      wasAnimating = isAnimating;
+      const isContinuousRender = isInteractingRef.current || isAnimating;
+      // The first settled frame restores HiDPI sharpness for every navigation path.
+      if (wasInteracting && !isContinuousRender) renderer.requestRender();
+      wasInteracting = isContinuousRender;
 
       // 3. Render if anything changed
       // Peek first — only consume the flag when we actually commit to rendering.
@@ -231,7 +226,6 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       // for large models. Without this, 200K+ mesh models at 60fps overwhelm
       // the main thread and freeze the tab. Inertia alone can run 60+ frames
       // after mouseup, each requiring a full GPU render pass.
-      const isContinuousRender = isInteractingRef.current || isAnimating;
       const throttled = isContinuousRender &&
         continuousThrottleMs > 0 &&
         (currentTime - lastRenderTime) < continuousThrottleMs;
@@ -271,7 +265,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             visualEnhancement: visualEnhancementRef.current,
             environment: environmentRef.current,
             sunShadows: sunShadowsRef.current ?? undefined,
-            isInteracting: isInteractingRef.current || isAnimating,
+            isInteracting: isContinuousRender,
+            maxPixelRatio: isContinuousRender ? 1 : undefined,
             // Let the effects governor judge missed frames against the
             // intentional large-model throttle instead of display refresh.
             interactionFrameIntervalMs: continuousThrottleMs || undefined,

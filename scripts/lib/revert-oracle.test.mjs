@@ -689,9 +689,16 @@ test('classifyDiff reports whether Cargo.lock changed (#4592)', () => {
   assert.equal(classifyDiff(parseNameStatus('M\trust/geometry/Cargo.toml')).cargoLockChanged, false);
 });
 
-test('parseNameStatus takes the NEW path of a rename', () => {
+test('#6663: parseNameStatus retains both rename locations through production classification', () => {
   const entries = parseNameStatus('R096\tpackages/a/src/old.ts\tpackages/a/src/new.ts');
-  assert.deepEqual(entries, [{ status: 'R', path: 'packages/a/src/new.ts' }]);
+  const expected = [{ status: 'R', path: 'packages/a/src/new.ts', oldPath: 'packages/a/src/old.ts' }];
+  assert.deepEqual(entries, expected);
+  assert.deepEqual(classifyDiff(entries).production, expected);
+});
+
+test('#6663: copies select only their new path because their source remains on disk', () => {
+  const entries = parseNameStatus('C096\tpackages/a/src/original.ts\tpackages/a/src/copy.ts');
+  assert.deepEqual(entries, [{ status: 'C', path: 'packages/a/src/copy.ts' }]);
 });
 
 test('parseNameStatus on empty input yields no entries', () => {

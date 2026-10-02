@@ -9,7 +9,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { IfcParser } from '@ifc-lite/parser';
+import { EntityExtractor, IfcParser } from '@ifc-lite/parser';
 import { createBimContext } from '@ifc-lite/sdk';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import {
@@ -43,6 +43,15 @@ async function savedIndex(content: string | Uint8Array) {
   const buffer = bytes(content);
   const parsed = await new IfcParser().parseColumnar(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer, { disableWorkerScan: true });
   return parsed.entityIndex;
+}
+
+// Each export stamps its own FILE_NAME timestamp. Peer isolation compares all
+// saved DATA records, including IDs, GUIDs, attributes and enum token kinds.
+async function savedRecords(content: string | Uint8Array) {
+  const buffer = bytes(content);
+  const store = await new IfcParser().parseColumnar(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer, { disableWorkerScan: true });
+  const extractor = new EntityExtractor(store.source);
+  return [...store.entityIndex.byId].map(([id, ref]) => [id, extractor.extractEntity(ref)] as const).sort((a, b) => a[0] - b[0]);
 }
 
 async function assertSavedWall(content: string | Uint8Array, expressId: number,
@@ -136,7 +145,7 @@ describe.skipIf(!AVAILABLE)('#6232 D5 ordinary loaded SDK / public MCP parity', 
       const { registry, transport, call } = await session(count);
       try {
         const target = registry.get(count === 2 ? 'beta' : 'alpha')!;
-        const peer = count === 2 ? registry.get('alpha')!.bim.export.ifc() : null;
+        const peer = count === 2 ? await savedRecords(registry.get('alpha')!.bim.export.ifc()) : null;
         const kinds = [
           { kind: 'column', params: { width: .3, depth: .4, height: 3 }, centre: [0, 5, 1.5], size: [.3, .4, 3] },
           { kind: 'beam', params: { width: .2, height: .4 }, centre: [2, 5, 0], size: [4, .2, .4] },
@@ -159,7 +168,7 @@ describe.skipIf(!AVAILABLE)('#6232 D5 ordinary loaded SDK / public MCP parity', 
           expect((await call('mutation_undo', { model_id: target.id })).isError).not.toBe(true);
           expect((await savedIndex(target.bim.export.ifc())).byId).toEqual(before.byId);
         }
-        if (count === 2) expect(registry.get('alpha')!.bim.export.ifc()).toEqual(peer);
+        if (count === 2) expect(await savedRecords(registry.get('alpha')!.bim.export.ifc())).toEqual(peer);
       } finally { transport.close(); }
     });
     it(`the existing SDK creates the canonical physical wall with ${count} model(s)`, async () => {
@@ -169,11 +178,11 @@ describe.skipIf(!AVAILABLE)('#6232 D5 ordinary loaded SDK / public MCP parity', 
         contexts.push({ id, bim: createBimContext({ backend: new HeadlessBackend(model.store, id) }) });
       }
       const target = contexts.at(-1)!;
-      const peerBefore = count === 2 ? contexts[0].bim.export.ifc() : null;
+      const peerBefore = count === 2 ? await savedRecords(contexts[0].bim.export.ifc()) : null;
       const ref = target.bim.store.addWall(target.id, STOREY, { ...PARAMS, GlobalId: '0'.repeat(22) });
       expect(ref.modelId).toBe(target.id);
       await assertSavedWall(target.bim.export.ifc(), ref.expressId);
-      if (count === 2) expect(contexts[0].bim.export.ifc()).toEqual(peerBefore);
+      if (count === 2) expect(await savedRecords(contexts[0].bim.export.ifc())).toEqual(peerBefore);
     });
 
     it(`a late invalid SDK GlobalId leaves no authored helpers with ${count} model(s)`, async () => {
@@ -184,14 +193,14 @@ describe.skipIf(!AVAILABLE)('#6232 D5 ordinary loaded SDK / public MCP parity', 
       }
       const target = models.at(-1)!;
       const before = await savedIndex(target.bim.export.ifc());
-      const peerBefore = count === 2 ? models[0].bim.export.ifc() : null;
+      const peerBefore = count === 2 ? await savedRecords(models[0].bim.export.ifc()) : null;
       // productGuid is validated after placement/profile/body emission in the
       // current builder: this exercises an actual late refusal, not a mock.
       expect(() => target.bim.store.addWall(target.id, STOREY, { ...PARAMS, GlobalId: 'invalid' })).toThrow(/valid 22-character IFC GUID/);
       const after = await savedIndex(target.bim.export.ifc());
       expect(after.byId.size).toBe(before.byId.size);
       expect(after.byType.get('IFCLOCALPLACEMENT')).toEqual(before.byType.get('IFCLOCALPLACEMENT'));
-      if (count === 2) expect(models[0].bim.export.ifc()).toEqual(peerBefore);
+      if (count === 2) expect(await savedRecords(models[0].bim.export.ifc())).toEqual(peerBefore);
     });
 
     it(`public run_flow creates the same physical wall and one complete undo with ${count} model(s)`, async () => {
@@ -199,7 +208,7 @@ describe.skipIf(!AVAILABLE)('#6232 D5 ordinary loaded SDK / public MCP parity', 
       try {
         const modelId = count === 2 ? 'beta' : 'alpha';
         const target = registry.get(modelId)!;
-        const peerBefore = count === 2 ? registry.get('alpha')!.bim.export.ifc() : null;
+        const peerBefore = count === 2 ? await savedRecords(registry.get('alpha')!.bim.export.ifc()) : null;
         const prior = await call('entity_create', { model_id: modelId, type: 'IfcCartesianPoint', attributes: [[7, 8, 9]] });
         expect(prior.isError).not.toBe(true);
         const before = target.backend.getMutationView()!.getMutations();
@@ -211,7 +220,7 @@ describe.skipIf(!AVAILABLE)('#6232 D5 ordinary loaded SDK / public MCP parity', 
         const walls = target.backend.getMutationView()!.getNewEntities().filter(entity => entity.type === 'IfcWall');
         expect(walls).toHaveLength(1);
         await assertSavedWall(target.bim.export.ifc(), walls[0].expressId);
-        if (count === 2) expect(registry.get('alpha')!.bim.export.ifc()).toEqual(peerBefore);
+        if (count === 2) expect(await savedRecords(registry.get('alpha')!.bim.export.ifc())).toEqual(peerBefore);
         const afterCreation = target.backend.getMutationView()!.getMutations();
         const authoredAfterCreation = structuredClone(target.backend.getMutationView()!.getNewEntities());
         // A different flow id does not create a different tracked occurrence.

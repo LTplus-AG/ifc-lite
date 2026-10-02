@@ -16,6 +16,9 @@
  */
 
 import type { StateCreator } from 'zustand';
+import type { FederatedModel } from '../types.js';
+import type { SavedValidationReport } from '@/lib/validation/reports/history';
+import { manualReportReuse, manualModelOptions } from '@/lib/validation/manual/manual-model';
 import {
   MAX_ANSWER_COMMENT,
   blankChecklist,
@@ -38,6 +41,8 @@ export interface ManualValidationSlice {
   /** Independent live instances; saved report snapshots remain separate. */
   manualLibrary: ManualChecklistLibrary;
   selectManualChecklist: (id: string) => void;
+  /** Create an independent editable instance; immutable history is unchanged. */
+  reuseManualValidationReport: (report: SavedValidationReport) => boolean;
   removeManualChecklist: (id: string) => void;
   duplicateManualChecklist: (id: string, name?: string) => void;
   /** The checklist being filled in or edited; null before one is created or opened. */
@@ -67,7 +72,7 @@ export interface ManualValidationSlice {
   ) => ManualSaveResult;
 }
 
-export const createManualValidationSlice: StateCreator<ManualValidationSlice, [], [], ManualValidationSlice> = (set, get) => {
+export const createManualValidationSlice: StateCreator<ManualValidationSlice & { models: Map<string, FederatedModel> }, [], [], ManualValidationSlice> = (set, get) => {
   const initial = loadManualLibrary();
   const commitLibrary = (manualLibrary: ManualChecklistLibrary) => {
     const result = saveManualLibrary(manualLibrary);
@@ -98,6 +103,16 @@ export const createManualValidationSlice: StateCreator<ManualValidationSlice, []
     ...manualLibraryProjection(initial.library),
     manualSaveError: initial.error,
 
+    reuseManualValidationReport: (report) => {
+      const recovered = manualReportReuse(report.snapshot, manualModelOptions(get().models));
+      if (!recovered.ok) return false;
+      const library = get().manualLibrary;
+      const id = `manual-checklist-${crypto.randomUUID()}`;
+      commitLibrary({ ...library, activeId: id, checklists: [...library.checklists, { id,
+        template: recovered.template, answers: recovered.answers, preferredModelFingerprint: recovered.preferredModelFingerprint,
+      }] });
+      return true;
+    },
     selectManualChecklist: (id) => {
       const library = get().manualLibrary;
       if (library.checklists.some((entry) => entry.id === id)) commitLibrary({ ...library, activeId: id });

@@ -41,6 +41,8 @@ async function parsed(content: string | Uint8Array) {
   const data = bytes(content);
   return new IfcParser().parseColumnar(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer, { disableWorkerScan: true });
 }
+// Peer exports have a fresh FILE_NAME timestamp; compare every saved DATA
+// record, retaining source IDs, GUIDs, attributes and enum token kinds.
 async function records(content: string | Uint8Array) {
   const store = await parsed(content), extractor = new EntityExtractor(store.source);
   return [...store.entityIndex.byId].map(([id, ref]) => [id, extractor.extractEntity(ref)] as const).sort((a, b) => a[0] - b[0]);
@@ -146,16 +148,16 @@ describe.skipIf(!AVAILABLE)('#6232 D5 all ordinary methods on actual loaded back
         const model = await loadIfcModel(SAMPLE, { modelId: id });
         contexts.push({ id, bim: createBimContext({ backend: new HeadlessBackend(model.store, id) }) });
       }
-      const target = contexts.at(-1)!, peer = count === 2 ? contexts[0].bim.export.ifc() : null;
+      const target = contexts.at(-1)!, peer = count === 2 ? await records(contexts[0].bim.export.ifc()) : null;
       const refs = KINDS.map(kind => kind.add(target.bim, target.id));
       expect(refs.every(ref => ref.modelId === target.id)).toBe(true);
       await assertProducts(target.bim.export.ifc(), refs);
-      if (count === 2) expect(contexts[0].bim.export.ifc()).toEqual(peer);
+      if (count === 2) expect(await records(contexts[0].bim.export.ifc())).toEqual(peer);
     });
     it(`all eight recorded MCP SDK methods have complete public undo with ${count} model(s)`, async () => {
       const registry = new InMemoryModelRegistry();
       for (const id of ['alpha', 'beta'].slice(0, count)) registry.add(await loadIfcModel(SAMPLE, { modelId: id }));
-      const target = registry.get(count === 2 ? 'beta' : 'alpha')!, peer = count === 2 ? registry.get('alpha')!.bim.export.ifc() : null;
+      const target = registry.get(count === 2 ? 'beta' : 'alpha')!, peer = count === 2 ? await records(registry.get('alpha')!.bim.export.ifc()) : null;
       const transport = new InProcessTransport();
       await transport.connect(createMCPServer({ registry, scope: fullScope() }));
       let id = 0;
@@ -201,7 +203,7 @@ describe.skipIf(!AVAILABLE)('#6232 D5 all ordinary methods on actual loaded back
         }
         expect(await records(target.bim.export.ifc())).toEqual(before);
         expect(target.backend.getMutationView()!.getMutations()).toEqual(journal);
-        if (count === 2) expect(registry.get('alpha')!.bim.export.ifc()).toEqual(peer);
+        if (count === 2) expect(await records(registry.get('alpha')!.bim.export.ifc())).toEqual(peer);
       } finally { transport.close(); }
     });
   }

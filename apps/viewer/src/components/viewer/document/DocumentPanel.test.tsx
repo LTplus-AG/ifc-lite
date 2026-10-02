@@ -11,6 +11,7 @@
  */
 import '@/test/setup-dom.js';
 import '@/test/content-fixture.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -71,6 +72,7 @@ async function parsedModel(ifc = MINI_IFC): Promise<FederatedModel> {
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+  await documentPreviewReady();
 }
 
 const change = async (el: HTMLSelectElement | HTMLTextAreaElement | HTMLInputElement, value: string): Promise<void> => {

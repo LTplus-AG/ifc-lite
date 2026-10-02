@@ -9,14 +9,20 @@
  * padding and row height.
  */
 import '@/test/setup-dom.js';
-import { it } from 'node:test';
+import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { jsPDF } from 'jspdf';
 import { createRequire } from 'node:module';
+import { cleanup, render } from '@/test/render';
+import { documentPreviewReady } from '@/test/document-preview';
+import { pageBox } from '@/lib/export/report/compose';
+import { DocumentPreview } from './DocumentPreview';
 import { dirname, join } from 'node:path';
 import { generateDocumentPdf, browserImageSize } from '@/lib/document/generate-document-pdf';
 import { browserReportSeams } from '@/lib/export/report/generate-report-pdf';
 import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types';
+
+afterEach(cleanup);
 
 const state = { status: 'ok' as const, kind: 'validation' as const, model: {
   columns: [{ label: 'Rule', numeric: false }],
@@ -37,15 +43,19 @@ async function tableText(scale?: number): Promise<Array<{ str: string; size: num
       aggregations: new Map(), chartMessages: new Map(), topics: new Map(), tables: new Map([['tb', state]]), snapshotIds: () => [] },
     { ...await browserReportSeams(null), imageSize: browserImageSize });
   } finally { pdfWindow.jspdf = prior; }
+  return (await pdfText(result.blob)).filter(item => item.str.startsWith('Row'));
+}
+
+async function pdfText(blob: Blob): Promise<Array<{ str: string; size: number; baseline: number; left: number }>> {
   const pdf = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const require = createRequire(import.meta.url);
-  const task = pdf.getDocument({ data: new Uint8Array(await result.blob.arrayBuffer()), enableXfa: false, stopAtErrors: true,
+  const task = pdf.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), enableXfa: false, stopAtErrors: true,
     standardFontDataUrl: `${join(dirname(require.resolve('pdfjs-dist/package.json')), 'standard_fonts')}/` });
   try {
     const page = await (await task.promise).getPage(1);
     const content = await page.getTextContent();
     page.cleanup();
-    return content.items.flatMap((item) => ('str' in item && item.str.startsWith('Row') ? [{ str: item.str, size: item.transform[0], baseline: item.transform[5], left: item.transform[4] }] : []));
+    return content.items.flatMap((item) => ('str' in item ? [{ str: item.str, size: item.transform[0], baseline: item.transform[5], left: item.transform[4] }] : []));
   } finally { await task.destroy(); }
 }
 
@@ -62,4 +72,24 @@ it('draws a scaled table block with its font and row pitch scaled by the factor 
   // The cell padding grows with the block too: the text starts one padding in from the table's left edge.
   assert.ok(Math.abs((one[0].left - 40) - 2) < 0.1, `padding at 1x is ${one[0].left - 40}`);
   assert.ok(Math.abs((two[0].left - 40) - 4) < 0.1, `padding at 2x is ${two[0].left - 40}`);
+});
+
+it('places scaled table cells at the same font factor as the actual PDF (#6548, #6660)', async () => {
+  for (const factor of [1, 2]) {
+    const document: DocumentSpec = { version: DOCUMENT_VERSION, id: `table-${factor}`, name: 'Table scale',
+      page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'table', id: 'tb', scale: factor,
+        source: { kind: 'validation', rows: 'failed', columns: ['rule'] } }] };
+    const ui = render(<DocumentPreview document={document} bindings={{ models: [], activeModelId: null, today: new Date('2026-10-01') }}
+      aggregations={new Map()} chartMessages={new Map()} topics={new Map()} tables={new Map([['tb', state]])}
+      selectedBlockId={null} onSelectBlock={() => {}} />);
+    await documentPreviewReady();
+    const table = ui.querySelector<HTMLTableElement>('[data-preview-block="tb"] table'); assert.ok(table);
+    const cell = table.querySelector<HTMLTableCellElement>('tbody td'); assert.ok(cell);
+    const printed = await tableText(factor);
+    const pageScale = 560 / pageBox(document.page).w;
+    assert.ok(Math.abs(parseFloat(table.style.fontSize) - printed[0].size * pageScale) < 0.01, 'actual preview and PDF table type scale together');
+    assert.ok(Math.abs(parseFloat(cell.style.padding) - 2 * factor * pageScale) < 0.01, 'cell padding scales with its text');
+    assert.deepEqual(Array.from(table.querySelectorAll('tbody td')).map(node => node.textContent), ['Row one', 'Row two']);
+    cleanup();
+  }
 });

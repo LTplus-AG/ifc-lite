@@ -118,6 +118,16 @@ export class FilePersistence implements Persistence {
       if (legacy === file || !fs.existsSync(legacy)) return null;
       file = legacy;
     }
+    return this.loadLogFile(file);
+  }
+
+  /**
+   * Read one log by its FILE path, without mapping a room id to a name. For
+   * callers that enumerate the data dir (the blob-GC scan) and must read a
+   * file whose name is not a well-formed `encodeURIComponent` output.
+   * Same result contract as `load`: `null` for an empty or unparseable log.
+   */
+  async loadLogFile(file: string): Promise<Uint8Array | null> {
     const buf = await fs.promises.readFile(file);
     if (buf.byteLength === 0) return null;
     const frames: Uint8Array[] = [];

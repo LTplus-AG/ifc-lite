@@ -37,8 +37,7 @@
  * Every way of "seeing no references" that is not genuinely "no references"
  * aborts the whole sweep rather than deleting:
  *
- *  - an unreadable log directory, an undecodable room name, or a doc that
- *    throws on `applyUpdate`
+ *  - an unreadable log directory or a doc that throws on `applyUpdate`
  *  - **a non-empty log file that `FilePersistence.load` returns `null` for.**
  *    `load` does not throw on a corrupt log: an empty file, a truncated length
  *    prefix, or any garbage yielding zero complete frames all return `null`
@@ -109,8 +108,10 @@ export async function collectPersistedBlobRefs(dataDir: string): Promise<BlobRef
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith('.log')) continue;
     roomLogs += 1;
-    const roomId = decodeURIComponent(entry.name.slice(0, -'.log'.length));
-    const update = await persistence.load(roomId);
+    // Read by file name: decoding the name into a room id and re-encoding it
+    // throws `URIError` on a malformed escape and is not an inverse for a
+    // non-canonical one (`a%41` -> `aA` -> `aA.log`, a different file).
+    const update = await persistence.loadLogFile(path.join(dataDir, entry.name));
 
     if (update === null) {
       // `load` returns null for corrupt logs as well as empty ones. A 0-byte

@@ -30,6 +30,7 @@ import {
   type RegistryAuthorizeFn,
 } from './layer-registry-route.js';
 import { defaultMetrics, MetricsRegistry } from './metrics.js';
+import { parseRequestUrl, parseRoomRequest } from './request-target.js';
 
 /**
  * Cross-origin policy for the HTTP routes (`/blobs`, `/collab/*`, `/healthz`,
@@ -319,7 +320,8 @@ export async function startCollabServer(
     opts.server ??
     http.createServer(async (req, res) => {
       try {
-        const reqUrl = new URL(req.url ?? '/', 'http://localhost');
+        const reqUrl = parseRequestUrl(req.url);
+        if (!reqUrl) { res.writeHead(400).end(); return; } // unparseable target: this client's error
         const pathname = reqUrl.pathname;
         applyCors(req, res, opts.cors);
         // Preflight: answer OPTIONS before any route so cross-origin PUT/HEAD/
@@ -509,9 +511,9 @@ interface ConnectionContext {
 
 async function handleConnection(ws: WebSocket, req: http.IncomingMessage, ctx: ConnectionContext) {
   ws.binaryType = 'arraybuffer';
-  const url = new URL(req.url ?? '/', 'http://localhost');
-  // y-websocket convention: room id is the path (e.g. ws://host/project/model)
-  const roomId = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+  const parsed = parseRoomRequest(req.url);
+  if (!parsed) { ws.close(4400, 'malformed-room'); return; } // bad target or percent-escape
+  const { url, roomId } = parsed;
   const token = url.searchParams.get('token') ?? undefined;
   if (!roomId) {
     ws.close(4400, 'missing-room');

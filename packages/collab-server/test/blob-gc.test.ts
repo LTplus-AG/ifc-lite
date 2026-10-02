@@ -163,6 +163,44 @@ describe('blob gc', () => {
     expect(fs.existsSync(path.join(blobsDir, A))).toBe(true);
   });
 
+  it('reads a room log whose file name is not a valid percent-encoding', async () => {
+    // A foreign or hand-copied `*.log` can carry a malformed escape. The scan
+    // must read it by NAME (its references still protect blobs) instead of
+    // decoding the name into a room id, which throws `URIError`.
+    fs.writeFileSync(
+      path.join(dataDir, '%E0%A4%A.log'),
+      Buffer.concat([
+        (() => { const h = Buffer.alloc(4); h.writeUInt32LE(updateReferencing([A]).byteLength, 0); return h; })(),
+        Buffer.from(updateReferencing([A])),
+      ]),
+    );
+    await writeRoom('ordinary-room', [B]);
+
+    const scan = await collectPersistedBlobRefs(dataDir);
+    expect(scan.roomLogs).toBe(2);
+    expect([...scan.refs].sort()).toEqual([A, B]);
+  });
+
+  it('reads a log whose name is a non-canonical but decodable encoding', async () => {
+    // `a%41` decodes to `aA`, which re-encodes to a DIFFERENT file name; a
+    // decode-then-load scan would read `aA.log` (absent) and see nothing.
+    const body = updateReferencing([C]);
+    const header = Buffer.alloc(4);
+    header.writeUInt32LE(body.byteLength, 0);
+    fs.writeFileSync(path.join(dataDir, 'a%41.log'), Buffer.concat([header, Buffer.from(body)]));
+
+    const scan = await collectPersistedBlobRefs(dataDir);
+    expect([...scan.refs]).toEqual([C]);
+  });
+
+  it('names an unreadable log with a malformed file name instead of throwing URIError', async () => {
+    fs.writeFileSync(path.join(dataDir, '%ZZ.log'), Buffer.from([0xff, 0xff, 0xff, 0x7f]));
+    writeBlob(A, 3 * DAY);
+
+    await expect(collectPersistedBlobRefs(dataDir)).rejects.toThrow(/%ZZ\.log.*parsed to nothing/);
+    expect(fs.existsSync(path.join(blobsDir, A))).toBe(true);
+  });
+
   it('treats a genuinely empty log as an empty room, not a failure', async () => {
     fs.writeFileSync(path.join(dataDir, 'fresh.log'), Buffer.alloc(0));
     const scan = await collectPersistedBlobRefs(dataDir);

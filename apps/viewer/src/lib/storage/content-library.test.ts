@@ -220,7 +220,7 @@ it('#6679 failed restore preserves drafts; successful restore adopts the other t
   } finally { blocked.mock.restore(); }
   assert.equal(await second.restore(), true);
   assert.equal(second.entries()[0].name, 'Other tab version');
-  assert.deepEqual(second.status().items, {});
+  assert.deepEqual(Object.keys(second.status().items), []);
 });
 
 it('#6679 repeated conflict imports remain idempotent after their imported copy is deleted', async () => {

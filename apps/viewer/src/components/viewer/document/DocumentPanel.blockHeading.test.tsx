@@ -197,7 +197,7 @@ describe('heading style survives replacing a report block source (#6632)', () =>
     specificationResults: [result('r1')],
   };
   const editor = (block: DocumentBlock, onChange: (b: DocumentBlock) => void) =>
-    render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={live} onChange={onChange} onMove={noop} onRemove={noop} />);
+    render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={live} onChange={onChange} onMove={noop} onCopy={noop} onRemove={noop} />);
 
   it('refreshing from the live report keeps the heading text, size, ink and background', () => {
     const changes: DocumentBlock[] = [];

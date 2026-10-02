@@ -291,7 +291,7 @@ export const propertiesEn = {
   'properties.locationMap.removePinTooltip': 'Remove pin',
   'properties.locationMap.latLon': 'Origin Lat/Lon',
   'properties.locationMap.geometryLatLon': 'Model Lat/Lon',
-  'properties.locationMap.geometryLocation': 'Model location shown because the declared origin cannot be projected. Pick a location to update the origin.',
+  'properties.locationMap.geometryLocation': 'Showing the model location; the declared origin remains unchanged. Pick a location to update the origin.',
   'properties.locationMap.geometryGoogleMapsTooltip': 'Open physical geometry location in Google Maps',
   'properties.locationMap.geometryOpenStreetMapTooltip': 'Open physical geometry location in OpenStreetMap',
   'properties.locationMap.geometryDistance': 'The geometry centre is about {value} km from the declared georeference origin. Check the element placements in the source model; the footprint, 3D world and geometry exports use those placements.',

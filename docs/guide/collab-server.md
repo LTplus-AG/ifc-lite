@@ -71,7 +71,10 @@ Set `COLLAB_TOKEN_SECRET` to switch on **signed room tokens**:
   `COLLAB_MAX_CLAIMED_ROOMS` and revokes every token minted for the claim. A
   pending claim nobody releases (a closed tab, an older viewer) expires once
   all of its tokens have expired. A room that was joined, or has data on disk,
-  is never released or expired: the release answers `409`.
+  is never released or expired: the release answers `409`. A pending claim
+  can mint at most 4 tokens, each paying the per-IP mint budget. A release
+  that would take the deny-list past 1024 live entries answers `503`, and the
+  claim then expires on its own.
 
 The CLI server enables pending claims. When embedding `createAccessControl`
 yourself, pass `claimsPendingUntilJoin: true` only if the server authenticates

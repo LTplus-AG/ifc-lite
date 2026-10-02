@@ -257,7 +257,9 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
 
       {block.kind === 'chart' && (
         <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex min-w-0 flex-1 items-center gap-1 text-muted-foreground">{t('document.block.kindChart')}
+          {/* `basis-48` (12rem) is the label's own floor: with `flex-1` alone its basis is 0, so in this wrapping row it never
+              wraps to a new line and the picker gets only what the sibling controls leave over, which can be ~0 (#6629). */}
+          <label className="inline-flex min-w-0 basis-48 grow items-center gap-1 text-muted-foreground">{t('document.block.kindChart')}
             <select
               className={`${field} min-w-0 flex-1`}
               value=""

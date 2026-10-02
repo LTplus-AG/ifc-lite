@@ -31,6 +31,15 @@
  *
  * The ledger is pure bookkeeping (no Worker, no timers) so the policy is
  * unit-testable; {@link startHungJobMonitor} applies it to a live pool.
+ *
+ * Silence is measured against the worker's in-call heartbeat
+ * (`in-call-heartbeat.ts`): the kernel reports progress from inside a long
+ * call, so a slow element keeps its worker "heard" and is neither replayed nor
+ * skipped while it runs under MAX_GEOMETRY_CALL_MS. A call reaches this recovery
+ * when it stops reporting, or when it outruns that absolute cap however often it
+ * reports (then a single job is skipped, a multi-job call replayed). Without the
+ * heartbeat, the 45 s / 90 s wall-clock budgets below decided whether a slow
+ * element loaded at all, so its geometry varied with the user's CPU speed.
  */
 
 /** Silence budget for one busy worker inside a MULTI-job call before it is
@@ -50,6 +59,17 @@ export const SINGLE_JOB_SKIP_FACTOR = 2;
  *  until the call returns or is recovered: the pool, not the consumer's
  *  watchdog, bounds that call from here on. */
 const LIVENESS_AFTER_FRACTION = 2 / 3;
+
+/** Absolute bound on ONE geometry call, heartbeats or not. A call that keeps
+ *  reporting progress is never treated as hung by silence, but everything
+ *  queued behind it on its worker waits for it, so past this the call is
+ *  recovered exactly like a silent one (a single-job call is skipped, a
+ *  multi-job call is re-run one job per call). With recovery off, the pool
+ *  stops forwarding its heartbeats past this bound so the consumer's stream
+ *  watchdog reports the stall instead. Far above any element measured to
+ *  finish (minutes on the slowest synthetic walls), so it only bounds runaway
+ *  work, not slow-but-finite elements on ordinary hardware. */
+export const MAX_GEOMETRY_CALL_MS = 600_000;
 
 /** Monitor ticks further apart than this many intervals mean the host was
  *  suspended (sleep, frozen tab). Worker messages posted meanwhile are still
@@ -82,7 +102,8 @@ export interface RecoveryPlan {
 interface WorkerLedgerState {
   slices: LedgerSlice[];
   /** The call currently inside WASM, as reported by the worker's pre-call heartbeat. */
-  inFlight: { seq: number; fromJob: number; callJobs: number } | null;
+  /** `startedAt` feeds the absolute {@link MAX_GEOMETRY_CALL_MS} bound. */
+  inFlight: { seq: number; fromJob: number; callJobs: number; startedAt: number } | null;
   /** Size of the worker's last call that returned: its learned adaptive batch. */
   lastReturnedCallJobs: number | undefined;
   lastHeardAt: number;
@@ -124,7 +145,7 @@ export class WorkerJobLedger {
     // Slices are processed in dispatch order, so any earlier slice is finished.
     state.slices = state.slices.filter((s) => s.seq >= seq);
     if (state.inFlight) state.lastReturnedCallJobs = state.inFlight.callJobs;
-    state.inFlight = { seq, fromJob, callJobs };
+    state.inFlight = { seq, fromJob, callJobs, startedAt: now };
   }
 
   /** The worker finished every call of slice `seq`. */
@@ -138,19 +159,33 @@ export class WorkerJobLedger {
     }
   }
 
-  /** The host was suspended: restart every silence clock (see SUSPEND_GAP_INTERVALS). */
+  /** The host was suspended: restart every silence clock and every call's
+   *  absolute clock (see SUSPEND_GAP_INTERVALS), so a sleep never counts as
+   *  work against the call bound. */
   onHostResumed(now: number): void {
-    for (const state of this.states) state.lastHeardAt = now;
+    for (const state of this.states) {
+      state.lastHeardAt = now;
+      if (state.inFlight) state.inFlight.startedAt = now;
+    }
+  }
+
+  /** True once `worker`'s current call has run past {@link MAX_GEOMETRY_CALL_MS}. */
+  callOverCap(worker: number, now: number): boolean {
+    const inFlight = this.states[worker]?.inFlight;
+    return !!inFlight && now - inFlight.startedAt >= MAX_GEOMETRY_CALL_MS;
   }
 
   /**
    * Workers to replace: silent inside a multi-job call for `timeoutMs`, or inside
-   * a single-job call for `timeoutMs * SINGLE_JOB_SKIP_FACTOR`.
+   * a single-job call for `timeoutMs * SINGLE_JOB_SKIP_FACTOR`, or inside any
+   * call for {@link MAX_GEOMETRY_CALL_MS} however often it reported progress.
    */
   findHung(now: number, timeoutMs: number): number[] {
     const hung: number[] = [];
     this.states.forEach((state, worker) => {
-      if (state.inFlight && now - state.lastHeardAt >= budgetFor(state.inFlight.callJobs, timeoutMs)) hung.push(worker);
+      if (!state.inFlight) return;
+      const silent = now - state.lastHeardAt >= budgetFor(state.inFlight.callJobs, timeoutMs);
+      if (silent || this.callOverCap(worker, now)) hung.push(worker);
     });
     return hung;
   }
@@ -300,7 +335,9 @@ export function startHungJobMonitor(pool: HungJobPool, timeoutMs: number): () =>
   let recoveries = 0;
   const replace = (i: number) => {
     recoveries++;
-    const plan = pool.ledger.takeRecoveryPlan(i, performance.now());
+    const now = performance.now();
+    const overCap = pool.ledger.callOverCap(i, now);
+    const plan = pool.ledger.takeRecoveryPlan(i, now);
     const hung = pool.workers[i];
     const replacement = pool.makeWorker();
     // Swap first: the pool's stale-worker guard then drops anything the hung one flushes.
@@ -312,7 +349,7 @@ export function startHungJobMonitor(pool: HungJobPool, timeoutMs: number): () =>
     for (const slice of plan.slices) pool.postChunk(i, slice.jobs, slice.maxBatchJobs);
     if (pool.streamEndSent()) replacement.postMessage({ type: 'stream-end' });
     console.warn(
-      `[stream] worker[${i}] silent for ${budgetFor(plan.skippedJob ? 1 : 2, timeoutMs)}ms inside one geometry call — replaced ` +
+      `[stream] worker[${i}] ${overCap ? `still inside one geometry call after ${MAX_GEOMETRY_CALL_MS}ms` : `silent for ${budgetFor(plan.skippedJob ? 1 : 2, timeoutMs)}ms inside one geometry call`} — replaced ` +
         (plan.skippedJob ? `and skipped entity #${plan.skippedJob[0]}` : 'and re-running that call one job at a time') +
         ` (recovery ${recoveries}/${MAX_HUNG_JOB_RECOVERIES})`,
     );

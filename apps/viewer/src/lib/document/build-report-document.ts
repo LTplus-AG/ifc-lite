@@ -112,6 +112,7 @@ function resultBlock(result: DocumentReportResult, presentation?: DocumentBlock)
       variant: presentation?.variant ?? result.snapshot.variant ?? 'compact', benchmarks: presentation?.benchmarks ?? result.snapshot.benchmarks ?? true,
       ...(presentation?.title !== undefined ? { title: presentation.title } : {}),
       ...(presentation?.scale !== undefined ? { scale: presentation.scale } : {}),
+      ...(presentation?.showStamp !== undefined ? { showStamp: presentation.showStamp } : {}),
     };
   }
   if (presentation && (presentation.kind !== 'table' || presentation.source.kind !== 'comparison')) {

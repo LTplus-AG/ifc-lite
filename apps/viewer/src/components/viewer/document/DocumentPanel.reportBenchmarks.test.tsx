@@ -298,6 +298,62 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     assert.equal(ui.querySelector('[data-validation-benchmark]'), null, 'selecting another source does not re-enable a hidden ring');
   });
 
+  it('hides and shows the stamp of both report kinds identically in the preview and the PDF layout, and keeps the choice through refresh and saved-source replacement (#6678)', async () => {
+    const ui = render(<DocumentPanel />); await settle();
+    const stored = (id: string) => { const block = useViewerStore.getState().documents[0].blocks.find((candidate) => candidate.id === id); assert.ok(block?.kind === 'ids-report'); return block; };
+    const printed = (id: string) => composeDocument({ name: spec.name, page: spec.page, generatedAt: '', measure: estimateTextWidth, blocks: [stored(id)] })
+      .pages.flatMap((page) => page.items).flatMap((item) => item.kind === 'text' ? [item.text] : []).join('\n');
+    const preview = (id: string) => { const node = ui.querySelector(`[data-preview-block="${id}"]`); assert.ok(node); return node; };
+    const control = (id: string) => {
+      const label = [...ui.querySelectorAll(`[data-block-editor="${id}"] label`)].find((entry) => entry.textContent?.includes('Show stamp information'));
+      const input = label?.querySelector<HTMLInputElement>('input[type="checkbox"]'); assert.ok(input, 'every report block offers the stamp control'); return input;
+    };
+    const stampShown = (id: string) => {
+      const block = stored(id); const model = 'building-architecture.ifc';
+      const shownInPreview = preview(id).textContent?.includes(`Validation run: ${block.generatedAt}`) === true && preview(id).textContent?.includes(`Models: ${model}`) === true;
+      const shownInPdf = printed(id).includes(`Validation run: ${block.generatedAt}`) && printed(id).includes(`Models: ${model}`);
+      assert.equal(shownInPreview, shownInPdf, `${id}: preview and PDF agree on the stamp`);
+      const hiddenInPreview = !/Validation run|Models:/.test(preview(id).textContent ?? ''); const hiddenInPdf = !/Validation run|Models:/.test(printed(id));
+      assert.equal(hiddenInPreview, hiddenInPdf, `${id}: preview and PDF agree that the stamp is hidden`);
+      assert.ok(shownInPreview || hiddenInPreview, `${id}: the stamp is wholly shown or wholly hidden`);
+      return shownInPreview;
+    };
+    for (const block of spec.blocks) {
+      assert.ok(block.kind === 'ids-report');
+      assert.equal(control(block.id).checked, true, 'existing blocks keep printing their stamp');
+      assert.equal(stampShown(block.id), true);
+      click(control(block.id)); await settle();
+      assert.equal(stored(block.id).showStamp, false);
+      assert.equal(stampShown(block.id), false, `${block.sourceKind} ${block.variant}: the control hides the stamp in both outputs`);
+      assert.equal(stored(block.id).generatedAt, block.generatedAt, 'the recorded time stays in the document');
+      assert.deepEqual(stored(block.id).reportModels, block.reportModels, 'and the recorded models');
+      click(control(block.id)); await settle();
+      assert.equal(stampShown(block.id), true, 'showing it again restores both outputs');
+      click(control(block.id)); await settle();
+    }
+    const imported = parseDocumentFile(JSON.stringify(useViewerStore.getState().documents[0]));
+    assert.deepEqual(imported.blocks.map((block) => block.kind === 'ids-report' && block.showStamp), [false, false, false, false], 'the choice survives export and import');
+
+    for (const report of reports) {
+      const id = `${report.source.kind}-compact`;
+      let savedId: string | null = null;
+      act(() => {
+        useViewerStore.getState().setIdsValidationReport(report, validationReportSnapshot(report, useViewerStore.getState().models, 'live'));
+        savedId = useViewerStore.getState().saveValidationReport({ ...validationReportSnapshot(report, useViewerStore.getState().models, 'saved'), showStamp: true }, `Saved ${report.source.kind}`);
+      });
+      assert.ok(savedId);
+      const refresh = [...ui.querySelectorAll(`[data-block-editor="${id}"] button`)].find((button) => button.textContent === 'Refresh from current validation report');
+      assert.ok(refresh); click(refresh); await settle();
+      assert.equal(control(id).checked, false, `${report.source.kind}: Refresh keeps the stamp hidden`);
+      assert.equal(stampShown(id), false);
+      const select = ui.querySelector<HTMLSelectElement>(`[data-block-editor="${id}"] select[aria-label="Saved report source"]`); assert.ok(select);
+      act(() => { select.value = savedId!; select.dispatchEvent(new window.Event('change', { bubbles: true })); }); await settle();
+      assert.equal(stored(id).savedReportId, savedId, 'the saved report really replaced the evidence');
+      assert.equal(control(id).checked, false, `${report.source.kind}: choosing a saved report that shows its stamp does not override the destination's choice`);
+      assert.equal(stampShown(id), false);
+    }
+  });
+
   it('keeps actual mixed-result rings below an enlarged page heading and prints both fonts and outcome colors (#6552 / #6554)', async () => {
     const document = { ...spec, pageHeading: { text: 'Mixed validation handover', font: 'times' as const, fontSize: 48, textColor: '#6b21a8' },
       blocks: spec.blocks.map((block) => ({ ...block, benchmarks: true })) };

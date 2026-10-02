@@ -10,7 +10,7 @@
  */
 
 import { blockTitle } from '@/lib/document/block-title';
-import { manualReportStamp } from '@/lib/document/manual-report';
+import { reportStamp } from '@/lib/document/report-provenance';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { ManualReportBlock } from '@/lib/document/manual-report-types';
 import { ManualValidationLegend, ManualValidationRing, VerdictIcon } from '../validation/ManualValidationRing';
@@ -31,7 +31,7 @@ export function ManualReportPreview({ block }: { block: ManualReportBlock }) {
   const ink = 'fill-neutral-900';
   const benchmarks = block.benchmarks !== false;
   const detailed = block.variant !== 'compact';
-  const stamp = manualReportStamp(block);
+  const stamp = reportStamp(block);
 
   return (
     <div data-block-manual-report>

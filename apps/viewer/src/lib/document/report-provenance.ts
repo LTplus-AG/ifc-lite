@@ -7,7 +7,12 @@ import type { DocumentValidationError } from './types.js';
 
 /** Source identity is evidence about the original run, never a live selector. */
 export interface ReportModelScope { name: string; fingerprint?: string }
-export interface ReportProvenance {
+/** The author's choice to print or omit a report's stamp rows (#6566, #6678).
+ * Absent means shown, so every document saved before the choice printed the same. */
+export interface ReportStampChoice {
+  showStamp?: boolean;
+}
+export interface ReportProvenance extends ReportStampChoice {
   savedReportId?: string;
   /** Captured workflow execution identity; travels with the evidence, never a live binding. */
   automation?: AutomationReportProvenance;
@@ -15,6 +20,7 @@ export interface ReportProvenance {
 }
 
 export function validateReportProvenance(block: Record<string, unknown>, at: string, errors: DocumentValidationError[]): void {
+  if (block.showStamp !== undefined && typeof block.showStamp !== 'boolean') errors.push({ path: `${at}.showStamp`, message: 'expected a boolean' });
   if (block.automation !== undefined && !isAutomationReportProvenance(block.automation)) {
     errors.push({ path: `${at}.automation`, message: 'expected valid workflow report provenance' });
   }
@@ -30,6 +36,26 @@ export function validateReportProvenance(block: Record<string, unknown>, at: str
 
 export function reportScopeText(block: ReportProvenance): string {
   return block.reportModels?.map((model) => model.name).join(', ') ?? '';
+}
+
+/** What every report block stamps under its title, for the preview and the PDF
+ * alike: when the run was recorded, the model it was recorded against (manual
+ * reports only: the other kinds carry no single model) and the evaluated-model
+ * scope. All three are values the block already holds, none is read at render time. */
+export interface ReportStamp { modelName: string | undefined; generatedAt: string; models: string }
+
+/** `null` when the author hid the stamp. The frozen identity and timestamp stay
+ * in the block either way. */
+export function reportStamp(block: ReportProvenance & { generatedAt: string; modelName?: string }): ReportStamp | null {
+  return block.showStamp === false ? null : { modelName: block.modelName, generatedAt: block.generatedAt, models: reportScopeText(block) };
+}
+
+/** Replacing a report's evidence (live refresh, choosing a saved report) keeps
+ * the destination block's identity and everything its author chose to show:
+ * heading, layout, benchmarks, stamp and size. One rule for the manual and the
+ * IDS / information-validation kinds, so their refresh paths cannot drift. */
+export function replaceReportSnapshot<B extends ReportStampChoice & { id: string; title?: string; variant?: string; benchmarks?: boolean; scale?: number }>(current: B, snapshot: B): B {
+  return { ...snapshot, id: current.id, title: current.title, variant: current.variant, benchmarks: current.benchmarks, showStamp: current.showStamp, scale: current.scale };
 }
 
 /** Keep exact nonblank model names; unnamed sources use their captured

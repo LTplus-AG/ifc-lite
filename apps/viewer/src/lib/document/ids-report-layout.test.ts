@@ -11,7 +11,14 @@ import assert from 'node:assert/strict';
 import type { SpecificationResult, ValidationReport } from '@ifc-lite/ids';
 import { composeDocument, estimateTextWidth } from './compose.js';
 import { idsReportBlockFromReport } from './ids-report.js';
-import { DOCUMENT_VERSION, validateDocumentSpec, type IdsReportBlock } from './types.js';
+import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type IdsReportBlock } from './types.js';
+import { parseDocumentFile } from './persistence.js';
+import { PAGE_SIZES_PT, REPORT_MARGIN } from '../export/report/compose.js';
+import type { DrawnItem } from './compose.js';
+
+// Read dynamically, with a fallback that fails by assertion, so the file still loads without the production change.
+const idsReportExports: { replaceIdsReportSnapshot?: (current: IdsReportBlock, snapshot: IdsReportBlock) => IdsReportBlock } = await import('./ids-report.js');
+const replaceIdsReportSnapshot = idsReportExports.replaceIdsReportSnapshot ?? ((_current: IdsReportBlock, snapshot: IdsReportBlock) => snapshot);
 
 const LONG = 'The property FireRating in the property set Pset_WallCommon must exist and must be one of the enumerated values 30, 60, 90 or 120 minutes';
 
@@ -161,5 +168,107 @@ describe('compact IDS report separates specifications from requirements (#6550)'
     const nextSpecification = at('Raum').y - at('Status').y;
     assert.ok(nextSpecification > intoRequirements, `specification gap ${nextSpecification} must exceed in-group gap ${intoRequirements}`);
     assert.ok(at('Status').x > at('Geschoss').x, 'requirements are indented');
+  });
+});
+
+/**
+ * The stamp of an IDS / information-validation block (#6678): the run time and the evaluated
+ * models, hidden together by `showStamp: false`, exactly like the manual block's (#6566).
+ * One block kind serves both sources, so each is composed here.
+ */
+const SCOPE = ['discipline-architecture-coordination-model-delivery-final.ifc', 'discipline-structure-coordination-model-delivery-final.ifc'];
+function stamped(sourceKind: 'ids' | 'rules', variant: IdsReportBlock['variant'], extra: Partial<IdsReportBlock> = {}): IdsReportBlock {
+  const base = block(variant);
+  return { ...base, sourceKind, sourceName: sourceKind === 'rules' ? 'Quality rules' : 'Design IDS', reportModels: SCOPE.map((name, i) => ({ name, fingerprint: `fp-${i}` })), ...extra };
+}
+const compose2 = (ids: IdsReportBlock, page: DocumentSpec['page'] = { size: 'A4', orientation: 'portrait' }) =>
+  composeDocument({ name: 'Doc', page, generatedAt: 'now', measure: estimateTextWidth, blocks: [ids] }).pages.flatMap((p) => p.items);
+const words = (items: DrawnItem[]) => items.flatMap((item) => (item.kind === 'text' ? [item.text] : []));
+// The models row wraps over several lines when long, so a continuation line is a fragment of the scope text.
+const SCOPE_TEXT = `Models: ${SCOPE.join(', ')}`;
+const isStamp = (text: string) => text.startsWith('Validation run:') || SCOPE_TEXT.includes(text);
+
+/** Where a drawn item ends: a text by its measured width at its drawn size, a ring or box by its extent. */
+function extent(item: DrawnItem): { right: number; bottom: number } {
+  if (item.kind === 'text') return { right: item.x + estimateTextWidth(item.text, item.size, item.bold), bottom: item.y };
+  if (item.kind === 'ring') return { right: item.x + item.size, bottom: item.y + item.size };
+  if ('w' in item && 'h' in item) return { right: item.x + item.w, bottom: item.y + item.h };
+  return { right: item.x, bottom: item.y };
+}
+
+describe('IDS and information-validation report stamps (#6678)', () => {
+  for (const sourceKind of ['ids', 'rules'] as const) for (const variant of [undefined, 'compact', 'long'] as const) for (const benchmarks of [false, true]) {
+    it(`hides only the run and models rows of a ${sourceKind} report in the ${variant ?? 'classic'} layout, benchmarks ${benchmarks}`, () => {
+      const shown = stamped(sourceKind, variant, { benchmarks });
+      const original = structuredClone(shown);
+      const on = compose2(shown);
+      const off = compose2({ ...shown, showStamp: false });
+      assert.deepEqual(words(on).filter(isStamp).length >= 2, true, 'an unchanged block prints the run row and at least one models line');
+      assert.ok(words(on).some((t) => t.startsWith('Validation run: 2026-01-15T10:00:00.000Z')), 'the run time is the block\'s own, never the render time');
+      assert.deepEqual(words(off).filter(isStamp), [], 'the stamp reaches the PDF composer');
+      assert.equal(words(on).filter((t) => !isStamp(t)).join('\n'), words(off).join('\n'), 'the heading, summary and every check remain');
+      const heading = (items: DrawnItem[]) => items.find((i) => i.kind === 'text' && i.text.startsWith(sourceKind === 'rules' ? 'Information validation report' : 'IDS report'));
+      assert.ok(heading(off), 'the heading names the source kind');
+      const firstCheck = (items: DrawnItem[]) => items.find((i) => i.kind === 'text' && i.text.startsWith('Walls'));
+      assert.ok(firstCheck(off)!.y < firstCheck(on)!.y, 'no empty gap is left where the stamp was');
+      assert.deepEqual(shown, original, 'composition never mutates the block');
+    });
+  }
+
+  it('without showStamp an older block prints what it always printed', () => {
+    const older = stamped('ids', undefined);
+    assert.equal('showStamp' in older, false);
+    assert.deepEqual(compose2(older), compose2({ ...older, showStamp: true }));
+  });
+
+  it('a report without a recorded model scope prints only the run row, and hiding removes it', () => {
+    const { reportModels: _scope, ...bare } = stamped('rules', 'compact');
+    assert.deepEqual(words(compose2(bare)).filter(isStamp), ['Validation run: 2026-01-15T10:00:00.000Z']);
+    assert.deepEqual(words(compose2({ ...bare, showStamp: false })).filter(isStamp), []);
+  });
+
+  it('stays inside the printable frame at every layout, scale and page when the stamp is shown', () => {
+    const TOP = REPORT_MARGIN + 30;
+    for (const [size, orientation] of [['A4', 'portrait'], ['A4', 'landscape'], ['A3', 'portrait']] as const) {
+      const w = orientation === 'landscape' ? PAGE_SIZES_PT[size].h : PAGE_SIZES_PT[size].w;
+      const h = orientation === 'landscape' ? PAGE_SIZES_PT[size].w : PAGE_SIZES_PT[size].h;
+      const BOTTOM = h - REPORT_MARGIN - 24;
+      for (const sourceKind of ['ids', 'rules'] as const) for (const variant of [undefined, 'compact', 'long'] as const) for (const scale of [0.5, 1, 1.5, 2]) for (const showStamp of [true, false]) {
+        const where = `${sourceKind} ${variant ?? 'classic'} x${scale} ${size} ${orientation} stamp ${showStamp}`;
+        const items = compose2(stamped(sourceKind, variant, { benchmarks: true, showStamp, scale }), { size, orientation });
+        const extra = 1e-6;
+        if (showStamp) assert.ok(words(items).some(isStamp), `${where}: the stamp is drawn`);
+        for (const item of items) {
+          const { right, bottom } = extent(item);
+          assert.ok(item.x >= REPORT_MARGIN - extra, `${where}: ${item.kind} starts inside the left margin`);
+          assert.ok(right <= w - REPORT_MARGIN + extra, `${where}: ${item.kind} ends at ${right}, past the right margin ${w - REPORT_MARGIN}`);
+          assert.ok(item.y >= TOP - extra && bottom <= BOTTOM + extra, `${where}: ${item.kind} at y ${item.y} leaves the frame ${TOP}..${BOTTOM}`);
+        }
+      }
+    }
+  });
+
+  it('is persisted: a boolean survives a file round trip and anything else is refused, for both source kinds', () => {
+    const doc = (b: unknown) => ({ version: DOCUMENT_VERSION, id: 'd', name: 'IDS', page: { size: 'A4', orientation: 'portrait' }, blocks: [b] });
+    for (const sourceKind of ['ids', 'rules'] as const) {
+      const hidden = stamped(sourceKind, 'compact', { showStamp: false });
+      const reopened = parseDocumentFile(JSON.stringify(doc(hidden))).blocks[0];
+      assert.equal(reopened.kind, 'ids-report');
+      assert.equal(reopened.showStamp, false);
+      assert.equal(reopened.generatedAt, hidden.generatedAt, 'hiding never erases the recorded time');
+      assert.deepEqual(reopened.reportModels, hidden.reportModels, 'nor the recorded models');
+      for (const invalid of ['false', 0, null]) {
+        assert.deepEqual(validateDocumentSpec(doc({ ...hidden, showStamp: invalid })).map((e) => e.path), ['blocks[0].showStamp']);
+      }
+    }
+  });
+
+  it('replacing a snapshot keeps the destination block\'s stamp choice as well as its other presentation', () => {
+    const destination = stamped('ids', 'long', { id: 'keep', title: 'Authored', benchmarks: false, scale: 1.5, showStamp: false });
+    const source = stamped('rules', 'compact', { id: 'other', title: 'Source', benchmarks: true, scale: 2, showStamp: true });
+    const replaced = replaceIdsReportSnapshot(destination, source);
+    assert.deepEqual([replaced.id, replaced.title, replaced.variant, replaced.benchmarks, replaced.scale, replaced.showStamp], ['keep', 'Authored', 'long', false, 1.5, false]);
+    assert.equal(replaced.sourceKind, 'rules', 'the evidence itself is the source\'s');
+    assert.equal(replaceIdsReportSnapshot({ ...destination, showStamp: undefined }, source).showStamp, undefined, 'an absent choice stays absent');
   });
 });

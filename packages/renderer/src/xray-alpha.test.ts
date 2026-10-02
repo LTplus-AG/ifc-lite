@@ -132,6 +132,29 @@ describe('XRayAlpha resolves alpha per entity', () => {
     });
 });
 
+describe('XRayAlpha.isGhostBatch picks out context ghosts', () => {
+    it('is true only when every id is outside the ghost exceptions', () => {
+        const xray = new XRayAlpha({ ghostExceptIds: new Set([3]) }, NONE);
+        assert.strictEqual(xray.isGhostBatch(batchOf(1, 2)), true);
+        assert.strictEqual(xray.isGhostBatch(batchOf(1, 3)), false, 'one excepted id keeps full shading');
+        assert.strictEqual(xray.isGhostBatch(batchOf()), false, 'an empty batch is not a ghost');
+    });
+
+    it('excludes selected and overridden ids, and answers false without a ghost set', () => {
+        const ghosting = { ghostExceptIds: new Set([3]), transparencyOverrides: new Map([[2, 0.3]]) };
+        assert.strictEqual(new XRayAlpha(ghosting, new Set([1])).isGhostBatch(batchOf(1)), false, 'selected');
+        assert.strictEqual(new XRayAlpha(ghosting, NONE).isGhostBatch(batchOf(2)), false, 'overridden');
+        assert.strictEqual(new XRayAlpha({ transparencyOverrides: new Map([[1, 0.04]]) }, NONE).isGhostBatch(batchOf(1)), false);
+    });
+
+    it('snapshots the ghost set, like the alpha resolution', () => {
+        const except = new Set([3]);
+        const xray = new XRayAlpha({ ghostExceptIds: except }, NONE);
+        except.add(1);
+        assert.strictEqual(xray.isGhostBatch(batchOf(1)), true);
+    });
+});
+
 describe('XRayEpochTracker invalidates the sub-batch cache by CONTENT', () => {
     const tracker = () => new XRayEpochTracker();
 

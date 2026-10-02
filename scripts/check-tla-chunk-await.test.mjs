@@ -161,6 +161,8 @@ test('RED: chunks emitted but not one __tla-wrapped chunk must fail, not tick', 
   assert.equal(status, 1, out);
   assert.doesNotMatch(out, /✅/);
   assert.match(out, /NOT ONE of\s*\n?them exports a `__tla` binding/);
+  // ...and it never reaches the minification scan to report "all 0 minified".
+  assert.doesNotMatch(out, /plugin-rewritten chunk\(s\) minified/);
   assert.match(out, /2 \.js chunk\(s\)/);
 });
 
@@ -262,4 +264,27 @@ test('minified entry and worker chunks pass and are counted', () => {
   });
   assert.equal(status, 0, out);
   assert.match(out, /all 3 plugin-rewritten chunk\(s\) minified/);
+});
+
+test('a minified chunk that merely QUOTES the pretty wrapper is not flagged', () => {
+  // E.g. the bundled changelog describing this fix, both inline and inside a
+  // multi-line template literal where it lands at a line start.
+  const quoting =
+    'let __tla=Promise.resolve().then(async()=>{z=()=>1});let z;' +
+    'const a="the plugin printed let __tla = Promise.all( pretty",b=`fixed:\n' +
+    'let __tla = Promise.all([\n    try {\n        return __tla_0;\n    await m.__tla;\n`;' +
+    'export{z,a,b,__tla};';
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'changelog-def.js': quoting });
+  assert.equal(status, 0, out);
+  assert.match(out, /all 2 plugin-rewritten chunk\(s\) minified/);
+});
+
+test('RED: a __tla exporter in neither known shape fails instead of passing blind', () => {
+  // The plugin changed how it declares the wrapper: the gate can no longer
+  // tell minified from pretty, so it must refuse rather than tick.
+  const reshaped = `var z;__tla_promise_wrapper(async()=>{z=()=>1});export{z,__tla};`;
+  const { status, out } = runOn({ 'store-abc.js': TLA_CHUNK, 'other-def.js': reshaped });
+  assert.equal(status, 1, out);
+  assert.doesNotMatch(out, /✅/);
+  assert.match(out, /match neither the minified nor the\s+pretty-printed shape/);
 });

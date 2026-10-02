@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { REPORT_MARGIN } from '../export/report/compose.js';
 import { composeDocument, estimateTextWidth, type DocumentLayout, type DrawnItem, type ResolvedBlock } from './compose.js';
 import { BLOCK_TITLE_PAD } from './compose-block-title.js';
+import { TABLE_ROW_HEIGHT } from './compose-table.js';
 import { manualReportBlockFromChecklist } from './manual-report.js';
 import type { IdsReportBlock } from './types.js';
 import { CHECKLIST_VERSION } from '../validation/manual/checklist.js';
@@ -110,5 +111,29 @@ describe('a topic heading is never left alone at the foot of a page (#6632 follo
       }
       assert.ok(crossed, 'the sweep reaches the page break, so the check is not vacuous');
     });
+  }
+});
+
+describe('an enlarged heading keeps every kind inside the printable frame, snapshots included (#6632 follow-up)', () => {
+  const PAGES = { A4: { portrait: [595.28, 841.89], landscape: [841.89, 595.28] }, A3: { portrait: [841.89, 1190.55], landscape: [1190.55, 841.89] } } as const;
+  const bottomOf = (item: DrawnItem): number => item.kind === 'text' ? item.y : item.kind === 'ring' ? item.y + item.size : item.kind === 'table' ? item.y + (item.rows.length + 1) * TABLE_ROW_HEIGHT * (item.scale ?? 1) : item.y + item.h;
+  for (const size of ['A4', 'A3'] as const) {
+    for (const orientation of ['portrait', 'landscape'] as const) {
+      it(`${size} ${orientation}: heading 24 on a strip, block size 0.5 to 2, a 3D snapshot beside the chart and the topic: nothing leaves the frame`, () => {
+        const [w, h] = PAGES[size][orientation];
+        for (const scale of [0.5, 1, 1.5, 2]) {
+          const variants: ResolvedBlock[] = [
+            ...KINDS.map((kind) => block(kind, { scale, ...(kind === 'image' ? { height: 3000, aspect: 0.2 } : {}), ...(kind === 'table' ? { rows: Array.from({ length: 200 }, () => ({ role: 'row' as const, cells: ['Wall'] })) } : {}) })),
+            block('chart', { scale, snapshot: true, height: 600 }), block('topic', { scale, snapshotAspect: 2, lines: ['a', 'b'] }),
+          ];
+          for (const variant of variants) {
+            for (const item of itemsOf(compose([variant], { size, orientation }))) {
+              assert.ok(bottomOf(item) <= h - REPORT_MARGIN - 24 + 1e-6, `${variant.kind} at ${scale}: a ${item.kind} ends at ${bottomOf(item)}, past the frame's end ${h - REPORT_MARGIN - 24}`);
+              if ('w' in item) assert.ok(item.x + item.w <= w - REPORT_MARGIN + 1e-6, `${variant.kind} at ${scale}: a ${item.kind} ends at x ${item.x + item.w}, past the right margin`);
+            }
+          }
+        }
+      });
+    }
   }
 });

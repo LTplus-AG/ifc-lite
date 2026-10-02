@@ -33,8 +33,12 @@ const URL_KEYS = new Set<string>([
 ]);
 
 // String values that look like a filesystem path or a building-model file name.
+// `file:` only counts as a URL scheme when a path follows (`file:///…`,
+// `file:/C:/…`): command ids such as `file:open` / `file:add-model` share the
+// prefix, and matching them redacted the most-used ribbon commands from
+// `command_executed`. A `blob:` URL is always `blob:<origin>/<uuid>`.
 const PATHISH =
-  /[\\/][^\\/]*\.(?:ifc|ifcx|ifczip|bcf|bcfzip|glb|gltf|obj|csv|xlsx|pdf|json|step|stp|las|laz)\b|^(?:file|blob):|^[A-Za-z]:\\|\/Users\/|\/home\//i;
+  /[\\/][^\\/]*\.(?:ifc|ifcx|ifczip|bcf|bcfzip|glb|gltf|obj|csv|xlsx|pdf|json|step|stp|las|laz)\b|^file:[\\/]|^blob:|^[A-Za-z]:\\|\/Users\/|\/home\//i;
 
 // A building-model file name appearing INSIDE a longer string (an exception
 // message, typically). PATHISH above answers "is this whole value a path?";

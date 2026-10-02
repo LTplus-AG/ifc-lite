@@ -33,6 +33,7 @@ There's also a one-command demo that boots the server plus a tiny client:
 | `COLLAB_HOST` | `0.0.0.0` | Bind address. |
 | `COLLAB_DATA_DIR` | `./.collab-data` | Directory for durable Y.Doc persistence (`FilePersistence`). |
 | `COLLAB_MAX_ROOMS` | `1024` | Hard cap on concurrently loaded rooms. |
+| `COLLAB_MAX_CLAIMED_ROOMS` | `100000` | Hard cap on room claims, pending and confirmed together (only with `COLLAB_TOKEN_SECRET`). |
 | `COLLAB_TOKEN_SECRET` | _(unset)_ | **Enables signed-link access control.** Unset = anonymous (open). See [Access control](#access-control). |
 
 !!! warning "Blob storage is in-memory in the CLI"

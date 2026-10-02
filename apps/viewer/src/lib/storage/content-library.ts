@@ -91,16 +91,18 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
     dirty.set(id, entry === null ? null : structuredClone(entry));
     status.items[id] = reason; change(id, entry);
   };
-  const put = (id: string, value: T | null): Promise<boolean> => {
-    let entry: T | null;
+  const portableEntry = (value: T | null): T | null => {
     try {
       // Capture the portable JSON contract once per item, not the entire library.
       // Undefined optional fields remain omitted exactly as in existing exports.
-      entry = value === null ? null : definition.decode(JSON.parse(JSON.stringify(value)));
+      return value === null ? null : definition.decode(JSON.parse(JSON.stringify(value)));
     } catch (error) {
       console.warn('[User content] Invalid draft remains in memory', error);
-      entry = null;
+      return null;
     }
+  };
+  const put = (id: string, value: T | null): Promise<boolean> => {
+    const entry = portableEntry(value);
     if (value !== null && !entry) { stage(id, value, 'invalid'); return Promise.resolve(false); }
     editGeneration++;
     if (!revisions.has(id)) revisions.set(id, 0);
@@ -115,7 +117,21 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
         }
         return false;
       }
-      const result = await writeContent(definition.kind, id, entry, revisions.get(id) ?? 0);
+      const expected = revisions.get(id) ?? 0;
+      let result = await writeContent(definition.kind, id, entry, expected);
+      // Only an own commit receipt can advance a dirty row's expected revision.
+      // Retry once with its latest reference-merged draft, never the stale snapshot.
+      const acknowledged = revisions.get(id) ?? 0;
+      if (!result.ok && result.reason === 'conflict' && acknowledged > expected && generations.get(id) === generation) {
+        if (!dirty.has(id)) result = { ok: true, revision: acknowledged };
+        else {
+          const draft = dirty.get(id);
+          if (draft === undefined) return false;
+          const latest = portableEntry(draft);
+          if (draft !== null && !latest) { stage(id, draft, 'invalid'); return false; }
+          result = await writeContent(definition.kind, id, latest, acknowledged);
+        }
+      }
       if (result.ok) revisions.set(id, result.revision);
       if (generations.get(id) === generation) {
         status.items[id] = result.ok ? 'saved' : result.reason;

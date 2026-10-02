@@ -337,3 +337,50 @@ it('#6695 a source remap in an own commit updates bindings on a newer author edi
   assert.equal(afterRetry.revision, beforeRetry.revision + 1);
   assert.deepEqual(afterRetry.payload, current, 'retry commits both the author edit and the correct source remap');
 });
+
+it('#6695 queued autosave during an own source-remap import saves its latest reference-correct draft without a false conflict', async () => {
+  const backup = createContentBackup(libraries('Second')), blocked = refuseContentWrites();
+  let entries: ContentLibraries;
+  try { entries = (await refused(backup)).entries; await stage(entries); }
+  finally { blocked.mock.restore(); }
+  const peer = libraries('First').comparison[0];
+  const tx = await contentTransaction('items', 'readwrite'), done = transactionDone(tx);
+  tx.objectStore('items').add({ kind: 'comparison', id: peer.id, version: 1, revision: 1,
+    createdAt: Date.now(), modifiedAt: Date.now(), deleted: false, payload: peer });
+  await done;
+  const original = IDBObjectStore.prototype.add;
+  let receipts: readonly ContentRow[] = [], queued: Promise<boolean> | undefined;
+  const autosave = mock.method(IDBObjectStore.prototype, 'add', function (this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
+    const request = original.call(this, value, key);
+    if (this.name === 'items' && value && typeof value === 'object' && 'kind' in value && value.kind === 'document') {
+      queued = useViewerStore.getState().upsertDocument({ ...entries.document[0], name: 'Queued author edit during source remap' });
+    }
+    return request;
+  });
+  try {
+    await act(async () => { assert.equal(await importContentBackup(backup, visible, true, rows => { receipts = rows; }), 3); });
+  } finally { autosave.mock.restore(); }
+  assert.ok(queued, 'the native import snapshot launches a real autosave');
+  const pendingAutosave = queued;
+  await acknowledge(receipts);
+  let autosaved = false;
+  await act(async () => { autosaved = await pendingAutosave; });
+  const current = visible().document.find(entry => entry.id === entries.document[0].id); assert.ok(current);
+  const currentChart = current.blocks[0]; assert.equal(currentChart.kind, 'chart');
+  if (currentChart.kind !== 'chart') assert.fail();
+  const imported = receipts.find(row => row.kind === 'document'); assert.ok(imported);
+  const committed = documentContent.decode(imported.payload); assert.ok(committed);
+  const committedChart = committed.blocks[0]; assert.equal(committedChart.kind, 'chart');
+  if (committedChart.kind !== 'chart') assert.fail();
+  const row = (await readContentRows('document'))[0], status = useViewerStore.getState().documentsStorage.items[current.id];
+  assert.equal(autosaved, true, 'own receipt advancement retries the current draft once');
+  assert.equal(status, 'saved');
+  assert.equal(row.revision, imported.revision + 1);
+  assert.deepEqual(row.payload, current, 'autosave commits the latest author edit and remapped references');
+  assert.equal(current.name, 'Queued author edit during source remap');
+  assert.equal(currentChart.chart.comparisonId, committedChart.chart.comparisonId, 'receipt still applies its own source remap to the queued newer draft');
+  await act(async () => { assert.equal(await useViewerStore.getState().retryDocumentsSave(), true); });
+  const retried = (await readContentRows('document'))[0];
+  assert.deepEqual(retried.payload, current, 'retry durably preserves both queued author content and own source identity');
+  assert.equal(useViewerStore.getState().documentsStorage.items[current.id], 'saved');
+});

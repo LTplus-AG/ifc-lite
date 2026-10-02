@@ -545,3 +545,17 @@ test('missing and malformed token accounting is unknown rather than free', () =>
     assert.equal(estimateCostUsd('openai/gpt-6-luna', usage), null);
   }
 });
+
+
+test('a paid empty response retains billed cost and finish reason when the ensemble falls through', async () => {
+  let calls;
+  const outcome = await runEnsembleReview({ prompt: 'p', apiKey: 'k', models: ['openai/gpt-6-luna'],
+    fetchImpl: async () => reply({ choices: [{ message: { content: '' }, finish_reason: 'length' }], usage: { cost: 0.02, completion_tokens: 32768 } }),
+    onTelemetry: (value) => { calls = value; },
+  });
+  assert.equal(outcome, null);
+  assert.equal(calls[0].answered, false);
+  assert.equal(calls[0].costUsd, 0.02);
+  assert.equal(calls[0].costSource, 'billed');
+  assert.equal(calls[0].finishReason, 'length');
+});

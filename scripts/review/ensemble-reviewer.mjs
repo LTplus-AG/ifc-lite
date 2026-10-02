@@ -116,24 +116,24 @@ export async function runEnsemble({ prompt, apiKey, models, minSuccess = 1, conc
   const tasks = models.map((model) => async () => {
     const startedAt = Date.now();
     try {
-      const { text, usage } = await requestOpenRouterReviewWithUsage({ prompt, apiKey, model, fetchImpl });
+      const { text, usage, finishReason } = await requestOpenRouterReviewWithUsage({ prompt, apiKey, model, fetchImpl });
       const elapsedMs = Date.now() - startedAt;
       const cost = estimateCostUsd(model, usage);
       console.log(
         `ensemble: ${model} answered in ${elapsedMs}ms, ${text.length} chars` +
           (cost !== null ? `, ~$${cost.toFixed(4)}` : ''),
       );
-      return { ok: true, model, text, usage: usage ?? null, elapsedMs };
+      return { ok: true, model, text, usage: usage ?? null, finishReason, elapsedMs };
     } catch (error) {
       const elapsedMs = Date.now() - startedAt;
       const message = error instanceof Error ? error.message : String(error);
       console.log(`ensemble: ${model} failed after ${elapsedMs}ms: ${message}`);
-      return { ok: false, model, error: message, elapsedMs };
+      return { ok: false, model, error: message, elapsedMs, usage: error?.usage ?? null, finishReason: error?.finishReason ?? null };
     }
   });
   const outcomes = await runWithConcurrency(tasks, concurrency ?? models.length);
   const results = outcomes.filter((o) => o.ok).map(({ ok: _ok, ...rest }) => rest);
-  const failures = outcomes.filter((o) => !o.ok).map(({ model, error, elapsedMs }) => ({ model, error, elapsedMs }));
+  const failures = outcomes.filter((o) => !o.ok).map(({ ok: _ok, ...rest }) => rest);
   if (results.length < minSuccess) {
     console.log(`ensemble: only ${results.length}/${models.length} model(s) succeeded, below minSuccess=${minSuccess}.`);
   }

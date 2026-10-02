@@ -139,7 +139,7 @@ async function main() {
     const validatedResults = [];
     for (const f of files) {
       const c = JSON.parse(readFileSync(join(caseDir, f), 'utf8'));
-      const cached = process.argv.includes('--resume') ? readEvalCache(tmp, f, c.input, model) : null;
+      const cached = process.argv.includes('--resume') ? readEvalCache(tmp, f, c.input, model, process.env.EVAL_REASONING_PROFILE || 'high') : null;
       if (cached) { c.input = cached.input; console.log(`  ${f}: reusing completed model attempts; revalidating without another paid call.`); }
       // THE CONTEXT PACK, built per case so the eval measures the pipeline the
     // lane actually runs rather than a diff-only ghost of it. `--base` names
@@ -369,7 +369,7 @@ async function main() {
     console.log(`  MISSES whose defect class the review declared NOT-APPLICABLE: ${s.skippedClass} of ${s.total - s.hits}`);
     console.log('\n  Compare against the same command on the other rubric. A change that lowers');
     console.log('  recall is a regression whatever it does to EXTRA.\n');
-    writeFileSync(join(tmp, 'score.json'), JSON.stringify({ rubric, model, baseRef, corpusFiles: files, matcher: m.note, judged: !noJudge, validatedScore, postedScore: s, results }, null, 2));
+    writeFileSync(join(tmp, 'score.json'), JSON.stringify({ rubric, model, reasoningProfile: process.env.EVAL_REASONING_PROFILE || 'high', baseRef, corpusFiles: files, matcher: m.note, judgeRequested: !noJudge, validatedScore, postedScore: s, results }, null, 2));
     ok = true;
   } finally {
     if (ok && !outputDir) rmSync(tmp, { recursive: true, force: true });

@@ -5,8 +5,9 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { buildPrompt } from './run-reviewer.mjs';
 import { requestOpenRouterReviewWithUsage } from './openrouter-reviewer.mjs';
-import { estimateCostUsd, MODEL_PRICES_PER_MTOK } from './lib/review-cost.mjs';
-import { appendTelemetry } from './lib/review-telemetry.mjs';
+import { MODEL_PRICES_PER_MTOK } from './lib/review-cost.mjs';
+import { reviewReasoning } from './lib/review-reasoning.mjs';
+import { appendTelemetry, costRecord } from './lib/review-telemetry.mjs';
 
 export function reserveCost(model, prompt, maxTokens, spent, budget) {
   const price = MODEL_PRICES_PER_MTOK[model];
@@ -40,19 +41,32 @@ async function main() {
   const budget = Number(process.env.EVAL_BUDGET_USD ?? 3);
   const maxTokens = 32768;
   const model = args['--model'];
+  const reasoning = reviewReasoning(model, process.env.EVAL_REASONING_PROFILE || 'high');
   const reserve = reserveCost(model, prompt, maxTokens, spent, budget);
   // Reserve before requesting: an interrupted/failed call may still be billed.
   writeFileSync(ledger, String(spent + reserve));
   const startedAt = Date.now();
-  const result = await requestOpenRouterReviewWithUsage({ prompt, apiKey, model, maxTokens });
-  const costUsd = estimateCostUsd(model, result.usage);
+  let result;
+  try {
+    result = await requestOpenRouterReviewWithUsage({ prompt, apiKey, model, maxTokens, reasoning });
+  } catch (error) {
+    const cost = costRecord(model, error?.usage);
+    writeFileSync(ledger, String(spent + (cost.costUsd ?? reserve)));
+    appendTelemetry(`${args['--out']}.telemetry.jsonl`, {
+      model, pr: input.pr, answered: false, elapsedMs: Date.now() - startedAt,
+      maxTokens, reasoning, usage: error?.usage ?? null, finishReason: error?.finishReason ?? null, ...cost,
+    });
+    throw error;
+  }
+  const cost = costRecord(model, result.usage);
+  const costUsd = cost.costUsd;
   // If usage is absent, keep the reservation rather than treating it as free.
   const charged = costUsd ?? reserve;
   writeFileSync(ledger, String(spent + charged));
   appendTelemetry(`${args['--out']}.telemetry.jsonl`, {
-    model, pr: input.pr, elapsedMs: Date.now() - startedAt,
-    maxTokens, usage: result.usage, costUsd: charged,
-    costSource: typeof result.usage?.cost === 'number' ? 'billed' : costUsd === null ? 'reserved' : 'estimated',
+    model, pr: input.pr, answered: true, finishReason: result.finishReason, elapsedMs: Date.now() - startedAt,
+    maxTokens, reasoning, usage: result.usage, costUsd: charged,
+    costSource: costUsd === null ? 'reserved' : cost.costSource,
   });
   writeFileSync(args['--out'], result.text);
 }

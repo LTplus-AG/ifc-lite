@@ -782,7 +782,7 @@ test('comparison preserves validation evidence and a score without deleting outp
   const r = runHarness(dir, reviewer, ['--output-dir', output]);
   assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
   const report = JSON.parse(readFileSync(join(output, 'score.json'), 'utf8'));
-  assert.equal(report.judged, false);
+  assert.equal(report.judgeRequested, false);
   assert.equal(report.results.length, 1);
   assert.equal(report.results[0].verdict, 'clean');
   const validation = JSON.parse(readFileSync(join(output, 'case.json.validation.json'), 'utf8'));

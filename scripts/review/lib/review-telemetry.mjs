@@ -3,15 +3,20 @@ import { appendFileSync } from 'node:fs';
 import { estimateCostUsd } from './review-cost.mjs';
 
 // Never record prompts, credentials, or raw provider errors in usage artifacts.
+export function costRecord(model, usage) {
+  const costUsd = estimateCostUsd(model, usage);
+  return { costUsd, costSource: typeof usage?.cost === 'number' && Number.isFinite(usage.cost) && usage.cost >= 0
+    ? 'billed' : costUsd === null ? 'unknown' : 'estimated' };
+}
+
 export function summarizeCalls(results, failures, validation) {
   return [
     ...results.map((r) => ({
-      model: r.model, answered: true, elapsedMs: r.elapsedMs, usage: r.usage,
-      costUsd: estimateCostUsd(r.model, r.usage),
-      costSource: typeof r.usage?.cost === 'number' && Number.isFinite(r.usage.cost) && r.usage.cost >= 0 ? 'billed' : estimateCostUsd(r.model, r.usage) === null ? 'unknown' : 'estimated',
+      model: r.model, answered: true, elapsedMs: r.elapsedMs, usage: r.usage, finishReason: r.finishReason,
+      ...costRecord(r.model, r.usage),
       poolValidation: validation.get(r.model),
     })),
-    ...failures.map((r) => ({ model: r.model, answered: false, elapsedMs: r.elapsedMs, costUsd: null, costSource: 'unknown' })),
+    ...failures.map((r) => ({ model: r.model, answered: false, elapsedMs: r.elapsedMs, usage: r.usage, finishReason: r.finishReason, ...costRecord(r.model, r.usage) })),
   ];
 }
 

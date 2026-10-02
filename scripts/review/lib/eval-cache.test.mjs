@@ -31,3 +31,10 @@ test('a completed model refusal is reusable, but an instrument failure is not', 
   writeFileSync(join(dir, 'case.validation.json'), JSON.stringify({ attempts: 1, reason: 'INPUT_INVALID' }));
   assert.equal(readEvalCache(dir, 'case', input, 'candidate'), null);
 });
+
+
+test('changing reasoning cannot reuse model answers from another profile', (t) => {
+  const { dir, input } = evidence(t);
+  writeFileSync(join(dir, 'case.out.txt.telemetry.jsonl'), '{"model":"openai/gpt-6-luna"}\n');
+  assert.throws(() => readEvalCache(dir, 'case', input, 'openai/gpt-6-luna', 'cheap-defaults'), /different reasoning profile/);
+});

@@ -67,8 +67,16 @@ export function responseText(message) {
  * is the pre-existing, text-only contract every other caller and test already
  * depends on, so it stays a thin wrapper rather than changing shape.
  */
+export class OpenRouterReviewError extends Error {
+  constructor(message, { usage = null, finishReason = null } = {}) {
+    super(message);
+    this.usage = usage;
+    this.finishReason = finishReason;
+  }
+}
+
 export async function requestOpenRouterReviewWithUsage({
-  prompt, apiKey, model = OPENROUTER_REVIEW_MODEL, fetchImpl = fetch, timeoutMs = OPENROUTER_TIMEOUT_MS_DEFAULT, maxTokens = 32768,
+  prompt, apiKey, model = OPENROUTER_REVIEW_MODEL, fetchImpl = fetch, timeoutMs = OPENROUTER_TIMEOUT_MS_DEFAULT, maxTokens = 32768, reasoning = { effort: 'high' },
 }) {
   const response = await fetchImpl('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -82,7 +90,7 @@ export async function requestOpenRouterReviewWithUsage({
       model,
       messages: [{ role: 'user', content: prompt }],
       max_tokens: maxTokens,
-      reasoning: { effort: 'high' },
+      reasoning,
     }),
     // A per-model failure, not a hang: `requestOpenRouterReviewChain` below
     // already treats ANY thrown error here (HTTP, network, this abort) as
@@ -101,11 +109,12 @@ export async function requestOpenRouterReviewWithUsage({
     // not expected to echo the Authorization header back in an error body, but
     // this is the backstop for the day some upstream provider does.
     const detail = redactSecrets(String(parsed?.error?.message ?? body ?? '(empty)').slice(0, 2000));
-    throw new Error(`OpenRouter chat completions API returned HTTP ${response.status}: ${detail}`);
+    throw new OpenRouterReviewError(`OpenRouter chat completions API returned HTTP ${response.status}: ${detail}`, { usage: parsed?.usage ?? null });
   }
   const text = responseText(parsed?.choices?.[0]?.message);
-  if (!text) throw new Error('OpenRouter response completed without output text.');
-  return { text, usage: parsed?.usage ?? null };
+  const metadata = { usage: parsed?.usage ?? null, finishReason: parsed?.choices?.[0]?.finish_reason ?? null };
+  if (!text) throw new OpenRouterReviewError('OpenRouter response completed without output text.', metadata);
+  return { text, ...metadata };
 }
 
 export async function requestOpenRouterReview(opts) {

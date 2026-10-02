@@ -26,6 +26,11 @@ on:
         type: choice
         options: [strong, cheap]
         default: strong
+      reasoning_profile:
+        description: 'High reasoning baseline or model-specific cheap defaults'
+        type: choice
+        options: [high, cheap-defaults]
+        default: high
       context_ref:
         description: 'HEAD or a pinned 40-hex tree for identical context across comparisons'
         required: false
@@ -48,7 +53,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: rubric-eval-${{ inputs.comparison || 'strong' }}
+  group: rubric-eval-${{ inputs.comparison || 'strong' }}-${{ inputs.reasoning_profile || 'high' }}
   cancel-in-progress: false
 
 jobs:
@@ -125,7 +130,7 @@ jobs:
         with:
           node-version: 22
       - name: Test evaluation adapters
-        run: node --test scripts/review/rubric-eval.test.mjs scripts/review/openrouter-eval-reviewer.test.mjs scripts/review/lib/eval-cache.test.mjs scripts/review/semantic-match.test.mjs
+        run: node --test scripts/review/rubric-eval.test.mjs scripts/review/openrouter-eval-reviewer.test.mjs scripts/review/lib/eval-cache.test.mjs scripts/review/semantic-match.test.mjs scripts/review/lib/review-reasoning.test.mjs
       - name: Fetch a pinned context tree when requested
         if: inputs.context_ref != '' && inputs.context_ref != 'HEAD'
         run: |
@@ -151,6 +156,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
           EVAL_MODEL: ${{ matrix.model }}
+          EVAL_REASONING_PROFILE: ${{ inputs.reasoning_profile }}
           EVAL_RUBRIC: ${{ inputs.rubric }}
           EVAL_COST_LEDGER: ${{ runner.temp }}/eval-cost.txt
           # Three serial case loops, each with a conservative $10 reservation

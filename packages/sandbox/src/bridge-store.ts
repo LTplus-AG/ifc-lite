@@ -172,12 +172,7 @@ export function buildStoreNamespace(): NamespaceSchema {
               || !params.End.every((n) => typeof n === 'number' && Number.isFinite(n))) {
             throw new Error('bim.store.addBeam: Start/End values must be finite numbers');
           }
-          for (const key of ['Width', 'Height'] as const) {
-            const v = params[key];
-            if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
-              throw new Error(`bim.store.addBeam: params.${key} must be a finite number > 0, got ${v}`);
-            }
-          }
+          requirePositiveDims(params, ['Width', 'Height'], 'addBeam');
           return sdk.store.addBeam(args[0] as string, storeyExpressId, params);
         },
         returns: 'value',

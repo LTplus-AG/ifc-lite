@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import '@/test/content-backup-fixture.js';
 import { clearContentDatabase, refuseContentWrites } from '@/test/content-fixture.js';
 import { it, mock } from 'node:test';
 import assert from 'node:assert/strict';
@@ -208,6 +209,33 @@ it('#6695 an unfinished image remains recoverable beside valid document, compari
   const raw = (await readContentRecovery()).filter(row => row.key.startsWith('backup-draft:'));
   assert.equal(raw.length, 1);
   assert.deepEqual(JSON.parse(raw[0].raw), parsed.drafts?.[0]);
+});
+
+it('#6695 JSON sparse report arrays remain raw recovery evidence without poisoning valid neighbors', async () => {
+  const { newSavedReport, validateSavedReport } = await import('../validation/reports/history');
+  const { emptyManualReportBlock } = await import('../document/manual-report');
+  const { comparisonModels, comparisonResult } = await import('@/test/saved-comparison-fixture');
+  const { snapshotComparison } = await import('../compare/savedComparisons');
+  const complete = newSavedReport(emptyManualReportBlock('complete'), 'Complete validation');
+  const incomplete = newSavedReport({ kind: 'ids-report', id: 'sparse', sourceName: 'Sparse IDS',
+    generatedAt: '2026-01-01T00:00:00.000Z', summary: { checked: 0, passed: 0, failed: 0, passRate: 100 },
+    checks: new Array<import('../document/types').IdsReportCheckSummary>(1) }, 'Sparse validation');
+  assert.equal(validateSavedReport(incomplete), true, 'native sparse array skips its absent element');
+  const raw = JSON.stringify(incomplete);
+  assert.equal(validateSavedReport(JSON.parse(raw)), false, 'portable JSON turns the absent element into invalid null');
+  const document = blankDocument(), comparison = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Complete comparison');
+  const backup = parseContentBackup(JSON.stringify(createContentBackup({ document: [document], comparison: [comparison], validation: [complete, incomplete] })));
+  assert.deepEqual(backup.drafts, [{ kind: 'validation', id: incomplete.id, raw }]);
+  assert.equal(await importContentBackup(backup), 3);
+  assert.deepEqual(await loadDocuments(), [document]);
+  assert.deepEqual((await readContentRows('validation')).map(row => row.payload), [complete]);
+  assert.deepEqual((await readContentRows('comparison')).map(row => row.payload), [comparison]);
+  const preserved = await readBackupDrafts();
+  const reexported = parseContentBackup(JSON.stringify(createContentBackup(backup.libraries, undefined, preserved.drafts)));
+  assert.deepEqual(reexported.drafts, [{ kind: 'validation', id: incomplete.id, raw }]);
+  assert.equal(await importContentBackup(reexported), 0);
+  const original = (await readContentRecovery()).find(row => row.key.startsWith('backup-draft:')); assert.ok(original);
+  assert.equal((JSON.parse(original.raw) as { raw: string }).raw, raw, 'archival preserves exact portable sparse draft bytes');
 });
 
 it('#6695 an aborted raw-draft archive rolls back all valid neighbors and leaves recovery exportable', async () => {

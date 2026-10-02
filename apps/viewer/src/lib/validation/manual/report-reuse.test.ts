@@ -70,6 +70,26 @@ describe('Saved report recovery invariants (#6611)', () => {
     assert.deepEqual(manualReportReuse(oversized.snapshot, models), { ok: false, reason: 'invalid' });
   });
 
+  it('requires completion of the matching fingerprint, preserves legacy readiness, and carries canonical lifecycle options (#6611)', () => {
+    const snapshot = recorded().snapshot;
+    for (const loadState of ['pending', 'streaming-geometry', 'hydrating-metadata', 'error', 'complete', undefined] as const) {
+      const options = manualModels.manualModelOptions(new Map([
+        ['source', { id: 'source', name: 'Source.ifc', sourceFingerprint: 'source-fingerprint', loadState }],
+        ['peer', { id: 'peer', name: 'Source.ifc', sourceFingerprint: 'different-fingerprint', loadState: 'complete' as const }],
+      ]));
+      const recovered = manualReportReuse(snapshot, options);
+      if (loadState === 'complete' || loadState === undefined) {
+        assert.ok(recovered?.ok);
+        assert.equal(recovered.answers['source-fingerprint'].__proto__.comment, 'Recorded comment');
+        assert.equal(recovered.answers['different-fingerprint'], undefined);
+      } else {
+        assert.deepEqual(recovered, { ok: false, reason: 'modelNotLoaded' },
+          'a completed same-name peer cannot supply readiness for a different fingerprint');
+      }
+      assert.deepEqual(manualReportReuse(snapshot, [options[1]]), { ok: false, reason: 'modelNotLoaded' });
+    }
+  });
+
   it('uses explicit selection first and refuses automatic peer fallback after source removal', () => {
     assert.equal(pickManualModel(models, null, 'active-peer', 'source-fingerprint')?.id, 'new-uuid');
     assert.equal(pickManualModel([models[1]], null, 'active-peer', 'source-fingerprint'), null);

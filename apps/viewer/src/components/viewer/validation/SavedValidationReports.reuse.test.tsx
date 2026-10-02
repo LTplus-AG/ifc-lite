@@ -120,6 +120,51 @@ describe('Saved manual report editable reuse (#6611)', () => {
     assert.equal(row(reopened, 'Naming convention').querySelector<HTMLTextAreaElement>('textarea')?.value, 'Edited current copy');
   });
 
+  // The canonical primary loader can expose a fingerprint before final
+  // registration, and retain it after a failed load (review r4162312272).
+  for (const count of [1, 2]) {
+    for (const loadState of ['pending', 'streaming-geometry', 'hydrating-metadata', 'error'] as const) {
+      it(`refuses ${loadState} source reuse in UI and store at ${count} model(s) (#6611)`, async () => {
+        const { source, original, ui } = await saveThenReopenHistory(count);
+        const before = localStorage.getItem('ifc-lite:validation:manual-library');
+        // A ready active peer cannot grant readiness to the recorded source.
+        act(() => useViewerStore.getState().updateModel(source.id, { loadState }));
+        await settle();
+        assert.equal(button(ui, 'Edit a copy').disabled, true);
+        assert.match(ui.textContent ?? '', /load the recorded model/i);
+        const saved = useViewerStore.getState().savedValidationReports[0];
+        assert.equal(useViewerStore.getState().reuseManualValidationReport(saved), false,
+          'canonical store independently refuses a direct or stale-UI attempt');
+        assert.equal(localStorage.getItem('ifc-lite:validation:manual-library'), before);
+        assert.equal(useViewerStore.getState().manualLibrary.checklists.length, 0);
+        assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+        act(() => useViewerStore.getState().updateModel(source.id, { loadState: 'complete' }));
+        await settle();
+        assert.equal(button(ui, 'Edit a copy').disabled, false, 'same fingerprint becomes reusable only at completion');
+        click(button(ui, 'Edit a copy'));
+        assert.equal(row(ui, 'Naming convention').dataset.status, 'warning');
+        assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+      });
+    }
+    for (const loadState of ['complete', undefined] as const) {
+      it(`recovers ${loadState ?? 'legacy undefined'} readiness at ${count} model(s) (#6611)`, async () => {
+        const { source, original, ui } = await saveThenReopenHistory(count);
+        // Individual phase flags can remain opening/idle after unified
+        // completion; they are not an additional recovery readiness contract.
+        act(() => useViewerStore.getState().updateModel(source.id, {
+          loadState, geometryLoadState: 'opening', metadataLoadState: 'idle',
+        }));
+        await settle();
+        assert.equal(button(ui, 'Edit a copy').disabled, false);
+        click(button(ui, 'Edit a copy'));
+        assert.equal(row(ui, 'Naming convention').dataset.status, 'warning');
+        assert.equal(row(ui, 'Naming convention').querySelector<HTMLTextAreaElement>('textarea')?.value, 'Recorded prefix needs review');
+        assert.equal(useViewerStore.getState().manualLibrary.checklists[0].preferredModelFingerprint, source.sourceFingerprint);
+        assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+      });
+    }
+  }
+
   it('refuses a saved report without model identity instead of borrowing the active model (#6611)', async () => {
     const { ui } = await saveThenReopenHistory(2);
     const saved = structuredClone(useViewerStore.getState().savedValidationReports[0]);

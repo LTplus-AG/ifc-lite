@@ -9,7 +9,7 @@ import { useViewerStore } from '@/store';
 import { buildReportDocument, type DocumentReportResult, type DocumentResultMapping } from '@/lib/document/build-report-document';
 import { prepareDocument } from '@/lib/document/prepare-document';
 import { exportPreparedDocument, documentPdfWarnings } from '@/lib/document/export-prepared-document';
-import { validateDocumentSpec, type DocumentSpec } from '@/lib/document/types';
+import { migrateDocumentSpec, validateDocumentSpec, type DocumentSpec } from '@/lib/document/types';
 import { sanitizeFilename } from '@/lib/export/download';
 import { sameReportEvidence } from './report-provenance';
 import type { DocumentRunContext } from '@/lib/document/build-report-document';
@@ -68,7 +68,7 @@ export function createAutomationHost(run: WorkflowRun, doc: FlowDocument, addMod
       guard('storage.write:documents'); run.progress('Building document');
       const c = config !== null && typeof config === 'object' ? config as Record<string, unknown> : {};
       const template = c.template as DocumentSpec | undefined;
-      if (template && validateDocumentSpec(template).length) throw new Error('Invalid native document template');
+      if (template && validateDocumentSpec(migrateDocumentSpec(template)).length) throw new Error('Invalid native document template');
       const state = useViewerStore.getState();
       const results = [...reports(validation), ...reports(comparisons), ...reports(historical)];
       const document = buildReportDocument({ name: typeof c.name === 'string' ? c.name : `${doc.name} report`, results,

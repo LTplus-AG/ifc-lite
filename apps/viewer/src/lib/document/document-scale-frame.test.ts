@@ -187,3 +187,69 @@ describe('tables and reports decide nothing from the width of their column (#654
     });
   }
 });
+
+
+describe('repeated page bands reserve the body frame for every scaled block kind (#6610)', () => {
+  const band = { text: 'Controlled report', showDate: true, showPageNumbers: true,
+    logo: { dataUrl: 'data:image/png;base64,iVBORw0KGgo=', height: 60 } };
+  // These are resolved sizing invariants; actual PNG/PDF bytes are exercised by
+  // DocumentPanel.pageBands.test.tsx, not claimed by this metadata-only URI.
+  for (const [name, build] of Object.entries(SHAPES)) {
+    it(`${name}: body ink and boxes clear repeated top and bottom furniture`, () => {
+      for (const page of PAGES) for (const scale of SCALES) {
+        const layout = composeDocument({ name: 'Doc', page, generatedAt: 'now', measure: estimateTextWidth,
+          pageHeading: band, pageFooter: band, stampedDate: '2026-10-02', blocks: build(scale) });
+        assert.ok(Array.isArray(layout.pageFrames), 'the composer owns repeated frame items');
+        for (const [index, body] of layout.pages.entries()) {
+          const furniture = layout.pageFrames[index];
+          const headingBottom = Math.max(...furniture.filter(item => item.band === 'heading')
+            .map(item => item.kind === 'image' ? item.y + item.h : item.y));
+          const footerTop = Math.min(...furniture.filter(item => item.band === 'footer')
+            .map(item => item.kind === 'image' ? item.y : item.y - item.size));
+          for (const item of body.items) {
+            const top = item.kind === 'text' ? item.y - item.size : item.y;
+            const bottom = item.kind === 'text' ? item.y : item.kind === 'ring' ? item.y + item.size
+              : item.kind === 'table' ? item.y + (item.rows.length + 1) * 13.2 * (item.scale ?? 1) : item.y + item.h;
+            assert.ok(top >= headingBottom - 1e-6, `${name} ${page.size}/${page.orientation} ${scale}x ${item.kind} crosses header`);
+            assert.ok(bottom <= footerTop + 1e-6, `${name} ${page.size}/${page.orientation} ${scale}x ${item.kind} crosses footer`);
+          }
+          const counters = furniture.filter(item => item.kind === 'text' && item.role === 'counter');
+          assert.equal(counters.length, 2);
+          assert.ok(counters.every(item => item.kind === 'text' && item.text === `Page ${index + 1} / ${layout.pages.length}`));
+        }
+      }
+    });
+  }
+
+  it('shrinks the snapshot before its old 40pt floor can overflow a short repeated-band frame', () => {
+    const tall = { ...band, logo: { ...band.logo, height: 96 } };
+    const layout = composeDocument({ name: 'Short frame', page: { size: 'A4', orientation: 'landscape' },
+      generatedAt: 'now', stampedDate: '2026-10-02', measure: estimateTextWidth,
+      pageHeading: { ...tall, fontSize: 48 }, pageFooter: tall,
+      blocks: [chart('c', { height: 600, snapshot: true, width: 'half', scale: 2, fontSize: 24 }),
+        chart('d', { height: 600, snapshot: true, width: 'half', scale: 2, fontSize: 24 })] });
+    const snapshots = layout.pages.flatMap(page => page.items.filter(item => item.kind === 'snapshot'));
+    assert.equal(snapshots.length, 2, 'both requested snapshots remain in the measured document');
+    assert.ok(snapshots.every(item => item.kind === 'snapshot' && item.h < 80), 'a physical 80pt minimum would exceed the remaining room');
+    const bodyBottom = Math.max(...layout.pages.flatMap(page => page.items.flatMap(item => 'h' in item ? [item.y + item.h] : [])));
+    const footerTop = Math.min(...layout.pageFrames[0].filter(item => item.band === 'footer')
+      .map(item => item.kind === 'image' ? item.y : item.y - item.size));
+    assert.ok(bodyBottom <= footerTop, 'the chart and snapshot stay above the repeated footer');
+  });
+
+  it('refuses a frame too short for a requested snapshot rather than silently dropping its contents (#6610)', () => {
+    const tall = { ...band, fontSize: 48, logo: { ...band.logo, height: 96 } };
+    assert.throws(() => composeDocument({ name: 'Refused short frame', page: { size: 'A4', orientation: 'landscape' },
+      generatedAt: 'now', stampedDate: '2026-10-02', measure: estimateTextWidth, pageHeading: tall, pageFooter: tall,
+      blocks: [chart('c', { height: 600, snapshot: true, scale: 2, fontSize: 24 })] }),
+    /leave too little space/, 'the same refusal is surfaced by preview and PDF');
+  });
+
+  it('refuses a fixed topic snapshot that cannot fit between authored bands (#6610)', () => {
+    const tall = { ...band, fontSize: 48, logo: { ...band.logo, height: 96 } };
+    assert.throws(() => composeDocument({ name: 'Refused topic frame', page: { size: 'A4', orientation: 'landscape' },
+      generatedAt: 'now', stampedDate: '2026-10-02', measure: estimateTextWidth, pageHeading: tall, pageFooter: tall,
+      blocks: [{ kind: 'topic', id: 'topic', title: 'Topic', lines: ['Description'], snapshotAspect: 1, scale: 2 }] }),
+    /leave too little space/, 'an indivisible graphic cannot be painted over the footer');
+  });
+});

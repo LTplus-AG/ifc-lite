@@ -15,10 +15,12 @@ import type { DocumentSpec } from '@/lib/document/types';
 import type { DocumentLabelFormatter } from '@/lib/document/document-labels';
 import type { DocumentPdfInput } from '@/lib/document/generate-document-pdf';
 import { topicSnapshotDataUrl } from '@/lib/document/generate-document-pdf';
-import { pageBox, REPORT_MARGIN } from '@/lib/export/report/compose';
+import { pageBox } from '@/lib/export/report/compose';
 import { DOCUMENT_FONT_FAMILIES } from '@/lib/document/text-typography';
 import type { TableState } from '@/lib/document/resolve-table';
-import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS, DOCUMENT_PREVIEW_PAPER_CLASS, previewTextPaint } from './preview-theme';
+import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS, DOCUMENT_PREVIEW_PAPER_CLASS } from './preview-theme';
+import { pageBandImageUrls } from '@/lib/document/page-band';
+import { ComposedPageFrame } from './ComposedPageFrame';
 import { ComposedPageItems } from './ComposedPageItems';
 import { useDocumentLayout, type PreviewImageSize } from './useDocumentLayout';
 
@@ -43,12 +45,12 @@ export function DocumentPreview(props: DocumentPreviewProps) {
   const labels = props.labels ?? capturedLabels;
   const [imageFailures, setImageFailures] = useState<ReadonlySet<string>>(new Set());
   const [imageSizes, setImageSizes] = useState<ReadonlyMap<string, PreviewImageSize>>(new Map());
-  const imageUrls = useMemo(() => new Set(props.document.blocks.flatMap(block => {
+  const imageUrls = useMemo(() => new Set([...pageBandImageUrls(props.document), ...props.document.blocks.flatMap(block => {
     if (block.kind === 'image') return block.dataUrl ? [block.dataUrl] : [];
     const topic = block.kind === 'topic' && block.snapshot ? props.topics.get(block.guid) : undefined;
     const url = topic ? topicSnapshotDataUrl(topic) : null;
     return url ? [url] : [];
-  })), [props.document, props.topics]);
+  })]), [props.document, props.topics]);
   const activeImageUrls = useRef(imageUrls);
   activeImageUrls.current = imageUrls;
   useEffect(() => {
@@ -107,31 +109,17 @@ export function DocumentPreview(props: DocumentPreviewProps) {
   const { layout, measure } = value;
   const scale = width / layout.size.w;
   const pendingImages = [...imageUrls].some(url => !imageSizes.has(url));
-  const heading = layout.pageHeading;
-  // The resolved heading contains a default PDF color even when the author
-  // supplied only text/font. Only an actual authored color overrides UI ink.
-  const headingPaint = previewTextPaint(150, displayedDocument.pageHeading?.textColor);
-  const footerPaint = previewTextPaint(150);
   return <div className="flex flex-col items-center gap-4 p-3" data-document-preview aria-busy={pending || pendingImages} data-layout-pending={pending ? 'true' : undefined}>
     {layout.pages.map(page => <section key={page.index} data-document-preview-paper data-preview-section={page.index + 1}
       aria-label={displayedLabels('document.preview.sectionLabel', { section: String(page.index + 1) })}
       className={`${DOCUMENT_PREVIEW_PAPER_CLASS} relative shadow-md`}
       style={{ width, height: layout.size.h * scale, fontFamily: DOCUMENT_FONT_FAMILIES.helvetica, overflow: 'hidden' }}>
-      <div data-page-heading className={headingPaint.className} title={heading?.text ?? layout.header} style={{ position: 'absolute', left: REPORT_MARGIN * scale,
-        top: ((heading?.y ?? REPORT_MARGIN - 8) - (heading?.fontSize ?? 8)) * scale,
-        color: headingPaint.color, fontFamily: DOCUMENT_FONT_FAMILIES[heading?.font ?? 'helvetica'],
-        fontSize: (heading?.fontSize ?? 8) * scale, lineHeight: 1.25, whiteSpace: 'pre' }}>{heading?.text ?? layout.header}</div>
+      <ComposedPageFrame items={layout.pageFrames[page.index]} scale={scale} pending={pendingImages}
+        preparing={displayedLabels('document.print.preparing')} imageError={displayedLabels('document.print.imageError')}
+        failures={displayedImageFailures} onImageSize={recordImageSize} onImageError={recordImageError} />
       <ComposedPageItems page={page} blocks={blocks} aggregations={displayedInput.aggregations} chartMessages={displayedInput.chartMessages}
         topics={displayedInput.topics} scale={scale} measure={measure} labels={displayedLabels} selectedBlockId={props.selectedBlockId}
         onSelectBlock={props.onSelectBlock} onImageSize={recordImageSize} imageFailures={displayedImageFailures} onImageError={recordImageError} />
-      <div data-page-footer className={footerPaint.className} style={{ position: 'absolute', left: REPORT_MARGIN * scale,
-        top: (layout.size.h - REPORT_MARGIN + 12 - 8) * scale, fontSize: 8 * scale, color: footerPaint.color, lineHeight: 1.25 }}>
-        {layout.footer}
-      </div>
-      <div data-page-counter className={footerPaint.className} style={{ position: 'absolute', left: (layout.size.w - REPORT_MARGIN - 60) * scale,
-        top: (layout.size.h - REPORT_MARGIN + 12 - 8) * scale, fontSize: 8 * scale, color: footerPaint.color, lineHeight: 1.25, whiteSpace: 'pre' }}>
-        {pendingImages ? displayedLabels('document.print.preparing') : layout.pageCounters?.[page.index]}
-      </div>
     </section>)}
   </div>;
 }

@@ -231,9 +231,8 @@ describe('heading style in the saved format (#6632)', () => {
     ]) assert.deepEqual(validateDocumentSpec(base(block)).map((e) => e.path), ['blocks[0].titleFontSize'], String(block.kind));
     assert.deepEqual(validateDocumentSpec(base({ kind: 'spacer', id: 'b', height: 5, ...bad })), [], 'a spacer has no heading to style');
   });
-  it('a document saved before heading styles loads as it was and composes unchanged; the version is not raised', () => {
-    assert.equal(DOCUMENT_VERSION, 11, 'additive presentation fields keep the format version (#6513, #6588 precedent)');
-    const imported = parseDocumentFile(JSON.stringify(doc({ title: 'Plain' })));
+  it('a version-11 document keeps its plain block heading when migrating the page-band format (#6610)', () => {
+    const imported = parseDocumentFile(JSON.stringify({ ...doc({ title: 'Plain' }), version: 11 }));
     assert.deepEqual({ ...imported.blocks[0], id: 't' }, { kind: 'text', id: 't', style: 'body', text: 'x', title: 'Plain' });
   });
   it('keeps a heading style through export and import for every headed kind', () => {

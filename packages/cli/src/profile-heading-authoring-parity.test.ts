@@ -136,7 +136,11 @@ async function assertProduct(content: string | Uint8Array, ref: EntityRef, route
   const pre = api.buildPrePassOnce(bytes), minimum = [Infinity, Infinity, Infinity], maximum = [-Infinity, -Infinity, -Infinity];
   let vertices = 0;
   try {
-    const offset = pre.rtcOffset ? Array.from(pre.rtcOffset) : [0, 0, 0];
+    const offset = pre.rtcOffset ? Array.from(pre.rtcOffset, (value: unknown) => {
+      if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('Native RTC offset is not finite');
+      return value;
+    }) : [0, 0, 0];
+    if (offset.length !== 3) throw new Error('Native RTC offset has the wrong dimension');
     const meshes = api.processGeometryBatch(bytes, pre.jobs, pre.unitScale, offset[0], offset[1], offset[2], pre.needsShift,
       pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors);
     try {

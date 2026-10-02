@@ -11,7 +11,9 @@ import { toast } from '@/components/ui/toast';
 import { downloadFile } from '@/lib/export/download';
 import type { ContentStatus } from '@/lib/storage/content-library';
 import { rebindContentDocument } from '@/lib/storage/content-backup-references';
-import { cleanupContentLegacy, createContentBackup, importContentBackup, parseContentBackup, readContentRecovery } from '@/lib/storage/content-backup';
+import { cleanupContentLegacy, createContentBackup, importContentBackup, parseContentBackup, readBackupDrafts,
+  readContentRecovery, retryContentDrafts } from '@/lib/storage/content-backup';
+import { stageContentDrafts } from '@/lib/storage/content-backup-drafts';
 
 const messages = {
   quota: 'contentStorage.quota', unavailable: 'contentStorage.unavailable',
@@ -41,15 +43,19 @@ export function ContentStorageNotice({ status, retry, restore }: {
       toast.error(t('contentStorage.failed', { message: error instanceof Error ? error.message : String(error) }));
     } finally { setBusy(false); }
   };
-  const backup = () => {
+  const backup = async () => {
     const state = useViewerStore.getState();
+    const preserved = await readBackupDrafts();
     downloadFile(JSON.stringify(createContentBackup({ validation: state.savedValidationReports,
       comparison: state.savedComparisons, document: state.documents }, {
       validation: state.validationReportsStorage, comparison: state.savedComparisonsStorage, document: state.documentsStorage,
-    }), null, 2), 'ifc-lite-library-backup.json', 'application/json');
+    }, preserved.drafts), null, 2), 'ifc-lite-library-backup.json', 'application/json');
+    if (!preserved.complete) toast.info(t('contentStorage.draftReadUnavailable'));
   };
   const importFile = async (file: File) => {
     const parsed = parseContentBackup(await file.text());
+    const drafts = parsed.drafts ?? [];
+    stageContentDrafts(drafts);
     const state = useViewerStore.getState();
     const initialized = await Promise.all([state.initializeValidationReports(), state.initializeSavedComparisons(), state.initializeDocuments()]);
     try {
@@ -57,6 +63,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
       const count = await importContentBackup(parsed);
       await Promise.all([state.refreshValidationReports(), state.refreshSavedComparisons(), state.refreshDocuments()]);
       toast.success(t('contentStorage.imported', { count }));
+      if (drafts.length) toast.info(t('contentStorage.draftsPreserved', { count: drafts.length }));
     } catch (error) {
       // Explicit import keeps validated content exportable even when IDB refuses it.
       console.warn('[User content] Import remains in memory', error);
@@ -72,6 +79,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
       }));
       for (const entry of parsed.libraries.document) state.stageDocument(parseDocumentFile(JSON.stringify(rebindContentDocument(entry, comparison, validation))));
       toast.error(t('contentStorage.importFailed'));
+      if (drafts.length) toast.error(t('contentStorage.draftsUnsaved', { count: drafts.length }));
     }
   };
   return <div className="shrink-0 px-2 py-1 text-xs" data-content-storage>
@@ -81,14 +89,14 @@ export function ContentStorageNotice({ status, retry, restore }: {
     <details>
       <summary className="cursor-pointer">{t('contentStorage.controls')}</summary>
       <div className="flex flex-wrap gap-1 py-1">
-        <Button size="sm" variant="outline" disabled={busy || librariesLoading} onClick={backup}>{t('contentStorage.export')}</Button>
+        <Button size="sm" variant="outline" disabled={busy || librariesLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
         {problem && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           if (await confirmDialog({ description: t('contentStorage.restoreConfirm'), destructive: true })) await restore();
         })}>{t('contentStorage.restore')}</Button>}
         <Button size="sm" variant="outline" disabled={busy} onClick={() => input.current?.click()}>{t('contentStorage.import')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           const live = useViewerStore.getState();
-          const saved = await Promise.all([live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons()]);
+          const saved = await Promise.all([live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons(), retryContentDrafts()]);
           if (saved.every(Boolean)) toast.success(t('contentStorage.saved'));
           else toast.error(t('contentStorage.someUnsaved'));
         })}>{t('contentStorage.retryAll')}</Button>

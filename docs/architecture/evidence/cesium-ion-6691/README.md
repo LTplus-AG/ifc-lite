@@ -34,3 +34,16 @@ sampled map-space vertex. This bounded sample is not an all-product proof or
 a claim about arbitrary large-coordinate files. The unchanged bytes establish
 source preservation independently of that sample. No Hans file was available,
 and this record does not diagnose it or claim new provider-upload acceptance.
+
+To reproduce, download the unchanged MiniBIM demo from the live georeferencer
+and verify its SHA against the record. Build with `scripts/build-wasm.sh` and
+root `pnpm build`. Parse the same source using `IfcParser.parseColumnar`, then
+compare `StepExporter.exportAsync` with `includeGeometry: true`,
+`applyMutations: true`, `visibleOnly: false`, a fixed timestamp and source
+schema: first omit normalization flags, then set both
+`normalizeMapUnitsToMetres: true` and `normalizeMapGeometry: true`. Assert no
+warnings or patches and identical exported bytes. The committed actual-WASM
+regression exercises this contract with a typed IFC fixture and a retained
+Name edit; run it through root `pnpm test --filter=@ifc-lite/export`.
+The supported native revert-oracle command and verified behavioral failure
+are recorded in the proof.

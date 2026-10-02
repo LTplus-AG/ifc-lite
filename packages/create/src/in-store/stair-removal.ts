@@ -56,7 +56,11 @@ export function removeStairInStore(store: IfcDataStore, editor: StoreEditor, sta
     if (reader.entity(stairId)?.type.toUpperCase() !== 'IFCSTAIR') {
       throw new Error(`removeStairInStore: #${stairId} is not a live IfcStair`);
     }
-    const aggregates = [...reader.ids('IFCRELAGGREGATES')].map(id => reader.entity(id)).filter(entity => entity !== null);
+    const aggregates = [...reader.ids('IFCRELAGGREGATES')].map(id => {
+      const entity = reader.entity(id);
+      if (!entity) throw new Error(`removeStairInStore: live IfcRelAggregates #${id} cannot be read`);
+      return entity;
+    });
     const owned = aggregates.filter(entity => asRef(entity.attributes[4]) === stairId);
     const rawMembers = owned.length === 1 ? owned[0].attributes[5] : null;
     const flightId = Array.isArray(rawMembers) && rawMembers.length === 1 ? asRef(rawMembers[0]) : null;
@@ -92,7 +96,7 @@ export function removeStairInStore(store: IfcDataStore, editor: StoreEditor, sta
       const slots = productSlots.get(type);
       if (!slots) continue;
       const entity = reader.entity(expressId);
-      if (!entity) continue;
+      if (!entity) throw new Error(`removeStairInStore: live product #${expressId} cannot be read`);
       for (const { index, name } of slots) {
         if (referencesPair(entity.attributes[index], pair)) {
           throw new Error(`removeStairInStore: foreign product #${expressId}.${name} references the stair or flight`);

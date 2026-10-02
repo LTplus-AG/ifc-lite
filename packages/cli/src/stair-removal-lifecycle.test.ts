@@ -13,6 +13,7 @@ import { EntityExtractor, IfcParser } from '@ifc-lite/parser';
 import { createBimContext, type ModellingStoreBackendMethods } from '@ifc-lite/sdk';
 import { createMCPServer, fullScope, InMemoryModelRegistry, InProcessTransport,
   loadIfcModel, type CallToolResult } from '@ifc-lite/mcp';
+import { AnchorEntityReader } from '../../create/src/in-store/resolve-anchor.js';
 import { meshStairs, stairWasmAvailable } from '../../create/src/in-store/__test__/stair-mesh.oracle.js';
 
 const SAMPLE = fileURLToPath(new URL('../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
@@ -78,11 +79,33 @@ describe.skipIf(!AVAILABLE)('#6232 canonical stair assembly lifecycle', () => {
       expect(m.view.peekNextExpressId()).toBe(next);
     });
   }
+  for (const type of ['IFCRELAGGREGATES', 'IFCWALL'] as const) {
+    it(`an indexed but unreadable live ${type} refuses the whole pair`, async () => {
+      const m = await made();
+      const id = m.store.entityIndex.byType.get(type)![0];
+      const location = m.store.entityIndex.byId.get(id)!;
+      // Stated boundary invariant: a stale source/index handoff advertises a
+      // live row but its actual resident bytes no longer decode. Exercise the
+      // real source accessor/extractor, never a reader returning a mocked null.
+      m.store.source.materialize()[location.byteOffset] = '?'.charCodeAt(0);
+      expect(new AnchorEntityReader(m.store, m.view).entity(id)).toBeNull();
+      const bytes = m.store.source.materialize().slice(), journal = m.view.getMutations();
+      const records = m.view.getNewEntities(), next = m.view.peekNextExpressId();
+      expect(() => m.bim.store.removeStair(m.ref)).toThrow(/live (IfcRelAggregates|product) #\d+ cannot be read/);
+      expect(m.view.getMutations()).toEqual(journal);
+      expect(m.view.getNewEntities()).toEqual(records);
+      expect(m.view.isDeleted(m.ref.expressId)).toBe(false);
+      expect(m.view.isDeleted(m.flightId)).toBe(false);
+      expect(m.view.peekNextExpressId()).toBe(next);
+      expect(m.store.source.materialize()).toEqual(bytes);
+    });
+  }
   it('retains shared shape leaves, numeric non-reference collisions and dense parsed geometry', async () => {
     const m = await made(true);
     expect(m.store.entityIndex.byType.get('IFCCARTESIANPOINT')!.length).toBeGreaterThan(4096);
     const column = m.bim.store.addColumn('m', 42, { Position: [0, 0, 0], Width: .2, Depth: .2, Height: 3 });
-    m.backend.ensureEditor().setPositionalAttribute(column.expressId, 6, m.flightShape);
+    if (typeof m.flightShape !== 'number' || !Number.isInteger(m.flightShape)) throw new Error('Missing saved shape reference');
+    m.backend.ensureEditor().setPositionalAttribute(column.expressId, 6, `#${m.flightShape}`);
     m.backend.ensureEditor().setPositionalAttribute(42, 9, m.flightId);
     const before = await data(m.bim.export.ifc());
     const bytes = m.bim.export.ifc();

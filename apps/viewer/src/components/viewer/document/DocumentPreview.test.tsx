@@ -25,6 +25,14 @@ afterEach(() => {
 
 const ready = () => waitFor(() => container?.querySelector('[data-preview-section]') !== null && !!container?.querySelector('[data-preview-section]'), 'shared document layout ready');
 
+function assertAspectRatio(frame: HTMLElement, ratio: number, message: string): void {
+  const w = Number.parseFloat(frame.style.width), h = Number.parseFloat(frame.style.height);
+  assert.ok(w > 0 && h > 0, 'the composed frame has positive dimensions');
+  // CSS serialization rounds the point-to-pixel result. One hundredth of a
+  // CSS pixel retains the physical invariant without requiring float identity.
+  assert.ok(Math.abs(h - w / ratio) < 0.01, `${message}: ${w} by ${h}`);
+}
+
 const imageBlock = {
   id: 'image',
   kind: 'image',
@@ -59,8 +67,7 @@ it('keeps a failed BCF snapshot at the canonical PDF fallback proportion (#6610)
   const placeholder = container.querySelector<HTMLElement>('[data-preview-block="topic"] .border-dashed'); assert.ok(placeholder);
   // A missing/undecodable BCF snapshot uses the existing resolver's 4:3 PDF
   // fallback, whereas an ordinary image uses its independent square fallback.
-  const proportion = Number.parseFloat(placeholder.style.width) / Number.parseFloat(placeholder.style.height);
-  assert.ok(Math.abs(proportion - 4 / 3) < 1e-10, `preview fallback ${proportion} must match the PDF frame`);
+  assertAspectRatio(placeholder, 4 / 3, 'preview fallback must match the PDF frame');
   assert.equal(container.querySelector('[data-document-preview]')?.getAttribute('aria-busy'), 'false');
 });
 
@@ -250,6 +257,8 @@ it('keeps a replacement-image decode failure settled and ignores late old-image 
   await ready();
   assert.equal(container?.querySelector('[data-document-preview]')?.getAttribute('aria-busy'), 'false', 'failed decoding does not leave pagination permanently pending');
   assert.match(container?.textContent ?? '', /The image could not be decoded/);
+  const placeholder = container?.querySelector<HTMLElement>('[data-preview-block="image"] .border-dashed'); assert.ok(placeholder);
+  assertAspectRatio(placeholder, 1, 'ordinary image decode failures retain their square fallback');
   assert.match(container?.querySelector('[data-page-counter]')?.textContent ?? '', /Page 1 \/ 1/);
   act(() => { old.dispatchEvent(new Event('error')); old.dispatchEvent(new Event('load')); });
   await ready();
@@ -260,6 +269,8 @@ it('keeps a replacement-image decode failure settled and ignores late old-image 
   await ready();
   assert.equal(container?.querySelector('[data-document-preview]')?.getAttribute('aria-busy'), 'false');
   assert.doesNotMatch(container?.textContent ?? '', /The image could not be decoded/, 'a valid replacement clears the removed asset failure');
+  const decoded = container?.querySelector<HTMLElement>('[data-preview-block="image"] img'); assert.ok(decoded);
+  assertAspectRatio(decoded, 2, 'a successfully decoded replacement retains its actual natural proportions');
 });
 
 it('keeps blank text and missing topics accessible and selectable without changing their composed ink (#6610)', async () => {

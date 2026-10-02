@@ -165,6 +165,32 @@ describe('Saved manual report editable reuse (#6611)', () => {
     }
   }
 
+  for (const loadState of ['pending', 'error'] as const) {
+    it(`defaults a recovered copy to the completed identical-file model instead of the first ${loadState} copy (#6611)`, async () => {
+      const { source, original, ui } = await saveThenReopenHistory(2);
+      const complete = await publicModel('completed-identical-file', 'building-architecture.ifc');
+      assert.equal(complete.sourceFingerprint, source.sourceFingerprint, 'actual same IFC bytes produce the same durable identity');
+      act(() => {
+        useViewerStore.getState().updateModel(source.id, { loadState });
+        useViewerStore.getState().addModel({ ...complete, loadState: 'complete' });
+      });
+      await settle();
+      assert.equal(button(ui, 'Edit a copy').disabled, false, 'another completed copy of the exact source is usable');
+      click(button(ui, 'Edit a copy'));
+      assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Model"]')?.value, complete.id);
+      assert.equal(row(ui, 'Naming convention').dataset.status, 'warning');
+      assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+      cleanup();
+      function ReadySourceProbe() {
+        const handle = useManualReportSource();
+        return <output data-recovered-document-source>{handle.defaultModelId}</output>;
+      }
+      const probe = render(<ReadySourceProbe />);
+      assert.equal(probe.querySelector('[data-recovered-document-source]')?.textContent, complete.id,
+        'the document default shares the ready fingerprint-bound picker');
+    });
+  }
+
   it('refuses a saved report without model identity instead of borrowing the active model (#6611)', async () => {
     const { ui } = await saveThenReopenHistory(2);
     const saved = structuredClone(useViewerStore.getState().savedValidationReports[0]);

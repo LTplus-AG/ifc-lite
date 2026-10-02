@@ -90,6 +90,18 @@ describe('Saved report recovery invariants (#6611)', () => {
     }
   });
 
+  it('chooses a completed same-fingerprint default without changing explicit or unbound picks (#6611)', () => {
+    for (const loadState of ['pending', 'error'] as const) {
+      const duplicate = [{ ...models[0], loadState }, { ...models[0], id: 'ready-copy', loadState: 'complete' as const }];
+      assert.equal(pickManualModel(duplicate, duplicate[0].id, null, 'source-fingerprint')?.id, duplicate[0].id,
+        'an explicit selection keeps its existing policy');
+      assert.equal(pickManualModel(duplicate, null, duplicate[0].id)?.id, duplicate[0].id,
+        'ordinary unbound checklists keep their active-model policy');
+      assert.equal(pickManualModel(duplicate, null, duplicate[0].id, 'source-fingerprint')?.id, 'ready-copy');
+      assert.equal(pickManualModel([duplicate[0]], null, duplicate[0].id, 'source-fingerprint'), null);
+    }
+  });
+
   it('uses explicit selection first and refuses automatic peer fallback after source removal', () => {
     assert.equal(pickManualModel(models, null, 'active-peer', 'source-fingerprint')?.id, 'new-uuid');
     assert.equal(pickManualModel([models[1]], null, 'active-peer', 'source-fingerprint'), null);

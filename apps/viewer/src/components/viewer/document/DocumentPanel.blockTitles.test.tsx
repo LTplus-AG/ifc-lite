@@ -207,7 +207,9 @@ describe('Document content-block title overrides (#6547)', () => {
     const headingEnd = heading.x + estimateTextWidth(heading.text, heading.size, heading.bold);
     assert.ok(headingEnd <= snapshot.x - BLOCK_GAP, `authored title endpoint ${headingEnd} stays before snapshot column ${snapshot.x - BLOCK_GAP}`);
     const original = composeDocument({ ...input, blocks: [{ ...block, authoredTitle: undefined }] }).pages.flatMap((page) => page.items);
-    assert.ok(original.some((item) => item.kind === 'text' && item.text === title), 'ordinary source title retains its established rendering');
+    const ordinary = original.find((item) => item.kind === 'text' && item.bold); assert.ok(ordinary?.kind === 'text');
+    assert.ok(ordinary.text.endsWith('…'), 'the source title is cut like an authored one: left whole it ran into the snapshot column (#6632 follow-up)');
+    assert.ok(ordinary.x + estimateTextWidth(ordinary.text, ordinary.size, ordinary.bold) <= snapshot.x - BLOCK_GAP, 'the source title also stays before the snapshot column');
   });
 
 });

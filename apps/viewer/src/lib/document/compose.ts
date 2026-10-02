@@ -19,7 +19,7 @@ import { layoutTable, type LayoutCursor, type TableLayoutBlock, type TableDrawnI
 import { layoutIdsReport, type IdsReportLayoutBlock } from './compose-ids-report.js';
 import { layoutManualReport, type ManualReportLayoutBlock, type RingDrawnItem } from './compose-manual-report.js';
 import { blockTitle, blockTitleStyle, BLOCK_TITLE_HEIGHT, BLOCK_TITLE_SIZE_DEFAULT, type BlockHeaderStyleFields } from './block-title.js';
-import { blockTitleItems } from './compose-block-title.js';
+import { blockTitleItems, CHART_TITLE_RESERVE } from './compose-block-title.js';
 import { TEXT_STYLES, wrapText, truncateToWidth, layoutText, textBackground } from './compose-text.js';
 export { TEXT_STYLES, wrapText, truncateToWidth } from './compose-text.js';
 import { splitDocumentSections } from './page-sections.js';
@@ -225,7 +225,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
         // such as "13 buckets · 12,623 elements" even on a full-width A4 chart (#4940).
         const subtitle = truncateToWidth(block.subtitle, boxW - 4, 8 * textScale, false, input.measure);
         const items: DrawnItem[] = [
-          ...blockTitleItems(block, block.title, boxX, y, boxW - 4, (text, width, size, bold) => truncateToWidth(text, width, size, bold, input.measure), textScale),
+          ...blockTitleItems(block, block.title, boxX, y, boxW, (text, width, size, bold) => truncateToWidth(text, width, size, bold, input.measure), textScale, CHART_TITLE_RESERVE),
           { kind: 'text', x: boxX, y: y + 24 * textScale + heading.extra, size: 8 * textScale, bold: false, gray: 130, text: subtitle },
         ];
         const chartY = y + 32 * textScale + heading.extra;
@@ -363,7 +363,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           // Title, snapshot and the first lines move together; a long description then continues page by page.
           const titleHeight = BLOCK_TITLE_HEIGHT + blockTitleStyle(block).extra;
           f.ensure(Math.max(titleHeight + Math.min(lines.length, 3) * lineH, snapshotH) + BLOCK_GAP);
-          f.push(...blockTitleItems(block, block.title, REPORT_MARGIN, f.y, textW, (text, width, size, bold) => (block.authoredTitle ? truncateToWidth(text, width, size, bold, input.measure) : text)));
+          f.push(...blockTitleItems(block, block.title, REPORT_MARGIN, f.y, textW, (text, width, size, bold) => truncateToWidth(text, width, size, bold, input.measure)));
           if (block.snapshotAspect) f.push({ kind: 'topic-snapshot', blockId: block.id, x: REPORT_MARGIN + f.w - snapshotW, y: f.y, w: snapshotW, h: snapshotH });
           const snapshotBottom = f.y + snapshotH;
           let ty = f.y + titleHeight;

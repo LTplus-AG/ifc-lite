@@ -63,6 +63,7 @@ describe('welcome tour steps after a skipped select (#6720)', () => {
     await step(WELCOME_TOUR, 'inspect').prepare?.(useViewerStore);
     const s = useViewerStore.getState();
     assert.equal(s.selectedEntityId, 12);
+    assert.deepEqual([...s.selectedEntityIds], [12], 'the highlight channel is set too');
     assert.equal(s.propertiesActiveTab, 'properties');
   });
 
@@ -143,10 +144,18 @@ describe('lens tour isolate-legend after a skipped apply (#6720)', () => {
     assert.equal(useViewerStore.getState().activeLensId, 'lens-by-class');
   });
 
-  it('keeps a lens the user applied', async () => {
-    useViewerStore.setState({ activeLensId: 'lens-structural' });
+  it('swaps in By IFC Class when the active lens has no row to click', async () => {
+    const structural = useViewerStore.getState().savedLenses.find((l) => !l.autoColor)!;
+    useViewerStore.setState({ activeLensId: structural.id, lensRuleCounts: new Map(structural.rules.map((r) => [r.id, 0])) });
     await step(LENS_TOUR, 'isolate-legend').prepare?.(useViewerStore);
-    assert.equal(useViewerStore.getState().activeLensId, 'lens-structural');
+    assert.equal(useViewerStore.getState().activeLensId, 'lens-by-class');
+  });
+
+  it('keeps a lens the user applied', async () => {
+    const structural = useViewerStore.getState().savedLenses.find((l) => !l.autoColor)!;
+    useViewerStore.setState({ activeLensId: structural.id, lensRuleCounts: new Map([[structural.rules[0].id, 3]]) });
+    await step(LENS_TOUR, 'isolate-legend').prepare?.(useViewerStore);
+    assert.equal(useViewerStore.getState().activeLensId, structural.id);
   });
 });
 

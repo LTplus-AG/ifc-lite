@@ -113,7 +113,12 @@ export const WELCOME_TOUR: TourDefinition = {
         await ensureTourModel();
         if (store.getState().selectedEntityId === null) {
           const id = representativeElementId(store);
-          if (id !== null) store.getState().setSelectedEntityId(id);
+          if (id !== null) {
+            // Scalar clears a model-header selection; the set drives the
+            // renderer highlight (apps/viewer/AGENTS.md: two channels).
+            store.getState().setSelectedEntityId(id);
+            store.getState().setSelectedEntityIds([id]);
+          }
           autoSelectedId = id;
         }
         store.getState().showWorkspacePanel('properties', 'programmatic');

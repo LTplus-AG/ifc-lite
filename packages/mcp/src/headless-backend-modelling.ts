@@ -4,19 +4,32 @@
 
 /** Ordinary creation, placement and wall joins use the shared SDK factories (#6232 D5).
  * Shared compound recording preserves every earlier overlay record for undo. */
-import { createModellingStoreBackend, createOrdinaryStoreBackend, type ModellingStoreModelResolver } from '@ifc-lite/sdk';
+import { createModellingStoreBackend, createOrdinaryStoreBackend, resolveLiveOwnerHistoryId, type ModellingStoreModelResolver } from '@ifc-lite/sdk';
 import { recordCompoundMutation, StoreEditor } from '@ifc-lite/mutations';
 
 export function createRecordedModellingBackend(resolve: ModellingStoreModelResolver) {
   type Methods = ReturnType<typeof createModellingStoreBackend> & ReturnType<typeof createOrdinaryStoreBackend>;
-  function record<T>(modelId: string, edit: (methods: Methods) => T): T {
+  function record<T>(modelId: string, edit: (methods: Methods) => T, authoring = false): T {
     const model = resolve(modelId);
     return recordCompoundMutation(model.mutationView, draft => {
-      const resolveDraft = () => ({ ...model, mutationView: draft, editor: new StoreEditor(model.store, draft) });
+      const resolveDraft = () => {
+        const editor = new StoreEditor(model.store, draft);
+        return { ...model, mutationView: draft, editor,
+          // Only type/material authoring needs this schema-required reference.
+          // Ordinary and hosted creation keep their existing anchor policy.
+          ownerHistoryId: authoring ? resolveLiveOwnerHistoryId(model.store, editor, draft) : model.ownerHistoryId,
+        };
+      };
       return edit({ ...createModellingStoreBackend(resolveDraft), ...createOrdinaryStoreBackend(resolveDraft) });
     });
   }
   return {
+    addElementType: (...args: Parameters<Methods['addElementType']>) => record(args[0], methods => methods.addElementType(...args), true),
+    assignType: (...args: Parameters<Methods['assignType']>) => record(args[0], methods => methods.assignType(...args), true),
+    addMaterial: (...args: Parameters<Methods['addMaterial']>) => record(args[0], methods => methods.addMaterial(...args), true),
+    addMaterialLayerSet: (...args: Parameters<Methods['addMaterialLayerSet']>) => record(args[0], methods => methods.addMaterialLayerSet(...args), true),
+    addMaterialLayerSetUsage: (...args: Parameters<Methods['addMaterialLayerSetUsage']>) => record(args[0], methods => methods.addMaterialLayerSetUsage(...args), true),
+    assignMaterial: (...args: Parameters<Methods['assignMaterial']>) => record(args[0], methods => methods.assignMaterial(...args), true),
     addOpening: (...args: Parameters<Methods['addOpening']>) => record(args[0], methods => methods.addOpening(...args)),
     addHostedDoor: (...args: Parameters<Methods['addHostedDoor']>) => record(args[0], methods => methods.addHostedDoor(...args)),
     addHostedWindow: (...args: Parameters<Methods['addHostedWindow']>) => record(args[0], methods => methods.addHostedWindow(...args)),

@@ -18,6 +18,8 @@ import { loadValidationReports } from '@/lib/validation/reports/persistence';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { ValidationPanel } from './ValidationPanel.js';
 import { useManualReportSource } from '../document/useManualReportSource.js';
+import { ManualReportBlockEditor } from '../document/ManualReportBlockEditor.js';
+import type { ManualReportBlock } from '@/lib/document/manual-report-types';
 
 const initial = useViewerStore.getState();
 const checklist = {
@@ -181,13 +183,25 @@ describe('Saved manual report editable reuse (#6611)', () => {
       assert.equal(row(ui, 'Naming convention').dataset.status, 'warning');
       assert.equal(JSON.stringify(loadValidationReports()[0]), original);
       cleanup();
+      const refreshed: { value: ManualReportBlock | null } = { value: null };
       function ReadySourceProbe() {
         const handle = useManualReportSource();
-        return <output data-recovered-document-source>{handle.defaultModelId}</output>;
+        const block = handle.snapshot('recovered-document');
+        return <>
+          <output data-recovered-document-source>{handle.defaultModelId}</output>
+          {block && <ManualReportBlockEditor block={block} onChange={next => { refreshed.value = next; }} />}
+        </>;
       }
       const probe = render(<ReadySourceProbe />);
       assert.equal(probe.querySelector('[data-recovered-document-source]')?.textContent, complete.id,
         'the document default shares the ready fingerprint-bound picker');
+      assert.equal(probe.querySelector<HTMLSelectElement>('select[aria-label="Answers from"]')?.value, complete.id,
+        'bound Refresh also defaults to the completed exact source, not the failed first copy');
+      click(button(probe, 'Refresh from current checklist'));
+      assert.ok(refreshed.value);
+      assert.equal(refreshed.value.reportModels?.[0].id, complete.id);
+      assert.equal(refreshed.value.groups[0].items[1].status, 'warning');
+      assert.equal(JSON.stringify(loadValidationReports()[0]), original);
     });
   }
 

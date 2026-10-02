@@ -99,6 +99,10 @@ describe('Saved report recovery invariants (#6611)', () => {
         'ordinary unbound checklists keep their active-model policy');
       assert.equal(pickManualModel(duplicate, null, duplicate[0].id, 'source-fingerprint')?.id, 'ready-copy');
       assert.equal(pickManualModel([duplicate[0]], null, duplicate[0].id, 'source-fingerprint'), null);
+      assert.deepEqual(manualModels.resolveReportModel(duplicate, 'source-fingerprint', null, duplicate[0].id),
+        { kind: 'model', model: duplicate[1] });
+      assert.deepEqual(manualModels.resolveReportModel([duplicate[0]], 'source-fingerprint', null, duplicate[0].id),
+        { kind: 'missing' });
     }
   });
 

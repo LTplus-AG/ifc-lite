@@ -4,7 +4,7 @@ Qualified source: `cd6785c3ea1f744ed98473615a6565b1f79d478e`.
 
 | Artifact | Bytes | SHA-256 |
 | --- | ---: | --- |
-| `README.md` | 6232 | `fe998f609e9f96107991980bf6591d187a26b49acb0e2e505146cc851de6065c` |
+| `README.md` | 6235 | `de283f026c5f560e0d6aca165b3c9cf53ec24da8ae28f328e6f500c556040663` |
 | `all-kinds-page-1.png` | 133011 | `8c3881fb72dd7b8e972ec17cf0d3a4910b2f267dec50a776101d2fe7a2453efa` |
 | `all-kinds-page-2.png` | 168938 | `1c7498fdf0accc4bd5a180ae8e7e98953dce2fc16250b1628d576089c22adb0e` |
 | `all-kinds-page-3.png` | 165938 | `afb75c4e6dad54b2c998ed0af4c0050df03a13a1cc24492543738ac2d429f640` |
@@ -81,7 +81,7 @@ Qualified source: `cd6785c3ea1f744ed98473615a6565b1f79d478e`.
 | `logs/6610-stamp-main-pagination-official-oracle.log.gz` | 1859 | `86ef4c2c4cde1f87fc2a7cfa271084c3e6d04299d81c43df72f33758a3a373f7` |
 | `native-proof.cjs.gz` | 4502 | `8ad29ed4b1593b9de9417fc9ca6441dd3bb150386d8df8219572a1168c7c9be8` |
 | `observations.json.gz` | 2634 | `8b1b07c3f8e7b54941d493cc7cf817df63b9cee0b4db3cc0559b3c87b86542f3` |
-| `old-preview-runtime-mutation.patch` | 31603 | `c9933d489354b3aa3f699a30d6e0f9bd273f3173927e8e79d5e9a94c96983e45` |
+| `old-preview-runtime-mutation.patch.gz` | 9581 | `b423ad009922aa8ae767fa5968e57ca73bf28ec6654eaba2189c42f3dab53241` |
 | `overflow-page-1.png` | 121842 | `87778d47c5dae3aead3763c5a807c1ba89fcbddf0bfea61b82871f3c6ce378da` |
 | `overflow-page-2.png` | 122443 | `7632a6233d3115edfffe0c09340cf2096d0c58102a3be1193645d146361de051` |
 | `overflow-pdf-page-1.png` | 103265 | `1565a7956135e75449a5df203a2353de41eef2e5000883198437adf38445430d` |

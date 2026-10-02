@@ -27,7 +27,7 @@ index fec6ef5417214d2b612f685790279253daf7bdf0..d0666ebf6202f749ba0246b51ec8739d
      while (q.length > 0) {
          const moduleName = q.shift();
 diff --git a/dist/index.js b/dist/index.js
-index c9a0a5f8d5ea1c6619f55582a049ddb6f94113f0..1cf87b5f64184ac8f7af3a063c11a62e41acc8d1 100644
+index c9a0a5f8d5ea1c6619f55582a049ddb6f94113f0..d5d32548551971a00192f4fd61b1e6f6ad117829 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -44,6 +44,7 @@ const SWC = __importStar(require("./swc"));
@@ -57,7 +57,24 @@ index c9a0a5f8d5ea1c6619f55582a049ddb6f94113f0..1cf87b5f64184ac8f7af3a063c11a62e
      };
      return {
          name: "vite-plugin-top-level-await",
-@@ -109,18 +112,46 @@ function topLevelAwait(options) {
+@@ -99,6 +102,16 @@ function topLevelAwait(options) {
+                 }
+             }
+         },
++        // ifc-lite patch: `config` above sees only the USER config, where an
++        // unset `build.minify` is `undefined`, so `!!` made it false and every
++        // chunk this plugin rewrites (main, store, exporters, ~85 in all) was
++        // re-printed pretty by SWC. Re-read it once Vite has applied its
++        // default (`'oxc'` for client builds, `false` for SSR).
++        configResolved(config) {
++            if (config.command === "build") {
++                minify = !!config.build.minify;
++            }
++        },
+         async generateBundle(bundleOptions, bundle) {
+             // Process ES modules (modern) target only since TLAs in legacy builds are handled by SystemJS
+             if (bundleOptions.format !== "es")
+@@ -109,18 +122,46 @@ function topLevelAwait(options) {
              const bundleAsts = await (0, bundle_info_1.parseBundleAsts)(bundleChunks);
              const bundleInfo = await (0, bundle_info_1.parseBundleInfo)(bundleAsts);
              await Promise.all(Object.keys(bundleChunks).map(async (moduleName) => {

@@ -80,6 +80,7 @@ import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { cargoLockPatchPaths, normalizeRestoredPaths, partialCargoManifestSelection } from './lib/revert-oracle-cargo-lock.mjs';
 import { parseRevertOracleArgs } from './lib/revert-oracle-args.mjs';
+import { productionRevertPaths } from './lib/revert-oracle-paths.mjs';
 import {
   parseNameStatus,
   classifyDiff,
@@ -298,10 +299,9 @@ if (
   );
 }
 
-let prodPaths = production.map((e) => e.path);
+const prodPaths = productionRevertPaths(production, opts.only);
 if (opts.only.length > 0) {
-  const before = prodPaths.length;
-  prodPaths = prodPaths.filter((p) => opts.only.some((o) => p === o || p.startsWith(o.endsWith('/') ? o : `${o}/`)));
+  const before = productionRevertPaths(production).length;
   console.log(`  --only narrowed the revert set from ${before} to ${prodPaths.length} production file(s)`);
   if (prodPaths.length === 0) die(EXIT_NOTHING_CHECKED, `--only matched none of the ${before} changed production files.`);
 }

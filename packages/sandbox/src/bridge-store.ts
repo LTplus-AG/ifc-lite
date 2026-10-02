@@ -9,6 +9,7 @@
  * `setPositionalAttribute`) into the QuickJS sandbox.
  */
 
+import type { AddBeamInStoreParams } from '@ifc-lite/sdk';
 import type { NamespaceSchema } from './bridge-schema.js';
 import { toRef } from './bridge-helpers.js';
 import { buildStoreCostMethods } from './bridge-store-cost.js';
@@ -160,7 +161,7 @@ export function buildStoreNamespace(): NamespaceSchema {
         tsReturn: '{ modelId: string; expressId: number }',
         call: (sdk, args) => {
           const storeyExpressId = requireStoreyId(args[1] as number, 'addBeam');
-          const params = args[2] as Parameters<typeof sdk.store.addBeam>[2];
+          const params = args[2] as AddBeamInStoreParams;
           if (
             !params
             || !Array.isArray(params.Start) || params.Start.length !== 3
@@ -172,7 +173,12 @@ export function buildStoreNamespace(): NamespaceSchema {
               || !params.End.every((n) => typeof n === 'number' && Number.isFinite(n))) {
             throw new Error('bim.store.addBeam: Start/End values must be finite numbers');
           }
-          requirePositiveDims(params, ['Width', 'Height'], 'addBeam');
+          for (const key of ['Width', 'Height'] as const) {
+            const v = params[key];
+            if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
+              throw new Error(`bim.store.addBeam: params.${key} must be a finite number > 0, got ${v}`);
+            }
+          }
           return sdk.store.addBeam(args[0] as string, storeyExpressId, params);
         },
         returns: 'value',

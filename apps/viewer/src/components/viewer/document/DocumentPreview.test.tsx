@@ -13,6 +13,7 @@ import { aggregate } from '@ifc-lite/charts';
 import { DocumentPreview } from './DocumentPreview.js';
 import { pageBox } from '@/lib/export/report/compose.js';
 import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types.js';
+import { dataUrlToBytes } from '@/lib/export/download';
 
 let root: Root | undefined;
 let container: HTMLDivElement | undefined;
@@ -35,11 +36,17 @@ function assertAspectRatio(frame: HTMLElement, ratio: number, message: string): 
   assert.ok(Math.abs(h - w / ratio) < 0.01, `${message}: ${w} by ${h}`);
 }
 
-// A real committed PNG survives automatic HappyDOM decoding. Distinct URL
-// fragments select replacement assets without fabricating undecodable bytes;
-// each size-event invariant below still supplies its stated natural dimensions.
-const icon = readFileSync(new URL('../../../../public/favicon-16x16-cropped.png', import.meta.url));
-const imageDataUrl = (name: string) => `data:image/png;base64,${icon.toString('base64')}#${name}`;
+// Distinct real committed PNGs survive automatic decoding and remain portable.
+// Each size-event invariant below still supplies its stated natural dimensions.
+const imageAssets = { first: 16, second: 32, old: 48, replacement: 64, next: 96 } as const;
+const imageDataUrl = (name: keyof typeof imageAssets) => {
+  const icon = readFileSync(new URL(`../../../../public/favicon-${imageAssets[name]}x${imageAssets[name]}-cropped.png`, import.meta.url));
+  const url = `data:image/png;base64,${icon.toString('base64')}`;
+  const bytes = dataUrlToBytes(url);
+  assert.ok(bytes, 'the positive fixture is accepted by the actual PDF asset decoder');
+  assert.deepEqual(Buffer.from(bytes), icon, 'the URI decodes to its committed PNG asset');
+  return url;
+};
 
 const imageBlock = {
   id: 'image',

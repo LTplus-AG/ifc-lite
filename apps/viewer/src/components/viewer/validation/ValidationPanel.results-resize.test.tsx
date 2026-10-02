@@ -4,16 +4,17 @@
 
 import '@/test/setup-dom.js';
 import '@/test/content-fixture.js';
-import { installLayout } from '@/test/dom-layout.js';
-installLayout();
-import { afterEach, beforeEach, it } from 'node:test';
+import { installResizablePanelLayout } from '@/test/dom-layout.js';
+import { after, afterEach, beforeEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { advance, cleanup, click, mouseDown, render } from '@/test/render.js';
+import { advance, cleanup, click, mouseDown, render, type as typeInput } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { ValidationPanel } from './ValidationPanel.js';
+
+after(installResizablePanelLayout());
 
 // This proves resize controls and checklist behavior, not browser layout.
 // #6690's scroll reachability needs native-browser evidence with built CSS.
@@ -53,7 +54,12 @@ it('keeps an empty checklist editor unsplit and preserves drafting when its firs
   click(button('Add check'));
   const input = ui.querySelector<HTMLInputElement>('input[aria-label="What was checked"]');
   assert.ok(input);
-  assert.equal(ui.querySelectorAll('[data-testid="manual-check"]').length, 1);
+  assert.equal(ui.querySelectorAll('[data-testid="manual-check-edit"]').length, 1);
+  typeInput(input, 'Check the final delivery');
+  click(button('Done editing'));
+  assert.equal(ui.querySelectorAll('[data-testid="manual-check-edit"]').length, 0);
+  const completedDraft = ui.querySelector('[data-testid="manual-check"]');
+  assert.ok(completedDraft?.textContent?.includes('Check the final delivery'));
 });
 
 for (const modelCount of [1, 2]) {

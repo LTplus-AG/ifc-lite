@@ -140,3 +140,35 @@ export function installLayout(): () => void {
     }
   };
 }
+
+/** Opt-in offset measurements for real resizable-panel interaction (#6690).
+ * The panel library measures offsets, unlike the client/rectangle consumers
+ * above. Zero happy-dom offsets defer its layout and leave nothing to resize.
+ * Only panel wrappers receive these synthetic sizes; other measurements keep
+ * their original implementation. Native CSS scrolling still needs a browser. */
+export function installResizablePanelLayout(): () => void {
+  const restoreLayout = installLayout();
+  const restore: Array<() => void> = [];
+  for (const [offset, client] of [
+    ['offsetHeight', 'clientHeight'],
+    ['offsetWidth', 'clientWidth'],
+  ] as const) {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, offset);
+    Object.defineProperty(HTMLElement.prototype, offset, {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.hasAttribute('data-panel')
+          ? this[client]
+          : descriptor?.get?.call(this) ?? 0;
+      },
+    });
+    restore.push(() => {
+      if (descriptor) Object.defineProperty(HTMLElement.prototype, offset, descriptor);
+      else Reflect.deleteProperty(HTMLElement.prototype, offset);
+    });
+  }
+  return () => {
+    for (const undo of restore) undo();
+    restoreLayout();
+  };
+}

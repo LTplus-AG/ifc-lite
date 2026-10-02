@@ -4,9 +4,8 @@
 
 import '@/test/setup-dom.js';
 import '@/test/content-fixture.js';
-import { installLayout } from '@/test/dom-layout.js';
-installLayout();
-import { afterEach, beforeEach, it } from 'node:test';
+import { installResizablePanelLayout } from '@/test/dom-layout.js';
+import { after, afterEach, beforeEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
@@ -18,6 +17,8 @@ import { useViewerStore } from '@/store';
 import { loadDefinitionLibrary } from '@/lib/validation/definition-library';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { ValidationPanel } from './ValidationPanel.js';
+
+after(installResizablePanelLayout());
 
 // #6690 invariant: twelve checks each validate two parsed walls: A passes,
 // B fails. These are actual validator/engine reports, not a mocked hook.
@@ -97,7 +98,7 @@ async function prepareModels(count: number) {
 }
 
 async function openAndRunRules(ui: HTMLElement) {
-  const input = ui.querySelector<HTMLInputElement>('input[type="file"]');
+  const input = ui.querySelector<HTMLInputElement>('input[type="file"][accept=".rules.json,.json"]');
   assert.ok(input);
   Object.defineProperty(input, 'files', {
     value: [new File([ruleSet], 'resize.rules.json')], configurable: true,

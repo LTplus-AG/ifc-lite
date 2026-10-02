@@ -15,7 +15,7 @@
 
 import { runInformationCheck } from '@/lib/validation/run-information-check';
 import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { resolveTargetModels, type RuleEngineProgress } from '@ifc-lite/rules';
@@ -30,6 +30,7 @@ import {
   addRecentRuleSet, loadRecentRuleSets, removeRecentRuleSet, type RecentRuleSet,
 } from '@/lib/validation/recent-rule-sets';
 import { useValidationEpoch } from './useValidationEpoch';
+import { activeDefinition } from '@/lib/validation/definition-library';
 
 /** What the last IDS export or import converted, and what it refused and why (#5225). */
 export interface IdsInterchangeSummary {
@@ -43,8 +44,8 @@ export interface IdsInterchangeSummary {
   dropped?: readonly string[];
 }
 
-function blankRuleSet(): RuleSetFile {
-  return { version: 1, name: '', rules: [] };
+function blankRuleSet(name: string): RuleSetFile {
+  return { version: 1, name, rules: [] };
 }
 
 export interface UseInformationValidationResult {
@@ -88,6 +89,7 @@ export function useInformationValidation(): UseInformationValidationResult {
   const file = useViewerStore((s) => s.validationRuleSetDraft);
   const editing = useViewerStore((s) => s.validationRuleSetEditing);
   const setFileState = useViewerStore((s) => s.setValidationRuleSetDraft);
+  const definitionRevision = useViewerStore((s) => s.validationDefinitionRevision);
   const setEditing = useViewerStore((s) => s.setValidationRuleSetEditing);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<RuleEngineProgress | null>(null);
@@ -99,23 +101,31 @@ export function useInformationValidation(): UseInformationValidationResult {
   const abortRef = useRef<AbortController | null>(null);
   const { bump: bumpEpoch, stillWanted } = useValidationEpoch();
 
+  useEffect(() => {
+    const state = useViewerStore.getState();
+    const entry = activeDefinition(state.validationDefinitions, 'rules');
+    if (!state.validationRuleSetDraft && entry?.kind === 'rules') state.setValidationRuleSetDraft(entry.file);
+  }, []);
+
   const setFile = useCallback((next: RuleSetFile) => {
     setFileState(next);
     setError(null);
   }, [setFileState]);
 
   const newRuleSet = useCallback(() => {
-    setFile(blankRuleSet());
+    useViewerStore.getState().addValidationDefinition({ kind: 'rules', file: blankRuleSet(t('validationPanel.library.untitled')) });
     setEditing(true);
-  }, [setFile]);
+  }, [setEditing, t]);
 
   const openFromFile = useCallback(async (pickedFile: File): Promise<{ ok: boolean; error?: string }> => {
+    const revision = useViewerStore.getState().validationDefinitionRevision;
     const result = await importRuleSetFile(pickedFile);
+    if (revision !== useViewerStore.getState().validationDefinitionRevision) return { ok: false };
     if (!result.ok) {
       setError(result.error);
       return { ok: false, error: result.error };
     }
-    setFile(result.file);
+    if (!useViewerStore.getState().addValidationDefinition({ kind: 'rules', file: result.file })) return { ok: false, error: useViewerStore.getState().validationDefinitionsError ?? 'The rule set could not be added.' };
     setEditing(true);
     setRecentRuleSets(addRecentRuleSet(result.file.name, JSON.stringify(result.file, null, 2)));
     return { ok: true };
@@ -136,7 +146,7 @@ export function useInformationValidation(): UseInformationValidationResult {
       setRecentRuleSets(removeRecentRuleSet(entry.name));
       return;
     }
-    setFile(result.file);
+    if (!useViewerStore.getState().addValidationDefinition({ kind: 'rules', file: result.file })) return;
     setEditing(true);
   }, [setFile, t]);
 
@@ -165,7 +175,9 @@ export function useInformationValidation(): UseInformationValidationResult {
   }, [file]);
 
   const importIds = useCallback(async (pickedFile: File): Promise<{ ok: boolean; error?: string }> => {
+    const revision = useViewerStore.getState().validationDefinitionRevision;
     const outcome = await importIdsFileAsRuleSet(pickedFile);
+    if (revision !== useViewerStore.getState().validationDefinitionRevision) return { ok: false };
     if (!outcome.ok) {
       setError(outcome.error);
       return { ok: false, error: outcome.error };
@@ -184,7 +196,7 @@ export function useInformationValidation(): UseInformationValidationResult {
       setError(null);
       return { ok: false };
     }
-    setFile(result.file);
+    if (!useViewerStore.getState().addValidationDefinition({ kind: 'rules', file: result.file })) return { ok: false, error: useViewerStore.getState().validationDefinitionsError ?? 'The rule set could not be added.' };
     setEditing(true);
     return { ok: true };
   }, [setFile]);
@@ -197,6 +209,8 @@ export function useInformationValidation(): UseInformationValidationResult {
     setRunning(false);
     setProgress(null);
   }, [bumpEpoch]);
+
+  useEffect(() => { cancel(); }, [definitionRevision, cancel]);
 
   const run = useCallback(async () => {
     if (isNativeWorkflowBusy()) {

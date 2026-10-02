@@ -17,7 +17,7 @@
 
 import { runIdsCheck } from '@/lib/validation/run-ids-check';
 import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { captureAnalysisStamp, stampAnalysisReport } from './useAnalysisStaleness';
 import { useViewerStore } from '@/store';
 import type {
@@ -85,6 +85,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const defaultPassedColor = optionsPassedColor ?? DEFAULT_PASSED_COLOR;
 
   const document = useViewerStore((s) => s.idsDocument);
+  const definitionRevision = useViewerStore((s) => s.validationDefinitionRevision);
   const auditReport = useViewerStore((s) => s.idsAuditReport);
   const auditing = useViewerStore((s) => s.idsAuditing);
   const loading = useViewerStore((s) => s.idsLoading);
@@ -93,7 +94,6 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const locale = useViewerStore((s) => s.idsLocale);
   const panelVisible = useViewerStore((s) => s.idsPanelVisible);
 
-  const clearIdsDocument = useViewerStore((s) => s.clearIdsDocument);
   const setIdsValidationReport = useViewerStore((s) => s.setIdsValidationReport);
   const clearIdsValidationReport = useViewerStore((s) => s.clearIdsValidationReport);
   const setIdsProgress = useViewerStore((s) => s.setIdsProgress);
@@ -132,27 +132,38 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     setIdsError(null);
   }, [bumpEpoch, setIdsLoading, setIdsProgress, setIdsError]);
 
+  useEffect(() => { cancelValidation(); }, [definitionRevision, cancelValidation]);
+
+  useEffect(() => {
+    const state = useViewerStore.getState();
+    const entry = state.validationDefinitions.entries.find(candidate => candidate.id === state.validationDefinitions.active.ids);
+    if (!state.idsDocument && entry?.kind === 'ids') loadIdsContent(useViewerStore, entry.xml, entry.id);
+  }, []);
+
   const loadIDS = useCallback((xmlContent: string) => {
     loadIdsContent(useViewerStore, xmlContent);
   }, []);
 
   const loadIDSFile = useCallback(async (file: File) => {
+    let revision = useViewerStore.getState().validationDefinitionRevision;
     try {
       setIdsLoading(true);
       setIdsError(null);
       const content = await file.text();
+      if (revision !== useViewerStore.getState().validationDefinitionRevision) return;
       loadIDS(content);
+      revision = useViewerStore.getState().validationDefinitionRevision;
     } catch (err) {
-      setIdsError(err instanceof Error ? err.message : 'Failed to read IDS file');
+      if (revision === useViewerStore.getState().validationDefinitionRevision) setIdsError(err instanceof Error ? err.message : 'Failed to read IDS file');
     } finally {
-      setIdsLoading(false);
+      if (revision === useViewerStore.getState().validationDefinitionRevision) setIdsLoading(false);
     }
   }, [loadIDS, setIdsLoading, setIdsError]);
 
   const clearIDS = useCallback(() => {
     cancelValidation();
-    clearIdsDocument();
-  }, [cancelValidation, clearIdsDocument]);
+    useViewerStore.getState().deactivateValidationDefinition('ids');
+  }, [cancelValidation]);
 
   const runValidation = useCallback(async (targetModelId?: string): Promise<IDSValidationReport | null> => {
     if (isNativeWorkflowBusy()) {

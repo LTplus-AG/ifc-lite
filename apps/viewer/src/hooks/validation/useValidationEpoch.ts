@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useRef } from 'react';
+import { useViewerStore } from '@/store';
 
 export interface ValidationEpoch {
   /** Start a new run (or invalidate the current one on clear/cancel);
@@ -27,7 +28,12 @@ export interface ValidationEpoch {
 
 export function useValidationEpoch(): ValidationEpoch {
   const epochRef = useRef(0);
-  const bump = useCallback((): number => ++epochRef.current, []);
-  const stillWanted = useCallback((epoch: number): boolean => epochRef.current === epoch, []);
+  const definitionRef = useRef(0);
+  const bump = useCallback((): number => {
+    definitionRef.current = useViewerStore.getState().validationDefinitionRevision;
+    return ++epochRef.current;
+  }, []);
+  const stillWanted = useCallback((epoch: number): boolean => epochRef.current === epoch
+    && definitionRef.current === useViewerStore.getState().validationDefinitionRevision, []);
   return { bump, stillWanted };
 }

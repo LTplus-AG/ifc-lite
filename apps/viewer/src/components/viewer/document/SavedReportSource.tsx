@@ -28,8 +28,8 @@ export function SavedReportSource({ block, onChange }: { block: ValidationReport
               onChange(block.kind === 'manual-report' && next.kind === 'manual-report'
                 ? replaceManualReportSnapshot(block, next)
                 : block.kind === 'ids-report' && next.kind === 'ids-report'
-                  ? { ...next, title: block.title, variant: block.variant, benchmarks: block.benchmarks, specificationsOnly: block.specificationsOnly }
-                  : { ...next, title: block.title });
+                  ? { ...next, title: block.title, variant: block.variant, benchmarks: block.benchmarks, specificationsOnly: block.specificationsOnly, scale: block.scale }
+                  : { ...next, title: block.title, scale: block.scale });
             }
           }}>
           <option value="" disabled>{t('validationPanel.history.embedded')}</option>

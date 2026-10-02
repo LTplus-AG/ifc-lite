@@ -78,13 +78,25 @@ describe('report document preparation (#6612)', () => {
     }
     const specsOnly = template();
     const mapped = specsOnly.blocks[1];
-    if (mapped.kind === 'ids-report') { mapped.variant = 'compact'; mapped.specificationsOnly = true; }
+    if (mapped.kind === 'ids-report') { mapped.variant = 'compact'; mapped.specificationsOnly = true; mapped.scale = 1.5; }
     const compactDoc = buildReportDocument({ template: specsOnly, results: results(), mappings: [{ blockId: 'mapped', jobId: 'ids' }] });
-    for (const block of compactDoc.blocks.slice(1)) assert.equal(block.kind === 'ids-report' && block.specificationsOnly, true, 'the authored specifications-only choice survives expansion (#6560)');
+    for (const block of compactDoc.blocks.slice(1)) {
+      assert.equal(block.kind === 'ids-report' && block.specificationsOnly, true, 'the authored specifications-only choice survives expansion (#6560)');
+      assert.equal(block.kind === 'ids-report' && block.scale, 1.5, 'the authored block size survives the same expansion (#6548)');
+    }
     assert.equal(source.blocks.length, 2);
     assert.equal(source.blocks[1].id, 'mapped');
     assert.notEqual(document.id, source.id);
     assert.deepEqual(document.page, source.page);
+  });
+  it('builds from a template saved at the previous format version and keeps the block size its author chose (#6548)', () => {
+    const saved = { ...template(), version: DOCUMENT_VERSION - 1 } as unknown as DocumentSpec;
+    saved.blocks[1] = { ...saved.blocks[1], scale: 1.5 } as DocumentSpec['blocks'][number];
+    assert.deepEqual(validateReportDocumentTemplate(saved, [{ blockId: 'mapped', jobId: 'ids' }], [{ jobId: 'ids', kind: 'validation' }]), []);
+    const document = buildReportDocument({ template: saved, results: results(), mappings: [{ blockId: 'mapped', jobId: 'ids' }] });
+    assert.equal(document.version, DOCUMENT_VERSION, 'the built document is saved at the current version');
+    assert.deepEqual(document.blocks.slice(1).map((block) => block.kind === 'ids-report' && block.scale), [1.5, 1.5]);
+    assert.deepEqual(validateDocumentSpec(document), []);
   });
   it('rejects unmapped evidence, unknown results and incompatible block mappings before export', () => {
     assert.throws(() => buildReportDocument({ template: template(), results: results() }), /requires a result mapping/);

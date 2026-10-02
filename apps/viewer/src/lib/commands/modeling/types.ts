@@ -146,8 +146,10 @@ export interface ModelingCommand<G = unknown> {
   snapQuery?(g: G): Pick<SnapQuery, 'anchor' | 'chain' | 'locks'>;
   pointerMove(g: G, s: SnapResult, ctx: CommandContext): G;
   pointerDown(g: G, s: SnapResult, ctx: CommandContext): G | CommandSignal;
+  /** Handle this gesture on the actual press/release instead of a browser click. */
+  pointerDownOnPress?(g: G): boolean;
   /**
-   * The button's release, where the pointer source reports one (the plan):
+   * The button's release, where the pointer source reports one (plan or 3D):
    * e.g. drop a dragged corner. Absent = releases are ignored.
    */
   pointerUp?(g: G, s: SnapResult, ctx: CommandContext): G | CommandSignal;

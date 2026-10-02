@@ -21,6 +21,10 @@
 
 import { getViewerStoreApi } from '@/store';
 
+// Hook instances are independent; a replacement primary invalidates every
+// unfinished load, while concurrent federated additions remain independent.
+const pendingLoads = new Set<() => void>();
+
 /**
  * Publish a canceller for the load that `supersede` belongs to. Returns the
  * release to call when that load ends by any path; it clears the slot only
@@ -32,15 +36,30 @@ export function installModelLoadCanceller(
   ownedStream: () => (() => void) | null = () => null,
 ): () => void {
   const store = getViewerStoreApi();
+  if (kind === 'primary') {
+    for (const abandon of [...pendingLoads]) abandon();
+  }
+  let released = false;
   const release = () => {
+    released = true;
+    pendingLoads.delete(abandon);
     if (store.getState().activeLoadCanceller === cancel) store.getState().setActiveLoadCanceller(null);
+  };
+  const abandon = () => {
+    if (released) return;
+    supersede();
+    const stream = ownedStream();
+    if (stream && store.getState().activeStreamCanceller === stream) {
+      stream();
+      store.getState().setActiveStreamCanceller(null);
+    }
+    release();
   };
   const cancel = () => {
     // A retained reference to a load that has since ended or been replaced
     // must not supersede, or reset the viewer under, the load that owns the slot.
     if (store.getState().activeLoadCanceller !== cancel) return;
-    supersede();
-    release();
+    abandon();
     const state = store.getState();
     // Stop this load's point-cloud stream too. A federated add may overlap
     // another load, so only cancel its own stream handle in that case.
@@ -66,6 +85,7 @@ export function installModelLoadCanceller(
       state.setError(null);
     }
   };
+  pendingLoads.add(abandon);
   store.getState().setActiveLoadCanceller(cancel);
   return release;
 }

@@ -448,11 +448,11 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     const cancelScale = container.querySelector('button[aria-label="Cancel editing Scale"]');
     assert.ok(cancelScale);
     click(cancelScale);
-    const angleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent?.includes('Angle to Grid North'));
+    const angleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent?.includes('Model rotation in map coordinates'));
     assert.ok(angleLabel?.parentElement);
     clickRow(angleLabel.parentElement);
-    assert.ok(container.querySelector('button[aria-label="Save Angle to Grid North"]'));
-    assert.ok(container.querySelector('button[aria-label="Cancel editing Angle to Grid North"]'));
+    assert.ok(container.querySelector('button[aria-label="Save Model rotation in map coordinates"]'));
+    assert.ok(container.querySelector('button[aria-label="Cancel editing Model rotation in map coordinates"]'));
   });
 
   catalogueIt('formats coordinate and terrain measurements with the active locale', () => {
@@ -591,7 +591,7 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     const operation = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Coordinate Operation'));
     assert.ok(operation);
     click(operation);
-    const angleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent?.includes('Angle to Grid North'));
+    const angleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent?.includes('Model rotation in map coordinates'));
     assert.ok(angleLabel?.parentElement);
     clickRow(angleLabel.parentElement);
     const input = angleLabel.parentElement.querySelector<HTMLInputElement>('input');

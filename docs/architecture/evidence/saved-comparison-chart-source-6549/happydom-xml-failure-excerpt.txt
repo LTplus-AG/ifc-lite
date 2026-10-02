@@ -1,0 +1,7 @@
+Exact excerpts from the actual pre-accommodation mounted export run. Original unmodified SVG is retained separately.
+
+@ifc-lite/viewer:test: [Charts] report export failed Error: Chart SVG did not parse: This page contains the following errors:error on line 22 at column 10: StartTag: invalid element name
+@ifc-lite/viewer:test: ℹ tests 8
+@ifc-lite/viewer:test: ℹ pass 6
+@ifc-lite/viewer:test: ℹ fail 2
+@ifc-lite/viewer:test:   Error: Chart SVG did not parse: This page contains the following errors:error on line 22 at column 10: StartTag: invalid element name

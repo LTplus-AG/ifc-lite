@@ -53,6 +53,8 @@ export interface SnapCandidate {
   elevation?: number;
   source: 'mesh' | 'semantic' | 'linework' | 'grid' | 'ifc-grid' | 'inference';
   entity?: { modelId: string; expressId: number };
+  /** Actual axis references of an IFC grid crossing, for persisted placement. */
+  gridIntersection?: { IntersectingAxes: readonly [number, number] };
   /**
    * The geometry the target lies on. For edge-like kinds (edge, extension,
    * parallel) the solver slides the target along this guide when a lock is

@@ -81,6 +81,66 @@ afterEach(() => {
 });
 
 describe('Document panel manual validation report (#6401)', () => {
+  for (const modelsCount of [1, 2]) it(`toggles stamp preview, preserves it through refresh/history and reopens recorded evidence at ${modelsCount} model(s) (#6566)`, async () => {
+    if (modelsCount === 2) {
+      const tower = useViewerStore.getState().models.get('m1')!;
+      const annex = await parsedModel('m2', 'annex.ifc', 'fp-annex');
+      act(() => useViewerStore.setState({ models: new Map([['m1', tower], ['m2', annex]]), activeModelId: 'm2' }));
+      useViewerStore.getState().setManualAnswer('fp-annex', 'a', { status: 'fail' });
+      useViewerStore.getState().setManualAnswer('fp-annex', 'b', { status: 'warning', comment: 'Annex observation' });
+    }
+    const ui = render(<DocumentPanel />);
+    await settle();
+    openMenu([...ui.querySelectorAll('button')].find((button) => button.title === 'Add a block to the page')!);
+    click(menuItem('Manual validation report')!);
+    await settle();
+    const stored = (): ManualReportBlock => useViewerStore.getState().documents[0].blocks.find((candidate): candidate is ManualReportBlock => candidate.kind === 'manual-report')!;
+    const preview = (): Element => ui.querySelector('[data-block-manual-report]')!;
+    const stampControl = (): HTMLInputElement | undefined => [...ui.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find((input) => input.closest('label')?.textContent?.trim() === 'Show stamp information');
+    const frozen = structuredClone(stored());
+    assert.match(preview().textContent ?? '', /Model:.*Recorded:/);
+    assert.ok(preview().querySelector('[data-report-model-scope]'));
+    const checkbox = stampControl();
+    assert.ok(checkbox, 'manual report offers its own stamp visibility control');
+    assert.equal(checkbox.checked, true, 'existing blocks display their original stamp');
+    click(checkbox);
+    await settle();
+    assert.ok(!/Model:|Models:|Recorded:/.test(preview().textContent ?? ''), 'both stamp rows disappear from the page');
+    assert.equal(preview().querySelector('[data-report-model-scope]'), null);
+    assert.match(preview().textContent ?? '', /Manual validation: Coordination round 3/);
+    assert.deepEqual([...preview().querySelectorAll('li[data-status]')].map((item) => item.getAttribute('data-status')), frozen.groups[0].items.map((item) => item.status));
+    const { showStamp: _stamp, ...hiddenEvidence } = Object.assign({}, stored(), { showStamp: 'showStamp' in stored() ? stored().showStamp : undefined });
+    assert.deepEqual(hiddenEvidence, frozen, 'the control changes presentation only');
+    const imported = parseDocumentFile(JSON.stringify(useViewerStore.getState().documents[0]));
+    const reopened = imported.blocks.find((candidate): candidate is ManualReportBlock => candidate.kind === 'manual-report')!;
+    assert.equal('showStamp' in reopened ? reopened.showStamp : undefined, false);
+    assert.equal(reopened.generatedAt, frozen.generatedAt);
+    assert.deepEqual(reopened.reportModels, frozen.reportModels);
+    assert.deepEqual(reopened.groups, frozen.groups);
+
+    act(() => useViewerStore.getState().setManualAnswer(frozen.modelFingerprint!, 'b', { status: 'pass' }));
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Refresh from current checklist')!);
+    await settle();
+    assert.equal(stampControl()!.checked, false, 'live Refresh retains the stamp choice');
+    assert.equal(stored().groups[0].items[1].status, 'pass');
+    assert.ok(!/Model:|Models:|Recorded:/.test(preview().textContent ?? ''));
+    let savedId: string | null = null;
+    act(() => { savedId = useViewerStore.getState().saveValidationReport(Object.assign({}, stored(), { checklistName: 'Later review', showStamp: true }), 'Later review'); });
+    assert.ok(savedId);
+    const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]');
+    assert.ok(source);
+    act(() => { source.value = savedId!; source.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    await settle();
+    assert.equal(stored().checklistName, 'Later review');
+    assert.equal(stampControl()!.checked, false, 'choosing frozen evidence retains the stamp choice');
+    const selectedGroups = structuredClone(stored().groups);
+    click(stampControl()!);
+    await settle();
+    assert.match(preview().textContent ?? '', /Model:.*Recorded:/);
+    assert.ok(preview().querySelector('[data-report-model-scope]'));
+    assert.deepEqual(stored().groups, selectedGroups, 'showing the stamp never modifies the selected answers');
+  });
+
   it('adds a frozen snapshot of the checklist and the active model\'s answers, and Refresh re-takes it', async () => {
     const ui = render(<DocumentPanel />);
     await settle();
@@ -222,6 +282,15 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.equal(stored().modelFingerprint, fingerprint);
     assert.deepEqual(stored().groups[0].items.map((item) => item.status), ['fail', 'warning']);
     assert.match(ui.querySelector('[data-block-manual-report]')?.textContent ?? '', /Structure-only observation/);
+    // #6655: both replacement routes retain the destination's entire authored
+    // presentation even when the source snapshot has conflicting settings.
+    const title = ui.querySelector<HTMLInputElement>(`[data-block-editor="${blockId}"] input[aria-label="Block title"]`);
+    assert.ok(title);
+    typeInput(title, 'Authored review heading');
+    const stamp = [...ui.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find((input) => input.closest('label')?.textContent?.trim() === 'Show stamp information');
+    assert.ok(stamp);
+    click(stamp);
+    await settle();
     await choose('Checklist layout', 'compact');
     const checkbox = [...ui.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find((input) => input.closest('label')?.textContent?.includes('Show benchmark scores'))!;
     assert.ok(checkbox);
@@ -244,6 +313,8 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.equal(stored().checklistId, structureId);
     assert.equal(stored().variant, 'compact');
     assert.equal(stored().benchmarks, false);
+    assert.equal(stored().title, 'Authored review heading');
+    assert.equal(stored().showStamp, false);
     assert.deepEqual(stored().groups[0].items.map((item) => item.status), ['fail', 'pass']);
     assert.equal(useViewerStore.getState().manualLibrary.activeId, architectureId);
     const frozen = structuredClone(stored());
@@ -252,7 +323,7 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.equal(refresh().disabled, true);
     assert.ok(ui.querySelector('[data-manual-report-checklist-missing]'));
     assert.deepEqual(stored(), frozen);
-    assert.match(preview.textContent ?? '', /Manual validation: Structure/);
+    assert.match(preview.textContent ?? '', /Authored review heading/);
 
     // Frozen history source changes use the same presentation contract as
     // live Refresh, even after the originating checklist was deleted (#6507).
@@ -260,7 +331,7 @@ describe('Document panel manual validation report (#6401)', () => {
     let secondSaved: string | null = null;
     act(() => {
       firstSaved = useViewerStore.getState().saveValidationReport(frozen, 'Structure evidence');
-      secondSaved = useViewerStore.getState().saveValidationReport({ ...frozen, checklistName: 'Later structure evidence', variant: 'long', benchmarks: true }, 'Later evidence');
+      secondSaved = useViewerStore.getState().saveValidationReport({ ...frozen, checklistName: 'Later structure evidence', title: 'Source review heading', variant: 'long', benchmarks: true, showStamp: true }, 'Later evidence');
     });
     assert.ok(firstSaved && secondSaved);
     await choose('Saved report source', firstSaved);
@@ -268,8 +339,11 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.equal(stored().id, blockId);
     assert.equal(stored().variant, 'compact');
     assert.equal(stored().benchmarks, false);
+    assert.equal(stored().title, 'Authored review heading');
+    assert.equal(stored().showStamp, false);
     assert.equal(stored().checklistName, 'Later structure evidence');
     assert.equal(ui.querySelector('[data-manual-report-benchmarks]'), null);
+    assert.ok(!/Model:|Models:|Recorded:/.test(ui.querySelector('[data-block-manual-report]')?.textContent ?? ''));
     assert.equal(refresh(), undefined, 'frozen history has no live Refresh action');
     act(() => useViewerStore.getState().removeValidationReport(secondSaved!));
     await settle();

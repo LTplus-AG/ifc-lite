@@ -33,8 +33,10 @@ function entries(get: Get): Map<string, Entry> {
 /** Remember that `batchId` re-shaped `expressIds` (model-local) of `modelId`. */
 export function rememberRemesh(get: Get, batchId: string, modelId: string, expressIds: readonly number[], cause: RemeshCause): void {
   const map = entries(get);
+  const previous = map.get(batchId);
   map.delete(batchId);
-  map.set(batchId, { modelId, expressIds: [...expressIds], cause });
+  map.set(batchId, { modelId, expressIds: previous?.modelId === modelId
+    ? [...new Set([...previous.expressIds, ...expressIds])] : [...expressIds], cause });
   if (map.size > MAX_ENTRIES) map.delete(map.keys().next().value!);
 }
 

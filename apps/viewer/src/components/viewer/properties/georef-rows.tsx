@@ -78,6 +78,8 @@ function getFieldHint(entity: string, field: string): FieldHint {
 export interface GeorefRowProps {
   label: string;
   value: string | number | undefined | null;
+  /** Effective IFC default, displayed separately from an authored value. */
+  defaultValue?: number;
   suffix?: string;
   isComputed?: boolean;
   isNumber?: boolean;
@@ -90,7 +92,7 @@ export interface GeorefRowProps {
   children?: React.ReactNode;
 }
 
-export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMutated, fieldEntity, fieldName, onSave, children }: GeorefRowProps) {
+export function GeorefRow({ label, value, defaultValue, suffix, isComputed, isNumber, editable, isMutated, fieldEntity, fieldName, onSave, children }: GeorefRowProps) {
   const { t, locale } = useTranslation();
   const [editing, setEditing] = useState(false), [editValue, setEditValue] = useState('');
   const seededValue = useRef(''); // a commit still equal to the seed is a no-op, never a re-parse of a rounded display string
@@ -98,16 +100,17 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
   const valueButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef(false);
   const helpId = useId();
+  const effectiveValue = value ?? defaultValue;
 
   const hint = useMemo(() => getFieldHint(fieldEntity ?? '', fieldName ?? ''), [fieldEntity, fieldName]);
 
   const startEdit = useCallback(() => {
     if (!editable || isComputed) return;
-    seededValue.current = typeof value === 'number' ? formatLocaleNumber(locale, value, { maximumFractionDigits: 20, useGrouping: false }) : String(value ?? ''); // locale-formatted seed (#4918), commitEdit parses via parseLocaleNumber
+    seededValue.current = typeof effectiveValue === 'number' ? formatLocaleNumber(locale, effectiveValue, { maximumFractionDigits: 20, useGrouping: false }) : String(effectiveValue ?? ''); // locale-formatted seed (#4918), commitEdit parses via parseLocaleNumber
     setEditValue(seededValue.current);
     restoreFocusRef.current = true;
     setEditing(true);
-  }, [value, editable, isComputed, locale]);
+  }, [effectiveValue, editable, isComputed, locale]);
 
   // See the file header re: `autoFocus`.
   useEffect(() => {
@@ -152,7 +155,8 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
     setEditing(false);
   }, [onSave, isNumber]);
 
-  const displayValue = typeof value === 'number' ? formatLocaleNumber(locale, value, { maximumFractionDigits: 12 }) : value ?? '-';
+  const formattedValue = typeof effectiveValue === 'number' ? formatLocaleNumber(locale, effectiveValue, { maximumFractionDigits: 12 }) : effectiveValue ?? '-';
+  const displayValue = value == null && defaultValue !== undefined ? t('properties.georef.defaultValue', { value: formattedValue }) : formattedValue;
   const clickable = editable && !isComputed;
   // See the file header: the row div itself is never interactive.
   const rowClassName = `flex items-start gap-2 px-3 py-1.5 min-w-0 w-full text-left ${isMutated ? 'bg-overlay-accent-soft' : ''}`;
@@ -272,15 +276,18 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
   const { t, locale } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
+  const seededValue = useRef('');
   const inputRef = useRef<HTMLInputElement>(null);
   const valueButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef(false);
   const axesNoteId = useId();
+  const conventionId = useId();
   const label = t('properties.georef.angleToGridNorth');
 
   const startEdit = useCallback(() => {
     if (!editable) return;
-    setEditValue(angle != null ? formatLocaleNumber(locale, angle, { maximumFractionDigits: 6, useGrouping: false }) : ''); // locale-formatted seed (#4918), see GeorefRow.startEdit
+    seededValue.current = angle != null ? formatLocaleNumber(locale, angle, { maximumFractionDigits: 6, useGrouping: false }) : ''; // locale-formatted seed (#4918), see GeorefRow.startEdit
+    setEditValue(seededValue.current);
     restoreFocusRef.current = true;
     setEditing(true);
   }, [angle, editable, locale]);
@@ -295,6 +302,8 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
 
   const commitEdit = useCallback(() => {
     if (!onAngleChange) return;
+    // Preserve the original direction and precision when accepting an unchanged display (#6639).
+    if (editValue.trim() === seededValue.current.trim()) { setEditing(false); return; }
     let rad: number;
     try { rad = parseLocalizedRotationDegrees(locale, editValue); } catch (error) {
       if (error instanceof Error) return;
@@ -311,7 +320,7 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
     if (e.key === 'Escape') cancelEdit();
   }, [commitEdit, cancelEdit]);
 
-  const rowClassName = 'flex items-start gap-2 px-3 py-1.5 min-w-0 w-full text-left';
+  const rowClassName = 'flex flex-wrap items-start gap-2 px-3 py-1.5 min-w-0 w-full text-left';
   const valueCellContent = (
     <>
       <span className="text-xs font-mono tabular-nums text-teal-700 dark:text-teal-400">
@@ -326,7 +335,7 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
 
   const rowBody = (
     <>
-      <span className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0 pt-0.5 flex items-center gap-0.5 min-w-[110px]">
+      <span className="text-xs text-zinc-500 dark:text-zinc-400 pt-0.5 flex items-start gap-0.5 min-w-[110px] flex-1">
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="text-xs text-teal-500">*</span>
@@ -335,25 +344,25 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
         </Tooltip>
         {label}
       </span>
-      <div className="flex-1 flex items-start gap-1 min-w-0 justify-end">
+      <div className={`flex items-start gap-1 min-w-0 justify-end ${editing ? 'w-full' : 'shrink-0'}`}>
         {editing ? (
-          <div className="flex flex-col gap-1">{/* no stopPropagation needed: see GeorefRow */}
+          <div className="flex flex-col gap-1 w-full">{/* no stopPropagation needed: see GeorefRow */}
             <div className="flex items-center gap-1">
               <input
                 ref={inputRef}
                 aria-label={label}
-                aria-describedby={axesNoteId}
+                aria-describedby={`${conventionId} ${axesNoteId}`}
                 value={editValue}
                 onChange={e => setEditValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="0.0"
-                className="w-28 text-xs font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
+                className="flex-1 min-w-0 text-xs font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
               />
               <span className="text-xs text-zinc-400">{t('properties.georef.degUnit')}</span>
-              <IconButton label={t('properties.georef.saveField', { field: t('properties.georef.angleToGridNorth') })} onClick={commitEdit} className="h-5 w-5 p-0.5 text-green-600 hover:text-green-700 dark:text-green-400 shrink-0">
+              <IconButton label={t('properties.georef.saveField', { field: label })} onClick={commitEdit} className="h-5 w-5 p-0.5 text-green-600 hover:text-green-700 dark:text-green-400 shrink-0">
                 <Check className="h-3 w-3" />
               </IconButton>
-              <IconButton label={t('properties.georef.cancelField', { field: t('properties.georef.angleToGridNorth') })} onClick={cancelEdit} className="h-5 w-5 p-0.5 text-red-500 hover:text-red-600 dark:text-red-400 shrink-0">
+              <IconButton label={t('properties.georef.cancelField', { field: label })} onClick={cancelEdit} className="h-5 w-5 p-0.5 text-red-500 hover:text-red-600 dark:text-red-400 shrink-0">
                 <X className="h-3 w-3" />
               </IconButton>
             </div>
@@ -363,6 +372,7 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
           <ValueCell clickable={editable} onClick={startEdit} label={`${label}: ${angle != null ? formatLocaleNumber(locale, angle, { maximumFractionDigits: 6 }) : '-'}${t('properties.georef.degUnit')}`} buttonRef={valueButtonRef}>{valueCellContent}</ValueCell>
         )}
       </div>
+      <span id={conventionId} className="w-full text-xs text-zinc-500 dark:text-zinc-400">{t('properties.georef.rotationConvention')}</span>
     </>
   );
 

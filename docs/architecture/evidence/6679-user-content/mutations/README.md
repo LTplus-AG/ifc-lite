@@ -33,3 +33,14 @@ regression ran 2 passes and 1 assertion failure before the fix, then 3 passes
 and no failures after status initialization, copies and restore resets used
 the same null-prototype helper. It verifies both refusal/retry rounds around
 a restore. The two prototype-status logs retain the actual output.
+
+The migration layer additionally qualifies retained validation evidence: a patch
+that acknowledges every report as saved (including a refused transaction) turns
+the existing retention test red. Its baseline passed 4 tests; the mutation ran
+3 passes and 1 assertion failure. The official oracle returned OBSERVED with
+attributable execution and verified restoration. The JSON records the exact
+source head and parent-layer base.
+
+```sh
+node scripts/check-test-revert-oracle.mjs --base t3code/6679-storage-foundation --only apps/viewer/src/lib/flow/report-retention.ts --test apps/viewer/src/lib/flow/report-retention.test.ts --mutation docs/architecture/evidence/6679-user-content/mutations/retention-durability.patch --ci --json
+```

@@ -10,7 +10,7 @@
   "verification": [
     {
       "command": "pnpm typecheck",
-      "result": "passed; 111 tasks and all 3308 test files"
+      "result": "passed; 111 tasks and all 3310 test files on the final main-based controls tree"
     },
     {
       "command": "pnpm build --filter=@ifc-lite/viewer",

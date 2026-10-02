@@ -66,3 +66,5 @@ head, base, command and invocation output. Replay from that recorded head:
 ```sh
 node scripts/check-test-revert-oracle.mjs --base ec050f09e973eeb2af6eabdb53642800bed393e2 --only apps/viewer/src/lib/storage/content-backup-references.ts --test apps/viewer/src/components/viewer/ContentStorageNotice.test.tsx --mutation docs/architecture/evidence/6679-user-content/mutations/import-reference-remapping.patch --ci --json
 ```
+
+The final mounted test is independently qualified at `abf60eeeb3e4afbd6df8b15c428304abd138cf09`: 8 baseline passes become 7 passes and one genuine assertion failure when remapping is bypassed. The official verdict is OBSERVED with restoration verified. `final-mounted-import-reference-remapping.json` records this invocation; full stdout is posted on #6695. Replay uses the same adjacent patch, the final controls branch retains the source commit, and the base is immutable `6abfd08a327d55ec0e95716a8150317d1fdcb110`. As above, copy the patch outside Git before checking out the pinned source.

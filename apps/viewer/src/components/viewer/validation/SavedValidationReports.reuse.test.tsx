@@ -17,6 +17,7 @@ import { manualLibraryProjection } from '@/lib/validation/manual/library';
 import { loadValidationReports } from '@/lib/validation/reports/persistence';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { ValidationPanel } from './ValidationPanel.js';
+import { useManualReportSource } from '../document/useManualReportSource.js';
 
 const initial = useViewerStore.getState();
 const checklist = {
@@ -177,6 +178,47 @@ describe('Saved manual report editable reuse (#6611)', () => {
     assert.equal(button(check, 'Pass').disabled, true, 'missing original source cannot silently become the active peer');
     assert.equal(check.querySelector<HTMLTextAreaElement>('textarea')?.disabled, true);
     assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+  });
+
+  it('allows an explicit peer review without moving the recorded answers or changing history (#6611)', async () => {
+    const { source, peer, original, ui } = await saveThenReopenHistory(2);
+    assert.ok(peer);
+    click(button(ui, 'Edit a copy'));
+    const picker = ui.querySelector<HTMLSelectElement>('select[aria-label="Model"]');
+    assert.ok(picker);
+    act(() => { picker.value = peer.id; picker.dispatchEvent(new Event('change', { bubbles: true })); });
+    assert.equal(row(ui, 'Naming convention').dataset.status, 'unanswered', 'explicit peer starts a separate review');
+    click(button(row(ui, 'Naming convention'), 'Fail'));
+    assert.equal(useViewerStore.getState().manualAnswers[peer.sourceFingerprint!].names.status, 'fail');
+    act(() => { picker.value = source.id; picker.dispatchEvent(new Event('change', { bubbles: true })); });
+    assert.equal(row(ui, 'Naming convention').dataset.status, 'warning', 'returning to the recorded model retains its answer');
+    assert.equal(row(ui, 'Naming convention').querySelector<HTMLTextAreaElement>('textarea')?.value, 'Recorded prefix needs review');
+    assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+  });
+
+  it('keeps the document source on the recovered fingerprint and refuses a missing-bound default (#6611)', async () => {
+    const { source, peer, ui } = await saveThenReopenHistory(2);
+    assert.ok(peer);
+    click(button(ui, 'Edit a copy'));
+    cleanup();
+    function SourceProbe() {
+      const sourceHandle = useManualReportSource();
+      return <>
+        <output data-default-model>{sourceHandle.defaultModelId ?? 'missing'}</output>
+        <output data-default-snapshot>{JSON.stringify(sourceHandle.snapshot('document-default'))}</output>
+        <output data-explicit-snapshot>{JSON.stringify(sourceHandle.snapshot('document-peer', peer!.id))}</output>
+      </>;
+    }
+    const probe = render(<SourceProbe />);
+    assert.equal(probe.querySelector('[data-default-model]')?.textContent, source.id);
+    assert.match(probe.querySelector('[data-default-snapshot]')?.textContent ?? '', /Recorded prefix needs review/);
+    assert.doesNotMatch(probe.querySelector('[data-explicit-snapshot]')?.textContent ?? '', /Recorded prefix needs review/);
+    act(() => useViewerStore.setState(fixtureModels(peer)));
+    assert.equal(probe.querySelector('[data-default-model]')?.textContent, 'missing');
+    assert.equal(probe.querySelector('[data-default-snapshot]')?.textContent, 'null', 'Add/default snapshot cannot borrow the active peer');
+    const explicit = JSON.parse(probe.querySelector('[data-explicit-snapshot]')?.textContent ?? 'null');
+    assert.equal(explicit.modelFingerprint, peer.sourceFingerprint, 'an explicit source choice remains available');
+    assert.equal(explicit.summary.unanswered, 3);
   });
 
   it('shows a storage failure while retaining the editable copy and frozen history (#6611)', async () => {

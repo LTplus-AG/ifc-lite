@@ -78,7 +78,7 @@ function openAddMenu(ui: HTMLElement) {
 
 function addSavedBlock(ui: HTMLElement) {
   openAddMenu(ui);
-  const item = [...document.body.querySelectorAll('[role="menuitem"]')].find((element) => element.textContent === 'Saved validation report');
+  const item = [...document.body.querySelectorAll('[role="menuitem"]')].find((element) => element.textContent === 'Validation report');
   assert.ok(item);
   click(item);
 }
@@ -375,7 +375,7 @@ describe('saved validation evidence (#6500)', () => {
     useViewerStore.getState().setActiveDocumentId(document.id);
     const ui = render(<DocumentPanel />); await settle();
     openAddMenu(ui);
-    const add = [...globalThis.document.querySelectorAll('[role="menuitem"]')].find((element) => element.textContent === 'IDS validation report'); assert.ok(add);
+    const add = [...globalThis.document.querySelectorAll('[role="menuitem"]')].find((element) => element.textContent === 'Validation report'); assert.ok(add);
     click(add); await settle();
     assert.match(ui.querySelector('[data-report-model-scope]')?.textContent ?? '', /original-tower.ifc/);
     assert.doesNotMatch(ui.querySelector('[data-report-model-scope]')?.textContent ?? '', /replacement|renamed|edited/);

@@ -85,7 +85,6 @@ export const validationPanelEn = {
   'validationPanel.history.saveManual': 'Save report',
   'validationPanel.history.documentSource': 'Saved report source',
   'validationPanel.history.embedded': 'Current document snapshot',
-  'validationPanel.history.addDocument': 'Saved validation report',
   'validationPanel.library.rulesSelect': 'Select rule set',
   'validationPanel.library.idsSelect': 'Select IDS document',
   'validationPanel.library.none': 'No check selected',

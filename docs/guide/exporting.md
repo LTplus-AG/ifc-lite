@@ -564,6 +564,10 @@ The supported subset has one map conversion, one project, an identity 3D context
 SI metre-based project units, local 3D placements, and Body representations.
 Type representation maps must be reachable from an actual product Body;
 orphan mapped items do not authorize uninstantiated type geometry.
+A zero-angle direction may contain machine-epsilon sine roundoff from an
+exporter. With exactly neutral physical scale and cosine, that case preserves
+the original operation, offsets and geometry without rewriting the tiny
+ordinate; meaningful rotations and scales still require supported normalization.
 Body mapped paths with 31 or more existing wrappers are refused atomically: the
 new wrapper and terminal leaf must both fit the canonical submesh depth limit,
 so normalization preserves per-leaf styles as well as aggregate geometry.

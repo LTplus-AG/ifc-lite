@@ -232,8 +232,12 @@ export const documentEn = {
   // A summary of checked/passed/failed and the top-level check list, mirroring
   // the table block's structure, with per-rule rows under each check.
   'document.block.kindIdsReport': 'IDS report',
-  'document.addBlock.idsReport': 'IDS validation report',
-  'document.addBlock.idsReportDisabledTitle': 'Run an IDS or information validation first',
+  // One Add block entry for every validation report (#6553); the block's source picker chooses saved or live.
+  'document.addBlock.validationReport': 'Validation report',
+  'document.addBlock.validationReportDisabledTitle': 'Save a report under Data validation, run a validation, or create a manual checklist first',
+  'document.block.reportSourceLiveIds': 'Current IDS validation run (live)',
+  'document.block.reportSourceLiveRules': 'Current information validation run (live)',
+  'document.block.reportSourceLiveManual': 'Current manual checklist (live)',
   'document.block.idsReportSourceLabel': 'Source',
   'document.block.idsReportVariantLabel': 'Layout',
   'document.block.idsReportVariantAriaLabel': 'IDS report layout',
@@ -261,7 +265,6 @@ export const documentEn = {
   // `sourceKind` picks the label, refresh only accepts a report of the same kind, and the
   // rule engine's extra detail (severity, set rows, cardinality, errors) is shown.
   'document.block.kindRulesReport': 'Information validation report',
-  'document.addBlock.rulesReport': 'Information validation report',
   'document.block.rulesReportRefreshDisabledTitle': 'Run an information validation first',
   'document.preview.idsReportHeading': 'IDS report: {name}',
   'document.preview.rulesReportHeading': 'Information validation report: {name}',

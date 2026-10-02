@@ -289,7 +289,8 @@ test('#6500/#6568 explicitly saved real IFC checks survive reload and remain ind
   });
   const livePanel = page.locator('[data-document-panel]').first();
   await livePanel.getByRole('button', { name: 'Add block', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'IDS validation report', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Validation report', exact: true }).click();
+  await livePanel.getByRole('combobox', { name: 'Saved report source', exact: true }).last().selectOption('live:ids');
   await expect(livePanel.locator('[data-report-model-scope]')).toHaveText('Models: building-architecture.ifc');
   await livePanel.getByRole('button', { name: 'Refresh from current validation report', exact: true }).click();
   await expect(livePanel.locator('[data-report-model-scope]')).toHaveText('Models: building-architecture.ifc');
@@ -310,7 +311,7 @@ test('#6500/#6568 explicitly saved real IFC checks survive reload and remain ind
   await expect(panel).toBeVisible();
   for (const report of reports) {
     await panel.getByRole('button', { name: 'Add block', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Saved validation report', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Validation report', exact: true }).click();
     await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).last().selectOption(report.id);
   }
   const layouts = panel.getByRole('combobox', { name: 'IDS report layout', exact: true });
@@ -621,7 +622,8 @@ test('#6507 real IFC discipline checklists remain independent and print their ch
   await page.getByRole('button', { name: 'Maximize', exact: true }).click();
   for (const id of [architectureId, structureId]) {
     await panel.getByRole('button', { name: 'Add block', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Manual validation report', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Validation report', exact: true }).click();
+    await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).last().selectOption('live:manual');
     await panel.getByRole('combobox', { name: 'Checklist', exact: true }).last().selectOption(id);
   }
   expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().manualLibrary.activeId)).toBe(architectureId);

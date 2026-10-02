@@ -9,7 +9,6 @@
  * the report's jsPDF path; the document itself is a template saved as
  * `.ifclite-document.json` and re-opened on the next model revision.
  */
-import { savedReportBlock } from '@/lib/validation/reports/history';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileText, Plus } from 'lucide-react';
 import type { ReportPageSetup } from '@ifc-lite/charts';
@@ -26,8 +25,6 @@ import { freshBlockId, freshListCopyId } from '@/lib/document/persistence';
 import { LIST_PRESETS } from '@/lib/lists';
 import { newChartSpec } from '@/lib/charts/presets';
 import { largestBucketIds } from '@/lib/charts/buckets';
-import { idsReportBlockFromReport } from '@/lib/document/ids-report';
-import { emptyManualReportBlock } from '@/lib/document/manual-report';
 import { listCopyForDocument, TABLE_ROWS_DEFAULT, type DocumentBlock, type DocumentSpec } from '@/lib/document/types';
 import { type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
 import { exportPreparedDocument } from '@/lib/document/export-prepared-document';
@@ -36,7 +33,7 @@ import { DocumentMenu } from './DocumentMenu';
 import { DocumentPreview } from './DocumentPreview';
 import { PageHeadingEditor } from './PageHeadingEditor';
 import { useDocumentData } from './useDocumentData';
-import { useManualReportSource } from './useManualReportSource';
+import { useReportSources } from './useReportSources';
 
 export interface DocumentPanelProps {
   /** Test seam: the PDF seams to print with instead of the browser's. */
@@ -65,8 +62,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const dashboards = useViewerStore((s) => s.dashboards);
   const listDefinitions = useViewerStore((s) => s.listDefinitions);
   const idsValidationReport = useViewerStore((s) => s.idsValidationReport);
-  const manualSource = useManualReportSource();
-  const savedReports = useViewerStore((s) => s.savedValidationReports);
+  const reportSources = useReportSources();
   const savedComparisons = useViewerStore((s) => s.savedComparisons);
 
   useEffect(() => { ensureActiveDocument(); }, [documents, activeDocumentId]);
@@ -90,7 +86,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const update = upsert;
   const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update({ ...document, blocks }); }, [document, update]);
 
-  const addBlock = (kind: DocumentBlock['kind']): void => {
+  const addBlock = (kind: Exclude<DocumentBlock['kind'], 'ids-report' | 'manual-report'>): void => {
     if (!document) return;
     const id = freshBlockId();
     // A table starts as a copy of the first saved list, else the first preset (#5142). The copy cannot
@@ -103,11 +99,17 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         : kind === 'chart' ? { kind, id, chart: charts[0]?.chart ? { ...charts[0].chart, id: freshBlockId() } : newChartSpec(), snapshot: false }
           : kind === 'page-break' ? { kind, id }
           : kind === 'spacer' ? { kind, id, height: 20 }
-            : kind === 'ids-report' ? (idsValidationReport ? { ...idsReportBlockFromReport(idsValidationReport, id, 'compact'), benchmarks: true } : { kind, id, variant: 'compact', benchmarks: true, sourceName: '', generatedAt: new Date().toISOString(), summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [] })
-              : kind === 'manual-report' ? (manualSource.snapshot(id, null, manualSource.defaultChecklistId ?? undefined) ?? emptyManualReportBlock(id))
               : { kind, id, guid: [...data.topics.keys()][0] ?? '', snapshot: true };
     setBlocks([...document.blocks, block]);
     setSelectedBlockId(id);
+  };
+
+  const addValidationReport = (): void => {
+    if (!document) return;
+    const block = reportSources.seed(freshBlockId());
+    if (!block) return;
+    setBlocks([...document.blocks, block]);
+    setSelectedBlockId(block.id);
   };
 
   const addComparison = (): void => {
@@ -209,16 +211,8 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             <DropdownMenuItem onSelect={() => addBlock('spacer')}>{t('document.addBlock.spacer')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={addComparison} disabled={savedComparisons.length === 0}>{t('document.block.tableSourceComparison')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('table')}>{t('document.addBlock.table')}</DropdownMenuItem>
-            {/* One report slot serves IDS and information validation; the item is named for what it would add (#6372). */}
-            <DropdownMenuItem onSelect={() => addBlock('ids-report')} disabled={!idsValidationReport} title={idsValidationReport ? undefined : t('document.addBlock.idsReportDisabledTitle')}>{t(idsValidationReport?.source.kind === 'rules' ? 'document.addBlock.rulesReport' : 'document.addBlock.idsReport')}</DropdownMenuItem>
-            <DropdownMenuItem disabled={savedReports.length === 0} onSelect={() => {
-              const entry = savedReports.at(-1);
-              if (!document || !entry) return;
-              const block = savedReportBlock(entry, freshBlockId());
-              setBlocks([...document.blocks, block.kind === 'ids-report' ? { ...block, benchmarks: block.benchmarks ?? true } : block]);
-              setSelectedBlockId(block.id);
-            }}>{t('validationPanel.history.addDocument')}</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => addBlock('manual-report')} disabled={!manualSource.available} title={manualSource.available ? undefined : t('manualValidation.report.unavailableTitle')}>{t('manualValidation.report.add')}</DropdownMenuItem>
+            {/* One entry for IDS, information-validation and manual reports (#6553); the block's source picker chooses which. */}
+            <DropdownMenuItem onSelect={addValidationReport} disabled={!reportSources.available} title={reportSources.available ? undefined : t('document.addBlock.validationReportDisabledTitle')}>{t('document.addBlock.validationReport')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={busy || tablesResolving || !document || document.blocks.length === 0} aria-busy={tablesResolving || undefined} onClick={() => void exportPdf()} title={t('document.panel.exportTitle')} data-document-export>

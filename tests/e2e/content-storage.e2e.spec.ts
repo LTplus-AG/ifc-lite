@@ -1,10 +1,11 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { test, expect, type Page } from '@playwright/test';
 import type { DocumentSpec } from '../../apps/viewer/src/lib/document/types';
 import type { RuleSetFile } from '@ifc-lite/rules';
+import type { ContentBackup } from '../../apps/viewer/src/lib/storage/content-backup';
 
 const documentEntry = (id: string, name: string): DocumentSpec => ({ version: 11, id, name,
   page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'text', id: `${id}-body`, style: 'body', text: 'Project: {IfcProject.Name}' }] });
@@ -123,4 +124,52 @@ test('#6679 refused commits remain exportable and two tabs cannot overwrite draf
   expect(await page.evaluate(entry => globalThis.__ifc_lite_viewer_store__.getState().upsertDocument({ ...entry, name: 'Current edit after legacy change' }), entry)).toBe(true);
   expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documentsStorage.recovered)).toBe(true);
   await other.close();
+});
+
+test('#6695 an unfinished image round-trips as raw evidence without poisoning valid library imports', async ({ page, browser }, info) => {
+  await page.goto('/'); await ready(page);
+  const saved = documentEntry('complete-6695', 'Complete document beside unfinished image');
+  const incomplete: DocumentSpec = { ...documentEntry('unfinished-6695', 'Unfinished image evidence'), blocks: [
+    { kind: 'image', id: 'pending-image-6695', dataUrl: '', height: 60, align: 'left' },
+  ] };
+  expect(await page.evaluate(entry => globalThis.__ifc_lite_viewer_store__.getState().upsertDocument(entry), saved)).toBe(true);
+  expect(await page.evaluate(entry => globalThis.__ifc_lite_viewer_store__.getState().upsertDocument(entry), incomplete)).toBe(false);
+  await openDocument(page, saved.id);
+  const panel = page.locator('[data-document-panel]').first();
+  await panel.locator('summary').filter({ hasText: 'Storage and backup' }).click();
+  const downloaded = page.waitForEvent('download');
+  await panel.getByRole('button', { name: 'Download library backup', exact: true }).click();
+  const exportedPath = info.outputPath('unfinished-draft-library-backup.json');
+  await (await downloaded).saveAs(exportedPath);
+  const text = await readFile(exportedPath, 'utf8'), backup = JSON.parse(text) as ContentBackup;
+  expect(backup.libraries.document).toEqual([saved]);
+  expect(backup.drafts).toEqual([{ kind: 'document', id: incomplete.id, raw: JSON.stringify(incomplete) }]);
+
+  // A fresh browser profile has no saved source library or in-memory raw sidecar.
+  const target = await browser.newContext({ baseURL: new URL(page.url()).origin }), restored = await target.newPage();
+  try {
+    await restored.goto('/'); await ready(restored);
+    await openDocument(restored, 'new-import-panel');
+    const restoredPanel = restored.locator('[data-document-panel]').first();
+    await restoredPanel.getByLabel('Import library backup', { exact: true }).setInputFiles({ name: 'unfinished.json', mimeType: 'application/json', buffer: Buffer.from(text) });
+    await expect(restored.getByText('Preserved 1 incomplete draft as raw recovery evidence.', { exact: false })).toBeVisible();
+    expect(await restored.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents.find(entry => entry.id === 'complete-6695'))).toEqual(saved);
+    expect(await restored.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents.some(entry => entry.id === 'unfinished-6695'))).toBe(false);
+    await restored.reload(); await ready(restored); await openDocument(restored, saved.id);
+    await restoredPanel.locator('summary').filter({ hasText: 'Storage and backup' }).click();
+    const reexport = restored.waitForEvent('download');
+    await restoredPanel.getByRole('button', { name: 'Download library backup', exact: true }).click();
+    const reexportPath = info.outputPath('reexported-draft-library-backup.json');
+    await (await reexport).saveAs(reexportPath);
+    expect((JSON.parse(await readFile(reexportPath, 'utf8')) as ContentBackup).drafts).toEqual(backup.drafts);
+    const originals = restored.waitForEvent('download');
+    await restoredPanel.getByRole('button', { name: 'Download preserved originals', exact: true }).click();
+    const originalsPath = info.outputPath('unfinished-draft-preserved-originals.json');
+    await (await originals).saveAs(originalsPath);
+    const raw = JSON.parse(await readFile(originalsPath, 'utf8')) as Array<{ key: string; raw: string }>;
+    const archives = raw.filter(row => row.key.startsWith('backup-draft:'));
+    expect(archives.map(row => JSON.parse(row.raw))).toEqual(backup.drafts);
+    expect((JSON.parse(archives[0].raw) as { raw: string }).raw).toBe(JSON.stringify(incomplete));
+    await restored.screenshot({ path: info.outputPath('unfinished-draft-roundtrip.png') });
+  } finally { await target.close(); }
 });

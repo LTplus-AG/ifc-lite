@@ -10,9 +10,9 @@ import { blankDocument } from '../document/presets';
 import { documentContent, loadDocuments } from '../document/persistence';
 import type { DocumentSpec } from '../document/types';
 import { createContentLibrary, initialContentStatus } from './content-library';
-import { readContentRows, writeContent } from './content-database';
+import { contentTransaction, readContentRows, requestValue, transactionDone, writeContent } from './content-database';
 import { migrateContent } from './content-migration';
-import { createContentBackup, parseContentBackup, importContentBackup, readContentRecovery, cleanupContentLegacy, preserveLegacyChange } from './content-backup';
+import { createContentBackup, parseContentBackup, importContentBackup, readBackupDrafts, readContentRecovery, cleanupContentLegacy, preserveLegacyChange } from './content-backup';
 
 function documents() {
   let entries: DocumentSpec[] = [];
@@ -171,6 +171,77 @@ it('#6679 portable backups preserve image bytes and drafts, retaining conflicts 
   const invalid = JSON.stringify({ ...backup, libraries: { ...backup.libraries, document: [draft, { invalid: true }] } });
   assert.throws(() => parseContentBackup(invalid), /Invalid document entry/);
   assert.equal((await loadDocuments()).length, 2, 'invalid imports do not partially change the library');
+});
+
+it('#6695 an unfinished image remains recoverable beside valid document, comparison and validation evidence', async () => {
+  const { comparisonModels, comparisonResult } = await import('@/test/saved-comparison-fixture');
+  const { snapshotComparison } = await import('../compare/savedComparisons');
+  const { newSavedReport } = await import('../validation/reports/history');
+  const { emptyManualReportBlock } = await import('../document/manual-report');
+  const library = documents(), saved = { ...blankDocument(), name: 'Complete saved evidence' };
+  const comparison = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Complete comparison');
+  const report = newSavedReport(emptyManualReportBlock('complete-manual'), 'Complete validation');
+  assert.equal(await library.put(saved.id, saved), true);
+  const incomplete = { ...blankDocument(), name: 'Unfinished image draft', blocks: [
+    { kind: 'image' as const, id: 'pending-image', dataUrl: '', height: 60, align: 'left' as const },
+  ] };
+  assert.equal(await library.put(incomplete.id, incomplete), false);
+  assert.equal(library.status().items[incomplete.id], 'invalid');
+  const exported = JSON.stringify(createContentBackup({ validation: [report], comparison: [comparison], document: library.entries() }));
+  assert.ok(exported.includes('pending-image'), 'preserve raw unfinished image evidence');
+  const parsed = parseContentBackup(exported);
+  assert.deepEqual(parsed.libraries.document, [saved]);
+  assert.deepEqual(parsed.libraries.comparison, [comparison]);
+  assert.deepEqual(parsed.libraries.validation, [report]);
+  assert.deepEqual(parsed.drafts, [{ kind: 'document', id: incomplete.id, raw: JSON.stringify(incomplete) }]);
+  await clearContentDatabase();
+  assert.equal(await importContentBackup(parsed), 3);
+  assert.deepEqual(await loadDocuments(), [saved]);
+  assert.deepEqual((await readContentRows('comparison')).map(row => row.payload), [comparison]);
+  assert.deepEqual((await readContentRows('validation')).map(row => row.payload), [report]);
+  const preserved = await readBackupDrafts();
+  assert.equal(preserved.complete, true);
+  assert.deepEqual(preserved.drafts, parsed.drafts);
+  const reexported = parseContentBackup(JSON.stringify(createContentBackup(parsed.libraries, undefined, preserved.drafts)));
+  assert.deepEqual(reexported.drafts, parsed.drafts, 'a further export retains the original unfinished draft bytes');
+  assert.equal(await importContentBackup(reexported), 0, 'raw archives and valid evidence are idempotent');
+  const raw = (await readContentRecovery()).filter(row => row.key.startsWith('backup-draft:'));
+  assert.equal(raw.length, 1);
+  assert.deepEqual(JSON.parse(raw[0].raw), parsed.drafts?.[0]);
+});
+
+it('#6695 an aborted raw-draft archive rolls back all valid neighbors and leaves recovery exportable', async () => {
+  const entry = blankDocument(), incomplete = { ...blankDocument(), blocks: [
+    { kind: 'image' as const, id: 'pending-image', dataUrl: '', height: 60, align: 'left' as const },
+  ] };
+  const backup = createContentBackup({ validation: [], comparison: [], document: [entry, incomplete] });
+  const original = IDBObjectStore.prototype.put;
+  const aborted = mock.method(IDBObjectStore.prototype, 'put', function (this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
+    const request = original.call(this, value, key);
+    if (this.name === 'recovery') this.transaction.abort();
+    return request;
+  });
+  try { await assert.rejects(importContentBackup(backup), /User content transaction (aborted|failed)/); }
+  finally { aborted.mock.restore(); }
+  assert.deepEqual(await readContentRows('document'), [], 'valid neighbors share the recovery transaction rollback');
+  const tx = await contentTransaction('recovery', 'readonly'), done = transactionDone(tx);
+  const [committed] = await Promise.all([requestValue(tx.objectStore('recovery').getAll()), done]);
+  assert.deepEqual(committed, [], 'no raw archive committed');
+  const downloadable = createContentBackup({ validation: [], comparison: [], document: [] });
+  assert.deepEqual(downloadable.drafts, backup.drafts, 'failed archival remains exportable in this session');
+  assert.equal(await importContentBackup(backup), 1);
+  assert.deepEqual(await loadDocuments(), [entry]);
+  assert.deepEqual((await readBackupDrafts()).drafts, backup.drafts);
+});
+
+it('#6695 malformed draft evidence rejects the whole import before valid neighbors can commit', async () => {
+  const entry = blankDocument(), backup = createContentBackup({ validation: [], comparison: [], document: [entry] });
+  for (const draft of [{ kind: 'document', id: 'broken', raw: '{' },
+    { kind: ['document'], id: entry.id, raw: JSON.stringify(entry) },
+    { kind: 'document', id: 'different', raw: JSON.stringify(entry) }]) {
+    await assert.rejects(importContentBackup({ ...backup, drafts: [draft] } as unknown as typeof backup));
+    assert.deepEqual(await readContentRows('document'), []);
+  }
 });
 
 it('#6679 older-tab writes are recoverable without overwriting new content or deleting changed legacy values', async () => {

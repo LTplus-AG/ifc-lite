@@ -1,0 +1,18 @@
+@ifc-lite/viewer:test: test at src/lib/storage/content-library.test.ts:1:8477
+@ifc-lite/viewer:test: ✖ #6695 an unfinished image remains recoverable beside valid document, comparison and validation evidence (22.766918ms)
+@ifc-lite/viewer:test:   Error: Invalid document entry
+@ifc-lite/viewer:test:       at parse (/tmp/ifc6679-backup-pr/apps/viewer/src/lib/storage/content-backup.ts:49:25)
+@ifc-lite/viewer:test:       at parseContentBackup (/tmp/ifc6679-backup-pr/apps/viewer/src/lib/storage/content-backup.ts:59:15)
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/tmp/ifc6679-backup-pr/apps/viewer/src/lib/storage/content-library.test.ts:192:18)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+@ifc-lite/viewer:test:  ELIFECYCLE  Test failed. See above for more details.
+@ifc-lite/viewer#test:  ERROR  command (/tmp/ifc6679-backup-pr/apps/viewer) /home/louistrue/.nvm/versions/node/v24.21.0/bin/pnpm run test exited (1)
+
+ Tasks:    50 successful, 51 total
+Cached:    1 cached, 51 total
+  Time:    1m52.607s 
+Failed:    @ifc-lite/viewer#test
+
+ ERROR  run failed: command  exited (1)
+ ELIFECYCLE  Test failed. See above for more details.

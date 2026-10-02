@@ -115,7 +115,7 @@ it('retains the captured failed-image fallback while a replacement URL prepares 
   click(replace);
   assert.equal(ui.querySelector('[data-document-preview]')?.getAttribute('aria-busy'), 'true');
   assert.equal(ui.querySelector('[data-preview-section]'), paper);
-  assert.equal(ui.querySelector('[data-preview-block="image"] .border-dashed'), fallback,
+  assert.ok(ui.querySelector('[data-preview-block="image"] .border-dashed') === fallback,
     'a retained failed measurement must not revive the old undecodable image');
   assert.equal(ui.querySelector('[data-preview-block="image"] img'), null);
   await waitFor(() => ui.querySelector<HTMLImageElement>('[data-preview-block="image"] img')?.getAttribute('src') === replacementImage

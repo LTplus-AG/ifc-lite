@@ -19,7 +19,7 @@ import { localeCount } from '@/i18n/intlFormat';
 import { flattenExportModel, flattenRawModel, tableMessageKind, type TableRowRole, type TableState } from '@/lib/document/resolve-table';
 import { TABLE_ROWS_DEFAULT, type TableBlock, type TableColumnId } from '@/lib/document/types';
 import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS } from './preview-theme';
-import { TABLE_COLUMN_LABEL_KEY } from './table-column-labels';
+import { TABLE_COLUMN_LABEL_KEY } from '@/lib/document/table-column-labels';
 
 const ROW_CLASS: Record<TableRowRole, string> = {
   row: '',

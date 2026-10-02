@@ -131,6 +131,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
       const seams = pdfSeams ? await pdfSeams() : undefined;
       const result = await exportPreparedDocument({
         document,
+        labels: data.labels,
         bindings: data.bindings,
         aggregations: data.aggregations,
         chartMessages: data.chartMessages,

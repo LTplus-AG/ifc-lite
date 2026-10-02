@@ -288,6 +288,25 @@ describe('IDS and information-validation report stamps (#6678)', () => {
     }
   });
 
+  it('stays inside the printable frame with the stamp shown and specifications-only on, at every scale and page', () => {
+    const TOP = REPORT_MARGIN + 30;
+    for (const [size, orientation] of [['A4', 'portrait'], ['A4', 'landscape'], ['A3', 'portrait']] as const) {
+      const w = orientation === 'landscape' ? PAGE_SIZES_PT[size].h : PAGE_SIZES_PT[size].w;
+      const h = orientation === 'landscape' ? PAGE_SIZES_PT[size].w : PAGE_SIZES_PT[size].h;
+      for (const scale of [0.5, 1, 1.5, 2]) for (const showStamp of [true, false]) {
+        const where = `${size} ${orientation} x${scale} stamp ${showStamp}`;
+        const items = compose2(stamped('ids', 'compact', { benchmarks: true, showStamp, specificationsOnly: true, scale }), { size, orientation });
+        assert.equal(words(items).some(isStamp), showStamp, `${where}: the stamp is drawn exactly when shown`);
+        assert.ok(!words(items).includes('FireRating'), `${where}: requirement rows are omitted`);
+        for (const item of items) {
+          const { right, bottom } = extent(item);
+          assert.ok(item.x >= REPORT_MARGIN - 1e-6 && right <= w - REPORT_MARGIN + 1e-6, `${where}: ${item.kind} stays between the margins`);
+          assert.ok(item.y >= TOP - 1e-6 && bottom <= h - REPORT_MARGIN - 24 + 1e-6, `${where}: ${item.kind} stays inside the frame`);
+        }
+      }
+    }
+  });
+
   it('is persisted: a boolean survives a file round trip and anything else is refused, for both source kinds', () => {
     const doc = (b: unknown) => ({ version: DOCUMENT_VERSION, id: 'd', name: 'IDS', page: { size: 'A4', orientation: 'portrait' }, blocks: [b] });
     for (const sourceKind of ['ids', 'rules'] as const) {

@@ -264,6 +264,40 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     assert.ok(pdf.includes('62% passed') && pdf.includes('50% passed'), 'the exported labels retain both actual engine verdicts');
   });
 
+  it('a refresh and a saved-source choice keep a hidden stamp and specifications-only together, and preview and PDF agree on both (#6678)', async () => {
+    const first = { ...spec.blocks[0], variant: 'compact' as const, benchmarks: false, specificationsOnly: true, showStamp: false }; assert.ok(first.kind === 'ids-report');
+    assert.ok(first.checks.some((check) => check.rules.length > 0), 'the real engine report has requirement rows to omit');
+    let savedId: string | null = null;
+    act(() => {
+      useViewerStore.setState({ documents: [{ ...spec, blocks: [first] }], activeDocumentId: spec.id });
+      useViewerStore.getState().setIdsValidationReport(reports[0], validationReportSnapshot(reports[0], useViewerStore.getState().models, 'live'));
+      savedId = useViewerStore.getState().saveValidationReport(validationReportSnapshot(reports[0], useViewerStore.getState().models, 'saved'), 'Frozen IDS run');
+    });
+    assert.ok(savedId);
+    const ui = render(<DocumentPanel />); await settle();
+    const stored = () => { const block = useViewerStore.getState().documents[0].blocks[0]; assert.ok(block.kind === 'ids-report'); return block; };
+    const agree = (when: string) => {
+      const block = stored();
+      const preview = ui.querySelector(`[data-preview-block="${first.id}"]`); assert.ok(preview);
+      const pdf = composeDocument({ name: spec.name, page: spec.page, generatedAt: '', measure: estimateTextWidth, blocks: [block] })
+        .pages.flatMap((page) => page.items).flatMap((item) => item.kind === 'text' ? [item.text] : []);
+      assert.equal(block.showStamp, false, `${when}: stamp choice kept`); assert.equal(block.specificationsOnly, true, `${when}: specifications-only kept`);
+      assert.ok(!/Validation run|Models:/.test(preview.textContent ?? '') && !pdf.some((text) => /^(Validation run|Models:)/.test(text)), `${when}: both outputs omit the stamp`);
+      assert.equal(preview.querySelector('[data-ids-report-requirements]'), null, `${when}: the preview omits requirement rows`);
+      const names = block.checks.flatMap((check) => check.rules.map((rule) => rule.name ?? rule.shortDescription));
+      assert.ok(names.length > 0 && !pdf.some((text) => names.includes(text)), `${when}: the PDF omits requirement rows`);
+      assert.ok(block.checks.every((check) => pdf.includes(check.shortDescription)), `${when}: both outputs keep every specification`);
+    };
+    agree('before');
+    const refresh = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Refresh from current validation report');
+    assert.ok(refresh); click(refresh); await settle();
+    agree('after Refresh');
+    const select = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]'); assert.ok(select);
+    act(() => { select.value = savedId!; select.dispatchEvent(new window.Event('change', { bubbles: true })); }); await settle();
+    assert.equal(stored().savedReportId, savedId);
+    agree('after choosing a saved report');
+  });
+
   it('preserves the authored title and hidden-ring choice when refreshing a real IDS run and replacing it with actual saved information evidence', async () => {
     const first = { ...spec.blocks[0], benchmarks: false, variant: "compact" as const, specificationsOnly: true, scale: 1.5 }; assert.ok(first.kind === "ids-report");
     const model = useViewerStore.getState().models.get('m'); assert.ok(model?.ifcDataStore);

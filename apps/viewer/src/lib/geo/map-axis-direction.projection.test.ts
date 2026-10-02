@@ -331,6 +331,21 @@ describe('#6700 Cesium model rotation carries no extra scale from the axis magni
   });
 });
 
+describe('#6700 Cesium bridge viewerToGeodetic places a viewer point like the centre formula', () => {
+  for (const axis of [[1, 0], [2, 0], [3, 4], [0.5, 0]] as const) {
+    it(`axis (${axis}): viewer point (1000, 30, -2000) m is IFC (1000, 2000) m on the unit direction`, async () => {
+      const origin = { e: 500_000, n: 4_000_000 };
+      const bridge = await createCesiumBridge(
+        conversion({ eastings: origin.e, northings: origin.n, xAxisAbscissa: axis[0], xAxisOrdinate: axis[1], scale: 2 }),
+        CRS, infoAt(1000, 2000, 30), 1);
+      assert.ok(bridge, `axis (${axis}): expected a bridge`);
+      const actual = bridge.viewerToGeodetic(1000, 30, -2000);
+      const e = expectedEN(axis, 1000, 2000, origin, 2);
+      assertLatLon(actual && { lat: actual.latitude, lon: actual.longitude }, await toLatLon(e.e, e.n), `axis (${axis})`);
+    });
+  }
+});
+
 describe('#6700 audit: the shared spatial-reference boundary', () => {
   const lengthUnitScale = 1;
   const point: readonly [number, number, number] = [1000, 30, -2000];

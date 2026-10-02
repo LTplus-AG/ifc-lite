@@ -265,7 +265,7 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
   });
 
   it('preserves the authored title and hidden-ring choice when refreshing a real IDS run and replacing it with actual saved information evidence', async () => {
-    const first = { ...spec.blocks[0], benchmarks: false }; assert.ok(first.kind === 'ids-report');
+    const first = { ...spec.blocks[0], benchmarks: false, variant: "compact" as const, specificationsOnly: true, scale: 1.5 }; assert.ok(first.kind === "ids-report");
     const model = useViewerStore.getState().models.get('m'); assert.ok(model?.ifcDataStore);
     const definition = { ...ids, info: { title: 'Updated IDS definition' } };
     const updated = await validateIDS(definition, createDataAccessor(model.ifcDataStore, model.id),
@@ -286,7 +286,7 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     let block = stored(); assert.ok(block.kind === 'ids-report');
     assert.equal(block.sourceName, definition.info.title, 'refresh really replaced the source evidence');
     assert.equal(block.title, 'Authored validation heading', 'refresh preserves the independently authored title');
-    assert.equal(block.benchmarks, false); assert.equal(ui.querySelector('[data-validation-benchmark]'), null);
+    assert.equal(block.benchmarks, false); assert.equal(ui.querySelector('[data-validation-benchmark]'), null); assert.equal(block.specificationsOnly, true, "refresh preserves the specifications-only choice (#6560)"); assert.equal(block.scale, 1.5, "refresh also preserves the block size (#6548)");
     const select = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]'); assert.ok(select);
     act(() => { select.value = saved!; select.dispatchEvent(new window.Event('change', { bubbles: true })); }); await settle();
     block = stored(); assert.ok(block.kind === 'ids-report');
@@ -294,7 +294,7 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     assert.equal(block.title, 'Authored validation heading', 'source selection preserves the independently authored title');
     assert.ok(ui.querySelector(`[data-preview-block="${first.id}"]`)?.textContent?.includes('Authored validation heading'));
     assert.deepEqual(block.summary, { checked: 12, passed: 6, failed: 3, warnings: 3, passRate: 50 });
-    assert.equal(block.variant, first.variant); assert.equal(block.id, first.id); assert.equal(block.benchmarks, false);
+    assert.equal(block.variant, first.variant); assert.equal(block.id, first.id); assert.equal(block.benchmarks, false); assert.equal(block.specificationsOnly, true, "source selection preserves the specifications-only choice (#6560)"); assert.equal(block.scale, 1.5, "source selection also preserves the block size (#6548)");
     assert.equal(ui.querySelector('[data-validation-benchmark]'), null, 'selecting another source does not re-enable a hidden ring');
   });
 

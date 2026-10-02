@@ -204,6 +204,24 @@ describe('heading style survives replacing a report block source (#6632)', () =>
     assert.deepEqual(blockTitleFields(changes[0] as IdsReportBlock), blockTitleFields(styled));
   });
 
+  it('a refresh and a saved-source choice keep the heading style and specificationsOnly on the same compact block', () => {
+    const block: IdsReportBlock = { ...styled, variant: 'compact', specificationsOnly: true };
+    const entry = { id: 'saved-2', name: 'Saved run', snapshot: { ...idsBlock, id: 'saved-snapshot', specificationsOnly: false } };
+    useViewerStore.setState({ savedValidationReports: [entry] });
+    const refreshed: DocumentBlock[] = [];
+    const first = editor(block, (b) => refreshed.push(b));
+    click([...first.querySelectorAll('button')].find((b) => b.textContent?.includes('Refresh from current validation report'))!);
+    cleanup();
+    const chosen: DocumentBlock[] = [];
+    const second = editor(block, (b) => chosen.push(b));
+    selectOption([...second.querySelectorAll<HTMLSelectElement>('select')].find((el) => [...el.options].some((o) => o.value === 'saved-2'))!, 'saved-2');
+    for (const result of [refreshed[0], chosen[0]] as IdsReportBlock[]) {
+      assert.deepEqual(blockTitleFields(result), blockTitleFields(block));
+      assert.equal(result.specificationsOnly, true, 'the compact layout option survives with the heading style');
+      assert.equal(result.variant, 'compact');
+    }
+  });
+
   it('changing the report layout and toggling the benchmarks keep the heading style', () => {
     const changes: DocumentBlock[] = [];
     const ui = editor(styled, (b) => changes.push(b));

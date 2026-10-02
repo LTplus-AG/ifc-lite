@@ -33,6 +33,7 @@ There's also a one-command demo that boots the server plus a tiny client:
 | `COLLAB_HOST` | `0.0.0.0` | Bind address. |
 | `COLLAB_DATA_DIR` | `./.collab-data` | Directory for durable Y.Doc persistence (`FilePersistence`). |
 | `COLLAB_MAX_ROOMS` | `1024` | Hard cap on concurrently loaded rooms. |
+| `COLLAB_MAX_CLAIMED_ROOMS` | `100000` | Hard cap on room claims, pending and confirmed together (only with `COLLAB_TOKEN_SECRET`). |
 | `COLLAB_TOKEN_SECRET` | _(unset)_ | **Enables signed-link access control.** Unset = anonymous (open). See [Access control](#access-control). |
 
 !!! warning "Blob storage is in-memory in the CLI"
@@ -63,6 +64,26 @@ Set `COLLAB_TOKEN_SECRET` to switch on **signed room tokens**:
   deny-list; future joins with it are refused.
 - **Kick** (`POST /collab/kick`, admin-only) force-disconnects a peer by its
   awareness client id and revokes its token so it can't reconnect.
+- **Unused claims are returned:** a room's first-touch claim stays *pending*
+  until the room's first join. If creating the room fails before that (the
+  Share dialog could not prepare the model, or the join failed), the client
+  hands the claim back with `POST /collab/release` (body `{ roomId }`, bearer:
+  an admin token minted for that claim). That frees its slot in
+  `COLLAB_MAX_CLAIMED_ROOMS` and revokes every token minted for the claim. A
+  pending claim nobody releases (a closed tab, an older viewer) expires once
+  all of its tokens have expired. A room that was joined, or has data on disk,
+  is never released or expired: the release answers `409`. A pending claim
+  can mint at most 4 tokens, each paying the per-IP mint budget. A release
+  that would take the deny-list past 1024 live entries answers `503`, and the
+  claim then expires on its own.
+
+The CLI server enables pending claims. When embedding `createAccessControl`
+yourself, pass `claimsPendingUntilJoin: true` only if the server authenticates
+joins with `accessControl.serverOptions.authenticate`, as is or wrapped by a
+function that calls it: a join through that function is what confirms a room.
+With your own `authenticate` (or custom persistence that the data-dir check
+cannot see), leave the option off. Every claim is then permanent from its first
+mint, as before, and `POST /collab/release` answers `409`.
 
 ```sh
 COLLAB_TOKEN_SECRET="$(openssl rand -hex 32)" \
@@ -85,6 +106,7 @@ deployments back it with a shared store via the programmatic API.
 | `/blobs`, `/blobs/<hash>` | GET / PUT / HEAD / DELETE | Content-addressed geometry blobs. |
 | `/collab/token` | POST | Mint a signed token (only when `COLLAB_TOKEN_SECRET` is set). |
 | `/collab/revoke` | POST | Admin: invalidate a link by token. |
+| `/collab/release` | POST | Admin of a never-joined room: hand its claim back (`409` once joined). |
 | `/collab/kick` | POST | Admin: disconnect a peer by client id. |
 
 All HTTP routes send permissive CORS headers (reflecting the request `Origin`)

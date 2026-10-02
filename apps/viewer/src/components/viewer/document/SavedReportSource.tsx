@@ -29,7 +29,7 @@ export function SavedReportSource({ block, onChange }: { block: ValidationReport
               onChange(block.kind === 'manual-report' && next.kind === 'manual-report'
                 ? replaceManualReportSnapshot(block, next)
                 : block.kind === 'ids-report' && next.kind === 'ids-report'
-                  ? { ...next, ...blockTitleFields(block), variant: block.variant, benchmarks: block.benchmarks, scale: block.scale }
+                  ? { ...next, ...blockTitleFields(block), variant: block.variant, benchmarks: block.benchmarks, specificationsOnly: block.specificationsOnly, scale: block.scale }
                   : { ...next, ...blockTitleFields(block), scale: block.scale });
             }
           }}>

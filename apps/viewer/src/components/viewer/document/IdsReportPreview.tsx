@@ -114,7 +114,7 @@ function CompactChecks({ block }: { block: IdsReportBlock }) {
         <li key={check.id} className="list-none" data-ids-report-spec={check.id}>
           <ul className="flex flex-col gap-1">
             <CompactRow name={check.shortDescription || check.id} passed={check.passed} checked={check.checked} rate={check.passRate} error={check.error} warning={check.severity === 'warning'} />
-            {(check.rules.length > 0 || !!check.cardinality || (check.sets?.length ?? 0) > 0 || !!check.setsTruncated) && (
+            {!block.specificationsOnly && (check.rules.length > 0 || !!check.cardinality || (check.sets?.length ?? 0) > 0 || !!check.setsTruncated) && (
               <li className="ml-3 list-none border-l border-neutral-200 pl-2">
                 <ul className="flex flex-col gap-1" data-ids-report-requirements={check.rules.length}>
                   {check.rules.map((rule) => (

@@ -278,6 +278,12 @@ export interface TokenEndpointOptions {
        * the unauthenticated mint path.
        */
       clientIp: string | undefined;
+      /**
+       * `jti` and `exp` (seconds) of the token this request receives if
+       * granted, so a policy can record what it hands out. Always set by
+       * `handleTokenMintRequest`.
+       */
+      mint?: { jti: string; exp: number };
     },
   ) => Promise<Role | null> | Role | null;
   /** Secret(s) used to verify the caller's bearer token (default: `secret`). */
@@ -310,7 +316,7 @@ export interface TokenEndpointOptions {
   now?: () => number;
 }
 
-function readJsonBody(req: http.IncomingMessage, maxBytes: number): Promise<unknown> {
+export function readJsonBody(req: http.IncomingMessage, maxBytes: number): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -334,7 +340,16 @@ function readJsonBody(req: http.IncomingMessage, maxBytes: number): Promise<unkn
   });
 }
 
-function bearerToken(req: http.IncomingMessage): string | undefined {
+/**
+ * Whether a room id holds an unpaired UTF-16 surrogate. No storage key can be
+ * derived from one (`encodeURIComponent` throws) and no websocket path decodes
+ * to one, so such a room could be claimed but never used.
+ */
+export function isIllFormedRoomId(roomId: string): boolean {
+  return /\p{Cs}/u.test(roomId);
+}
+
+export function bearerToken(req: http.IncomingMessage): string | undefined {
   const header = req.headers['authorization'];
   if (typeof header !== 'string') return undefined;
   const m = header.match(/^Bearer\s+(.+)$/i);
@@ -416,6 +431,7 @@ export async function handleTokenMintRequest(
   if (
     typeof reqBody?.roomId !== 'string' ||
     !reqBody.roomId ||
+    isIllFormedRoomId(reqBody.roomId) ||
     typeof reqBody.role !== 'string' ||
     !VALID_ROLES.has(reqBody.role)
   ) {
@@ -426,7 +442,8 @@ export async function handleTokenMintRequest(
   const mintReq: MintRequestBody = {
     roomId: reqBody.roomId,
     role: reqBody.role,
-    ttlSeconds: typeof reqBody.ttlSeconds === 'number' ? reqBody.ttlSeconds : undefined,
+    // JSON can spell ±Infinity (`1e309`); such a ttl falls back to the default.
+    ttlSeconds: Number.isFinite(reqBody.ttlSeconds) ? reqBody.ttlSeconds : undefined,
   };
 
   let bearerClaims = verifyRoomToken(bearerToken(req) ?? '', {
@@ -439,11 +456,18 @@ export async function handleTokenMintRequest(
     bearerClaims = null;
   }
 
+  const maxTtl = opts.maxTtlSeconds ?? 30 * 24 * 60 * 60;
+  const ttlSeconds = Math.min(mintReq.ttlSeconds ?? opts.defaultTtlSeconds ?? DEFAULT_TTL_SECONDS, maxTtl);
+  // One clock reading and one jti for the policy, the token and the response.
+  const nowMs = opts.now ? opts.now() : Date.now();
+  const expSec = Math.floor(nowMs / 1000) + ttlSeconds;
+  const jti = randomUUID();
   let grantedRole: Role | null;
   try {
     grantedRole = await opts.authorize(mintReq, {
       bearerClaims,
       clientIp: clientIpOf(req, opts.trustForwardedFor === true),
+      mint: { jti, exp: expSec },
     });
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -459,204 +483,17 @@ export async function handleTokenMintRequest(
     return true;
   }
 
-  const maxTtl = opts.maxTtlSeconds ?? 30 * 24 * 60 * 60;
-  const ttlSeconds = Math.min(mintReq.ttlSeconds ?? opts.defaultTtlSeconds ?? DEFAULT_TTL_SECONDS, maxTtl);
   const token = signRoomToken({
     roomId: mintReq.roomId,
     role: grantedRole,
     secret: opts.secret,
     ttlSeconds,
     kid: opts.kid,
-    now: opts.now,
+    jti,
+    now: () => nowMs,
   });
-  const expSec = Math.floor((opts.now ? opts.now() : Date.now()) / 1000) + ttlSeconds;
 
   res.writeHead(200, { ...cors, 'content-type': 'application/json' });
   res.end(JSON.stringify({ token, roomId: mintReq.roomId, role: grantedRole, exp: expSec }));
-  return true;
-}
-
-// ── HTTP revoke route ────────────────────────────────────────────────────────
-
-export interface RevokeRequestBody {
-  /** The share token to invalidate. */
-  token: string;
-}
-
-export interface RevokeEndpointOptions {
-  /** Secret used to verify the target + bearer tokens. */
-  secret: SecretResolver;
-  /** Add a `jti` to the server's deny-list. The authenticator's `isRevoked`
-   *  should consult the same store so future joins with this token are rejected.
-   *  `exp` is the revoked token's expiry (seconds since epoch) when known —
-   *  stores use it to prune deny-list entries once the token would have
-   *  expired on its own. */
-  recordRevocation: (jti: string, room: string, exp?: number) => void | Promise<void>;
-  /** Deny-list check — a bearer whose own `jti` was revoked (e.g. a kicked
-   *  admin) must not be able to keep revoking other people's links. */
-  isRevoked?: (jti: string) => boolean | Promise<boolean>;
-  allowOrigin?: string;
-  maxBodyBytes?: number;
-  now?: () => number;
-}
-
-/**
- * Handle `POST /collab/revoke` (and its CORS preflight). The caller must
- * present an `admin` bearer token for the same room as the token being revoked.
- * Returns `true` when this route matched (and a response was sent).
- */
-export async function handleRevokeRequest(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  opts: RevokeEndpointOptions,
-): Promise<boolean> {
-  const url = new URL(req.url ?? '/', 'http://localhost');
-  if (url.pathname !== '/collab/revoke') return false;
-
-  const allowOrigin = opts.allowOrigin ?? '*';
-  const cors = {
-    'access-control-allow-origin': allowOrigin,
-    'access-control-allow-methods': 'POST, OPTIONS',
-    'access-control-allow-headers': 'content-type, authorization',
-  };
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204, cors);
-    res.end();
-    return true;
-  }
-  if (req.method !== 'POST') {
-    res.writeHead(405, { ...cors, 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: 'method-not-allowed' }));
-    return true;
-  }
-
-  let body: unknown;
-  try {
-    body = await readJsonBody(req, opts.maxBodyBytes ?? 4096);
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : 'bad-request';
-    res.writeHead(reason === 'body-too-large' ? 413 : 400, { ...cors, 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: reason }));
-    return true;
-  }
-
-  const target = verifyRoomToken((body as Partial<RevokeRequestBody>)?.token ?? '', {
-    secret: opts.secret,
-    now: opts.now,
-  });
-  if (!target) {
-    res.writeHead(400, { ...cors, 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: 'invalid-token' }));
-    return true;
-  }
-
-  // Only a non-revoked admin token for the *same room* may revoke.
-  const bearer = verifyRoomToken(bearerToken(req) ?? '', {
-    secret: opts.secret,
-    room: target.room,
-    now: opts.now,
-  });
-  if (
-    !bearer ||
-    bearer.role !== 'admin' ||
-    (opts.isRevoked && (await opts.isRevoked(bearer.jti)))
-  ) {
-    res.writeHead(403, { ...cors, 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: 'forbidden' }));
-    return true;
-  }
-
-  await opts.recordRevocation(target.jti, target.room, target.exp);
-  res.writeHead(200, { ...cors, 'content-type': 'application/json' });
-  res.end(JSON.stringify({ revoked: true, jti: target.jti }));
-  return true;
-}
-
-// ── HTTP kick route ──────────────────────────────────────────────────────────
-
-export interface KickRequestBody {
-  roomId: string;
-  /** Awareness clientId of the peer to disconnect. */
-  clientId: number;
-}
-
-export interface KickEndpointOptions {
-  /** Secret used to verify the admin bearer token. */
-  secret: SecretResolver;
-  /** Force-disconnect a peer by awareness clientId; returns whether one matched. */
-  kick: (roomId: string, clientId: number) => boolean | Promise<boolean>;
-  /** Deny-list check — a bearer whose own `jti` was revoked (e.g. an admin who
-   *  was themselves kicked) must not be able to keep kicking peers. */
-  isRevoked?: (jti: string) => boolean | Promise<boolean>;
-  allowOrigin?: string;
-  maxBodyBytes?: number;
-  now?: () => number;
-}
-
-/**
- * Handle `POST /collab/kick` (and its CORS preflight). The caller must present
- * an `admin` bearer token for the target room. Returns `true` when this route
- * matched (and a response was sent).
- */
-export async function handleKickRequest(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  opts: KickEndpointOptions,
-): Promise<boolean> {
-  const url = new URL(req.url ?? '/', 'http://localhost');
-  if (url.pathname !== '/collab/kick') return false;
-
-  const allowOrigin = opts.allowOrigin ?? '*';
-  const cors = {
-    'access-control-allow-origin': allowOrigin,
-    'access-control-allow-methods': 'POST, OPTIONS',
-    'access-control-allow-headers': 'content-type, authorization',
-  };
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204, cors);
-    res.end();
-    return true;
-  }
-  if (req.method !== 'POST') {
-    res.writeHead(405, { ...cors, 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: 'method-not-allowed' }));
-    return true;
-  }
-
-  let body: unknown;
-  try {
-    body = await readJsonBody(req, opts.maxBodyBytes ?? 4096);
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : 'bad-request';
-    res.writeHead(reason === 'body-too-large' ? 413 : 400, { ...cors, 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: reason }));
-    return true;
-  }
-
-  const reqBody = body as Partial<KickRequestBody>;
-  if (typeof reqBody?.roomId !== 'string' || !reqBody.roomId || typeof reqBody.clientId !== 'number') {
-    res.writeHead(400, { ...cors, 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: 'invalid-request' }));
-    return true;
-  }
-
-  const bearer = verifyRoomToken(bearerToken(req) ?? '', {
-    secret: opts.secret,
-    room: reqBody.roomId,
-    now: opts.now,
-  });
-  if (
-    !bearer ||
-    bearer.role !== 'admin' ||
-    (opts.isRevoked && (await opts.isRevoked(bearer.jti)))
-  ) {
-    res.writeHead(403, { ...cors, 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: 'forbidden' }));
-    return true;
-  }
-
-  const kicked = await opts.kick(reqBody.roomId, reqBody.clientId);
-  res.writeHead(200, { ...cors, 'content-type': 'application/json' });
-  res.end(JSON.stringify({ kicked }));
   return true;
 }

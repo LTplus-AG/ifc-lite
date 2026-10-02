@@ -17,7 +17,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { render, click, cleanup } from '@/test/render.js';
@@ -166,6 +166,79 @@ describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
       'removed models are excluded and new models use the current active-first scope');
     assert.equal(starts[0].seed?.models[0].store, active.ifcDataStore);
     assert.equal(starts[0].seed?.models[1].store, added.ifcDataStore);
+  });
+
+  /** Server-mode fetch stub: holds the admin mint until released, records every request. */
+  function relayStub(t: TestContext) {
+    window.localStorage.setItem('ifc-lite:collab:server-url', 'wss://relay.example');
+    const requests: Array<{ url: string; body: Record<string, unknown>; authorization: string | null }> = [];
+    let finishAdmin: () => void = () => assert.fail('admin request has not started');
+    t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      requests.push({ url: String(input), body, authorization: new Headers(init?.headers).get('authorization') });
+      if (String(input).endsWith('/collab/release')) return Response.json({ released: true });
+      if (body.role !== 'admin') return Response.json({ token: 'fixture-invite' });
+      return new Promise<Response>((resolve) => { finishAdmin = () => resolve(Response.json({ token: 'fixture-admin' })); });
+    });
+    const releases = () => requests.filter((r) => r.url === 'https://relay.example/collab/release');
+    const adminRoom = () => requests.find((r) => r.body.role === 'admin')?.body.roomId;
+    return { releases, adminRoom, finishAdmin: () => finishAdmin() };
+  }
+
+  it('hands the room claim back when seed preparation fails after the token request (#6581)', async (t) => {
+    useViewerStore.setState({ models: new Map([['a', makeModel('a', 'valid.ifc', 0)]]), activeModelId: 'a' });
+    const relay = relayStub(t);
+    const logged = t.mock.method(console, 'error', () => {});
+    render(<ShareDialog open onOpenChange={() => {}} />);
+    click(createLinkButton()!);
+    await settle();
+    // The metadata turns invalid while the token request is pending.
+    const invalid = makeModel('a', 'valid.ifc', 0);
+    invalid.geometryResult = buildGeometryResultFromMeshes([], {
+      originShift: { x: 0, y: 0, z: 0 },
+      originalBounds: { min: { x: Infinity, y: Infinity, z: Infinity }, max: { x: -Infinity, y: -Infinity, z: -Infinity } },
+      shiftedBounds: { min: { x: Infinity, y: Infinity, z: Infinity }, max: { x: -Infinity, y: -Infinity, z: -Infinity } },
+      hasLargeCoordinates: false,
+    });
+    act(() => { useViewerStore.setState({ models: new Map([['a', invalid]]) }); });
+    await act(async () => { relay.finishAdmin(); });
+    await settle();
+    assert.equal(starts.length, 0, 'the seed could not be prepared, so the room was never joined');
+    assert.match(String(logged.mock.calls[0]?.arguments[1]), /invalid or unsupported spatial metadata/);
+    const releases = relay.releases();
+    assert.equal(releases.length, 1, 'the claim is released exactly once');
+    assert.deepEqual(releases[0].body, { roomId: relay.adminRoom() }, 'for the room the admin token claimed');
+    assert.equal(releases[0].authorization, 'Bearer fixture-admin', 'with that admin token');
+  });
+
+  it('hands the room claim back when the session never comes up (#6581)', async (t) => {
+    useViewerStore.setState({
+      models: new Map([['a', makeModel('a', 'valid.ifc', 0)]]),
+      activeModelId: 'a',
+      // Resolves without a live room, as the real one does when the join fails.
+      startCollab: async (opts) => { starts.push(opts); },
+    });
+    const relay = relayStub(t);
+    render(<ShareDialog open onOpenChange={() => {}} />);
+    click(createLinkButton()!);
+    await settle();
+    await act(async () => { relay.finishAdmin(); });
+    await settle();
+    assert.equal(starts.length, 1);
+    assert.equal(relay.releases().length, 1);
+    assert.equal(relay.releases()[0].body.roomId, starts[0].roomId);
+  });
+
+  it('keeps the claim of a room that came up (#6581)', async (t) => {
+    useViewerStore.setState({ models: new Map([['a', makeModel('a', 'valid.ifc', 0)]]), activeModelId: 'a' });
+    const relay = relayStub(t);
+    render(<ShareDialog open onOpenChange={() => {}} />);
+    click(createLinkButton()!);
+    await settle();
+    await act(async () => { relay.finishAdmin(); });
+    await settle();
+    assert.equal(useViewerStore.getState().collabRoomId, starts[0]?.roomId, 'the room is live');
+    assert.equal(relay.releases().length, 0);
   });
 
   it('with one model, uploads nothing on open: no room until "Create link", which says it uploads (#5599)', async () => {

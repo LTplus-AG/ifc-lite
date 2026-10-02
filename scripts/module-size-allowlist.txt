@@ -174,11 +174,10 @@
    457 packages/codegen/src/express-parser.ts
    660 packages/codegen/src/rust-generator.ts
    640 packages/codegen/src/typescript-generator.ts
-   427 packages/collab-server/src/access-control.ts
    805 packages/collab-server/src/layer-registry-route.ts
    691 packages/collab-server/src/room-manager.ts
-   662 packages/collab-server/src/room-token.ts
-   677 packages/collab-server/src/server.ts
+   499 packages/collab-server/src/room-token.ts
+   673 packages/collab-server/src/server.ts
    653 packages/collab/src/doc/entity.ts
    591 packages/create-ifc-lite/src/templates/react.ts
    428 packages/create-ifc-lite/src/templates/server-native.ts

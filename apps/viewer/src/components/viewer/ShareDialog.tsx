@@ -37,7 +37,7 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { CollabRole } from '@/store/slices/collabSlice';
-import { buildShareUrl, mintRoomId, mintRoomToken, parseRoleFromToken } from '@/lib/collab/share-link';
+import { buildShareUrl, mintRoomId, mintRoomToken, parseRoleFromToken, releaseRoomClaim } from '@/lib/collab/share-link';
 import { describeSeedPhase, isCollabSeedInFlight } from '@/lib/collab/seed-phase';
 import { buildShareSeed, modelsInShareScope, prepareShareSeed, shareScopeIsChoice, type ShareScope } from '@/lib/collab/share-scope';
 import { ShareScopeField } from './ShareScopeField';
@@ -149,11 +149,12 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
     setCopied(false);
     setNotice(null);
     roomAttemptRef.current = (async () => {
+      let adminToken: string | undefined;
       try {
         // Reject known-invalid metadata before claiming a room (#6565).
         const preflight = useViewerStore.getState();
         buildShareSeed(preflight.models, preflight.activeModelId, scope, preflight.georefMutations);
-        const adminToken = await mintRoomToken({ roomId, role: 'admin' });
+        adminToken = await mintRoomToken({ roomId, role: 'admin' });
         // Models can change during minting. Read fresh and always pass a seed,
         // even empty, so startCollab retains the owner path (#4444).
         const st = useViewerStore.getState();
@@ -177,6 +178,8 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
         console.error('[collab] room creation failed:', err);
         setNotice(t('shareDialog.linkCreationFailed'));
       } finally {
+        // No live room after the mint: hand the claim back (#6581). The server keeps any room someone joined.
+        if (adminToken && useViewerStore.getState().collabRoomId !== roomId) void releaseRoomClaim(roomId, adminToken);
         setCreating(false);
       }
     })();

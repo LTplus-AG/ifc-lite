@@ -129,3 +129,17 @@ test('a response missing an answer for a same-file candidate throws, so the pair
   // The stem rule takes over for that pair: F_SAME shares enough stems with EXPECTED to be a hit.
   assert.equal(score(cases, { matcher: sem.matcher }).hits, matches(EXPECTED, [F_SAME]).hit ? 1 : 0);
 });
+
+
+test('identical validated and unjudged reviews share one probabilistic match', async () => {
+  const cases = [{ pr: 1, body: null, expected: [EXPECTED], verdict: 'findings', findings: [F_SAME], notApplicable: [] }];
+  let calls = 0;
+  const fetchImpl = async (url, init) => {
+    calls += 1;
+    return stubFetch({ same_0: calls === 1 ? 0.6 : 0.4 })(url, init);
+  };
+  const m = await resolveMatchers(cases, structuredClone(cases), { env: ENV, fetchImpl, fallback: matches });
+  assert.equal(calls, 1);
+  assert.equal(score(cases, { matcher: m.forValidated }).hits, 1);
+  assert.equal(score(cases, { matcher: m.forPosted }).hits, 1);
+});

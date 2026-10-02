@@ -49,13 +49,14 @@ import { toGlobalIdFromModels } from '../globalId.js';
 import { geometryForOwningModel, meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import type { AuthoredElement } from './authoredElement.js';
-import { remeshAuthoredElement, rememberAuthoredElement } from './authoredFallbackMesh.js';
+import { completeAuthoredGeometry, revealAddedGeometryInModelView } from './authoredGeometryCompletion.js';
 import { authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { ensureStoreyPlacement } from './storeyPlacement.js';
 import { effectiveStoreyId } from '@/lib/effective-storey';
 import { copyElements, copySources, withHostedFillings } from '@/lib/commands/modeling/copy-elements';
 import { newMutationBatchId } from './mutation-batch-tags.js';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
+import { remeshGridPlacementAfterCommit } from './mutation-grid-remesh';
 
 export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
@@ -63,7 +64,6 @@ import { stashAndPruneEntityMesh, pruneStashByModel, type RemovedMeshStash } fro
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
 import { pruneMutationHistory } from './mutation-history-prune.js';
 import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
-import type { TypeViewMode } from '../constants.js';
 import {
   resolvePlacementChain,
   resolveRotationState,
@@ -111,23 +111,6 @@ export const DUPLICATE_DEFAULT_DIRECTION: DuplicateDirection = '+X';
 
 /** Fallback step in metres when the source has no mesh in geometry. */
 const DUPLICATE_FALLBACK_STEP = 1;
-
-/**
- * New occurrence geometry from an authoring action (add element, duplicate,
- * split) is a class-0 mesh, which the 3D "Types" view deliberately hides. If
- * the user is in Types view when they commit such an action, flip back to
- * Model so the element they just created actually renders — otherwise the
- * toast says "added" but nothing appears. No-op when already in Model view
- * (so it never needlessly overwrites the persisted preference). Reads the
- * live store via the cross-slice `get()`.
- */
-function revealAddedGeometryInModelView(get: () => unknown): void {
-  const cross = get() as {
-    typeViewMode?: TypeViewMode;
-    setTypeViewMode?: (mode: TypeViewMode) => void;
-  };
-  if (cross.typeViewMode === 'types') cross.setTypeViewMode?.('model');
-}
 
 interface ViewerBox {
   /** Per-axis sizes in viewer scene coordinates. */
@@ -942,9 +925,7 @@ function recordAuthoredElementIn(
 
   // Real geometry for the new element, from the IFC it was written as; drawn
   // from its parameters where the re-mesh can't mesh it (authoredFallbackMesh.ts).
-  rememberAuthoredElement(dataStore, entityId, storeyExpressId, element);
-  void remeshAuthoredElement(get, modelId, entityId);
-  revealAddedGeometryInModelView(get);
+  completeAuthoredGeometry(get, modelId, dataStore, storeyExpressId, entityId, element);
 }
 
 /**
@@ -1331,32 +1312,35 @@ export const createMutationSlice: StateCreator<
     // the mutation lands on the undo stack with the standard envelope.
     const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, nativeNext);
 
-    // Push the renderer-frame delta so the visible mesh follows
-    // the IFC mutation. IFC is Z-up; renderer is Y-up. Conversion:
-    //   renderer.x =  ifc.x
-    //   renderer.y =  ifc.z
-    //   renderer.z = -ifc.y
-    const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
-    const rendererDelta: [number, number, number] = [delta[0], delta[2], -delta[1]];
-    get().setPendingMeshTranslations(new Map([[globalId, rendererDelta]]));
+    if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation, batchId)) {
 
-    // Record the mesh translation against the mutation id so undo /
-    // redo can move the rendered mesh back / forward — the mutation
-    // alone only carries the IfcCartesianPoint coordinate change.
-    // When a `batchId` is supplied (gizmo drag), tag the mutation so
-    // all the drag's per-frame translates collapse to one undo step.
-    if (mutation) {
-      const meshTags = new Map(get().mutationMeshTranslations);
-      meshTags.set(mutation.id, { globalId, rendererDelta });
-      if (batchId) {
-        const batchTags = new Map(get().mutationBatchTags);
-        batchTags.set(mutation.id, batchId);
-        set({ mutationMeshTranslations: meshTags, mutationBatchTags: batchTags });
-      } else {
-        set({ mutationMeshTranslations: meshTags });
+      // Push the renderer-frame delta so the visible mesh follows
+      // the IFC mutation. IFC is Z-up; renderer is Y-up. Conversion:
+      //   renderer.x =  ifc.x
+      //   renderer.y =  ifc.z
+      //   renderer.z = -ifc.y
+      const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
+      const rendererDelta: [number, number, number] = [delta[0], delta[2], -delta[1]];
+      get().setPendingMeshTranslations(new Map([[globalId, rendererDelta]]));
+
+      // Record the mesh translation against the mutation id so undo /
+      // redo can move the rendered mesh back / forward — the mutation
+      // alone only carries the IfcCartesianPoint coordinate change.
+      // When a `batchId` is supplied (gizmo drag), tag the mutation so
+      // all the drag's per-frame translates collapse to one undo step.
+      if (mutation) {
+        const meshTags = new Map(get().mutationMeshTranslations);
+        meshTags.set(mutation.id, { globalId, rendererDelta });
+        if (batchId) {
+          const batchTags = new Map(get().mutationBatchTags);
+          batchTags.set(mutation.id, batchId);
+          set({ mutationMeshTranslations: meshTags, mutationBatchTags: batchTags });
+        } else {
+          set({ mutationMeshTranslations: meshTags });
+        }
       }
-    }
 
+    }
     // Mirror the move to peers as the entity's canonical placement
     // (`usd::xformop`). No-op outside a collab session.
     get().mirrorPlacementEdit(modelId, expressId, delta);
@@ -1404,15 +1388,17 @@ export const createMutationSlice: StateCreator<
     const dz = position[2] - oldZ;
     const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, pointToNative(dataStore, position));
     if (dx !== 0 || dy !== 0 || dz !== 0) {
-      const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
-      const rendererDelta: [number, number, number] = [dx, dz, -dy];
-      get().setPendingMeshTranslations(new Map([[globalId, rendererDelta]]));
-      // Record so undo / redo can move the rendered mesh — see the
-      // matching note in `translateEntity`.
-      if (mutation) {
-        const tags = new Map(get().mutationMeshTranslations);
-        tags.set(mutation.id, { globalId, rendererDelta });
-        set({ mutationMeshTranslations: tags });
+      if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation)) {
+        const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
+        const rendererDelta: [number, number, number] = [dx, dz, -dy];
+        get().setPendingMeshTranslations(new Map([[globalId, rendererDelta]]));
+        // Record so undo / redo can move the rendered mesh — see the
+        // matching note in `translateEntity`.
+        if (mutation) {
+          const tags = new Map(get().mutationMeshTranslations);
+          tags.set(mutation.id, { globalId, rendererDelta });
+          set({ mutationMeshTranslations: tags });
+        }
       }
       // Mirror the move to peers as the entity's placement (`usd::xformop`).
       get().mirrorPlacementEdit(modelId, expressId, [dx, dy, dz]);
@@ -1446,16 +1432,18 @@ export const createMutationSlice: StateCreator<
           Math.sin(newYaw),
           state.refDirection[2],
         ];
-        get().setPositionalAttribute(modelId, state.refDirectionId, 0, newRatios);
-        // Live-rotate the rendered mesh about its bbox centre (IFC yaw about Z
-        // = renderer yaw about +Y, same angle).
-        const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
-        const meshes = meshesForOwningModel(get(), modelId);
-        const c = getEntityCenter(meshes, globalId);
-        if (c) {
-          get().setPendingMeshRotations(
-            new Map([[globalId, { angle: deltaYaw, pivot: [c.x, c.y, c.z] as [number, number, number] }]]),
-          );
+        const mutation = get().setPositionalAttribute(modelId, state.refDirectionId, 0, newRatios);
+        if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation)) {
+          // Live-rotate the rendered mesh about its bbox centre (IFC yaw about Z
+          // = renderer yaw about +Y, same angle).
+          const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
+          const meshes = meshesForOwningModel(get(), modelId);
+          const c = getEntityCenter(meshes, globalId);
+          if (c) {
+            get().setPendingMeshRotations(
+              new Map([[globalId, { angle: deltaYaw, pivot: [c.x, c.y, c.z] as [number, number, number] }]]),
+            );
+          }
         }
         // Mirror to peers as the entity's placement (`usd::xformop` refDirection).
         get().mirrorPlacementEdit(modelId, expressId, [0, 0, 0], deltaYaw);

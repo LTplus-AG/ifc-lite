@@ -161,7 +161,25 @@ export function resolvePlacementChain(
   if (!productAttrs) return null;
 
   const localPlacementId = asExpressIdRef(productAttrs[5]);
-  if (localPlacementId === null) return null;
+  if (localPlacementId === null || editor.getEntityType(localPlacementId)?.toUpperCase() !== 'IFCLOCALPLACEMENT') return null;
+
+  // This API exposes the same point to both numeric edits and the move gizmo.
+  // A child-local point below IfcGridPlacement is not a storey-local writable
+  // position: returning zero would offer a misleading edit origin (#6232).
+  // Inspect the complete parent chain so an intermediate local placement
+  // cannot hide the grid frame. File references are iterative and bounded.
+  const visited = new Set<number>();
+  let ancestor: number | null = localPlacementId;
+  while (ancestor !== null) {
+    if (visited.size >= 10_000 || visited.has(ancestor)) return null;
+    visited.add(ancestor);
+    if (editor.getEntityType(ancestor)?.toUpperCase() !== 'IFCLOCALPLACEMENT') return null;
+    const attrs = readAttributes(dataStore, view, editor, ancestor);
+    if (!attrs) return null;
+    const parent = attrs[0];
+    ancestor = parent === null || parent === undefined ? null : asExpressIdRef(parent);
+    if (parent !== null && parent !== undefined && ancestor === null) return null;
+  }
 
   const localPlacementAttrs = readAttributes(dataStore, view, editor, localPlacementId);
   if (!localPlacementAttrs) return null;

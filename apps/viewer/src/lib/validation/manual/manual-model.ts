@@ -12,22 +12,28 @@
 import type { FederatedModel } from '@/store';
 import type { ManualAnswerMap } from './checklist.js';
 import type { ManualAnswersByModel } from './persistence.js';
+import { isManualModelReady } from './report-reuse.js';
+export { manualReportReuse } from './report-reuse.js';
 
 export interface ManualModelOption {
   id: string;
   name: string;
   /** Answers are keyed by this; null (also for an empty fingerprint) means the model cannot hold answers. */
   fingerprint: string | null;
+  loadState?: FederatedModel['loadState'];
 }
 
 const NO_ANSWERS: ManualAnswerMap = Object.freeze({});
 
-export function manualModelOptions(models: ReadonlyMap<string, Pick<FederatedModel, 'id' | 'name' | 'sourceFingerprint'>>): ManualModelOption[] {
-  return [...models.values()].map((m) => ({ id: m.id, name: m.name, fingerprint: m.sourceFingerprint || null }));
+export function manualModelOptions(models: ReadonlyMap<string, Pick<FederatedModel, 'id' | 'name' | 'sourceFingerprint' | 'loadState'>>): ManualModelOption[] {
+  return [...models.values()].map((m) => ({ id: m.id, name: m.name, fingerprint: m.sourceFingerprint || null, loadState: m.loadState }));
 }
 
-export function pickManualModel(options: readonly ManualModelOption[], picked: string | null, activeModelId: string | null): ManualModelOption | null {
-  return options.find((m) => m.id === picked) ?? options.find((m) => m.id === activeModelId) ?? options[0] ?? null;
+export function pickManualModel(options: readonly ManualModelOption[], picked: string | null, activeModelId: string | null, preferredFingerprint?: string): ManualModelOption | null {
+  const explicit = options.find((m) => m.id === picked);
+  if (explicit) return explicit;
+  if (preferredFingerprint) return options.find((m) => m.fingerprint === preferredFingerprint && isManualModelReady(m)) ?? null;
+  return options.find((m) => m.id === activeModelId) ?? options[0] ?? null;
 }
 
 export function answersForModel(all: ManualAnswersByModel, model: ManualModelOption | null): ManualAnswerMap {
@@ -54,7 +60,7 @@ export function resolveReportModel(
   const pickedModel = picked === null ? undefined : options.find((m) => m.id === picked);
   if (pickedModel) return { kind: 'model', model: pickedModel };
   if (boundFingerprint) {
-    const bound = options.find((m) => m.fingerprint === boundFingerprint);
+    const bound = options.find((m) => m.fingerprint === boundFingerprint && isManualModelReady(m));
     return bound ? { kind: 'model', model: bound } : { kind: 'missing' };
   }
   return { kind: 'model', model: options.find((m) => m.id === defaultModelId) ?? null };

@@ -62,6 +62,10 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   const info = useInformationValidation();
   const results = useValidationResults();
   const manual = useManualValidation();
+  const manualEditorKey = useViewerStore((state) => {
+    const entry = state.manualLibrary.checklists.find(candidate => candidate.id === state.manualLibrary.activeId);
+    return entry?.preferredModelFingerprint ? entry.id : 'manual-unbound';
+  });
   const hasManualChecklists = useViewerStore((state) => state.manualLibrary.checklists.length > 0);
   const idsDocument = useViewerStore((s) => s.idsDocument);
   const validationSource = useViewerStore((s) => s.validationSource);
@@ -184,7 +188,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
       )}
       </TabsContent>
       <TabsContent value="manual" className="mt-0 flex-1 min-h-0 flex flex-col">
-        <ManualValidationTab manual={manual} />
+        <ManualValidationTab key={manualEditorKey} manual={manual} />
       </TabsContent>
     </Tabs>
   );

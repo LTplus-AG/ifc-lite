@@ -1,0 +1,1719 @@
+%PDF-1.3
+%∫ﬂ¨‡
+3 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 4 0 R
+>>
+endobj
+4 0 obj
+<<
+/Length 5988
+>>
+stream
+0.200025 w
+0 G
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+40. 809.8899999999999864 Td
+(Public model document composition) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+40. 28. Td
+(Generated 10/2/2026, 3:52:19 AM ∑ ifc-lite) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+495.2799999999999727 28. Td
+(Page 1 / 4) Tj
+ET
+BT
+/F10 16 Tf
+18.3999999999999986 TL
+0. g
+40. 747.8899999999999864 Td
+(Model: building-architecture.ifc) Tj
+ET
+q
+50. 0 0 50. 302.6399999999999864 721.8899999999999864 cm
+/I0 Do
+Q
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.51 g
+302.6399999999999864 710.8899999999999864 Td
+(Committed project icon) Tj
+ET
+BT
+/F2 7.333333333333333 Tf
+8.4333333333333318 TL
+0. g
+40. 690.5566666666666151 Td
+(Public elements by IFC class) Tj
+ET
+BT
+/F1 5.333333333333333 Tf
+6.1333333333333329 TL
+0.51 g
+40. 681.8899999999999864 Td
+(6 buckets ∑ 14 elements) Tj
+ET
+q
+1. 0. 0. -1. 0. 841.8899999999999864 cm
+q
+1. 0. 0. 1. 40. 165.3333333333333428 cm
+1. w
+0. g
+q
+1. 0. 0. 1. 0. 0. cm
+0. 0. 515.2799999999999727 160. re
+W
+n
+q
+q
+1. 0. 0. 1. 0. 0. cm
+0. 0. m
+515.2799999999999727 0. l
+515.2799999999999727 160. l
+0. 160. l
+h
+n
+Q
+q
+0.9 0.91 0.92 RG
+1. 0. 0. 1. 0. 0. cm
+15.4000000000000004 108.5 m
+507.3000000000000114 108.5 l
+S
+Q
+q
+0.9 0.91 0.92 RG
+1. 0. 0. 1. 0. 0. cm
+15.4000000000000004 83.5 m
+507.3000000000000114 83.5 l
+S
+Q
+q
+0.9 0.91 0.92 RG
+1. 0. 0. 1. 0. 0. cm
+15.4000000000000004 58.5 m
+507.3000000000000114 58.5 l
+S
+Q
+q
+0.9 0.91 0.92 RG
+1. 0. 0. 1. 0. 0. cm
+15.4000000000000004 33.5 m
+507.3000000000000114 33.5 l
+S
+Q
+q
+0.9 0.91 0.92 RG
+1. 0. 0. 1. 0. 0. cm
+15.4000000000000004 8.5 m
+507.3000000000000114 8.5 l
+S
+Q
+q
+0.61 0.64 0.69 RG
+1 J
+1. 0. 0. 1. 0. 0. cm
+15.4000000000000004 108.5 m
+507.3000000000000114 108.5 l
+S
+Q
+q
+q
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.42 0.447 0.502 rg
+1. 0. 0. -1. 2.9999812500000003 108.3522999999999996 Tm
+(0) Tj
+ET
+Q
+Q
+q
+q
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.42 0.447 0.502 rg
+1. 0. 0. -1. 2.9999812500000003 83.2642000000000024 Tm
+(1) Tj
+ET
+Q
+Q
+q
+q
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.42 0.447 0.502 rg
+1. 0. 0. -1. 2.9999812500000003 58.1762000000000015 Tm
+(2) Tj
+ET
+Q
+Q
+q
+q
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.42 0.447 0.502 rg
+1. 0. 0. -1. 2.9999812500000003 33.0880999999999972 Tm
+(3) Tj
+ET
+Q
+Q
+q
+q
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.42 0.447 0.502 rg
+1. 0. 0. -1. 2.9999812500000003 8. Tm
+(4) Tj
+ET
+Q
+Q
+q
+q
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.42 0.447 0.502 rg
+0.866 -0.5 -0.5 -0.866 35.9081937499999952 128.2038625000000138 Tm
+(IfcWall) Tj
+ET
+Q
+Q
+q
+q
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.42 0.447 0.502 rg
+0.866 -0.5 -0.5 -0.866 71.4069156250000106 155.0358937500000138 Tm
+(IfcBuildingEÖntProxy) Tj
+ET
+Q
+Q
+q
+q
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.42 0.447 0.502 rg
+0.866 -0.5 -0.5 -0.866 199.1989109375000169 128.5808156250000138 Tm
+(IfcSlab) Tj
+ET
+Q
+Q
+q
+q
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.42 0.447 0.502 rg
+0.866 -0.5 -0.5 -0.866 275.3928671875000305 131.9167531250000138 Tm
+(IfcSpace) Tj
+ET
+Q
+Q
+q
+q
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.42 0.447 0.502 rg
+0.866 -0.5 -0.5 -0.866 349.2865109374999975 136.5808156250000138 Tm
+(IfcFurniture) Tj
+ET
+Q
+Q
+q
+q
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.42 0.447 0.502 rg
+0.866 -0.5 -0.5 -0.866 422.0063187499999913 141.9226125000000138 Tm
+(IfcSpatialZone) Tj
+ET
+Q
+Q
+q
+0.9 0.22 0.21 rg
+1. 0. 0. 1. 0. 0. cm
+28.1999999999999993 108.4000000000000057 m
+84.7999999999999972 108.4000000000000057 l
+84.7999999999999972 8. l
+28.1999999999999957 8. l
+h
+f
+Q
+q
+0.12 0.53 0.9 rg
+1. 0. 0. 1. 0. 0. cm
+110.0999999999999943 108.4000000000000057 m
+166.6999999999999886 108.4000000000000057 l
+166.6999999999999886 33.1000000000000085 l
+110.0999999999999943 33.1000000000000085 l
+h
+f
+Q
+q
+0.99 0.85 0.21 rg
+1. 0. 0. 1. 0. 0. cm
+192.0999999999999943 108.4000000000000057 m
+248.6999999999999886 108.4000000000000057 l
+248.6999999999999886 33.1000000000000085 l
+192.0999999999999943 33.1000000000000085 l
+h
+f
+Q
+q
+0.26 0.63 0.28 rg
+1. 0. 0. 1. 0. 0. cm
+274.1000000000000227 108.4000000000000057 m
+330.7000000000000455 108.4000000000000057 l
+330.7000000000000455 58.2000000000000028 l
+274.1000000000000227 58.2000000000000028 l
+h
+f
+Q
+q
+0.56 0.14 0.67 rg
+1. 0. 0. 1. 0. 0. cm
+356. 108.4000000000000057 m
+412.6000000000000227 108.4000000000000057 l
+412.6000000000000227 83.3000000000000114 l
+356. 83.3000000000000114 l
+h
+f
+Q
+q
+0. 0.67 0.76 rg
+1. 0. 0. 1. 0. 0. cm
+438. 108.4000000000000057 m
+494.6000000000000227 108.4000000000000057 l
+494.6000000000000227 83.3000000000000114 l
+438. 83.3000000000000114 l
+h
+f
+Q
+Q
+Q
+Q
+Q
+BT
+/F2 11 Tf
+12.6499999999999986 TL
+0. g
+40. 495.5566666666666151 Td
+(Declared coordination note) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.235 g
+40. 480.5566666666666151 Td
+(Review the public wall Name schedule.) Tj
+ET
+BT
+/F2 11 Tf
+12.6499999999999986 TL
+0. g
+40. 439.5566666666666151 Td
+(Public wall Names) Tj
+ET
+0.61 0.64 0.69 RG
+1. w
+0.61 0.64 0.69 RG
+1. w
+0.2 0.25 0.33 rg
+0.89 0.91 0.94 RG
+0.5 w
+0.2 0.25 0.33 rg
+40. 432.5566666666666151 515.2799999999999727 -13.1999999999999993 re
+B
+BT
+/F2 8 Tf
+9.1999999999999993 TL
+1. g
+42. 423.7566666666666038 Td
+(Name) Tj
+ET
+0.61 0.64 0.69 RG
+1. w
+0.96 g
+0.89 0.91 0.94 RG
+0.5 w
+0.96 g
+40. 419.3566666666666265 515.2799999999999727 -13.1999999999999993 re
+B
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.314 g
+42. 410.5566666666666151 Td
+(house - outer wall - house right front) Tj
+ET
+1. g
+0.89 0.91 0.94 RG
+0.5 w
+1. g
+40. 406.1566666666666379 515.2799999999999727 -13.1999999999999993 re
+B
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.314 g
+42. 397.3566666666666265 Td
+(house - outer wall - house right back) Tj
+ET
+0.96 g
+0.89 0.91 0.94 RG
+0.5 w
+0.96 g
+40. 392.9566666666666492 515.2799999999999727 -13.1999999999999993 re
+B
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.314 g
+42. 384.1566666666666379 Td
+(house - outer wall - house left) Tj
+ET
+1. g
+0.89 0.91 0.94 RG
+0.5 w
+1. g
+40. 379.7566666666666606 515.2799999999999727 -13.1999999999999993 re
+B
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.314 g
+42. 370.9566666666666492 Td
+(plumbing wall) Tj
+ET
+0.61 0.64 0.69 RG
+1. w
+0.78 G
+0. w
+0.61 0.64 0.69 RG
+1. w
+0.61 0.64 0.69 RG
+1. w
+endstream
+endobj
+5 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 6 0 R
+>>
+endobj
+6 0 obj
+<<
+/Length 8316
+>>
+stream
+1. w
+0.61 0.64 0.69 RG
+1 J
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+40. 809.8899999999999864 Td
+(Public model document composition) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+40. 28. Td
+(Generated 10/2/2026, 3:52:19 AM ∑ ifc-lite) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+495.2799999999999727 28. Td
+(Page 2 / 4) Tj
+ET
+BT
+/F2 11 Tf
+12.6499999999999986 TL
+0. g
+40. 760.8899999999999864 Td
+(IDS report: Public wall Name evidence) Tj
+ET
+q
+1. 0. 0. -1. 0. 841.8899999999999864 cm
+q
+1. 0. 0. 1. 40. 88. cm
+1. w
+0. g
+q
+1. 0. 0. 1. 0. 0. cm
+0. 0. 44. 44. re
+W
+n
+q
+q
+/GS1 gs
+6. w
+0.58 0.64 0.72 RG
+1. 0. 0. 1. 0. 0. cm
+41. 22. m
+41. 11.5065897532149251 32.4934102467850749 3. 22. 3. c
+11.5065897532149251 3. 3. 11.5065897532149251 3. 22. c
+3. 32.4934102467850749 11.5065897532149251 41. 22. 41. c
+32.4934102467850749 41. 41. 32.4934102467850749 41. 22. c
+S
+Q
+q
+6. w
+0.09 0.64 0.29 RG
+1. 0. 0. 1. 0. 0. cm
+41. 22. m
+41. 11.5065897532149251 32.4934102467850749 3. 22. 3. c
+11.5065897532149251 3. 3. 11.5065897532149251 3. 22. c
+3. 32.4934102467850749 11.5065897532149251 41. 22. 41. c
+32.4934102467850749 41. 41. 32.4934102467850749 41. 22. c
+S
+Q
+Q
+Q
+Q
+Q
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.235 g
+96. 743.8899999999999864 Td
+(Checked 4 ∑ Passed 4 ∑ Failed 0 ∑ 100% passed) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.51 g
+40. 693.8899999999999864 Td
+(Validation run: 2026-10-02T01:52:18.779Z) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.235 g
+40. 680.8899999999999864 Td
+(Models: building-architecture.ifc) Tj
+ET
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0. g
+40. 665.8899999999999864 Td
+(Wall Name exists) Tj
+ET
+0.88 g
+252. 671.8899999999999864 219.2799999999999727 -5. re
+f
+0.13 0.77 0.37 rg
+252. 671.8899999999999864 219.2799999999999727 -5. re
+f
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.235 g
+477.2799999999999727 665.8899999999999864 Td
+(4/4 ∑ 100%) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.176 g
+50. 645.8899999999999864 Td
+(Name) Tj
+ET
+0.88 g
+258. 651.8899999999999864 213.2799999999999727 -5. re
+f
+0.13 0.77 0.37 rg
+258. 651.8899999999999864 213.2799999999999727 -5. re
+f
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.235 g
+477.2799999999999727 645.8899999999999864 Td
+(4/4 ∑ 100%) Tj
+ET
+BT
+/F2 11 Tf
+12.6499999999999986 TL
+0. g
+40. 614.8899999999999864 Td
+(Information validation report: Public wall unique Name evidence) Tj
+ET
+q
+1. 0. 0. -1. 0. 841.8899999999999864 cm
+q
+1. 0. 0. 1. 40. 234. cm
+1. w
+0. g
+q
+1. 0. 0. 1. 0. 0. cm
+0. 0. 44. 44. re
+W
+n
+q
+q
+/GS1 gs
+6. w
+0.58 0.64 0.72 RG
+1. 0. 0. 1. 0. 0. cm
+41. 22. m
+41. 11.5065897532149251 32.4934102467850749 3. 22. 3. c
+11.5065897532149251 3. 3. 11.5065897532149251 3. 22. c
+3. 32.4934102467850749 11.5065897532149251 41. 22. 41. c
+32.4934102467850749 41. 41. 32.4934102467850749 41. 22. c
+S
+Q
+q
+6. w
+0.09 0.64 0.29 RG
+1. 0. 0. 1. 0. 0. cm
+41. 22. m
+41. 11.5065897532149251 32.4934102467850749 3. 22. 3. c
+11.5065897532149251 3. 3. 11.5065897532149251 3. 22. c
+3. 32.4934102467850749 11.5065897532149251 41. 22. 41. c
+32.4934102467850749 41. 41. 32.4934102467850749 41. 22. c
+S
+Q
+Q
+Q
+Q
+Q
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.235 g
+96. 597.8899999999999864 Td
+(Checked 4 ∑ Passed 4 ∑ Failed 0 ∑ Warnings 0 ∑ 100% passed) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.51 g
+40. 547.8899999999999864 Td
+(Validation run: 2026-10-02T01:52:18.780Z) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.235 g
+40. 534.8899999999999864 Td
+(Models: building-architecture.ifc) Tj
+ET
+BT
+/F2 9.5 Tf
+10.9249999999999989 TL
+0. g
+40. 519.8899999999999864 Td
+(Wall names are unique) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.235 g
+40. 508.8899999999999864 Td
+(Checked 4 ∑ Passed 4 ∑ Failed 0 ∑ 100%) Tj
+ET
+BT
+/F2 11 Tf
+12.6499999999999986 TL
+0. g
+40. 482.8899999999999864 Td
+(Manual validation: Declared manual review) Tj
+ET
+q
+1. 0. 0. -1. 0. 841.8899999999999864 cm
+q
+1. 0. 0. 1. 40. 370. cm
+1. w
+0. g
+q
+1. 0. 0. 1. 0. 0. cm
+0. 0. 44. 44. re
+W
+n
+q
+q
+/GS1 gs
+6. w
+0.58 0.64 0.72 RG
+1. 0. 0. 1. 0. 0. cm
+41. 22. m
+41. 11.5065897532149251 32.4934102467850749 3. 22. 3. c
+11.5065897532149251 3. 3. 11.5065897532149251 3. 22. c
+3. 32.4934102467850749 11.5065897532149251 41. 22. 41. c
+32.4934102467850749 41. 41. 32.4934102467850749 41. 22. c
+S
+Q
+q
+6. w
+0.09 0.64 0.29 RG
+1. 0. 0. 1. 0. 0. cm
+22. 3. m
+32.2792600839580075 2.9999999999999787 40.6945240554539041 11.1751231778966975 40.9920400295457341 21.4500768088778386 c
+41.2895560036375713 31.7250304398589762 33.3614234865985537 40.3733841257352495 23.0993856062071181 40.9681667877753739 c
+S
+Q
+q
+6. w
+0.88 0.63 0. RG
+1. 0. 0. 1. 0. 0. cm
+22. 41. m
+11.7207399160419961 41.0000000000000284 3.3054759445460995 32.824876822103306 3.0079599704542623 22.5499231911221649 c
+2.7104439963624287 12.2749695601410238 10.6385765134014481 3.6266158742647505 20.9006143937928854 3.0318332122246261 c
+S
+Q
+Q
+Q
+Q
+Q
+BT
+/F2 9.5 Tf
+10.9249999999999989 TL
+0. g
+96. 455.8899999999999864 Td
+(50% passed \(1 of 2 checks\)) Tj
+ET
+BT
+/F1 8.5 Tf
+9.7749999999999986 TL
+0.235 g
+96. 441.8899999999999864 Td
+(Pass 1 ∑ Warning 1 ∑ Fail 0 ∑ Not checked 0) Tj
+ET
+q
+1. 0. 0. -1. 0. 841.8899999999999864 cm
+q
+1. 0. 0. 1. 40. 422. cm
+1. w
+0. g
+q
+1. 0. 0. 1. 0. 0. cm
+0. 0. 16. 16. re
+W
+n
+q
+q
+/GS1 gs
+2. w
+0.58 0.64 0.72 RG
+1. 0. 0. 1. 0. 0. cm
+15. 8. m
+15. 4.1340067511844456 11.8659932488155544 1. 8. 1. c
+4.1340067511844456 1. 1. 4.1340067511844456 1. 8. c
+1. 11.8659932488155544 4.1340067511844456 15. 8. 15. c
+11.8659932488155544 15. 15. 11.8659932488155544 15. 8. c
+S
+Q
+q
+2. w
+0.09 0.64 0.29 RG
+1. 0. 0. 1. 0. 0. cm
+8. 1. m
+11.6721443344092481 1.0000000000000009 14.720077408233406 3.8376444601542161 14.982150448174405 7.5004250616194499 c
+15.2442234881154022 11.1632056630846836 12.6313392650180276 14.405883282189599 8.9966021085458454 14.9286928231263047 c
+S
+Q
+q
+2. w
+0.88 0.63 0. RG
+1. 0. 0. 1. 0. 0. cm
+8. 15. m
+4.327855665590751 15.0000000000000018 1.2799225917665886 12.1623555398457874 1.0178495518255897 8.4995749383805528 c
+0.7557765118845907 4.8367943369153164 3.3686607349819688 1.5941167178103983 7.0033978914541528 1.0713071768736944 c
+S
+Q
+Q
+Q
+Q
+Q
+BT
+/F2 10 Tf
+11.5 TL
+0. g
+64. 411.8899999999999864 Td
+(Document review) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.235 g
+64. 401.8899999999999864 Td
+(Pass 1 ∑ Warning 1 ∑ Fail 0 ∑ Not checked 0) Tj
+ET
+BT
+/F2 7.5 Tf
+8.625 TL
+0. g
+48. 388.8899999999999864 Td
+(PASS) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0. g
+116. 388.8899999999999864 Td
+(Check the public model heading) Tj
+ET
+BT
+/F2 7.5 Tf
+8.625 TL
+0. g
+48. 372.8899999999999864 Td
+(WARNING) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0. g
+116. 372.8899999999999864 Td
+(Review wall Name table) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.51 g
+116. 361.8899999999999864 Td
+(A declared checklist answer, not an automatic IFC verdict.) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.235 g
+116. 350.8899999999999864 Td
+(Comment: Authored demonstration observation) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 319.8899999999999864 Td
+(Closing review line 1) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 305.8899999999999864 Td
+(Closing review line 2) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 291.8899999999999864 Td
+(Closing review line 3) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 277.8899999999999864 Td
+(Closing review line 4) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 263.8899999999999864 Td
+(Closing review line 5) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 249.8899999999999864 Td
+(Closing review line 6) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 235.8899999999999864 Td
+(Closing review line 7) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 221.8899999999999864 Td
+(Closing review line 8) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 207.8899999999999864 Td
+(Closing review line 9) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 193.8899999999999864 Td
+(Closing review line 10) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 179.8899999999999864 Td
+(Closing review line 11) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 165.8899999999999864 Td
+(Closing review line 12) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 151.8899999999999864 Td
+(Closing review line 13) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 137.8899999999999864 Td
+(Closing review line 14) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 123.8899999999999864 Td
+(Closing review line 15) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 109.8899999999999864 Td
+(Closing review line 16) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 95.8899999999999864 Td
+(Closing review line 17) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 81.8899999999999864 Td
+(Closing review line 18) Tj
+ET
+endstream
+endobj
+7 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 8 0 R
+>>
+endobj
+8 0 obj
+<<
+/Length 4577
+>>
+stream
+2. w
+0.88 0.63 0. RG
+1 J
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+40. 809.8899999999999864 Td
+(Public model document composition) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+40. 28. Td
+(Generated 10/2/2026, 3:52:19 AM ∑ ifc-lite) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+495.2799999999999727 28. Td
+(Page 3 / 4) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 761.8899999999999864 Td
+(Closing review line 19) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 747.8899999999999864 Td
+(Closing review line 20) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 733.8899999999999864 Td
+(Closing review line 21) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 719.8899999999999864 Td
+(Closing review line 22) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 705.8899999999999864 Td
+(Closing review line 23) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 691.8899999999999864 Td
+(Closing review line 24) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 677.8899999999999864 Td
+(Closing review line 25) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 663.8899999999999864 Td
+(Closing review line 26) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 649.8899999999999864 Td
+(Closing review line 27) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 635.8899999999999864 Td
+(Closing review line 28) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 621.8899999999999864 Td
+(Closing review line 29) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 607.8899999999999864 Td
+(Closing review line 30) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 593.8899999999999864 Td
+(Closing review line 31) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 579.8899999999999864 Td
+(Closing review line 32) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 565.8899999999999864 Td
+(Closing review line 33) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 551.8899999999999864 Td
+(Closing review line 34) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 537.8899999999999864 Td
+(Closing review line 35) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 523.8899999999999864 Td
+(Closing review line 36) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 509.8899999999999864 Td
+(Closing review line 37) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 495.8899999999999864 Td
+(Closing review line 38) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 481.8899999999999864 Td
+(Closing review line 39) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 467.8899999999999864 Td
+(Closing review line 40) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 453.8899999999999864 Td
+(Closing review line 41) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 439.8899999999999864 Td
+(Closing review line 42) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 425.8899999999999864 Td
+(Closing review line 43) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 411.8899999999999864 Td
+(Closing review line 44) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 397.8899999999999864 Td
+(Closing review line 45) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 383.8899999999999864 Td
+(Closing review line 46) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 369.8899999999999864 Td
+(Closing review line 47) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 355.8899999999999864 Td
+(Closing review line 48) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 341.8899999999999864 Td
+(Closing review line 49) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 327.8899999999999864 Td
+(Closing review line 50) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 313.8899999999999864 Td
+(Closing review line 51) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 299.8899999999999864 Td
+(Closing review line 52) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 285.8899999999999864 Td
+(Closing review line 53) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 271.8899999999999864 Td
+(Closing review line 54) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 257.8899999999999864 Td
+(Closing review line 55) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 243.8899999999999864 Td
+(Closing review line 56) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 229.8899999999999864 Td
+(Closing review line 57) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 215.8899999999999864 Td
+(Closing review line 58) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 201.8899999999999864 Td
+(Closing review line 59) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 187.8899999999999864 Td
+(Closing review line 60) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 173.8899999999999864 Td
+(Closing review line 61) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 159.8899999999999864 Td
+(Closing review line 62) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 145.8899999999999864 Td
+(Closing review line 63) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 131.8899999999999864 Td
+(Closing review line 64) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 117.8899999999999864 Td
+(Closing review line 65) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 103.8899999999999864 Td
+(Closing review line 66) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 89.8899999999999864 Td
+(Closing review line 67) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 75.8899999999999864 Td
+(Closing review line 68) Tj
+ET
+endstream
+endobj
+9 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 10 0 R
+>>
+endobj
+10 0 obj
+<<
+/Length 1349
+>>
+stream
+2. w
+0.88 0.63 0. RG
+1 J
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+40. 809.8899999999999864 Td
+(Public model document composition) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+40. 28. Td
+(Generated 10/2/2026, 3:52:19 AM ∑ ifc-lite) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+495.2799999999999727 28. Td
+(Page 4 / 4) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 761.8899999999999864 Td
+(Closing review line 69) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 747.8899999999999864 Td
+(Closing review line 70) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 733.8899999999999864 Td
+(Closing review line 71) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 719.8899999999999864 Td
+(Closing review line 72) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 705.8899999999999864 Td
+(Closing review line 73) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 691.8899999999999864 Td
+(Closing review line 74) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 677.8899999999999864 Td
+(Closing review line 75) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 663.8899999999999864 Td
+(Closing review line 76) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 649.8899999999999864 Td
+(Closing review line 77) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 635.8899999999999864 Td
+(Closing review line 78) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 621.8899999999999864 Td
+(Closing review line 79) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 607.8899999999999864 Td
+(Closing review line 80) Tj
+ET
+endstream
+endobj
+1 0 obj
+<</Type /Pages
+/Kids [3 0 R 5 0 R 7 0 R 9 0 R ]
+/Count 4
+>>
+endobj
+11 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+12 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+13 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+14 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+15 0 obj
+<<
+/Type /Font
+/BaseFont /Courier
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+16 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+17 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+18 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+19 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Roman
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+20 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+21 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Italic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+22 0 obj
+<<
+/Type /Font
+/BaseFont /Times-BoldItalic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+23 0 obj
+<<
+/Type /Font
+/BaseFont /ZapfDingbats
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+24 0 obj
+<<
+/Type /Font
+/BaseFont /Symbol
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+25 0 obj
+<<
+/CA 0.25
+>>
+endobj
+26 0 obj
+<<
+/Type /XObject
+/Subtype /Image
+/Width 16
+/Height 16
+/ColorSpace /DeviceRGB
+/BitsPerComponent 8
+/SMask 27 0 R
+/Length 768
+>>
+stream
+                                                        ˇ   >V^_tzau{>V^    ˇˇ                     UUUUUUCZ_i}Ñù´Ø¢∞¥wãíG\cUUUUUU                  U   WlssáçqÇàrÑäYktEZa                        3JRZnuê†¶vâê'@G*3Wms=V]              ˇ  ˇ:NXPdlxäêi}Éäöü}éìJ_gzãêû¨∞ÅíóNckBXc ˇˇ   ??   E[ce|ÉyäèfyÅãõ†|éìI^erÉâéù¢xâépÖåG^e   ????   CZ`ëòrÑä[ovì¢ß}êñ!9C   Vksëü§çú°>W^   ????   BV_~êóêû§h{ÇtÖãk~ÑgzÄCXccv|ß¥∏àòùAV`   ???   BV_|èïçú°Xmt[ovó•©°Ø≥dx[nu°Æ±âöüAV`   ???   AXa~ëóàôûexpÇàk~Ñl~Ö|åërÉâû´Æéû£@Xb   ????   @V\väíãõ†fyÄéû£qÑäzãê°≠∞rÑä°Æ≤Ññú=S^   ??    ˇˇ8UUFYccw}h}Ñèü§wâèÅëñ£Ø≤tàémÄÜJ^eHHm                #4=K`gxãëzåìÉîôÖïöQfm/8                     ??      @V]UjqXmt=S^      ??                      UU™   3    U™™  ˇ            
+endstream
+endobj
+27 0 obj
+<<
+/Type /XObject
+/Subtype /Image
+/Width 16
+/Height 16
+/ColorSpace /DeviceGray
+/BitsPerComponent 8
+/DecodeParms <</Predictor null /Colors 1 /BitsPerComponent 8 /Columns 16>>
+/Length 256
+>>
+stream
+                 A» A        Öˇˇˇˇè      ∏ˇ¯{à       A›¸ˇGƒG    ¢ˇˇ˛˛Àˇˇˇ¶ \ˇ˙˝˛˛µÏˇ˙ˇN  W¸˚ˇ˚ˇ5
+€˝¸I  Xˇ˚ˇ˛˛‹HºˇˇJ  Xˇ˚ˇˇ˛ˇˇ˘¸ˇJ  Y¸˙ˇˇˇ˝˛ˇ˙¸K  Sˇˇ˚ˇˇˇ˛˚ˇˇF  	lÎˇ˝˝˝˝ˇÈg     ¢ˇˇˇˇ†         G”“F          
+	     
+endstream
+endobj
+2 0 obj
+<<
+/ProcSet [/PDF /Text /ImageB /ImageC /ImageI]
+/Font <<
+/F1 11 0 R
+/F2 12 0 R
+/F3 13 0 R
+/F4 14 0 R
+/F5 15 0 R
+/F6 16 0 R
+/F7 17 0 R
+/F8 18 0 R
+/F9 19 0 R
+/F10 20 0 R
+/F11 21 0 R
+/F12 22 0 R
+/F13 23 0 R
+/F14 24 0 R
+>>
+/ExtGState <<
+/GS1 25 0 R
+>>
+/XObject <<
+/I0 26 0 R
+>>
+>>
+endobj
+28 0 obj
+<<
+/Producer (jsPDF 4.2.1)
+/CreationDate (D:20261002035219+02'00')
+>>
+endobj
+29 0 obj
+<<
+/Type /Catalog
+/Pages 1 0 R
+/OpenAction [3 0 R /FitH null]
+/PageLayout /OneColumn
+>>
+endobj
+xref
+0 30
+0000000000 65535 f 
+0000021003 00000 n 
+0000024282 00000 n 
+0000000015 00000 n 
+0000000152 00000 n 
+0000006192 00000 n 
+0000006329 00000 n 
+0000014697 00000 n 
+0000014834 00000 n 
+0000019463 00000 n 
+0000019601 00000 n 
+0000021078 00000 n 
+0000021204 00000 n 
+0000021335 00000 n 
+0000021469 00000 n 
+0000021607 00000 n 
+0000021731 00000 n 
+0000021860 00000 n 
+0000021992 00000 n 
+0000022128 00000 n 
+0000022256 00000 n 
+0000022383 00000 n 
+0000022512 00000 n 
+0000022645 00000 n 
+0000022747 00000 n 
+0000022843 00000 n 
+0000022874 00000 n 
+0000023803 00000 n 
+0000024575 00000 n 
+0000024661 00000 n 
+trailer
+<<
+/Size 30
+/Root 29 0 R
+/Info 28 0 R
+/ID [ <7436C2B8609CE672F020B0B99C912840> <7436C2B8609CE672F020B0B99C912840> ]
+>>
+startxref
+24765
+%%EOF

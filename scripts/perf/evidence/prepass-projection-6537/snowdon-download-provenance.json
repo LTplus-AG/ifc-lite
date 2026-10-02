@@ -1,7 +1,0 @@
-{
-  "cataloguedPath": "various/01_Snowdon_Towers_Sample_Structural(1).ifc",
-  "publicDownload": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4",
-  "sha256": "fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4",
-  "bytes": 8714606,
-  "header": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView_V2.0]','RevitIdentifiers [VersionGUID: bea1a07d-0fab-412e-a63f-15b9f0d7e7fb, NumberOfSaves: 30]','CoordinateReference [CoordinateBase: Project Base Point, ProjectSite: Default Site]'),'2;1');\nFILE_NAME('7765328-33-S','2024-08-06T23:41:40-08:00',(''),(''),'ODA SDAI 24.6','Autodesk Revit 24.2.0.63 (ENU) - IFC 24.2.0.63','');\nFILE_SCHEMA(('IFC2X3'));\n"
-}

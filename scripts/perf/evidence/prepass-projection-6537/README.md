@@ -57,15 +57,16 @@ actual critical path, with complete malformed-record validation preserved.
 ## Reproduction and provenance
 
 `results.json.gz` retains every type row, parse failures and limitations. All four
-files parsed successfully within the seven families. `provenance.json` records
+files parsed successfully within the seven families. `provenance.json.gz` records
 original fixture SHA-256/size, frozen source head, original harness and build
 hashes. The original diagnostic has its own Cargo dependency lock, retained here;
-it is not represented as a workspace benchmark build. `build.log` and
-`clippy.log` record the standalone optimized build and warnings-as-errors check.
-`census.rs` adds only the required MPL header to the original harness; its body
+it is not represented as a workspace benchmark build. The lock is archived as
+`Cargo.lock.gz`. `build.log.gz` and
+`clippy.log.gz` record the standalone optimized build and warnings-as-errors check.
+The decoded `census.rs.gz` adds only the required MPL header to the original harness; its body
 is byte-identical to the source named in provenance.
 
-`construction-census.rs` is the unchanged additional harness from source
+`construction-census.rs.gz` is the unchanged additional harness from source
 `5101bf33e053d1a4f1af6d86df4bda59a20ec6bb`. Its separate provenance, actual
 build log, and pre/post host observations retain the original capture. These
 are historical diagnostic runs, not freshly recompiled results for this PR.
@@ -74,15 +75,35 @@ the original capture on publication base `29e1088dda6777f7086bd122208ce7bda8db1d
 the additional capture's canonical parser is also unchanged. Historical
 standalone Clippy evidence applies to the original harness only.
 
-Raw JSON results are compressed losslessly; use `gzip -dc <file>.json.gz`
-to inspect them. Hashes in historical provenance name the uncompressed capture.
+Every retained capture, harness, dependency lock and log is archived losslessly.
+Use `gzip -dc <artifact>.gz` to inspect its original contents. The [artifact manifest](ARTIFACTS.md)
+records compressed and decoded sizes and SHA-256 hashes. All 15 newly packaged
+archives have a zero gzip timestamp and decode exactly to publication source
+`0339c7ae563a66b3638dd1d347c49e6f0a469d6e`; both existing result archives
+remain byte-identical. Historical provenance names the uncompressed filenames
+and hashes. These are inert evidence archives; no gate or runtime source changed.
 
 To reproduce, create a temporary Cargo package with `ifc-lite-core` as a path
-dependency pointing at the recorded checkout and `serde_json = "1.0"`, copy
-`census.rs` to `src/main.rs` and the retained `Cargo.lock` to the package, then
+dependency pointing at the recorded checkout and `serde_json = "1.0"`. Decompress
+`census.rs.gz` to `src/main.rs` and `Cargo.lock.gz` to the package's `Cargo.lock`, then
 run the release executable with the four fixture paths from the manifest.
 `pnpm fixtures` fetches the corpus. Keep any changed dependencies, missing
 fixtures, parser errors or instrumentation failures in the result record.
+
+After creating that temporary package, restore the original files from the
+repository root (replace the package path with your temporary directory):
+
+```sh
+projection_archive=scripts/perf/evidence/prepass-projection-6537
+projection_package=/tmp/prepass-projection-repro
+gzip -dc "$projection_archive/census.rs.gz" > "$projection_package/src/main.rs"
+gzip -dc "$projection_archive/Cargo.lock.gz" > "$projection_package/Cargo.lock"
+```
+
+Decompress `construction-census.rs.gz` similarly when reproducing the separate
+construction capture. The recorded sources, fixture hashes, original results
+and qualification receipts remain the authority; this packaging did not
+compile either harness or collect new measurements.
 
 The additional harness can be reproduced as the retained
 `prepass_construction_census` example on its recorded source, using the same

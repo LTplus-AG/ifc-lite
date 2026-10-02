@@ -55,7 +55,12 @@ export function assertBoundedPattern(pattern: string, location: string): void {
   let variableRepetitions = 0; let inClass = false; let alternation = false;
   for (let index = 0; index < pattern.length; index++) {
     const character = pattern[index];
-    if (character === '\\') { index++; continue; }
+    if (character === '\\') {
+      // XPath/SPARQL and JavaScript assign different alphabets to shorthand
+      // and property classes. Require explicit ranges, including in classes.
+      if ('dDwWsSpP'.includes(pattern[index + 1] ?? '\0')) throw new Error(`Pattern for ${location} requires explicit character ranges instead of shorthand or property classes`);
+      index++; continue;
+    }
     if (inClass) { if (character === ']') inClass = false; continue; }
     if (character === '[') { inClass = true; continue; }
     if (character === '|') alternation = true;
@@ -73,7 +78,7 @@ export function assertBoundedPattern(pattern: string, location: string): void {
     || [...pattern.matchAll(/\{([0-9]+)(?:,([0-9]+))?\}/g)].some(match => Number(match[1]) > 5000 || Number(match[2] ?? 0) > 5000)) {
     throw new Error(`Pattern for ${location} exceeds the supported bounded regular-expression subset`);
   }
-  new RegExp(pattern);
+  new RegExp(pattern, 'u');
 }
 /** Validate profiles before compiling schemas or executing graph validation. */
 export function assertProfile(value: unknown): asserts value is ProfileDefinition {

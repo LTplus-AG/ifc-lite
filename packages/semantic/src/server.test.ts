@@ -71,8 +71,8 @@ describe('Authenticated relay #6643', () => {
     }
     expect(received.length).toBe(start);
   });
-  it('rejects HTTP and embedded URL credentials at configuration boundaries', async () => {
-    for (const endpoint of ['http://provider.example.org', 'https://user:secret@provider.example.org']) {
+  it('PR #6645 Q9Yr: rejects HTTP, URL credentials and provider query strings at configuration boundaries', async () => {
+    for (const endpoint of ['http://provider.example.org', 'https://user:secret@provider.example.org', 'https://provider.example.org/records?dataset=x']) {
       expect(() => createSemanticRelay({ clientToken, allowedOrigins: [], providers: { demo: { endpoint, grantedHost: 'provider.example.org', kind: 'json' } } })).toThrow();
     }
     const result = await relay()(new Request('http://relay.example.org', { method: 'POST' })); expect(result.status).toBe(400);

@@ -35,9 +35,10 @@ export function useSemanticPilot(execute: ValidationExecutor = validateInWorker)
   async function accept(job: ValidationJob, signal: AbortSignal, bindings?: SparqlResults, guard?: () => boolean) {
     const inputVersion = useSemanticSession.getState().dataVersion;
     const validated = await execute({ ...job, profile }, signal);
-    if (signal.aborted || useSemanticSession.getState().profile !== profile || useSemanticSession.getState().dataVersion !== inputVersion) return;
+    if (signal.aborted || useSemanticSession.getState().profile !== profile || useSemanticSession.getState().dataVersion !== inputVersion) return false;
     if (guard && !guard()) throw new Error('Loaded models changed during retrieval; load the records again');
     setDocument(validated.document); setGraph(validated.graph); session.setGraphFormat('application/n-quads'); setResults(bindings); setFindings(validated.findings); setDiagnostic(validated.diagnostic ?? ""); session.setReport(validated.diagnostic ? undefined : validated.report);
+    return true;
   }
   function load(input: SourceInput) {
     return run(async signal => {
@@ -105,7 +106,7 @@ export function useSemanticPilot(execute: ValidationExecutor = validateInWorker)
         }
         if (signal.aborted) return; setRevisions(associations);
       }
-      await accept({ document: pilotDocument() }, signal); session.setRetrievedAt(undefined);
+      if (await accept({ document: pilotDocument() }, signal)) session.setRetrievedAt(undefined);
     });
   }
   function validate(suppliedGraph = false) {

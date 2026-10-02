@@ -36,7 +36,7 @@ Credentials are supplied through named environment variables, never command argu
 
 ## Operate an authenticated HTTPS relay
 
-A relay supports endpoints that require private credentials or do not allow browser CORS. Its configuration binds a provider ID to a fixed HTTPS endpoint and an exact hostname grant. Callers supply the provider ID and a read query; they cannot supply an upstream URL, host, or credential.
+A relay supports endpoints that require private credentials or do not allow browser CORS. Its configuration binds a provider ID to a fixed HTTPS endpoint and an exact hostname grant. Endpoint URLs with embedded credentials, query strings or fragments are rejected at startup. Callers supply the provider ID and a read query; they cannot supply an upstream URL, host, or credential.
 
 Create `relay.json` using environment references only:
 

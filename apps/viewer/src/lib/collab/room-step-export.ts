@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { validatePropertyDataType } from '@ifc-lite/export';
+import { PROPERTY_TYPE_NAMES } from '@ifc-lite/ifcx';
 import { getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
 import type { Property, PropertyValue, Quantity } from '@ifc-lite/data';
 import { MutablePropertyView, StoreEditor, type Mutation } from '@ifc-lite/mutations';
@@ -28,7 +29,7 @@ function propertyEqual(left: Property, right: Property): boolean {
   if (Array.isArray(right.value) && typeof left.value === 'string') {
     return left.value === JSON.stringify(right.value);
   }
-  return valuesEqual(left.value, right.value) && left.dataType?.toUpperCase() === right.dataType?.toUpperCase();
+  return valuesEqual(left.value, right.value) && (left.dataType ?? PROPERTY_TYPE_NAMES[left.type])?.toUpperCase() === (right.dataType ?? PROPERTY_TYPE_NAMES[right.type])?.toUpperCase();
 }
 
 function quantityEqual(left: Quantity, right: Quantity): boolean {
@@ -83,7 +84,7 @@ function snapshotView(
       let declaration: ReturnType<typeof validatePropertyDataType> | undefined;
       if (scalar === null || typeof scalar === 'string' || typeof scalar === 'number' || typeof scalar === 'boolean') {
         try { declaration = validatePropertyDataType(scalar, value.type); }
-        catch { console.warn('Room property declaration is unsupported; retaining the export shape fallback'); }
+        catch { console.warn('Rejected room export property with an invalid IFC declaration'); continue; }
       }
       const current: Property = { name: propName, type: declaration?.valueType ?? propertyValueTypeFor(value.type), value: scalar, unit: value.unit, dataType: declaration?.dataType };
       if (original && propertyEqual(current, original)) continue;
@@ -95,7 +96,7 @@ function snapshotView(
         declaration?.valueType ?? original?.type ?? current.type,
         original?.unit ?? value.unit,
         false,
-        declaration?.dataType ?? value.type,
+        declaration?.dataType,
       );
     }
 

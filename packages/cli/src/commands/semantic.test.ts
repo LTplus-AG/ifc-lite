@@ -68,4 +68,13 @@ describe('semantic CLI #6643', () => {
     const graph = join(directory, 'graph.ttl'); await writeFile(graph, '<https://example.org/s> <https://example.org/p> "v" .');
     await expect(semanticCommand(['validate', graph, '--json'])).rejects.toThrow(/No .*targets.*SHACL/);
   });
+  it('rejects unsupported and missing relay provider kinds before reading TLS files #6643', async () => {
+    const path = join(directory, 'relay.json');
+    for (const kind of [undefined, 'select', 'construct', null]) {
+      await writeFile(path, JSON.stringify({ clientTokenEnv: '__SEMANTIC_TEST_UNSET__', allowedOrigins: [],
+        providers: { demo: { endpoint: 'https://example.org/data', grantedHost: 'example.org', kind } } }));
+      await expect(semanticCommand(['serve', '--config', path, '--cert', join(directory, 'absent.crt'), '--key', join(directory, 'absent.key')]))
+        .rejects.toThrow('Invalid relay provider');
+    }
+  });
 });

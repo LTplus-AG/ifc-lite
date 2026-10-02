@@ -36,19 +36,28 @@ export function parseResults(value: unknown): SparqlResults {
   return { columns: [...columns], rows };
 }
 
-/** RDF-shaped SELECT results are optional; arbitrary analytical columns stay in raw rows. */
-export function recordsFromResults(results: SparqlResults, mapping = { subject: 'subject', predicate: 'predicate', object: 'object' }): SemanticRecord[] {
+/** Shared linear RDF set projection; preserve first occurrence and lexical metadata. */
+export function createRecordAccumulator() {
   const records = new Map<string, SemanticRecord>();
-  for (const row of results.rows) {
-    const subject = row[mapping.subject]; const predicate = row[mapping.predicate]; const object = row[mapping.object];
+  const seen = new Set<string>();
+  const append = (subject: RdfBinding | undefined, predicate: RdfBinding | undefined, object: RdfBinding | undefined) => {
     if (!subject || !predicate || !object || !['uri', 'bnode'].includes(subject.type) || predicate.type !== 'uri') throw new Error('Expected subject, predicate and object RDF bindings');
     const id = subject.type === 'bnode' ? `_:${subject.value}` : subject.value;
+    // Tuple serialization distinguishes embedded delimiters, URI/literal/blank
+    // node terms, lexical datatypes and language tags without array scans.
+    const key = JSON.stringify([id, predicate.value, object.type, object.value, object.datatype ?? null, object['xml:lang'] ?? null]);
+    if (seen.has(key)) return;
+    seen.add(key);
     const record = records.get(id) ?? { id, types: [], properties: Object.create(null) as Record<string, RdfBinding[]> };
-    const values = record.properties[predicate.value] ?? [];
-    if (!values.some(term => term.type === object.type && term.value === object.value && term.datatype === object.datatype && term['xml:lang'] === object['xml:lang'])) values.push({ ...object });
-    record.properties[predicate.value] = values;
-    if (predicate.value === 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type' && object.type === 'uri' && !record.types.includes(object.value)) record.types.push(object.value);
+    (record.properties[predicate.value] ??= []).push({ ...object });
+    if (predicate.value === 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type' && object.type === 'uri') record.types.push(object.value);
     records.set(id, record);
-  }
-  return [...records.values()];
+  };
+  return { append, records: () => [...records.values()] };
+}
+/** RDF-shaped SELECT results are optional; arbitrary analytical columns stay in raw rows. */
+export function recordsFromResults(results: SparqlResults, mapping = { subject: 'subject', predicate: 'predicate', object: 'object' }): SemanticRecord[] {
+  const accumulator = createRecordAccumulator();
+  for (const row of results.rows) accumulator.append(row[mapping.subject], row[mapping.predicate], row[mapping.object]);
+  return accumulator.records();
 }

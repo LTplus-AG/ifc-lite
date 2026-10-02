@@ -37,7 +37,7 @@ export function assertShapeParameters(shapes: Store): void {
     if (strings.has(name)) {
       if (value.termType !== 'Literal' || value.datatype.value !== XSD + 'string') throw new Error(`SHACL ${name} must be an xsd:string`);
       if (name === 'pattern') assertBoundedPattern(value.value, 'SHACL shape');
-      if (name === 'flags' && (!/^[isu]*$/.test(value.value) || new Set(value.value).size !== value.value.length)) {
+      if (name === 'flags' && (!/^[is]*$/.test(value.value) || new Set(value.value).size !== value.value.length)) {
         throw new Error('Unsupported SHACL regular-expression flags');
       }
     }
@@ -45,5 +45,14 @@ export function assertShapeParameters(shapes: Store): void {
   for (const quad of normalized) {
     shapes.removeQuad(quad);
     shapes.addQuad(quad.subject, quad.predicate, DataFactory.literal(quad.object.value === '1' ? 'true' : 'false', DataFactory.namedNode(XSD + 'boolean')), quad.graph);
+  }
+  // SHACL uses SPARQL/XPath regex semantics: Unicode is intrinsic and 'u' is
+  // not a portable flag. Adapt only this private, parsed runtime graph for the
+  // JavaScript-based engine; generated/exported shapes retain standard flags.
+  const flagsPredicate = DataFactory.namedNode(SH + 'flags');
+  for (const pattern of shapes.getQuads(null, SH + 'pattern', null, null)) {
+    const flags = shapes.getQuads(pattern.subject, flagsPredicate, null, null)[0];
+    if (flags) shapes.removeQuad(flags);
+    shapes.addQuad(pattern.subject, flagsPredicate, DataFactory.literal((flags?.object.value ?? '') + 'u'), flags?.graph ?? pattern.graph);
   }
 }

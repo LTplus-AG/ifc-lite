@@ -102,7 +102,7 @@ expects standard SPARQL Results JSON. Enter the exact hostname you allow in
 the separate hostname field. HTTPS and CORS are required; credentials are not
 stored. **SPARQL CONSTRUCT graph** retrieves Turtle using a CONSTRUCT query.
 Redirects, SPARQL UPDATE, ASK, SERVICE and unauthorized FROM datasets are rejected.
-Requests have a 15 second timeout and a 5 MiB response cap. Cancel stops an
+Requests have a 15-second timeout and a 5 MiB response cap. Cancel stops an
 outstanding request and prevents late results from replacing current records.
 
 The raw binding table preserves URI, literal and blank-node kinds, language

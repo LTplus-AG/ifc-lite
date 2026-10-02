@@ -13,6 +13,7 @@ export const viewerAliases = {
       '@ifc-lite/renderer': path.resolve(__dirname, '../../packages/renderer/src'),
       '@ifc-lite/query': path.resolve(__dirname, '../../packages/query/src'),
       '@ifc-lite/server-client': path.resolve(__dirname, '../../packages/server-client/src'),
+      '@ifc-lite/semantic': path.resolve(__dirname, '../../packages/semantic/src'),
       '@ifc-lite/spatial': path.resolve(__dirname, '../../packages/spatial/src'),
       '@ifc-lite/data': path.resolve(__dirname, '../../packages/data/src'),
       '@ifc-lite/export': path.resolve(__dirname, '../../packages/export/src'),

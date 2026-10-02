@@ -62,7 +62,7 @@ export function createSemanticRelay(options: RelayOptions): (request: Request) =
   const providers = new Map<string, RelayProvider>();
   for (const [id, provider] of Object.entries(options.providers)) {
     const url = new URL(provider.endpoint);
-    if (!/^[A-Za-z0-9_-]{1,80}$/.test(id) || url.protocol !== 'https:' || url.username || url.password || url.hash
+    if (!/^[A-Za-z0-9_-]{1,80}$/.test(id) || url.protocol !== 'https:' || url.username || url.password || url.search || url.hash
       || url.hostname !== provider.grantedHost || !['json', 'sparql'].includes(provider.kind)) throw new Error('Provider requires a fixed HTTPS endpoint and exact hostname grant');
     providers.set(id, { ...provider });
   }

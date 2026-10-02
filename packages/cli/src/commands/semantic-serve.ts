@@ -18,7 +18,8 @@ export async function semanticServe(options: ReadonlyMap<string, string>): Promi
     || !config.providers || typeof config.providers !== 'object' || Array.isArray(config.providers)) throw new Error('Invalid relay configuration');
   const providers: Record<string, RelayProvider> = {};
   for (const [id, provider] of Object.entries(config.providers)) {
-    if (!provider || typeof provider !== 'object' || typeof provider.endpoint !== 'string' || typeof provider.grantedHost !== 'string') throw new Error('Invalid relay provider');
+    if (!provider || typeof provider !== 'object' || typeof provider.endpoint !== 'string' || typeof provider.grantedHost !== 'string'
+      || (provider.kind !== 'json' && provider.kind !== 'sparql')) throw new Error('Invalid relay provider');
     if (Object.keys(provider).some(key => !['endpoint', 'grantedHost', 'kind', 'bearerEnv'].includes(key))) throw new Error('Only credential environment references may appear in provider configuration');
     const env = provider.bearerEnv;
     if (env !== undefined) environment(env);

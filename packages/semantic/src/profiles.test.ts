@@ -21,6 +21,32 @@ const profile = (): ProfileDefinition => ({ id: 'https://example.org/profile/2',
 const document = () => ({ profile: profile().id, source: 'https://example.org/data', completeness: 'complete' as const,
   resources: [{ id: 'https://example.org/a', type: 'Thing', label: 'A', labels: { en: 'English', de: 'Deutsch' }, value: 2.5, tags: ['a', 'b'], enabled: true }] });
 describe('charter #6643 shared profile standards', () => {
+  it('PR #6645 Q9Yj: rejects nonportable shorthand/property classes while retaining escaped literal backslashes', async () => {
+    for (const escape of ['d', 'D', 'w', 'W', 's', 'S', 'p', 'P']) {
+      for (const pattern of [`^\\${escape}{3}$`, `^[\\${escape}]{3}$`]) {
+        const p = profile(); p.fields.label.pattern = pattern;
+        expect(() => assertProfile(p)).toThrow('explicit character ranges');
+      }
+    }
+    const p = profile(); p.fields.label.pattern = '^\\\\d$';
+    const doc = parseProfileDocument({ ...document(), resources: [{ ...document().resources[0], label: '\\d' }] }, p);
+    expect(validateJson(doc, p)).toEqual([]);
+    expect(await validateGraph(await toRdf(doc, p), p)).toEqual([]);
+  });
+  it('PR #6645 Q9Yj: profile patterns count Unicode codepoints in both JSON Schema and generated SHACL', async () => {
+    const p = profile(); p.fields.label.pattern = '^.{1,3}$';
+    const artifacts = await generateArtifacts(p);
+    expect(new Parser().parse(artifacts.shapes).filter(quad => quad.predicate.value === 'http://www.w3.org/ns/shacl#flags')).toEqual([]);
+    const accepted = parseProfileDocument({ ...document(), resources: [{ ...document().resources[0], label: '😀😀' }] }, p);
+    expect(validateJson(accepted, p)).toEqual([]);
+    expect(await validateGraph(await toRdf(accepted, p), p)).toEqual([]);
+    const rejected = { ...accepted, resources: [{ ...accepted.resources[0], label: '😀😀😀😀' }] };
+    expect(validateJson(rejected, p).some(finding => finding.path === '/label')).toBe(true);
+    expect((await validateGraph(await toRdf(rejected, p), p)).some(finding => finding.path === p.fields.label.iri)).toBe(true);
+    p.fields.label.pattern = '^\\-?[0-9]{3}$';
+    expect(() => assertProfile(p)).toThrow();
+    expect(() => parseProfileDocument(document(), p)).toThrow();
+  });
   it('#6643 self-review: rejects combinatorial optional/ranged patterns before either validator executes them', async () => {
     for (const pattern of ['^a{0,5000}a{0,5000}a{0,5000}b$', '^a?a?a?a?aaaa$', '^a+a?b$', 'a*b', '^a*b|c']) {
       const p = profile(); p.fields.label.pattern = pattern;

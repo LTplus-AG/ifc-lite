@@ -33,6 +33,7 @@ import { attachRoomStepSource } from './room-step-attach';
 import { cleanupRoomModels } from './room-reconstruct-cleanup';
 import { hydrateStructuredEntityAttributes } from './room-structured-attributes';
 import { createCoalescingRunner } from './coalescing-runner';
+import { validatedRoomPropertySnapshot } from './room-property-snapshot';
 /** The slice of the collab runtime the reconstruct needs. */
 export type RoomReconstructRuntime = Pick<typeof import('@ifc-lite/collab'),
   'snapshotToIfcx' | 'listModelSlots' | 'getEntity' | 'entityToJSON'>;
@@ -135,7 +136,7 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
     name: string,
     geometryChanged: boolean,
   ): Promise<{ payload: ViewerModelPayload; state: SlotState } | null> => {
-    const ifcxFile = collab.snapshotToIfcx(session.doc, { slot });
+    const ifcxFile = validatedRoomPropertySnapshot(collab.snapshotToIfcx(session.doc, { slot }), deps.notify);
     const buffer = new TextEncoder().encode(JSON.stringify(ifcxFile)).buffer as ArrayBuffer;
     const payload = await deps.parseIfcx(buffer);
     if (!live()) return null;

@@ -12,6 +12,7 @@ import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lit
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { Mutation, ChangeSet, PropertyValue } from '@ifc-lite/mutations';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
+import { validatePropertyDataType } from '@ifc-lite/export';
 import {
   addDoorToStore,
   addOrdinaryElementInStore,
@@ -1076,6 +1077,12 @@ export const createMutationSlice: StateCreator<
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
+    if (dataType !== undefined) {
+      if (value !== null && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') throw new Error('Explicit property declarations require a scalar value');
+      const declaration = validatePropertyDataType(value, dataType);
+      dataType = declaration.dataType;
+      valueType = declaration.valueType;
+    }
     const mutation = view.setProperty(entityId, psetName, propName, value, valueType, undefined, false, dataType);
 
     set((state) => recordHistory(state, modelId, [mutation]));

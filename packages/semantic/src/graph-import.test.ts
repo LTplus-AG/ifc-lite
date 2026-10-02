@@ -10,6 +10,18 @@ import { DEFAULT_PROFILE } from './profiles.js';
 import { validateGraph } from './validation.js';
 import { LIMITS } from './types.js';
 
+it('PR #6645 Q9Yj: portable SHACL patterns match Unicode and preserve standard flags in the runtime adapter', async () => {
+  const shapes = '@prefix sh:<http://www.w3.org/ns/shacl#>. <urn:s> sh:targetNode <urn:a>;sh:property [sh:path <urn:p>;sh:pattern "^[A-Z].{1,2}$";sh:flags "i"].';
+  expect(await validateGraph('<urn:a> <urn:p> "a😀".', { shapes })).toEqual([]);
+  expect(await validateGraph('<urn:a> <urn:p> "a😀".', { shapes: shapes.replace(';sh:flags "i"', '') })).toHaveLength(1);
+  await expect(validateGraph('<urn:a> <urn:p> "a😀".', { shapes: shapes.replace('flags "i"', 'flags "u"') })).rejects.toThrow('Unsupported SHACL regular-expression flags');
+});
+it('PR #6645 Q9Yj: imported SHACL rejects shorthand classes with differing XPath/JavaScript alphabets', async () => {
+  const pattern = JSON.stringify('^\\d{3}$');
+  const shapes = `@prefix sh:<http://www.w3.org/ns/shacl#>. <urn:s> sh:targetNode <urn:a>;sh:property [sh:path <urn:p>;sh:pattern ${pattern}].`;
+  await expect(validateGraph('<urn:a> <urn:p> "123".', { shapes })).rejects.toThrow('explicit character ranges');
+});
+
 it('PR #6648 review: malformed JSON-LD yields a descriptive error without reflecting input', async () => {
   const secret = 'private-input-token';
   await expect(parseGraph(`{"${secret}":`, { format: 'application/ld+json' })).rejects.toThrow('Invalid JSON-LD JSON syntax');

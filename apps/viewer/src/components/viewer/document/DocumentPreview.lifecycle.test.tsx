@@ -5,6 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { useState } from 'react';
 import { resolveEnglish } from '@/i18n/registry';
 import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types';
@@ -17,6 +18,7 @@ const bindings = { models: [], activeModelId: null, today: new Date('2026-10-02T
 const aggregations = new Map();
 const messages = new Map<string, string>();
 const topics = new Map();
+const replacementImage = `data:image/png;base64,${readFileSync(new URL('../../../../public/favicon-16x16-cropped.png', import.meta.url)).toString('base64')}`;
 const document: DocumentSpec = { version: DOCUMENT_VERSION, id: 'lifecycle', name: 'Current inspection',
   page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'text', id: 'evidence', style: 'body',
     text: Array.from({ length: 100 }, (_, index) => `Inspection evidence ${index + 1}`).join('\n') }] };
@@ -31,6 +33,8 @@ function Editable({ image = false }: { image?: boolean }) {
     <button onClick={() => setSpec({ ...document, id: 'replacement', name: 'Replacement inspection', blocks: [
       { kind: 'text', id: 'replacement-body', style: 'body', text: 'Replacement evidence' }] })}>Replace document</button>
     <button onClick={() => setFailing(true)}>Reject label preparation</button>
+    <button onClick={() => setSpec(previous => ({ ...previous, blocks: previous.blocks.map(block => block.kind === 'image'
+      ? { ...block, dataUrl: replacementImage } : block) }))}>Replace image</button>
     <DocumentPreview document={spec} bindings={bindings} aggregations={aggregations} chartMessages={messages}
       topics={topics} selectedBlockId={null} onSelectBlock={() => {}} labels={failing ? (key, params) => {
         // A captured label dependency can fail during asynchronous composition;
@@ -98,4 +102,28 @@ it('replaces retained content with an actionable asynchronous composition error 
   await waitFor(() => ui.querySelector('[role="alert"]') !== null, 'the real failed composition is reported');
   assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /Captured label preparation failed/);
   assert.equal(ui.querySelector('[data-preview-section]'), null, 'failed preparation cannot leave stale content looking current');
+});
+
+it('retains the captured failed-image fallback while a replacement URL prepares (#6660 review)', async () => {
+  const ui = render(<Editable image />);
+  await waitFor(() => ui.querySelector('[data-layout-pending="true"]') === null
+    && ui.querySelector('[data-preview-block="image"] .border-dashed') !== null,
+  'the original decode failure has a committed square layout');
+  const fallback = ui.querySelector('[data-preview-block="image"] .border-dashed'); assert.ok(fallback);
+  const paper = ui.querySelector('[data-preview-section]'); assert.ok(paper);
+  const replace = Array.from(ui.querySelectorAll('button')).find(button => button.textContent === 'Replace image'); assert.ok(replace);
+  click(replace);
+  assert.equal(ui.querySelector('[data-document-preview]')?.getAttribute('aria-busy'), 'true');
+  assert.equal(ui.querySelector('[data-preview-section]'), paper);
+  assert.equal(ui.querySelector('[data-preview-block="image"] .border-dashed'), fallback,
+    'a retained failed measurement must not revive the old undecodable image');
+  assert.equal(ui.querySelector('[data-preview-block="image"] img'), null);
+  await waitFor(() => ui.querySelector<HTMLImageElement>('[data-preview-block="image"] img')?.getAttribute('src') === replacementImage
+    && ui.querySelector('[data-document-preview]')?.getAttribute('aria-busy') === 'false',
+  'the actual committed PNG replaces the stale failure after shared layout settles');
+  const image = ui.querySelector<HTMLImageElement>('[data-preview-block="image"] img'); assert.ok(image);
+  assert.equal(image.naturalWidth, 16); assert.equal(image.naturalHeight, 16);
+  assert.ok(Math.abs(parseFloat(image.style.height) - parseFloat(image.style.width)) < 0.01);
+  assert.doesNotMatch(ui.textContent ?? '', /The image could not be decoded/);
+  assert.equal(ui.querySelector('[data-preview-section]'), paper);
 });

@@ -32,6 +32,7 @@ const CHECK_ROW_HEIGHT = 26;
 const DESCRIBED_CHECK_ROW_HEIGHT = 38;
 const LINE_PITCH = 11;
 const COMPACT_ROW_HEIGHT = 20;
+const COMPACT_GROUP_GAP = 6;
 const BAR_HEIGHT = 5;
 const BAR_TRACK_COLOR = '#e1e1e1';
 const BAND_COLOR = { good: '#22c55e', warn: '#eab308', bad: '#ef4444' } as const;
@@ -178,14 +179,16 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
     cursor.y += COMPACT_ROW_HEIGHT;
   };
 
-  for (const check of block.checks) {
+  block.checks.forEach((check, index) => {
     const children = childRows(check);
     if (compact) {
+      // A specification starts a new group: air above it (not the first) so it does not read as one more requirement (#6550).
+      if (index > 0) cursor.y += COMPACT_GROUP_GAP;
       // A check that could not be evaluated has no meaningful rate: print its error instead of a bar.
       const bar = check.error === undefined ? { passed: check.passed, checked: check.checked, rate: check.passRate } : undefined;
       compactRow(cursor.x, contentW, `${check.severity === 'warning' ? '(Warning) ' : ''}${check.shortDescription || check.id}`, 9, true, 0, bar, check.error === undefined ? undefined : checkCountsLine(check));
       for (const row of children) compactRow(cursor.x + 10, contentW - 10, row.compactName ?? row.name, 8, false, 45, row.bar, row.detail);
-      continue;
+      return;
     }
     const lines = fit(check.shortDescription || check.id, contentW, 9.5, true, 0);
     if (check.longDescription) lines.push(...fit(check.longDescription, contentW, 8, false, 130));
@@ -202,7 +205,7 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
       cursor.ensure(rowHeight(childLines.length));
       emitLines(cursor, cursor.x + 10, childLines);
     }
-  }
+  });
 
   if (block.checks.length === 0) {
     cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 9, bold: false, gray: 130, text: 'No checks in this report.' });

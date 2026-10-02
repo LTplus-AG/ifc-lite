@@ -24,7 +24,7 @@ import { buildMaterialUsageIndex } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { mergeObjectCounts, summarizeObjects } from './objectCountSummary';
-import { buildOtherGroupNodes, type OtherBucketEntry } from './otherBucket';
+import { appendOtherGroupNodes, type OtherBucketEntry } from './otherBucket';
 import { elementRowType, emitElementsWithOtherBucket, makeShapeTest, type ElementRowView } from './elementSubtree';
 import {
   makeAssemblyGeometry,
@@ -781,7 +781,7 @@ export function buildTypeTree(
 
   // "Other" bucket — geometry-less physical elements, grayed out, after every
   // real class group rather than sorted alphabetically among them (#4764).
-  nodes.push(...buildOtherGroupNodes(otherEntities, 'type-group-other', expandedNodes));
+  appendOtherGroupNodes(nodes, otherEntities, 'type-group-other', expandedNodes);
 
   return nodes;
 }
@@ -973,7 +973,7 @@ export function buildIfcTypeTree(
   // after every real class group (#4764). Flat, not re-nested under their
   // original type, since the point of this row is that it fell out of the
   // class it belongs to.
-  nodes.push(...buildOtherGroupNodes(otherInstances, 'typeclass-other', expandedNodes));
+  appendOtherGroupNodes(nodes, otherInstances, 'typeclass-other', expandedNodes);
 
   return nodes;
 }

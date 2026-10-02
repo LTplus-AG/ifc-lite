@@ -30,20 +30,25 @@ export interface OtherBucketEntry {
 }
 
 /**
- * Build the "Other" bucket header row plus, when expanded, one grayed
- * (`noGeometry: true`) element row per entry. Empty when there is nothing to
- * bucket — including while geometry is still streaming, since callers only
- * collect entries once `AssemblyGeometry.isOther` says so, and it is `false`
- * for everything mid-load (see its own doc).
+ * Append the "Other" bucket header row plus, when expanded, one grayed
+ * (`noGeometry: true`) element row per entry to `nodes`. Appends nothing when
+ * there is nothing to bucket — including while geometry is still streaming,
+ * since callers only collect entries once `AssemblyGeometry.isOther` says so,
+ * and it is `false` for everything mid-load (see its own doc).
+ *
+ * Appends in place rather than returning rows for the caller to spread: an
+ * expanded bucket holds one row per shapeless element, and
+ * `nodes.push(...rows)` past ~120k rows throws `RangeError: Maximum call
+ * stack size exceeded` inside the HierarchyPanel's render.
  */
-export function buildOtherGroupNodes(
+export function appendOtherGroupNodes(
+  nodes: TreeNode[],
   entries: readonly OtherBucketEntry[],
   otherNodeId: string,
   expandedNodes: ExpansionLookup,
-): TreeNode[] {
-  if (entries.length === 0) return [];
+): void {
+  if (entries.length === 0) return;
 
-  const nodes: TreeNode[] = [];
   const isOtherExpanded = expandedNodes.has(otherNodeId);
   nodes.push({
     id: otherNodeId,
@@ -80,6 +85,4 @@ export function buildOtherGroupNodes(
       });
     }
   }
-
-  return nodes;
 }

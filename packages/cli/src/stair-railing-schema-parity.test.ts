@@ -58,8 +58,8 @@ describe.skipIf(!AVAILABLE)('#6232 schema-aware SDK/public run_flow stair and ra
         const peer = mm ? await loadIfcModel(SAMPLE, { modelId: 'peer' }) : null;
         if (peer) registry.add(peer);
         const peerData = peer ? (await saved(peer.bim.export.ifc())).rows : null;
-        const backend = route === 'SDK' ? new HeadlessBackend(target.store, target.id) : target.backend;
-        const bim = route === 'SDK' ? createBimContext({ backend }) : target.bim;
+        const backend = route === 'SDK' ? new HeadlessBackend(target.store, target.id) : null;
+        const bim = backend ? createBimContext({ backend }) : target.bim;
         const add = (type: string, attributes: unknown[]) => bim.store.addEntity(target.id, { type, attributes }).expressId;
         const k = mm ? 1000 : 1;
         const point = add('IfcCartesianPoint', [[10 * k, 20 * k, 2 * k]]), axis = add('IfcDirection', [[0, 0, 1]]), x = add('IfcDirection', [[0, 1, 0]]);
@@ -107,7 +107,7 @@ describe.skipIf(!AVAILABLE)('#6232 schema-aware SDK/public run_flow stair and ra
           const min = kind === 'stair' ? [8.8, 19, 2] : [7.95, 19.95, 2];
           const max = kind === 'stair' ? [10, 20, 2.8] : [8.05, 22.05, 3.1];
           for (let axis = 0; axis < 3; axis++) { expect(box.min[axis]).toBeCloseTo(min[axis], 4); expect(box.max[axis]).toBeCloseTo(max[axis], 4); }
-          const view = backend.tableAccess(target.id).mutationView;
+          const view = backend ? backend.tableAccess(target.id).mutationView : target.backend.getOrCreateMutationView();
           if (!view) throw new Error('Missing live view');
           const journal = view.getMutations(), next = view.peekNextExpressId();
           if (route === 'MCP') expect((await call('run_flow', { model_id: target.id, flow: document(kind, true) })).isError).toBe(true);

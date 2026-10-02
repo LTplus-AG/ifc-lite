@@ -207,7 +207,7 @@ describe('DocumentPanel copies every authored block (#6689)', () => {
       assert.equal(ui.querySelectorAll('[data-block-editor]').length, 3);
       assert.match(ui.querySelector('[data-content-storage] [role="alert"]')?.textContent ?? '', /Browser storage is full/);
       assert.equal((await loadDocuments())[0].blocks.length, 2, 'failed transaction never pretends the copy is durable');
-    } finally { refusal.restore(); }
+    } finally { refusal.mock.restore(); }
     const retry = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Retry save');
     assert.ok(retry);
     click(retry);

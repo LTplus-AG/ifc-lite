@@ -122,10 +122,18 @@ describe.skipIf(!AVAILABLE)('#6232 D5 all ordinary methods on actual loaded back
         const prior = await call('entity_create', { model_id: target.id, type: 'IfcCartesianPoint', attributes: [[7, 8, 9]] });
         expect(prior.isError).not.toBe(true);
         const before = await records(target.bim.export.ifc()), journal = target.backend.getMutationView()!.getMutations();
-        const refs = KINDS.map(kind => kind.add(target.bim, target.id));
+        const refs: EntityRef[] = [], snapshots = [before];
+        for (const kind of KINDS) {
+          refs.push(kind.add(target.bim, target.id));
+          snapshots.push(await records(target.bim.export.ifc()));
+        }
         await assertProducts(target.bim.export.ifc(), refs);
-        expect(target.backend.getMutationView()!.getMutations().length).toBe(journal.length + 8);
-        for (let i = 0; i < 8; i++) expect((await call('mutation_undo', { model_id: target.id })).isError).not.toBe(true);
+        // Compound history retains raw records; its public contract is one
+        // Undo operation per builder, restoring every helper and relationship.
+        for (let i = 7; i >= 0; i--) {
+          expect((await call('mutation_undo', { model_id: target.id })).isError).not.toBe(true);
+          expect(await records(target.bim.export.ifc())).toEqual(snapshots[i]);
+        }
         expect(await records(target.bim.export.ifc())).toEqual(before);
         expect(target.backend.getMutationView()!.getMutations()).toEqual(journal);
         if (count === 2) expect(registry.get('alpha')!.bim.export.ifc()).toEqual(peer);

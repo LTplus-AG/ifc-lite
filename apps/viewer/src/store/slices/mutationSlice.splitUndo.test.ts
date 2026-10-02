@@ -33,6 +33,8 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { IfcParser } from '@ifc-lite/parser';
+// #6592: ancestor validation also reads the parsed storey's placement; use the real app reader.
+import '@/lib/placement-edit.boot';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';

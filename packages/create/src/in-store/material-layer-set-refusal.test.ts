@@ -33,7 +33,7 @@ describe('#6232 canonical material-layer schema refusal', () => {
       const concrete = addMaterialToStore(editor, anchor, { Name: 'Concrete' }).materialId;
       const wool = addMaterialToStore(editor, anchor, { Name: 'Wool' }).materialId;
       editor.addEntity('IfcCartesianPoint', [[7, 8, 9]]);
-      const save = () => new StepExporter(store, view).export({ applyMutations: true }).content;
+      const save = () => new StepExporter(store, view).export({ schema: store.schemaVersion, applyMutations: true }).content;
       const before = await records(save()), journal = view.getMutations(), next = view.peekNextExpressId();
       const layers = [
         { Material: concrete, LayerThickness: .2 },

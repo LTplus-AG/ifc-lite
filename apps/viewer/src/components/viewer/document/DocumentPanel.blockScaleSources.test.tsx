@@ -8,6 +8,7 @@
  * shows exactly what is stored.
  */
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -72,15 +73,17 @@ describe('the block size control is on every block that has text or graphics (#6
 });
 
 describe('a block that takes new evidence keeps its size (#6548)', () => {
-  const choose = async (ui: HTMLElement, id: string): Promise<void> => {
+  const choose = async (ui: HTMLElement, name: string): Promise<void> => {
     const select = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]');
     assert.ok(select, 'the saved report source is offered');
-    act(() => { select.value = id; select.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    const option = [...select.options].find((candidate) => candidate.textContent?.includes(name));
+    assert.ok(option, `the saved report named ${name} is offered`);
+    act(() => { select.value = option.value; select.dispatchEvent(new window.Event('change', { bubbles: true })); });
     await settle();
   };
-  const save = (snapshot: IdsReportBlock | ReturnType<typeof manualReportBlockFromChecklist>, name: string): string => {
+  const save = async (snapshot: IdsReportBlock | ReturnType<typeof manualReportBlockFromChecklist>, name: string): Promise<string> => {
     let id: string | null = null;
-    act(() => { id = useViewerStore.getState().saveValidationReport(snapshot, name); });
+    await act(async () => { id = await useViewerStore.getState().saveValidationReport(snapshot, name); });
     assert.ok(id, 'the report history accepted the snapshot');
     return id;
   };
@@ -97,23 +100,23 @@ describe('a block that takes new evidence keeps its size (#6548)', () => {
   });
 
   it('choosing a saved IDS report for an IDS block', async () => {
-    const savedId = save({ ...ids, id: 'saved', scale: undefined, sourceName: 'Frozen IDS' }, 'Frozen');
+    await save({ ...ids, id: 'saved', scale: undefined, sourceName: 'Frozen IDS' }, 'Frozen');
     const changes: DocumentBlock[] = [];
     const ui = editor(ids, (b) => changes.push(b));
-    await choose(ui, savedId);
+    await choose(ui, 'Frozen');
     assert.equal((changes[0] as IdsReportBlock).sourceName, 'Frozen IDS');
     assert.equal((changes[0] as IdsReportBlock).scale, 1.5);
   });
 
   it('choosing a saved manual report for an IDS block, and a saved IDS report for a manual block', async () => {
-    const manualId = save({ ...manual, id: 'saved-manual' }, 'Frozen manual');
-    const idsId = save({ ...ids, id: 'saved-ids', scale: undefined }, 'Frozen IDS');
+    await save({ ...manual, id: 'saved-manual' }, 'Frozen manual');
+    await save({ ...ids, id: 'saved-ids', scale: undefined }, 'Frozen IDS');
     const changes: DocumentBlock[] = [];
-    await choose(editor(ids, (b) => changes.push(b)), manualId);
+    await choose(editor(ids, (b) => changes.push(b)), 'Frozen manual');
     assert.equal(changes[0].kind, 'manual-report');
     assert.equal((changes[0] as { scale?: number }).scale, 1.5, 'an IDS block turned into a manual report');
     cleanup();
-    await choose(editor({ ...manual, scale: 0.75 }, (b) => changes.push(b)), idsId);
+    await choose(editor({ ...manual, scale: 0.75 }, (b) => changes.push(b)), 'Frozen IDS');
     assert.equal(changes[1].kind, 'ids-report');
     assert.equal((changes[1] as { scale?: number }).scale, 0.75, 'a manual block turned into an IDS report');
   });

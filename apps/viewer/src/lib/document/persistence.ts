@@ -9,6 +9,7 @@
  */
 import type { ContentDefinition } from '../storage/content-migration.js';
 import { readContentEntries } from '../storage/content-reader.js';
+import { rebindCommittedDocument } from '../storage/content-backup-references.js';
 import { trackExportCompleted } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
 import { migrateDocumentSpec, validateDocumentSpec, type DocumentSpec } from './types.js';
@@ -16,6 +17,7 @@ import { migrateDocumentSpec, validateDocumentSpec, type DocumentSpec } from './
 const DOCUMENTS_STORAGE_KEY = 'ifc-lite-documents';
 export const documentContent: ContentDefinition<DocumentSpec> = {
   kind: 'document', legacyKey: DOCUMENTS_STORAGE_KEY,
+  mergeCommitted: rebindCommittedDocument,
   decode: value => {
     // Existing valid blocks retain their references during cosmetic edits. Re-migrating
     // them would rerun embedded IFC lists on every keystroke (#6679).

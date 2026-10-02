@@ -4,6 +4,7 @@
 
 import { sameReportEvidence } from '@/lib/flow/report-provenance';
 import type { StateCreator } from 'zustand';
+import type { ContentCommitReceipt } from '@/lib/storage/content-library';
 import { createContentLibrary, initialContentStatus, type ContentStatus } from '@/lib/storage/content-library';
 import { newSavedReport, savedReportWithProvenance, validateSavedReport, type SavedValidationReport, type ValidationReportSnapshot } from '@/lib/validation/reports/history';
 import { validationContent } from '@/lib/validation/reports/persistence';
@@ -12,7 +13,7 @@ export interface ValidationReportsSlice {
   savedValidationReports: SavedValidationReport[];
   validationReportsStorage: ContentStatus;
   initializeValidationReports: () => Promise<boolean>;
-  refreshValidationReports: () => Promise<void>;
+  refreshValidationReports: (committed?: readonly ContentCommitReceipt[]) => Promise<boolean>;
   restoreValidationReports: () => Promise<boolean>;
   retryValidationReportsSave: () => Promise<boolean>;
   saveValidationReport: (snapshot: ValidationReportSnapshot, name?: string) => Promise<string | null>;

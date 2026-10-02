@@ -5,6 +5,7 @@
 import { IdbConnectionLifecycle } from '../../services/idb-connection.js';
 import { sameReportEvidence } from '../flow/report-provenance.js';
 import { announceContentChange } from './content-events.js';
+import { contentImportIdentity } from './content-import-identity.js';
 
 const CONTENT_DATABASE = 'ifc-lite-user-content';
 export type ContentKind = 'validation' | 'comparison' | 'document';
@@ -109,9 +110,11 @@ export async function writeContent(kind: ContentKind, id: string, payload: unkno
         }
       }
       const revision = expected + 1;
+      // Only a new, revision-checked identity may consume staged import provenance.
+      const importedFrom = current?.importedFrom ?? (!current ? contentImportIdentity(kind, id) : undefined);
       store.put({ kind, id, version: 1, revision, createdAt: current?.createdAt ?? contentCreatedAt(),
         modifiedAt: Date.now(), deleted: payload === null, payload,
-        ...(current?.importedFrom ? { importedFrom: current.importedFrom } : {}) } satisfies ContentRow);
+        ...(importedFrom ? { importedFrom } : {}) } satisfies ContentRow);
       result = { ok: true, revision };
     };
     await done;

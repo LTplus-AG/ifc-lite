@@ -5,6 +5,7 @@
 import type { StateCreator } from 'zustand';
 import type { DocumentSpec } from '@/lib/document/types';
 import { documentContent } from '../../lib/document/persistence.js';
+import type { ContentCommitReceipt } from '@/lib/storage/content-library';
 import { createContentLibrary, initialContentStatus, type ContentStatus } from '@/lib/storage/content-library';
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
@@ -12,7 +13,7 @@ export interface DocumentSlice {
   documents: DocumentSpec[];
   documentsStorage: ContentStatus;
   initializeDocuments: () => Promise<boolean>;
-  refreshDocuments: () => Promise<void>;
+  refreshDocuments: (committed?: readonly ContentCommitReceipt[]) => Promise<boolean>;
   restoreDocuments: () => Promise<boolean>;
   retryDocumentsSave: () => Promise<boolean>;
   activeDocumentId: string | null;

@@ -1,0 +1,29 @@
+{
+  "version": 11,
+  "id": "document-d4d792ce-8ae2-4118-a6c8-83df1d43ad90",
+  "name": "Untitled document",
+  "page": {
+    "size": "A4",
+    "orientation": "portrait"
+  },
+  "blocks": [
+    {
+      "kind": "text",
+      "id": "block-43fa4646-14ee-43cd-ad56-af8c6351207b",
+      "style": "title",
+      "text": "{IfcProject.Name}"
+    },
+    {
+      "kind": "text",
+      "id": "block-010a0255-1e5b-4d79-981d-479ca290c9f0",
+      "style": "title",
+      "text": "Copied {IfcProject.Name}"
+    },
+    {
+      "kind": "text",
+      "id": "block-376148c1-b836-4eda-bf98-a0841a4aa313",
+      "style": "body",
+      "text": ""
+    }
+  ]
+}

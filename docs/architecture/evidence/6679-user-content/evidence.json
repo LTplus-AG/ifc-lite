@@ -1,6 +1,6 @@
 {
   "issue": 6679,
-  "capturedAt": "2026-10-02T14:51:18.996669+00:00",
+  "capturedAt": "2026-10-02T15:36:34.618926+00:00",
   "baseCommit": "e134f79e92e18d35c48b23b4d8fd9e25998896e9",
   "model": {
     "path": "apps/viewer/public/samples/building-architecture.ifc",
@@ -18,15 +18,15 @@
     },
     {
       "command": "TEST_PATTERN='(content-controller|content-library|ContentStorageNotice|content-import-plan)' pnpm test --filter=@ifc-lite/viewer --env-mode=loose --only",
-      "result": "46 passed, 0 failed against the final main-based controls tree; includes 11 native import-planner tests, the mounted source-conflict retry test, and four localization cases"
+      "result": "47 passed, 0 failed; includes 11 native import-planner tests, mounted source conflicts, refused identity verification, and four localization cases"
     },
     {
       "command": "PLAYWRIGHT_PORT=5684 pnpm test:e2e:ci tests/e2e/content-storage.e2e.spec.ts --reporter=list",
-      "result": "4 passed, 0 failed (20.8 seconds), final reviewed application build"
+      "result": "4 passed, 0 failed (22.1 seconds), rebuilt after final Retry save verification feedback change"
     },
     {
       "command": "pnpm lint",
-      "result": "passed; 8280 files, 136 rules, no errors"
+      "result": "passed; 8283 files, 136 rules, no errors on the final Retry save feedback source"
     }
   ],
   "browserWitnesses": [
@@ -44,7 +44,7 @@
   ],
   "productionSourceSHA256": {
     "apps/viewer/src/bootstrap.tsx": "6a2ded5ea079bf3d4448c134e8e97a0d4a58ae3f343b17d255c874c5145d5f8c",
-    "apps/viewer/src/components/viewer/ContentStorageNotice.tsx": "0561a055d44cb777c11f08af6b6481b1fe9745b73825f53576fa1c978e2d847f",
+    "apps/viewer/src/components/viewer/ContentStorageNotice.tsx": "5ce3717291f7b925d72a43bf8a68e4888e01ef306e86df3cbf7d44394ce8b696",
     "apps/viewer/src/components/viewer/compare/SavedComparisonHistoryNotice.tsx": "b7f5bd4bb077fd49158c7ed8ac8cb9a8d58c901a0d4a934d7863228e544669bb",
     "apps/viewer/src/components/viewer/compare/SavedComparisonLibrary.tsx": "94727825e0f96b974a25e721252f8529307e0dd9792dac1794455b4a8f96c2cd",
     "apps/viewer/src/components/viewer/document/BlockEditor.parts.tsx": "0745fac214a3e24965e54ba21eee4d0dddbc956f44a0d6ab94ae94e50515471c",
@@ -71,6 +71,11 @@
     "apps/viewer/src/lib/flow/automation-host.ts": "9256dfb4685dba2399a86c626d228a3a6dcb93cf6aed5126d10c382287879282",
     "apps/viewer/src/lib/flow/check-host.ts": "de5bde0f0cc3edd3cedbd3ff0a5a0967b463d43b8d62ad816e79d9bdf6e60622",
     "apps/viewer/src/lib/flow/report-retention.ts": "b36682aaa68643070697929c1c61457c267dae377077cd769ec44bf50f35f7ca",
+    "apps/viewer/src/lib/geo/cesium-bridge.ts": "a6ba9cb22f7e9f0d581950c34d4bcc26603e35b078c6226a52e43f4efc193c8b",
+    "apps/viewer/src/lib/geo/cesium-placement.ts": "0672bc3a93e77c82368ddd9fc6ac5a2fb92886af8473da4edaca7290d7b8549d",
+    "apps/viewer/src/lib/geo/double-georeference.ts": "79e501cb0aa2922d1d69327df1ac69f64f2fda500160634c71048f0ef2113396",
+    "apps/viewer/src/lib/geo/map-axis-direction.ts": "3b880ab128711c3cf7922a8c94407c947679f047f23492b91407453671b081da",
+    "apps/viewer/src/lib/geo/reproject.ts": "4e13f72e5bce3c575423b53184f37d9ecf1cf6a7f3a0e1f5f09da5013bea88bc",
     "apps/viewer/src/lib/storage/content-backup-drafts.ts": "5cb4580be42a6f4774eedd20e60cb24e15d47a9142eb9786ceaa5d9949571a4c",
     "apps/viewer/src/lib/storage/content-backup-references.ts": "acdb1d48d686d1086532be6ba9f7b6181eb1daa11c68d4c6014dae6965db022c",
     "apps/viewer/src/lib/storage/content-backup.ts": "463a14d369f8f33fa05a9570872e66f9babfd79e90ceb13f9dc8b3961b4e2d17",
@@ -87,14 +92,14 @@
     "apps/viewer/src/store/slices/savedComparisonsSlice.ts": "78cecc8da8dfd14a2eaca62a36c9d4161762b582c908549898ab4dbb4797f1ec",
     "apps/viewer/src/store/slices/validationReportsSlice.ts": "f6bce3be0131b0c92e6ba1f7b631bf6db49da217b4c8843eeac79f4868786917"
   },
-  "buildBaseCommit": "3330e1c74f55ada4b074590455f1ad3f64054585",
-  "browserBuildSourceCommit": "9b9683d947456efd4258c5b5807722e2c275b2fd",
+  "buildBaseCommit": "2323207641c8858426faa029ed024ff28ae6685e",
+  "browserBuildSourceCommit": "676a3af4398ca665d1e3f5ce117cf027ea66a75f",
   "browserExecution": {
     "previewCheckout": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-5679352b",
     "port": 5684,
     "testRunnerCheckout": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-5679352b",
     "testSourceSHA256": "bc9d06205d595544660206a556ae37215a6fe2a629a46fb40793fd752303417e",
-    "note": "The explicit preview serves the viewer built from browserBuildSourceCommit. The final test setup preserves the seeded starter document. Subsequent evidence-only commits and stack rebases preserve these application bytes."
+    "note": "The explicit preview serves the viewer rebuilt from browserBuildSourceCommit, including the final Retry save warning. Subsequent evidence-only commits preserve these application bytes."
   },
-  "recordedAt": "2026-10-02T14:56:03.763432+00:00"
+  "recordedAt": "2026-10-02T15:37:25.986515+00:00"
 }

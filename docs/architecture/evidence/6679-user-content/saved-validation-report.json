@@ -1,12 +1,12 @@
 {
-  "id": "validation-report-9d84c95c-10dc-4228-b1be-9cd0b19073ff",
+  "id": "validation-report-741c6163-cd1b-4aee-aebf-4dc2da7966ea",
   "name": "Storage witness 6679",
   "snapshot": {
     "kind": "ids-report",
-    "id": "validation-report-9d84c95c-10dc-4228-b1be-9cd0b19073ff",
+    "id": "validation-report-741c6163-cd1b-4aee-aebf-4dc2da7966ea",
     "sourceKind": "rules",
     "sourceName": "Storage witness 6679",
-    "generatedAt": "2026-10-02T11:08:01.869Z",
+    "generatedAt": "2026-10-02T12:23:26.986Z",
     "summary": {
       "checked": 4,
       "passed": 2,
@@ -31,6 +31,6 @@
         "fingerprint": "building-architecture.ifc:f778982157aa24e"
       }
     ],
-    "savedReportId": "validation-report-9d84c95c-10dc-4228-b1be-9cd0b19073ff"
+    "savedReportId": "validation-report-741c6163-cd1b-4aee-aebf-4dc2da7966ea"
   }
 }

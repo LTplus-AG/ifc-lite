@@ -7,7 +7,7 @@ import { Renderer } from './index.js';
 
 // #6709: run the actual Renderer.render viewport path. Only the GPU is absent;
 // buffer measurement, configured preferences and per-frame options are real.
-// No context intentionally stops the frame after resizing, before GPU encoding.
+// An unbound context stops after resizing, before GPU encoding.
 describe('Renderer frame-local resolution (#6709)', () => {
   it('restores capture-frame dimensions and respects a lower consumer cap', () => {
     const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
@@ -20,6 +20,7 @@ describe('Renderer frame-local resolution (#6709)', () => {
       const renderer = new Renderer(canvas);
       const deviceState = renderer['device'] as unknown as Record<string, unknown>;
       deviceState.device = { limits: { maxTextureDimension2D: 8192 } };
+      deviceState.context = {}; // Initialized, but deliberately not bound to a GPU canvas.
       const resizes: number[][] = [];
       (renderer as unknown as Record<string, unknown>).pipeline = {
         resize: (width: number, height: number) => resizes.push([width, height]),

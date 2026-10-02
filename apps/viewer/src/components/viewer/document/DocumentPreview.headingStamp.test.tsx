@@ -133,7 +133,7 @@ it('keeps authored heading ink, backing strips and measured glyph positions in t
   ];
   const blocks = authored.map(block => ({ ...block, title: `Heading ${block.id}`, titleFontSize: 20, titleTextColor: ink, titleBackgroundColor: fill, scale: 1.5 }));
   const document = documentOf(blocks);
-  const input: DocumentPdfInput = { document, bindings: { models: [], activeModelId: null, today: now },
+  const input: DocumentPdfInput = { document, labels: captureTranslation(), bindings: { models: [], activeModelId: null, today: now },
     aggregations: new Map([['chart', content.aggregation]]), chartMessages: new Map(), snapshotIds: () => [],
     topics: new Map([['coordination', { guid: 'coordination', title: 'Coordination', description: 'Authored topic', viewpoints: [], comments: [] }]]),
     tables: new Map([['table', { status: 'ok', kind: 'validation', model: { columns: [{ label: 'Rule', numeric: false }],

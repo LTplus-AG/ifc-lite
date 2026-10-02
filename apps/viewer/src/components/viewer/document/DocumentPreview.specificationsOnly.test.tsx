@@ -12,7 +12,7 @@ import { cleanup, render } from '@/test/render';
 import { documentPreviewReady } from '@/test/document-preview';
 import { captureTranslation, registerLocale, setLocale } from '@/i18n/registry';
 import { DOCUMENT_VERSION, type DocumentSpec, type IdsReportBlock } from '@/lib/document/types';
-import { generateDocumentPdf } from '@/lib/document/generate-document-pdf';
+import { browserImageSize, generateDocumentPdf } from '@/lib/document/generate-document-pdf';
 import { browserReportSeams } from '@/lib/export/report/generate-report-pdf';
 import { pageBox } from '@/lib/export/report/compose';
 import { RING_COLORS } from '@/lib/validation/manual/ring';
@@ -90,7 +90,7 @@ it('preserves specifications-only, captured locale and block scale in canonical 
       await documentPreviewReady();
       const glyphs = Array.from(ui.querySelectorAll('[data-preview-block="report"] span'), node => node.textContent?.trim() ?? '');
       assert.ok(ui.querySelector('[data-validation-benchmark] img'), 'the actual composed benchmark ring remains visible');
-      const pdf = await generateDocumentPdf(input, seams);
+      const pdf = await generateDocumentPdf(input, { ...seams, imageSize: browserImageSize });
       const printed = await printedText(pdf.blob);
       for (const items of [glyphs, printed.map(item => item.str)]) {
         assert.ok(items.includes('(Achtung) Geschoss'), 'the warning is localized before measurement');

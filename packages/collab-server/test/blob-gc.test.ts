@@ -77,6 +77,18 @@ function updateReferencingSidecar(hash: string): Uint8Array {
   return update;
 }
 
+/**
+ * One length-prefixed room-log frame for `update`, built from a SINGLE update.
+ * `updateReferencing` embeds a random Yjs client id, so two calls differ in
+ * byte length (72, 74 or 76): a prefix taken from one call and a body from
+ * another truncates or drops the frame on some runs.
+ */
+function logFrame(update: Uint8Array): Buffer {
+  const header = Buffer.alloc(4);
+  header.writeUInt32LE(update.byteLength, 0);
+  return Buffer.concat([header, Buffer.from(update)]);
+}
+
 async function writeRoom(roomId: string, hashes: string[]) {
   await new FilePersistence({ dataDir }).append(roomId, updateReferencing(hashes));
 }
@@ -167,13 +179,7 @@ describe('blob gc', () => {
     // A foreign or hand-copied `*.log` can carry a malformed escape. The scan
     // must read it by NAME (its references still protect blobs) instead of
     // decoding the name into a room id, which throws `URIError`.
-    fs.writeFileSync(
-      path.join(dataDir, '%E0%A4%A.log'),
-      Buffer.concat([
-        (() => { const h = Buffer.alloc(4); h.writeUInt32LE(updateReferencing([A]).byteLength, 0); return h; })(),
-        Buffer.from(updateReferencing([A])),
-      ]),
-    );
+    fs.writeFileSync(path.join(dataDir, '%E0%A4%A.log'), logFrame(updateReferencing([A])));
     await writeRoom('ordinary-room', [B]);
 
     const scan = await collectPersistedBlobRefs(dataDir);
@@ -184,10 +190,7 @@ describe('blob gc', () => {
   it('reads a log whose name is a non-canonical but decodable encoding', async () => {
     // `a%41` decodes to `aA`, which re-encodes to a DIFFERENT file name; a
     // decode-then-load scan would read `aA.log` (absent) and see nothing.
-    const body = updateReferencing([C]);
-    const header = Buffer.alloc(4);
-    header.writeUInt32LE(body.byteLength, 0);
-    fs.writeFileSync(path.join(dataDir, 'a%41.log'), Buffer.concat([header, Buffer.from(body)]));
+    fs.writeFileSync(path.join(dataDir, 'a%41.log'), logFrame(updateReferencing([C])));
 
     const scan = await collectPersistedBlobRefs(dataDir);
     expect([...scan.refs]).toEqual([C]);

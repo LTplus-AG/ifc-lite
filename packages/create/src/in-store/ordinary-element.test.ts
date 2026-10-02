@@ -100,7 +100,7 @@ describe('#6232 D5 ordinary atomic commit', () => {
         draft => resolveSpatialAnchor(s.store, STOREY, draft.getMutationView()), element);
       expect(replacement.removedIds).toEqual([id]);
       expect(s.view.isDeleted(id)).toBe(true);
-      expect(s.view.getNewEntity(replacement.expressId)?.type).toBe(`IFC${element.kind.toUpperCase()}`);
+      expect(s.view.getNewEntity(replacement.expressId)?.type.toUpperCase()).toBe(`IFC${element.kind.toUpperCase()}`);
       const replaced = await new IfcParser().parseColumnar(s.saved().slice().buffer as ArrayBuffer, { disableWorkerScan: true });
       expect(replaced.entityIndex.byId.has(id)).toBe(false);
       expect(replaced.entityIndex.byId.has(replacement.expressId)).toBe(true);

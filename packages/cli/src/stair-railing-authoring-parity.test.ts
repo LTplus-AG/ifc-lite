@@ -15,7 +15,7 @@ import { StoreEditor } from '@ifc-lite/mutations';
 import { EntityExtractor, getSchemaRegistryForVersion, IfcParser } from '@ifc-lite/parser';
 import { createBimContext, type EntityRef } from '@ifc-lite/sdk';
 import { MemoryTrackingStore, runFlow, type FlowDocument } from '@ifc-lite/flow';
-import { createStandardRegistry, headlessFeatures, type FlowHost } from '@ifc-lite/flow-nodes';
+import { createStandardRegistry, headlessFeatures, type FlowHost } from '../../flow-nodes/src/index.js';
 import { createMCPServer, fullScope, InMemoryModelRegistry, InProcessTransport,
   loadIfcModel, type CallToolResult } from '@ifc-lite/mcp';
 import { meshStairs, stairMeshBounds, stairWasmAvailable } from '../../create/src/in-store/__test__/stair-mesh.oracle.js';

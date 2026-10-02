@@ -16,7 +16,7 @@ import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { matches, score, validatorReason, REVIEWER_FAULT, INSTRUMENT_FAULT, JUDGE_LOG_RE } from './rubric-eval.mjs';
-import { REASONS } from './validate-findings.mjs';
+import { REASONS, stripFence } from './validate-findings.mjs';
 import { DEFECT_CLASSES, notApplicableClasses } from './lib/defect-classes.mjs'; // #3831
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -415,7 +415,7 @@ writeFileSync(countPath, String(calls + 1));
   return { path: p, count };
 }
 
-const runHarness = (dir, reviewer) => spawnSync(
+const runHarness = (dir, reviewer, extraArgs = []) => spawnSync(
   process.execPath,
   // `--no-judge`, or this unit test SPAWNS THE REAL MODEL. spawnSync inherits
   // process.env, so on any machine with CLAUDE_CODE_OAUTH_TOKEN exported -- the
@@ -424,7 +424,7 @@ const runHarness = (dir, reviewer) => spawnSync(
   // discretion. It passes today only because an absent token fails soft. This
   // test is about the validate-then-score wiring; run-judge has its own suite.
   [join(HERE, 'rubric-eval.mjs'), '--cases', dir, '--reviewer', reviewer,
-   '--rubric', join(HERE, 'rubric.md'), '--no-judge'],
+   '--rubric', join(HERE, 'rubric.md'), '--no-judge', ...extraArgs],
   { encoding: 'utf8' },
 );
 
@@ -771,4 +771,43 @@ test('#3831 round 2: notApplicableClasses reads nothing off a verdict the pass n
   assert.deepEqual(notApplicableClasses({ verdict: 'findings', class_pass: rows }), []);
   assert.deepEqual(notApplicableClasses({ class_pass: rows }), []);
   assert.deepEqual(notApplicableClasses({ verdict: 'clean' }), []);
+});
+
+
+test('comparison preserves validation evidence and a score without deleting output-dir', (t) => {
+  const dir = tmpCase(t);
+  evalCase(dir, { expected: [] });
+  const reviewer = stubReviewer(dir, fenced([], 'clean', { class_pass: classPass() }));
+  const output = join(dir, 'evidence');
+  const r = runHarness(dir, reviewer, ['--output-dir', output]);
+  assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+  const report = JSON.parse(readFileSync(join(output, 'score.json'), 'utf8'));
+  assert.equal(report.judgeRequested, false);
+  assert.equal(report.results.length, 1);
+  assert.equal(report.results[0].verdict, 'clean');
+  const validation = JSON.parse(readFileSync(join(output, 'case.json.validation.json'), 'utf8'));
+  assert.equal(validation.attempts, 1);
+  assert.equal(validation.reason, null);
+  const raw = JSON.parse(stripFence(readFileSync(join(output, 'case.json.out.txt'), 'utf8')));
+  assert.equal(raw.end, 'ifc-lite-review-v1');
+});
+
+
+test('resume revalidates saved evidence without invoking the reviewer again', (t) => {
+  const dir = tmpCase(t);
+  evalCase(dir, { expected: [] });
+  const output = join(dir, 'evidence');
+  const reviewer = stubReviewer(dir, fenced([], 'clean', { class_pass: classPass() }));
+  assert.equal(runHarness(dir, reviewer, ['--output-dir', output]).status, 0);
+  writeFileSync(join(output, 'case.json.out.txt.telemetry.jsonl'), `${JSON.stringify({ model: process.env.EVAL_MODEL || 'sonnet' })}\n`);
+  const firstAttempt = 'invalid first attempt retained before a valid retry';
+  writeFileSync(join(output, 'case.json.initial.out.txt'), firstAttempt);
+  // Invoking this process again would fail, so success proves the cached model
+  // output goes through the actual validator without a second generation.
+  writeFileSync(reviewer, 'process.exit(91);');
+  const r = runHarness(dir, reviewer, ['--output-dir', output, '--resume']);
+  assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+  assert.equal(readFileSync(join(output, 'case.json.initial.out.txt'), 'utf8'), firstAttempt);
+  const report = JSON.parse(readFileSync(join(output, 'score.json'), 'utf8'));
+  assert.equal(report.results[0].verdict, 'clean');
 });

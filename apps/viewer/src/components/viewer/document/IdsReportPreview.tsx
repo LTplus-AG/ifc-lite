@@ -86,7 +86,7 @@ function RateBar({ rate }: { rate: number | null }) {
 function CompactRow({ name, passed, checked, rate, nested, error, warning }: { name: string; passed: number | null; checked: number; rate: number | null; nested?: boolean; error?: string; warning?: boolean }) {
   const { t, locale } = useTranslation();
   return (
-    <li className={`flex items-center gap-2 ${nested ? 'text-2xs' : 'text-xs font-medium'}`} data-ids-report-row>
+    <li className={`flex items-center gap-2 ${nested ? 'text-2xs' : 'text-xs font-semibold'}`} data-ids-report-row>
       <span className="w-2/5 min-w-0 truncate" title={name}>
         {warning && <span className="mr-1 rounded bg-amber-100 px-1 font-semibold text-amber-900" data-ids-report-warning>{t('document.preview.idsReportWarningTag')}</span>}
         {name}
@@ -107,17 +107,25 @@ function CompactRow({ name, passed, checked, rate, nested, error, warning }: { n
 
 function CompactChecks({ block }: { block: IdsReportBlock }) {
   return (
-    <ul className="mt-1 flex flex-col gap-1" data-ids-report-checks={block.checks.length} data-ids-report-variant="compact">
-      {block.checks.flatMap((check) => [
-        <CompactRow key={check.id} name={check.shortDescription || check.id} passed={check.passed} checked={check.checked} rate={check.passRate} error={check.error} warning={check.severity === 'warning'} />,
-        // Specifications only (#6560): the group heads without their requirement and detail rows.
-        ...(block.specificationsOnly ? [] : [
-          ...check.rules.map((rule) => (
-            <CompactRow key={`${check.id}/${rule.id}`} nested name={rule.name ?? (rule.shortDescription || rule.id)} passed={rule.passed} checked={rule.checked} rate={rule.passRate} />
-          )),
-          <li key={`${check.id}/details`} className="ml-3 list-none"><ul className="space-y-1"><RuleDetailRows check={check} /></ul></li>,
-        ]),
-      ])}
+    <ul className="mt-1 flex flex-col gap-2.5" data-ids-report-checks={block.checks.length} data-ids-report-variant="compact">
+      {/* A specification heads a group; its requirements sit indented under a rule, as the PDF indents them (#6550). */}
+      {block.checks.map((check) => (
+        <li key={check.id} className="list-none" data-ids-report-spec={check.id}>
+          <ul className="flex flex-col gap-1">
+            <CompactRow name={check.shortDescription || check.id} passed={check.passed} checked={check.checked} rate={check.passRate} error={check.error} warning={check.severity === 'warning'} />
+            {!block.specificationsOnly && (check.rules.length > 0 || !!check.cardinality || (check.sets?.length ?? 0) > 0 || !!check.setsTruncated) && (
+              <li className="ml-3 list-none border-l border-neutral-200 pl-2">
+                <ul className="flex flex-col gap-1" data-ids-report-requirements={check.rules.length}>
+                  {check.rules.map((rule) => (
+                    <CompactRow key={rule.id} nested name={rule.name ?? (rule.shortDescription || rule.id)} passed={rule.passed} checked={rule.checked} rate={rule.passRate} />
+                  ))}
+                  <RuleDetailRows check={check} />
+                </ul>
+              </li>
+            )}
+          </ul>
+        </li>
+      ))}
     </ul>
   );
 }

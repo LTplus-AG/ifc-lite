@@ -85,7 +85,8 @@ for (const count of [1, 2]) {
     const nextInput = ui.querySelector<HTMLInputElement>('input[type="file"][accept=".rules.json,.json"]');
     assert.ok(nextInput, 'import stays available alongside the active definition');
     await pick(nextInput, new File([rules.replace('Delivery rules', 'Peer rules')], 'peer.rules.json', { type: 'application/json' }));
-    await waitFor(() => select(ui, 'Select rule set').options.length >= 2);
+    await waitFor(() => ui.querySelector<HTMLInputElement>('input[aria-label="Rule set name"]')?.value === 'Peer rules');
+    assert.ok(select(ui, 'Select rule set').options.length >= 2);
     assert.notEqual(select(ui, 'Select rule set').value, firstId, 'the second import has independent definition identity');
     await choose(select(ui, 'Select rule set'), firstId);
     assert.equal(ui.querySelector<HTMLInputElement>('input[aria-label="Rule set name"]')?.value, 'Edited delivery rules');
@@ -110,7 +111,8 @@ for (const count of [1, 2]) {
     const nextInput = ui.querySelector<HTMLInputElement>('input[type="file"][accept=".ids,.xml"]');
     assert.ok(nextInput);
     await pick(nextInput, new File([secondXml], 'independent.ids', { type: 'application/xml' }));
-    await waitFor(() => select(ui, 'Select IDS document').options.length >= 2);
+    await waitFor(() => useViewerStore.getState().idsDocument?.info.title === 'Independent IDS check');
+    assert.ok(select(ui, 'Select IDS document').options.length >= 2);
     assert.notEqual(select(ui, 'Select IDS document').value, firstId);
     await choose(select(ui, 'Select IDS document'), firstId);
     await waitFor(() => useViewerStore.getState().idsDocument?.info.title === parsed.info.title);

@@ -111,5 +111,5 @@
     "firstDiagnostic": "cda070ed8924bf9f59a1a27c764794e52917b457d1b6368763739eb047cd0e06",
     "finalDiagnostic": "6fef018163a82c67d15046abfcf065f0b8801221ad16e5d8b52ab45ec706ca90"
   },
-  "correctionQualification": "Pending: the changed full-byte assertion and real-model corruption controls have not yet run."
+  "correctionQualification": "Qualified at source b51481d3 on main04e: restored normal5 passed,0 failed,0 skipped; both helper-negative controls each3 passed and2 genuine assertion failures; root-equivalent typecheck111/111 and audit3319 files across57 packages. See qualification.json; historical diagnostic source and traces remain distinct."
 }

@@ -73,6 +73,13 @@ describe('reload resume', () => {
     assert.equal(takeResumeIntent(deps()), null);
   });
 
+  it('a reload with nothing open clears the intent a cancelled earlier reload left behind', () => {
+    openLocal('a', 'tower.ifc');
+    persistResumeIntent('automatic', deps()); // navigation cancelled: no boot consumed this
+    models.delete('a'); // the user closes everything, then reloads again
+    assert.equal(reloadAndTake(), null);
+  });
+
   it('does not bring back a model the user closed before the reload', () => {
     // The review repro: load a model, add a second, remove the second, stale reload.
     openLocal('a', 'hello-wall.ifc');

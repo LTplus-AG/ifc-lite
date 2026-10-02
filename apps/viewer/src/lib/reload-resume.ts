@@ -154,7 +154,11 @@ const defaultDeps = (): PersistDeps => ({ now: () => Date.now(), storage: sessio
 export function persistResumeIntent(trigger: ReloadTrigger, deps: PersistDeps = defaultDeps()): void {
   if (!deps.storage) return;
   const files = resumableFiles(readOpenModels());
-  if (files.length === 0) return;
+  if (files.length === 0) {
+    // Nothing open now: drop any intent left by an earlier, cancelled reload so it can't restore closed models.
+    try { deps.storage.removeItem(KEY); } catch { /* blocked store: nothing to clear */ }
+    return;
+  }
   const now = deps.now();
   const inCooldown = lastAutoReopenAt !== null && now - lastAutoReopenAt >= 0 && now - lastAutoReopenAt < AUTO_REOPEN_COOLDOWN_MS;
   const reopen = trigger === 'user' || !inCooldown;

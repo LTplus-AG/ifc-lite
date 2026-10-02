@@ -438,10 +438,14 @@ describe('#6581 races', () => {
       ...ac.serverOptions,
       [route]: {
         ...endpoint,
+        // Answers as the deny-list stood when asked, like a remote read whose
+        // reply is in flight; anything that lands meanwhile is the policy's
+        // recheck to catch.
         isRevoked: async (jti: string) => {
+          const answer = await isRevoked(jti);
           parked();
           await gate;
-          return isRevoked(jti);
+          return answer;
         },
       },
     });

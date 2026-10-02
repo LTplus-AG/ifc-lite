@@ -180,6 +180,21 @@ describe('Saved manual report editable reuse (#6611)', () => {
     assert.equal(JSON.stringify(loadValidationReports()[0]), original);
   });
 
+  it('starts a recovered copy on its recorded source despite a previous live peer pick (#6611)', async () => {
+    const { source, peer, ui } = await saveThenReopenHistory(2);
+    assert.ok(peer);
+    act(() => useViewerStore.getState().setManualChecklist(checklist));
+    const picker = ui.querySelector<HTMLSelectElement>('select[aria-label="Model"]');
+    assert.ok(picker);
+    act(() => { picker.value = peer.id; picker.dispatchEvent(new Event('change', { bubbles: true })); });
+    assert.equal(picker.value, peer.id);
+    const history = ui.querySelector<HTMLDetailsElement>('[data-saved-validation-reports]');
+    assert.ok(history); act(() => { history.open = true; });
+    click(button(ui, 'Edit a copy'));
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Model"]')?.value, source.id);
+    assert.equal(row(ui, 'Naming convention').dataset.status, 'warning', 'the new bound instance cannot inherit a previous live peer pick');
+  });
+
   it('allows an explicit peer review without moving the recorded answers or changing history (#6611)', async () => {
     const { source, peer, original, ui } = await saveThenReopenHistory(2);
     assert.ok(peer);

@@ -91,11 +91,11 @@ describe('the preview heading follows its size without a jump at the default (#6
   });
   it('raising the size never shrinks the heading: it grows with every step from 6 to 24', async () => {
     const steps = [6, 8, 11, 12, 14, 18, 24];
-    const measured = [];
+    const measured: Array<Map<string, { size: number; height: number }>> = [];
     for (const titleFontSize of steps) measured.push(await sizeOf({ titleFontSize }));
     for (const id of IDS_OF_KIND) {
-      const sizes = measured.map((m) => m.get(id)!.size);
-      const heights = measured.map((m) => m.get(id)!.height);
+      const sizes: number[] = measured.map((m) => m.get(id)!.size);
+      const heights: number[] = measured.map((m) => m.get(id)!.height);
       for (let i = 1; i < steps.length; i++) {
         assert.ok(sizes[i] > sizes[i - 1], `${id}: size ${steps[i]} draws ${sizes[i]}px, not larger than size ${steps[i - 1]}'s ${sizes[i - 1]}px`);
         assert.ok(heights[i] >= heights[i - 1] - 1e-6, `${id}: the strip does not shrink from size ${steps[i - 1]} to ${steps[i]}`);

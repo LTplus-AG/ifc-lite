@@ -8,6 +8,7 @@
  * (`compose-ids-report.ts`), as HTML — mirrors `TablePreview.tsx`'s split
  * between "nothing to print" and rows.
  */
+import { BlockHeading } from './BlockHeading';
 import { blockTitle } from '@/lib/document/block-title';
 import { ValidationBenchmark } from '../validation/ValidationBenchmark';
 import { passRateBand } from '@ifc-lite/ids';
@@ -132,9 +133,11 @@ function CompactChecks({ block }: { block: IdsReportBlock }) {
 
 export interface IdsReportPreviewProps {
   block: IdsReportBlock;
+  /** Browser pixels per point of the sheet, for an authored heading size. */
+  pointScale?: number;
 }
 
-export function IdsReportPreview({ block }: IdsReportPreviewProps) {
+export function IdsReportPreview({ block, pointScale = 1 }: IdsReportPreviewProps) {
   const { t, locale } = useTranslation();
   const { checked, passed, failed, passRate, warnings } = block.summary;
   // Long keeps the classic structure but never cuts text (#6470); a document saved before variants existed keeps its truncated rows.
@@ -147,7 +150,7 @@ export function IdsReportPreview({ block }: IdsReportPreviewProps) {
 
   return (
     <div data-block-ids-report data-source-kind={reportBlockSourceKind(block)}>
-      <div className="truncate text-sm font-semibold" title={heading}>{heading}</div>
+      <BlockHeading block={block} text={heading} pointScale={pointScale} className="truncate text-sm font-semibold" title={heading} />
       {stamp && <>
         <div className={`text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>
           {t('document.preview.idsReportGeneratedAt', { timestamp: stamp.generatedAt })}

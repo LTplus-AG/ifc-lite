@@ -5,6 +5,7 @@ import type { SavedComparison } from '../compare/savedComparisonSchema';
 import { isSavedComparisonChart } from '../charts/comparison-source';
 import { savedReportBlock, type SavedValidationReport } from '../validation/reports/history';
 import { DOCUMENT_VERSION, migrateDocumentSpec, validateDocumentSpec, type DocumentSpec, type DocumentBlock, type IdsReportBlock } from './types';
+import { setBlockTitleFields } from './block-title';
 import { freshBlockId, freshDocumentId, freshListCopyId } from './persistence';
 import { literalTemplateText } from './bindings';
 
@@ -111,7 +112,7 @@ function resultBlock(result: DocumentReportResult, presentation?: DocumentBlock)
     return { ...structuredClone(result.snapshot), id,
       variant: presentation?.variant ?? result.snapshot.variant ?? 'compact', benchmarks: presentation?.benchmarks ?? result.snapshot.benchmarks ?? true,
       ...((presentation?.specificationsOnly ?? result.snapshot.specificationsOnly) !== undefined ? { specificationsOnly: presentation?.specificationsOnly ?? result.snapshot.specificationsOnly } : {}),
-      ...(presentation?.title !== undefined ? { title: presentation.title } : {}),
+      ...(presentation ? setBlockTitleFields(presentation) : {}),
       ...(presentation?.scale !== undefined ? { scale: presentation.scale } : {}),
       ...(presentation?.showStamp !== undefined ? { showStamp: presentation.showStamp } : {}),
     };

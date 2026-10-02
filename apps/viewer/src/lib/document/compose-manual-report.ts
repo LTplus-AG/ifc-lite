@@ -14,7 +14,8 @@
  * text, guidance and comment move together) unless it is taller than a page.
  */
 
-import { blockTitle } from './block-title.js';
+import { blockTitle, blockTitleStyle } from './block-title.js';
+import { blockTitleItems } from './compose-block-title.js';
 import { reportStamp } from './report-provenance.js';
 import { layoutReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, wrappedReportProvenance, type WrapLines } from './compose-report-provenance.js';
 import type { LayoutCursor, TextDrawnItem } from './compose-table.js';
@@ -78,10 +79,11 @@ export function layoutManualReport(
   const firstItem = block.groups[0]?.items[0];
   const keepAfter = benchmarks ? OVERALL_RING + 10 + (block.groups.length === 0 ? META_HEIGHT : 0)
     : block.groups.length ? groupHeaderHeight + (firstItem ? itemLines(firstItem, itemW, wrap, detailed).height : LINE + 5) : META_HEIGHT;
-  cursor.ensure(Math.min(TITLE_HEIGHT + stampHeight + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter, cursor.bottom - cursor.top));
+  const titleHeight = TITLE_HEIGHT + blockTitleStyle(block).extra;
+  cursor.ensure(Math.min(titleHeight + stampHeight + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter, cursor.bottom - cursor.top));
   const title = blockTitle(block, `Manual validation: ${block.checklistName.trim() || 'Untitled checklist'}`);
-  text({ x: cursor.x, y: cursor.y + 11, size: 11, bold: true, gray: 0, text: cursor.truncate(title, contentW, 11, true) });
-  cursor.y += TITLE_HEIGHT;
+  cursor.push(...blockTitleItems(block, title, cursor.x, cursor.y, contentW, cursor.truncate));
+  cursor.y += titleHeight;
   if (stamp) {
     const meta = stamp.modelName ? `Model: ${stamp.modelName} · Recorded: ${stamp.generatedAt}` : `Recorded: ${stamp.generatedAt}`;
     text({ x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130, text: cursor.truncate(meta, contentW, 8, false) });

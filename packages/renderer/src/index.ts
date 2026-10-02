@@ -18,7 +18,7 @@ export { invertAppearancePartition, validateAppearancePartition, type Appearance
 import type { AppearancePreview } from './appearance-preview.js';
 import { createReferenceImageManager } from './reference-image-host.js';
 export type { ReferenceImages, ReferenceImageInput, ReferenceImageHit, ReferenceCorners } from './reference-image-types.js';
-import { measureDrawingBuffer, resizeRendererViewport } from './renderer-viewport.js';
+import { MAX_DRAWING_BUFFER_PIXEL_RATIO, measureDrawingBuffer, resizeRendererViewport } from './renderer-viewport.js';
 export type { ProjectionMode } from './camera-state.js';
 export type { InteractionMode } from './camera-controls.js';
 export { pickFitPolicy } from './camera-fit-policy.js';
@@ -271,6 +271,7 @@ export class Renderer {
     private readonly hoverMeshes = new HoverMeshCache();
     /** Device px per CSS px in the drawing buffer; CSS-px sizes scale by it (#5383). */
     private pixelRatio = 1;
+    private maxPixelRatio = MAX_DRAWING_BUFFER_PIXEL_RATIO;
     private readonly interactionEffects = new InteractionEffectsGovernor();
     // Procedural sky background — created lazily on the first frame that
     // enables it (most sessions never do).
@@ -630,7 +631,7 @@ export class Renderer {
         // are clamped to the GPU's max 2D texture dimension so the initial
         // pipeline allocations can't overflow on tall/wide layouts.
         const maxDim = this.device.getMaxTextureDimension();
-        const measured = measureDrawingBuffer(this.canvas, maxDim);
+        const measured = measureDrawingBuffer(this.canvas, maxDim, this.maxPixelRatio);
         this.pixelRatio = measured?.pixelRatio ?? 1;
         const width = Math.max(1, Math.min(measured?.width ?? this.canvas.width, maxDim));
         const height = Math.max(1, Math.min(measured?.height ?? this.canvas.height, maxDim));
@@ -1606,7 +1607,7 @@ export class Renderer {
 
         // Drawing buffer = the element's device-pixel size (capped ratio, clamped
         // to the GPU's max texture dimension); see computeDrawingBufferSize (#5383).
-        const measured = measureDrawingBuffer(this.canvas, this.device.getMaxTextureDimension());
+        const measured = measureDrawingBuffer(this.canvas, this.device.getMaxTextureDimension(), this.maxPixelRatio);
         // Skip rendering while the canvas is collapsed or too small.
         if (!measured || measured.height < 10) { this._renderSkipCount++; return; }
         const { width, height } = measured;
@@ -3323,6 +3324,9 @@ export class Renderer {
     resize(width: number, height: number): void {
         resizeRendererViewport(this.canvas, this.camera, width, height);
     }
+
+    /** Cap the drawing buffer's device-pixel ratio, trading sharpness for fill on HiDPI screens; see computeDrawingBufferSize. */
+    setMaxPixelRatio(ratio: number): void { this.maxPixelRatio = ratio; this.requestRender(); }
 
     /** Stage one new owner; borrowed mesh buffers must remain immutable until disposal. */
     prepareAuthoredOwner(parts: readonly MeshData[]) {

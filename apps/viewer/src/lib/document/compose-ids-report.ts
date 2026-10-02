@@ -16,7 +16,8 @@
  * rather than cut, `compact` is one row per check / requirement with a
  * coloured percent bar.
  */
-import { blockTitle } from './block-title.js';
+import { blockTitle, blockTitleStyle } from './block-title.js';
+import { blockTitleItems } from './compose-block-title.js';
 import { reportRingCounts } from '../validation/report-summary.js';
 import type { RingDrawnItem } from './compose-manual-report.js';
 import { passRateBand } from '@ifc-lite/ids';
@@ -144,10 +145,11 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   const summaryWidth = block.benchmarks ? contentW - ringSize - 12 : contentW;
   const summaryLines = block.benchmarks && wrap ? wrap(summaryLine(block.summary), summaryWidth, 9, false) : [cursor.truncate(summaryLine(block.summary), summaryWidth, 9, false)];
   const summaryHeight = block.benchmarks ? Math.max(ringSize + 6, summaryLines.length * 12 + 2) : SUMMARY_HEIGHT;
-  const lead = IDS_REPORT_TITLE_HEIGHT + summaryHeight + stampHeight + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter;
+  const titleHeight = IDS_REPORT_TITLE_HEIGHT + blockTitleStyle(block).extra;
+  const lead = titleHeight + summaryHeight + stampHeight + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter;
   cursor.ensure(Math.min(lead, cursor.bottom - cursor.top));
-  cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 11, size: 11, bold: true, gray: 0, text: cursor.truncate(title, contentW, 11, true) });
-  cursor.y += IDS_REPORT_TITLE_HEIGHT;
+  cursor.push(...blockTitleItems(block, title, cursor.x, cursor.y, contentW, cursor.truncate));
+  cursor.y += titleHeight;
 
   if (block.benchmarks) pushRing({ kind: 'ring', x: cursor.x, y: cursor.y, size: ringSize, counts: reportRingCounts(block.summary) });
   summaryLines.forEach((text, i) => cursor.push({

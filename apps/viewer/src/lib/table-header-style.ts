@@ -8,11 +8,15 @@ import { isRgbColor, contrastRatio } from './color-contrast';
 export interface TableHeaderStyle { backgroundColor: string; textColor: string }
 export const DEFAULT_TABLE_HEADER_BACKGROUND = '#334155';
 
+/** Opaque black or white, whichever of the two meets the higher WCAG contrast on `background` (`#RRGGBB`). */
+export function readableInkOn(background: string): '#000000' | '#ffffff' {
+  const rgb = [1, 3, 5].map((start) => Number.parseInt(background.slice(start, start + 2), 16) / 255);
+  return contrastRatio(rgb, [0, 0, 0]) >= contrastRatio(rgb, [1, 1, 1]) ? '#000000' : '#ffffff';
+}
+
 export function tableHeaderStyle(background?: string, textColorOverride?: string): TableHeaderStyle {
   const backgroundColor = isRgbColor(background) ? background : DEFAULT_TABLE_HEADER_BACKGROUND;
-  const rgb = [1, 3, 5].map((start) => Number.parseInt(backgroundColor.slice(start, start + 2), 16) / 255);
   // The automatic choice uses whichever of opaque black/white better meets WCAG AA body-text contrast; authored ink wins.
-  const textColor = isRgbColor(textColorOverride) ? textColorOverride
-    : contrastRatio(rgb, [0, 0, 0]) >= contrastRatio(rgb, [1, 1, 1]) ? '#000000' : '#ffffff';
+  const textColor = isRgbColor(textColorOverride) ? textColorOverride : readableInkOn(backgroundColor);
   return { backgroundColor, textColor };
 }

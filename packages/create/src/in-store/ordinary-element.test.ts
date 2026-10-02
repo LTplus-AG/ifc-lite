@@ -10,9 +10,10 @@ import { EntityExtractor, IfcParser, extractPropertiesOnDemand } from '@ifc-lite
 import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { addOrdinaryElementInStore, type OrdinaryInStoreElement } from './ordinary-element.js';
-import { replaceElementInStore } from './element-replacement.js';
+import * as inStore from './index.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 
+const { replaceElementInStore } = inStore;
 const SAMPLE = new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
 const STOREY = 42;
 const WALL = { kind: 'wall' as const, params: {

@@ -48,11 +48,20 @@ await shot('01-empty-viewport');
 
 // 2. Model-dependent panels opened on the empty viewer (field replays: these
 // are the panels no-load sessions open most).
-for (const id of ['lens', 'clash', 'zones', 'charts', 'lists', 'validation', 'bcf', 'environment', 'presentation', 'model', 'collab']) {
+for (const id of ['lens', 'clash', 'zones', 'gantt', 'charts', 'lists', 'validation', 'bcf', 'environment', 'presentation', 'model', 'collab']) {
   await act(`s.showWorkspacePanel('${id}', 'rail')`);
   await page.waitForTimeout(900);
   await shot(`02-empty-panel-${id}`);
 }
+// 2b. Dark mode: one takeover (Lens, side) and one banner (Lists, bottom).
+await fresh();
+await act(`s.setTheme('dark')`);
+await act(`s.showWorkspacePanel('lens', 'rail')`);
+await act(`s.showWorkspacePanel('lists', 'rail')`);
+await page.waitForTimeout(1200);
+await shot('02-dark-takeover-lens-banner-lists');
+await act(`s.setTheme('light')`);
+
 // 3. Tours, driven the way the field skip counts say users drive them. A
 // step whose anchor never resolves auto-skips WITHOUT showing its card, so
 // the sequence of cards seen is the broken-step evidence.
@@ -72,7 +81,9 @@ async function waitCard(prev, timeout = 90000) {
   return null;
 }
 async function cardButton(name) {
-  await page.locator('[role="dialog"][aria-labelledby]').getByRole('button', { name, exact: true }).click();
+  // "Skip step" reads "Skip (use demo)" on the welcome load step with nothing open (#6720).
+  const role = name === 'Skip step' ? { name: /^Skip/ } : { name, exact: true };
+  await page.locator('[role="dialog"][aria-labelledby]').getByRole('button', role).first().click();
 }
 async function runTour(label, start, drive) {
   const seen = [];
@@ -111,6 +122,10 @@ const welcome = await runTour('welcome', () => page.getByRole('button', { name: 
   if (/Keep exploring/.test(c)) { await cardButton('Done'); return 'stop'; }
   await cardButton('Skip step');
 });
+
+await page.waitForTimeout(800);
+log('welcome: selection after finish', await state('s.selectedEntityId'));
+await shot('03-welcome-7-after-finish');
 
 // The lens and measure tours need a model; on a build where the welcome tour
 // did not load one, load the demo from the welcome card.

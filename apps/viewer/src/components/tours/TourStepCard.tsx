@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 import { isTextEntryElement } from '@/lib/keyboard-event';
 import { abortTour, nextStep, runStepAction, skipStep } from '@/lib/tours/controller';
 import { useTourStore } from '@/lib/tours/tour-store';
+import { useViewerStore } from '@/store';
 import type { TourDefinition, TourStep } from '@/lib/tours/types';
 
 interface TourStepCardProps {
@@ -65,6 +66,10 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
   const gateBroken = useTourStore((s) => s.gateBroken);
   const redockedPanel = useTourStore((s) => s.redockedPanel);
   const demoLoading = useTourStore((s) => s.demoLoading);
+  // Skipping "Load a model" with nothing open loads the demo for the steps
+  // after it (#6720): say so rather than doing it unannounced.
+  const viewerEmpty = useViewerStore((s) => s.models.size === 0 && !s.loading);
+  const skipLoadsDemo = step.skipLoadsDemo === true && viewerEmpty;
 
   const anchored = step.kind !== 'canvas' && targetEl !== null;
   const { ref, pos, lost } = useAnchoredPosition(anchored ? targetEl : null, step.placement ?? 'bottom');
@@ -168,7 +173,7 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
             className="text-muted-foreground"
             onClick={skipStep}
           >
-            {t('tours.tourStepCard.skipStep')}
+            {t(skipLoadsDemo ? 'tours.tourStepCard.skipUseDemo' : 'tours.tourStepCard.skipStep')}
           </Button>
           {showNext && (
             <Button size="sm" onClick={nextStep}>

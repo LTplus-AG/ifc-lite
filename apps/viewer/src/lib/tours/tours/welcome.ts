@@ -31,6 +31,23 @@ export function representativeElementId(store: ViewerStoreApi): number | null {
   return fallback;
 }
 
+/** The element `inspect` selected on the user's behalf, if any. */
+let autoSelectedId: number | null = null;
+
+/**
+ * Drop the tour's own selection when the tour ends (finish or abort), but
+ * only while it is still the selection: an element the user picked since is
+ * theirs. On every step from `inspect` on, since a SKIPPED step's cleanup
+ * never runs; the cleanups are idempotent.
+ */
+function clearAutoSelection(store: ViewerStoreApi): void {
+  const id = autoSelectedId;
+  autoSelectedId = null;
+  if (id === null || store.getState().selectedEntityId !== id) return;
+  store.getState().clearSelection();
+  store.getState().clearEntitySelection();
+}
+
 export const WELCOME_TOUR: TourDefinition = {
   id: 'welcome',
   title: 'Get started',
@@ -51,6 +68,7 @@ export const WELCOME_TOUR: TourDefinition = {
         run: () => loadDemoProject(),
       },
       expectsModelLoad: true,
+      skipLoadsDemo: true,
       gate: {
         predicate: (s) => s.models.size > 0 && !s.loading && !s.geometryStreamingActive,
         // Parsing a real file takes a moment; do not nag with the hint early.
@@ -96,11 +114,13 @@ export const WELCOME_TOUR: TourDefinition = {
         if (store.getState().selectedEntityId === null) {
           const id = representativeElementId(store);
           if (id !== null) store.getState().setSelectedEntityId(id);
+          autoSelectedId = id;
         }
         store.getState().showWorkspacePanel('properties', 'programmatic');
         store.getState().setPropertiesActiveTab('properties');
       },
       gate: { predicate: (s) => s.propertiesActiveTab === 'quantities' },
+      cleanup: clearAutoSelection,
     },
     {
       id: 'structure',
@@ -116,12 +136,14 @@ export const WELCOME_TOUR: TourDefinition = {
         store.getState().setActiveStorey(null);
       },
       gate: { predicate: (s) => s.activeStorey !== null },
+      cleanup: clearAutoSelection,
     },
     {
       id: 'wrap',
       kind: 'canvas',
       title: 'Keep exploring',
       body: 'Press Cmd+K or Ctrl+K for the command palette, / to search, and ? for shortcuts. More tours live in the Learn hub. That is the core loop: load, orbit, select, inspect.',
+      cleanup: clearAutoSelection,
     },
   ],
 };

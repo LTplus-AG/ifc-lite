@@ -26,7 +26,8 @@ import { renderPanelBody } from './renderPanelBody.js';
 const originalState = useViewerStore.getState();
 after(() => { useViewerStore.setState(originalState, true); });
 
-const NO_MODEL = 'No model loaded';
+const NO_MODEL = 'Start with a model';
+const BANNER = /results appear once one is loaded/;
 const SAMPLE = 'Load demo project';
 const OPEN = 'Open model file';
 
@@ -85,20 +86,65 @@ describe('renderPanelBody on an empty viewer (#6720)', () => {
   it('a side panel keeps a working close; the bottom strip owns its own', () => {
     empty();
     let closed = 0;
-    const side = render(renderPanelBody('zones', () => { closed += 1; }));
+    const side = render(renderPanelBody('environment', () => { closed += 1; }));
     click(side.querySelector('button[aria-label="Close panel"]')!);
     assert.equal(closed, 1);
     cleanup();
     const bottom = render(renderPanelBody('presentation', () => {}));
     assert.equal(bottom.querySelector('button[aria-label="Close panel"]'), null);
+    cleanup();
+    // The mobile sheet draws the panel title and close itself: one header, not two.
+    useViewerStore.setState({ isMobile: true });
+    const sheet = render(renderPanelBody('environment', () => {}));
+    assert.equal(sheet.querySelector('button[aria-label="Close panel"]'), null);
+    assert.match(sheet.textContent ?? '', new RegExp(NO_MODEL));
+  });
+
+  it('says what each takeover panel is for, not that it "works on a model"', () => {
+    empty();
+    const lens = render(renderPanelBody('lens', () => {}));
+    assert.match(lens.textContent ?? '', /Load a model to apply a lens/);
+    assert.doesNotMatch(lens.textContent ?? '', /works on a model/);
   });
 
   it('a banner panel keeps its model-independent content under the offer', () => {
     empty();
     const root = render(renderPanelBody('lists', () => {}));
-    assert.match(root.textContent ?? '', /needs one to show results/);
+    assert.match(root.textContent ?? '', BANNER);
     assert.ok(button(root, SAMPLE));
     assert.match(root.textContent ?? '', /New List/, 'list authoring stays reachable');
+  });
+
+  it('a banner panel is NOT remounted when a load starts or lands (#4243 class)', () => {
+    empty();
+    const root = render(renderPanelBody('lists', () => {}));
+    const authored = button(root, 'New List');
+    assert.ok(authored);
+    act(() => { useViewerStore.setState({ loading: true }); });
+    assert.doesNotMatch(root.textContent ?? '', BANNER, 'the line goes as soon as a load starts');
+    assert.equal(button(root, 'New List'), authored, 'same DOM node: the panel kept its state');
+    assert.ok(authored.isConnected);
+    cleanup();
+    // ... and through to the model landing (Zones mounts over the fixture store).
+    empty();
+    const zones = render(renderPanelBody('zones', () => {}));
+    const importButton = zones.querySelector('button[aria-label="Import zone sets from JSON"]');
+    assert.ok(importButton);
+    act(() => { useViewerStore.setState({ loading: true }); });
+    act(() => { useViewerStore.setState({ ...fixtureModels(fixtureModel('m')), loading: false }); });
+    assert.equal(zones.querySelector('button[aria-label="Import zone sets from JSON"]'), importButton);
+    assert.ok(importButton.isConnected);
+  });
+
+  it('Gantt and Zones keep their model-free imports under a banner', () => {
+    empty();
+    const gantt = render(renderPanelBody('gantt', () => {}));
+    assert.match(gantt.textContent ?? '', /import a schedule from MS Project or CSV now/);
+    assert.doesNotMatch(gantt.textContent ?? '', new RegExp(NO_MODEL));
+    cleanup();
+    const zones = render(renderPanelBody('zones', () => {}));
+    assert.match(zones.textContent ?? '', /import zone sets from JSON now/);
+    assert.ok(zones.querySelector('button[aria-label="Import zone sets from JSON"]'), 'zone import stays reachable');
   });
 
   it('steps aside once a model exists or a load is under way', () => {
@@ -108,7 +154,7 @@ describe('renderPanelBody on an empty viewer (#6720)', () => {
     cleanup();
     useViewerStore.setState({ models: new Map(), activeModelId: null, ifcDataStore: null, loading: true });
     const loading = render(renderPanelBody('lists', () => {}));
-    assert.doesNotMatch(loading.textContent ?? '', /needs one to show results/);
+    assert.doesNotMatch(loading.textContent ?? '', BANNER);
   });
 
   it('a panel that is itself a way in, or works without a model, is never gated', () => {

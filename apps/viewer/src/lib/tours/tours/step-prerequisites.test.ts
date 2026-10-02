@@ -66,6 +66,22 @@ describe('welcome tour steps after a skipped select (#6720)', () => {
     assert.equal(s.propertiesActiveTab, 'properties');
   });
 
+  it('the tour drops its own selection when it ends, never the user\'s', async () => {
+    seedLoaded(loadedModel(0, [{ expressId: 12, ifcType: 'IfcWall' }, { expressId: 30, ifcType: 'IfcDoor' }]));
+    useViewerStore.getState().clearSelection();
+    const inspect = step(WELCOME_TOUR, 'inspect');
+    const ctx = { baseline: {}, artifacts: new Map() };
+    await inspect.prepare?.(useViewerStore);
+    assert.equal(useViewerStore.getState().selectedEntityId, 12);
+    inspect.cleanup?.(useViewerStore, ctx);
+    assert.equal(useViewerStore.getState().selectedEntityId, null, 'auto-selected wall cleared at tour end');
+
+    await inspect.prepare?.(useViewerStore);
+    useViewerStore.getState().setSelectedEntityId(30); // the user picks something else
+    step(WELCOME_TOUR, 'wrap').cleanup?.(useViewerStore, ctx);
+    assert.equal(useViewerStore.getState().selectedEntityId, 30, 'a selection the user made is theirs');
+  });
+
   it('inspect keeps the element the user selected', async () => {
     seedLoaded(loadedModel(0, [{ expressId: 12, ifcType: 'IfcWall' }, { expressId: 30, ifcType: 'IfcDoor' }]));
     useViewerStore.getState().setSelectedEntityId(30);

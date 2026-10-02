@@ -12,7 +12,7 @@
  * without growing it. Living here it is also testable on its own.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Upload, Clock3, Sparkles, ArrowUpRight, PackagePlus, Cloud, ShieldCheck, Building2, GitMerge } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
@@ -61,6 +61,8 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   const { t } = useTranslation();
   const actionsDisabled = !webgpu.supported || webgpu.checking;
   const [demoLoading, setDemoLoading] = useState(false);
+  // One impression per mount: the denominator for the two clicks below.
+  useEffect(() => { trackUiEvent('onboarding_surface', { surface: 'welcome_card', action: 'shown' }); }, []);
 
   // The first-run primary action (#5840): 43% of sessions never loaded a
   // model, and the sample the tours use already ships with the viewer. It

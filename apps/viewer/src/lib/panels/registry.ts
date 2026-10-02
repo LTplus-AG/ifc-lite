@@ -212,7 +212,9 @@ export type PanelModelGateMode = 'takeover' | 'banner';
  * Panels that mean nothing without a model. `takeover`: the whole panel is
  * model-derived (a lens over no elements, a chart of nothing), so it shows a
  * no-model state instead. `banner`: the panel also holds work that exists
- * before a model (list and document definitions), so the offer sits above it.
+ * before a model (list and document definitions, a schedule imported from MS
+ * Project or CSV, zone sets imported from JSON), so one quiet line sits above
+ * it and the panel stays mounted across the load.
  *
  * Left out on purpose: panels that are themselves a way in (Cloud sources,
  * Layers' demo stack), that carry their own demo empty state (Compare,
@@ -224,7 +226,6 @@ export type PanelModelGateMode = 'takeover' | 'banner';
 const PANEL_MODEL_GATE: Partial<Record<WorkspacePanelId, PanelModelGateMode>> = {
   lens: 'takeover',
   charts: 'takeover',
-  zones: 'takeover',
   environment: 'takeover',
   presentation: 'takeover',
   drawing: 'takeover',
@@ -232,12 +233,13 @@ const PANEL_MODEL_GATE: Partial<Record<WorkspacePanelId, PanelModelGateMode>> = 
   changes: 'takeover',
   changeSets: 'takeover',
   cost: 'takeover',
-  gantt: 'takeover',
   placement: 'takeover',
   loadReport: 'takeover',
   lists: 'banner',
   document: 'banner',
   flow: 'banner',
+  gantt: 'banner',
+  zones: 'banner',
 };
 
 export function panelModelGateMode(id: WorkspacePanelId): PanelModelGateMode | undefined {

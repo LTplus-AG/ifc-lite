@@ -26,8 +26,11 @@ export function manualModelOptions(models: ReadonlyMap<string, Pick<FederatedMod
   return [...models.values()].map((m) => ({ id: m.id, name: m.name, fingerprint: m.sourceFingerprint || null }));
 }
 
-export function pickManualModel(options: readonly ManualModelOption[], picked: string | null, activeModelId: string | null): ManualModelOption | null {
-  return options.find((m) => m.id === picked) ?? options.find((m) => m.id === activeModelId) ?? options[0] ?? null;
+export function pickManualModel(options: readonly ManualModelOption[], picked: string | null, activeModelId: string | null, preferredFingerprint?: string): ManualModelOption | null {
+  const explicit = options.find((m) => m.id === picked);
+  if (explicit) return explicit;
+  if (preferredFingerprint) return options.find((m) => m.fingerprint === preferredFingerprint) ?? null;
+  return options.find((m) => m.id === activeModelId) ?? options[0] ?? null;
 }
 
 export function answersForModel(all: ManualAnswersByModel, model: ManualModelOption | null): ManualAnswerMap {

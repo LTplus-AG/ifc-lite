@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { Parser } from 'n3';
-import { assertProfile, DEFAULT_PROFILE, type ProfileDefinition } from './profiles.js';
+import { assertProfile, assertBoundedPattern, DEFAULT_PROFILE, type ProfileDefinition } from './profiles.js';
 import { generateArtifacts } from './profile-artifacts.js';
 import { parseProfileDocument, validateJson, validateLinks, toRdf, validateGraph } from './validation.js';
 import { profileToDictionary, dictionaryToProfile } from './dictionary.js';
@@ -21,6 +21,32 @@ const profile = (): ProfileDefinition => ({ id: 'https://example.org/profile/2',
 const document = () => ({ profile: profile().id, source: 'https://example.org/data', completeness: 'complete' as const,
   resources: [{ id: 'https://example.org/a', type: 'Thing', label: 'A', labels: { en: 'English', de: 'Deutsch' }, value: 2.5, tags: ['a', 'b'], enabled: true }] });
 describe('charter #6643 shared profile standards', () => {
+  it('#6643 self-review: rejects combinatorial optional/ranged patterns before either validator executes them', async () => {
+    for (const pattern of ['^a{0,5000}a{0,5000}a{0,5000}b$', '^a?a?a?a?aaaa$', '^a+a?b$']) {
+      const p = profile(); p.fields.label.pattern = pattern;
+      expect(() => assertProfile(p)).toThrow('bounded regular-expression subset');
+      const shapes = `<urn:shape> a <http://www.w3.org/ns/shacl#NodeShape>; <http://www.w3.org/ns/shacl#targetNode> <urn:a>; <http://www.w3.org/ns/shacl#property> [ <http://www.w3.org/ns/shacl#path> <urn:p>; <http://www.w3.org/ns/shacl#pattern> ${JSON.stringify(pattern)} ].`;
+      await expect(validateGraph('<urn:a> <urn:p> "aaaa".', { shapes })).rejects.toThrow('bounded regular-expression subset');
+    }
+    for (const pattern of ['^[A-Z]{2}[0-9]{3}$', '^a{2,2}b{3,3}$', '^[?+*]+$', '^a\\?b\\?$', '^a?b$']) {
+      expect(() => assertBoundedPattern(pattern, 'fixture')).not.toThrow();
+    }
+  });
+  it('#6643 self-review: profile references must name declared own fields and types', () => {
+    for (const inherited of ['constructor', 'toString', '__proto__']) {
+      const p = profile(); p.fields.link.targetType = inherited;
+      expect(() => assertProfile(p)).toThrow('Invalid target type');
+      const unknownField = profile(); unknownField.types.Thing.fields = { ...unknownField.types.Thing.fields, [inherited]: {} };
+      expect(() => assertProfile(unknownField)).toThrow('Unknown field');
+    }
+    const reserved = profile();
+    reserved.types = { ...reserved.types, constructor: { iri: 'urn:reserved', fields: { label: { minCount: 1 } } } };
+    expect(() => assertProfile(reserved)).toThrow('Invalid type');
+    for (const type of ['constructor', 'toString', '__proto__']) {
+      const invalid = { ...document(), resources: [{ ...document().resources[0], type }] };
+      expect(validateJson(invalid, profile())).toEqual([expect.objectContaining({ path: 'type', message: `Unknown type: ${type}` })]);
+    }
+  });
   it('PR #6648 review: validates profile definitions before JSON or graph validation', async () => {
     const invalid = { ...profile(), version: '' };
     expect(() => validateJson(document(), invalid)).toThrow();

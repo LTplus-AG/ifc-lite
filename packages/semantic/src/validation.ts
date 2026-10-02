@@ -39,7 +39,7 @@ export function validateJson(document: SemanticDocument, profile = DEFAULT_PROFI
   const ajv = compiler(); const validators = new Map<string, ValidateFunction>();
   const findings: ValidationFinding[] = [];
   for (const resource of document.resources) {
-    if (!profile.types[resource.type]) findings.push({ engine: 'JSON Schema', resourceId: resource.id, path: 'type', message: `Unknown type: ${resource.type}` });
+    if (!Object.hasOwn(profile.types, resource.type)) findings.push({ engine: 'JSON Schema', resourceId: resource.id, path: 'type', message: `Unknown type: ${resource.type}` });
     else {
       let validate = validators.get(resource.type);
       if (!validate) { validate = ajv.compile(resourceSchema(resource.type, profile)); validators.set(resource.type, validate); }

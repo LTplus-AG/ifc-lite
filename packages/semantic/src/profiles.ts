@@ -50,8 +50,25 @@ export function isUri(value: string): boolean {
 }
 /** Shared bounded pattern policy for both profile-generated and imported shapes. */
 export function assertBoundedPattern(pattern: string, location: string): void {
+  // Several optional/ranged repetitions can backtrack combinatorially even
+  // without groups. Count actual quantifiers, ignoring escapes and classes.
+  let variableRepetitions = 0; let inClass = false;
+  for (let index = 0; index < pattern.length; index++) {
+    const character = pattern[index];
+    if (character === '\\') { index++; continue; }
+    if (inClass) { if (character === ']') inClass = false; continue; }
+    if (character === '[') { inClass = true; continue; }
+    if ('+*?'.includes(character)) variableRepetitions++;
+    if (character === '{') {
+      const range = /^\{(\d+)(?:,(\d+))?\}/.exec(pattern.slice(index));
+      if (range) {
+        if (range[2] !== undefined && Number(range[1]) !== Number(range[2])) variableRepetitions++;
+        index += range[0].length - 1;
+      }
+    }
+  }
   if (pattern.length > 256 || /[()]|\\[1-9]/.test(pattern) || /[{}]/.test(pattern.replace(/\{[0-9]+(?:,[0-9]+)?\}/g, ''))
-    || (pattern.match(/[+*]/g)?.length ?? 0) > 1
+    || variableRepetitions > 1
     || [...pattern.matchAll(/\{([0-9]+)(?:,([0-9]+))?\}/g)].some(match => Number(match[1]) > 5000 || Number(match[2] ?? 0) > 5000)) {
     throw new Error(`Pattern for ${location} exceeds the supported bounded regular-expression subset`);
   }
@@ -104,15 +121,15 @@ export function assertProfile(value: unknown): asserts value is ProfileDefinitio
     if (field.minimum !== undefined && field.maximum !== undefined && field.minimum > field.maximum) throw new Error(`Inverted range: ${name}`);
     if (field.kind === 'integer' && (field.minimum !== undefined && !Number.isSafeInteger(field.minimum)
       || field.maximum !== undefined && !Number.isSafeInteger(field.maximum))) throw new Error(`Integer profile ranges must use JavaScript safe integers: ${name}`);
-    if (field.targetType && (!profile.types[field.targetType] || field.kind !== 'iri')) throw new Error(`Invalid target type: ${name}`);
+    if (field.targetType && (!Object.hasOwn(profile.types, field.targetType) || field.kind !== 'iri')) throw new Error(`Invalid target type: ${name}`);
   }
   for (const [name, definition] of Object.entries(profile.types)) {
-    if (!isUri(definition.iri) || terms.has(definition.iri) || ['id', 'type'].includes(name) || profile.fields[name]) throw new Error(`Invalid type: ${name}`);
+    if (!isUri(definition.iri) || terms.has(definition.iri) || ['id', 'type', '__proto__', 'constructor', 'prototype'].includes(name) || Object.hasOwn(profile.fields, name)) throw new Error(`Invalid type: ${name}`);
     if (!definition.fields.label || profile.fields.label?.kind !== 'string'
       || definition.fields.label.minCount !== 1 || (definition.fields.label.maxCount ?? 1) !== 1) throw new Error(`Type ${name} requires exactly one common string label field`);
     terms.add(definition.iri);
     for (const [key, count] of Object.entries(definition.fields)) {
-      if (!profile.fields[key]) throw new Error(`Unknown field ${key} on ${name}`);
+      if (!Object.hasOwn(profile.fields, key)) throw new Error(`Unknown field ${key} on ${name}`);
       const min = count.minCount ?? 0; const max = count.maxCount ?? 1;
       if (!Number.isInteger(min) || !Number.isInteger(max) || min < 0 || max < min || max < 1 || max > 5000) throw new Error(`Invalid cardinality: ${name}.${key}`);
       if (profile.fields[key].kind === 'language' && (max !== 1 || min > 1)) throw new Error(`Language maps use one value per language: ${name}.${key}`);

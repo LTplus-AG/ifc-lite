@@ -445,7 +445,7 @@ export function useIfcLoader() {
     const retryThisLoad = () => { void loadFile(file, target, options); };
     const showLoadError = (message: string, code: string) =>
       reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, message, code, retryThisLoad);
-    const settleResumable = beginResumableLoad(file, target.kind); // carried across a stale-deployment reload
+    const settleResumable = beginResumableLoad(file); // carried across a stale-deployment reload
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
       // federated add must never wipe model #1; it joins the existing map.

@@ -71,10 +71,13 @@ export interface OpenModelSnapshot {
 
 const localFiles = new WeakSet<File>();
 const staleFailures = new WeakSet<File>();
-/** Loads in flight now: a federated add is not in the store until it finalizes. */
-const inFlight = new Map<File, 'primary' | 'federated'>();
-/** Federated adds the stale deployment killed before they ever registered a model. */
-const stranded = new Set<File>();
+/**
+ * Loads in flight right now (a federated add has no model in the store until
+ * it finalizes). An entry lives exactly as long as its load: it is removed when
+ * the load settles, however it settles, so nothing here can outlive a close,
+ * a clear or a retry.
+ */
+const inFlight = new Set<File>();
 let lastAutoReopenAt: number | null = null;
 let readOpenModels: () => Iterable<OpenModelSnapshot> = () => [];
 
@@ -83,20 +86,15 @@ export function markLocalModelFiles(files: Iterable<File>): void {
   for (const file of files) localFiles.add(file);
 }
 
-/**
- * Called by the canonical load path as a load starts; the returned function
- * settles it. A primary load replaces the federation, so it forgets stranded adds.
- */
-export function beginResumableLoad(file: File, kind: 'primary' | 'federated'): () => void {
-  if (kind === 'primary') stranded.clear();
-  inFlight.set(file, kind);
+/** Called by the canonical load path as a load starts; the returned function settles it (from `finally`). */
+export function beginResumableLoad(file: File): () => void {
+  inFlight.add(file);
   return () => { inFlight.delete(file); };
 }
 
 /** The load of `file` failed because this tab's deployment is gone: resume it after the reload. */
 export function noteStaleDeploymentLoadFailure(file: File): void {
   staleFailures.add(file);
-  if (inFlight.get(file) === 'federated') stranded.add(file);
 }
 
 /** Wire the source of truth: the viewer's loaded models (set once by the viewer). */
@@ -106,8 +104,11 @@ export function setOpenModelsSource(read: () => Iterable<OpenModelSnapshot>): vo
 
 /**
  * The local files to bring back: the models the viewer holds now, plus loads
- * still in flight and federated adds stranded by the stale deployment (neither
- * has a model yet). Deduplicated by file identity, never by name.
+ * still in flight (which may have no model yet). Deduplicated by file
+ * identity, never by name. A federated add that the stale deployment killed
+ * before it registered a model is NOT carried once its load has settled: it
+ * left nothing in the viewer, and keeping a separate record of it is exactly
+ * the history that could resurrect a file the user has since replaced.
  */
 export function resumableFiles(models: Iterable<OpenModelSnapshot>): ResumeFile[] {
   const files = new Set<File>();
@@ -117,8 +118,12 @@ export function resumableFiles(models: Iterable<OpenModelSnapshot>): ResumeFile[
     if (model.loadState === 'error' && !staleFailures.has(file)) continue;
     files.add(file);
   }
-  for (const file of inFlight.keys()) files.add(file);
-  for (const file of stranded) files.add(file);
+  // A load in flight duplicates nothing: a re-pick of a file the store (or
+  // another in-flight load) already names is a second File object of the same
+  // bytes, so match it by name and size, not identity. Only two LOADED models
+  // may legitimately share a name and size.
+  const sameAs = (a: File, b: File) => a.name === b.name && a.size === b.size;
+  for (const file of inFlight) if (![...files].some((held) => sameAs(held, file))) files.add(file);
   return [...files].filter((file) => localFiles.has(file))
     .slice(0, MAX_FILES).map((file) => ({ name: file.name, size: file.size }));
 }
@@ -198,5 +203,4 @@ export function __resetReloadResumeForTests(): void {
   lastAutoReopenAt = null;
   readOpenModels = () => [];
   inFlight.clear();
-  stranded.clear();
 }

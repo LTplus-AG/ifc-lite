@@ -110,34 +110,94 @@ describe('reload resume', () => {
     assert.deepEqual(reloadAndTake()?.files, [{ name: 'model.ifc', size: 20 }, { name: 'model.ifc', size: 28 }]);
   });
 
-  it('carries a federated add still in flight (no model yet) and forgets it once it settles', () => {
+  it('carries a federated add still in flight (no model yet), and nothing once it settles', () => {
     openLocal('a', 'arch.ifc');
     const mep = new File(['x'], 'mep.ifc');
     markLocalModelFiles([mep]);
-    const settle = beginResumableLoad(mep, 'federated');
+    const settle = beginResumableLoad(mep);
     assert.deepEqual(names(reloadAndTake()), ['arch.ifc', 'mep.ifc']);
     settle();
-    assert.deepEqual(names(reloadAndTake('user')), ['arch.ifc']);
+    assert.deepEqual(names(reloadAndTake('user')), ['arch.ifc'], 'a load that settled without a model leaves nothing');
   });
 
-  it('carries a federated add the stale deployment killed before it registered, until a primary load replaces the set', () => {
+  it('a federated add killed by the stale deployment is not carried after a fresh federation replaced the set', () => {
     openLocal('a', 'arch.ifc');
     const mep = new File(['x'], 'mep.ifc');
     markLocalModelFiles([mep]);
-    const settle = beginResumableLoad(mep, 'federated');
+    const settle = beginResumableLoad(mep);
     noteStaleDeploymentLoadFailure(mep);
     settle();
-    assert.deepEqual(names(reloadAndTake()), ['arch.ifc', 'mep.ifc']);
+    // routeLoad's fresh-federation branch: resetViewerState + clearAllModels + loadFilesSequentially.
     models.clear();
-    const next = new File(['y'], 'next.ifc');
-    markLocalModelFiles([next]);
-    beginResumableLoad(next, 'primary')();
-    models.set('n', { sourceFile: next, loadState: 'complete' });
-    assert.deepEqual(names(reloadAndTake('user')), ['next.ifc']);
+    openLocal('x', 'site.ifc');
+    openLocal('y', 'roads.ifc');
+    assert.deepEqual(names(reloadAndTake('user')), ['site.ifc', 'roads.ifc']);
+  });
+
+  it('a stranded add that was retried, loaded and then closed does not come back', () => {
+    openLocal('a', 'arch.ifc');
+    const mep = new File(['x'], 'mep.ifc');
+    markLocalModelFiles([mep]);
+    const first = beginResumableLoad(mep);
+    noteStaleDeploymentLoadFailure(mep);
+    first();
+    const retry = beginResumableLoad(mep); // the user retries the same file
+    models.set('b', { sourceFile: mep, loadState: 'complete' });
+    retry();
+    assert.deepEqual(names(reloadAndTake('user')), ['arch.ifc', 'mep.ifc'], 'loaded: carried');
+    models.delete('b'); // removeModel
+    assert.deepEqual(names(reloadAndTake('user')), ['arch.ifc'], 'closed: gone');
+  });
+
+  it('two stale-failed re-picks of one file are not carried twice, nor at all once settled (#6721 review repro 1)', () => {
+    openLocal('a', 'tower.ifc');
+    const picks = [new File(['x'], 'mep.ifc'), new File(['x'], 'mep.ifc')]; // each pick is a new File
+    markLocalModelFiles(picks);
+    const settleFirst = beginResumableLoad(picks[0]);
+    noteStaleDeploymentLoadFailure(picks[0]);
+    const settleSecond = beginResumableLoad(picks[1]); // re-picked while the first is still settling
+    assert.deepEqual(names(reloadAndTake('user')), ['tower.ifc', 'mep.ifc'], 'in flight twice, named once');
+    settleFirst();
+    noteStaleDeploymentLoadFailure(picks[1]);
+    settleSecond();
+    assert.deepEqual(names(reloadAndTake('user')), ['tower.ifc']);
+  });
+
+  it('a stale-failed add that later loads and is removed does not come back (#6721 review repro 2)', () => {
+    openLocal('a', 'tower.ifc');
+    const first = new File(['x'], 'mep.ifc');
+    const second = new File(['x'], 'mep.ifc');
+    markLocalModelFiles([first, second]);
+    const settleFirst = beginResumableLoad(first);
+    noteStaleDeploymentLoadFailure(first);
+    settleFirst();
+    const settleSecond = beginResumableLoad(second);
+    models.set('m', { sourceFile: second, loadState: 'complete' });
+    settleSecond();
+    openLocal('s', 'struct.ifc');
+    models.delete('m'); // removeModel
+    assert.deepEqual(names(reloadAndTake('user')), ['tower.ifc', 'struct.ifc']);
+  });
+
+  it('two loaded models with the same name and size are both carried', () => {
+    openLocal('a', 'model.ifc');
+    openLocal('b', 'model.ifc');
+    assert.deepEqual(names(reloadAndTake('user')), ['model.ifc', 'model.ifc']);
+  });
+
+  it('a successful load leaves no in-flight entry behind', () => {
+    const tower = new File(['x'], 'tower.ifc');
+    markLocalModelFiles([tower]);
+    const settle = beginResumableLoad(tower);
+    models.set('t', { sourceFile: tower, loadState: 'complete' });
+    settle();
+    models.clear(); // clearAllModels
+    persistResumeIntent('user', deps());
+    assert.equal(takeResumeIntent(deps()), null);
   });
 
   it('never carries an in-flight load that is not a local file', () => {
-    beginResumableLoad(new File(['x'], 'model.ifc'), 'primary');
+    beginResumableLoad(new File(['x'], 'model.ifc'));
     persistResumeIntent('automatic', deps());
     assert.equal(takeResumeIntent(deps()), null);
   });

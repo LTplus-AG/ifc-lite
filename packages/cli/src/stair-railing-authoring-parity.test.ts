@@ -14,8 +14,9 @@ import {
 import { StoreEditor } from '@ifc-lite/mutations';
 import { EntityExtractor, getSchemaRegistryForVersion, IfcParser } from '@ifc-lite/parser';
 import { createBimContext, type EntityRef } from '@ifc-lite/sdk';
-import { MemoryTrackingStore, runFlow, type FlowDocument } from '@ifc-lite/flow';
-import { createStandardRegistry, headlessFeatures, type FlowHost } from '../../flow-nodes/src/index.js';
+import { MemoryTrackingStore, NodeRegistry, runFlow, type FlowDocument } from '@ifc-lite/flow';
+import { createStandardRegistry, headlessFeatures, type FlowHost } from '@ifc-lite/flow-nodes';
+import { elementNodes } from '../../flow-nodes/src/element-nodes.js';
 import { createMCPServer, fullScope, InMemoryModelRegistry, InProcessTransport,
   loadIfcModel, type CallToolResult } from '@ifc-lite/mcp';
 import { meshStairs, stairMeshBounds, stairWasmAvailable } from '../../create/src/in-store/__test__/stair-mesh.oracle.js';
@@ -30,6 +31,14 @@ const STAIR: StairInStoreParams = { Position: [1, 2, 0], NumberOfRisers: 4,
   RiserHeight: .2, TreadLength: .3, Width: 1, Name: 'D5 stair' };
 const RAILING: RailingInStoreParams = { Path: [[1, 2, 0], [3, 2, 0]],
   Height: 1.1, RailDiameter: .1, PostDiameter: .1, PostSpacing: 1, Name: 'D5 railing' };
+
+/** Keep the real catalog while observing the owned element producer directly. */
+function sourceElementRegistry() {
+  const types = new Set(elementNodes.map(node => node.type));
+  return new NodeRegistry<FlowHost>().registerAll([
+    ...createStandardRegistry().list().filter(node => !types.has(node.type)), ...elementNodes,
+  ]);
+}
 
 function add(bim: Bim, model: string, kind: Kind): EntityRef {
   return kind === 'stair' ? bim.store.addStair(model, 42, STAIR) : bim.store.addRailing(model, 42, RAILING);
@@ -132,7 +141,7 @@ describe.skipIf(!AVAILABLE)('#6232 D5 canonical stair/railing SDK and public MCP
     const { registry: models, target, transport, call } = await session(count);
     try {
       target.bim.store.addEntity(target.id, { type: 'IfcCartesianPoint', attributes: [[7, 8, 9]] });
-      const options = { host: { bim: target.bim, defaultModelId: target.id }, registry: createStandardRegistry(), tracking: new MemoryTrackingStore(), features: headlessFeatures() };
+      const options = { host: { bim: target.bim, defaultModelId: target.id }, registry: sourceElementRegistry(), tracking: new MemoryTrackingStore(), features: headlessFeatures() };
       const peer = count === 2 ? (await records(models.get('alpha')!.bim.export.ifc())).all : null;
       const original = flow('stair');
       expect((await runFlow(original, options)).ok).toBe(true);
@@ -180,7 +189,7 @@ describe.skipIf(!AVAILABLE)('#6232 D5 canonical stair/railing SDK and public MCP
           const before = (await records(target.bim.export.ifc())).all;
           const peer = (await records(models.get('alpha')!.bim.export.ifc())).all;
           const host: FlowHost = { bim: target.bim, defaultModelId: target.id };
-          const options = { host, registry: createStandardRegistry(), tracking: new MemoryTrackingStore(), features: headlessFeatures() };
+          const options = { host, registry: sourceElementRegistry(), tracking: new MemoryTrackingStore(), features: headlessFeatures() };
           const original = flow(kind);
           const first = await runFlow(original, options);
           expect(first.ok, JSON.stringify(first.reports)).toBe(true);

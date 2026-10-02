@@ -14,7 +14,11 @@ import { act } from 'react';
 import { cleanup, render } from '@/test/render.js';
 import { posthog } from '@/lib/analytics';
 import { scrubEvent } from '@/lib/analytics-scrub';
-import { __resetReloadResumeForTests, noteModelLoadIntent, persistResumeIntent } from '@/lib/reload-resume';
+import {
+  __resetReloadResumeForTests, markLocalModelFiles, persistResumeIntent, setOpenModelsSource, takeResumeIntent,
+} from '@/lib/reload-resume';
+import { useViewerStore } from '@/store';
+import type { FederatedModel } from '@/store/types';
 import { useReloadResume, type ReloadResumeDeps } from './useReloadResume';
 
 const realCapture = posthog.capture;
@@ -36,7 +40,9 @@ afterEach(() => {
 
 /** A previous page's reload: what `reloadKeepingOpenModels` leaves behind. */
 function previousPageReloaded(files: string[], trigger: 'automatic' | 'user' = 'automatic'): void {
-  files.forEach((name, i) => noteModelLoadIntent(name, i === 0 ? 'primary' : 'federated'));
+  const open = files.map((name) => new File(['x'], name));
+  markLocalModelFiles(open);
+  setOpenModelsSource(() => open.map((sourceFile) => ({ sourceFile, loadState: 'complete' })));
   persistResumeIntent(trigger);
   __resetReloadResumeForTests(); // the new page starts with fresh module memory
 }
@@ -108,11 +114,11 @@ describe('useReloadResume', () => {
 
   it('after a second automatic reload from an automatic reopen, only prompts (loop guard)', async () => {
     // Page 1 -> page 2 reopened automatically; page 2's load failed and reloaded automatically.
-    noteModelLoadIntent('huge.ifc', 'primary');
+    const huge = new File(['x'], 'huge.ifc');
+    markLocalModelFiles([huge]);
+    setOpenModelsSource(() => [{ sourceFile: huge, loadState: 'streaming-geometry' }]);
     persistResumeIntent('automatic');
-    const { takeResumeIntent } = await import('@/lib/reload-resume');
     takeResumeIntent();
-    noteModelLoadIntent('huge.ifc', 'primary');
     persistResumeIntent('automatic');
     __resetReloadResumeForTests();
 
@@ -128,6 +134,20 @@ describe('useReloadResume', () => {
     assert.deepEqual(routed, [], 'no automatic reopen this time');
     assert.equal(reads, 0);
     assert.equal(notices.length, 1);
+  });
+
+  it('reads the viewer store at reload time: a model removed before the reload is not carried (#6721 review)', async () => {
+    const wall = new File(['x'], 'hello-wall.ifc');
+    const second = new File(['x'], 'second.ifc');
+    markLocalModelFiles([wall, second]);
+    const model = (id: string, sourceFile: File) => ({ id, name: sourceFile.name, sourceFile, loadState: 'complete' }) as unknown as FederatedModel;
+    render(<Host ready={false} route={() => {}} deps={{ readCached: async () => null, notify: () => {} }} />);
+    await flush();
+    useViewerStore.setState({ models: new Map([['a', model('a', wall)], ['b', model('b', second)]]) });
+    useViewerStore.setState({ models: new Map([['a', model('a', wall)]]) }); // removeModel('b')
+    persistResumeIntent('automatic');
+    assert.deepEqual(takeResumeIntent()?.files, ['hello-wall.ifc']);
+    useViewerStore.setState({ models: new Map() });
   });
 
   it('does nothing on an ordinary boot', async () => {

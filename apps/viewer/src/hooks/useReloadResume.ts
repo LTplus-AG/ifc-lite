@@ -13,7 +13,7 @@ import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { posthog } from '@/lib/analytics';
 import { getCachedFile } from '@/lib/recent-files';
-import { setOpenModelsProbe, takeResumeIntent } from '@/lib/reload-resume';
+import { setOpenModelsSource, takeResumeIntent } from '@/lib/reload-resume';
 import { useViewerStore } from '@/store';
 
 export interface ReloadResumeDeps {
@@ -47,10 +47,7 @@ export function useReloadResume(
   pickerRef.current = openPicker;
 
   useEffect(() => {
-    setOpenModelsProbe(() => {
-      const state = useViewerStore.getState();
-      return state.loading || state.models.size > 0;
-    });
+    setOpenModelsSource(() => useViewerStore.getState().models.values());
   }, []);
 
   useEffect(() => {

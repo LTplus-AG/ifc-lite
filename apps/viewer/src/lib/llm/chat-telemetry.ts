@@ -135,3 +135,25 @@ export function startChatTurnTelemetry(start: ChatTurnStart, deps: ChatTelemetry
     },
   };
 }
+
+/**
+ * Run the response handler, then settle the turn whatever happens: `success`
+ * when it returns, `error` (and rethrow) when it throws, so a crash in the
+ * completion handler can never leave a sent turn without its completion event.
+ */
+export function settleTurnAfter(
+  turn: ChatTurnTelemetry,
+  run: () => void,
+  details: () => { scriptEdited?: boolean },
+): void {
+  let failure: Error | null = null;
+  try {
+    run();
+  } catch (err) {
+    failure = err instanceof Error ? err : new Error(String(err));
+    throw err;
+  } finally {
+    if (failure) turn.finish('error', { error: failure });
+    else turn.finish('success', details());
+  }
+}

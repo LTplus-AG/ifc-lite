@@ -59,7 +59,7 @@ import { canUsePlainCodeBlockFallback, type ScriptMutationIntent } from '@/lib/l
 import { Image as ImageIcon, KeyRound } from 'lucide-react';
 import { getModelById } from '@/lib/llm/models';
 import { resolveStreamRoute } from '@/lib/llm/byok-guard';
-import { startChatTurnTelemetry } from '@/lib/llm/chat-telemetry';
+import { settleTurnAfter, startChatTurnTelemetry } from '@/lib/llm/chat-telemetry';
 import { getApiKeys, hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
 import { ByokKeyModal } from './chat/ByokKeyModal';
 import { ByokStreamingPill } from './chat/ByokStreamingPill';
@@ -700,7 +700,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         setChatStatus('streaming');
         updateStreaming(accumulated);
     };
-    const handleComplete = (fullText: string) => {
+    const completeTurn = (fullText: string) => {
         clearPendingAttachmentsOnce();
         const normalizedText = continuationBase
           ? stripContinuationOverlap(continuationBase, fullText)
@@ -878,9 +878,10 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           offerScriptInstall();
         }
 
-        turnTelemetry.finish('success', { scriptEdited: responseEditState.appliedAny || responseEditState.fallbackApplied });
         commitAssistantTurn();
     };
+    const handleComplete = (fullText: string) => settleTurnAfter(turnTelemetry, () => completeTurn(fullText),
+      () => ({ scriptEdited: responseEditState.appliedAny || responseEditState.fallbackApplied }));
     const handleUsageInfo = (info: UsageInfo) => {
         setChatUsage(info);
     };

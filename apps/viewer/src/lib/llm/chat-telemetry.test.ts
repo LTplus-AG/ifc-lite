@@ -11,7 +11,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { scrubEvent } from '../analytics-scrub.js';
-import { chatErrorClass, llmFamily, startChatTurnTelemetry, type ChatTelemetryDeps } from './chat-telemetry.js';
+import { chatErrorClass, llmFamily, settleTurnAfter, startChatTurnTelemetry, type ChatTelemetryDeps } from './chat-telemetry.js';
 import { BYOK_MODELS } from './models.js';
 
 function harness() {
@@ -80,6 +80,22 @@ describe('chat turn telemetry', () => {
     assert.equal(chatErrorClass(new Error('Provider routing unavailable for x. Switch model to continue.')), 'provider');
     assert.equal(chatErrorClass(new Error('HTTP 500')), 'http');
     assert.equal(chatErrorClass(new Error('something else')), 'other');
+  });
+
+  it('settles the turn even when the completion handler throws (#6721 review)', () => {
+    const h = harness();
+    const turn = startChatTurnTelemetry({ route: 'proxy', modelId: 'x', turnCount: 1, attachmentCount: 0, kind: 'chat' }, h.deps);
+    assert.throws(() => settleTurnAfter(turn, () => { throw new TypeError('Failed to fetch'); }, () => ({ scriptEdited: true })), /Failed to fetch/);
+    const done = h.events.filter((e) => e.event === 'ai_chat_response_completed');
+    assert.equal(done.length, 1);
+    assert.equal(done[0].properties.outcome, 'error');
+    assert.equal(done[0].properties.error_class, 'network');
+
+    const ok = harness();
+    const okTurn = startChatTurnTelemetry({ route: 'proxy', modelId: 'x', turnCount: 1, attachmentCount: 0, kind: 'chat' }, ok.deps);
+    settleTurnAfter(okTurn, () => {}, () => ({ scriptEdited: true }));
+    assert.equal(ok.events[1].properties.outcome, 'success');
+    assert.equal(ok.events[1].properties.script_edited, true);
   });
 
   it('maps every registered BYOK model to a known family', () => {

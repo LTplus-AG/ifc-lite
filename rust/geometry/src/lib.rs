@@ -134,6 +134,9 @@ pub(crate) mod instancing;
 pub mod kernel;
 pub mod material_layer_index;
 pub mod mesh;
+/// Cooperative heartbeat from long geometry work to a host that must tell a
+/// slow call from a hung one (see the module docs).
+pub mod progress;
 pub(crate) mod mesh_orient;
 pub(crate) mod processors;
 pub(crate) mod profile;

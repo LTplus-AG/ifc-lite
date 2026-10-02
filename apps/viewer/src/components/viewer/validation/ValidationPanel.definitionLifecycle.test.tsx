@@ -13,6 +13,8 @@ import { parseRuleSetFile } from '@ifc-lite/rules';
 import { render, click, cleanup, type as typeInput } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
+import { useIDS } from '@/hooks/useIDS';
+import { useInformationValidation } from '@/hooks/validation/useInformationValidation';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { activeDefinition, loadDefinitionLibrary, type DefinitionKind } from '@/lib/validation/definition-library';
 import { ValidationPanel } from './ValidationPanel.js';
@@ -27,6 +29,11 @@ const ruleSource = { version: 1, name: 'Independent check', rules: [{
 }] };
 const parsedRules = parseRuleSetFile(ruleSource);
 assert.ok(parsedRules.ok);
+let owner: { ids: ReturnType<typeof useIDS>; info: ReturnType<typeof useInformationValidation> };
+function Owner() {
+  owner = { ids: useIDS({ autoApplyColors: false }), info: useInformationValidation() };
+  return null;
+}
 beforeEach(() => { localStorage.clear(); useViewerStore.setState(initial); setValidationSourceChoice(null); });
 afterEach(() => { cleanup(); useViewerStore.setState(initial); setValidationSourceChoice(null); });
 
@@ -40,6 +47,48 @@ async function models(count: number): Promise<void> {
     loaded.push({ ...fixtureModel(`model-${index}`), name, ifcDataStore: data });
   }
   useViewerStore.setState(fixtureModels(...loaded));
+}
+
+for (const count of [1, 2]) for (const kind of ['rules', 'ids'] as const) {
+  it(`#6567 selecting a copied ${kind} check cancels an actual pending validation across mounted callers at ${count} model(s)`, async () => {
+    await models(count);
+    setValidationSourceChoice(kind);
+    const ui = render(<><Owner /><ValidationPanel /></>);
+    await importFile(ui, kind, kind === 'ids' ? xml : JSON.stringify(ruleSource));
+    await waitFor(() => !useViewerStore.getState().idsAuditing);
+    await act(async () => { await (kind === 'ids' ? owner.ids.runValidation() : owner.info.run()); });
+    const completed = useViewerStore.getState().idsValidationReport;
+    assert.ok(completed && completed.specificationResults.length > 0, 'the actual validator first completed a check of real IFC input');
+    click(button(ui, 'Save report'));
+    const saved = JSON.stringify(useViewerStore.getState().savedValidationReports);
+    const original = activeDefinition(useViewerStore.getState().validationDefinitions, kind);
+    assert.ok(original);
+    let running!: Promise<unknown>;
+    let settled = false;
+    let copiedId: string | undefined;
+    const landed: string[] = [];
+    const unsubscribe = useViewerStore.subscribe(state => {
+      if (copiedId && state.idsValidationReport) landed.push(state.idsValidationReport.source.kind);
+    });
+    try {
+      act(() => {
+        running = kind === 'ids' ? owner.ids.runValidation() : owner.info.run();
+        void running.finally(() => { settled = true; });
+        assert.equal(settled, false, 'the real engine promise is pending when the other mounted caller changes the source');
+        click(button(ui, 'New from this check'));
+        copiedId = activeDefinition(useViewerStore.getState().validationDefinitions, kind)?.id;
+      });
+      assert.ok(copiedId && copiedId !== original.id);
+      await act(async () => { await running; });
+      assert.deepEqual(landed, [], 'the old engine cannot publish under the copied check');
+      assert.equal(useViewerStore.getState().idsValidationReport, null);
+      assert.equal(useViewerStore.getState().idsProgress, null);
+      assert.equal(useViewerStore.getState().idsLoading, false);
+      assert.equal(owner.info.running, false);
+      assert.equal(activeDefinition(useViewerStore.getState().validationDefinitions, kind)?.id, copiedId);
+      assert.equal(JSON.stringify(useViewerStore.getState().savedValidationReports), saved);
+    } finally { unsubscribe(); }
+  });
 }
 function button(ui: HTMLElement, text: string): HTMLButtonElement {
   const target = [...ui.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent?.trim() === text);

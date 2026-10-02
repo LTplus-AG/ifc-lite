@@ -13,6 +13,7 @@ import { render, cleanup } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import { useIDS } from '@/hooks/useIDS';
+import { loadIdsContent } from '@/hooks/ids/loadIdsContent';
 import { useInformationValidation } from '@/hooks/validation/useInformationValidation';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { activeDefinition, type DefinitionKind } from '@/lib/validation/definition-library';
@@ -161,3 +162,74 @@ for (const kind of ['rules', 'ids'] as const) for (const crossHook of [false, tr
     else assert.equal(useViewerStore.getState().validationRuleSetDraft?.name, 'Newer pick');
   });
 }
+
+for (const kind of ['rules', 'ids'] as const) for (const crossHook of [false, true]) {
+  it(`#6567 a newer invalid ${kind} import preserves the active source and refuses an older held import across ${crossHook ? 'two' : 'one'} callers`, async () => {
+    await models(1, 'source');
+    setValidationSourceChoice(kind);
+    mount();
+    await act(async () => { await load(0, kind, new File([source(kind, 'Retained check')], 'retained')); });
+    await waitFor(() => !useViewerStore.getState().idsAuditing);
+    const before = activeDefinition(useViewerStore.getState().validationDefinitions, kind);
+    assert.ok(before);
+    const retained = JSON.stringify(before);
+    const olderGate = gate();
+    let older!: Promise<unknown>;
+    act(() => { older = load(0, kind, new WaitingFile([source(kind, 'Obsolete check')], 'older', olderGate)); });
+    await waitFor(() => olderGate.reached);
+    await act(async () => { await load(crossHook ? 1 : 0, kind, new File([kind === 'ids' ? '<ids><broken>' : '{invalid JSON'], 'invalid')); });
+    assert.ok(kind === 'ids' ? owners[crossHook ? 1 : 0].ids.error : owners[crossHook ? 1 : 0].info.error, 'the real parser failure is usable');
+    await act(async () => { olderGate.release(); await older; });
+    assert.equal(JSON.stringify(activeDefinition(useViewerStore.getState().validationDefinitions, kind)), retained);
+    assert.equal(useViewerStore.getState().validationDefinitions.entries.length, 1);
+    if (kind === 'ids') {
+      assert.equal(useViewerStore.getState().idsDocument?.info.title, 'Retained check');
+      assert.equal(useViewerStore.getState().idsLoading, false);
+      assert.equal(useViewerStore.getState().idsAuditing, false);
+    } else assert.equal(useViewerStore.getState().validationRuleSetDraft?.name, 'Retained check');
+  });
+}
+
+it('#6567 a synchronous IDS load owns its real audit and supersedes a held file picked in another mounted caller', async () => {
+  await models(1, 'source');
+  setValidationSourceChoice('ids');
+  mount();
+  const olderGate = gate();
+  let older!: Promise<unknown>;
+  act(() => { older = load(0, 'ids', new WaitingFile([source('ids', 'Older file')], 'older', olderGate)); });
+  await waitFor(() => olderGate.reached);
+  let audit!: Promise<void>;
+  await act(async () => { audit = loadIdsContent(useViewerStore, source('ids', 'Synchronous check')); await audit; });
+  assert.equal(useViewerStore.getState().idsAuditReport?.parsedDocument?.info.title, 'Synchronous check');
+  await act(async () => { olderGate.release(); await older; });
+  assert.equal(title('ids'), 'Synchronous check');
+  assert.equal(useViewerStore.getState().idsAuditReport?.parsedDocument?.info.title, 'Synchronous check');
+  assert.equal(useViewerStore.getState().validationDefinitions.entries.length, 1);
+});
+
+it('#6567 superseded real IDS audits cannot publish issues or clear auditing for a newer held file', async () => {
+  await models(1, 'source');
+  setValidationSourceChoice('ids');
+  mount();
+  const observed: string[] = [];
+  const unsubscribe = useViewerStore.subscribe(state => {
+    if (state.idsAuditReport) observed.push(state.idsAuditReport.parsedDocument?.info.title ?? 'unparsed');
+  });
+  const newerGate = gate();
+  let audit!: Promise<void>, newer!: Promise<unknown>;
+  try {
+    act(() => {
+      audit = loadIdsContent(useViewerStore, source('ids', 'Obsolete audit'));
+      newer = load(1, 'ids', new WaitingFile([source('ids', 'Newest audit')], 'newer', newerGate));
+    });
+    await waitFor(() => newerGate.reached);
+    await act(async () => { await audit; });
+    assert.deepEqual(observed, [], 'the obsolete actual auditor never publishes while a newer decode is pending');
+    assert.equal(useViewerStore.getState().idsLoading, true);
+    await act(async () => { newerGate.release(); await newer; });
+    await waitFor(() => !useViewerStore.getState().idsAuditing);
+    assert.ok(observed.length > 0, 'the canonical auditor did publish the accepted source');
+    assert.ok(observed.every(value => value === 'Newest audit'));
+    assert.equal(useViewerStore.getState().idsDocument?.info.title, 'Newest audit');
+  } finally { unsubscribe(); }
+});

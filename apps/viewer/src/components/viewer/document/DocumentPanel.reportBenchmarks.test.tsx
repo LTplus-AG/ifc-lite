@@ -197,6 +197,7 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     act(() => useViewerStore.setState({ documents: [{ ...spec, blocks: [block] }], activeDocumentId: spec.id }));
     const ui = render(<DocumentPanel />); await settle(); assertRing(ui, reports[0]);
     registerLocale('de-x-rings', { 'manualValidation.report.benchmarks': 'Ring anzeigen', 'manualValidation.verdict.pass': 'Bestanden',
+      'document.preview.idsReportPassed': 'Bestanden', 'document.preview.idsReportFailed': 'Fehler',
       'manualValidation.verdict.fail': 'Fehler', 'document.preview.idsReportPassRate': 'Prüfquote',
       'manualValidation.ring.label': '{name}: {pass} bestanden, {warning} Warnungen, {fail} Fehler, {unanswered} offen' });
     act(() => setLocale('de-x-rings')); await settle();

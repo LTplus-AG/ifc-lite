@@ -100,8 +100,10 @@ describe('Document text colours (#6492)', () => {
       assert.ok(resetText && resetBackground);
       click(resetText); click(resetBackground);
       await settle();
-      assert.equal(preview.style.color, '');
-      assert.equal(preview.style.backgroundColor, '');
+      const resetPreview = ui.querySelector<HTMLElement>('[data-preview-block="colour"] [data-block-text]');
+      assert.ok(resetPreview, 'the recomposed current page remains visible after resetting colours');
+      assert.equal(resetPreview.style.color, '');
+      assert.equal(resetPreview.style.backgroundColor, '');
       assert.equal(textColor.value, '#828282');
       const reset = loadDocuments().find((document) => document.id === spec.id)?.blocks[0];
       assert.ok(reset?.kind === 'text');

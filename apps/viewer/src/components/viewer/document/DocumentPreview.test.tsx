@@ -41,6 +41,29 @@ const baseDocument = {
   blocks: [imageBlock],
 } satisfies DocumentSpec;
 
+it('keeps a failed BCF snapshot at the canonical PDF fallback proportion (#6610)', async () => {
+  container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+  const topic = { guid: 'broken-snapshot', title: 'Coordination image', comments: [],
+    viewpoints: [{ guid: 'viewpoint', snapshot: 'data:image/png;base64,invalid' }] };
+  const doc: DocumentSpec = { ...baseDocument, blocks: [{ kind: 'topic', id: 'topic', guid: topic.guid, snapshot: true }] };
+  act(() => root?.render(<DocumentPreview document={doc}
+    bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }}
+    aggregations={new Map()} chartMessages={new Map()} topics={new Map([[topic.guid, topic]])}
+    selectedBlockId={null} onSelectBlock={() => {}} />));
+  await ready();
+  const image = container.querySelector('[data-preview-block="topic"] img'); assert.ok(image);
+  act(() => image.dispatchEvent(new Event('error', { bubbles: true })));
+  await ready();
+  const placeholder = container.querySelector<HTMLElement>('[data-preview-block="topic"] .border-dashed'); assert.ok(placeholder);
+  // A missing/undecodable BCF snapshot uses the existing resolver's 4:3 PDF
+  // fallback, whereas an ordinary image uses its independent square fallback.
+  const proportion = Number.parseFloat(placeholder.style.width) / Number.parseFloat(placeholder.style.height);
+  assert.ok(Math.abs(proportion - 4 / 3) < 1e-10, `preview fallback ${proportion} must match the PDF frame`);
+  assert.equal(container.querySelector('[data-document-preview]')?.getAttribute('aria-busy'), 'false');
+});
+
 it('#5823 selects the same document block by click, Enter, and Space', async () => {
   const selections: string[] = [];
   container = document.createElement('div');

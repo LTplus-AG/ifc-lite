@@ -70,7 +70,7 @@ function Item({ item, block, origin, props, lineBreak }: { item: DrawnItem; bloc
     case 'text': return <span style={{ ...style, width: undefined, whiteSpace: 'pre', lineHeight: 1.25,
       fontSize: item.size * scale, fontFamily: DOCUMENT_FONT_FAMILIES[item.font ?? 'helvetica'],
       fontWeight: item.bold ? 700 : 400, color: item.color ?? `rgb(${item.gray}, ${item.gray}, ${item.gray})` }}
-      data-table-message={item.role === 'table-message' ? '' : undefined} title={item.tooltip ?? item.text}>{markedText()}{lineBreak ? '\n' : ''}</span>;
+      data-table-message={item.role === 'table-message' ? '' : undefined} title={item.tooltip}>{markedText()}{lineBreak ? '\n' : ''}</span>;
     case 'rect':
     case 'text-background': return <span aria-hidden="true" style={{ ...style, backgroundColor: item.color }} />;
     case 'image':

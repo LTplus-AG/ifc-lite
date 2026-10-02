@@ -26,23 +26,40 @@ function freshDir(): string {
   return dir;
 }
 
+/** A `stat` that fails with `code`, as the file system would; no host file system involved. */
+function failingStat(code: string): (file: string) => never {
+  return (file) => {
+    throw Object.assign(new Error(`${code}: stat '${file}'`), { code });
+  };
+}
+
 describe('#6581 room-log check', () => {
-  it('answers "has data" when it cannot tell, and only then', () => {
-    const dir = freshDir();
-    const notADir = path.join(dir, 'plain-file');
-    fs.writeFileSync(notADir, 'x');
+  it('answers "has data" when it cannot tell: an I/O error, or an id with no encoded form', () => {
     const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
-      expect(hasPersistedRoomLog(notADir, 'room'), 'ENOTDIR: cannot tell').toBe(true);
-      expect(hasPersistedRoomLog(dir, '\ud800'), 'no encoded form: cannot tell').toBe(true);
-      expect(warned).toHaveBeenCalledTimes(2);
+      expect(hasPersistedRoomLog('/data', 'room', failingStat('EACCES')), 'EACCES').toBe(true);
+      expect(hasPersistedRoomLog('/data', 'room', failingStat('EIO')), 'EIO').toBe(true);
+      expect(hasPersistedRoomLog('/data', '\ud800', failingStat('ENOENT')), 'no encoded form').toBe(true);
+      expect(warned).toHaveBeenCalledTimes(3);
     } finally {
       warned.mockRestore();
     }
-    expect(hasPersistedRoomLog(dir, 'room'), 'no log').toBe(false);
-    expect(hasPersistedRoomLog(dir, 'x'.repeat(400)), 'a name too long to exist').toBe(false);
-    fs.writeFileSync(path.join(dir, 'room.log'), 'x');
-    expect(hasPersistedRoomLog(dir, 'room')).toBe(true);
+  });
+
+  it('answers "no log" when no file can be at the path, on every platform', () => {
+    // ENOTDIR: a component of the data dir is not a directory. Node's
+    // `throwIfNoEntry: false` hides it on Linux and raises it on macOS, so it
+    // is injected here rather than provoked.
+    for (const code of ['ENOENT', 'ENOTDIR', 'ENAMETOOLONG']) {
+      expect(hasPersistedRoomLog('/data', 'room', failingStat(code)), code).toBe(false);
+    }
+  });
+
+  it('finds a log under its encoded name on the real file system', () => {
+    const dir = freshDir();
+    expect(hasPersistedRoomLog(dir, 'a/b'), 'no log').toBe(false);
+    fs.writeFileSync(path.join(dir, `${encodeURIComponent('a/b')}.log`), 'x');
+    expect(hasPersistedRoomLog(dir, 'a/b')).toBe(true);
   });
 });
 

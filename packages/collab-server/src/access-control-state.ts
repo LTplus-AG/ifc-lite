@@ -17,20 +17,36 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { FALLBACK_TOKEN_RETENTION_SEC } from './room-claims.js';
 
+/** `stat` errors meaning no file can exist at the path (see `hasPersistedRoomLog`). */
+const NO_FILE_POSSIBLE: ReadonlySet<string> = new Set(['ENOENT', 'ENOTDIR', 'ENAMETOOLONG']);
+
 /**
  * Whether `FilePersistence` would load a log for `roomId` from `dir`: under
  * its encoded name, or under the pre-encoding sanitized name it still reads.
  * Answers `true` whenever it cannot tell (an id with no encoded form, an I/O
  * error): the caller never releases or expires a room that has a log, so
  * "cannot tell" must land on the side that keeps the claim.
+ *
+ * `stat` is injectable so tests can raise any error code on any platform.
  */
-export function hasPersistedRoomLog(dir: string, roomId: string): boolean {
+export function hasPersistedRoomLog(
+  dir: string,
+  roomId: string,
+  stat: (file: string) => unknown = fs.statSync,
+): boolean {
   const exists = (name: string): boolean => {
     try {
-      return fs.statSync(path.join(dir, name), { throwIfNoEntry: false }) !== undefined;
+      stat(path.join(dir, name));
+      return true;
     } catch (err) {
-      // A name too long for the file system can hold no log.
-      if ((err as NodeJS.ErrnoException).code === 'ENAMETOOLONG') return false;
+      // Every code is classified here rather than through `statSync`'s
+      // `throwIfNoEntry: false`, which treats ENOTDIR differently on Linux
+      // and macOS. Each code below says no file can be at that path:
+      // nothing there (ENOENT), a component of `dir` is not a directory
+      // (ENOTDIR: FilePersistence could not have written a log under it),
+      // or the name is too long for the file system to hold (ENAMETOOLONG).
+      // Any other error (EACCES, EIO, ...) means "cannot tell".
+      if (NO_FILE_POSSIBLE.has(String((err as NodeJS.ErrnoException).code))) return false;
       // eslint-disable-next-line no-console
       console.warn(`[collab-server] cannot check ${name} in the data dir; keeping its claim:`, err);
       return true;

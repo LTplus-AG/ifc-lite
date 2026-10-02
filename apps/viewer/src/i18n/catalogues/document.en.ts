@@ -232,7 +232,7 @@ export const documentEn = {
   'document.block.idsReportVariantCompact': 'Compact (bars)',
   'document.block.idsReportVariantLong': 'Long (full text)',
   'document.block.idsReportSpecificationsOnly': 'Specifications only',
-  'document.block.idsReportRefresh':'Refresh from current validation report',
+  'document.block.idsReportRefresh': 'Refresh from current validation report',
   'document.block.idsReportRefreshDisabledTitle': 'Run an IDS validation first',
   'document.block.idsReportRefreshed': 'Refreshed from the current validation report',
   'document.preview.idsReportChecked': 'Checked',

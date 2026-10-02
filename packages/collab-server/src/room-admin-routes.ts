@@ -212,7 +212,7 @@ export interface ReleaseRequestBody {
 }
 
 /** What a release request did: see `ReleaseEndpointOptions.release`. */
-export type ReleaseResult = 'released' | 'in-use' | 'not-holder';
+export type ReleaseResult = 'released' | 'in-use' | 'not-holder' | 'busy';
 
 export interface ReleaseEndpointOptions {
   /** Secret used to verify the bearer token. */
@@ -222,7 +222,8 @@ export interface ReleaseEndpointOptions {
    * unrevoked claims of an `admin` bearer for the requested room. Returns
    * `released` when the claim was still unused and the bearer is one of the
    * tokens minted for it, `in-use` when the room was joined or holds data,
-   * and `not-holder` otherwise.
+   * `busy` when the server will not take more revocations now (the claim is
+   * kept), and `not-holder` otherwise.
    */
   release: (claims: RoomTokenClaims) => ReleaseResult | Promise<ReleaseResult>;
   /** Deny-list check: a revoked bearer cannot release. */
@@ -237,7 +238,8 @@ export interface ReleaseEndpointOptions {
  * minted a fresh room's admin token and then failed to create the room (seed
  * preparation or the join failed) hands the claim back, freeing its slot in
  * the claim allowance. Body `{ roomId }`. Responds 200 `{ released: true }`,
- * 409 `room-in-use` for a room that was joined or holds data, 403 otherwise.
+ * 409 `room-in-use` for a room that was joined or holds data, 503 `busy`
+ * when the claim is kept to bound the deny-list, 403 otherwise.
  */
 export async function handleReleaseRequest(
   req: http.IncomingMessage,
@@ -281,5 +283,6 @@ export async function handleReleaseRequest(
   const result = await opts.release(bearer);
   if (result === 'released') return reply(200, { released: true, roomId });
   if (result === 'in-use') return reply(409, { error: 'room-in-use' });
+  if (result === 'busy') return reply(503, { error: 'busy' });
   return reply(403, { error: 'forbidden' });
 }

@@ -82,6 +82,11 @@ export interface AccessControlOptions {
    * from its first mint, and a release answers 409.
    */
   claimsPendingUntilJoin?: boolean;
+  /**
+   * Deny-list size past which a release is refused (default 1024), leaving
+   * the claim to expire instead. Revoke and kick are never refused.
+   */
+  maxRevocationsForRelease?: number;
 }
 
 export interface AccessControl {
@@ -145,6 +150,8 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
   // stay well under the default 100k cap.
   const maxClaimedRooms = opts.maxClaimedRooms ?? 100_000;
   const pendingUntilJoin = opts.claimsPendingUntilJoin === true;
+  // ~50 bytes per entry in access-control.json: at most ~52 KB from releases.
+  const maxRevocationsForRelease = opts.maxRevocationsForRelease ?? 1024;
   // Not opted in: claims an earlier run left pending become permanent too.
   const confirmedOnLoad = pendingUntilJoin ? 0 : loadedPending.size;
   const roomClaims = createRoomClaims({
@@ -290,12 +297,14 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
         if (bearerClaims?.jti && revoked.has(bearerClaims.jti)) return null;
         // An admin token for this room can re-mint links without tripping the
         // per-IP budget — the throttle targets the unauthenticated fresh-room
-        // path an attacker abuses, not authenticated re-mints. A pending claim
-        // records each token minted for it (a release revokes them all), and
-        // refuses mints past its bound rather than leave one unrecorded.
+        // path an attacker abuses, not authenticated re-mints. A PENDING claim
+        // is that path still: its admin came from a free first touch, and a
+        // release turns each token into a deny-list entry. So its mints pay
+        // the same budget, are recorded (a release revokes them all), and stop
+        // at the claim's bound rather than go unrecorded.
         if (bearerClaims?.room === room && bearerClaims.role === 'admin') {
           if (roomClaims.isPending(room)) {
-            if (!roomClaims.record(room, mint)) return null;
+            if (!mintRateAllows(clientIp) || !roomClaims.record(room, mint)) return null;
             persist();
           }
           return request.role;
@@ -351,7 +360,12 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
       release: (bearer) => {
         // Re-checked synchronously: the route's own revocation check awaited.
         if (revoked.has(bearer.jti)) return 'not-holder';
-        const outcome = roomClaims.release(bearer.room, bearer.jti);
+        // A release is the one deny-list writer an unauthenticated client can
+        // drive, so it stops at `maxRevocationsForRelease` live entries. Past
+        // that it is refused and the claim expires with its tokens instead.
+        pruneRevoked();
+        const fits = (n: number) => revoked.size + n <= maxRevocationsForRelease;
+        const outcome = roomClaims.release(bearer.room, bearer.jti, fits);
         if (outcome.kind !== 'released') return outcome.kind;
         // The id can be claimed again; no token minted for it may follow it.
         for (const [jti, exp] of outcome.tokens) revoked.set(jti, exp);

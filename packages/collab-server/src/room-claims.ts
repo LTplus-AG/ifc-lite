@@ -31,10 +31,11 @@ export const FALLBACK_TOKEN_RETENTION_SEC = 31 * 24 * 60 * 60;
 export const EXPIRY_SLACK_SEC = 60;
 /**
  * Tokens a pending claim may record. A client creating a room needs one (its
- * admin token); the bound keeps a release from feeding the deny-list without
- * limit. Further mints for a pending room are refused, not left unrecorded.
+ * admin token); the bound caps what one release adds to the deny-list (the
+ * caller bounds the total). Further mints for a pending room are refused,
+ * not left unrecorded.
  */
-export const MAX_PENDING_CLAIM_TOKENS = 8;
+export const MAX_PENDING_CLAIM_TOKENS = 4;
 
 /** The id and expiry (seconds since epoch) of a minted token. */
 export interface MintedToken {
@@ -54,7 +55,9 @@ export type ReleaseOutcome =
   /** Confirmed (joined, or adopted from disk) or holding persisted data. */
   | { kind: 'in-use' }
   /** No such claim, or the bearer is not one of the tokens it recorded. */
-  | { kind: 'not-holder' };
+  | { kind: 'not-holder' }
+  /** Kept: revoking its tokens would exceed the caller's bound; it still expires. */
+  | { kind: 'busy' };
 
 export interface RoomClaims {
   readonly size: number;
@@ -66,7 +69,8 @@ export interface RoomClaims {
   record(room: string, token: MintedToken | undefined): boolean;
   /** Pending to confirmed. Returns whether it was pending. */
   confirm(room: string): boolean;
-  release(room: string, bearerJti: string): ReleaseOutcome;
+  /** `canRevoke(n)`: whether the caller can take the claim's `n` tokens onto its deny-list. */
+  release(room: string, bearerJti: string, canRevoke: (tokenCount: number) => boolean): ReleaseOutcome;
   /**
    * Drop pending claims whose tokens have all expired (one claim, or all).
    * Returns how many claims changed: expired, or confirmed because the room
@@ -151,11 +155,12 @@ export function createRoomClaims(opts: {
       return true;
     },
     confirm: (room) => pending.delete(room),
-    release(room, bearerJti) {
+    release(room, bearerJti, canRevoke) {
       const claim = pending.get(room);
       if (!claim) return claimed.has(room) ? { kind: 'in-use' } : { kind: 'not-holder' };
       if (!claim.tokens.has(bearerJti)) return { kind: 'not-holder' };
       if (inUse(room)) return { kind: 'in-use' };
+      if (!canRevoke(claim.tokens.size)) return { kind: 'busy' };
       pending.delete(room);
       claimed.delete(room);
       return { kind: 'released', tokens: claim.tokens };

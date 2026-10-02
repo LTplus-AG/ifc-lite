@@ -15,6 +15,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { WebSocket } from 'ws';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAccessControl, type AccessControl, type AccessControlOptions } from '../src/access-control.js';
@@ -226,13 +227,13 @@ describe('#6581 releasing an unused fresh-room claim', () => {
     const dir = freshDir();
     const base = await serve(create(dir));
     const admin = await mint(base, 'bounded');
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 3; i++) {
       expect((await mint(base, 'bounded', { role: 'viewer', bearer: admin.token })).status, `mint ${i + 2}`).toBe(200);
     }
-    expect((await mint(base, 'bounded', { role: 'viewer', bearer: admin.token })).status, 'the 9th token').toBe(403);
+    expect((await mint(base, 'bounded', { role: 'viewer', bearer: admin.token })).status, 'the 5th token').toBe(403);
     expect(await release(base, 'bounded', admin.token)).toBe(200);
     await instances[0].flush();
-    expect(Object.keys(stateOf(dir).revoked ?? {})).toHaveLength(8);
+    expect(Object.keys(stateOf(dir).revoked ?? {})).toHaveLength(4);
   });
 
   it('a joined room mints without that bound', async () => {
@@ -492,6 +493,69 @@ describe('#6581 durable claim state', () => {
       JSON.stringify({ claimedRooms: ['r'], pendingClaims: { r: { at: 'yesterday', tokens: {} } } }),
     );
     expect(() => createAccessControl({ secret: SECRET, dir })).toThrow(/refusing to start open/);
+  });
+});
+
+describe('#6581 the release path cannot grow the deny-list or the state file without bound', () => {
+  /** Claim, mint 3 more tokens with the admin bearer, release: straight through the policy, no HTTP. */
+  async function cycle(ac: AccessControl, room: string, ip: string): Promise<string> {
+    const authorize = ac.serverOptions.tokenEndpoint!.authorize;
+    const exp = Math.floor(clock / 1000) + 30 * 24 * 3600;
+    // UUID jtis, as the token route mints them, so the byte counts are real.
+    const admin: RoomTokenClaims = { room, role: 'admin', iat: Math.floor(clock / 1000), exp, jti: randomUUID() };
+    await authorize({ roomId: room, role: 'admin' }, { bearerClaims: null, clientIp: ip, mint: { jti: admin.jti, exp } });
+    for (let k = 1; k < 4; k++) {
+      await authorize({ roomId: room, role: 'viewer' }, { bearerClaims: admin, clientIp: ip, mint: { jti: randomUUID(), exp } });
+    }
+    return ac.serverOptions.releaseEndpoint!.release(admin);
+  }
+
+  it('an unauthenticated claim-and-release loop stops adding revocations at the bound', async () => {
+    const dir = freshDir();
+    const ac = create(dir, { mintRateCapacity: 1e9, maxClaimedRooms: 1_000_000 });
+    const results = new Map<string, number>();
+    for (let i = 0; i < 400; i++) {
+      const r = await cycle(ac, `loop-${i}`, '198.51.100.7');
+      results.set(r, (results.get(r) ?? 0) + 1);
+    }
+    await ac.flush();
+    const state = stateOf(dir);
+    const bytes = fs.statSync(path.join(dir, 'access-control.json')).size;
+    const entries = Object.keys(state.revoked ?? {}).length;
+    const revokedBytes = JSON.stringify(state.revoked).length;
+    process.stdout.write(`#6581 loop: ${entries} revocations, ${revokedBytes} B of them, ${bytes} B file\n`);
+    expect(entries).toBeLessThanOrEqual(1024);
+    expect(revokedBytes, 'the deny-list part of the file').toBeLessThanOrEqual(1024 * 52);
+    // The rest is the refused claims, still pending: bounded by the claim cap.
+    expect(Object.keys(state.pendingClaims ?? {}).length).toBe(400 - 256);
+    expect(results.get('busy'), 'releases past the bound are refused, not dropped').toBeGreaterThan(0);
+    // The refused claims stay pending, so they still expire with their tokens.
+    clock += 31 * 24 * 3600_000;
+    await cycle(ac, 'after-expiry', '198.51.100.8');
+    await ac.flush();
+    expect(stateOf(dir).claimedRooms, 'every pending claim from the loop expired').toEqual([]);
+  });
+
+  it('the bound is configurable and also holds over HTTP, where a refused release answers 503', async () => {
+    const dir = freshDir();
+    const base = await serve(create(dir, { maxRevocationsForRelease: 3 }));
+    const a = await mint(base, 'bound-a');
+    await mint(base, 'bound-a', { role: 'viewer', bearer: a.token });
+    expect(await release(base, 'bound-a', a.token), '2 entries fit').toBe(200);
+    const b = await mint(base, 'bound-b');
+    await mint(base, 'bound-b', { role: 'viewer', bearer: b.token });
+    expect(await release(base, 'bound-b', b.token), '2 more would make 4').toBe(503);
+    expect(await join(base, 'bound-b', b.token!), 'the claim was not released').toBe('admitted');
+  });
+
+  it('a mint on a pending claim pays the per-IP budget of a fresh claim', async () => {
+    const base = await serve(create(freshDir(), { mintRateCapacity: 3, mintRateRefillPerSecond: 0.0001 }));
+    const admin = await mint(base, 'charged');
+    expect((await mint(base, 'charged', { role: 'viewer', bearer: admin.token })).status).toBe(200);
+    expect((await mint(base, 'charged', { role: 'viewer', bearer: admin.token })).status).toBe(200);
+    expect((await mint(base, 'charged', { role: 'viewer', bearer: admin.token })).status, 'budget spent').toBe(403);
+    expect(await join(base, 'charged', admin.token!)).toBe('admitted');
+    expect((await mint(base, 'charged', { role: 'viewer', bearer: admin.token })).status, 'a joined room is exempt again').toBe(200);
   });
 });
 

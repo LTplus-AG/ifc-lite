@@ -15,8 +15,6 @@ import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import {
   addDoorToStore,
   addOrdinaryElementInStore,
-  addSpaceToStore,
-  addWallToStore,
   addWindowToStore,
   resolveSpatialAnchor,
   generateSpacesFromWalls,

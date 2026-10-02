@@ -76,7 +76,6 @@ export const manualValidationEn = {
 
   // The manual report document block (#6401): DocumentPanel.tsx, BlockEditor.tsx, ManualReportPreview.tsx.
   'manualValidation.report.kind': 'Manual validation report',
-  'manualValidation.report.add': 'Manual validation report',
   'manualValidation.report.heading': 'Manual validation: {name}',
   'manualValidation.report.unavailableTitle': 'Create or open a checklist under Data validation → Manual validation first',
   'manualValidation.report.sourceLabel': 'Checklist',

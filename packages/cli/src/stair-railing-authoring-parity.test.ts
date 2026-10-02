@@ -82,7 +82,7 @@ async function assertProduct(bim: Bim, ref: EntityRef, kind: Kind) {
   }
 }
 function flow(kind: Kind): FlowDocument {
-  const nodes: FlowDocument['nodes'] = [
+  const nodes: Array<FlowDocument['nodes'][number]> = [
     { id: 'storeys', type: 'model.byType', params: { type: 'IfcBuildingStorey' } },
     { id: 'storey', type: 'core.first' },
     { id: 'spec', type: `element.${kind}`, params: kind === 'stair'
@@ -90,7 +90,7 @@ function flow(kind: Kind): FlowDocument {
       : { Path: RAILING.Path, Height: 1.1, RailDiameter: .1, PostDiameter: .1, PostSpacing: 1, Name: RAILING.Name } },
     { id: 'create', type: 'model.addElement', trackingKey: `d5-${kind}` },
   ];
-  const edges: FlowDocument['edges'] = [
+  const edges: Array<FlowDocument['edges'][number]> = [
     { from: ['storeys', 'entities'], to: ['storey', 'items'] },
     { from: ['storey', 'item'], to: ['spec', 'storey'] },
     { from: ['spec', 'spec'], to: ['create', 'spec'] },

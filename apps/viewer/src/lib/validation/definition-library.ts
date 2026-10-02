@@ -56,7 +56,9 @@ export function saveDefinitionLibrary(library: DefinitionLibrary, writable: bool
       const parsed = parseRuleSetFile(entry.file);
       if (!parsed.ok) return `Edits remain available in this session. Complete the rule set before saving: ${parsed.error}`;
     }
-    optionalLocalStorage()?.setItem(KEY, payload(library)); return null;
+    const storage = optionalLocalStorage();
+    if (!storage) return 'Checks remain available in this session, but browser storage is unavailable.';
+    storage.setItem(KEY, payload(library)); return null;
   }
   catch (error) {
     console.warn('[ifc-lite] validation definition library could not be saved.', error);

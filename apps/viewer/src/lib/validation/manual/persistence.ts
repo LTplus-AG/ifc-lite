@@ -16,7 +16,7 @@ import { optionalLocalStorage, preserveUnreadableEntry } from '../../storage/unr
 const LIBRARY_KEY = 'ifc-lite:validation:manual-library';
 const LEGACY_ANSWERS_KEY = 'ifc-lite:validation:manual-answers';
 const LEGACY_CHECKLIST_KEY = 'ifc-lite:validation:manual-checklist';
-const MAX_ANSWERS = 20_000;
+export const MAX_ANSWERS = 20_000;
 let unwritable = false;
 
 export type ManualSaveResult =
@@ -66,7 +66,10 @@ function parseLibrary(raw: unknown): ManualChecklistLibrary {
     seen.add(entry.id);
     const parsed = parseChecklistFile(entry.template);
     if (!parsed.ok) throw new Error(parsed.error);
-    return { id: entry.id, template: parsed.template, answers: normalizeAnswers(entry.answers) };
+    if (entry.preferredModelFingerprint !== undefined && !(typeof entry.preferredModelFingerprint === 'string' && entry.preferredModelFingerprint.trim())) throw new Error('expected a nonblank preferred model fingerprint');
+    return { id: entry.id, template: parsed.template, answers: normalizeAnswers(entry.answers),
+      ...(typeof entry.preferredModelFingerprint === 'string' ? { preferredModelFingerprint: entry.preferredModelFingerprint } : {}),
+    };
   });
   if (raw.activeId !== null && !seen.has(raw.activeId)) throw new Error('active checklist identity is not in the library');
   return {

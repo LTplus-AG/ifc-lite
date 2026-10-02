@@ -38,7 +38,8 @@ const STYLE = { titleFontSize: 20, titleTextColor: '#1264c8', titleBackgroundCol
 const FOOTER = 24;
 const HEADER = 30;
 
-const IDS: IdsReportBlock = { kind: 'ids-report', id: 'ids', variant: 'compact', benchmarks: true, sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z',
+// Compact with specifications only (#6670), so the heading style is also checked with that layout at every size.
+const IDS: IdsReportBlock = { kind: 'ids-report', id: 'ids', variant: 'compact', specificationsOnly: true, benchmarks: true, sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z',
   summary: { checked: 10, passed: 7, failed: 3, passRate: 70 },
   checks: [{ id: 'walls', shortDescription: 'Walls', checked: 10, passed: 7, failed: 3, passRate: 70, rules: [] }] };
 const MANUAL = manualReportBlockFromChecklist({

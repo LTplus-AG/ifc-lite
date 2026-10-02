@@ -36,7 +36,7 @@ const PREVIEW_WIDTH = 560;
 const KINDS = ['text', 'image', 'chart', 'topic', 'table', 'ids-report', 'manual-report'] as const;
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
-const idsBlock: IdsReportBlock = { kind: 'ids-report', id: 'ids-report', variant: 'compact', benchmarks: true, sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z',
+const idsBlock: IdsReportBlock = { kind: 'ids-report', id: 'ids-report', variant: 'compact', specificationsOnly: true, benchmarks: true, sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z',
   summary: { checked: 4, passed: 1, failed: 3, passRate: 25 },
   checks: [{ id: 's1', shortDescription: 'Walls', checked: 4, passed: 1, failed: 3, passRate: 25, rules: [] }] };
 const spec = (): DocumentSpec => ({ version: DOCUMENT_VERSION, id: 'doc-6632', name: 'Headings', page: { size: 'A4', orientation: 'portrait' }, blocks: [

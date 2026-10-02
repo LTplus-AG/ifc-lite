@@ -66,7 +66,7 @@ await act(`s.setTheme('light')`);
 // step whose anchor never resolves auto-skips WITHOUT showing its card, so
 // the sequence of cards seen is the broken-step evidence.
 const card = () => page.evaluate(() => {
-  const el = [...document.querySelectorAll('[role="dialog"][aria-labelledby]')].find((d) => d.textContent?.includes('Skip step'));
+  const el = [...document.querySelectorAll('[role="dialog"][aria-labelledby]')].find((d) => d.textContent?.includes('Skip'));
   if (!el) return null;
   const label = document.getElementById(el.getAttribute('aria-labelledby'))?.textContent ?? '';
   return label;
@@ -129,7 +129,7 @@ await shot('03-welcome-7-after-finish');
 
 // The lens and measure tours need a model; on a build where the welcome tour
 // did not load one, load the demo from the welcome card.
-if (!(await state('s.models.size > 0'))) await page.getByRole('button', { name: 'Load demo project' }).click();
+if (!(await state('s.models.size > 0'))) await page.getByRole('button', { name: 'Load demo project' }).first().click();
 await page.waitForFunction((k) => { const s = globalThis[k].getState(); return s.models.size > 0 && !s.loading && !s.geometryStreamingActive; }, STORE, { timeout: 120000 });
 await page.waitForTimeout(1500);
 

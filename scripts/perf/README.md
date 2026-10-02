@@ -27,6 +27,32 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Direct vertex packing: do not ship the current candidate (#6537)
+
+The candidate removes an intermediate vertex buffer for eligible quantized
+batches. Regression controls establish the allocation reduction and preserve
+the original GPU upload bytes, including float rounding and fallback cases.
+That resource improvement did not establish an end-to-end speed improvement:
+fresh native-GPU worker-pool pairs were slightly slower on the house model,
+mostly slower on Holter, and mixed on the larger architectural model. The
+Revit cohort was interrupted by detected background activity before its last
+pair completed. No replacement sample was inserted and no full-corpus verdict
+is claimed. The current candidate stays out of production.
+
+The complete house, Holter and architectural pair groups retain identical CPU
+geometry and appearance fingerprints. Heavy-scene GPU batch sizes and images
+varied even between baseline loads, so those runs do not prove heavy-scene
+GPU byte or pixel identity. Sampled JavaScript heap is not physical peak
+memory. The separate admission-scheduling attempt stopped during its first
+baseline A/B sample and establishes no candidate comparison.
+
+Lesson: fewer staging bytes are a hypothesis about cost, not a speed verdict.
+Measure eligible vertex volume, float-fallback work and renderer completion
+before revisiting this candidate. Preserve interrupted runs, their exclusion
+reasons and unchanged output witnesses. Source controls, the unshipped patch,
+all raw attempts and paired derivations are in
+[`evidence/packing-verdict-6537/`](./evidence/packing-verdict-6537/README.md).
+
 ## Opt-in map geometry compatibility export (#6587)
 
 The qualified comparison uses the actual main-based package prerequisite and

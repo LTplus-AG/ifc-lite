@@ -1,0 +1,61 @@
+{
+  "version": 10,
+  "id": "stamp-proof-2",
+  "name": "Manual stamp proof 2",
+  "page": {
+    "size": "A4",
+    "orientation": "portrait"
+  },
+  "blocks": [
+    {
+      "kind": "manual-report",
+      "id": "block-052fdbda-f183-4b9e-a55b-11fc0452c309",
+      "checklistName": "Saved review evidence",
+      "checklistId": "manual-checklist-db610745-07e8-4b3b-a783-fbe1a8888f47",
+      "modelName": "building-architecture-rev-b.ifc",
+      "modelFingerprint": "building-architecture-rev-b.ifc:b9b3a3aaa49298a8",
+      "generatedAt": "2026-10-01T23:47:32.027Z",
+      "summary": {
+        "total": 2,
+        "pass": 2,
+        "fail": 0,
+        "warning": 0,
+        "unanswered": 0
+      },
+      "groups": [
+        {
+          "id": "delivery",
+          "name": "Delivery",
+          "counts": {
+            "total": 2,
+            "pass": 2,
+            "fail": 0,
+            "warning": 0,
+            "unanswered": 0
+          },
+          "items": [
+            {
+              "id": "uploaded",
+              "text": "Uploaded on time",
+              "status": "pass"
+            },
+            {
+              "id": "names",
+              "text": "Naming convention",
+              "status": "pass",
+              "comment": "Reviewed and approved"
+            }
+          ]
+        }
+      ],
+      "reportModels": [
+        {
+          "name": "building-architecture-rev-b.ifc",
+          "fingerprint": "building-architecture-rev-b.ifc:b9b3a3aaa49298a8"
+        }
+      ],
+      "showStamp": false,
+      "savedReportId": "validation-report-da5906e1-c7a4-4722-828c-05a76c74a21d"
+    }
+  ]
+}

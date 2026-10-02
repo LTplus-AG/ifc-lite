@@ -1,0 +1,10 @@
+{
+  "artifact": "6549-actual-rejected-chart.svg",
+  "bytes": 3425,
+  "sha256": "c23cfa2dd84cd12feb9789238e9f227cb8271570f0a521ce019ad9b6c7911941",
+  "parser": "Python 3 xml.etree.ElementTree, strict XML parse",
+  "elements": 22,
+  "root": "{http://www.w3.org/2000/svg}svg",
+  "styleText": "\n.zr9-cls-33:hover {\npointer-events:none;\n}\n.zr9-cls-34:hover {\ncursor:pointer;\nfill:rgba(251,62,58,1);\n}\n.zr9-cls-35:hover {\ncursor:pointer;\nfill:rgba(33,149,251,1);\n}\n.zr9-cls-36:hover {\ncursor:pointer;\nfill:rgba(255,237,58,1);\n}\n\n\n\n",
+  "result": "accepted original unmodified ECharts SVG with CDATA"
+}

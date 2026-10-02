@@ -1,0 +1,33 @@
+{
+  "reader": "PyMuPDF 1.28.2",
+  "results": [
+    {
+      "file": "1-original.pdf",
+      "bytes": 7778,
+      "sha256": "f50775c73f6990aebf7abb4228b6d93df9a1a2272df829d3a05399fff11e4c09",
+      "pages": 1,
+      "text": "Saved manual reuse proof 1\nGenerated 10/2/2026, 4:06:43 AM \u00b7 ifc-lite\nPage 1 / 1\nManual validation: Delivery reuse 1\nModel: building-architecture.ifc \u00b7 Recorded: 2026-10-02T02:06:34.327Z\nModels: building-architecture.ifc\n33% passed (1 of 3 checks)\nPass 1 \u00b7 Warning 1 \u00b7 Fail 0 \u00b7 Not checked 1\nDelivery\nPass 1 \u00b7 Warning 1 \u00b7 Fail 0 \u00b7 Not checked 1\nPASS\nUploaded on time\nCheck the recorded delivery.\nWARNING\nNaming convention\nComment: Recorded prefix needs review\nNOT CHECKED\nFollow-up note\nComment: Unanswered note must survive\n"
+    },
+    {
+      "file": "1-edited.pdf",
+      "bytes": 7344,
+      "sha256": "5637fddd91863c809e157faa1f3e08eb683123774be820becab08dda8e649e0c",
+      "pages": 1,
+      "text": "Saved manual reuse proof 1\nGenerated 10/2/2026, 4:06:43 AM \u00b7 ifc-lite\nPage 1 / 1\nManual validation: Delivery reuse 1\nModel: building-architecture.ifc \u00b7 Recorded: 2026-10-02T02:06:41.181Z\nModels: building-architecture.ifc\n66% passed (2 of 3 checks)\nPass 2 \u00b7 Warning 0 \u00b7 Fail 0 \u00b7 Not checked 1\nDelivery\nPass 2 \u00b7 Warning 0 \u00b7 Fail 0 \u00b7 Not checked 1\nPASS\nUploaded on time\nCheck the recorded delivery.\nPASS\nNaming convention\nComment: Edited current copy\nNOT CHECKED\nFollow-up note\nComment: Unanswered note must survive\n"
+    },
+    {
+      "file": "2-original.pdf",
+      "bytes": 7778,
+      "sha256": "f1d49d1d0fd10f2f568654a143c4c1d074119842f494d5b95dd2350c1b5d561d",
+      "pages": 1,
+      "text": "Saved manual reuse proof 2\nGenerated 10/2/2026, 4:06:58 AM \u00b7 ifc-lite\nPage 1 / 1\nManual validation: Delivery reuse 2\nModel: building-architecture.ifc \u00b7 Recorded: 2026-10-02T02:06:50.889Z\nModels: building-architecture.ifc\n33% passed (1 of 3 checks)\nPass 1 \u00b7 Warning 1 \u00b7 Fail 0 \u00b7 Not checked 1\nDelivery\nPass 1 \u00b7 Warning 1 \u00b7 Fail 0 \u00b7 Not checked 1\nPASS\nUploaded on time\nCheck the recorded delivery.\nWARNING\nNaming convention\nComment: Recorded prefix needs review\nNOT CHECKED\nFollow-up note\nComment: Unanswered note must survive\n"
+    },
+    {
+      "file": "2-edited.pdf",
+      "bytes": 7344,
+      "sha256": "c4810ff546d1dd83b369062351cd2354897d526423fac661266b3e494327360a",
+      "pages": 1,
+      "text": "Saved manual reuse proof 2\nGenerated 10/2/2026, 4:06:59 AM \u00b7 ifc-lite\nPage 1 / 1\nManual validation: Delivery reuse 2\nModel: building-architecture.ifc \u00b7 Recorded: 2026-10-02T02:06:57.276Z\nModels: building-architecture.ifc\n66% passed (2 of 3 checks)\nPass 2 \u00b7 Warning 0 \u00b7 Fail 0 \u00b7 Not checked 1\nDelivery\nPass 2 \u00b7 Warning 0 \u00b7 Fail 0 \u00b7 Not checked 1\nPASS\nUploaded on time\nCheck the recorded delivery.\nPASS\nNaming convention\nComment: Edited current copy\nNOT CHECKED\nFollow-up note\nComment: Unanswered note must survive\n"
+    }
+  ]
+}

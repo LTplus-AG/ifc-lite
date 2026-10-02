@@ -25,19 +25,10 @@ export function createHeadlessStoreAdapter(
     setPositionalAttribute: (ref, index, value) => {
       get().setPositionalAttribute(ref.expressId, index, value as Parameters<StoreEditor['setPositionalAttribute']>[2]);
     },
-    // The element-creation helpers (addWall, addSlab, …) are not used by the
-    // MCP server in v0.1 — agent flows go through entity_create with raw
-    // attributes. Stubs throw so a misconfigured caller fails loudly.
-    addColumn: () => { throw new Error('addColumn not supported in MCP v0.1; use entity_create'); },
-    addWall: () => { throw new Error('addWall not supported in MCP v0.1; use entity_create'); },
-    addSlab: () => { throw new Error('addSlab not supported in MCP v0.1; use entity_create'); },
-    addBeam: () => { throw new Error('addBeam not supported in MCP v0.1; use entity_create'); },
+    // Free door/window creation remains unsupported here. Hosted fills use
+    // the canonical host-required API supplied by the recorded factory below.
     addDoor: () => { throw new Error('addDoor not supported in MCP v0.1; use entity_create'); },
     addWindow: () => { throw new Error('addWindow not supported in MCP v0.1; use entity_create'); },
-    addSpace: () => { throw new Error('addSpace not supported in MCP v0.1; use entity_create'); },
-    addRoof: () => { throw new Error('addRoof not supported in MCP v0.1; use entity_create'); },
-    addPlate: () => { throw new Error('addPlate not supported in MCP v0.1; use entity_create'); },
-    addMember: () => { throw new Error('addMember not supported in MCP v0.1; use entity_create'); },
     ...unsupportedStoreAuthoring(),
     ...createRecordedModellingBackend(requestedModelId => {
       if (requestedModelId !== undefined) assertKnownModelId(requestedModelId);

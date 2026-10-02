@@ -1,0 +1,28 @@
+{
+  "source": "af39763b647e01e244a216892432a0a54eb94ac0",
+  "files": [
+    {"path": ".changeset/slimy-worms-lay.md", "sha256": "23409850adf5c7f3f01c346b783074c3916c6978042eaaa5827fa87618268881"},
+    {"path": "apps/viewer/src/components/viewer/charts/ChartCard.tsx", "sha256": "383f492869956c09a475accbe803f509dfe3a7ba8978b7c3ab0784c4cd0dd219"},
+    {"path": "apps/viewer/src/components/viewer/charts/ChartEditor.savedComparison.test.tsx", "sha256": "9f27c71d71d227ea8ef76e1189f2ced4309794d7e725670931c0674a73b7476f"},
+    {"path": "apps/viewer/src/components/viewer/charts/ChartEditor.tsx", "sha256": "94d7eaba3ff401f6641ab3e856f89fe8eef151bc4d1dfce166a3acbcbeeae09c"},
+    {"path": "apps/viewer/src/components/viewer/charts/ChartSourcePicker.tsx", "sha256": "6e9bd7b0669da808054c64c8fef62ac072b89e06537e18513dda51e9e9ce6ecc"},
+    {"path": "apps/viewer/src/components/viewer/charts/ChartsPanel.tsx", "sha256": "1b6cc38978b671fc792a12762404b81084f6eed851663a53373f4a57ea493fd3"},
+    {"path": "apps/viewer/src/components/viewer/charts/ReportExportDialog.tsx", "sha256": "68f19290755baddffa0bdd1329e011d6fb5dccae283fdf530438359e3f6ed221"},
+    {"path": "apps/viewer/src/components/viewer/document/BlockEditor.tsx", "sha256": "5448e2830ab950b4e919387370e0ffbe12cee63c495a63a0145877a537c4484b"},
+    {"path": "apps/viewer/src/components/viewer/document/DocumentPanel.tsx", "sha256": "49ddb89fc935b0f582318409e418310ef8c7aa142c591310392f79b638f12067"},
+    {"path": "apps/viewer/src/components/viewer/document/DocumentPreview.tsx", "sha256": "c1ee56b48d1f8f448abac328116e88065b66ee44cda98d6d3507a0b8906eb3f4"},
+    {"path": "apps/viewer/src/components/viewer/document/useDocumentData.ts", "sha256": "e5857ea34282013c9d0ad98be1f9cff0dd3ed1032f8e2b132fda984a5672041a"},
+    {"path": "apps/viewer/src/i18n/catalogues/charts.en.ts", "sha256": "50416c23bc20451ed370098f53711117f6a51300487814cf428adfd85cecd9a5"},
+    {"path": "apps/viewer/src/lib/charts/comparison-source.ts", "sha256": "a99164bfdafc5ea5ae9eae9d152871fb5c34e55c43df5a28f52df80693632e5a"},
+    {"path": "apps/viewer/src/lib/document/generate-document-pdf.ts", "sha256": "d1cd3137a7dded1434bbb5a081fe969cb3bb8efcbbd000f749e52c2369afb4e2"},
+    {"path": "apps/viewer/src/lib/export/report/compose.ts", "sha256": "969d44afb0106ff41ab1a4cefc7f0cc9fa7707bba670e38452e08a534cc7c6ce"},
+    {"path": "apps/viewer/src/lib/export/report/generate-report-pdf.ts", "sha256": "a23c71fb0d782c9b36e1a0b065c76979783172110e7784448143336a024313e8"},
+    {"path": "apps/viewer/src/lib/export/report/render-source-message.ts", "sha256": "85713191c12292c5598e172d74b226a95a8323b2d6d009c667c95edd68491e86"},
+    {"path": "docs/guide/charts.md", "sha256": "9a06a0192e29f7fa7d7427ed94ec107cf05dcae9c29bb2a4e03913ef797f1147"},
+    {"path": "docs/guide/documents.md", "sha256": "888524a5bce1d341e8b9cb23ad2178b09be5b04b874c4c1586ee704e0ff5a694"},
+    {"path": "packages/charts/README.md", "sha256": "1fa365daa942be54699bbfb91c017099f33bdbc8bfe8b86ceed4da9d8e398ee3"},
+    {"path": "packages/charts/src/comparison-binding.test.ts", "sha256": "d415b95a979c5ebc6c50d42df888db87afbaa319fde151ed12422f1649994f89"},
+    {"path": "packages/charts/src/types.ts", "sha256": "53202014fb1414e99ccabea79b4e0c99e659eaac1c0aef002f1324a07984ab37"},
+    {"path": "packages/charts/src/validate.ts", "sha256": "7378af8eefe763eb18a6fa4481073b915d0e7c9f8549fb2621314a90de07f4b8"}
+  ]
+}

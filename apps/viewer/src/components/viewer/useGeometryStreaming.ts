@@ -25,6 +25,7 @@ import { decodeInstancedShard, NORMAL_COORD_THRESHOLD_M } from '@ifc-lite/geomet
 import { toast } from '../ui/toast.js';
 import { reshapeSceneKeepingPresentInstanced } from './geometry-rebuild';
 import { runGpuUpload } from './gpu-upload-guard';
+import { geometryMeshKey } from './geometry-mesh-key';
 import { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
 import { liftNewInstancedOccurrences, placeNewMeshesAtCurrentLevel } from '@/lib/level-arrival';
 import { useColorOverlaySync } from './useColorOverlaySync.js';
@@ -461,7 +462,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       newMeshes = [];
       for (let i = 0; i < geometry.length; i++) {
         const meshData = geometry[i];
-        const compoundKey = `${meshData.expressId}:${i}`;
+        const compoundKey = geometryMeshKey(meshData, i);
         if (!processedMeshIdsRef.current.has(compoundKey)) {
           newMeshes.push(meshData);
           // Marked processed BEFORE the upload runs, so the keys are kept to

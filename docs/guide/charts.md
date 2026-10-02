@@ -26,11 +26,35 @@ Because a bucket keeps its element ids, the bidirectional link needs no support 
 | **BCF topics** | topic of the loaded project | `Status`, `Type`, `Priority`, `Assigned to`, `Stage`, `Labels`, `Author`, `Due` (overdue / this week / later / none), `Age` (days), and the dates `Created`, `Modified`, `Due date`, `Closed` | the components of the topics' viewpoints that are loaded |
 | **Schedule tasks** | task of the active schedule | `Task`, `Status`, `Phase at cursor` (not started / in progress / done, following the 4D playback), `Task type`, `Critical`, `Milestone`, `Duration` (days), `Products`, and the dates `Start`, `Finish` | the tasks' products |
 | **IDS results** | (specification, entity) result of the last validation | `Specification`, `Result` (pass / fail), `Entity type`, `Failing facet`, `Model` | the entities |
-| **Model compare** | diff entry of the last comparison | `State`, `What changed`, `IFC type`, `Revision` | the head-side entity (base-side for a deletion) |
+| **Model compare** | recorded change row of a selected saved comparison | `State`, `What changed`, `IFC type`, `Revision` | recorded rows do not select the current model |
+| **Existing unbound Model compare charts** | diff entry of the latest live comparison | `State`, `What changed`, `IFC type`, `Revision` | the head-side entity (base-side for a deletion) |
 
 Date columns feed the `timeline` chart, which buckets per ISO week — topics created or closed per week, tasks starting per week. There is no run history in the viewer, so BCF dates are the only time axis; clash counts over successive runs are not charted.
 
 The dashboard's **scope** applies to the elements source and decides which elements its rows cover: all loaded models, only what is visible right now (the same answer the Lists panel's "visible only" gives), or the basket.
+
+### Saved comparison charts
+
+Complete a model comparison and choose **Save comparison** in Compare models.
+In the chart editor, choose **Model compare → Saved comparison** and select
+the completed report. Each chart retains its own choice when another pair
+is compared or another saved result is selected elsewhere. Newly authored
+comparison charts require a saved choice; existing charts without one keep
+their previous live-comparison behavior.
+
+The dataset contains the saved report's exact change rows, including content
+matches and excluding unchanged rows. It uses the recorded state, change,
+IFC type and revision names. Dashboard cards, document preview and PDF export
+resolve the same saved report. Recorded charts ignore live cross-chart slices
+and do not select, frame, color or capture entities in the current 3D scene.
+
+The optional `ChartSpec.comparisonId` stores the saved report ID. Dashboard
+and document files retain that ID, but do not embed the saved history. An
+imported file needs the matching report in this browser; a deleted or absent
+report shows an explicit unavailable-source message in the card, preview and
+PDF. Choose another saved comparison in the chart editor to replace it. The
+latest live run is never substituted. Saved-comparison JSON can be downloaded
+for evidence, but the viewer currently has no saved-history import control.
 
 ### Source filter
 

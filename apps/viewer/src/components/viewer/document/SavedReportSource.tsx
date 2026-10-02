@@ -6,6 +6,7 @@ import { useTranslation } from '@/i18n';
 import { SavedHistoryNotice } from '../SavedHistoryNotice';
 import { useViewerStore } from '@/store';
 import { savedReportBlock, savedReportLabel, type ValidationReportSnapshot } from '@/lib/validation/reports/history';
+import { replaceManualReportSnapshot } from '@/lib/document/manual-report';
 
 /** Select frozen evidence without changing its block id or reading any live
  * checklist/report. Existing documents keep their embedded snapshot (#6500). */
@@ -23,12 +24,12 @@ export function SavedReportSource({ block, onChange }: { block: ValidationReport
           onChange={(e) => {
             const entry = choices.find((candidate) => candidate.id === e.target.value);
             if (entry) {
-              const next = { ...savedReportBlock(entry, block.id), title: block.title };
-              onChange(block.kind === 'ids-report' && next.kind === 'ids-report'
-                ? { ...next, variant: block.variant, benchmarks: block.benchmarks }
-                : block.kind === 'manual-report' && next.kind === 'manual-report'
-                  ? { ...next, variant: block.variant, benchmarks: block.benchmarks }
-                  : next);
+              const next = savedReportBlock(entry, block.id);
+              onChange(block.kind === 'manual-report' && next.kind === 'manual-report'
+                ? replaceManualReportSnapshot(block, next)
+                : block.kind === 'ids-report' && next.kind === 'ids-report'
+                  ? { ...next, title: block.title, variant: block.variant, benchmarks: block.benchmarks }
+                  : { ...next, title: block.title });
             }
           }}>
           <option value="" disabled>{t('validationPanel.history.embedded')}</option>

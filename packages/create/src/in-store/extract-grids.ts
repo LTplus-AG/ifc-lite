@@ -100,7 +100,7 @@ function pointAt(read: Reader, id: number, type = 'IFCCARTESIANPOINT'): Vec2 | n
 }
 
 /** The two ends of a straight axis curve in the grid's own frame (raw units), or null. */
-function readAxisEnds(read: Reader, curveId: number): [Vec2, Vec2] | null {
+export function readAxisEnds(read: Reader, curveId: number): [Vec2, Vec2] | null {
   const curve = read(curveId);
   const type = curve?.type?.toUpperCase();
   if (!curve) return null;

@@ -25,6 +25,7 @@ import {
   commandDoubleClick,
   commandPointerDown,
   commandPointerMove,
+  commandPointerUp,
   getCommandRuntime,
   type CommandRuntimeState,
 } from '@/lib/commands/modeling/runtime';
@@ -39,7 +40,15 @@ import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
 /** Ghost ids a command preview may use (`ghost.ts` allocates from `commandGhostId`). */
 const GHOST_PICK_GUARD = 4;
-let latest: { x: number; y: number; mods: PointerModifiers } | null = null;
+const latest = new WeakMap<MouseHandlerContext, { x: number; y: number; mods: PointerModifiers; runtime: CommandRuntimeState }>();
+
+/** Discard a coalesced preview before a press, release, cancellation or teardown. */
+export function cancelCommandPointer(ctx: MouseHandlerContext): void {
+  latest.delete(ctx);
+  if (ctx.measureRaycastFrameRef.current !== null) cancelAnimationFrame(ctx.measureRaycastFrameRef.current);
+  ctx.measureRaycastFrameRef.current = null;
+  ctx.measureRaycastPendingRef.current = false;
+}
 
 /** The cursor ray in render space, from CSS-pixel canvas coordinates. */
 function cursorRay(ctx: MouseHandlerContext, x: number, y: number): { origin: Vec3; direction: Vec3 } | null {
@@ -124,27 +133,31 @@ function resolveCommandSnap(
 /** True when a command is running and took the event. */
 export function routeCommandPointer(
   ctx: MouseHandlerContext,
-  kind: 'move' | 'down',
+  kind: 'move' | 'down' | 'up',
   x: number,
   y: number,
   mods: PointerModifiers = NO_MODIFIERS,
 ): boolean {
   const runtime = getCommandRuntime();
   if (!runtime.command || !runtime.ctx) return false;
-  if (kind === 'down') {
+  if (kind !== 'move') {
+    cancelCommandPointer(ctx);
     const snap = resolveCommandSnap(ctx, runtime, x, y, mods);
-    if (snap) ((mods.detail ?? 1) >= 2 ? commandDoubleClick : commandPointerDown)(snap);
+    if (snap) (kind === 'up' ? commandPointerUp : (mods.detail ?? 1) >= 2 ? commandDoubleClick : commandPointerDown)(snap);
     return true;
   }
-  latest = { x, y, mods };
+  latest.set(ctx, { x, y, mods, runtime });
   if (ctx.measureRaycastPendingRef.current) return true;
   ctx.measureRaycastPendingRef.current = true;
   ctx.measureRaycastFrameRef.current = requestAnimationFrame(() => {
     ctx.measureRaycastPendingRef.current = false;
     ctx.measureRaycastFrameRef.current = null;
-    const at = latest;
+    const at = latest.get(ctx);
+    latest.delete(ctx);
     if (!at) return;
-    const snap = resolveCommandSnap(ctx, getCommandRuntime(), at.x, at.y, at.mods);
+    const current = getCommandRuntime();
+    if (current.command !== at.runtime.command || current.ctx !== at.runtime.ctx) return;
+    const snap = resolveCommandSnap(ctx, current, at.x, at.y, at.mods);
     if (snap) commandPointerMove(snap);
   });
   return true;

@@ -116,7 +116,7 @@ export function inverseFrame(f: Frame3): Frame3 {
 
 /** Full 3D local-placement chain, including the opening's rotated frame.
  * Missing references, cycles and excessive acyclic chains are unreadable. */
-export function placementInAncestor(reader: AnchorEntityReader, placementId: number, ancestorId: number): Frame3 | null {
+export function placementInAncestor(reader: GeometryEntityReader, placementId: number, ancestorId: number | null): Frame3 | null {
   let frame = IDENTITY_FRAME3;
   let id: number | null = placementId;
   const visited = new Set<number>();
@@ -132,6 +132,37 @@ export function placementInAncestor(reader: AnchorEntityReader, placementId: num
     id = refId(placement.attributes[0]);
   }
   return id === ancestorId ? frame : null;
+}
+
+/** Express one local placement in another's full 3D frame. Only the branches
+ * below their common ancestor need readable frames; the shared ancestor
+ * cancels, as it does in the canonical planar storey reader (#6232). */
+export function placementRelativeTo(reader: GeometryEntityReader, placementId: number, referenceId: number): Frame3 | null {
+  const parent = (id: number): number | null | undefined => {
+    const entity = reader.entity(id);
+    if (entity?.type.toUpperCase() !== 'IFCLOCALPLACEMENT') return undefined;
+    const value = entity.attributes[0];
+    return value === null || value === undefined ? null : refId(value) ?? undefined;
+  };
+  const referenceChain = new Set<number>();
+  let id: number | null | undefined = referenceId;
+  while (id !== null && id !== undefined && !referenceChain.has(id)) {
+    if (referenceChain.size >= 10_000) return null;
+    referenceChain.add(id);
+    id = parent(id);
+  }
+  const referenceReachesRoot = id === null;
+  const visited = new Set<number>();
+  id = placementId;
+  while (id !== null && id !== undefined && !referenceChain.has(id)) {
+    if (visited.size >= 10_000 || visited.has(id)) return null;
+    visited.add(id);
+    id = parent(id);
+  }
+  if (id === undefined || (id === null && !referenceReachesRoot)) return null;
+  const own = placementInAncestor(reader, placementId, id);
+  const reference = placementInAncestor(reader, referenceId, id);
+  return own && reference ? composeFrame(inverseFrame(reference), own) : null;
 }
 
 /** Subcontexts inherit CoordinateSpaceDimension from ParentContext. */

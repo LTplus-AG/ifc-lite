@@ -18,6 +18,7 @@ import { useInformationValidation } from '@/hooks/validation/useInformationValid
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { activeDefinition, loadDefinitionLibrary, type DefinitionKind } from '@/lib/validation/definition-library';
 import { ValidationPanel } from './ValidationPanel.js';
+import { IDSPanel } from '../IDSPanel.js';
 
 const initial = useViewerStore.getState();
 const xml = readFileSync(new URL('../../../../public/samples/building-architecture.ids', import.meta.url), 'utf8');
@@ -47,6 +48,29 @@ async function models(count: number): Promise<void> {
     loaded.push({ ...fixtureModel(`model-${index}`), name, ifcDataStore: data });
   }
   useViewerStore.setState(fixtureModels(...loaded));
+}
+
+for (const count of [1, 2]) {
+  it(`#6567 mounting another IDS panel preserves the actual validator owner's progress at ${count} model(s)`, async () => {
+    await models(count);
+    render(<Owner />);
+    act(() => { owner.ids.loadIDS(xml); });
+    await waitFor(() => !useViewerStore.getState().idsAuditing);
+    let pending!: ReturnType<typeof owner.ids.runValidation>;
+    act(() => { pending = owner.ids.runValidation(); });
+    const progress = useViewerStore.getState().idsProgress;
+    assert.ok(progress, 'the real validator publishes progress before yielding to paint');
+    assert.equal(useViewerStore.getState().idsLoading, true);
+
+    const panel = render(<IDSPanel />);
+    assert.equal(useViewerStore.getState().idsLoading, true, 'mounting a passive caller cannot cancel another caller');
+    assert.deepEqual(useViewerStore.getState().idsProgress, progress);
+    assert.ok([...panel.querySelectorAll('button')].some(button => button.textContent?.trim() === 'Cancel'));
+    const report = await act(async () => await pending);
+    assert.ok(report && report.specificationResults.length > 0, 'the owner completes validation of the actual IFC input');
+    assert.equal(useViewerStore.getState().idsValidationReport, report);
+    assert.equal(useViewerStore.getState().idsLoading, false);
+  });
 }
 
 for (const count of [1, 2]) for (const kind of ['rules', 'ids'] as const) {

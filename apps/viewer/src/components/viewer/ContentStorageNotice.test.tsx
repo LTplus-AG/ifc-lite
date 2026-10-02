@@ -79,6 +79,38 @@ it('#6695 repeated real quota refusal reuses one draft and preserves edits throu
   assert.equal(useViewerStore.getState().documents[0].name, 'My newer edit');
 });
 
+it('#6695 individual Retry save reports refused identity verification after its durable item commit', async () => {
+  const entry = blankDocument(), ui = render(<><Notice /><Toaster /></>);
+  const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+  Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(createContentBackup({
+    document: [entry], validation: [], comparison: [],
+  }))], 'identity.json')], configurable: true });
+  const refused = refuseContentWrites();
+  try {
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await waitFor(() => useViewerStore.getState().documents.length === 1, 'refused import stages its independent draft');
+  } finally { refused.mock.restore(); }
+  const id = useViewerStore.getState().documents[0].id;
+  const original = IDBDatabase.prototype.transaction;
+  const unreadable = mock.method(IDBDatabase.prototype, 'transaction', function (this: IDBDatabase,
+    stores: string | string[], mode?: IDBTransactionMode, options?: IDBTransactionOptions) {
+    if (mode === 'readonly' && (stores === 'items' || Array.isArray(stores) && stores.includes('items'))) {
+      throw new DOMException('Identity verification read refused', 'SecurityError');
+    }
+    return original.call(this, stores, mode, options);
+  });
+  try {
+    const retry = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Retry save'); assert.ok(retry);
+    click(retry);
+    await waitFor(() => document.body.textContent?.includes('Some content could not be saved') ?? false,
+      'a refused native verification read must remain visible after the item write completes');
+    assert.equal(useViewerStore.getState().documentsStorage.items[id], 'saved');
+  } finally { unreadable.mock.restore(); }
+  assert.equal((await loadDocuments())[0].id, id, 'the actual item transaction still completed');
+  const { readContentRows } = await import('@/lib/storage/content-database');
+  assert.ok((await readContentRows('document'))[0].importedFrom, 'identity and item were committed atomically');
+});
+
 it('#6695 a postcommit refresh failure reports saved evidence without staging a duplicate draft', async () => {
   const entry = blankDocument(), ui = render(<><Notice /><Toaster /></>);
   const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);

@@ -91,7 +91,8 @@ export function ContentStorageNotice({ status, retry, restore }: {
     {key && <p role={problem || status.phase === 'unavailable' ? 'alert' : 'status'}>{t(key)}</p>}
     {status.recovered && <p role="alert">{t('contentStorage.recovered')}</p>}
     {(problem || status.phase === 'unavailable') && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
-      if (await retry()) await retryContentImports();
+      const saved = await retry();
+      if (!saved || !await retryContentImports()) toast.error(t('contentStorage.someUnsaved'));
     })}>{t('validationPanel.history.retrySave')}</Button>}
     <details>
       <summary className="cursor-pointer">{t('contentStorage.controls')}</summary>

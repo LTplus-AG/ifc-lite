@@ -111,3 +111,26 @@ it('preserves uncaptured English PDF counts and host-grouped table defaults desp
     'Passed 19999', 'Checked 5678', 'Found 12345', '1234 to 20000', '1234/1234']) assert.ok(text.includes(expected), `old direct default: ${expected}`);
   assert.ok(!text.includes('Prüfungen') && !text.includes('WRONG'));
 });
+
+// A captured French numeric context is distinct from merely flipping the UI to French.
+it('preserves captured French grouping in mounted counts and actual PDF glyphs (#6610)', async () => {
+  registerLocale('fr', { 'document.table.moreRows': 'Reste {countDisplay}', 'document.table.total': 'Total {count}' });
+  setLocale('fr'); const input = declaredInput(); input.labels = captureTranslation();
+  const ui = render(<DocumentPreview {...input} selectedBlockId={null} onSelectBlock={() => {}} />);
+  await waitFor(() => ui.querySelector('[data-preview-block="compact"]') !== null && ui.querySelector('[data-layout-pending="true"]') === null,
+    'captured French counts finish actual mounted preparation');
+  const normalizeGrouping = (text: string): string => text.replace(/[\u00a0\u202f]/g, ' ');
+  const table = ui.querySelector('[data-preview-block="table"]'); assert.ok(table);
+  assert.ok(normalizeGrouping(table.textContent ?? '').includes('Reste 1 003'));
+  assert.ok(normalizeGrouping(table.textContent ?? '').includes('Total 1 004'));
+  const classic = ui.querySelector('[data-preview-block="classic"]'); assert.ok(classic);
+  assert.ok(normalizeGrouping(classic.textContent ?? '').includes('22 344'));
+  const compact = ui.querySelector('[data-preview-block="compact"]'); assert.ok(compact);
+  assert.ok(normalizeGrouping(compact.textContent ?? '').includes('1 234/1 234'));
+  const text = normalizeGrouping(await printed(input, () => act(() => setLocale('de'))));
+  for (const expected of ['Reste 1 003', 'Total 1 004', 'Checked 22 344', 'Passed 19 999', 'Failed 1 111',
+    'Warnings 1 234', 'Checked 12 345', 'Checked 5 678', 'Found 12 345', '1 234 to 20 000', '1 234/1 234']) {
+    assert.ok(text.includes(expected), `actual PDF keeps French grouped digits: ${expected}`);
+  }
+  for (const literal of ['1,234.50 m²', '2,000.00 m²', '90%', '100%']) assert.ok(text.includes(literal));
+});

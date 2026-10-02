@@ -22,18 +22,20 @@ export interface ValidationEpoch {
   /** Start a new run (or invalidate the current one on clear/cancel);
    *  returns the epoch this call now owns. */
   bump: () => number;
+  /** Whether this caller captured the currently selected source. */
+  sourceIsCurrent: () => boolean;
   /** True while `epoch` is still the most recent one `bump()` handed out. */
   stillWanted: (epoch: number) => boolean;
 }
 
 export function useValidationEpoch(): ValidationEpoch {
   const epochRef = useRef(0);
-  const definitionRef = useRef(0);
+  const definitionRef = useRef(useViewerStore.getState().validationDefinitionRevision);
   const bump = useCallback((): number => {
     definitionRef.current = useViewerStore.getState().validationDefinitionRevision;
     return ++epochRef.current;
   }, []);
-  const stillWanted = useCallback((epoch: number): boolean => epochRef.current === epoch
-    && definitionRef.current === useViewerStore.getState().validationDefinitionRevision, []);
-  return { bump, stillWanted };
+  const sourceIsCurrent = useCallback((): boolean => definitionRef.current === useViewerStore.getState().validationDefinitionRevision, []);
+  const stillWanted = useCallback((epoch: number): boolean => epochRef.current === epoch && sourceIsCurrent(), [sourceIsCurrent]);
+  return { bump, stillWanted, sourceIsCurrent };
 }

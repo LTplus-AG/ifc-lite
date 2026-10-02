@@ -101,7 +101,7 @@ export function useInformationValidation(): UseInformationValidationResult {
 
   const setIdsValidationReport = useViewerStore((s) => s.setIdsValidationReport);
   const abortRef = useRef<AbortController | null>(null);
-  const { bump: bumpEpoch, stillWanted } = useValidationEpoch();
+  const { bump: bumpEpoch, stillWanted, sourceIsCurrent } = useValidationEpoch();
 
   useEffect(() => {
     const state = useViewerStore.getState();
@@ -214,7 +214,10 @@ export function useInformationValidation(): UseInformationValidationResult {
     setProgress(null);
   }, [bumpEpoch]);
 
-  useEffect(() => { cancel(); }, [definitionRevision, cancel]);
+  // A passive caller must not clear another caller's current validation.
+  useEffect(() => {
+    if (abortRef.current && !sourceIsCurrent()) cancel();
+  }, [definitionRevision, cancel, sourceIsCurrent]);
 
   const run = useCallback(async () => {
     if (isNativeWorkflowBusy()) {

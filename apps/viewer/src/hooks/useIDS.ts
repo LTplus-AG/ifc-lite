@@ -122,7 +122,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // captures its own epoch and every store write after an `await` checks it
   // is still the most recent call before landing, so a superseded run can
   // never resurrect a stale report or clobber a newer one's `finally`.
-  const { bump: bumpEpoch, stillWanted } = useValidationEpoch();
+  const { bump: bumpEpoch, stillWanted, sourceIsCurrent } = useValidationEpoch();
   const workerAbortRef = useRef<AbortController | null>(null);
 
   const cancelValidation = useCallback(() => {
@@ -134,7 +134,10 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     setIdsError(null);
   }, [bumpEpoch, setIdsLoading, setIdsProgress, setIdsError]);
 
-  useEffect(() => { cancelValidation(); }, [definitionRevision, cancelValidation]);
+  // A passive caller must not clear another caller's current validation.
+  useEffect(() => {
+    if (workerAbortRef.current && !sourceIsCurrent()) cancelValidation();
+  }, [definitionRevision, cancelValidation, sourceIsCurrent]);
 
   useEffect(() => {
     const state = useViewerStore.getState();

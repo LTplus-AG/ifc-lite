@@ -1,0 +1,278 @@
+{
+  "modelId": "53c14be3-6a59-4752-a937-bdd18d9dcf4f",
+  "column": 10039,
+  "grid": 10021,
+  "records": [
+    {
+      "id": 10029,
+      "type": "IfcLocalPlacement",
+      "attrs": [
+        "#10024",
+        "#10028"
+      ]
+    },
+    {
+      "id": 10024,
+      "type": "IfcGridPlacement",
+      "attrs": [
+        "#10023",
+        null
+      ]
+    }
+  ],
+  "position": null,
+  "axes": 5,
+  "intersection": [
+    [
+      "#10005",
+      "#10013"
+    ],
+    [
+      {
+        "real": 0
+      },
+      {
+        "real": 0
+      }
+    ]
+  ],
+  "meshCount": 1,
+  "layers": [
+    {
+      "layer": "grid",
+      "children": 30
+    },
+    {
+      "layer": "design-grids",
+      "children": 5
+    },
+    {
+      "layer": "cut",
+      "children": 13
+    },
+    {
+      "layer": "projection",
+      "children": 55
+    },
+    {
+      "layer": "axes",
+      "children": 1
+    },
+    {
+      "layer": "selection",
+      "children": 1
+    },
+    {
+      "layer": "hover",
+      "children": 0
+    }
+  ],
+  "gridPosition": [
+    2,
+    -3,
+    0
+  ],
+  "before": {
+    "min": [
+      7.799999997019768,
+      0,
+      -3.2000000029802322
+    ],
+    "max": [
+      8.200000002980232,
+      3,
+      -2.7999999970197678
+    ],
+    "centre": [
+      8,
+      1.5,
+      -3
+    ],
+    "origin": [
+      8,
+      1.5,
+      -3
+    ]
+  },
+  "moved": {
+    "min": [
+      8.799999997019768,
+      0,
+      -3.2000000029802322
+    ],
+    "max": [
+      9.200000002980232,
+      3,
+      -2.7999999970197678
+    ],
+    "centre": [
+      9,
+      1.5,
+      -3
+    ],
+    "origin": [
+      9,
+      1.5,
+      -3
+    ]
+  },
+  "undo": {
+    "min": [
+      7.799999997019768,
+      0,
+      -3.2000000029802322
+    ],
+    "max": [
+      8.200000002980232,
+      3,
+      -2.7999999970197678
+    ],
+    "centre": [
+      8,
+      1.5,
+      -3
+    ],
+    "origin": [
+      8,
+      1.5,
+      -3
+    ]
+  },
+  "redo": {
+    "min": [
+      8.799999997019768,
+      0,
+      -3.2000000029802322
+    ],
+    "max": [
+      9.200000002980232,
+      3,
+      -2.7999999970197678
+    ],
+    "centre": [
+      9,
+      1.5,
+      -3
+    ],
+    "origin": [
+      9,
+      1.5,
+      -3
+    ]
+  },
+  "reload": {
+    "modelId": "550af91b-6376-4113-880a-42757731f72b",
+    "loadState": "complete",
+    "meshCount": 9,
+    "column": 10039,
+    "placementType": "IfcGridPlacement",
+    "gridPlacementId": 10024,
+    "gridPlacement": [
+      10023,
+      null
+    ],
+    "mesh": {
+      "min": [
+        8.799999997019768,
+        0,
+        -3.2000000029802322
+      ],
+      "max": [
+        9.200000002980232,
+        3,
+        -2.7999999970197678
+      ],
+      "centre": [
+        9,
+        1.5,
+        -3
+      ],
+      "origin": [
+        9,
+        1.5,
+        -3
+      ]
+    }
+  },
+  "sourceHead": "03754cb8b4b7e36ee1151a401a7d68c6ac945af5",
+  "sourceAdjustments": [
+    "equivalent Placement suffix guard uses endsWith",
+    "truthful parsed-fixture enumeration marker",
+    "generated API snapshot"
+  ],
+  "source": {
+    "name": "hello-wall.ifc",
+    "bytes": 79592,
+    "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014"
+  },
+  "savedFile": {
+    "name": "hello-wall_2026-10-01.ifc",
+    "bytes": 81806,
+    "sha256": "e519f7eb641019e9be0e5e65adb8182053bb4e095e7657dbe761811f646cd898"
+  },
+  "browser": {
+    "executable": "/usr/bin/google-chrome",
+    "headless": true,
+    "viewport": [
+      1920,
+      1080
+    ],
+    "adapter": {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "isFallbackAdapter": true
+    }
+  },
+  "mouseActions": [
+    {
+      "action": "canonical file input opens unmodified Bonsai"
+    },
+    {
+      "action": "Author, Model, Plan, Create > Grid"
+    },
+    {
+      "action": "first corner",
+      "x": 480,
+      "y": 850
+    },
+    {
+      "action": "second corner",
+      "x": 745,
+      "y": 390
+    },
+    {
+      "action": "Escape, Fit, Shift+C"
+    },
+    {
+      "action": "place column at displayed 2/B crossing",
+      "x": 755.58,
+      "y": 558.63
+    },
+    {
+      "action": "Escape; public translateEntity grid +1m along IFC X"
+    },
+    {
+      "action": "ribbon Undo then Redo"
+    },
+    {
+      "action": "Export modified IFC, review Export; reload page then canonical file input opens downloaded file"
+    }
+  ],
+  "limitations": [
+    "T3 preview_open and environment-port navigation both timed out after 15 seconds; authorized Chrome fallback used with own temporary profile closed in finally.",
+    "Actual 2D plan pixels show bound column and subsequent grid movement; the 3D pane did not show solid bodies in these captures, so no successful 3D raster proof is claimed.",
+    "Native browser worker mesh outputs and saved/reloaded geometry are checked independently of raster output; no hardware performance claim."
+  ],
+  "productionFileSha256": {
+    "apps/viewer/src/store/slices/mutationSlice.ts": "4be7edb2c19578df3b291c50e975e529d640f2bcaab1b8e81e295bc7742eab03",
+    "apps/viewer/src/store/slices/mutation-grid-remesh.ts": "634ae25d50a241cc0481f67895d5bef4d57f35d9016342dc8b148b41ae6623bc",
+    "packages/create/src/in-store/grid-column.ts": "2769b59bcd32eef7e2c460139f4095a656145c365d22eeece899fc7e866afffa",
+    "packages/export/src/entity-subgraph.ts": "4ee864046bd3bd0784118b22fa7f7642b52c885b197dd42a686600c60e01bd1b",
+    "packages/export/src/grid-reference-context.ts": "80765e9a1975a01dcfa9b45ca8ed166e185477880cfc0cf1d4257661ca63b4e2",
+    "packages/export/src/grid-placement-dependents.ts": "f36f660fa8282a7799348537dc5d5c3e6de281451f1d94f77d55062448478ef7"
+  },
+  "runtimeFileSha256": {
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "9646cc889c7a5148a2a97a6b90fa4349869840aea0065bd382b3a4e3bcfd3034",
+    "packages/wasm/pkg/ifc-lite.js": "27cff2a3870d71260ecdb0ecf2cbffcb2fd9e437c87ba6af1ea00378dbecc97d"
+  }
+}

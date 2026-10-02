@@ -54,7 +54,7 @@ for (const otherPath of ['src/helper.test.mjs', 'docs/helper.mjs', 'assets/helpe
         assert.equal(before.status, 0, before.stdout + before.stderr);
         const result = run(process.execPath, [oracle, '--root', root, '--base', base, '--ci', '--json']);
         const output = result.stdout + result.stderr;
-        const payload = JSON.parse(output.slice(output.lastIndexOf('\n{\n') + 1));
+        const payload = JSON.parse(result.stdout.slice(result.stdout.lastIndexOf('\n{\n') + 1));
         assert.equal(result.status, 3, output);
         assert.equal(payload.verdict, 'INCONCLUSIVE', output);
         assert.match(payload.reason, /cross-category production rename/);

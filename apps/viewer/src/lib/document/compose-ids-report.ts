@@ -49,6 +49,9 @@ export type IdsReportLayoutBlock = IdsReportBlock;
 /** `n%` for a pass rate that is always an integer 0-100 (matches `SpecificationSummary.passRate`'s own rounding). */
 const pct = (n: number): string => `${n}%`;
 
+/** Counts share the captured UI locale; uncaptured PDF output stays raw. */
+const fmt = (t: DocumentLabelFormatter, n: number | null): string => n === null ? String(n) : t.formatNumber?.(n) ?? String(n);
+
 /**
  * The block heading (#6372): the report's own kind, never "IDS" for an
  * information-validation run. Labels are formatted before measurement;
@@ -59,20 +62,20 @@ function idsReportTitle(block: Pick<IdsReportBlock, 'sourceKind' | 'sourceName' 
 }
 
 function summaryLine({ checked, passed, failed, passRate, warnings }: IdsReportBlock['summary'], t: DocumentLabelFormatter): string {
-  const warned = warnings === undefined ? '' : ` · ${t('document.preview.idsReportWarnings')} ${warnings}`;
-  return `${t('document.preview.idsReportChecked')} ${checked} · ${t('document.preview.idsReportPassed')} ${passed} · ${t('document.preview.idsReportFailed')} ${failed}${warned} · ${t('document.print.passPercent', { percent: passRate })}`;
+  const warned = warnings === undefined ? '' : ` · ${t('document.preview.idsReportWarnings')} ${fmt(t, warnings)}`;
+  return `${t('document.preview.idsReportChecked')} ${fmt(t, checked)} · ${t('document.preview.idsReportPassed')} ${fmt(t, passed)} · ${t('document.preview.idsReportFailed')} ${fmt(t, failed)}${warned} · ${t('document.print.passPercent', { percent: passRate })}`;
 }
 
 function checkCountsLine(check: IdsReportCheckSummary, t: DocumentLabelFormatter): string {
   if (check.error !== undefined) return t('document.preview.idsReportError', { error: check.error });
-  if (check.severity === 'warning') return `${t('document.preview.idsReportWarningTag')} · ${t('document.preview.idsReportChecked')} ${check.checked} · ${t('document.preview.idsReportPassed')} ${check.passed} · ${t('document.preview.idsReportWarnings')} ${check.failed} · ${pct(check.passRate)}`;
-  return `${t('document.preview.idsReportChecked')} ${check.checked} · ${t('document.preview.idsReportPassed')} ${check.passed} · ${t('document.preview.idsReportFailed')} ${check.failed} · ${pct(check.passRate)}`;
+  if (check.severity === 'warning') return `${t('document.preview.idsReportWarningTag')} · ${t('document.preview.idsReportChecked')} ${fmt(t, check.checked)} · ${t('document.preview.idsReportPassed')} ${fmt(t, check.passed)} · ${t('document.preview.idsReportWarnings')} ${fmt(t, check.failed)} · ${pct(check.passRate)}`;
+  return `${t('document.preview.idsReportChecked')} ${fmt(t, check.checked)} · ${t('document.preview.idsReportPassed')} ${fmt(t, check.passed)} · ${t('document.preview.idsReportFailed')} ${fmt(t, check.failed)} · ${pct(check.passRate)}`;
 }
 
 function cardinalityExpected({ min, max }: IdsReportCardinality, t: DocumentLabelFormatter): string {
-  if (min !== undefined && max !== undefined) return min === max ? t('document.print.cardinalityExactly', { min }) : t('document.print.cardinalityRange', { min, max });
-  if (min !== undefined) return t('document.print.cardinalityAtLeast', { min });
-  return max !== undefined ? t('document.print.cardinalityAtMost', { max }) : '';
+  if (min !== undefined && max !== undefined) return min === max ? t('document.print.cardinalityExactly', { min: fmt(t, min) }) : t('document.print.cardinalityRange', { min: fmt(t, min), max: fmt(t, max) });
+  if (min !== undefined) return t('document.print.cardinalityAtLeast', { min: fmt(t, min) });
+  return max !== undefined ? t('document.print.cardinalityAtMost', { max: fmt(t, max) }) : '';
 }
 
 /** `compactName` and `bar` feed the compact layout (#6470); rows without a `bar` (cardinality, sets) print text only. */
@@ -86,13 +89,13 @@ function childRows(check: IdsReportCheckSummary, t: DocumentLabelFormatter): Chi
     bar: { passed: rule.passed, checked: rule.checked, rate: rule.passRate },
     description: rule.longDescription,
     detail: rule.passRate === null
-      ? t('document.print.partialCounts', { checked: rule.checked })
-      : `${t('document.preview.idsReportChecked')} ${rule.checked} · ${t('document.preview.idsReportPassed')} ${rule.passed} · ${t('document.preview.idsReportFailed')} ${rule.failed} · ${pct(rule.passRate)}`,
+      ? t('document.print.partialCounts', { checked: fmt(t, rule.checked) })
+      : `${t('document.preview.idsReportChecked')} ${fmt(t, rule.checked)} · ${t('document.preview.idsReportPassed')} ${fmt(t, rule.passed)} · ${t('document.preview.idsReportFailed')} ${fmt(t, rule.failed)} · ${pct(rule.passRate)}`,
   }));
   const { cardinality } = check;
   if (cardinality) {
     const expected = cardinalityExpected(cardinality, t);
-    rows.push({ name: t('document.preview.idsReportCardinality'), detail: `${t('document.preview.idsReportCardinalityFound', { actual: cardinality.actual })}${expected ? ` · ${t('document.print.expected', { value: expected })}` : ''} · ${t(cardinality.passed ? 'document.preview.idsReportCardinalityMet' : 'document.preview.idsReportCardinalityNotMet')}` });
+    rows.push({ name: t('document.preview.idsReportCardinality'), detail: `${t('document.preview.idsReportCardinalityFound', { actual: fmt(t, cardinality.actual) })}${expected ? ` · ${t('document.print.expected', { value: expected })}` : ''} · ${t(cardinality.passed ? 'document.preview.idsReportCardinalityMet' : 'document.preview.idsReportCardinalityNotMet')}` });
   }
   const failedWord = t(check.severity === 'warning' ? 'document.preview.idsReportWarningTag' : 'document.preview.idsReportFailed');
   for (const set of check.sets ?? []) {
@@ -142,7 +145,8 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   const stamp = reportStamp(block);
   const stampHeight = stamp ? DATE_HEIGHT : 0;
   const scopeLines = wrappedReportProvenance(stamp?.models ? t('validationPanel.history.models', { models: stamp.models }) : '', contentW, wrap ?? ((text) => [text]));
-  const keepAfter = firstRowHeight + firstChildHeight;
+  const checksCount = t.formatNumber ? t('document.preview.idsReportChecksCount', { count: block.checks.length, countDisplay: fmt(t, block.checks.length) }) : undefined;
+  const keepAfter = firstRowHeight + firstChildHeight + (checksCount ? DATE_HEIGHT : 0);
   const ringSize = 44;
   const summaryWidth = block.benchmarks ? contentW - ringSize - 12 : contentW;
   const summaryLines = block.benchmarks && wrap ? wrap(summaryLine(block.summary, t), summaryWidth, 9, false) : [cursor.truncate(summaryLine(block.summary, t), summaryWidth, 9, false)];
@@ -164,6 +168,10 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
     cursor.y += stampHeight;
   }
   layoutReportProvenance(scopeLines, cursor, keepAfter, 'report-model-scope');
+  if (checksCount) {
+    cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130, text: checksCount });
+    cursor.y += DATE_HEIGHT;
+  }
 
   /** Compact row: name on the left, then the bar and `passed/checked · n%` (or plain detail text when there is no bar). */
   const compactRow = (x: number, w: number, name: string, size: number, bold: boolean, gray: number, bar: ChildRow['bar'] | undefined, detail?: string): void => {
@@ -179,7 +187,7 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
         cursor.push({ kind: 'rect', x: barX, y: cursor.y + 4, w: (barW * bar.rate) / 100, h: BAR_HEIGHT, color: BAND_COLOR[passRateBand(bar.rate)] });
       }
       // Large counts would run past the right margin: keep the percent (the part that matters) and drop the counts.
-      const counts = bar.rate === null ? t('document.preview.idsReportCountsUnavailableShort') : `${bar.passed ?? 0}/${bar.checked} · ${pct(bar.rate)}`;
+      const counts = bar.rate === null ? t('document.preview.idsReportCountsUnavailableShort') : `${fmt(t, bar.passed ?? 0)}/${fmt(t, bar.checked)} · ${pct(bar.rate)}`;
       const label = bar.rate !== null && cursor.truncate(counts, labelW, 8, false) !== counts ? pct(bar.rate) : counts;
       cursor.push({ kind: 'text', x: x + w - labelW, y: cursor.y + 10, size: 8, bold: false, gray: 60, text: label });
     } else if (detail) {

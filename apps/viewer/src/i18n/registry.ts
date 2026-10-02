@@ -15,6 +15,7 @@
  * has to touch the (already large) viewer store.
  */
 import { en, type TranslationKey } from './en';
+import { formatLocaleNumber } from './intlFormat';
 import type { PluralTranslation, TranslationParameters, TranslationValue } from './types';
 
 export type Locale = string;
@@ -114,14 +115,15 @@ export function resolve(key: TranslationKey, params: TranslationParameters = {})
 
 /** Freeze a label context for an asynchronous document layout/export (#6610).
  * Locale or catalogue replacement must not mix languages halfway through a PDF. */
-export function captureTranslation(): typeof resolve {
+export function captureTranslation(): typeof resolve & { readonly formatNumber: (value: number) => string } {
   const locale = activeLocale;
   const catalogue = { ...catalogues.get(locale) };
   for (const key of Object.keys(catalogue) as TranslationKey[]) {
     const value = catalogue[key];
     if (value !== undefined && typeof value !== 'string') catalogue[key] = { ...value };
   }
-  return (key, params = {}) => resolveFromCatalogue(key, params, locale, catalogue);
+  const formatter: typeof resolve = (key, params = {}) => resolveFromCatalogue(key, params, locale, catalogue);
+  return Object.assign(formatter, { formatNumber: (value: number) => formatLocaleNumber(locale, value) });
 }
 
 /** Resolve directly from the canonical English catalogue, bypassing an active

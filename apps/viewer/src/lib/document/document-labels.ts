@@ -6,4 +6,7 @@ import type { resolveEnglish } from '@/i18n/registry';
 
 /** A captured catalogue formats paper labels before measurement and wrapping.
  * Omitted by existing headless callers, which retain the canonical English labels. */
-export type DocumentLabelFormatter = typeof resolveEnglish;
+export type DocumentLabelFormatter = typeof resolveEnglish & {
+  /** Bound to the same captured locale as the catalogue; absent keeps direct-export defaults. */
+  readonly formatNumber?: (value: number) => string;
+};

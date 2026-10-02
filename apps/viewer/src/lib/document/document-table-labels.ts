@@ -27,8 +27,8 @@ export const TABLE_PDF_LABELS: TableLabels = {
 
 export function documentTableLabels(t?: DocumentLabelFormatter): TableLabels {
   return t ? {
-    more: count => t('document.table.moreRows', { count, countDisplay: count.toLocaleString() }),
-    total: count => t('document.table.total', { count: count.toLocaleString() }),
+    more: count => t('document.table.moreRows', { count, countDisplay: t.formatNumber?.(count) ?? count.toLocaleString() }),
+    total: count => t('document.table.total', { count: t.formatNumber?.(count) ?? count.toLocaleString() }),
   } : TABLE_PDF_LABELS;
 }
 

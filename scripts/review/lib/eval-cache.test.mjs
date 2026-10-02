@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readEvalCache, readEvalContext } from './eval-cache.mjs';
@@ -47,4 +47,18 @@ test('resume uses the recorded context tree and refuses missing or symbolic refs
   const context = 'c'.repeat(40);
   writeFileSync(join(dir, 'eval-context.txt'), context + '\n');
   assert.equal(readEvalContext(dir), context);
+});
+
+test('a paid failure followed by successful regeneration is reusable without erasing receipts (#6706)', (t) => {
+  const { dir, input } = evidence(t);
+  const receipt = join(dir, 'case.out.txt.telemetry.jsonl');
+  const calls = [{ model: 'candidate', answered: false }, { model: 'candidate', answered: true }];
+  writeFileSync(receipt, calls.map((call) => JSON.stringify(call)).join('\n'));
+  assert.equal(readEvalCache(dir, 'case', input, 'candidate').attempts, 1);
+  writeFileSync(join(dir, 'case.validation.json'), JSON.stringify({ attempts: 2, reason: null }));
+  assert.equal(readEvalCache(dir, 'case', input, 'candidate'), null);
+  calls.push({ model: 'candidate', answered: true });
+  writeFileSync(receipt, calls.map((call) => JSON.stringify(call)).join('\n'));
+  assert.equal(readEvalCache(dir, 'case', input, 'candidate').attempts, 2);
+  assert.equal(readFileSync(receipt, 'utf8').split('\n').length, 3);
 });

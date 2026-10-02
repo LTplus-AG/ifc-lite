@@ -16,8 +16,9 @@ export function readEvalCache(dir, name, input, model, profile = 'high') {
   const calls = readFileSync(path('out.txt.telemetry.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
   if (calls.some((call) => call.model !== model)) throw new Error(`Cached case ${name} belongs to a different model.`);
   if (calls.some((call) => JSON.stringify(call.reasoning ?? { effort: 'high' }) !== JSON.stringify(reviewReasoning(model, profile)))) throw new Error(`Cached case ${name} belongs to a different reasoning profile.`);
-  if (calls.some((call) => call.answered === false)) return null;
   if (![1, 2].includes(validation.attempts) || calls.length < validation.attempts) return null;
+  // Receipts are cumulative; only the latest generation belongs to validation.
+  if (calls.slice(-validation.attempts).some((call) => call.answered === false)) return null;
   if (validation.reason !== null && !REVIEWER_FAULT.has(validation.reason)) return null;
   return { input: saved, attempts: validation.attempts };
 }

@@ -128,6 +128,8 @@ test('#6679 refused commits remain exportable and two tabs cannot overwrite draf
 
 test('#6695 repeated quota-refused backup imports preserve one edited draft through retry and reload', async ({ page }, info) => {
   await page.goto('/'); await ready(page); await openDocument(page, 'import-dedup-panel');
+  const neighbours = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents);
+  expect(neighbours).toHaveLength(1);
   const entry = documentEntry('external-6695', 'Import once'), backup: ContentBackup = { version: 1,
     exportedAt: '2026-01-01T00:00:00.000Z', libraries: { document: [entry], comparison: [], validation: [] } };
   const file = { name: 'same-backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)) };
@@ -141,19 +143,23 @@ test('#6695 repeated quota-refused backup imports preserve one edited draft thro
   });
   const panel = page.locator('[data-document-panel]').first(), input = panel.getByLabel('Import library backup', { exact: true });
   await input.setInputFiles(file);
-  await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__.getState().documents.length === 1);
+  await page.waitForFunction(id => globalThis.__ifc_lite_viewer_store__.getState().documents.some(entry => entry.id === id), entry.id);
+  expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents)).toHaveLength(neighbours.length + 1);
   const refusedNotice = page.locator('[data-toast-seq]').filter({ hasText: 'The backup was not saved.' });
   await expect(refusedNotice).toBeVisible();
   await refusedNotice.getByRole('button', { name: 'Dismiss notification' }).click();
   await expect(panel.getByRole('button', { name: 'Retry save', exact: true })).toBeEnabled();
-  await page.evaluate(() => {
+  await page.evaluate(id => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
-    state.stageDocument({ ...state.documents[0], name: 'Author edit kept' });
-  });
+    const imported = state.documents.find(entry => entry.id === id);
+    if (!imported) throw new Error('Imported draft missing');
+    state.stageDocument({ ...imported, name: 'Author edit kept' });
+  }, entry.id);
   await input.setInputFiles(file);
   await expect(refusedNotice).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Retry save', exact: true })).toBeEnabled();
-  expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents.map(entry => entry.name))).toEqual(['Author edit kept']);
+  expect(await page.evaluate(id => globalThis.__ifc_lite_viewer_store__.getState().documents.filter(entry => entry.id === id).map(entry => entry.name), entry.id)).toEqual(['Author edit kept']);
+  expect(await page.evaluate(id => globalThis.__ifc_lite_viewer_store__.getState().documents.filter(entry => entry.id !== id), entry.id)).toEqual(neighbours);
   await page.screenshot({ path: info.outputPath('repeated-quota-import-one-draft.png') });
   await page.evaluate(() => (globalThis as { restoreContentTransaction?: () => void }).restoreContentTransaction?.());
   await panel.getByRole('button', { name: 'Retry save', exact: true }).click();
@@ -161,7 +167,8 @@ test('#6695 repeated quota-refused backup imports preserve one edited draft thro
   await page.reload(); await ready(page); await openDocument(page, entry.id);
   await input.setInputFiles(file);
   await expect(page.getByText('Imported 0 items.', { exact: false })).toBeVisible();
-  expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents.map(entry => entry.name))).toEqual(['Author edit kept']);
+  expect(await page.evaluate(id => globalThis.__ifc_lite_viewer_store__.getState().documents.filter(entry => entry.id === id).map(entry => entry.name), entry.id)).toEqual(['Author edit kept']);
+  expect(await page.evaluate(id => globalThis.__ifc_lite_viewer_store__.getState().documents.filter(entry => entry.id !== id), entry.id)).toEqual(neighbours);
 });
 
 test('#6695 an unfinished image round-trips as raw evidence without poisoning valid library imports', async ({ page, browser }, info) => {

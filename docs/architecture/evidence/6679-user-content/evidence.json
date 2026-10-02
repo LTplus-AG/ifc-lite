@@ -1,6 +1,6 @@
 {
   "issue": 6679,
-  "capturedAt": "2026-10-02T12:23:35.762060+00:00",
+  "capturedAt": "2026-10-02T14:51:18.996669+00:00",
   "baseCommit": "e134f79e92e18d35c48b23b4d8fd9e25998896e9",
   "model": {
     "path": "apps/viewer/public/samples/building-architecture.ifc",
@@ -10,43 +10,23 @@
   "verification": [
     {
       "command": "pnpm typecheck",
-      "result": "passed; 3302 test files across 57 packages covered"
+      "result": "passed; 111 tasks and all 3308 test files"
     },
     {
       "command": "pnpm build --filter=@ifc-lite/viewer",
       "result": "passed; all 50 tasks"
     },
     {
-      "command": "TEST_PATTERN='(content-controller|content-library|ContentStorageNotice|DocumentPanel.blockHeading|DocumentPanel.reportSources|ManualValidationTab.test|report-retention)' pnpm test --filter=@ifc-lite/viewer --env-mode=loose --only",
-      "result": "65 passed, 0 failed; workspace dependencies freshly built before this run"
+      "command": "TEST_PATTERN='(content-library|ContentStorageNotice|content-import-plan)' pnpm test --filter=@ifc-lite/viewer --env-mode=loose --only",
+      "result": "42 passed, 0 failed; workspace dependencies freshly built; includes 11 native import-planner tests"
     },
     {
-      "command": "TEST_PATTERN='(SavedComparisonLibrary.test|SavedValidationReports.test)' pnpm test --filter=@ifc-lite/viewer --env-mode=loose",
-      "result": "20 passed, 0 failed in the migration-only checkout; recovery assertions use foundation transactions"
-    },
-    {
-      "command": "PLAYWRIGHT_PORT=5682 pnpm test:e2e:ci tests/e2e/content-storage.e2e.spec.ts --reporter=list",
-      "result": "2 passed against the explicitly served final stack build"
+      "command": "PLAYWRIGHT_PORT=5684 pnpm test:e2e:ci tests/e2e/content-storage.e2e.spec.ts --reporter=list",
+      "result": "4 passed, 0 failed (20.8 seconds), final reviewed application build"
     },
     {
       "command": "pnpm lint",
-      "result": "passed; 8268 files, 136 rules, no errors"
-    },
-    {
-      "command": "pnpm docs:check-samples",
-      "result": "431 snippets across 104 docs passed; 12 skipped"
-    },
-    {
-      "command": "pnpm check:module-size",
-      "result": "passed; 4700 files measured, 0 new over 400"
-    },
-    {
-      "command": "pnpm check:test-wiring",
-      "result": "passed"
-    },
-    {
-      "command": "pnpm check:source-text-assertions",
-      "result": "passed; 0 new source-text assertions"
+      "result": "passed; 8280 files, 136 rules, no errors"
     }
   ],
   "browserWitnesses": [
@@ -54,7 +34,9 @@
     "Eight document payloads exceed 5 MiB and survive reload alongside the migrated document",
     "Refused IndexedDB write keeps the document draft in memory; Retry save commits it",
     "A second tab preserves its local draft and cannot overwrite the first tab; explicit restore loads the committed version",
-    "An older app tab changing legacy storage is archived without replay; the recovery notice survives subsequent saves"
+    "An older app tab changing legacy storage is archived without replay; the recovery notice survives subsequent saves",
+    "Repeated quota-refused imports preserve one edited draft and the existing starter document through individual retry, reload and successful re-import",
+    "An unfinished image round-trips unchanged as raw evidence through export, import, reload, re-export and preserved-original download alongside valid libraries"
   ],
   "limitations": [
     "Automated browser evidence was captured with headless Chrome; this does not certify the 3D raster output",
@@ -62,45 +44,57 @@
   ],
   "productionSourceSHA256": {
     "apps/viewer/src/bootstrap.tsx": "6a2ded5ea079bf3d4448c134e8e97a0d4a58ae3f343b17d255c874c5145d5f8c",
-    "apps/viewer/src/components/viewer/ContentStorageNotice.tsx": "935259a6937245181ac62fe4688b65699923856a299972cd4c5c85f6a73c9e80",
+    "apps/viewer/src/components/viewer/ContentStorageNotice.tsx": "0561a055d44cb777c11f08af6b6481b1fe9745b73825f53576fa1c978e2d847f",
     "apps/viewer/src/components/viewer/compare/SavedComparisonHistoryNotice.tsx": "b7f5bd4bb077fd49158c7ed8ac8cb9a8d58c901a0d4a934d7863228e544669bb",
     "apps/viewer/src/components/viewer/compare/SavedComparisonLibrary.tsx": "94727825e0f96b974a25e721252f8529307e0dd9792dac1794455b4a8f96c2cd",
+    "apps/viewer/src/components/viewer/document/BlockEditor.parts.tsx": "0745fac214a3e24965e54ba21eee4d0dddbc956f44a0d6ab94ae94e50515471c",
     "apps/viewer/src/components/viewer/document/DocumentMenu.tsx": "9cd19c051b871b3f808723e2d8764c098e85194395ff62403fb180a334a55bd8",
-    "apps/viewer/src/components/viewer/document/DocumentPanel.tsx": "16401c258938952019fcd1ed81442f6be42dc866e381b409fc4510f8da7a5a59",
+    "apps/viewer/src/components/viewer/document/DocumentPanel.tsx": "b6960a715803c2bea732f50be0c5aff3c91e62dcf3088835d27f4d39c18bfeff",
+    "apps/viewer/src/components/viewer/document/DocumentPreview.tsx": "02ddeec6881fe1eaedb9dec41e61dce997122c5f33fbdd2173830cccb5d28adb",
     "apps/viewer/src/components/viewer/document/SavedReportSource.tsx": "818872c0b8748b7bbbae8ef2c59b4e02b301de2dc7f5cbd6acad62a12897c1c2",
     "apps/viewer/src/components/viewer/document/useReportSources.ts": "435b405a49b9a170f5f79f2843d19b2f13647acad0bdc3c7f5a710395d87819b",
+    "apps/viewer/src/components/viewer/properties/LocationMap.tsx": "321cc126726d4428edb9cc411b49fb329f65a7f91148b26370916efd7c3a8f7f",
+    "apps/viewer/src/components/viewer/properties/location-map-lifecycle.ts": "a96c7cda4d5c5158d6fbf3ba102f07b0b88cafce35db234c80871b252a255333",
+    "apps/viewer/src/components/viewer/properties/use-location-georeference.ts": "dc27a853f93d0fa299e7238b5ddc4ea2264f2ff0d363af6e800ce2af82ae820d",
     "apps/viewer/src/components/viewer/validation/ManualValidationTab.tsx": "0f330c8ed0f9dd55a8eeff976f6d7f5feff041d9b4b7c26299bcc769fbbe1f74",
     "apps/viewer/src/components/viewer/validation/SaveValidationReportButton.tsx": "16f15e32e7dd86d98d492d2c289bb8dc10f30d78a13b8834a0caf4483bc14022",
     "apps/viewer/src/components/viewer/validation/SavedValidationReports.tsx": "b74a62f575b6f7552299c69d6d56101ee1798ce6b40903f9b1f9597dc2cc8bbd",
     "apps/viewer/src/i18n/catalogues/document.en.ts": "33a91bdcf9bb51d2bcf9572b478a02707d45a1b834e22e337ef5a91ebd098136",
     "apps/viewer/src/i18n/catalogues/manual-validation.en.ts": "d349d71d1b69461510b39b1ac537ec9196c26fb7d5aa2a59c4d823fffd809cbf",
-    "apps/viewer/src/i18n/catalogues/validation-panel.en.ts": "66c959b6c50f19fb2124249480b92145e47c439dec78194411c0d3fca89c17ef",
+    "apps/viewer/src/i18n/catalogues/properties.en.ts": "6871c8f4d0c3099a90c978ba3a4413bc10a298eb63bec6be7c555e3c89c53737",
+    "apps/viewer/src/i18n/catalogues/validation-panel.en.ts": "af12ed20d278817324ed45d04783669e825c266fc998bb9d17f7d56801d8bc1a",
     "apps/viewer/src/lib/compare/savedComparisonPersistence.ts": "cb80eb28a36bb9777a0a3aea7e2b5bceadcf9b6abc792f1dd89a0aaccb877d33",
-    "apps/viewer/src/lib/document/persistence.ts": "5fe2061f8105bee16754ac3a3d3c84e4965dc6d89fe2bc7228573e20ad65ea6c",
-    "apps/viewer/src/lib/flow/automation-host.ts": "8e3c03e4e97c97ee011f21c10c480943fcb23a6cb7b64be310512a76d121c7e9",
+    "apps/viewer/src/lib/document/compose-scale.ts": "b11f954b991ab069baff07804ed86617e6f19c82cf2fc75d076e6b017f3d82b2",
+    "apps/viewer/src/lib/document/compose-sizing.ts": "793f4eed7064695696ad8cd4bede798381ae408da3d32dc7633f9cd73464e129",
+    "apps/viewer/src/lib/document/compose.ts": "0e0e1370a23c785f25dea1e936422367930859ca3437ef1db0da03f88f644060",
+    "apps/viewer/src/lib/document/persistence.ts": "940521683b91f554c3b3835ffc7db40986ad91d8f22d034b6c2b1c77044e1145",
+    "apps/viewer/src/lib/flow/automation-host.ts": "9256dfb4685dba2399a86c626d228a3a6dcb93cf6aed5126d10c382287879282",
     "apps/viewer/src/lib/flow/check-host.ts": "de5bde0f0cc3edd3cedbd3ff0a5a0967b463d43b8d62ad816e79d9bdf6e60622",
     "apps/viewer/src/lib/flow/report-retention.ts": "b36682aaa68643070697929c1c61457c267dae377077cd769ec44bf50f35f7ca",
-    "apps/viewer/src/lib/storage/content-backup-references.ts": "acb75d05dcf6f2eda55f9bb7f0d2dd535694e3592f84ad2fa0e688a265159c02",
-    "apps/viewer/src/lib/storage/content-backup.ts": "b6eab7a3c1c35260e9faafdc39e2454d47dbd44a5a13c9389ea29155322191ca",
+    "apps/viewer/src/lib/storage/content-backup-drafts.ts": "5cb4580be42a6f4774eedd20e60cb24e15d47a9142eb9786ceaa5d9949571a4c",
+    "apps/viewer/src/lib/storage/content-backup-references.ts": "acdb1d48d686d1086532be6ba9f7b6181eb1daa11c68d4c6014dae6965db022c",
+    "apps/viewer/src/lib/storage/content-backup.ts": "463a14d369f8f33fa05a9570872e66f9babfd79e90ceb13f9dc8b3961b4e2d17",
     "apps/viewer/src/lib/storage/content-boot.ts": "f816b76269f203d8a59b91d0c326796afaf08d08d0ac0bf3d7c93693ef5c839c",
-    "apps/viewer/src/lib/storage/content-database.ts": "56a9930e6e767bfe531854cc900a396eb8d397aedb331ce4631eadfbc98c68ac",
+    "apps/viewer/src/lib/storage/content-database.ts": "3023a0565b7d57d53ff61e1b51dffdde8b25579ae94666b2d31852ac66708d70",
     "apps/viewer/src/lib/storage/content-events.ts": "56acc88d6266c8f63f604e4b4ad4f196bb4a48b84a85d0c1740933d094074ede",
-    "apps/viewer/src/lib/storage/content-library.ts": "ce9b6e888d6a7d046b5fc5bbb02d973dde327e5429a638772e9000e10b2c3e25",
-    "apps/viewer/src/lib/storage/content-migration.ts": "1e82c0ad40b61b117517457c09f165911abcc07df4b9381e86636601e61e862f",
+    "apps/viewer/src/lib/storage/content-import-identity.ts": "e4250336f6761b0117987955b2727db9a5f26c69116ff89bd0c687c019c436b6",
+    "apps/viewer/src/lib/storage/content-import-plan.ts": "4c4183c87187c5c6c4690e4d5919049b7b3bf276c09c2c838338700c40a2e5c2",
+    "apps/viewer/src/lib/storage/content-library.ts": "f52b128917965a07fd6a61d676e56732762dbbfaaa1a3bef3b4bcb09e379db7a",
+    "apps/viewer/src/lib/storage/content-migration.ts": "11860b2cbab538739b1c8b6c42d33d8d0f0d585903c9f546b259612d79382a20",
     "apps/viewer/src/lib/storage/content-reader.ts": "ca18e212ea103f51779e5dea92e0fe706ed403bff13ccf1a9905508ac6fa5fea",
     "apps/viewer/src/lib/validation/reports/persistence.ts": "a134d0ad37a9e3251dbcdfe7e8972475f44badc3178094e4b4732646134ab774",
-    "apps/viewer/src/store/slices/documentSlice.ts": "6e1cae885b8027b2ae726f719c3d8d14137c8ae228852f76a9e17de0e2f17f07",
-    "apps/viewer/src/store/slices/savedComparisonsSlice.ts": "afdb280b76571d8ff18fabd74a8e460dc9329e6ca676d1b6feb8ddf42e8da91b",
-    "apps/viewer/src/store/slices/validationReportsSlice.ts": "9c1ac3798412d20a03cdb313754f0ede5fffeeea56e8419b6c4b505f5fe6408c"
+    "apps/viewer/src/store/slices/documentSlice.ts": "38a066fa34f23a8eadcfe278483eda29257ad705673c718c79063ea5722b0a9c",
+    "apps/viewer/src/store/slices/savedComparisonsSlice.ts": "78cecc8da8dfd14a2eaca62a36c9d4161762b582c908549898ab4dbb4797f1ec",
+    "apps/viewer/src/store/slices/validationReportsSlice.ts": "f6bce3be0131b0c92e6ba1f7b631bf6db49da217b4c8843eeac79f4868786917"
   },
-  "buildBaseCommit": "12c20a6790f76863767fdb14ac86891f7fc0d870",
-  "browserBuildSourceCommit": "a291390b39c96c4282fc99cf3795e227255bb76c",
+  "buildBaseCommit": "3330e1c74f55ada4b074590455f1ad3f64054585",
+  "browserBuildSourceCommit": "9b9683d947456efd4258c5b5807722e2c275b2fd",
   "browserExecution": {
-    "previewCheckout": "/tmp/ifc6679-backup-pr",
-    "port": 5682,
+    "previewCheckout": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-5679352b",
+    "port": 5684,
     "testRunnerCheckout": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-5679352b",
-    "testSourceSHA256": "a8e786419b43dcf50f2111431dcc4e1b2d98f05cf20112351c845679e010357b",
-    "note": "Explicit preview serves this checkout's built viewer. Both checkouts contain byte-identical test source. Later rebasing changed only tests and fixtures; production source is unchanged."
+    "testSourceSHA256": "bc9d06205d595544660206a556ae37215a6fe2a629a46fb40793fd752303417e",
+    "note": "The explicit preview serves the viewer built from browserBuildSourceCommit. The final test setup preserves the seeded starter document. Subsequent evidence-only commits and stack rebases preserve these application bytes."
   },
-  "recordedAt": "2026-10-02T12:37:03.284934+00:00"
+  "recordedAt": "2026-10-02T14:56:03.763432+00:00"
 }

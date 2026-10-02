@@ -90,12 +90,16 @@ describe('Authenticated relay #6643', () => {
     expect((await relay('/slow', { timeoutMs: 10 })(request())).status).toBe(504);
   });
   it('rejects overlarge and slow caller bodies before any provider access', async () => {
-    const start = received.length;
-    expect((await relay()(request({ providerId: 'demo', kind: 'json', query: 'x'.repeat(300001) }))).status).toBe(400);
+    // #6643: observe this relay's dispatch synchronously. A previous aborted /slow
+    // fetch can still arrive at the HTTP server after its caller has timed out.
+    let dispatched = 0;
+    const observedTransport: FetchTransport = (url, init) => { dispatched++; return transport(url, init); };
+    expect((await relay('/json', { transport: observedTransport })(request({ providerId: 'demo', kind: 'json', query: 'x'.repeat(300001) }))).status).toBe(400);
+    expect(dispatched).toBe(0);
     const slow = new ReadableStream<Uint8Array>({ start() { /* intentionally idle stream, bounded by the relay timeout */ } });
     const init: RequestInit & { duplex: 'half' } = { method: 'POST', headers: { Authorization: `Bearer ${clientToken}`, 'Content-Type': 'application/json' }, body: slow, duplex: 'half' };
-    expect((await relay('/json', { timeoutMs: 10 })(new Request('https://relay.example.org', init))).status).toBe(408);
-    expect(received.length).toBe(start);
+    expect((await relay('/json', { timeoutMs: 10, transport: observedTransport })(new Request('https://relay.example.org', init))).status).toBe(408);
+    expect(dispatched).toBe(0);
   });
   it('viewer/CLI shared provider speaks the relay wire format without persisting credentials', async () => {
     const handle = relay('/select');

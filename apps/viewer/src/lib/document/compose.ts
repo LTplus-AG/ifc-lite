@@ -15,18 +15,21 @@
 import { chartFontScale, type ReportPageSetup } from '@ifc-lite/charts';
 import { pageBox, REPORT_MARGIN } from '../export/report/compose.js';
 import { blockScale, CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type PageBreakBlock, type TextBlock, type TextFont } from './types.js';
-import { layoutTable, type LayoutCursor, type TableLayoutBlock, type TableDrawnItem } from './compose-table.js';
+import { layoutTable, type TableLayoutBlock, type TableDrawnItem } from './compose-table.js';
 import { layoutIdsReport, type IdsReportLayoutBlock } from './compose-ids-report.js';
 import { layoutManualReport, type ManualReportLayoutBlock, type RingDrawnItem } from './compose-manual-report.js';
 import { blockTitle, BLOCK_TITLE_HEIGHT } from './block-title.js';
 import { TEXT_STYLES, wrapText, truncateToWidth, layoutText, textBackground } from './compose-text.js';
 export { TEXT_STYLES, wrapText, truncateToWidth } from './compose-text.js';
+import type { ResolvedBindingSpan } from './bindings.js';
 import { splitDocumentSections } from './page-sections.js';
 
 import { resolvePageHeading, type PageHeading, type ResolvedPageHeading } from './page-heading.js';
+import { resolveEnglish } from '@/i18n/registry';
+import type { DocumentLabelFormatter } from './document-labels.js';
 
-const HEADER_HEIGHT = 30;
-const FOOTER_HEIGHT = 24;
+import { HEADER_HEIGHT, FOOTER_HEIGHT, scaledPageHeight, zoomItem, scaledFrame } from './compose-scale.js';
+export { scaledPageHeight } from './compose-scale.js';
 export const BLOCK_GAP = 10;
 const CHART_HEIGHT = CHART_BLOCK_HEIGHT_DEFAULT;
 const SNAPSHOT_HEIGHT = 180;
@@ -60,31 +63,9 @@ export function documentImageHeight(block: { height: number; title?: string; cap
   return Math.min(block.height, pageHeight - 2 * REPORT_MARGIN - HEADER_HEIGHT - FOOTER_HEIGHT - headingExtraHeight - (blockTitle(block) ? BLOCK_TITLE_HEIGHT : 0) - (block.caption ? 14 : 0));
 }
 
-/**
- * Page height a block laid out at `scale` sees (#6548). A scaled block is laid out as if the
- * printable frame were `1 / scale` as tall and wide and then drawn `scale` times larger, so the
- * frame shrinks while the margins, header and footer around it do not.
- */
-export function scaledPageHeight(pageHeight: number, headingExtraHeight: number, scale: number): number {
-  const fixed = 2 * REPORT_MARGIN + HEADER_HEIGHT + FOOTER_HEIGHT + headingExtraHeight;
-  return fixed + (pageHeight - fixed) / scale;
-}
-
-/** Map an item laid out at `scale` to the page: positions follow `map`, extents and type sizes grow by `scale`. */
-function zoomItem(item: DrawnItem, scale: number, map: { x: (v: number) => number; y: (v: number) => number }): DrawnItem {
-  const at = { x: map.x(item.x), y: map.y(item.y) };
-  switch (item.kind) {
-    case 'text': return { ...item, ...at, size: item.size * scale };
-    case 'ring': return { ...item, ...at, size: item.size * scale };
-    case 'table': return { ...item, ...at, w: item.w * scale, columns: item.columns.map((c) => ({ ...c, width: c.width * scale })), scale };
-    case 'chart': return { ...item, ...at, w: item.w * scale, h: item.h * scale, scale };
-    default: return { ...item, ...at, w: item.w * scale, h: item.h * scale };
-  }
-}
-
 /** A block after its bindings were resolved and its assets measured — what layout needs. */
 export type ResolvedBlock =
-  | TextBlock
+  | (TextBlock & { bindingSpans?: ResolvedBindingSpan[] })
   | PageBreakBlock
   | { kind: 'image'; id: string; height: number; align: 'left' | 'center' | 'right'; caption?: string; title?: string; /** natural width / height */ aspect: number; width?: BlockWidth; scale?: number }
   | { kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth; fontSize?: number; scale?: number }
@@ -108,6 +89,10 @@ export type DrawnItem =
 export interface DocumentPage {
   index: number;
   items: DrawnItem[];
+  /** Parallel source identities let preview select the authored block on every overflow page (#6610). */
+  blockIds?: string[];
+  /** Blank text and spacers retain an interactive region without adding PDF ink. */
+  emptyBlocks?: Array<{ blockId: string; x: number; y: number; w: number; h: number }>;
 }
 
 export interface DocumentLayout {
@@ -117,6 +102,8 @@ export interface DocumentLayout {
   header: string;
   pageHeading?: ResolvedPageHeading;
   footer: string;
+  /** Already formatted counter text for each composed page. */
+  pageCounters?: string[];
 }
 
 export interface ComposeDocumentInput {
@@ -125,11 +112,12 @@ export interface ComposeDocumentInput {
   page: ReportPageSetup;
   blocks: ResolvedBlock[];
   generatedAt: string;
+  labels?: DocumentLabelFormatter;
   /** Width of `text` at `size` points, in points. */
   measure: (text: string, size: number, bold: boolean, font?: TextFont) => number;
 }
 
-/** A character estimate for Helvetica — tests and the on-screen preview use it. */
+/** A character estimate for Helvetica used by layout tests; preview/PDF use jsPDF metrics. */
 export const estimateTextWidth = (text: string, size: number, bold: boolean): number => text.length * size * (bold ? 0.56 : 0.52);
 
 /** A conservative, font-independent bound keeps preview/PDF pairing identical.
@@ -144,6 +132,7 @@ export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'font
 }
 
 export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
+  const labels = input.labels ?? resolveEnglish;
   const size = pageBox(input.page);
   const contentW = size.w - 2 * REPORT_MARGIN;
   const pageHeading = input.pageHeading ? resolvePageHeading(input.name, input.pageHeading, contentW, input.measure) : undefined;
@@ -151,12 +140,17 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
   const top = REPORT_MARGIN + HEADER_HEIGHT + headingExtraHeight;
   const bottom = size.h - REPORT_MARGIN - FOOTER_HEIGHT;
   const pages: DocumentPage[] = [];
-  let page: DocumentPage = { index: 0, items: [] };
+  let page: DocumentPage = { index: 0, items: [], blockIds: [], emptyBlocks: [] };
   let y = top;
+  let sourceBlockId = '';
+  const push = (...items: DrawnItem[]): void => {
+    page.items.push(...items);
+    page.blockIds?.push(...items.map(() => sourceBlockId));
+  };
 
   const newPage = (): void => {
     pages.push(page);
-    page = { index: pages.length, items: [] };
+    page = { index: pages.length, items: [], blockIds: [], emptyBlocks: [] };
     y = top;
   };
   const ensure = (h: number): void => {
@@ -167,6 +161,19 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     // chart through the footer instead of starting page 2 in the latter case (review finding).
     if (y + h > bottom && (page.items.length > 0 || y > top)) newPage();
   };
+  // The same cursor, as an object, for block layouts that live in their own module (#5142).
+  const cursor: Parameters<typeof scaledFrame>[0] = {
+    get y() { return y; },
+    set y(value: number) { y = value; },
+    x: REPORT_MARGIN,
+    top,
+    bottom,
+    ensure,
+    newPage,
+    push,
+    truncate: (text, width, size, bold) => truncateToWidth(text, width, size, bold, input.measure),
+  };
+
   // Both a full-width chart/image and one half of a two-up row need the same
   // box measured against different widths, so the size and position math is
   // computed once per block and the actual `y` (known only after a possible
@@ -232,7 +239,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     };
   };
 
-  const textLayout = (block: TextBlock, x: number, width: number) => layoutText(block, x, width, input.measure);
+  const textLayout = (block: Extract<ResolvedBlock, { kind: 'text' }>, x: number, width: number) => layoutText(block, x, width, input.measure);
   // A block with a size factor (#6548) is laid out in a column `scale` times wider and a frame `scale`
   // times shorter, at its authored point sizes, and then drawn `scale` times larger: text and graphics
   // grow by one factor and the wrapping is what it would be at that size.
@@ -247,21 +254,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     return { height: inner.height * scale, draw: (y) => inner.draw(0).map((item) => zoomItem(item, scale, { x: (v) => boxX + v * scale, y: (v) => y + v * scale })) };
   };
 
-  // The page cursor for a block at `scale`: virtual coordinates are the page frame zoomed by `1 / scale`
-  // about its top-left corner, and everything pushed is mapped back, so a table, report or text block
-  // paginates exactly as it would at its size.
-  const frame = (scale: number): LayoutCursor & { w: number; push: (...items: DrawnItem[]) => void } => ({
-    get y() { return top + (y - top) / scale; },
-    set y(value: number) { y = top + (value - top) * scale; },
-    x: REPORT_MARGIN,
-    w: contentW / scale,
-    top,
-    bottom: top + (bottom - top) / scale,
-    ensure: (h) => ensure(h * scale),
-    newPage,
-    push: (...items) => { page.items.push(...(scale === 1 ? items : items.map((item) => zoomItem(item, scale, { x: (v) => REPORT_MARGIN + (v - REPORT_MARGIN) * scale, y: (v) => top + (v - top) * scale })))); },
-    truncate: (text, width, size, bold) => truncateToWidth(text, width, size, bold, input.measure),
-  });
+  const frame = (scale: number) => scaledFrame(cursor, contentW, scale);
 
   const wrap = (text: string, width: number, size: number, bold: boolean) => wrapText(text, width, size, bold, input.measure);
 
@@ -269,6 +262,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     if (sectionIndex > 0 && (page.items.length > 0 || y > top)) newPage();
     for (let i = 0; i < blocks.length; i++) {
       const block = blocks[i];
+      sourceBlockId = block.id;
       const next = blocks[i + 1];
       if (next && isHalfPairable(block) && isHalfPairable(next)) {
         const colW = (contentW - BLOCK_GAP) / 2;
@@ -284,7 +278,9 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           // An oversized text column falls back to the ordinary paginated text path.
           if (rowH <= bottom - top) {
             ensure(rowH + BLOCK_GAP);
-            page.items.push(...a.draw(y), ...b.draw(y));
+            push(...a.draw(y));
+            sourceBlockId = next.id;
+            push(...b.draw(y));
             y += rowH + BLOCK_GAP;
             i += 1;
             continue;
@@ -294,8 +290,9 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       switch (block.kind) {
         case 'text': {
           const f = frame(blockScale(block));
-          const { style, size, lineH, lines, title, titleHeight } = textLayout(block, REPORT_MARGIN, f.w);
+          const { style, size, lineH, lines, rows, title, titleHeight } = textLayout(block, REPORT_MARGIN, f.w);
           if (!title && !block.backgroundColor && lines.every((l) => l.length === 0)) {
+            page.emptyBlocks?.push({ blockId: block.id, x: REPORT_MARGIN, y, w: contentW, h: lineH * blockScale(block) });
             f.y += lineH;
             break;
           }
@@ -307,9 +304,10 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           f.y += style.gapBefore;
           // A heading is not left alone at the bottom of a page: the first two lines move together.
           f.ensure(lineH * Math.min(lines.length, 2));
-          for (const line of lines) {
+          for (const row of rows) {
+            const line = row.text;
             if (f.y + lineH > f.bottom) newPage();
-            f.push(...textBackground(block, REPORT_MARGIN, f.y, f.w, lineH), { kind: 'text', x: REPORT_MARGIN, y: f.y + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font, color: block.textColor });
+            f.push(...textBackground(block, REPORT_MARGIN, f.y, f.w, lineH), { kind: 'text', x: REPORT_MARGIN, y: f.y + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font, color: block.textColor, ...(row.bindingMarks?.length ? { bindingMarks: row.bindingMarks } : {}) });
             f.y += lineH;
           }
           y += BLOCK_GAP;
@@ -320,6 +318,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           // the footer, since `ensure` only starts one fresh page (review finding).
           const height = Math.min(block.height, bottom - top);
           ensure(height);
+          page.emptyBlocks?.push({ blockId: block.id, x: REPORT_MARGIN, y, w: contentW, h: height });
           y += height;
           break;
         }
@@ -327,7 +326,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
         case 'chart': {
           const single = layoutPairable(block, REPORT_MARGIN, contentW);
           ensure(single.height + BLOCK_GAP);
-          page.items.push(...single.draw(y));
+          push(...single.draw(y));
           y += single.height + BLOCK_GAP;
           break;
         }
@@ -339,13 +338,13 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
         case 'ids-report': {
           const scale = blockScale(block);
           const f = frame(scale);
-          layoutIdsReport(block, f, contentW / scale, BLOCK_GAP / scale, wrap, (ring) => f.push(ring));
+          layoutIdsReport(block, f, contentW / scale, BLOCK_GAP / scale, wrap, (ring) => f.push(ring), labels);
           break;
         }
         case 'manual-report': {
           const scale = blockScale(block);
           const f = frame(scale);
-          layoutManualReport(block, f, contentW / scale, BLOCK_GAP / scale, wrap, (ring) => { f.push(ring); });
+          layoutManualReport(block, f, contentW / scale, BLOCK_GAP / scale, wrap, (ring) => { f.push(ring); }, labels);
           break;
         }
         case 'topic': {
@@ -378,5 +377,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
   }
   pages.push(page);
 
-  return { page: input.page, size, pages, header: input.name, ...(pageHeading ? { pageHeading } : {}), footer: `Generated ${input.generatedAt} · ifc-lite` };
+  return { page: input.page, size, pages, header: input.name, ...(pageHeading ? { pageHeading } : {}),
+    footer: labels('document.print.footer', { timestamp: input.generatedAt }),
+    pageCounters: pages.map(page => labels('document.print.pageCounter', { page: page.index + 1, total: pages.length })) };
 }

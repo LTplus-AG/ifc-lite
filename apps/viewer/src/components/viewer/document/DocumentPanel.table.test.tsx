@@ -10,6 +10,7 @@
  * it was computed from.
  */
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useState } from 'react';
@@ -75,6 +76,7 @@ async function parsedModel(): Promise<FederatedModel> {
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+  await documentPreviewReady();
 }
 
 // The hook runs one list per animation frame; frames are captured here and fired on demand, so a
@@ -228,7 +230,8 @@ describe('DocumentPanel table block (#5142)', () => {
     assert.equal(header.style.color, '#000000');
     const headerTextColor = editor.querySelector<HTMLInputElement>('input[aria-label="Header text"]'); assert.ok(headerTextColor);
     typeInput(headerTextColor, '#6b21a8'); await settle();
-    assert.equal(header.style.color, '#6b21a8', 'the preview renders the authored header ink');
+    const authoredHeader = ui.querySelector<HTMLElement>('[data-preview-block="t2"] th'); assert.ok(authoredHeader);
+    assert.equal(authoredHeader.style.color, '#6b21a8', 'the recomposed current page renders the authored header ink');
     const persisted = loadDocuments().find((d) => d.id === doc.id); assert.ok(persisted);
     const imported = parseDocumentFile(JSON.stringify(persisted));
     const second = imported.blocks[1]; assert.ok(second?.kind === 'table');
@@ -244,9 +247,11 @@ describe('DocumentPanel table block (#5142)', () => {
     assert.equal(pdfOutputs[0]?.type, 'application/pdf');
     assert.ok((pdfOutputs[0]?.size ?? 0) > 0, 'the configured table is included in a real generated PDF');
     click(editor.querySelector('button[aria-label="Reset table header text color"]')!); await settle();
-    assert.equal(header.style.backgroundColor, '#ffee88'); assert.equal(header.style.color, '#000000', 'reset returns to automatic contrast');
+    const resetInkHeader = ui.querySelector<HTMLElement>('[data-preview-block="t2"] th'); assert.ok(resetInkHeader);
+    assert.equal(resetInkHeader.style.backgroundColor, '#ffee88'); assert.equal(resetInkHeader.style.color, '#000000', 'reset returns to automatic contrast');
     click(editor.querySelector('button[aria-label="Reset table header background"]')!); await settle();
-    assert.equal(header.style.backgroundColor, '#334155'); assert.equal(header.style.color, '#ffffff');
+    const resetPaletteHeader = ui.querySelector<HTMLElement>('[data-preview-block="t2"] th'); assert.ok(resetPaletteHeader);
+    assert.equal(resetPaletteHeader.style.backgroundColor, '#334155'); assert.equal(resetPaletteHeader.style.color, '#ffffff');
     const reset = loadDocuments().find((d) => d.id === doc.id)?.blocks.find((b) => b.id === 't2');
     assert.ok(reset?.kind === 'table'); assert.equal(reset.headerBackground, undefined); assert.equal(reset.headerTextColor, undefined);
     assert.equal(reset.groupOrder, 'label', 'resetting the palette preserves group ordering');

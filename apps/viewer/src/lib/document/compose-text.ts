@@ -5,7 +5,8 @@
 /** Canonical text measurement, wrapping and layout for document preview/PDF. */
 import type { ComposeDocumentInput, DrawnItem } from './compose.js';
 import type { TextBlock, TextFont } from './types.js';
-import { tabFill } from './text-tabs.js';
+import { wrapTextRows } from './compose-text-wrap.js';
+import type { ResolvedBindingSpan } from './bindings.js';
 import { blockTitle, BLOCK_TITLE_HEIGHT } from './block-title.js';
 
 export const TEXT_STYLES: Record<TextBlock['style'], { size: number; bold: boolean; lineHeight: number; gapBefore: number; gray: number }> = {
@@ -25,35 +26,7 @@ export const TEXT_STYLES: Record<TextBlock['style'], { size: number; bold: boole
  * inside a line stays a run. Only the whitespace at a wrap point is dropped.
  */
 export function wrapText(text: string, width: number, size: number, bold: boolean, measure: ComposeDocumentInput['measure'], font?: TextFont): string[] {
-  const lines: string[] = [];
-  const fits = (line: string): boolean => measure(line, size, bold, font) <= width;
-  for (const paragraph of text.replace(/\r\n?/g, '\n').split('\n')) {
-    if (!/\S/.test(paragraph)) {
-      lines.push('');
-      continue;
-    }
-    let line = '';
-    for (const token of paragraph.match(/\t|[^\S\t]+|\S+/g) ?? []) {
-      // Whitespace never wraps by itself: at a wrap point it hangs and is dropped (below), as in
-      // `pre-wrap`. A tab measures from the start of the line it lands on, after any wrap.
-      if (token === '\t') { line += tabFill(line, (t) => measure(t, size, bold, font)); continue; }
-      if (/^\s/.test(token) || fits(line + token)) {
-        line += token;
-        continue;
-      }
-      const kept = line.trimEnd();
-      if (kept) lines.push(kept);
-      line = token;
-      while (!fits(line) && line.length > 1) {
-        let cut = line.length - 1;
-        while (cut > 1 && !fits(line.slice(0, cut))) cut -= 1;
-        lines.push(line.slice(0, cut));
-        line = line.slice(cut);
-      }
-    }
-    lines.push(line.trimEnd());
-  }
-  return lines;
+  return wrapTextRows(text, width, size, bold, measure, font).map(row => row.text);
 }
 
 /** A single line, ellipsis-truncated to fit `width` by the same measure `wrapText` uses (#4940 review: a half-width chart's title/subtitle must not run into the next column). */
@@ -76,18 +49,19 @@ export function truncateToWidth(text: string, width: number, size: number, bold:
 export const textBackground = (block: TextBlock, x: number, y: number, w: number, h: number): DrawnItem[] =>
   block.backgroundColor ? [{ kind: 'text-background', x, y, w, h, color: block.backgroundColor }] : [];
 
-export function layoutText(block: TextBlock, boxX: number, boxW: number, measure: ComposeDocumentInput['measure']) {
+export function layoutText(block: TextBlock & { bindingSpans?: ResolvedBindingSpan[] }, boxX: number, boxW: number, measure: ComposeDocumentInput['measure']) {
   const style = TEXT_STYLES[block.style];
   const size = block.fontSize ?? style.size;
   const lineH = size * style.lineHeight;
-  const lines = wrapText(block.text, boxW, size, style.bold, measure, block.font);
+  const rows = wrapTextRows(block.text, boxW, size, style.bold, measure, block.font, block.bindingSpans);
+  const lines = rows.map(row => row.text);
   const title = blockTitle(block);
   const titleHeight = title ? BLOCK_TITLE_HEIGHT : 0;
-  return { style, size, lineH, lines, title, titleHeight, height: titleHeight + style.gapBefore + lines.length * lineH,
+  return { style, size, lineH, lines, rows, title, titleHeight, height: titleHeight + style.gapBefore + lines.length * lineH,
     draw: (atY: number): DrawnItem[] => [
       ...(title ? [{ kind: 'text' as const, x: boxX, y: atY + 11, size: 11, bold: true, gray: 0, text: truncateToWidth(title, boxW, 11, true, measure) }] : []),
       ...textBackground(block, boxX, atY + titleHeight + style.gapBefore, boxW, lines.length * lineH),
-      ...lines.map<DrawnItem>((line, index) => ({ kind: 'text', x: boxX, y: atY + titleHeight + style.gapBefore + index * lineH + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font, color: block.textColor })),
+      ...rows.map<DrawnItem>((row, index) => ({ kind: 'text', x: boxX, y: atY + titleHeight + style.gapBefore + index * lineH + size, size, bold: style.bold, gray: style.gray, text: row.text, font: block.font, color: block.textColor, ...(row.bindingMarks?.length ? { bindingMarks: row.bindingMarks } : {}) })),
     ],
   };
 }

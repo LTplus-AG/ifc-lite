@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import { beforeEach, afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -56,7 +57,7 @@ const rules: RuleSetFile = { version: 1, name: 'Public wall information checks',
 const original = useViewerStore.getState();
 let reports: ValidationReport[];
 let spec: DocumentSpec;
-const settle = async () => { for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); }); };
+const settle = async () => { for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); }); await documentPreviewReady(); };
 
 beforeEach(async () => {
   localStorage.clear(); setValidationSourceChoice(null);
@@ -113,7 +114,7 @@ function assertRing(root: Element, report: ValidationReport): void {
     start += count / report.summary.totalEntitiesChecked * 2 * Math.PI;
   }
   assert.ok(image.getAttribute('alt')?.includes(`${report.summary.overallPassRate}%`), 'accessible label retains the engine pass rate');
-  assert.ok(benchmark.textContent?.includes(`${report.summary.overallPassRate}%`), 'visible rate retains the engine rounding');
+  assert.ok((benchmark.closest('[data-preview-block]') ?? benchmark).textContent?.includes(`${report.summary.overallPassRate}%`), 'visible rate retains the engine rounding');
 }
 
 describe('IDS and information-validation ring benchmarks (#6552)', () => {
@@ -196,6 +197,7 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     act(() => useViewerStore.setState({ documents: [{ ...spec, blocks: [block] }], activeDocumentId: spec.id }));
     const ui = render(<DocumentPanel />); await settle(); assertRing(ui, reports[0]);
     registerLocale('de-x-rings', { 'manualValidation.report.benchmarks': 'Ring anzeigen', 'manualValidation.verdict.pass': 'Bestanden',
+      'document.preview.idsReportPassed': 'Bestanden', 'document.preview.idsReportFailed': 'Fehler',
       'manualValidation.verdict.fail': 'Fehler', 'document.preview.idsReportPassRate': 'Prüfquote',
       'manualValidation.ring.label': '{name}: {pass} bestanden, {warning} Warnungen, {fail} Fehler, {unanswered} offen' });
     act(() => setLocale('de-x-rings')); await settle();

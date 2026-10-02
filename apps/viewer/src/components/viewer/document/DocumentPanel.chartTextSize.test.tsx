@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -36,7 +37,7 @@ ENDSEC;END-ISO-10303-21;`;
 const chart: ChartSpec = { id: 'by-type', title: 'Products by class', source: 'elements', type: 'bar', dimension: 'IfcType', measure: { agg: 'count' } };
 const doc: DocumentSpec = { version: DOCUMENT_VERSION, id: 'typography', name: 'Chart typography', page: { size: 'A4', orientation: 'portrait' },
   blocks: [{ kind: 'chart', id: 'c1', chart, snapshot: false, height: 150 }, { kind: 'chart', id: 'c2', chart, snapshot: false, height: 150 }] };
-const settle = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); };
+const settle = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); await documentPreviewReady(); };
 const fontSizes = (svg: Element) => [...svg.querySelectorAll<SVGTextElement>('text')].map((text) => Number.parseFloat(text.style.fontSize));
 
 describe('Document chart text sizing (#6546)', () => {

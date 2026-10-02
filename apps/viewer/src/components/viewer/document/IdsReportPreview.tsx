@@ -5,7 +5,7 @@
 /**
  * An IDS or information-validation report block on the preview sheet
  * (#5125, #6372): the same summary and check list the PDF prints
- * (`compose-ids-report.ts`), as HTML — mirrors `TablePreview.tsx`'s split
+ * (`compose-ids-report.ts`), as HTML — mirrors `ComposedPageItems.tsx`'s split
  * between "nothing to print" and rows.
  */
 import { blockTitle } from '@/lib/document/block-title';

@@ -124,6 +124,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
       const seams = pdfSeams ? await pdfSeams() : undefined;
       const result = await exportPreparedDocument({
         document,
+        labels: data.labels,
         bindings: data.bindings,
         aggregations: data.aggregations,
         chartMessages: data.chartMessages,
@@ -255,7 +256,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             {document.blocks.length === 0 && <div className="p-2 text-muted-foreground">{t('document.panel.emptyBlocks')}</div>}
           </div>
           <div className="min-w-0 flex-1 overflow-auto bg-muted/40">
-            <DocumentPreview document={document} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} tables={data.tables} selectedBlockId={selectedBlockId} onSelectBlock={setSelectedBlockId} />
+            <DocumentPreview document={document} labels={data.labels} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} tables={data.tables} selectedBlockId={selectedBlockId} onSelectBlock={setSelectedBlockId} />
           </div>
         </div>
       )}

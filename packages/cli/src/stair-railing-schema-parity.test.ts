@@ -35,12 +35,12 @@ async function saved(content: string | Uint8Array) {
 }
 function document(kind: 'stair' | 'railing', invalid = false): FlowDocument {
   return { flowVersion: 2, id: 'schema', name: 'D5 schema', capabilities: ['model.read', 'model.create'], inputs: [], outputs: [],
-    nodes: [{ id: 'all', type: 'model.byType', params: { type: 'IfcBuildingStorey' } }, { id: 'first', type: 'core.first' },
+    nodes: [...(kind === 'stair' ? [{ id: 'position', type: 'geometry.point' }] : []), { id: 'all', type: 'model.byType', params: { type: 'IfcBuildingStorey' } }, { id: 'first', type: 'core.first' },
       { id: 'spec', type: `element.${kind}`, params: kind === 'stair'
         ? { NumberOfRisers: invalid ? 0 : 4, RiserHeight: .2, TreadLength: .3, Width: 1, Direction: Math.PI / 2 }
         : { Path: [[0, 2, 0], [2, 2, 0]], Height: 1.1, RailDiameter: .1, PostDiameter: .1, PostSpacing: invalid ? 0 : 1 } },
       { id: 'add', type: 'model.addElement', trackingKey: invalid ? 'invalid' : 'valid' }],
-    edges: [{ from: ['all', 'entities'], to: ['first', 'items'] }, { from: ['first', 'item'], to: ['spec', 'storey'] },
+    edges: [...(kind === 'stair' ? [{ from: ['position', 'point'] as const, to: ['spec', 'Position'] as const }] : []), { from: ['all', 'entities'], to: ['first', 'items'] }, { from: ['first', 'item'], to: ['spec', 'storey'] },
       { from: ['spec', 'spec'], to: ['add', 'spec'] }] };
 }
 

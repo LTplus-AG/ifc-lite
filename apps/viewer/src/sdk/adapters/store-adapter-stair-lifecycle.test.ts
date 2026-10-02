@@ -15,13 +15,13 @@ import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { seedModelingSession } from '@/test/modeling-session-fixture';
 import { registerEntityPath, registerStoreSlot, pathForGuid } from '@/lib/collab/entity-paths';
-import { remeshOnApi, styleWireOnApi } from '../../../../../../packages/geometry/src/remesh/remesh-core.js';
+import { remeshOnApi, styleWireOnApi } from '../../../../../packages/geometry/src/remesh/remesh-core.js';
 import { requestRemesh, setRemeshClientFactory } from '@/lib/remesh/remesh-service';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { createStoreAdapter } from './store-adapter';
 
 const SAMPLE = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
-const WASM = new URL('../../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+const WASM = new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
 const AVAILABLE = existsSync(SAMPLE) && existsSync(WASM), MODEL = 'bonsai';
 afterEach(() => { setRemeshClientFactory(null); useViewerStore.setState({ collabRoomId: null, collabRoomModels: new Map() }); });
 function bytes() {

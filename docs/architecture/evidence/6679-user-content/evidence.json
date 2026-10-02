@@ -18,7 +18,7 @@
     },
     {
       "command": "TEST_PATTERN='(content-controller|content-library|ContentStorageNotice|content-import-plan)' pnpm test --filter=@ifc-lite/viewer --env-mode=loose --only",
-      "result": "42 passed, 0 failed; workspace dependencies freshly built; includes 11 native import-planner tests"
+      "result": "46 passed, 0 failed against the final main-based controls tree; includes 11 native import-planner tests, the mounted source-conflict retry test, and four localization cases"
     },
     {
       "command": "PLAYWRIGHT_PORT=5684 pnpm test:e2e:ci tests/e2e/content-storage.e2e.spec.ts --reporter=list",

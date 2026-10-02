@@ -117,7 +117,7 @@ it('#6679 invalid backup input changes neither memory nor committed content', as
   assert.deepEqual(await loadDocuments(), [entry]);
 });
 
-it('#6679 Retry all libraries retains every linked source from a refused multi-library import', async () => {
+it('#6679 Retry all libraries remaps conflicting linked sources from a refused multi-library import', async () => {
   const { comparisonModels, comparisonResult } = await import('@/test/saved-comparison-fixture');
   const { snapshotComparison } = await import('@/lib/compare/savedComparisons');
   const { loadSavedComparisons } = await import('@/lib/compare/savedComparisonPersistence');
@@ -131,6 +131,10 @@ it('#6679 Retry all libraries retains every linked source from a refused multi-l
       type: 'bar' as const, comparisonId: comparison.id, dimension: 'State', measure: { agg: 'count' as const } } },
     savedReportBlock(report, 'manual-block'),
   ] };
+  const state = useViewerStore.getState();
+  assert.equal(await state.saveComparison({ ...comparison, name: 'Existing comparison' }), true);
+  assert.equal(await state.saveValidationReportEntry({ ...report, name: 'Existing validation' }), report.id);
+  const preservedComparisons = await loadSavedComparisons(), preservedReports = await loadValidationReports();
   const backup = createContentBackup({ document: [document], comparison: [comparison], validation: [report] });
   const ui = render(<Notice />), input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
   Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(backup)], 'linked.json')], configurable: true });
@@ -138,10 +142,10 @@ it('#6679 Retry all libraries retains every linked source from a refused multi-l
   try {
     await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
     await waitFor(() => useViewerStore.getState().documents.length === 1, 'all imported drafts are staged');
-    assert.equal(useViewerStore.getState().savedComparisons.length, 1);
-    assert.equal(useViewerStore.getState().savedValidationReports.length, 1);
-    assert.deepEqual(await loadSavedComparisons(), []);
-    assert.deepEqual(await loadValidationReports(), []);
+    assert.equal(useViewerStore.getState().savedComparisons.length, 2);
+    assert.equal(useViewerStore.getState().savedValidationReports.length, 2);
+    assert.deepEqual(await loadSavedComparisons(), preservedComparisons);
+    assert.deepEqual(await loadValidationReports(), preservedReports);
   } finally { refused.mock.restore(); }
   const retry = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Retry all libraries'); assert.ok(retry);
   click(retry);
@@ -150,10 +154,15 @@ it('#6679 Retry all libraries retains every linked source from a refused multi-l
     return [state.documentsStorage, state.validationReportsStorage, state.savedComparisonsStorage]
       .every(status => Object.values(status.items).every(value => value === 'saved'));
   }, 'all linked sources and the document commit');
-  const [stored] = await loadDocuments(), [storedComparison] = await loadSavedComparisons(), [storedReport] = await loadValidationReports();
+  const [stored] = await loadDocuments(), comparisons = await loadSavedComparisons(), reports = await loadValidationReports();
+  const storedComparison = comparisons.find(entry => entry.name === comparison.name);
+  const storedReport = reports.find(entry => entry.name === report.name);
+  assert.ok(storedComparison && storedReport);
+  assert.deepEqual(comparisons.filter(entry => entry.id === comparison.id), preservedComparisons);
+  assert.deepEqual(reports.filter(entry => entry.id === report.id), preservedReports);
   assert.ok(stored.blocks[0].kind === 'chart' && stored.blocks[1].kind === 'manual-report');
-  assert.equal(storedComparison.id, comparison.id, 'a known-empty library needs no conflict remapping');
-  assert.equal(storedReport.id, report.id);
+  assert.notEqual(storedComparison.id, comparison.id, 'the conflicting original must survive beside its independent copy');
+  assert.notEqual(storedReport.id, report.id);
   assert.equal(stored.blocks[0].chart.comparisonId, storedComparison.id);
   assert.equal(stored.blocks[1].savedReportId, storedReport.id);
 });

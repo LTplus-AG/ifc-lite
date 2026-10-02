@@ -52,9 +52,12 @@ source head and parent-layer base.
 node scripts/check-test-revert-oracle.mjs --base 7e1bfc76dd5a153054291e70997a878f42e8d49b --only apps/viewer/src/lib/flow/report-retention.ts --test apps/viewer/src/lib/flow/report-retention.test.ts --mutation docs/architecture/evidence/6679-user-content/mutations/retention-durability.patch --ci --json
 ```
 
-The backup layer qualifies source-ID remapping with an API-preserving
-mutation. Its mounted Retry all test checks the committed document bindings
-against the independently imported comparison and validation-report IDs.
+The historical backup capture qualifies source-ID remapping with an API-preserving
+mutation at the source head recorded below. Its then-current mounted Retry all
+test checked bindings against independently imported comparison and report IDs.
+That four-test capture is historical; it does not certify later test revisions.
+The final mounted test now seeds durable conflicting source IDs and verifies both
+independent copies, their rebound document references, and unchanged originals.
 Baseline: 4 passes. Bypassing remapping: 3 passes and 1 assertion failure.
 Official verdict: OBSERVED, attributable execution, restoration verified.
 The adjacent import-reference-remapping artifacts preserve the exact source

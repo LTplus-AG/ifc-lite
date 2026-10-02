@@ -17,7 +17,7 @@ import type { SpecificationResult, ValidationReport } from '@ifc-lite/ids';
 import { DEFAULT_THEME } from '@ifc-lite/charts';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import { useViewerStore } from '@/store/index.js';
-import { blur, click, cleanup, render, type } from '@/test/render.js';
+import { blur, click, cleanup, render, type, waitFor } from '@/test/render.js';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import type { BindingContext } from '@/lib/document/bindings';
 import type { DocumentPdfSeams } from '@/lib/document/generate-document-pdf.js';
@@ -114,6 +114,7 @@ describe('shared block heading controls (#6632)', () => {
       assert.equal(style.backgroundColor, FILL, `${kind}: preview background`);
     }
 
+    await waitFor(() => useViewerStore.getState().documentsStorage.items['doc-6632'] === 'saved', 'all heading edits must commit before reloading');
     const saved = (await loadDocuments()).find((d) => d.id === 'doc-6632');
     assert.ok(saved);
     for (const block of parseDocumentFile(JSON.stringify(saved)).blocks) {
@@ -156,6 +157,7 @@ describe('shared block heading controls (#6632)', () => {
       commitSize(input('Heading text size'), '');
       await settle();
     }
+    await waitFor(() => useViewerStore.getState().documentsStorage.items['doc-6632'] === 'saved', 'all heading resets must commit before reloading');
     for (const block of (await loadDocuments())[0].blocks) {
       assert.deepEqual(blockTitleFields(block as IdsReportBlock), { title: `H:${block.kind}`, titleFontSize: undefined, titleTextColor: undefined, titleBackgroundColor: undefined }, `${block.kind} keeps only its text`);
     }
@@ -172,9 +174,11 @@ describe('shared block heading controls (#6632)', () => {
     assert.ok(editor && input);
     commitSize(input, '99');
     await settle();
+    await waitFor(() => useViewerStore.getState().documentsStorage.items['doc-6632'] === 'saved', 'clamped heading size must commit before reloading');
     assert.equal(((await loadDocuments())[0].blocks[0] as { titleFontSize?: number }).titleFontSize, 24, 'above the maximum clamps to it');
     commitSize(input, '1');
     await settle();
+    await waitFor(() => useViewerStore.getState().documentsStorage.items['doc-6632'] === 'saved', 'clamped heading size must commit before reloading');
     assert.equal(((await loadDocuments())[0].blocks[0] as { titleFontSize?: number }).titleFontSize, 6, 'below the minimum clamps to it');
     for (const kind of ['spacer', 'page-break']) {
       assert.equal(ui.querySelector(`[data-block-kind="${kind}"] input[aria-label="Heading text size"]`), null, `${kind} has no heading to size`);

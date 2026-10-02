@@ -29,6 +29,7 @@ import type {
 } from '@ifc-lite/ids';
 import { isIDSValidationReport } from '@ifc-lite/ids';
 import { loadIdsContent } from './ids/loadIdsContent';
+import { beginDefinitionImport } from '@/lib/validation/definition-import-owner';
 import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewer/IDSExportDialog';
 
 import { resolveValidationTarget, type IdsErrorState } from './ids/resolveValidationTarget';
@@ -100,6 +101,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const setIdsPanelVisible = useViewerStore((s) => s.setIdsPanelVisible);
   const toggleIdsPanel = useViewerStore((s) => s.toggleIdsPanel);
   const setIdsLoading = useViewerStore((s) => s.setIdsLoading);
+  const setIdsAuditing = useViewerStore((s) => s.setIdsAuditing);
   const setIdsError = useViewerStore((s) => s.setIdsError);
   const setIdsLocale = useViewerStore((s) => s.setIdsLocale);
   const getMutationView = useViewerStore((s) => s.getMutationView);
@@ -145,20 +147,22 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   }, []);
 
   const loadIDSFile = useCallback(async (file: File) => {
-    let revision = useViewerStore.getState().validationDefinitionRevision;
+    const owner = beginDefinitionImport(useViewerStore, 'ids');
     try {
       setIdsLoading(true);
       setIdsError(null);
       const content = await file.text();
-      if (revision !== useViewerStore.getState().validationDefinitionRevision) return;
-      loadIDS(content);
-      revision = useViewerStore.getState().validationDefinitionRevision;
+      if (!owner.wanted()) return;
+      void loadIdsContent(useViewerStore, content, undefined, owner);
     } catch (err) {
-      if (revision === useViewerStore.getState().validationDefinitionRevision) setIdsError(err instanceof Error ? err.message : 'Failed to read IDS file');
+      if (owner.wanted()) {
+        setIdsError(err instanceof Error ? err.message : 'Failed to read IDS file');
+        setIdsAuditing(false);
+      }
     } finally {
-      if (revision === useViewerStore.getState().validationDefinitionRevision) setIdsLoading(false);
+      if (owner.wanted()) setIdsLoading(false);
     }
-  }, [loadIDS, setIdsLoading, setIdsError]);
+  }, [setIdsLoading, setIdsError, setIdsAuditing]);
 
   const clearIDS = useCallback(() => {
     cancelValidation();

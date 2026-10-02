@@ -31,6 +31,7 @@ import {
 } from '@/lib/validation/recent-rule-sets';
 import { useValidationEpoch } from './useValidationEpoch';
 import { activeDefinition } from '@/lib/validation/definition-library';
+import { beginDefinitionImport } from '@/lib/validation/definition-import-owner';
 
 /** What the last IDS export or import converted, and what it refused and why (#5225). */
 export interface IdsInterchangeSummary {
@@ -90,6 +91,7 @@ export function useInformationValidation(): UseInformationValidationResult {
   const editing = useViewerStore((s) => s.validationRuleSetEditing);
   const setFileState = useViewerStore((s) => s.setValidationRuleSetDraft);
   const definitionRevision = useViewerStore((s) => s.validationDefinitionRevision);
+  const activeDefinitionId = useViewerStore((s) => s.validationDefinitions.active.rules);
   const setEditing = useViewerStore((s) => s.setValidationRuleSetEditing);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<RuleEngineProgress | null>(null);
@@ -104,8 +106,8 @@ export function useInformationValidation(): UseInformationValidationResult {
   useEffect(() => {
     const state = useViewerStore.getState();
     const entry = activeDefinition(state.validationDefinitions, 'rules');
-    if (!state.validationRuleSetDraft && entry?.kind === 'rules') state.setValidationRuleSetDraft(entry.file);
-  }, []);
+    if (!state.validationRuleSetDraft && entry?.kind === 'rules') state.selectValidationDefinition(entry.id);
+  }, [file, activeDefinitionId]);
 
   const setFile = useCallback((next: RuleSetFile) => {
     setFileState(next);
@@ -118,14 +120,15 @@ export function useInformationValidation(): UseInformationValidationResult {
   }, [setEditing, t]);
 
   const openFromFile = useCallback(async (pickedFile: File): Promise<{ ok: boolean; error?: string }> => {
-    const revision = useViewerStore.getState().validationDefinitionRevision;
+    const owner = beginDefinitionImport(useViewerStore, 'rules');
     const result = await importRuleSetFile(pickedFile);
-    if (revision !== useViewerStore.getState().validationDefinitionRevision) return { ok: false };
+    if (!owner.wanted()) return { ok: false };
     if (!result.ok) {
       setError(result.error);
       return { ok: false, error: result.error };
     }
     if (!useViewerStore.getState().addValidationDefinition({ kind: 'rules', file: result.file })) return { ok: false, error: useViewerStore.getState().validationDefinitionsError ?? 'The rule set could not be added.' };
+    owner.committed();
     setEditing(true);
     setRecentRuleSets(addRecentRuleSet(result.file.name, JSON.stringify(result.file, null, 2)));
     return { ok: true };
@@ -175,9 +178,9 @@ export function useInformationValidation(): UseInformationValidationResult {
   }, [file]);
 
   const importIds = useCallback(async (pickedFile: File): Promise<{ ok: boolean; error?: string }> => {
-    const revision = useViewerStore.getState().validationDefinitionRevision;
+    const owner = beginDefinitionImport(useViewerStore, 'rules');
     const outcome = await importIdsFileAsRuleSet(pickedFile);
-    if (revision !== useViewerStore.getState().validationDefinitionRevision) return { ok: false };
+    if (!owner.wanted()) return { ok: false };
     if (!outcome.ok) {
       setError(outcome.error);
       return { ok: false, error: outcome.error };
@@ -197,6 +200,7 @@ export function useInformationValidation(): UseInformationValidationResult {
       return { ok: false };
     }
     if (!useViewerStore.getState().addValidationDefinition({ kind: 'rules', file: result.file })) return { ok: false, error: useViewerStore.getState().validationDefinitionsError ?? 'The rule set could not be added.' };
+    owner.committed();
     setEditing(true);
     return { ok: true };
   }, [setFile]);

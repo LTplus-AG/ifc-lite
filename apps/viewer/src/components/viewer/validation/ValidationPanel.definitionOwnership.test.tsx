@@ -113,17 +113,23 @@ for (const count of [1, 2]) for (const kind of ['rules', 'ids'] as const) {
     const before = activeDefinition(useViewerStore.getState().validationDefinitions, kind);
     assert.ok(before);
     const bytes = JSON.stringify(before);
+    const revision = useViewerStore.getState().validationDefinitionRevision;
     await act(async () => { useViewerStore.getState().clearAllModels(); });
     assert.equal(useViewerStore.getState().models.size, 0, 'the actual canonical reset cleared model inputs');
     await act(async () => { await models(count, 'after'); });
     const current = activeDefinition(useViewerStore.getState().validationDefinitions, kind);
     assert.ok(current);
     assert.equal(JSON.stringify(current), bytes, 'reset does not recreate or mutate the persisted definition');
+    assert.equal(current, before, 'restoring the projection reuses the canonical cached definition instead of re-importing it');
     const state = useViewerStore.getState();
     if (kind === 'ids') {
+      assert.equal(state.validationDefinitionRevision, revision, 'IDS reset preserves the existing projection without re-import or audit restart');
       assert.equal(state.idsDocument?.info.title, 'Retained check', 'active selector and canonical IDS projection agree without remount');
       assert.deepEqual(state.idsDocument?.specifications, before.kind === 'ids' ? before.document.specifications : null);
-    } else assert.equal(state.validationRuleSetDraft?.name, 'Retained check', 'active selector and editable canonical rules projection agree without remount');
+    } else {
+      assert.equal(state.validationDefinitionRevision, revision + 1, 'multiple mounted hooks restore the missing rules projection exactly once');
+      assert.equal(state.validationRuleSetDraft?.name, 'Retained check', 'active selector and editable canonical rules projection agree without remount');
+    }
     assert.ok(ui.textContent?.includes('Retained check'));
   });
 }

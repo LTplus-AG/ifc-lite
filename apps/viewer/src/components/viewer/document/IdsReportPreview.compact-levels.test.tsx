@@ -30,7 +30,7 @@ afterEach(cleanup);
 describe('compact IDS report preview levels (#6550)', () => {
   it('groups requirement rows inside their specification, not beside it', () => {
     const ui = render(<IdsReportPreview block={block} />);
-    const specs = [...ui.querySelectorAll('[data-ids-report-spec]')];
+    const specs = ui.querySelectorAll('[data-ids-report-spec]');
     assert.equal(specs.length, 2, 'one group per specification');
     const names = (el: Element) => [...el.querySelectorAll('[data-ids-report-requirements] [data-ids-report-row]')].map((r) => (r.textContent ?? '').replace(/[\d/·%\s]+$/, '').trim());
     assert.deepEqual(names(specs[0]), ['Status', 'Material']);
@@ -57,7 +57,8 @@ it('keeps compact specification hierarchy in the canonical document sheets (#655
   const first = glyph('Geschoss'), second = glyph('Raum');
   const status = glyph('Status'), material = glyph('Material'), room = glyph('Raumname');
   assert.equal(first.style.fontWeight, '700'); assert.equal(second.style.fontWeight, '700');
-  for (const [child, parent] of [[status, first], [material, first], [room, second]]) {
+  const pairs: readonly [HTMLElement, HTMLElement][] = [[status, first], [material, first], [room, second]];
+  for (const [child, parent] of pairs) {
     assert.ok(parseFloat(child.style.left) > parseFloat(parent.style.left), 'requirements remain visibly indented');
     assert.equal(child.style.fontWeight, '400');
   }

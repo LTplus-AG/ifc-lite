@@ -412,6 +412,27 @@ const transport = new StdioTransport();
 await transport.connect(server);
 ```
 
+A model returned by `loadIfcModel` exposes the existing SDK methods
+`bim.store.addElementType`, `assignType`, `addMaterial`, `addMaterialLayerSet`,
+`addMaterialLayerSetUsage` and `assignMaterial`. These embedded methods use
+`@ifc-lite/create`'s shared schema-aware writers; they are not new JSON-RPC tool
+names. Each successful call records one complete operation for the public
+`mutation_undo` tool. A refused layer or layer-set field creates no orphan
+helpers. Thicknesses and offsets are metres, converted to the model's units;
+IFC2X3 uses its live `IfcOwnerHistory` and rejects IFC4-only fields such as
+layer/set `Description`.
+
+```ts
+import { loadIfcModel } from '@ifc-lite/mcp';
+
+const loaded = await loadIfcModel('./model.ifc', { modelId: 'building' });
+const material = loaded.bim.store.addMaterial(loaded.id, { Name: 'Concrete' });
+const { expressId: layerSetId } = loaded.bim.store.addMaterialLayerSet(loaded.id, {
+  LayerSetName: 'Concrete layer',
+  MaterialLayers: [{ Material: material.expressId, LayerThickness: 0.2 }],
+});
+```
+
 For an in-process host (no child process, no sockets), use `InProcessTransport` and send JSON-RPC envelopes directly:
 
 ```ts

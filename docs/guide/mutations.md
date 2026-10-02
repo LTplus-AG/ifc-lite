@@ -636,7 +636,7 @@ assignMaterialInStore(editor, anchor, layerSetId, [typeId], associations());
 assignMaterialInStore(editor, anchor, usageId, [wallExpressId], associations());
 ```
 
-Layer thicknesses and offsets are metres, converted to the file's length unit. Through the SDK these are `bim.store.addElementType`, `assignType`, `addMaterial`, `addMaterialLayerSet`, `addMaterialLayerSetUsage` and `assignMaterial`. The two `assign*` methods read the model's existing relationships themselves.
+Layer thicknesses and offsets are metres, converted to the file's length unit. Through the SDK these are `bim.store.addElementType`, `assignType`, `addMaterial`, `addMaterialLayerSet`, `addMaterialLayerSetUsage` and `assignMaterial`. The two `assign*` methods read the model's existing relationships themselves. Layer and layer-set schema fields are validated before creating any helpers: an unsupported field, including IFC2X3 layer or set `Description`, leaves the saved records, mutation journal and express-ID allocator unchanged. The loaded MCP model's `bim.store` adapter delegates the same six methods to this factory and records each call as one operation for `mutation_undo`, preserving earlier source and overlay edits. Required IFC2X3 `OwnerHistory` references resolve against that call's live mutation view.
 
 #### Generate spaces — IfcSpace from a storey's walls
 

@@ -6,6 +6,7 @@ import { useTranslation } from '@/i18n';
 import { SavedHistoryNotice } from '../SavedHistoryNotice';
 import { useViewerStore } from '@/store';
 import { savedReportBlock, savedReportLabel, type ValidationReportSnapshot } from '@/lib/validation/reports/history';
+import { replaceManualReportSnapshot } from '@/lib/document/manual-report';
 
 /** Select frozen evidence without changing its block id or reading any live
  * checklist/report. Existing documents keep their embedded snapshot (#6500). */
@@ -27,7 +28,7 @@ export function SavedReportSource({ block, onChange }: { block: ValidationReport
               onChange(block.kind === 'ids-report' && next.kind === 'ids-report'
                 ? { ...next, variant: block.variant, benchmarks: block.benchmarks }
                 : block.kind === 'manual-report' && next.kind === 'manual-report'
-                  ? { ...next, variant: block.variant, benchmarks: block.benchmarks, showStamp: block.showStamp }
+                  ? replaceManualReportSnapshot(block, next)
                   : next);
             }
           }}>

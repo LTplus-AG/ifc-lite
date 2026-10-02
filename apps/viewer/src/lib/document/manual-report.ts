@@ -21,6 +21,12 @@ export function manualReportStamp(block: ManualReportBlock): { modelName: string
   return block.showStamp === false ? null : { modelName: block.modelName, generatedAt: block.generatedAt, models: reportScopeText(block) };
 }
 
+/** #6566: changing the recorded evidence preserves the destination block's
+ * identity and presentation, whether reading live answers or saved history. */
+export function replaceManualReportSnapshot(current: ManualReportBlock, snapshot: ManualReportBlock): ManualReportBlock {
+  return { ...snapshot, id: current.id, title: current.title, variant: current.variant, benchmarks: current.benchmarks, showStamp: current.showStamp };
+}
+
 export interface ManualReportSource {
   checklist: ChecklistTemplate;
   checklistId?: string;

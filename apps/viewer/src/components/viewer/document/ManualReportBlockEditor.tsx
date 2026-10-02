@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import type { ManualReportBlock } from '@/lib/document/manual-report-types';
+import { replaceManualReportSnapshot } from '@/lib/document/manual-report';
 import { field } from './BlockEditor.parts';
 import { resolveReportModel } from '@/lib/validation/manual/manual-model';
 import { useManualReportSource } from './useManualReportSource';
@@ -29,7 +30,7 @@ export function ManualReportBlockEditor({ block, onChange }: { block: ManualRepo
     if (missing) return false;
     const next = source.snapshot(block.id, chosen, checklistId);
     if (!next) return false;
-    onChange({ ...next, title: block.title, variant: block.variant, benchmarks: block.benchmarks, showStamp: block.showStamp });
+    onChange(replaceManualReportSnapshot(block, next));
     return true;
   };
 

@@ -60,7 +60,8 @@ async function preview(document: DocumentSpec) {
   const ui = render(<DocumentPreview document={document} bindings={bindings}
     aggregations={new Map()} chartMessages={new Map()} topics={new Map()}
     selectedBlockId={null} onSelectBlock={() => {}} />);
-  await waitFor(() => ui.querySelector('[data-preview-section]') !== null, 'the shared asynchronous layout is ready');
+  await waitFor(() => ui.querySelector('[data-preview-section]') !== null
+    && ui.querySelector('[data-layout-pending="true"]') === null, 'the shared asynchronous layout is ready');
   return ui;
 }
 
@@ -110,7 +111,8 @@ it('selects the authored block on continuation pages and reflows when its editor
         selectedBlockId={null} onSelectBlock={id => selections.push(id)} /></>;
   }
   const ui = render(<EditablePreview />);
-  const ready = () => waitFor(() => ui.querySelector('[data-preview-section]') !== null, 'composed pages ready after edit');
+  const ready = () => waitFor(() => ui.querySelector('[data-preview-section]') !== null
+    && ui.querySelector('[data-layout-pending="true"]') === null, 'composed pages ready after edit');
   await ready();
   const before = ui.querySelectorAll('[data-preview-section]').length;
   const control = ui.querySelector('input'); assert.ok(control); typeInput(control, '24');
@@ -135,7 +137,8 @@ it('captures labels before layout and keeps preview/export consistent across loc
   const printed = await printedPages(document, captured);
   printed.forEach((text, i) => { assert.ok(text.includes(`Seite ${i + 1} / 2`)); assert.match(text, /Erstellt/); });
   act(() => registerLocale('de-6610', { ...first, 'document.print.pageCounter': 'Blatt {page} / {total}' }));
-  await waitFor(() => ui.querySelector('[data-preview-section]') !== null, 'layout is recomposed after catalogue revision');
+  await waitFor(() => ui.querySelector('[data-preview-section]') !== null
+    && ui.querySelector('[data-layout-pending="true"]') === null, 'layout is recomposed after catalogue revision');
   assert.deepEqual(counterText(), ['Blatt 1 / 2', 'Blatt 2 / 2']);
   const capturedPrinted = await printedPages(document, captured);
   assert.ok(capturedPrinted.every(text => text.includes('Seite ')), 'an asynchronous caller retains its captured language even after catalogue replacement');

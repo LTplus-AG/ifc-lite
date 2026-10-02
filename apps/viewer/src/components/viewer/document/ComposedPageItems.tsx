@@ -109,6 +109,7 @@ function Item({ item, block, origin, props, lineBreak }: { item: DrawnItem; bloc
         style={{ ...style, objectFit: 'contain' }} onError={() => props.onImageError(dataUrl)} onLoad={event => {
           const { naturalWidth: w, naturalHeight: h } = event.currentTarget;
           if (w > 0 && h > 0) props.onImageSize(dataUrl, { w, h });
+          else props.onImageError(dataUrl);
         }} /> : <span style={style} className="flex items-center justify-center border border-dashed border-neutral-300 text-xs text-neutral-500">{dataUrl ? t('document.print.imageError') : t('document.preview.imageEmpty')}</span>;
     }
     case 'chart': return <ComposedChart aggregation={props.aggregations.get(item.blockId)} item={item}

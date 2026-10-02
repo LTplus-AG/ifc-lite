@@ -9,6 +9,7 @@ import { waitFor } from './render';
  * initial composed page is sufficient for tests unrelated to intrinsic size. */
 export function documentPreviewReady(): Promise<void> {
   return waitFor(() => [...document.querySelectorAll('[data-document-preview]')]
-    .every(preview => preview.querySelector('[data-preview-section]') !== null),
+    .every(preview => preview.querySelector('[data-preview-section]') !== null
+      && preview.getAttribute('data-layout-pending') !== 'true'),
   'document preview finishes resolving its shared page layout');
 }

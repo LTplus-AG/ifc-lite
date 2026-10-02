@@ -77,8 +77,11 @@ export function DocumentPreview(props: DocumentPreviewProps) {
     aggregations: props.aggregations, chartMessages: props.chartMessages, topics: props.topics,
     tables: props.tables ?? EMPTY_TABLES, snapshotIds: EMPTY_IDS, labels }),
   [props.document, props.bindings, props.aggregations, props.chartMessages, props.topics, props.tables, labels]);
-  const { value, error } = useDocumentLayout(input, imageSizes);
-  const blocks = useMemo(() => new Map(props.document.blocks.map(block => [block.id, block])), [props.document]);
+  const { value, error, pending } = useDocumentLayout(input, imageSizes);
+  const displayedInput = value?.input ?? input;
+  const displayedDocument = displayedInput.document;
+  const displayedLabels = displayedInput.labels ?? labels;
+  const blocks = useMemo(() => new Map(displayedDocument.blocks.map(block => [block.id, block])), [displayedDocument]);
   if (error) return <div role="alert" className="p-3 text-xs text-destructive">{labels('document.print.layoutError', { message: error })}</div>;
   const width = 560;
   if (!value) {
@@ -98,19 +101,19 @@ export function DocumentPreview(props: DocumentPreviewProps) {
   const heading = layout.pageHeading;
   // The resolved heading contains a default PDF color even when the author
   // supplied only text/font. Only an actual authored color overrides UI ink.
-  const headingPaint = previewTextPaint(150, props.document.pageHeading?.textColor);
+  const headingPaint = previewTextPaint(150, displayedDocument.pageHeading?.textColor);
   const footerPaint = previewTextPaint(150);
-  return <div className="flex flex-col items-center gap-4 p-3" data-document-preview aria-busy={pendingImages}>
+  return <div className="flex flex-col items-center gap-4 p-3" data-document-preview aria-busy={pending || pendingImages} data-layout-pending={pending ? 'true' : undefined}>
     {layout.pages.map(page => <section key={page.index} data-document-preview-paper data-preview-section={page.index + 1}
-      aria-label={labels('document.preview.sectionLabel', { section: String(page.index + 1) })}
+      aria-label={displayedLabels('document.preview.sectionLabel', { section: String(page.index + 1) })}
       className={`${DOCUMENT_PREVIEW_PAPER_CLASS} relative shadow-md`}
       style={{ width, height: layout.size.h * scale, fontFamily: DOCUMENT_FONT_FAMILIES.helvetica, overflow: 'hidden' }}>
       <div data-page-heading className={headingPaint.className} title={heading?.text ?? layout.header} style={{ position: 'absolute', left: REPORT_MARGIN * scale,
         top: ((heading?.y ?? REPORT_MARGIN - 8) - (heading?.fontSize ?? 8)) * scale,
         color: headingPaint.color, fontFamily: DOCUMENT_FONT_FAMILIES[heading?.font ?? 'helvetica'],
         fontSize: (heading?.fontSize ?? 8) * scale, lineHeight: 1.25, whiteSpace: 'pre' }}>{heading?.text ?? layout.header}</div>
-      <ComposedPageItems page={page} blocks={blocks} aggregations={props.aggregations} chartMessages={props.chartMessages}
-        topics={props.topics} scale={scale} measure={measure} labels={labels} selectedBlockId={props.selectedBlockId}
+      <ComposedPageItems page={page} blocks={blocks} aggregations={displayedInput.aggregations} chartMessages={displayedInput.chartMessages}
+        topics={displayedInput.topics} scale={scale} measure={measure} labels={displayedLabels} selectedBlockId={props.selectedBlockId}
         onSelectBlock={props.onSelectBlock} onImageSize={recordImageSize} imageFailures={imageFailures} onImageError={recordImageError} />
       <div data-page-footer className={footerPaint.className} style={{ position: 'absolute', left: REPORT_MARGIN * scale,
         top: (layout.size.h - REPORT_MARGIN + 12 - 8) * scale, fontSize: 8 * scale, color: footerPaint.color, lineHeight: 1.25 }}>
@@ -118,7 +121,7 @@ export function DocumentPreview(props: DocumentPreviewProps) {
       </div>
       <div data-page-counter className={footerPaint.className} style={{ position: 'absolute', left: (layout.size.w - REPORT_MARGIN - 60) * scale,
         top: (layout.size.h - REPORT_MARGIN + 12 - 8) * scale, fontSize: 8 * scale, color: footerPaint.color, lineHeight: 1.25, whiteSpace: 'pre' }}>
-        {pendingImages ? labels('document.print.preparing') : layout.pageCounters?.[page.index]}
+        {pendingImages ? displayedLabels('document.print.preparing') : layout.pageCounters?.[page.index]}
       </div>
     </section>)}
   </div>;

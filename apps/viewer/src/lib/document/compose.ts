@@ -13,8 +13,10 @@
  * `compose.ts` so a document and a report share a frame.
  */
 import { chartFontScale, type ReportPageSetup } from '@ifc-lite/charts';
-import { BLOCK_GAP, documentChartLayout, documentImageHeight, FOOTER_HEIGHT, HEADER_HEIGHT, pageFrameHeight, rowFitsFrame, scaledPageHeight } from './compose-sizing.js';
-export { BLOCK_GAP, documentChartSizing, documentImageHeight, pageFrameHeight, rowFitsFrame, scaledPageHeight } from './compose-sizing.js';
+import { FOOTER_HEIGHT, HEADER_HEIGHT, scaledPageHeight } from './compose-scale.js';
+export { scaledPageHeight } from './compose-scale.js';
+import { BLOCK_GAP, documentChartLayout, documentImageHeight, pageFrameHeight, rowFitsFrame } from './compose-sizing.js';
+export { BLOCK_GAP, documentChartSizing, documentImageHeight, pageFrameHeight, rowFitsFrame } from './compose-sizing.js';
 import { pageBox, REPORT_MARGIN } from '../export/report/compose.js';
 import { blockScale, CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type PageBreakBlock, type TextBlock, type TextFont } from './types.js';
 import { layoutTable, type LayoutCursor, type TableLayoutBlock, type TableDrawnItem } from './compose-table.js';

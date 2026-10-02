@@ -9,10 +9,9 @@
  */
 import { chartFontScale } from '@ifc-lite/charts';
 import { REPORT_MARGIN } from '../export/report/compose.js';
+import { FOOTER_HEIGHT, HEADER_HEIGHT } from './compose-scale.js';
 import { blockTitle, blockTitleStyle, BLOCK_TITLE_HEIGHT, type BlockHeaderStyleFields } from './block-title.js';
 
-export const HEADER_HEIGHT = 30;
-export const FOOTER_HEIGHT = 24;
 export const BLOCK_GAP = 10;
 const SNAPSHOT_HEIGHT = 180;
 
@@ -79,14 +78,4 @@ export function pageFrameHeight(pageHeight: number, headingExtraHeight = 0): num
 /** The image and its optional heading/caption fit inside the printable frame. */
 export function documentImageHeight(block: BlockHeaderStyleFields & { height: number; title?: string; caption?: string }, pageHeight: number, headingExtraHeight = 0): number {
   return Math.min(block.height, pageFrameHeight(pageHeight, headingExtraHeight) - (blockTitle(block) ? BLOCK_TITLE_HEIGHT + blockTitleStyle(block).extra : 0) - (block.caption ? 14 : 0));
-}
-
-/**
- * Page height a block laid out at `scale` sees (#6548). A scaled block is laid out as if the
- * printable frame were `1 / scale` as tall and wide and then drawn `scale` times larger, so the
- * frame shrinks while the margins, header and footer around it do not.
- */
-export function scaledPageHeight(pageHeight: number, headingExtraHeight: number, scale: number): number {
-  const frame = pageFrameHeight(pageHeight, headingExtraHeight);
-  return pageHeight - frame + frame / scale;
 }

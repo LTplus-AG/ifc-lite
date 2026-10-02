@@ -68,6 +68,59 @@ async function session(withOwnerHistory = false) {
 }
 
 describe('#6232 D5 ordinary atomic commit', () => {
+  for (const sourceKind of ['curtain assembly', 'bound grid', 'spatial storey', 'ordinary aggregate root'] as const) {
+    it(`#6710 refuses unsupported ${sourceKind} replacement before preparation or graph changes`, async () => {
+      const s = await session(), anchor = resolveSpatialAnchor(s.store, STOREY, s.view);
+      let oldId: number;
+      let relatedIds: number[] = [];
+      if (sourceKind === 'curtain assembly') {
+        const built = inStore.addCurtainWallToStore(s.editor, anchor, {
+          Start: [0, 0, 0], End: [4, 0, 0], Height: 3, UGrid: 2, VGrid: 1,
+        });
+        oldId = built.curtainWallId;
+        relatedIds = [...built.mullionIds, ...built.transomIds, ...built.panelIds];
+        expect(relatedIds.length).toBeGreaterThan(0);
+      } else if (sourceKind === 'bound grid') {
+        const built = inStore.addGridToStore(s.editor, anchor, {
+          UAxes: [{ Tag: 'U', Start: [0, -1], End: [0, 1] }],
+          VAxes: [{ Tag: 'V', Start: [-1, 0], End: [1, 0] }],
+        });
+        const bound = inStore.addColumnOnGridToStore(s.editor, s.store, anchor,
+          { Position: [0, 0, 0], Width: .2, Depth: .2, Height: 3 },
+          { GridId: built.gridId, IntersectingAxes: [built.uAxisIds[0], built.vAxisIds[0]] });
+        oldId = built.gridId;
+        relatedIds = [bound.columnId, bound.gridPlacement.placementId,
+          bound.gridPlacement.intersectionId, ...built.uAxisIds, ...built.vAxisIds];
+      } else if (sourceKind === 'ordinary aggregate root') {
+        oldId = 1222; // Actual parsed Bonsai wall, not a fabricated type.
+        const child = addOrdinaryElementInStore(s.editor, anchor, {
+          kind: 'beam', params: { Start: [0, 0, 3], End: [4, 0, 3], Width: .2, Height: .4 },
+        });
+        relatedIds = [child, s.editor.addEntity('IfcRelAggregates', [
+          '0g8fBOlnn55vW74SLxb0PA', null, null, null, `#${oldId}`, [`#${child}`],
+        ]).expressId];
+      } else {
+        oldId = STOREY; // Source spatial structure owns the real fixture's walls.
+        relatedIds = [1222];
+      }
+      const beforeBytes = s.saved(), before = s.snapshot(), next = s.view.peekNextExpressId();
+      const parsed = await new IfcParser().parseColumnar(beforeBytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+      expect(parsed.entityIndex.byId.has(oldId)).toBe(true);
+      for (const id of relatedIds) expect(parsed.entityIndex.byId.has(id)).toBe(true);
+      let prepared = false;
+      expect(() => replaceElementInStore(s.store, s.editor, oldId, draft => {
+        prepared = true;
+        draft.addEntity('IfcCartesianPoint', [[99, 88, 77]]);
+        return resolveSpatialAnchor(s.store, STOREY, draft.getMutationView());
+      }, WALL)).toThrow(/replaceElementInStore:.*(unsupported|assembly)/);
+      expect(prepared).toBe(false);
+      expect(s.snapshot()).toEqual(before);
+      expect(s.view.peekNextExpressId()).toBe(next);
+      expect(s.view.isDeleted(oldId)).toBe(false);
+      expect(s.saved()).toEqual(beforeBytes);
+    });
+  }
+
   for (const element of ELEMENTS) {
     it(`${element.kind} exports a readable product/body and refuses a malformed GUID without helpers`, async () => {
       const s = await session(), before = s.snapshot(), next = s.view.peekNextExpressId();

@@ -33,8 +33,9 @@ The frozen candidate is `9c9132fd12301250a88dfc6d08eac8ebc19e4e2e`, based on
 `f2f35ff9284bfa8ff57aaa31d724462a44f50bb573cdedb3d7ada33ff1d8547a`.
 The main integration preserves its four changed production modules and dense/
 commented test file exactly. Current main `02eb22edd5b050b48ac8944e4a8a2a97316c6976`
-adds unrelated viewer validation and other changes; all incoming source/evidence
-blobs are preserved. No compiled artifacts are copied into this integration.
+adds unrelated viewer validation and other changes. Every incoming file stays
+byte-identical except the performance ledger, which gains one new section while
+retaining all earlier text. No compiled artifacts are copied into this integration.
 The committed WASM declaration surface and existing public JS contracts stay
 unchanged. Release metadata targets the consuming WASM package as a patch.
 

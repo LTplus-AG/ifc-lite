@@ -19,6 +19,7 @@
 
 import { useMemo } from 'react';
 import { ValidationBenchmark } from './validation/ValidationBenchmark';
+import { ValidationResultsSplit } from './validation/ValidationResultsSplit';
 import { validationReportSummary } from '@/lib/validation/report-summary';
 import { Boxes, Eye, EyeOff, Filter, Focus, Layers, Palette } from 'lucide-react';
 import type { ValidationReport, IDSAuditReport } from '@ifc-lite/ids';
@@ -101,7 +102,7 @@ export function IDSPanelResults({
   const involvedLabel = involvedActive ? t('idsPanel.showAllInvolved') : t(specScope ? 'idsPanel.isolateInvolvedSpec' : 'idsPanel.isolateInvolvedIds');
 
   return (
-    <>
+    <ValidationResultsSplit summary={<>
       {auditReport && auditReport.status !== 'valid' && (
         <div className="p-3 border-b">
           <IDSAuditSummary report={auditReport} auditing={false} />
@@ -289,7 +290,8 @@ export function IDSPanelResults({
         </div>
       </div>
 
-      <ScrollArea className="flex-1" {...tourAnchor(TOUR_ANCHORS.idsResults)}>
+    </>}>
+      <ScrollArea className="flex-1 min-h-0" {...tourAnchor(TOUR_ANCHORS.idsResults)}>
         <div className="p-2 space-y-2">
           {report.specificationResults.map((specResult) => (
             <SpecificationCard
@@ -306,6 +308,6 @@ export function IDSPanelResults({
           ))}
         </div>
       </ScrollArea>
-    </>
+    </ValidationResultsSplit>
   );
 }

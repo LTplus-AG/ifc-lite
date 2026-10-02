@@ -41,6 +41,7 @@ import {
   resolveSpatialAnchor,
   type StairInStoreParams,
   type RailingInStoreParams,
+  removeStairInStore,
 } from '@ifc-lite/create';
 import type { CostStoreModelResolution } from './cost-store-backend.js';
 import type { ModellingStoreBackendMethods } from './store-modelling-types.js';
@@ -71,6 +72,11 @@ export function createModellingStoreBackend(resolve: ModellingStoreModelResolver
   };
 
   return {
+    removeStair(entity: EntityRef): boolean {
+      const model = resolve(entity.modelId);
+      removeStairInStore(model.store, model.editor, entity.expressId);
+      return true;
+    },
     addStair(modelId: string, storeyExpressId: number, params: StairInStoreParams): EntityRef {
       const model = resolve(modelId);
       const built = model.editor.runAtomic(draft => addStairToStore(

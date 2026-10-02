@@ -44,7 +44,7 @@ async function records(content: string | Uint8Array) {
     return [id, entity] as const;
   }).sort((a, b) => a[0] - b[0]) };
 }
-async function assertProduct(bim: Bim, ref: EntityRef, kind: Kind) {
+async function assertProduct(bim: Bim, ref: EntityRef, kind: Kind, width = 1, height = 1.1) {
   const exported = bim.export.ifc();
   const content = typeof exported === 'string' ? exported : new TextDecoder().decode(exported);
   const saved = await records(content), byId = new Map(saved.all);
@@ -82,7 +82,7 @@ async function assertProduct(bim: Bim, ref: EntityRef, kind: Kind) {
   expect(triangles).toBeGreaterThan(0);
   const box = stairMeshBounds(meshes!);
   const min = kind === 'stair' ? [1, 2, 0] : [.95, 1.95, 0];
-  const max = kind === 'stair' ? [2.2, 3, .8] : [3.05, 2.05, 1.1];
+  const max = kind === 'stair' ? [2.2, 2 + width, .8] : [3.05, 2.05, height];
   for (let axis = 0; axis < 3; axis++) {
     expect(box.min[axis]).toBeCloseTo(min[axis], 4);
     expect(box.max[axis]).toBeCloseTo(max[axis], 4);
@@ -146,6 +146,13 @@ describe.skipIf(!AVAILABLE)('#6232 D5 canonical stair/railing SDK and public MCP
             && !before.some(([old]) => old === id));
           expect(products).toHaveLength(1);
           await assertProduct(target.bim, { modelId: target.id, expressId: products[0][0] }, kind);
+          const journal = target.backend.getOrCreateMutationView().getMutations();
+          const kept = await runFlow(original, options);
+          expect(kept.ok, JSON.stringify(kept.reports)).toBe(true);
+          expect(kept.reports.find(report => report.nodeId === 'create')?.tracking)
+            .toEqual({ created: 0, updated: 0, kept: 1, removed: 0 });
+          expect((await records(target.bim.export.ifc())).all).toEqual(firstSaved);
+          expect(target.backend.getOrCreateMutationView().getMutations()).toEqual(journal);
           const next: FlowDocument = operation === 'update'
             ? { ...original, nodes: original.nodes.map(node => node.id === 'spec'
               ? { ...node, params: { ...node.params, ...(kind === 'stair' ? { Width: 1.2 } : { Height: 1.4 }) } } : node) }
@@ -162,6 +169,10 @@ describe.skipIf(!AVAILABLE)('#6232 D5 canonical stair/railing SDK and public MCP
           expect({ products: authored.filter(([, e]) => e.type === (kind === 'stair' ? 'IFCSTAIR' : 'IFCRAILING')).length,
             flights: authored.filter(([, e]) => e.type === 'IFCSTAIRFLIGHT').length, dangling })
             .toEqual({ products: operation === 'update' ? 1 : 0, flights: kind === 'stair' && operation === 'update' ? 1 : 0, dangling: [] });
+          if (operation === 'update') {
+            const updated = authored.find(([, e]) => e.type === (kind === 'stair' ? 'IFCSTAIR' : 'IFCRAILING'))!;
+            await assertProduct(target.bim, { modelId: target.id, expressId: updated[0] }, kind, 1.2, 1.4);
+          }
           expect(saved.filter(([id]) => before.some(([old]) => old === id))).toEqual(before);
           expect((await records(models.get('alpha')!.bim.export.ifc())).all).toEqual(peer);
         } finally { transport.close(); }

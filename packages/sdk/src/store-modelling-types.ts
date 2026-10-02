@@ -28,6 +28,8 @@ export interface ModellingStoreBackendMethods {
   addStair?(modelId: string, storeyExpressId: number, params: StairInStoreParams): EntityRef;
   /** Optional host capability: an IfcRailing along a storey-local polyline. Returns the railing. */
   addRailing?(modelId: string, storeyExpressId: number, params: RailingInStoreParams): EntityRef;
+  /** Optional host capability: atomically remove a uniquely owned single-flight stair assembly. */
+  removeStair?(ref: EntityRef): boolean;
   /** Join two straight walls through IfcRelConnectsPathElements, rewriting their bodies/axes atomically. Returns the relationship. */
   joinWalls(modelId: string, aExpressId: number, bExpressId: number, options?: WallJoinApplyOptions): EntityRef;
   /** `IfcOpeningElement` + `IfcRelVoidsElement` cut into an existing IfcWall or IfcSlab. Returns the opening. */

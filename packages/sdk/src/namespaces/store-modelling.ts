@@ -13,6 +13,13 @@ import type { BimBackend, EntityRef } from '../types.js';
 export class StoreModellingNamespace {
   constructor(protected backend: BimBackend) {}
 
+  /** Remove a single-flight stair and its flight; shared geometry, styles and materials are retained. */
+  removeStair(ref: EntityRef): boolean {
+    const remove = this.backend.store.removeStair;
+    if (!remove) throw new Error('bim.store.removeStair is not supported by this backend');
+    return remove.call(this.backend.store, ref);
+  }
+
   /** Add a storey-local straight-run stair and its aggregated flight; lengths are metres, Direction radians. */
   addStair(modelId: string, storeyExpressId: number, params: StairInStoreParams): EntityRef {
     const create = this.backend.store.addStair;

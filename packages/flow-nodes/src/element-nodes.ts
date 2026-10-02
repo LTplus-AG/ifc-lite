@@ -243,7 +243,7 @@ export const elementNodes: FlowNodeDef[] = [
       if (t.action === 'update' && existing) {
         // A removal the store refused leaves a live element under this
         // GlobalId; creating a second one would make the key ambiguous.
-        if (!ctx.host.bim.store.removeEntity(existing)) throw new Error(`element ${t.globalId} (#${existing.expressId}) could not be removed for update`);
+        if (!removeTrackedElement(ctx, existing)) throw new Error(`element ${t.globalId} (#${existing.expressId}) could not be removed for update`);
         forgetGlobalId(ctx.host.bim, t.globalId);
       } else if (t.action !== 'create') {
         ctx.log('warn', `element ${t.globalId} was tracked but is no longer in the model; re-creating it`);
@@ -255,7 +255,7 @@ export const elementNodes: FlowNodeDef[] = [
     remove: (ctx, globalId) => {
       const existing = resolveByGlobalId(ctx.host.bim, globalId);
       if (existing) {
-        if (!ctx.host.bim.store.removeEntity(existing)) throw new Error(`element ${globalId} (#${existing.expressId}) could not be removed`);
+        if (!removeTrackedElement(ctx, existing)) throw new Error(`element ${globalId} (#${existing.expressId}) could not be removed`);
         forgetGlobalId(ctx.host.bim, globalId);
       } else ctx.log('warn', `tracked element ${globalId} was already gone`);
     },
@@ -281,6 +281,14 @@ export const elementNodes: FlowNodeDef[] = [
     },
   },
 ];
+
+/** A stair's flight is a live product, unlike detached representation helpers. */
+function removeTrackedElement(ctx: Ctx, ref: SdkEntityRef): boolean {
+  const entity = ctx.host.bim.entity(ref);
+  return entity?.type.toUpperCase() === 'IFCSTAIR'
+    ? ctx.host.bim.store.removeStair(ref)
+    : ctx.host.bim.store.removeEntity(ref);
+}
 
 function addSpec(ctx: Ctx, storey: SdkEntityRef, spec: ElementSpec, GlobalId: string): SdkEntityRef {
   const store = ctx.host.bim.store;

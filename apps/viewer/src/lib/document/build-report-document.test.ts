@@ -76,6 +76,11 @@ describe('report document preparation (#6612)', () => {
         assert.equal(block.variant, 'long'); assert.equal(block.benchmarks, false); assert.equal(block.title, 'Check detail');
       }
     }
+    const specsOnly = template();
+    const mapped = specsOnly.blocks[1];
+    if (mapped.kind === 'ids-report') { mapped.variant = 'compact'; mapped.specificationsOnly = true; }
+    const compactDoc = buildReportDocument({ template: specsOnly, results: results(), mappings: [{ blockId: 'mapped', jobId: 'ids' }] });
+    for (const block of compactDoc.blocks.slice(1)) assert.equal(block.kind === 'ids-report' && block.specificationsOnly, true, 'the authored specifications-only choice survives expansion (#6560)');
     assert.equal(source.blocks.length, 2);
     assert.equal(source.blocks[1].id, 'mapped');
     assert.notEqual(document.id, source.id);

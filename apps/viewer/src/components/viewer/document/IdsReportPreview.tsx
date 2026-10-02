@@ -110,10 +110,13 @@ function CompactChecks({ block }: { block: IdsReportBlock }) {
     <ul className="mt-1 flex flex-col gap-1" data-ids-report-checks={block.checks.length} data-ids-report-variant="compact">
       {block.checks.flatMap((check) => [
         <CompactRow key={check.id} name={check.shortDescription || check.id} passed={check.passed} checked={check.checked} rate={check.passRate} error={check.error} warning={check.severity === 'warning'} />,
-        ...check.rules.map((rule) => (
-          <CompactRow key={`${check.id}/${rule.id}`} nested name={rule.name ?? (rule.shortDescription || rule.id)} passed={rule.passed} checked={rule.checked} rate={rule.passRate} />
-        )),
-        <li key={`${check.id}/details`} className="ml-3 list-none"><ul className="space-y-1"><RuleDetailRows check={check} /></ul></li>,
+        // Specifications only (#6560): the group heads without their requirement and detail rows.
+        ...(block.specificationsOnly ? [] : [
+          ...check.rules.map((rule) => (
+            <CompactRow key={`${check.id}/${rule.id}`} nested name={rule.name ?? (rule.shortDescription || rule.id)} passed={rule.passed} checked={rule.checked} rate={rule.passRate} />
+          )),
+          <li key={`${check.id}/details`} className="ml-3 list-none"><ul className="space-y-1"><RuleDetailRows check={check} /></ul></li>,
+        ]),
       ])}
     </ul>
   );

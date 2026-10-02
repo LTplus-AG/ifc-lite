@@ -11,6 +11,7 @@
  */
 
 import { GLYPH_HALO_PX } from '../symbolic-text-atlas.js';
+import { overlayDepthLiftWgsl } from './depth-nudge.wgsl.js';
 
 export const SYMBOLIC_FILL_WGSL = /* wgsl */ `
 struct Camera {
@@ -51,6 +52,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 `;
 
 export const SYMBOLIC_TEXT_WGSL = /* wgsl */ `
+${overlayDepthLiftWgsl}
 struct Camera {
   viewProj: mat4x4<f32>,
   // Legacy labels keep using viewProj. Anchored labels select this
@@ -230,10 +232,9 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   // pipeline-level depthBiasSlopeScale collapses to ~0 for billboard
   // glyphs — the quad faces the camera, so depth slope across the quad
   // is zero — leaving only a tiny -4 constant that MSAA jitter beats.
-  // Adding a small positive multiple of clip.w raises NDC z by a
-  // constant after the w-divide, which under reverse-Z reads as
-  // "slightly closer" — same trick the line pipeline uses.
-  out.clipPos = vec4<f32>(clip.x, clip.y, clip.z + 5e-5 * clip.w, clip.w);
+  // Lift it in clip space instead, the same way the line pipeline does,
+  // above MSAA jitter and the mesh depth nudge.
+  out.clipPos = vec4<f32>(clip.x, clip.y, overlayLiftedClipZ(clip, camera.viewProj), clip.w);
   out.uv      = vec2<f32>(uMix, vMix);
   out.color   = inst.color;
   return out;

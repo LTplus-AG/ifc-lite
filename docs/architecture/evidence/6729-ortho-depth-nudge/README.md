@@ -34,7 +34,17 @@ walls that the old nudge pushed up through the neighbouring plate's top face.
 At one and two depth units per step, whole triangles z-fought; four is the
 smallest step that did not.
 
+## Annotations stay above the nudged faces
+
+Text and 2D lines that lie on a face are lifted toward the camera by a constant
+NDC offset (#812). In orthographic it is now set just above the largest mesh
+nudge, so a label never sinks under a surface whose hash happens to be high.
+AC20-FZK-Haus, orthographic plan view: before, half of the ground-level
+dimensions were hidden under the terrain; after, all of them show, as they do
+in perspective.
+
 ## Perspective is unchanged
 
-Rendered back to back, before and after perspective frames of the rods model
-are bit-identical (0 changed pixels in 3 views).
+Rendered back to back, before and after perspective frames are bit-identical:
+0 changed pixels in 3 views of the rods model and 3 views of AC20-FZK-Haus,
+including its annotation lines and text.

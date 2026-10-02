@@ -60,6 +60,7 @@ on:
       - 'packages/regex-guard/**'
       - 'packages/sandbox/**'
       - 'packages/sdk/**'
+      - 'packages/semantic/**'
       - 'packages/spatial/**'
       - 'packages/timing-ladder/**'
       - 'packages/viewer/**'

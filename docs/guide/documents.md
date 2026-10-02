@@ -124,6 +124,8 @@ In **Data validation → Manual validation**, **New checklist** creates another 
 
 In Documentation, a manual report’s **Checklist** selector chooses the specific review without changing the checklist open in Data validation. **Refresh from current checklist** reads that chosen review and the block’s selected model. Choose **Long** to print guidance and comments, or **Short** for questions and verdicts. **Show benchmark scores** controls the progress rings and numerical summaries in both preview and PDF. A report still embeds its last snapshot: deleting the live checklist leaves its printed evidence intact and disables Refresh. Older manual blocks retain their original detailed layout and active-checklist refresh behavior until you select a specific source.
 
+**Show stamp information** controls the model name, recording time and evaluated-model names below a manual report’s title in both preview and PDF. Turn it off to omit those rows; the recorded identity, timestamp and answers remain in the saved document. Refreshing or choosing another manual saved report preserves this display choice. Existing documents show their stamp until you turn it off.
+
 
 ## Workflow report documents
 

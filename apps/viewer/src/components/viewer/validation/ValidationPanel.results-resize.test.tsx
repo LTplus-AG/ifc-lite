@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { installLayout } from '@/test/dom-layout.js';
 installLayout();
 import { afterEach, beforeEach, it } from 'node:test';
@@ -28,7 +29,8 @@ const initial = useViewerStore.getState();
 
 beforeEach(() => {
   localStorage.clear();
-  useViewerStore.setState(initial);
+  // The content fixture owns the current async storage controllers (#6679).
+  useViewerStore.setState({ manualChecklist: null, manualAnswers: {}, manualSaveError: null });
   setValidationSourceChoice('manual');
 });
 afterEach(() => {

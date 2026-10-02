@@ -553,30 +553,40 @@ if (compatibleMap.stats.warnings.length) {
 await saveFile('compatible-map.ifc', compatibleMap.content);
 ```
 
-Canonical Rust resolves the emitted model after edits. It moves uniform map
-rotation and scale into absolute logical product placements and `IfcMappedItem`
-Body representations, preserving physical map coordinates, logical placement
-origins, GUIDs, properties, and authored project/property units. The coordinate
-operation then retains only project-to-metre unit conversion. If rotation and
-physical scale are already neutral, placements and geometry remain untouched.
+Canonical Rust resolves the emitted model after edits. A rigid map rotation
+with exactly unit physical scale moves into the original `IfcLocalPlacement`
+roots. Child placements and all representation records remain intact, including
+Body, Axis, FootPrint, Box, annotations, opening/fill relationships and supported
+endpoint-local connection geometry. Root frames are cloned, so shared geometry
+points and directions are not mutated. TrueNorth directions, including the
+implicit +Y default, rotate into the new engineering frame using cloned metadata.
 
-The supported subset has one map conversion, one project, an identity 3D context,
-SI metre-based project units, local 3D placements, and Body representations.
-Type representation maps must be reachable from an actual product Body;
-orphan mapped items do not authorize uninstantiated type geometry.
-A zero-angle direction may contain machine-epsilon sine roundoff from an
-exporter. With exactly neutral physical scale and cosine, that case preserves
-the original operation, offsets and geometry without rewriting the tiny
-ordinate; meaningful rotations and scales still require supported normalization.
-Body mapped paths with 31 or more existing wrappers are refused atomically: the
-new wrapper and terminal leaf must both fit the canonical submesh depth limit,
-so normalization preserves per-leaf styles as well as aggregate geometry.
-Voids/fills, annotations, alignment/grid/structural coordinate consumers,
-nonuniform scale, nonidentity contexts, ambiguous representation ownership,
-and malformed units or placements cause atomic refusal: no geometry patches
-are applied and warnings explain the limitation. Inspect warnings before
-sending the result to another service. Synchronous export rejects this option.
-Ordinary exports preserve their existing coordinate structure and bytes.
+Non-unit uniform physical scale uses absolute logical product placements and
+scaled `IfcMappedItem` Body representations. Both paths preserve physical map
+coordinates, logical placement origins, GUIDs, properties and authored units.
+The remaining coordinate operation retains only project-to-metre conversion.
+Exactly neutral rotation/physical scale preserves the original operation and
+geometry; machine-epsilon sine roundoff with exact neutral cosine/scale also
+remains untouched.
+
+Both paths require one map conversion, one project, SI metre-based project units,
+validated local 3D placements and identity 3D engineering contexts. The rigid
+path also accepts identity 3D sibling contexts explicitly declared by that same
+project, preserving the common Model/Plan engineering frame. Foreign contexts,
+unknown placement or connection-geometry consumers, malformed metadata and
+alignment/grid/structural consumers refuse atomically with explanatory warnings.
+Represented products without placements are refused.
+
+The scaled Body path additionally requires unambiguous Body ownership and type
+maps reachable from actual products. It refuses voids/fills, annotations and
+other coordinate consumers it cannot preserve. Its added wrapper requires fewer
+than 31 existing mapped levels. The rigid path adds no wrapper: 31 mapped levels
+can retain their original per-leaf styles; cycles, excessive depth and reference
+work are still refused. Nonuniform scale remains unsupported.
+
+Inspect warnings before sending the result to another service. Synchronous
+export rejects this option. Ordinary exports preserve their existing coordinate
+structure and bytes.
 
 #### Which schema identifier is written
 

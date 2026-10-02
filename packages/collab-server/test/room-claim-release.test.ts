@@ -392,6 +392,112 @@ describe('#6581 races', () => {
     }
   });
 
+  it('expiry vs join: a token expiring during the confirmation write is refused (#6581)', async () => {
+    const ac = create(freshDir());
+    const admin = await mint(await serve(ac), 'expired-mid-write', { ttlSeconds: 60 });
+    await ac.flush();
+    let openGate!: () => void;
+    const gate = new Promise<void>((resolve) => (openGate = resolve));
+    let parked!: () => void;
+    const isParked = new Promise<void>((resolve) => (parked = resolve));
+    const rename = fs.promises.rename;
+    fs.promises.rename = (async (...args: Parameters<typeof rename>) => {
+      parked();
+      await gate;
+      return rename(...args);
+    }) as typeof rename;
+    try {
+      const joining = ac.serverOptions.authenticate!(admin.token, 'expired-mid-write');
+      await isParked;
+      clock += 95_000; // token lifetime plus the verifier's 30-second tolerance
+      expect(verifyRoomToken(admin.token!, { secret: SECRET, room: 'expired-mid-write', now })).toBeNull();
+      openGate();
+      expect(await joining).toBeNull();
+    } finally {
+      openGate();
+      fs.promises.rename = rename;
+    }
+  });
+
+  /**
+   * Serve `ac` with its token or release route's revocation check made async
+   * and parked until released: the shape of a deployment whose deny-list
+   * lives in another store, and the widest window between a route's token
+   * check and the action it authorises.
+   */
+  async function serveWithParkedRevocationCheck(ac: AccessControl, route: 'tokenEndpoint' | 'releaseEndpoint') {
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    let parked!: () => void;
+    const isParked = new Promise<void>((resolve) => (parked = resolve));
+    const endpoint = ac.serverOptions[route]!;
+    const isRevoked = endpoint.isRevoked!;
+    const handle = await startCollabServer({
+      port: 0,
+      persistence: new MemoryPersistence(),
+      ...ac.serverOptions,
+      [route]: {
+        ...endpoint,
+        isRevoked: async (jti: string) => {
+          parked();
+          await gate;
+          return isRevoked(jti);
+        },
+      },
+    });
+    handles.push(handle);
+    return { base: `http://127.0.0.1:${(handle.httpServer.address() as { port: number }).port}`, isParked, open };
+  }
+
+  it('expiry vs release: an admin token expiring while the release route checks revocation cannot release', async () => {
+    const ac = create(freshDir());
+    const { base, isParked, open } = await serveWithParkedRevocationCheck(ac, 'releaseEndpoint');
+    const admin = await mint(base, 'expired-mid-release', { ttlSeconds: 60 });
+    const releasing = release(base, 'expired-mid-release', admin.token);
+    await isParked;
+    clock += 95_000; // token lifetime plus the verifier's 30-second tolerance
+    open();
+    expect(await releasing).toBe(403);
+    expect((await mint(base, 'expired-mid-release')).status, 'the claim was not released').toBe(403);
+  });
+
+  it('revoke vs release: an admin token revoked while the release route checks revocation cannot release', async () => {
+    const ac = create(freshDir());
+    const { base, isParked, open } = await serveWithParkedRevocationCheck(ac, 'releaseEndpoint');
+    const admin = await mint(base, 'revoked-mid-release');
+    const claims = claimsOf(admin.token!);
+    const releasing = release(base, 'revoked-mid-release', admin.token);
+    await isParked;
+    await ac.serverOptions.revokeEndpoint!.recordRevocation(claims.jti, claims.room, claims.exp);
+    open();
+    expect(await releasing).toBe(403);
+    expect((await mint(base, 'revoked-mid-release')).status, 'the claim was not released').toBe(403);
+  });
+
+  it('expiry vs mint: an admin bearer expiring while the token route checks revocation mints nothing', async () => {
+    const ac = create(freshDir());
+    const { base, isParked, open } = await serveWithParkedRevocationCheck(ac, 'tokenEndpoint');
+    // The first mint has no bearer, so the parked check is not reached.
+    const admin = await mint(base, 'expired-mid-mint', { ttlSeconds: 60 });
+    const minting = mint(base, 'expired-mid-mint', { role: 'viewer', bearer: admin.token });
+    await isParked;
+    clock += 95_000;
+    open();
+    expect((await minting).status).toBe(403);
+  });
+
+  it('revoke vs mint: an admin bearer revoked while the token route checks revocation mints nothing', async () => {
+    const ac = create(freshDir());
+    const { base, isParked, open } = await serveWithParkedRevocationCheck(ac, 'tokenEndpoint');
+    const admin = await mint(base, 'revoked-mid-mint');
+    const claims = claimsOf(admin.token!);
+    const minting = mint(base, 'revoked-mid-mint', { role: 'viewer', bearer: admin.token });
+    await isParked;
+    await ac.serverOptions.revokeEndpoint!.recordRevocation(claims.jti, claims.room, claims.exp);
+    open();
+    expect((await minting).status).toBe(403);
+  });
+
   it('expiry vs join: a token that expires while its join is being verified is refused', async () => {
     const ac = create(freshDir());
     const base = await serve(ac);

@@ -35,7 +35,13 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { createRoomTokenAuthenticator, createRoomTokenRegistryAuthorizer, verifyRoomToken } from './room-token.js';
+import {
+  createRoomTokenAuthenticator,
+  createRoomTokenRegistryAuthorizer,
+  DEFAULT_CLOCK_TOLERANCE_SEC,
+  verifyRoomToken,
+  type RoomTokenClaims,
+} from './room-token.js';
 import { createRateLimiter, type RateLimiter } from './rate-limit.js';
 import { type AuthenticateFn, type Role } from './auth.js';
 import type { StartCollabServerOptions } from './server.js';
@@ -225,6 +231,8 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
   // A full sweep of expired pending claims runs only at the cap, and at most
   // once a second, so refused claims cannot turn into repeated full scans.
   let lastSweepSec = -1;
+  /** `verifyRoomToken`'s expiry rule, for claims a route verified before an await. */
+  const expiredNow = (claims: RoomTokenClaims) => claims.exp + DEFAULT_CLOCK_TOLERANCE_SEC < nowSec();
 
   const verifyJoin = createRoomTokenAuthenticator({ secret, isRevoked: (jti) => revoked.has(jti), now: opts.now });
   const authenticate: AuthenticateFn = async (token, roomId) => {
@@ -251,8 +259,9 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
     }
     // A flush that resolved wrote this confirmation: it was recorded before
     // the flush began, and flush() returns only after a successful pass that
-    // started later. A revocation may have landed while it waited.
-    return revoked.has(claims.jti) ? null : principal;
+    // started later. Revocation or expiry may have landed while it waited.
+    const stillValid = verifyRoomToken(token ?? '', { secret, room: roomId, now: opts.now });
+    return stillValid && !revoked.has(claims.jti) ? principal : null;
   };
 
   const serverOptions: Partial<StartCollabServerOptions> = {
@@ -296,8 +305,9 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
       authorize: (request, { bearerClaims, clientIp, mint }): Role | null => {
         const room = request.roomId;
         // A revoked bearer must not be able to keep minting links, even though
-        // its signature + expiry still verify.
-        if (bearerClaims?.jti && revoked.has(bearerClaims.jti)) return null;
+        // its signature + expiry still verify. Both are re-checked here: the
+        // route verified the bearer before awaiting its own revocation check.
+        if (bearerClaims && (revoked.has(bearerClaims.jti) || expiredNow(bearerClaims))) return null;
         // An admin token for this room can re-mint links without tripping the
         // per-IP budget — the throttle targets the unauthenticated fresh-room
         // path an attacker abuses, not authenticated re-mints. A PENDING claim
@@ -361,8 +371,9 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
       now: opts.now,
       isRevoked: (jti) => revoked.has(jti),
       release: (bearer) => {
-        // Re-checked synchronously: the route's own revocation check awaited.
-        if (revoked.has(bearer.jti)) return 'not-holder';
+        // Re-checked synchronously: the route's own revocation check awaited,
+        // and revocation or expiry may have landed meanwhile.
+        if (revoked.has(bearer.jti) || expiredNow(bearer)) return 'not-holder';
         // A release is the one deny-list writer an unauthenticated client can
         // drive, so it stops at `maxRevocationsForRelease` live entries. Past
         // that it is refused and the claim expires with its tokens instead.

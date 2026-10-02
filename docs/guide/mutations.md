@@ -687,7 +687,7 @@ const col = bim.store.addColumn('default', storey, {
 Columns accept `RefDirection`, a finite non-zero horizontal vector in storey-local
 coordinates; the canonical builder normalises it and defaults to `[1, 0, 0]`.
 Profile dimensions and positions remain metres, including in millimetre models.
-The SDK, viewer adapter and loaded-model MCP `run_script` route use the same
+The SDK, viewer adapter and loaded-model MCP backend use the same
 builders and validation. For example:
 
 ```typescript

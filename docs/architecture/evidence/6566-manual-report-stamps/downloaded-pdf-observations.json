@@ -1,0 +1,67 @@
+{
+  "engine": "PyMuPDF independently opened completed browser downloads; no PDF seams",
+  "observations": [
+    {
+      "file": "1-shown.pdf",
+      "bytes": 6686,
+      "sha256": "60ae4d7edb1b57c28c488a7ce73025ad2919b2d4c0d8a12c7d64a7a444b80886",
+      "pages": 1,
+      "stamp": true,
+      "scope": true,
+      "text": "Manual stamp proof 1\nGenerated 10/2/2026, 1:47:30 AM \u00b7 ifc-lite\nPage 1 / 1\nManual validation: Delivery review 1\nModel: building-architecture.ifc \u00b7 Recorded: 2026-10-01T23:47:29.630Z\nModels: building-architecture.ifc\n50% passed (1 of 2 checks)\nPass 1 \u00b7 Warning 1 \u00b7 Fail 0 \u00b7 Not checked 0\nDelivery\nPass 1 \u00b7 Warning 1 \u00b7 Fail 0 \u00b7 Not checked 0\nPASS\nUploaded on time\nWARNING\nNaming convention\nComment: Review retained prefix\n",
+      "firstCheckY": 193.3249969482422
+    },
+    {
+      "file": "1-hidden.pdf",
+      "bytes": 6426,
+      "sha256": "42131c53271766fb9d7ea491b6d994c7cd771b31ddae276033dd0ef877bf1157",
+      "pages": 1,
+      "stamp": false,
+      "scope": false,
+      "text": "Manual stamp proof 1\nGenerated 10/2/2026, 1:47:30 AM \u00b7 ifc-lite\nPage 1 / 1\nManual validation: Delivery review 1\n50% passed (1 of 2 checks)\nPass 1 \u00b7 Warning 1 \u00b7 Fail 0 \u00b7 Not checked 0\nDelivery\nPass 1 \u00b7 Warning 1 \u00b7 Fail 0 \u00b7 Not checked 0\nPASS\nUploaded on time\nWARNING\nNaming convention\nComment: Review retained prefix\n",
+      "firstCheckY": 165.3249969482422,
+      "firstCheckMovesUpPoints": 28.0
+    },
+    {
+      "file": "2-shown.pdf",
+      "bytes": 6698,
+      "sha256": "470aef900d866a70d0b6bc00e7b663f268b75dd2804c0eaecb7f89365c435a4c",
+      "pages": 1,
+      "stamp": true,
+      "scope": true,
+      "text": "Manual stamp proof 2\nGenerated 10/2/2026, 1:47:31 AM \u00b7 ifc-lite\nPage 1 / 1\nManual validation: Delivery review 2\nModel: building-architecture-rev-b.ifc \u00b7 Recorded: 2026-10-01T23:47:31.490Z\nModels: building-architecture-rev-b.ifc\n50% passed (1 of 2 checks)\nPass 1 \u00b7 Warning 1 \u00b7 Fail 0 \u00b7 Not checked 0\nDelivery\nPass 1 \u00b7 Warning 1 \u00b7 Fail 0 \u00b7 Not checked 0\nPASS\nUploaded on time\nWARNING\nNaming convention\nComment: Review retained prefix\n",
+      "firstCheckY": 193.3249969482422
+    },
+    {
+      "file": "2-hidden.pdf",
+      "bytes": 6426,
+      "sha256": "44a014bb800efd8a84fe0772e44ff59bf61276e3177cdc81d3c8a6c077c3da42",
+      "pages": 1,
+      "stamp": false,
+      "scope": false,
+      "text": "Manual stamp proof 2\nGenerated 10/2/2026, 1:47:31 AM \u00b7 ifc-lite\nPage 1 / 1\nManual validation: Delivery review 2\n50% passed (1 of 2 checks)\nPass 1 \u00b7 Warning 1 \u00b7 Fail 0 \u00b7 Not checked 0\nDelivery\nPass 1 \u00b7 Warning 1 \u00b7 Fail 0 \u00b7 Not checked 0\nPASS\nUploaded on time\nWARNING\nNaming convention\nComment: Review retained prefix\n",
+      "firstCheckY": 165.3249969482422,
+      "firstCheckMovesUpPoints": 28.0
+    },
+    {
+      "file": "2-imported-hidden.pdf",
+      "bytes": 5807,
+      "sha256": "bef7761e3b906df51d0bc28a0c11a0426c982978bc444edbc5b173dc98309851",
+      "pages": 1,
+      "stamp": false,
+      "scope": false,
+      "text": "Manual stamp proof 2\nGenerated 10/2/2026, 1:47:32 AM \u00b7 ifc-lite\nPage 1 / 1\nManual validation: Saved review evidence\n100% passed (2 of 2 checks)\nPass 2 \u00b7 Warning 0 \u00b7 Fail 0 \u00b7 Not checked 0\nDelivery\nPass 2 \u00b7 Warning 0 \u00b7 Fail 0 \u00b7 Not checked 0\nPASS\nUploaded on time\nPASS\nNaming convention\nComment: Reviewed and approved\n",
+      "firstCheckY": 165.3249969482422
+    },
+    {
+      "file": "2-reshown.pdf",
+      "bytes": 6079,
+      "sha256": "0ffef657abd34938c7489ddd43fd7e9f5ed90788150679337fcb3e4a8aed6678",
+      "pages": 1,
+      "stamp": true,
+      "scope": true,
+      "text": "Manual stamp proof 2\nGenerated 10/2/2026, 1:47:32 AM \u00b7 ifc-lite\nPage 1 / 1\nManual validation: Saved review evidence\nModel: building-architecture-rev-b.ifc \u00b7 Recorded: 2026-10-01T23:47:32.027Z\nModels: building-architecture-rev-b.ifc\n100% passed (2 of 2 checks)\nPass 2 \u00b7 Warning 0 \u00b7 Fail 0 \u00b7 Not checked 0\nDelivery\nPass 2 \u00b7 Warning 0 \u00b7 Fail 0 \u00b7 Not checked 0\nPASS\nUploaded on time\nPASS\nNaming convention\nComment: Reviewed and approved\n",
+      "firstCheckY": 193.3249969482422
+    }
+  ]
+}

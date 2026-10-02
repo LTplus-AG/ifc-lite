@@ -87,6 +87,37 @@ describe('manual report snapshot (#6401)', () => {
 });
 
 describe('manual report in the document format (#6401)', () => {
+  it('retains hidden stamp evidence through document import and refuses malformed visibility (#6566)', () => {
+    const hidden = Object.assign(block(), { showStamp: false, modelFingerprint: 'fp-tower', reportModels: [{ name: 'tower.ifc', fingerprint: 'fp-tower' }] });
+    const reopened = parseDocumentFile(JSON.stringify(docWith([hidden]))).blocks[0];
+    assert.equal(reopened.kind, 'manual-report');
+    const { id: _originalId, ...originalEvidence } = hidden;
+    const { id: _reopenedId, ...reopenedEvidence } = reopened;
+    assert.deepEqual(reopenedEvidence, originalEvidence, 'visibility never erases the recorded model, timestamp or answers');
+    for (const invalid of ['false', 0, null]) {
+      assert.throws(() => parseDocumentFile(JSON.stringify(docWith([Object.assign(block(), { showStamp: invalid })]))), /blocks\[0\]\.showStamp expected a boolean/);
+    }
+  });
+
+  for (const variant of ['long', 'compact'] as const) for (const benchmarks of [true, false]) {
+    it(`hides only stamp rows in ${variant} PDF layout with benchmarks ${benchmarks}, preserving results (#6566)`, () => {
+      const snapshot = Object.assign(block(), { variant, benchmarks, reportModels: [{ name: 'tower.ifc', fingerprint: 'fp-tower' }, { name: 'annex.ifc', fingerprint: 'fp-annex' }] });
+      const draw = (report: ManualReportBlock) => composeDocument({ name: 'Stamp review', page: { size: 'A4', orientation: 'portrait' }, blocks: [report], generatedAt: 'now', measure: estimateTextWidth }).pages.flatMap((page) => page.items);
+      const original = structuredClone(snapshot);
+      const shown = draw(snapshot);
+      const hidden = draw(Object.assign({}, snapshot, { showStamp: false }));
+      const words = (items: typeof shown) => items.flatMap((item) => item.kind === 'text' ? [item.text] : []);
+      const stamp = (text: string) => /^(Model:|Models:|Recorded:)/.test(text);
+      assert.equal(words(shown).filter(stamp).length, 2, 'older blocks retain both visible stamp rows');
+      assert.equal(words(hidden).filter(stamp).length, 0, 'stamp hiding reaches PDF composition');
+      assert.deepEqual(words(hidden), words(shown).filter((text) => !stamp(text)), 'headings, checks, verdicts and optional comments remain');
+      assert.deepEqual(hidden.filter((item) => item.kind === 'ring').map((item) => item.counts), shown.filter((item) => item.kind === 'ring').map((item) => item.counts));
+      const firstVerdict = (items: typeof shown) => items.find((item) => item.kind === 'text' && item.text === 'PASS');
+      assert.ok(firstVerdict(hidden)!.y < firstVerdict(shown)!.y, 'hidden metadata leaves no unused vertical stamp gap');
+      assert.deepEqual(snapshot, original, 'composition never mutates frozen evidence');
+    });
+  }
+
   it('is a valid block of the current document version and survives a file round trip', () => {
     assert.deepEqual(validateDocumentSpec(docWith([block()])), []);
     // A saved version-7 manual report must retain its verdicts after later format additions (#6485).

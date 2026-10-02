@@ -273,11 +273,14 @@ Tools are grouped by capability. Everything below is registered in the default t
     output downstream of it comes back with no data rather than reporting the
     half-applied model as a success.
 
-    Element-creation node types (`element.column`, `model.addElement`, …) are
-    not yet runnable through `run_flow`: the MCP server's in-session store
-    adapter does not implement `addColumn`/`addWall`/`addSlab`/`addBeam` (use
-    `entity_create` for those today). A property-writing graph, like the
-    shipped fire-rating-audit example, runs normally.
+    `element.wall`, `element.column`, `element.slab` and `element.beam` specs
+    connected to `model.addElement` create geometry in the selected loaded
+    model through the same atomic builders as the SDK and viewer. The supplied
+    storey must have a readable placement; dimensions are metres. Each creation
+    is one compound operation for `mutation_undo`. A failed creation leaves no
+    partial helper graph or journal entries, but this does not roll back earlier
+    successful nodes in the flow. Free door/window placement remains unsupported
+    by this adapter; use the hosted placement tools with an actual host.
 
 !!! note "Planned tools return a clean error"
     `geometry_get`, `raycast`, `gherkin_check`, and `export_pdf_report` are
@@ -407,6 +410,27 @@ registry.add(await loadIfcModel('./model.ifc'));
 const server = createMCPServer({ version: '0.1.0', registry });
 const transport = new StdioTransport();
 await transport.connect(server);
+```
+
+A model returned by `loadIfcModel` exposes the existing SDK methods
+`bim.store.addElementType`, `assignType`, `addMaterial`, `addMaterialLayerSet`,
+`addMaterialLayerSetUsage` and `assignMaterial`. These embedded methods use
+`@ifc-lite/create`'s shared schema-aware writers; they are not new JSON-RPC tool
+names. Each successful call records one complete operation for the public
+`mutation_undo` tool. A refused layer or layer-set field creates no orphan
+helpers. Thicknesses and offsets are metres, converted to the model's units;
+IFC2X3 uses its live `IfcOwnerHistory` and rejects IFC4-only fields such as
+layer/set `Description`.
+
+```ts
+import { loadIfcModel } from '@ifc-lite/mcp';
+
+const loaded = await loadIfcModel('./model.ifc', { modelId: 'building' });
+const material = loaded.bim.store.addMaterial(loaded.id, { Name: 'Concrete' });
+const { expressId: layerSetId } = loaded.bim.store.addMaterialLayerSet(loaded.id, {
+  LayerSetName: 'Concrete layer',
+  MaterialLayers: [{ Material: material.expressId, LayerThickness: 0.2 }],
+});
 ```
 
 For an in-process host (no child process, no sockets), use `InProcessTransport` and send JSON-RPC envelopes directly:

@@ -127,6 +127,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         bindings: data.bindings,
         aggregations: data.aggregations,
         chartMessages: data.chartMessages,
+        chartErrors: data.chartErrors,
         snapshotIds: (blockId) => largestBucketIds(data.aggregations.get(blockId)),
         topics: data.topics,
         tables: data.tables,

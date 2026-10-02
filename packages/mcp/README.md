@@ -27,6 +27,16 @@ npx @ifc-lite/mcp ./model.ifc --viewer
 npx @ifc-lite/mcp ./model.ifc --open
 ```
 
+## Embedded loaded-model authoring
+
+`loadIfcModel` returns a model whose `bim.store` supports the existing
+`addElementType`, `assignType`, `addMaterial`, `addMaterialLayerSet`,
+`addMaterialLayerSetUsage` and `assignMaterial` SDK methods. They delegate to
+shared schema-aware builders, convert metre dimensions to native units, and
+record each call as one complete public `mutation_undo` operation. Late schema
+refusals leave no partial helpers. These embedded methods are distinct from
+the JSON-RPC tool names; see the [programmatic embedding guide](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/guide/mcp.md#programmatic-embedding).
+
 ## 3D viewer integration
 
 The server bundles the same WebGL viewer used by `ifc-lite view`. Once it is

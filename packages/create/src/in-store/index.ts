@@ -4,12 +4,14 @@
 
 // In-store builders — emit elements into an existing parsed IfcDataStore
 // via a `StoreEditor` overlay (closes the merge-roundtrip gap from #592).
+export { addOrdinaryElementInStore, type OrdinaryInStoreElement } from './ordinary-element.js';
 export {
   addColumnToStore,
   type ColumnInStoreParams,
   type ProfiledColumnInStoreParams,
   type ColumnBuildResult,
 } from './column.js';
+export { addColumnOnGridToStore, type GridColumnBinding, type GridColumnBuildResult } from './grid-column.js';
 export { addWallToStore, emitWallAxisRepresentation, emitWallBodyProfile, wallJoinWallFromParams, type WallInStoreParams, type WallBuildResult } from './wall.js';
 // Wall joins (L / T / butt) and the IfcRelConnectsPathElements they write; the read side sits in wall-join-read.
 export { computeWallJoin, reshapeWallAxis, wallBodyLateralRange, wallBodyOutline } from './wall-join.js';

@@ -35,7 +35,9 @@
  * Silence is measured against the worker's in-call heartbeat
  * (`in-call-heartbeat.ts`): the kernel reports progress from inside a long
  * call, so a slow element keeps its worker "heard" and is neither replayed nor
- * skipped. Only a call that stops reporting reaches this recovery. Without the
+ * skipped while it runs under MAX_GEOMETRY_CALL_MS. A call reaches this recovery
+ * when it stops reporting, or when it outruns that absolute cap however often it
+ * reports (then a single job is skipped, a multi-job call replayed). Without the
  * heartbeat, the 45 s / 90 s wall-clock budgets below decided whether a slow
  * element loaded at all, so its geometry varied with the user's CPU speed.
  */

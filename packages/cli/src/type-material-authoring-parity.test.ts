@@ -29,7 +29,7 @@ type Bim = ReturnType<typeof createBimContext>;
 interface Seed { wall: number; type: number; concrete: number; wool: number; set: number; usage: number; storey: number }
 interface Route { name: string; type: string; add: (bim: Bim, modelId: string, seed: Seed) => EntityRef }
 const ROUTES: Route[] = [
-  { name: 'addElementType', type: 'IFCWALLTYPE', add: (b, m) => b.store.addElementType(m, { Type: 'IfcWallType', Name: 'D5 replacement type', PredefinedType: 'SOLIDWALL' }) },
+  { name: 'addElementType', type: 'IFCWALLTYPE', add: (b, m) => b.store.addElementType(m, { Type: 'IfcWallType', Name: 'D5 replacement type', PredefinedType: 'STANDARD' }) },
   { name: 'assignType', type: 'IFCRELDEFINESBYTYPE', add: (b, m, s) => b.store.assignType(m, s.type, [s.wall]) },
   { name: 'addMaterial', type: 'IFCMATERIAL', add: (b, m) => b.store.addMaterial(m, { Name: 'D5 new material' }) },
   { name: 'addMaterialLayerSet', type: 'IFCMATERIALLAYERSET', add: (b, m, s) => b.store.addMaterialLayerSet(m, {
@@ -56,8 +56,8 @@ async function records(content: string | Uint8Array) {
 
 function authorSeed(bim: Bim, modelId: string, storey: number): Seed {
   const wall = bim.store.addWall(modelId, storey, { Start: [0, 3, 0], End: [5, 3, 0], Thickness: .3, Height: 3, Name: 'D5 layered wall' }).expressId;
-  const originalType = bim.store.addElementType(modelId, { Type: 'IfcWallType', Name: 'D5 initial type', PredefinedType: 'SOLIDWALL' }).expressId;
-  const replacementType = bim.store.addElementType(modelId, { Type: 'IfcWallType', Name: 'D5 source replacement type', PredefinedType: 'SOLIDWALL' }).expressId;
+  const originalType = bim.store.addElementType(modelId, { Type: 'IfcWallType', Name: 'D5 initial type', PredefinedType: 'STANDARD' }).expressId;
+  const replacementType = bim.store.addElementType(modelId, { Type: 'IfcWallType', Name: 'D5 source replacement type', PredefinedType: 'STANDARD' }).expressId;
   bim.store.assignType(modelId, originalType, [wall]);
   const concrete = bim.store.addMaterial(modelId, { Name: 'Concrete' }).expressId;
   const wool = bim.store.addMaterial(modelId, { Name: 'Mineral wool' }).expressId;
@@ -133,7 +133,7 @@ async function assertResult(content: string | Uint8Array, route: Route, ref: Ent
   expect(result?.type).toBe(route.type);
   if (route.name === 'addElementType') {
     expect(result?.attributes[2]).toBe('D5 replacement type');
-    expect(result?.attributes[9]).toBe('.SOLIDWALL.');
+    expect(result?.attributes[9]).toBe('.STANDARD.');
   }
   if (route.name === 'addMaterial') expect(result?.attributes[0]).toBe('D5 new material');
   if (route.name === 'assignType' || route.name === 'assignMaterial') {

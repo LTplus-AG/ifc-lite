@@ -116,14 +116,18 @@ for (const modelCount of [1, 2]) {
       .find((row) => row.textContent?.includes('Confirm delivery 12'));
     assert.equal(restoredRow?.getAttribute('data-status'), 'pass');
 
+    // Radix remounts the active tab: exercise its current mounted controls.
+    const restoredSummary = ui.querySelector('[data-validation-summary-pane]');
+    const restoredName = restoredSummary?.querySelector<HTMLInputElement>('input[aria-label="Checklist name"]');
+    assert.ok(restoredSummary && restoredName);
     const upperButton = (label: string) => {
-      const found = [...summary.querySelectorAll('button')].find(button => button.textContent?.trim() === label);
+      const found = [...restoredSummary.querySelectorAll('button')].find(button => button.textContent?.trim() === label);
       assert.ok(found);
       return found;
     };
     click(upperButton('Edit checklist'));
     assert.equal(ui.querySelectorAll('[data-testid="manual-check-edit"]').length, 12);
-    typeInput(name, 'Reviewed coordination checks');
+    typeInput(restoredName, 'Reviewed coordination checks');
     click(upperButton('Done editing'));
     assert.equal(ui.querySelectorAll('[data-testid="manual-check"]')[11].getAttribute('data-status'), 'pass');
     click(upperButton('Save report'));

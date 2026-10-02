@@ -32,13 +32,27 @@ END-ISO-10303-21;`;
 export function runMapNormalizationContracts(api, test) {
   const bytes = text => new TextEncoder().encode(text);
   test('#6587 canonical map plan crosses the real WASM boundary with complete entity IDs', () => {
-    const plan = JSON.parse(api.planMapConversionNormalization(bytes(source)));
+    const input = bytes(source), original = input.slice();
+    const plan = JSON.parse(api.planMapConversionNormalization(input));
+    assert.deepEqual(input, original, 'planning must not mutate authored source bytes');
+    assert.equal(new TextDecoder().decode(input), source);
     assert.deepEqual(plan.warnings, []);
-    assert.deepEqual(new Set(plan.replacements.map(patch => patch.expressId)), new Set([50, 45, 61]));
+    assert.deepEqual(new Set(plan.replacements.map(patch => patch.expressId)), new Set([10, 50, 45, 61]));
     assert.ok(plan.newEntities.length > 0);
     const ids = new Set(plan.newEntities.map(patch => patch.expressId));
     assert.equal(ids.size, plan.newEntities.length);
     for (const patch of plan.newEntities) assert.ok(patch.line.startsWith(`#${patch.expressId}=`));
+    const context = plan.replacements.find(patch => patch.expressId === 10);
+    const northRef = context.line.match(/^#10=IFCGEOMETRICREPRESENTATIONCONTEXT\(\$,'Model',3,1\.E-5,#11,#(\d+)\);$/);
+    assert.ok(northRef, 'normalized context must reference a cloned TrueNorth direction');
+    const northId = Number(northRef[1]);
+    assert.ok(ids.has(northId), 'TrueNorth must be a new entity, not a shared source mutation');
+    const north = plan.newEntities.find(patch => patch.expressId === northId).line.match(/^#\d+=IFCDIRECTION\(\(([^()]*)\)\);$/);
+    assert.ok(north, 'cloned TrueNorth must be an IfcDirection');
+    const ratios = north[1].split(',').map(Number);
+    assert.equal(ratios.length, 2, 'TrueNorth must satisfy North2D');
+    assert.ok(ratios.every(Number.isFinite));
+    assert.ok(Math.hypot(ratios[0] + 0.8, ratios[1] - 0.6) < 1e-12, 'implicit +Y must rotate to (-.8,.6)');
     assert.match(plan.replacements.find(patch => patch.expressId === 61).line, /,0\.,0\.,0\.,1\.,0\.,1\.\);$/);
   });
   test('#6587 direct WASM planner refuses unresolved, wrong-type, cyclic and malformed target units atomically', () => {

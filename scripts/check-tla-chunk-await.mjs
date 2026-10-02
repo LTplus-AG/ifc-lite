@@ -83,6 +83,7 @@
 
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { deploymentAssetsDir } from './lib/deployment-assets-dir.mjs';
+import { isMinified, isPretty } from './lib/tla-minified-fingerprints.mjs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -201,48 +202,9 @@ if (tlaExporters.size === 0) {
   process.exit(1);
 }
 
-// Every chunk the plugin touched is one it RE-PRINTED with SWC after the
-// bundler had already minified it, so its formatting is the plugin's, not
-// Vite's. Upstream 1.6.0 read `build.minify` from the user config, where an
-// unset value is `undefined`, and so printed all of them (main, store,
-// exporters, the workers, ~100 in all) pretty: production shipped a
-// 167k-line, 8.2 MB main chunk where a minified one is 4.3 MB (patched in
-// patches/vite-plugin-top-level-await@1.6.0.patch).
-//
-// Scope: every chunk whose text mentions `__tla`, not only the ones that
-// export it. Entry chunks (main-*.js) and workers are rewritten too but export
-// nothing, and each worker build runs its OWN plugin instance, so a worker
-// can regress on its own.
-//
-// Fingerprints are the plugin's own injected code, which SWC prints with
-// spaces and line breaks only when it is not minifying:
-//   wrapper   `let __tla = Promise.all(`          vs `let __tla=Promise.all(`
-//   importer  `try {\n  return __tla_0;`        vs `try{return __tla_0}`
-//   import()  `.then(async (m)=>{\n  await m.__tla;\n` vs `await m.__tla;return m}`
-// A line-count heuristic cannot do this: whitespace inside string and
-// template literals is indistinguishable from code by counting lines (the
-// script templates and the esbuild-wasm chunk are legitimately multi-line).
-//
-// The scan is over raw text, so the same words could also sit inside a string
-// (the bundled changelog, say, quoting this very fix). Two things keep that
-// from reading as a pretty-printed chunk without a tokenizer:
-//   * each PRETTY form is anchored to its own line, which is where SWC's pretty
-//     printer puts it and where a quote in a one-line string cannot;
-//   * a chunk is flagged only if it has a pretty form and NO minified form. The
-//     plugin prints all of its constructs in one chunk the same way, so a
-//     minified chunk always carries the minified form in code (103 of 103 in
-//     the viewer; 0 of 103 carry it in the unminified build), and a quoted
-//     pretty form in that chunk is outvoted by it.
-const PRETTY_FINGERPRINTS = [
-  /^[ \t]*(?:let|const|var) __tla = /m,
-  /^[ \t]*try \{[ \t]*\n[ \t]*return __tla_\d+;/m,
-  /^[ \t]*await m\.__tla;[ \t]*$/m,
-];
-const MINIFIED_FINGERPRINTS = [
-  /\b(?:let|const|var) __tla=/,
-  /try\{return __tla_\d+\}/,
-  /await m\.__tla;return m\}/,
-];
+// Every chunk the plugin rewrote must have been re-printed minified. Why, and
+// how the fingerprints below tell minified from pretty without a tokenizer:
+// scripts/lib/tla-minified-fingerprints.mjs.
 // Every exporter mentions `__tla` in its own export clause, so tlaChunks is a
 // superset of tlaExporters, and tlaExporters was asserted non-empty above. The
 // guard below is that same invariant stated where it is relied on: if it ever
@@ -256,8 +218,6 @@ if (tlaChunks.length === 0 || tlaChunks.length < tlaExporters.size) {
   );
   process.exit(1);
 }
-const isPretty = (text) => PRETTY_FINGERPRINTS.some((re) => re.test(text));
-const isMinified = (text) => MINIFIED_FINGERPRINTS.some((re) => re.test(text));
 // Every exporter carries the wrapper declaration, so it must match one form or
 // the other. If none does, the plugin's output changed shape and this check is
 // blind: say so instead of passing.
@@ -270,7 +230,7 @@ if (unrecognised.length > 0) {
     `❌ ${unrecognised.length} __tla-exporting chunk(s) match neither the minified nor the\n` +
       `pretty-printed shape of the plugin's wrapper, so this gate cannot tell whether\n` +
       `they were minified (first: ${unrecognised[0]}). Update the fingerprints in\n` +
-      `scripts/check-tla-chunk-await.mjs to the plugin's current output.\n`,
+      `scripts/lib/tla-minified-fingerprints.mjs to the plugin's current output.\n`,
   );
   process.exit(1);
 }

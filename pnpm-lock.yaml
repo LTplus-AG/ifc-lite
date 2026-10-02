@@ -561,6 +561,9 @@ importers:
       '@ifc-lite/sdk':
         specifier: workspace:^
         version: link:../../packages/sdk
+      '@ifc-lite/semantic':
+        specifier: workspace:^
+        version: link:../../packages/semantic
       '@ifc-lite/server-client':
         specifier: workspace:^
         version: link:../../packages/server-client

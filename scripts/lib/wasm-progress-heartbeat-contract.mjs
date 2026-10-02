@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { setGeometryProgressCallback } from '../../packages/wasm/pkg/ifc-lite.js';
+import * as wasmPkg from '../../packages/wasm/pkg/ifc-lite.js';
 import { parseMeshesViaPrePass } from './mesh-via-prepass.mjs';
 
 function geometryDigest(collection) {
@@ -29,6 +29,13 @@ export function runProgressHeartbeatContracts(IfcAPI, test, skip, root) {
   const name = 'geometry progress callback fires inside a batch call and leaves output unchanged';
   if (!existsSync(fixture)) {
     skip(name, 'run `pnpm fixtures` to fetch AC20-FZK-Haus');
+    return;
+  }
+  // Namespace import: a named import of a missing export would fail to link and
+  // take every early contract down with it on an older wasm build.
+  const { setGeometryProgressCallback } = wasmPkg;
+  if (typeof setGeometryProgressCallback !== 'function') {
+    skip(name, 'wasm pkg predates setGeometryProgressCallback; rebuild with scripts/build-wasm.sh');
     return;
   }
   test(name, () => {

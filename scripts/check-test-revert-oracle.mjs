@@ -248,6 +248,8 @@ if (baseSha === headSha) die(EXIT_NOTHING_CHECKED, 'base and head are the same c
 const mergeBase = gitOrDie(['merge-base', baseSha, headSha]).trim();
 const entries = parseNameStatus(gitOrDie(['diff', '--name-status', `${mergeBase}`, headSha]));
 if (entries.length === 0) die(EXIT_NOTHING_CHECKED, 'the diff is empty; nothing to check.');
+const unsupportedRenames = unsupportedProductionRenames(entries, opts.only);
+if (unsupportedRenames.length) die(EXIT_INCONCLUSIVE, 'unsupported cross-category production rename; non-production sources must stay pinned.', unsupportedRenames, { verdict: 'INCONCLUSIVE' });
 
 if (opts.ci && isDependabotDependencyOnly(process.env.PR_AUTHOR_LOGIN, entries)) {
   notApplicable(
@@ -262,8 +264,6 @@ resultContext = {
   tests: testEntries.map((entry) => entry.path),
 };
 for (const w of warnings) console.log(`  WARNING: ${w}`);
-const unsupportedRenames = unsupportedProductionRenames(entries, opts.only);
-if (unsupportedRenames.length) die(EXIT_INCONCLUSIVE, 'unsupported cross-category production rename; non-production sources must stay pinned.', unsupportedRenames, { verdict: 'INCONCLUSIVE' });
 
 // The changesets release PR ("chore: version packages") changes only
 // package.json `"version"` fields and the matching Cargo.toml version

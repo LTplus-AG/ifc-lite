@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import { IfcParser } from '@ifc-lite/parser';
 import { aggregate, type ChartSpec } from '@ifc-lite/charts';
 import { cleanup, render } from '@/test/render';
-import { waitForDocumentPreview } from '@/test/document-preview';
+import { documentPreviewReady } from '@/test/document-preview';
 import { installSvgCdataEnvironmentConversion } from '@/test/svg-cdata';
 import { pageBox } from '@/lib/export/report/compose';
 import { DocumentPreview } from './DocumentPreview';
@@ -83,7 +83,7 @@ it('places scaled table cells at the same font factor as the actual PDF (#6548, 
     const ui = render(<DocumentPreview document={document} bindings={{ models: [], activeModelId: null, today: new Date('2026-10-01') }}
       aggregations={new Map()} chartMessages={new Map()} topics={new Map()} tables={new Map([['tb', state]])}
       selectedBlockId={null} onSelectBlock={() => {}} />);
-    await waitForDocumentPreview(ui);
+    await documentPreviewReady();
     const table = ui.querySelector<HTMLTableElement>('[data-preview-block="tb"] table'); assert.ok(table);
     const cell = table.querySelector<HTMLTableCellElement>('tbody td'); assert.ok(cell);
     const printed = await tableText(factor);
@@ -115,7 +115,7 @@ it('prints a scaled public-model chart with the same enlarged plot labels as its
       const input = { document, bindings: { models: [], activeModelId: null, today: new Date('2026-10-01') },
         aggregations: new Map([['chart', aggregation]]), chartMessages: new Map<string, string>(), topics: new Map(), tables: new Map(), snapshotIds: () => [] };
       const ui = render(<DocumentPreview {...input} selectedBlockId={null} onSelectBlock={() => {}} />);
-      await waitForDocumentPreview(ui);
+      await documentPreviewReady();
       const svg = ui.querySelector<SVGSVGElement>('[data-chart-svg] svg'); assert.ok(svg);
       const label = Array.from(svg.querySelectorAll('text')).find(node => node.textContent === 'IfcWall'); assert.ok(label);
       const authoredFontSize = parseFloat(label.style.fontSize); assert.ok(authoredFontSize > 0);

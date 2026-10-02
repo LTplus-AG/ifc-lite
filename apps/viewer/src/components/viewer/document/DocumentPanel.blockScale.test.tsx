@@ -19,7 +19,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { cleanup, render, type as typeInput } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { DocumentPanel } from './DocumentPanel';
-import { waitForDocumentPreview } from '@/test/document-preview';
+import { documentPreviewReady } from '@/test/document-preview';
 
 const IFC = `ISO-10303-21;
 HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('t','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
@@ -72,7 +72,7 @@ describe('Document block size (#6548)', () => {
 
   it('zooms a chart block as a whole: the plot is laid out at the authored size in a narrower column, then drawn larger', async () => {
     const ui = render(<DocumentPanel />);
-    await settle(); await waitForDocumentPreview(ui);
+    await settle(); await documentPreviewReady();
     const block = () => ui.querySelector('[data-preview-block="c1"]')!;
     const svg = () => block().querySelector('svg')!;
     const frame = () => block().querySelector<HTMLElement>('[data-chart-svg]')!;
@@ -80,7 +80,7 @@ describe('Document block size (#6548)', () => {
     const [width, height] = [Number(svg().getAttribute('width')), Number(svg().getAttribute('height'))];
     assert.ok(width > 0 && height > 0, 'the model fills the chart');
     await commit(ui.querySelector<HTMLInputElement>(`[data-block-editor="c1"] ${SIZE}`)!, '150');
-    await waitForDocumentPreview(ui);
+    await documentPreviewReady();
     assert.ok(Math.abs(parseFloat(frame().style.height) - placedHeight * 1.5) < 0.01, 'the actual composed plot is placed 1.5 times taller');
     assert.ok(Math.abs(parseFloat(frame().style.width) - placedWidth) < 0.01, 'the plot keeps its printable column width');
     assert.ok(Math.abs(Number(svg().getAttribute('width')) - width / 1.5) < 1, 'the column the plot is laid out in is 1.5 times narrower');
@@ -90,19 +90,19 @@ describe('Document block size (#6548)', () => {
 
   it('zooms a text block, clamps the entry to 50-200 and clears the override at 100', async () => {
     const ui = render(<DocumentPanel />);
-    await settle(); await waitForDocumentPreview(ui);
+    await settle(); await documentPreviewReady();
     const text = () => Array.from(ui.querySelectorAll<HTMLElement>('[data-preview-block="t1"] [data-block-text] span')).find(node => node.textContent?.trim() === 'Body text')!;
     const authoredSize = parseFloat(text().style.fontSize);
     const input = () => ui.querySelector<HTMLInputElement>(`[data-block-editor="t1"] ${SIZE}`)!;
     await commit(input(), '999');
-    await waitForDocumentPreview(ui);
+    await documentPreviewReady();
     assert.ok(Math.abs(parseFloat(text().style.fontSize) - authoredSize * 2) < 0.01, 'the actual glyph doubles after upper clamping');
     assert.equal(saved('t1')?.scale, 2);
     await commit(input(), '1');
-    await waitForDocumentPreview(ui);
+    await documentPreviewReady();
     assert.ok(Math.abs(parseFloat(text().style.fontSize) - authoredSize * 0.5) < 0.01, 'the actual glyph halves after lower clamping');
     await commit(input(), '100');
-    await waitForDocumentPreview(ui);
+    await documentPreviewReady();
     assert.ok(Math.abs(parseFloat(text().style.fontSize) - authoredSize) < 0.01, 'clearing the override restores the authored glyph size');
     assert.equal('scale' in (saved('t1') ?? {}), false, 'the saved block carries no scale again');
   });

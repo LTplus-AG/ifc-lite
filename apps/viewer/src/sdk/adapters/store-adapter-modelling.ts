@@ -30,6 +30,7 @@ import type { StoreApi } from './types.js';
 import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
+import { addStairIn, addRailingIn } from '@/store/slices/mutation-stair-railing';
 
 type ModellingMethods = ReturnType<typeof createModellingStoreBackend>;
 
@@ -54,6 +55,22 @@ export function withModellingMutationTracking(
       return { modelId: normalized, expressId: outcome.expressId };
     };
   return {
+    addStair(modelId, storeyExpressId, params) {
+      const normalized = normalizeMutationModelId(store.getState(), modelId);
+      const setState = store.setState;
+      if (!setState) throw new Error('bim.store.addStair: the adapter requires a writable store');
+      const outcome = addStairIn({ ...store, setState }, normalized, storeyExpressId, params);
+      if ('error' in outcome) throw new Error(`bim.store.addStair: ${outcome.error}`);
+      return { modelId: normalized, expressId: outcome.expressId };
+    },
+    addRailing(modelId, storeyExpressId, params) {
+      const normalized = normalizeMutationModelId(store.getState(), modelId);
+      const setState = store.setState;
+      if (!setState) throw new Error('bim.store.addRailing: the adapter requires a writable store');
+      const outcome = addRailingIn({ ...store, setState }, normalized, storeyExpressId, params);
+      if ('error' in outcome) throw new Error(`bim.store.addRailing: ${outcome.error}`);
+      return { modelId: normalized, expressId: outcome.expressId };
+    },
     joinWalls(modelId, aExpressId, bExpressId, options) {
       const normalized = normalizeMutationModelId(store.getState(), modelId);
       const denial = mutationDenial(store.getState(), normalized);

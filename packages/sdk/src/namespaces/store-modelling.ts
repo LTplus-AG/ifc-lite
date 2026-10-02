@@ -6,11 +6,26 @@
 import type {
   HostedDoorInStoreParams, HostedWindowInStoreParams, OpeningInStoreParams, ElementTypeInStoreParams,
   MaterialInStoreParams, MaterialLayerSetInStoreParams, MaterialLayerSetUsageInStoreParams, WallJoinApplyOptions,
+  StairInStoreParams, RailingInStoreParams,
 } from '@ifc-lite/create';
 import type { BimBackend, EntityRef } from '../types.js';
 
 export class StoreModellingNamespace {
   constructor(protected backend: BimBackend) {}
+
+  /** Add a storey-local straight-run stair and its aggregated flight; lengths are metres, Direction radians. */
+  addStair(modelId: string, storeyExpressId: number, params: StairInStoreParams): EntityRef {
+    const create = this.backend.store.addStair;
+    if (!create) throw new Error('bim.store.addStair is not supported by this backend');
+    return create.call(this.backend.store, modelId, storeyExpressId, params);
+  }
+
+  /** Add a railing along Path in storey-local metres, including the handrail and its posts. */
+  addRailing(modelId: string, storeyExpressId: number, params: RailingInStoreParams): EntityRef {
+    const create = this.backend.store.addRailing;
+    if (!create) throw new Error('bim.store.addRailing is not supported by this backend');
+    return create.call(this.backend.store, modelId, storeyExpressId, params);
+  }
 
   // -- Openings, hosted fillings, types and materials (#6232 M3) -------------
   // Hosts are existing IfcWall/IfcSlab; params are metres in the host's frame.

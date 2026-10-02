@@ -18,10 +18,16 @@ import type {
   HostedWindowInStoreParams,
   OpeningInStoreParams,
   WallJoinApplyOptions,
+  StairInStoreParams,
+  RailingInStoreParams,
 } from '@ifc-lite/create';
 import type { EntityRef } from './types.js';
 
 export interface ModellingStoreBackendMethods {
+  /** Optional host capability: a storey-local IfcStair aggregating one IfcStairFlight. Returns the stair. */
+  addStair?(modelId: string, storeyExpressId: number, params: StairInStoreParams): EntityRef;
+  /** Optional host capability: an IfcRailing along a storey-local polyline. Returns the railing. */
+  addRailing?(modelId: string, storeyExpressId: number, params: RailingInStoreParams): EntityRef;
   /** Join two straight walls through IfcRelConnectsPathElements, rewriting their bodies/axes atomically. Returns the relationship. */
   joinWalls(modelId: string, aExpressId: number, bExpressId: number, options?: WallJoinApplyOptions): EntityRef;
   /** `IfcOpeningElement` + `IfcRelVoidsElement` cut into an existing IfcWall or IfcSlab. Returns the opening. */

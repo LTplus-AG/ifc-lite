@@ -18,14 +18,16 @@
  */
 
 import type { EntityRef, Point } from '@ifc-lite/flow';
-import type { AddBeamInStoreParams, AddColumnInStoreParams, AddSlabRectangleParams, AddWallInStoreParams, EntityRef as SdkEntityRef } from '@ifc-lite/sdk';
+import type { AddBeamInStoreParams, AddColumnInStoreParams, AddSlabRectangleParams, AddWallInStoreParams, EntityRef as SdkEntityRef, StoreNamespace } from '@ifc-lite/sdk';
 import { ENTITY_ITEM, SCALAR_ITEM, forgetGlobalId, rememberGlobalId, requireCapability, resolveByGlobalId, toSdkRef, type Ctx, type FlowNodeDef } from './host.js';
 
 export type ElementSpec =
   | { readonly kind: 'wall'; readonly storey: EntityRef; readonly params: AddWallInStoreParams }
   | { readonly kind: 'column'; readonly storey: EntityRef; readonly params: AddColumnInStoreParams }
   | { readonly kind: 'beam'; readonly storey: EntityRef; readonly params: AddBeamInStoreParams }
-  | { readonly kind: 'slab'; readonly storey: EntityRef; readonly params: AddSlabRectangleParams };
+  | { readonly kind: 'slab'; readonly storey: EntityRef; readonly params: AddSlabRectangleParams }
+  | { readonly kind: 'stair'; readonly storey: EntityRef; readonly params: Parameters<StoreNamespace['addStair']>[2] }
+  | { readonly kind: 'railing'; readonly storey: EntityRef; readonly params: Parameters<StoreNamespace['addRailing']>[2] };
 
 const POINT_ITEM = { kind: 'point', access: 'item' } as const;
 const SPEC_ITEM = { kind: 'elementSpec', access: 'item' } as const;
@@ -40,6 +42,7 @@ const point = (v: unknown, name: string): [number, number, number] => {
   return [v[0], v[1], v[2]];
 };
 const optName = (v: unknown): string | undefined => (typeof v === 'string' && v.length > 0 ? v : undefined);
+const optNum = (v: unknown, name: string): number | undefined => v === undefined ? undefined : num(v, name);
 
 function specOf(v: unknown): ElementSpec {
   const s = v as Partial<ElementSpec>;
@@ -159,6 +162,55 @@ export const elementNodes: FlowNodeDef[] = [
     }),
   },
   {
+    type: 'element.stair',
+    title: 'Stair spec',
+    category: 'element',
+    inputs: [{ name: 'storey', type: ENTITY_ITEM }, { name: 'Position', type: POINT_ITEM }],
+    outputs: [{ name: 'spec', type: SPEC_ITEM }],
+    params: [
+      { name: 'NumberOfRisers', kind: 'number', default: 17 },
+      { name: 'RiserHeight', kind: 'number', default: .175 },
+      { name: 'TreadLength', kind: 'number', default: .3 },
+      { name: 'Width', kind: 'number', default: 1 },
+      { name: 'Direction', kind: 'number', default: 0, doc: 'Run direction in radians, in the storey frame.' },
+      { name: 'WaistThickness', kind: 'number' },
+      { name: 'Name', kind: 'string' },
+    ],
+    capabilities: [],
+    run: (_c, i, p) => ({ spec: {
+      kind: 'stair', storey: i.storey as EntityRef,
+      params: { Position: point(i.Position, 'Position'), NumberOfRisers: num(p.NumberOfRisers, 'NumberOfRisers'),
+        RiserHeight: num(p.RiserHeight, 'RiserHeight'), TreadLength: num(p.TreadLength, 'TreadLength'),
+        Width: num(p.Width, 'Width'), Direction: optNum(p.Direction, 'Direction'),
+        WaistThickness: optNum(p.WaistThickness, 'WaistThickness'), Name: optName(p.Name) },
+    } satisfies ElementSpec }),
+  },
+  {
+    type: 'element.railing',
+    title: 'Railing spec',
+    category: 'element',
+    inputs: [{ name: 'storey', type: ENTITY_ITEM }],
+    outputs: [{ name: 'spec', type: SPEC_ITEM }],
+    params: [
+      { name: 'Path', kind: 'json', doc: 'Base polyline [[x, y, z], ...], in storey-local metres.' },
+      { name: 'Height', kind: 'number', default: 1.1 },
+      { name: 'RailDiameter', kind: 'number' },
+      { name: 'PostDiameter', kind: 'number' },
+      { name: 'PostSpacing', kind: 'number' },
+      { name: 'Name', kind: 'string' },
+    ],
+    capabilities: [],
+    run: (_c, i, p) => {
+      if (!Array.isArray(p.Path)) throw new Error('"Path" must be a polyline [[x, y, z], ...]');
+      return { spec: {
+        kind: 'railing', storey: i.storey as EntityRef,
+        params: { Path: p.Path.map((v, index) => point(v, `Path[${index}]`)), Height: num(p.Height, 'Height'),
+          RailDiameter: optNum(p.RailDiameter, 'RailDiameter'), PostDiameter: optNum(p.PostDiameter, 'PostDiameter'),
+          PostSpacing: optNum(p.PostSpacing, 'PostSpacing'), Name: optName(p.Name) },
+      } satisfies ElementSpec };
+    },
+  },
+  {
     type: 'model.addElement',
     title: 'Add element',
     category: 'model',
@@ -237,6 +289,8 @@ function addSpec(ctx: Ctx, storey: SdkEntityRef, spec: ElementSpec, GlobalId: st
     case 'column': return store.addColumn(storey.modelId, storey.expressId, { ...spec.params, GlobalId });
     case 'beam': return store.addBeam(storey.modelId, storey.expressId, { ...spec.params, GlobalId });
     case 'slab': return store.addSlab(storey.modelId, storey.expressId, { ...spec.params, GlobalId });
+    case 'stair': return store.addStair(storey.modelId, storey.expressId, { ...spec.params, GlobalId });
+    case 'railing': return store.addRailing(storey.modelId, storey.expressId, { ...spec.params, GlobalId });
     default: throw new Error(`unknown element kind "${String((spec as { kind: unknown }).kind)}"`);
   }
 }

@@ -24,6 +24,16 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
     });
   }
   return {
+    addStair: (...args: Parameters<NonNullable<Methods['addStair']>>) => record(args[0], methods => {
+      const create = methods.addStair;
+      if (!create) throw new Error('bim.store.addStair is not supported by this backend');
+      return create(...args);
+    }),
+    addRailing: (...args: Parameters<NonNullable<Methods['addRailing']>>) => record(args[0], methods => {
+      const create = methods.addRailing;
+      if (!create) throw new Error('bim.store.addRailing is not supported by this backend');
+      return create(...args);
+    }),
     addElementType: (...args: Parameters<Methods['addElementType']>) => record(args[0], methods => methods.addElementType(...args), true),
     assignType: (...args: Parameters<Methods['assignType']>) => record(args[0], methods => methods.assignType(...args), true),
     addMaterial: (...args: Parameters<Methods['addMaterial']>) => record(args[0], methods => methods.addMaterial(...args), true),

@@ -182,14 +182,24 @@ describe.skipIf(!AVAILABLE)('#6232 D5 ordinary loaded SDK / public MCP parity', 
         await assertSavedWall(target.bim.export.ifc(), walls[0].expressId);
         if (count === 2) expect(registry.get('alpha')!.bim.export.ifc()).toEqual(peerBefore);
         const afterCreation = target.backend.getMutationView()!.getMutations();
+        const authoredAfterCreation = structuredClone(target.backend.getMutationView()!.getNewEntities());
+        // A different flow id does not create a different tracked occurrence.
+        // Preserve the canonical collision guard independently of validation.
+        const collision = await call('run_flow', { model_id: modelId, flow: { ...wallFlow(), id: 'd5-collision-wall' } });
+        expect(collision.structuredContent?.ok).toBe(false);
+        expect(JSON.stringify(collision.structuredContent?.errors)).toMatch(/already exists in the model; change the node's tracking key/);
+        expect(target.backend.getMutationView()!.getMutations()).toEqual(afterCreation);
+        expect(target.backend.getMutationView()!.getNewEntities()).toEqual(authoredAfterCreation);
         const invalid = wallFlow();
         const invalidResult = await call('run_flow', { model_id: modelId, flow: {
           ...invalid, id: 'd5-invalid-wall',
-          nodes: invalid.nodes.map(node => node.id === 'spec' ? { ...node, params: { ...node.params, height: -1 } } : node),
+          nodes: invalid.nodes.map(node => node.id === 'spec' ? { ...node, params: { ...node.params, height: -1 } }
+            : node.id === 'create' ? { ...node, trackingKey: 'd5-invalid-wall' } : node),
         } });
         expect(invalidResult.structuredContent?.ok).toBe(false);
         expect(JSON.stringify(invalidResult.structuredContent?.errors)).toMatch(/Thickness and Height must be positive/);
         expect(target.backend.getMutationView()!.getMutations()).toEqual(afterCreation);
+        expect(target.backend.getMutationView()!.getNewEntities()).toEqual(authoredAfterCreation);
         expect((await call('mutation_undo', { model_id: modelId })).isError).not.toBe(true);
         expect(target.backend.getMutationView()!.getMutations()).toEqual(before);
         expect(target.backend.getMutationView()!.getNewEntity(prior.structuredContent?.expressId as number)?.type).toBe('IfcCartesianPoint');

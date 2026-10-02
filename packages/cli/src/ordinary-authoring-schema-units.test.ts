@@ -44,7 +44,7 @@ function fixture(schema: Schema, millimetres: boolean) {
   // IfcCreator's storey convenience API has no horizontal placement option.
   // Author its ObjectPlacement in STEP before any loader reads the fixture.
   let replacements = 0;
-  const source = creator.toIfc().replace(new RegExp(`(#${storey}=\\s*IFCBUILDINGSTOREY\\()([^;]+)(\\);)`), (_row, start: string, attributes: string, end: string) => {
+  const source = creator.toIfc().content.replace(new RegExp(`(#${storey}=\\s*IFCBUILDINGSTOREY\\()([^;]+)(\\);)`), (_row, start: string, attributes: string, end: string) => {
     const slots = attributes.split(',');
     slots[5] = `#${frame}`;
     replacements++;

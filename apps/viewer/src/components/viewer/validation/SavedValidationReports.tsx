@@ -23,6 +23,7 @@ export function SavedValidationReports() {
   const loadIssue = useViewerStore((s) => s.validationReportsLoadIssue);
   const failed = useViewerStore((s) => s.validationReportsSaveFailed);
   const fingerprints = useViewerStore(useShallow((s) => [...s.models.values()].map(model => model.sourceFingerprint || null)));
+  const loadStates = useViewerStore(useShallow((s) => [...s.models.values()].map(model => model.loadState)));
   const reuseReport = useViewerStore((s) => s.reuseManualValidationReport);
   const remove = useViewerStore((s) => s.removeValidationReport);
   const rename = useViewerStore((s) => s.renameValidationReport);
@@ -31,7 +32,7 @@ export function SavedValidationReports() {
 
   const snapshot = report?.snapshot;
   const reuse = useMemo(() => snapshot?.kind === 'manual-report'
-    ? manualReportReuse(snapshot, fingerprints.map(fingerprint => ({ fingerprint }))) : null, [snapshot, fingerprints]);
+    ? manualReportReuse(snapshot, fingerprints.map((fingerprint, index) => ({ fingerprint, loadState: loadStates[index] }))) : null, [snapshot, fingerprints, loadStates]);
 
   return (
     <>

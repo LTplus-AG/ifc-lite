@@ -20,14 +20,15 @@ export type ManualReportReuse =
  * The snapshot's fingerprint binds answers; scope labels and active peers
  * cannot replace it. Its recording date is a fallback, not an item edit date.
  * Shared by the UI and store action so neither can bypass the refusal rules. */
-export function manualReportReuse(snapshot: ValidationReportSnapshot, models: readonly Pick<ManualModelOption, 'fingerprint'>[]): ManualReportReuse {
+export function manualReportReuse(snapshot: ValidationReportSnapshot, models: readonly Pick<ManualModelOption, 'fingerprint' | 'loadState'>[]): ManualReportReuse {
   if (snapshot.kind !== 'manual-report' || !snapshot.id || !Number.isFinite(Date.parse(snapshot.generatedAt))) return { ok: false, reason: 'invalid' };
   const errors: DocumentValidationError[] = [];
   validateManualReportBlock({ ...snapshot }, 'snapshot', errors);
   if (errors.length) return { ok: false, reason: 'invalid' };
   const fingerprint = snapshot.modelFingerprint;
   if (!fingerprint?.trim()) return { ok: false, reason: 'noIdentity' };
-  if (!models.some(model => model.fingerprint === fingerprint)) return { ok: false, reason: 'modelNotLoaded' };
+  if (!models.some(model => model.fingerprint === fingerprint
+    && (model.loadState === undefined || model.loadState === 'complete'))) return { ok: false, reason: 'modelNotLoaded' };
   // Canonical template/answer parsers cap text. Refuse an oversized imported
   // snapshot here rather than silently shorten the evidence being recovered.
   if (snapshot.checklistName.length > MAX_CHECKLIST_TEXT || snapshot.groups.some(group =>

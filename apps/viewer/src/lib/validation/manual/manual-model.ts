@@ -19,12 +19,13 @@ export interface ManualModelOption {
   name: string;
   /** Answers are keyed by this; null (also for an empty fingerprint) means the model cannot hold answers. */
   fingerprint: string | null;
+  loadState?: FederatedModel['loadState'];
 }
 
 const NO_ANSWERS: ManualAnswerMap = Object.freeze({});
 
-export function manualModelOptions(models: ReadonlyMap<string, Pick<FederatedModel, 'id' | 'name' | 'sourceFingerprint'>>): ManualModelOption[] {
-  return [...models.values()].map((m) => ({ id: m.id, name: m.name, fingerprint: m.sourceFingerprint || null }));
+export function manualModelOptions(models: ReadonlyMap<string, Pick<FederatedModel, 'id' | 'name' | 'sourceFingerprint' | 'loadState'>>): ManualModelOption[] {
+  return [...models.values()].map((m) => ({ id: m.id, name: m.name, fingerprint: m.sourceFingerprint || null, loadState: m.loadState }));
 }
 
 export function pickManualModel(options: readonly ManualModelOption[], picked: string | null, activeModelId: string | null, preferredFingerprint?: string): ManualModelOption | null {

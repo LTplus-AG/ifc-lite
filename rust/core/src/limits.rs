@@ -147,6 +147,18 @@ impl RtcVerdict {
     }
 }
 
+/// Initial entity-index entry budget before any records have been observed.
+///
+/// Source bytes include comments and long attributes, so their length is not
+/// evidence that the same number of index entries will be needed (#6537).
+/// Keep small-file estimates, bound speculation, and grow from actual records.
+/// This is a requested reservation, never a limit on accepted entity count;
+/// collection capacity rounds upward and native/WASM entry sizes differ.
+#[inline]
+pub fn initial_entity_index_capacity(source_bytes: usize) -> usize {
+    (source_bytes / 50).min(65_536)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,16 +193,4 @@ mod tests {
     fn placement_depth_is_the_documented_100() {
         assert_eq!(MAX_PLACEMENT_DEPTH, 100);
     }
-}
-
-/// Initial entity-index entry budget before any records have been observed.
-///
-/// Source bytes include comments and long attributes, so their length is not
-/// evidence that the same number of index entries will be needed (#6537).
-/// Keep small-file estimates, bound speculation, and grow from actual records.
-/// This is a requested reservation, never a limit on accepted entity count;
-/// collection capacity rounds upward and native/WASM entry sizes differ.
-#[inline]
-pub fn initial_entity_index_capacity(source_bytes: usize) -> usize {
-    (source_bytes / 50).min(65_536)
 }

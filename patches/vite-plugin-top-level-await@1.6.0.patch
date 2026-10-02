@@ -26,3 +26,145 @@ index fec6ef5417214d2b612f685790279253daf7bdf0..d0666ebf6202f749ba0246b51ec8739d
          .map(([moduleName]) => moduleName);
      while (q.length > 0) {
          const moduleName = q.shift();
+diff --git a/dist/index.js b/dist/index.js
+index c9a0a5f8d5ea1c6619f55582a049ddb6f94113f0..1cf87b5f64184ac8f7af3a063c11a62e41acc8d1 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -44,6 +44,7 @@ const SWC = __importStar(require("./swc"));
+ const esbuild_1 = __importDefault(require("./esbuild"));
+ const options_1 = require("./options");
+ const bundle_info_1 = require("./bundle-info");
++const sourcemap_chain_1 = require("./sourcemap-chain");
+ const transform_1 = require("./transform");
+ // Use the same default target as Vite.
+ // https://github.com/vitejs/vite/blob/v6.0.7/packages/vite/src/node/constants.ts#L70-L76
+@@ -58,12 +59,14 @@ function topLevelAwait(options) {
+     let assetsDir = "";
+     let buildTarget;
+     let minify;
+-    const buildRawTarget = async (code) => {
+-        return (await esbuild_1.default.transform(code, {
++    const buildRawTarget = async (code, sourcemap = false) => {
++        const result = await esbuild_1.default.transform(code, {
+             minify,
+             target: buildTarget,
+-            format: "esm"
+-        })).code;
++            format: "esm",
++            sourcemap
++        });
++        return sourcemap ? { code: result.code, map: result.map } : result.code;
+     };
+     return {
+         name: "vite-plugin-top-level-await",
+@@ -109,18 +112,46 @@ function topLevelAwait(options) {
+             const bundleAsts = await (0, bundle_info_1.parseBundleAsts)(bundleChunks);
+             const bundleInfo = await (0, bundle_info_1.parseBundleInfo)(bundleAsts);
+             await Promise.all(Object.keys(bundleChunks).map(async (moduleName) => {
+-                if (!bundleInfo[moduleName].transformNeeded) {
+-                    if (buildTarget !== "esnext") {
+-                        bundle[moduleName].code = await buildRawTarget(bundleChunks[moduleName]);
+-                    }
++                // ifc-lite patch: rewriting `code` without rewriting `map` leaves the
++                // bundler's map describing code that no longer exists, so every
++                // production stack frame in a rewritten chunk resolves to the wrong
++                // place or nowhere (PostHog error tracking). When the bundler made a
++                // map, carry each rewrite's own map and chain it onto the original.
++                const chunk = bundle[moduleName];
++                const withMap = !!chunk.map;
++                const maps = [];
++                let code = bundleChunks[moduleName];
++                if (bundleInfo[moduleName].transformNeeded) {
++                    const newAst = (0, transform_1.transformModule)(code, bundleAsts[moduleName], moduleName, bundleInfo, resolvedOptions);
++                    const printed = SWC.printSync(newAst, { minify, sourceMaps: withMap });
++                    code = printed.code;
++                    if (withMap)
++                        maps.unshift(printed.map);
++                }
++                else if (buildTarget === "esnext") {
+                     return;
+                 }
+-                const newAst = (0, transform_1.transformModule)(bundleChunks[moduleName], bundleAsts[moduleName], moduleName, bundleInfo, resolvedOptions);
+-                let code = SWC.printSync(newAst, { minify }).code;
+                 if (buildTarget !== "esnext") {
+-                    code = await buildRawTarget(code);
++                    if (withMap) {
++                        const raw = await buildRawTarget(code, true);
++                        code = raw.code;
++                        maps.unshift(raw.map);
++                    }
++                    else {
++                        code = await buildRawTarget(code);
++                    }
++                }
++                chunk.code = code;
++                if (withMap) {
++                    const map = (0, sourcemap_chain_1.chainSourcemaps)(maps, chunk.map);
++                    chunk.map = map;
++                    // The bundler has ALREADY emitted the .map file as an asset in this
++                    // bundle, and that asset (not chunk.map) is what gets written to
++                    // disk. Rewrite it too, as Vite's own import-analysis plugin does.
++                    const mapAsset = bundle[chunk.sourcemapFileName || `${chunk.fileName}.map`];
++                    if (mapAsset && mapAsset.type === "asset")
++                        mapAsset.source = map.toString();
+                 }
+-                bundle[moduleName].code = code;
+             }));
+             if (isWorker && isWorkerIifeRequested) {
+                 // Get the entry chunk
+diff --git a/dist/sourcemap-chain.js b/dist/sourcemap-chain.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..4d636dea7b20c0317ef7c27557fd7f8db5d3ac85
+--- /dev/null
++++ b/dist/sourcemap-chain.js
+@@ -0,0 +1,50 @@
++"use strict";
++// ifc-lite patch: compose the maps of this plugin's own rewrites onto the
++// bundler's chunk map, so the emitted .map still describes the emitted code.
++Object.defineProperty(exports, "__esModule", { value: true });
++exports.chainSourcemaps = void 0;
++const remapping = require("@jridgewell/remapping");
++/**
++ * @param rewrites maps of this plugin's rewrites, LATEST first; each one's
++ *   single source is the code the previous step produced
++ * @param original the bundler's map for the code before any rewrite
++ * @returns a map from the final code straight to the original sources, in the
++ *   bundler's own shape (file/toString/toUrl) so downstream consumers see no
++ *   difference
++ */
++function chainSourcemaps(rewrites, original) {
++    if (rewrites.length === 0)
++        return original;
++    const originalJson = typeof original === "string" ? JSON.parse(original) : {
++        version: 3,
++        file: original.file,
++        sourceRoot: original.sourceRoot,
++        sources: original.sources,
++        sourcesContent: original.sourcesContent,
++        names: original.names,
++        mappings: original.mappings,
++        x_google_ignoreList: original.x_google_ignoreList
++    };
++    const chain = [...rewrites, originalJson].map(map => (typeof map === "string" ? JSON.parse(map) : map));
++    // remapping walks the chain from the first (final) map; the loader is only
++    // asked about the sources of the LAST map, which are real modules.
++    const composed = remapping(chain, () => null, { excludeContent: false });
++    const out = {
++        version: 3,
++        file: originalJson.file,
++        sources: composed.sources,
++        sourcesContent: composed.sourcesContent,
++        names: composed.names,
++        mappings: composed.mappings
++    };
++    if (composed.sourceRoot)
++        out.sourceRoot = composed.sourceRoot;
++    if (composed.ignoreList && composed.ignoreList.length)
++        out.x_google_ignoreList = composed.ignoreList;
++    Object.defineProperty(out, "toString", { value() { return JSON.stringify(this); } });
++    Object.defineProperty(out, "toUrl", {
++        value() { return "data:application/json;charset=utf-8;base64," + Buffer.from(this.toString()).toString("base64"); }
++    });
++    return out;
++}
++exports.chainSourcemaps = chainSourcemaps;

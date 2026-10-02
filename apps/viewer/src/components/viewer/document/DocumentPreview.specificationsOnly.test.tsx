@@ -44,6 +44,9 @@ async function printedText(blob: Blob): Promise<Array<{ str: string; size: numbe
     const parsed = await task.promise;
     const text: Array<{ str: string; size: number }> = [];
     let paintedRing = false;
+    // jsPDF's numeric stroke channels use two decimal places, at most two RGB levels of rounding.
+    const passStroke = (color: string): boolean => /^#[0-9a-f]{6}$/i.test(color) && [1, 3, 5].every(offset =>
+      Math.abs(parseInt(color.slice(offset, offset + 2), 16) - parseInt(RING_COLORS.pass.slice(offset, offset + 2), 16)) <= 2);
     for (let number = 1; number <= parsed.numPages; number++) {
       const page = await parsed.getPage(number);
       try {
@@ -55,7 +58,7 @@ async function printedText(blob: Blob): Promise<Array<{ str: string; size: numbe
           if (op === pdf.OPS.save) savedColors.push(strokeColor);
           else if (op === pdf.OPS.restore) strokeColor = savedColors.pop() ?? '';
           else if (op === pdf.OPS.setStrokeRGBColor) strokeColor = args[0];
-          else if (op === pdf.OPS.constructPath && args[0] === pdf.OPS.stroke && strokeColor === RING_COLORS.pass) {
+          else if (op === pdf.OPS.constructPath && args[0] === pdf.OPS.stroke && passStroke(strokeColor)) {
             const bounds = args[2];
             // 44pt ring × 1.5 scale, minus its 8pt stroke: a 58pt circle, unlike the thin compact bars.
             paintedRing ||= bounds != null && Math.abs(bounds[2] - bounds[0] - 58) < 0.01

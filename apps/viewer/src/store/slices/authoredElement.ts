@@ -8,31 +8,9 @@
  * wasm re-mesh of the written IFC (#6232), not from these params.
  */
 
-import type {
-  BeamInStoreParams,
-  ColumnInStoreParams,
-  DoorInStoreParams,
-  MemberInStoreParams,
-  PlateInStoreParams,
-  ProfiledBeamInStoreParams,
-  ProfiledColumnInStoreParams,
-  ProfiledMemberInStoreParams,
-  RoofInStoreParams,
-  SlabInStoreParams,
-  SpaceInStoreParams,
-  WallInStoreParams,
-  WindowInStoreParams,
-} from '@ifc-lite/create';
+import type { DoorInStoreParams, OrdinaryInStoreElement, WindowInStoreParams } from '@ifc-lite/create';
 
-/** An element one of the `@ifc-lite/create` in-store builders makes, with the params it took. */
-export type AuthoredElement =
-  | { kind: 'column'; params: ColumnInStoreParams | ProfiledColumnInStoreParams }
-  | { kind: 'wall'; params: WallInStoreParams }
-  | { kind: 'slab'; params: SlabInStoreParams }
-  | { kind: 'beam'; params: BeamInStoreParams | ProfiledBeamInStoreParams }
+/** Existing ordinary builder params plus the viewer's free door/window actions. */
+export type AuthoredElement = OrdinaryInStoreElement
   | { kind: 'door'; params: DoorInStoreParams }
-  | { kind: 'window'; params: WindowInStoreParams }
-  | { kind: 'space'; params: SpaceInStoreParams }
-  | { kind: 'roof'; params: RoofInStoreParams }
-  | { kind: 'plate'; params: PlateInStoreParams }
-  | { kind: 'member'; params: MemberInStoreParams | ProfiledMemberInStoreParams };
+  | { kind: 'window'; params: WindowInStoreParams };

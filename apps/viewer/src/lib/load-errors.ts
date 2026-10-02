@@ -192,6 +192,10 @@ function isGpuAllocFailedError(message: string): boolean {
 function isFileUnreadableError(message: string): boolean {
   return (
     /notreadableerror/i.test(message) ||
+    // Gecko's NotReadableError text, which never repeats the name. Anchored to
+    // the whole message: on the analytics path the name is already gone, and
+    // only the exact DOMException sentence may claim the bucket.
+    /^(?:NotReadableError: )?The I\/O read operation failed\.?$/i.test(message.trim()) ||
     (/could not be read|failed to read/i.test(message) &&
       /permission|file/i.test(message))
   );

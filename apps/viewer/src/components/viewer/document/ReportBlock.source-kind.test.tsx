@@ -120,7 +120,7 @@ describe('report block preview (#6372)', () => {
 
 describe('report block editor refresh (#6372)', () => {
   function editor(block: IdsReportBlock, report: ValidationReport | null, onChange: (b: DocumentBlock) => void = noop) {
-    return render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={report} onChange={onChange} onMove={noop} onRemove={noop} />);
+    return render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={report} onChange={onChange} onMove={noop} onCopy={noop} onRemove={noop} />);
   }
 
   it('labels an information validation block by its kind', () => {

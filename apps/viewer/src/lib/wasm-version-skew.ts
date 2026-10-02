@@ -26,6 +26,7 @@ import {
   isWorkerScriptSkewMessage,
   WASM_ASSET_UNAVAILABLE_EVENT,
 } from '@ifc-lite/geometry';
+import { reloadKeepingOpenModels } from './reload-resume.js';
 import { reportStaleDeployment } from './stale-deployment.js';
 
 /** sessionStorage key holding the epoch-ms of the last skew-triggered reload. */
@@ -80,7 +81,8 @@ export interface VersionSkewDeps {
 
 const defaultDeps: VersionSkewDeps = {
   now: () => Date.now(),
-  reload: () => window.location.reload(),
+  // Keep the open models: the boot reopens them (./reload-resume.ts).
+  reload: () => reloadKeepingOpenModels('automatic'),
   hasRecentReload: recentlyReloaded,
   rememberReload: markReloaded,
 };

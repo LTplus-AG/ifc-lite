@@ -60,9 +60,11 @@ export function formatLoadError(err: unknown, fileName?: string, context?: unkno
       );
     case 'file_unreadable':
       return (
-        `Couldn't read ${subject} — the file is no longer available to the browser. ` +
-        `It may have been moved, renamed, deleted, or unloaded by a cloud-sync client ` +
-        `(OneDrive/Dropbox/iCloud) since you picked it. Please select the file again.`
+        `Couldn't read ${subject} — the browser can no longer read the file. ` +
+        `If it is in OneDrive, Dropbox, Google Drive or iCloud, it may be an online-only ` +
+        `placeholder: make it available offline ("Always keep on this device"), or copy it ` +
+        `to a local folder, then open it again. It may also have been moved, renamed or ` +
+        `changed since you picked it — open it again from its current location.`
       );
     case 'wasm_runtime_crashed':
       // Two sub-cases, and the difference matters to the user: a trap taken by

@@ -59,6 +59,7 @@ import { canUsePlainCodeBlockFallback, type ScriptMutationIntent } from '@/lib/l
 import { Image as ImageIcon, KeyRound } from 'lucide-react';
 import { getModelById } from '@/lib/llm/models';
 import { resolveStreamRoute } from '@/lib/llm/byok-guard';
+import { settleTurnAfter, startChatTurnTelemetry } from '@/lib/llm/chat-telemetry';
 import { getApiKeys, hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
 import { ByokKeyModal } from './chat/ByokKeyModal';
 import { ByokStreamingPill } from './chat/ByokStreamingPill';
@@ -637,6 +638,10 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       applyFailureDiagnostic: null as ReturnType<typeof useViewerStore.getState>['scriptLastDiagnostics'][number] | null,
     };
     let pendingAttachmentsCleared = attachments.length === 0;
+    const turnTelemetry = startChatTurnTelemetry({
+      route: route.kind, modelId: activeModel, turnCount: streamMessages.length, attachmentCount: attachments.length,
+      kind: continuationBase ? 'continue' : options?.intent === 'repair' ? 'repair' : 'chat',
+    });
 
     const clearPendingAttachmentsOnce = () => {
       if (pendingAttachmentsCleared) return;
@@ -660,6 +665,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
     // ── Shared stream callbacks ──
     const handleChunk = (chunk: string) => {
+        turnTelemetry.noteFirstChunk();
         clearPendingAttachmentsOnce();
         accumulated += chunk;
         if (!responseEditState.applyFailed && responseEditState.intent !== 'repair') {
@@ -694,7 +700,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         setChatStatus('streaming');
         updateStreaming(accumulated);
     };
-    const handleComplete = (fullText: string) => {
+    const completeTurn = (fullText: string) => {
         clearPendingAttachmentsOnce();
         const normalizedText = continuationBase
           ? stripContinuationOverlap(continuationBase, fullText)
@@ -874,16 +880,20 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
         commitAssistantTurn();
     };
+    const handleComplete = (fullText: string) => settleTurnAfter(turnTelemetry, () => completeTurn(fullText),
+      () => ({ scriptEdited: responseEditState.appliedAny || responseEditState.fallbackApplied }));
     const handleUsageInfo = (info: UsageInfo) => {
         setChatUsage(info);
     };
     const handleFinishReason = (reason: string | null) => {
+        turnTelemetry.noteFinishReason(reason);
         setLastFinishReason(reason);
         if (reason === 'length') {
           setChatError('Response reached output limit. Click Continue to resume.');
         }
     };
     const handleError = (err: Error) => {
+        turnTelemetry.finish('error', { error: err });
         setChatError(err.message);
         setChatAbortController(null);
         commitAssistantTurn();
@@ -930,6 +940,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     }
 
     if (abortController.signal.aborted) {
+      turnTelemetry.finish('aborted');
       commitAssistantTurn();
       const currentState = useViewerStore.getState();
       if (currentState.chatAbortController === abortController) {

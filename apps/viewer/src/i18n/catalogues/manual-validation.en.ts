@@ -80,6 +80,7 @@ export const manualValidationEn = {
   'manualValidation.report.long': 'Long',
   'manualValidation.report.compact': 'Short',
   'manualValidation.report.benchmarks': 'Show benchmark scores',
+  'manualValidation.report.showStamp': 'Show stamp information',
   'manualValidation.report.modelLabel': 'Answers from',
   'manualValidation.report.modelNotLoaded': 'The model these answers were recorded against ({model}) is not loaded. Load it to refresh, or pick another model.',
   'manualValidation.report.modelNotLoadedUnnamed': 'The model these answers were recorded against is not loaded. Load it to refresh, or pick another model.',

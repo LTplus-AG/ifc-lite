@@ -1,0 +1,10 @@
+--- a/apps/viewer/src/lib/storage/content-library.ts
++++ b/apps/viewer/src/lib/storage/content-library.ts
+@@ -148,6 +148,7 @@
+         entries.push(entry);
+       }
+       // The confirmation covers existing drafts, never edits made while reading.
++      if (editGeneration !== requestedAt) return false;
+       dirty.clear(); revisions.clear();
+       for (const row of rows) revisions.set(row.id, row.revision);
+       status = { ...status, phase: 'ready', items: {} }; publish(entries, status);

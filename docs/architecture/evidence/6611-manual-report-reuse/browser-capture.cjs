@@ -69,7 +69,7 @@ const artifact = path => ({ path: path.split('/').at(-1), bytes: fs.statSync(pat
    const newReport = edited.reports.find(r => r.id !== originalId); assert.equal(newReport.snapshot.modelFingerprint, source.fingerprint); assert.equal(newReport.snapshot.groups[0].items[1].status, 'pass'); assert.equal(newReport.snapshot.groups[0].items[1].comment, 'Edited current copy'); assert.equal(newReport.snapshot.groups[0].items[2].status, null); assert.equal(newReport.snapshot.groups[0].items[2].comment, 'Unanswered note must survive');
    await shot('edited-copy');
    await page.evaluate(async count => { const { DOCUMENT_VERSION } = await import('/src/lib/document/types.ts'); const s = __ifc_lite_viewer_store__.getState(); s.upsertDocument({ version: DOCUMENT_VERSION, id: 'reuse-proof-' + count, name: 'Saved manual reuse proof ' + count, page: { size: 'A4', orientation: 'portrait' }, blocks: [] }); s.setActiveDocumentId('reuse-proof-' + count); s.floatPanel('document'); s.setFloatingPanelRect('document', { x: 20, y: 65, w: 1470, h: 950 }); }, count);
-   await page.getByTitle('Add a block to the page', { exact: true }).click(); await page.getByRole('menuitem', { name: 'Saved validation report', exact: true }).click();
+   await page.getByTitle('Add a block to the page', { exact: true }).click(); await page.getByRole('menuitem', { name: 'Validation report', exact: true }).click();
    for (const [label, id] of [['original', originalId], ['edited', newReport.id]]) {
     await page.getByLabel('Saved report source', { exact: true }).selectOption(id);
     await page.waitForFunction(id => __ifc_lite_viewer_store__.getState().documents.find(d => d.id === __ifc_lite_viewer_store__.getState().activeDocumentId)?.blocks[0]?.savedReportId === id, id);

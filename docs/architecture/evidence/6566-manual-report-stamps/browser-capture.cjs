@@ -43,7 +43,7 @@ fs.mkdirSync(out, { recursive: true });
   for (const count of [1, 2]) {
    if (count === 2) { await page.evaluate(async () => { const { loadDemoRevB } = await import('/src/lib/tours/demo-kit.ts'); await loadDemoRevB(); }); await page.waitForFunction(() => { const s = __ifc_lite_viewer_store__.getState(); return [...s.models.values()].filter(m => m.ifcDataStore && m.sourceFingerprint).length === 2 && !s.isLoading; }, null, { timeout: 90000 }); }
    facts.models = await setup(count);
-   await page.getByTitle('Add a block to the page', { exact: true }).click(); await page.getByRole('menuitem', { name: 'Manual validation report', exact: true }).click();
+   await page.getByTitle('Add a block to the page', { exact: true }).click(); await page.getByRole('menuitem', { name: 'Validation report', exact: true }).click();
    await page.waitForFunction(() => document.querySelector('[data-block-manual-report]')?.textContent.includes('Review retained prefix'));
    const before = await observe(count + '-shown'); assert.ok(!('showStamp' in before) || before.showStamp === undefined);
    assert.match(facts.states.at(-1).preview, /Model:.*Recorded:.*Models:/s);

@@ -1,0 +1,18 @@
+--- a/apps/viewer/src/lib/storage/content-library.ts
++++ b/apps/viewer/src/lib/storage/content-library.ts
+@@ -81,6 +81,7 @@
+   };
+   const stage = (id: string, entry: T | null, reason: ContentFailure = 'unavailable'): void => {
+     editGeneration++;
++    if (!revisions.has(id)) revisions.set(id, 0);
+     generations.set(id, (generations.get(id) ?? 0) + 1);
+     dirty.set(id, entry === null ? null : structuredClone(entry));
+     status.items[id] = reason; change(id, entry);
+@@ -97,6 +98,7 @@
+     }
+     if (value !== null && !entry) { stage(id, value, 'invalid'); return Promise.resolve(false); }
+     editGeneration++;
++    if (!revisions.has(id)) revisions.set(id, 0);
+     const generation = (generations.get(id) ?? 0) + 1;
+     generations.set(id, generation);
+     dirty.set(id, value); status.items[id] = 'saving'; change(id, value);

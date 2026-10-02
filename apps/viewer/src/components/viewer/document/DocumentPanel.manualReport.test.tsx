@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * "Add block › Manual validation report" (#6401) in the real Document panel:
+ * "Add block › Validation report" with the manual checklist as its source (#6401) in the real Document panel:
  * the block snapshots the Manual validation tab's checklist and the active
  * model's answers, the preview shows the rings and every verdict, and the
  * snapshot stays frozen until Refresh.
@@ -92,7 +92,7 @@ describe('Document panel manual validation report (#6401)', () => {
     const ui = render(<DocumentPanel />);
     await settle();
     openMenu([...ui.querySelectorAll('button')].find((button) => button.title === 'Add a block to the page')!);
-    click(menuItem('Manual validation report')!);
+    click(menuItem('Validation report')!);
     await settle();
     const stored = (): ManualReportBlock => useViewerStore.getState().documents[0].blocks.find((candidate): candidate is ManualReportBlock => candidate.kind === 'manual-report')!;
     const preview = (): Element => ui.querySelector('[data-block-manual-report]')!;
@@ -145,8 +145,8 @@ describe('Document panel manual validation report (#6401)', () => {
     const ui = render(<DocumentPanel />);
     await settle();
     openMenu([...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!);
-    const item = menuItem('Manual validation report');
-    assert.ok(item, 'the menu offers a manual validation report');
+    const item = menuItem('Validation report');
+    assert.ok(item, 'the menu offers the one validation report entry');
     click(item);
     await settle();
 
@@ -192,7 +192,7 @@ describe('Document panel manual validation report (#6401)', () => {
     const ui = render(<DocumentPanel />);
     await settle();
     openMenu([...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!);
-    click(menuItem('Manual validation report')!);
+    click(menuItem('Validation report')!);
     await settle();
     const stored = (): ManualReportBlock => useViewerStore.getState().documents[0].blocks.find((b): b is ManualReportBlock => b.kind === 'manual-report')!;
     assert.equal(stored().modelFingerprint, 'fp-annex');
@@ -243,7 +243,7 @@ describe('Document panel manual validation report (#6401)', () => {
     const ui = render(<DocumentPanel />);
     await settle();
     openMenu([...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!);
-    const item = menuItem('Manual validation report');
+    const item = menuItem('Validation report');
     assert.equal(item?.getAttribute('aria-disabled'), 'true');
   });
 
@@ -265,7 +265,7 @@ describe('Document panel manual validation report (#6401)', () => {
     const ui = render(<DocumentPanel />);
     await settle();
     openMenu([...ui.querySelectorAll('button')].find((button) => button.title === 'Add a block to the page')!);
-    click(menuItem('Manual validation report')!);
+    click(menuItem('Validation report')!);
     await settle();
     const stored = (): ManualReportBlock => useViewerStore.getState().documents[0].blocks.find((block): block is ManualReportBlock => block.kind === 'manual-report')!;
     const blockId = stored().id;
@@ -360,7 +360,7 @@ describe('Document panel manual validation report (#6401)', () => {
     await settle();
     const addManual = async () => {
       openMenu([...ui.querySelectorAll('button')].find((button) => button.title === 'Add a block to the page')!);
-      click(menuItem('Manual validation report')!);
+      click(menuItem('Validation report')!);
       await settle();
     };
     await addManual();

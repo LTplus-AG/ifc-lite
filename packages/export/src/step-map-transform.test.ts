@@ -72,6 +72,31 @@ describe.skipIf(!wasmAvailable)('real canonical WASM export planning (#6587)', (
     const { initSync } = await import('@ifc-lite/wasm');
     initSync({ module: readFileSync(wasmPath) });
   });
+  it('preserves edited IFC bytes for writer zero-angle roundoff while retaining genuine-transform refusals (#6691)', async () => {
+    const connected = data.replace('.MILLI.', '$') + '\n#170=IFCCONNECTIONSURFACEGEOMETRY(#171,$);\n#171=IFCPLANE(#9);';
+    for (const operation of ['1.,6.12323399573677E-17,1.', '1.,-6.12323399573677E-17,1.', '2.,1.224646799147354E-16,1.']) {
+      const store = await parse(file(connected.replace('0.,1.,0.9996', operation)));
+      const view = new MutablePropertyView(store.properties ?? null, 'roundoff');
+      view.setAttribute(50, 'Name', 'Edited', 'Original');
+      const ordinary = new StepExporter(store, view).export(options);
+      const adapted = await new StepExporter(store, view).exportAsync({ ...options, normalizeMapUnitsToMetres: true, normalizeMapGeometry: true });
+      expect(adapted.stats.warnings).toEqual([]);
+      expect(adapted.content).toEqual(ordinary.content);
+      expect(adapted.stats).toEqual(ordinary.stats);
+      const output = await parse(adapted.content);
+      expect(attrs(output, 50)[2]).toBe('Edited');
+      expect(attrs(output, 38)).toEqual(attrs(store, 38));
+    }
+    for (const operation of ['1.,2.2204460492503136E-16,1.', '1.,0.,1.0000000000000002', '0.9659258262890683,0.25881904510252074,1.']) {
+      const store = await parse(file(connected.replace('0.,1.,0.9996', operation)));
+      const ordinary = new StepExporter(store).export(options);
+      const refused = await new StepExporter(store).exportAsync({ ...options, normalizeMapGeometry: true });
+      expect(refused.stats.warnings.some(warning => warning.includes('IfcConnectionSurfaceGeometry'))).toBe(true);
+      expect(refused.content).toEqual(ordinary.content);
+      expect(refused.stats.newEntityCount).toBe(0);
+      expect(refused.stats.modifiedEntityCount).toBe(0);
+    }
+  });
   it('retains named and overlay-created edits, unique modified counts, and project units', async () => {
     const store = await parse(file());
     const view = new MutablePropertyView(store.properties ?? null, 'map-transform');

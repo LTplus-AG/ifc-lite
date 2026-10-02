@@ -26,6 +26,7 @@ import { WebGpuDisabledCaption } from './WebGpuTroubleshooting';
 import { TourInvite } from '@/components/tours/TourInvite';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
+import { trackUiEvent } from '@/lib/analytics';
 
 /** Plain CSS text, not UI copy — kept as a module-level constant (rather than
  *  an inline `<style>{`…`}</style>` template literal) so the i18n literal
@@ -65,6 +66,8 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   // model, and the sample the tours use already ships with the viewer. It
   // goes through the same `loadFile` as every other open.
   const loadDemo = async () => {
+    // Which way in a first visit takes; the panel empty state reports the same pair.
+    trackUiEvent('onboarding_surface', { surface: 'welcome_card', action: 'load_sample' });
     setDemoLoading(true);
     try {
       await loadFile(await fetchDemoProjectFile());
@@ -146,7 +149,10 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
 
       <button
         type="button"
-        onClick={onOpenClick}
+        onClick={() => {
+          trackUiEvent('onboarding_surface', { surface: 'welcome_card', action: 'open_file' });
+          onOpenClick();
+        }}
         disabled={actionsDisabled}
         className={`group w-full flex items-center justify-center gap-3 px-6 py-3 font-mono text-sm border transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
           actionsDisabled

@@ -24,6 +24,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isValidElement, Suspense, type ReactNode } from 'react';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
+import { PanelModelGate } from '@/components/viewer/PanelModelGate';
 import { WORKSPACE_PANELS, getPanelDef } from './registry.js';
 import { renderPanelBody } from './renderPanelBody.js';
 
@@ -50,8 +51,9 @@ describe('workspace panel registry coverage', () => {
       // #4243: Layers and Appearance share loading/error hosts, not content.
       // Compare the actual panel beneath those hosts so the fall-through
       // regression remains detectable without rejecting legitimate wrappers.
+      // #6720: the no-model gate wraps model-dependent panels the same way.
       while (isValidElement<{ children?: ReactNode }>(body) &&
-        (body.type === ChunkErrorBoundary || body.type === Suspense)) {
+        (body.type === ChunkErrorBoundary || body.type === Suspense || body.type === PanelModelGate)) {
         body = body.props.children;
       }
       assert.ok(isValidElement(body), `${panel.id} must have panel content beneath its loading/error hosts`);

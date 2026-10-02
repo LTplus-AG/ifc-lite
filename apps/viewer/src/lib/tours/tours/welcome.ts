@@ -9,9 +9,27 @@
  */
 
 import { TOUR_ANCHORS } from '../anchors';
-import { loadDemoProject } from '../demo-kit';
+import { ensureTourModel, loadDemoProject } from '../demo-kit';
 import { EVENT_CAMERA_INTERACTED } from '../events';
-import type { TourDefinition } from '../types';
+import type { TourDefinition, ViewerStoreApi } from '../types';
+
+/**
+ * The element "Read its data" shows when the user skipped "Select an
+ * element" (13 skips in the field): a wall when the model has one, else the
+ * first meshed element. Scene meshes carry federated GLOBAL ids, which is
+ * what `setSelectedEntityId` takes; `useModelSelection` resolves the
+ * EntityRef the Information panel reads.
+ */
+export function representativeElementId(store: ViewerStoreApi): number | null {
+  let fallback: number | null = null;
+  for (const model of store.getState().models.values()) {
+    for (const mesh of model.geometryResult?.meshes ?? []) {
+      if (mesh.ifcType?.startsWith('IfcWall')) return mesh.expressId;
+      fallback ??= mesh.expressId;
+    }
+  }
+  return fallback;
+}
 
 export const WELCOME_TOUR: TourDefinition = {
   id: 'welcome',
@@ -44,6 +62,10 @@ export const WELCOME_TOUR: TourDefinition = {
       kind: 'canvas',
       title: 'Look around',
       body: 'Drag to orbit. Middle-drag or Shift+drag to pan. Scroll to zoom. Hold right-click to fly with WASD.',
+      // Load skipped with nothing open: every step from here needs a model,
+      // so the demo project stands in rather than the rest of the tour
+      // pointing at an empty viewer.
+      prepare: () => ensureTourModel(),
       gate: { event: EVENT_CAMERA_INTERACTED },
     },
     {
@@ -51,7 +73,8 @@ export const WELCOME_TOUR: TourDefinition = {
       kind: 'canvas',
       title: 'Select an element',
       body: 'Click any element in the 3D view to select it. Click empty space to deselect.',
-      prepare: (store) => {
+      prepare: async (store) => {
+        await ensureTourModel();
         // A stale selection must not auto-advance the step.
         store.getState().clearSelection();
         store.getState().clearEntitySelection();
@@ -66,7 +89,14 @@ export const WELCOME_TOUR: TourDefinition = {
       placement: 'left',
       title: 'Read its data',
       body: 'The Information panel lists attributes and property sets for the selection. Open the Quantities tab to see areas and volumes.',
-      prepare: (store) => {
+      prepare: async (store) => {
+        // Skipped load or select must not leave this step reading an empty
+        // panel: the Quantities tab only exists for a selected element.
+        await ensureTourModel();
+        if (store.getState().selectedEntityId === null) {
+          const id = representativeElementId(store);
+          if (id !== null) store.getState().setSelectedEntityId(id);
+        }
         store.getState().showWorkspacePanel('properties', 'programmatic');
         store.getState().setPropertiesActiveTab('properties');
       },
@@ -79,7 +109,8 @@ export const WELCOME_TOUR: TourDefinition = {
       placement: 'right',
       title: 'Browse the structure',
       body: 'The tree mirrors the model: site, building, storeys, elements. Click a storey name to focus it in 3D.',
-      prepare: (store) => {
+      prepare: async (store) => {
+        await ensureTourModel();
         store.getState().setLeftPanelCollapsed(false);
         store.getState().clearStoreySelection();
         store.getState().setActiveStorey(null);

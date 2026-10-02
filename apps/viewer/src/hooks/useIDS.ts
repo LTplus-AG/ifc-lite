@@ -29,7 +29,7 @@ import type {
 } from '@ifc-lite/ids';
 import { isIDSValidationReport } from '@ifc-lite/ids';
 import { loadIdsContent } from './ids/loadIdsContent';
-import { beginDefinitionImport } from '@/lib/validation/definition-import-owner';
+import { beginDefinitionImport, isDefinitionImportReading } from '@/lib/validation/definition-import-owner';
 import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewer/IDSExportDialog';
 
 import { resolveValidationTarget, type IdsErrorState } from './ids/resolveValidationTarget';
@@ -129,7 +129,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     bumpEpoch();
     workerAbortRef.current?.abort();
     workerAbortRef.current = null;
-    setIdsLoading(false);
+    if (!isDefinitionImportReading(useViewerStore, 'ids')) setIdsLoading(false);
     setIdsProgress(null);
     setIdsError(null);
   }, [bumpEpoch, setIdsLoading, setIdsProgress, setIdsError]);
@@ -147,7 +147,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   }, []);
 
   const loadIDSFile = useCallback(async (file: File) => {
-    const owner = beginDefinitionImport(useViewerStore, 'ids');
+    const owner = beginDefinitionImport(useViewerStore, 'ids', true);
     try {
       setIdsLoading(true);
       setIdsError(null);
@@ -160,6 +160,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
         setIdsAuditing(false);
       }
     } finally {
+      owner.finishedReading();
       if (owner.wanted()) setIdsLoading(false);
     }
   }, [setIdsLoading, setIdsError, setIdsAuditing]);

@@ -99,8 +99,15 @@ beforeEach(() => {
   globalThis.FileReader = WaitingReader;
 });
 afterEach(async () => {
-  for (const barrier of gates) barrier.release();
-  await Promise.allSettled(pending);
+  await act(async () => {
+    for (const barrier of gates) barrier.release();
+    await Promise.allSettled(pending);
+    const started = Date.now();
+    while (useViewerStore.getState().idsAuditing) {
+      assert.ok(Date.now() - started < 5000, 'the accepted real auditor finishes before mounted cleanup');
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  });
   cleanup(); globalThis.FileReader = originalReader;
   useViewerStore.setState(initial); setValidationSourceChoice(null);
 });

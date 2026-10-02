@@ -24,12 +24,12 @@ export function SavedReportSource({ block, onChange }: { block: ValidationReport
           onChange={(e) => {
             const entry = choices.find((candidate) => candidate.id === e.target.value);
             if (entry) {
-              const next = { ...savedReportBlock(entry, block.id), title: block.title };
-              onChange(block.kind === 'ids-report' && next.kind === 'ids-report'
-                ? { ...next, variant: block.variant, benchmarks: block.benchmarks }
-                : block.kind === 'manual-report' && next.kind === 'manual-report'
-                  ? replaceManualReportSnapshot(block, next)
-                  : next);
+              const next = savedReportBlock(entry, block.id);
+              onChange(block.kind === 'manual-report' && next.kind === 'manual-report'
+                ? replaceManualReportSnapshot(block, next)
+                : block.kind === 'ids-report' && next.kind === 'ids-report'
+                  ? { ...next, title: block.title, variant: block.variant, benchmarks: block.benchmarks }
+                  : { ...next, title: block.title });
             }
           }}>
           <option value="" disabled>{t('validationPanel.history.embedded')}</option>

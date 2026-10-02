@@ -11,7 +11,9 @@ export interface ContentStatus {
   recovered: boolean;
   items: Record<string, ContentSaveState>;
 }
-export const initialContentStatus = (): ContentStatus => ({ phase: 'loading', recovered: false, items: {} });
+// IDs come from imported files; own properties must also handle __proto__ safely.
+const copyItemStatus = (items?: ContentStatus['items']): ContentStatus['items'] => Object.assign(Object.create(null), items);
+export const initialContentStatus = (): ContentStatus => ({ phase: 'loading', recovered: false, items: copyItemStatus() });
 
 /** One controller per store slice: edits stay visible before hydration and on refusal.
  * Per-item queues prevent old commits clearing newer drafts; transactions check other tabs. */
@@ -24,12 +26,12 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
   const queues = new Map<string, Promise<boolean>>();
   const generations = new Map<string, number>();
   let editGeneration = 0;
-  const emit = () => publish(read(), { ...status, items: { ...status.items } });
+  const emit = () => publish(read(), { ...status, items: copyItemStatus(status.items) });
   const change = (id: string, entry: T | null) => {
     const current = read();
     const entries = entry ? current.map(value => value.id === id ? entry : value) : current.filter(value => value.id !== id);
     if (entry && !current.some(value => value.id === id)) entries.push(entry);
-    publish(entries, { ...status, items: { ...status.items } });
+    publish(entries, { ...status, items: copyItemStatus(status.items) });
   };
   const load = async (): Promise<boolean> => {
     try {
@@ -56,7 +58,7 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
       for (const entry of read()) if (dirty.has(entry.id)) entries.set(entry.id, entry);
       for (const [id, entry] of dirty) { if (entry) entries.set(id, entry); else entries.delete(id); }
       status = { ...status, phase: 'ready', recovered };
-      publish([...entries.values()], { ...status, items: { ...status.items } });
+      publish([...entries.values()], { ...status, items: copyItemStatus(status.items) });
       return true;
     } catch (error) {
       const reason = contentFailure(error);
@@ -67,7 +69,7 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
           const entry = definition.decode(raw);
           if (entry && !dirty.has(entry.id)) { entries.set(entry.id, entry); status.items[entry.id] = reason; }
         }
-        publish([...entries.values()], { ...status, items: { ...status.items } });
+        publish([...entries.values()], { ...status, items: copyItemStatus(status.items) });
       } else emit();
       return false;
     }
@@ -151,7 +153,7 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
       if (editGeneration !== requestedAt) return false;
       dirty.clear(); revisions.clear();
       for (const row of rows) revisions.set(row.id, row.revision);
-      status = { ...status, phase: 'ready', items: {} }; publish(entries, status);
+      status = { ...status, phase: 'ready', items: copyItemStatus() }; publish(entries, status);
       return true;
     } catch (error) { contentFailure(error); return false; }
   };

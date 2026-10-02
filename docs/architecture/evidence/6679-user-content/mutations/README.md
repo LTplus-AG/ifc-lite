@@ -26,3 +26,10 @@ the independently removed decision and behavioral test remain inspectable.
 The dirty-revision mutation removes revision-zero preservation for newly staged
 and saved unknown IDs. The restore mutation removes cancellation after edits
 made while the confirmed restore reads storage.
+
+The final review also found a file-provided `__proto__` ID could hide its
+quota failure through an inherited object setter. The native-transaction
+regression ran 2 passes and 1 assertion failure before the fix, then 3 passes
+and no failures after status initialization, copies and restore resets used
+the same null-prototype helper. It verifies both refusal/retry rounds around
+a restore. The two prototype-status logs retain the actual output.

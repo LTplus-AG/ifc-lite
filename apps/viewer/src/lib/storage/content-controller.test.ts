@@ -4,7 +4,7 @@
 
 import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
-import { beforeEach, it } from 'node:test';
+import { beforeEach, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { createContentLibrary, initialContentStatus } from './content-library.js';
 import { contentTransaction, readContentRows, transactionDone } from './content-database.js';
@@ -56,4 +56,26 @@ it('#6679 restore never discards a draft created after its confirmation', async 
   assert.equal(content.entries()[0].name, 'Newer unconfirmed draft');
   assert.equal(await content.retry(), true);
   assert.deepEqual((await readContentRows('document'))[0].payload, { ...entry, name: 'Newer unconfirmed draft' });
+});
+
+it('#6679 a file-provided __proto__ ID retains its quota refusal and retries after restore', async () => {
+  const content = library(), entry = { id: '__proto__', name: 'Imported draft' };
+  await content.initialize();
+  for (const name of ['Imported draft', 'Edited after restore']) {
+    const nativeTransaction = IDBDatabase.prototype.transaction;
+    const refused = mock.method(IDBDatabase.prototype, 'transaction', function (this: IDBDatabase,
+      stores: string | string[], mode?: IDBTransactionMode, options?: IDBTransactionOptions) {
+      if (mode === 'readwrite' && stores === 'items') throw new DOMException('Quota exhausted', 'QuotaExceededError');
+      return nativeTransaction.call(this, stores, mode, options);
+    });
+    try {
+      assert.equal(await content.put(entry.id, { ...entry, name }), false);
+      assert.equal(content.entries()[0].name, name);
+      assert.equal(content.status().items[entry.id], 'quota');
+    } finally { refused.mock.restore(); }
+    assert.equal(await content.retry(), true);
+    assert.equal(content.status().items[entry.id], 'saved');
+    assert.deepEqual((await readContentRows('document'))[0].payload, { ...entry, name });
+    assert.equal(await content.restore(), true);
+  }
 });

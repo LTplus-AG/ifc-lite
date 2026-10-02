@@ -18,12 +18,15 @@ import type {
   HostedWindowInStoreParams,
   OpeningInStoreParams,
   WallJoinApplyOptions,
+  InStoreReplacementElement,
   StairInStoreParams,
   RailingInStoreParams,
 } from '@ifc-lite/create';
 import type { EntityRef } from './types.js';
 
 export interface ModellingStoreBackendMethods {
+  /** Optional capability: replace a live product and its uniquely owned stair flight atomically. */
+  replaceElement?(ref: EntityRef, storeyExpressId: number, element: InStoreReplacementElement): EntityRef;
   /** Optional host capability: a storey-local IfcStair aggregating one IfcStairFlight. Returns the stair. */
   addStair?(modelId: string, storeyExpressId: number, params: StairInStoreParams): EntityRef;
   /** Optional host capability: an IfcRailing along a storey-local polyline. Returns the railing. */

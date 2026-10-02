@@ -10,6 +10,7 @@ import { EntityExtractor, IfcParser, extractPropertiesOnDemand } from '@ifc-lite
 import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { addOrdinaryElementInStore, type OrdinaryInStoreElement } from './ordinary-element.js';
+import { replaceElementInStore } from './element-replacement.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 
 const SAMPLE = new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
@@ -87,6 +88,23 @@ describe('#6232 D5 ordinary atomic commit', () => {
       expect(typeof representation).toBe('number');
       expect(extractor.extractEntity(parsed.entityIndex.byId.get(representation as number)!)?.type).toBe('IFCPRODUCTDEFINITIONSHAPE');
       expect(parsed.entityIndex.byId.has(s.prior)).toBe(true);
+      const existing = s.snapshot(), nextId = s.view.peekNextExpressId();
+      expect(() => replaceElementInStore(s.store, s.editor, id, draft => {
+        draft.addEntity('IfcCartesianPoint', [[99, 88, 77]]);
+        return resolveSpatialAnchor(s.store, STOREY, draft.getMutationView());
+      }, invalid)).toThrow(/not a valid 22-character IFC GUID/);
+      expect(s.snapshot()).toEqual(existing);
+      expect(s.view.peekNextExpressId()).toBe(nextId);
+      expect(s.view.isDeleted(id)).toBe(false);
+      const replacement = replaceElementInStore(s.store, s.editor, id,
+        draft => resolveSpatialAnchor(s.store, STOREY, draft.getMutationView()), element);
+      expect(replacement.removedIds).toEqual([id]);
+      expect(s.view.isDeleted(id)).toBe(true);
+      expect(s.view.getNewEntity(replacement.expressId)?.type).toBe(`IFC${element.kind.toUpperCase()}`);
+      const replaced = await new IfcParser().parseColumnar(s.saved().slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+      expect(replaced.entityIndex.byId.has(id)).toBe(false);
+      expect(replaced.entityIndex.byId.has(replacement.expressId)).toBe(true);
+      expect(replaced.entityIndex.byId.has(s.prior)).toBe(true);
     });
   }
 

@@ -128,6 +128,40 @@ async function session(count: number) {
 }
 
 describe.skipIf(!AVAILABLE)('#6232 D5 canonical stair/railing SDK and public MCP', () => {
+  for (const count of [1, 2]) it(`persistent stair→railing→stair/${count} replaces one graph and public Undo restores prior geometry`, async () => {
+    const { registry: models, target, transport, call } = await session(count);
+    try {
+      target.bim.store.addEntity(target.id, { type: 'IfcCartesianPoint', attributes: [[7, 8, 9]] });
+      const options = { host: { bim: target.bim, defaultModelId: target.id }, registry: createStandardRegistry(), tracking: new MemoryTrackingStore(), features: headlessFeatures() };
+      const peer = count === 2 ? (await records(models.get('alpha')!.bim.export.ifc())).all : null;
+      const original = flow('stair');
+      expect((await runFlow(original, options)).ok).toBe(true);
+      const created = (await records(target.bim.export.ifc())).all, journal = target.backend.getOrCreateMutationView().getMutations();
+      const beforeBytes = target.bim.export.ifc();
+      const nativeBefore = await meshStairs(typeof beforeBytes === 'string' ? beforeBytes : new TextDecoder().decode(beforeBytes));
+      const globalId = Object.values(options.tracking.load('d5-stair')!.entries)[0].globalId;
+      const change = flow('railing');
+      const switched = { ...change, nodes: change.nodes.map(node => node.id === 'create' ? { ...node, trackingKey: 'd5-stair' } : node) };
+      expect((await runFlow(switched, options)).ok).toBe(true);
+      const rows = (await records(target.bim.export.ifc())).all;
+      const made = rows.filter(([, e]) => e.attributes[0] === globalId);
+      expect(made).toHaveLength(1); expect(made[0][1].type).toBe('IFCRAILING');
+      expect(rows.filter(([, e]) => e.type === 'IFCSTAIRFLIGHT')).toHaveLength(0);
+      await assertProduct(target.bim, { modelId: target.id, expressId: made[0][0] }, 'railing');
+      expect((await call('mutation_undo', { model_id: target.id })).isError).not.toBe(true);
+      expect((await records(target.bim.export.ifc())).all).toEqual(created);
+      expect(target.backend.getOrCreateMutationView().getMutations()).toEqual(journal);
+      const content = target.bim.export.ifc();
+      expect(await meshStairs(typeof content === 'string' ? content : new TextDecoder().decode(content))).toEqual(nativeBefore);
+      // The tracking store belongs to the flow host, outside model Undo. Re-run
+      // against the restored GUID and changed digest must replace that stair.
+      expect((await runFlow(original, options)).ok).toBe(true);
+      const restored = (await records(target.bim.export.ifc())).all.filter(([, e]) => e.attributes[0] === globalId);
+      expect(restored).toHaveLength(1); expect(restored[0][1].type).toBe('IFCSTAIR');
+      await assertProduct(target.bim, { modelId: target.id, expressId: restored[0][0] }, 'stair');
+      if (peer) expect((await records(models.get('alpha')!.bim.export.ifc())).all).toEqual(peer);
+    } finally { transport.close(); }
+  });
   for (const kind of ['stair', 'railing'] as const) {
     for (const operation of ['update', 'remove', 'invalid update'] as const) {
       it(`persistent flow ${operation}: ${kind} leaves no live orphan or dangling relationship`, async () => {

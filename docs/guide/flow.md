@@ -181,6 +181,11 @@ them. That node is **tracked**: it owns the elements it creates.
   **removed** — the orphan Dynamo leaves behind. A tracked node deleted
   from the graph (or given a new tracking key) has its whole set removed
   on the next run.
+- An **update** uses the optional atomic `bim.store.replaceElement` capability:
+  removal and canonical creation either both commit or leave the previous
+  product/flight, journal, allocator and tracked entry intact. Unsupported
+  hosts refuse before removal. This also applies when a tracked spec changes
+  kind. The public MCP tool still has fresh per-call tracking.
 - An **update** replaces the product; the representation items of the
   previous body stay in the exported file as unreferenced entities (the
   store tombstones the product only). Stairs remove their uniquely owned

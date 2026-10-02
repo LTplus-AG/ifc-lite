@@ -240,15 +240,16 @@ export const elementNodes: FlowNodeDef[] = [
       // model was rebuilt from an older file) both end in a fresh element under
       // the same GlobalId; a keep that returned a handle to nothing would read
       // as success downstream.
+      let ref: SdkEntityRef;
       if (t.action === 'update' && existing) {
-        // A removal the store refused leaves a live element under this
-        // GlobalId; creating a second one would make the key ambiguous.
-        if (!removeTrackedElement(ctx, existing)) throw new Error(`element ${t.globalId} (#${existing.expressId}) could not be removed for update`);
-        forgetGlobalId(ctx.host.bim, t.globalId);
-      } else if (t.action !== 'create') {
-        ctx.log('warn', `element ${t.globalId} was tracked but is no longer in the model; re-creating it`);
+        if (existing.modelId !== storey.modelId) throw new Error('Tracked replacement must remain in the same model');
+        // The shared capability stages old removal + builder writes together.
+        // Failed creation must not forget the live GlobalId or tracking entry.
+        ref = ctx.host.bim.store.replaceElement(existing, storey.expressId, replacementSpec(spec, t.globalId));
+      } else {
+        if (t.action !== 'create') ctx.log('warn', `element ${t.globalId} was tracked but is no longer in the model; re-creating it`);
+        ref = addSpec(ctx, storey, spec, t.globalId);
       }
-      const ref = addSpec(ctx, storey, spec, t.globalId);
       rememberGlobalId(ctx.host.bim, t.globalId, ref);
       return { entity: { globalId: t.globalId, modelId: ref.modelId, expressId: ref.expressId } satisfies EntityRef };
     },
@@ -300,5 +301,17 @@ function addSpec(ctx: Ctx, storey: SdkEntityRef, spec: ElementSpec, GlobalId: st
     case 'stair': return store.addStair(storey.modelId, storey.expressId, { ...spec.params, GlobalId });
     case 'railing': return store.addRailing(storey.modelId, storey.expressId, { ...spec.params, GlobalId });
     default: throw new Error(`unknown element kind "${String((spec as { kind: unknown }).kind)}"`);
+  }
+}
+
+/** Discriminated canonical params, including a cross-kind tracked replacement. */
+function replacementSpec(spec: ElementSpec, GlobalId: string): Parameters<StoreNamespace['replaceElement']>[2] {
+  switch (spec.kind) {
+    case 'wall': return { kind: spec.kind, params: { ...spec.params, GlobalId } };
+    case 'column': return { kind: spec.kind, params: { ...spec.params, GlobalId } };
+    case 'beam': return { kind: spec.kind, params: { ...spec.params, GlobalId } };
+    case 'slab': return { kind: spec.kind, params: { ...spec.params, GlobalId } };
+    case 'stair': return { kind: spec.kind, params: { ...spec.params, GlobalId } };
+    case 'railing': return { kind: spec.kind, params: { ...spec.params, GlobalId } };
   }
 }

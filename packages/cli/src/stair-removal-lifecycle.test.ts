@@ -71,6 +71,12 @@ describe.skipIf(!AVAILABLE)('#6232 canonical stair assembly lifecycle', () => {
         m.backend.ensureEditor().setPositionalAttribute(column.expressId, 6, `#${m.flightId}`);
       }
       const before = await data(m.bim.export.ifc()), journal = m.view.getMutations(), next = m.view.peekNextExpressId();
+      expect(() => m.bim.store.replaceElement(m.ref, 42, { kind: 'railing', params: { Path: [[0, 0, 0], [2, 0, 0]], Height: 1 } }))
+        .toThrow(control === 'duplicate root' ? /must aggregate exactly one live IfcStairFlight/
+          : control === 'shared flight' ? /belongs to another assembly/ : /foreign product #\d+\.Representation references/);
+      expect(await data(m.bim.export.ifc())).toEqual(before);
+      expect(m.view.getMutations()).toEqual(journal);
+      expect(m.view.peekNextExpressId()).toBe(next);
       expect(() => m.bim.store.removeStair(m.ref)).toThrow(control === 'duplicate root'
         ? /must aggregate exactly one live IfcStairFlight/ : control === 'shared flight'
           ? /belongs to another assembly/ : /foreign product #\d+\.Representation references/);
@@ -91,6 +97,8 @@ describe.skipIf(!AVAILABLE)('#6232 canonical stair assembly lifecycle', () => {
       expect(new AnchorEntityReader(m.store, m.view).entity(id)).toBeNull();
       const bytes = m.store.source.materialize().slice(), journal = m.view.getMutations();
       const records = m.view.getNewEntities(), next = m.view.peekNextExpressId();
+      expect(() => m.bim.store.replaceElement(m.ref, 42, { kind: 'railing', params: { Path: [[0, 0, 0], [2, 0, 0]], Height: 1 } }))
+        .toThrow(/live (IfcRelAggregates|product) #\d+ cannot be read/);
       expect(() => m.bim.store.removeStair(m.ref)).toThrow(/live (IfcRelAggregates|product) #\d+ cannot be read/);
       expect(m.view.getMutations()).toEqual(journal);
       expect(m.view.getNewEntities()).toEqual(records);
@@ -100,6 +108,15 @@ describe.skipIf(!AVAILABLE)('#6232 canonical stair assembly lifecycle', () => {
       expect(m.store.source.materialize()).toEqual(bytes);
     });
   }
+  it('replacement resolves the current source placement and refuses before removing the old pair', async () => {
+    const m = await made();
+    m.bim.store.setPositionalAttribute({ modelId: 'm', expressId: 42 }, 5, null);
+    const before = await data(m.bim.export.ifc()), journal = m.view.getMutations(), next = m.view.peekNextExpressId();
+    expect(() => m.bim.store.replaceElement(m.ref, 42, { kind: 'stair', params: PARAMS }))
+      .toThrow('resolveSpatialAnchor: storey #42 has no resolvable IfcLocalPlacement');
+    expect(await data(m.bim.export.ifc())).toEqual(before);
+    expect(m.view.getMutations()).toEqual(journal); expect(m.view.peekNextExpressId()).toBe(next);
+  });
   it('retains shared shape leaves, numeric non-reference collisions and dense parsed geometry', async () => {
     const m = await made(true);
     expect(m.store.entityIndex.byType.get('IFCCARTESIANPOINT')!.length).toBeGreaterThan(4096);
@@ -150,15 +167,16 @@ describe.skipIf(!AVAILABLE)('#6232 canonical stair assembly lifecycle', () => {
   it('an existing third-party backend without optional capabilities refuses clearly', async () => {
     const m = await made();
     // Omission is structurally assignable: the new capabilities are optional.
-    const old: Omit<ModellingStoreBackendMethods, 'addStair' | 'addRailing' | 'removeStair'> = m.backend.store;
+    const old: Omit<ModellingStoreBackendMethods, 'addStair' | 'addRailing' | 'removeStair' | 'replaceElement'> = m.backend.store;
     const compatible: ModellingStoreBackendMethods = old;
-    const store = { ...m.backend.store, ...compatible, addStair: undefined, addRailing: undefined, removeStair: undefined };
+    const store = { ...m.backend.store, ...compatible, addStair: undefined, addRailing: undefined, removeStair: undefined, replaceElement: undefined };
     const backend = Object.assign(Object.create(Object.getPrototypeOf(m.backend)), m.backend, { store }) as typeof m.backend;
     const bim = createBimContext({ backend });
     const before = await data(m.bim.export.ifc());
     expect(() => bim.store.addStair('m', 42, PARAMS)).toThrow('bim.store.addStair is not supported by this backend');
     expect(() => bim.store.addRailing('m', 42, { Path: [[0, 0, 0], [2, 0, 0]], Height: 1 })).toThrow('bim.store.addRailing is not supported by this backend');
     expect(() => bim.store.removeStair(m.ref)).toThrow('bim.store.removeStair is not supported by this backend');
+    expect(() => bim.store.replaceElement(m.ref, 42, { kind: 'stair', params: PARAMS })).toThrow('bim.store.replaceElement is not supported by this backend');
     expect(await data(m.bim.export.ifc())).toEqual(before);
   });
 });

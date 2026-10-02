@@ -32,6 +32,7 @@ import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 import { addStairIn, addRailingIn } from '@/store/slices/mutation-stair-railing';
+import { replaceElementIn } from '@/store/slices/mutation-element-replacement';
 import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
 
 type ModellingMethods = ReturnType<typeof createModellingStoreBackend>;
@@ -57,6 +58,13 @@ export function withModellingMutationTracking(
       return { modelId: normalized, expressId: outcome.expressId };
     };
   return {
+    replaceElement(ref, storeyExpressId, element) {
+      const normalized = normalizeMutationModelId(store.getState(), ref.modelId);
+      const setState = store.setState;
+      if (!setState) throw new Error('bim.store.replaceElement: the adapter requires a writable store');
+      const expressId = replaceElementIn({ ...store, setState }, normalized, ref.expressId, storeyExpressId, element);
+      return { modelId: normalized, expressId };
+    },
     removeStair(ref) {
       const normalized = normalizeMutationModelId(store.getState(), ref.modelId);
       const denial = mutationDenial(store.getState(), normalized);

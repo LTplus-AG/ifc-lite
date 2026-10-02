@@ -24,6 +24,11 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
     });
   }
   return {
+    replaceElement: (...args: Parameters<NonNullable<Methods['replaceElement']>>) => record(args[0].modelId, methods => {
+      const replace = methods.replaceElement;
+      if (!replace) throw new Error('bim.store.replaceElement is not supported by this backend');
+      return replace.call(methods, ...args);
+    }),
     removeStair: (ref: Parameters<NonNullable<Methods['removeStair']>>[0]) => record(ref.modelId, methods => {
       const remove = methods.removeStair;
       if (!remove) throw new Error('bim.store.removeStair is not supported by this backend');

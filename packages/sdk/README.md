@@ -51,7 +51,9 @@ bim.viewer.colorize(walls.map(w => w.ref), '#ff0000');
   storey-local metres. `removeStair(ref)` removes a uniquely owned parent/flight
   pair, retains shared geometry and refuses ambiguous ownership or foreign
   product references. Backend capabilities are optional; unsupported hosts
-  refuse explicitly. Generic `removeEntity` retains its one-record contract.
+  refuse explicitly. `replaceElement(ref, storeyId, element)` stages removal
+  and canonical creation together, retaining the old graph on late refusal.
+  Generic `removeEntity` retains its one-record contract.
 - `bim.viewer` - selection, visibility, colorization, camera, sections
 - `bim.export` - `csv`, `json`, `ifc` (STEP), `hbjson`, `dfjson`, `download`
 - `bim.ids` / `bim.bcf` / `bim.clash` - validation, collaboration, interference checks

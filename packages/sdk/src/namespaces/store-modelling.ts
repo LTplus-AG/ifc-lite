@@ -6,7 +6,7 @@
 import type {
   HostedDoorInStoreParams, HostedWindowInStoreParams, OpeningInStoreParams, ElementTypeInStoreParams,
   MaterialInStoreParams, MaterialLayerSetInStoreParams, MaterialLayerSetUsageInStoreParams, WallJoinApplyOptions,
-  StairInStoreParams, RailingInStoreParams,
+  StairInStoreParams, RailingInStoreParams, InStoreReplacementElement,
 } from '@ifc-lite/create';
 import type { BimBackend, EntityRef } from '../types.js';
 
@@ -32,6 +32,13 @@ export class StoreModellingNamespace {
     const create = this.backend.store.addRailing;
     if (!create) throw new Error('bim.store.addRailing is not supported by this backend');
     return create.call(this.backend.store, modelId, storeyExpressId, params);
+  }
+
+  /** Replace a product with canonical storey-local params; a refusal retains its old graph. */
+  replaceElement(ref: EntityRef, storeyExpressId: number, element: InStoreReplacementElement): EntityRef {
+    const replace = this.backend.store.replaceElement;
+    if (!replace) throw new Error('bim.store.replaceElement is not supported by this backend');
+    return replace.call(this.backend.store, ref, storeyExpressId, element);
   }
 
   // -- Openings, hosted fillings, types and materials (#6232 M3) -------------

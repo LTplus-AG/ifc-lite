@@ -38,7 +38,9 @@ omit it only for a trusted caller such as the CLI running a local file.
 builders; dimensions are storey-local metres. Stair update/removal removes the
 uniquely owned parent/flight pair, retaining shared representation leaves and
 refusing ambiguous ownership or foreign product references. Unsupported backend
-capabilities refuse explicitly. Reuse a tracking store for keep/update/remove;
+capabilities refuse explicitly. All `model.addElement` updates use the optional
+atomic replacement capability, preserving the old graph and tracking entry
+on refusal, including a spec-kind change. Reuse a tracking store for keep/update/remove;
 public MCP `run_flow` starts fresh tracking on each call.
 
 ## Session automation host

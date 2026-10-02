@@ -236,3 +236,5 @@ export {
 
 export { reanchorHostedOpeningsInStore } from './hosted-placement-edit.js';
 export { reassignHostedOpeningsInStore, type HostedOpeningReassignment } from './hosted-placement-edit.js';
+
+export { replaceElementInStore, type InStoreReplacementElement } from './element-replacement.js';

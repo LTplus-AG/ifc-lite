@@ -121,6 +121,10 @@ describe.skipIf(!AVAILABLE)('#6232 schema-aware SDK/public run_flow stair and ra
           }
           else expect(() => kind === 'stair' ? bim.store.addStair(target.id, storey, { Position: [0, 0, 0], NumberOfRisers: 0, RiserHeight: .2, TreadLength: .3, Width: 1 })
             : bim.store.addRailing(target.id, storey, { Path: [[0, 0, 0], [2, 0, 0]], Height: 1, PostSpacing: 0 })).toThrow();
+          expect(() => bim.store.replaceElement({ modelId: target.id, expressId: product[0] }, storey,
+            kind === 'stair' ? { kind, params: { Position: [0, 0, 0], NumberOfRisers: 0, RiserHeight: .2, TreadLength: .3, Width: 1 } }
+              : { kind, params: { Path: [[0, 0, 0], [2, 0, 0]], Height: 1, PostSpacing: 0 } }))
+            .toThrow(kind === 'stair' ? /NumberOfRisers must be a positive integer/ : /PostSpacing must be a finite positive number/);
           expect((await saved(bim.export.ifc())).rows).toEqual(output.rows);
           expect(view.getMutations()).toEqual(journal); expect(view.peekNextExpressId()).toBe(next);
           if (route === 'MCP') {

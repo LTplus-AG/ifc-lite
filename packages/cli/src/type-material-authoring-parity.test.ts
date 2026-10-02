@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { IfcCreator } from '@ifc-lite/create';
-import { EntityExtractor, extractMaterialsOnDemand, IfcParser } from '@ifc-lite/parser';
+import { EntityExtractor, extractMaterialsOnDemand, getSchemaRegistryForVersion, IfcParser, normalizeIfcTypeName } from '@ifc-lite/parser';
 import { createBimContext, type EntityRef } from '@ifc-lite/sdk';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { createMCPServer, fullScope, InMemoryModelRegistry, InProcessTransport,
@@ -255,6 +255,106 @@ describe.skipIf(!AVAILABLE)('#6232 D5 six type/material routes on real loaded mo
         MaterialLayers: [{ Material: fixture.concrete, LayerThickness: .2 }, { Material: fixture.wool, LayerThickness: .1 }],
       })).toThrow(new Error('addMaterialLayerSetToStore: IfcMaterialLayerSet has no attribute Description in IFC2X3'));
       expect(await records(bim.export.ifc())).toEqual(before);
+      await assertLayeredWall(bim.export.ifc(), fixture);
+    });
+  }
+
+  for (const millimetres of [false, true]) for (const count of [1, 2]) {
+    it(`IFC2X3/${millimetres ? 'mm' : 'm'}: all six MCP methods keep owner history and public Undo with ${count} model(s)`, async () => {
+      if (!directory) throw new Error('Fixture directory not initialized');
+      const creator = new IfcCreator({ Schema: 'IFC2X3', LengthUnit: millimetres ? 'MILLIMETRE' : 'METRE', Timestamp: 0 });
+      const storey = creator.addIfcBuildingStorey({ Name: 'D5 MCP legacy-schema control', Elevation: 0 });
+      const path = join(directory, `IFC2X3-mcp-${millimetres ? 'mm' : 'm'}-${count}.ifc`);
+      await writeFile(path, creator.toIfc().content);
+      const source = await loadIfcModel(path, { modelId: 'source' });
+      const author = createBimContext({ backend: new HeadlessBackend(source.store, 'source') });
+      const fixture = authorSeed(author, 'source', storey);
+      await writeFile(path, author.export.ifc());
+      const registry = new InMemoryModelRegistry();
+      for (const modelId of ['alpha', 'beta'].slice(0, count)) registry.add(await loadIfcModel(path, { modelId }));
+      const target = registry.get(count === 2 ? 'beta' : 'alpha')!;
+      const peer = count === 2 ? await records(registry.get('alpha')!.bim.export.ifc()) : null;
+      const sourceOwner = target.store.entityIndex.byType.get('IFCOWNERHISTORY')?.[0];
+      if (sourceOwner === undefined) throw new Error('IFC2X3 control has no source owner history');
+      let expectedOwner = sourceOwner;
+      const transport = new InProcessTransport();
+      await transport.connect(createMCPServer({ registry, scope: fullScope() }));
+      let id = 0;
+      const call = async (name: string, args: Record<string, unknown>): Promise<CallToolResult> => {
+        const response = await transport.send({ jsonrpc: '2.0', id: ++id, method: 'tools/call', params: { name, arguments: args } });
+        if (!response || !('result' in response)) throw new Error('Public MCP response missing');
+        return response.result as CallToolResult;
+      };
+      try {
+        await transport.send({ jsonrpc: '2.0', id: ++id, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'D5 legacy type/material parity', version: 'test' } } });
+        expect((await call('entity_create', { model_id: target.id, type: 'IfcCartesianPoint', attributes: [[7, 8, 9]] })).isError).not.toBe(true);
+        if (count === 2) {
+          // Replace the source history through real overlay writes, then remove
+          // it: six-method resolution must use the live created owner instead.
+          const saved = await records(target.bim.export.ifc());
+          const history = new Map(saved).get(sourceOwner);
+          if (!history) throw new Error('Source owner history is not readable');
+          const registry = getSchemaRegistryForVersion('IFC2X3');
+          const declaration = registry.entities.IfcOwnerHistory.allAttributes;
+          if (!declaration) throw new Error('IFC2X3 owner-history declaration is unavailable');
+          const attributes = history.attributes.map((value, index) =>
+            typeof value === 'number' && registry.entities[declaration[index].type] ? `#${value}` : value);
+          expectedOwner = target.bim.store.addEntity(target.id, { type: 'IfcOwnerHistory', attributes }).expressId;
+          for (const [expressId, entity] of saved) {
+            if (!entity) throw new Error('Saved source entity is unreadable');
+            const fields = registry.entities[normalizeIfcTypeName(entity.type)]?.allAttributes;
+            const ownerSlot = fields?.findIndex(field => field.name === 'OwnerHistory') ?? -1;
+            if (ownerSlot >= 0 && entity.attributes[ownerSlot] === sourceOwner) {
+              target.bim.store.setPositionalAttribute({ modelId: target.id, expressId }, ownerSlot, `#${expectedOwner}`);
+            }
+          }
+          expect((await call('entity_delete', { model_id: target.id, express_id: sourceOwner })).isError).not.toBe(true);
+          expect(new Map(await records(target.bim.export.ifc())).has(sourceOwner)).toBe(false);
+        }
+        for (const route of ROUTES) {
+          const before = await records(target.bim.export.ifc());
+          const journal = target.backend.getMutationView()!.getMutations();
+          const overlay = structuredClone(target.backend.getMutationView()!.getNewEntities());
+          const ref = route.add(target.bim, target.id, fixture);
+          const content = target.bim.export.ifc();
+          await assertResult(content, route, ref, fixture, millimetres ? 1000 : 1);
+          if (['addElementType', 'assignType', 'assignMaterial'].includes(route.name)) {
+            expect(new Map(await records(content)).get(ref.expressId)?.attributes[1]).toBe(expectedOwner);
+          }
+          expect((await call('mutation_undo', { model_id: target.id })).isError).not.toBe(true);
+          expect(await records(target.bim.export.ifc())).toEqual(before);
+          expect(target.backend.getMutationView()!.getMutations()).toEqual(journal);
+          expect(target.backend.getMutationView()!.getNewEntities()).toEqual(overlay);
+          await assertLayeredWall(target.bim.export.ifc(), fixture);
+          if (count === 2) expect(await records(registry.get('alpha')!.bim.export.ifc())).toEqual(peer);
+        }
+      } finally { transport.close(); }
+    });
+  }
+  for (const millimetres of [false, true]) {
+    it(`IFC2X3/${millimetres ? 'mm' : 'm'}: a late layer Description refusal preserves records, journal and allocator`, async () => {
+      if (!directory) throw new Error('Fixture directory not initialized');
+      const creator = new IfcCreator({ Schema: 'IFC2X3', LengthUnit: millimetres ? 'MILLIMETRE' : 'METRE', Timestamp: 0 });
+      const storey = creator.addIfcBuildingStorey({ Name: 'D5 late layer refusal', Elevation: 0 });
+      const path = join(directory, `IFC2X3-late-layer-${millimetres ? 'mm' : 'm'}.ifc`);
+      await writeFile(path, creator.toIfc().content);
+      const loaded = await loadIfcModel(path, { modelId: 'late-layer' });
+      const backend = new HeadlessBackend(loaded.store, 'late-layer');
+      const bim = createBimContext({ backend });
+      const fixture = authorSeed(bim, 'late-layer', storey);
+      const before = await records(bim.export.ifc());
+      const view = backend.tableAccess('late-layer').mutationView;
+      if (!view) throw new Error('Authored CLI mutation view is unavailable');
+      const journal = view.getMutations(), nextId = view.peekNextExpressId();
+      expect(() => bim.store.addMaterialLayerSet('late-layer', {
+        LayerSetName: 'D5 refused layer', MaterialLayers: [
+          { Material: fixture.concrete, LayerThickness: .2 },
+          { Material: fixture.wool, LayerThickness: .1, Description: 'IFC2X3 has no layer Description' },
+        ],
+      })).toThrow(new Error('addMaterialLayerSetToStore: IfcMaterialLayer has no attribute Description in IFC2X3'));
+      expect(await records(bim.export.ifc())).toEqual(before);
+      expect(view.getMutations()).toEqual(journal);
+      expect(view.peekNextExpressId()).toBe(nextId);
       await assertLayeredWall(bim.export.ifc(), fixture);
     });
   }

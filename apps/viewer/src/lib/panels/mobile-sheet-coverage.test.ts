@@ -51,12 +51,18 @@ describe('workspace panel registry coverage', () => {
       // #4243: Layers and Appearance share loading/error hosts, not content.
       // Compare the actual panel beneath those hosts so the fall-through
       // regression remains detectable without rejecting legitimate wrappers.
-      // #6720: the no-model gate wraps model-dependent panels the same way.
+      // #6720: the no-model gate wraps model-dependent panels the same way,
+      // and the Information panel sits in a plain `<div>` carrying its tour
+      // anchor. Walk down to the first COMPONENT that is not one of those
+      // wrappers: stopping at a host element would let `properties` report
+      // 'div', unique by construction, so another id falling through to a
+      // bare <PropertiesPanel /> would pass unnoticed.
       while (isValidElement<{ children?: ReactNode }>(body) &&
-        (body.type === ChunkErrorBoundary || body.type === Suspense || body.type === PanelModelGate)) {
+        (typeof body.type === 'string' || body.type === ChunkErrorBoundary || body.type === Suspense || body.type === PanelModelGate)) {
         body = body.props.children;
       }
       assert.ok(isValidElement(body), `${panel.id} must have panel content beneath its loading/error hosts`);
+      assert.notEqual(typeof body.type, 'string', `${panel.id} must resolve to a panel component, not a host element`);
       const type = body.type;
       const ids = byType.get(type) ?? [];
       ids.push(panel.id);

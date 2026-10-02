@@ -6,6 +6,7 @@ import { useTranslation } from '@/i18n';
 import { SavedHistoryNotice } from '../SavedHistoryNotice';
 import { useViewerStore } from '@/store';
 import { savedReportBlock, savedReportLabel, type ValidationReportSnapshot } from '@/lib/validation/reports/history';
+import { keepCommonReportChoices } from '@/lib/document/report-provenance';
 import { replaceManualReportSnapshot } from '@/lib/document/manual-report';
 import { replaceIdsReportSnapshot } from '@/lib/document/ids-report';
 
@@ -30,7 +31,7 @@ export function SavedReportSource({ block, onChange }: { block: ValidationReport
                 ? replaceManualReportSnapshot(block, next)
                 : block.kind === 'ids-report' && next.kind === 'ids-report'
                   ? replaceIdsReportSnapshot(block, next)
-                  : { ...next, title: block.title, scale: block.scale });
+                  : keepCommonReportChoices(block, next));
             }
           }}>
           <option value="" disabled>{t('validationPanel.history.embedded')}</option>

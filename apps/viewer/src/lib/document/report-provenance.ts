@@ -50,12 +50,20 @@ export function reportStamp(block: ReportProvenance & { generatedAt: string; mod
   return block.showStamp === false ? null : { modelName: block.modelName, generatedAt: block.generatedAt, models: reportScopeText(block) };
 }
 
+/** The author's choices every report kind has: heading, size and stamp. Kept
+ * whenever evidence is replaced, including when the replacement is of another
+ * kind (IDS to manual and back), where layout and benchmarks deliberately take
+ * the new evidence's defaults. A choice shared by all kinds is added here. */
+export function keepCommonReportChoices<T extends ReportStampChoice & { title?: string; scale?: number }>(current: ReportStampChoice & { title?: string; scale?: number }, snapshot: T): T {
+  return { ...snapshot, title: current.title, scale: current.scale, showStamp: current.showStamp };
+}
+
 /** Replacing a report's evidence (live refresh, choosing a saved report) keeps
  * the destination block's identity and everything its author chose to show:
  * heading, layout, benchmarks, specifications-only, stamp and size. One rule for the manual and the
  * IDS / information-validation kinds, so their refresh paths cannot drift. */
 export function replaceReportSnapshot<B extends ReportStampChoice & { id: string; title?: string; variant?: string; benchmarks?: boolean; scale?: number; specificationsOnly?: boolean }>(current: B, snapshot: B): B {
-  return { ...snapshot, id: current.id, title: current.title, variant: current.variant, benchmarks: current.benchmarks, showStamp: current.showStamp, specificationsOnly: current.specificationsOnly, scale: current.scale };
+  return { ...keepCommonReportChoices(current, snapshot), id: current.id, variant: current.variant, benchmarks: current.benchmarks, specificationsOnly: current.specificationsOnly };
 }
 
 /** Keep exact nonblank model names; unnamed sources use their captured

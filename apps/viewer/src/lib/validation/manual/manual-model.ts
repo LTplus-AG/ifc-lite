@@ -12,6 +12,7 @@
 import type { FederatedModel } from '@/store';
 import type { ManualAnswerMap } from './checklist.js';
 import type { ManualAnswersByModel } from './persistence.js';
+import { isManualModelReady } from './report-reuse.js';
 export { manualReportReuse } from './report-reuse.js';
 
 export interface ManualModelOption {
@@ -31,7 +32,7 @@ export function manualModelOptions(models: ReadonlyMap<string, Pick<FederatedMod
 export function pickManualModel(options: readonly ManualModelOption[], picked: string | null, activeModelId: string | null, preferredFingerprint?: string): ManualModelOption | null {
   const explicit = options.find((m) => m.id === picked);
   if (explicit) return explicit;
-  if (preferredFingerprint) return options.find((m) => m.fingerprint === preferredFingerprint) ?? null;
+  if (preferredFingerprint) return options.find((m) => m.fingerprint === preferredFingerprint && isManualModelReady(m)) ?? null;
   return options.find((m) => m.id === activeModelId) ?? options[0] ?? null;
 }
 

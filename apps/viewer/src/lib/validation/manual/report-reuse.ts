@@ -16,6 +16,11 @@ export type ManualReportReuse =
   | { ok: true; template: ChecklistTemplate; answers: ManualAnswersByModel; preferredModelFingerprint: string }
   | { ok: false; reason: 'invalid' | 'noIdentity' | 'modelNotLoaded' };
 
+/** Unified load completion, including legacy models with no lifecycle state. */
+export function isManualModelReady(model: Pick<ManualModelOption, 'loadState'>): boolean {
+  return model.loadState === undefined || model.loadState === 'complete';
+}
+
 /** Recover a bounded editable copy of recorded manual evidence (#6611).
  * The snapshot's fingerprint binds answers; scope labels and active peers
  * cannot replace it. Its recording date is a fallback, not an item edit date.
@@ -28,7 +33,7 @@ export function manualReportReuse(snapshot: ValidationReportSnapshot, models: re
   const fingerprint = snapshot.modelFingerprint;
   if (!fingerprint?.trim()) return { ok: false, reason: 'noIdentity' };
   if (!models.some(model => model.fingerprint === fingerprint
-    && (model.loadState === undefined || model.loadState === 'complete'))) return { ok: false, reason: 'modelNotLoaded' };
+    && isManualModelReady(model))) return { ok: false, reason: 'modelNotLoaded' };
   // Canonical template/answer parsers cap text. Refuse an oversized imported
   // snapshot here rather than silently shorten the evidence being recovered.
   if (snapshot.checklistName.length > MAX_CHECKLIST_TEXT || snapshot.groups.some(group =>

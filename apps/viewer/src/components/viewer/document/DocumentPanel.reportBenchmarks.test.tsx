@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { beforeEach, afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -64,7 +65,7 @@ beforeEach(async () => {
   const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
   const model = { ...fixtureModel('m'), name: 'building-architecture.ifc', sourceFingerprint: 'public-sketchup-4-walls', ifcDataStore: store };
   useViewerStore.setState({ ...fixtureModels(model), documents: [], activeDocumentId: null, mutationViews: new Map(), mutationVersion: 0,
-    idsDocument: null, idsValidationReport: null, validationSource: null, savedValidationReports: [], validationReportsLoadIssue: null });
+    idsDocument: null, idsValidationReport: null, validationSource: null, savedValidationReports: [] });
   reports = [await validateIDS(ids, createDataAccessor(store, model.id),
     { modelId: model.id, schemaVersion: store.schemaVersion, entityCount: store.entityCount }, { includePassingEntities: true }),
     await runRuleSet({ ruleSet: rules, models: evaluatorModelsFromState(useViewerStore.getState()), definedModelTagIds: new Set() })];
@@ -148,7 +149,8 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
       const preview = ui.querySelector(`[data-preview-block="${block.id}"]`); assert.ok(preview);
       assertRing(preview, reports.find((report) => report.source.kind === block.sourceKind)!);
     }
-    const saved = loadDocuments().find((document) => document.id === spec.id); assert.ok(saved);
+    await act(async () => { await useViewerStore.getState().retryDocumentsSave(); });
+    const saved = (await loadDocuments()).find((document) => document.id === spec.id); assert.ok(saved);
     const imported = parseDocumentFile(JSON.stringify(saved));
     const blocks = imported.blocks.filter((block) => block.kind === 'ids-report');
     const layout = composeDocument({ name: imported.name, page: imported.page, generatedAt: '', measure: estimateTextWidth, blocks });
@@ -204,7 +206,8 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     const label = [...ui.querySelectorAll('label')].find((entry) => entry.textContent?.includes('Ring anzeigen'));
     const input = label?.querySelector<HTMLInputElement>('input[type="checkbox"]'); assert.ok(input); click(input); await settle();
     assert.equal(ui.querySelector('[data-validation-benchmark]'), null);
-    const saved = loadDocuments().find((doc) => doc.id === spec.id); assert.ok(saved);
+    await act(async () => { await useViewerStore.getState().retryDocumentsSave(); });
+    const saved = (await loadDocuments()).find((doc) => doc.id === spec.id); assert.ok(saved);
     assert.deepEqual(saved.blocks[0], JSON.parse(JSON.stringify({ ...block, benchmarks: false })), 'hiding the ring preserves all serializable frozen source numbers and identifiers');
     const printed = composeDocument({ name: spec.name, page: spec.page, generatedAt: '', measure: estimateTextWidth, blocks: saved.blocks.filter((entry) => entry.kind === 'ids-report') });
     assert.equal(printed.pages.flatMap((page) => page.items).filter((item) => item.kind === 'ring').length, 0);
@@ -268,10 +271,10 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     const first = { ...spec.blocks[0], variant: 'compact' as const, benchmarks: false, specificationsOnly: true, showStamp: false }; assert.ok(first.kind === 'ids-report');
     assert.ok(first.checks.some((check) => check.rules.length > 0), 'the real engine report has requirement rows to omit');
     let savedId: string | null = null;
-    act(() => {
+    await act(async () => {
       useViewerStore.setState({ documents: [{ ...spec, blocks: [first] }], activeDocumentId: spec.id });
       useViewerStore.getState().setIdsValidationReport(reports[0], validationReportSnapshot(reports[0], useViewerStore.getState().models, 'live'));
-      savedId = useViewerStore.getState().saveValidationReport(validationReportSnapshot(reports[0], useViewerStore.getState().models, 'saved'), 'Frozen IDS run');
+      savedId = await useViewerStore.getState().saveValidationReport(validationReportSnapshot(reports[0], useViewerStore.getState().models, 'saved'), 'Frozen IDS run');
     });
     assert.ok(savedId);
     const ui = render(<DocumentPanel />); await settle();
@@ -306,11 +309,11 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     const updated = await validateIDS(definition, createDataAccessor(model.ifcDataStore, model.id),
       { modelId: model.id, schemaVersion: model.ifcDataStore.schemaVersion, entityCount: model.ifcDataStore.entityCount }, { includePassingEntities: true });
     let saved: string | null = null;
-    act(() => {
+    (await act(async () => {
       useViewerStore.setState({ documents: [{ ...spec, blocks: [first] }], activeDocumentId: spec.id });
       useViewerStore.getState().setIdsValidationReport(updated, validationReportSnapshot(updated, useViewerStore.getState().models, 'current'));
-      saved = useViewerStore.getState().saveValidationReport(validationReportSnapshot(reports[1], useViewerStore.getState().models, 'information'), 'Frozen information run');
-    });
+      saved = (await useViewerStore.getState().saveValidationReport(validationReportSnapshot(reports[1], useViewerStore.getState().models, 'information'), 'Frozen information run'));
+    }));
     assert.ok(saved, 'the actual canonical writer accepted the engine snapshot');
     const ui = render(<DocumentPanel />); await settle();
     const title = ui.querySelector<HTMLInputElement>(`[data-block-editor="${first.id}"] input[aria-label="Block title"]`);
@@ -374,9 +377,9 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     for (const report of reports) {
       const id = `${report.source.kind}-compact`;
       let savedId: string | null = null;
-      act(() => {
+      await act(async () => {
         useViewerStore.getState().setIdsValidationReport(report, validationReportSnapshot(report, useViewerStore.getState().models, 'live'));
-        savedId = useViewerStore.getState().saveValidationReport({ ...validationReportSnapshot(report, useViewerStore.getState().models, 'saved'), showStamp: true }, `Saved ${report.source.kind}`);
+        savedId = await useViewerStore.getState().saveValidationReport({ ...validationReportSnapshot(report, useViewerStore.getState().models, 'saved'), showStamp: true }, `Saved ${report.source.kind}`);
       });
       assert.ok(savedId);
       const refresh = [...ui.querySelectorAll(`[data-block-editor="${id}"] button`)].find((button) => button.textContent === 'Refresh from current validation report');

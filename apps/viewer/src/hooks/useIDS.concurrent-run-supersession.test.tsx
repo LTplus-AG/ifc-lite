@@ -26,6 +26,7 @@
  */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -144,8 +145,6 @@ async function seed(): Promise<void> {
     idsValidationReport: null,
     currentValidationReport: null,
     savedValidationReports: [],
-    validationReportsSaveFailed: false,
-    validationReportsLoadIssue: null,
     idsError: null,
     idsLoading: false,
     idsProgress: null,
@@ -203,11 +202,11 @@ describe('useIDS - concurrent-run supersession (#2802)', () => {
     );
     // #6568: neither run autosaves, and the explicit control can save only
     // the actual latest report, with the model scope it evaluated.
-    assert.equal(loadValidationReports().length, 0);
+    assert.equal((await loadValidationReports()).length, 0);
     const save = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Save report');
     assert.ok(save);
     click(save);
-    const saved = loadValidationReports();
+    const saved = (await loadValidationReports());
     assert.equal(saved.length, 1);
     assert.deepEqual(saved[0].snapshot.reportModels, [{ name: 'Fast.ifc' }]);
     const snapshot = saved[0].snapshot;

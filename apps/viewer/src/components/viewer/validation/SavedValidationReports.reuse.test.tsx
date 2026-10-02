@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { beforeEach, afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -69,8 +70,8 @@ async function saveThenReopenHistory(count: number): Promise<{ source: Federated
   setValidationSourceChoice('manual');
   const previous = render(<ValidationPanel />);
   click(button(previous, 'Save report'));
-  assert.equal(loadValidationReports().length, 1, 'actual Save report persisted evidence');
-  const original = JSON.stringify(loadValidationReports()[0]);
+  assert.equal((await loadValidationReports()).length, 1, 'actual Save report persisted evidence');
+  const original = JSON.stringify((await loadValidationReports())[0]);
   cleanup();
   // A saved history entry remains reusable after its live editable instance
   // is removed; a later session has new runtime UUIDs for the same file.
@@ -79,7 +80,7 @@ async function saveThenReopenHistory(count: number): Promise<{ source: Federated
   const peer = count === 2 ? await publicModel('active-peer', 'building-architecture-rev-b.ifc') : undefined;
   const library = loadManualLibrary().library;
   useViewerStore.setState({ ...fixtureModels(reloaded, ...(peer ? [peer] : [])), activeModelId: peer?.id ?? reloaded.id,
-    manualLibrary: library, ...manualLibraryProjection(library), savedValidationReports: loadValidationReports() });
+    manualLibrary: library, ...manualLibraryProjection(library), savedValidationReports: (await loadValidationReports()) });
   setValidationSourceChoice(null);
   const ui = render(<ValidationPanel />);
   const history = ui.querySelector<HTMLDetailsElement>('[data-saved-validation-reports]');
@@ -109,7 +110,7 @@ describe('Saved manual report editable reuse (#6611)', () => {
     typeInput(comment, 'Edited current copy');
     click(button(row(ui, 'Naming convention'), 'Pass'));
     assert.equal(row(ui, 'Naming convention').dataset.status, 'pass');
-    assert.equal(JSON.stringify(loadValidationReports()[0]), original, 'editing never changes frozen saved evidence');
+    assert.equal(JSON.stringify((await loadValidationReports())[0]), original, 'editing never changes frozen saved evidence');
     const library = loadManualLibrary().library;
     const restored = manualLibraryProjection(library);
     assert.equal(restored.manualAnswers[source.sourceFingerprint!].names.status, 'pass');
@@ -139,13 +140,13 @@ describe('Saved manual report editable reuse (#6611)', () => {
           'canonical store independently refuses a direct or stale-UI attempt');
         assert.equal(localStorage.getItem('ifc-lite:validation:manual-library'), before);
         assert.equal(useViewerStore.getState().manualLibrary.checklists.length, 0);
-        assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+        assert.equal(JSON.stringify((await loadValidationReports())[0]), original);
         act(() => useViewerStore.getState().updateModel(source.id, { loadState: 'complete' }));
         await settle();
         assert.equal(button(ui, 'Edit a copy').disabled, false, 'same fingerprint becomes reusable only at completion');
         click(button(ui, 'Edit a copy'));
         assert.equal(row(ui, 'Naming convention').dataset.status, 'warning');
-        assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+        assert.equal(JSON.stringify((await loadValidationReports())[0]), original);
       });
     }
     for (const loadState of ['complete', undefined] as const) {
@@ -162,7 +163,7 @@ describe('Saved manual report editable reuse (#6611)', () => {
         assert.equal(row(ui, 'Naming convention').dataset.status, 'warning');
         assert.equal(row(ui, 'Naming convention').querySelector<HTMLTextAreaElement>('textarea')?.value, 'Recorded prefix needs review');
         assert.equal(useViewerStore.getState().manualLibrary.checklists[0].preferredModelFingerprint, source.sourceFingerprint);
-        assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+        assert.equal(JSON.stringify((await loadValidationReports())[0]), original);
       });
     }
   }
@@ -181,7 +182,7 @@ describe('Saved manual report editable reuse (#6611)', () => {
       click(button(ui, 'Edit a copy'));
       assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Model"]')?.value, complete.id);
       assert.equal(row(ui, 'Naming convention').dataset.status, 'warning');
-      assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+      assert.equal(JSON.stringify((await loadValidationReports())[0]), original);
       cleanup();
       const refreshed: { value: ManualReportBlock | null } = { value: null };
       function ReadySourceProbe() {
@@ -202,7 +203,7 @@ describe('Saved manual report editable reuse (#6611)', () => {
       assert.equal(refreshed.value.reportModels?.[0].name, complete.name);
       assert.equal(refreshed.value.reportModels?.[0].fingerprint, source.sourceFingerprint);
       assert.equal(refreshed.value.groups[0].items[1].status, 'warning');
-      assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+      assert.equal(JSON.stringify((await loadValidationReports())[0]), original);
     });
   }
 
@@ -237,7 +238,7 @@ describe('Saved manual report editable reuse (#6611)', () => {
     click(button(ui, 'Edit a copy'));
     assert.notEqual(useViewerStore.getState().manualLibrary.activeId, firstCopyId);
     assert.equal(useViewerStore.getState().manualLibrary.checklists.length, 3);
-    assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+    assert.equal(JSON.stringify((await loadValidationReports())[0]), original);
   });
 
   it('requires the recorded source to be loaded before creating an editable copy (#6611)', async () => {
@@ -248,7 +249,7 @@ describe('Saved manual report editable reuse (#6611)', () => {
     assert.equal(button(ui, 'Edit a copy').disabled, true);
     assert.match(ui.textContent ?? '', /load the recorded model/i);
     assert.equal(useViewerStore.getState().manualLibrary.checklists.length, 0);
-    assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+    assert.equal(JSON.stringify((await loadValidationReports())[0]), original);
   });
 
   it('retains the restored binding after reload and refuses a peer after its model is removed (#6611)', async () => {
@@ -263,7 +264,7 @@ describe('Saved manual report editable reuse (#6611)', () => {
     const check = row(reopened, 'Naming convention');
     assert.equal(button(check, 'Pass').disabled, true, 'missing original source cannot silently become the active peer');
     assert.equal(check.querySelector<HTMLTextAreaElement>('textarea')?.disabled, true);
-    assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+    assert.equal(JSON.stringify((await loadValidationReports())[0]), original);
   });
 
   it('starts a recovered copy on its recorded source despite a previous live peer pick (#6611)', async () => {
@@ -294,7 +295,7 @@ describe('Saved manual report editable reuse (#6611)', () => {
     act(() => { picker.value = source.id; picker.dispatchEvent(new Event('change', { bubbles: true })); });
     assert.equal(row(ui, 'Naming convention').dataset.status, 'warning', 'returning to the recorded model retains its answer');
     assert.equal(row(ui, 'Naming convention').querySelector<HTMLTextAreaElement>('textarea')?.value, 'Recorded prefix needs review');
-    assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+    assert.equal(JSON.stringify((await loadValidationReports())[0]), original);
   });
 
   it('keeps the document source on the recovered fingerprint and refuses a missing-bound default (#6611)', async () => {
@@ -335,7 +336,7 @@ describe('Saved manual report editable reuse (#6611)', () => {
       assert.equal(row(ui, 'Naming convention').dataset.status, 'pass', 'current copy remains editable with a visible persistence warning');
       assert.equal(useViewerStore.getState().manualAnswers[source.sourceFingerprint!].names.status, 'pass');
       assert.equal(localStorage.getItem('ifc-lite:validation:manual-library'), persistedLibrary, 'failed writes do not claim durable success');
-      assert.equal(JSON.stringify(loadValidationReports()[0]), original);
+      assert.equal(JSON.stringify((await loadValidationReports())[0]), original);
     } finally { write.mock.restore(); }
   });
 });

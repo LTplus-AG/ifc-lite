@@ -10,6 +10,7 @@
  * it was computed from.
  */
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useState } from 'react';
@@ -229,7 +230,7 @@ describe('DocumentPanel table block (#5142)', () => {
     const headerTextColor = editor.querySelector<HTMLInputElement>('input[aria-label="Header text"]'); assert.ok(headerTextColor);
     typeInput(headerTextColor, '#6b21a8'); await settle();
     assert.equal(header.style.color, '#6b21a8', 'the preview renders the authored header ink');
-    const persisted = loadDocuments().find((d) => d.id === doc.id); assert.ok(persisted);
+    const persisted = (await loadDocuments()).find((d) => d.id === doc.id); assert.ok(persisted);
     const imported = parseDocumentFile(JSON.stringify(persisted));
     const second = imported.blocks[1]; assert.ok(second?.kind === 'table');
     // File import allocates fresh block ids; presentation and order survive the copy.
@@ -247,7 +248,7 @@ describe('DocumentPanel table block (#5142)', () => {
     assert.equal(header.style.backgroundColor, '#ffee88'); assert.equal(header.style.color, '#000000', 'reset returns to automatic contrast');
     click(editor.querySelector('button[aria-label="Reset table header background"]')!); await settle();
     assert.equal(header.style.backgroundColor, '#334155'); assert.equal(header.style.color, '#ffffff');
-    const reset = loadDocuments().find((d) => d.id === doc.id)?.blocks.find((b) => b.id === 't2');
+    const reset = (await loadDocuments()).find((d) => d.id === doc.id)?.blocks.find((b) => b.id === 't2');
     assert.ok(reset?.kind === 'table'); assert.equal(reset.headerBackground, undefined); assert.equal(reset.headerTextColor, undefined);
     assert.equal(reset.groupOrder, 'label', 'resetting the palette preserves group ordering');
   });

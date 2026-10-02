@@ -17,6 +17,7 @@
  * every spec has a description cannot tell a correct mapping from a
  * swapped or invented one.
  */
+import '@/test/content-fixture.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { SpecificationResult, ValidationReport } from '@ifc-lite/ids';

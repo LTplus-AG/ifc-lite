@@ -8,6 +8,7 @@
  * that model, the page composes with breaks, and the PDF is drawn from the
  * resolved blocks through recording seams.
  */
+import { clearContentDatabase } from '@/test/content-fixture.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
@@ -804,15 +805,16 @@ describe('table block (#5142)', () => {
     assert.equal(source.list.columns.length, 3);
   });
 
-  it('rejects malformed embedded Rules groups while keeping valid neighboring saved documents (#5894)', () => {
+  it('rejects malformed embedded Rules groups while keeping valid neighboring saved documents (#5894)', async () => {
     const brokenList = { ...listOf(), groups: [null] };
     const broken = docWith([{ ...tableBlock(), source: { kind: 'list', list: brokenList } } as unknown as TableBlock]);
     const valid = { ...docWith([tableBlock()]), id: 'valid-neighbor' };
     assert.deepEqual(validateDocumentSpec(broken).map(({ path }) => path), ['blocks[0].source.list']);
     assert.throws(() => parseDocumentFile(JSON.stringify(broken)), /blocks\[0\]\.source\.list/);
     try {
+      await clearContentDatabase();
       localStorage.setItem('ifc-lite-documents', JSON.stringify([broken, valid]));
-      assert.deepEqual(loadDocuments().map(({ id }) => id), ['valid-neighbor']);
+      assert.deepEqual((await loadDocuments()).map(({ id }) => id), ['valid-neighbor']);
     } finally {
       localStorage.removeItem('ifc-lite-documents');
     }

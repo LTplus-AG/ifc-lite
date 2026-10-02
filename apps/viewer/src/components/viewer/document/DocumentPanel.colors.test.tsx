@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -63,7 +64,7 @@ describe('Document text colours (#6492)', () => {
       assert.ok(preview);
       assert.equal(window.getComputedStyle(preview).color, '#1264c8');
       assert.equal(window.getComputedStyle(preview).backgroundColor, '#f1c35a');
-      const saved = loadDocuments().find((document) => document.id === spec.id);
+      const saved = (await loadDocuments()).find((document) => document.id === spec.id);
       assert.ok(saved);
       const imported = parseDocumentFile(JSON.stringify(saved));
       assert.equal(imported.blocks[0].kind, 'text');
@@ -101,7 +102,7 @@ describe('Document text colours (#6492)', () => {
       assert.equal(preview.style.color, '');
       assert.equal(preview.style.backgroundColor, '');
       assert.equal(textColor.value, '#828282');
-      const reset = loadDocuments().find((document) => document.id === spec.id)?.blocks[0];
+      const reset = (await loadDocuments()).find((document) => document.id === spec.id)?.blocks[0];
       assert.ok(reset?.kind === 'text');
       assert.equal(reset.textColor, undefined);
       assert.equal(reset.backgroundColor, undefined);

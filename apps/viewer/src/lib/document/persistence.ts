@@ -3,45 +3,29 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Saved documents (#4594), the way dashboards are saved: localStorage,
+ * Saved documents (#4594, #6679), stored individually in IndexedDB,
  * validated on the way in, and the `.ifclite-document.json` file a document
  * is shared as — the template you re-open on the next revision of the model.
  */
+import type { ContentDefinition } from '../storage/content-migration.js';
+import { readContentEntries } from '../storage/content-reader.js';
 import { trackExportCompleted } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
 import { migrateDocumentSpec, validateDocumentSpec, type DocumentSpec } from './types.js';
 
-const STORAGE_KEY = 'ifc-lite-documents';
-
-export function loadDocuments(): DocumentSpec[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    const kept: DocumentSpec[] = [];
-    for (const rawEntry of parsed) {
-      const entry = migrateDocumentSpec(rawEntry);
-      const errors = validateDocumentSpec(entry);
-      if (errors.length === 0) kept.push(entry as DocumentSpec);
-      else console.warn('[Documents] Dropping an invalid saved document', errors);
-    }
-    return kept;
-  } catch (err) {
-    console.warn('[Documents] Failed to load saved documents', err);
-    return [];
-  }
-}
-
-/** `false` when the browser refused the write (storage blocked or full — a few 1 MB logos reach the quota); the caller says so. */
-export function saveDocuments(documents: readonly DocumentSpec[]): boolean {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(documents));
-    return true;
-  } catch (err) {
-    console.warn('[Documents] Failed to save documents to localStorage', err);
-    return false;
-  }
+const DOCUMENTS_STORAGE_KEY = 'ifc-lite-documents';
+export const documentContent: ContentDefinition<DocumentSpec> = {
+  kind: 'document', legacyKey: DOCUMENTS_STORAGE_KEY,
+  decode: value => {
+    // Existing valid blocks retain their references during cosmetic edits. Re-migrating
+    // them would rerun embedded IFC lists on every keystroke (#6679).
+    if (validateDocumentSpec(value).length === 0) return value as DocumentSpec;
+    const migrated = migrateDocumentSpec(value);
+    return validateDocumentSpec(migrated).length === 0 ? migrated as DocumentSpec : null;
+  },
+};
+export function loadDocuments(): Promise<DocumentSpec[]> {
+  return readContentEntries(documentContent);
 }
 
 /** The file a document is shared as. */

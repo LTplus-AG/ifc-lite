@@ -9,6 +9,7 @@
  * the report's jsPDF path; the document itself is a template saved as
  * `.ifclite-document.json` and re-opened on the next model revision.
  */
+import { ContentStorageNotice } from '../ContentStorageNotice';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileText, Plus } from 'lucide-react';
 import type { ReportPageSetup } from '@ifc-lite/charts';
@@ -43,9 +44,10 @@ export interface DocumentPanelProps {
 /** Seeds a blank document when there is none and makes sure one is active; idempotent (StrictMode runs it twice). */
 export function ensureActiveDocument(): void {
   const live = useViewerStore.getState();
+  if (live.documentsStorage.phase !== 'ready') return;
   if (live.documents.length === 0) {
     const seeded = blankDocument();
-    live.upsertDocument(seeded);
+    void live.upsertDocument(seeded);
     live.setActiveDocumentId(seeded.id);
   } else if (!live.activeDocumentId || !live.documents.some((d) => d.id === live.activeDocumentId)) {
     live.setActiveDocumentId(live.documents[0].id);
@@ -55,6 +57,8 @@ export function ensureActiveDocument(): void {
 export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const { t, locale } = useTranslation();
   const documents = useViewerStore((s) => s.documents);
+  const storage = useViewerStore((s) => s.documentsStorage);
+  useEffect(() => { void useViewerStore.getState().initializeDocuments(); }, []);
   const activeDocumentId = useViewerStore((s) => s.activeDocumentId);
   const upsertDocument = useViewerStore((s) => s.upsertDocument);
   const deleteDocument = useViewerStore((s) => s.deleteDocument);
@@ -65,9 +69,9 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const reportSources = useReportSources();
   const savedComparisons = useViewerStore((s) => s.savedComparisons);
 
-  useEffect(() => { ensureActiveDocument(); }, [documents, activeDocumentId]);
+  useEffect(() => { ensureActiveDocument(); }, [documents, activeDocumentId, storage.phase]);
 
-  const document = useMemo(() => documents.find((d) => d.id === activeDocumentId) ?? null, [documents, activeDocumentId]);
+  const document = useMemo(() => documents.find((d) => d.id === activeDocumentId) ?? null, [documents, activeDocumentId, storage.phase]);
   const data = useDocumentData(document);
   const charts = useMemo(() => dashboards.flatMap((d) => d.charts.map((chart) => ({ dashboard: d.name, chart }))), [dashboards]);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
@@ -81,8 +85,8 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     persistWarned.current = true;
     toast.error(t('document.panel.unsavedWarning'));
   }, [t]);
-  const upsert = useCallback((next: DocumentSpec) => warnUnsaved(upsertDocument(next)), [upsertDocument, warnUnsaved]);
-  const remove = useCallback((id: string) => warnUnsaved(deleteDocument(id)), [deleteDocument, warnUnsaved]);
+  const upsert = useCallback((next: DocumentSpec) => upsertDocument(next).then(warnUnsaved), [upsertDocument, warnUnsaved]);
+  const remove = useCallback((id: string) => deleteDocument(id).then(warnUnsaved), [deleteDocument, warnUnsaved]);
   const update = upsert;
   const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update({ ...document, blocks }); }, [document, update]);
 
@@ -164,6 +168,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col text-xs" data-document-panel>
+      <ContentStorageNotice status={storage} restore={() => useViewerStore.getState().restoreDocuments()} retry={() => useViewerStore.getState().retryDocumentsSave()} />
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-3 py-1.5">
         <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <select

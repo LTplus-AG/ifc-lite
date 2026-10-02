@@ -2,45 +2,47 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { SavedHistoryIssue } from '@/lib/storage/saved-history';
 import type { StateCreator } from 'zustand';
 import { isSavedComparison, type SavedComparison } from '@/lib/compare/savedComparisons';
 import { sameReportEvidence } from '@/lib/flow/report-provenance';
-import { readSavedComparisons, saveSavedComparisons } from '@/lib/compare/savedComparisonPersistence';
+import { comparisonContent } from '@/lib/compare/savedComparisonPersistence';
+import { createContentLibrary, initialContentStatus, type ContentStatus } from '@/lib/storage/content-library';
 
-/** Saved reports survive model teardown; their rows contain no live renderer references. */
 export interface SavedComparisonsSlice {
   savedComparisons: SavedComparison[];
-  savedComparisonsLoadIssue: SavedHistoryIssue | null;
-  retrySaveComparisons: () => boolean;
-  saveComparison: (comparison: SavedComparison) => boolean;
-  renameSavedComparison: (id: string, name: string) => boolean;
-  deleteSavedComparison: (id: string) => boolean;
+  savedComparisonsStorage: ContentStatus;
+  initializeSavedComparisons: () => Promise<boolean>;
+  refreshSavedComparisons: () => Promise<void>;
+  restoreSavedComparisons: () => Promise<boolean>;
+  retrySaveComparisons: () => Promise<boolean>;
+  saveComparison: (comparison: SavedComparison) => Promise<boolean>;
+  stageComparison: (comparison: SavedComparison) => void;
+  renameSavedComparison: (id: string, name: string) => Promise<boolean>;
+  deleteSavedComparison: (id: string) => Promise<boolean>;
 }
 
 export const createSavedComparisonsSlice: StateCreator<SavedComparisonsSlice, [], [], SavedComparisonsSlice> = (set, get) => {
-  const update = (savedComparisons: SavedComparison[]): boolean => {
-    set({ savedComparisons });
-    const outcome = saveSavedComparisons(savedComparisons);
-    set({ savedComparisons: outcome.entries, savedComparisonsLoadIssue: outcome.issue });
-    return outcome.ok;
-  };
-  const loaded = readSavedComparisons();
+  const library = createContentLibrary(comparisonContent, () => get().savedComparisons, (entries, status) => set({
+    savedComparisons: entries, savedComparisonsStorage: status,
+  }));
   return {
-    savedComparisons: loaded.entries,
-    savedComparisonsLoadIssue: loaded.issue,
-    retrySaveComparisons: () => update(get().savedComparisons),
-    saveComparison: (comparison) => {
-      if (!isSavedComparison(comparison)) { console.warn('[Comparisons] Refusing invalid saved evidence'); return false; }
-      const current = get().savedComparisons;
-      const existing = current.find((entry) => entry.id === comparison.id);
-      if (existing && !sameReportEvidence(existing, comparison)) {
-        console.warn('[Comparisons] Refusing conflicting evidence ID', comparison.id);
-        return false;
+    savedComparisons: [], savedComparisonsStorage: initialContentStatus(),
+    initializeSavedComparisons: library.initialize, refreshSavedComparisons: library.refresh,
+    restoreSavedComparisons: library.restore,
+    retrySaveComparisons: library.retry,
+    stageComparison: entry => { if (isSavedComparison(entry)) library.stage(entry.id, entry); },
+    saveComparison: comparison => {
+      if (!isSavedComparison(comparison)) { console.warn('[Comparisons] Refusing invalid evidence'); return Promise.resolve(false); }
+      const existing = get().savedComparisons.find(entry => entry.id === comparison.id);
+      if (existing && !sameReportEvidence({ ...existing, name: comparison.name }, comparison)) {
+        console.warn('[Comparisons] Refusing conflicting evidence ID', comparison.id); return Promise.resolve(false);
       }
-      return update(existing ? current : [...current, structuredClone(comparison)]);
+      return library.put(comparison.id, comparison);
     },
-    renameSavedComparison: (id, name) => name.trim() ? update(get().savedComparisons.map((c) => c.id === id ? { ...c, name: name.trim() } : c)) : false,
-    deleteSavedComparison: (id) => update(get().savedComparisons.filter((c) => c.id !== id)),
+    renameSavedComparison: (id, name) => {
+      const entry = get().savedComparisons.find(value => value.id === id);
+      return entry && name.trim() ? library.put(id, { ...entry, name: name.trim() }) : Promise.resolve(false);
+    },
+    deleteSavedComparison: id => library.put(id, null),
   };
 };

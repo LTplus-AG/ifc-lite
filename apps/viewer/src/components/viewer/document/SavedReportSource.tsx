@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useTranslation } from '@/i18n';
-import { SavedHistoryNotice } from '../SavedHistoryNotice';
+import { ContentStorageNotice } from '../ContentStorageNotice';
 import { useViewerStore } from '@/store';
 import { savedReportLabel, type ValidationReportSnapshot } from '@/lib/validation/reports/history';
 import { keepCommonReportChoices } from '@/lib/document/report-provenance';
@@ -28,10 +28,10 @@ export function SavedReportSource({ block, onChange }: { block: ValidationReport
   const { t } = useTranslation();
   const sources = useReportSources();
   const choices = sources.saved;
-  const loadIssue = useViewerStore((s) => s.validationReportsLoadIssue);
+  const storage = useViewerStore((s) => s.validationReportsStorage);
   return (
     <>
-      <SavedHistoryNotice issue={loadIssue} subject={t('validationPanel.history.title')} onRetry={() => useViewerStore.getState().retryValidationReportsSave()} />
+      <ContentStorageNotice status={storage} restore={() => useViewerStore.getState().restoreValidationReports()} retry={() => useViewerStore.getState().retryValidationReportsSave()} />
       <label className="flex flex-col gap-1 text-muted-foreground">
         {t('validationPanel.history.documentSource')}
         <select className="min-w-0 rounded border border-input bg-background px-1.5 py-1 text-foreground" aria-label={t('validationPanel.history.documentSource')} value={choices.some((entry) => entry.id === block.savedReportId) ? block.savedReportId : ''}

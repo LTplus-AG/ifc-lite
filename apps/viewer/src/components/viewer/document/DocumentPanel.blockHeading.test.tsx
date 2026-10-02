@@ -9,6 +9,7 @@
  * to draw, so neither is asserted by its source text.
  */
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -73,7 +74,7 @@ beforeEach(() => {
   localStorage.clear();
   const document = spec();
   useViewerStore.setState({ models: new Map(), activeModelId: null, documents: [document], activeDocumentId: document.id, dashboards: [], selectedEntityIds: new Set(),
-    mutationViews: new Map(), mutationVersion: 0, idsValidationReport: null, validationSource: null, savedValidationReports: [], validationReportsLoadIssue: null,
+    mutationViews: new Map(), mutationVersion: 0, idsValidationReport: null, validationSource: null, savedValidationReports: [],
     bcfProject: { version: '3.0', topics: new Map([['topic-guid', { guid: 'topic-guid', title: 'Topic source', description: 'Coordinate', viewpoints: [], comments: [] }]]) } });
 });
 afterEach(() => { cleanup(); localStorage.clear(); });
@@ -113,7 +114,7 @@ describe('shared block heading controls (#6632)', () => {
       assert.equal(style.backgroundColor, FILL, `${kind}: preview background`);
     }
 
-    const saved = loadDocuments().find((d) => d.id === 'doc-6632');
+    const saved = (await loadDocuments()).find((d) => d.id === 'doc-6632');
     assert.ok(saved);
     for (const block of parseDocumentFile(JSON.stringify(saved)).blocks) {
       assert.deepEqual(blockTitleFields(block as IdsReportBlock), { title: `H:${block.kind}`, titleFontSize: SIZE, titleTextColor: INK, titleBackgroundColor: FILL }, `${block.kind} persists and reloads its heading style`);
@@ -155,7 +156,7 @@ describe('shared block heading controls (#6632)', () => {
       commitSize(input('Heading text size'), '');
       await settle();
     }
-    for (const block of loadDocuments()[0].blocks) {
+    for (const block of (await loadDocuments())[0].blocks) {
       assert.deepEqual(blockTitleFields(block as IdsReportBlock), { title: `H:${block.kind}`, titleFontSize: undefined, titleTextColor: undefined, titleBackgroundColor: undefined }, `${block.kind} keeps only its text`);
     }
   });
@@ -171,10 +172,10 @@ describe('shared block heading controls (#6632)', () => {
     assert.ok(editor && input);
     commitSize(input, '99');
     await settle();
-    assert.equal((loadDocuments()[0].blocks[0] as { titleFontSize?: number }).titleFontSize, 24, 'above the maximum clamps to it');
+    assert.equal(((await loadDocuments())[0].blocks[0] as { titleFontSize?: number }).titleFontSize, 24, 'above the maximum clamps to it');
     commitSize(input, '1');
     await settle();
-    assert.equal((loadDocuments()[0].blocks[0] as { titleFontSize?: number }).titleFontSize, 6, 'below the minimum clamps to it');
+    assert.equal(((await loadDocuments())[0].blocks[0] as { titleFontSize?: number }).titleFontSize, 6, 'below the minimum clamps to it');
     for (const kind of ['spacer', 'page-break']) {
       assert.equal(ui.querySelector(`[data-block-kind="${kind}"] input[aria-label="Heading text size"]`), null, `${kind} has no heading to size`);
     }

@@ -10,6 +10,7 @@
  */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -52,7 +53,7 @@ async function parsedModel(id: string, name: string, sourceFingerprint: string):
   const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
   return { ...fixtureModel(id), name, sourceFingerprint, ifcDataStore: store, maxExpressId: 2 } as FederatedModel;
 }
-const towerModel = (): Promise<FederatedModel> => parsedModel('m1', 'tower.ifc', 'fp-tower');
+const towerModel = async (): Promise<Promise<FederatedModel>> => (await parsedModel('m1', 'tower.ifc', 'fp-tower'));
 const initial = useViewerStore.getState();
 
 beforeEach(async () => {
@@ -125,7 +126,7 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.equal(stored().groups[0].items[1].status, 'pass');
     assert.ok(!/Model:|Models:|Recorded:/.test(preview().textContent ?? ''));
     let savedId: string | null = null;
-    act(() => { savedId = useViewerStore.getState().saveValidationReport(Object.assign({}, stored(), { checklistName: 'Later review', showStamp: true }), 'Later review'); });
+    (await act(async () => { savedId = (await useViewerStore.getState().saveValidationReport(Object.assign({}, stored(), { checklistName: 'Later review', showStamp: true }), 'Later review')); }));
     assert.ok(savedId);
     const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]');
     assert.ok(source);
@@ -329,10 +330,10 @@ describe('Document panel manual validation report (#6401)', () => {
     // live Refresh, even after the originating checklist was deleted (#6507).
     let firstSaved: string | null = null;
     let secondSaved: string | null = null;
-    act(() => {
-      firstSaved = useViewerStore.getState().saveValidationReport(frozen, 'Structure evidence');
-      secondSaved = useViewerStore.getState().saveValidationReport({ ...frozen, checklistName: 'Later structure evidence', title: 'Source review heading', variant: 'long', benchmarks: true, showStamp: true }, 'Later evidence');
-    });
+    (await act(async () => {
+      firstSaved = (await useViewerStore.getState().saveValidationReport(frozen, 'Structure evidence'));
+      secondSaved = (await useViewerStore.getState().saveValidationReport({ ...frozen, checklistName: 'Later structure evidence', title: 'Source review heading', variant: 'long', benchmarks: true, showStamp: true }, 'Later evidence'));
+    }));
     assert.ok(firstSaved && secondSaved);
     await choose('Saved report source', firstSaved);
     await choose('Saved report source', secondSaved);
@@ -345,7 +346,7 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.equal(ui.querySelector('[data-manual-report-benchmarks]'), null);
     assert.ok(!/Model:|Models:|Recorded:/.test(ui.querySelector('[data-block-manual-report]')?.textContent ?? ''));
     assert.equal(refresh(), undefined, 'frozen history has no live Refresh action');
-    act(() => useViewerStore.getState().removeValidationReport(secondSaved!));
+    (await act(async () => (await useViewerStore.getState().removeValidationReport(secondSaved!))));
     await settle();
     assert.equal(stored().checklistName, 'Later structure evidence', 'removing history retains the selected embedded evidence');
   });

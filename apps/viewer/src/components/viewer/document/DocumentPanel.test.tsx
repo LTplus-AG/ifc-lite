@@ -10,6 +10,7 @@
  * the resolved page through the seams and downloads it.
  */
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';

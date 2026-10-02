@@ -15,6 +15,7 @@ All four live in your browser's IndexedDB. None of it is sent off-device unless 
 
 | Store | Backend | Purpose | TTL |
 |-------|---------|---------|-----|
+| `ifc-lite-user-content` | IndexedDB | Saved validation/comparison reports, document templates, migration originals | Until explicit deletion or browser/site-data clearing |
 | `ifc-lite-extensions` | IndexedDB | Installed `.iflx` bundles + their records | Forever (or until uninstall) |
 | `ifc-lite-flavors` | IndexedDB | Flavor library + snapshots | Forever (snapshots cap at 10 per flavor) |
 | Action log | IndexedDB (ring buffer) | Pattern miner input | 50,000 events / 8 MiB rolling |
@@ -137,6 +138,10 @@ The toast has a **Privacy settings** action that opens the opt-out switch and lo
 - Memory extractor: `packages/extensions/src/flavor/memory-extractor.ts`
 - Audit log: `packages/extensions/src/audit/log.ts`
 - Capability gating: `packages/extensions/src/host/check.ts`
+
+### Saved reports and documents
+
+Validation reports, comparison reports, and documents stay in the browser’s `ifc-lite-user-content` IndexedDB database. Migrated originals are retained, including content that cannot be parsed. Failed writes keep drafts in the current tab. Clearing site data deletes this content; individual document templates and validation reports can be exported locally.
 
 ## Next steps
 

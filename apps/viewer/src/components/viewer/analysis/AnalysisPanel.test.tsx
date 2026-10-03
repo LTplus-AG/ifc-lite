@@ -159,7 +159,7 @@ describe('AnalysisPanel scaffold, through the IDS panel (#5834)', () => {
       useViewerStore.setState({ idsDocument: documentFixture, mutationVersion: 1, geometryContentVersion: 1 });
       useViewerStore.setState({ idsValidationReport: stampAnalysisReport(reportFor('model-a'), captureAnalysisStamp()) });
       const ui = render(<IDSPanel embedded={embedded} />);
-      assert.equal(ui.querySelector('.opacity-60'), null);
+      assert.ok(ui.querySelector('.opacity-60') === null);
       act(() => useViewerStore.setState({ geometryContentVersion: 2 }));
       const dimmed = [...ui.querySelectorAll('.opacity-60')];
       assert.ok(dimmed.some(region => region.textContent?.includes('Wall requirements')), 'old result cards dim');
@@ -167,11 +167,11 @@ describe('AnalysisPanel scaffold, through the IDS panel (#5834)', () => {
       for (const label of ['Re-run validation', 'Clear results', 'Load New IDS', 'Unload IDS']) {
         const control = byLabel(ui, label);
         assert.ok(control, `${label} remains available`);
-        assert.equal(control.closest('.opacity-60'), null, `${label} is outside stale result regions`);
+        assert.ok(control.closest('.opacity-60') === null, `${label} is outside stale result regions`);
       }
       const banner = ui.querySelector('output');
       assert.ok(banner?.textContent?.includes(resolve('analysisStale.message')), 'the stale notification is shown');
-      assert.equal(banner.closest('.opacity-60'), null, 'the stale notification itself stays undimmed');
+      assert.ok(banner.closest('.opacity-60') === null, 'the stale notification itself stays undimmed');
     });
   }
 

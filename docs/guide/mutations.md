@@ -867,3 +867,42 @@ derived directions/extents refuse before preview or writes. Native-unit
 conversion and placement composition also refuse nonfinite output atomically. The host records
 its compound Undo
 batch and re-meshes returned products after success.
+
+### Physical command edits on loaded models
+
+The SDK's `bim.store` methods use the same atomic geometry edit cores as the
+viewer commands. References carry a model ID and model-local EXPRESS ID.
+Coordinates and offsets are in IFC storey-local metres; planar rotations use
+radians about an explicit pivot. The viewer adapter handles rendering and
+history after the shared IFC operation commits.
+
+- `copyElements(modelId, expressIds, transforms)` copies selected products for
+  each transform, including their hosted openings/fillings and assembly parts.
+  Selecting a host and its filling copies that filling once.
+- `duplicateElement(ref, { offset, Name? })` uses the same copy graph with the
+  Duplicate naming policy. Supply the IFC offset explicitly; the viewer's
+  directional bounds gesture calculates its own offset.
+- `arrayElements(modelId, expressIds, params)` uses the viewer's linear/polar
+  array planner. `count` includes the original selection; the returned references
+  identify only the new copies.
+- `transformElements(modelId, expressIds, operation)` accepts a planar `move`
+  with `delta` or `rotate` with `pivot` and `angle`. Align and plan movement use
+  the same writer after their gesture computes the delta.
+- `setElementSize(ref, patch)` edits supported wall `Height`/`Thickness`, slab
+  `Thickness`, or linear extrusion/profile `Depth`/`XDim`/`YDim`. Unsupported
+  imported profile shapes refuse instead of being replaced with primitives.
+- `resizeWall(ref, start, end, options?)` changes wall endpoints and carries
+  joined ends by default. Set `moveJoinedEnds: false` explicitly to disable that
+  endpoint policy.
+- `splitElements(modelId, requests)` commits the entire selection atomically.
+  Wall/linear cuts use a distance; slab cuts use two planar points. The larger
+  piece retains source identity and the added piece receives a fresh GlobalId.
+- `trimExtendElement(ref, params)` uses `mode`, `click`, and a live wall boundary
+  or explicit finite boundary segment, with the same shape and host refusals as
+  the viewer.
+
+Each operation records one logical Undo batch. A refusal preserves the graph,
+mutation journal and allocation state. Edits resolve current overlay entities;
+geometry shared with unrelated occurrences is refused when writing it would
+change those occurrences. Backend capabilities are optional: a custom backend
+must implement a method before its namespace can execute it.

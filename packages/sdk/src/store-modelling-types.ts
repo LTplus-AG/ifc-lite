@@ -10,6 +10,7 @@
  */
 
 import type {
+  CopyTransform, CopyArrayParams,
   HostedElementEdit,
   CurtainWallInStoreParams,
   GridInStoreParams,
@@ -29,8 +30,16 @@ import type {
   RailingInStoreParams,
 } from '@ifc-lite/create';
 import type { EntityRef } from './types.js';
+import type { PhysicalStoreBackendMethods } from './store-physical-types.js';
 
-export interface ModellingStoreBackendMethods {
+export interface ModellingStoreBackendMethods extends PhysicalStoreBackendMethods {
+  /** Copy a dependency-pruned selection once per storey-local transform, atomically. */
+  copyElements?(modelId: string, expressIds: readonly number[], transforms: readonly CopyTransform[]): EntityRef[];
+  /** Duplicate with the viewer naming policy; explicit storey-local IFC XYZ displacement. */
+  duplicateElement?(ref: EntityRef, options: { offset: [number, number, number]; Name?: string }): EntityRef;
+  /** Array count includes the original; full circles exclude a coincident final copy. */
+  arrayElements?(modelId: string, expressIds: readonly number[], params: CopyArrayParams): EntityRef[];
+
   /** Edit the physical hosted cut/filling together, preserving identity and relationships. Metres, host-local. */
   editHostedElement?(ref: EntityRef, patch: HostedElementEdit): EntityRef;
   /** Complete IfcCurtainWall aggregate, including its member and panel bodies. */

@@ -78,6 +78,7 @@ export function recordModellingEdit<T>(
       editor: draft,
       mutationView: draft.getMutationView(),
       ownerHistoryId: resolveLiveOwnerHistoryId(dataStore, draft, draft.getMutationView()),
+      globalIdScopes: [...store.getState().models].filter(([id]) => id !== modelId).flatMap(([id, model]) => model.ifcDataStore ? [{ dataStore: model.ifcDataStore, view: store.getState().mutationViews.get(id) ?? null }] : []),
     })), draft)), batchId);
 }
 
@@ -92,6 +93,18 @@ export function recordModellingCommit<T>(
   const state = store.getState();
   const target = modelEditTarget(state, modelId);
   if (!target) throw new Error(`No model loaded for id "${modelId}"`);
+  return recordResolvedModellingCommit(store, target, commit, batchId);
+}
+
+/** The same compound history for adapters that also resolve legacy models. */
+export function recordResolvedModellingCommit<T>(
+  store: ModellingStore,
+  target: ModelEditTarget,
+  commit: (editor: StoreEditor, dataStore: IfcDataStore) => T,
+  batchId?: string,
+): T {
+  const state = store.getState();
+  const { modelId } = target;
   const { dataStore, view, editor } = target;
   const room = roomSlotFor(state, modelId) ? snapshotOverlay(view) : null;
   // By id, not by length: forgetting an overlay record also drops its own

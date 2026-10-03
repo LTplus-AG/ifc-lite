@@ -180,3 +180,11 @@ export type {
 export { copyBatchInStore, copySourcesInStore, copiedProductsInStore } from './in-store/copy-batch.js';
 export { arrayCopyTransforms, type CopyArrayParams } from './in-store/copy-array.js';
 export type { CopyTransform } from './in-store/copy-product.js';
+
+export { setElementSizeInStore } from './in-store/element-size-edit.js';
+export { resizeWallInStore } from './in-store/wall-size-edit.js';
+
+export { transformElementsInStore, type ElementTransformInput, type StoreyTransformOp } from './in-store/element-transform-edit.js';
+export { splitElementsInStore, type ElementSplitRequest, type ElementSplitOptions } from './in-store/element-split.js';
+
+export { trimExtendElementInStore, type ElementTrimExtendParams } from './in-store/element-trim-extend.js';

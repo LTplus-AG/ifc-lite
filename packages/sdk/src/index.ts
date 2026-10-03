@@ -393,3 +393,5 @@ export { RemoteBackend } from './transport/remote-backend.js';
 // ============================================================================
 
 export { BimHost } from './host.js';
+
+export type { PhysicalSizePatch } from './store-physical-types.js';

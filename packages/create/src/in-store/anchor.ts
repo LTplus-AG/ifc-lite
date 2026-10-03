@@ -60,6 +60,14 @@ export interface SpatialAnchor {
   guidRandom?: RandomSource;
 }
 
+function finiteRoundedLength(value: number): number {
+  if (!Number.isFinite(value)) throw new Error('Length conversion overflow: derived length must be finite');
+  // Above this bound decimal rounding itself would overflow. The number's
+  // representable precision already exceeds nine decimal places.
+  return Math.abs(value) <= Number.MAX_VALUE / 1e9 ? Math.round(value * 1e9) / 1e9 : value;
+}
+
+
 /**
  * Convert a metre value to the anchor's native length unit for STEP emit.
  * Rounded to 9 decimals to absorb the float noise the division introduces
@@ -70,13 +78,6 @@ export interface SpatialAnchor {
  * has no `bodyContextId`/`axisContextId`/`storeyId` — markup geometry has no
  * use for them) can share this one conversion instead of re-implementing it.
  */
-function finiteRoundedLength(value: number): number {
-  if (!Number.isFinite(value)) throw new Error('Length conversion overflow: derived length must be finite');
-  // Above this bound decimal rounding itself would overflow. The number's
-  // representable precision already exceeds nine decimal places.
-  return Math.abs(value) <= Number.MAX_VALUE / 1e9 ? Math.round(value * 1e9) / 1e9 : value;
-}
-
 export function toNativeLength(anchor: Pick<SpatialAnchor, 'lengthUnitScale'>, metres: number): number {
   const scale = anchor.lengthUnitScale;
   if (!Number.isFinite(metres)) throw new Error('Length must be finite');

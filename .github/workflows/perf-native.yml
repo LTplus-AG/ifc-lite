@@ -52,7 +52,7 @@ jobs:
       - name: Functional native protocol controls
         env:
           NATIVE_COMPILER_CONTROL_REQUIRED: "1"
-        run: node --test scripts/perf/native-hosted.test.mjs scripts/perf/native-compiler.test.mjs
+        run: node --test scripts/perf/native-hosted.test.mjs scripts/perf/native-compiler.test.mjs scripts/perf/sdk-resources.test.mjs
       - name: Verify fixtures, freeze source/tools and build both fresh native probes serially
         run: node scripts/perf/native-hosted-prepare.mjs build
       - name: Run fixed Linux-gated native attribution cohort

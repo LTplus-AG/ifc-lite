@@ -82,6 +82,14 @@ function animate() {
 animate();
 ```
 
+The viewer renders navigation frames at CSS resolution and restores HiDPI
+sharpness when movement settles. This reduces fill work on dense displays;
+CPU-bound scenes may see little improvement. The renderer's persistent
+`setMaxPixelRatio(ratio)` preference remains the upper bound. Pass
+`maxPixelRatio: 1` to `render()` for a single reduced-resolution frame; omit
+it for subsequent full-quality or capture frames. Invalid frame caps are
+ignored, and a frame cap cannot raise the configured maximum.
+
 ## Appearance triangle mapping
 
 `expandAppearanceCorners(mesh, sourceIndices, cornerUvs, targetIndices, targetCornerNormals, targetVertexCount)` binds
@@ -707,6 +715,7 @@ interface RenderOptions {
   clearColor?: [number, number, number, number];
 
   // Performance
+  maxPixelRatio?: number;           // This frame only, bounded by the configured cap
   enableDepthTest?: boolean;        // deprecated: declared but never read
   enableFrustumCulling?: boolean;
   spatialIndex?: SpatialIndex;

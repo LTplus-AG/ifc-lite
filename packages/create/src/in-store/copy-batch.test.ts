@@ -11,6 +11,7 @@ import { arrayCopyTransforms } from './copy-array.js';
 import { copyBatchInStore, copySourcesInStore, copiedProductsInStore } from './copy-batch.js';
 import { createCopyContext, productStoreyOrigin } from './copy-product.js';
 import { addColumnToStore } from './column.js';
+import { asRef } from './style-entity-reader.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 
 // #6232 D5: real Bonsai source products and authored overlays share copy policy.
@@ -131,4 +132,25 @@ it('rejects unknown array modes and overflowing derived coordinates before copie
   expect(() => arrayCopyTransforms({ ...linear, mode: 'unsupported' as 'linear' })).toThrow(/Unsupported array mode/);
   expect(arrayCopyTransforms({ ...linear, fit: true })).toEqual([{ offset: [5e307,0,0] }, { offset: [1e308,0,0] }]);
   expect(editor.getNewEntities()).toEqual([]);
+});
+
+
+it('refuses finite inputs whose native copy frame or placement overflows, atomically (#6753)', async () => {
+  const assertRefused = (target: IfcDataStore, targetView: MutablePropertyView, targetEditor: StoreEditor, transform: Parameters<typeof copyBatchInStore>[3][number]) => {
+    const before = structuredClone({ records: targetEditor.getNewEntities(), journal: targetView.getMutations() }), next = targetView.peekNextExpressId();
+    expect(() => copyBatchInStore(target, targetEditor, [1222], [transform])).toThrow(/finite.*native/);
+    expect({ records: targetEditor.getNewEntities(), journal: targetView.getMutations() }).toEqual(before);
+    expect(targetView.peekNextExpressId()).toBe(next);
+  };
+  expect(() => arrayCopyTransforms({ mode: 'polar', count: 2, anchor: [1e308, 1e308] })).toThrow(/frame.*finite/);
+  assertRefused(store, view, editor, { pivot: [1e308, 1e308], turn: Math.PI });
+  const text = readFileSync(sample, 'utf8').replace('IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)', 'IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)');
+  const bytes = new TextEncoder().encode(text);
+  const millimetres = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+  const mmView = new MutablePropertyView(null, 'mm'), mmEditor = new StoreEditor(millimetres, mmView);
+  assertRefused(millimetres, mmView, mmEditor, { offset: [1e308, 0, 0] });
+  const ctx = createCopyContext(store, editor), placement = ctx.read(asRef(ctx.read(1222)!.attributes[5])!)!;
+  const axis = ctx.read(asRef(placement.attributes[1])!)!, point = asRef(axis.attributes[0])!;
+  editor.setPositionalAttribute(point, 0, [1e308, 0, 0]);
+  assertRefused(store, view, editor, { offset: [1e308, 0, 0] });
 });

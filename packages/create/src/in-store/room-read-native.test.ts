@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { beforeAll, expect, it } from 'vitest';
 import { RoomLayoutCache } from './room-layout-cache.js';
-import { applyLayoutOp, filterRoomFaces, type RoomPlateFactory } from './room-layout-core.js';
+import { applyLayoutOp, readFaces, filterRoomFaces, type RoomPlateFactory } from './room-layout-core.js';
 import { roomCandidatesFromFaces, occupancyTest } from './room-candidates.js';
 
 const wasm = new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url), available = existsSync(wasm);
@@ -30,7 +30,7 @@ it.skipIf(!available)('shared native Room cache preserves edits across non-wall 
     const edited = original.plate.duplicate();
     try {
       expect(applyLayoutOp(edited, { kind: 'split', a: [21,20], b: [21,23] }, .1)).toBe(true);
-      cache.file('m', 42, .05, 'cut', original.walls, edited);
+      cache.file('m', 42, .05, 'cut', original.walls, edited, readFaces(edited));
     } catch (error) { edited.free(); throw error; }
     const cut = cache.read('m', 42, .05, 'cut', walls, factory);
     const carried = cache.read('m', 42, .05, 'property-edit', walls, factory);
@@ -53,4 +53,25 @@ it.skipIf(!available)('native candidate area and existing-space occupancy remain
     expect(filterRoomFaces(held.faces, 20)).toEqual([]);
     expect(filterRoomFaces(cache.read('m', 42, .05, 'source', walls, factory).faces, .3)).toHaveLength(1);
   } finally { cache.clear(); }
+});
+
+
+it.skipIf(!available)('filing an edited native plate reuses pre-commit faces without another WASM read (#6754)', () => {
+  const cache = new RoomLayoutCache(), original = cache.read('m', 42, .05, 'source', walls, factory);
+  const edited = original.plate.duplicate();
+  let transferred = false, freed = 0;
+  const free = edited.free.bind(edited);
+  edited.free = () => { freed++; free(); };
+  try {
+    expect(applyLayoutOp(edited, { kind: 'split', a: [21,20], b: [21,23] }, .1)).toBe(true);
+    const faces = readFaces(edited);
+    expect(faces).toHaveLength(2);
+    // A native reread here would happen after the model commit. The cache
+    // must accept the already-validated faces while retaining handle ownership.
+    edited.snapshot = () => { throw new Error('Unexpected native reread after commit'); };
+    cache.file('m', 42, .05, 'cut', original.walls, edited, faces);
+    transferred = true;
+    expect(cache.read('m', 42, .05, 'cut', walls, factory).faces).toBe(faces);
+  } finally { if (!transferred) edited.free(); cache.clear(); }
+  expect(freed).toBe(1);
 });

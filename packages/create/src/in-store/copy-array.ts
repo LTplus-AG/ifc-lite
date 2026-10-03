@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { finiteCopyFrame, turnThenMove } from './copy-frame.js';
 import { COPY_BATCH_LIMIT } from './copy-batch.js';
 import type { CopyTransform } from './copy-product.js';
 
@@ -32,7 +33,11 @@ export function arrayCopyTransforms(params: CopyArrayParams): CopyTransform[] | 
     const angle = params.angleDegrees ?? 360;
     if (!Number.isFinite(angle) || angle === 0 || Math.abs(angle) > 360) throw new Error('Polar span must be nonzero finite degrees within one turn');
     const step = Math.abs(angle) >= 360 ? (Math.sign(angle) * 360) / count : angle / (count - 1);
-    return copies.map((i) => ({ turn: (step * i * Math.PI) / 180, pivot: [anchor[0], anchor[1]] }));
+    return copies.map((i) => {
+      const turn = (step * i * Math.PI) / 180;
+      finiteCopyFrame(turnThenMove(turn, anchor, [0, 0, 0]), 'storey-local metres');
+      return { turn, pivot: [anchor[0], anchor[1]] };
+    });
   }
   if (!cursor) return null;
   const clicked = Math.hypot(cursor[0] - anchor[0], cursor[1] - anchor[1]);

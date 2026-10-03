@@ -193,3 +193,24 @@ candidate-null assertion failure and verified restoration. The first new test's
 floating-point control failure is retained separately and is not causal evidence.
 See `evidence/interleaved-oracles-6737/README.md` for exact source scope and the
 explicit whole-file oracle exemption; performance remains unmeasured.
+
+## Refused-sample diagnostics
+
+Observer delivery timestamps and phases distinguish load/readiness events from
+teardown events; they are not producer occurrence times. Before the cold file
+upload, one bounded passive observation records renderer-hook presence without
+waiting for initialization or changing the upload boundary. Hook presence proves
+initialization completion only, not device health or a rendered frame.
+
+On refusal, bounded private-shape scalar state and a bounded screenshot are
+captured before browser close. Fiber/hook traversal reports exhausted limits;
+null fields mean unavailable. Frame statistics describe CPU submission, not GPU
+completion or pixel fidelity. The serialized pre-teardown witness is detached
+from later events and hashed. Atomic owned temporary-file replacements preserve
+the prior receipt on partial-write failure and all guarded diagnostic writes
+still reach browser close. This is not a crash-durability guarantee.
+
+These additions preserve every existing readiness, identity, appearance and
+resource refusal. They do not requalify an earlier failed cohort. The new five
+behavior controls and explicit harness typecheck pass locally; actual diagnostic
+browser evidence remains pending until its separate dispatch completes.

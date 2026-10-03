@@ -1,0 +1,227 @@
+@ifc-lite/viewer:test: cache bypass, force executing e7c85b55f1e50b8f
+@ifc-lite/viewer:test: 
+@ifc-lite/viewer:test: > @ifc-lite/viewer@4.0.0 test /tmp/6232-quantity-history-fix/apps/viewer
+@ifc-lite/viewer:test: > tsx --import ./src/test/vite-module-hooks.mjs --test --test-timeout=120000 --test-concurrency=1 $(find src -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) | sort | awk -v p="${TEST_PATTERN:-.}" '$0 ~ p' | awk -v s="${TEST_SHARD:-0}" -v n="${TEST_SHARDS:-1}" '{h=0; for(i=1;i<=length($0);i++) h=(h*31+index(" !\"#$%&()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_abcdefghijklmnopqrstuvwxyz{|}~", substr($0,i,1)))%1000003} h%n==s')
+@ifc-lite/viewer:test: 
+@ifc-lite/viewer:test: [ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: ✔ Room query refreshes its storey while an unrelated upper wall is colour-merged (#6758) (120.684885ms)
+@ifc-lite/viewer:test: ✔ layout-only SDK split before IFC rooms uses native viewer Undo and Redo without graph edits (#6758) (60.995495ms)
+@ifc-lite/viewer:test: ✖ native Room cut Undo and Redo preserve typed area/volume metadata in the actual IFC export (#6232) (114.697122ms)
+@ifc-lite/viewer:test: ✖ #6232 source quantity type and unit survive real viewer Undo/Redo (51.149072ms)
+@ifc-lite/viewer:test: ✖ #6232 authored quantity type and unit survive real viewer Undo/Redo (4.258391ms)
+@ifc-lite/viewer:test: ✖ #6232 legacy quantity history restores value while retaining effective metadata without guessing a lost prior type (3.77578ms)
+@ifc-lite/viewer:test: ℹ tests 6
+@ifc-lite/viewer:test: ℹ suites 0
+@ifc-lite/viewer:test: ℹ pass 2
+@ifc-lite/viewer:test: ℹ fail 4
+@ifc-lite/viewer:test: ℹ cancelled 0
+@ifc-lite/viewer:test: ℹ skipped 0
+@ifc-lite/viewer:test: ℹ todo 0
+@ifc-lite/viewer:test: ℹ duration_ms 14169.608515
+@ifc-lite/viewer:test: 
+@ifc-lite/viewer:test: ✖ failing tests:
+@ifc-lite/viewer:test: 
+@ifc-lite/viewer:test: test at src/sdk/adapters/store-adapter-room-native.test.ts:1:7574
+@ifc-lite/viewer:test: ✖ native Room cut Undo and Redo preserve typed area/volume metadata in the actual IFC export (#6232) (114.697122ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+@ifc-lite/viewer:test:   + actual - expected
+@ifc-lite/viewer:test:   ... Skipped lines
+@ifc-lite/viewer:test:   
+@ifc-lite/viewer:test:     {
+@ifc-lite/viewer:test:       quantities: [
+@ifc-lite/viewer:test:         {
+@ifc-lite/viewer:test:           attributes: [
+@ifc-lite/viewer:test:             'GrossFloorArea',
+@ifc-lite/viewer:test:   ...
+@ifc-lite/viewer:test:           ],
+@ifc-lite/viewer:test:   +       type: 'IFCQUANTITYCOUNT'
+@ifc-lite/viewer:test:   -       type: 'IFCQUANTITYAREA'
+@ifc-lite/viewer:test:         },
+@ifc-lite/viewer:test:         {
+@ifc-lite/viewer:test:           attributes: [
+@ifc-lite/viewer:test:   +         'GrossVolume',
+@ifc-lite/viewer:test:   +         null,
+@ifc-lite/viewer:test:   +         null,
+@ifc-lite/viewer:test:   +         36,
+@ifc-lite/viewer:test:   +         null
+@ifc-lite/viewer:test:   +       ],
+@ifc-lite/viewer:test:   +       type: 'IFCQUANTITYCOUNT'
+@ifc-lite/viewer:test:   +     },
+@ifc-lite/viewer:test:   +     {
+@ifc-lite/viewer:test:   +       attributes: [
+@ifc-lite/viewer:test:             'NetFloorArea',
+@ifc-lite/viewer:test:             null,
+@ifc-lite/viewer:test:             null,
+@ifc-lite/viewer:test:             10.639999980330515,
+@ifc-lite/viewer:test:             null
+@ifc-lite/viewer:test:           ],
+@ifc-lite/viewer:test:   +       type: 'IFCQUANTITYCOUNT'
+@ifc-lite/viewer:test:   -       type: 'IFCQUANTITYAREA'
+@ifc-lite/viewer:test:         },
+@ifc-lite/viewer:test:         {
+@ifc-lite/viewer:test:           attributes: [
+@ifc-lite/viewer:test:             'GrossPerimeter',
+@ifc-lite/viewer:test:             null,
+@ifc-lite/viewer:test:   ...
+@ifc-lite/viewer:test:         },
+@ifc-lite/viewer:test:   -     {
+@ifc-lite/viewer:test:   -       attributes: [
+@ifc-lite/viewer:test:   -         'GrossVolume',
+@ifc-lite/viewer:test:   -         null,
+@ifc-lite/viewer:test:   -         null,
+@ifc-lite/viewer:test:   -         36,
+@ifc-lite/viewer:test:   -         null
+@ifc-lite/viewer:test:   -       ],
+@ifc-lite/viewer:test:   -       type: 'IFCQUANTITYVOLUME'
+@ifc-lite/viewer:test:   -     }
+@ifc-lite/viewer:test:       ],
+@ifc-lite/viewer:test:       typed: [
+@ifc-lite/viewer:test:         {
+@ifc-lite/viewer:test:           name: 'Qto_SpaceBaseQuantities',
+@ifc-lite/viewer:test:           quantities: [
+@ifc-lite/viewer:test:             {
+@ifc-lite/viewer:test:               name: 'GrossFloorArea',
+@ifc-lite/viewer:test:   +           type: 3,
+@ifc-lite/viewer:test:   -           type: 1,
+@ifc-lite/viewer:test:               unit: undefined,
+@ifc-lite/viewer:test:               value: 12
+@ifc-lite/viewer:test:             },
+@ifc-lite/viewer:test:             {
+@ifc-lite/viewer:test:               name: 'NetFloorArea',
+@ifc-lite/viewer:test:   +           type: 3,
+@ifc-lite/viewer:test:   -           type: 1,
+@ifc-lite/viewer:test:               unit: undefined,
+@ifc-lite/viewer:test:               value: 10.639999980330515
+@ifc-lite/viewer:test:             },
+@ifc-lite/viewer:test:             {
+@ifc-lite/viewer:test:               name: 'GrossPerimeter',
+@ifc-lite/viewer:test:   ...
+@ifc-lite/viewer:test:               name: 'GrossVolume',
+@ifc-lite/viewer:test:   +           type: 3,
+@ifc-lite/viewer:test:   -           type: 2,
+@ifc-lite/viewer:test:               unit: undefined,
+@ifc-lite/viewer:test:               value: 36
+@ifc-lite/viewer:test:             }
+@ifc-lite/viewer:test:           ]
+@ifc-lite/viewer:test:         }
+@ifc-lite/viewer:test:   
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/tmp/6232-quantity-history-fix/apps/viewer/src/sdk/adapters/store-adapter-room-native.test.ts:144:63)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: true,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: { typed: [ [Object] ], quantities: [ [Object], [Object], [Object], [Object], [Object] ] },
+@ifc-lite/viewer:test:     expected: { typed: [ [Object] ], quantities: [ [Object], [Object], [Object], [Object], [Object] ] },
+@ifc-lite/viewer:test:     operator: 'deepStrictEqual',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test: 
+@ifc-lite/viewer:test: test at src/store/slices/mutation-quantity-history.test.ts:1:1993
+@ifc-lite/viewer:test: ✖ #6232 source quantity type and unit survive real viewer Undo/Redo (51.149072ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+@ifc-lite/viewer:test:   + actual - expected
+@ifc-lite/viewer:test:   
+@ifc-lite/viewer:test:     {
+@ifc-lite/viewer:test:       name: 'Area',
+@ifc-lite/viewer:test:   +   type: 3,
+@ifc-lite/viewer:test:   +   unit: undefined,
+@ifc-lite/viewer:test:   -   type: 1,
+@ifc-lite/viewer:test:       value: 12
+@ifc-lite/viewer:test:     }
+@ifc-lite/viewer:test:   
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/tmp/6232-quantity-history-fix/apps/viewer/src/store/slices/mutation-quantity-history.test.ts:43:48)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+@ifc-lite/viewer:test:     generatedMessage: true,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: { name: 'Area', type: 3, value: 12, unit: undefined },
+@ifc-lite/viewer:test:     expected: { name: 'Area', type: 1, value: 12 },
+@ifc-lite/viewer:test:     operator: 'deepStrictEqual',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test: 
+@ifc-lite/viewer:test: test at src/store/slices/mutation-quantity-history.test.ts:1:1993
+@ifc-lite/viewer:test: ✖ #6232 authored quantity type and unit survive real viewer Undo/Redo (4.258391ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+@ifc-lite/viewer:test:   + actual - expected
+@ifc-lite/viewer:test:   
+@ifc-lite/viewer:test:     {
+@ifc-lite/viewer:test:       name: 'Area',
+@ifc-lite/viewer:test:   +   type: 3,
+@ifc-lite/viewer:test:   +   unit: undefined,
+@ifc-lite/viewer:test:   -   type: 1,
+@ifc-lite/viewer:test:   -   unit: 'm2',
+@ifc-lite/viewer:test:       value: 12
+@ifc-lite/viewer:test:     }
+@ifc-lite/viewer:test:   
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/tmp/6232-quantity-history-fix/apps/viewer/src/store/slices/mutation-quantity-history.test.ts:43:48)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: true,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: { name: 'Area', type: 3, value: 12, unit: undefined },
+@ifc-lite/viewer:test:     expected: { name: 'Area', type: 1, value: 12, unit: 'm2' },
+@ifc-lite/viewer:test:     operator: 'deepStrictEqual',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test: 
+@ifc-lite/viewer:test: test at src/store/slices/mutation-quantity-history.test.ts:1:2681
+@ifc-lite/viewer:test: ✖ #6232 legacy quantity history restores value while retaining effective metadata without guessing a lost prior type (3.77578ms)
+@ifc-lite/viewer:test:   AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+@ifc-lite/viewer:test:   + actual - expected
+@ifc-lite/viewer:test:   
+@ifc-lite/viewer:test:     {
+@ifc-lite/viewer:test:       name: 'Area',
+@ifc-lite/viewer:test:   +   type: 3,
+@ifc-lite/viewer:test:   +   unit: undefined,
+@ifc-lite/viewer:test:   -   type: 2,
+@ifc-lite/viewer:test:   -   unit: 'm3',
+@ifc-lite/viewer:test:       value: 12
+@ifc-lite/viewer:test:     }
+@ifc-lite/viewer:test:   
+@ifc-lite/viewer:test:       at TestContext.<anonymous> (/tmp/6232-quantity-history-fix/apps/viewer/src/store/slices/mutation-quantity-history.test.ts:56:10)
+@ifc-lite/viewer:test:       at async Test.run (node:internal/test_runner/test:1409:7)
+@ifc-lite/viewer:test:       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+@ifc-lite/viewer:test:     generatedMessage: true,
+@ifc-lite/viewer:test:     code: 'ERR_ASSERTION',
+@ifc-lite/viewer:test:     actual: { name: 'Area', type: 3, value: 12, unit: undefined },
+@ifc-lite/viewer:test:     expected: { name: 'Area', type: 2, value: 12, unit: 'm3' },
+@ifc-lite/viewer:test:     operator: 'deepStrictEqual',
+@ifc-lite/viewer:test:     diff: 'simple'
+@ifc-lite/viewer:test:   }
+@ifc-lite/viewer:test:  ELIFECYCLE  Test failed. See above for more details.

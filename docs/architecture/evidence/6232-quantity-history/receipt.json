@@ -1,0 +1,74 @@
+{
+  "issue": 6232,
+  "base": "bfc6d467c3e10387cf1e4dfe9da43066f139cb0e",
+  "before": {
+    "viewer": {
+      "passed": 2,
+      "failed": 4,
+      "skipped": 0,
+      "log": "viewer-before.log"
+    },
+    "quantityUnitExport": {
+      "failed": 1,
+      "actualUnit": null,
+      "expectedSourceMetreId": 2,
+      "log": "quantity-unit-before.log"
+    }
+  },
+  "after": {
+    "rootTypecheck": {
+      "tasks": 111,
+      "testFiles": 3381,
+      "passed": true
+    },
+    "viewer": {
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0
+    },
+    "mutations": {
+      "passed": 360,
+      "failed": 0,
+      "existingSkipped": 10
+    },
+    "export": {
+      "passed": 1686,
+      "failed": 0,
+      "existingSkipped": 54
+    },
+    "lint": {
+      "files": 8469,
+      "errors": 0
+    },
+    "docsSnippets": 433,
+    "apiExports": 9334,
+    "newApiExports": [
+      "replayQuantityMutation"
+    ],
+    "moduleSize": {
+      "files": 4811,
+      "newOversize": 0,
+      "budgetRaises": 0,
+      "mutablePropertyViewLines": 1872,
+      "mutablePropertyViewBudget": 1879
+    },
+    "licenseHeaders": true,
+    "sourceTextAssertionsNew": 0
+  },
+  "limits": [
+    "Unit export reuses the existing supported length-unit resolver; no new unit discovery.",
+    "Old history lacks prior metadata and cannot reconstruct historical type changes.",
+    "Write-only legacy forward targets without recorded/current type retain Count fallback.",
+    "Export-generated Pset/Qto identity differences are handled separately; persistent identities and quantity classes are not normalized."
+  ],
+  "logs": {
+    "typecheck": "/tmp/6232-quantity-final-typecheck.log",
+    "viewer": "/tmp/6232-quantity-final-viewer4.log",
+    "packages": "/tmp/6232-quantity-final-packages4.log",
+    "lint": "/tmp/6232-quantity-lint.log",
+    "docs": "/tmp/6232-quantity-docs.log",
+    "api": "/tmp/6232-quantity-api-check.log",
+    "module": "/tmp/6232-quantity-module.log",
+    "license": "/tmp/6232-quantity-license2.log"
+  }
+}

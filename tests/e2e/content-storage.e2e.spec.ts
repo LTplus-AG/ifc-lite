@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readFile, writeFile } from 'node:fs/promises';
 import { test, expect, type Page } from '@playwright/test';
-import { DOCUMENT_VERSION, type DocumentSpec } from '../../apps/viewer/src/lib/document/types';
+import { DOCUMENT_VERSION } from '../../apps/viewer/src/lib/document/document-version';
+import type { DocumentSpec } from '../../apps/viewer/src/lib/document/types';
 import type { RuleSetFile } from '@ifc-lite/rules';
 import type { ContentBackup } from '../../apps/viewer/src/lib/storage/content-backup';
 

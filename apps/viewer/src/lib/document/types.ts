@@ -11,6 +11,8 @@
  *
  * The shape is plain JSON: it is what `.ifclite-document.json` carries.
  */
+import { DOCUMENT_VERSION } from './document-version.js';
+export { DOCUMENT_VERSION } from './document-version.js';
 import { validateBlockTitle, type BlockTitle } from './block-title.js';
 import { isRgbColor } from '../color-contrast';
 import type { GroupOrder } from '../lists/group-sort';
@@ -29,8 +31,6 @@ export type { TextFont } from './text-typography.js';
 
 export { reportBlockSourceKind } from './ids-report-types.js';
 export type { IdsReportBlock, IdsReportCardinality, IdsReportCheckSummary, IdsReportRuleSummary, IdsReportSetRow, IdsReportVariant, ReportSourceKind } from './ids-report-types.js';
-
-export const DOCUMENT_VERSION = 12;
 
 /** A block that can sit two-up in a row (#4940); an unpaired half block prints full width. */
 export type BlockWidth = 'full' | 'half';

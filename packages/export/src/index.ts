@@ -100,3 +100,6 @@ export {
 export { serializeEntityArgs } from './attribute-real-slots.js';
 // Authored property declarations share the exporter's IfcValue registry/domain rules (SDK mutation consumer).
 export { validatePropertyDataType } from './declared-property-type.js';
+
+export { expandAffectedSet, type RemeshCause } from './affected-set.js';
+export { editOwnershipRefusal } from './edit-ownership.js';

@@ -160,6 +160,23 @@ describe('element.array (#6232 C3)', () => {
 });
 
 describe('array preview (#6232 C3)', () => {
+  it('invalid count or overflowing spacing refuses preview and commit without a graph write (#6753)', () => {
+    select(addColumn(0, 0));
+    useViewerStore.getState().startCommand('element.array');
+    click(0, 0);
+    const records = structuredClone(view().getNewEntities()), journal = structuredClone(view().getMutations()), before = undoDepth();
+    for (const invalid of [{ count: 10002 }, { count: 3, distance: 1e308 }]) {
+      act(() => updateCommandGesture(g => ({ ...(g as ArrayGesture), ...invalid })));
+      act(() => commandPointerMove(at(1, 0)));
+      const runtime = getCommandRuntime();
+      assert.deepEqual(runtime.command!.ghost!(runtime.gesture, runtime.ctx!), [], 'invalid settings draw no nonfinite or oversized preview');
+      assert.doesNotThrow(() => act(() => { commitCommand(); }), 'planner refusal is reported by the transaction');
+      assert.deepEqual(view().getNewEntities(), records);
+      assert.deepEqual(view().getMutations(), journal);
+      assert.equal(undoDepth(), before);
+    }
+  });
+
   it("shows the element's own mesh at every copy, where the commit puts it", () => {
     const column = addColumn(1, 1);
     const s = useViewerStore.getState();

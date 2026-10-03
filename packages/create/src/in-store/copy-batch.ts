@@ -12,7 +12,7 @@ import type { DuplicateInStoreOptions } from './duplicate.js';
 export const COPY_BATCH_LIMIT = 10_000;
 
 /** Keep roots once; their openings, fillings and assembly parts travel with them. */
-export function copySourcesInStore(ctx: CopyContext, ids: readonly number[]): { ids: number[] } | { refusal: string } {
+export function copySourcesInStore(ctx: CopyContext, ids: readonly number[], copyCount = 1): { ids: number[] } | { refusal: string } {
   const hostOf = new Map<number, number>();
   for (const [host, openings] of ctx.voids) for (const { id } of openings) hostOf.set(id, host);
   const chosen = new Set(ids);
@@ -26,6 +26,7 @@ export function copySourcesInStore(ctx: CopyContext, ids: readonly number[]): { 
     return false;
   };
   const kept = [...chosen].filter((id) => !carried(id));
+  if (!Number.isSafeInteger(copyCount) || copyCount < 1 || kept.length * copyCount > COPY_BATCH_LIMIT) return { refusal: `A copy batch may contain at most ${COPY_BATCH_LIMIT} product copies` };
   for (const id of kept) {
     const refusal = copyRefusal(ctx, id);
     if (refusal) return { refusal };
@@ -71,7 +72,7 @@ export function copyBatchInStore(
   transforms: readonly CopyTransform[],
   options: CopyBatchOptions = {},
 ): readonly CopyProductResult[] {
-  if (transforms.length * new Set(ids).size > COPY_BATCH_LIMIT) throw new Error(`A copy batch may contain at most ${COPY_BATCH_LIMIT} product copies`);
+  if (transforms.length > COPY_BATCH_LIMIT) throw new Error(`A copy batch may contain at most ${COPY_BATCH_LIMIT} transforms`);
   if (transforms.length === 0) throw new Error('At least one copy transform is required');
   for (const transform of transforms) {
     if (transform.offset && (transform.offset.length !== 3 || !transform.offset.every(Number.isFinite))) throw new Error('Copy offset must contain three finite metre coordinates');
@@ -84,7 +85,7 @@ export function copyBatchInStore(
     for (const transform of transforms) {
       if (transform.targetStoreyId !== undefined && ctx.read(transform.targetStoreyId)?.type.toUpperCase() !== 'IFCBUILDINGSTOREY') throw new Error('Copy targetStoreyId must identify an IfcBuildingStorey in this model');
     }
-    const sources = copySourcesInStore(ctx, ids);
+    const sources = copySourcesInStore(ctx, ids, transforms.length);
     if ('refusal' in sources) throw new Error(sources.refusal);
     return transforms.flatMap((transform) => sources.ids.map((id) => {
       if (!options.duplicate) return copyProductInStore(ctx, id, transform);

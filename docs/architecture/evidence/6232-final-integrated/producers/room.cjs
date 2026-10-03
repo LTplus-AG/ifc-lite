@@ -3,7 +3,15 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 'use strict';
 const { runSuite, assert } = require('./common.cjs');
-runSuite('room', async ({ modelId, baseline, send, capture, undo, redo, sameGraphGeometry }) => {
+runSuite('room', async ({ page, modelId, baseline, send, capture, undo, redo, sameGraphGeometry }) => {
+  // Spaces are hidden by the normal viewer default. Enable the existing
+  // public visibility command so the screenshots actually show Room solids.
+  if (!await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().typeVisibility.spaces)) {
+    await page.keyboard.press('Control+k');
+    await page.getByRole('dialog').getByRole('textbox').fill('Spaces');
+    await page.getByRole('option', { name: 'Spaces', exact: true }).click();
+    await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__.getState().typeVisibility.spaces);
+  }
   const walls=[], box=[[[0,-8,0],[4,-8,0]],[[4,-8,0],[4,-4,0]],[[4,-4,0],[0,-4,0]],[[0,-4,0],[0,-8,0]]];
   for(const [Start,End] of box) {
     const wall=await send('addWall',[modelId,42,{Start,End,Height:3,Thickness:.2}]); walls.push(wall.expressId);

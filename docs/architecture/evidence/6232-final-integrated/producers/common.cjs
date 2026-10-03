@@ -94,11 +94,11 @@ async function runSuite(name, exercise) {
           globalThis.parityMetadataGraph = new Function('return (' + source + ')')();
         }, metadataGraph.toString());
         const proofs = [], calls = []; let sequence = 0;
-        const send = async (method, args) => {
+        const send = async (method, args, namespace = 'store') => {
           const reply = await page.evaluate(request => globalThis.parityTransport.send(request), {
-            id: `6232-${name}-${count}-${++sequence}`, namespace: 'store', method, args,
+            id: `6232-${name}-${count}-${++sequence}`, namespace, method, args,
           });
-          calls.push({ method, args, reply });
+          calls.push({ namespace, method, args, reply });
           assert.ok(!reply.error, JSON.stringify(reply.error));
           return reply.result;
         };
@@ -223,7 +223,26 @@ async function runSuite(name, exercise) {
               await settle();
             }
           }
-          proofs.push({ stage, models });
+          // Frame the actual rendered owning-model entities through the public
+          // camera route. This changes only the view, never remeshes geometry.
+          let camera;
+          if (nativeIds.length) {
+            await send('flyTo', [nativeIds.map(expressId => ({ modelId, expressId }))], 'viewer');
+            let previous, stable = 0;
+            for (let frame = 0; frame < 300; frame++) {
+              await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+              camera = await send('getCamera', [], 'viewer');
+              assert.ok(camera.position?.length === 3 && camera.target?.length === 3);
+              assert.ok([...camera.position, ...camera.target].every(Number.isFinite));
+              const pose = JSON.stringify([camera.position, camera.target]);
+              stable = pose === previous ? stable + 1 : 0;
+              previous = pose;
+              if (frame >= 4 && stable >= 3) break;
+              if (frame === 299) throw new Error('Public camera did not settle for screenshot');
+            }
+            await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+          }
+          proofs.push({ stage, camera, models });
           await page.screenshot({ path: path.join(dir, `${count}-${stage}.png`) });
           fs.writeFileSync(path.join(dir, `${count}-progress.json`), JSON.stringify({ count, modelId, source, proofs, calls }));
           return target;

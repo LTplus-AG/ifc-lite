@@ -40,24 +40,28 @@ const TABLE_MESSAGES: Record<Exclude<TableMessageKind, 'error' | 'no-rows'>, str
   'rule-not-found': 'The rule this table refers to is not in the current validation report.',
 };
 
+/** Generated table labels must remain visible even when a captured catalogue
+ * explicitly contains an empty/whitespace translation (#6610, review4172078887). */
+function tableLabel(key: string, t?: DocumentLabelFormatter, fallback = resolveEnglish(key)): string {
+  return t?.(key).trim() || fallback;
+}
+
+const messageKeys: Record<Exclude<TableMessageKind, 'error' | 'no-rows'>, string> = {
+  resolving: 'document.table.resolving', 'no-model': 'document.table.noModel',
+  'no-report': 'document.table.noReport', 'rule-not-found': 'document.table.ruleNotFound',
+};
+
 /** What a table block prints in place of its rows, by state; `null` when it has rows to print. */
 export function tableMessage(state: TableState | undefined, t?: DocumentLabelFormatter): string | null {
   const kind = tableMessageKind(state);
   if (kind === null) return null;
-  // An engine error with an empty message (review finding) still has to read as an error, not as an empty grid.
   if (kind === 'error') return (state?.status === 'error' && state.message.trim())
-    || t?.('document.table.error').trim() || resolveEnglish('document.table.error');
-  // "No rows" reads differently per source: a list matched nothing, a validation table's rule/rows filter did.
-  if (kind === 'no-rows') return state?.status === 'ok' && state.kind === 'comparison'
-    ? t?.('document.table.comparisonNoRows') ?? 'No changes in this saved comparison.'
-    : state?.status === 'ok' && state.kind === 'validation'
-      ? t?.('document.table.validationNoRows') ?? 'No rows match this rule.'
-      : t?.('document.table.noRows') ?? 'No rows match this list.';
-  if (t) return t(kind === 'resolving' ? 'document.table.resolving'
-    : kind === 'no-model' ? 'document.table.noModel'
-      : kind === 'no-report' ? 'document.table.noReport' : 'document.table.ruleNotFound');
-  return TABLE_MESSAGES[kind];
+    || tableLabel('document.table.error', t);
+  if (kind === 'no-rows') return tableLabel(state?.status === 'ok' && state.kind === 'comparison'
+    ? 'document.table.comparisonNoRows' : state?.status === 'ok' && state.kind === 'validation'
+      ? 'document.table.validationNoRows' : 'document.table.noRows', t);
+  return t ? tableLabel(messageKeys[kind], t) : TABLE_MESSAGES[kind];
 }
 
 /** The title a table block prints: its own, the list's name, or "Validation results". */
-export const tableTitle = (block: TableBlock, t?: DocumentLabelFormatter): string => blockTitle(block, (block.source.kind === 'list' ? block.source.list.name : block.source.kind === 'comparison' ? block.source.comparison.name : t?.('document.block.tableSourceValidation') ?? 'Validation results'), false);
+export const tableTitle = (block: TableBlock, t?: DocumentLabelFormatter): string => blockTitle(block, (block.source.kind === 'list' ? block.source.list.name : block.source.kind === 'comparison' ? block.source.comparison.name : tableLabel('document.block.tableSourceValidation', t)), false);

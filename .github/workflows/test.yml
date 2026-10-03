@@ -2119,6 +2119,17 @@ jobs:
       - name: Rust tests (csg_capture feature)
         run: cargo test -p ifc-lite-geometry --features csg_capture
 
+      # #6537 diagnostic work must be tested with its opt-in counters present.
+      # Default workspace tests only exercise the unchanged ring geometry.
+      - name: Rust tests (opening work counters)
+        run: cargo test -p ifc-lite-geometry --features opening-perf-trace --lib csg::consolidate::ring_ops::tests
+
+      - name: Rust tests (opening work diagnostic output guard)
+        run: cargo test -p ifc-lite-processing --features opening-perf-trace --example opening_work_probe
+
+      - name: Clippy (canonical opening work diagnostic)
+        run: cargo clippy -p ifc-lite-processing --features opening-perf-trace --example opening_work_probe -- -D warnings
+
   # Geometry watertightness / triangulation-invariance census.
   #
   # Its own job, not a step in `rust-tests`: the sweep runs the whole fixture

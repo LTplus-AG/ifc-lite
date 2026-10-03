@@ -40,7 +40,7 @@ export function SavedValidationReports() {
       <details className="shrink-0 border-b p-2 text-xs" data-saved-validation-reports>
         <summary className="cursor-pointer font-medium">{t('validationPanel.history.title')} ({reports.length})</summary>
         {report ? (
-          <div className="mt-2 flex max-h-72 flex-col gap-2 overflow-auto">
+          <div className="mt-2 flex flex-col gap-2">
             <select aria-label={t('validationPanel.history.select')} value={report.id} className="rounded border border-input bg-background p-1" onChange={(e) => setPicked(e.target.value)}>
               {reports.map((entry) => <option key={entry.id} value={entry.id}>{savedReportLabel(entry)}</option>)}
             </select>

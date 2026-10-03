@@ -47,6 +47,7 @@ export const validationPanelEn = {
   'validationPanel.running.requirements': 'Checking requirements…',
 
   'validationPanel.results.validatedAgainst': 'Validated against: {models}',
+  'validationPanel.results.resizeSummary': 'Resize validation summary',
 
   'validationPanel.error.validationFailed': 'Validation failed',
   'validationPanel.error.corruptRecent': '"{name}" could not be loaded — it may be corrupted. It has been removed from Recent rule sets.',

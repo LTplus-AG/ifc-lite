@@ -86,6 +86,33 @@ test('#6537 source-build producing receipt requires every fresh task plus succes
     assert.throws(() => buildOutcomes(broken), /outcomes/);
   }
 });
+test('#6537 observed six-task GitHub groups bind fresh execution and WASM completion to closed unique tasks', () => {
+  const names = ['wasm', 'timing-ladder', 'wasm-lifecycle', 'encoding', 'data', 'geometry'];
+  const log = names.map(name => `::group::@ifc-lite/${name}:build\ncache bypass, force executing abcd\n${name === 'wasm' ? 'Finished release profile\n✨ Build complete!\n' : ''}::endgroup::\n`).join('')
+    + ' Tasks:    6 successful, 6 total\nCached:    0 cached, 6 total\n Time: 6m29.65s\n';
+  assert.equal(buildOutcomes(log).format, 'github-groups'); assert.equal(buildOutcomes(log).total, 6);
+  const geometry = '::group::@ifc-lite/geometry:build\ncache bypass, force executing abcd\n::endgroup::\n';
+  for (const broken of [log.replace(geometry, ''), log + geometry,
+    log.replace('::endgroup::', ''), log.replace('::group::@ifc-lite/wasm:build', '::group::@ifc-lite/wasm:test'),
+    log.replace('cache bypass, force executing abcd', 'cache hit, replaying logs abcd'),
+    log.replace('cache bypass, force executing abcd', 'cache bypass, force executing abcd\ncache bypass, force executing ef01'),
+    log.replace('✨ Build complete!\n', '') + '✨ Build complete!\n', log.replace('0 cached', '1 cached')]) {
+    assert.throws(() => buildOutcomes(broken));
+  }
+});
+test('#6537 scoped and unscoped npm tasks each need a unique fresh witness without aliasing mandatory SDK owners', () => {
+  const tasks = ['@ifc-lite/geometry', '@ifc-lite/data', '@ifc-lite/encoding', '@ifc-lite/wasm-lifecycle', '@ifc-lite/wasm', 'ifc-lite-collab-demo', 'ifc-lite-collab-3d-demo'];
+  const summary = '\nTasks: 7 successful, 7 total\nCached: 0 cached, 7 total\n';
+  for (const grouped of [false, true]) {
+    const blocks = tasks.map(name => grouped
+      ? `::group::${name}:build\ncache bypass, force executing abcd\n${name === '@ifc-lite/wasm' ? '✨ Build complete!\n' : ''}::endgroup::\n`
+      : `${name}:build: cache bypass, force executing abcd\n${name === '@ifc-lite/wasm' ? '@ifc-lite/wasm:build: ✨ Build complete!\n' : ''}`);
+    const log = blocks.join('') + summary; assert.equal(buildOutcomes(log).total, 7);
+    assert.throws(() => buildOutcomes(blocks.slice(0, -1).join('') + summary));
+    assert.throws(() => buildOutcomes(log + blocks.at(-1)));
+    assert.throws(() => buildOutcomes(log.replaceAll('@ifc-lite/geometry:', 'geometry:')));
+  }
+});
 test('#6537 known semantic omissions retain classification while unknown recovery and malformed counts refuse', () => {
   const warning = '[ifc-lite layers] batch: sliced 3, 1 NOT sliced — #2260673=skip:empty-base-mesh';
   assert.equal(canonicalSemanticWarning(warning).kind, 'layer-slicing');

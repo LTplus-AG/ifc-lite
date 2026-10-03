@@ -85,17 +85,41 @@ their adapter/runtime qualifications and supporting build/reuse receipts.
 Older prospective status fields and source constants remain unchanged;
 actual v13 leases and run receipts distinguish the later executed inspection.
 
-[SHA256SUMS](SHA256SUMS) indexes every uncompressed archive member.
+[SHA256SUMS.gz](SHA256SUMS.gz) indexes every uncompressed archive member after
+decompression. Its checksum text is unchanged.
 [artifact-index.json.gz](artifact-index.json.gz) adds byte counts and original
-paths or git revisions. [archive-validation.json](archive-validation.json)
-records container hashes and the lossless readback. Gzip timestamps and tar
+paths or git revisions. [archive-validation.json.gz](archive-validation.json.gz)
+preserves the original validation JSON verbatim. It records the original
+container hashes and lossless readback; its `files.SHA256SUMS` entry describes
+the reconstructed, uncompressed checksum file. The two new gzip containers
+have these independent outer hashes, avoiding a validation file hashing itself:
+
+| Container | Bytes | SHA256 |
+| --- | ---: | --- |
+| SHA256SUMS.gz | 5160 | c9be79627cf5bba6655ceea5479027152272885086d457bc50e51d7757c64285 |
+| archive-validation.json.gz | 591 | beb6fd288265736b0db49e2a093587a137156d76db93476348e167946093b49a |
+
+Both decompress byte-for-byte to their original metadata files, with gzip
+mtime zero and no stored filename. The original three gzip archives are
+unchanged, including all 112 tar members. Gzip timestamps and tar
 ownership/timestamps are normalized; every original payload remains exact.
 Validation only decompressed the archive and compared its members, hashes and
 standalone attribution bytes. No build, test, browser load or measurement ran
 while packaging this disposition.
 
-Extract into a separate inspection directory and use `sha256sum -c` with the
-supplied index. `source-inspection/frozen-source-index.json` identifies git
+From the repository root, reconstruct the metadata and extract into a separate
+inspection directory:
+
+```sh
+reservation_evidence="$PWD/scripts/perf/evidence/default-pool-reservation-6537"
+reservation_inspection="$(mktemp -d)"
+gzip -dc "$reservation_evidence/SHA256SUMS.gz" > "$reservation_inspection/SHA256SUMS"
+gzip -dc "$reservation_evidence/archive-validation.json.gz" > "$reservation_inspection/archive-validation.json"
+tar -xzf "$reservation_evidence/raw-diagnostics.tar.gz" -C "$reservation_inspection"
+(cd "$reservation_inspection" && sha256sum -c SHA256SUMS)
+```
+
+`source-inspection/frozen-source-index.json` identifies git
 blobs and hashes; `frozen-source/reservation-candidate.patch` exposes all changed
 reservation sites. The source analysis is an attribution review, not a test
 that treats a string's presence as proof of behavior.

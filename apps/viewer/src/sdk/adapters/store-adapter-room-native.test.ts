@@ -19,6 +19,7 @@ import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { clearStoreyRoomsCache } from '@/lib/rooms/storey-rooms';
 import { setRemeshClientFactory, requestRemesh } from '@/lib/remesh/remesh-service';
 import { createStoreAdapter } from './store-adapter.js';
+import { settle as settleNative } from '@/test/native-sdk-model';
 
 const MODEL = 'native', frame = { x: 0, y: 0, z: 0, needsShift: false };
 const sample = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
@@ -54,7 +55,7 @@ async function seed() {
   });
   return { store, adapter: createStoreAdapter(useViewerStore), view: useViewerStore.getState().mutationViews.get(MODEL)! };
 }
-const settle = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setTimeout(resolve, 0)); };
+const settle = () => settleNative(MODEL);
 const depth = () => useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0;
 
 it('Room query refreshes its storey while an unrelated upper wall is colour-merged (#6758)', async t => {

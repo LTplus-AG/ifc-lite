@@ -23,16 +23,8 @@
 import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 
-/**
- * Decode an entity's raw attributes from the source buffer.
- *
- * Injected from the call site rather than imported here directly —
- * `@ifc-lite/parser` transitively pulls in `@ifc-lite/ifcx` /
- * `@ifc-lite/pointcloud`, which aren't always buildable in the
- * test environment. The viewer wires this once at module load
- * (`placement-edit.boot.ts`); tests using only overlay entities
- * never need to provide it.
- */
+/** Synchronous source decoding for headless edits. The viewer may override
+ * this reader at boot; overlay reads never require a source buffer. */
 export type SourceAttrsReader = (
   dataStore: IfcDataStore,
   expressId: number,
@@ -40,13 +32,14 @@ export type SourceAttrsReader = (
 
 let configuredSourceReader: SourceAttrsReader | null = (store, id) => {
   // @raw-entity-enumeration-ok source baseline; readAttributes applies positional overlay edits
+  if (!store.source?.length || !store.entityIndex?.byId) return null;
   const ref = store.entityIndex.byId.get(id);
   return ref ? new EntityExtractor(store.source).extractEntity(ref)?.attributes ?? null : null;
 };
 
 /**
- * Register the parser-backed source reader. Called once during app
- * boot. Pass `null` to clear (used by tests).
+ * Override the parser-backed source reader at app boot.
+ * Pass `null` to disable source reads (used by tests).
  */
 export function setSourceAttrsReader(reader: SourceAttrsReader | null): void {
   configuredSourceReader = reader;

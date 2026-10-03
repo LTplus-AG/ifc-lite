@@ -5,7 +5,7 @@
 import { effectiveStoreyId as resolveEffectiveStoreyId, type IfcDataStore } from '@ifc-lite/parser';
 import { edgeSurvives, RelationshipType } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { resolveEffectiveRelationshipOverlay, normalizeIfcTypeName } from '@ifc-lite/parser';
+import { effectiveMutationRelationships, effectiveContextType } from './effective-mutation-view.js';
 
 
 /** The selected product's effective storey, including containment and aggregate edits. */
@@ -43,19 +43,4 @@ export function effectiveContainerTypeName(
     ?? store.relationships.inverse.getEdges(selectedId, RelationshipType.ContainsElements)
       .find((edge) => edgeSurvives(edge, superseded))?.target;
   return container === undefined || view.isDeleted(container) ? undefined : effectiveContextType(store, view, container);
-}
-
-function effectiveMutationRelationships(store: IfcDataStore, view: MutablePropertyView) {
-  return resolveEffectiveRelationshipOverlay(store, {
-    createdEntities: () => view.getNewEntities(),
-    mutatedEntityIds: () => view.getEffectiveChanges().map(change => change.entityId),
-    namedAttributes: id => view.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value] as const),
-    positionalAttributes: id => view.getPositionalMutationsForEntity(id) ?? [],
-    entityType: id => view.getEntityTypeMutation(id)?.newType,
-    isDeleted: id => view.isDeleted(id),
-  });
-}
-function effectiveContextType(store: IfcDataStore, view: MutablePropertyView, id: number): string {
-  const type = view.getEntityTypeMutation(id)?.newType ?? view.getNewEntity(id)?.type ?? store.entities.getTypeName(id);
-  return type ? normalizeIfcTypeName(type) : '';
 }

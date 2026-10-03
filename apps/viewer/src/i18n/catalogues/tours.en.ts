@@ -41,6 +41,7 @@ export const toursEn = {
   'tours.tourStepCard.redockedNotice': 'The panel was docked back into the sidebar for this step.',
   'tours.tourStepCard.stuckHint': 'Stuck? Skip this step and keep going.',
   'tours.tourStepCard.skipStep': 'Skip step',
+  'tours.tourStepCard.skipUseDemo': 'Skip (use demo)',
   'tours.tourStepCard.done': 'Done',
   'tours.tourStepCard.next': 'Next',
 } as const;

@@ -73,6 +73,20 @@ export const LENS_TOUR: TourDefinition = {
       arm: (state, ctx) => {
         ctx.baseline.hadIsolation = state.isolatedEntities !== null ? 1 : 0;
       },
+      // The legend only renders on the ACTIVE lens card, so skipping "Apply
+      // a lens" left this step with no anchor (`tour_step_broken`
+      // prerequisite-not-met in the field). Apply the step's own lens then;
+      // the snapshot still restores the pre-tour lens on abort. An active
+      // lens whose every row matches nothing renders only disabled rows, so
+      // it gets the same fallback: the gate needs one row to click.
+      prepare: (store) => {
+        const s = store.getState();
+        const active = s.savedLenses.find((lens) => lens.id === s.activeLensId);
+        const hasIsolatableRow = active?.autoColor
+          ? s.lensAutoColorLegend.some((entry) => entry.count > 0)
+          : active?.rules.some((rule) => (s.lensRuleCounts.get(rule.id) ?? 0) > 0);
+        if (!hasIsolatableRow) s.setActiveLens('lens-by-class');
+      },
       gate: { predicate: (s) => s.isolatedEntities !== null && s.isolatedEntities.size > 0 },
       // Normally step 5 (the user clearing it) makes this a no-op; it only
       // acts when tour-created isolation is still live at finish/abort.

@@ -6,6 +6,7 @@ import { readWallJoinTarget, type WallJoinRead, type WallJoinRel } from './wall-
 import { joinWallsInStore, reshapeWallsInStore, resolveWallJoinAnchor } from './wall-join-edit.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { emitOrdinaryElement, type OrdinaryInStoreElement } from './ordinary-element.js';
+import { preserveSplitParentPlacement } from './element-split-placement.js';
 import { keepsFirstPiece } from './edit/split-guid.js';
 import { MIN_WALL_SEGMENT_LENGTH } from './edit/wall-edit.js';
 import type { SplitEnvironment } from './element-split.js';
@@ -45,6 +46,8 @@ export function splitJoinedWallDraft(
     GlobalId: env.newGlobalId,
   } };
   const addedId = emitOrdinaryElement(env.editor, resolveSpatialAnchor(env.dataStore, env.storeyExpressId, env.view), element);
+
+  preserveSplitParentPlacement(env, addedId, read.parentPlacementId);
 
   // A join follows the piece its end (or, for a T, the joint on its path) is on.
   const alongAxis = (p: readonly [number, number]) => (p[0] - start[0]) * dir[0] + (p[1] - start[1]) * dir[1];

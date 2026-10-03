@@ -37,7 +37,9 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { iterateEffectiveEntityIds, type IfcAttributeValue, type MutablePropertyView, type StoreEditor } from '@ifc-lite/mutations';
-import { asExpressIdRef, readAttributes } from './placement-core.js';
+import { readAttributes } from './placement-core.js';
+import { asRef, refList } from '../style-entity-reader.js';
+import { refToken } from '../copy-frame.js';
 
 /** Relationship entity types we touch (case follows STEP storage form). */
 const RELATIONSHIPS_TO_CLONE = [
@@ -55,37 +57,11 @@ export interface CloneMetadataResult {
   relationshipsTouched: number;
 }
 
-/**
- * Coerce a raw RelatedObjects attribute into an array of express ids.
- * Overlay-stored refs are `#X` strings; parsed source refs are bare
- * numbers (see `asExpressIdRef`).
- */
-function relatedObjectIds(raw: unknown): number[] {
-  if (!Array.isArray(raw)) return [];
-  const ids: number[] = [];
-  for (const v of raw) {
-    const id = asExpressIdRef(v);
-    if (id !== null) ids.push(id);
-  }
-  return ids;
-}
-
-/**
- * Append target ids to the raw RelatedObjects list while preserving
- * the source's ref form (`#X` strings if any source ref is a string,
- * raw numbers otherwise). Avoids accidentally normalising overlay
- * refs into bare numbers, which the exporter wouldn't recognise.
- */
-function appendTargetsToList(
-  raw: unknown,
-  targets: number[],
-): unknown[] {
-  const list: unknown[] = Array.isArray(raw) ? raw.slice() : [];
-  const usesStrings = list.some((v) => typeof v === 'string');
-  for (const t of targets) {
-    list.push(usesStrings ? `#${t}` : t);
-  }
-  return list;
+/** These schema-known relationship slots are lists of entity references.
+ * Parsed numeric IDs must become explicit reference tokens for overlay writes;
+ * retaining numeric literals would disconnect every member on STEP export. */
+function appendTargetsToList(raw: unknown, targets: number[]): IfcAttributeValue[] {
+  return [...refList(raw), ...targets].map(refToken);
 }
 
 export function cloneElementMetadata(
@@ -102,20 +78,47 @@ export function cloneElementMetadata(
   // guard below would catch it on the second pass, but on the
   // first pass both copies would land in the new list.
   const uniqueTargets = Array.from(new Set(targetExpressIds));
+  const propertyNames = new Map<number, Set<string>>(), quantityNames = new Map<number, Set<string>>();
+  const namesFor = (id: number, quantity: boolean): Set<string> => {
+    const cache = quantity ? quantityNames : propertyNames;
+    let names = cache.get(id);
+    if (!names) {
+      const sets = quantity
+        ? view.getQuantitiesForEntity(id, base => dataStore.quantities.getForEntity(base))
+        : view.getForEntity(id, base => dataStore.properties.getForEntity(base));
+      names = new Set(sets.map(set => set.name));
+      cache.set(id, names);
+    }
+    return names;
+  };
 
   let touched = 0;
   for (const [type, index] of RELATIONSHIPS_TO_CLONE) {
     for (const { expressId: relId } of iterateEffectiveEntityIds(dataStore, view, [type])) {
       const attrs = readAttributes(dataStore, view, editor, relId);
       if (!attrs) continue;
-      const currentRelated = relatedObjectIds(attrs[index]);
+      const currentRelated = refList(attrs[index]);
       if (!currentRelated.includes(sourceExpressId)) continue;
       // Skip targets that are already in the list — avoids duplicates
       // when this is called twice for the same operation (idempotent).
-      const additions = uniqueTargets.filter((t) => !currentRelated.includes(t));
+      const definitionId = type === 'IFCRELDEFINESBYPROPERTIES' ? asRef(attrs[5]) : null;
+      const definitionType = definitionId === null ? null : editor.getEntityType(definitionId)?.toUpperCase();
+      const namedSet = definitionType === 'IFCPROPERTYSET' || definitionType === 'IFCELEMENTQUANTITY';
+      const readName = namedSet && definitionId !== null ? readAttributes(dataStore, view, editor, definitionId)?.[2] : null;
+      const definitionName = typeof readName === 'string' ? readName : null;
+      // A builder may already have authored canonical metadata for this piece.
+      // Retain that same-name set (especially its newly measured quantities),
+      // and share only distinct imported sets. The source itself is untouched.
+      const names = definitionName !== null
+        ? (id: number) => namesFor(id, definitionType === 'IFCELEMENTQUANTITY') : null;
+      const additions = uniqueTargets.filter(id => {
+        if (currentRelated.includes(id)) return false;
+        return names === null || definitionName === null || !names(id).has(definitionName);
+      });
       if (additions.length === 0) continue;
       const newList = appendTargetsToList(attrs[index], additions);
-      editor.setPositionalAttribute(relId, index, newList as IfcAttributeValue);
+      editor.setPositionalAttribute(relId, index, newList);
+      if (names && definitionName !== null) for (const id of additions) names(id).add(definitionName);
       touched++;
     }
   }

@@ -6984,6 +6984,7 @@
     "quantityKey: function",
     "recordCompoundMutation: function",
     "recordSessionMutation: function",
+    "replayQuantityMutation: function",
     "setEntityTypeNormalizer: function",
     "storeHasSourceEntity: function",
     "undoRecordedMutationOperations: function"

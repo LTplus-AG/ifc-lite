@@ -11,8 +11,9 @@
  * in as narrow callbacks so this file never needs those fields exposed.
  */
 
-import { QuantityType } from '@ifc-lite/data';
-import type { PropertyValueType } from '@ifc-lite/data';
+import type { QuantityType } from '@ifc-lite/data';
+import { replayQuantityMutation } from './quantity-replay.js';
+import type { QuantitySet, PropertyValueType } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyValue, Mutation } from './types.js';
 
 /**
@@ -38,8 +39,10 @@ export interface MutationApplyTarget {
     quantName: string,
     value: number,
     quantityType: QuantityType,
-    unit?: string,
+    unit?: string | null,
+    skipHistory?: boolean,
   ): unknown;
+  getQuantitiesForEntity?(entityId: number): QuantitySet[];
   createQuantitySet(
     entityId: number,
     qsetName: string,
@@ -192,14 +195,7 @@ export function applyMutationsBatch(
       case 'CREATE_QUANTITY':
       case 'UPDATE_QUANTITY':
         if (mutation.psetName && mutation.propName && mutation.newValue !== undefined) {
-          target.setQuantity(
-            mutation.entityId,
-            mutation.psetName,
-            mutation.propName,
-            Number(mutation.newValue),
-            (mutation.quantityType as QuantityType) ?? QuantityType.Count,
-            mutation.unit,
-          );
+          replayQuantityMutation(target, mutation);
         } else if (
           mutation.type === 'CREATE_QUANTITY' &&
           mutation.psetName &&

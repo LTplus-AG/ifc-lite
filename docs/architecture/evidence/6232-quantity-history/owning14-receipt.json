@@ -1,0 +1,78 @@
+{
+  "issue": 6232,
+  "pr": "https://github.com/LTplus-AG/ifc-lite/pull/6760",
+  "qualifiedSourceHead": "9aee797cbe1c13c7e5f632922a41cdbe82179be1",
+  "parent": "36515cbd119f6cdba87bec17a1360cc00b0b0f88",
+  "ancestry": "Narrow metadata cherry-pick only; no final16 or Align15 ancestry imported.",
+  "checks": {
+    "rootTypecheck": {
+      "tasksPassed": 111,
+      "testFiles": 3367
+    },
+    "viewer": {
+      "passed": 60,
+      "failed": 0,
+      "skipped": 0,
+      "scope": "publication failure atomicity, ordinary complete-graph Undo, canonical profiles, native physical/Room adapters, mounted Room history and typed quantity replay"
+    },
+    "mutations": {
+      "passed": 360,
+      "failed": 0,
+      "existingOptionalSkips": 10
+    },
+    "export": {
+      "passed": 1686,
+      "failed": 0,
+      "existingOptionalSkips": 54
+    },
+    "sandboxProfileBridge": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "lint": {
+      "files": 8434,
+      "errors": 0
+    },
+    "apiExports": 9319,
+    "docsSnippets": 433,
+    "moduleSize": {
+      "files": 4793,
+      "newOversize": 0,
+      "budgetRaises": 0
+    },
+    "licenseHeaders": true,
+    "generatedBimGlobals": {
+      "namespaces": 14,
+      "inSync": true
+    }
+  },
+  "nativeRuntime": {
+    "provenance": "Matching generated JS and WASM pair from final16, restored after root dependency qualification.",
+    "wasmSha256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+    "jsSha256": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+    "beforeAfterHashMatched": true,
+    "testCommand": "TEST_PATTERN=store-adapter-publication|store-adapter-native-physical-room|store-adapter-room-native|store-adapter.ordinary-live-view|mutation-element-profile.wasm|mutation-quantity-history|commands/room-layout|beam-column-profile pnpm test --filter=@ifc-lite/viewer --only --force --env-mode=loose",
+    "testTasksExecuted": 1,
+    "testTasksCached": 0,
+    "prerequisites": "Root111 typecheck and complete mutation/export root tests built current sibling dependencies first; native test itself ran without build tasks to prevent runtime cache replacement."
+  },
+  "limits": [
+    "No broader source-unit discovery claim.",
+    "No stack/main CI or main merge readiness claim from these local checks."
+  ],
+  "logs": {
+    "types": "/tmp/6232-history14-metadata-typecheck.log",
+    "native": "/tmp/6232-history14-native-controls.log",
+    "runtimeBefore": "/tmp/6232-history14-native-runtime-before.sha256",
+    "runtimeAfter": "/tmp/6232-history14-native-runtime-after.log",
+    "packages": "/tmp/6232-history14-metadata-packages.log",
+    "profile": "/tmp/6232-history14-profile-bridge.log",
+    "lint": "/tmp/6232-history14-metadata-lint.log",
+    "api": "/tmp/6232-history14-metadata-api.log",
+    "docs": "/tmp/6232-history14-metadata-docs.log",
+    "module": "/tmp/6232-history14-metadata-module.log",
+    "license": "/tmp/6232-history14-metadata-license.log",
+    "generatedGlobals": "/tmp/6232-history14-generated-globals.log"
+  }
+}

@@ -5,6 +5,9 @@ name: Hosted isolated graphics controls
 on:
   workflow_call:
     inputs:
+      post_timer_only:
+        type: boolean
+        default: false
       symbolic_only:
         type: boolean
         default: false
@@ -17,6 +20,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
+      - name: Reject conflicting specialized controls
+        if: ${{ inputs.symbolic_only && inputs.post_timer_only }}
+        run: exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
@@ -32,23 +38,32 @@ jobs:
       - name: Frozen dependency install (no application or WASM build)
         run: pnpm install --frozen-lockfile
       - name: Verify graphics-control invariants
-        if: ${{ !inputs.symbolic_only }}
+        if: ${{ !inputs.symbolic_only && !inputs.post_timer_only }}
         run: node --test scripts/perf/gpu-control.test.mjs
       - name: Two fixed prospective Chrome profiles, no retries or fallback
-        if: ${{ !inputs.symbolic_only }}
+        if: ${{ !inputs.symbolic_only && !inputs.post_timer_only }}
         env:
           DEBUG: pw:browser
           DEBUG_COLORS: '0'
         run: node scripts/perf/gpu-run.mjs
       - name: Verify symbolic receipt and shared outer ownership invariants
-        if: ${{ inputs.symbolic_only }}
+        if: ${{ inputs.symbolic_only && !inputs.post_timer_only }}
         run: node --test scripts/perf/gpu-control.test.mjs scripts/perf/gpu-outer.test.mjs scripts/perf/symbolic-upload-recorder.test.mjs scripts/perf/symbolic-upload-qualification.test.mjs
       - name: One corrected-profile symbolic upload control, no model or timing
-        if: ${{ inputs.symbolic_only }}
+        if: ${{ inputs.symbolic_only && !inputs.post_timer_only }}
         env:
           DEBUG: pw:browser
           DEBUG_COLORS: '0'
         run: node scripts/perf/symbolic-upload-gpu-run.mjs
+      - name: Verify post-timer reader and independent four-role qualification
+        if: ${{ inputs.post_timer_only && !inputs.symbolic_only }}
+        run: node --test scripts/perf/gpu-control.test.mjs scripts/perf/gpu-outer.test.mjs scripts/perf/post-timer-gpu-readback.test.mjs scripts/perf/post-timer-gpu-qualification.test.mjs
+      - name: One corrected-profile post-timer input control, no model or timing
+        if: ${{ inputs.post_timer_only && !inputs.symbolic_only }}
+        env:
+          DEBUG: pw:browser
+          DEBUG_COLORS: '0'
+        run: node scripts/perf/post-timer-gpu-run.mjs
       - name: Upload raw original and corrected controls, including refusals
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -1,0 +1,25 @@
+{
+  "source": "27f8c21c98481c4e331e1eb2486726eb22b8cf1d",
+  "repair": "17fa4a113cc51172493fdc49a45bccc4e1a258da",
+  "failedCIHead": "9e6624cf0305a943f44e6577d43de7873d8e7196",
+  "failedJob": "https://github.com/LTplus-AG/ifc-lite/actions/runs/37142255918/job/111260404108",
+  "scope": "Normal qualified owning-layer merge changes four intentional-source-read comments only in production, and moves the existing slab refusal regression to its stable viewer contract. Root reproduces the four raw-access failures before, passes the unchanged gate after (4511 files / 290 sites / 290 explicit exceptions), and executes the relocated real slab regression (one pass, zero skips). No budget, gate or behavior is weakened. Existing cumulative/type/browser receipts retain their exact original identities; current-head required CI remains pending.",
+  "runtimeBeforeAfterMatched": true,
+  "archives": {
+    "before": {
+      "rawBytes": 45505,
+      "rawSha256": "2a7d40e563f03ca5e5b8bfe95542714091d71d143a7e4493d894fe297617fd9d",
+      "gzipSha256": "eecf76ba701516d3305900e4312709f29c70f21fd9c4816f51183cd3c882bb7f"
+    },
+    "after": {
+      "rawBytes": 45420,
+      "rawSha256": "913ea0b4b09d6ac2fe8ca3582a5a8c1cf8a9db5b8e233211135fc2435502399e",
+      "gzipSha256": "7a3b8fbf6b0e69e7c4b2fa3d0f17d460bcf1c1c0ab942de5fae8ff4b8e243233"
+    },
+    "slab": {
+      "rawBytes": 1490,
+      "rawSha256": "3fc5198c6af1e0b29da03e41ba40afba6626436ad1dab08716c58df44f38931a",
+      "gzipSha256": "643ea50dad4b0dbcb711ecde647a333330067a0737dc212919f94d0d201e410d"
+    }
+  }
+}

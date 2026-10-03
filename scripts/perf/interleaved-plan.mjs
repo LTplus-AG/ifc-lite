@@ -43,10 +43,10 @@ export function requireIdentityPair(a, b) {
     if (row.status !== 'complete' || !row.identity?.complete) {
       throw new Error(`REFUSE: incomplete sample ${row.id}`);
     }
-    if (!(row.metrics?.metadataRenderReadyMs > 0)) throw new Error('REFUSE: missing full readiness boundary');
+    if (!Number.isFinite(row.metrics?.metadataRenderReadyMs) || !(row.metrics?.metadataRenderReadyMs > 0)) throw new Error('REFUSE: missing full readiness boundary');
     const runtime = row.runtime;
-    if (!runtime || !(runtime.hardwareConcurrency > 0) || !runtime.crossOriginIsolated || !runtime.sharedArrayBuffer
-      || !(runtime.workerCount > 0) || typeof runtime.browserVersion !== 'string' || !runtime.browserVersion
+    if (!runtime || !Number.isSafeInteger(runtime.hardwareConcurrency) || !(runtime.hardwareConcurrency > 0) || !runtime.crossOriginIsolated || !runtime.sharedArrayBuffer
+      || !Number.isSafeInteger(runtime.workerCount) || !(runtime.workerCount > 0) || typeof runtime.browserVersion !== 'string' || !runtime.browserVersion
       || !Array.isArray(runtime.workerIds) || runtime.workerIds.length !== runtime.workerCount) {
       throw new Error('REFUSE: missing default runtime census');
     }

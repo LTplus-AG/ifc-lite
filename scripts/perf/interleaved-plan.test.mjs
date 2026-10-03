@@ -35,6 +35,14 @@ test('#6537 identity, completion, worker changes and A/A noise are terminal refu
   assert.throws(() => requireIdentityPair(a, { ...b, identity: { complete: true, sha256: 'changed' } }), /identity mismatch/);
   assert.throws(() => requireIdentityPair(a, { ...b, runtime: { ...b.runtime, workerCount: 2, workerIds: [0, 1] } }), /census changed/);
   assert.throws(() => requireIdentityPair(a, { ...b, metrics: { metadataRenderReadyMs: 111 } }), /noise/);
+  for (const value of [0, null, undefined, NaN, Infinity, -Infinity, '100']) {
+    const invalid = sample => ({ ...sample, metrics: { metadataRenderReadyMs: value } });
+    assert.throws(() => requireIdentityPair(invalid(a), invalid(b)), /full readiness/);
+  }
+  for (const key of ['sharedArrayBuffer', 'crossOriginIsolated', 'hardwareConcurrency', 'workerCount']) {
+    const invalid = sample => ({ ...sample, runtime: { ...sample.runtime, [key]: key.endsWith('Count') || key === 'hardwareConcurrency' ? Infinity : false } });
+    assert.throws(() => requireIdentityPair(invalid(a), invalid(b)), /default runtime census/);
+  }
 });
 test('#6537 report requires complete family and reports unavailable phase instead of inventing one', () => {
   const samples = schedule().slice(0, 12).map(row);

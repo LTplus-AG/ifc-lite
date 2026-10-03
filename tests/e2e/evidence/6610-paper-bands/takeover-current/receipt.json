@@ -1,0 +1,340 @@
+{
+  "models": [
+    {
+      "name": "building-architecture.ifc",
+      "sourceFingerprint": "building-architecture.ifc:f778982157aa24e",
+      "sourceContentHash": "placement-sha256-1m-v1:4a7cf6b44f16f8f0bb5508b0c43bb6f032683c9c3bb8abcc1d9c0505e4297e49",
+      "meshCount": 14
+    }
+  ],
+  "witness": [
+    {
+      "page": 1,
+      "text": "Shared paper heading2026-10-03Page 1 / 11Shared paper footer2026-10-03Page 1 / 11Real SketchUp IFC paper evidence - page 1",
+      "images": [
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        },
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        }
+      ]
+    },
+    {
+      "page": 2,
+      "text": "Shared paper heading2026-10-03Page 2 / 11Shared paper footer2026-10-03Page 2 / 11Real SketchUp IFC paper evidence - page 2",
+      "images": [
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        },
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        }
+      ]
+    },
+    {
+      "page": 3,
+      "text": "Shared paper heading2026-10-03Page 3 / 11Shared paper footer2026-10-03Page 3 / 11Real SketchUp IFC paper evidence - page 3",
+      "images": [
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        },
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        }
+      ]
+    },
+    {
+      "page": 4,
+      "text": "Shared paper heading2026-10-03Page 4 / 11Shared paper footer2026-10-03Page 4 / 11Real SketchUp IFC paper evidence - page 4",
+      "images": [
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        },
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        }
+      ]
+    },
+    {
+      "page": 5,
+      "text": "Shared paper heading2026-10-03Page 5 / 11Shared paper footer2026-10-03Page 5 / 11Real SketchUp IFC paper evidence - page 5",
+      "images": [
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        },
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        }
+      ]
+    },
+    {
+      "page": 6,
+      "text": "Shared paper heading2026-10-03Page 6 / 11Shared paper footer2026-10-03Page 6 / 11Real SketchUp IFC paper evidence - page 6",
+      "images": [
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        },
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        }
+      ]
+    },
+    {
+      "page": 7,
+      "text": "Shared paper heading2026-10-03Page 7 / 11Shared paper footer2026-10-03Page 7 / 11Real SketchUp IFC paper evidence - page 7",
+      "images": [
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        },
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        }
+      ]
+    },
+    {
+      "page": 8,
+      "text": "Shared paper heading2026-10-03Page 8 / 11Shared paper footer2026-10-03Page 8 / 11Real SketchUp IFC paper evidence - page 8",
+      "images": [
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        },
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        }
+      ]
+    },
+    {
+      "page": 9,
+      "text": "Shared paper heading2026-10-03Page 9 / 11Shared paper footer2026-10-03Page 9 / 11Real SketchUp IFC paper evidence - page 9",
+      "images": [
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        },
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        }
+      ]
+    },
+    {
+      "page": 10,
+      "text": "Shared paper heading2026-10-03Page 10 / 11Shared paper footer2026-10-03Page 10 / 11Real SketchUp IFC paper evidence - page 10",
+      "images": [
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        },
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        }
+      ]
+    },
+    {
+      "page": 11,
+      "text": "Shared paper heading2026-10-03Page 11 / 11Shared paper footer2026-10-03Page 11 / 11Real SketchUp IFC paper evidence - page 11",
+      "images": [
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        },
+        {
+          "complete": true,
+          "naturalWidth": 16,
+          "naturalHeight": 16
+        }
+      ]
+    }
+  ],
+  "document": {
+    "version": 12,
+    "id": "takeover-bands",
+    "name": "Current union evidence",
+    "page": {
+      "size": "A4",
+      "orientation": "portrait"
+    },
+    "pageHeading": {
+      "text": "Shared paper heading",
+      "font": "times",
+      "fontSize": 22,
+      "textColor": "#003366",
+      "logo": {
+        "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAACxElEQVR42nVSS09TQRg930xvobfig7QVsDwqqFjUqBBMjFjQBB8LF5oajcEfYHRBJCHxkaLG6Mr4A9ygiZjelSvixudGoxgrVSTgo7zUG4UCpbe3t3PHhQgoeFaTL9+cOefMAZZAJBJhs0cGgP8z+wu0eCQJILn76MmmQJn/GiNiHxPD7U+jtx9BSgKR/C9BOBzmADCuqJfXV647V7elBoqi4N3AJ7yJxW4uN6faAEDTNIEFEufJgkGuaZrwFHpqVdWFeF+/+Sb+fnLoy9AF27ZNTdNEMBiUCx9eZKH24OGmDVWVt+q3bysf+67z+93d+3X9R1/z3sa7Y9/1K8+idx78Y0ESAOw8dLzY5/Ncr15f1TI5PY1AqV9Op1LoicV7tm7aWFcVqMDw2Ff0xOJdqZlM68OuWzqIwEKhDg6QdBe493iLVrcQpCVytk1EkACktPVMxvyZnJyCYRjW2rWB44qT7QCRDIVCnKHxtxRbCqvE6xVm1qKZ9AzLz8sTxDh9GPjUceNie9nz17HBYp+Pl672CsM0rT8WHHOfl5MkpeRlJSW5tJFBYniEG6Ypm5saugbLK04XuF0Jn9dTlRgZBZdsNrvGeYLfKmwIWyA5NYXpVIp21ddKVVUrhS27jXQ6m82aghjjC+/MK2CMGGPCEkIWuN1wqy7E+weIQHaRp5DShuoUQliKwwHJGM334PEsgW1lM6bFOWMKEeXK/GvgdDqxvMDN1gXKAaIc5w4lnTG5sHJzGfBE4okNKalIu/d5Qk9+s0Su3qE4l3kKV9lGJiNdeXmycOUK6BNJPjw6pr/tjZ9VksvuD544IBOdl8SiIlXWNZRWbwpe3VwTbGHE4Mp3ghHhVay388mLl+fHY89H8T+EQpG5TBqPtuwLn2rtPXam7W3DkZPNS+0sjUiEhcNRDgDFxbUq/H4XAISjUf6ntQvxCx1sLObzIQ+xAAAAAElFTkSuQmCC",
+        "height": 36
+      },
+      "showDate": true,
+      "showPageNumbers": true
+    },
+    "pageFooter": {
+      "text": "Shared paper footer",
+      "font": "courier",
+      "fontSize": 12,
+      "textColor": "#333333",
+      "logo": {
+        "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAACxElEQVR42nVSS09TQRg930xvobfig7QVsDwqqFjUqBBMjFjQBB8LF5oajcEfYHRBJCHxkaLG6Mr4A9ygiZjelSvixudGoxgrVSTgo7zUG4UCpbe3t3PHhQgoeFaTL9+cOefMAZZAJBJhs0cGgP8z+wu0eCQJILn76MmmQJn/GiNiHxPD7U+jtx9BSgKR/C9BOBzmADCuqJfXV647V7elBoqi4N3AJ7yJxW4uN6faAEDTNIEFEufJgkGuaZrwFHpqVdWFeF+/+Sb+fnLoy9AF27ZNTdNEMBiUCx9eZKH24OGmDVWVt+q3bysf+67z+93d+3X9R1/z3sa7Y9/1K8+idx78Y0ESAOw8dLzY5/Ncr15f1TI5PY1AqV9Op1LoicV7tm7aWFcVqMDw2Ff0xOJdqZlM68OuWzqIwEKhDg6QdBe493iLVrcQpCVytk1EkACktPVMxvyZnJyCYRjW2rWB44qT7QCRDIVCnKHxtxRbCqvE6xVm1qKZ9AzLz8sTxDh9GPjUceNie9nz17HBYp+Pl672CsM0rT8WHHOfl5MkpeRlJSW5tJFBYniEG6Ypm5saugbLK04XuF0Jn9dTlRgZBZdsNrvGeYLfKmwIWyA5NYXpVIp21ddKVVUrhS27jXQ6m82aghjjC+/MK2CMGGPCEkIWuN1wqy7E+weIQHaRp5DShuoUQliKwwHJGM334PEsgW1lM6bFOWMKEeXK/GvgdDqxvMDN1gXKAaIc5w4lnTG5sHJzGfBE4okNKalIu/d5Qk9+s0Su3qE4l3kKV9lGJiNdeXmycOUK6BNJPjw6pr/tjZ9VksvuD544IBOdl8SiIlXWNZRWbwpe3VwTbGHE4Mp3ghHhVay388mLl+fHY89H8T+EQpG5TBqPtuwLn2rtPXam7W3DkZPNS+0sjUiEhcNRDgDFxbUq/H4XAISjUf6ntQvxCx1sLObzIQ+xAAAAAElFTkSuQmCC",
+        "height": 24
+      },
+      "showDate": true,
+      "showPageNumbers": true
+    },
+    "blocks": [
+      {
+        "kind": "text",
+        "id": "text0",
+        "text": "Real SketchUp IFC paper evidence - page 1",
+        "style": "body"
+      },
+      {
+        "kind": "page-break",
+        "id": "break0"
+      },
+      {
+        "kind": "text",
+        "id": "text1",
+        "text": "Real SketchUp IFC paper evidence - page 2",
+        "style": "body"
+      },
+      {
+        "kind": "page-break",
+        "id": "break1"
+      },
+      {
+        "kind": "text",
+        "id": "text2",
+        "text": "Real SketchUp IFC paper evidence - page 3",
+        "style": "body"
+      },
+      {
+        "kind": "page-break",
+        "id": "break2"
+      },
+      {
+        "kind": "text",
+        "id": "text3",
+        "text": "Real SketchUp IFC paper evidence - page 4",
+        "style": "body"
+      },
+      {
+        "kind": "page-break",
+        "id": "break3"
+      },
+      {
+        "kind": "text",
+        "id": "text4",
+        "text": "Real SketchUp IFC paper evidence - page 5",
+        "style": "body"
+      },
+      {
+        "kind": "page-break",
+        "id": "break4"
+      },
+      {
+        "kind": "text",
+        "id": "text5",
+        "text": "Real SketchUp IFC paper evidence - page 6",
+        "style": "body"
+      },
+      {
+        "kind": "page-break",
+        "id": "break5"
+      },
+      {
+        "kind": "text",
+        "id": "text6",
+        "text": "Real SketchUp IFC paper evidence - page 7",
+        "style": "body"
+      },
+      {
+        "kind": "page-break",
+        "id": "break6"
+      },
+      {
+        "kind": "text",
+        "id": "text7",
+        "text": "Real SketchUp IFC paper evidence - page 8",
+        "style": "body"
+      },
+      {
+        "kind": "page-break",
+        "id": "break7"
+      },
+      {
+        "kind": "text",
+        "id": "text8",
+        "text": "Real SketchUp IFC paper evidence - page 9",
+        "style": "body"
+      },
+      {
+        "kind": "page-break",
+        "id": "break8"
+      },
+      {
+        "kind": "text",
+        "id": "text9",
+        "text": "Real SketchUp IFC paper evidence - page 10",
+        "style": "body"
+      },
+      {
+        "kind": "page-break",
+        "id": "break9"
+      },
+      {
+        "kind": "text",
+        "id": "text10",
+        "text": "Real SketchUp IFC paper evidence - page 11",
+        "style": "body"
+      }
+    ]
+  },
+  "persistenceEqual": true,
+  "errors": [
+    {
+      "kind": "console",
+      "message": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "kind": "console",
+      "message": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+  ]
+}

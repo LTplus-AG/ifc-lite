@@ -125,3 +125,38 @@ it('retains the captured failed-image fallback while a replacement URL prepares 
   assert.doesNotMatch(ui.textContent ?? '', /The image could not be decoded/);
   assert.ok(ui.querySelector('[data-preview-section]') === paper, 'settled image replacement keeps the same sheet DOM');
 });
+
+
+it('retains failed repeated-logo furniture while its replacement prepares, then decodes the real PNG (#6610)', async () => {
+  function FrameLogo() {
+    const [url, setUrl] = useState('data:image/png;base64,pending-frame-logo');
+    const pageBand = { text: 'Controlled copy', logo: { dataUrl: url, height: 60 }, showPageNumbers: true };
+    return <><button onClick={() => setUrl(replacementImage)}>Replace frame logo</button>
+      <DocumentPreview document={{ ...document, pageHeading: pageBand, pageFooter: pageBand }}
+        bindings={bindings} aggregations={aggregations} chartMessages={messages} topics={topics}
+        selectedBlockId={null} onSelectBlock={() => {}} /></>;
+  }
+  const ui = render(<FrameLogo />);
+  await waitFor(() => ui.querySelector('[data-layout-pending="true"]') === null
+    && ui.querySelector('[data-page-logo="heading"].border-dashed') !== null,
+  'malformed repeated logo settles as a visible decode failure');
+  const oldFrame = ui.querySelector('[data-page-logo="heading"]'); assert.ok(oldFrame);
+  const oldPaper = ui.querySelector('[data-preview-section]'); assert.ok(oldPaper);
+  assert.equal(ui.querySelector('[data-document-preview]')?.getAttribute('aria-busy'), 'false');
+  const replace = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Replace frame logo'); assert.ok(replace);
+  click(replace);
+  assert.equal(ui.querySelector('[data-preview-section]'), oldPaper, 'same-document furniture remains mounted while preparing');
+  assert.equal(ui.querySelector('[data-page-logo="heading"]'), oldFrame, 'captured failed furniture does not revive its old image URL');
+  assert.equal(ui.querySelector('img[data-page-logo="heading"]'), null);
+  await waitFor(() => ui.querySelector<HTMLImageElement>('img[data-page-logo="heading"]')?.getAttribute('src') === replacementImage
+    && ui.querySelector('[data-document-preview]')?.getAttribute('aria-busy') === 'false',
+  'both repeated bands decode the actual committed PNG and settle shared layout');
+  const logos = [...ui.querySelectorAll<HTMLImageElement>('img[data-page-logo]')];
+  assert.equal(logos.length, 2 * ui.querySelectorAll('[data-preview-section]').length);
+  for (const image of logos) {
+    assert.equal(image.naturalWidth, 16); assert.equal(image.naturalHeight, 16);
+    assert.ok(Math.abs(parseFloat(image.style.width) - parseFloat(image.style.height)) < 0.01);
+  }
+  assert.equal(ui.querySelector('[data-preview-section]'), oldPaper);
+  assert.doesNotMatch(ui.textContent ?? '', /The image could not be decoded/);
+});

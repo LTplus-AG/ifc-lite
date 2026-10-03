@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { localIsoDate } from '@/lib/document/bindings';
 import { useEffect, useState } from 'react';
 import { resolveBlocks, type DocumentPdfInput } from '@/lib/document/generate-document-pdf';
-import { composeResolvedDocument, documentTextMeasure } from '@/lib/document/document-layout';
+import { composeResolvedDocument, documentTextMeasure, pageBandImageAspects } from '@/lib/document/document-layout';
 import type { ComposeDocumentInput, DocumentLayout } from '@/lib/document/compose';
 
 export interface PreviewImageSize { w: number; h: number }
@@ -36,11 +37,13 @@ export function useDocumentLayout(input: DocumentPdfInput, imageSizes: ReadonlyM
     setError(null);
     const prepare = async () => {
       const measure = await standardFontMetrics();
+      const imageSize = async (dataUrl: string) => imageSizes.get(dataUrl) ?? { w: 1, h: 1 };
+      const logoAspects = await pageBandImageAspects(input.document, imageSize);
       const blocks = await resolveBlocks(input,
-        async dataUrl => imageSizes.get(dataUrl) ?? { w: 1, h: 1 },
+        imageSize,
         { unresolved: [], missingTopics: [], tableFailures: [] });
       if (!current) return;
-      const layout = composeResolvedDocument(input.document, blocks, input.bindings.today.toLocaleString(), measure, input.labels);
+      const layout = composeResolvedDocument(input.document, blocks, input.bindings.today.toLocaleString(), measure, input.labels, logoAspects, localIsoDate(input.bindings.today));
       setValue({ layout, measure, input, imageSizes });
     };
     void prepare().catch(cause => {

@@ -2,6 +2,10 @@
 
 The **Document** panel is a page over the model: text whose fields read the loaded IFC, a logo, charts from your dashboards, BCF topics — laid out top to bottom and printed to an A4/A3 PDF. A document is a **template**: it stores the *bindings*, not the values, so the same document opened on the next revision of the file reads that revision. It lives in the bottom strip next to Charts (**Analyze → Document**, or `Document` in the command palette).
 
+Use **Page heading** and **Page footer** to set the text, standard font, text size and ink independently of the library document name. Each band can embed a PNG/JPEG logo, show the captured local date and show the current page and total. A logo uses the same 1 MB upload limit as a body image and travels in the document file. **Reset page footer** restores the generated receipt and page counter; resetting the heading restores the library name.
+
+The shared composer reserves the measured bands before laying out body blocks. Preview and PDF repeat the same text, logo and truthful counters on explicit page breaks and pages created by text or tables overflowing. If an enlarged block heading cannot fit between the bands, reduce the band height or block size before exporting.
+
 ## Blocks
 
 Use **Copy block** beside the move and remove buttons to place an independent copy immediately after any block. The copy keeps its text, formatting, fields and source references, and is selected for editing. Editing or removing it leaves the original unchanged.
@@ -68,7 +72,7 @@ Each grouped list table has its own **Group order**: **Largest first** (the defa
 **Header background** chooses an opaque RGB colour for any document table. **Header text** optionally overrides the automatically chosen black or white ink; reset it to return to readable contrast for the current background. Resetting the background restores the default slate. Both colours appear in preview and on every repeated PDF header, and persist with the document; older documents keep the automatic text colour.
 
 
-The file is `version: 11`; versions 1–10 open and re-save as version 11 automatically (version 8 added page breaks, version 9 added saved comparison table sources, version 10 added live manual checklist sources and presentation options, and version 11 adds the optional block size). Older viewers refuse a newer file with a clear version error. A table block embeds its list (lists otherwise live only in the browser), so a shared document brings its tables along; the copy never carries a selection snapshot (`expressIdsByModel`), which is bound to one load of one model. More than two columns per row, arbitrary font files, a per-chart legend position, page margins, and drag-resize are not currently available.
+The file is `version: 12`; versions 1–11 open and re-save as version 12 automatically (version 8 added page breaks, version 9 added saved comparison table sources, version 10 added live manual checklist sources and presentation options, version 11 added the optional block size, and version 12 adds repeated header/footer options). Older viewers refuse a newer file with a clear version error. A table block embeds its list (lists otherwise live only in the browser), so a shared document brings its tables along; the copy never carries a selection snapshot (`expressIdsByModel`), which is bound to one load of one model. More than two columns per row, arbitrary font files, a per-chart legend position, page margins, and drag-resize are not currently available.
 
 ### Validation result rings
 

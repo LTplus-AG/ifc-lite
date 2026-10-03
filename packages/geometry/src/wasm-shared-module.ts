@@ -18,8 +18,9 @@
  *
  * Keeping the memo here — rather than private to the worker pool — means the
  * second path can reuse whatever the first already compiled, so the binary is
- * fetched at most once per URL per realm no matter which path runs first. That
- * matters most when the two overlap: a prewarm started at page load and a small
+ * shared on pool-first and bundled main-init-first loads. Unbundled main init
+ * keeps wasm-bindgen's own asset resolution. Sharing matters most when
+ * the two overlap: a prewarm started at page load and a small
  * file opened seconds later would otherwise be two concurrent downloads of the
  * same 1.3 MB (browsers are not required to coalesce in-flight requests for the
  * same URL), on exactly the slow connections the prewarm exists to help.
@@ -111,25 +112,28 @@ export async function compileSharedWasmModule(
 }
 
 /**
- * The compiled module for `explicitUrl` **only if a compile was already started**
- * for it — otherwise `null`, without starting one.
+ * Acquire the existing default module for bridge init. Start it only when a
+ * bundler rewrote our static asset URL: a raw sibling path is not proof of the
+ * installed dependency location (a nested npm dependency can live elsewhere).
+ * Such unbundled consumers keep wasm-bindgen's working bare-import resolution.
  *
- * This is the "join, don't initiate" accessor for consumers that have their own
- * working init path (`IfcLiteBridge.init()`): when a prewarm or a parallel load
- * has already fetched the binary, reuse it; when nothing has, do exactly what
- * this consumer did before rather than speculatively pulling 1.3 MB on a path
- * that may not need it.
- *
- * Awaits an in-flight compile rather than racing it with a second fetch — the
- * bytes are the same and already on the wire.
+ * The second URL constructor uses a parameter, not import.meta.url, so bundlers
+ * leave it untouched. Compare before fetching; never probe a speculative URL.
+ * A failed optional shared compile retains the ordinary loader/retry path.
+ * These arguments are an internal URL-policy seam, not package-root API.
  */
-export function getStartedSharedWasmModule(
-  explicitUrl?: string,
+export function acquireSharedWasmModuleForInit(
+  resolvedUrl: string | URL | null = resolveWasmUrl(),
+  moduleUrl: string = import.meta.url,
 ): Promise<WebAssembly.Module | null> | null {
-  const url = resolveWasmUrl(explicitUrl);
-  if (!url) return null;
-  const cacheKey = url instanceof URL ? url.href : url;
-  return sharedWasmModulePromises.get(cacheKey) ?? null;
+  if (!resolvedUrl) return null;
+  const cacheKey = resolvedUrl instanceof URL ? resolvedUrl.href : resolvedUrl;
+  const cached = sharedWasmModulePromises.get(cacheKey);
+  if (cached) return cached;
+  const resolved = new URL(cacheKey, moduleUrl);
+  const unbundled = new URL('../../wasm/pkg/ifc-lite_bg.wasm', moduleUrl);
+  if (resolved.href === unbundled.href || !['http:', 'https:'].includes(resolved.protocol)) return null;
+  return compileSharedWasmModule(cacheKey);
 }
 
 /**

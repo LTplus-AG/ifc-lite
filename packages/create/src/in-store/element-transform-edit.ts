@@ -5,7 +5,7 @@
 import { editOwnershipRefusal } from '@ifc-lite/export';
 import { planElementTransform, type TransformPlan, type TransformRefusal } from './element-transform-plan.js';
 import { rotateBy, unrotateBy } from './element-transform-frames.js';
-import { translateProduct, rotateProductYaw, resolvePlacementChain, resolveRotationState } from './edit/placement-core.js';
+import { translateProduct, rotateProductYaw, resolvePlacementChain, resolveRotationState, translatedCoordinates } from './edit/placement-core.js';
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
 import { toNativeLength } from './anchor.js';
 import { effectiveStoreyId } from './edit/effective-storey.js';
@@ -60,13 +60,22 @@ export function transformElementsInStore(input: ElementTransformInput): ElementT
     if (!root.upright) throw new Error(`#${root.expressId} is tilted; only upright elements turn about the vertical.`);
     const offset: Vec2 = [root.origin[0] - op.pivot[0], root.origin[1] - op.pivot[1]];
     const swung = rotateBy([Math.cos(op.angle), Math.sin(op.angle)], offset);
-    return { root, delta: [op.pivot[0] + swung[0] - root.origin[0], op.pivot[1] + swung[1] - root.origin[1]] as Vec2, turn: op.angle };
+    const delta: Vec2 = [op.pivot[0] + swung[0] - root.origin[0], op.pivot[1] + swung[1] - root.origin[1]];
+    if (!delta.every(Number.isFinite)) throw new Error('Rotation overflow: derived displacement must be finite');
+    return { root, delta, turn: op.angle };
+  });
+  const unit = { lengthUnitScale: getModelLengthUnitScale(input.dataStore) };
+  const prepared = steps.map(step => {
+    const parentDelta = unrotateBy(step.root.parent.axis, step.delta);
+    const nativeDelta: [number, number, number] = [toNativeLength(unit, parentDelta[0]), toNativeLength(unit, parentDelta[1]), 0];
+    return { ...step, parentDelta, nativeDelta };
   });
   const writtenIds: number[] = [];
-  for (const { root, delta, turn } of steps) {
+  for (const { root, delta, turn, nativeDelta } of prepared) {
     if (Math.hypot(...delta) > 1e-9) {
       const placement = resolvePlacementChain(input.dataStore, input.view, input.editor, root.expressId);
       if (!placement) throw new Error(`#${root.expressId} has no writable local placement`);
+      if (!translatedCoordinates(placement.coordinates, nativeDelta)) throw new Error('Placement translation overflow: derived coordinates must be finite');
       writtenIds.push(placement.cartesianPointId);
     }
     if (turn !== 0) {
@@ -78,13 +87,11 @@ export function transformElementsInStore(input: ElementTransformInput): ElementT
   if (new Set(writtenIds).size !== writtenIds.length) throw new Error('The selection shares writable placement leaves; shared occurrences cannot be transformed in place');
   const ownership = editOwnershipRefusal(input.dataStore, input.view, writtenIds, new Set([...plan.roots.map(root => root.expressId), ...plan.carried]));
   if (ownership) throw new Error(ownership);
-  const unit = { lengthUnitScale: getModelLengthUnitScale(input.dataStore) };
-  for (const { root, delta, turn } of steps) {
-    const [dx, dy] = unrotateBy(root.parent.axis, delta);
+  for (const { root, turn, parentDelta: [dx, dy], nativeDelta } of prepared) {
     if (Math.hypot(dx, dy) > 1e-9) {
       if (input.translate) input.translate(root.expressId, [dx, dy, 0]);
       else {
-        const result = translateProduct(input.dataStore, input.view, input.editor, root.expressId, [toNativeLength(unit, dx), toNativeLength(unit, dy), 0]);
+        const result = translateProduct(input.dataStore, input.view, input.editor, root.expressId, nativeDelta);
         if (!result.ok) throw new Error(result.reason);
       }
     }

@@ -6,6 +6,7 @@ import { GeometryProcessor, type CoordinateInfo, type MeshData } from '@ifc-lite
 import { StepExporter } from '@ifc-lite/export';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { ModellingStoreModelResolver } from '@ifc-lite/sdk';
+import { ToolErrorCode, ToolExecutionError } from './errors.js';
 
 /** One fresh current-overlay native pipeline for headless geometry commands. */
 export async function withHeadlessGeometry<P, T>(model: ReturnType<ModellingStoreModelResolver>, prepare: (source: IfcDataStore) => P, consume: (prepared: P, meshes: readonly MeshData[], coord: CoordinateInfo | undefined) => T | Promise<T>): Promise<T> {
@@ -15,7 +16,11 @@ export async function withHeadlessGeometry<P, T>(model: ReturnType<ModellingStor
   const prepared = prepare(source);
   const processor = new GeometryProcessor({ enableInstancing: false });
   try {
-    await processor.init();
+    try { await processor.init(); } catch (error) {
+      throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION,
+        message: `Native geometry runtime is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+        details: { reason: 'NATIVE_RUNTIME_UNAVAILABLE' } });
+    }
     const { meshes, coordinateInfo } = await processor.process(exported);
     return await consume(prepared, meshes, coordinateInfo);
   } finally { processor.dispose(); }

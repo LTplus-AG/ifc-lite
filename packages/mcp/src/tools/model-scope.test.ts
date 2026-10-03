@@ -28,7 +28,7 @@ import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } f
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { loadIfcModel } from '../loader.js';
 import { discoveryTools } from './discovery.js';
-import { queryTools } from './query.js';
+import { queryTools } from './query-tools.js';
 import { assertModelAccess, resolveModel } from './util.js';
 
 function guid(mnemonic: string): string {

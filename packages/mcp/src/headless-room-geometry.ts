@@ -6,9 +6,14 @@ import { withHeadlessGeometry } from './headless-native-geometry.js';
 import {
   wallRectsFromMeshes, roomFrameToModelWorld, roomFramePlanOffsets, storeyPlanFrame, toStoreyLocal,
   effectiveStoreyIds, effectiveStoreyElevation, floorToFloorHeight, spaceMeshTriangles,
-  existingSpaceFootprintEntriesByStorey, occupancyTest,
+  existingSpaceFootprintEntriesByStorey, occupancyTest, type RoomPlateFactory,
 } from '@ifc-lite/create';
 import type { RoomGeometryProvider } from '@ifc-lite/sdk';
+
+/** Keep native factory closures independent of the large parsed-model scope. */
+function nativeRoomFactory(runtime: typeof import('@ifc-lite/wasm')): RoomPlateFactory {
+  return { fromWallRects: (rects, weld, minArea) => runtime.SpacePlateHandle.fromWallRects(rects, weld, minArea) };
+}
 
 /** Mesh the current export, including authored edits, through the canonical native geometry path. */
 export const provideHeadlessRoomGeometry: RoomGeometryProvider = async (model, storeyId) => {
@@ -31,8 +36,23 @@ export const provideHeadlessRoomGeometry: RoomGeometryProvider = async (model, s
     const { cx, cy } = roomFramePlanOffsets(coord), shiftY = coord?.originShift?.y ?? 0;
     const triangles = spaceMeshTriangles(meshes, { lo: floor.elev - shiftY + .2, hi: floor.elev + floorToFloorHeight(storeys, storeyId) - shiftY - .2 }, (x, _y, z) => local([x + cx, cy - z]), () => true);
     const runtime = await import('@ifc-lite/wasm');
-    return { walls, spaces, occupied: occupancyTest(spaces.map(space => space.footprint), triangles), factory: {
-      fromWallRects: (rects, weld, minArea) => runtime.SpacePlateHandle.fromWallRects(rects, weld, minArea),
-    } };
+    return { walls, spaces, occupied: occupancyTest(spaces.map(space => space.footprint), triangles), factory: nativeRoomFactory(runtime) };
   });
 };
+
+/** One prepared storey per loaded model; cached values hold no native handles. */
+export function createCachedHeadlessRoomGeometryProvider() {
+  type Model = Parameters<RoomGeometryProvider>[0];
+  type Prepared = Awaited<ReturnType<RoomGeometryProvider>>;
+  const entries = new Map<string, { store: WeakRef<Model['store']>; view: WeakRef<Model['mutationView']>; head: string; storeyId: number; geometry: Prepared }>();
+  let generation = 0;
+  const provide: RoomGeometryProvider = async (model, storeyId) => {
+    const head = model.mutationView.getMutations().map(mutation => mutation.id).join('|');
+    const entry = entries.get(model.modelId);
+    if (entry?.store.deref() === model.store && entry.view.deref() === model.mutationView && entry.head === head && entry.storeyId === storeyId) return entry.geometry;
+    const epoch = generation, geometry = await provideHeadlessRoomGeometry(model, storeyId);
+    if (generation === epoch) entries.set(model.modelId, { store: new WeakRef(model.store), view: new WeakRef(model.mutationView), head, storeyId, geometry });
+    return geometry;
+  };
+  return { provide, clear() { generation++; entries.clear(); } };
+}

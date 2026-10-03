@@ -62,6 +62,7 @@ export const physicalEditTool: Tool = {
       }
       return okResult(`Completed ${String(op.kind)}.`, { modelId: model.id, entities: result });
     } catch (error) {
+      if (error instanceof ToolExecutionError) throw error;
       throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: error instanceof Error ? error.message : String(error) });
     }
   },

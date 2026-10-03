@@ -5,11 +5,12 @@
 import { createRoomCommandBackend, type ModellingStoreModelResolver } from '@ifc-lite/sdk';
 import { RoomLayoutCache } from '@ifc-lite/create';
 import { recordCompoundMutation, StoreEditor } from '@ifc-lite/mutations';
-import { provideHeadlessRoomGeometry } from './headless-room-geometry.js';
+import { createCachedHeadlessRoomGeometryProvider } from './headless-room-geometry.js';
 
 /** Native preparation finishes before the synchronous compound commit begins. */
 export function createHeadlessRoomBackend(resolve: ModellingStoreModelResolver) {
-  return createRoomCommandBackend(resolve, provideHeadlessRoomGeometry, {
+  const native = createCachedHeadlessRoomGeometryProvider();
+  const rooms = createRoomCommandBackend(resolve, native.provide, {
     layouts: new RoomLayoutCache(),
     globalIdScopes: () => resolve().globalIdScopes ?? [],
     historyHead: modelId => resolve(modelId).mutationView.getMutations().map(m => m.id).join('|'),
@@ -20,4 +21,5 @@ export function createHeadlessRoomBackend(resolve: ModellingStoreModelResolver) 
       }));
     },
   });
+  return { ...rooms, disposeRooms() { rooms.disposeRooms(); native.clear(); } };
 }

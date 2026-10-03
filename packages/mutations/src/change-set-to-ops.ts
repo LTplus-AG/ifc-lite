@@ -124,7 +124,7 @@ export function changeSetToOps(
   const components = new Map<string, Map<string, Record<string, PropertyValue | null> | null>>();
   const entityOps = new Map<string, ChangeSetOp>();
 
-  const componentFor = (entity: string, componentKey: string) => {
+  const componentFor = (entity: string) => {
     let perEntity = components.get(entity);
     if (!perEntity) {
       perEntity = new Map();
@@ -139,7 +139,7 @@ export function changeSetToOps(
     member: string,
     value: PropertyValue | null
   ) => {
-    const perEntity = componentFor(entity, componentKey);
+    const perEntity = componentFor(entity);
     const existing = perEntity.get(componentKey);
     const values = existing === null || existing === undefined ? {} : existing;
     values[member] = value;
@@ -184,7 +184,7 @@ function applyMutation(
   mutation: Mutation,
   entity: string,
   setMember: (entity: string, componentKey: string, member: string, value: PropertyValue | null) => void,
-  componentFor: (entity: string, componentKey: string) => Map<string, Record<string, PropertyValue | null> | null>,
+  componentFor: (entity: string) => Map<string, Record<string, PropertyValue | null> | null>,
   entityOps: Map<string, ChangeSetOp>,
   resolver: EntityIdentityResolver,
   skipped: Mutation[]
@@ -223,7 +223,7 @@ function applyMutation(
         // so the whole set still vanished with zero trace for exactly the
         // empty-array case — the same #2263 shape surviving in a corner the
         // original fix didn't cover.
-        componentFor(entity, qsetComponentKey).set(qsetComponentKey, {});
+        componentFor(entity).set(qsetComponentKey, {});
         for (const q of mutation.newValue as Array<{ name?: string; value?: PropertyValue }>) {
           if (q && typeof q.name === 'string') {
             setMember(entity, qsetComponentKey, q.name, q.value ?? null);
@@ -240,7 +240,7 @@ function applyMutation(
       if (mutation.psetName) {
         const componentKey = `pset:${mutation.psetName}`;
         // Materialize the (possibly empty) set.
-        componentFor(entity, componentKey).set(componentKey, {});
+        componentFor(entity).set(componentKey, {});
         // `MutablePropertyView.createPropertySet()` (whole-pset creation, e.g.
         // `StoreEditor.addPropertySet`) records ONE CREATE_PROPERTY_SET mutation
         // for the whole set — `newValue` is the full properties array — and does
@@ -260,12 +260,12 @@ function applyMutation(
       break;
     case 'DELETE_PROPERTY_SET':
       if (mutation.psetName) {
-        componentFor(entity, `pset:${mutation.psetName}`).set(`pset:${mutation.psetName}`, null);
+        componentFor(entity).set(`pset:${mutation.psetName}`, null);
       }
       break;
     case 'DELETE_QUANTITY_SET':
       if (mutation.psetName) {
-        componentFor(entity, `qset:${mutation.psetName}`).set(`qset:${mutation.psetName}`, null);
+        componentFor(entity).set(`qset:${mutation.psetName}`, null);
       }
       break;
     case 'UPDATE_ATTRIBUTE':

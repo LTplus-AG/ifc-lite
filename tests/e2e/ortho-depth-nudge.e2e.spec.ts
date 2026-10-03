@@ -23,9 +23,9 @@
  *    promises); annotation lines and text lying on top-hash plates; the
  *    selection highlight and a colour override on top-hash plates.
  * 3. Clip planes: with the camera's scene bounds narrowed so near and far cut
- *    through the scene, top-hash plates just beyond the far plane stay
- *    clipped, just inside the near plane stay drawn, and a plate crossing the
- *    far plane is cut where the plane is.
+ *    through the scene, top-hash plates and annotation lines just beyond the
+ *    far plane stay clipped, just inside the near plane stay drawn, and a
+ *    plate crossing the far plane is cut where the plane is.
  */
 
 import { expect, test, type Page } from '@playwright/test';
@@ -446,6 +446,9 @@ test.describe('clip planes', () => {
     const insideNear = scene.product('IFCPLATE', '.NOTDEFINED.', [1, yNear + sliver, 0], square, 0.0001, GREEN, top, 'y');
     // Below the crossing plate on screen in both views, so it never hides the cut.
     const control = scene.product('IFCPLATE', '.NOTDEFINED.', [0, 0, -1.2], square, 0.0001, YELLOW, top, 'y');
+    // Annotation lines the same sliver beyond the far plane and inside the near plane.
+    scene.line([-1.2, yFar + sliver], [-0.4, yFar + sliver], 0.9);
+    scene.line([0.4, yNear + sliver], [1.2, yNear + sliver], 0.9);
     // A horizontal plate running from inside the range out through the far plane.
     const crossing = scene.product('IFCPLATE', '.NOTDEFINED.', [0, 2, -0.6], scene.rectangle(0.4, 8), 0.01, BLUE, top);
     const gpu = await watchGpuDeviceLoss(page);
@@ -454,6 +457,7 @@ test.describe('clip planes', () => {
       expect(await drawnHash(page, id), `#${id} hashes to the top of the range`).toBeGreaterThanOrEqual(250);
     }
 
+    await page.waitForFunction(() => (globalThis.__ifc_lite_annotation_line_vertices__?.() ?? 0) >= 4);
     const ahead = await orthoFrame(page, gpu, 'clip-level', [0, -10, 0], [0, 0, 0], 1.5, bounds);
     expect(ahead.depth([0, yFar, 0]), 'the far plane is where the narrowed bounds put it').toBeCloseTo(0, 5);
     expect(ahead.depth([0, yNear, 0]), 'the near plane is where the narrowed bounds put it').toBeCloseTo(1, 5);
@@ -463,6 +467,11 @@ test.describe('clip planes', () => {
     expect(farRed, 'a top-hash plate just beyond the far plane stays clipped').toBe(0);
     const [nearGreen] = count(ahead, ...face(1, yNear + sliver, 0), 0, isGreen);
     expect(nearGreen, 'a top-hash plate just inside the near plane stays drawn').toBeGreaterThan(5000);
+    const lineBand = (x0: number, x1: number, y: number): [Point, Point] => [[x0 + 0.05, y, 0.9 - 0.03], [x1 - 0.05, y, 0.9 + 0.03]];
+    const [farInk] = count(ahead, ...lineBand(-1.2, -0.4, yFar + sliver), 0, isInk);
+    expect(farInk, 'an annotation line just beyond the far plane stays clipped').toBe(0);
+    const [nearInk] = count(ahead, ...lineBand(0.4, 1.2, yNear + sliver), 0, isInk);
+    expect(nearInk, 'an annotation line just inside the near plane stays drawn').toBeGreaterThan(50);
     const [controlYellow] = count(ahead, ...face(0, 0, -1.2), 0, isYellow);
     expect(controlYellow, 'a plate mid-range is drawn').toBeGreaterThan(5000);
 

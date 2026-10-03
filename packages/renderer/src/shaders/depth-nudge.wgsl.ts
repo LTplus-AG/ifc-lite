@@ -51,8 +51,8 @@
  *   sees the same matrix, so they all rank alike. The range is the bounding
  *   sphere's, so it does not change as the camera orbits.
  *
- *   The nudge only moves a vertex that is strictly inside the depth range, and
- *   never past the near plane. A vertex beyond either plane, or exactly on the
+ *   The nudge, and the orthographic overlay lift, only move a vertex that is
+ *   strictly inside the depth range, and never past the near plane. A vertex beyond either plane, or exactly on the
  *   far plane (which the reverse-Z clear to 0 and `'greater'` never write), is
  *   left where it is, so nothing changes which side of a clip plane it is on.
  */
@@ -94,6 +94,14 @@ const projectionWgsl = `
           let steps = ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES / (depthRange * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL);
           return u32(clamp(floor(steps), 0.0, MAX_DEPTH_NUDGE_HASH)) + 1u;
         }
+
+        // Orthographic only: clip z moved \`ndcOffset\` toward the camera without
+        // changing which side of a clip plane the vertex is on. A vertex beyond
+        // either plane, or exactly on the far plane, stays where it is.
+        fn orthographicOffsetInsideDepthRange(clip: vec4<f32>, ndcOffset: f32) -> f32 {
+          if (!(clip.z > 0.0 && clip.z < clip.w)) { return clip.z; }
+          return min(clip.z + ndcOffset * clip.w, clip.w);
+        }
 `;
 
 export const depthNudgeWgsl = `
@@ -103,9 +111,8 @@ export const depthNudgeWgsl = `
         // Clip-space z with the entity's depth nudge applied (depth-nudge.wgsl.ts).
         fn nudgedClipZ(clip: vec4<f32>, zHash: u32, viewProj: mat4x4<f32>) -> f32 {
           if (isOrthographicProjection(viewProj)) {
-            if (!(clip.z > 0.0 && clip.z < clip.w)) { return clip.z; }
             let level = (zHash * orthographicNudgeLevels(viewProj)) >> 8u;
-            return min(clip.z + f32(level) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL * clip.w, clip.w);
+            return orthographicOffsetInsideDepthRange(clip, f32(level) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL);
           }
           return clip.z * (1.0 + f32(zHash) * PERSPECTIVE_DEPTH_NUDGE_PER_STEP);
         }
@@ -122,10 +129,10 @@ export const overlayDepthLiftWgsl = `
         // when that is more (all 256 levels in use), so the text pipeline's
         // constant depthBias of -4 units is covered too.
         fn overlayLiftedClipZ(clip: vec4<f32>, viewProj: mat4x4<f32>) -> f32 {
-          var lift = PERSPECTIVE_OVERLAY_DEPTH_LIFT;
           if (isOrthographicProjection(viewProj)) {
-            lift = max(lift, f32(orthographicNudgeLevels(viewProj) + 1u) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL);
+            let levelsLift = f32(orthographicNudgeLevels(viewProj) + 1u) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL;
+            return orthographicOffsetInsideDepthRange(clip, max(PERSPECTIVE_OVERLAY_DEPTH_LIFT, levelsLift));
           }
-          return clip.z + lift * clip.w;
+          return clip.z + PERSPECTIVE_OVERLAY_DEPTH_LIFT * clip.w;
         }
 `;

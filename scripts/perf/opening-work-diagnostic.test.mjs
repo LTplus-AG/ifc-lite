@@ -3,7 +3,69 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { observeBatches } from './opening-work-diagnostic.mjs';
+import { aggregateOpeningCounters, observeBatches } from './opening-work-diagnostic.mjs';
+
+test('#6537 aggregates job probe-distance maxima separately from additive work', () => {
+  const totals = {};
+  const jobs = [
+    { ringSimplifierMaxPrevProbeDistance: 4, ringSimplifierMaxNextProbeDistance: 9,
+      ringSimplifierPrevProbes: 12, ringSimplifierNextProbes: 18, csgOperations: [2, 1, 0, 0] },
+    { ringSimplifierMaxPrevProbeDistance: 7, ringSimplifierMaxNextProbeDistance: 3,
+      ringSimplifierPrevProbes: 21, ringSimplifierNextProbes: 6, csgOperations: [1, 4, 0, 0] },
+    { ringSimplifierMaxPrevProbeDistance: 2, ringSimplifierMaxNextProbeDistance: 12,
+      ringSimplifierPrevProbes: 8, ringSimplifierNextProbes: 30, csgOperations: [3, 0, 0, 0] },
+  ];
+  for (const job of jobs) assert.equal(aggregateOpeningCounters(totals, job), false);
+  assert.deepEqual(totals, {
+    ringSimplifierMaxPrevProbeDistance: 7, ringSimplifierMaxNextProbeDistance: 12,
+    ringSimplifierPrevProbes: 41, ringSimplifierNextProbes: 54, csgOperations: [6, 5, 0, 0],
+  });
+  aggregateOpeningCounters(totals, jobs[1]);
+  assert.equal(totals.ringSimplifierMaxPrevProbeDistance, 7);
+  assert.equal(totals.ringSimplifierMaxNextProbeDistance, 12);
+  assert.equal(totals.ringSimplifierPrevProbes, 62);
+});
+
+test('#6537 preserves exact safe boundaries and saturates additive scalar/array overflow', () => {
+  const limit = Number.MAX_SAFE_INTEGER;
+  const totals = {};
+  assert.equal(aggregateOpeningCounters(totals, {
+    ringSimplifierMaxPrevProbeDistance: limit, ringSimplifierMaxNextProbeDistance: 5,
+    ringSimplifierPrevProbes: limit - 2, csgOperations: [limit - 3, 1, 0, 0],
+  }), false);
+  assert.equal(aggregateOpeningCounters(totals, {
+    ringSimplifierMaxPrevProbeDistance: limit, ringSimplifierMaxNextProbeDistance: 2,
+    ringSimplifierPrevProbes: 2, csgOperations: [3, 2, 0, 0],
+  }), false, 'repeated safe maxima do not create additive overflow');
+  assert.equal(totals.ringSimplifierPrevProbes, limit);
+  assert.deepEqual(totals.csgOperations, [limit, 3, 0, 0]);
+  assert.equal(aggregateOpeningCounters(totals, {
+    ringSimplifierPrevProbes: 1, csgOperations: [1, 4, 0, 0],
+  }), true);
+  assert.equal(totals.ringSimplifierPrevProbes, limit);
+  assert.deepEqual(totals.csgOperations, [limit, 7, 0, 0]);
+});
+
+test('#6537 flags and limits unsafe incoming maxima and additive counts', () => {
+  const limit = Number.MAX_SAFE_INTEGER;
+  const totals = {};
+  assert.equal(aggregateOpeningCounters(totals, {
+    ringSimplifierMaxPrevProbeDistance: limit + 1,
+    ringSimplifierMaxNextProbeDistance: limit + 1,
+    ringSimplifierPrevProbes: limit + 1, csgOperations: [limit + 1, 3, 0, 0],
+  }), true);
+  assert.deepEqual(totals, {
+    ringSimplifierMaxPrevProbeDistance: limit, ringSimplifierMaxNextProbeDistance: limit,
+    ringSimplifierPrevProbes: limit, csgOperations: [limit, 3, 0, 0],
+  });
+  assert.equal(aggregateOpeningCounters(totals, {
+    ringSimplifierMaxPrevProbeDistance: 1, ringSimplifierMaxNextProbeDistance: 2,
+    ringSimplifierPrevProbes: 1, csgOperations: [1, 2, 0, 0],
+  }), true);
+  assert.equal(totals.ringSimplifierMaxPrevProbeDistance, limit);
+  assert.equal(totals.ringSimplifierMaxNextProbeDistance, limit);
+  assert.deepEqual(totals.csgOperations, [limit, 5, 0, 0]);
+});
 
 function fixture({ mutateIndividual = false, throwIndividual = false } = {}) {
   const live = new Set();

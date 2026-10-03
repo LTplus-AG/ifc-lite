@@ -4,15 +4,17 @@
 
 /** Actual Bonsai model and canonical WASM remesh core for public viewer SDK controls (#6232). */
 import { readFileSync } from 'node:fs';
-import { IfcParser } from '@ifc-lite/parser';
+import { IfcParser, getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
+import assert from 'node:assert/strict';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcAPI } from '@ifc-lite/wasm';
 import { CoordinateHandler, type GeometryResult } from '@ifc-lite/geometry';
 import type { RemeshRequest } from '@ifc-lite/geometry/remesh';
 import { applyRemeshConfig, remeshOnApi, styleWireOnApi } from '../../../../packages/geometry/src/remesh/remesh-core.js';
 import { useViewerStore } from '@/store';
+import { toGlobalIdFromModels } from '@/store/globalId';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
+import { setRemeshClientFactory, requestRemesh } from '@/lib/remesh/remesh-service';
 import { createStoreAdapter } from '@/sdk/adapters/store-adapter.js';
 
 export const MODEL = 'native';
@@ -45,7 +47,20 @@ export async function seedNativeSdkModel() {
   });
   return { store, adapter: createStoreAdapter(useViewerStore), view: useViewerStore.getState().mutationViews.get(MODEL)! };
 }
-export const settle = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setTimeout(resolve, 0)); };
+/** Await an actual consolidated native refresh, including writes whose worker
+ * startup has not yet reached the fixture client. No timer count is evidence. */
+export async function settle(modelId = MODEL): Promise<void> {
+  const state = useViewerStore.getState(), model = state.models.get(modelId)!;
+  const ids = new Set((model.geometryResult?.meshes ?? []).map(mesh => mesh.expressId));
+  for (const entity of state.mutationViews.get(modelId)?.getNewEntities() ?? []) {
+    if (getInheritanceChainAcrossSchemas(entity.type).includes('IfcProduct')) ids.add(toGlobalIdFromModels(state.models, modelId, entity.expressId));
+  }
+  const localIds = [...ids].flatMap(id => {
+    const ref = state.resolveGlobalIdFromModels(id);
+    return ref?.modelId === modelId ? [ref.expressId] : [];
+  });
+  if (localIds.length) assert.equal((await requestRemesh(useViewerStore.getState, modelId, localIds, 'shape')).status, 'applied');
+}
 export const nativeSdkMeshes = () => useViewerStore.getState().models.get(MODEL)!.geometryResult!.meshes;
 export const nativeSdkUndoDepth = () => useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0;
 

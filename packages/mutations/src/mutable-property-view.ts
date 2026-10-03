@@ -1585,12 +1585,12 @@ export class MutablePropertyView extends MutableOverlayState {
   }
 
   /**
-   * Get all mutations applied to this view
+   * Get journal mutations from an optional append-only cursor (default: all)
    */
-  getMutations(): Mutation[] {
-    return [...this.mutationHistory];
+  getMutations(since = 0): Mutation[] {
+    return this.mutationHistory.slice(since);
   }
-
+  getMutationCount(): number { return this.mutationHistory.length; }
   /**
    * Get mutations for a specific entity
    */

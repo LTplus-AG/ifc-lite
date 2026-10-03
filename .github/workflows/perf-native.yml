@@ -63,7 +63,7 @@ jobs:
       - name: Functional native protocol controls
         env:
           NATIVE_COMPILER_CONTROL_REQUIRED: "1"
-        run: node --test scripts/perf/native-hosted.test.mjs scripts/perf/native-compiler.test.mjs scripts/perf/sdk-resources.test.mjs
+        run: node --test scripts/perf/native-hosted.test.mjs scripts/perf/native-cargo-resolution.test.mjs scripts/perf/native-compiler.test.mjs scripts/perf/sdk-resources.test.mjs
       - name: Real Cargo-shim sample-startup control before model builds
         env:
           NATIVE_COMPILER_CONTROL_REQUIRED: "1"

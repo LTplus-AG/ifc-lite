@@ -9,10 +9,11 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { execute } from './native-hosted-process.mjs';
+import { execute, compilerEnvironment } from './native-hosted-process.mjs';
 import { cargoArgs, freshnessLog } from './native-hosted-plan.mjs';
 import { repositoryNightlyChannel } from './native-hosted-prepare.mjs';
 import { nativeFileIdentity, sameNativeFile } from './native-file-identity.mjs';
+import { resolveCanonicalCargoShim, verifyCanonicalCargoResolution } from './native-cargo-resolution.mjs';
 
 const output = resolve(process.env.NATIVE_STARTUP_CONTROL_OUTPUT ?? 'native-results/startup-control');
 mkdirSync(output, { recursive: true });
@@ -33,19 +34,21 @@ try {
     tools[name] = realpathSync(result.stdout.trim());
   }
   if (report.status !== 'skipped') {
-    for (const name of ['bash', 'rustup', 'cargo']) {
+    for (const name of ['bash', 'rustup']) {
       const found = spawnSync('which', [name], { encoding: 'utf8', timeout: 30000 });
       assert.equal(found.status, 0, found.stderr);
-      if (name === 'cargo') report.shim = found.stdout.trim();
-      else tools[name] = realpathSync(found.stdout.trim());
+      tools[name === 'rustup' ? 'selectionRustup' : name] = realpathSync(found.stdout.trim());
     }
-    assert.equal(realpathSync(report.shim), tools.rustup, 'actual Cargo shim must be the frozen rustup executable');
+    sandbox = realpathSync(mkdtempSync(join(tmpdir(), 'ifc-native-startup-')));
     tools.toolchain = basename(dirname(dirname(tools.rustc)));
+    const environment = compilerEnvironment({ ...process.env, OBS: '0', CARGO_BUILD_JOBS: '1', CARGO_TERM_COLOR: 'never' }, tools);
+    report.cargoShimResolution = await resolveCanonicalCargoShim({ bash: tools.bash, directory: sandbox, environment });
+    tools.rustup = report.cargoShimResolution.after.cargo.realPath;
+    report.shim = report.cargoShimResolution.after.cargo.commandPath;
     tools.rustupFileIdentity = nativeFileIdentity(tools.rustup);
     report.tools = tools;
     report.frozenRustup = { path: tools.rustup, fileIdentity: tools.rustupFileIdentity,
       sha256: hash(readFileSync(tools.rustup)) };
-    sandbox = realpathSync(mkdtempSync(join(tmpdir(), 'ifc-native-startup-')));
     mkdirSync(join(sandbox, 'scripts/perf'), { recursive: true }); mkdirSync(join(sandbox, 'examples'));
     const probe = readFileSync(new URL('./probe.sh', import.meta.url));
     const manifest = '[package]\nname="ifc-lite-processing"\nversion="0.0.0"\nedition="2021"\n[profile.profiling]\ninherits="release"\ndebug="line-tables-only"\nstrip=false\n';
@@ -88,6 +91,7 @@ try {
   }
 } catch (error) {
   report.status = 'refused'; report.reason = String(error); process.exitCode = 1;
+  if (error.resolutionReceipt) report.cargoShimResolutionRefusal = error.resolutionReceipt;
 } finally {
   if (holder && holder.exitCode === null && holder.signalCode === null) holder.kill('SIGKILL');
   if (holderClosed) {
@@ -96,6 +100,7 @@ try {
   }
   if (report.frozenRustup) {
     try {
+      await verifyCanonicalCargoResolution(report.cargoShimResolution);
       const actual = { fileIdentity: nativeFileIdentity(report.frozenRustup.path),
         sha256: hash(readFileSync(report.frozenRustup.path)) };
       assert.ok(sameNativeFile(actual.fileIdentity, report.frozenRustup.fileIdentity), 'frozen rustup file identity changed');

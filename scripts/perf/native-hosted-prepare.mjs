@@ -6,10 +6,11 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync, readd
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileHash } from './interleaved-assets.mjs';
 import { sourceSnapshot, verifySource } from './sdk-prepare.mjs';
-import { execute } from './native-hosted-process.mjs';
+import { execute, compilerEnvironment } from './native-hosted-process.mjs';
 import { revisions, inputs, methodPaths, cargoArgs, limits, validateRefs, schedule } from './native-hosted-plan.mjs';
 import { available } from './sdk-resources.mjs';
 import { nativeFileIdentity, sameNativeFile } from './native-file-identity.mjs';
+import { resolveCanonicalCargoShim, verifyCanonicalCargoResolution } from './native-cargo-resolution.mjs';
 export const root = resolve(import.meta.dirname, '../..'), output = join(root, 'native-results');
 const command = (program, args, directory = root) => execFileSync(program, args, { cwd: directory, encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 ** 2 }).trim();
 export async function verify(provenance) {
@@ -18,6 +19,7 @@ export async function verify(provenance) {
   if (!sameNativeFile(nativeFileIdentity(provenance.tools.rustup), provenance.tools.rustupFileIdentity)) {
     throw new Error('native frozen rustup file identity changed');
   }
+  for (const resolution of Object.values(provenance.cargoShimResolutions)) await verifyCanonicalCargoResolution(resolution);
 }
 async function libraries(path, files) {
   const observation = spawnSync('ldd', [path], { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 ** 2 });
@@ -32,17 +34,28 @@ export function repositoryNightlyChannel() {
   if (channels.length !== 1) throw new Error('native repository nightly selector refused');
   return channels[0][1];
 }
-async function toolFreeze() {
+async function toolFreeze(directories) {
   const channel = repositoryNightlyChannel();
-  const rustTool = name => realpathSync(command('rustup', ['which', '--toolchain', channel, name]));
-  const tools = { node: realpathSync(process.execPath), bash: realpathSync(command('which', ['bash'])),
-    rustup: realpathSync(command('which', ['rustup'])), cargo: rustTool('cargo'),
-    rustc: rustTool('rustc'), rustdoc: rustTool('rustdoc'), cc: realpathSync(command('which', ['cc'])) };
+  const bash = realpathSync(command('which', ['bash'])), selectionRustup = realpathSync(command('which', ['rustup']));
+  const rustTool = name => realpathSync(command(selectionRustup, ['which', '--toolchain', channel, name]));
+  const tools = { node: realpathSync(process.execPath), bash, selectionRustup,
+    cargo: rustTool('cargo'), rustc: rustTool('rustc'), rustdoc: rustTool('rustdoc'),
+    cc: realpathSync(command('which', ['cc'])) };
+  tools.toolchain = basename(dirname(dirname(tools.rustc)));
+  if (!tools.toolchain.startsWith(`${channel}-`)) throw new Error('native installed selector differs from repository pin');
+  const environment = compilerEnvironment({ ...process.env, OBS: '0', CARGO_BUILD_JOBS: '1', CARGO_TERM_COLOR: 'never' }, tools);
+  const cargoShimResolutions = {};
+  for (const [arm, directory] of Object.entries(directories)) cargoShimResolutions[arm] = await resolveCanonicalCargoShim({ bash, directory, environment });
+  const selectedProxy = cargoShimResolutions.base.after.cargo;
+  if (selectedProxy.realPath !== cargoShimResolutions.candidate.after.cargo.realPath
+    || selectedProxy.sha256 !== cargoShimResolutions.candidate.after.cargo.sha256) throw new Error('canonical Cargo proxy differs between source arms');
+  tools.rustup = selectedProxy.realPath;
   const files = {}, linkedLibraries = {};
-  for (const [name, path] of Object.entries(tools)) {
+  for (const [name, path] of Object.entries(tools).filter(([name]) => name !== 'toolchain')) {
     files[path] = await fileHash(path);
     linkedLibraries[name] = await libraries(path, files);
   }
+  for (const receipt of Object.values(cargoShimResolutions)) Object.assign(files, receipt.files);
   tools.rustupFileIdentity = nativeFileIdentity(tools.rustup);
   const sysroot = realpathSync(command(tools.rustc, ['--print', 'sysroot'])); let count = 0;
   const walk = async (directory, depth = 0) => {
@@ -55,11 +68,8 @@ async function toolFreeze() {
     }
   };
   await walk(join(sysroot, 'lib'));
-  const cargoEnvironment = join(process.env.HOME, '.cargo/env');
-  if (existsSync(cargoEnvironment)) files[cargoEnvironment] = await fileHash(cargoEnvironment);
-  tools.toolchain = basename(dirname(dirname(tools.rustc)));
-  if (!tools.toolchain.startsWith(`${channel}-`)) throw new Error('native installed selector differs from repository pin');
-  return { tools, files, linkedLibraries, sysroot, rust: command(tools.rustc, ['--version']), cargoVersion: command(tools.cargo, ['--version']) };
+  return { tools, files, linkedLibraries, sysroot, cargoShimResolutions,
+    rust: command(tools.rustc, ['--version']), cargoVersion: command(tools.cargo, ['--version']) };
 }
 async function main() {
   mkdirSync(output, { recursive: true }); const write = (name, value) => writeFileSync(join(output, name), JSON.stringify(value, null, 2));
@@ -87,7 +97,7 @@ async function main() {
       return { ...item, file: join(root, 'tests/models', item.path) };
     });
     report.sources = [await sourceSnapshot(root, command('git', ['rev-parse', 'HEAD']))];
-    const compiler = await toolFreeze(); Object.assign(report, compiler, { directories, revisions });
+    const compiler = await toolFreeze(directories); Object.assign(report, compiler, { directories, revisions });
     for (const [index, row] of report.fixtureCommands.entries()) {
       report.files[join(output, `fixtures-${index}.json`)] = await fileHash(join(output, `fixtures-${index}.json`));
       for (const [stream, path] of Object.values(row.paths).entries()) report.files[path] = row.hashes[stream];
@@ -120,7 +130,10 @@ async function main() {
       await verify(report);
     }
     if (refusal) throw new Error(refusal); report.status = 'qualified-native-builds-not-timing';
-  } catch (error) { report.status = 'refused'; report.reason = String(error); process.exitCode = 1; }
+  } catch (error) {
+    report.status = 'refused'; report.reason = String(error); process.exitCode = 1;
+    if (error.resolutionReceipt) report.cargoShimResolutionRefusal = error.resolutionReceipt;
+  }
   finally {
     if (report.sources && report.files) { try { await verify(report); report.finalFrozenVerification = 'complete'; } catch (error) { report.status = 'refused'; report.reason = String(error); process.exitCode = 1; } }
     if (refusal) { report.status = 'refused'; report.reason = refusal; process.exitCode = 1; }

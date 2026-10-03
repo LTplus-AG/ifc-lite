@@ -61,7 +61,7 @@ function graphScan(witnesses, expected) {
       }
       exceptions.push({ ...record, expectedRustupPath: expected.rustup,
         expectedRustupFileIdentity: expected.rustupFileIdentity,
-        admission: [expected.cargo, expected.rustup].includes(record.executable) ? 'exact-path' : 'frozen-rustup-file-identity' });
+        admission: 'exact-selected-path' });
     } catch (error) { if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error; }
   }
   return { exceptions, permissionFallbacks, witnessRefreshes };

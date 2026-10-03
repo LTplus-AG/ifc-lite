@@ -81,25 +81,25 @@ test('#6537 refreshed Cargo witness still requires actual executable, fresh own 
   }
   assert.equal(refreshedCargoWitness({ ...record, executableObserved: false }, expected, snapshot, record), null);
 });
-test('#6537 real executable hardlink identity admits aliases but rejects copies and every missing ownership fence', () => {
+test('#6537 Cargo admission requires selected executable path even when another path is a real hardlink', () => {
   const directory = mkdtempSync(join(tmpdir(), 'native-file-identity-'));
   try {
     const frozen = join(directory, 'rustup'), alias = join(directory, 'different-name'), copy = join(directory, 'same-bytes-copy');
     writeFileSync(frozen, 'executable identity control\n'); linkSync(frozen, alias); copyFileSync(frozen, copy);
     const expected = { group: 20, directory, cargo: '/tool/cargo', rustup: frozen, rustupFileIdentity: nativeFileIdentity(frozen) };
     const record = { pid: 21, startTime: '99', pgrp: 20, cwd: directory, executableObserved: true,
-      executable: alias, executableFileIdentity: nativeFileIdentity(alias), argv: ['cargo', ...cargoArgs] };
-    assert.ok(sameNativeFile(record.executableFileIdentity, expected.rustupFileIdentity), 'a real hardlink identifies the same file');
+      executable: frozen, executableFileIdentity: nativeFileIdentity(frozen), argv: ['cargo', ...cargoArgs] };
+    assert.ok(sameNativeFile(nativeFileIdentity(alias), expected.rustupFileIdentity), 'a real hardlink identifies the same file');
     assert.equal(freshnessException(record, record, expected), true);
     assert.equal(sameNativeFile(nativeFileIdentity(copy), expected.rustupFileIdentity), false, 'copying identical bytes creates a distinct file');
-    for (const changes of [{ executable: copy, executableFileIdentity: nativeFileIdentity(copy) },
-      { executableFileIdentity: undefined }, { executableFileIdentity: {} },
-      { executableFileIdentity: { ...record.executableFileIdentity, dev: '999999999' } },
+    assert.equal(sameNativeFile(undefined, expected.rustupFileIdentity), false);
+    assert.equal(sameNativeFile({}, expected.rustupFileIdentity), false);
+    for (const changes of [{ executable: alias, executableFileIdentity: nativeFileIdentity(alias) },
+      { executable: copy, executableFileIdentity: nativeFileIdentity(copy) },
       { pid: 22 }, { startTime: '100' }, { pgrp: 19 }, { cwd: '/foreign' },
       { argv: ['cargo', 'test'] }, { argv: ['rustup', ...cargoArgs] }, { executableObserved: false }]) {
       assert.equal(freshnessException({ ...record, ...changes }, record, expected), false);
     }
     assert.equal(freshnessException(record, undefined, expected), false);
-    assert.equal(freshnessException(record, record, { ...expected, rustupFileIdentity: undefined }), false);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

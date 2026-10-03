@@ -74,7 +74,7 @@ export function composePageFrame(input: ComposeDocumentInput, size: { w: number;
   const authoredHeading = input.pageHeading && (input.pageHeading.logo || input.pageHeading.showDate || input.pageHeading.showPageNumbers);
   if (authoredHeading && input.pageHeading) bandLayout('heading', input.pageHeading, input.name);
   else defaults.push(text('heading', 'text', heading?.text ?? input.name, REPORT_MARGIN, heading?.y ?? REPORT_MARGIN - 8,
-    heading?.fontSize, heading?.font, heading?.textColor));
+    heading?.fontSize, heading?.font, input.pageHeading?.textColor));
   if (input.pageFooter) bandLayout('footer', input.pageFooter, '');
   else {
     defaults.push(text('footer', 'text', footer, REPORT_MARGIN, size.h - REPORT_MARGIN + 12));

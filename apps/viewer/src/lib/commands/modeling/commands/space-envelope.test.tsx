@@ -12,15 +12,22 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { cleanup, click, render } from '@/test/render';
 import { envelopeWasm, envelopeMesh, exportEnvelope } from '@/test/space-envelope-oracle';
-import { readSpaceEnvelope } from '@/lib/rooms/space-envelope-read';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
-import { envelopeMeasures, sectionEnvelope } from '@/lib/rooms/space-envelope';
-import { SpaceEnvelopeBar } from '@/components/viewer/tools/command/SpaceEnvelopeHud';
 import { setRequestRemesh, runTransaction, type RemeshRequest } from '../transaction';
 import { getModelingCommand } from '../registry';
 import { getCommandRuntime, updateCommandGesture, commitCommand, commandPointerDown, commandPointerMove } from '../runtime';
-import { SPACE_ENVELOPE, setEnvelopeMode, type SpaceEnvelopeGesture } from './space-envelope';
+import type { SpaceEnvelopeGesture } from './space-envelope';
 import '../builtin';
+
+let readSpaceEnvelope: typeof import('@/lib/rooms/space-envelope-read')['readSpaceEnvelope'];
+
+let envelopeMeasures: typeof import('@/lib/rooms/space-envelope')['envelopeMeasures'];
+let sectionEnvelope: typeof import('@/lib/rooms/space-envelope')['sectionEnvelope'];
+
+let SpaceEnvelopeBar: typeof import('@/components/viewer/tools/command/SpaceEnvelopeHud')['SpaceEnvelopeBar'];
+
+let SPACE_ENVELOPE: typeof import('./space-envelope')['SPACE_ENVELOPE'];
+let setEnvelopeMode: typeof import('./space-envelope')['setEnvelopeMode'];
 
 const s = () => useViewerStore.getState();
 const gesture = () => getCommandRuntime().gesture as SpaceEnvelopeGesture;
@@ -32,10 +39,16 @@ const room = () => made(s().addSpace(MODEL_ID, STOREY, { Profile: 'polygon', Out
 const near = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-4, `${a} != ${b}`);
 const read = (id: number) => readSpaceEnvelope(modelEditTarget(s(), MODEL_ID)!, id)!;
 const at = (u: number, z: number) => ({ local: [u, z] as const, winner: null, guides: [], locked: false, metresPerPixel: 0.01 });
-let restore: () => void;
+let restore: () => void = () => {};
 let remeshes: RemeshRequest[];
 beforeEach(async () => {
   await seedModelingSession();
+  // Exercise registration even when a production revert removes the new modules.
+  assert.ok(getModelingCommand('space.envelope'), '#6686 requires the envelope command to be registered');
+  ({ SPACE_ENVELOPE, setEnvelopeMode } = await import('./space-envelope'));
+  ({ SpaceEnvelopeBar } = await import('@/components/viewer/tools/command/SpaceEnvelopeHud'));
+  ({ envelopeMeasures, sectionEnvelope } = await import('@/lib/rooms/space-envelope'));
+  ({ readSpaceEnvelope } = await import('@/lib/rooms/space-envelope-read'));
   useViewerStore.setState({ sectionPlane: { ...s().sectionPlane, enabled: false, custom: undefined, box: undefined } });
   remeshes = [];
   restore = setRequestRemesh((_get, request) => remeshes.push(request));

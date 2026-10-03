@@ -9,13 +9,15 @@ import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
-import { readSpaceEnvelope } from '@/lib/rooms/space-envelope-read';
+let readSpaceEnvelope: typeof import('@/lib/rooms/space-envelope-read')['readSpaceEnvelope'];
 import { routeCommandPointer } from '@/components/viewer/commandPointer';
 import { routePlanPointer, resolvePlanSnap } from '@/components/viewer/plan/PlanPointer';
 import type { MouseHandlerContext } from '@/components/viewer/mouseHandlerTypes';
 import { setRequestRemesh } from '../transaction';
 import { getCommandRuntime, updateCommandGesture, writeCommandField, commitCommand } from '../runtime';
-import { SPACE_ENVELOPE, type SpaceEnvelopeGesture } from './space-envelope';
+import type { SpaceEnvelopeGesture } from './space-envelope';
+import { getModelingCommand } from '../registry';
+let SPACE_ENVELOPE: typeof import('./space-envelope')['SPACE_ENVELOPE'];
 import '../builtin';
 
 const s = () => useViewerStore.getState();
@@ -29,9 +31,12 @@ const start = (id: number, modelId = MODEL_ID) => {
   s().startCommand(SPACE_ENVELOPE.id);
   assert.ok(gesture().target);
 };
-let restore: () => void;
+let restore: () => void = () => {};
 beforeEach(async () => {
   await seedModelingSession();
+  assert.ok(getModelingCommand('space.envelope'), '#6686 requires the envelope command to be registered');
+  ({ SPACE_ENVELOPE } = await import('./space-envelope'));
+  ({ readSpaceEnvelope } = await import('@/lib/rooms/space-envelope-read'));
   useViewerStore.setState({ sectionPlane: { ...s().sectionPlane, enabled: false, custom: undefined, box: undefined } });
   restore = setRequestRemesh(() => {});
 });

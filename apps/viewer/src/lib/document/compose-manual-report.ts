@@ -17,7 +17,7 @@
 import { blockTitle, blockTitleStyle } from './block-title.js';
 import { blockTitleItems } from './compose-block-title.js';
 import { resolveEnglish } from '@/i18n/registry';
-import type { DocumentLabelFormatter } from './document-labels.js';
+import { capturedDocumentNumber, type DocumentLabelFormatter } from './document-labels.js';
 import { reportStamp } from './report-provenance.js';
 import { layoutReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, wrappedReportProvenance, type WrapLines } from './compose-report-provenance.js';
 import type { LayoutCursor, TextDrawnItem } from './compose-table.js';
@@ -37,10 +37,10 @@ const LINE = 11;
 const VERDICT_COLUMN = 76;
 
 export const countsLine = (c: ManualReportCounts, t: DocumentLabelFormatter = resolveEnglish): string =>
-  `${t('manualValidation.verdict.pass')} ${c.pass} · ${t('manualValidation.verdict.warning')} ${c.warning} · ${t('manualValidation.verdict.fail')} ${c.fail} · ${t('manualValidation.verdict.unanswered')} ${c.unanswered}`;
+  `${t('manualValidation.verdict.pass')} ${capturedDocumentNumber(t, c.pass) ?? c.pass} · ${t('manualValidation.verdict.warning')} ${capturedDocumentNumber(t, c.warning) ?? c.warning} · ${t('manualValidation.verdict.fail')} ${capturedDocumentNumber(t, c.fail) ?? c.fail} · ${t('manualValidation.verdict.unanswered')} ${capturedDocumentNumber(t, c.unanswered) ?? c.unanswered}`;
 
 const passedLine = (c: ManualReportCounts, t: DocumentLabelFormatter): string =>
-  t('manualValidation.report.passed', { percent: c.total > 0 ? Math.floor((c.pass / c.total) * 100) : 0, pass: c.pass, total: c.total });
+  t('manualValidation.report.passed', { percent: c.total > 0 ? Math.floor((c.pass / c.total) * 100) : 0, pass: capturedDocumentNumber(t, c.pass) ?? c.pass, total: capturedDocumentNumber(t, c.total) ?? c.total });
 
 interface ItemLines { text: string[]; description: string[]; comment: string[]; height: number }
 

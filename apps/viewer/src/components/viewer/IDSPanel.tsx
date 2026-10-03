@@ -26,7 +26,7 @@ import { IDSCorrectionDialog, getCorrectableRequirements } from './IDSCorrection
 import { useTranslation } from '@/i18n';
 import { IDSPanelResults } from './IDSPanelResults';
 import { IDSPanelStates, idsProgressState } from './IDSPanelStates';
-import { AnalysisPanel, AnalysisStaleRegion } from './analysis/AnalysisPanel';
+import { AnalysisPanel, AnalysisPanelChrome } from './analysis/AnalysisPanel';
 import { DefinitionLibraryToolbar } from './validation/DefinitionLibraryToolbar';
 
 // ============================================================================
@@ -181,6 +181,7 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
       // Embedded with no document, nothing of the header (title, load/clear
       // actions) applies yet, and ValidationPanel's own header sits above.
       headerHidden={embedded && !document}
+      chromeInBody={embedded && report !== null}
       onClose={onClose}
       run={document ? {
         hasResult: reportModelId !== null,
@@ -208,28 +209,32 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
       staleFor={report}
     >
       <div className="flex-1 min-h-0 flex flex-col">
-        <DefinitionLibraryToolbar kind="ids" onImport={() => { void handleLoadIdsClick(); }} />
+        {!report && <DefinitionLibraryToolbar kind="ids" onImport={() => { void handleLoadIdsClick(); }} />}
         <IDSPanelStates
           ids={ids}
           fileInputRef={fileInputRef}
           onFileSelect={handleFileSelect}
           onLoadClick={() => { void handleLoadIdsClick(); }}
         />
-        <AnalysisStaleRegion className="flex-1 min-h-0 flex flex-col">
-          <IDSPanelResults
-            results={ids}
-            runValidation={runValidation}
-            auditReport={ids.auditReport}
-            multiModel={idsMultiModel}
-            models={idsModelList}
-            pendingModelId={pendingModelId}
-            setPendingModelId={setPendingModelId}
-            validating={loading}
-            onEntityClick={handleEntityClick}
-            onCorrect={setCorrectionSpecId}
-            correctableSpecIds={correctableSpecIds}
-          />
-        </AnalysisStaleRegion>
+        <IDSPanelResults
+          results={ids}
+          summaryControls={
+            <>
+              <AnalysisPanelChrome />
+              <DefinitionLibraryToolbar kind="ids" onImport={() => { void handleLoadIdsClick(); }} />
+            </>
+          }
+          runValidation={runValidation}
+          auditReport={ids.auditReport}
+          multiModel={idsMultiModel}
+          models={idsModelList}
+          pendingModelId={pendingModelId}
+          setPendingModelId={setPendingModelId}
+          validating={loading}
+          onEntityClick={handleEntityClick}
+          onCorrect={setCorrectionSpecId}
+          correctableSpecIds={correctableSpecIds}
+        />
       </div>
 
       {report && correctionSpecResult && (

@@ -18,13 +18,14 @@ import { buildExportModel } from '../lists/export/model';
 import { browserReportSeams } from '../export/report/generate-report-pdf';
 import { generateDocumentPdf, type DocumentPdfInput } from './generate-document-pdf';
 import { DOCUMENT_VERSION, type IdsReportBlock } from './types';
+import { validateManualReportBlock, type ManualReportBlock, type ManualReportVerdict } from './manual-report-types';
 
 const now = new Date('2026-10-02T12:00:00Z');
 const png = readFileSync(new URL('../../../public/favicon-16x16-cropped.png', import.meta.url));
 const dataUrl = `data:image/png;base64,${png.toString('base64')}`;
 afterEach(() => { cleanup(); setLocale('en'); });
 
-function declaredInput(): DocumentPdfInput {
+function declaredInput(largeBuckets: readonly (ManualReportVerdict | null)[] = ['pass', 'fail']): DocumentPdfInput {
   // Stated saved-document invariants, not invented validation engine results:
   // 1,004 list rows, and two frozen checks with large counts and a partial rule.
   const columns: ColumnDefinition[] = [{ id: 'name', source: 'attribute', propertyName: 'Name' },
@@ -42,10 +43,29 @@ function declaredInput(): DocumentPdfInput {
           { id: 'partial', name: 'Partial', shortDescription: 'Partial', checked: 5678, passed: null, failed: null, passRate: null }] },
       { id: 'failure', shortDescription: 'Declared failure', checked: 9999, passed: 8888, failed: 1111, passRate: 89, rules: [] },
     ] };
+  // A valid authored saved snapshot: each bucket's count agrees with its actual items.
+  // Two large buckets cover German pass/fail and French warning/unanswered without inventing engine results.
+  const statuses = ['pass', 'warning', 'fail', null] as const;
+  const groups = statuses.map((status, index) => {
+    const count = largeBuckets.includes(status) ? 1001 : 1;
+    return { id: `manual-group-${index}`, name: `Declared ${status ?? 'unanswered'}`, counts: {
+      total: count, pass: status === 'pass' ? count : 0, warning: status === 'warning' ? count : 0,
+      fail: status === 'fail' ? count : 0, unanswered: status === null ? count : 0,
+    }, items: Array.from({ length: count }, (_, i) => ({ id: `manual-${index}-${i}`, status,
+      text: i === 0 ? 'Manual literal 1,234.50 m²' : 'Declared manual check' })) };
+  });
+  const manual: ManualReportBlock = { kind: 'manual-report', id: 'manual', checklistName: 'Declared manual counts',
+    generatedAt: now.toISOString(), summary: {
+      total: groups.reduce((n, group) => n + group.counts.total, 0),
+      pass: groups[0].counts.pass, warning: groups[1].counts.warning, fail: groups[2].counts.fail, unanswered: groups[3].counts.unanswered,
+    }, groups };
+  const errors: Parameters<typeof validateManualReportBlock>[2] = [];
+  validateManualReportBlock({ ...manual }, 'declared manual snapshot', errors);
+  assert.deepEqual(errors, [], 'actual saved-manual validator accepts consistent item/count payloads (#6610 review)');
   return { document: { version: DOCUMENT_VERSION, id: 'captured-numbers', name: 'Numeric capture', page: { size: 'A4', orientation: 'portrait' }, blocks: [
     { kind: 'image', id: 'logo', dataUrl, height: 16, align: 'left' },
     { kind: 'table', id: 'table', maxRows: 1, source: { kind: 'list', list } }, report,
-    { ...report, id: 'compact', sourceKind: 'rules', variant: 'compact' },
+    { ...report, id: 'compact', sourceKind: 'rules', variant: 'compact' }, manual,
   ] }, bindings: { models: [], activeModelId: null, today: now }, aggregations: new Map(), chartMessages: new Map(), topics: new Map(),
   tables: new Map([['table', { status: 'ok', kind: 'list', model }]]), snapshotIds: () => [] };
 }
@@ -101,6 +121,7 @@ it('captures large table/IDS counts with the label locale through actual PNG pre
     assert.ok(text.includes(expected), `actual PDF retains captured ${expected}`);
   }
   for (const literal of ['1,234.50 m²', '2,000.00 m²', '90%', '100%']) assert.ok(text.includes(literal), `authored/rate value remains literal: ${literal}`);
+  for (const value of ['Pass 1.001', 'Fail 1.001', '(1.001 of 2.004 checks)', 'Manual literal 1,234.50 m²']) assert.ok(text.includes(value), `actual manual PDF keeps captured German summary/group count or literal: ${value}`);
   assert.ok(!text.includes('WRONG'));
 });
 
@@ -109,13 +130,14 @@ it('preserves uncaptured English PDF counts and host-grouped table defaults desp
   const text = await printed(declaredInput());
   for (const expected of [`${(1003).toLocaleString()} more rows`, `Total (${(1004).toLocaleString()})`, 'Checked 22344',
     'Passed 19999', 'Checked 5678', 'Found 12345', '1234 to 20000', '1234/1234']) assert.ok(text.includes(expected), `old direct default: ${expected}`);
+  for (const value of ['Pass 1001', 'Fail 1001', '(1001 of 2004 checks)', 'Manual literal 1,234.50 m²']) assert.ok(text.includes(value), `uncaptured manual PDF keeps original raw count/literal: ${value}`);
   assert.ok(!text.includes('Prüfungen') && !text.includes('WRONG'));
 });
 
 // A captured French numeric context is distinct from merely flipping the UI to French.
 it('preserves captured French grouping in mounted counts and actual PDF glyphs (#6610)', async () => {
   registerLocale('fr', { 'document.table.moreRows': 'Reste {countDisplay}', 'document.table.total': 'Total {count}' });
-  setLocale('fr'); const input = declaredInput(); input.labels = captureTranslation();
+  setLocale('fr'); const input = declaredInput(['warning', null]); input.labels = captureTranslation();
   const ui = render(<DocumentPreview {...input} selectedBlockId={null} onSelectBlock={() => {}} />);
   await waitFor(() => ui.querySelector('[data-preview-block="compact"]') !== null && ui.querySelector('[data-layout-pending="true"]') === null,
     'captured French counts finish actual mounted preparation');
@@ -132,5 +154,6 @@ it('preserves captured French grouping in mounted counts and actual PDF glyphs (
     'Warnings 1 234', 'Checked 12 345', 'Checked 5 678', 'Found 12 345', '1 234 to 20 000', '1 234/1 234']) {
     assert.ok(text.includes(expected), `actual PDF keeps French grouped digits: ${expected}`);
   }
+  for (const value of ['Warning 1 001', 'Not checked 1 001', '(1 of 2 004 checks)', 'Manual literal 1,234.50 m²']) assert.ok(text.includes(value), `actual manual PDF keeps captured French summary/group count or literal: ${value}`);
   for (const literal of ['1,234.50 m²', '2,000.00 m²', '90%', '100%']) assert.ok(text.includes(literal));
 });

@@ -1,0 +1,26 @@
+{
+  "startedUTC": "2026-10-03T11:05:33.735835+00:00",
+  "cwd": "/home/louistrue/wt/6516-ring-work-counters-session6503",
+  "command": [
+    "cargo",
+    "build",
+    "--locked",
+    "--profile",
+    "server-release",
+    "-p",
+    "ifc-lite-processing",
+    "--example",
+    "opening_work_probe"
+  ],
+  "minimumStartKiB": 25165824,
+  "minimumLiveKiB": 8388608,
+  "maximumTreeRssKiB": 12582912,
+  "initialAvailableKiB": 45280504,
+  "scope": "Correctness-only run under host load; no timing/performance verdict.",
+  "peakTreeRssKiB": 654720,
+  "minimumObservedAvailableKiB": 44353144,
+  "ownedProcessGroup": 14947,
+  "childExit": 0,
+  "exit": 0,
+  "endedUTC": "2026-10-03T11:06:01.387539+00:00"
+}

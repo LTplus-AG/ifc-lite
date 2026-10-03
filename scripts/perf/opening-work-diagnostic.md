@@ -26,6 +26,38 @@ its ordinary telemetry. Fixed-size, saturating thread-local counters hold no
 model identifiers or geometry. JavaScript reports `counterPrecisionLimited`
 when any aggregate cannot be represented exactly. No clock runs inside Rust.
 
+The #6537 ring census counts canonical simplifier calls and post-weld input
+vertices, sweeps (including the final unchanged sweep), live vertex visits,
+actual predecessor/successor keep-mask probes and removals. Maximum probe
+distance counts circular steps including the successful probe: adjacent is one.
+Distances aggregate by maximum across calls and jobs; other work counts add.
+These counters do not show how much elapsed time the simplifier consumes.
+
+For a whole-fixture native control, use the existing canonical processor through
+the diagnostic example. It handles RTC itself and uses one Rayon worker so the
+caller drains the same thread that performs the work:
+
+```sh
+cargo run --locked --profile server-release -p ifc-lite-processing \
+  --example opening_work_probe --features opening-perf-trace -- \
+  /path/public-model.ifc /tmp/instrumented-capture.json > /tmp/work.json
+cargo run --locked --profile server-release -p ifc-lite-processing \
+  --example opening_work_probe -- \
+  /path/public-model.ifc /tmp/ordinary-capture.json > /tmp/control.json
+```
+
+The report includes input and capture SHA256, the shared ordered geometry-payload
+FNV, mesh/vertex/triangle totals and per-Express-ID counts. The separate capture
+contains serialized meshes, metadata and frame/transforms; it may contain model
+data and is intended for local output comparisons. The default route emits no
+native-only instance records; the example refuses if that invariant changes.
+Capture and geometry witnesses exclude processing timings and diagnostic counters.
+Keep source, compiler and binary identities alongside the reports. This
+single-worker native census is neither a browser-pool benchmark nor host-specific
+attribution, and output equality does not establish IFC fidelity.
+The capture path must be new: the example atomically refuses existing files,
+including an output path that aliases the input IFC.
+
 Interpret outcomes separately from diagnostic labels: currently `KernelError`
 records an **accepted** output that failed the directed-edge closure audit. It
 does not mean the subtraction rejected its output or used a box fallback. The

@@ -11,7 +11,7 @@ import { modelEditTarget, recordModellingEdit } from '@/store/slices/mutation-mo
 import { emitClippedProfile } from '@/store/slices/mutation-split-slab';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import { readSpaceEnvelope } from './space-envelope-read';
-import { envelopeMeasures, type SpaceEnvelope } from './space-envelope';
+import { ceilingAt, envelopeMeasures, type SpaceEnvelope } from './space-envelope';
 
 /** One write path for typed values and snapped gestures. Re-read at commit:
  * selection, permissions, source shape or overlay may have changed since init. */
@@ -23,6 +23,7 @@ export function writeSpaceEnvelope(tx: AuthoringTransaction, modelId: string, ex
   const measures = read && envelopeMeasures(read.chain.footprint, envelope);
   if (!target || !read || !measures) throw new Error('The space has no supported vertical envelope, or the ceiling crosses its floor.');
   const { chain } = read;
+  const previous = envelopeMeasures(chain.footprint, read.envelope)!;
   const k = getModelLengthUnitScale(target.dataStore);
   const qsets = target.view.getQuantitiesForEntity(expressId);
   const units = extractProjectUnits(target.dataStore.source, target.dataStore.entityIndex);
@@ -57,10 +58,39 @@ export function writeSpaceEnvelope(tx: AuthoringTransaction, modelId: string, ex
     const shape = add('IfcProductDefinitionShape', [read.productShape[0] as IfcAttributeValue, read.productShape[1] as IfcAttributeValue, [`#${rep}`, ...reps.slice(1)]]);
     draft.setPositionalAttribute(expressId, 6, `#${shape}`);
     const view = draft.getMutationView();
-    const canonical = qsets.find(q => q.name === 'Qto_SpaceBaseQuantities' || q.name === 'BaseQuantities');
-    const qset = canonical?.name ?? 'Qto_SpaceBaseQuantities';
-    view.setQuantity(expressId, qset, 'Height', measures.height / lengthScale, QuantityType.Length);
-    view.setQuantity(expressId, qset, 'GrossVolume', measures.volume / volumeScale, QuantityType.Volume);
-    view.setQuantity(expressId, qset, 'NetVolume', measures.volume / volumeScale, QuantityType.Volume);
+    const canonical = qsets.filter(q => q.name === 'Qto_SpaceBaseQuantities' || q.name === 'BaseQuantities');
+    const names = canonical.length ? [...new Set(canonical.map(q => q.name))] : ['Qto_SpaceBaseQuantities'];
+    // IFC Qto_SpaceBaseQuantities.Height is defined only for constant-height
+    // spaces. A ridge maximum is not that quantity (#6686).
+    const constant = chain.footprint.every(p => Math.abs(ceilingAt(envelope.ceiling, p) - envelope.floor - measures.height) <= 1e-6);
+    for (const qset of names) {
+      if (constant) view.setQuantity(expressId, qset, 'Height', measures.height / lengthScale, QuantityType.Length);
+      else view.deleteQuantity(expressId, qset, 'Height');
+      // Source wall/ceiling and finish dimensions need boundary/construction
+      // geometry unavailable to this editor. Remove stale values, never present
+      // a geometric envelope measure as a finished construction quantity.
+      for (const name of ['GrossWallArea', 'NetWallArea', 'GrossCeilingArea', 'NetCeilingArea', 'FinishCeilingHeight', 'FinishFloorHeight']) {
+        view.deleteQuantity(expressId, qset, name);
+      }
+      for (const prefix of ['Gross', 'Net']) {
+        const quantities = canonical.filter(q => q.name === qset).flatMap(q => q.quantities);
+        const floors = quantities.filter(q => q.name === `${prefix}FloorArea`);
+        // Room creation can retain distinct gross/net outlines. Only the body
+        // outline is available here; a different floor measure cannot identify
+        // the missing sloped envelope. Invalidate its volume rather than scale
+        // by an area ratio or overwrite gross and net with the same value.
+        const matchesBody = floors.length > 0 && floors.every(q => {
+          const scale = quantitySiScale(q, units);
+          return q.type === QuantityType.Area && !q.unit && Number.isFinite(scale) && scale > 0
+            && Math.abs(q.value * scale - measures.area) <= Math.max(1e-6, measures.area * 1e-6);
+        });
+        // A pre-existing net volume can exclude columns/recesses not encoded
+        // in the simple body. Preserve that distinction by invalidating it.
+        const volumesMatchBody = quantities.filter(q => q.name === `${prefix}Volume`).every(q => q.type === QuantityType.Volume
+          && Math.abs(q.value * volumeScale - previous.volume) <= Math.max(1e-6, previous.volume * 1e-6));
+        if (matchesBody && volumesMatchBody) view.setQuantity(expressId, qset, `${prefix}Volume`, measures.volume / volumeScale, QuantityType.Volume);
+        else view.deleteQuantity(expressId, qset, `${prefix}Volume`);
+      }
+    }
   }, tx.batchId);
 }

@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { IfcTypeEnum } from '@ifc-lite/data';
+import { IfcTypeEnum, QuantityType } from '@ifc-lite/data';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -84,10 +84,13 @@ describe('space envelope editing (#6686)', () => {
       near(mesh.volume, expectedVolume); near(mesh.minZ, 0); near(mesh.maxZ, 4);
       assert.ok(mesh.points.some(p => Math.abs(p[2] - 2) < 1e-4));
       near(exported.view.getQuantitiesForEntity(parsedId).flatMap(q => q.quantities).find(q => q.name === 'GrossVolume')!.value, expectedVolume);
+      assert.equal(exported.view.getQuantitiesForEntity(parsedId).flatMap(q => q.quantities).find(q => q.name === 'Height'), undefined,
+        'IFC Height is provided only for constant-height spaces');
       s().undo(MODEL_ID);
       near(envelopeMeasures(read(id).chain.footprint, read(id).envelope)!.volume, 36);
       assert.equal(read(id).envelope.ceiling.length, 1);
       assert.equal(read(id).envelope.ceiling[0].a, 0);
+      near(s().mutationViews.get(MODEL_ID)!.getQuantitiesForEntity(id).flatMap(q => q.quantities).find(q => q.name === 'Height')!.value, 3);
       s().redo(MODEL_ID);
       near(envelopeMeasures(read(id).chain.footprint, read(id).envelope)!.volume, expectedVolume);
       assert.equal(read(id).envelope.ceiling.length, mode === 'slope' ? 1 : 2);
@@ -106,6 +109,7 @@ describe('space envelope editing (#6686)', () => {
     commandPointerDown(at(p[0], 0)); commandPointerMove(at(p[0], 0.5)); commandPointerDown(at(p[0], 0.5));
     near(read(id).envelope.floor, 0.5);
     near(envelopeMeasures(read(id).chain.footprint, read(id).envelope)!.volume, 30);
+    near(s().mutationViews.get(MODEL_ID)!.getQuantitiesForEntity(id).flatMap(q => q.quantities).find(q => q.name === 'Height')!.value, 2.5);
     assert.equal(remeshes.length, 1);
   });
 
@@ -131,13 +135,65 @@ describe('space envelope editing (#6686)', () => {
   it('a millimetre model writes native lengths and cubic units, with the same physical volume', async t => {
     if (!envelopeWasm(t)) return;
     await seedModelingSession({ unit: 'millimetre', storeyOffset: [10, 20] });
-    const id = room(); start(id); apply('pitched', 2, 2, 4, 0.5);
+    const id = room();
+    // This fixture declares only millimetre lengths, so derived area units are
+    // mm² as well. Supply quantities in their declared units before editing.
+    const view = s().mutationViews.get(MODEL_ID)!;
+    for (const name of ['GrossFloorArea', 'NetFloorArea']) view.setQuantity(id, 'Qto_SpaceBaseQuantities', name, 12e6, QuantityType.Area);
+    view.setQuantity(id, 'Qto_SpaceBaseQuantities', 'GrossVolume', 36e9, QuantityType.Volume);
+    start(id); apply('pitched', 2, 2, 4, 0.5);
     const exported = await exportEnvelope(MODEL_ID), parsedId = exported.parsed.entities.getByType(IfcTypeEnum.IfcSpace)[0];
     const mesh = envelopeMesh(exported.text, parsedId);
     near(mesh.volume, 30); near(mesh.minZ, 0.5); near(mesh.maxZ, 4);
     const quantities = exported.view.getQuantitiesForEntity(parsedId).flatMap(q => q.quantities);
-    near(quantities.find(q => q.name === 'Height')!.value, 3500);
+    assert.equal(quantities.find(q => q.name === 'Height'), undefined);
     near(quantities.find(q => q.name === 'GrossVolume')!.value, 30e9);
+  });
+
+  it('invalidates unavailable gross-envelope and finish measures while retaining the verified net volume', async t => {
+    if (!envelopeWasm(t)) return;
+    const id = made(s().addSpace(MODEL_ID, STOREY, { Profile: 'polygon', OuterCurve: [[0, 0], [4, 0], [4, 3], [0, 3]],
+      Position: [0, 0, 0], Height: 3, grossFloorArea: 15, netFloorArea: 12 }));
+    const view = s().mutationViews.get(MODEL_ID)!;
+    // These valid source quantities become unverifiable after roof/floor edits.
+    for (const name of ['GrossWallArea', 'NetWallArea', 'GrossCeilingArea', 'NetCeilingArea']) {
+      view.setQuantity(id, 'Qto_SpaceBaseQuantities', name, 12, QuantityType.Area);
+    }
+    for (const name of ['FinishCeilingHeight', 'FinishFloorHeight']) {
+      view.setQuantity(id, 'Qto_SpaceBaseQuantities', name, 0.2, QuantityType.Length);
+    }
+    start(id); apply('pitched', 2, 2, 4, 0.5);
+    const exported = await exportEnvelope(MODEL_ID), parsedId = exported.parsed.entities.getByType(IfcTypeEnum.IfcSpace)[0];
+    near(envelopeMesh(exported.text, parsedId).volume, 30);
+    const quantities = exported.view.getQuantitiesForEntity(parsedId).flatMap(q => q.quantities);
+    near(quantities.find(q => q.name === 'NetVolume')!.value, 30);
+    near(quantities.find(q => q.name === 'GrossFloorArea')!.value, 15);
+    near(quantities.find(q => q.name === 'NetFloorArea')!.value, 12);
+    for (const name of ['Height', 'GrossVolume', 'GrossWallArea', 'NetWallArea', 'GrossCeilingArea', 'NetCeilingArea', 'FinishCeilingHeight', 'FinishFloorHeight']) {
+      assert.equal(quantities.find(q => q.name === name), undefined, `${name} cannot be verified from this net outline`);
+    }
+    s().undo(MODEL_ID);
+    near(view.getQuantitiesForEntity(id).flatMap(q => q.quantities).find(q => q.name === 'GrossVolume')!.value, 45);
+    near(view.getQuantitiesForEntity(id).flatMap(q => q.quantities).find(q => q.name === 'GrossCeilingArea')!.value, 12);
+  });
+
+  it('does not overwrite a source net volume that excludes unavailable construction geometry', () => {
+    const id = room(), view = s().mutationViews.get(MODEL_ID)!;
+    view.setQuantity(id, 'Qto_SpaceBaseQuantities', 'NetVolume', 34, QuantityType.Volume);
+    start(id); apply('slope', 2, 4, 4, 0.5);
+    const quantities = view.getQuantitiesForEntity(id).flatMap(q => q.quantities);
+    near(quantities.find(q => q.name === 'GrossVolume')!.value, 30);
+    assert.equal(quantities.find(q => q.name === 'NetVolume'), undefined,
+      'the envelope cannot recompute a volume excluding construction inside the space');
+  });
+
+  it('does not invent gross-volume provenance when the source has no gross floor measure', () => {
+    const id = room(), view = s().mutationViews.get(MODEL_ID)!;
+    view.deleteQuantity(id, 'Qto_SpaceBaseQuantities', 'GrossFloorArea');
+    start(id); apply('slope', 2, 4, 4, 0.5);
+    const quantities = view.getQuantitiesForEntity(id).flatMap(q => q.quantities);
+    assert.equal(quantities.find(q => q.name === 'GrossVolume'), undefined);
+    near(quantities.find(q => q.name === 'NetVolume')!.value, 30);
   });
 
   it('concave footprints integrate both sides of a ridge without assuming a rectangle', () => {

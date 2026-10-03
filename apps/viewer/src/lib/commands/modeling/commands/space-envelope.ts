@@ -106,7 +106,11 @@ export const SPACE_ENVELOPE: ModelingCommand<SpaceEnvelopeGesture> = {
   },
   validate(g) {
     const envelope = sectionEnvelope(g);
-    return g.target && g.changed && envelope && envelopeMeasures(g.target.chain.footprint, envelope)
+    const original = g.target?.envelope;
+    const same = original && envelope && Math.abs(original.floor - envelope.floor) < 1e-8
+      && original.ceiling.length === envelope.ceiling.length
+      && envelope.ceiling.every(p => original.ceiling.some(q => Math.abs(p.a - q.a) < 1e-8 && Math.abs(p.b - q.b) < 1e-8 && Math.abs(p.c - q.c) < 1e-8));
+    return g.target && g.changed && !same && envelope && envelopeMeasures(g.target.chain.footprint, envelope)
       ? { ok: true } : { ok: false, reasonKey: g.target ? 'spaceEnvelope.invalid' : 'spaceEnvelope.refused' };
   },
   commit(g, tx) {

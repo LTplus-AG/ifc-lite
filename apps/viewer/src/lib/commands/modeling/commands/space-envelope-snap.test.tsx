@@ -67,6 +67,15 @@ function roofPointer(id: number) {
 }
 
 describe('vertical space snapping (#6686)', () => {
+  it('an unchanged handle creates no entities, quantities or Undo records', () => {
+    const id = room(); start(id);
+    const view = s().mutationViews.get(MODEL_ID)!;
+    const before = view.getMutations().slice(), entities = view.getNewEntities().slice();
+    writeCommandField(1, 3); commitCommand();
+    assert.deepEqual(view.getMutations(), before);
+    assert.deepEqual(view.getNewEntities(), entities);
+  });
+
   it('the split workspace plan cannot feed XY coordinates into a ceiling handle', () => {
     const id = room(); start(id);
     updateCommandGesture(g => ({ ...g as SpaceEnvelopeGesture, active: 0 }));

@@ -24,6 +24,9 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { StepExporter } from '@ifc-lite/export';
+import { EntityExtractor, IfcParser } from '@ifc-lite/parser';
+import { getCompleteEntityIndex } from '../../../../../../../packages/export/src/entity-iteration.js';
 import { useViewerStore } from '@/store';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { blur, cleanup, render, type as typeInto } from '@/test/render.js';
@@ -423,4 +426,37 @@ it('mounted registered Room Edit splits before Auto and native Undo/Redo restore
   assert.equal(ui.querySelectorAll('[data-room-face]').length, 2);
   assert.equal(layoutFaces().length, 2);
   assert.deepEqual(view.getEffectiveChanges(), before);
+});
+
+
+it('mounted registered native Room cut restores exported Area/Volume metadata on Undo and Redo (#6232)', async t => {
+  if (!(await start(t, BOX))) return;
+  await auto();
+  const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+  const snapshot = async () => {
+    const bytes = new StepExporter(target.dataStore, target.view).export({ schema: 'IFC4', applyMutations: true }).content;
+    const parsed = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+    const extractor = new EntityExtractor(parsed.source);
+    return [...getCompleteEntityIndex(parsed)].flatMap(([expressId, location]) => {
+      const row = extractor.extractEntity({ ...location, expressId, lineNumber: 0 })!;
+      return row.type.startsWith('IFCQUANTITY') ? [{ type: row.type, attributes: row.attributes }] : [];
+    }).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  };
+  const before = await snapshot(), history = undoDepth();
+  assert.ok(before.some(row => row.type === 'IFCQUANTITYAREA'));
+  assert.ok(before.some(row => row.type === 'IFCQUANTITYVOLUME'));
+  editWith('shape');
+  const ui = render(<svg><RoomPlacePlan gesture={gesture()} ctx={ctx()} toScreen={p => [p[0] * 10, -p[1] * 10]} /></svg>);
+  assert.equal(ui.querySelectorAll('[data-room-face]').length, 1);
+  click(2, 0);
+  click(2, 5);
+  const after = await snapshot();
+  assert.equal(ui.querySelectorAll('[data-room-face]').length, 2);
+  undo();
+  assert.equal(undoDepth(), history);
+  assert.equal(ui.querySelectorAll('[data-room-face]').length, 1);
+  assert.deepEqual(await snapshot(), before);
+  redo();
+  assert.equal(ui.querySelectorAll('[data-room-face]').length, 2);
+  assert.deepEqual(await snapshot(), after);
 });

@@ -21,6 +21,7 @@ export {
 } from './store-editor.js';
 export { ChangeSetManager } from './change-set.js';
 export { recordCompoundMutation, undoRecordedMutationOperations } from './compound-recording.js';
+export { replayQuantityMutation } from './quantity-replay.js';
 export { recordSessionMutation } from './session-history.js';
 export { storeHasSourceEntity } from './source-entity-index.js';
 export {

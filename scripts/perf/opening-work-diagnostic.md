@@ -57,6 +57,13 @@ single-worker native census is neither a browser-pool benchmark nor host-specifi
 attribution, and output equality does not establish IFC fidelity.
 The capture path must be new: the example atomically refuses existing files,
 including an output path that aliases the input IFC.
+Reported write or serialization failures attempt removal of the newly-created
+partial file; cleanup failures report both causes.
+Captures stream into the output and SHA256 without retaining a full JSON tree or
+serialized byte buffer. One mesh Value is retained at a time to preserve the
+original f32 formatting; a single large mesh and the canonical result can still
+consume substantial memory. This representation change alone establishes no
+physical-memory or performance verdict.
 
 Interpret outcomes separately from diagnostic labels: currently `KernelError`
 records an **accepted** output that failed the directed-edge closure audit. It

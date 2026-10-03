@@ -79,3 +79,21 @@ no assertion observation. Complete logs, applied patches and guardian receipts
 are losslessly archived with digests in `oracle-controls/`; the original native
 receipts remain unchanged. Later evidence-only commits do not relabel the
 qualified source head.
+
+The [streaming controls](streaming-controls/summary.json) qualify the review
+fixes to the native capture adapter. The adapter drops the IFC input after
+processing, serializes one mesh Value at a time with the original float
+formatting, and hashes accepted capture bytes without retaining the full
+serialized capture. The canonical result and largest single-mesh Value remain
+resident; this establishes no memory-performance verdict. Reported write or
+serialization failures attempt cleanup of the newly-created partial target;
+cleanup failures preserve both causes. Existing targets are refused.
+
+Five adapter controls pass with features enabled and disabled, including a real
+partial-file write failure followed by successful retry and the float-format/hash
+compatibility contract. Both strict workspace Clippy runs and genuine release
+builds pass. All four streamed feature-on/off captures and complete report bytes
+match their respective v2 outputs. Full post-build source inventories remain
+unchanged after the suites; the receipts explicitly disclose that no full
+pre-feature-build inventory was captured. Raw receipts and logs are preserved
+in a separate digest manifest, leaving earlier qualifications untouched.

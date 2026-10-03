@@ -11,6 +11,11 @@ one GitHub-hosted Ubuntu 24.04 job. It supports direct dispatch and reusable
 does not use the committed benchmark baseline or authorize, publish or merge
 the candidate.
 
+The separate [hosted SDK worker comparison](SDK_HOSTED.md) selects
+`comparison_mode=sdk` on the registered Benchmark dispatch. Its produced CPU
+stream boundary and Linux resource contract do not replace this full-viewer
+readiness/appearance protocol or qualify any of its earlier refusals.
+
 For a harness revision whose interleaved workflow is not yet registered on
 `main`, dispatch the existing Benchmark workflow at the reviewed harness ref:
 

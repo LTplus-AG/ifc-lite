@@ -1,0 +1,122 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+name: Hosted SDK worker comparison
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: 'Exact immutable lowercase 40-hex baseline commit'
+        required: true
+        type: string
+      candidate_ref:
+        description: 'Exact immutable lowercase 40-hex candidate commit'
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      base_ref:
+        required: true
+        type: string
+      candidate_ref:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  sdk:
+    name: Fixed same-job default SDK cohort
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      BASE_REF: ${{ inputs.base_ref }}
+      CANDIDATE_REF: ${{ inputs.candidate_ref }}
+      BASE_DIR: ${{ github.workspace }}/../sdk-base
+      CANDIDATE_DIR: ${{ github.workspace }}/../sdk-candidate
+      CARGO_BUILD_JOBS: 1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      # Inputs enter through environment values; validate before checkout use.
+      - name: Validate immutable inputs and preserve fixed prospective protocol
+        run: node scripts/perf/sdk-prepare.mjs validate-inputs
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.base_ref }}
+          path: source-base
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate_ref }}
+          path: source-candidate
+          persist-credentials: false
+      - name: Isolate source arms from the harness Turbo graph
+        run: |
+          mv source-base "$BASE_DIR"
+          mv source-candidate "$CANDIDATE_DIR"
+      # Set PATH Node first so the pnpm action installs the regular JS package.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: perf-sdk
+          save-if: 'false'
+      - name: Select the exact installed pnpm CLI and preserve the action launcher
+        run: node scripts/perf/sdk-prepare.mjs select-pnpm
+      - name: Frozen install of harness and both source arms
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir "$BASE_DIR" install --frozen-lockfile
+          pnpm --dir "$CANDIDATE_DIR" install --frozen-lockfile
+      - name: Functional hosted protocol invariants before any timing
+        run: node --test scripts/perf/sdk-plan.test.mjs scripts/perf/sdk-resources.test.mjs scripts/perf/sdk-provenance.test.mjs
+      - name: Typecheck the explicit source client and its identity controls
+        run: pnpm typecheck:perf-sdk
+      - name: Fetch and verify exactly four public models
+        run: node scripts/perf/sdk-prepare.mjs fixtures
+      - name: Prefetch the exact locked wasm-bindgen transform before input freeze
+        run: node scripts/perf/sdk-prepare.mjs prefetch-bindgen
+      - name: Freeze actual source and installed tools before Rust compilation
+        run: node scripts/perf/sdk-prepare.mjs mark-builds
+      - name: Fresh baseline SDK and WASM through serial root Turbo
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/sdk-base-cargo
+        run: node scripts/perf/sdk-source-build.mjs base
+      - name: Fresh candidate SDK and WASM through serial root Turbo
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/sdk-candidate-cargo
+        run: node scripts/perf/sdk-source-build.mjs candidate
+      - name: Bundle the unchanged consumer against each fresh source arm
+        run: |
+          node scripts/perf/sdk-build.mjs "$BASE_DIR" "$BASE_REF" "$GITHUB_WORKSPACE/sdk-results/base-endpoint"
+          node scripts/perf/sdk-build.mjs "$CANDIDATE_DIR" "$CANDIDATE_REF" "$GITHUB_WORKSPACE/sdk-results/candidate-endpoint"
+      - name: Qualify immediate build receipts and freeze served bytes
+        run: node scripts/perf/sdk-prepare.mjs freeze
+      - name: Run the finite Linux resource-gated paired SDK cohort
+        run: node scripts/perf/sdk-cohort.mjs
+      - name: Retain terminal summary including refusals
+        if: always()
+        run: |
+          if [ -f sdk-results/report.md ]; then
+            cat sdk-results/report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '%s\n' 'SDK setup/build failed or was cancelled before cohort admission; no timing verdict. See retained setup/build artifacts and job logs.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload complete and refused SDK evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sdk-worker-${{ github.run_id }}-${{ github.run_attempt }}
+          path: sdk-results/
+          retention-days: 30
+          if-no-files-found: error

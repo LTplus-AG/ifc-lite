@@ -70,10 +70,18 @@ export interface SpatialAnchor {
  * has no `bodyContextId`/`axisContextId`/`storeyId` — markup geometry has no
  * use for them) can share this one conversion instead of re-implementing it.
  */
+function finiteRoundedLength(value: number): number {
+  if (!Number.isFinite(value)) throw new Error('Length conversion overflow: derived length must be finite');
+  // Above this bound decimal rounding itself would overflow. The number's
+  // representable precision already exceeds nine decimal places.
+  return Math.abs(value) <= Number.MAX_VALUE / 1e9 ? Math.round(value * 1e9) / 1e9 : value;
+}
+
 export function toNativeLength(anchor: Pick<SpatialAnchor, 'lengthUnitScale'>, metres: number): number {
   const scale = anchor.lengthUnitScale;
+  if (!Number.isFinite(metres)) throw new Error('Length must be finite');
   if (!scale || !Number.isFinite(scale) || scale <= 0 || scale === 1) return metres;
-  return Math.round((metres / scale) * 1e9) / 1e9;
+  return finiteRoundedLength(metres / scale);
 }
 
 /**
@@ -87,8 +95,9 @@ export function toNativeLength(anchor: Pick<SpatialAnchor, 'lengthUnitScale'>, m
  */
 export function fromNativeLength(anchor: Pick<SpatialAnchor, 'lengthUnitScale'>, native: number): number {
   const scale = anchor.lengthUnitScale;
+  if (!Number.isFinite(native)) throw new Error('Native length must be finite');
   if (!scale || !Number.isFinite(scale) || scale <= 0 || scale === 1) return native;
-  return Math.round(native * scale * 1e9) / 1e9;
+  return finiteRoundedLength(native * scale);
 }
 
 /** 2D point variant of {@link toNativeLength}. */

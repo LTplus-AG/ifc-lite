@@ -76,6 +76,23 @@ canonical parser; defer mechanisms whose correctness or end-to-end verdict
 remains incomplete. [Raw dispositions and prerequisites](evidence/deferred-worker-mechanisms-6537/README.md)
 retain source attribution and the excluded attempts.
 
+## Initial index reservation: no attributable default-pool benefit (#6537)
+
+The PR #6730 source inspection found no changed reservation request in its
+four default SDK fixture routes. The house remains below activation; the three
+larger models use sharded, prebuilt indexes that bypass the changed constructors.
+Their unused prepass staging map already reserves zero on the base revision.
+The bounded captures retain equal produced CPU output and complete diagnostics,
+including known kernel failures. They establish neither faithful IFC output nor
+an affected-path speed or physical-memory verdict. The earlier resource refusal
+remains preserved separately from the larger-budget inspection.
+
+Lesson: verify that the default load actually executes the changed allocation
+before assigning it an end-to-end benefit. This finite corpus does not rule out
+an affected input between cap activation and default sharding, and does not
+qualify the candidate for merge. [Source eligibility and complete raw evidence](
+evidence/default-pool-reservation-6537/README.md) retain the unshipped attribution.
+
 ## Opt-in map geometry compatibility export (#6587)
 
 The qualified comparison uses the actual main-based package prerequisite and

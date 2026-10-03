@@ -16,9 +16,10 @@ import { comparisonSummary } from '@/lib/compare/savedComparisonSchema';
 import { useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { localeCount } from '@/i18n/intlFormat';
-import { flattenExportModel, flattenRawModel, tableMessageKind, type TableRowRole, type TableState } from '@/lib/document/resolve-table';
+import { flattenExportModel, flattenRawModel, type TableRowRole, type TableState } from '@/lib/document/resolve-table';
 import { TABLE_ROWS_DEFAULT, type TableBlock, type TableColumnId } from '@/lib/document/types';
 import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS } from './preview-theme';
+import { tableMessage } from '@/lib/document/document-table-labels';
 import { TABLE_COLUMN_LABEL_KEY } from '@/lib/document/table-column-labels';
 
 const ROW_CLASS: Record<TableRowRole, string> = {
@@ -53,16 +54,7 @@ export function TablePreview({ block, state, pointScale = 1 }: TablePreviewProps
       : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, labels, block.groupOrder);
   }, [state, block.maxRows, block.groupOrder, t, locale]);
 
-  // The same state → message decision the PDF makes (`tableMessageKind`), worded from the catalogue.
-  const kind = tableMessageKind(state);
-  const message = kind === null ? null
-    : kind === 'error' ? ((state?.status === 'error' && state.message.trim()) || t('document.table.error'))
-      : kind === 'resolving' ? t('document.table.resolving')
-        : kind === 'no-model' ? t('document.table.noModel')
-          : kind === 'no-report' ? t('document.table.noReport')
-            : kind === 'rule-not-found' ? t('document.table.ruleNotFound')
-              // "No rows" reads differently per source: a list matched nothing, a validation table's rule/rows filter did.
-              : (state?.status === 'ok' && state.kind === 'comparison' ? t('document.table.comparisonNoRows') : state?.status === 'ok' && state.kind === 'validation' ? t('document.table.validationNoRows') : t('document.table.noRows'));
+  const message = tableMessage(state, t);
 
   return (
     <div data-block-table>

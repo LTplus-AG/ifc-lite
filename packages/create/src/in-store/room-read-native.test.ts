@@ -35,7 +35,7 @@ it.skipIf(!available)('shared native Room cache preserves edits across non-wall 
     const cut = cache.read('m', 42, .05, 'cut', walls, factory);
     const carried = cache.read('m', 42, .05, 'property-edit', walls, factory);
     expect(cut.faces).toHaveLength(2);
-    expect(carried.faces).toEqual(cut.faces);
+    expect(readFaces(carried.plate)).toEqual(cut.faces);
     expect(carried.plate).not.toBe(cut.plate);
     expect(cache.read('m', 42, .05, 'source', walls, factory).faces).toEqual(original.faces);
     expect(cache.read('peer', 42, .05, 'cut', walls, factory).faces).toHaveLength(1);

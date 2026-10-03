@@ -23,8 +23,6 @@ const along = (s: Vec3, dir: Vec3, t: number): Vec3 => [s[0] + dir[0] * t, s[1] 
 
 export function splitWallDraft(env: SplitEnvironment, id: number, chain: WallEditChain, distance: number): ElementSplitResult {
   const { editor, dataStore, view } = env;
-  const ownership = editOwnershipRefusal(dataStore, view, [chain.startPointId, chain.profileId, chain.profileOriginPointId], expandAffectedSet(dataStore, view, [id], 'hostsChanged'));
-  if (ownership) throw new Error(ownership);
   const read = readWallJoinTarget(dataStore, view, id, env.lengthUnitScale);
   const rels = readWallJoinRels(dataStore, view, new Set([id]));
   let addedId: number, keepLeft: boolean, element: OrdinaryInStoreElement;
@@ -34,13 +32,19 @@ export function splitWallDraft(env: SplitEnvironment, id: number, chain: WallEdi
     const geo = computeWallSplitGeometry(chain, distance, chain.height);
     if (!geo.ok) throw new Error(geo.reason);
     keepLeft = keepsFirstPiece(distance, chain.wallLength - distance);
+    // Only the relocated source writes its start point. Joined-wall reshapes
+    // own their body/placement checks in the canonical axis writer (#6232).
+    const written = [chain.profileId, chain.profileOriginPointId];
+    if (!keepLeft) written.push(chain.startPointId);
+    const ownership = editOwnershipRefusal(dataStore, view, written, expandAffectedSet(dataStore, view, [id], 'hostsChanged'));
+    if (ownership) throw new Error(ownership);
     const kept = keepLeft ? geo.geometry.left : geo.geometry.right;
     const cut = keepLeft ? geo.geometry.right : geo.geometry.left;
     element = { kind: 'wall', params: { ...cut, Name: env.name, GlobalId: env.newGlobalId } };
     addedId = emitOrdinaryElement(editor, resolveSpatialAnchor(dataStore, env.storeyExpressId, view), element);
     const k = chain.lengthUnitScale;
     const length = Math.hypot(kept.End[0] - kept.Start[0], kept.End[1] - kept.Start[1]);
-    editor.setPositionalAttribute(chain.startPointId, 0, scaled(kept.Start, k));
+    if (!keepLeft) editor.setPositionalAttribute(chain.startPointId, 0, scaled(kept.Start, k));
     editor.setPositionalAttribute(chain.profileId, 3, native(length, k));
     editor.setPositionalAttribute(chain.profileOriginPointId, 0, [native(length, k) / 2, 0]);
   }
@@ -52,11 +56,12 @@ export function splitWallDraft(env: SplitEnvironment, id: number, chain: WallEdi
 
 export function splitLinearDraft(env: SplitEnvironment, id: number, chain: LinearElementEditChain, distance: number): ElementSplitResult {
   const placement = readSplitPlacement(env, id);
-  const ownership = editOwnershipRefusal(env.dataStore, env.view, [chain.extrudedSolidId, chain.startPointId], new Set([id]));
-  if (ownership) throw new Error(ownership);
   const geo = computeLinearElementSplitGeometry(chain, distance);
   if (!geo.ok) throw new Error(geo.reason);
   const keepFirst = keepsFirstPiece(distance, chain.depth - distance);
+  const written = keepFirst ? [chain.extrudedSolidId] : [chain.extrudedSolidId, chain.startPointId];
+  const ownership = editOwnershipRefusal(env.dataStore, env.view, written, new Set([id]));
+  if (ownership) throw new Error(ownership);
   const keptStart = keepFirst ? chain.startCoordinates : geo.geometry.cutPoint;
   const keptLength = keepFirst ? distance : chain.depth - distance;
   const newStart = keepFirst ? geo.geometry.cutPoint : chain.startCoordinates;

@@ -214,3 +214,10 @@ These additions preserve every existing readiness, identity, appearance and
 resource refusal. They do not requalify an earlier failed cohort. The new five
 behavior controls and explicit harness typecheck pass locally; actual diagnostic
 browser evidence remains pending until its separate dispatch completes.
+
+Hosted diagnostic cohorts enable Playwright's `pw:browser` stderr/stdout observation
+with colors disabled only on the comparison step. Both streams are retained in
+each sample's runner log. This changes the diagnostic protocol identity and
+may expose Chrome/Dawn messages actually emitted; it does not guarantee every
+internal event or identify the cause of a device loss. Renderer launch flags,
+readiness and refusal criteria stay unchanged. Earlier refusals are retained.

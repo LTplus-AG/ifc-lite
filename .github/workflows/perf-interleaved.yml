@@ -117,6 +117,9 @@ jobs:
       # Both builds have exited. Serial fresh Chrome processes, fixed A/A + five
       # alternating A/B pairs per fixture. Failure is terminal; never retry a sample.
       - name: Run the fixed 48-sample comparison
+        env:
+          DEBUG: pw:browser
+          DEBUG_COLORS: "0"
         run: node scripts/perf/interleaved-run.mjs
       - name: Publish available terminal report to job summary
         if: always()

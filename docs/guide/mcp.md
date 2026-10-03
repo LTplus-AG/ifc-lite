@@ -501,7 +501,7 @@ dependants, fresh GlobalIds and the viewer array policy. `duplicate_element`
 accepts an `express_id`, explicit IFC `offset` and optional `Name`; it preserves
 the viewer Duplicate naming policy and copies the complete hosted graph.
 `edit_element_geometry` accepts a discriminated `operation`: `transform`
-(move/rotate), `size`, `wall_endpoints`, `split`, or `trim_extend`. Coordinates
+(move/rotate), `align`, `size`, `wall_endpoints`, `split`, or `trim_extend`. Coordinates
 are IFC storey-local metres; rotation angles are radians. Dimension names
 retain their IFC spelling (`Depth`, `XDim`, `YDim`).
 
@@ -509,6 +509,14 @@ Supply `model_id` when multiple models are loaded. These tools require mutation
 scope. Each write records one `mutation_undo` batch including its graph helpers.
 Unsupported shapes, independent hosted copies, unsafe shared geometry, read-only
 access and ambiguous model routing refuse without partial IFC writes.
+
+For `align`, provide `reference_id`, `express_ids` and `mode` (`left`, `centre`,
+`right`, `top`, `middle` or `bottom`). The reference and targets must occupy one
+storey. Bounds come from fresh native meshes, including current overlay edits;
+install the WASM runtime. Each target receives its own storey-local translation
+in one atomic batch. A selected host governs its placement dependants, which move once; joined neighbours follow and
+one Undo restores the entire graph. A fixed reference joined to a target, or
+hosted/joined targets requiring incompatible shifts, refuses before writing.
 
 ### Native Room operations
 

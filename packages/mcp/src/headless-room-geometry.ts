@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { GeometryProcessor } from '@ifc-lite/geometry';
-import { StepExporter } from '@ifc-lite/export';
-import { IfcParser } from '@ifc-lite/parser';
+import { withHeadlessGeometry } from './headless-native-geometry.js';
 import {
   wallRectsFromMeshes, roomFrameToModelWorld, roomFramePlanOffsets, storeyPlanFrame, toStoreyLocal,
   effectiveStoreyIds, effectiveStoreyElevation, floorToFloorHeight, spaceMeshTriangles,
@@ -16,17 +14,12 @@ import type { RoomGeometryProvider } from '@ifc-lite/sdk';
 export const provideHeadlessRoomGeometry: RoomGeometryProvider = async (model, storeyId) => {
   const schema = model.store.schemaVersion ?? 'IFC4';
   if (schema !== 'IFC4' && schema !== 'IFC2X3' && schema !== 'IFC4X3') throw new Error(`Room does not support schema ${schema}`);
-  const exported = new StepExporter(model.store, model.mutationView).export({ schema, applyMutations: true }).content;
-  const source = await new IfcParser().parseColumnar(exported.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  return withHeadlessGeometry(model, async (source, meshes, coord) => {
   const plan = storeyPlanFrame(source, storeyId);
   if (!plan) throw new Error('Room storey placement is not a supported upright plane');
   const storeys = effectiveStoreyIds(source, null).map(id => ({ id, elev: effectiveStoreyElevation(source, null, id) })).sort((a, b) => a.elev - b.elev || a.id - b.id);
   const floor = storeys.find(storey => storey.id === storeyId);
   if (!floor) throw new Error('Room requires a live IfcBuildingStorey');
-  const processor = new GeometryProcessor({ enableInstancing: false });
-  try {
-    await processor.init();
-    const { meshes, coordinateInfo: coord } = await processor.process(exported);
     const { dx, dy } = roomFrameToModelWorld(coord);
     const local = (point: [number, number]) => toStoreyLocal(plan, [point[0] + dx, point[1] + dy]);
     const walls = wallRectsFromMeshes(meshes, coord, floor.elev, floorToFloorHeight(storeys, storeyId)).map(wall => ({
@@ -39,5 +32,5 @@ export const provideHeadlessRoomGeometry: RoomGeometryProvider = async (model, s
     return { walls, spaces, occupied: occupancyTest(spaces.map(space => space.footprint), triangles), factory: {
       fromWallRects: (rects, weld, minArea) => runtime.SpacePlateHandle.fromWallRects(rects, weld, minArea),
     } };
-  } finally { processor.dispose(); }
+  });
 };

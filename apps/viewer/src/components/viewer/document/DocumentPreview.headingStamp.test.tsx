@@ -173,6 +173,7 @@ it('shows or removes captured report stamps for actual IDS/information results a
     let shownCheckY = 0;
     for (const showStamp of [undefined, false]) {
       const document = documentOf([{ ...source, showStamp, title: 'Frozen evidence' }], `stamp-${source.id}-${showStamp}`);
+      const before = structuredClone(document);
       const input: DocumentPdfInput = { document, labels, bindings: { models: [], activeModelId: null, today: new Date('2099-01-01') },
         aggregations: new Map(), chartMessages: new Map(), tables: new Map(), topics: new Map(), snapshotIds: () => [] };
       const ui = mount(input); await documentPreviewReady(); const pdf = await emitted(input);
@@ -191,7 +192,7 @@ it('shows or removes captured report stamps for actual IDS/information results a
       const heading = glyph(ui, 'Frozen evidence');
       assert.ok(Math.abs(parseFloat(heading.style.fontSize) / (560 / pageBox(document.page).w) - 11) < 0.01, 'omitted appearance retains the default heading size');
       assert.equal(pdf.fills.some(actual => samePdfFill(actual, fill)), false, 'omitted appearance adds no heading strip');
-      assert.equal(source.showStamp, undefined, 'presentation did not mutate the recorded source');
+      assert.deepEqual(document, before, 'preview and real PDF preserve the actual supplied document, including nested captured evidence (#6732)');
       cleanup();
     }
   }

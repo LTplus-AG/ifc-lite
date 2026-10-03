@@ -1,0 +1,97 @@
+{
+  "scope": "Actual built dependencies and compiler consumed by correctness controls; not a browser/performance lease or machine closure. No copied runtime/declarations.",
+  "node": "v24.21.0",
+  "pnpm": "10.8.1",
+  "files": [
+    {
+      "path": "pnpm-lock.yaml",
+      "realPath": "/home/louistrue/wt/6537-lazy-source-buffer-session6503/pnpm-lock.yaml",
+      "bytes": 396346,
+      "sha256": "eb6d0b8ead17982550888c640694ce0fc7481c9505c2d3de849695a8d1246539"
+    },
+    {
+      "path": "package.json",
+      "realPath": "/home/louistrue/wt/6537-lazy-source-buffer-session6503/package.json",
+      "bytes": 10969,
+      "sha256": "818d5e8c027b03709df3a3aa9a16198045d2c7c1499cf975eef7e6c20cb5098c"
+    },
+    {
+      "path": "turbo.json",
+      "realPath": "/home/louistrue/wt/6537-lazy-source-buffer-session6503/turbo.json",
+      "bytes": 2116,
+      "sha256": "28bee7a72da9b1f55be69f6147e75af48d506ae8db41f6605106aeb84e7e7e2f"
+    },
+    {
+      "path": "tsconfig.json",
+      "realPath": "/home/louistrue/wt/6537-lazy-source-buffer-session6503/tsconfig.json",
+      "bytes": 4737,
+      "sha256": "fe69fe73e823b65b157d4f4bc943a2d3e2fe980f22034a0ada0f8ecff519469a"
+    },
+    {
+      "path": "tsconfig.tests.base.json",
+      "realPath": "/home/louistrue/wt/6537-lazy-source-buffer-session6503/tsconfig.tests.base.json",
+      "bytes": 1072,
+      "sha256": "6fbf5c8191ecfe57692444825fdf8eb226754af9cf5d51772cb993d5c8841c84"
+    },
+    {
+      "path": "scripts/build-wasm.sh",
+      "realPath": "/home/louistrue/wt/6537-lazy-source-buffer-session6503/scripts/build-wasm.sh",
+      "bytes": 13734,
+      "sha256": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b"
+    },
+    {
+      "path": "scripts/typecheck-tests.mjs",
+      "realPath": "/home/louistrue/wt/6537-lazy-source-buffer-session6503/scripts/typecheck-tests.mjs",
+      "bytes": 31991,
+      "sha256": "b819bf1d9d8c10506aa91e5186a857d21fe6734e4710fe5c19d928de90413679"
+    },
+    {
+      "path": "packages/wasm/pkg/ifc-lite_bg.wasm",
+      "realPath": "/home/louistrue/wt/6537-lazy-source-buffer-session6503/packages/wasm/pkg/ifc-lite_bg.wasm",
+      "bytes": 9510669,
+      "sha256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b"
+    },
+    {
+      "path": "packages/wasm/pkg/ifc-lite.js",
+      "realPath": "/home/louistrue/wt/6537-lazy-source-buffer-session6503/packages/wasm/pkg/ifc-lite.js",
+      "bytes": 294778,
+      "sha256": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d"
+    },
+    {
+      "path": "packages/wasm/pkg/ifc-lite.d.ts",
+      "realPath": "/home/louistrue/wt/6537-lazy-source-buffer-session6503/packages/wasm/pkg/ifc-lite.d.ts",
+      "bytes": 157474,
+      "sha256": "a34371c64be9a3deb0997261df9d9ce4ee92633ad9c94ae2b41d575c26bddca0"
+    },
+    {
+      "path": "packages/parser/dist/index.d.ts",
+      "realPath": "/home/louistrue/wt/6537-lazy-source-buffer-session6503/packages/parser/dist/index.d.ts",
+      "bytes": 10794,
+      "sha256": "72527fa90bdae5d652a9e5212aa1cdb88785416f9e2ae0271c2a6aeb96ced97f"
+    },
+    {
+      "path": "packages/parser/dist/ifczip.d.ts",
+      "realPath": "/home/louistrue/wt/6537-lazy-source-buffer-session6503/packages/parser/dist/ifczip.d.ts",
+      "bytes": 3200,
+      "sha256": "2e4ccf5e4590b849c7bad2f3086d3d4e0eac11401f19d60bc3918dc38b447c1a"
+    },
+    {
+      "path": "packages/ifcx/dist/index.d.ts",
+      "realPath": "/home/louistrue/wt/6537-lazy-source-buffer-session6503/packages/ifcx/dist/index.d.ts",
+      "bytes": 6167,
+      "sha256": "5270e61dfffce3265edc91f35e50d4224c1f57a743545aee2a32539c2bd1ab76"
+    },
+    {
+      "path": "packages/geometry/dist/index.js",
+      "realPath": "/home/louistrue/wt/6537-lazy-source-buffer-session6503/packages/geometry/dist/index.js",
+      "bytes": 56427,
+      "sha256": "7e0e099f341256839d481982391fb9af71bb6e23f7a569ca38a94ec95a866702"
+    },
+    {
+      "path": "node_modules/typescript/bin/tsc",
+      "realPath": "/home/louistrue/wt/6537-lazy-source-buffer-session6503/node_modules/.pnpm/typescript@6.0.3/node_modules/typescript/bin/tsc",
+      "bytes": 45,
+      "sha256": "8d5fa5bd883fec0979fc2004f1fe1d99aef40570155d550eadc0b03b55513bf0"
+    }
+  ]
+}

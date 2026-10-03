@@ -113,7 +113,7 @@ export function useIfcServer() {
    */
   const loadFromServer = useCallback(async (
     file: File,
-    buffer: ArrayBuffer,
+    buffer: ArrayBufferLike,
     /**
      * Optional staleness check — returns true if this load has been
      * superseded. Same contract as `loadFromCache`'s (useIfcCache.ts:194):

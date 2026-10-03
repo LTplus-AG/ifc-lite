@@ -22,7 +22,7 @@ import JSZip from 'jszip';
 const ZIP_MAGIC = 0x04034b50;
 
 /** True if `buffer` starts with the zip local-file-header signature. */
-export function isZipBuffer(buffer: ArrayBuffer): boolean {
+export function isZipBuffer(buffer: ArrayBuffer | SharedArrayBuffer): boolean {
   if (buffer.byteLength < 4) return false;
   return new DataView(buffer).getUint32(0, true) === ZIP_MAGIC;
 }
@@ -136,9 +136,9 @@ const MAX_TOTAL_IMAGE_BYTES = 512 * 1024 * 1024;
 const MAX_IMAGE_ENTRIES = 256;
 
 /** Result of `unwrapIfcZipWithResources`. */
-export interface IfcZipContents {
+export interface IfcZipContents<T extends ArrayBuffer | SharedArrayBuffer = ArrayBuffer> {
   /** The single model entry's bytes (or the input unchanged for non-zip). */
-  model: ArrayBuffer;
+  model: T | ArrayBuffer;
   /**
    * Sibling raster images keyed by LOWERCASED basename (path and case are
    * stripped so `Textures/Wood.JPG` resolves a `wood.jpg` reference and vice
@@ -158,12 +158,13 @@ export interface IfcZipContents {
  * the packaging convention for textured IFC (`IfcImageTexture.URLReference`
  * is a relative filename, the image ships next to the `.ifc` inside the
  * `.ifcZIP`). Non-zip input returns unchanged bytes and an empty map, so
- * callers can invoke this unconditionally like `unwrapIfcZip`.
+ * callers can invoke this unconditionally like `unwrapIfcZip`. Shared ordinary
+ * input remains shared; an extracted archive model is always owned.
  */
-export async function unwrapIfcZipWithResources(
-  buffer: ArrayBuffer,
+export async function unwrapIfcZipWithResources<T extends ArrayBuffer | SharedArrayBuffer>(
+  buffer: T,
   maxModelBytes: number = MAX_UNCOMPRESSED_BYTES,
-): Promise<IfcZipContents> {
+): Promise<IfcZipContents<T>> {
   if (!isZipBuffer(buffer)) return { model: buffer, resources: new Map(), originalResources: new Map(), resourcesIncomplete: false };
   const { zip, entry } = await openZipModelEntry(buffer, maxModelBytes);
   const modelBytes = await extractEntryWithLimit(entry, maxModelBytes);
@@ -260,7 +261,7 @@ function declaredUncompressedSize(entry: JSZip.JSZipObject): number | undefined 
 /** Open the archive, locate the SINGLE model entry, and run the zip-bomb
  *  guard. Shared by `unwrapIfcZipWithLimit` / `unwrapIfcZipWithResources`. */
 async function openZipModelEntry(
-  buffer: ArrayBuffer,
+  buffer: ArrayBuffer | SharedArrayBuffer,
   maxUncompressedBytes: number,
 ): Promise<{ zip: JSZip; entry: JSZip.JSZipObject }> {
   // Wrap in a Uint8Array rather than passing `buffer` directly: some callers

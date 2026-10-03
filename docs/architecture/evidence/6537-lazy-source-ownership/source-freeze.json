@@ -1,0 +1,106 @@
+{
+  "head": "c61932d4a9d85efe1b0f817a5274a115f0571ee3",
+  "branch": "perf/6537-lazy-source-buffer-session6503",
+  "worktree": "/home/louistrue/wt/6537-lazy-source-buffer-session6503",
+  "committed": false,
+  "productionLoaderRestored": true,
+  "sourcePatchSHA256": "dccaf95d0baf5a3c1c564c9905dfa0d922113656e9cd9de0bc407d1e6e57896e",
+  "changedFiles": [
+    {
+      "path": ".changeset/calm-poets-open.md",
+      "bytes": 249,
+      "lines": 6,
+      "sha256": "8e0a825e25ec160ecee3afbdd536cb827fa5dee5cf8062e33e70ccb1fb69dca7"
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcCache.staleness.test.tsx",
+      "bytes": 24596,
+      "lines": 552,
+      "sha256": "37e01c2367f87419f4dcab810dbee20177d0f48150ae4c23bed1032c1cbdb1e5"
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcLoader.sabStreaming.test.tsx",
+      "bytes": 11978,
+      "lines": 283,
+      "sha256": "dcc0a76546d10a00dbcf80e5933d2a65c89fd93932c94a83100d5d69eb836409"
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcLoader.sharedSource.test.tsx",
+      "bytes": 5287,
+      "lines": 100,
+      "sha256": "ba1a234b9aaf246030ac006b251c31b49f62e6a4e6e95e18afc219089d376eb7"
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcLoader.ts",
+      "bytes": 124049,
+      "lines": 2226,
+      "sha256": "40914bf1b55dfac115c9de29832bdbcd3dd2a982cb160a684a584554bb25db68"
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcServer.staleness.test.tsx",
+      "bytes": 10832,
+      "lines": 273,
+      "sha256": "d4b12816d7d0e7433691602e721b1043b5aeac4d39f1064bd770c20d2f3897de"
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcServer.ts",
+      "bytes": 18020,
+      "lines": 433,
+      "sha256": "a9b0f28ec2d4c1b7e31e31300ca3bc9d4ca37ede95ef3ad15225c98996c51e78"
+    },
+    {
+      "path": "apps/viewer/src/utils/arrayBufferForConsumer.test.ts",
+      "bytes": 1486,
+      "lines": 34,
+      "sha256": "9a9279535a28c4114374dc202f181fce8c27ec8c535719768c6e4d5f204bfedd"
+    },
+    {
+      "path": "apps/viewer/src/utils/arrayBufferForConsumer.ts",
+      "bytes": 696,
+      "lines": 14,
+      "sha256": "24b14d09652d82d18a7da14dae800737902e4c74d1284ff2b245ba926904fa4c"
+    },
+    {
+      "path": "docs/guide/parsing.md",
+      "bytes": 29201,
+      "lines": 796,
+      "sha256": "853a52b63f597ff0d3058f378f1ec8686df1fb048b3749af3019a6c5c1134342"
+    },
+    {
+      "path": "packages/ifcx/README.md",
+      "bytes": 4046,
+      "lines": 107,
+      "sha256": "9732f1c4bcd2bc60f071678f85841d58651d774f2eec9febccfabf9412ea943c"
+    },
+    {
+      "path": "packages/ifcx/src/detect-format-shared.test.ts",
+      "bytes": 1184,
+      "lines": 26,
+      "sha256": "c9939d47a840b1ea2e7b62312415eab8f383183a8d947f4042457f6fa0d30c06"
+    },
+    {
+      "path": "packages/ifcx/src/index.ts",
+      "bytes": 23853,
+      "lines": 704,
+      "sha256": "ffe1c63a661eadd7f0bcfdc6d93a7324931746f0f04f001ccb530a2a3a7bedeb"
+    },
+    {
+      "path": "packages/parser/src/ifczip-shared-source.test.ts",
+      "bytes": 3273,
+      "lines": 59,
+      "sha256": "9d703a97e38cf1202581c893c8c3d2e9d41ece97e8aeddbb03a97c4030e34935"
+    },
+    {
+      "path": "packages/parser/src/ifczip.ts",
+      "bytes": 14674,
+      "lines": 333,
+      "sha256": "c2d5364c2b9f5f967a51740c2db00feb0a7d58800f4c5eefa7da484dbedf6755"
+    },
+    {
+      "path": "scripts/perf/README.md",
+      "bytes": 201307,
+      "lines": 2990,
+      "sha256": "ce631bb3b6fc936f7704d9d41a32000f6d120cd53a087fae93488f0e8c60484b"
+    }
+  ]
+}

@@ -530,3 +530,23 @@ describe('loadFromCache — bounding controls: the fix must not disable caching'
     assert.equal(result.meshCount, 0);
   });
 });
+
+it('mesh-only cache hydration retains the fresh shared source for on-demand readers (#6537)', async () => {
+  const entry = await buildCacheEntry({ withShards: false });
+  const source = new SharedArrayBuffer(SOURCE_TEXT.length);
+  new Uint8Array(source).set(new TextEncoder().encode(SOURCE_TEXT));
+  useViewerStore.setState({
+    activeModelId: 'shared-cache',
+    models: new Map([['shared-cache', { id: 'shared-cache', geometryResult: null }]]) as unknown as ViewerModels,
+  });
+  let result!: CacheLoadResult;
+  await act(async () => {
+    result = await loadFromCache!({ buffer: entry.buffer }, 'shared.ifc', 'shared-cache', undefined, source, () => false);
+  });
+  assert.equal(result.success, true, 'the real binary cache decoded geometry and metadata');
+  const restored = useViewerStore.getState().ifcDataStore;
+  assert.ok(restored);
+  assert.equal(restored.source.slice(0, source.byteLength).buffer, source);
+  assert.deepEqual(restored.source.slice(0, source.byteLength), new Uint8Array(source));
+  assert.equal(useViewerStore.getState().geometryResult!.meshes.length, MESHES.length);
+});

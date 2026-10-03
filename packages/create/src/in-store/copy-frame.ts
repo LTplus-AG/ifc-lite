@@ -8,13 +8,13 @@
  * a translation, in the file's native length unit), composed up to the
  * storey's own placement, and the copy's turn-and-move applied to it.
  *
- * Frames here turn about the vertical only: a placement whose Axis is tilted
- * contributes its RefDirection's plan projection, as every storey-local
- * reader in this package does (`placement-frame.ts`).
+ * Frames here turn about the vertical only. Unsupported parent frames refuse
+ * rather than projecting their tilt; a copied leaf keeps its full source basis.
  */
 
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
 import { asRef } from './style-entity-reader.js';
+import { axis3d } from './host-geometry-frame.js';
 
 export type CopyVec3 = [number, number, number];
 
@@ -114,7 +114,12 @@ export function frameInAncestor(read: LiveRead, placementId: number | null, ance
     visited.add(id);
     const own = readOwnPlacement(read, id);
     if (!own) return null;
-    frame = composeRigid(own.frame, frame);
+    const placement = read(id);
+    const basis = axis3d({ entity: read }, placement?.attributes[1]);
+    if (!basis) return null;
+    if (Math.abs(basis.z[0]) > 1e-9 || Math.abs(basis.z[1]) > 1e-9 || basis.z[2] < 1 - 1e-9)
+      throw new Error('Copy parent placement must be upright in its storey frame');
+    frame = composeRigid({ origin: basis.o, c: basis.x[0], s: basis.x[1] }, frame);
     id = own.parentId;
   }
   return id === ancestorId ? frame : null;

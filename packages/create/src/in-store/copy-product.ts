@@ -28,6 +28,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { duplicateInStore, type SourceAttributes } from './duplicate.js';
 import { resolveDuplicateSource } from './resolve-source.js';
+import { copyDependentSteps, copiedProductWork } from './copy-dependent-walk.js';
 import { asRef, createStyleEntityReader, indexExistingStyles, refList } from './style-entity-reader.js';
 import {
   IDENTITY_FRAME, applyRigid, composeRigid, frameInAncestor, invertRigid, readOwnPlacement,
@@ -151,6 +152,7 @@ export function copyRefusal(ctx: CopyContext, sourceId: number): string | null {
 export function copyProductInStore(ctx: CopyContext, sourceId: number, transform: CopyTransform = {}, options: { Name?: string } = {}): CopyProductResult {
   const refusal = copyRefusal(ctx, sourceId);
   if (refusal) throw new Error(refusal);
+  copiedProductWork(ctx, sourceId);
   const source = resolveDuplicateSource(ctx.store, sourceId, ctx.editor);
   const scale = source.lengthUnitScale && source.lengthUnitScale > 0 ? source.lengthUnitScale : 1;
   const native = (m: number) => m / scale;
@@ -163,7 +165,7 @@ export function copyProductInStore(ctx: CopyContext, sourceId: number, transform
   const copy = writeCopy(ctx, source, placed, targetStoreyId, options.Name);
 
   // Openings, their doors and windows, and the parts of an assembly follow it.
-  const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], visited: new Set([sourceId]), copiedFrom: new Map([[copy.id, sourceId]]) };
+  const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], copiedFrom: new Map([[copy.id, sourceId]]) };
   copyDependents(ctx, sourceId, copy.id, source, targetStoreyId, move, acc);
   return {
     copyId: copy.id, openingIds: acc.openingIds, fillingIds: acc.fillingIds, partIds: acc.partIds, storeyId: targetStoreyId,
@@ -177,44 +179,30 @@ interface Dependents {
   readonly openingIds: number[];
   readonly fillingIds: number[];
   readonly partIds: number[];
-  readonly visited: Set<number>;
   readonly copiedFrom: Map<number, number>;
 }
 
 /** The copies of `sourceId`'s openings (with their doors and windows) and parts (recursively), written under `copyId`. */
 function copyDependents(ctx: CopyContext, sourceId: number, copyId: number, root: SourceAttributes, targetStoreyId: number | null, move: RigidFrame, acc: Dependents): void {
-  for (const opening of ctx.voids.get(sourceId) ?? []) {
-    const openingSource = resolveDuplicateSource(ctx.store, opening.id, ctx.editor);
-    const openingCopy = writeCopy(ctx, openingSource, follow(ctx.read, openingSource, root, targetStoreyId, acc.placements, move), null);
-    acc.placements.set(openingSource.placementExpressId, openingCopy.placementId);
-    acc.copiedFrom.set(openingCopy.id, opening.id);
-    relate(ctx, 'IfcRelVoidsElement', opening.ownerHistory, copyId, openingCopy.id);
-    acc.openingIds.push(openingCopy.id);
-    for (const filling of ctx.fills.get(opening.id) ?? []) {
-      const fillingSource = resolveDuplicateSource(ctx.store, filling.id, ctx.editor);
-      const fillingCopy = writeCopy(ctx, fillingSource, follow(ctx.read, fillingSource, root, targetStoreyId, acc.placements, move), targetStoreyId);
-      acc.placements.set(fillingSource.placementExpressId, fillingCopy.placementId);
-      acc.copiedFrom.set(fillingCopy.id, filling.id);
-      relate(ctx, 'IfcRelFillsElement', filling.ownerHistory, openingCopy.id, fillingCopy.id);
-      acc.fillingIds.push(fillingCopy.id);
+  const copies = new Map([[sourceId, copyId]]);
+  for (const step of copyDependentSteps(ctx, sourceId)) {
+    if (step.kind === 'assembly') {
+      if (step.parts.length > 0) ctx.editor.addEntity('IfcRelAggregates', [generateIfcGuid(ctx.guidRandom), step.ownerHistory, null, null,
+        `#${copies.get(step.sourceId)!}`, step.parts.map(id => `#${copies.get(id)!}`)]);
+      continue;
     }
-  }
-  for (const link of ctx.parts.get(sourceId) ?? []) {
-    const partCopies: number[] = [];
-    for (const part of link.parts) {
-      if (acc.visited.has(part)) continue;
-      acc.visited.add(part);
-      const partSource = resolveDuplicateSource(ctx.store, part, ctx.editor);
-      // A part is aggregated, not contained: no containment of its own.
-      const partCopy = writeCopy(ctx, partSource, follow(ctx.read, partSource, root, targetStoreyId, acc.placements, move), null);
-      acc.placements.set(partSource.placementExpressId, partCopy.placementId);
-      acc.copiedFrom.set(partCopy.id, part);
-      partCopies.push(partCopy.id);
-      acc.partIds.push(partCopy.id);
-      copyDependents(ctx, part, partCopy.id, root, targetStoreyId, move, acc);
-    }
-    if (partCopies.length > 0) {
-      ctx.editor.addEntity('IfcRelAggregates', [generateIfcGuid(ctx.guidRandom), link.ownerHistory, null, null, `#${copyId}`, partCopies.map((id) => `#${id}`)]);
+    const parentCopy = copies.get(step.parentId)!;
+    const source = resolveDuplicateSource(ctx.store, step.sourceId, ctx.editor);
+    const copy = writeCopy(ctx, source, follow(ctx.read, source, root, targetStoreyId, acc.placements, move), step.kind === 'filling' ? targetStoreyId : null);
+    acc.placements.set(source.placementExpressId, copy.placementId);
+    acc.copiedFrom.set(copy.id, step.sourceId); copies.set(step.sourceId, copy.id);
+    if (step.kind === 'part') acc.partIds.push(copy.id);
+    else if (step.kind === 'opening') {
+      relate(ctx, 'IfcRelVoidsElement', step.ownerHistory, parentCopy, copy.id);
+      acc.openingIds.push(copy.id);
+    } else {
+      relate(ctx, 'IfcRelFillsElement', step.ownerHistory, parentCopy, copy.id);
+      acc.fillingIds.push(copy.id);
     }
   }
 }

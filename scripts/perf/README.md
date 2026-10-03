@@ -27,30 +27,33 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
-## Bundled main-first module sharing: mixed initial verdict (#6537)
+## Bundled main-first module sharing: historical mixed results (#6537)
 
-The original bundled initialization candidate removes the second observed WASM
-request before the default SDK worker pool. Its complete fresh-browser cohort
-retains equal CPU-channel output and full diagnostics across the fixed public
-families, but elapsed results are mixed: small-house loads improve, while the
-heavy CSG family includes slower pairs. Do not call this a general geometry fix
-or an all-model win. The revised failure-handling source has a separate pending
-comparison; the original success-path measurements do not qualify it.
+Bundled initialization removes the second observed WASM request before the
+default SDK worker pool. Both completed historical candidates retain equal
+CPU-channel output and full unnormalized diagnostics across the fixed public
+families, but elapsed observations remain small or mixed with all outliers kept.
+They do not establish an all-model win. Separately fresh engines differ in code
+and data despite equal captured Rust/build inputs, including absolute checkout
+paths; their elapsed differences do not isolate the JavaScript mechanism.
 
 Starting shared acquisition exposes failure semantics that merely joining an
-existing optional promise did not exercise. Preserve the original rejection
-inside canonical retry, keep optional callers' null fallback, and use the same
-response for permitted MIME fallback. Fatal bytes must not trigger refetches;
-successful streaming must not leave an unnecessary cloned body. Behavioral
-controls and actual Vite/generated-loader execution establish those contracts.
+optional promise did not exercise. Preserve original rejection inside canonical
+retry, optional callers' null fallback, and the same response for permitted MIME
+fallback. Fatal bytes must not cause refetches; successful streaming must not
+leave a cloned body. Public glue also returns its initialized engine before
+reading options: eager acquisition broke warm-engine offline compatibility.
+Prepare lazy public-init options so that only a cold engine acquires a module.
+Actual generated-loader controls preserve the predecessor assertion failure,
+the intermediate cross-realm harness refusal, and the corrected warm-engine proof.
 
-Lesson: count actual default-path requests before optimizing initialization,
-then measure whole worker-pool completion. Separately fresh engine builds can
-embed different absolute checkout paths even with identical Rust inputs; their
-individually qualified output is not binary identity or isolated-stage causality.
-Keep complete cohorts, superseded-source boundaries and failed test-oracle
-attempts explicit. [Original raw cohort, revised functional proof and scope](
-evidence/bundled-wasm-init-6537/README.md) are retained together for review.
+The corrected source has separate passing functional controls and a pending SDK
+comparison. Historical results and cached-artifact VM execution do not qualify
+that comparison, full viewer appearance, RSS, or universal speed. Count actual
+default-path requests, preserve public initialization contracts, and measure whole
+worker-pool completion against qualified arms. [Raw cohorts, compatibility failure,
+corrected proof and all scope limits](evidence/bundled-wasm-init-6537/README.md)
+remain available together without replacing earlier evidence.
 
 ## Direct vertex packing: do not ship the current candidate (#6537)
 

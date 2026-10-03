@@ -67,8 +67,20 @@ test('#6537 duplicate flat pieces are retained while publication order is irrele
   model.geometryResult.meshes.push({ ...mesh, positions: mesh.positions.slice() });
   const duplicate = (await captureIdentity(LIMITS)).sha256;
   assert.notEqual(duplicate, baseline);
+  // #6737: distinct contents are required to observe publication sorting;
+  // reversing two byte-identical pieces cannot detect a missing sort.
+  const distinct = { ...mesh, positions: mesh.positions.slice() };
+  distinct.positions[0] = 0.25;
+  model.geometryResult.meshes.push(distinct);
+  const ordered = (await captureIdentity(LIMITS)).sha256;
+  assert.notEqual(ordered, duplicate);
   model.geometryResult.meshes.reverse();
-  assert.equal((await captureIdentity(LIMITS)).sha256, duplicate);
+  assert.equal((await captureIdentity(LIMITS)).sha256, ordered);
+});
+test('#6737 a missing private instance-count method explicitly refuses identity', async t => {
+  const { scene } = fixture(t);
+  delete scene.getInstancedEntityCount;
+  await assert.rejects(captureIdentity(LIMITS), /^Error: REFUSE identity: private scene shape changed$/);
 });
 test('#6537 unsupported appearance or unknown private fields refuse rather than certify', async t => {
   const { mesh, template, data } = fixture(t);

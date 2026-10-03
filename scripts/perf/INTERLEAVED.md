@@ -147,11 +147,18 @@ parsing starts from `unknown`; private-shape JavaScript behavior is covered by
 the wired invariants.
 
 Correctness validation on 2026-10-03 passed the standalone root typecheck,
-all fourteen plan/identity/server/cleanup invariant tests with no skips,
+all fifteen plan/identity/server/cleanup invariant tests with no skips,
 module-size, source-text assertion, test-wiring and license-header guards,
 and targeted oxlint over the new source/test modules. Commands ran serially
 under a correctness-only guardian with a 12 GiB own-tree RSS ceiling,
 24 GiB starting available memory and 8 GiB live reserve. The initial lint
-failure and corrected rerun are retained separately. No browser fixture
+failure and corrected rerun are retained separately. PR #6737 review then
+found an order test with identical payloads and an unguarded private count
+method. The corrected distinct-payload test failed when production sorting
+was removed (six passes, one assertion failure), and the new missing-method
+test failed before the guard (fourteen passes, one assertion failure). Both
+the guard and production sorting restored all fifteen tests; typecheck, touched-file
+lint and module size also passed. These retained correctness runs supply no
+timing result. No browser fixture
 acceptance or performance cohort was executed; the performance verdict
 remains pending.

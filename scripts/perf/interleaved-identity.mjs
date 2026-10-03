@@ -88,7 +88,8 @@ export async function captureIdentity(limits) {
   const scene = renderer.getScene();
   if (typeof scene.isGeometryDataReleased !== 'function' || scene.isGeometryDataReleased()) refuse('scene CPU geometry released/unknown');
   if (!(scene.instancedEntityMap instanceof Map) || !Array.isArray(scene.instancedTemplateCpu)
-    || typeof scene.getAllMeshDataExpressIds !== 'function') refuse('private scene shape changed');
+    || typeof scene.getAllMeshDataExpressIds !== 'function'
+    || typeof scene.getInstancedEntityCount !== 'function') refuse('private scene shape changed');
 
   const meshFields = new Set(['expressId', 'ifcType', 'modelIndex', 'positions', 'normals', 'indices', 'appearanceSource',
     'color', 'shadingColor', 'entityIds', 'geometryItemId', 'materialId', 'material', 'geometryHash', 'geometryAabb',

@@ -24,6 +24,10 @@ import { BimProvider, useBim } from './BimProvider';
 const SAMPLE = new URL('../../public/samples/hello-wall.ifc', import.meta.url);
 const WASM = new URL('../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
 const MODEL = 'bonsai';
+function Consumer({ capture }: { capture: { bim?: BimContext } }) {
+  capture.bim = useBim();
+  return null;
+}
 afterEach(() => { cleanup(); setRemeshClientFactory(null); });
 function bytes(modelId = MODEL) {
   const state = useViewerStore.getState(), model = state.models.get(modelId)!;
@@ -59,8 +63,7 @@ for (const count of [1, 2] as const) it(`#6232 mounted BimProvider/${count} comm
     setRemeshClientFactory(async () => ({ alive: true, dispose: () => {}, setConfig: () => {},
       styleWire: async content => styleWireOnApi(api, content), remesh: async request => remeshOnApi(api, request) }));
     const captured: { bim?: BimContext } = {};
-    function Consumer() { captured.bim = useBim(); return null; }
-    render(<BimProvider><Consumer /></BimProvider>);
+    render(<BimProvider><Consumer capture={captured} /></BimProvider>);
     assert.ok(captured.bim, 'Mounted consumer obtains the actual provider-created context');
     const publicStore = captured.bim.store;
     const prior = await records(bytes()), peer = count === 2 ? await records(bytes('peer')) : null;

@@ -1,0 +1,101 @@
+{
+  "format": "lossless gzip, mtime zero",
+  "files": [
+    {
+      "originalName": "node.patch",
+      "originalBytes": 587,
+      "originalSha256": "d2058c5e2187e3c88a548a6b6eef777c3cf55a926871df0959ec99ab6e555b09",
+      "archiveName": "node.patch.gz",
+      "archiveBytes": 309,
+      "archiveSha256": "f7bd2945c35b1930fb393debb1ee610bd3c8f19b947253da7946b31476fd1ba2"
+    },
+    {
+      "originalName": "rust.patch",
+      "originalBytes": 678,
+      "originalSha256": "1406f7760f9f93e8a8ab470d823275f5707fe72a7707420a28aae2061a470aae",
+      "archiveName": "rust.patch.gz",
+      "archiveBytes": 257,
+      "archiveSha256": "cf6b4d9896d0fd42558219a52aa74aafd4f673af28141c441fac15441c59fba4"
+    },
+    {
+      "originalName": "node-oracle.log",
+      "originalBytes": 3970,
+      "originalSha256": "8d79087a9a9afed01ecd9fa2dd87abaaf187c49a1a02a7bf527e4fa4436e7ee1",
+      "archiveName": "node-oracle.log.gz",
+      "archiveBytes": 1384,
+      "archiveSha256": "fdd035488570d226b4226b88bd60e21a4b943ba5166ec7e9194052924ceb9b69"
+    },
+    {
+      "originalName": "node-oracle.json",
+      "originalBytes": 902,
+      "originalSha256": "c992444ed9732dcb6977644ba7156b1436f2db290f22ca2087682118e67d5c25",
+      "archiveName": "node-oracle.json.gz",
+      "archiveBytes": 505,
+      "archiveSha256": "ff80d5a903382622af874ccf2339e50d697a3b311d4f72c117ce9a0713895b47"
+    },
+    {
+      "originalName": "rust-oracle.log",
+      "originalBytes": 5861,
+      "originalSha256": "66ead45d19d5cae5298cd82c94a0e095c76b1015207b7ab0f3b6802f90e9f119",
+      "archiveName": "rust-oracle.log.gz",
+      "archiveBytes": 1742,
+      "archiveSha256": "9541778ecc296258b003b657a823001d472414bcf70c90743d7238ac99cd86fd"
+    },
+    {
+      "originalName": "rust-oracle.json",
+      "originalBytes": 953,
+      "originalSha256": "4696d011f9bd1e74be449cf9140e57c7e6b5ff1b82ba92393c33368aab2cc9d7",
+      "archiveName": "rust-oracle.json.gz",
+      "archiveBytes": 554,
+      "archiveSha256": "00bf9bf925d6e9701ab55b06a806b35ee0f5f67ca58b44314ec941fdd52f71b9"
+    },
+    {
+      "originalName": "node-whole-revert.log",
+      "originalBytes": 5420,
+      "originalSha256": "4de73d63533b0b666efdb5b87f57a68cbe9bfb005016dfc92328c5ab8a1e30f0",
+      "archiveName": "node-whole-revert.log.gz",
+      "archiveBytes": 1905,
+      "archiveSha256": "df891c017fffe2575d08f8aecbcffc0d8a1fa3d11d3d019c7272182c2cf48231"
+    },
+    {
+      "originalName": "node-whole-revert.json",
+      "originalBytes": 807,
+      "originalSha256": "f844500e5558d95fa0607bb3824ee7b5d0f80624036b35345e848f4c6f63b9e5",
+      "archiveName": "node-whole-revert.json.gz",
+      "archiveBytes": 459,
+      "archiveSha256": "6e61ee96e8cb1083fc5baeb3ae6c2580520f424ac957682c870201a4c2339899"
+    },
+    {
+      "originalName": "restored-node.log",
+      "originalBytes": 658,
+      "originalSha256": "8d6fb053c546e8fdf646ab72d5acf692ade53558402d5033513b3f31eedeef9e",
+      "archiveName": "restored-node.log.gz",
+      "archiveBytes": 394,
+      "archiveSha256": "41e93e44226d78bf8577dc9ada453e8ae07a59bb103b2f083d3b9ac584484ecc"
+    },
+    {
+      "originalName": "restored-node.json",
+      "originalBytes": 611,
+      "originalSha256": "97cf2c1c4c38e6d0913c00415628202f766622cf1c42e9b53e4bb5c86ad5a862",
+      "archiveName": "restored-node.json.gz",
+      "archiveBytes": 384,
+      "archiveSha256": "00597896f4cabf9320230f99a526b408a6d75c0f296d7af953ad56e912d38e7b"
+    },
+    {
+      "originalName": "restored-rust.log",
+      "originalBytes": 1107,
+      "originalSha256": "19d8c650c83735154a9e0be3d96c8da87d10106115799af0a37a8de89f8d406f",
+      "archiveName": "restored-rust.log.gz",
+      "archiveBytes": 513,
+      "archiveSha256": "79e9be3498b0b0d123a504000deab13ade5d3693c41b3705ec48ae9773f6cdb7"
+    },
+    {
+      "originalName": "restored-rust.json",
+      "originalBytes": 747,
+      "originalSha256": "cd6ed78ef341cd481e68d994669605ed9b3d52b1ba66048c9b05a8e9dfd67dca",
+      "archiveName": "restored-rust.json.gz",
+      "archiveBytes": 459,
+      "archiveSha256": "6afd3d40bd376d7c52b1d3d6eb33efb4e0426be305ee03c3b26ae397451e7c06"
+    }
+  ]
+}

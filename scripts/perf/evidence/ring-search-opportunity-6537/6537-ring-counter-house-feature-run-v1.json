@@ -1,0 +1,22 @@
+{
+  "startedUTC": "2026-10-03T10:29:16.613980+00:00",
+  "cwd": "/home/louistrue/wt/6516-ring-work-counters-session6503",
+  "command": [
+    "python3",
+    "/tmp/6232-takeover/6537-ring-work-public-diagnostic-v1/run.py",
+    "/tmp/6232-takeover/6537-ring-work-public-diagnostic-v1/instrumented-native",
+    "/home/louistrue/wt/6537-initial-reserve-base-baa-session6503/tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "/tmp/6232-takeover/6537-ring-work-public-diagnostic-v1/house-instrumented"
+  ],
+  "minimumStartKiB": 25165824,
+  "minimumLiveKiB": 8388608,
+  "maximumTreeRssKiB": 12582912,
+  "initialAvailableKiB": 40034444,
+  "scope": "Correctness-only run under host load; no timing/performance verdict.",
+  "peakTreeRssKiB": 4800,
+  "minimumObservedAvailableKiB": 40035252,
+  "ownedProcessGroup": 69448,
+  "childExit": 0,
+  "exit": 0,
+  "endedUTC": "2026-10-03T10:29:16.865972+00:00"
+}

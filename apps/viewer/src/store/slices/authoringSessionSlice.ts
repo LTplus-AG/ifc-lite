@@ -106,9 +106,11 @@ function launch(set: Set, get: Get, api: StoreApi<ViewerState>, id: CommandId): 
   patchSession(set, { activeCommandId: id, phase: 'idle' });
   const built = session.workplane ? resolveWorkplane(get(), session.modelId, session.workplane) : null;
   if (built && 'refused' in built) console.warn(`[modeling] No workplane: ${built.refused}`);
+  const ctx = { get, modelId: session.modelId, storeyId: session.storeyId, workplane: built && !('refused' in built) ? built : null };
+  if (command.workplane) ctx.workplane = command.workplane(ctx);
   beginCommandRuntime(
     command,
-    { get, modelId: session.modelId, storeyId: session.storeyId, workplane: built && !('refused' in built) ? built : null },
+    ctx,
     api,
     {
       onPhase: (phase) => { if (get().session?.phase !== phase) patchSession(set, { phase }); },

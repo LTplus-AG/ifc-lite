@@ -74,18 +74,19 @@ export function composePageFrame(input: ComposeDocumentInput, size: { w: number;
   const authoredHeading = input.pageHeading && (input.pageHeading.logo || input.pageHeading.showDate || input.pageHeading.showPageNumbers);
   if (authoredHeading && input.pageHeading) bandLayout('heading', input.pageHeading, input.name);
   else defaults.push(text('heading', 'text', heading?.text ?? input.name, REPORT_MARGIN, heading?.y ?? REPORT_MARGIN - 8,
-    heading?.fontSize, heading?.font, input.pageHeading?.textColor));
+    heading?.fontSize, heading?.font, heading?.textColor));
   if (input.pageFooter) bandLayout('footer', input.pageFooter, '');
   else {
     defaults.push(text('footer', 'text', footer, REPORT_MARGIN, size.h - REPORT_MARGIN + 12));
     const counter = text('footer', 'counter', '', size.w - REPORT_MARGIN - 60, size.h - REPORT_MARGIN + 12);
     if (counter.kind === 'text') { defaults.push(counter); pendingCounters.push({ item: counter, width: Infinity }); }
   }
+  const authoredBands = Boolean(authoredHeading || input.pageFooter);
   const assertBody = (body: readonly DrawnItem[]): void => {
     // Preserve the existing no-band document acceptance contract. This refusal
     // protects space reserved by authored bands; changing oversized legacy
     // graphic handling would be a separate compatibility change (#6733).
-    if (!authoredHeading && !input.pageFooter) return;
+    if (!authoredBands) return;
     // Some blocks contain indivisible graphics (topic snapshots, report rings).
     // The paginator cannot split those; refuse instead of painting over a band.
     for (const item of body) {
@@ -95,7 +96,7 @@ export function composePageFrame(input: ComposeDocumentInput, size: { w: number;
       if (start < top - 1e-6 || end > bottom + 1e-6) throw new Error(labels('document.print.bandFrameTooShort'));
     }
   };
-  return { top, bottom, heading, footer, assertBody, pages: (total: number): PageFrameItem[][] => Array.from({ length: total }, (_, index) => {
+  return { top, bottom, heading, footer, authoredBands, assertBody, pages: (total: number): PageFrameItem[][] => Array.from({ length: total }, (_, index) => {
     const counters = new Map(pendingCounters.map(({ item, width }) => [item,
       truncateToWidth(labels('document.print.pageCounter', { page: index + 1, total }), width, item.size, false,
         (value, fontSize, bold) => input.measure(value, fontSize, bold, item.font))]));

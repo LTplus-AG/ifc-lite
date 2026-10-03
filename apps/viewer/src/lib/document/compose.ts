@@ -166,9 +166,9 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     const title = blockTitle(block);
     const titleH = title ? BLOCK_TITLE_HEIGHT + blockTitleStyle(block).extra : 0;
     const captionH = block.caption ? 14 : 0;
-    if (titleH + captionH > printableHeight / layoutScale) throw new Error(labels('document.print.bandFrameTooShort'));
-    const h = documentImageHeight(block, pageH, headingExtraHeight, printableHeight / layoutScale);
-    if (h <= 0) throw new Error(labels('document.print.bandFrameTooShort'));
+    if (pageFrame.authoredBands && titleH + captionH > printableHeight / layoutScale) throw new Error(labels('document.print.bandFrameTooShort'));
+    const h = documentImageHeight(block, pageH, headingExtraHeight, pageFrame.authoredBands ? printableHeight / layoutScale : undefined);
+    if (pageFrame.authoredBands && h <= 0) throw new Error(labels('document.print.bandFrameTooShort'));
     const w = Math.min(boxW, h * block.aspect);
     const drawnH = w / block.aspect;
     const x = block.align === 'left' ? boxX : block.align === 'right' ? boxX + boxW - w : boxX + (boxW - w) / 2;
@@ -195,7 +195,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     // title strip and, when stacked, its snapshot — otherwise the SVG is clipped past the footer (review finding).
     const { height: chartHeight, sideBySide, stacked, snapshotHeight, totalHeight: totalH } = documentChartLayout({
       headingExtraHeight,
-      printableHeight: printableHeight / layoutScale,
+      printableHeight: pageFrame.authoredBands ? printableHeight / layoutScale : undefined,
       requestedHeight: block.height ?? CHART_HEIGHT,
       pageHeight: pageH,
       boxWidth: boxW,
@@ -205,7 +205,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       layoutScale,
       titleExtraHeight: heading.extra,
     });
-    if (chartHeight <= 0 || (stacked && snapshotHeight <= 0) || totalH > printableHeight / layoutScale + 1e-6) throw new Error(labels('document.print.bandFrameTooShort'));
+    if (pageFrame.authoredBands && (chartHeight <= 0 || (stacked && snapshotHeight <= 0) || totalH > printableHeight / layoutScale + 1e-6)) throw new Error(labels('document.print.bandFrameTooShort'));
     const chartW = sideBySide ? Math.round(boxW * 0.6) - BLOCK_GAP / 2 : boxW;
     return {
       height: totalH,

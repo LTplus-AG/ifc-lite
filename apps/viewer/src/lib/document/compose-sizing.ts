@@ -45,9 +45,10 @@ export function documentChartSizing(input: DocumentChartSizingInput): { height: 
   // block past the frame, as it does in the short frame of a block drawn at twice its size on a landscape
   // page: it then gives way, and a stacked chart keeps at least 40pt of plot.
   const room = printableHeight - 32 * chartFontScale(input.fontSize) - (input.titleExtraHeight ?? 0);
-  const minimumPlotHeight = Math.min(40, Math.max(0, room));
+  const measuredBands = input.printableHeight !== undefined;
+  const minimumPlotHeight = measuredBands ? Math.min(40, Math.max(0, room)) : 40;
   const snapshotHeight = sideBySide ? Math.min(SNAPSHOT_HEIGHT, Math.max(0, room))
-    : stacked ? Math.min(SNAPSHOT_HEIGHT, Math.max(0, room - BLOCK_GAP - minimumPlotHeight))
+    : stacked ? Math.min(SNAPSHOT_HEIGHT, Math.max(measuredBands ? 0 : 40, room - BLOCK_GAP - minimumPlotHeight))
       : 0;
   return {
     height: Math.max(minimumPlotHeight, Math.min(input.requestedHeight, room - (stacked && snapshotHeight > 0 ? snapshotHeight + BLOCK_GAP : 0))),
@@ -80,5 +81,6 @@ export function pageFrameHeight(pageHeight: number, headingExtraHeight = 0): num
 
 /** The image and its optional heading/caption fit inside the printable frame. */
 export function documentImageHeight(block: BlockHeaderStyleFields & { height: number; title?: string; caption?: string }, pageHeight: number, headingExtraHeight = 0, printableHeight?: number): number {
-  return Math.max(0, Math.min(block.height, (printableHeight ?? pageFrameHeight(pageHeight, headingExtraHeight)) - (blockTitle(block) ? BLOCK_TITLE_HEIGHT + blockTitleStyle(block).extra : 0) - (block.caption ? 14 : 0)));
+  const height = Math.min(block.height, (printableHeight ?? pageFrameHeight(pageHeight, headingExtraHeight)) - (blockTitle(block) ? BLOCK_TITLE_HEIGHT + blockTitleStyle(block).extra : 0) - (block.caption ? 14 : 0));
+  return printableHeight === undefined ? height : Math.max(0, height);
 }

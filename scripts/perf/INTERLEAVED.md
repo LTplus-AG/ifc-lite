@@ -146,7 +146,7 @@ helpers without workspace sibling `dist` dependencies. Runtime configuration
 parsing starts from `unknown`; private-shape JavaScript behavior is covered by
 the wired invariants.
 
-Correctness validation on 2026-10-03 passed the standalone root typecheck,
+Historical e4 correctness validation on 2026-10-03 passed the standalone root typecheck,
 all fifteen plan/identity/server/cleanup invariant tests with no skips,
 module-size, source-text assertion, test-wiring and license-header guards,
 and targeted oxlint over the new source/test modules. Commands ran serially
@@ -162,3 +162,12 @@ lint and module size also passed. These retained correctness runs supply no
 timing result. No browser fixture
 acceptance or performance cohort was executed; the performance verdict
 remains pending.
+
+The subsequent #6737 numeric review found that null candidate phase values could
+appear as improvements. Both arms now require finite phase numbers, with finite
+readiness and positive integer runtime counts. All sixteen invariants and the
+root harness typecheck pass. A supported phase-only mutation produced a genuine
+candidate-null assertion failure and verified restoration. The first new test's
+floating-point control failure is retained separately and is not causal evidence.
+See `evidence/interleaved-oracles-6737/README.md` for exact source scope and the
+explicit whole-file oracle exemption; performance remains unmeasured.

@@ -19,3 +19,7 @@ Missing-method guard: 7 normal passes, then 6 passes/1 failure; official REVERT-
 The latter assertion contains a missing-function TypeError; the conservative classifier refuses to count it as observation.
 The documented maintainer-only `revert-oracle-exempt` policy applies to the whole-file capability gap, following the existing opening-work-6516 precedent. It is an explicit skipped lane, not an unfiltered oracle pass; the classifier/workflow bounds stay intact.
 Final-head normal CI and resolved feedback still gate merging. Fixture acceptance, timings and a performance verdict remain UNRUN.
+
+Final numeric-bound source `474c7ff49` passes all 16 normal invariants, root harness typecheck and structural guards; touched-file lint also passes.
+The third patch removes only finite phase checks: the official runner reports 5 normal passes, then 4 passes/1 genuine candidate-null assertion failure, OBSERVED/exit 0 and verified restoration.
+`numeric-bounds-actual-receipts.json.gz` retains that final run and the earlier failed floating-point control, which is not counted as behavior evidence. Readiness rejects nonfinite values; runtime counts require positive safe integers. Missing phases remain unavailable.

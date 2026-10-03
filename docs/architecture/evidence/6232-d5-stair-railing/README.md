@@ -47,12 +47,37 @@ bounded server ended after its recorded 900-second window with exit 124.
 | Public SDK assembly removed | [Removed](browser-removed-be0068.png) |
 | One toolbar Undo | [Undo](browser-undo-be0068.png) |
 
-This browser proof covers one model and the typed-length gesture; two-coordinate
-placement, browser railing and browser federation remain unproved. One/two-model
+A further public `store.addRailing` request used Path [[0, -2, 0], [4, -2, 0]],
+Height 1.1 and PostSpacing 1 in the loaded storey's metre frame. The actual
+IfcRailing #10081 has PredefinedType HANDRAIL and six native meshes: one
+96-triangle handrail and five 140-triangle posts (796 triangles total). The
+viewer mesh count increased from 9 to 15. ONE toolbar Undo removed the railing
+and its six meshes while retaining the exact stair/aggregate records and the
+136-triangle flight, returning the mesh count to 9.
+
+This Undo retained the append-only journal at 90 entries and allocator at
+10083; active new entities returned from 90 to 58, Undo length from 90 to 58,
+and Redo length from 0 to 32. No complete state-fingerprint equality is claimed
+for Undo. The initial before diagnostic incorrectly compared PascalCase entity
+types to UPPERCASE and returned an empty array; the raw mistake is retained,
+and corrected exact-ID graph receipts establish the actual stair/railing state.
+`browser-railing-single-model-be0068.json.gz` retains six actual structured
+records, the witnessed owned-process stop and bounded guardian result. The
+300-second server was explicitly stopped after the proof with its exact PID
+and start time verified; the guardian records exit 15.
+
+| Actual railing stage | Unmodified T3 screenshot |
+| --- | --- |
+| Public SDK handrail and posts | [Railing](browser-railing-be0068.png) |
+| One toolbar Undo, stair retained | [Railing Undo](browser-railing-undo-be0068.png) |
+
+These browser proofs cover one model and the typed-length stair gesture;
+two-coordinate placement and browser federation remain unproved. One/two-model
 DOM/Node controls retain their separate scope above. No browser timing or GPU
-performance claim is made. Remote CI is still running, and the synchronous
-remote context still requires async implementation. Full D5, public Space
-integration and the #6232 charter remain open.
+performance claim is made. All four required checks passed on the published
+`66b862` head in the dated retained CI snapshot; this evidence-only successor
+still needs its own remote CI. The synchronous remote context still requires
+async implementation. Full D5, public Space integration and #6232 remain open.
 
 ## Historical qualification (2026-10-02)
 

@@ -39,7 +39,7 @@ const metadata={
     "Duplicate is a copy-route follow-up, not a 25th frozen command",
     "Inspector size/defaults/profile and ChangeSet/history are cross-cutting acceptance controls"
   ],
-  "captureState": "Source-bound WSL Chrome evidence is recorded under parent-boundary-forward: two fresh Physical receipts at clean 983bf1665a45906ef6f26b6e2e625186f5bc70d3 plus six retained Align/Placement/Room receipts at their original clean acbc97c0be9ec495ecf6e57ce5e1b71885b85f74. Strict composed audit: 8 receipts, 184 stages, 436 native/displayed geometry witnesses. Scope limitations and earlier historical captures remain explicitly labelled.",
+  "captureState": "Source-bound WSL Chrome evidence is recorded under main-initialization-forward: two fresh Physical receipts at clean dc66bdb117009032892c0ef0b50038910f8d5802 plus six retained Align/Placement/Room receipts at their original clean acbc97c0be9ec495ecf6e57ce5e1b71885b85f74. Strict composed audit: 8 receipts, 184 stages, 436 native/displayed geometry witnesses. Scope limitations and earlier historical captures remain explicitly labelled.",
   "alignRegisteredNativeProof": "Registered-command native controls and six-mode SDK browser controls passed; the retained clean acbc97c0be9ec495ecf6e57ce5e1b71885b85f74 Align receipts preserve distinct target shifts and one/two model contexts.",
   "mergeAcceptanceConditions": [
     "All preceding stack layers must actually land on main",

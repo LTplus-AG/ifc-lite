@@ -116,3 +116,6 @@ dependency build/cache restoration ran; actual WASM hash was verified unchanged
 before and after. `quantity-mcp.log.gz` preserves the run.
 
 The later `physical-repaired-forward/` directory records two fresh Physical WSL Chrome captures at clean `77246bddd0f5e0b42b3440e9017fee3ab9aa9e92`, after the actual CI and StandardCase/shared-placement review fixes. Its composed eight-receipt audit retains the six Align/Placement/Room captures at their original `acbc97c0b` source identity and passes 184 stages/436 native/displayed witnesses. Its source-labelled qualification distinguishes current 111-task/3,389-file typecheck and 8,479-file lint from earlier union tests and bounded cleanup controls. Remaining main landings, current-head required CI and feedback still gate completion.
+
+
+Current-main initialization composition is qualified separately in [`main-initialization-forward/`](./main-initialization-forward/README.md): fresh Physical one/two-model WSL Chrome receipts at clean `dc66bdb117009032892c0ef0b50038910f8d5802`, 111 root typecheck tasks/all 3,392 tests, 60 loader/bridge controls and 34 public native MCP controls. Six retained Align/Placement/Room receipts retain their original source identities. Earlier broader executions and captures above remain historical, not relabelled.

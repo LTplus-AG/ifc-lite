@@ -240,3 +240,13 @@ text. Supplying an `.ifc` download filename automatically changes it to
 `.ifczip` with ZIP MIME type. Untextured exports retain their ordinary STEP
 content. This packaging belongs to the web viewer adapter; other SDK backends
 provide their own resource packaging.
+
+### Canonical structural profiles
+
+Sandbox `bim.store.addColumn`, `addBeam` and `addMember` accept the same
+parameterized `Profile` union as the typed SDK. A supplied `Profile` replaces
+the rectangular Width/Depth or Width/Height inputs; column Height and element
+placement remain required. Profile dimensions keep their IFC names and use
+metres. The shared builder validates the actual profile before committing.
+Ordinary creation through the viewer SDK records the complete authored graph,
+so one Undo removes auxiliary placement, profile and containment records too.

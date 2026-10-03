@@ -44,6 +44,7 @@ import { entityForPath, pathForGuid } from '@/lib/collab/entity-paths.js';
 import { ensureSourceRoomEntities, initialRoomAttributes } from './store-adapter-collab.js';
 import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 import { mutationDenialMessage, mutationPermission } from '../../store/mutation-permission.js';
+import { recordResolvedModellingCommit } from '@/store/slices/mutation-modelling-records';
 
 export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
@@ -154,24 +155,16 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       throw new Error(`bim.store.${operation}: no model loaded for id "${modelId}"`);
     }
     const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
-    // Only a shared room needs the before/after diff; outside one, an O(n)
-    // snapshot per element made bulk authoring quadratic (#5413).
-    const shared = isSharedRoomModel(modelId);
-    const before = shared ? new Set(editor.getNewEntities().map((entity) => entity.expressId)) : null;
-    const expressId = build(editor, dataStore);
-    if (before) {
-      const created = editor.getNewEntities()
-        .map((entity) => entity.expressId)
-        .filter((id) => !before.has(id));
-      if (!ensureSourceRoomEntities(store, modelId, editor, created, dataStore)) {
-        throw new Error(`bim.store.${operation}: the new entities could not be published to the room`);
-      }
-    }
+    const setState = store.setState;
+    if (!setState) throw new Error(`bim.store.${operation}: creation requires a writable viewer store`);
+    const expressId = recordResolvedModellingCommit({ ...store, setState }, {
+      modelId: normalizedModelId, editor, dataStore, view: editor.getMutationView(),
+    }, build);
     // The builder only wrote the overlay. Book it the way the UI's add actions
     // do — mesh, spatial tree, undo entry, `mutationVersion` — or the element
     // is in the export and nowhere else: a flow or script "adds" columns the
     // user never sees.
-    store.getState().recordAuthoredElement?.(normalizedModelId, storeyExpressId, expressId, element);
+    store.getState().recordAuthoredElement?.(normalizedModelId, storeyExpressId, expressId, element, { historyRecorded: true });
     return { modelId: normalizedModelId, expressId };
   }
 

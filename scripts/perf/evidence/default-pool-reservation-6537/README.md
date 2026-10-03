@@ -52,10 +52,15 @@ retained diagnostic records match. This is a source/correctness inspection,
 not an interleaved timing cohort. Raw time fields do not change that status.
 
 The earlier v8 architecture capture hit its original 5 GiB owned-RSS ceiling
-and remains refused, with its partial receipt, abort witness, logs and cleanup.
+and remains refused, with its partial receipt, abort witness, captured browser
+console messages and cleanup.
 The later 8 GiB inspection is separately recorded, not a waiver or replacement
-sample in the original cohort. Guardian receipts and logs for all three runs
-are retained. Their sampled process-tree RSS sums are not physical peak memory.
+sample in the original cohort. Guardian JSON receipts for all three runs
+are retained. Each original guardian stdout log is zero bytes and is preserved
+as such; those empty files contain no operational evidence. The refusal and
+cleanup witnesses are in the fixture/report JSON records, while browser console
+messages are in the fixture JSON. Their sampled process-tree RSS sums are not
+physical peak memory.
 
 The SDK consumer does not establish full metadata, viewer/render readiness,
 GPU uploads, pixels, picking or federation. Equal produced-output hashes do

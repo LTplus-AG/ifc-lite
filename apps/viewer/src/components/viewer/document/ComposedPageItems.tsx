@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, type CSSProperties } from 'react';
+import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { renderChartSvg, type Aggregation } from '@ifc-lite/charts';
 import { REPORT_THEME } from '@/lib/export/report/generate-report-pdf';
@@ -75,7 +75,7 @@ function ComposedChart({ aggregation, item, fontSize, message, savedComparison, 
   </span>;
 }
 
-function Item({ item, block, origin, props, lineBreak }: { item: DrawnItem; block: DocumentBlock; origin: Box; props: ComposedPageItemsProps; lineBreak: boolean }) {
+function Item({ item, block, origin, props, lineBreak, children }: { item: DrawnItem; block: DocumentBlock; origin: Box; props: ComposedPageItemsProps; lineBreak: boolean; children?: ReactNode }) {
   const { scale, measure, labels: t } = props;
   const box = itemBox(item, measure);
   const style = position(box, origin, scale);
@@ -100,7 +100,7 @@ function Item({ item, block, origin, props, lineBreak }: { item: DrawnItem; bloc
       data-table-message={item.role === 'table-message' ? '' : undefined}
       data-report-model-scope={item.role === 'report-model-scope' ? '' : undefined} title={item.tooltip}>{markedText()}{lineBreak ? '\n' : ''}</span>;
     case 'rect':
-    case 'text-background': return <span aria-hidden="true" data-composed-fill={item.kind} style={{ ...style, backgroundColor: item.color }} />;
+    case 'text-background': return <span aria-hidden={children ? undefined : true} data-composed-fill={item.kind} style={{ ...style, backgroundColor: item.color }}>{children}</span>;
     case 'image':
     case 'topic-snapshot': {
       const topic = block.kind === 'topic' ? props.topics.get(block.guid) : undefined;
@@ -172,6 +172,20 @@ export function ComposedPageItems(props: ComposedPageItemsProps) {
     }), { x: Infinity, y: Infinity, right: -Infinity, bottom: -Infinity });
     const box = { x: bounds.x, y: bounds.y, w: bounds.right - bounds.x, h: bounds.bottom - bounds.y };
     const lastText = value.items.reduce((last, item, index) => item.kind === 'text' ? index : last, -1);
+    // Keep glyphs inside their actual composed backing rectangle. This paints
+    // one fill and gives browser contrast/accessibility the same background;
+    // titles remain outside body fills. Items arrive in canonical paint order.
+    const backedText = new Set<DrawnItem>();
+    const backgrounds = new Map<DrawnItem, Array<{ item: Extract<DrawnItem, { kind: 'text' }>; index: number }>>();
+    let backing: Extract<DrawnItem, { kind: 'text-background' }> | null = null;
+    value.items.forEach((item, index) => {
+      if (item.kind === 'text-background') { backing = item; backgrounds.set(item, []); }
+      else if (item.kind === 'text' && backing && item.x >= backing.x - 1e-6
+        && item.x <= backing.x + backing.w + 1e-6 && item.y - item.size >= backing.y - 1e-6
+        && item.y <= backing.y + backing.h + 1e-6) {
+        backgrounds.get(backing)?.push({ item, index }); backedText.add(item);
+      }
+    });
     return (
       // The selectable region contains images, text and tables, so it cannot be a native button.
       // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
@@ -187,8 +201,10 @@ export function ComposedPageItems(props: ComposedPageItemsProps) {
           data-ids-report-variant={block.kind === 'ids-report' ? block.variant : undefined} data-block-manual-report={block.kind === 'manual-report' ? '' : undefined}
           style={{ width: '100%', height: '100%', ...(block.kind === 'text' ? { color: block.textColor, whiteSpace: 'pre-wrap',
             fontFamily: DOCUMENT_FONT_FAMILIES[block.font ?? 'helvetica'], fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * props.scale * blockScale(block), lineHeight: TEXT_STYLES[block.style].lineHeight } : {}) }}>
-          {value.items.map((item, index) => <Item key={index} item={item} block={block} origin={box} props={props}
-            lineBreak={index < lastText} />)}
+          {value.items.map((item, index) => backedText.has(item) ? null : <Item key={index} item={item} block={block} origin={box} props={props}
+            lineBreak={index < lastText}>{backgrounds.get(item)?.map(child => <Item key={child.index}
+              item={child.item} block={block} origin={itemBox(item, props.measure)} props={props}
+              lineBreak={child.index < lastText} />)}</Item>)}
           {block.kind === 'text' && !block.text.trim() && <span className="text-neutral-500">{props.labels('document.preview.textEmpty')}</span>}
           {block.kind === 'spacer' && <span data-block-spacer style={{ display: 'block', height: box.h * props.scale }} />}
         </div>

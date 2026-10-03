@@ -25,17 +25,21 @@ export async function startViewerDevServer(label: string): Promise<ViewerDevServ
   const require = createRequire(join(ROOT, 'apps/viewer/package.json'));
   const { createServer } = await import(pathToFileURL(require.resolve('vite')).href);
   const cacheDir = await mkdtemp(join(tmpdir(), `ifc-${label}-`));
-  const server: { listen(): Promise<void>; close(): Promise<void>; resolvedUrls: { local: string[] } | null } =
-    await createServer({ root: join(ROOT, 'apps/viewer'), cacheDir, logLevel: 'error', server: { host: '127.0.0.1', port: 0 } });
-  await server.listen();
-  const url = server.resolvedUrls?.local[0] ?? '';
+  type Server = { listen(): Promise<void>; close(): Promise<void>; resolvedUrls: { local: string[] } | null };
+  let server: Server | undefined;
   const close = async () => {
-    try { await server.close(); }
+    try { await server?.close(); }
     finally { await rm(cacheDir, { recursive: true, force: true }); }
   };
-  if (!url) {
-    await close();
-    throw new Error(`${label} dev server did not expose its URL`);
+  try {
+    server = await createServer({ root: join(ROOT, 'apps/viewer'), cacheDir, logLevel: 'error', server: { host: '127.0.0.1', port: 0 } });
+    await server.listen();
+    const url = server.resolvedUrls?.local[0] ?? '';
+    if (!url) throw new Error(`${label} dev server did not expose its URL`);
+    return { url, close };
+  } catch (error) {
+    try { await close(); }
+    catch (cleanupError) { throw new AggregateError([error, cleanupError], `${label} dev server startup and cleanup failed`); }
+    throw error;
   }
-  return { url, close };
 }

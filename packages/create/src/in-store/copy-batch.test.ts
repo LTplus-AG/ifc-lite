@@ -112,7 +112,7 @@ it('bounds pruned root fan-out rather than selected hosted children (#6753 revie
   const ctx = createCopyContext(store, editor), selection = copiedProductsInStore(ctx, [1222]);
   expect(selection).toHaveLength(3);
   expect(copySourcesInStore(ctx, selection, 10000)).toEqual({ ids: [1222] });
-  expect(copySourcesInStore(ctx, selection, 10001)).toEqual({ refusal: 'A copy batch may contain at most 10000 product copies' });
+  expect(copySourcesInStore(ctx, selection, 10001)).toEqual({ refusal: 'A copy batch may contain at most 10000 root copies' });
   const journal = structuredClone(view.getMutations()), next = view.peekNextExpressId();
   // 5001 roots are admissible even though wall + two selected fillings would
   // exceed the bound before pruning. Inject a late GUID fault at the actual

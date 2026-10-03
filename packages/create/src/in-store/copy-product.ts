@@ -31,7 +31,7 @@ import { resolveDuplicateSource } from './resolve-source.js';
 import { asRef, createStyleEntityReader, indexExistingStyles, refList } from './style-entity-reader.js';
 import {
   IDENTITY_FRAME, applyRigid, composeRigid, frameInAncestor, invertRigid, readOwnPlacement,
-  refToken, remapRefs, turnDirection, turnThenMove,
+  refToken, remapRefs, turnDirection, turnThenMove, finiteCopyFrame,
   type CopyVec3, type LiveRead, type RigidFrame,
 } from './copy-frame.js';
 
@@ -156,8 +156,7 @@ export function copyProductInStore(ctx: CopyContext, sourceId: number, transform
   const native = (m: number) => m / scale;
   const [ox, oy, oz] = transform.offset ?? [0, 0, 0];
   const [px, py] = transform.pivot ?? [0, 0];
-  const move = turnThenMove(transform.turn ?? 0, [native(px), native(py)], [native(ox), native(oy), native(oz)]);
-  if (![...move.origin, move.c, move.s].every(Number.isFinite)) throw new Error('Copy frame must remain finite in native model units');
+  const move = finiteCopyFrame(turnThenMove(transform.turn ?? 0, [native(px), native(py)], [native(ox), native(oy), native(oz)]));
 
   const targetStoreyId = transform.targetStoreyId ?? source.storeyId;
   const placed = placeOnStorey(ctx.read, source, targetStoreyId, move);

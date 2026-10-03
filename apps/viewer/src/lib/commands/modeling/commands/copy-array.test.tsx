@@ -165,7 +165,7 @@ describe('array preview (#6232 C3)', () => {
     useViewerStore.getState().startCommand('element.array');
     click(0, 0);
     const records = structuredClone(view().getNewEntities()), journal = structuredClone(view().getMutations()), before = undoDepth();
-    for (const invalid of [{ count: 10002 }, { count: 3, distance: 1e308 }]) {
+    for (const invalid of [{ count: 10002 }, { count: 3, distance: 1e308 }, { mode: 'polar' as const, count: 2, anchor: [1e308,1e308] as const }]) {
       act(() => updateCommandGesture(g => ({ ...(g as ArrayGesture), ...invalid })));
       act(() => commandPointerMove(at(1, 0)));
       const runtime = getCommandRuntime();

@@ -5,13 +5,35 @@
 # Same-job production viewer comparison (#6537)
 
 This is a prospective evidence protocol, with no recorded performance verdict.
-The dispatch-only `perf-interleaved.yml` workflow compares two immutable source
-commits in one GitHub-hosted Ubuntu 24.04 job. It does not use the committed
-benchmark baseline. It does not authorize, publish or merge the candidate.
+The `perf-interleaved.yml` workflow compares two immutable source commits in
+one GitHub-hosted Ubuntu 24.04 job. It supports direct dispatch and reusable
+`workflow_call` execution through the registered `benchmark.yml` workflow. It
+does not use the committed benchmark baseline or authorize, publish or merge
+the candidate.
 
-Supply `base_ref` and `candidate_ref` as distinct lowercase 40-hex commit IDs.
-Moving branches/tags and abbreviated IDs are refused before either checkout.
-The harness itself comes from the dispatch's recorded `github.sha`.
+For a harness revision whose interleaved workflow is not yet registered on
+`main`, dispatch the existing Benchmark workflow at the reviewed harness ref:
+
+```sh
+gh workflow run benchmark.yml --ref REVIEWED_HARNESS_REF \
+  -f base_ref=IMMUTABLE_BASE_40_HEX \
+  -f candidate_ref=IMMUTABLE_CANDIDATE_40_HEX
+```
+
+The caller resolves its local reusable workflow from that same harness revision.
+Supply distinct lowercase 40-hex commit IDs for both arms. Either nonempty ref
+selects paired mode and skips the old single-arm job; incomplete or invalid refs
+are refused before either arm's checkout, with no single-arm fallback. Inputs
+still enter the existing prepare validator through environment values, never
+shell interpolation. The paired job has only `contents: read` permission and
+forwards no repository secrets. The harness checkout records the dispatch's `github.sha`.
+
+Dispatches without paired refs retain the existing single-arm behavior,
+including `record_baseline`. Paired mode does not refresh the committed
+baseline; leave `record_baseline` false. Push, schedule and labeled PR behavior
+remain unchanged. The existing Benchmark concurrency policy still applies:
+a newer run on the same ref may cancel an incomplete cohort, which supplies no
+complete performance verdict.
 
 Both revisions have isolated dependency graphs and Cargo target directories.
 The pinned WASM setup action must match on both sides. Root Turbo builds each

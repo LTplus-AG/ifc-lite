@@ -18,6 +18,17 @@ on:
         required: true
         type: string
 
+  workflow_call:
+    inputs:
+      base_ref:
+        description: 'Exact immutable lowercase 40-hex baseline commit'
+        required: true
+        type: string
+      candidate_ref:
+        description: 'Exact immutable lowercase 40-hex candidate commit'
+        required: true
+        type: string
+
 permissions:
   contents: read
 

@@ -76,6 +76,41 @@ canonical parser; defer mechanisms whose correctness or end-to-end verdict
 remains incomplete. [Raw dispositions and prerequisites](evidence/deferred-worker-mechanisms-6537/README.md)
 retain source attribution and the excluded attempts.
 
+## Initial index reservation: no attributable default-pool benefit (#6537)
+
+The PR #6730 source inspection found no changed reservation request in its
+four default SDK fixture routes. The house remains below activation; the three
+larger models use sharded, prebuilt indexes that bypass the changed constructors.
+Their unused prepass staging map already reserves zero on the base revision.
+The bounded captures retain equal produced CPU output and complete diagnostics,
+including known kernel failures. They establish neither faithful IFC output nor
+an affected-path speed or physical-memory verdict. The earlier resource refusal
+remains preserved separately from the larger-budget inspection.
+
+Lesson: verify that the default load actually executes the changed allocation
+before assigning it an end-to-end benefit. This finite corpus does not rule out
+an affected input between cap activation and default sharding, and does not
+qualify the candidate for merge. [Source eligibility and complete raw evidence](
+evidence/default-pool-reservation-6537/README.md) retain the unshipped attribution.
+
+## Ring neighbour searches: do not infer a general hotspot (#6537)
+
+Opt-in canonical work counts and feature-off output controls do not support
+linked-neighbour indices as a broad performance fix. The public slab has little
+searching beyond adjacent live vertices; Holter has none. House and Revit CSG
+contain additional probes, but no profile establishes time dominance or that
+constructing neighbour arrays would pay back. A synthetic collinear ring proves
+the quadratic worst case, not its relevance to these models. The diagnostic
+preserves the algorithm and its output; it is not an optimization or speed claim.
+
+Lesson: count actual post-weld searches before replacing their representation.
+Saved raw-ring lengths cannot reconstruct cleaned-ring work. Preserve exact
+sweep order, predicates, coordinates and topology if profiling later warrants
+a prototype, then qualify the ordinary end-to-end worker pool.
+[Complete native work census, source identities and output controls](
+evidence/ring-search-opportunity-6537/README.md) retain the bounded public screen
+and its exclusions.
+
 ## Opt-in map geometry compatibility export (#6587)
 
 The qualified comparison uses the actual main-based package prerequisite and

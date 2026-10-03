@@ -71,6 +71,56 @@ pub struct Counters {
     pub aabb_fallback_commits: u64,
     pub aabb_fallback_input_triangles: u64,
     pub aabb_fallback_output_triangles: u64,
+    pub ring_simplifier_calls: u64,
+    /// Vertices at canonical simplifier entry, after the caller's rim weld.
+    pub ring_simplifier_input_vertices: u64,
+    /// Includes the final sweep that removes no vertices.
+    pub ring_simplifier_sweeps: u64,
+    pub ring_simplifier_live_vertex_visits: u64,
+    /// Actual keep-mask lookups, including unsuccessful neighbour candidates.
+    pub ring_simplifier_prev_probes: u64,
+    pub ring_simplifier_next_probes: u64,
+    pub ring_simplifier_removals: u64,
+    /// Circular steps from the current vertex, including the successful probe;
+    /// adjacent neighbours have distance one. Maxima across all calls, not sums.
+    pub ring_simplifier_max_prev_probe_distance: u64,
+    pub ring_simplifier_max_next_probe_distance: u64,
+}
+
+/// #6537 call-local work, merged once without per-probe thread-local access.
+/// This module and its fixed-sized storage exist only with opening-perf-trace.
+#[derive(Default)]
+pub(crate) struct RingSimplifierWork {
+    pub input_vertices: u64,
+    pub sweeps: u64,
+    pub live_vertex_visits: u64,
+    pub prev_probes: u64,
+    pub next_probes: u64,
+    pub removals: u64,
+    pub max_prev_probe_distance: u64,
+    pub max_next_probe_distance: u64,
+}
+
+impl RingSimplifierWork {
+    pub fn record(self) {
+        record(|c| {
+            c.ring_simplifier_calls = c.ring_simplifier_calls.saturating_add(1);
+            c.ring_simplifier_input_vertices = c.ring_simplifier_input_vertices
+                .saturating_add(self.input_vertices);
+            c.ring_simplifier_sweeps = c.ring_simplifier_sweeps.saturating_add(self.sweeps);
+            c.ring_simplifier_live_vertex_visits = c.ring_simplifier_live_vertex_visits
+                .saturating_add(self.live_vertex_visits);
+            c.ring_simplifier_prev_probes = c.ring_simplifier_prev_probes
+                .saturating_add(self.prev_probes);
+            c.ring_simplifier_next_probes = c.ring_simplifier_next_probes
+                .saturating_add(self.next_probes);
+            c.ring_simplifier_removals = c.ring_simplifier_removals.saturating_add(self.removals);
+            c.ring_simplifier_max_prev_probe_distance = c.ring_simplifier_max_prev_probe_distance
+                .max(self.max_prev_probe_distance);
+            c.ring_simplifier_max_next_probe_distance = c.ring_simplifier_max_next_probe_distance
+                .max(self.max_next_probe_distance);
+        });
+    }
 }
 
 thread_local! {

@@ -19,6 +19,7 @@ const sourceReferences = new WeakMap<IfcDataStore, {
 
 function sourceInverse(store: IfcDataStore): Map<number, number[]> {
   const cached = sourceReferences.get(store);
+  // @raw-entity-enumeration-ok identity comparison only; enumeration below uses the complete index
   if (cached?.source === store.source && cached.primary === store.entityIndex.byId
     && cached.deferred === store.deferredEntityIndex) return cached.inverse;
   const inverse = new Map<number, number[]>();
@@ -29,6 +30,7 @@ function sourceInverse(store: IfcDataStore): Map<number, number[]> {
       parents.push(id); inverse.set(ref, parents);
     }
   }
+  // @raw-entity-enumeration-ok retain immutable index identity only for inverse-cache invalidation
   sourceReferences.set(store, { source: store.source, primary: store.entityIndex.byId, deferred: store.deferredEntityIndex, inverse });
   return inverse;
 }
@@ -47,7 +49,7 @@ export function editOwnershipRefusal(
   for (const expressId of changed) {
     if (view.getTombstones().has(expressId)) continue;
     const created = effectiveCreatedRecord(view, expressId, store.schemaVersion);
-    // Raw point lookup supplies only a changed record's immutable byte range.
+    // @raw-entity-enumeration-ok point lookup of an already changed record's source bytes; effectiveSourceRecord applies the overlay
     const source = created ? undefined : store.entityIndex.byId.get(expressId);
     let refs: number[];
     if (created) {
@@ -73,6 +75,7 @@ export function editOwnershipRefusal(
     if (visited.has(id)) continue;
     visited.add(id);
     if (view.getTombstones().has(id)) continue;
+    // @raw-entity-enumeration-ok point class fallback after tombstone, retype and created-record handling
     const type = view.getEntityTypeMutation(id)?.newType ?? view.getNewEntity(id)?.type ?? store.entityIndex.byId.get(id)?.type;
     if (type && getInheritanceChainAcrossSchemas(type).includes('IfcProduct')) {
       if (!allowedProducts.has(id)) return `The edit shares placement or geometry with #${id}; shared occurrences cannot be edited in place`;

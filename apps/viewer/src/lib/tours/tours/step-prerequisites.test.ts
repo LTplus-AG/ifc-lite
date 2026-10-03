@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { EVENT_LOAD_FILE } from '../events.js';
-import { ensureTourModel } from '../demo-kit.js';
+import { ensureTourModel, loadDemoProjectVia } from '../demo-kit.js';
 import type { TourStep } from '../types.js';
 import { WELCOME_TOUR, representativeElementId } from './welcome.js';
 import { LENS_TOUR } from './lens.js';
@@ -116,6 +116,29 @@ describe('ensureTourModel: welcome steps after a skipped load (#6720)', () => {
     }
     assert.deepEqual(loaded, ['building-architecture.ifc']);
     assert.equal(useViewerStore.getState().models.size, 1);
+  });
+
+  it('the welcome card\'s demo button and the tour share one in-flight load', async () => {
+    useViewerStore.setState({ models: new Map(), loading: false, geometryStreamingActive: false });
+    let fetched = 0;
+    globalThis.fetch = (async () => { fetched += 1; return new Response('ISO-10303-21;'); }) as typeof fetch;
+    const cardLoads: string[] = [];
+    const busLoads: string[] = [];
+    const onLoad = (event: Event) => { busLoads.push((event as CustomEvent<File>).detail.name); };
+    window.addEventListener(EVENT_LOAD_FILE, onLoad);
+    try {
+      // Card clicked, then "Skip (use demo)" while the card's fetch is pending.
+      const card = loadDemoProjectVia(async (file) => {
+        cardLoads.push(file.name);
+        seedLoaded(loadedModel(0, []));
+      });
+      await Promise.all([card, ensureTourModel()]);
+    } finally {
+      window.removeEventListener(EVENT_LOAD_FILE, onLoad);
+    }
+    assert.equal(fetched, 1);
+    assert.deepEqual(cardLoads, ['building-architecture.ifc']);
+    assert.deepEqual(busLoads, []);
   });
 
   it('never swaps out a legacy single-model store either, and does not wait on it', async () => {

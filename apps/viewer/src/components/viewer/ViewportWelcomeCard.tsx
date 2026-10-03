@@ -17,7 +17,7 @@ import { Upload, Clock3, Sparkles, ArrowUpRight, PackagePlus, Cloud, ShieldCheck
 import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
 import { toast } from '@/components/ui/toast';
-import { fetchDemoProjectFile } from '@/lib/tours/demo-kit';
+import { loadDemoProjectVia } from '@/lib/tours/demo-kit';
 import { MODEL_FILE_EXTENSIONS } from '@/services/supported-model-files';
 import { useViewerStore } from '@/store';
 import type { WebGPUStatus } from '@/hooks/useWebGPU';
@@ -72,7 +72,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
     trackUiEvent('onboarding_surface', { surface: 'welcome_card', action: 'load_sample' });
     setDemoLoading(true);
     try {
-      await loadFile(await fetchDemoProjectFile());
+      await loadDemoProjectVia(loadFile);
     } catch (err) {
       console.error('[welcome] demo project failed to load', err);
       toast.error(t('viewportLighting.container.emptyState.loadDemo.failed'));

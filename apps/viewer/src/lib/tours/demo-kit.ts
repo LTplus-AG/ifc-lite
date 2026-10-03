@@ -76,14 +76,20 @@ let demoProjectInFlight: Promise<void> | null = null;
  * !geometryStreamingActive`) - same contract as a user-driven open.
  */
 export function loadDemoProject(): Promise<void> {
-  // One fetch at a time: a tour step's "Load demo project" and a later
-  // step's `ensureTourModel` can overlap while the store still reads empty,
-  // and a second dispatch would REPLACE the first demo mid-tour.
+  // detail IS the File - useFileCommands reads e.detail directly.
+  return loadDemoProjectVia((file) => { window.dispatchEvent(new CustomEvent(EVENT_LOAD_FILE, { detail: file })); });
+}
+
+/**
+ * The same demo load through a caller-held `loadFile` (the first-run card).
+ * One fetch at a time across BOTH entry points: the card's button, a tour
+ * step's "Load demo project" and a later step's `ensureTourModel` can overlap
+ * while the store still reads empty, and a second load would REPLACE the
+ * first demo mid-tour.
+ */
+export function loadDemoProjectVia(load: (file: File) => unknown): Promise<void> {
   demoProjectInFlight ??= fetchDemoProjectFile()
-    .then((file) => {
-      // detail IS the File - useFileCommands reads e.detail directly.
-      window.dispatchEvent(new CustomEvent(EVENT_LOAD_FILE, { detail: file }));
-    })
+    .then(async (file) => { await load(file); })
     .finally(() => { demoProjectInFlight = null; });
   return demoProjectInFlight;
 }

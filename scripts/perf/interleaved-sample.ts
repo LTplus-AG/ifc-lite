@@ -2,13 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { chromium } from '@playwright/test';
-import { writeFileSync, readFileSync } from 'node:fs';
+import { chromium, type Page } from '@playwright/test';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { ViewerBenchmarkPage } from '../../tests/benchmark/viewer-benchmark-page.js';
 import { captureIdentity } from './interleaved-identity.mjs';
 import { LIMITS, immutableRef, FIXTURES } from './interleaved-plan.mjs';
 import type { SampleConfig, SampleResult } from './interleaved-types.js';
 import { isAbsolute } from 'node:path';
+import { boundedDiagnostic, diagnosticEvent, frozenBeforeTeardown, passiveRendererWitness,
+  refusedRendererSnapshot, writeAtomicEvidence, type DiagnosticEvent } from './interleaved-diagnostics.js';
 
 function sampleConfig(value: unknown): SampleConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('REFUSE: invalid sample configuration');
@@ -49,18 +52,33 @@ const sample = sampleConfig(input);
 const output = process.argv[3];
 const row: SampleResult = { ...sample, status: 'started', startedAt: new Date().toISOString() };
 const logs: string[] = [], errors: string[] = [];
+const diagnosticEvents: DiagnosticEvent[] = [];
+const diagnosticStartedMs = Date.now();
+let phase = 'setup';
 const responseWitness: Array<{ url: string; status: number }> = [];
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+let page: Page | undefined;
+let passiveObservation: Promise<void> | undefined;
 let identityTimer: ReturnType<typeof setTimeout> | undefined;
 try {
   browser = await chromium.launch({ channel: 'chrome', headless: true, args: [
     '--enable-gpu', '--enable-webgpu', '--enable-unsafe-webgpu', '--use-angle=swiftshader', '--ignore-gpu-blocklist',
   ] });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
-  const page = await context.newPage();
-  page.on('console', message => logs.push(message.text()));
-  page.on('pageerror', error => errors.push(String(error)));
-  page.on('crash', () => errors.push('Browser page crashed'));
+  page = await context.newPage();
+  page.on('console', message => {
+    logs.push(message.text());
+    diagnosticEvents.push({ ...diagnosticEvent('console', message.text(), phase, diagnosticStartedMs),
+      level: message.type(), url: message.location().url });
+  });
+  page.on('pageerror', error => {
+    errors.push(String(error));
+    diagnosticEvents.push(diagnosticEvent('pageerror', String(error), phase, diagnosticStartedMs));
+  });
+  page.on('crash', () => {
+    errors.push('Browser page crashed');
+    diagnosticEvents.push(diagnosticEvent('crash', 'Browser page crashed', phase, diagnosticStartedMs));
+  });
   page.on('response', response => {
     if (/\.wasm(?:[?#]|$)/.test(response.url())) responseWitness.push({ url: response.url(), status: response.status() });
   });
@@ -72,10 +90,17 @@ try {
     crossOriginIsolated, sharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',
   }));
   if (!runtime.crossOriginIsolated || !runtime.sharedArrayBuffer) throw new Error('REFUSE: default isolated SAB runtime unavailable');
+  // One passive read, not a renderer-ready wait. Preserve the cold upload boundary.
+  row.passiveRendererWitness = { issuedUTC: new Date().toISOString() };
+  passiveObservation = boundedDiagnostic(page.evaluate(passiveRendererWitness), 2000).then(result => {
+    if (row.passiveRendererWitness) row.passiveRendererWitness.result = result;
+  });
+  phase = 'load-and-readiness';
   await benchmark.loadFile(sample.file, false);
   await benchmark.waitForCompletion(sample.timeoutMs, true);
   // Freeze all measured milestones BEFORE hashes, model/property reads or frames.
   const metrics = benchmark.getMetrics();
+  phase = 'post-readiness';
   row.readyAtMs = Date.now();
   const readyLogs = benchmark.getConsoleLogs();
   const workerIds = [...new Set([...readyLogs.join('\n').matchAll(/\[stream\] worker\[(\d+)\]/g)].map(match => Number(match[1])))].sort((a, b) => a - b);
@@ -85,7 +110,7 @@ try {
   row.runtime = { ...runtime, browserVersion: browser.version(), workerIds, workerCount,
     renderer: 'headless Chrome SwiftShader', workerPool: 'unmodified default',
     shardedLogs: readyLogs.filter(line => /shard|shared|SAB|pre.?pass|worker.*(?:count|pool)/i.test(line)) };
-  writeFileSync(output, JSON.stringify(row, null, 2));
+  writeAtomicEvidence(output, JSON.stringify(row, null, 2));
   if (!metrics.streamCompleteMs || !metrics.metadataCompleteMs || errors.length || !workerCount || workerIds.length !== workerCount) {
     throw new Error('REFUSE: incomplete milestones, errors or missing worker census');
   }
@@ -105,7 +130,7 @@ try {
     return result;
   });
   if (colorFrame?.startsWith('data:image/png;base64,')) {
-    writeFileSync(`${output}.color.png`, Buffer.from(colorFrame.split(',')[1]!, 'base64'));
+    writeAtomicEvidence(`${output}.color.png`, Buffer.from(colorFrame.split(',')[1]!, 'base64'));
     row.colorFrame = `${sample.id}.json.color.png`;
   } else row.colorFrame = null;
   if (!responseWitness.some(response => {
@@ -121,8 +146,39 @@ try {
 } finally {
   clearTimeout(identityTimer);
   row.logs = logs; row.errors = errors; row.wasmResponses = responseWitness;
-  // Write before teardown, so a close failure cannot erase the actual sample.
-  writeFileSync(output, JSON.stringify(row, null, 2));
+  row.diagnosticEvents = diagnosticEvents;
+  try {
+    // Guard this initial write too: a disk failure must still reach browser close.
+    writeAtomicEvidence(output, JSON.stringify(row, null, 2));
+    if (passiveObservation) await passiveObservation;
+    if (row.status === 'refused' && page) {
+      phase = 'refusal-diagnostics';
+      const state = await boundedDiagnostic(page.evaluate(refusedRendererSnapshot), 2000);
+      const screenshot = await boundedDiagnostic(page.screenshot({ type: 'png', timeout: 3000 }), 3000);
+      let image: unknown = screenshot;
+      if (screenshot.status === 'observed') {
+        if (screenshot.value.byteLength <= 16 * 1024 ** 2) {
+          const path = `${output}.refused.png`;
+          writeAtomicEvidence(path, screenshot.value);
+          image = { status: 'observed', path, bytes: screenshot.value.byteLength,
+            sha256: createHash('sha256').update(screenshot.value).digest('hex') };
+        } else image = { status: 'unavailable', reason: 'diagnostic screenshot 16MiB bound' };
+      }
+      row.refusalDiagnostics = { state, screenshot: image };
+    }
+    const snapshot = frozenBeforeTeardown(row, diagnosticEvents, {
+      passiveRendererWitness: row.passiveRendererWitness, refusalDiagnostics: row.refusalDiagnostics,
+    });
+    const snapshotPath = `${output}.pre-teardown.json`;
+    writeAtomicEvidence(snapshotPath, snapshot.captured);
+    row.preTeardown = { path: snapshotPath, sha256: snapshot.sha256, status: row.status };
+    writeAtomicEvidence(output, JSON.stringify(row, null, 2));
+  } catch (error) {
+    // Diagnostics must not bypass the owned browser close on a disk/page failure.
+    console.error('Pre-teardown diagnostic capture failed:', error);
+    row.refusalDiagnostics = { status: 'unavailable', reason: String(error), previous: row.refusalDiagnostics };
+  }
+  phase = 'teardown';
   if (browser) {
     let closeTimer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -135,5 +191,9 @@ try {
     } finally { clearTimeout(closeTimer); }
   }
   row.finishedAt = new Date().toISOString();
-  writeFileSync(output, JSON.stringify(row, null, 2));
+  try { writeAtomicEvidence(output, JSON.stringify(row, null, 2)); }
+  catch (error) {
+    console.error('Final sample receipt write failed; prior atomic receipt retained:', error);
+    process.exitCode = 1;
+  }
 }

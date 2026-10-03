@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { ViewerBenchmarkMetrics } from '../../tests/benchmark/viewer-benchmark-page.js';
+import type { DiagnosticEvent } from './interleaved-diagnostics.js';
 
 export interface IdentityLimits {
   cohortMs: number; teardownMs: number; identityMs: number; sampledTreeRssBytes: number;
@@ -24,6 +25,10 @@ export interface SampleResult extends SampleConfig {
   status: 'started' | 'complete' | 'refused'; startedAt: string; readyAtMs?: number; finishedAt?: string;
   metrics?: ViewerBenchmarkMetrics; identity?: CapturedIdentity; colorFrame?: string | null;
   reason?: string; teardown?: string; logs?: string[]; errors?: string[];
+  diagnosticEvents?: DiagnosticEvent[];
+  passiveRendererWitness?: { issuedUTC: string; result?: unknown };
+  refusalDiagnostics?: unknown;
+  preTeardown?: { path: string; sha256: string; status: string };
   wasmResponses?: Array<{ url: string; status: number }>;
   runtime?: { userAgent: string; hardwareConcurrency: number; crossOriginIsolated: boolean;
     sharedArrayBuffer: boolean; browserVersion: string; workerIds: number[]; workerCount: number | null;

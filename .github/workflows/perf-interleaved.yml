@@ -90,7 +90,7 @@ jobs:
           pnpm --dir "$BASE_DIR" install --frozen-lockfile
           pnpm --dir "$CANDIDATE_DIR" install --frozen-lockfile
       - name: Run bounded protocol invariants (no viewer timing)
-        run: node --test scripts/perf/interleaved-plan.test.mjs scripts/perf/interleaved-identity.test.mjs scripts/perf/interleaved-server.test.mjs scripts/perf/interleaved-cleanup.test.mjs
+        run: node --test scripts/perf/interleaved-plan.test.mjs scripts/perf/interleaved-identity.test.mjs scripts/perf/interleaved-server.test.mjs scripts/perf/interleaved-cleanup.test.mjs scripts/perf/interleaved-diagnostics.test.mjs
       - name: Typecheck the explicit harness and existing benchmark helper program
         run: pnpm typecheck:perf-interleaved
       - name: Fetch and verify exactly the fixed public fixtures

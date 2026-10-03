@@ -26,7 +26,7 @@ import { removeStairInStore } from '@ifc-lite/create';
 import type { createModellingStoreBackend, EntityRef } from '@ifc-lite/sdk';
 import { createStoreMutationTracker } from './store-adapter-cost.js';
 import { normalizeMutationModelId } from './mutation-view.js';
-import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
+import { editHostedFillIn, type HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
 import type { StoreApi } from './types.js';
 import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
@@ -60,6 +60,19 @@ export function withModellingMutationTracking(
       return { modelId: normalized, expressId: outcome.expressId };
     };
   return {
+    editHostedElement(ref, patch) {
+      const normalized = normalizeMutationModelId(store.getState(), ref.modelId);
+      const setState = store.setState;
+      if (!setState) throw new Error('bim.store.editHostedElement: the adapter requires a writable store');
+      const undoBefore = store.getState().undoStacks.get(normalized)?.length ?? 0;
+      const outcome = editHostedFillIn({ ...store, setState }, normalized, ref.expressId, patch);
+      if (!outcome.ok) throw new Error(`bim.store.editHostedElement: ${outcome.reason}`);
+      const state = store.getState(), stack = state.undoStacks.get(normalized) ?? [];
+      const last = stack.length > undoBefore ? stack.at(-1) : undefined;
+      remeshAfterCommit(store.getState, normalized,
+        last ? state.mutationBatchTags.get(last.id) ?? null : null, [...outcome.remesh], 'shape');
+      return { modelId: normalized, expressId: ref.expressId };
+    },
     addCurtainWall(modelId, storeyExpressId, params) {
       const normalized = normalizeMutationModelId(store.getState(), modelId);
       const setState = store.setState;

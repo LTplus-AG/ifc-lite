@@ -15,6 +15,7 @@
  */
 
 import {
+  editHostedElementInStore,
   addCurtainWallToStore,
   addGridToStore,
   addColumnOnGridToStore,
@@ -76,6 +77,11 @@ export function createModellingStoreBackend(resolve: ModellingStoreModelResolver
   };
 
   return {
+    editHostedElement(entity, patch) {
+      const model = resolve(entity.modelId);
+      editHostedElementInStore(model.store, model.editor, entity.expressId, patch);
+      return ref(model.modelId, entity.expressId);
+    },
     addCurtainWall(modelId, storeyExpressId, params) {
       const model = resolve(modelId);
       const built = model.editor.runAtomic(draft => addCurtainWallToStore(

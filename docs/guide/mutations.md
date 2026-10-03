@@ -830,3 +830,17 @@ axis owner or unsupported placement refuses the entire operation without
 allocating partial geometry. The emitted column retains a real
 `IfcGridPlacement` binding when exported. These optional backend capabilities
 throw a clear error on a host that does not implement them.
+
+`bim.store.editHostedElement(ref, patch)` exposes the same physical edit used by
+hosted sliding and the Model inspector. `Offset` and `Sill` are metres in the
+host frame; `OverallWidth` and `OverallHeight` resize the occurrence and its
+opening together. The edit preserves identity, metadata, relationships and
+other instances of shared source geometry. It refuses overlapping cuts,
+out-of-host dimensions and unsupported geometry atomically. Viewer and MCP
+hosts record one Undo batch and the viewer remeshes the host, cut and filling.
+
+```typescript
+bim.store.editHostedElement({ modelId: 'building', expressId: 1262 }, {
+  OverallWidth: 1.2, OverallHeight: 1.4,
+});
+```

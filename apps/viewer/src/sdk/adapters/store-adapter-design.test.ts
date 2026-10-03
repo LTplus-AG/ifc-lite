@@ -18,6 +18,8 @@ import { settleRemesh } from '@/test/scripted-mesher';
 import { remeshOnApi, styleWireOnApi } from '../../../../../packages/geometry/src/remesh/remesh-core.js';
 import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
 import { toGlobalIdFromModels } from '@/store/globalId';
+import { requestRemesh } from '@/lib/remesh/remesh-service';
+import { readHostedElementSize, readHostedFill } from '@ifc-lite/create';
 import { createStoreAdapter } from './store-adapter';
 
 const SAMPLE = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
@@ -95,6 +97,39 @@ for (const count of [1, 2]) it(`#6232 SDK design creation publishes real bodies 
     assert.deepEqual(await rows(), withGrid, 'One Undo removes the column and all binding helpers');
     useViewerStore.getState().undo(MODEL);
     assert.deepEqual(await rows(), created, 'Grid Undo retains the earlier curtain wall');
+    const edit = adapter.editHostedElement;
+    assert.ok(edit, 'The actual SDK hosted editor is installed');
+    await requestRemesh(useViewerStore.getState, MODEL, [1222, 1262, 1407], 'shape');
+    await settleRemesh();
+    const imported = await rows();
+    const nativeWindow = () => meshes().filter(mesh => mesh.expressId === toGlobalIdFromModels(useViewerStore.getState().models, MODEL, 1262))
+      .map(mesh => ({ positions: Array.from(mesh.positions), indices: Array.from(mesh.indices) }));
+    const windowBefore = nativeWindow();
+    assert.ok(windowBefore.length > 0, 'Real imported window geometry is present');
+    const hostedStack = useViewerStore.getState().undoStacks.get(MODEL)!.length;
+    const edited = edit({ modelId: MODEL, expressId: 1262 }, { OverallWidth: 1.2, OverallHeight: 1.4 });
+    assert.equal(edited.expressId, 1262);
+    await settleRemesh();
+    assert.deepEqual(readHostedElementSize(models.get(MODEL)!.ifcDataStore!, 1262, views.get(MODEL)), { OverallWidth: 1.2, OverallHeight: 1.4 });
+    const resized = await rows(), windowResized = nativeWindow();
+    assert.notDeepEqual(windowResized, windowBefore, 'Automatic SDK remeshing changes physical source geometry');
+    const history = useViewerStore.getState().undoStacks.get(MODEL)!.length;
+    assert.ok(history > hostedStack);
+    assert.throws(() => edit({ modelId: MODEL, expressId: 1262 }, { OverallWidth: 20 }));
+    assert.deepEqual(await rows(), resized);
+    assert.equal(useViewerStore.getState().undoStacks.get(MODEL)!.length, history);
+    edit({ modelId: MODEL, expressId: 1262 }, { Offset: 2, Sill: .5 });
+    await settleRemesh();
+    assert.equal(readHostedFill(models.get(MODEL)!.ifcDataStore!, 1262, views.get(MODEL))!.offset, 2);
+    assert.notDeepEqual(nativeWindow(), windowResized);
+    useViewerStore.getState().undo(MODEL);
+    await settleRemesh();
+    assert.deepEqual(await rows(), resized, 'One Undo restores the resize before the slide');
+    assert.deepEqual(nativeWindow(), windowResized);
+    useViewerStore.getState().undo(MODEL);
+    await settleRemesh();
+    assert.deepEqual(await rows(), imported, 'The next Undo restores the original imported graph');
+    assert.deepEqual(nativeWindow(), windowBefore);
     assert.equal(useViewerStore.getState().models.get('peer')?.geometryResult, peerGeometry);
     assert.deepEqual(views.get('peer')?.getMutations() ?? [], []);
   } finally { api.free(); }

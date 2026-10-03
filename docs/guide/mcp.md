@@ -483,3 +483,11 @@ instead of `Width`/`Depth`.
 Each call creates a new element and records one `mutation_undo` batch,
 including all curtain-wall parts or grid-placement helpers. Lengths are
 metres; grid `Direction` is radians. These tools require mutation scope.
+
+`edit_hosted_element` edits an existing wall-hosted opening, door or window
+through the shared Model workspace core. Supply `express_id`, `model_id` when
+federated, and a nonempty `patch` containing `OverallWidth`, `OverallHeight`,
+`Offset` and/or `Sill` in metres. It resizes or moves the actual cut and filling
+without replacing identity or relationships. Unsupported, overlapping and
+out-of-host changes leave the graph unchanged. The tool requires mutation scope;
+one `mutation_undo` restores the previous graph.

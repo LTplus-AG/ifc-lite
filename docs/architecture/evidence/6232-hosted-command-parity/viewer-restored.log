@@ -1,0 +1,50 @@
+@ifc-lite/viewer:test: cache bypass, force executing 4cc4d0bc12839981
+@ifc-lite/viewer:test: 
+@ifc-lite/viewer:test: > @ifc-lite/viewer@4.0.0 test /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/apps/viewer
+@ifc-lite/viewer:test: > tsx --import ./src/test/vite-module-hooks.mjs --test --test-timeout=120000 --test-concurrency=1 $(find src -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) | sort | awk -v p="${TEST_PATTERN:-.}" '$0 ~ p' | awk -v s="${TEST_SHARD:-0}" -v n="${TEST_SHARDS:-1}" '{h=0; for(i=1;i<=length($0);i++) h=(h*31+index(" !\"#$%&()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_abcdefghijklmnopqrstuvwxyz{|}~", substr($0,i,1)))%1000003} h%n==s')
+@ifc-lite/viewer:test: 
+@ifc-lite/viewer:test: [SpatialHierarchyBuilder] No buildings found in spatial hierarchy
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [SpatialHierarchyBuilder] No buildings found in spatial hierarchy
+@ifc-lite/viewer:test: ✔ #6232 SDK design creation publishes real bodies and one Undo/Redo with 1 model(s) (361.583299ms)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+@ifc-lite/viewer:test: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+@ifc-lite/viewer:test:   IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+@ifc-lite/viewer:test: ✔ #6232 SDK design creation publishes real bodies and one Undo/Redo with 2 model(s) (240.124947ms)
+@ifc-lite/viewer:test: ℹ tests 2
+@ifc-lite/viewer:test: ℹ suites 0
+@ifc-lite/viewer:test: ℹ pass 2
+@ifc-lite/viewer:test: ℹ fail 0
+@ifc-lite/viewer:test: ℹ cancelled 0
+@ifc-lite/viewer:test: ℹ skipped 0
+@ifc-lite/viewer:test: ℹ todo 0
+@ifc-lite/viewer:test: ℹ duration_ms 4803.803853
+ Tasks:    51 successful, 51 total
+Cached:    50 cached, 51 total
+  Time:    6.164s 

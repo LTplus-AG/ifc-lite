@@ -10,6 +10,7 @@
  */
 
 import type {
+  HostedElementEdit,
   CurtainWallInStoreParams,
   GridInStoreParams,
   GridColumnBinding,
@@ -30,6 +31,8 @@ import type {
 import type { EntityRef } from './types.js';
 
 export interface ModellingStoreBackendMethods {
+  /** Edit the physical hosted cut/filling together, preserving identity and relationships. Metres, host-local. */
+  editHostedElement?(ref: EntityRef, patch: HostedElementEdit): EntityRef;
   /** Complete IfcCurtainWall aggregate, including its member and panel bodies. */
   addCurtainWall?(modelId: string, storeyExpressId: number, params: CurtainWallInStoreParams): EntityRef;
   /** IfcGrid with straight, tagged axes and its FootPrint representation. */

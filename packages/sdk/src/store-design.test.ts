@@ -8,6 +8,8 @@ import { describe, expect, it } from 'vitest';
 import { EntityExtractor, IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
+import { placedBodyExtent, readHostedElementSize, readHostedFill } from '@ifc-lite/create';
+import { AnchorEntityReader } from '../../create/src/in-store/resolve-anchor.js';
 import { createModellingStoreBackend } from './store-modelling-backend.js';
 
 const SAMPLE = new URL('../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
@@ -83,4 +85,31 @@ describe('#6232 loaded-model design builders', () => {
     expect({ records: sourceView.getNewEntities(), journal: sourceView.getMutations() }).toEqual(before);
     expect(sourceView.peekNextExpressId()).toBe(next);
   });
+});
+
+// The two Bonsai windows share source type geometry; changing one must leave the other intact.
+it('#6232 SDK hosted edits preserve imported identity/shared geometry and refuse out-of-host changes atomically', async () => {
+  const { store, view, methods } = await setup();
+  expect(methods.editHostedElement).toBeTypeOf('function');
+  if (!methods.editHostedElement) throw new Error('Missing hosted edit capability');
+  const before = new AnchorEntityReader(store, view).entity(1262)!;
+  const peer = placedBodyExtent(store, 1407, view), relations = readHostedFill(store, 1262, view);
+  const ref = { modelId: 'm', expressId: 1262 };
+  expect(methods.editHostedElement(ref, { OverallWidth: 1.2, OverallHeight: 1.4 })).toEqual(ref);
+  expect(readHostedElementSize(store, 1262, view)).toEqual({ OverallWidth: 1.2, OverallHeight: 1.4 });
+  const after = new AnchorEntityReader(store, view).entity(1262)!;
+  expect(after.attributes.slice(0, 5)).toEqual(before.attributes.slice(0, 5));
+  const hosted = readHostedFill(store, 1262, view)!;
+  expect([hosted.hostId, hosted.openingId, hosted.fillingId]).toEqual([relations!.hostId, relations!.openingId, relations!.fillingId]);
+  expect(placedBodyExtent(store, 1407, view)).toEqual(peer);
+  const cutBefore = placedBodyExtent(store, 1299, view)!;
+  methods.editHostedElement(ref, { Offset: 2, Sill: .5 });
+  const moved = placedBodyExtent(store, 1299, view)!;
+  expect(moved.min[0]).not.toBe(cutBefore.min[0]);
+  expect(moved.min[2]).not.toBe(cutBefore.min[2]);
+  expect(moved.max[0] - moved.min[0]).toBeCloseTo(1.2);
+  const records = structuredClone({ mutations: view.getMutations(), entities: view.getNewEntities() }), next = view.peekNextExpressId();
+  expect(() => methods.editHostedElement?.(ref, { OverallWidth: 20 })).toThrow();
+  expect({ mutations: view.getMutations(), entities: view.getNewEntities() }).toEqual(records);
+  expect(view.peekNextExpressId()).toBe(next);
 });

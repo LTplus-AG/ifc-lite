@@ -4,7 +4,7 @@
 
 /** Loaded-model modelling methods of bim.store (#6232 D5). */
 import type {
-  CurtainWallInStoreParams, GridInStoreParams, GridColumnBinding, ColumnInStoreParams, ProfiledColumnInStoreParams,
+  HostedElementEdit, CurtainWallInStoreParams, GridInStoreParams, GridColumnBinding, ColumnInStoreParams, ProfiledColumnInStoreParams,
   HostedDoorInStoreParams, HostedWindowInStoreParams, OpeningInStoreParams, ElementTypeInStoreParams,
   MaterialInStoreParams, MaterialLayerSetInStoreParams, MaterialLayerSetUsageInStoreParams, WallJoinApplyOptions,
   StairInStoreParams, RailingInStoreParams, InStoreReplacementElement,
@@ -13,6 +13,13 @@ import type { BimBackend, EntityRef } from '../types.js';
 
 export class StoreModellingNamespace {
   constructor(protected backend: BimBackend) {}
+
+  /** Move/resize the opening and its filling together. Lengths are metres in the host frame. */
+  editHostedElement(ref: EntityRef, patch: HostedElementEdit): EntityRef {
+    const method = this.backend.store.editHostedElement;
+    if (!method) throw new Error('bim.store.editHostedElement: not available on this backend');
+    return method.call(this.backend.store, ref, patch);
+  }
 
   /** Create the curtain wall and all its members/panels in one undo batch. Metres, storey-local. */
   addCurtainWall(modelId: string, storeyExpressId: number, params: CurtainWallInStoreParams): EntityRef {

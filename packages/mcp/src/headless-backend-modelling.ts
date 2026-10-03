@@ -24,6 +24,10 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
     });
   }
   return {
+    editHostedElement: (...args: Parameters<NonNullable<Methods['editHostedElement']>>) => record(args[0].modelId, methods => {
+      if (!methods.editHostedElement) throw new Error('Missing hosted edit capability');
+      return methods.editHostedElement(...args);
+    }),
     addCurtainWall: (...args: Parameters<NonNullable<Methods['addCurtainWall']>>) => record(args[0], methods => {
       if (!methods.addCurtainWall) throw new Error('Missing curtain wall capability');
       return methods.addCurtainWall(...args);

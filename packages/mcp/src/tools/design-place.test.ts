@@ -6,6 +6,7 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { EntityExtractor, IfcParser } from '@ifc-lite/parser';
+import { placedBodyExtent, readHostedElementSize, readHostedFill } from '@ifc-lite/create';
 import { fullScope, readOnlyScope } from '../auth/scope.js';
 import { InMemoryModelRegistry } from '../context.js';
 import { loadIfcModel } from '../loader.js';
@@ -118,4 +119,34 @@ describe('#6232 public design placement', () => {
       expect((await readonly.call(name, { storey_express_id: 42, params: GRID })).isError).toBe(true);
     }
   });
+});
+
+it('#6232 public hosted edit resizes imported physical geometry, isolates federation and undoes one batch', async () => {
+  const { registry, call } = await session(2);
+  expect((await call('edit_hosted_element', { express_id: 1262, patch: { OverallWidth: 1.2 } })).structuredContent?.code).toBe('MODEL_REQUIRED');
+  const model = registry.get('beta')!, original = placedBodyExtent(model.store, 1299), peer = placedBodyExtent(model.store, 1407);
+  const result = await call('edit_hosted_element', { model_id: 'beta', express_id: 1262, patch: { OverallWidth: 1.2, OverallHeight: 1.4 } });
+  expect(result.isError).not.toBe(true);
+  expect(result.structuredContent).toMatchObject({ modelId: 'beta', expressId: 1262 });
+  const view = model.backend.getMutationView()!;
+  expect(readHostedElementSize(model.store, 1262, view)).toEqual({ OverallWidth: 1.2, OverallHeight: 1.4 });
+  const cut = placedBodyExtent(model.store, 1299, view)!;
+  expect(cut.max[0] - cut.min[0]).toBeCloseTo(1.2);
+  expect(placedBodyExtent(model.store, 1407, view)).toEqual(peer);
+  const records = structuredClone({ mutations: view.getMutations(), entities: view.getNewEntities() }), next = view.peekNextExpressId();
+  for (const patch of [{ OverallWidth: 20 }, {}, { width: 1 }, { Offset: 999 }, { Sill: -10 }]) {
+    expect((await call('edit_hosted_element', { model_id: 'beta', express_id: 1262, patch })).isError).toBe(true);
+    expect({ mutations: view.getMutations(), entities: view.getNewEntities() }).toEqual(records);
+    expect(view.peekNextExpressId()).toBe(next);
+  }
+  const hosted = readHostedFill(model.store, 1262, view)!;
+  expect((await call('edit_hosted_element', { model_id: 'beta', express_id: 1262, patch: { Offset: 2, Sill: .5 } })).isError).not.toBe(true);
+  expect(readHostedFill(model.store, 1262, view)!.offset).toBeCloseTo(2);
+  expect((await call('mutation_undo', { model_id: 'beta' })).isError).not.toBe(true);
+  expect(readHostedFill(model.store, 1262, view)).toEqual(hosted);
+  expect((await call('mutation_undo', { model_id: 'beta' })).isError).not.toBe(true);
+  expect(placedBodyExtent(model.store, 1299, view)).toEqual(original);
+  expect(registry.get('alpha')!.backend.getMutationView()).toBeNull();
+  const readonly = await session(1, true);
+  expect((await readonly.call('edit_hosted_element', { express_id: 1262, patch: { OverallWidth: 1.2 } })).isError).toBe(true);
 });

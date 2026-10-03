@@ -37,6 +37,7 @@ describe('#6232 MCP paste/array parity', () => {
       expect(exported(peer)).toEqual(peerBefore);
     });
   }
+  // Real IFC loads and two protocol Duplicate/Undo cycles take >5s under CI contention (#6232).
   for (const count of [1, 2]) it(`duplicates the real hosted graph, preserves identity, and undoes with ${count} models`, async () => {
     const { registry, call } = await session(count);
     const target = count === 1 ? 'alpha' : 'beta';
@@ -65,7 +66,7 @@ describe('#6232 MCP paste/array parity', () => {
     expect((await call('duplicate_element', { model_id: target, express_id: 1262, offset: [2, 0, 0] })).isError).toBe(true);
     expect(exported(model)).toEqual(before);
     expect(exported(peer)).toEqual(peerBefore);
-  });
+  }, 30_000);
   it('refuses ambiguous routing, read-only access and late invalid copy without a graph change', async () => {
     const { registry, call } = await session(2);
     const before = exported(registry.get('beta')!);

@@ -246,6 +246,7 @@ for (let iter = 1; iter <= ITERS; iter++) {
         }
 
         await bp.setup();
+        await bp.installSceneReadinessObserver();
         const isolation = await page.evaluate(() => ({
           crossOriginIsolated: globalThis.crossOriginIsolated,
           sharedArrayBufferAvailable: typeof SharedArrayBuffer !== 'undefined',

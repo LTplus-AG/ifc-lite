@@ -71,7 +71,45 @@ export function passiveRendererWitness() {
     streaming: state && typeof state === 'object' ? Reflect.get(state, 'geometryStreamingActive') : null };
 }
 
-/** Refused-only page callback; bounded scalar census, no buffer hashing or GPU work. */
+/** Install once on a fresh page before upload; records four fixed scalar milestones.
+ * Console arguments/receiver are delegated unchanged. This instrumentation is
+ * prospective observer overhead in both arms, not an uninstrumented timing claim. */
+export function installReadinessMilestones() {
+  const host = globalThis as Record<string, unknown>;
+  if (host.__ifc_lite_comparison_milestones__) throw new Error('REFUSE: observer already installed');
+  const record = { uploadMs: null as number | null, geometryMs: null as number | null,
+    metadataMs: null as number | null, uploadCount: 0, geometryCount: 0, metadataCount: 0,
+    error: null as string | null };
+  host.__ifc_lite_comparison_milestones__ = record;
+  const original = console.log;
+  const { change, log } = {
+    change(event: Event) {
+      if (event.target !== document.querySelector('input[type="file"]')) return;
+      record.uploadCount++;
+      const files = event.target instanceof HTMLInputElement ? event.target.files : null;
+      if (record.uploadCount !== 1 || files?.length !== 1) record.error = 'expected first single-file upload';
+      else record.uploadMs = performance.now();
+    },
+    log(...args: unknown[]) {
+      if (record.uploadMs !== null && typeof args[0] === 'string') {
+        if (/^\[useIfc\] (?:Native )?(?:Stream complete|Geometry streaming complete)/.test(args[0])) {
+          record.geometryCount++;
+          record.geometryMs = performance.now();
+        }
+        if (/^\[useIfc\] (?:Native )?(?:metadata|Data model) (?:parse|parsing) complete/i.test(args[0])) {
+          record.metadataCount++;
+          record.metadataMs = performance.now();
+        }
+        if (record.geometryCount > 8 || record.metadataCount > 8) record.error = 'milestone record budget exceeded';
+      }
+      Reflect.apply(original, this, args);
+    },
+  };
+  document.addEventListener('change', change, true);
+  console.log = log;
+}
+
+/** Shared readonly page callback for refusal diagnostics and strict readiness. */
 export function refusedRendererSnapshot() {
   // Object methods preserve their names without a transpiler's external __name
   // helper. Playwright serializes this function without its module closure.
@@ -96,40 +134,69 @@ export function refusedRendererSnapshot() {
   let renderer: unknown;
   let parents = 0;
   let hookCapExhausted = false;
+  let totalHooks = 0;
+  const hookWalks: Array<{ tag: number; hooks: number }> = [];
   for (; fiber && parents < 200; parents++, fiber = field(fiber, 'return')) {
     if (seen.has(fiber)) throw new Error('diagnostic fiber cycle');
     seen.add(fiber);
+    const tag = field(fiber, 'tag');
+    if (typeof tag !== 'number' || !Number.isSafeInteger(tag) || tag < 0 || tag > 31) {
+      throw new Error('unknown diagnostic React fiber tag');
+    }
+    // React FunctionComponent, ForwardRef, MemoComponent and SimpleMemoComponent.
+    // Other tags' memoizedState is not necessarily a Hook list.
+    if (tag !== 0 && tag !== 11 && tag !== 14 && tag !== 15) continue;
     let hook = field(fiber, 'memoizedState');
     let hops = 0;
-    for (; hook && hops < 200; hops++, hook = field(hook, 'next')) {
+    const hookSeen = new Set<unknown>();
+    for (; hook && hops < 2048 && totalHooks < 65536; hops++, totalHooks++, hook = field(hook, 'next')) {
+      if (typeof hook !== 'object' || hook === null) throw new Error('unknown diagnostic Hook shape');
+      const next = field(hook, 'next');
+      if (next !== null && (typeof next !== 'object' || next === undefined)) throw new Error('unknown diagnostic Hook next');
+      if (hookSeen.has(hook)) throw new Error('diagnostic hook cycle');
+      hookSeen.add(hook);
       const candidate = field(field(hook, 'memoizedState'), 'current');
       if (typeof field(candidate, 'getScene') === 'function' && typeof field(candidate, 'isReady') === 'function') {
         if (renderer && renderer !== candidate) throw new Error('ambiguous diagnostic renderer');
         renderer = candidate;
       }
     }
+    hookWalks.push({ tag, hooks: hops });
     if (hook) hookCapExhausted = true;
   }
   const scene = call(renderer, 'getScene'), batches = call(scene, 'getBatchedMeshes');
   const flatOwners = field(scene, 'meshDataMap'), instanceOwners = field(scene, 'instancedEntityMap');
   const geometry = field(field(state, 'geometryResult'), 'meshes');
+  const pendingShards = field(state, 'pendingInstancedShards');
+  const templates = call(scene, 'getInstancedTemplates');
+  const debug = typeof host.__ifc_lite_render_stats__ === 'function'
+    ? Reflect.apply(host.__ifc_lite_render_stats__, host, []) : null;
+  const frame = call(renderer, 'getFrameStats');
   const modelGeometry = field(field(model, 'geometryResult'), 'meshes');
   return { capturedUTC: new Date().toISOString(), pagePerformanceMs: performance.now(),
     visibility: document.visibilityState, rendererFound: !!renderer, rendererReady: call(renderer, 'isReady'),
     traversal: { fiberCapExhausted: !!fiber, hookCapExhausted, visitedFibers: parents,
-      complete: !fiber && !hookCapExhausted },
+      complete: !fiber && !hookCapExhausted, totalHooks, hookWalks },
     canvas: canvas ? { width: canvas.width, height: canvas.height, cssWidth: canvas.clientWidth, cssHeight: canvas.clientHeight } : null,
     load: { loading: field(state, 'loading'), streaming: field(state, 'geometryStreamingActive'),
       error: field(state, 'error'), progress: field(state, 'loadingProgress'),
+      activeModelId: field(state, 'activeModelId'),
+      pendingInstanceShards: pendingShards === null ? 0 : Array.isArray(pendingShards) ? pendingShards.length : null,
       modelCount: models instanceof Map ? models.size : null, geometryMeshes: Array.isArray(geometry) ? geometry.length : null },
-    model: { loadState: field(model, 'loadState'), geometryLoadState: field(model, 'geometryLoadState'),
+    model: { id: field(model, 'id'), loadError: field(model, 'loadError'),
+      dataStorePresent: !!field(model, 'ifcDataStore'), loadState: field(model, 'loadState'), geometryLoadState: field(model, 'geometryLoadState'),
       metadataLoadState: field(model, 'metadataLoadState'), interactiveReady: field(model, 'interactiveReady'),
       geometryMeshes: Array.isArray(modelGeometry) ? modelGeometry.length : null },
-    scene: { queued: call(scene, 'hasQueuedMeshes'), fragments: call(scene, 'hasStreamingFragments'),
+    scene: { pendingBatches: call(scene, 'hasPendingBatches'),
+      geometryReleased: call(scene, 'isGeometryDataReleased'), queued: call(scene, 'hasQueuedMeshes'), fragments: call(scene, 'hasStreamingFragments'),
       finalizing: call(scene, 'isFinalizeInProgress'), batchCount: Array.isArray(batches) ? batches.length : null,
       flatOwners: flatOwners instanceof Map ? flatOwners.size : null,
       instanceOwners: instanceOwners instanceof Map ? instanceOwners.size : null,
-      instancedCount: call(scene, 'getInstancedEntityCount') },
-    frame: call(renderer, 'getFrameStats'),
+      instancedCount: call(scene, 'getInstancedEntityCount'),
+      gpuInstanceOccurrences: Array.isArray(templates) && templates.every(template =>
+        typeof field(template, 'instanceCount') === 'number' && Number.isSafeInteger(field(template, 'instanceCount')))
+        ? templates.reduce((sum: number, template: unknown) => sum + Number(field(template, 'instanceCount')), 0) : null },
+    milestones: host.__ifc_lite_comparison_milestones__,
+    frame, debugFrameMatches: frame !== null && field(debug, 'frame') === frame,
     limitations: 'Passive private-shape census only; null means unavailable, not zero. Frame stats witness CPU submission, not GPU completion or pixel fidelity.' };
 }

@@ -2956,3 +2956,42 @@ prototype removing unused nested value trees on this evidence or revisit the
 rejected general constructor. A different worker capture must first establish
 substantial unused materialization on the critical path. This native opportunity
 screen is not a browser speedup or a measurement of indirect style decoding.
+
+
+### Prospective full-viewer readiness correction (#6537)
+
+A retained corrected-graphics run rendered the public FZK house but refused the
+comparison: the observer required a streaming-finalize log even though renderer
+initialization followed geometry completion. The canonical viewer correctly used
+its synchronous non-streaming full-batch upload path. This is an observer-path
+finding, not a measured speed improvement or an accepted historical sample.
+
+The prospective comparator now shares its read-only scene snapshot between
+readiness and refusal diagnostics. It requires canonical metadata and geometry
+milestones, one settled active model, an initialized renderer and allocated canvas,
+empty mesh queue/pending batches/fragments/finalization and pending instance
+shards, a consistent GPU instance census, and a positive CPU-submitted frame
+from the debug hook. The frame must follow the actual captured file-input change
+and be at least as recent as the geometry-completion producer timestamp. Metadata
+completion remains required but does not require a redraw; the renderer draws on
+demand. The existing full output/property identity remains after timing freezes.
+
+A capture-phase change listener and console-log wrapper record bounded scalar
+producer milestones before the existing React handler and console delegation.
+They perform no renderer initialization, waits, rendering, hashing or model reads
+before upload. This is additional, nonzero observer instrumentation in both arms;
+new cohorts cannot be pooled with earlier protocols. It establishes a manual CPU
+submission boundary, not GPU completion or presentation/pixel fidelity.
+
+React discovery only treats function/forward-ref/memo fibers as Hook lists,
+checks cycles and refuses incomplete walks. The prospective fixed limits are
+200 parent fibers, 2,048 hooks per component and 65,536 total hooks. The retained
+old snapshot exhausted its 200-hook budget; its actual chain length was not
+captured. New snapshots retain observed per-tag hook counts. Identity discovery
+uses the same policy but retains a separate self-contained implementation because
+Playwright serializes callbacks without their module closures. Unknown shapes,
+ambiguous renderers, pending work and exhausted limits remain refusals. Canonical
+GPU loss, validation and contained-upload failures share one fatal-log classifier
+in the waiter and the pre-complete/pre-close receipt guards. Faults delivered
+during identity capture refuse the sample; teardown-only device destruction is
+outside those guards, and raw observer-delivery phases remain recorded.

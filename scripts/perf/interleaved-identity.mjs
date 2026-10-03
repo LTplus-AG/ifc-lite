@@ -72,18 +72,30 @@ export async function captureIdentity(limits) {
   const fiberKey = canvas && Object.keys(canvas).find(key => key.startsWith('__reactFiber$'));
   let fiber = fiberKey && canvas[fiberKey];
   const seen = new Set();
+  let totalHooks = 0;
   for (let parents = 0; fiber && parents < 200; parents++, fiber = fiber.return) {
     if (seen.has(fiber)) refuse('fiber cycle');
     seen.add(fiber);
+    if (!Number.isSafeInteger(fiber.tag) || fiber.tag < 0 || fiber.tag > 31) refuse('unknown React fiber tag');
+    if (![0, 11, 14, 15].includes(fiber.tag)) continue;
     let hook = fiber.memoizedState;
-    for (let hops = 0; hook && hops < 200; hops++, hook = hook.next) {
+    const hookSeen = new Set();
+    let hops = 0;
+    for (; hook && hops < 2048 && totalHooks < 65536; hops++, totalHooks++, hook = hook.next) {
+      if (typeof hook !== 'object' || hook === null || (hook.next !== null && typeof hook.next !== 'object')) {
+        refuse('unknown Hook shape');
+      }
+      if (hookSeen.has(hook)) refuse('hook cycle');
+      hookSeen.add(hook);
       const candidate = hook.memoizedState?.current;
       if (candidate && typeof candidate.getScene === 'function' && typeof candidate.isReady === 'function') {
         if (renderer && renderer !== candidate) refuse('ambiguous renderer');
         renderer = candidate;
       }
     }
+    if (hook) refuse('hook discovery budget exhausted');
   }
+  if (fiber) refuse('fiber discovery budget exhausted');
   if (!renderer?.isReady()) refuse('renderer unavailable/not ready');
   const scene = renderer.getScene();
   if (typeof scene.isGeometryDataReleased !== 'function' || scene.isGeometryDataReleased()) refuse('scene CPU geometry released/unknown');

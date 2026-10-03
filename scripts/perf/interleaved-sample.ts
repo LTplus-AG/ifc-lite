@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { chromium, type Page } from '@playwright/test';
+import { guardViewerCompletion } from '../../tests/benchmark/metadata-render-readiness.js';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { ViewerBenchmarkPage } from '../../tests/benchmark/viewer-benchmark-page.js';
@@ -84,6 +85,7 @@ try {
   const benchmark = new ViewerBenchmarkPage(page, sample.origin);
   // Fresh process/context; there are no environment overrides or URL switches.
   await benchmark.setup();
+  await benchmark.installSceneReadinessObserver();
   const runtime = await page.evaluate(() => ({
     userAgent: navigator.userAgent, hardwareConcurrency: navigator.hardwareConcurrency,
     crossOriginIsolated, sharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',
@@ -139,17 +141,28 @@ try {
     throw new Error('REFUSE: source-built runtime WASM response witness absent/failed/foreign');
   }
   if (errors.length) throw new Error('REFUSE: post-readiness page errors');
-  row.status = 'complete';
+  guardViewerCompletion(logs, () => { row.status = 'complete'; }, error => { throw error; });
 } catch (error) {
   row.status = 'refused'; row.reason = String(error); process.exitCode = 1;
 } finally {
   clearTimeout(identityTimer);
+  if (row.status === 'complete') {
+    guardViewerCompletion(logs, () => undefined, error => {
+      row.status = 'refused'; row.reason = String(error); process.exitCode = 1;
+    });
+  }
   row.logs = logs; row.errors = errors; row.wasmResponses = responseWitness;
   row.diagnosticEvents = diagnosticEvents;
   try {
     // Guard this initial write too: a disk failure must still reach browser close.
     writeAtomicEvidence(output, JSON.stringify(row, null, 2));
     if (passiveObservation) await passiveObservation;
+    // A fault may be delivered during that final bounded observation too.
+    if (row.status === 'complete') {
+      guardViewerCompletion(logs, () => undefined, error => {
+        row.status = 'refused'; row.reason = String(error); process.exitCode = 1;
+      });
+    }
     if (row.status === 'refused' && page) {
       phase = 'refusal-diagnostics';
       const state = await boundedDiagnostic(page.evaluate(refusedRendererSnapshot), 2000);

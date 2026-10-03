@@ -30,14 +30,15 @@ function fixture(t) {
   const model = { loadState: 'complete', geometryResult: geometry, ifcDataStore: data };
   const state = { models: new Map([['one', model]]), loading: false, geometryStreamingActive: false };
   const renderer = { isReady: () => true, getScene: () => scene };
-  const canvas = { __reactFiber$test: { memoizedState: { memoizedState: { current: renderer } } } };
+  const canvas = { __reactFiber$test: { tag: 0, return: null,
+    memoizedState: { next: null, memoizedState: { current: renderer } } } };
   for (const [key, value] of Object.entries({ document: { querySelector: () => canvas },
     __ifc_lite_viewer_store__: { getState: () => state } })) {
     const previous = Object.getOwnPropertyDescriptor(globalThis, key);
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
     t.after(() => { if (previous) Object.defineProperty(globalThis, key, previous); else delete globalThis[key]; });
   }
-  return { mesh, template, scene, state, data, model };
+  return { mesh, template, scene, state, data, model, canvas };
 }
 
 test('#6537 raw flat position/normal/index/appearance channels each affect identity', async t => {
@@ -112,4 +113,25 @@ test('#6537 released CPU arrays cannot produce a successful empty geometry finge
   scene.instancedEntityMap.clear(); scene.instancedTemplateCpu = [];
   mesh.positions = new Float32Array(); mesh.normals = new Float32Array(); mesh.indices = new Uint32Array();
   await assert.rejects(captureIdentity(LIMITS), /flat raw buffer/);
+});
+
+test('#6537 identity rejects incomplete Hook discovery and accepts non-Hook parent state', async t => {
+  const { canvas } = fixture(t);
+  const baseline = (await captureIdentity(LIMITS)).sha256;
+  const hook = canvas.__reactFiber$test.memoizedState;
+  hook.next = hook;
+  await assert.rejects(captureIdentity(LIMITS), /hook cycle/);
+  hook.next = null;
+  const root = { tag: 3, return: null, memoizedState: {} };
+  root.memoizedState.next = root.memoizedState;
+  canvas.__reactFiber$test.return = root;
+  assert.equal((await captureIdentity(LIMITS)).sha256, baseline);
+  canvas.__reactFiber$test.return = null;
+  let tail = null;
+  for (let index = 0; index < 2048; index++) tail = { next: tail, memoizedState: null };
+  hook.next = tail;
+  await assert.rejects(captureIdentity(LIMITS), /hook discovery budget exhausted/);
+  hook.next = null;
+  canvas.__reactFiber$test.tag = undefined;
+  await assert.rejects(captureIdentity(LIMITS), /unknown React fiber tag/);
 });

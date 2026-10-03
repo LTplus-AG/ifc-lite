@@ -4,6 +4,7 @@
 
 import { Page, ConsoleMessage } from '@playwright/test';
 import { waitForMetadataRenderReadiness } from './metadata-render-readiness.js';
+import { installReadinessMilestones, refusedRendererSnapshot } from '../../scripts/perf/interleaved-diagnostics.js';
 
 export interface ViewerBenchmarkMetrics {
   // Wall-clock total time (what users actually experience)
@@ -54,6 +55,7 @@ export class ViewerBenchmarkPage {
   private loadStartTime: number = 0;
   private loadEndTime: number = 0;
   private cacheMode: string;
+  private prospectiveSceneObserver = false;
 
   /**
    * Defaults to the same port `playwright.config.ts` serves on. It used to be a
@@ -127,7 +129,7 @@ export class ViewerBenchmarkPage {
         }, cfg);
         console.log(`[Benchmark] batch sizing override: ${batchSizingEnv}`);
       } catch (e) {
-        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_BATCH_SIZING: ${batchSizingEnv}`);
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_BATCH_SIZING: ${batchSizingEnv}`, e);
       }
     }
 
@@ -143,7 +145,7 @@ export class ViewerBenchmarkPage {
         }, f);
         console.log(`[Benchmark] visibility filter: ${visFilterEnv}`);
       } catch (e) {
-        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_VISIBILITY_FILTER: ${visFilterEnv}`);
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_VISIBILITY_FILTER: ${visFilterEnv}`, e);
       }
     }
 
@@ -277,6 +279,12 @@ export class ViewerBenchmarkPage {
     }
   }
 
+  /** Prospective comparison only; installed before the measured upload. */
+  async installSceneReadinessObserver() {
+    await this.page.evaluate(installReadinessMilestones);
+    this.prospectiveSceneObserver = true;
+  }
+
   async loadFile(filePath: string, waitForStart = true) {
     // Find the file input (there are two, use the one in ViewportContainer)
     const fileInput = this.page.locator('input[type="file"]').first();
@@ -334,8 +342,9 @@ export class ViewerBenchmarkPage {
 
   async waitForCompletion(timeoutMs: number = 600000, requireMetadataRender = false) {
     if (requireMetadataRender) {
+      if (!this.prospectiveSceneObserver) throw new Error('REFUSE: scene observer not installed before upload');
       this.loadEndTime = await waitForMetadataRenderReadiness({
-        logs: () => this.consoleLogs, canvasReady: () => this.checkCanvasHasContent(),
+        logs: () => this.consoleLogs, sceneSnapshot: () => this.page.evaluate(refusedRendererSnapshot),
         now: () => Date.now(), pause: () => this.page.waitForTimeout(100), timeoutMs,
       });
       this.metrics.metadataRenderReadyMs = this.loadEndTime - this.loadStartTime;

@@ -142,6 +142,7 @@ it('refuses finite inputs whose native copy frame or placement overflows, atomic
     expect({ records: targetEditor.getNewEntities(), journal: targetView.getMutations() }).toEqual(before);
     expect(targetView.peekNextExpressId()).toBe(next);
   };
+  expect(() => arrayCopyTransforms({ mode: 'polar', count: 2, anchor: [1e308, 1e308] })).toThrow(/frame.*finite/);
   assertRefused(store, view, editor, { pivot: [1e308, 1e308], turn: Math.PI });
   const text = readFileSync(sample, 'utf8').replace('IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)', 'IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)');
   const bytes = new TextEncoder().encode(text);

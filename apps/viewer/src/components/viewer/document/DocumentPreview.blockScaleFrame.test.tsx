@@ -156,10 +156,10 @@ describe('the height of a scaled image and chart in the preview is the PDF heigh
   });
 
   it('is laid out in a frame 1 / scale as tall, so a 600pt chart that fits at 1x is clamped at 1.5x', async () => {
-    const at = async (scale: number): Promise<number> => { const host = await show(PORTRAIT, [chartBlock('c', { height: 600, ...sc(scale) })]); const h = Number(host.querySelector('[data-chart-svg] svg')?.getAttribute('height')); unmount(); return h; };
+    const at = async (scale: number): Promise<number> => { const host = await show(PORTRAIT, [chartBlock('c', { height: 600, ...sc(scale) })]); const plot = host.querySelector<HTMLElement>('[data-chart-svg]'); assert.ok(plot); const h = parseFloat(plot.style.height) / (SHEET_PX / pageBox(PORTRAIT).w); unmount(); return h; };
     const frame = pageFrameHeight(pageBox(PORTRAIT).h);
     const one = await at(1), enlarged = await at(1.5);
     assert.ok(Math.abs(one - 600) < 0.01, `at 1x the 600pt it asks for fits: ${one}`);
-    assert.ok(Math.abs(enlarged - (frame / 1.5 - 32)) < 0.01, `at 1.5x its logical plot fills the shorter frame: ${enlarged} against ${frame / 1.5 - 32}`);
+    assert.ok(Math.abs(enlarged - (frame / 1.5 - 32) * 1.5) < 0.01, `#6731: at 1.5x the physical composed box fills the frame below its scaled heading: ${enlarged} against ${(frame / 1.5 - 32) * 1.5}`);
   });
 });

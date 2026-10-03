@@ -170,7 +170,8 @@ describe('AnalysisPanel scaffold, through the IDS panel (#5834)', () => {
         assert.ok(control.closest('.opacity-60') === null, `${label} is outside stale result regions`);
       }
       const banner = ui.querySelector('output');
-      assert.ok(banner?.textContent?.includes(resolve('analysisStale.message')), 'the stale notification is shown');
+      assert.ok(banner, 'the stale notification is shown');
+      assert.ok(banner.textContent?.includes(resolve('analysisStale.message')), 'the stale notification explains outdated results');
       assert.ok(banner.closest('.opacity-60') === null, 'the stale notification itself stays undimmed');
     });
   }

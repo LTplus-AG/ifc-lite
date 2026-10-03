@@ -1042,6 +1042,9 @@ importers:
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../export
+      '@ifc-lite/geometry':
+        specifier: workspace:^
+        version: link:../geometry
       '@ifc-lite/mutations':
         specifier: workspace:^
         version: link:../mutations

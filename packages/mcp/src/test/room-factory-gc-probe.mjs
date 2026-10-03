@@ -54,6 +54,7 @@ async function collectEightTurns() {
 await collectEightTurns();
 const factoryRetainsSource = references[0].deref() !== undefined;
 const geometryRetainsSource = references[1].deref() !== undefined;
+assert.ok(withoutFactory.walls.length > 0, 'Retained prepared geometry remains usable after source collection');
 // Exercise the retained factory itself through the real native Rust handle.
 const plate = factoryOnly.fromWallRects(new Float64Array(), .01, .1);
 plate.free();

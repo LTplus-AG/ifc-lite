@@ -28,9 +28,9 @@ import { existingSpaceFootprintEntriesByStorey, type SpaceFootprint } from '@ifc
 import type { ViewerState } from '@/store';
 import { roomFramePlanOffsets, wallRectsFromMeshes } from '@/lib/wall-rects-from-meshes';
 import { spaceWasmLoaded } from '@/lib/rooms/space-wasm';
-import { pointInPoly, polyArea, type Pt } from '@/lib/rooms/plate-geometry';
-import { linkFaces, occupancyTest, spaceMeshTriangles, type RoomLink } from './room-occupancy';
-import { buildPlate, clearRoomLayouts, DEFAULT_MIN_AREA, DEFAULT_WELD, layoutFaces, layoutVersion, readFaces, undoHead, type LayoutFace } from './room-layout';
+import { type Pt } from '@/lib/rooms/plate-geometry';
+import { occupancyTest, spaceMeshTriangles } from './room-occupancy';
+import { buildPlate, clearRoomLayouts, DEFAULT_MIN_AREA, DEFAULT_WELD, layoutFaces, layoutVersion, readFaces, undoHead } from './room-layout';
 import { floorToFloorHeight } from './floor-height';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
@@ -39,22 +39,8 @@ import { fromRenderTranslation, toRenderTranslation } from '@/lib/model-placemen
 import type { CommandContext, Workplane } from '@/lib/commands/modeling/types';
 
 export type { Pt };
-
-/** Which wall face a room's outline follows: the room side, the axis, the far side. */
-export type RoomBoundary = 'inner' | 'center' | 'outer';
-
-export interface RoomCandidate extends LayoutFace {
-  /** Centreline area: the gross floor area. */
-  grossArea: number;
-  /** Inner-face area: the net floor area. */
-  netArea: number;
-  /** A point inside the face, for labels and the "already a room" test. */
-  interior: Pt;
-  /** An IfcSpace on the storey already covers this face. */
-  taken: boolean;
-  /** The existing room this face is (its outline), which layout edits reshape. */
-  room: RoomLink | null;
-}
+import { roomCandidatesFromFaces, type RoomCandidate } from '../../../../../packages/create/src/in-store/room-candidates.js';
+export { roomAt, interiorPoint, roomOutline, roomCandidatesFromFaces, type RoomCandidate, type RoomBoundary } from '../../../../../packages/create/src/in-store/room-candidates.js';
 
 /** A storey's wall, storey-local: its footprint rectangle, axis and thickness. */
 export interface LocalWall {
@@ -71,65 +57,6 @@ export type StoreyRooms =
 const WALL_TYPES = new Set(['IfcWall', 'IfcWallStandardCase']);
 /** Inset of a storey's height band, as `wallRectsFromMeshes` insets its own. */
 const BAND_MARGIN = 0.2;
-
-/** The outline a room is written with at `boundary`. */
-export function roomOutline(room: LayoutFace, boundary: RoomBoundary): Pt[] {
-  return boundary === 'inner' ? room.inner : boundary === 'outer' ? room.outer : room.centre;
-}
-
-/**
- * A point strictly inside `poly`: its vertex centroid when that is inside (a
- * convex or mildly concave room), else the middle of the widest span of the
- * horizontal line through it (an L- or U-shaped room).
- */
-export function interiorPoint(poly: readonly Pt[]): Pt {
-  const n = poly.length;
-  let cx = 0, cy = 0;
-  for (const p of poly) { cx += p[0]; cy += p[1]; }
-  cx /= n; cy /= n;
-  const ring = poly as Pt[];
-  if (pointInPoly(cx, cy, ring)) return [cx, cy];
-  const xs: number[] = [];
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const [xi, yi] = poly[i], [xj, yj] = poly[j];
-    if ((yi > cy) !== (yj > cy)) xs.push(xi + ((cy - yi) * (xj - xi)) / (yj - yi));
-  }
-  xs.sort((a, b) => a - b);
-  let best: Pt = [cx, cy], width = -1;
-  for (let k = 0; k + 1 < xs.length; k += 2) {
-    if (xs[k + 1] - xs[k] > width) { width = xs[k + 1] - xs[k]; best = [(xs[k] + xs[k + 1]) / 2, cy]; }
-  }
-  return best;
-}
-
-/** The smallest room whose centreline outline holds `p` (a room nested in another wins). */
-export function roomAt<R extends RoomCandidate>(rooms: readonly R[], p: readonly [number, number]): R | null {
-  let hit: R | null = null;
-  for (const room of rooms) {
-    if (pointInPoly(p[0], p[1], room.centre) && (!hit || room.grossArea < hit.grossArea)) hit = room;
-  }
-  return hit;
-}
-
-/** Layout faces → candidate rooms, `taken` where `occupied`, linked to the `spaces` they are. */
-export function roomCandidatesFromFaces(
-  faces: readonly LayoutFace[],
-  occupied: (p: Pt) => boolean = () => false,
-  spaces: readonly SpaceFootprint[] = [],
-): RoomCandidate[] {
-  const withInterior = faces.map((face) => ({ ...face, interior: interiorPoint(face.inner.length >= 3 ? face.inner : face.centre) }));
-  const links = linkFaces(withInterior, spaces as { expressId: number; footprint: Pt[] }[]);
-  return withInterior.map((face) => {
-    const room = links.get(face.face) ?? null;
-    return {
-      ...face,
-      grossArea: polyArea(face.centre),
-      netArea: polyArea(face.inner),
-      taken: room !== null || occupied(face.interior),
-      room,
-    };
-  });
-}
 
 /** Wall rectangles (storey-local, 4 corners each) → candidate rooms of a fresh layout, `taken` where `occupied`. */
 export function roomCandidatesFromRects(rects: readonly Pt[][], occupied: (p: Pt) => boolean = () => false): RoomCandidate[] {

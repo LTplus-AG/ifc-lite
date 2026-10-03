@@ -1042,6 +1042,9 @@ importers:
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../export
+      '@ifc-lite/geometry':
+        specifier: workspace:^
+        version: link:../geometry
       '@ifc-lite/mutations':
         specifier: workspace:^
         version: link:../mutations
@@ -1501,6 +1504,9 @@ importers:
       '@ifc-lite/viewer-core':
         specifier: workspace:^
         version: link:../viewer
+      '@ifc-lite/wasm':
+        specifier: workspace:^
+        version: link:../wasm
       yjs:
         specifier: ^13.6.33
         version: 13.6.33
@@ -1799,6 +1805,9 @@ importers:
         specifier: workspace:^
         version: link:../spatial
     devDependencies:
+      '@ifc-lite/wasm':
+        specifier: workspace:^
+        version: link:../wasm
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

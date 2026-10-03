@@ -7,12 +7,13 @@ import type { StoreBackendMethods } from '@ifc-lite/sdk';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { unsupportedStoreAuthoring } from './headless-backend-store-stubs.js';
+import { createHeadlessRoomBackend } from './headless-backend-room.js';
 import { createRecordedModellingBackend } from './headless-backend-modelling.js';
 
 export function createHeadlessStoreAdapter(
   dataStore: IfcDataStore, modelId: string, get: () => StoreEditor, assertKnownModelId: (id: string) => void,
   getPeerScopes: () => import('@ifc-lite/create').ElementSplitOptions['globalIdScopes'],
-): StoreBackendMethods {
+): StoreBackendMethods & { disposeRooms(): void } {
   const resolveModel = (requestedModelId?: string) => {
     if (requestedModelId !== undefined) assertKnownModelId(requestedModelId);
     const editor = get();
@@ -37,5 +38,6 @@ export function createHeadlessStoreAdapter(
     addWindow: () => { throw new Error('addWindow not supported in MCP v0.1; use entity_create'); },
     ...unsupportedStoreAuthoring(),
     ...createRecordedModellingBackend(resolveModel),
+    ...createHeadlessRoomBackend(resolveModel),
   };
 }

@@ -29,10 +29,13 @@ import type {
   StairInStoreParams,
   RailingInStoreParams,
 } from '@ifc-lite/create';
+import type { RoomCommand, RoomCommandResult } from './store-room-command.js';
 import type { EntityRef } from './types.js';
 import type { PhysicalStoreBackendMethods } from './store-physical-types.js';
 
 export interface ModellingStoreBackendMethods extends PhysicalStoreBackendMethods {
+  /** Native mesh/DCEL Room operations with atomic history-aware layout edits. */
+  roomCommand?(modelId: string, storeyId: number, command: RoomCommand): Promise<RoomCommandResult>;
   /** Copy a dependency-pruned selection once per storey-local transform, atomically. */
   copyElements?(modelId: string, expressIds: readonly number[], transforms: readonly CopyTransform[]): EntityRef[];
   /** Duplicate with the viewer naming policy; explicit storey-local IFC XYZ displacement. */

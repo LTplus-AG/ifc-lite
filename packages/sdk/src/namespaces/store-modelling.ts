@@ -11,11 +11,18 @@ import type {
   MaterialInStoreParams, MaterialLayerSetInStoreParams, MaterialLayerSetUsageInStoreParams, WallJoinApplyOptions,
   StairInStoreParams, RailingInStoreParams, InStoreReplacementElement,
 } from '@ifc-lite/create';
+import type { RoomCommand, RoomCommandResult } from '../store-room-command.js';
 import type { BimBackend, EntityRef } from '../types.js';
 import type { PhysicalSizePatch } from '../store-physical-types.js';
 
 export class StoreModellingNamespace {
   constructor(protected backend: BimBackend) {}
+
+  async roomCommand(modelId: string, storeyId: number, command: RoomCommand): Promise<RoomCommandResult> {
+    const method = this.backend.store.roomCommand;
+    if (!method) throw new Error('bim.store.roomCommand: native Room capability is unavailable on this backend');
+    return method.call(this.backend.store, modelId, storeyId, command);
+  }
 
   transformElements(modelId: string, expressIds: readonly number[], operation: ElementTransformInput['op']): EntityRef[] {
     const method = this.backend.store.transformElements;

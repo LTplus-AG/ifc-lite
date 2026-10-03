@@ -167,12 +167,10 @@ export class MCPServer {
       // dangling sockets when the transport disconnects.
       if (this.viewer.isOpen()) this.viewer.close();
     } finally {
-      // Per-session layer drafts hold live Y.Docs — free them with the
-      // session even if the viewer close throws. detach() only fires on
-      // true termination (HTTP DELETE / transport close), never on SSE
-      // client drops, so a reconnecting client keeps its workspace until
-      // the session actually ends.
+      // Release layer Y.Docs and native Room plates on true session termination.
+      // SSE reconnects keep the session workspace until detach is called.
       if (this.sessionId !== undefined) disposeLayerWorkspace(this.sessionId);
+      for (const model of this.registry.list()) model.backend.dispose();
     }
   }
 

@@ -632,7 +632,7 @@ const units: Tool = {
   },
 };
 
-export const queryTools: Tool[] = [
+export const entityQueryTools: Tool[] = [
   queryEntities,
   countEntities,
   getEntity,

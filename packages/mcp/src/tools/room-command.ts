@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { RoomCommand } from '@ifc-lite/sdk';
+import { RoomCommandConflictError, type RoomCommand } from '@ifc-lite/sdk';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
 import type { JsonSchema } from '../protocol/index.js';
@@ -45,11 +45,33 @@ export const roomCommandTool: Tool = {
   async handler(input, ctx) {
     const model = resolveModel(ctx, input.model_id as string | undefined);
     try {
-      if (ctx.signal.aborted) throw new Error('Room command cancelled before preparation');
+      ctx.signal.throwIfAborted();
       const result = await model.bim.store.roomCommand(model.id, input.storey_express_id as number, { ...(input.command as RoomCommand), signal: ctx.signal });
       return okResult(`Room command completed: ${result.created.length} created, ${result.updated.length} updated, ${result.deleted.length} deleted.`, { ...result });
     } catch (error) {
+      if (error instanceof ToolExecutionError) throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (ctx.signal.aborted) throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message, details: { retryable: true } });
+      if (error instanceof RoomCommandConflictError) throw new ToolExecutionError({ code: ToolErrorCode.STATE_CHANGED, message, details: { retryable: true } });
       throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: error instanceof Error ? error.message : String(error) });
     }
+  },
+};
+
+/** Thin read-only entry point over the same native Room command service. */
+export const queryRoomsTool: Tool = {
+  name: 'query_rooms', scope: 'read',
+  description: 'Read native mesh-derived room candidates on a loaded storey. Coordinates and settings are storey-local metres. No IFC or Undo operation is written.',
+  inputSchema: {
+    type: 'object', properties: {
+      model_id: roomCommandTool.inputSchema.properties!.model_id,
+      storey_express_id: roomCommandTool.inputSchema.properties!.storey_express_id,
+      settings: { type: 'object', properties: Object.fromEntries(
+        ['weld', 'minArea', 'boundary'].map(name => [name, roomCommandTool.inputSchema.properties!.command.properties![name]]),
+      ), additionalProperties: false },
+    }, required: ['storey_express_id'], additionalProperties: false,
+  },
+  handler(input, ctx) {
+    return roomCommandTool.handler({ ...input, command: { ...(input.settings as Record<string, unknown> | undefined), action: 'query' } }, ctx);
   },
 };

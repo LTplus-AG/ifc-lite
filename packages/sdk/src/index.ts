@@ -396,4 +396,4 @@ export { BimHost } from './host.js';
 
 export type { PhysicalSizePatch } from './store-physical-types.js';
 
-export { createRoomCommandBackend, type RoomGeometryProvider, type RoomCommand, type RoomCommandResult } from './store-room-command.js';
+export { RoomCommandConflictError, createRoomCommandBackend, type RoomGeometryProvider, type RoomCommand, type RoomCommandResult } from './store-room-command.js';

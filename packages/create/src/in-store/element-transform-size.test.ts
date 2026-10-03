@@ -128,3 +128,16 @@ it('#6232 refuses persisted shared placement/profile leaves without moving or re
   target.editor.setPositionalAttribute(second, 6, refOf(separateRow.attributes[6]));
   expect(size(target, first, { kind: 'linear', width: .4 }).ok).toBe(true);
 });
+
+it.each([false,true])('#6232 millimetre beam size conversion overflow preserves full graph/journal/allocator, persisted=%s', async persisted => {
+  const initial=await setup(true);
+  const beam=addBeamToStore(initial.editor,initial.anchor,{Start:[1,2,3],End:[5,2,3],Width:.2,Height:.3}).beamId;
+  const target=persisted?await persist(initial):initial;
+  const snapshot=()=>({
+    graph:Array.from(new StepExporter(target.dataStore,target.view).export({schema:'IFC4',applyMutations:true,timeStamp:'2026-10-03T00:00:00'}).content),
+    records:structuredClone(target.view.getNewEntities()), journal:structuredClone(target.view.getMutations()), next:target.view.peekNextExpressId(),
+  });
+  const before=snapshot();
+  expect(()=>size(target,beam,{kind:'linear',length:1e308})).toThrow(/finite|overflow/i);
+  expect(snapshot()).toEqual(before);
+});

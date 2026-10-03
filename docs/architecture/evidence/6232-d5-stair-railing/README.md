@@ -20,9 +20,39 @@ The official inverse collected all 75: reverting production gave 47 passes and
 Two existing CLI entrypoints remain passing under the broad revert; the other
 five observe it. The own production build passed all 62 tasks.
 
-These are mounted DOM and Node/WASM controls. Current browser screenshots and
-remote CI are pending; the synchronous remote backend still requires async
-implementation. Full D5, public Space integration and the #6232 charter remain open.
+The root also ran the real viewer in T3 against the same `be0068` source and
+canonically loaded the public Bonsai sample as one model. Its typed 4.8 m stair
+gesture created IfcStair #10047 and IfcStairFlight #10048 with a 136-triangle
+native flight mesh. The public `BroadcastTransport.send` route to the actual
+BimHost returned `true` for `store.removeStair`; both products and the flight
+mesh disappeared. ONE actual toolbar Undo restored the identical assembly
+records and mesh inventory.
+
+A public replacement request with Width 0 returned the real positive-dimension
+validation error. Before/after fingerprints matched at
+`8dc7edf0fdb11e9a88b0a6f3d32480967f979af664d2b516465ccc9392380a41`,
+covering the complete mutation journal, new entities, allocator, history lengths
+and geometry bytes. The readonly witness-producer receipt specifies these
+inputs and exact byte-offset/length slices of each mesh channel. Its local hash
+closure was not independently captured; history evidence covers stack lengths.
+`browser-single-model-be0068.json.gz` retains the original
+13 defined structured tool records, process/runtime identity, finite server
+guardian receipt and a dated snapshot of the already-published head's CI. The
+bounded server ended after its recorded 900-second window with exit 124.
+
+| Actual stage | Unmodified T3 screenshot |
+| --- | --- |
+| Canonical Bonsai baseline | [Baseline](browser-baseline-be0068.png) |
+| Typed-length stair placed | [Placed](browser-placed-be0068.png) |
+| Public SDK assembly removed | [Removed](browser-removed-be0068.png) |
+| One toolbar Undo | [Undo](browser-undo-be0068.png) |
+
+This browser proof covers one model and the typed-length gesture; two-coordinate
+placement, browser railing and browser federation remain unproved. One/two-model
+DOM/Node controls retain their separate scope above. No browser timing or GPU
+performance claim is made. Remote CI is still running, and the synchronous
+remote context still requires async implementation. Full D5, public Space
+integration and the #6232 charter remain open.
 
 ## Historical qualification (2026-10-02)
 

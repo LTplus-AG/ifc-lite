@@ -50,10 +50,10 @@ export function useDocumentLayout(input: DocumentPdfInput, imageSizes: ReadonlyM
     });
     return () => { current = false; };
   }, [input, imageSizes]);
-  // Image-only reflow retains the same input and decoder nodes; captured
-  // ownership across input edits belongs to the next lifecycle layer.
-  const prepared = value?.input === input ? value : null;
-  const pending = prepared === null || prepared.imageSizes !== imageSizes;
+  // Retain the complete captured source with its geometry while this same
+  // document reflows. Another document must never inherit those old pages.
+  const prepared = value?.input.document.id === input.document.id ? value : null;
+  const pending = prepared?.input !== input || prepared.imageSizes !== imageSizes;
   return { value: prepared, pending,
     error: error?.input === input && error.imageSizes === imageSizes ? error.message : null };
 }

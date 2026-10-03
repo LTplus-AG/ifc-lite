@@ -26,19 +26,30 @@ export function readSplitPlacement(env: SplitEnvironment, id: number): SplitPlac
   return { parent, frame };
 }
 
+/** Preserve the source coordinate frame only on a newly emitted private
+ * placement. Parent-local endpoints need no conversion, and its generated
+ * axis stays intact (a joined wall need not follow the source local X axis). */
+export function preserveSplitParentPlacement(env: SplitEnvironment, addedId: number, parent: number | null) {
+  const chain = resolvePlacementChain(env.dataStore, env.view, env.editor, addedId);
+  if (!chain || !env.view.getNewEntity(chain.localPlacementId)) {
+    throw new Error('The new split piece has no private writable placement');
+  }
+  env.editor.setPositionalAttribute(chain.localPlacementId, 0, parent === null ? null : `#${parent}`);
+  return chain;
+}
+
 /** Builder defaults choose a section orientation. Retain the source basis on
  * the new private placement instead: these direction leaves were just emitted
  * for this piece, so no existing occurrence or shared source leaf is changed. */
 export function preserveSplitPlacement(env: SplitEnvironment, addedId: number, source: SplitPlacement): void {
-  const chain = resolvePlacementChain(env.dataStore, env.view, env.editor, addedId);
-  const attrs = chain ? readAttributes(env.dataStore, env.view, env.editor, chain.axisPlacementId) : null;
+  const chain = preserveSplitParentPlacement(env, addedId, source.parent);
+  const attrs = readAttributes(env.dataStore, env.view, env.editor, chain.axisPlacementId);
   const axis = attrs ? refId(attrs[1]) : null;
   const refDirection = attrs ? refId(attrs[2]) : null;
-  if (!chain || axis === null || refDirection === null
+  if (axis === null || refDirection === null
     || !env.view.getNewEntity(axis) || !env.view.getNewEntity(refDirection)) {
     throw new Error('The new split piece has no private writable placement basis');
   }
-  env.editor.setPositionalAttribute(chain.localPlacementId, 0, source.parent === null ? null : `#${source.parent}`);
   env.editor.setPositionalAttribute(axis, 0, source.frame.z);
   env.editor.setPositionalAttribute(refDirection, 0, source.frame.x);
 }

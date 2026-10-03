@@ -25,6 +25,7 @@ import { afterEach, beforeEach, describe, it, type TestContext } from 'node:test
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
+import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { blur, cleanup, render, type as typeInto } from '@/test/render.js';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { BOX, authoredSpaces, corners, ensureRoomWasm, r3, setWallMeshes, spaceQuantity, type Wall } from '@/test/room-walls-fixture';
@@ -221,13 +222,13 @@ describe('room.place Edit: split and merge (#6232 A4b)', () => {
     assert.deepEqual(authoredSpaces().map((r) => r.id).sort(), [small.id, large.id].sort(), 'undo brings the other back');
   });
 
-  it('cuts a face that is no room yet: the layout changes, nothing is written', async (t) => {
+  it('cuts a face that is no room yet: the layout changes with session Undo and no IFC writes (#6758)', async (t) => {
     if (!(await start(t))) return;
     editWith('shape');
     const before = undoDepth();
     click(2, 0);
     click(2, 5);
-    assert.equal(undoDepth(), before, 'no transaction wrote anything');
+    assert.equal(undoDepth(), before + 1, 'the changed native layout has one session Undo step');
     assert.deepEqual(authoredSpaces(), []);
     assert.equal(layoutFaces().length, 3, 'the layout has the cut: Pick and Auto now see two faces there');
     await auto();
@@ -395,4 +396,31 @@ describe('room.place review fixes (#6232 A4b)', () => {
     clearModelLayouts(MODEL_ID);
     assert.equal(layoutFaces().length, 2, 'freed: rebuilt from the walls');
   });
+});
+
+it('mounted registered Room Edit splits before Auto and native Undo/Redo restores the layout without IFC writes (#6758)', async t => {
+  if (!(await start(t, BOX))) return;
+  editWith('shape');
+  const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+  const view = target.view;
+  const before = structuredClone(view.getEffectiveChanges()), undoBefore = undoDepth(), next = view.peekNextExpressId();
+  const ui = render(<svg><RoomPlacePlan gesture={gesture()} ctx={ctx()} toScreen={p => [p[0] * 10, -p[1] * 10]} /></svg>);
+  assert.equal(ui.querySelectorAll('[data-room-face]').length, 1);
+  click(2, 0);
+  click(2, 5);
+  assert.equal(undoDepth(), undoBefore + 1, 'one genuine session history step');
+  assert.equal(ui.querySelectorAll('[data-room-face]').length, 2);
+  assert.equal(layoutFaces().length, 2);
+  assert.equal(authoredSpaces().length, 0);
+  assert.equal(view.peekNextExpressId(), next);
+  assert.deepEqual(view.getEffectiveChanges(), before);
+  undo();
+  assert.equal(undoDepth(), undoBefore);
+  assert.equal(ui.querySelectorAll('[data-room-face]').length, 1);
+  assert.equal(layoutFaces().length, 1);
+  redo();
+  assert.equal(undoDepth(), undoBefore + 1);
+  assert.equal(ui.querySelectorAll('[data-room-face]').length, 2);
+  assert.equal(layoutFaces().length, 2);
+  assert.deepEqual(view.getEffectiveChanges(), before);
 });

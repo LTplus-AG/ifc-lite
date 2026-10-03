@@ -1802,6 +1802,9 @@ importers:
         specifier: workspace:^
         version: link:../spatial
     devDependencies:
+      '@ifc-lite/wasm':
+        specifier: workspace:^
+        version: link:../wasm
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

@@ -188,3 +188,10 @@ export { transformElementsInStore, type ElementTransformInput, type StoreyTransf
 export { splitElementsInStore, type ElementSplitRequest, type ElementSplitOptions } from './in-store/element-split.js';
 
 export { trimExtendElementInStore, type ElementTrimExtendParams } from './in-store/element-trim-extend.js';
+
+export { RoomLayoutCache } from './in-store/room-layout-cache.js';
+export { readFaces, applyLayoutOp, filterRoomFaces, type LayoutOp, type RoomPlateFactory } from './in-store/room-layout-core.js';
+export { roomOutline, roomCandidatesFromFaces, occupancyTest, type RoomCandidate, type RoomBoundary } from './in-store/room-candidates.js';
+export { createRoomsInStore, updateRoomOutlineInStore, syncRoomLayoutInStore } from './in-store/room-store.js';
+export { storeyFootprintFaceInStore, type RoomWallRect } from './in-store/room-footprint-native.js';
+export { planRoomCreation } from './in-store/room-creation-plan.js';

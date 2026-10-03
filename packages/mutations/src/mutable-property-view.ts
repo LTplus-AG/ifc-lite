@@ -53,7 +53,7 @@ export class MutablePropertyView extends MutableOverlayState {
     super();
     this.baseTable = baseTable;
     this.modelId = modelId;
-    registerCooperativeOverlay(this, {
+    registerCooperativeOverlay(this, { modelId,
       capture: () => this.overlayState(),
       matches: snapshot => this.matchesOverlayState(snapshot),
       publish: snapshot => this.restoreOverlayState(snapshot),

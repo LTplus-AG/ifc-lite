@@ -53,6 +53,20 @@ no full-load or production-renderer claim follows from the control. Raw evidence
 and the independent audit are retained in
 [`evidence/hosted-gpu-control-6537/manifest.json`](evidence/hosted-gpu-control-6537/manifest.json).
 
+## Symbolic upload inputs: standalone GPU control qualified (#6537)
+
+The hosted diagnostic retains original vertex/uniform usage and checks actual
+GPU readbacks against independent seeded partial-write plans and recorder
+shadows. Source mutation, changed-byte refusal, shader diagnostics, observer
+restoration and owned process/log cleanup are qualified for that control.
+The authored-text eligibility refusal stays unchanged. This does not establish
+IFC annotation completeness, atlas texels, rendered pixels or performance, and
+the recorder does not enter the timed comparator. Whole-machine closure is
+unclaimed. Lesson: qualify input-byte observation separately from appearance
+and load-time benefit before changing an eligibility guard.
+[Exact source, raw run and independent audit](evidence/symbolic-upload-gpu-6537/README.md)
+are retained, including the earlier source-gate refusals.
+
 ## Direct vertex packing: do not ship the current candidate (#6537)
 
 The candidate removes an intermediate vertex buffer for eligible quantized

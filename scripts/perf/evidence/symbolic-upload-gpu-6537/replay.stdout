@@ -1,0 +1,8 @@
+{
+  "status": "QUALIFIED_STANDALONE_SYMBOLIC_BUFFER_INPUT_CONTROL",
+  "checks": 73,
+  "failedChecks": [],
+  "qualificationSha256": "578bc6d124c73e2aa8a1e465a38ac408394023ceed5090ba0df41531c0fdfffb",
+  "artifactManifestSha256": "71adde5dd225074d1a4e257702624f5e59148cbd67ecb75761d48fe0a961c817"
+}
+PASS: safe extraction, all original hashes, exact audit replay; temporary files removed on exit.

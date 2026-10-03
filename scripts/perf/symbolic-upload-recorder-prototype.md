@@ -4,9 +4,11 @@
 
 # Symbolic upload recorder prototype (#6537)
 
-This isolated harness proposal is not invoked by the comparator. It does not
+This isolated diagnostic harness is not invoked by the comparator. It does not
 remove the authored-text refusal, change production sources, alter GPU usage
-flags, or qualify any previous run. Real WebGPU readback controls are pending.
+flags, or qualify any previous run. The standalone hosted buffer-input control
+is qualified at source `88e26da7f9bc02eb0add8aabb010af98f380b3c2`; renderer/IFC,
+atlas texels, pixels and performance remain unqualified.
 
 `installSymbolicUploadRecorder` is a self-contained plain-JavaScript callback
 for prospective installation before application scripts initialize WebGPU. It
@@ -96,7 +98,7 @@ policy would observe an immutable frame-input boundary, not stop RAF, force a
 frame, suppress actual app work or establish GPU completion. No such continuation
 is accepted by the current implementation or existing comparator.
 
-## Unrun standalone hosted GPU control proposal
+## Qualified standalone hosted GPU control
 
 `symbolic-upload-gpu-page.mjs` implements the described real GPU shader/readback
 path for all six labels. It checks raw GPU bytes against the recorder after
@@ -110,7 +112,7 @@ Source buffer usage remains 40/72. The shaders emit raw u32 words to an r32uint
 render target, preserving raw float encodings including sign/NaN payload bits.
 No production symbolic shader, app pipeline or renderer state is exercised.
 
-`symbolic-upload-gpu-control.mjs` is an unregistered prospective entry for a
+`symbolic-upload-gpu-control.mjs` is the registered standalone child entry for a
 fresh Linux hosted Chrome. It uses the existing fixed graphics profile, pins
 listed source/lock hashes, records ownership-fenced Chrome argv/executable hash,
 retains bounded page/GPU events and closes its owned browser/server with a
@@ -122,18 +124,23 @@ device destruction is explicit and distinct from an observed unexpected loss;
 cleanup status records success only when cleanup operations succeed. Original output
 files are preserved by create_new refusal. It requires `CI=true DEBUG=pw:browser`.
 
-This entry still requires the existing outer owned-process graphics runner to
+This entry requires the shared outer owned-process graphics runner to
 capture bounded stdout/stderr, apply Chrome/Dawn backend-error checks, enforce a
 finite child wall bound (at least the declared operation/cleanup budgets), and
 qualify final process/log cleanup. Its success status is deliberately
 `observed-pending-outer-hosted-qualification`, not a completed hosted verdict.
-It is not registered in a workflow, imported by the comparator, or executed in
-this source-only step. Shader compilation and real GPU readback remain **UNRUN**.
+The initial source-only proposal was unregistered and its GPU controls were
+UNRUN. Hosted run [37157226416](https://github.com/LTplus-AG/ifc-lite/actions/runs/37157226416)
+subsequently completed through the registered outer runner. Its independent
+audit passed all 73 checks, including real shader compilation and readback.
+[Durable raw evidence and replay](evidence/symbolic-upload-gpu-6537/README.md)
+retain the exact source pin and original proposal/qualification receipts.
+The child is still not imported by the comparator.
 Atlas pointer/version checks do not verify canvas/GPU texture bytes, authored
 annotation extraction, glyph packing, parse completeness, draw bindings or
 rendered pixels. Those gaps still block replacing the existing text guard.
 
-## Prospective hosted integration
+## Hosted integration and qualified scope
 
 The `benchmark.yml` dispatch mode `symbolic-upload` reaches the existing reusable
 GPU workflow with `symbolic_only: true`; default GPU mode retains both pixel
@@ -143,7 +150,9 @@ fixed profile and preserves its original pending receipt separately. The outer
 runner certifies six exact readbacks/negative controls, empty allocations,
 compilation/restoration/cleanup/loss receipts, actual Chrome identity, full raw
 log drain and final listed source/Node hashes. No IFC/model/pixels/performance
-verdict or comparator integration is present. Hosted execution remains UNRUN.
+verdict or comparator integration is present. The registered hosted execution
+qualifies only this standalone buffer-input control; prior UNRUN receipts are
+preserved as historical source-proposal evidence.
 
 Future live-buffer reads after the timer could avoid write interception and
 recorder overhead; atlas textureLoad/readback may also be possible with existing

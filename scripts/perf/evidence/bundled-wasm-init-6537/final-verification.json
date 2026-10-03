@@ -1,0 +1,13 @@
+{
+  "status": "verified-extracted",
+  "members": 292,
+  "finalStored": 212,
+  "priorReferences": 80,
+  "artifactMembers": 250,
+  "archiveSha256": "6fe1cfedb851e91e36174187ed718da71f72e3c897e80f8de1a4ef01560afcd2",
+  "manifestSha256": "55fb157bf1e5abaa7caf59ac5c5034ad56d528b970bad8ac093e1efeea8aa53b",
+  "verificationScope": "Actual safe byte extraction only; optional audit replay adapter remains UNRUN. Original1508/59242 audit runs are retained, not repeated.",
+  "extractorSha256": "51bce9cebd51c484ed5c8951531ff3ec404fb1184564c9c549129f1178b89580",
+  "replayAdapterSha256": "680b176b2c0de84d7b939d85262abe6b70a8e1621ee166630f12e852d74417d7",
+  "priorContainerAndManifestIdentitiesUnchanged": true
+}

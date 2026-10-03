@@ -27,7 +27,7 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
-## Bundled main-first module sharing: historical mixed results (#6537)
+## Bundled main-first module sharing: scoped SDK result (#6537)
 
 Bundled initialization removes the second observed WASM request before the
 default SDK worker pool. Both completed historical candidates retain equal
@@ -47,13 +47,19 @@ Prepare lazy public-init options so that only a cold engine acquires a module.
 Actual generated-loader controls preserve the predecessor assertion failure,
 the intermediate cross-realm harness refusal, and the corrected warm-engine proof.
 
-The corrected source has separate passing functional controls and a pending SDK
-comparison. Historical results and cached-artifact VM execution do not qualify
-that comparison, full viewer appearance, RSS, or universal speed. Count actual
-default-path requests, preserve public initialization contracts, and measure whole
-worker-pool completion against qualified arms. [Raw cohorts, compatibility failure,
-corrected proof and all scope limits](evidence/bundled-wasm-init-6537/README.md)
-remain available together without replacing earlier evidence.
+The corrected lazy source now has its own qualified fresh default-worker SDK
+comparison, with equal produced CPU-channel identity and untouched diagnostics,
+passing preceding noise controls, resource gates, final freeze and cleanup.
+The house and heavy CSG observations consistently improve; the CSG and large
+architecture pairs are mixed. Every observation remains, including high baseline
+values. The second observed request is removed, but independently fresh engine
+bytes still differ, so elapsed results do not isolate JavaScript's contribution.
+This is a scoped SDK result, not a universal speed, RSS or full-viewer verdict.
+The lesson is to share cold acquisition without breaking public glue's warm
+fast path, preserve failure contracts, and qualify actual worker-pool completion
+separately from cached-artifact functional proofs. [All raw cohorts, compatibility
+failures, corrected proofs and limits](evidence/bundled-wasm-init-6537/README.md)
+remain available without replacing or pooling earlier evidence.
 
 ## Direct vertex packing: do not ship the current candidate (#6537)
 

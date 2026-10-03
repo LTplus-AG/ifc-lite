@@ -118,11 +118,86 @@ aggregate test attribution, not separate per-file mutation proof.
 
 The corrected-source comparison
 [run 37155827255](https://github.com/LTplus-AG/ifc-lite/actions/runs/37155827255)
-is pending at this revision, with controller `4d47506a23e304ed4b772f7890e27e37843e8914`,
+was pending when that historical revision was frozen, with controller `4d47506a23e304ed4b772f7890e27e37843e8914`,
 base `c61932d4a9d85efe1b0f817a5274a115f0571ee3` and candidate
 `02112298d6cc690cda6fa3db712b524abc0f4712`. Neither historical cohort nor the
 functional VM proof supplies its verdict. There is no universal speed, RSS,
 GPU/pixel, full metadata, Windows or eight-worker claim.
+
+## Final corrected-source SDK revision
+
+The same corrected-source run has now completed successfully. Its separate
+`final-021-sdk-and-independent-qualification.tar.gz` and `final-manifest.json`
+retain 292 reconstructed files: 212 stored here and 80 exact-byte references to
+named original or historical container members. Both earlier containers and
+their manifests remain unchanged. All 250 uploaded artifact members, endpoint
+assets, serial producing logs/receipts, raw samples and pairs, source/tool pins,
+pre-teardown captures, resource rows and cleanup witnesses are present. The raw
+job log, run/API metadata, download receipts and earlier monitoring failures are
+also retained. No fixture or credential is included.
+
+The uploaded ZIP's official digest and safe unique regular-member verification
+are retained; the duplicate ZIP wrapper is not stored alongside its complete
+member bytes. Its exact scratch download remains pinned in the manifest. This
+is member-lossless reconstruction, not a claim to recreate the ZIP wrapper.
+The compact final JSON inventory is mechanical evidence metadata, not production
+source; external manifests avoid circular container hashes.
+
+The independent audit passes 1,508 retained-receipt/artifact/numeric checks and
+59,242 immutable Git/declared-closure checks without findings. It independently
+rehashes all tracked files from the exact controller and both source commits,
+and checks all 762 normalized installed dependency entries agree. Remote tool,
+sysroot and Cargo registry files are retained producer pins, not files rehashed
+after runner teardown; the original closure-completeness limitations remain.
+
+All 56 samples and 28 pairs complete in the fixed order, including two preceding
+A/A pairs per family; the largest absolute A/A difference is 8.688%, within the
+predeclared bound. All produced flat/instanced CPU identities, mesh/triangle and
+occurrence counts, coordinate information and full unnormalized diagnostics agree
+within each family. Actual defaults select two workers, IDs 0/1, on four cores
+with SAB and cross-origin isolation. Cold processor initialization, canonical
+stream drain, output retention and disposal are timed; hashing follows the timer.
+
+Candidate-minus-BASE elapsed differences, negative meaning less elapsed:
+
+| Family | All five paired differences (%) | Paired median (%) | Paired range (%) | BASE median/range (ms) | CAND median/range (ms) |
+| --- | --- | --- | --- | --- | --- |
+| Haus | −18.333, −19.709, −10.625, −6.297, −8.934 | −10.625 | [−19.709, −6.297] | 496.660 / [475.155, 572.905] | 443.420 / [409.060, 465.385] |
+| ISSUE 129 | +0.251, −0.238, +0.136, −0.929, +0.692 | +0.136 | [−0.929, +0.692] | 4376.225 / [4335.595, 4390.815] | 4365.590 / [4330.195, 4400.740] |
+| Holter | −1.823, −3.101, −2.756, −1.660, −3.851 | −2.756 | [−3.851, −1.660] | 4414.575 / [4376.450, 4445.540] | 4295.210 / [4274.360, 4314.205] |
+| Architecture | +0.152, −1.639, −1.163, −3.616, −2.020 | −1.639 | [−3.616, +0.152] | 3652.410 / [3631.660, 3740.830] | 3606.115 / [3592.550, 3637.195] |
+
+Every observation remains. Haus's high 572.905 ms BASE observation is paired with
+459.990 ms CAND; architecture's 3740.830 ms BASE observation also remains. Their
+arithmetic effects are visible, but no physical cause or statistical outlier
+classification is inferred. CSG is mixed near zero and architecture includes a
+slower candidate pair. No all-model benefit or pooled historical result is claimed.
+
+All 168 raw CPU intervals meet the monotonic duration and quietness gates:
+minimum 1,000,061,771 ns and maximum busy 5.013%. Initial available memory is
+15,479,267,328 B, minimum sampled live availability 12,612,157,440 B, and maximum
+sampled owned RSS 3,756,318,720 B. The latter is not physical peak or an RSS
+improvement verdict. Cleanup witnesses 597 owned processes with zero remaining
+or zombies; both servers close with zero sockets/faults, and final input
+verification completes.
+
+Every BASE browser capture observes two WASM requests/responses/finished events;
+every CAND observes one. That establishes request sharing, not wire bytes or
+isolated compile duration. The freshly produced engines equal their respective
+historical `9d` engines listed above, but BASE and CAND code/data differ: 2,369 of
+7,723 indexed function-body hashes differ. Equal captured Rust/config inputs and
+absolute checkout paths expose a build-path confound, not the cause of every
+changed byte or elapsed delta. No isolated JavaScript timing causality, native,
+full-viewer appearance, pixels, full metadata or faithful-IFC claim follows.
+All 1,410 captured Rust files and Cargo/build configuration agree. The native
+Rust probe does not exercise the modified private TypeScript initialization
+path; no unrelated native optimization is used as evidence for this change.
+
+The first adapted audit stopped on a schema assumption: slot is encoded in sample
+id rather than a separate field. Its raw error is retained; the corrected audit
+checks exact ordered ids/families/pairs/kinds/arms. CLI/API monitoring timeouts are
+also preserved as download/status failures, not model refusals. No measurement
+rerun, replacement, trimming or normalization occurred.
 
 ## Verification and reproduction
 
@@ -157,3 +232,32 @@ witnesses, not independently regenerated output. Runner-terminated source/tool
 paths are producer receipts and cannot now be independently rehashed. The source,
 installed-tool and full-machine closure limitations remain as recorded; extraction
 adds no measurements or stronger fidelity claims.
+
+To reconstruct the final revision, which verifies all three containers and both
+unchanged prior manifests before resolving references:
+
+```sh
+python3 scripts/perf/evidence/bundled-wasm-init-6537/extract-final.py /tmp/bundled-init-final
+```
+
+`final-verification.json` records the actual 292-file roundtrip, including all 250
+uploaded artifact members. Inspect `final-021-sdk/` for raw captures and
+`independent-021-qualification/` for all original audit scripts, errors and results.
+An optional data/Git audit replay uses a repository containing the three pinned
+commits and a separate new output directory:
+
+```sh
+python3 scripts/perf/evidence/bundled-wasm-init-6537/replay-final-audit.py \
+  /tmp/bundled-init-final /path/to/ifc-lite /tmp/bundled-init-replayed-audit
+```
+
+The adapter preserves archived scripts, substituting only their exact input and
+repository path assignments in new copies. It compares complete regenerated gate,
+identity, diagnostic, statistic and closure results; only replay-local capture
+time and artifact directory metadata are excluded. This adapter was subsequently executed against a freshly reconstructed final
+revision and a separate worktree sharing the immutable Git objects. Both audits
+reproduced their complete 1,508 and 59,242 checks with zero findings;
+`final-root-replay-verification.json` retains that equality receipt. Only the
+replay-local timestamp and artifact-directory metadata are excluded from the
+comparison. Original audits and the verified extraction remain separate facts. No replay loads models,
+recreates the remote tool filesystem or adds a performance observation.

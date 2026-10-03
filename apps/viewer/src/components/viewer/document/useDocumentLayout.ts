@@ -50,10 +50,10 @@ export function useDocumentLayout(input: DocumentPdfInput, imageSizes: ReadonlyM
     });
     return () => { current = false; };
   }, [input, imageSizes]);
-  // Display only the current prepared source. Captured same-document reflow
-  // retention is the next reviewed layer; this partial stack remains unmerged.
-  const prepared = value?.input === input && value.imageSizes === imageSizes ? value : null;
-  const pending = prepared === null;
+  // Image-only reflow retains the same input and decoder nodes; captured
+  // ownership across input edits belongs to the next lifecycle layer.
+  const prepared = value?.input === input ? value : null;
+  const pending = prepared === null || prepared.imageSizes !== imageSizes;
   return { value: prepared, pending,
     error: error?.input === input && error.imageSizes === imageSizes ? error.message : null };
 }

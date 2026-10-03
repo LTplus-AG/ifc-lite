@@ -168,7 +168,9 @@ export function resolveWallEditChain(
     thickness: m(ydim),
     profileOriginPointId,
     extrudedSolidId: solidId,
-    height: m(height),
+    // Missing Depth retains the documented unavailable-height sentinel so
+    // endpoint edits can keep the previous mesh (#6232).
+    height: typeof depth === 'number' ? m(height) : NaN,
     lengthUnitScale,
   };
 }

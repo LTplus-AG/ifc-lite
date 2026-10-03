@@ -3,15 +3,21 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { setTimeout as pause } from 'node:timers/promises';
 import { available, quiet } from './sdk-resources.mjs';
+import { limits } from './sdk-plan.mjs';
 const report = { scope: 'Hosted Linux CPU sampler functional evidence only; no model or timing verdict',
-  status: 'started', capturedUTC: new Date().toISOString(), checks: [] };
+  status: 'started', capturedUTC: new Date().toISOString(), fixedDrainMs: limits.drainMs, checks: [] };
 const output = resolve('cpu-check.json');
 writeFileSync(output, JSON.stringify(report, null, 2), { flag: 'wx' });
 try {
   if (process.platform !== 'linux' || process.env.CI !== 'true') throw new Error('hosted Linux CI required');
   report.availableBytes = available();
-  for (let index = 0; index < 3; index++) report.checks.push(await quiet());
+  for (let index = 0; index < 3; index++) {
+    // Match the cohort's fixed drain; never retry or discard an observation.
+    await pause(limits.drainMs);
+    report.checks.push(await quiet());
+  }
   report.status = 'complete-three-sampler-controls';
 } catch (error) {
   report.status = 'refused'; report.reason = String(error);

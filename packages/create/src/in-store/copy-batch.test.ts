@@ -105,3 +105,30 @@ it('uses linear fit and polar full-turn semantics on copied real product placeme
   expect(arrayCopyTransforms({ mode: 'polar', count: 3, anchor: [0, 0], angleDegrees: -180 })!.at(-1)!.turn).toBe(-Math.PI);
   expect(() => arrayCopyTransforms({ mode: 'polar', count: 10002, anchor: [0, 0] })).toThrow(/at most/);
 });
+
+
+it('bounds pruned root fan-out rather than selected hosted children (#6753 review)', () => {
+  const ctx = createCopyContext(store, editor), selection = copiedProductsInStore(ctx, [1222]);
+  expect(selection).toHaveLength(3);
+  expect(copySourcesInStore(ctx, selection, 10000)).toEqual({ ids: [1222] });
+  expect(copySourcesInStore(ctx, selection, 10001)).toEqual({ refusal: 'A copy batch may contain at most 10000 product copies' });
+  const journal = structuredClone(view.getMutations()), next = view.peekNextExpressId();
+  // 5001 roots are admissible even though wall + two selected fillings would
+  // exceed the bound before pruning. Inject a late GUID fault at the actual
+  // writer to prove this batch reaches it, without allocating 5001 graphs.
+  expect(() => copyBatchInStore(store, editor, selection, Array.from({ length: 5001 }, () => ({})), {
+    duplicate: { guidRandom: () => { throw new Error('Reached bounded root writer'); } },
+  })).toThrow('Reached bounded root writer');
+  expect(view.getMutations()).toEqual(journal);
+  expect(view.peekNextExpressId()).toBe(next);
+  expect(editor.getNewEntities()).toEqual([]);
+});
+
+it('rejects unknown array modes and overflowing derived coordinates before copies (#6753 review)', () => {
+  const linear = { mode: 'linear' as const, count: 3, anchor: [0,0] as const, cursor: [1,0] as const, distance: 1e308 };
+  expect(() => arrayCopyTransforms(linear)).toThrow(/extent.*finite/);
+  expect(() => arrayCopyTransforms({ ...linear, count: 2, anchor: [-1e308,0], cursor: [1e308,0] })).toThrow(/direction.*finite/);
+  expect(() => arrayCopyTransforms({ ...linear, mode: 'unsupported' as 'linear' })).toThrow(/Unsupported array mode/);
+  expect(arrayCopyTransforms({ ...linear, fit: true })).toEqual([{ offset: [5e307,0,0] }, { offset: [1e308,0,0] }]);
+  expect(editor.getNewEntities()).toEqual([]);
+});

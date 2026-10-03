@@ -11,6 +11,7 @@
  */
 import '@/test/setup-dom.js';
 import '@/test/content-fixture.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -71,6 +72,7 @@ async function parsedModel(ifc = MINI_IFC): Promise<FederatedModel> {
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+  await documentPreviewReady();
 }
 
 const change = async (el: HTMLSelectElement | HTMLTextAreaElement | HTMLInputElement, value: string): Promise<void> => {
@@ -247,7 +249,8 @@ END-ISO-10303-21;`);
       return <output data-volume-total>{result?.total ?? 'missing'}</output>;
     }
     const ui = render(<Probe />);
-    await settle();
+    await waitFor(() => ui.querySelector('[data-volume-total]')?.textContent !== 'missing',
+      'actual document aggregation resolves without mounting a paper preview (#6731)');
     assert.equal(ui.querySelector('[data-volume-total]')?.textContent, '5');
   });
 

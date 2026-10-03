@@ -1,0 +1,38 @@
+[
+  {
+    "time": 138540.262,
+    "text": "[WebGPU] Device lost: A valid external Instance reference no longer exists. (E2E_FORCE_DEVICE_LOSS) (reason: unknown)"
+  },
+  {
+    "time": 138540.326,
+    "text": "[Renderer] GPU device lost \u2014 halting rendering until re-init: A valid external Instance reference no longer exists. (E2E_FORCE_DEVICE_LOSS)"
+  },
+  {
+    "time": 138540.411,
+    "text": "[Viewport] GPU device lost: unknown A valid external Instance reference no longer exists. (E2E_FORCE_DEVICE_LOSS)"
+  },
+  {
+    "time": 138798.16,
+    "text": "[WebGPU] requestDevice() rejected the request carrying requiredFeatures; retrying with the buffer limits alone (GPU timestamp queries unavailable): OperationError: A valid external Instance reference no longer exists. (E2E_FORCE_DEVICE_LOSS)"
+  },
+  {
+    "time": 138798.396,
+    "text": "[WebGPU] requestDevice() also rejected the limits-only request: OperationError: A valid external Instance reference no longer exists. (E2E_FORCE_DEVICE_LOSS)"
+  },
+  {
+    "time": 138798.572,
+    "text": "[Renderer] Device recovery failed during device restore: OperationError: A valid external Instance reference no longer exists. (E2E_FORCE_DEVICE_LOSS)"
+  },
+  {
+    "time": 139302.733,
+    "text": "[WebGPU] requestDevice() rejected the request carrying requiredFeatures; retrying with the buffer limits alone (GPU timestamp queries unavailable): OperationError: A valid external Instance reference no longer exists. (E2E_FORCE_DEVICE_LOSS)"
+  },
+  {
+    "time": 139302.933,
+    "text": "[WebGPU] requestDevice() also rejected the limits-only request: OperationError: A valid external Instance reference no longer exists. (E2E_FORCE_DEVICE_LOSS)"
+  },
+  {
+    "time": 139302.988,
+    "text": "[Renderer] Device recovery failed during device restore: OperationError: A valid external Instance reference no longer exists. (E2E_FORCE_DEVICE_LOSS)"
+  }
+]

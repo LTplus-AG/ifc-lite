@@ -1,0 +1,29 @@
+[
+  {
+    "time": 562424.964,
+    "text": "[WebGPU] Device lost: A valid external Instance reference no longer exists. (reason: unknown)"
+  },
+  {
+    "time": 562425.009,
+    "text": "[Renderer] GPU device lost \u2014 halting rendering until re-init: A valid external Instance reference no longer exists."
+  },
+  {
+    "time": 562426.282,
+    "text": "[useIfc] Geometry streaming complete: 1 batches, 47 meshes"
+  },
+  {
+    "time": 563436.805,
+    "text": "[ifc-lite] ortho-depth-nudge.ifc (0.0MB) \u2192 47 meshes, 1k verts in 1.6s"
+  },
+  {
+    "time": 563504.045,
+    "kind": "drawnHash",
+    "expressId": {
+      "n": 38
+    }
+  },
+  {
+    "time": 563648.14,
+    "text": "[WebGPU] Device lost: Device was destroyed. (reason: destroyed)"
+  }
+]

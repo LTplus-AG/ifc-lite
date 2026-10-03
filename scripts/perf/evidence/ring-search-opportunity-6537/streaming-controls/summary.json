@@ -1,0 +1,95 @@
+{
+  "scope": "Diagnostic adapter correctness and byte identity only; no elapsed time, browser-pool or physical peak verdict",
+  "parentHead": "a48ebccffc7ce9fb176a7d2e13d8c7dd3eb1c750",
+  "sourceFiles": {
+    "rust/processing/examples/opening_work_probe.rs": "af3d1a5c4d7e83d9f95b2e8b84de1751a4c5185393a29a3f8e36408cae226496",
+    "rust/geometry/src/csg/consolidate/ring_ops.rs": "37b1961d9fd7a8fc01e5a1a44eac6f1c5f0f74a43b0fce0708b431769add8038",
+    "rust/geometry/src/opening_perf_trace.rs": "cc00e245a598c3076d8c54d59dace906b06dfa9ef66d69edf67283b0c1b7a9f6"
+  },
+  "buildSourceInventory": "Same 1,413 path inventory as v2, hashes captured after each genuine build and unchanged after each fixture suite; no pre-feature-build full inventory was captured. Dirty parent source status retained, not relabelled as a committed tested head.",
+  "tests": {
+    "defaultAdapter": 5,
+    "featureAdapter": 5,
+    "strictDefaultWorkspaceClippy": "PASS",
+    "strictFeatureWorkspaceClippy": "PASS"
+  },
+  "featureComparison": {
+    "scope": "Correctness and output identity only; no timing or memory verdict",
+    "sourceInputsUnchanged": true,
+    "binaryUnchanged": true,
+    "rows": [
+      {
+        "name": "994",
+        "role": "instrumented",
+        "inputSha256": "1d1cd11c57d80fe4f769a05db49cf1a96973b1af6cbee2d75ef541cfa3cb8fa0",
+        "captureSha256": "083cbd77177427de2bacb9e489eb26473155f38452891bfd286b91704fa8c8fd",
+        "orderedFnv": "12dca779419b3126",
+        "reportAndCaptureBytesEqualToV2": true
+      },
+      {
+        "name": "house",
+        "role": "instrumented",
+        "inputSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+        "captureSha256": "afa8d65fe1e2d548780820989ae297da1bcedc5436d5d58b8a8ed0509618ba46",
+        "orderedFnv": "c4d504b83ff698ea",
+        "reportAndCaptureBytesEqualToV2": true
+      },
+      {
+        "name": "csg",
+        "role": "instrumented",
+        "inputSha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+        "captureSha256": "d74478b9aa858e04e4ccb443d321ef79438efd983b6d1274dc3876a8a95c1f04",
+        "orderedFnv": "ff42e1a3f7fcf540",
+        "reportAndCaptureBytesEqualToV2": true
+      },
+      {
+        "name": "holter",
+        "role": "instrumented",
+        "inputSha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+        "captureSha256": "0053a80ea673dd8e408be854db3a260075682269c636d63e43ed0cf965610835",
+        "orderedFnv": "52d69b2909024f56",
+        "reportAndCaptureBytesEqualToV2": true
+      }
+    ]
+  },
+  "ordinaryComparison": {
+    "scope": "Correctness and output identity only; no timing or memory verdict",
+    "sourceInputsUnchanged": true,
+    "binaryUnchanged": true,
+    "rows": [
+      {
+        "name": "994",
+        "role": "ordinary",
+        "inputSha256": "1d1cd11c57d80fe4f769a05db49cf1a96973b1af6cbee2d75ef541cfa3cb8fa0",
+        "captureSha256": "083cbd77177427de2bacb9e489eb26473155f38452891bfd286b91704fa8c8fd",
+        "orderedFnv": "12dca779419b3126",
+        "reportAndCaptureBytesEqualToV2": true
+      },
+      {
+        "name": "house",
+        "role": "ordinary",
+        "inputSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+        "captureSha256": "afa8d65fe1e2d548780820989ae297da1bcedc5436d5d58b8a8ed0509618ba46",
+        "orderedFnv": "c4d504b83ff698ea",
+        "reportAndCaptureBytesEqualToV2": true
+      },
+      {
+        "name": "csg",
+        "role": "ordinary",
+        "inputSha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+        "captureSha256": "d74478b9aa858e04e4ccb443d321ef79438efd983b6d1274dc3876a8a95c1f04",
+        "orderedFnv": "ff42e1a3f7fcf540",
+        "reportAndCaptureBytesEqualToV2": true
+      },
+      {
+        "name": "holter",
+        "role": "ordinary",
+        "inputSha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+        "captureSha256": "0053a80ea673dd8e408be854db3a260075682269c636d63e43ed0cf965610835",
+        "orderedFnv": "52d69b2909024f56",
+        "reportAndCaptureBytesEqualToV2": true
+      }
+    ]
+  },
+  "remainingMemoryBound": "Canonical ProcessingResult and one largest mesh Value remain resident. Metadata and transforms serialize separately. No memory-performance qualification."
+}

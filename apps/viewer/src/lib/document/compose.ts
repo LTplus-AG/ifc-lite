@@ -13,7 +13,7 @@
  * `compose.ts` so a document and a report share a frame.
  */
 import { chartFontScale, type ReportPageSetup } from '@ifc-lite/charts';
-import { FOOTER_HEIGHT, HEADER_HEIGHT, scaledPageHeight, zoomItem, scaledFrame } from './compose-scale.js';
+import { scaledPageHeight, zoomItem, scaledFrame } from './compose-scale.js';
 export { scaledPageHeight } from './compose-scale.js';
 import { BLOCK_GAP, documentChartLayout, documentImageHeight, pageFrameHeight, rowFitsFrame } from './compose-sizing.js';
 export { BLOCK_GAP, documentChartSizing, documentImageHeight, pageFrameHeight, rowFitsFrame } from './compose-sizing.js';
@@ -29,8 +29,10 @@ export { TEXT_STYLES, wrapText, truncateToWidth } from './compose-text.js';
 import type { ResolvedBindingSpan } from './bindings.js';
 import { splitDocumentSections } from './page-sections.js';
 
-import { resolvePageHeading, type PageHeading, type ResolvedPageHeading } from './page-heading.js';
+import { type PageHeading, type ResolvedPageHeading } from './page-heading.js';
 import { resolveEnglish } from '@/i18n/registry';
+import { composePageFrame, type PageFrameItem } from './compose-page-frame.js';
+import type { PageBand } from './page-band.js';
 import type { DocumentLabelFormatter } from './document-labels.js';
 
 const CHART_HEIGHT = CHART_BLOCK_HEIGHT_DEFAULT;
@@ -77,11 +79,16 @@ export interface DocumentLayout {
   footer: string;
   /** Already formatted counter text for each composed page. */
   pageCounters?: string[];
+  /** Resolved repeated frame items, shared verbatim by preview and PDF. */
+  pageFrames: PageFrameItem[][];
 }
 
 export interface ComposeDocumentInput {
   name: string;
   pageHeading?: PageHeading;
+  pageFooter?: PageBand;
+  logoAspects?: ReadonlyMap<string, number>;
+  stampedDate?: string;
   page: ReportPageSetup;
   blocks: ResolvedBlock[];
   generatedAt: string;
@@ -96,11 +103,11 @@ export const estimateTextWidth = (text: string, size: number, bold: boolean): nu
 /** A conservative, font-independent bound keeps preview/PDF pairing identical.
  * Standard PDF font glyphs fit within one em; this can choose full width early,
  * but never puts a two-column row through the footer for a wide glyph string. */
-export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'fontSize' | 'title' | keyof BlockHeaderStyleFields>, pageHeight: number, columnWidth: number, headingExtraHeight = 0): boolean {
+export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'fontSize' | 'title' | keyof BlockHeaderStyleFields>, pageHeight: number, columnWidth: number, headingExtraHeight = 0, printableHeight?: number): boolean {
   const style = TEXT_STYLES[block.style];
   const size = block.fontSize ?? style.size;
   const lines = wrapText(block.text, columnWidth, size, style.bold, (text, fontSize) => text.length * fontSize);
-  const frameHeight = pageFrameHeight(pageHeight, headingExtraHeight);
+  const frameHeight = printableHeight ?? pageFrameHeight(pageHeight, headingExtraHeight);
   return (blockTitle(block) ? BLOCK_TITLE_HEIGHT + blockTitleStyle(block).extra : 0) + style.gapBefore + lines.length * size * style.lineHeight <= frameHeight;
 }
 
@@ -108,10 +115,11 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
   const labels = input.labels ?? resolveEnglish;
   const size = pageBox(input.page);
   const contentW = size.w - 2 * REPORT_MARGIN;
-  const pageHeading = input.pageHeading ? resolvePageHeading(input.name, input.pageHeading, contentW, input.measure) : undefined;
+  const pageFrame = composePageFrame(input, size, labels);
+  const pageHeading = pageFrame.heading;
   const headingExtraHeight = pageHeading?.extraHeight ?? 0;
-  const top = REPORT_MARGIN + HEADER_HEIGHT + headingExtraHeight;
-  const bottom = size.h - REPORT_MARGIN - FOOTER_HEIGHT;
+  const { top, bottom } = pageFrame;
+  const printableHeight = bottom - top;
   const pages: DocumentPage[] = [];
   let page: DocumentPage = { index: 0, items: [], blockIds: [], emptyBlocks: [] };
   let y = top;
@@ -151,14 +159,16 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
   // box measured against different widths, so the size and position math is
   // computed once per block and the actual `y` (known only after a possible
   // page break) is applied last, through `draw`.
-  const layoutImage = (block: Extract<ResolvedBlock, { kind: 'image' }>, boxX: number, boxW: number, pageH = size.h): { height: number; draw: (y: number) => DrawnItem[] } => {
+  const layoutImage = (block: Extract<ResolvedBlock, { kind: 'image' }>, boxX: number, boxW: number, pageH = size.h, layoutScale = 1): { height: number; draw: (y: number) => DrawnItem[] } => {
     // The caption's own row must fit the page frame too, so it is reserved before the image height
     // is clamped (review finding: a tall image + caption could still clamp to the full frame, then
     // draw the caption past `bottom`, in the footer band).
     const title = blockTitle(block);
     const titleH = title ? BLOCK_TITLE_HEIGHT + blockTitleStyle(block).extra : 0;
     const captionH = block.caption ? 14 : 0;
-    const h = documentImageHeight(block, pageH, headingExtraHeight);
+    if (pageFrame.authoredBands && titleH + captionH > printableHeight / layoutScale) throw new Error(labels('document.print.bandFrameTooShort'));
+    const h = documentImageHeight(block, pageH, headingExtraHeight, pageFrame.authoredBands ? printableHeight / layoutScale : undefined);
+    if (pageFrame.authoredBands && h <= 0) throw new Error(labels('document.print.bandFrameTooShort'));
     const w = Math.min(boxW, h * block.aspect);
     const drawnH = w / block.aspect;
     const x = block.align === 'left' ? boxX : block.align === 'right' ? boxX + boxW - w : boxX + (boxW - w) / 2;
@@ -185,6 +195,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     // title strip and, when stacked, its snapshot — otherwise the SVG is clipped past the footer (review finding).
     const { height: chartHeight, sideBySide, stacked, snapshotHeight, totalHeight: totalH } = documentChartLayout({
       headingExtraHeight,
+      printableHeight: pageFrame.authoredBands ? printableHeight / layoutScale : undefined,
       requestedHeight: block.height ?? CHART_HEIGHT,
       pageHeight: pageH,
       boxWidth: boxW,
@@ -194,6 +205,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       layoutScale,
       titleExtraHeight: heading.extra,
     });
+    if (pageFrame.authoredBands && (chartHeight <= 0 || (stacked && snapshotHeight <= 0) || totalH > printableHeight / layoutScale + 1e-6)) throw new Error(labels('document.print.bandFrameTooShort'));
     const chartW = sideBySide ? Math.round(boxW * 0.6) - BLOCK_GAP / 2 : boxW;
     return {
       height: totalH,
@@ -208,7 +220,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
         const chartY = y + 32 * textScale + heading.extra;
         items.push({ kind: 'chart', blockId: block.id, x: boxX, y: chartY, w: chartW, h: chartHeight });
         if (sideBySide) items.push({ kind: 'snapshot', blockId: block.id, x: boxX + chartW + BLOCK_GAP, y: chartY, w: boxW - chartW - BLOCK_GAP, h: snapshotHeight });
-        else if (stacked) items.push({ kind: 'snapshot', blockId: block.id, x: boxX, y: chartY + chartHeight + BLOCK_GAP, w: boxW, h: snapshotHeight });
+        else if (stacked && snapshotHeight > 0) items.push({ kind: 'snapshot', blockId: block.id, x: boxX, y: chartY + chartHeight + BLOCK_GAP, w: boxW, h: snapshotHeight });
         return items;
       },
     };
@@ -223,7 +235,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     const pageH = scaledPageHeight(size.h, headingExtraHeight, scale);
     const lay = (x: number, w: number) => block.kind === 'text' ? textLayout(block, x, w)
       : block.kind === 'chart' ? layoutChart(block, x, w, pageH, scale)
-      : layoutImage(block, x, w, pageH);
+      : layoutImage(block, x, w, pageH, scale);
     if (scale === 1) return lay(boxX, boxW);
     const inner = lay(0, boxW / scale);
     return { height: inner.height * scale, draw: (y) => inner.draw(0).map((item) => zoomItem(item, scale, { x: (v) => boxX + v * scale, y: (v) => y + v * scale })) };
@@ -244,7 +256,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
         const textFits = (candidate: typeof block): boolean => {
           if (candidate.kind !== 'text') return true;
           const scale = blockScale(candidate);
-          return halfTextFitsPage(candidate, scaledPageHeight(size.h, headingExtraHeight, scale), colW / scale, headingExtraHeight);
+          return halfTextFitsPage(candidate, scaledPageHeight(size.h, headingExtraHeight, scale), colW / scale, headingExtraHeight, printableHeight / scale);
         };
         if (textFits(block) && textFits(next)) {
           const a = layoutPairable(block, REPORT_MARGIN, colW);
@@ -352,8 +364,9 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     }
   }
   pages.push(page);
+  for (const body of pages) pageFrame.assertBody(body.items);
 
   return { page: input.page, size, pages, header: input.name, ...(pageHeading ? { pageHeading } : {}),
-    footer: labels('document.print.footer', { timestamp: input.generatedAt }),
+    footer: pageFrame.footer, pageFrames: pageFrame.pages(pages.length),
     pageCounters: pages.map(page => labels('document.print.pageCounter', { page: page.index + 1, total: pages.length })) };
 }

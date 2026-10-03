@@ -3,6 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // Prospective, finite evidence protocol for #6537. No committed timing baseline.
+export const GRAPHICS_PROFILE = Object.freeze({
+  profile: 'hosted-chrome-swiftshader-vulkan-v1',
+  flags: Object.freeze(['--enable-gpu', '--enable-webgpu', '--enable-unsafe-webgpu',
+    '--use-angle=swiftshader', '--ignore-gpu-blocklist', '--use-vulkan=swiftshader',
+    '--use-webgpu-adapter=swiftshader', '--enable-features=CDPScreenshotNewSurface,Vulkan']),
+});
+export function requireGraphicsProfile(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.profile !== GRAPHICS_PROFILE.profile
+    || !Array.isArray(value.flags) || value.flags.length !== GRAPHICS_PROFILE.flags.length
+    || GRAPHICS_PROFILE.flags.some((flag, index) => value.flags[index] !== flag))
+    throw new Error('REFUSE: missing, unknown or changed fixed graphics profile');
+  return GRAPHICS_PROFILE;
+}
 export const FIXTURES = Object.freeze([
   { family: 'house', path: 'ara3d/AC20-FZK-Haus.ifc', timeoutMs: 180_000 },
   { family: 'csg', path: 'ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc', timeoutMs: 300_000 },
@@ -40,6 +53,7 @@ export function schedule() {
 
 export function requireIdentityPair(a, b) {
   for (const row of [a, b]) {
+    requireGraphicsProfile(row.graphics);
     if (row.status !== 'complete' || !row.identity?.complete) {
       throw new Error(`REFUSE: incomplete sample ${row.id}`);
     }

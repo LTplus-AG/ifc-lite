@@ -27,6 +27,26 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+### Prospective hosted viewer graphics profile (#6537)
+
+The paired hosted viewer comparator now requests the fixed
+`hosted-chrome-swiftshader-vulkan-v1` profile on both arms. It preserves the
+existing GPU/WebGPU/ANGLE flags and adds explicit SwiftShader Vulkan, the
+SwiftShader WebGPU adapter, and `CDPScreenshotNewSurface,Vulkan`. Each sample,
+including refusals, records the requested profile and exact flags. Pair policy
+refuses missing, unknown or different declarations; the schedule, cold upload
+boundary, full readiness checks and source/output identity guards are unchanged.
+
+Standalone graphics control [37144781861](https://github.com/LTplus-AG/ifc-lite/actions/runs/37144781861)
+observed matching red/blue GPU readback and screenshot pixels with this profile
+on Chrome 154, without recorded device/backend errors. Its original profile
+timed out during setup before creating the canvas context; that is not proof of
+the SharedImage failure's cause. The control qualifies only its graphics
+environment, not IFC/viewer readiness, output fidelity or performance. New
+viewer comparisons must establish those results prospectively. Previous refused
+receipts retain their original profile and verdict and cannot be pooled with
+this environment. Production viewer launch settings are unchanged.
+
 ## Direct vertex packing: do not ship the current candidate (#6537)
 
 The candidate removes an intermediate vertex buffer for eligible quantized

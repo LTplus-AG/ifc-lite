@@ -1,7 +1,9 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import type { IdentityLimits, SampleConfig, SampleResult } from './interleaved-types.js';
+import type { GraphicsProfile, IdentityLimits, SampleConfig, SampleResult } from './interleaved-types.js';
+export const GRAPHICS_PROFILE: Readonly<GraphicsProfile>;
+export function requireGraphicsProfile(value: unknown): Readonly<GraphicsProfile>;
 export const LIMITS: Readonly<IdentityLimits>;
 export const FIXTURES: ReadonlyArray<{ family: string; path: string; timeoutMs: number }>;
 export function immutableRef(value: unknown): string;

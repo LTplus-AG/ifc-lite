@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { ViewerBenchmarkPage } from '../../tests/benchmark/viewer-benchmark-page.js';
 import { captureIdentity } from './interleaved-identity.mjs';
-import { LIMITS, immutableRef, FIXTURES } from './interleaved-plan.mjs';
+import { LIMITS, immutableRef, FIXTURES, requireGraphicsProfile } from './interleaved-plan.mjs';
 import type { SampleConfig, SampleResult } from './interleaved-types.js';
 import { isAbsolute } from 'node:path';
 import { boundedDiagnostic, diagnosticEvent, frozenBeforeTeardown, passiveRendererWitness,
@@ -45,7 +45,8 @@ function sampleConfig(value: unknown): SampleConfig {
   const host = fields.hostBefore;
   if (!host || typeof host !== 'object' || !('loadavg' in host) || typeof host.loadavg !== 'string') throw new Error('REFUSE: missing host receipt');
   return { arm, kind, family, path, timeoutMs, pair, slot, id, file, origin,
-    revision: immutableRef(fields.revision), defaultWasmPaths, hostBefore: { loadavg: host.loadavg } };
+    revision: immutableRef(fields.revision), defaultWasmPaths, hostBefore: { loadavg: host.loadavg },
+    graphics: requireGraphicsProfile(fields.graphics) };
 }
 const input: unknown = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const sample = sampleConfig(input);
@@ -61,9 +62,7 @@ let page: Page | undefined;
 let passiveObservation: Promise<void> | undefined;
 let identityTimer: ReturnType<typeof setTimeout> | undefined;
 try {
-  browser = await chromium.launch({ channel: 'chrome', headless: true, args: [
-    '--enable-gpu', '--enable-webgpu', '--enable-unsafe-webgpu', '--use-angle=swiftshader', '--ignore-gpu-blocklist',
-  ] });
+  browser = await chromium.launch({ channel: 'chrome', headless: true, args: [...sample.graphics.flags] });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
   page = await context.newPage();
   page.on('console', message => {
@@ -108,7 +107,7 @@ try {
   const workerCount = poolStarts.length === 1 ? Number(poolStarts[0]![1]) : null;
   row.metrics = metrics;
   row.runtime = { ...runtime, browserVersion: browser.version(), workerIds, workerCount,
-    renderer: 'headless Chrome SwiftShader', workerPool: 'unmodified default',
+    renderer: 'headless Chrome; requested SwiftShader/Vulkan profile', workerPool: 'unmodified default',
     shardedLogs: readyLogs.filter(line => /shard|shared|SAB|pre.?pass|worker.*(?:count|pool)/i.test(line)) };
   writeAtomicEvidence(output, JSON.stringify(row, null, 2));
   if (!metrics.streamCompleteMs || !metrics.metadataCompleteMs || errors.length || !workerCount || workerIds.length !== workerCount) {

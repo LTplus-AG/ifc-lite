@@ -5,7 +5,7 @@
 import { spawn } from 'node:child_process';
 import { readdirSync, readFileSync, writeFileSync, appendFileSync, createWriteStream } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { LIMITS, FIXTURES, schedule, requireIdentityPair, describeFamily } from './interleaved-plan.mjs';
+import { LIMITS, FIXTURES, GRAPHICS_PROFILE, schedule, requireIdentityPair, describeFamily } from './interleaved-plan.mjs';
 import { inventory, fileHash } from './interleaved-assets.mjs';
 import { serveFrozen } from './interleaved-server.mjs';
 import { processIdentity, finishLog, stopWitnessedProcesses } from './interleaved-cleanup.mjs';
@@ -55,7 +55,7 @@ function killOwnedGroup(child) {
 
 async function oneSample(sample) {
   const path = join(output, `${sample.id}.json`), configPath = join(output, `${sample.id}.input.json`);
-  const config = { ...sample, file: provenance.fixtures.find(fixture => fixture.path === sample.path).file,
+  const config = { ...sample, graphics: GRAPHICS_PROFILE, file: provenance.fixtures.find(fixture => fixture.path === sample.path).file,
     origin: servers[sample.arm].origin, revision: provenance.builds[sample.arm].revision,
     defaultWasmPaths: provenance.builds[sample.arm].viewer.filter(asset => asset.sha256 === provenance.builds[sample.arm].wasmSha256).map(asset => `/${asset.path}`),
     hostBefore: { loadavg: readFileSync('/proc/loadavg', 'utf8').trim() } };

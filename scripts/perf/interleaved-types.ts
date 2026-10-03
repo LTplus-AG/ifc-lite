@@ -4,6 +4,9 @@
 import type { ViewerBenchmarkMetrics } from '../../tests/benchmark/viewer-benchmark-page.js';
 import type { DiagnosticEvent } from './interleaved-diagnostics.js';
 
+export interface GraphicsProfile {
+  readonly profile: string; readonly flags: readonly string[];
+}
 export interface IdentityLimits {
   cohortMs: number; teardownMs: number; identityMs: number; sampledTreeRssBytes: number;
   rssIntervalMs: number; digestBytes: number; oneBufferBytes: number; records: number; aaNoisePercent: number;
@@ -20,6 +23,7 @@ export interface SampleConfig {
   id: string; family: string; path: string; kind: 'AA' | 'AB'; pair: number; slot: number;
   arm: 'base' | 'candidate'; timeoutMs: number; file: string; origin: string; revision: string;
   defaultWasmPaths: string[]; hostBefore: { loadavg: string };
+  graphics: GraphicsProfile;
 }
 export interface SampleResult extends SampleConfig {
   status: 'started' | 'complete' | 'refused'; startedAt: string; readyAtMs?: number; finishedAt?: string;

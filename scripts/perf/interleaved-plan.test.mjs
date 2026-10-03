@@ -3,9 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { schedule, immutableRef, requireIdentityPair, describeFamily } from './interleaved-plan.mjs';
+import { schedule, immutableRef, requireIdentityPair, describeFamily, GRAPHICS_PROFILE, requireGraphicsProfile } from './interleaved-plan.mjs';
 
 const row = sample => ({ ...sample, status: 'complete', identity: { complete: true, sha256: 'same' },
+  graphics: { profile: GRAPHICS_PROFILE.profile, flags: [...GRAPHICS_PROFILE.flags] },
   runtime: { hardwareConcurrency: 4, crossOriginIsolated: true, sharedArrayBuffer: true,
     browserVersion: 'fixed', workerCount: 4, workerIds: [0, 1, 2, 3] },
   metrics: { metadataRenderReadyMs: sample.arm === 'candidate' ? 90 : 100 } });
@@ -63,4 +64,19 @@ test('#6737 missing or nonfinite phase values cannot fabricate paired improvemen
       ? { ...sample, metrics: { ...sample.metrics, dataModelParseMs: value } } : sample);
     assert.deepEqual(describeFamily(rows).dataModelParseMs, { available: false }, `${arm} invalid phase: ${value}`);
   }
+});
+test('#6537 paired samples require the same fixed declared graphics profile and exact flag array', () => {
+  const [a, b] = schedule().slice(0, 2).map(row);
+  requireIdentityPair(a, b);
+  for (const graphics of [undefined, null, {}, { ...a.graphics, profile: 'original' },
+    { ...a.graphics, flags: new Array(a.graphics.flags.length) },
+    { ...a.graphics, flags: a.graphics.flags.slice(0, -1) },
+    { ...a.graphics, flags: [...a.graphics.flags, '--enable-automation'] },
+    { ...a.graphics, flags: a.graphics.flags.toReversed() },
+    { ...a.graphics, flags: a.graphics.flags.map(flag => flag === '--use-vulkan=swiftshader' ? '--use-vulkan=native' : flag) }]) {
+    assert.throws(() => requireIdentityPair(a, { ...b, graphics }), /graphics profile/);
+    assert.throws(() => requireIdentityPair({ ...a, graphics }, { ...b, graphics }), /graphics profile/);
+  }
+  assert.deepEqual(requireGraphicsProfile(JSON.parse(JSON.stringify(a.graphics))), GRAPHICS_PROFILE);
+  assert.throws(() => GRAPHICS_PROFILE.flags.push('--disable-webgpu-validation'), TypeError);
 });

@@ -1763,6 +1763,10 @@ The existing prepass can publish the exact full-byte source key through a fresh 
 
 Source-session reuse, binding-owned index adoption and direct transfer of already-owned mesh getter arrays preserve byte-taking compatibility and source-replacement resets. The standalone own-layer native subset was slower in full-load timing, while Holter's measured peak memory fell; the cause remains unestablished and favorable memory does not waive the timing concern. The intended integrated merge parent differs from that standalone comparison, and its proposed comparison remains unrun; results with different parents must not be pooled. Combined native/browser results do not isolate a gain for this layer, and invalid Firefox cohorts provide no throughput evidence. Real WASM contracts verify returned buffers survive handle free, memory growth and transfer, including textures. Establish ownership at the binding: a JavaScript view does not remove the WASM input copy, and borrowed WASM-memory views must not be transferred as owned output.
 
+### Remaining sharded prepass column adoption (#6537)
+
+Prototype, qualification pending. Both sharded prepass bindings still clone the numeric columns already copied into WASM by the ABI; geometry-worker index installation already adopts them under #3989. Discover jobs and support spans in original file order before adopting those columns into the existing index. Keep class alignment, every discovery occurrence and last-occurrence lookup precedence. This changes ownership, with no new index representation or producer. On unsorted input, moving index construction after discovery overlaps existing sort transients with discovered jobs/spans; removing a clone alone does not establish lower peak memory or faster end-to-end loading. Require real-WASM boundary controls, paired full worker-pool output identity and end-to-end measurements before a verdict.
+
 ### Standing constraints
 - Geometry is **client-side only** (no server meshing).
 - One mesh home: `produce_element_meshes` - a fix in one pipeline diverges the other.

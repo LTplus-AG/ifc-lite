@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import '@/test/content-fixture.js';
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,6 +19,7 @@ import { DocumentPanel } from './DocumentPanel.js';
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+  await documentPreviewReady();
 }
 
 describe('Document text colours (#6492)', () => {
@@ -29,7 +31,7 @@ describe('Document text colours (#6492)', () => {
         version: DOCUMENT_VERSION, id: 'doc-6492', name: 'Colour report',
         page: { size: 'A4', orientation: 'portrait' },
         blocks: [
-          { kind: 'text', id: 'colour', style: 'caption', text: width === 'full' ? ['Authored ink', ...Array.from({ length: 199 }, (_, i) => `Line ${i}`)].join('\n') : 'Authored ink', width },
+          { kind: 'text', id: 'colour', title: 'Coordination', style: 'caption', text: width === 'full' ? ['Authored ink', ...Array.from({ length: 199 }, (_, i) => `Line ${i}`)].join('\n') : 'Authored ink', width },
           { kind: 'text', id: 'default', style: 'body', text: 'Default ink', width },
         ],
       };
@@ -63,7 +65,13 @@ describe('Document text colours (#6492)', () => {
       const preview = ui.querySelector<HTMLElement>('[data-preview-block="colour"] [data-block-text]');
       assert.ok(preview);
       assert.equal(window.getComputedStyle(preview).color, '#1264c8');
-      assert.equal(window.getComputedStyle(preview).backgroundColor, '#f1c35a');
+      assert.equal(preview.style.backgroundColor, '', '#6731: only composed body-line rectangles carry the fill; the title wrapper stays transparent');
+      const fillsInPreview = Array.from(ui.querySelectorAll<HTMLElement>('[data-preview-block="colour"] [data-composed-fill="text-background"]'));
+      assert.equal(fillsInPreview.length, width === 'full' ? 200 : 1);
+      assert.ok(fillsInPreview.every(fill => fill.style.backgroundColor === '#f1c35a'));
+      const heading = Array.from(preview.querySelectorAll('span')).find(span => span.textContent?.trim() === 'Coordination');
+      assert.ok(heading);
+      assert.ok(parseFloat(fillsInPreview[0].style.top) > parseFloat(heading.style.top), 'body fill starts below the title glyph');
       const saved = (await loadDocuments()).find((document) => document.id === spec.id);
       assert.ok(saved);
       const imported = parseDocumentFile(JSON.stringify(saved));
@@ -99,8 +107,10 @@ describe('Document text colours (#6492)', () => {
       assert.ok(resetText && resetBackground);
       click(resetText); click(resetBackground);
       await settle();
-      assert.equal(preview.style.color, '');
-      assert.equal(preview.style.backgroundColor, '');
+      const resetPreview = ui.querySelector<HTMLElement>('[data-preview-block="colour"] [data-block-text]');
+      assert.ok(resetPreview, 'the recomposed current page remains visible after resetting colours');
+      assert.equal(resetPreview.style.color, '');
+      assert.equal(ui.querySelectorAll('[data-preview-block="colour"] [data-composed-fill="text-background"]').length, 0, '#6731: reset removes every painted body rectangle from the current preview');
       assert.equal(textColor.value, '#828282');
       const reset = (await loadDocuments()).find((document) => document.id === spec.id)?.blocks[0];
       assert.ok(reset?.kind === 'text');

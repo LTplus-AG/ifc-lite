@@ -12,6 +12,7 @@ import { once } from 'node:events';
 import { execute } from './native-hosted-process.mjs';
 import { cargoArgs, freshnessLog } from './native-hosted-plan.mjs';
 import { repositoryNightlyChannel } from './native-hosted-prepare.mjs';
+import { nativeFileIdentity, sameNativeFile } from './native-file-identity.mjs';
 
 const output = resolve(process.env.NATIVE_STARTUP_CONTROL_OUTPUT ?? 'native-results/startup-control');
 mkdirSync(output, { recursive: true });
@@ -40,7 +41,10 @@ try {
     }
     assert.equal(realpathSync(report.shim), tools.rustup, 'actual Cargo shim must be the frozen rustup executable');
     tools.toolchain = basename(dirname(dirname(tools.rustc)));
+    tools.rustupFileIdentity = nativeFileIdentity(tools.rustup);
     report.tools = tools;
+    report.frozenRustup = { path: tools.rustup, fileIdentity: tools.rustupFileIdentity,
+      sha256: hash(readFileSync(tools.rustup)) };
     sandbox = realpathSync(mkdtempSync(join(tmpdir(), 'ifc-native-startup-')));
     mkdirSync(join(sandbox, 'scripts/perf'), { recursive: true }); mkdirSync(join(sandbox, 'examples'));
     const probe = readFileSync(new URL('./probe.sh', import.meta.url));
@@ -61,7 +65,11 @@ try {
     let lockError = ''; holder.stderr.on('data', data => { lockError += data.toString(); });
     await new Promise((accept, reject) => {
       const timer = setTimeout(() => reject(new Error('owned lock readiness deadline')), 5000);
-      holder.stdout.once('data', data => { clearTimeout(timer); data.toString().trim() === 'locked' ? accept() : reject(new Error('lock readiness refused')); });
+      holder.stdout.once('data', data => {
+        clearTimeout(timer);
+        if (data.toString().trim() === 'locked') accept();
+        else reject(new Error('lock readiness refused'));
+      });
       holder.once('error', error => { clearTimeout(timer); reject(error); });
       holder.once('close', code => { clearTimeout(timer); if (code !== 0) reject(new Error(`lock holder ${code}: ${lockError}`)); });
     });
@@ -69,8 +77,10 @@ try {
     report.sample = await execute(['bash', 'scripts/perf/probe.sh', 'startup-control', '--iters', '5', '--json', '--fingerprint'],
       sandbox, join(output, 'sample'), { sample: true, tools, wallMs: 15000 });
     save();
-    const [lockExit] = await holderClosed; assert.equal(lockExit, 0, lockError);
+    const [lockExit, lockSignal] = await holderClosed;
+    report.lockHolderExit = { code: lockExit, signal: lockSignal, stderr: lockError }; save();
     assert.equal(report.sample.status, 'complete', report.sample.reason);
+    assert.equal(lockExit, 0, lockError);
     assert.ok(report.sample.cargoExceptions.length > 0, 'real Cargo freshness process must actually be observed and admitted');
     freshnessLog(readFileSync(report.sample.paths.stderr, 'utf8'));
     assert.equal(readFileSync(report.sample.paths.stdout, 'utf8'), 'canonical startup control executed\n');
@@ -80,7 +90,22 @@ try {
   report.status = 'refused'; report.reason = String(error); process.exitCode = 1;
 } finally {
   if (holder && holder.exitCode === null && holder.signalCode === null) holder.kill('SIGKILL');
-  if (holderClosed) await holderClosed;
+  if (holderClosed) {
+    const [code, signal] = await holderClosed;
+    report.lockHolderExit = { ...report.lockHolderExit, code, signal };
+  }
+  if (report.frozenRustup) {
+    try {
+      const actual = { fileIdentity: nativeFileIdentity(report.frozenRustup.path),
+        sha256: hash(readFileSync(report.frozenRustup.path)) };
+      assert.ok(sameNativeFile(actual.fileIdentity, report.frozenRustup.fileIdentity), 'frozen rustup file identity changed');
+      assert.equal(actual.sha256, report.frozenRustup.sha256, 'frozen rustup executable bytes changed');
+      report.frozenRustupFinalVerification = { status: 'complete', ...actual };
+    } catch (error) {
+      report.frozenRustupFinalVerification = { status: 'refused', reason: String(error) };
+      if (report.status !== 'refused') { report.status = 'refused'; report.reason = String(error); process.exitCode = 1; }
+    }
+  }
   if (sandbox) rmSync(sandbox, { recursive: true, force: true });
   report.ownedTemporaryCrateRemoved = Boolean(sandbox); save();
   console.log(JSON.stringify({ status: report.status, reason: report.reason, output }));

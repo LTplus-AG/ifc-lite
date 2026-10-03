@@ -9,11 +9,15 @@ import { sourceSnapshot, verifySource } from './sdk-prepare.mjs';
 import { execute } from './native-hosted-process.mjs';
 import { revisions, inputs, methodPaths, cargoArgs, limits, validateRefs, schedule } from './native-hosted-plan.mjs';
 import { available } from './sdk-resources.mjs';
+import { nativeFileIdentity, sameNativeFile } from './native-file-identity.mjs';
 export const root = resolve(import.meta.dirname, '../..'), output = join(root, 'native-results');
 const command = (program, args, directory = root) => execFileSync(program, args, { cwd: directory, encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 ** 2 }).trim();
 export async function verify(provenance) {
   for (const source of provenance.sources) await verifySource(source);
   for (const [path, hash] of Object.entries(provenance.files)) if (await fileHash(path) !== hash) throw new Error(`native frozen file changed: ${path}`);
+  if (!sameNativeFile(nativeFileIdentity(provenance.tools.rustup), provenance.tools.rustupFileIdentity)) {
+    throw new Error('native frozen rustup file identity changed');
+  }
 }
 async function libraries(path, files) {
   const observation = spawnSync('ldd', [path], { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 ** 2 });
@@ -39,6 +43,7 @@ async function toolFreeze() {
     files[path] = await fileHash(path);
     linkedLibraries[name] = await libraries(path, files);
   }
+  tools.rustupFileIdentity = nativeFileIdentity(tools.rustup);
   const sysroot = realpathSync(command(tools.rustc, ['--print', 'sysroot'])); let count = 0;
   const walk = async (directory, depth = 0) => {
     if (depth > 32) throw new Error('native sysroot depth bound');

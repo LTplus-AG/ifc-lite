@@ -8,6 +8,7 @@ import { fileHash } from './interleaved-assets.mjs';
 import { processIdentity, finishLog, stopWitnessedProcesses } from './interleaved-cleanup.mjs';
 import { available, ownedSnapshot, processObservation } from './sdk-resources.mjs';
 import { cargoArgs, freshnessException, freshnessPredicates, refreshedCargoWitness, limits } from './native-hosted-plan.mjs';
+import { nativeFileIdentity } from './native-file-identity.mjs';
 export function compilerEnvironment(environment, tools) {
   if (!tools) return environment;
   if (![tools.cargo, tools.rustc, tools.rustdoc].every(path => typeof path === 'string' && isAbsolute(path))
@@ -18,6 +19,17 @@ export function compilerEnvironment(environment, tools) {
   }
   return { ...environment, RUSTC: tools.rustc, RUSTDOC: tools.rustdoc, RUSTUP_TOOLCHAIN: tools.toolchain };
 }
+function nativeRecord(name, identity, observed) {
+  const record = { ...identity, ...observed, cwd: readlinkSync(`/proc/${name}/cwd`) };
+  if (observed.executableObserved) {
+    try { record.executableFileIdentity = nativeFileIdentity(`/proc/${name}/exe`); }
+    catch (error) {
+      if (!['EACCES', 'EPERM'].includes(error.code)) throw error;
+      record.executableFileIdentityError = error.code;
+    }
+  }
+  return record;
+}
 function graphScan(witnesses, expected) {
   const exceptions = [], permissionFallbacks = [], witnessRefreshes = []; let freshSnapshot;
   for (const name of readdirSync('/proc').filter(value => /^\d+$/.test(value))) {
@@ -27,11 +39,11 @@ function graphScan(witnesses, expected) {
       if (!observed.executableObserved) permissionFallbacks.push({ pid: observed.pid, executableObserved: false, executableAccessError: observed.executableAccessError });
       if (!classification) continue;
       const identity = processIdentity(name); if (!identity) continue;
-      const record = { ...identity, ...observed, cwd: readlinkSync(`/proc/${name}/cwd`) };
+      const record = nativeRecord(name, identity, observed);
       if (!witnesses.has(record.pid) && freshnessException(record, record, expected)) {
         freshSnapshot ??= ownedSnapshot(process.pid); // At most one bounded fresh own-ancestry census per scan.
         const currentObserved = processObservation(name), currentIdentity = processIdentity(name);
-        const current = currentObserved && currentIdentity ? { ...currentIdentity, ...currentObserved, cwd: readlinkSync(`/proc/${name}/cwd`) } : null;
+        const current = currentObserved && currentIdentity ? nativeRecord(name, currentIdentity, currentObserved) : null;
         const refreshed = refreshedCargoWitness(record, expected, freshSnapshot, current);
         if (refreshed) {
           witnesses.set(refreshed.pid, refreshed);
@@ -47,7 +59,9 @@ function graphScan(witnesses, expected) {
         error.freshnessRefusal = details;
         throw error;
       }
-      exceptions.push({ ...identity, classification, executable: record.executable, executableObserved: true, cwd: record.cwd });
+      exceptions.push({ ...record, expectedRustupPath: expected.rustup,
+        expectedRustupFileIdentity: expected.rustupFileIdentity,
+        admission: [expected.cargo, expected.rustup].includes(record.executable) ? 'exact-path' : 'frozen-rustup-file-identity' });
     } catch (error) { if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error; }
   }
   return { exceptions, permissionFallbacks, witnessRefreshes };

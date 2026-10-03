@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { isDeepStrictEqual } from 'node:util';
 import { fixtures, limits } from './sdk-plan.mjs';
+import { sameNativeFile } from './native-file-identity.mjs';
 export { limits };
 export const revisions = Object.freeze({ base: '0a16f532ceb8f177d02ee29f4645e6f048fbace5', candidate: '07bdf45b5d470413d3796b3189d588a91a09a0d6' });
 export const families = ['house', 'csg', 'heavy-csg'];
@@ -52,7 +53,8 @@ export function freshnessPredicates(record, witness, expected) {
     sameStartTime: Boolean(witness && record.startTime === witness.startTime),
     ownGroup: record.pgrp === expected.group,
     sourceCwd: record.cwd === expected.directory,
-    frozenExecutable: [expected.cargo, expected.rustup].includes(record.executable),
+    frozenExecutable: [expected.cargo, expected.rustup].includes(record.executable)
+      || sameNativeFile(record.executableFileIdentity, expected.rustupFileIdentity),
     cargoArgv0: record.argv[0]?.split('/').at(-1) === 'cargo',
     exactBuildArgs: isDeepStrictEqual(record.argv.slice(1), cargoArgs),
   };

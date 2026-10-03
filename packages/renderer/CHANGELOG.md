@@ -1,5 +1,21 @@
 # @ifc-lite/renderer
 
+## 6.1.0
+
+### Minor Changes
+
+- [#6658](https://github.com/LTplus-AG/ifc-lite/pull/6658) [`b235d3a`](https://github.com/LTplus-AG/ifc-lite/commit/b235d3a96e7ec87ff3b8ce74f9707f2bb3f303c9) Thanks [@hughevans](https://github.com/hughevans)! - Add `Renderer.setMaxPixelRatio(ratio)`, which caps the drawing buffer's device-pixel ratio below the default of 2. Since the drawing buffer follows the display's device pixels, a large viewport on a 2x screen fills four times the pixels it did at CSS resolution, and on a large model that fill is what limits the frame rate. An app can now choose CSS resolution, or anything between, for the frame rate. A non-finite or non-positive ratio falls back to the default.
+
+### Patch Changes
+
+- [#6734](https://github.com/LTplus-AG/ifc-lite/pull/6734) [`a0fe0e6`](https://github.com/LTplus-AG/ifc-lite/commit/a0fe0e684b07b213ab22b72461cedeacccc7edf3) Thanks [@louistrue](https://github.com/louistrue)! - Orthographic views no longer draw surfaces more than 2.5 cm behind a face in front of it. The per-entity anti-z-fighting depth nudge scaled with depth across the whole scene range, moving surfaces by decimetres on large sites. In orthographic projection it is now bounded to 2.5 cm and never moves a vertex across the near or far plane, and annotation lines and text are lifted above it. On kilometre-scale sites a few coplanar faces whose entities rank close together can swap at grazing angles; ordinary sites rank coplanar faces as before. Perspective rendering is unchanged.
+
+- [#6664](https://github.com/LTplus-AG/ifc-lite/pull/6664) [`b82c290`](https://github.com/LTplus-AG/ifc-lite/commit/b82c29053df5d0f48b514cf2fa6e3682b9b896db) Thanks [@hughevans](https://github.com/hughevans)! - X-Ray context ghosts (`ghostExceptIds`) draw with a lighter fragment stage. A ghost keeps the main shader's discards, flat face normal and diffuse light rig, and skips the specular term, cast shadows, the selection tint and the entity colour override, none of which show at the ghost alpha. Blended geometry gets no hidden-surface removal, so every ghosted layer under a pixel paid for that shading: on a large architectural model, orbiting with one storey solid and the rest ghosted drops from about 70 ms to about 15 ms a frame. Transparency overrides, selected and excepted ids, and natively translucent materials keep the full shader. The ghost pipeline is built on first use and validated asynchronously; until it lands, or if it fails, ghosts draw as before.
+
+- [#6659](https://github.com/LTplus-AG/ifc-lite/pull/6659) [`3f83b6f`](https://github.com/LTplus-AG/ifc-lite/commit/3f83b6f39e4348b0c8ead0544f94d18be8e63e06) Thanks [@hughevans](https://github.com/hughevans)! - Camera inertia runs on the `deltaTime` passed to `Camera.update` instead of on frames. The inertia loop spent and damped each channel once per frame, so the same drag coasted further on a slow frame and stopped sooner on a 120 Hz display: a half-second orbit coasted half as far at 120 Hz and about 1.5 times as far at 30 fps as at 60 Hz. A 60 Hz tick behaves exactly as before. A missing or malformed `deltaTime` counts as one 60 Hz frame, and a tick after a stall spends at most 100 ms of coast.
+- Updated dependencies [[`04e8c67`](https://github.com/LTplus-AG/ifc-lite/commit/04e8c6752778a444628507478b381ad920979fa6)]:
+  - @ifc-lite/geometry@7.7.1
+
 ## 6.0.1
 
 ### Patch Changes

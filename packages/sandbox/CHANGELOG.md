@@ -1,5 +1,17 @@
 # @ifc-lite/sandbox
 
+## 2.11.0
+
+### Minor Changes
+
+- [#6645](https://github.com/LTplus-AG/ifc-lite/pull/6645) [`09745f0`](https://github.com/LTplus-AG/ifc-lite/commit/09745f0f3bb99ac07802ae061f13df92e865683f) Thanks [@louistrue](https://github.com/louistrue)! - Add shared semantic datasets, profile validation, read-only SPARQL providers, portable workspaces and model revision identity strategies. Expose the canonical capability-gated network implementation through a lightweight sandbox/network entry point.
+
+### Patch Changes
+
+- [#6676](https://github.com/LTplus-AG/ifc-lite/pull/6676) [`29e1088`](https://github.com/LTplus-AG/ifc-lite/commit/29e1088dda6777f7086bd122208ce7bda8db1d89) Thanks [@louistrue](https://github.com/louistrue)! - Expose canonical parameterised column, beam and member sections and column RefDirection in SDK types; preserve rectangular interfaces and existing runtime validation.
+- Updated dependencies [[`3f681d9`](https://github.com/LTplus-AG/ifc-lite/commit/3f681d952dc2bae1dc715210354cf2705b1edac0), [`b4899b0`](https://github.com/LTplus-AG/ifc-lite/commit/b4899b017f037ad629ee2b8a5fa34cdf56e8af72), [`7d33d8c`](https://github.com/LTplus-AG/ifc-lite/commit/7d33d8cd6917c6a0df5d1b3e6aca741e554c8ba7), [`09745f0`](https://github.com/LTplus-AG/ifc-lite/commit/09745f0f3bb99ac07802ae061f13df92e865683f), [`29e1088`](https://github.com/LTplus-AG/ifc-lite/commit/29e1088dda6777f7086bd122208ce7bda8db1d89), [`8a0a03a`](https://github.com/LTplus-AG/ifc-lite/commit/8a0a03a4f9e4ca9cfae457493f0eb50268052ecb)]:
+  - @ifc-lite/sdk@9.1.0
+
 ## 2.10.0
 
 ### Minor Changes

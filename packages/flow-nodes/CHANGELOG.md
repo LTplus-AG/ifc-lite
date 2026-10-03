@@ -1,5 +1,18 @@
 # @ifc-lite/flow-nodes
 
+## 0.7.0
+
+### Minor Changes
+
+- [#6710](https://github.com/LTplus-AG/ifc-lite/pull/6710) [`8a0a03a`](https://github.com/LTplus-AG/ifc-lite/commit/8a0a03a4f9e4ca9cfae457493f0eb50268052ecb) Thanks [@louistrue](https://github.com/louistrue)! - Add optional SDK and loaded-model MCP stair and railing authoring, with atomic tracked replacement and unique stair assembly removal. Reuse canonical builders and retain prior model work when creation or ownership checks refuse a replacement.
+
+### Patch Changes
+
+- Updated dependencies [[`3f681d9`](https://github.com/LTplus-AG/ifc-lite/commit/3f681d952dc2bae1dc715210354cf2705b1edac0), [`b4899b0`](https://github.com/LTplus-AG/ifc-lite/commit/b4899b017f037ad629ee2b8a5fa34cdf56e8af72), [`7d33d8c`](https://github.com/LTplus-AG/ifc-lite/commit/7d33d8cd6917c6a0df5d1b3e6aca741e554c8ba7), [`09745f0`](https://github.com/LTplus-AG/ifc-lite/commit/09745f0f3bb99ac07802ae061f13df92e865683f), [`29e1088`](https://github.com/LTplus-AG/ifc-lite/commit/29e1088dda6777f7086bd122208ce7bda8db1d89), [`5a40ad8`](https://github.com/LTplus-AG/ifc-lite/commit/5a40ad89723df2dca70248c5caaba6d402ffc762), [`8a0a03a`](https://github.com/LTplus-AG/ifc-lite/commit/8a0a03a4f9e4ca9cfae457493f0eb50268052ecb), [`09745f0`](https://github.com/LTplus-AG/ifc-lite/commit/09745f0f3bb99ac07802ae061f13df92e865683f), [`3474bb6`](https://github.com/LTplus-AG/ifc-lite/commit/3474bb6e8be907d6bd1fa58652addf5728bfdee7)]:
+  - @ifc-lite/sdk@9.1.0
+  - @ifc-lite/export@4.10.0
+  - @ifc-lite/sandbox@2.11.0
+
 ## 0.6.0
 
 ### Minor Changes

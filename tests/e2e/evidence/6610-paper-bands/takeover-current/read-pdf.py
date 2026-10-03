@@ -1,6 +1,6 @@
 import fitz, hashlib, json
 from pathlib import Path
-path = Path('/tmp/6610-final-proof/eleven-pages.pdf')
+path = Path(__file__).parent / 'eleven-pages.pdf'
 doc = fitz.open(path)
 assert len(doc) == 11
 pages=[]
@@ -17,6 +17,7 @@ for index,page in enumerate(doc):
  dates=find('2026-10-03')
  assert len(counters)==2 and len(dates)==2
  assert abs(heading['size']-22)<.001 and abs(footer['size']-12)<.001
+ assert 'Times' in heading['font'] and 'Courier' in footer['font']
  assert heading['color']==0x003366 and footer['color']==0x333333
  assert heading['bbox'][3]<body['bbox'][1] and body['bbox'][3]<footer['bbox'][1]
  images=page.get_images(full=True)

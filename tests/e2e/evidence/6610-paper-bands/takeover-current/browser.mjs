@@ -11,10 +11,14 @@ try {
  const page=context.pages()[0]; page.on('pageerror',e=>errors.push({kind:'pageerror',message:e.message}));page.on('console',m=>{if(m.type()==='error')errors.push({kind:'console',message:m.text()});});
  await page.goto('http://localhost:7992/?model=/samples/building-architecture.ifc',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>globalThis.__ifc_lite_viewer_store__?.getState().models.size>0,{timeout:120000});
+ await page.getByRole('button',{name:'Privacy settings',exact:true}).waitFor({state:'visible',timeout:20000});
+ await page.getByRole('button',{name:'Privacy settings',exact:true}).locator('..').getByRole('button',{name:'Dismiss notification',exact:true}).click();
  await page.evaluate(doc=>{const s=globalThis.__ifc_lite_viewer_store__.getState();s.upsertDocument(doc);s.setActiveDocumentId(doc.id);s.showWorkspacePanel('document');s.setSidebarActivePanel('document');},document);
  await page.waitForFunction(()=>[...window.document.querySelectorAll('[data-document-preview]')].some(p=>p.querySelectorAll('[data-preview-section]').length===11&&p.getAttribute('data-layout-pending')!=='true'),{timeout:120000});
  await page.screenshot({path:dir+'/whole-viewer.png'});
  const downloadPromise=page.waitForEvent('download');await page.getByRole('button',{name:'Export PDF',exact:true}).last().click();const download=await downloadPromise;await download.saveAs(dir+'/eleven-pages.pdf');
+ const notices=page.getByRole('button',{name:'Dismiss notification',exact:true});
+ for (let guard=0;guard<10&&await notices.count()>0;guard++) await notices.first().click();
  const models=await page.evaluate(()=>[...globalThis.__ifc_lite_viewer_store__.getState().models.values()].map(m=>({name:m.name,schema:m.sourceSchema,sourceFingerprint:m.sourceFingerprint,sourceContentHash:m.sourceContentHash,meshCount:m.geometryResult?.meshes.length})));
  const before=await page.evaluate(id=>globalThis.__ifc_lite_viewer_store__.getState().documents.find(d=>d.id===id),document.id);
  await page.getByRole('button',{name:'Maximize',exact:true}).last().click();

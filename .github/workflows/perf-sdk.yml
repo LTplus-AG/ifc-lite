@@ -14,6 +14,12 @@ on:
         description: 'Exact immutable lowercase 40-hex candidate commit'
         required: true
         type: string
+      selector:
+        description: 'Separate fixed SDK protocol; public4 preserves the original 56 samples'
+        required: true
+        type: choice
+        options: [public4, public994]
+        default: public4
   workflow_call:
     inputs:
       base_ref:
@@ -22,6 +28,11 @@ on:
       candidate_ref:
         required: true
         type: string
+
+      selector:
+        required: false
+        type: string
+        default: public4
 
 permissions:
   contents: read
@@ -35,6 +46,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     env:
+      SDK_SELECTOR: ${{ inputs.selector }}
       BASE_REF: ${{ inputs.base_ref }}
       CANDIDATE_REF: ${{ inputs.candidate_ref }}
       BASE_DIR: ${{ github.workspace }}/../sdk-base
@@ -79,10 +91,10 @@ jobs:
           pnpm --dir "$BASE_DIR" install --frozen-lockfile
           pnpm --dir "$CANDIDATE_DIR" install --frozen-lockfile
       - name: Functional hosted protocol invariants before any timing
-        run: node --test scripts/perf/sdk-plan.test.mjs scripts/perf/sdk-resources.test.mjs scripts/perf/sdk-provenance.test.mjs
+        run: node --test scripts/perf/sdk-plan.test.mjs scripts/perf/sdk-resources.test.mjs scripts/perf/sdk-provenance.test.mjs scripts/perf/sdk-public994.test.mjs
       - name: Typecheck the explicit source client and its identity controls
         run: pnpm typecheck:perf-sdk
-      - name: Fetch and verify exactly four public models
+      - name: Fetch and verify the explicitly selected fixed public fixture set
         run: node scripts/perf/sdk-prepare.mjs fixtures
       - name: Prefetch the exact locked wasm-bindgen transform before input freeze
         run: node scripts/perf/sdk-prepare.mjs prefetch-bindgen
@@ -116,7 +128,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: sdk-worker-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ inputs.selector == 'public994' && 'sdk-public994' || 'sdk-worker' }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: sdk-results/
           retention-days: 30
           if-no-files-found: error

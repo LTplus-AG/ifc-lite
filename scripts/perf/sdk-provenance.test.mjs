@@ -12,6 +12,7 @@ import { sourceSnapshot, verifySource } from './sdk-prepare.mjs';
 import { installedClosure } from './sdk-tools.mjs';
 import { buildOutcomes } from './sdk-build-contract.mjs';
 import { bindgenVersion } from './sdk-bindgen.mjs';
+import { schedule } from './sdk-plan.mjs';
 import { requireBuildCompletion, requireCohortCompletion } from './sdk-completion.mjs';
 import { canonicalSemanticWarning, canonicalConsumerSummary } from './sdk-semantic-warnings.mjs';
 const temporary = fn => async () => {
@@ -137,7 +138,9 @@ test('#6537 late refusal fences outrank already successful build and cohort clea
   assert.throws(() => requireBuildCompletion(build, 'received SIGTERM during final source verification'), /SIGTERM/);
   build.pipeTailCertified = false; assert.throws(() => requireBuildCompletion(build), /log/);
   const cohort = { ownedCleanup: { status: 'complete' }, serverCleanup: [{ status: 'complete' }],
-    samples: Array.from({ length: 56 }, () => ({ status: 'complete' })), pairs: Array.from({ length: 28 }, () => ({ status: 'complete' })), finalInputVerification: 'complete' };
+    samples: schedule().map(row => ({ ...row, status: 'complete' })),
+    pairs: schedule().filter((_row, index) => index % 2 === 0).map(row => ({ family: row.family, index: row.pair, kind: row.kind, status: 'complete' })),
+    finalInputVerification: 'complete' };
   requireCohortCompletion(cohort);
   assert.throws(() => requireCohortCompletion(cohort, 'received SIGINT during server close'), /SIGINT/);
   cohort.samples[55].status = 'refused'; assert.throws(() => requireCohortCompletion(cohort), /cohort/);

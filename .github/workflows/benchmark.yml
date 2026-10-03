@@ -88,6 +88,11 @@ on:
         type: choice
         options: [viewer, sdk, cpu]
         default: viewer
+      sdk_selector:
+        description: 'SDK mode only: original public4 cohort or separate public994 witness'
+        type: choice
+        options: [public4, public994]
+        default: public4
       base_ref:
         description: 'Optional paired mode: exact lowercase 40-hex baseline commit; supply candidate_ref too'
         required: false
@@ -133,6 +138,7 @@ jobs:
     with:
       base_ref: ${{ inputs.base_ref }}
       candidate_ref: ${{ inputs.candidate_ref }}
+      selector: ${{ inputs.sdk_selector }}
 
   cpu-control:
     name: CPU sampler control (no model timing)

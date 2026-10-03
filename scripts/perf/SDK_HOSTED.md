@@ -36,6 +36,47 @@ refs are missing. Viewer remains the dispatch default; ordinary single-arm,
 PR, schedule and push behavior is unchanged. No secrets are forwarded and the
 SDK job has only `contents: read`. Cancellation supplies no completed verdict.
 
+## Separate public #994 witness selector
+
+The default `sdk_selector=public4` keeps the original four families, 56 samples
+and 28 pairs exactly. Their completed or refused evidence remains unchanged.
+An explicit `sdk_selector=public994` declares a separate prospective witness:
+only the public IfcOpenShell #994 slab, two baseline A/A pairs followed by five
+alternating A/B pairs, 14 fresh Chrome processes and seven pairs. Unknown or
+empty selectors refuse before arm checkouts. The reusable workflow calls this
+input `selector`; the registered Benchmark SDK route forwards `sdk_selector`.
+
+```sh
+gh workflow run benchmark.yml --ref REVIEWED_HARNESS_REF \
+  -f comparison_mode=sdk -f sdk_selector=public994 \
+  -f base_ref=IMMUTABLE_BASE_40_HEX -f candidate_ref=IMMUTABLE_CANDIDATE_40_HEX
+```
+
+The fixture-only download pins [the public IFC file](https://raw.githubusercontent.com/IfcOpenShell/files/9fc2267d7f1ff35284c5b0fc28cc97bff7ace8e7/994--slab--segfault--augmented.ifc)
+at source commit `9fc2267d7f1ff35284c5b0fc28cc97bff7ace8e7`, exactly 189918 bytes,
+SHA-256 `1d1cd11c57d80fe4f769a05db49cf1a96973b1af6cbee2d75ef541cfa3cb8fa0`.
+A single bounded 180-second download refuses redirects, non-200 responses,
+wrong header length, excess/short body or wrong SHA. Its terminal raw receipt
+records URL, source commit, response URL/status/length, actual bytes/hash and
+failure reason when available. Partial payloads are removed; there is no retry
+or replacement. Successful file and receipt hashes are frozen before builds
+and checked afterward and through cohort cleanup.
+
+The same endpoint verifies the fetched bytes outside its timer, then uses the
+unchanged default `processParallel` consumer. Cold initialization, stream drain,
+retention and disposal remain timed; hashing follows. Default pool selection,
+at least two actual workers, ownership census, exact produced CPU identity and
+unnormalized diagnostics equality, A/A noise, resource limits and terminal
+refusals all remain required. Terminal completion also requires the exact
+ordered sample IDs, families, pair/slot numbers, kinds and arms, and exact planned
+pair metadata for either selector; cross-cohort aggregation refuses. The witness's drain timeout is 180 seconds.
+Its terminal report status is `complete-14-sample-public994-SDK-witness` and its
+artifact prefix is `sdk-public994`; default evidence keeps `sdk-worker` and
+`complete-56-sample-hosted-SDK-cohort`.
+
+This selector has no measured verdict. It does not qualify private #6516
+`processStreaming` regressions, native phase timings or full viewer appearance.
+
 ## Source builds and byte witnesses
 
 Before the input snapshot, an owned symlink selects the exact version-qualified

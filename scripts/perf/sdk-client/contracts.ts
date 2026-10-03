@@ -13,7 +13,14 @@ export const fixtures = {
   architecture: { path: 'various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc', bytes: 342657851,
     sha256: 'e91ddbbd672bbde946af14631de4c732f0cf8a7cfae5dbbf06fbeab03b5c46df', timeoutMs: 600000 },
 } as const;
-export type Family = keyof typeof fixtures;
+export const public994 = {
+  path: 'public994.ifc', bytes: 189918,
+  sha256: '1d1cd11c57d80fe4f769a05db49cf1a96973b1af6cbee2d75ef541cfa3cb8fa0', timeoutMs: 180000,
+  sourceCommit: '9fc2267d7f1ff35284c5b0fc28cc97bff7ace8e7',
+  url: 'https://raw.githubusercontent.com/IfcOpenShell/files/9fc2267d7f1ff35284c5b0fc28cc97bff7ace8e7/994--slab--segfault--augmented.ifc',
+} as const;
+export const clientFixtures = { ...fixtures, public994 } as const;
+export type Family = keyof typeof clientFixtures;
 export type Complete = Extract<StreamingGeometryEvent, { type: 'complete' }>;
 export const bounds = { events: 250000, buffers: 500000, retainedBytes: 2 * 1024 ** 3,
   objectVisits: 8000000, identities: 1000000, hashChunkBytes: 4 * 1024 ** 2,

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { GeometryProcessor, type StreamingGeometryEvent } from '@ifc-lite/geometry';
-import { bounds, fixtures, failure, type Family, type Receipt } from './contracts.js';
+import { bounds, clientFixtures as fixtures, failure, type Family, type Receipt } from './contracts.js';
 import { Retention } from './retention.js';
 import { identity } from './identity.js';
 

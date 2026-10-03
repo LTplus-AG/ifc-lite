@@ -11,7 +11,8 @@ import { installedClosure } from './sdk-tools.mjs';
 import { compilerFreeze } from './sdk-compiler.mjs';
 import { prefetchBindgen, requireBindgen } from './sdk-bindgen.mjs';
 import { selectPnpm } from './sdk-pnpm.mjs';
-import { refs, fixtures, schedule, limits } from './sdk-plan.mjs';
+import { refs, fixtureSet, protocol, schedule, limits } from './sdk-plan.mjs';
+import { downloadPinnedFixture, public994Input } from './sdk-public994.mjs';
 export const root = resolve(import.meta.dirname, '../..'), output = join(root, 'sdk-results');
 const git = (directory, ...args) => execFileSync('git', ['-C', directory, ...args], {
   encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 ** 2,
@@ -45,14 +46,21 @@ export async function verifyFrozen(provenance) {
 async function main() {
   mkdirSync(output, { recursive: true });
   const revisions = refs(process.env.BASE_REF, process.env.CANDIDATE_REF);
+  const declared = protocol(process.env.SDK_SELECTOR ?? 'public4');
   const directories = { base: resolve(process.env.BASE_DIR), candidate: resolve(process.env.CANDIDATE_DIR) };
   const write = (name, value) => writeFileSync(join(output, name), JSON.stringify(value, null, 2));
   const mode = process.argv[2];
-  if (mode === 'validate-inputs') { write('protocol.json', { revisions, schedule: schedule(), limits, status: 'PROSPECTIVE_NOT_VERDICT' }); return; }
+  if (mode === 'validate-inputs') { write('protocol.json', { ...declared, revisions, schedule: schedule(declared.selector), limits, status: 'PROSPECTIVE_NOT_VERDICT' }); return; }
+  const selected = JSON.parse(readFileSync(join(output, 'protocol.json'), 'utf8'));
+  if (selected.selector !== declared.selector || !isDeepStrictEqual(selected.revisions, revisions)
+    || !isDeepStrictEqual(selected.schedule, schedule(declared.selector))) throw new Error('declared SDK protocol changed');
   if (mode === 'select-pnpm') { await selectPnpm(root, output); return; }
   if (mode === 'prefetch-bindgen') { await prefetchBindgen(directories, output); return; }
   if (mode === 'fixtures') {
-    for (const option of [[], ['--check']]) execFileSync('node', ['scripts/fixtures/fetch-fixtures.mjs', ...option, ...Object.values(fixtures).map(item => item.path)], { cwd: root, stdio: 'inherit' });
+    if (declared.selector === 'public994') {
+      await downloadPinnedFixture(fixtureSet(declared.selector).public994, output); return;
+    }
+    for (const option of [[], ['--check']]) execFileSync('node', ['scripts/fixtures/fetch-fixtures.mjs', ...option, ...Object.values(fixtureSet(declared.selector)).map(item => item.path)], { cwd: root, stdio: 'inherit' });
     return;
   }
   if (mode === 'mark-builds') {
@@ -63,8 +71,9 @@ async function main() {
     const bindgen = JSON.parse(readFileSync(bindgenReceiptPath, 'utf8'));
     const transform = await requireBindgen(bindgen, directories);
     if (pnpmSelection.status !== 'selected') throw new Error('actual pnpm selection receipt incomplete');
-    const frozenFiles = { ...bindgen.files, ...pnpmSelection.files, [bindgenReceiptPath]: await fileHash(bindgenReceiptPath),
+    const frozenFiles = { [join(output, 'protocol.json')]: await fileHash(join(output, 'protocol.json')), ...bindgen.files, ...pnpmSelection.files, [bindgenReceiptPath]: await fileHash(bindgenReceiptPath),
       [pnpmReceiptPath]: await fileHash(pnpmReceiptPath), [pnpmSelection.launcher]: pnpmSelection.launcherSha256 }, closures = {};
+    if (declared.selector === 'public994') await public994Input(output, frozenFiles);
     const automation = await installedClosure([{ name: '@playwright/test', from: join(root, 'package.json') }]);
     Object.assign(frozenFiles, automation.files);
     for (const arm of ['base', 'candidate']) {
@@ -83,7 +92,7 @@ async function main() {
     if (compiler.binaries.pnpm !== pnpmSelection.executable || await fileHash(compiler.binaries.pnpm) !== pnpmSelection.executableSha256) throw new Error('actual pnpm tool selection changed');
     Object.assign(frozenFiles, compiler.files);
     const command = (name, args) => execFileSync(name, args, { encoding: 'utf8', timeout: 30000 }).trim();
-    write('build-start.json', { revisions, directories, sources, frozenFiles, closures, automation, compiler, bindgen, transform, pnpmSelection,
+    write('build-start.json', { ...declared, revisions, directories, sources, frozenFiles, closures, automation, compiler, bindgen, transform, pnpmSelection,
       timestampMs: Date.now(), harnessHead, environment: { node: process.version, nodeExecutable: process.execPath,
         chromeExecutable: '/opt/google/chrome/chrome', chrome: command('/opt/google/chrome/chrome', ['--version']),
         rust: command('rustc', ['--version']), wasmPack: command('wasm-pack', ['--version']), pnpm: command('pnpm', ['--version']),
@@ -106,8 +115,9 @@ async function main() {
     builds[arm] = { revision: start.revisions[arm], directory, dist, assets, wasmSha256, sourceBuild: receipt };
     for (const name of ['ifc-lite.js', 'ifc-lite_bg.wasm', 'ifc-lite.d.ts']) start.frozenFiles[join(directory, 'packages/wasm/pkg', name)] = await fileHash(join(directory, 'packages/wasm/pkg', name));
   }
+  if (start.selector !== declared.selector) throw new Error('fixed SDK selector changed');
   const manifest = JSON.parse(readFileSync(join(root, 'tests/models/manifest.json'), 'utf8'));
-  const inputs = Object.entries(fixtures).map(([family, fixture]) => {
+  const inputs = declared.selector === 'public994' ? [await public994Input(output, start.frozenFiles)] : Object.entries(fixtureSet(declared.selector)).map(([family, fixture]) => {
     const entry = manifest.files.find(item => item.path === fixture.path);
     if (!entry || entry.sha256 !== fixture.sha256 || entry.size !== fixture.bytes) throw new Error('fixed fixture manifest differs');
     return { family, ...fixture, file: join(root, 'tests/models', fixture.path), publicRelease: manifest.release_tag, publicBaseURL: manifest.base_url };

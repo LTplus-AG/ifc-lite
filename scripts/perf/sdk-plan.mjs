@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { isDeepStrictEqual } from 'node:util';
-import { fixtures } from './sdk-client/contracts.ts';
+import { fixtures, public994 } from './sdk-client/contracts.ts';
 import { immutableRef } from './interleaved-plan.mjs';
 import { canonicalReasons } from './sdk-semantic-warnings.mjs';
 export { fixtures };
@@ -14,10 +14,20 @@ export function refs(base, candidate) {
   if (result.base === result.candidate) throw new Error('distinct immutable arms required');
   return result;
 }
-export function schedule() {
-  return Object.entries(fixtures).flatMap(([family, fixture]) => Array.from({ length: 7 }, (_, pair) => {
+export function fixtureSet(selector = 'public4') {
+  if (selector === 'public4') return fixtures;
+  if (selector === 'public994') return { public994 };
+  throw new Error('unknown fixed SDK selector');
+}
+export function protocol(selector = 'public4') {
+  const families = Object.keys(fixtureSet(selector));
+  return { selector, families, expectedSamples: families.length * 14, expectedPairs: families.length * 7,
+    completeStatus: selector === 'public4' ? 'complete-56-sample-hosted-SDK-cohort' : 'complete-14-sample-public994-SDK-witness' };
+}
+export function schedule(selector = 'public4') {
+  return Object.entries(fixtureSet(selector)).flatMap(([family, fixture]) => Array.from({ length: 7 }, (_, pair) => {
     const order = pair < 2 ? ['base', 'base'] : pair % 2 ? ['candidate', 'base'] : ['base', 'candidate'];
-    return order.map((arm, slot) => ({ family, pair, kind: pair < 2 ? 'AA' : 'AB', arm,
+    return order.map((arm, slot) => ({ family, pair, slot, kind: pair < 2 ? 'AA' : 'AB', arm,
       id: `${family}-${pair}-${slot}-${arm}`, ...fixture }));
   }).flat());
 }

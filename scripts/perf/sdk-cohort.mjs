@@ -7,11 +7,12 @@ import { join } from 'node:path';
 import { serveFrozen } from './interleaved-server.mjs';
 import { finishLog, processIdentity, stopWitnessedProcesses } from './interleaved-cleanup.mjs';
 import { root, output, verifyFrozen } from './sdk-prepare.mjs';
-import { schedule, requirePair, limits } from './sdk-plan.mjs';
+import { schedule, protocol, requirePair, limits } from './sdk-plan.mjs';
 import { available, quiet, noBuildGraphs, ownedSnapshot } from './sdk-resources.mjs';
 import { requireCohortCompletion } from './sdk-completion.mjs';
 const provenance = JSON.parse(readFileSync(join(output, 'provenance.json'), 'utf8'));
-const report = { status: 'started', scope: 'Hosted Linux default SDK produced CPU channels only', expectedSamples: 56,
+const declared = protocol(provenance.selector);
+const report = { ...declared, status: 'started', scope: 'Hosted Linux default SDK produced CPU channels only',
   samples: [], pairs: [], families: {}, resourceSamples: [], environment: provenance.environment,
   limitations: 'No full viewer/GPU/pixel/metadata/faithful IFC, native-speed, physical peak or universal speed claim. Complete raw diagnostics retain cache/upper-bound census limitations.' };
 const servers = {}, owned = new Map(); let activeChild, activeIdentity, activeAbort, timer, refusal;
@@ -23,7 +24,7 @@ const signalHandlers = new Map(['SIGINT', 'SIGTERM'].map(signal => [signal, () =
 for (const [signal, handler] of signalHandlers) process.on(signal, handler);
 const save = () => {
   writeFileSync(join(output, 'report.json'), JSON.stringify(report, null, 2));
-  writeFileSync(join(output, 'report.md'), `${report.scope}\n\nStatus: ${report.status}; retained ${report.samples.length}/56 samples.\n\n${report.reason ?? ''}\n\n${report.limitations}\n\n${JSON.stringify(report.families, null, 2)}\n`);
+  writeFileSync(join(output, 'report.md'), `${report.scope}\n\nSelector: ${declared.selector}\n\nStatus: ${report.status}; retained ${report.samples.length}/${declared.expectedSamples} samples.\n\n${report.reason ?? ''}\n\n${report.limitations}\n\n${JSON.stringify(report.families, null, 2)}\n`);
 };
 function stopActive() {
   if (!activeChild || !activeIdentity) return;
@@ -89,7 +90,7 @@ try {
       noBuildGraphs();
     } catch (error) { refusal ??= String(error); if (activeAbort) activeAbort(error); else stopActive(); }
   }, 250);
-  const plan = schedule();
+  const plan = schedule(declared.selector);
   for (let index = 0; index < plan.length; index += 2) {
     const pair = { family: plan[index].family, index: plan[index].pair, kind: plan[index].kind, status: 'started' };
     report.pairs.push(pair); save(); await verifyFrozen(provenance);
@@ -104,7 +105,7 @@ try {
     if (familyPairs.length === 7) report.families[pair.family] = { status: 'complete-14-sample-family', pairedDeltas: familyPairs.filter(item => item.kind === 'AB').map(item => item.comparison.relativeDelta) };
     save();
   }
-  if (report.samples.length !== 56) throw new Error('incomplete fixed cohort'); report.status = 'pending-cleanup';
+  if (report.samples.length !== declared.expectedSamples) throw new Error('incomplete fixed cohort'); report.status = 'pending-cleanup';
 } catch (error) {
   report.status = 'refused'; report.reason = String(error); process.exitCode = 1;
   const incomplete = report.pairs.at(-1);
@@ -125,7 +126,7 @@ finally {
   }));
   try {
     if (refusal || report.status === 'pending-cleanup') requireCohortCompletion(report, refusal);
-    if (report.status === 'pending-cleanup') report.status = 'complete-56-sample-hosted-SDK-cohort';
+    if (report.status === 'pending-cleanup') report.status = declared.completeStatus;
   } catch (error) { report.status = 'refused'; report.reason = String(error); process.exitCode = 1; }
   save();
   for (const [signal, handler] of signalHandlers) process.off(signal, handler);

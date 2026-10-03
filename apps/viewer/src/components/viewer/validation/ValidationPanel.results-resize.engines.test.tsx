@@ -41,8 +41,9 @@ const specifications = Array.from({ length: 12 }, (_, index) => `
 </applicability><requirements><attribute cardinality="required">
 <name><simpleValue>Tag</simpleValue></name><value><simpleValue>A</simpleValue></value>
 </attribute></requirements></specification>`).join('');
-const ids = parseIDS(`<ids xmlns="http://standards.buildingsmart.org/IDS">
-<info><title>Resizing checks</title></info><specifications>${specifications}</specifications></ids>`);
+const idsXml = `<ids xmlns="http://standards.buildingsmart.org/IDS">
+<info><title>Resizing checks</title></info><specifications>${specifications}</specifications></ids>`;
+const ids = parseIDS(idsXml);
 const ruleSet = JSON.stringify({
   version: 1, name: 'Resizing checks',
   rules: Array.from({ length: 12 }, (_, index) => ({
@@ -128,7 +129,7 @@ for (const kind of ['ids', 'rules'] as const) {
       if (kind === 'ids') {
         const report = await validateIDS(ids, createDataAccessor(store),
           { modelId: 'm0', schemaVersion: 'IFC4', entityCount: 2 });
-        useViewerStore.setState({ idsDocument: ids });
+        assert.equal(useViewerStore.getState().addValidationDefinition({ kind: 'ids', xml: idsXml, document: ids }), true);
         useViewerStore.getState().setIdsValidationReport(report);
       }
       const ui = render(<ValidationPanel />);

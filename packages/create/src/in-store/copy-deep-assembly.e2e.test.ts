@@ -7,15 +7,14 @@ import { IfcParser } from '@ifc-lite/parser';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
-import { copyBatchInStore } from './copy-batch.js';
-import { createCopyContext } from './copy-product.js';
+import { copyProductInStore, createCopyContext } from './copy-product.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { meshStairs as meshProducts, stairMeshBounds as bounds, stairWasmAvailable } from './__test__/stair-mesh.oracle.js';
 
 // This finite correctness stress control retains the 5000-level old-source
 // RangeError oracle. It took ~23.5 s focused, but 192607 ms in the concurrent
 // full CI suite (#6753); its deadline is not a performance threshold.
-it.skipIf(!stairWasmAvailable)('#6232 public Copy traverses a real 5000-level acyclic imported assembly without call-stack recursion', async () => {
+it.skipIf(!stairWasmAvailable)('#6232 canonical Copy writer traverses a real 5000-level acyclic imported assembly without call-stack recursion', async () => {
   const bytes = await readFile(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
   let store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { disableWorkerScan: true });
   let view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
@@ -33,7 +32,10 @@ it.skipIf(!stairWasmAvailable)('#6232 public Copy traverses a real 5000-level ac
   store = await new IfcParser().parseColumnar(new TextEncoder().encode(text()).buffer, { disableWorkerScan: true });
   view = new MutablePropertyView(null, 'm'); editor = new StoreEditor(store, view);
   const before = bounds((await meshProducts(text())).get(1222)!);
-  const [copy] = copyBatchInStore(store, editor, [ids[0]], [{ offset: [0, 3, 0] }]);
+  const result: { copy?: ReturnType<typeof copyProductInStore> } = {};
+  expect(() => { result.copy = copyProductInStore(createCopyContext(store, editor), ids[0], { offset: [0, 3, 0] }); }).not.toThrow();
+  const copy = result.copy;
+  if (!copy) throw new Error('The canonical Copy writer must return the copied graph');
   expect(copy.partIds).toHaveLength(5000);
   expect(copy.openingIds).toHaveLength(2); expect(copy.fillingIds).toHaveLength(2);
   const wall = [...copy.copiedFrom].find(([, source]) => source === 1222)![0];

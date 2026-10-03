@@ -84,9 +84,9 @@ on:
         type: boolean
         default: false
       comparison_mode:
-        description: 'Viewer/SDK/native paired boundary; cpu/gpu/native-startup perform only controls'
+        description: 'Viewer/SDK/native paired boundary; cpu/gpu/symbolic-upload/native-startup perform only controls'
         type: choice
-        options: [viewer, sdk, cpu, native, native-startup, gpu]
+        options: [viewer, sdk, cpu, native, native-startup, gpu, symbolic-upload]
         default: viewer
       base_ref:
         description: 'Optional paired mode: exact lowercase 40-hex baseline commit; supply candidate_ref too'
@@ -168,6 +168,15 @@ jobs:
     uses: ./.github/workflows/perf-gpu-check.yml
     permissions:
       contents: read
+
+  symbolic-upload-control:
+    name: Hosted symbolic upload inputs (no IFC or timing)
+    if: github.event_name == 'workflow_dispatch' && inputs.comparison_mode == 'symbolic-upload'
+    uses: ./.github/workflows/perf-gpu-check.yml
+    permissions:
+      contents: read
+    with:
+      symbolic_only: true
 
   benchmark:
     name: Viewer benchmark (advisory)

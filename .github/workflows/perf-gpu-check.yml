@@ -4,6 +4,10 @@
 name: Hosted isolated graphics controls
 on:
   workflow_call:
+    inputs:
+      symbolic_only:
+        type: boolean
+        default: false
 permissions:
   contents: read
 env:
@@ -28,12 +32,23 @@ jobs:
       - name: Frozen dependency install (no application or WASM build)
         run: pnpm install --frozen-lockfile
       - name: Verify graphics-control invariants
+        if: ${{ !inputs.symbolic_only }}
         run: node --test scripts/perf/gpu-control.test.mjs
       - name: Two fixed prospective Chrome profiles, no retries or fallback
+        if: ${{ !inputs.symbolic_only }}
         env:
           DEBUG: pw:browser
           DEBUG_COLORS: '0'
         run: node scripts/perf/gpu-run.mjs
+      - name: Verify symbolic receipt and shared outer ownership invariants
+        if: ${{ inputs.symbolic_only }}
+        run: node --test scripts/perf/gpu-control.test.mjs scripts/perf/gpu-outer.test.mjs scripts/perf/symbolic-upload-recorder.test.mjs scripts/perf/symbolic-upload-qualification.test.mjs
+      - name: One corrected-profile symbolic upload control, no model or timing
+        if: ${{ inputs.symbolic_only }}
+        env:
+          DEBUG: pw:browser
+          DEBUG_COLORS: '0'
+        run: node scripts/perf/symbolic-upload-gpu-run.mjs
       - name: Upload raw original and corrected controls, including refusals
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

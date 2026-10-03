@@ -24,4 +24,3 @@ export type MutationType =
   | 'DELETE_ENTITY'
   /** Local domain history only; never changes IFC attributes or geometry. */
   | 'SESSION_EDIT';
-

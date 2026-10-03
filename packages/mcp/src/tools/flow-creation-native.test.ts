@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { beforeAll, expect, it } from 'vitest';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { StepExporter } from '@ifc-lite/export';
@@ -69,7 +70,11 @@ async function nativeMeshes(model: LoadedModel) {
     return meshes.map(mesh=> {
       const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];
       for(let i=0;i<mesh.positions.length;i++) { const axis=i%3,value=mesh.positions[i]+(mesh.origin?.[axis] ?? 0); expect(Number.isFinite(value)).toBe(true);lo[axis]=Math.min(lo[axis],value);hi[axis]=Math.max(hi[axis],value); }
-      return {id:mesh.expressId,vertices:mesh.positions.length/3,triangles:mesh.indices.length/3,lo,hi};
+      // Compare actual before/Undo native output, never a committed byte-layout snapshot.
+      const fingerprint = createHash('sha256');
+      for (const array of [mesh.positions, mesh.indices, mesh.normals]) fingerprint.update(new Uint8Array(array.buffer, array.byteOffset, array.byteLength));
+      fingerprint.update(JSON.stringify({ origin: mesh.origin ?? [0,0,0], color: mesh.color }));
+      return {id:mesh.expressId,vertices:mesh.positions.length/3,triangles:mesh.indices.length/3,lo,hi,hash:fingerprint.digest('hex')};
     }).sort((a,b)=>a.id-b.id || a.triangles-b.triangles);
   } finally { processor.dispose(); }
 }

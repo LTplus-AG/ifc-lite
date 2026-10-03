@@ -8,8 +8,10 @@ import { waitFor } from './render';
  * Happy DOM leaves image decoding to each image fixture's load event; the
  * initial composed page is sufficient for tests unrelated to intrinsic size. */
 export function documentPreviewReady(): Promise<void> {
-  return waitFor(() => [...document.querySelectorAll('[data-document-preview]')]
-    .every(preview => preview.querySelector('[data-preview-section]') !== null
-      && preview.getAttribute('data-layout-pending') !== 'true'),
+  return waitFor(() => {
+    const previews = [...document.querySelectorAll('[data-document-preview]')];
+    return previews.length > 0 && previews.every(preview => preview.querySelector('[data-preview-section]') !== null
+      && preview.getAttribute('data-layout-pending') !== 'true');
+  },
   'document preview finishes resolving its shared page layout');
 }

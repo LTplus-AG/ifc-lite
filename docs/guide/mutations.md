@@ -901,3 +901,21 @@ mutation journal and allocation state. Edits resolve current overlay entities;
 geometry shared with unrelated occurrences is refused when writing it would
 change those occurrences. Backend capabilities are optional: a custom backend
 must implement a method before its namespace can execute it.
+
+### Native Room commands
+
+`await bim.store.roomCommand(modelId, storeyExpressId, command)` derives rooms
+from current native wall meshes. It shares the viewer's native layout cache,
+occupancy checks, supported space footprint reader and IFC writer. Actions are
+`query`, `auto`, `pick` (with `point`), `footprint`, `update` (with `expressIds`),
+and `edit` (with a `drag`, `split`, `remove` or `prune` layout operation).
+`query` returns candidates without writing. Writes return `created`, `updated`,
+`deleted` and `skipped` references and form one logical Undo batch. Supplied
+footprint placement remains available through `addSpace`.
+
+Settings use metres: `weld`, `minArea`, `height`, `z` and optional edit
+`tolerance`; `boundary` is `inner`, `center` or `outer`. `namePattern`,
+`PredefinedType` and `ObjectType` control created room metadata. The runtime
+requires the WASM geometry package. The command refuses if its model changes
+while native geometry is preparing. In-process callers can supply an
+`AbortSignal`; cancellation before commit leaves IFC history unchanged.

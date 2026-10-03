@@ -16,7 +16,7 @@ permissions:
 jobs:
   native:
     runs-on: ubuntu-24.04
-    timeout-minutes: 110
+    timeout-minutes: 125
     env:
       BASE_REF: ${{ inputs.base_ref }}
       CANDIDATE_REF: ${{ inputs.candidate_ref }}

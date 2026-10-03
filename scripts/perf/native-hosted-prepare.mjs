@@ -52,14 +52,20 @@ async function main() {
   validateRefs(process.env.BASE_REF, process.env.CANDIDATE_REF);
   if (process.argv[2] === 'validate') { write('protocol.json', { revisions, schedule: schedule(), limits, scope: 'PROSPECTIVE_NATIVE_PHASE_ATTRIBUTION' }); return; }
   if (process.argv[2] !== 'build') throw new Error('native preparation mode required');
-  let refusal; const report = { status: 'pending', builds: {} };
+  let refusal; const report = { status: 'pending', builds: {}, fixtureCommands: [] };
   const handlers = new Map(['SIGINT', 'SIGTERM'].map(signal => [signal, () => { refusal ??= `received ${signal}`; }]));
   for (const [signal, handler] of handlers) process.on(signal, handler);
   try {
     if (available() < limits.initialBytes || process.env.CARGO_TARGET_DIR || !['', '0'].includes(process.env.OBS ?? '')
       || ['RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER'].some(key => process.env[key])) throw new Error('native initial resource/default target refused');
     const directories = { base: resolve(process.env.BASE_DIR), candidate: resolve(process.env.CANDIDATE_DIR) };
-    for (const option of [[], ['--check']]) command(process.execPath, ['scripts/fixtures/fetch-fixtures.mjs', ...option, ...inputs.map(item => item.path)]);
+    for (const [index, option] of [[], ['--check']].entries()) {
+      if (refusal) throw new Error(refusal);
+      const row = await execute([process.execPath, 'scripts/fixtures/fetch-fixtures.mjs', ...option, ...inputs.map(item => item.path)],
+        root, join(output, `fixtures-${index}`), { wallMs: 5 * 60000 });
+      report.fixtureCommands.push(row); write(`fixtures-${index}.json`, row);
+      if (row.status !== 'complete') throw new Error(row.reason);
+    }
     const manifest = JSON.parse(readFileSync(join(root, 'tests/models/manifest.json'), 'utf8'));
     report.fixtures = inputs.map(item => {
       const entry = manifest.files.find(row => row.path === item.path);
@@ -68,6 +74,10 @@ async function main() {
     });
     report.sources = [await sourceSnapshot(root, command('git', ['rev-parse', 'HEAD']))];
     const compiler = await toolFreeze(); Object.assign(report, compiler, { directories, revisions });
+    for (const [index, row] of report.fixtureCommands.entries()) {
+      report.files[join(output, `fixtures-${index}.json`)] = await fileHash(join(output, `fixtures-${index}.json`));
+      for (const [stream, path] of Object.values(row.paths).entries()) report.files[path] = row.hashes[stream];
+    }
     for (const fixture of report.fixtures) {
       if (statSync(fixture.file).size !== fixture.bytes || await fileHash(fixture.file) !== fixture.sha256) throw new Error('native fixture bytes differ');
       report.files[fixture.file] = fixture.sha256;

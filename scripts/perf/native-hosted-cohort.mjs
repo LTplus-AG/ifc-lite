@@ -19,7 +19,7 @@ try {
     const pair = { ...item, index, status: 'pending', runs: [] }; report.pairs.push(pair);
     try {
       if (refusal || Date.now() - started > 45 * 60000) throw new Error(refusal ?? 'native cohort45-minute wall bound');
-      await verify(provenance); pair.before = await quiet();
+      await verify(provenance); await pause(limits.drainMs); pair.before = await quiet();
       const fixture = provenance.fixtures.find(row => row.family === item.family);
       for (const [slot, arm] of item.order.entries()) {
         if (refusal) throw new Error(refusal);
@@ -32,7 +32,7 @@ try {
         pair.runs.at(-1).result = row.result;
         await verify(provenance);
       }
-      await pause(3000); pair.after = await quiet();
+      await pause(limits.drainMs); pair.after = await quiet();
       const [left, right] = pair.runs.map(row => row.result);
       pair.comparison = requirePair(left, right, item.kind, controls.get(item.family));
       if (item.kind === 'AB') {
@@ -42,7 +42,7 @@ try {
       }
       if (!controls.has(item.family)) controls.set(item.family, left);
       await verify(provenance); if (refusal) throw new Error(refusal); pair.status = 'complete';
-    } catch (error) { pair.status = 'refused'; pair.reason = String(error); throw error; }
+    } catch (error) { pair.status = 'refused'; pair.reason = String(error); if (error.receipt) pair.cpuRefusal = error.receipt; throw error; }
     finally {
       writeFileSync(join(output, `pair-${index}.json`), JSON.stringify(pair, null, 2));
       appendFileSync(join(output, 'pairs.jsonl'), JSON.stringify(pair) + '\n');

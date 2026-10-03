@@ -18,7 +18,7 @@ function graphScan(witnesses, expected) {
       const identity = processIdentity(name);
       if (!identity) continue;
       const record = { ...identity, argv, executable, cwd: readlinkSync(`/proc/${name}/cwd`) };
-      if (!freshnessException(record, witnesses.get(record.pid), expected)) throw new Error(`non-exempt compiler/test graph: ${JSON.stringify({ pid: record.pid, classification })}`);
+      if (!freshnessException(record, witnesses.get(record.pid), expected)) throw new Error(`non-exempt compiler/test graph: ${JSON.stringify({ pid: record.pid, classification, ownWitnessPresent: witnesses.has(record.pid) })}`);
       exceptions.push({ ...identity, classification, executable, cwd: record.cwd });
     } catch (error) { if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error; }
   }

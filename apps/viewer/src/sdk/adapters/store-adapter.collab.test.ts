@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { before, describe, it } from 'node:test';
+import { createStore } from 'zustand/vanilla';
+import { recordMutationBatch } from '@/store/slices/mutation-history-replay.js';
 import assert from 'node:assert/strict';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
@@ -24,7 +26,6 @@ import {
 } from '@/lib/collab/entity-paths.js';
 import { deleteRemoteOverlayEntity } from '@/lib/collab/remote-entity-delete.js';
 import { createStoreAdapter } from './store-adapter.js';
-import type { StoreApi } from './types.js';
 
 const MODEL = 'model';
 let dataStore: IfcDataStore;
@@ -125,8 +126,15 @@ function fixture(
     },
     mirrorAttributeEdit: (...args: unknown[]) => calls.push({ kind: 'attribute', args }),
   } as unknown as ViewerState;
-  const store: StoreApi = { getState: () => state, subscribe: () => () => {} };
-  return { adapter: createStoreAdapter(store), calls, view, state };
+  // #6232 / #6760: builders publish through real writable mutation history.
+  const store = createStore<ViewerState>((set) => ({
+    ...state,
+    undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(),
+    mutationBatchTags: new Map(), mutationVersion: 0,
+    changeSets: new Map(), activeChangeSetId: null,
+    recordMutationBatch: (modelId, mutations, batchId) => recordMutationBatch(set, modelId, mutations, batchId),
+  }));
+  return { adapter: createStoreAdapter(store), calls, view, state: store.getState(), store };
 }
 
 describe('bim.store collaboration mirroring (#5008)', () => {
@@ -613,11 +621,13 @@ describe('bim.store collaboration mirroring (#5008)', () => {
   });
 
   it('publishes every entity an in-store builder creates into the room', async () => {
-    const { adapter, calls, view } = fixture(true, await parseStoreyStore());
+    const { adapter, calls, view, store } = fixture(true, await parseStoreyStore());
     const wall = adapter.addWall(MODEL, 30, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
     const created = view.getNewEntities().map((entity) => entity.expressId);
     assert.ok(created.includes(wall.expressId));
     assert.ok(created.length > 1, 'a wall builder emits placement, profile, solid and containment records');
+    assert.deepEqual(store.getState().undoStacks.get(MODEL), view.getMutations(), 'all builder writes enter real mutation history');
+    assert.equal(new Set(store.getState().mutationBatchTags.values()).size, 1, 'the authored graph is one Undo batch');
 
     const mirrored = calls.filter(call => call.kind === 'create').map(call => call.args[1]);
     for (const expressId of created) {
@@ -634,11 +644,14 @@ describe('bim.store collaboration mirroring (#5008)', () => {
   });
 
   it('fails loudly when a builder result cannot be published to the room', async () => {
-    const { adapter } = fixture(true, await parseStoreyStore(), () => false);
+    const { adapter, view, store } = fixture(true, await parseStoreyStore(), () => false);
     assert.throws(
       () => adapter.addWall(MODEL, 30, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 }),
-      /bim\.store\.addWall: the new entities could not be published/,
+      /bim\.store: the new modelling entities could not be published/,
     );
+    assert.equal(view.getNewEntities().length, 0, 'failed publication leaves no local builder records');
+    assert.equal(view.getMutations().length, 0, 'failed publication leaves no local journal');
+    assert.equal(store.getState().undoStacks.size, 0, 'failed publication creates no Undo history');
   });
 
   it('leaves builder results local outside a shared room', async () => {

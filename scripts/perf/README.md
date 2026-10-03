@@ -27,6 +27,22 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+### Hosted graphics environment control (#6537)
+
+Dispatch `Benchmark` with `comparison_mode=gpu` for two fixed, fresh Chrome
+profiles without IFC loading or a viewer build. The original viewer flags and
+the prospective SwiftShader/Vulkan correction run independently, without retries
+or fallback. Both controls retain Chrome/Dawn logs, actual command line and
+executable hash, adapter/driver information, device errors, GPU texture readback
+and raw red/blue PNGs. A pixel observation requires matching GPU and screenshot
+center pixels, subsequent animation frames, and complete owned cleanup.
+Backend errors or device loss refuse the control. Original refusal plus corrected
+pixels is narrow evidence about this hosted graphics environment; both passing
+is inconclusive about the viewer failure. Neither outcome measures performance
+or authorizes production renderer flags. `gpu-results/` retains refusals too.
+Raw logs and event records have fixed bounds; hitting a bound refuses and labels
+the retained prefix incomplete. Cancellation always prevents completion.
+
 ## Direct vertex packing: do not ship the current candidate (#6537)
 
 The candidate removes an intermediate vertex buffer for eligible quantized

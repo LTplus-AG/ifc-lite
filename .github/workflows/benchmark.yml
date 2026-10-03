@@ -84,9 +84,9 @@ on:
         type: boolean
         default: false
       comparison_mode:
-        description: 'Viewer/SDK/native paired boundary; cpu/native-startup perform only controls'
+        description: 'Viewer/SDK/native paired boundary; cpu/gpu/native-startup perform only controls'
         type: choice
-        options: [viewer, sdk, cpu, native, native-startup]
+        options: [viewer, sdk, cpu, native, native-startup, gpu]
         default: viewer
       base_ref:
         description: 'Optional paired mode: exact lowercase 40-hex baseline commit; supply candidate_ref too'
@@ -161,6 +161,13 @@ jobs:
       base_ref: ${{ inputs.base_ref }}
       candidate_ref: ${{ inputs.candidate_ref }}
       control_only: true
+
+  gpu-control:
+    name: Isolated hosted graphics controls (no model)
+    if: github.event_name == 'workflow_dispatch' && inputs.comparison_mode == 'gpu'
+    uses: ./.github/workflows/perf-gpu-check.yml
+    permissions:
+      contents: read
 
   benchmark:
     name: Viewer benchmark (advisory)

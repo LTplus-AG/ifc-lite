@@ -8,6 +8,7 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 import { public994, fixtures, clientFixtures } from './sdk-client/contracts.ts';
 import { fixtureSet, protocol, schedule } from './sdk-plan.mjs';
 import { requireCohortCompletion } from './sdk-completion.mjs';
@@ -59,21 +60,32 @@ test('#6537 download receipt requires actual canonical source, status, size and 
   const file = '/owned/public994.ifc';
   const receipt = { status: 'complete-pinned-fixture-download', file, url: public994.url, responseURL: public994.url,
     sourceCommit: public994.sourceCommit, httpStatus: 200, expectedBytes: public994.bytes, bytes: public994.bytes,
-    expectedSha256: public994.sha256, sha256: public994.sha256, contentLength: String(public994.bytes) };
+    expectedSha256: public994.sha256, sha256: public994.sha256, contentLength: String(public994.bytes),
+    requestAcceptEncoding: 'identity', responseContentEncoding: null };
   requirePublic994Receipt(receipt, file);
+  requirePublic994Receipt({ ...receipt, responseContentEncoding: 'identity' }, file);
   for (const [key, value] of [['status', 'refused'], ['file', '/foreign/file'], ['url', 'https://example.invalid'],
     ['responseURL', public994.url + '?changed'], ['sourceCommit', 'a'.repeat(40)], ['httpStatus', 302],
-    ['expectedBytes', 1], ['bytes', public994.bytes - 1], ['expectedSha256', 'b'.repeat(64)], ['sha256', 'b'.repeat(64)], ['contentLength', '0']]) {
+    ['expectedBytes', 1], ['bytes', public994.bytes - 1], ['expectedSha256', 'b'.repeat(64)], ['sha256', 'b'.repeat(64)], ['contentLength', '0'],
+    ['requestAcceptEncoding', 'gzip'], ['requestAcceptEncoding', undefined], ['responseContentEncoding', 'gzip'], ['responseContentEncoding', undefined]]) {
     assert.throws(() => requirePublic994Receipt({ ...receipt, [key]: value }, file), /receipt/);
   }
 });
 test('#6537 real HTTP fixture download retains exact bytes and terminal refusal receipts without partial payloads', { timeout: 10000 }, async () => {
   const bytes = Buffer.from('bounded fixture download invariant\n');
+  const requests = [];
   const server = createServer((request, response) => {
+    requests.push({ path: request.url, acceptEncoding: request.headers['accept-encoding'] });
     if (request.url === '/missing') response.writeHead(404);
     else if (request.url === '/redirect') { response.writeHead(302, { location: '/valid' }); response.end(); return; }
     else if (request.url === '/long') { response.end(Buffer.concat([bytes, bytes])); return; }
     else if (request.url === '/short') { response.end(bytes.subarray(1)); return; }
+    else if (request.url === '/gzip') {
+      const compressed = gzipSync(bytes);
+      response.writeHead(200, { 'Content-Encoding': 'gzip', 'Content-Length': compressed.length });
+      response.end(compressed); return;
+    }
+    else if (request.url === '/identity') response.setHeader('Content-Encoding', 'identity');
     response.end(bytes);
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -84,16 +96,24 @@ test('#6537 real HTTP fixture download retains exact bytes and terminal refusal 
   try {
     const receipt = await downloadPinnedFixture(pin, directory);
     assert.equal(receipt.status, 'complete-pinned-fixture-download');
+    assert.equal(receipt.requestAcceptEncoding, 'identity'); assert.equal(receipt.responseContentEncoding, null);
+    const identity = await downloadPinnedFixture({ ...pin, path: 'identity.ifc', url: `${origin}/identity` }, directory);
+    assert.equal(identity.responseContentEncoding, 'identity');
+    assert.deepEqual(await readFile(join(directory, 'identity.ifc')), bytes);
     assert.deepEqual(await readFile(join(directory, pin.path)), bytes);
-    for (const [index, route] of ['/missing', '/redirect', '/long', '/short', '/wrong-hash'].entries()) {
+    for (const [index, route] of ['/missing', '/redirect', '/long', '/short', '/wrong-hash', '/gzip'].entries()) {
       const changed = { ...pin, path: `refused-${index}.ifc`, url: `${origin}${route}`,
         sha256: route === '/wrong-hash' ? 'a'.repeat(64) : pin.sha256 };
       await assert.rejects(downloadPinnedFixture(changed, directory));
       const failed = JSON.parse(await readFile(join(directory, `${changed.path}.download.json`), 'utf8'));
       assert.equal(failed.status, 'refused'); assert.equal(failed.url, changed.url); assert.ok(failed.reason);
+      assert.equal(failed.requestAcceptEncoding, 'identity');
+      if (route === '/gzip') { assert.equal(failed.responseContentEncoding, 'gzip'); assert.match(failed.reason, /content encoding/); }
       assert.ok(!(await readdir(directory)).includes(changed.path));
       assert.ok(!(await readdir(directory)).some(name => name.endsWith('.partial')));
     }
+    assert.ok(requests.length >= 8);
+    assert.ok(requests.every(request => request.acceptEncoding === 'identity'));
   } finally {
     server.closeAllConnections(); await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     await rm(directory, { recursive: true, force: true });

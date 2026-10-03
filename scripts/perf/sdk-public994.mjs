@@ -12,13 +12,16 @@ export async function downloadPinnedFixture(pin, directory) {
   const file = join(directory, pin.path), partial = `${file}.partial`;
   const receiptPath = join(directory, `${pin.path}.download.json`);
   const receipt = { status: 'started', url: pin.url, sourceCommit: pin.sourceCommit,
+    requestAcceptEncoding: 'identity',
     expectedBytes: pin.bytes, expectedSha256: pin.sha256, file, bytes: 0, startedUTC: new Date().toISOString() };
   let handle;
   try {
-    const response = await fetch(pin.url, { redirect: 'error', signal: AbortSignal.timeout(180000) });
+    const response = await fetch(pin.url, { redirect: 'error', signal: AbortSignal.timeout(180000),
+      headers: { 'Accept-Encoding': receipt.requestAcceptEncoding } });
     Object.assign(receipt, { responseURL: response.url, httpStatus: response.status,
-      contentLength: response.headers.get('content-length') });
+      contentLength: response.headers.get('content-length'), responseContentEncoding: response.headers.get('content-encoding') });
     if (response.status !== 200 || response.url !== pin.url || !response.body) throw new Error('pinned fixture HTTP response refused');
+    if (receipt.responseContentEncoding !== null && receipt.responseContentEncoding !== 'identity') throw new Error('pinned fixture content encoding refused');
     if (receipt.contentLength !== null && receipt.contentLength !== String(pin.bytes)) throw new Error('pinned fixture header size refused');
     handle = await open(partial, 'wx');
     const hash = createHash('sha256');
@@ -44,6 +47,8 @@ export function requirePublic994Receipt(receipt, file) {
     || receipt.url !== public994.url || receipt.responseURL !== public994.url || receipt.sourceCommit !== public994.sourceCommit
     || receipt.httpStatus !== 200 || receipt.expectedBytes !== public994.bytes || receipt.bytes !== public994.bytes
     || receipt.expectedSha256 !== public994.sha256 || receipt.sha256 !== public994.sha256
+    || receipt.requestAcceptEncoding !== 'identity'
+    || (receipt.responseContentEncoding !== null && receipt.responseContentEncoding !== 'identity')
     || (receipt.contentLength !== null && receipt.contentLength !== String(public994.bytes))) {
     throw new Error('public994 pinned download receipt/file refused');
   }

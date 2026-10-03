@@ -75,8 +75,11 @@ async function parsedModel(): Promise<FederatedModel> {
   return { ...fixtureModel('m1', { idOffset: 1_000_000 }), name: 'tower.ifc', ifcDataStore: store, maxExpressId: 91 };
 }
 
-async function settle(): Promise<void> {
+async function flushEffects(): Promise<void> {
   for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+}
+async function settle(): Promise<void> {
+  await flushEffects();
   await documentPreviewReady();
 }
 
@@ -100,7 +103,7 @@ async function runLists(): Promise<void> {
     const cb = frames.shift()!;
     await act(async () => { cb(0); });
   }
-  await settle();
+  await flushEffects();
 }
 
 function openMenu(trigger: HTMLElement): void {
@@ -214,7 +217,7 @@ describe('DocumentPanel table block (#5142)', () => {
     const tables: ReportTableArgs[] = [];
     const pdfOutputs: Blob[] = [];
     const ui = render(<DocumentPanel pdfSeams={recordingBrowserSeams(tables, pdfOutputs)} />);
-    await settle(); await runLists();
+    await settle(); await runLists(); await documentPreviewReady();
     const groupLabels = (id: string): string[] => [...ui.querySelectorAll(`[data-preview-block="${id}"] tr[data-role="group"]`)].map((r) => r.firstElementChild?.textContent ?? '');
     assert.deepEqual(groupLabels('t1'), ['IfcWall  (2)', 'IfcDoor  (1)']);
     assert.deepEqual(groupLabels('t2'), groupLabels('t1'));
@@ -282,7 +285,7 @@ describe('DocumentPanel table block (#5142)', () => {
     assert.equal(exportButton.disabled, true);
     assert.equal(exportButton.textContent?.includes('Running lists'), true);
 
-    await runLists();
+    await runLists(); await documentPreviewReady();
     const rows = ui.querySelector('[data-block-table] table');
     assert.ok(rows, 'the table rendered');
     const head = [...rows.querySelectorAll('th')].map((th) => th.textContent);
@@ -300,7 +303,7 @@ describe('DocumentPanel table block (#5142)', () => {
     await settle();
     const exportButton = ui.querySelector<HTMLButtonElement>('[data-document-export]')!;
     assert.equal(exportButton.disabled, true, 'disabled while the list runs');
-    await runLists();
+    await runLists(); await documentPreviewReady();
     const message = ui.querySelector('[data-block-table] [data-table-message]')?.textContent ?? '';
     assert.ok(message.length > 0 && !message.startsWith('Running'), message);
     assert.equal(exportButton.disabled, false, 'an error is a settled state; the PDF prints it in place');
@@ -315,7 +318,7 @@ describe('DocumentPanel table block (#5142)', () => {
     const seams = recordingSeams(tables, texts);
     const ui = render(<DocumentPanel pdfSeams={seams} />);
     await settle();
-    await runLists();
+    await runLists(); await documentPreviewReady();
     const previews = ui.querySelectorAll('[data-block-table] table');
     assert.equal(previews.length, 2, 'both blocks rendered their rows');
     // The saved-list origin resolves, so "Update from saved list" is offered.

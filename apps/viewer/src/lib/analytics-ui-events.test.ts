@@ -28,7 +28,7 @@ const SAMPLES: { [E in UiEventName]: Required<UiEventProperties[E]> } = {
   view_reset: { trigger: 'show_all' },
   error_shown: { code: 'wasm_load_failed', surface: 'load_error' },
   file_open_rejected: { reason: 'unsupported_format' },
-  onboarding_surface: { surface: 'ribbon_notice', action: 'keep_classic' },
+  onboarding_surface: { surface: 'panel_empty_state', action: 'load_sample', panel_id: 'changeSets' },
 };
 
 // What posthog-js and our register() add to every event before before_send.
@@ -87,6 +87,20 @@ describe('scrubUiEvent (#5618)', () => {
   it('keeps enum properties to their closed vocabulary', () => {
     const sent = scrubUiEvent({ event: 'panel_opened', properties: { panel_id: 'loadReport', surface: 'toolbar' } });
     assert.deepEqual(sent.properties, { panel_id: 'loadReport' });
+  });
+
+  it('keeps the first-run surfaces and actions, and only a registry id as panel_id', () => {
+    for (const surface of ['welcome_card', 'panel_empty_state'] as const) {
+      for (const action of ['shown', 'load_sample', 'open_file'] as const) {
+        const sent = beforeSend({ event: 'onboarding_surface', properties: { ...SDK_PROPS, surface, action } });
+        assert.deepEqual(sent?.properties, { ...SDK_PROPS, surface, action }, `${surface}/${action}`);
+      }
+    }
+    const leaked = scrubUiEvent({
+      event: 'onboarding_surface',
+      properties: { surface: 'panel_empty_state', action: 'shown', panel_id: 'Tower A.ifc', file_name: 'Tower A.ifc' },
+    });
+    assert.deepEqual(leaked.properties, { surface: 'panel_empty_state', action: 'shown' });
   });
 
   it('keeps registered mobile and context command surfaces without leaking free text (#5870)', () => {

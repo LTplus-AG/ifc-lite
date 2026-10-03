@@ -67,16 +67,61 @@ export function fetchDemoProjectFile(): Promise<File> {
   return fetchAsFile(DEMO_KIT_PATHS.base, BASE_NAME);
 }
 
+let demoProjectInFlight: Promise<void> | null = null;
+
 /**
  * Load the demo project into the viewer, replacing the current model (the
  * `ifc-lite:load-file` listener routes to `loadFile`). The caller observes
  * completion through the store (`models.size > 0 && !loading &&
  * !geometryStreamingActive`) - same contract as a user-driven open.
  */
-export async function loadDemoProject(): Promise<void> {
-  const file = await fetchDemoProjectFile();
+export function loadDemoProject(): Promise<void> {
   // detail IS the File - useFileCommands reads e.detail directly.
-  window.dispatchEvent(new CustomEvent(EVENT_LOAD_FILE, { detail: file }));
+  return loadDemoProjectVia((file) => { window.dispatchEvent(new CustomEvent(EVENT_LOAD_FILE, { detail: file })); });
+}
+
+/**
+ * The same demo load through a caller-held `loadFile` (the first-run card).
+ * One fetch at a time across BOTH entry points: the card's button, a tour
+ * step's "Load demo project" and a later step's `ensureTourModel` can overlap
+ * while the store still reads empty, and a second load would REPLACE the
+ * first demo mid-tour.
+ */
+export function loadDemoProjectVia(load: (file: File) => unknown): Promise<void> {
+  demoProjectInFlight ??= fetchDemoProjectFile()
+    .then(async (file) => { await load(file); })
+    .finally(() => { demoProjectInFlight = null; });
+  return demoProjectInFlight;
+}
+
+/**
+ * A tour step that cannot mean anything without a model (read its data,
+ * browse its tree) calls this from `prepare`: a model already loaded, or
+ * loading, is waited for; an empty viewer gets the demo project. The welcome
+ * tour's own load step is skippable, and skipping it with nothing loaded used
+ * to leave every later step anchored to an empty panel, so they broke
+ * (`tour_step_broken` prerequisite-not-met on welcome/inspect and
+ * welcome/structure). Loading into an EMPTY set replaces nothing, so it never
+ * trips the tour's model-change abort.
+ */
+export async function ensureTourModel(): Promise<void> {
+  const s = getViewerStoreApi().getState();
+  if (isViewerEmpty(s)) await loadDemoProject();
+  // A legacy single-model store is loaded without a `models` entry, which
+  // `waitForModelSettled` would wait on forever.
+  else if (s.models.size === 0 && !s.loading) return;
+  await waitForModelSettled();
+}
+
+/**
+ * Nothing loaded and nothing loading: the one definition of an empty viewer
+ * that the tour's demo fallback, its "Skip (use demo)" label and the
+ * panels' no-model state share (#6720). A legacy single-model store
+ * (`ifcDataStore` without a `models` entry) counts as loaded, so the demo
+ * never replaces it.
+ */
+export function isViewerEmpty(s: Pick<ViewerState, 'models' | 'ifcDataStore' | 'loading'>): boolean {
+  return s.models.size === 0 && !s.ifcDataStore && !s.loading;
 }
 
 /**

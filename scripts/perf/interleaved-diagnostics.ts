@@ -60,7 +60,8 @@ export function passiveRendererWitness() {
   const host = globalThis as Record<string, unknown>;
   const hookPresent = typeof host.__ifc_lite_render_stats__ === 'function';
   const store = host.__ifc_lite_viewer_store__;
-  const getState = store && typeof store === 'object' ? Reflect.get(store, 'getState') : undefined;
+  const getState = store && (typeof store === 'object' || typeof store === 'function')
+    ? Reflect.get(store, 'getState') : undefined;
   const state: unknown = typeof getState === 'function' ? Reflect.apply(getState, store, []) : undefined;
   return { capturedUTC: new Date().toISOString(), pagePerformanceMs: performance.now(),
     visibility: document.visibilityState, rendererDebugHookPresent: hookPresent,
@@ -72,12 +73,18 @@ export function passiveRendererWitness() {
 
 /** Refused-only page callback; bounded scalar census, no buffer hashing or GPU work. */
 export function refusedRendererSnapshot() {
-  const call = (owner: unknown, method: string): unknown => {
-    if (!owner || typeof owner !== 'object') return null;
-    const fn = Reflect.get(owner, method);
-    return typeof fn === 'function' ? Reflect.apply(fn, owner, []) : null;
+  // Object methods preserve their names without a transpiler's external __name
+  // helper. Playwright serializes this function without its module closure.
+  const { call, field } = {
+    call(owner: unknown, method: string): unknown {
+      if (!owner || (typeof owner !== 'object' && typeof owner !== 'function')) return null;
+      const fn = Reflect.get(owner, method);
+      return typeof fn === 'function' ? Reflect.apply(fn, owner, []) : null;
+    },
+    field(owner: unknown, key: string): unknown {
+      return owner && (typeof owner === 'object' || typeof owner === 'function') ? Reflect.get(owner, key) : null;
+    },
   };
-  const field = (owner: unknown, key: string): unknown => owner && typeof owner === 'object' ? Reflect.get(owner, key) : null;
   const host = globalThis as Record<string, unknown>;
   const state = call(host.__ifc_lite_viewer_store__, 'getState');
   const models = field(state, 'models');

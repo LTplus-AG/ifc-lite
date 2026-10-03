@@ -7,9 +7,111 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { createContext, runInContext } from 'node:vm';
 import { tsImport } from 'tsx/esm/api';
 const { diagnosticEvent, frozenBeforeTeardown, boundedDiagnostic, writeAtomicEvidence,
-  refusedRendererSnapshot } = await tsImport('./interleaved-diagnostics.ts', import.meta.url);
+  refusedRendererSnapshot, passiveRendererWitness } = await tsImport('./interleaved-diagnostics.ts', import.meta.url);
+
+function snapshotRealm() {
+  const context = createContext({});
+  // The graph lives inside the browser-like realm: Map/Array prototypes and
+  // receiver-dependent getters match the serialized callback's own globals.
+  runInContext(`
+    const frame = { drawCalls: 3, batchesDrawn: 2, timestamp: 41 };
+    const scene = {
+      batches: [{ indexCount: 6 }, { indexCount: 3 }],
+      meshDataMap: new Map([[7, []], [8, []]]),
+      instancedEntityMap: new Map([[9, []]]),
+      getBatchedMeshes() { return this.batches; },
+      hasQueuedMeshes() { return false; },
+      hasStreamingFragments() { return false; },
+      isFinalizeInProgress() { return false; },
+      getInstancedEntityCount() { return this.instancedEntityMap.size; }
+    };
+    const renderer = {
+      scene, ready: true, frame,
+      getScene() { return this.scene; },
+      isReady() { return this.ready; },
+      getFrameStats() { return this.frame; }
+    };
+    const state = {
+      loading: false, geometryStreamingActive: false, error: null,
+      loadingProgress: { percent: 100 }, geometryResult: { meshes: [{}, {}, {}] },
+      models: new Map([['m', { loadState: 'complete', geometryLoadState: 'complete',
+        metadataLoadState: 'complete', interactiveReady: true, geometryResult: { meshes: [{}, {}, {}] } }]])
+    };
+    function useViewerStore() { throw new Error('diagnostics must not invoke the React store hook'); }
+    useViewerStore.state = state;
+    useViewerStore.getState = function getState() { return this.state; };
+    globalThis.__ifc_lite_viewer_store__ = useViewerStore;
+    const canvas = { width: 1280, height: 900, clientWidth: 1280, clientHeight: 900,
+      __reactFiber$fixture: { return: null,
+        memoizedState: { next: null, memoizedState: { current: renderer } } } };
+    globalThis.document = { visibilityState: 'visible', querySelector(selector) {
+      if (selector !== 'canvas') throw new Error('unexpected selector');
+      return canvas;
+    } };
+    globalThis.performance = { now() { return 42; } };
+    function chain(count, link) {
+      let head = null;
+      for (let i = 0; i < count; i++) head = { [link]: head };
+      return head;
+    }
+  `, context, { timeout: 1000 });
+  return { context, capture: () => JSON.parse(JSON.stringify(runInContext(
+    `(${refusedRendererSnapshot.toString()})()`, context, { timeout: 1000 }))) };
+}
+
+test('#6537 actual transpiled diagnostic callback survives closure-free browser serialization', () => {
+  const realm = snapshotRealm();
+  assert.equal(runInContext('typeof __name', realm.context), 'undefined');
+  assert.equal(runInContext('typeof process', realm.context), 'undefined');
+  const observed = realm.capture();
+  assert.equal(observed.rendererFound, true);
+  assert.equal(observed.rendererReady, true);
+  assert.deepEqual(observed.frame, { drawCalls: 3, batchesDrawn: 2, timestamp: 41 });
+  assert.equal(observed.load.modelCount, 1);
+  assert.equal(observed.load.geometryMeshes, 3);
+  assert.equal(observed.load.loading, false);
+  assert.equal(observed.load.streaming, false);
+  assert.equal(observed.model.metadataLoadState, 'complete');
+  assert.deepEqual(observed.scene, { queued: false, fragments: false, finalizing: false,
+    batchCount: 2, flatOwners: 2, instanceOwners: 1, instancedCount: 1 });
+  runInContext('renderer.ready = false; renderer.frame = null; state.loading = true;', realm.context);
+  const changed = realm.capture();
+  assert.equal(changed.rendererReady, false);
+  assert.equal(changed.frame, null);
+  assert.equal(changed.load.loading, true);
+});
+test('#6537 serialized passive witness reads a function-shaped Zustand API without invoking the hook', () => {
+  const realm = snapshotRealm();
+  const capture = () => JSON.parse(JSON.stringify(runInContext(
+    `(${passiveRendererWitness.toString()})()`, realm.context, { timeout: 1000 })));
+  const before = capture();
+  assert.equal(before.loading, false);
+  assert.equal(before.streaming, false);
+  assert.equal(before.rendererDebugHookPresent, false);
+  runInContext(`
+    state.loading = true; state.geometryStreamingActive = true;
+    globalThis.__ifc_lite_render_stats__ = function renderStats() {
+      throw new Error('passive witness must not invoke the renderer stats hook');
+    };
+  `, realm.context);
+  const after = capture();
+  assert.equal(after.loading, true);
+  assert.equal(after.streaming, true);
+  assert.equal(after.rendererDebugHookPresent, true);
+});
+test('#6537 serialized callback reports exhausted traversal bounds in its isolated realm', () => {
+  const realm = snapshotRealm();
+  runInContext('canvas.__reactFiber$fixture = chain(201, "return");', realm.context);
+  assert.equal(realm.capture().traversal.fiberCapExhausted, true);
+  runInContext('canvas.__reactFiber$fixture = { return: null, memoizedState: chain(201, "next") };', realm.context);
+  const exhausted = realm.capture();
+  assert.equal(exhausted.traversal.hookCapExhausted, true);
+  assert.equal(exhausted.traversal.complete, false);
+  assert.equal(exhausted.rendererFound, false);
+});
 
 test('#6537 diagnostic events preserve observer delivery time and loading versus teardown attribution', () => {
   const loading = diagnosticEvent('console', 'Device lost', 'load-and-readiness', 1000, 1250);

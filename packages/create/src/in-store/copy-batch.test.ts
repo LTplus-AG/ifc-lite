@@ -11,6 +11,7 @@ import { arrayCopyTransforms } from './copy-array.js';
 import { copyBatchInStore, copySourcesInStore, copiedProductsInStore } from './copy-batch.js';
 import { createCopyContext, productStoreyOrigin } from './copy-product.js';
 import { addColumnToStore } from './column.js';
+import { asRef } from './style-entity-reader.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 
 // #6232 D5: real Bonsai source products and authored overlays share copy policy.
@@ -104,4 +105,52 @@ it('uses linear fit and polar full-turn semantics on copied real product placeme
   }
   expect(arrayCopyTransforms({ mode: 'polar', count: 3, anchor: [0, 0], angleDegrees: -180 })!.at(-1)!.turn).toBe(-Math.PI);
   expect(() => arrayCopyTransforms({ mode: 'polar', count: 10002, anchor: [0, 0] })).toThrow(/at most/);
+});
+
+
+it('bounds pruned root fan-out rather than selected hosted children (#6753 review)', () => {
+  const ctx = createCopyContext(store, editor), selection = copiedProductsInStore(ctx, [1222]);
+  expect(selection).toHaveLength(3);
+  expect(copySourcesInStore(ctx, selection, 10000)).toEqual({ ids: [1222] });
+  expect(copySourcesInStore(ctx, selection, 10001)).toEqual({ refusal: 'A copy batch may contain at most 10000 product copies' });
+  const journal = structuredClone(view.getMutations()), next = view.peekNextExpressId();
+  // 5001 roots are admissible even though wall + two selected fillings would
+  // exceed the bound before pruning. Inject a late GUID fault at the actual
+  // writer to prove this batch reaches it, without allocating 5001 graphs.
+  expect(() => copyBatchInStore(store, editor, selection, Array.from({ length: 5001 }, () => ({})), {
+    duplicate: { guidRandom: () => { throw new Error('Reached bounded root writer'); } },
+  })).toThrow('Reached bounded root writer');
+  expect(view.getMutations()).toEqual(journal);
+  expect(view.peekNextExpressId()).toBe(next);
+  expect(editor.getNewEntities()).toEqual([]);
+});
+
+it('rejects unknown array modes and overflowing derived coordinates before copies (#6753 review)', () => {
+  const linear = { mode: 'linear' as const, count: 3, anchor: [0,0] as const, cursor: [1,0] as const, distance: 1e308 };
+  expect(() => arrayCopyTransforms(linear)).toThrow(/extent.*finite/);
+  expect(() => arrayCopyTransforms({ ...linear, count: 2, anchor: [-1e308,0], cursor: [1e308,0] })).toThrow(/direction.*finite/);
+  expect(() => arrayCopyTransforms({ ...linear, mode: 'unsupported' as 'linear' })).toThrow(/Unsupported array mode/);
+  expect(arrayCopyTransforms({ ...linear, fit: true })).toEqual([{ offset: [5e307,0,0] }, { offset: [1e308,0,0] }]);
+  expect(editor.getNewEntities()).toEqual([]);
+});
+
+
+it('refuses finite inputs whose native copy frame or placement overflows, atomically (#6753)', async () => {
+  const assertRefused = (target: IfcDataStore, targetView: MutablePropertyView, targetEditor: StoreEditor, transform: Parameters<typeof copyBatchInStore>[3][number]) => {
+    const before = structuredClone({ records: targetEditor.getNewEntities(), journal: targetView.getMutations() }), next = targetView.peekNextExpressId();
+    expect(() => copyBatchInStore(target, targetEditor, [1222], [transform])).toThrow(/finite.*native/);
+    expect({ records: targetEditor.getNewEntities(), journal: targetView.getMutations() }).toEqual(before);
+    expect(targetView.peekNextExpressId()).toBe(next);
+  };
+  expect(() => arrayCopyTransforms({ mode: 'polar', count: 2, anchor: [1e308, 1e308] })).toThrow(/frame.*finite/);
+  assertRefused(store, view, editor, { pivot: [1e308, 1e308], turn: Math.PI });
+  const text = readFileSync(sample, 'utf8').replace('IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)', 'IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)');
+  const bytes = new TextEncoder().encode(text);
+  const millimetres = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+  const mmView = new MutablePropertyView(null, 'mm'), mmEditor = new StoreEditor(millimetres, mmView);
+  assertRefused(millimetres, mmView, mmEditor, { offset: [1e308, 0, 0] });
+  const ctx = createCopyContext(store, editor), placement = ctx.read(asRef(ctx.read(1222)!.attributes[5])!)!;
+  const axis = ctx.read(asRef(placement.attributes[1])!)!, point = asRef(axis.attributes[0])!;
+  editor.setPositionalAttribute(point, 0, [1e308, 0, 0]);
+  assertRefused(store, view, editor, { offset: [1e308, 0, 0] });
 });

@@ -5,63 +5,24 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { IfcParser } from '@ifc-lite/parser';
-import { MutablePropertyView } from '@ifc-lite/mutations';
-import { IfcAPI } from '@ifc-lite/wasm';
-import { CoordinateHandler, type GeometryResult } from '@ifc-lite/geometry';
-import type { RemeshRequest } from '@ifc-lite/geometry/remesh';
-import { applyRemeshConfig, remeshOnApi, styleWireOnApi } from '../../../../../packages/geometry/src/remesh/remesh-core.js';
 import { useViewerStore } from '@/store';
-import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { ensureRoomWasm } from '@/test/room-walls-fixture';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { clearStoreyRoomsCache } from '@/lib/rooms/storey-rooms';
 import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
-import { createStoreAdapter } from './store-adapter.js';
 import '@/lib/commands/modeling/builtin';
 import { getModelingCommand } from '@/lib/commands/modeling/registry';
 import { PLAN_MOVE, readPlanMoveTarget } from '@/lib/commands/modeling/commands/plan-move';
 import { runTransaction } from '@/lib/commands/modeling/transaction';
 import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workplane';
 
-const MODEL = 'native', frame = { x: 0, y: 0, z: 0, needsShift: false };
-const sample = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
-const requests: RemeshRequest[] = [];
+import { MODEL, requests, seedNativeSdkModel as seed, settle, nativeSdkMeshes as meshes, nativeSdkUndoDepth as depth } from '@/test/native-sdk-model';
+
 afterEach(() => {
   setRemeshClientFactory(null);
   clearModelLayouts(MODEL);
   clearStoreyRoomsCache();
 });
-async function seed() {
-  const bytes = readFileSync(sample);
-  const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), { disableWorkerScan: true });
-  const api = new IfcAPI();
-  const config = { mergeLayers: false, tessellationQuality: null, skipSmallCuts: false, rectParamFastPath: true } as const;
-  applyRemeshConfig(api, config);
-  const wire = styleWireOnApi(api, bytes);
-  const loaded = remeshOnApi(api, { buffer: bytes, targets: Uint32Array.of(1222, 1262), frame, ...wire });
-  const bounds = new CoordinateHandler().calculateBounds(loaded.meshes);
-  const geometry: GeometryResult = { meshes: loaded.meshes, totalTriangles: loaded.meshes.reduce((n, mesh) => n + mesh.indices.length / 3, 0), totalVertices: loaded.meshes.reduce((n, mesh) => n + mesh.positions.length / 3, 0), coordinateInfo: { wasmRtcFrame: frame, originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } };
-  useViewerStore.setState({
-    ...fixtureModels({ ...fixtureModel(MODEL), ifcDataStore: store, geometryResult: geometry }),
-    geometryResult: geometry, editEnabled: true, collabRoomId: null, canCollabEdit: () => true,
-    mutationViews: new Map([[MODEL, new MutablePropertyView(store.properties ?? null, MODEL)]]),
-    storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(),
-    removedNewEntities: new Map(), removedMeshes: new Map(), pendingMeshRemovals: null, pendingMeshEdits: null, mutationVersion: 0,
-  });
-  requests.length = 0;
-  setRemeshClientFactory(async next => {
-    applyRemeshConfig(api, next);
-    return { alive: true, setConfig: cfg => applyRemeshConfig(api, cfg), dispose: () => api.free(),
-      styleWire: async source => styleWireOnApi(api, source),
-      remesh: async request => { requests.push(request); return remeshOnApi(api, request); } };
-  });
-  return { store, adapter: createStoreAdapter(useViewerStore), view: useViewerStore.getState().mutationViews.get(MODEL)! };
-}
-const settle = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setTimeout(resolve, 0)); };
-const meshes = () => useViewerStore.getState().models.get(MODEL)!.geometryResult!.meshes;
-const depth = () => useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0;
 
 it('SDK Duplicate remeshes the actual hosted Bonsai graph and one viewer Undo removes graph and meshes (#6232)', async t => {
   if (!ensureRoomWasm(t)) return;

@@ -93,6 +93,14 @@ export function removeStairFromDraft(store: IfcDataStore, draft: StoreEditor, st
     if (slots.length) productSlots.set(definition.name.toUpperCase(), slots);
   }
   const pair = new Set([stairId, flightId]);
+  for (const id of reader.ids('IFCRELVOIDSELEMENT')) {
+    const relationship = reader.entity(id);
+    if (!relationship) throw new Error(`removeStairInStore: void relationship #${id} cannot be read`);
+    const host = asRef(relationship.attributes[4]);
+    if (host !== null && pair.has(host)) {
+      throw new Error(`removeStairInStore: stair or flight hosts a live opening; edit the host in place`);
+    }
+  }
   // Effective type buckets preserve overlay creations/retypes and exclude
   // geometry/property records before the reader materializes attributes.
   for (const { expressId, type } of iterateEffectiveEntityIds(store, draft.getMutationView(), [...productSlots.keys()])) {

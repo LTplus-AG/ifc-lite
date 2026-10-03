@@ -8,7 +8,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { roomChainInStore } from '../../create/src/in-store/room-store.js';
 import { StepExporter } from '@ifc-lite/export';
-import { RoomLayoutCache, applyLayoutOp, occupancyTest, existingSpaceFootprintEntriesByStorey, type RoomWallRect, type RoomPlateFactory } from '@ifc-lite/create';
+import { RoomLayoutCache, applyLayoutOp, readFaces, occupancyTest, existingSpaceFootprintEntriesByStorey, type RoomWallRect, type RoomPlateFactory } from '@ifc-lite/create';
 import { createRoomCommandBackend, type RoomGeometryProvider } from './store-room-command.js';
 
 const wasm = new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url), available = existsSync(wasm);
@@ -108,7 +108,7 @@ it.skipIf(!available)('first SDK attachment retains the existing viewer native l
     const edited = held.plate.duplicate();
     try {
       expect(applyLayoutOp(edited, { kind: 'split', a: [21, 20], b: [21, 23] }, .1)).toBe(true);
-      layouts.file('m', 42, .05, '0:', held.walls, edited);
+      layouts.file('m', 42, .05, '0:', held.walls, edited, readFaces(edited));
     } catch (error) { edited.free(); throw error; }
     // Attaching the SDK to an already edited viewer cache must retain both
     // native faces even though no SDK command has seen this source store yet.

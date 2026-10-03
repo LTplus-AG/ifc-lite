@@ -117,6 +117,28 @@ describe('#6232 D5 ordinary atomic commit', () => {
     });
   }
 
+  it('#6710 refuses a stair flight hosting an opening before replacement preparation or direct removal', async () => {
+    const s = await session(), anchor = resolveSpatialAnchor(s.store, STOREY, s.view);
+    const stair = inStore.addStairToStore(s.editor, anchor, {
+      Position: [0, 5, 0], NumberOfRisers: 10, RiserHeight: .2, TreadLength: .3, Width: 1,
+    });
+    // Attach an actual parsed Bonsai opening and its live void relationship
+    // to the authored flight; its filling remains independently live.
+    s.editor.setPositionalAttribute(1328, 4, `#${stair.flightId}`);
+    const before = s.snapshot(), bytes = s.saved(), next = s.view.peekNextExpressId();
+    let prepared = false;
+    expect(() => replaceElementInStore(s.store, s.editor, stair.stairId, draft => {
+      prepared = true;
+      return resolveSpatialAnchor(s.store, STOREY, draft.getMutationView());
+    }, WALL)).toThrow(/hosts a live opening/);
+    expect(prepared).toBe(false);
+    expect(() => inStore.removeStairInStore(s.store, s.editor, stair.stairId)).toThrow(/hosts a live opening/);
+    expect(s.snapshot()).toEqual(before);
+    expect(s.view.peekNextExpressId()).toBe(next);
+    expect(s.saved()).toEqual(bytes);
+    for (const id of [stair.stairId, stair.flightId, 1299, 1262, 1328, 1334]) expect(s.view.isDeleted(id)).toBe(false);
+  });
+
   for (const sourceKind of ['curtain assembly', 'bound grid', 'spatial storey', 'ordinary aggregate root'] as const) {
     it(`#6710 refuses unsupported ${sourceKind} replacement before preparation or graph changes`, async () => {
       const s = await session(), anchor = resolveSpatialAnchor(s.store, STOREY, s.view);

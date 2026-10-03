@@ -106,6 +106,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
 | Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
 | Native Room | `room_command` |
+| Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
 | Wall joins | `join_walls` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |

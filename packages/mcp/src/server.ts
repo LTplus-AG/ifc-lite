@@ -130,7 +130,7 @@ export class MCPServer {
     this.sessionId = opts.sessionId;
     this.registry = opts.registry ?? new InMemoryModelRegistry();
     this.scope = opts.scope ?? fullScope();
-    this.config = { ...DEFAULT_CONFIG, ...(opts.config ?? {}) };
+    this.config = { ...DEFAULT_CONFIG, ...opts.config };
     this.tools = opts.tools;
     this.resources = opts.resources;
     this.prompts = opts.prompts;

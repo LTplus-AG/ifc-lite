@@ -24,8 +24,9 @@
 import type { ViewerState } from '@/store';
 import type { AuthoringTransaction, CommitResult, Vec3 } from '@/lib/commands/modeling/types';
 import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '@/lib/commands/modeling/workplane';
-import { planElementTransform, type TransformPlan, type TransformRefusal, type TransformRoot } from './plan.js';
-import { rotateBy, unrotateBy } from './placement-frames.js';
+import { planElementTransform, type TransformPlan } from './plan.js';
+import { transformElementsInStore, describeTransformRefusal } from '../../../../../packages/create/src/in-store/element-transform-edit.js';
+import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { carryWallJoins } from './wall-join-carrier.js';
 
 type Vec2 = [number, number];
@@ -62,13 +63,7 @@ export function planSelectionTransform(s: ViewerState, modelId: string, selected
   return planElementTransform({ dataStore, view, selected, storeyOf: (id) => elementStoreyId(s, modelId, id) });
 }
 
-export function describeRefusal(refusal: TransformRefusal): string {
-  switch (refusal.reason) {
-    case 'noStorey': return `#${refusal.expressId} is on no storey`;
-    case 'noPlacement': return `#${refusal.expressId} has no placement`;
-    default: return `#${refusal.expressId}'s placement does not hang from its storey`;
-  }
-}
+export const describeRefusal = describeTransformRefusal;
 
 const sub2 = (a: readonly number[], b: readonly number[]): Vec2 => [a[0] - b[0], a[1] - b[1]];
 
@@ -83,14 +78,6 @@ function storeyLocal(s: ViewerState, modelId: string, storeyId: number, cache: M
   return toLocal;
 }
 
-/** The storey-frame delta of the root's origin, and the turn, for `op`. */
-function rootStep(root: TransformRoot, op: ElementTransformOp, toLocal: (p: Vec3) => Vec2): { delta: Vec2; turn: number } {
-  if (op.kind === 'move') return { delta: sub2(toLocal(op.to), toLocal(op.from)), turn: 0 };
-  const pivot = toLocal(op.pivot);
-  const swung = rotateBy([Math.cos(op.angle), Math.sin(op.angle)], sub2(root.origin, pivot));
-  return { delta: [pivot[0] + swung[0] - root.origin[0], pivot[1] + swung[1] - root.origin[1]], turn: op.angle };
-}
-
 /**
  * Write `op` for `selected` of `modelId` in `tx`. Throws (so the transaction
  * reverts everything) when any element cannot be moved or turned.
@@ -101,28 +88,28 @@ export function commitElementTransform(
   selected: readonly number[],
   op: ElementTransformOp,
 ): CommitResult {
-  const plan = planSelectionTransform(tx.store, modelId, selected);
-  if (!plan) throw new Error('The model has no editable IFC data.');
-  if (plan.refused.length > 0) throw new Error(`Can't move ${plan.refused.map(describeRefusal).join(', ')}.`);
-  if (op.kind === 'rotate') {
-    const tilted = plan.roots.find((r) => !r.upright);
-    if (tilted) throw new Error(`#${tilted.expressId} is tilted; only upright elements turn about the vertical.`);
-  }
+  const target = modelEditTarget(tx.store, modelId);
+  if (!target) throw new Error('The model has no editable IFC data.');
   const planes = new Map<number, (p: Vec3) => Vec2>();
-  for (const root of plan.roots) {
-    const { delta, turn } = rootStep(root, op, storeyLocal(tx.store, modelId, root.storeyId, planes));
-    const [dx, dy] = unrotateBy(root.parent.axis, delta);
-    if (Math.hypot(dx, dy) > 1e-9) {
-      const moved = tx.store.translateEntity(modelId, root.expressId, [dx, dy, 0], tx.batchId);
+  const result = transformElementsInStore({
+    ...target, selected,
+    op: op.kind === 'move' ? { kind: 'move', delta: [0, 0] } : { kind: 'rotate', pivot: [0, 0], angle: op.angle },
+    storeyOf: id => elementStoreyId(tx.store, modelId, id),
+    operationForStorey: storeyId => {
+      const toLocal = storeyLocal(tx.store, modelId, storeyId, planes);
+      return op.kind === 'move' ? { kind: 'move', delta: sub2(toLocal(op.to), toLocal(op.from)) }
+        : { kind: 'rotate', pivot: toLocal(op.pivot), angle: op.angle };
+    },
+    translate: (id, delta) => {
+      const moved = tx.store.translateEntity(modelId, id, delta, tx.batchId);
       if (!moved.ok) throw new Error(moved.reason);
-    }
-    if (turn !== 0) {
-      const turned = tx.store.rotateEntity(modelId, root.expressId, turn);
+    },
+    rotate: (id, angle) => {
+      const turned = tx.store.rotateEntity(modelId, id, angle);
       if (!turned.ok) throw new Error(turned.reason);
-    }
-  }
-  const joined = joinCarrier?.({ tx, modelId, plan, op }) ?? [];
-  const remesh = [...new Set([...plan.roots.map((r) => r.expressId), ...plan.carried, ...joined])];
-  // The walls a join carried moved their own start or were cut again: what they host moves with them.
-  return { modelId, created: [], deleted: [], remesh, ...(joined.length > 0 ? { remeshCause: 'hostsChanged' as const } : {}), select: [...selected] };
+    },
+    carryJoins: plan => joinCarrier?.({ tx, modelId, plan, op }) ?? [],
+  });
+  return { modelId, created: [], deleted: [], remesh: result.remesh,
+    ...(result.hostsChanged ? { remeshCause: 'hostsChanged' as const } : {}), select: [...selected] };
 }

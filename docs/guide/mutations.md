@@ -844,3 +844,11 @@ bim.store.editHostedElement({ modelId: 'building', expressId: 1262 }, {
   OverallWidth: 1.2, OverallHeight: 1.4,
 });
 ```
+
+Shared geometry edit planning uses `expandAffectedSet(store, view, ids, cause)`
+from `@ifc-lite/export` to include live hosted products when placements or host
+bodies change. `editOwnershipRefusal(store, view, writtenIds, allowedProducts)`
+checks effective source and overlay references before an in-place write and
+refuses leaves shared with unrelated products. Callers keep planning and writes
+inside one atomic mutation transaction. The viewer's move, rotate and align
+commands use this common plan and preserve the IFC storey frame and model units.

@@ -33,8 +33,8 @@ export function editedLayout(s: ViewerState, modelId: string, storeyId: number, 
   try { return { plate, walls: entry.walls, changed: applyLayoutOp(plate, op, tol), faces: readFaces(plate) }; }
   catch (error) { plate.free(); throw error; }
 }
-export function fileLayout(s: ViewerState, modelId: string, storeyId: number, weld: number, walls: string, plate: RoomPlate): void {
-  cache.file(modelId, storeyId, weld, undoHead(s, modelId), walls, plate);
+export function fileLayout(s: ViewerState, modelId: string, storeyId: number, weld: number, walls: string, plate: RoomPlate, faces: LayoutFace[]): void {
+  cache.file(modelId, storeyId, weld, undoHead(s, modelId), walls, plate, faces);
 }
 export const clearModelLayouts = (modelId: string) => cache.clearModel(modelId);
 export const clearRoomLayouts = () => cache.clear();

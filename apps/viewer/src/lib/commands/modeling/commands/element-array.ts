@@ -95,6 +95,15 @@ export function arrayTransforms(g: ArrayGesture): CopyTransform[] | null {
   return arrayCopyTransforms({ ...g, angleDegrees: g.angle });
 }
 
+/** Preview refuses invalid settings; commit reports the canonical planner error. */
+function arrayPreview(g: ArrayGesture): CopyTransform[] | null | { refusal: unknown } {
+  try { return arrayTransforms(g); }
+  catch (error) {
+    console.debug('[element.array] preview refused', error);
+    return { refusal: error };
+  }
+}
+
 const FIELDS: readonly CommandField<ArrayGesture>[] = [
   {
     id: 'count', labelKey: 'copyArray.field.count', unit: 'count', group: 'count',
@@ -145,7 +154,9 @@ export const ELEMENT_ARRAY: ModelingCommand<ArrayGesture> = {
     if (g.refusal) return { ok: true };
     if (g.ids.length === 0) return { ok: false, reasonKey: 'copyArray.array.noSelection' };
     if (!g.plane) return { ok: false, reasonKey: 'modelingCommand.noPlane' };
-    return arrayTransforms(g) ? { ok: true } : { ok: false, reasonKey: hint(g) };
+    const plan = arrayPreview(g);
+    // Let the transaction report the precise planner refusal, like a refused selection.
+    return plan ? { ok: true } : { ok: false, reasonKey: hint(g) };
   },
   commit(g) {
     // A selection that cannot be arrayed says why, in the words of the copy.
@@ -158,8 +169,8 @@ export const ELEMENT_ARRAY: ModelingCommand<ArrayGesture> = {
   afterCommit: () => ({ exit: true }),
   cancel: (g) => (g.anchor ? 'reset' : 'exit'),
   ghost(g, ctx) {
-    const transforms = arrayTransforms(g);
-    if (!g.modelId || !g.plane || !transforms) return [];
+    const transforms = arrayPreview(g);
+    if (!g.modelId || !g.plane || !transforms || 'refusal' in transforms) return [];
     const s = ctx.get();
     return copyGhosts(s, sourceMeshes(s, g.modelId, g.shown), g.plane, g.plane, transforms);
   },

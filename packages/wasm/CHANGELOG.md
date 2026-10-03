@@ -1,5 +1,17 @@
 # @ifc-lite/wasm
 
+## 10.4.0
+
+### Minor Changes
+
+- [#6727](https://github.com/LTplus-AG/ifc-lite/pull/6727) [`04e8c67`](https://github.com/LTplus-AG/ifc-lite/commit/04e8c6752778a444628507478b381ad920979fa6) Thanks [@louistrue](https://github.com/louistrue)! - Geometry workers now report progress from inside a long batch call, so a slow element (for example a wall with hundreds of curved openings) is no longer mistaken for a hung call. Previously the pool replaced such a worker after 45 s and skipped the element after another 90 s, so whether the element loaded depended on the user's CPU speed and the replay added up to two minutes. The kernel emits coarse progress points; `@ifc-lite/wasm` adds `setGeometryProgressCallback`, rate-limited to one call a second. Geometry output is unchanged; calls that stop reporting are still recovered as before, and any single call is still bounded at 10 minutes even while it reports progress.
+
+### Patch Changes
+
+- [#6696](https://github.com/LTplus-AG/ifc-lite/pull/6696) [`caf0c30`](https://github.com/LTplus-AG/ifc-lite/commit/caf0c3077bf3b132fc60a6805eb849580d6fd5db) Thanks [@louistrue](https://github.com/louistrue)! - Preserve neutral georeferencing exports with machine-epsilon direction roundoff without unnecessary geometry normalization refusals.
+
+- [#6697](https://github.com/LTplus-AG/ifc-lite/pull/6697) [`5a40ad8`](https://github.com/LTplus-AG/ifc-lite/commit/5a40ad89723df2dca70248c5caaba6d402ffc762) Thanks [@louistrue](https://github.com/louistrue)! - Preserve rigid map rotation through original root placement frames without wrapping representation geometry. Supported openings, fills, annotations and endpoint-local boundaries retain their coordinate ownership; TrueNorth metadata rotates with the engineering frame. Invalid or unsupported ownership still refuses atomically.
+
 ## 10.3.0
 
 ### Minor Changes

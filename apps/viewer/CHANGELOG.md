@@ -1,5 +1,96 @@
 # @ifc-lite/viewer
 
+## 5.0.0
+
+### Major Changes
+
+- [#6592](https://github.com/LTplus-AG/ifc-lite/pull/6592) [`9153b4c`](https://github.com/LTplus-AG/ifc-lite/commit/9153b4cb6054cd780646670fab526b5c2e0b69f7) Thanks [@louistrue](https://github.com/louistrue)! - Viewer position and rotation edits refuse grid-relative placement chains instead of presenting child-local coordinates as directly editable storey coordinates. These newly enforced refusals change the public runtime validation contract.
+  
+  Bind actual Column-tool grid-intersection snaps to persistent IfcGridPlacement graphs through the shared create API. The linear snapping consumer revalidates the crossing, native units, height and section heading atomically; Undo/Redo records the entire graph. Alt bypass and ordinary edge snaps retain local placement.
+  
+  Bound columns share ordinary authored geometry completion, including initial parameter fallback when native remeshing declines and revealing the occurrence from Types view. Subsequent grid movement updates live geometry through native remeshing; the initial fallback is not a grid-movement substitute.
+
+- [#6595](https://github.com/LTplus-AG/ifc-lite/pull/6595) [`d4b270c`](https://github.com/LTplus-AG/ifc-lite/commit/d4b270cb1938d17d48f81c40d25b9e0f0a8403cc) Thanks [@louistrue](https://github.com/louistrue)! - Use the column writer's storey-local +X default when drawing initial parameter fallback geometry. The exported authoredElementMeshPayload function now maps an omitted RefDirection through the storey frame, instead of allowing the fallback mesh builder to use model-local +X. This changes the meaning of an existing default and requires a major viewer release.
+  
+  Consumers should pass the intended storey-local RefDirection explicitly when section heading matters. Columns authored without RefDirection now match an explicit [1, 0, 0] in translated or rotated storeys when native remeshing declines. Native-first meshing and Undo/Redo are unchanged.
+
+### Minor Changes
+
+- [#6673](https://github.com/LTplus-AG/ifc-lite/pull/6673) [`02eb22e`](https://github.com/LTplus-AG/ifc-lite/commit/02eb22edd5b050b48ac8944e4a8a2a97316c6976) Thanks [@louistrue](https://github.com/louistrue)! - Keep independent Information rule sets and IDS documents in persistent selectable libraries, preserving saved reports and latest import ownership.
+
+- [#6687](https://github.com/LTplus-AG/ifc-lite/pull/6687) [`4474322`](https://github.com/LTplus-AG/ifc-lite/commit/44743220140ddbff28bc540f8c43ffd7b0cf0a0d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Documentation: one Add block entry, "Validation report", replaces the separate IDS, information validation, saved and manual report entries. The block's Saved report source picker lists every saved report of any kind and, while they exist, the current IDS or information validation run and the current manual checklist as live sources. Existing documents load unchanged.
+
+- [#6683](https://github.com/LTplus-AG/ifc-lite/pull/6683) [`e134f79`](https://github.com/LTplus-AG/ifc-lite/commit/e134f79e92e18d35c48b23b4d8fd9e25998896e9) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Allow IDS and information-validation document reports to hide their validation-run and evaluated-models stamp rows in preview and PDF, like manual validation reports, while retaining the recorded evidence and preserving the choice through refresh, saved-source changes and workflow-built documents.
+
+- [#6710](https://github.com/LTplus-AG/ifc-lite/pull/6710) [`8a0a03a`](https://github.com/LTplus-AG/ifc-lite/commit/8a0a03a4f9e4ca9cfae457493f0eb50268052ecb) Thanks [@louistrue](https://github.com/louistrue)! - Add optional SDK and loaded-model MCP stair and railing authoring, with atomic tracked replacement and unique stair assembly removal. Reuse canonical builders and retain prior model work when creation or ownership checks refuse a replacement.
+
+- [#6647](https://github.com/LTplus-AG/ifc-lite/pull/6647) [`768c462`](https://github.com/LTplus-AG/ifc-lite/commit/768c46262180cd06d0d46f8b5ba67f77713f4012) Thanks [@louistrue](https://github.com/louistrue)! - Bind comparison charts to completed saved reports with persistent per-chart choices, shared preview/PDF resolution, explicit missing dependencies, and safe recorded-data selection and snapshot behavior. Separate informative recorded-source captions from PDF failure diagnostics through optional error identities, preserving older message-only callers.
+
+- [#6655](https://github.com/LTplus-AG/ifc-lite/pull/6655) [`bd0d027`](https://github.com/LTplus-AG/ifc-lite/commit/bd0d02782b92581ed8e007effc9d00e37a09476e) Thanks [@louistrue](https://github.com/louistrue)! - Allow manual-validation document reports to hide model and recording stamp rows in preview and PDF while retaining the recorded evidence and preserving the display choice through refresh and saved-source changes.
+
+- [#6638](https://github.com/LTplus-AG/ifc-lite/pull/6638) [`27fc219`](https://github.com/LTplus-AG/ifc-lite/commit/27fc219f49b35e877dcc5662fe0d277408a12626) Thanks [@louistrue](https://github.com/louistrue)! - Keep 3D modelling presses owned by their command: preview walls without orbiting, drag room corners through one Undo/Redo batch, cancel safely on capture or focus loss, and discard queued input when commands change. Shift-left and middle navigation, right-button fly, and double-click polygon closure retain their controls.
+
+- [#6668](https://github.com/LTplus-AG/ifc-lite/pull/6668) [`f1b7acd`](https://github.com/LTplus-AG/ifc-lite/commit/f1b7acde3c4bb31d7d1daa9821b18bcbebcf982d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add a whole-block size (50-200 %) to every document block that has text or graphics (text, image, chart, topic, table, IDS and manual-validation reports). One factor scales the block's text and graphics together in the preview and the PDF, and the text re-wraps at the new size. Document format version 11 adds the optional `scale` field; version 10 files load unchanged, and a file from a newer version is still refused.
+
+- [#6594](https://github.com/LTplus-AG/ifc-lite/pull/6594) [`9400cb6`](https://github.com/LTplus-AG/ifc-lite/commit/9400cb6c952ba200e165c1dadbd95f9d28fca927) Thanks [@louistrue](https://github.com/louistrue)! - Wait for owned primary IFC registration before launching Start blank Wall, and settle cancelled or superseded metadata loads across hook instances.
+
+- [#6661](https://github.com/LTplus-AG/ifc-lite/pull/6661) [`9562e32`](https://github.com/LTplus-AG/ifc-lite/commit/9562e324bab373822617098a2c2223fc4657e10b) Thanks [@louistrue](https://github.com/louistrue)! - Restore saved manual validation reports as independent editable checklist copies bound to their recorded model, while preserving immutable report history.
+
+### Patch Changes
+
+- [#6714](https://github.com/LTplus-AG/ifc-lite/pull/6714) [`1c1190e`](https://github.com/LTplus-AG/ifc-lite/commit/1c1190e9942f4ee3cab5cb70b25cdf3f537fda24) Thanks [@louistrue](https://github.com/louistrue)! - Product analytics no longer redacts `file:*` command ids (Open, Add model, Share, Refresh, federation setup) from `command_executed`; `file:` and `blob:` URLs are still redacted.
+
+- [#6666](https://github.com/LTplus-AG/ifc-lite/pull/6666) [`7d33d8c`](https://github.com/LTplus-AG/ifc-lite/commit/7d33d8cd6917c6a0df5d1b3e6aca741e554c8ba7) Thanks [@louistrue](https://github.com/louistrue)! - Share atomic loaded-model creation for the existing eight ordinary builders across viewer, SDK and the MCP headless backend. Public MCP flows can create the four kinds exposed by existing element-spec nodes: wall, column, beam and slab, with complete recorded undo. Late creation refusals retain all prior records and leave no helper entities. Preserve existing placement and owner-history defaults, and include the IFC2X3 slab PredefinedType attribute in saved records.
+
+- [#6719](https://github.com/LTplus-AG/ifc-lite/pull/6719) [`e3ae2ca`](https://github.com/LTplus-AG/ifc-lite/commit/e3ae2cae79850a160483eee266fb5387014b4831) Thanks [@louistrue](https://github.com/louistrue)! - Keep the hierarchy panel rendering on very large models. Expanding the "Other" bucket in By Class or By Type with more than roughly 120k geometry-less elements, a spatial node with that many direct children, or an authored type/group relation of that size no longer throws `RangeError: Maximum call stack size exceeded`; rows are appended one at a time instead of being spread as call arguments.
+
+- [#6669](https://github.com/LTplus-AG/ifc-lite/pull/6669) [`70fe581`](https://github.com/LTplus-AG/ifc-lite/commit/70fe581ecb3628cde4421c92e7a65acf4196ed1a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - The compact IDS report on a document page now reads as two levels: each specification is a bold row heading a group, its requirements are indented beneath it, and the next specification starts after a larger gap. The preview nests the requirement rows, as the PDF already indented them.
+
+- [#6670](https://github.com/LTplus-AG/ifc-lite/pull/6670) [`61219d3`](https://github.com/LTplus-AG/ifc-lite/commit/61219d3ebaf0d2ac51448587e113003015edcbda) Thanks [@BIMvoice](https://github.com/BIMvoice)! - The compact IDS report block on a document page gains a Specifications only option that prints one bar row per specification with its pass rate and leaves out the requirement rows, in both the preview and the PDF. Refreshing the result or choosing another saved report keeps the choice. It is an optional block field, so the document format version is unchanged.
+
+- [#6707](https://github.com/LTplus-AG/ifc-lite/pull/6707) [`5c45d80`](https://github.com/LTplus-AG/ifc-lite/commit/5c45d8061f73d36483ebf904f88308e99e667f3c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Treat `IfcMapConversion` XAxisAbscissa/XAxisOrdinate as the direction they specify. The vector's length is no longer applied as an extra map scale: the Location pin and footprint, the Cesium model origin and rotation, the placement gizmo and the pick readout now agree for axis (1,0) and (2,0). `Scale` and the `IfcMapConversionScaled` factors still apply exactly once, and authored axis values are read and exported unchanged. A zero-length axis now has no pin, footprint or Cesium placement, as a non-finite one already did.
+
+- [#6676](https://github.com/LTplus-AG/ifc-lite/pull/6676) [`29e1088`](https://github.com/LTplus-AG/ifc-lite/commit/29e1088dda6777f7086bd122208ce7bda8db1d89) Thanks [@louistrue](https://github.com/louistrue)! - Expose canonical parameterised column, beam and member sections and column RefDirection in SDK types; preserve rectangular interfaces and existing runtime validation.
+
+- [#6594](https://github.com/LTplus-AG/ifc-lite/pull/6594) [`9400cb6`](https://github.com/LTplus-AG/ifc-lite/commit/9400cb6c952ba200e165c1dadbd95f9d28fca927) Thanks [@louistrue](https://github.com/louistrue)! - Preserve engine coordinate metadata when a primary IFC load produces no meshes, so Start blank can mesh its first authored wall and reserve its spatial entity ids for federation.
+
+- [#6671](https://github.com/LTplus-AG/ifc-lite/pull/6671) [`605bdcb`](https://github.com/LTplus-AG/ifc-lite/commit/605bdcb146c8df166044aeeb85e241c03d11f41a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - A fresh-room claim whose room is never created no longer has to hold its slot in the claim allowance forever ([#6581](https://github.com/LTplus-AG/ifc-lite/issues/6581)).
+  
+  The new `claimsPendingUntilJoin` option of `createAccessControl` turns this on, and the CLI server sets it. With it, a first-touch claim stays pending until the room's first authenticated join through `serverOptions.authenticate`, and that join is admitted only once the confirmation is written to disk. A pending claim can be handed back with the new `POST /collab/release` route. The route needs an admin token minted for that claim, frees the slot and revokes every token minted for the claim. A pending claim that nobody releases expires once all of its tokens have expired. A room that was joined, or has a room log on disk, is never released or expired.
+  
+  Bounds and checks that come with pending claims:
+  
+  - Up to 4 tokens can be minted for a pending claim, and those mints pay the same per-IP budget as a fresh claim.
+  - A release is refused with 503 when it would take the deny-list past `maxRevocationsForRelease` live entries (default 1024). The claim is then kept and expires on its own.
+  - The token and release routes refuse room ids holding an unpaired UTF-16 surrogate.
+  - If the data-dir check for a room log cannot answer, the claim is treated as in use.
+  
+  Without the option, every claim is permanent from its first mint (as before), claims an earlier run left pending are confirmed at load, and the release route answers 409.
+  
+  New exports: `handleReleaseRequest`, `ReleaseEndpointOptions` and `ReleaseResult`. Also new: the `releaseEndpoint` option of `startCollabServer`, the `now`, `claimsPendingUntilJoin` and `maxRevocationsForRelease` options of `createAccessControl`, and a `mint` (`{ jti, exp }`) field in the token route's `authorize` context. `access-control.json` gains a `pendingClaims` field. Pending rooms are also kept in `claimedRooms`, so an older server reading the file treats them as claimed. A file written before this change loads every claim as confirmed.
+  
+  The viewer's Share dialog releases the claim when creating the room fails after the admin token was minted, for example because the model's metadata became invalid during the token request or the session never came up. Against a server without the route, or one that refuses the release, nothing else changes.
+
+- [#6684](https://github.com/LTplus-AG/ifc-lite/pull/6684) [`0670260`](https://github.com/LTplus-AG/ifc-lite/commit/0670260e0465119f76bc3bf4ab7473331b309cd2) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Every document block with a heading (text, image, chart, BCF topic, table, IDS or information validation report, manual validation report) now has the same heading controls beside its title: a size from 6 to 24 pt, a text colour and a background colour. They are drawn by the preview and the PDF from one shared reading, scale with the block's size, reserve their extra height so nothing leaves the printable frame, and are kept when a report block is refreshed, replaced from a saved report or filled from a workflow template. With only a background set, the heading ink is black or white by contrast. Documents without these fields print as before.
+
+- [#6641](https://github.com/LTplus-AG/ifc-lite/pull/6641) [`a3e6fa8`](https://github.com/LTplus-AG/ifc-lite/commit/a3e6fa845d1cdcf8c320c566acda8f6943efbc9e) Thanks [@louistrue](https://github.com/louistrue)! - Prevent the first authored mesh from being uploaded twice while fitting the camera; retain multipart identity and retry failed GPU uploads.
+
+- [#6699](https://github.com/LTplus-AG/ifc-lite/pull/6699) [`5e15a26`](https://github.com/LTplus-AG/ifc-lite/commit/5e15a26e4b807008adfc03ccc22a13e79844373b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Keep a scaled document block inside the printable frame and keep the preview and the PDF in step. A chart with a snapshot no longer prints into the footer when it is drawn at 200 % on a landscape page, two half-width charts that fill the frame stay one row at every block size instead of splitting at some of them, an image with no title or caption is clamped to the page in the preview as it is in the PDF, and a typed block size such as 120.5 is stored as the whole percent the field shows.
+
+- [#6667](https://github.com/LTplus-AG/ifc-lite/pull/6667) [`fd3779d`](https://github.com/LTplus-AG/ifc-lite/commit/fd3779d05addaec882ec94fb65e4ebb814bd7011) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Keep the chart block's data-source dropdown visible in a narrow document editor. The picker's label now has a 12rem floor, so the row wraps instead of squeezing the dropdown to about 14px.
+- Updated dependencies [[`036f227`](https://github.com/LTplus-AG/ifc-lite/commit/036f227605f10d686c8300b1fb5bd95db350df0a), [`3f681d9`](https://github.com/LTplus-AG/ifc-lite/commit/3f681d952dc2bae1dc715210354cf2705b1edac0), [`b4899b0`](https://github.com/LTplus-AG/ifc-lite/commit/b4899b017f037ad629ee2b8a5fa34cdf56e8af72), [`5d3e14f`](https://github.com/LTplus-AG/ifc-lite/commit/5d3e14febefe47f9967efdbb130a6a236c64110f), [`7d33d8c`](https://github.com/LTplus-AG/ifc-lite/commit/7d33d8cd6917c6a0df5d1b3e6aca741e554c8ba7), [`90163b6`](https://github.com/LTplus-AG/ifc-lite/commit/90163b66a472635d8ee314db4cd430fde0eb324a), [`09745f0`](https://github.com/LTplus-AG/ifc-lite/commit/09745f0f3bb99ac07802ae061f13df92e865683f), [`29e1088`](https://github.com/LTplus-AG/ifc-lite/commit/29e1088dda6777f7086bd122208ce7bda8db1d89), [`caf0c30`](https://github.com/LTplus-AG/ifc-lite/commit/caf0c3077bf3b132fc60a6805eb849580d6fd5db), [`a0fe0e6`](https://github.com/LTplus-AG/ifc-lite/commit/a0fe0e684b07b213ab22b72461cedeacccc7edf3), [`b82c290`](https://github.com/LTplus-AG/ifc-lite/commit/b82c29053df5d0f48b514cf2fa6e3682b9b896db), [`b235d3a`](https://github.com/LTplus-AG/ifc-lite/commit/b235d3a96e7ec87ff3b8ce74f9707f2bb3f303c9), [`3f83b6f`](https://github.com/LTplus-AG/ifc-lite/commit/3f83b6f39e4348b0c8ead0544f94d18be8e63e06), [`5a40ad8`](https://github.com/LTplus-AG/ifc-lite/commit/5a40ad89723df2dca70248c5caaba6d402ffc762), [`8a0a03a`](https://github.com/LTplus-AG/ifc-lite/commit/8a0a03a4f9e4ca9cfae457493f0eb50268052ecb), [`09745f0`](https://github.com/LTplus-AG/ifc-lite/commit/09745f0f3bb99ac07802ae061f13df92e865683f), [`3474bb6`](https://github.com/LTplus-AG/ifc-lite/commit/3474bb6e8be907d6bd1fa58652addf5728bfdee7), [`768c462`](https://github.com/LTplus-AG/ifc-lite/commit/768c46262180cd06d0d46f8b5ba67f77713f4012), [`3474bb6`](https://github.com/LTplus-AG/ifc-lite/commit/3474bb6e8be907d6bd1fa58652addf5728bfdee7), [`04e8c67`](https://github.com/LTplus-AG/ifc-lite/commit/04e8c6752778a444628507478b381ad920979fa6), [`8a0a03a`](https://github.com/LTplus-AG/ifc-lite/commit/8a0a03a4f9e4ca9cfae457493f0eb50268052ecb)]:
+  - @ifc-lite/create@5.0.0
+  - @ifc-lite/sdk@9.1.0
+  - @ifc-lite/mcp@0.24.0
+  - @ifc-lite/export@4.10.0
+  - @ifc-lite/sandbox@2.11.0
+  - @ifc-lite/wasm@10.4.0
+  - @ifc-lite/renderer@6.1.0
+  - @ifc-lite/flow-nodes@0.7.0
+  - @ifc-lite/semantic@0.2.0
+  - @ifc-lite/charts@0.9.0
+  - @ifc-lite/geometry@7.7.1
+
 ## 4.0.0
 
 ### Major Changes

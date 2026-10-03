@@ -1,5 +1,33 @@
 # @ifc-lite/create
 
+## 5.0.0
+
+### Major Changes
+
+- [#6646](https://github.com/LTplus-AG/ifc-lite/pull/6646) [`3474bb6`](https://github.com/LTplus-AG/ifc-lite/commit/3474bb6e8be907d6bd1fa58652addf5728bfdee7) Thanks [@louistrue](https://github.com/louistrue)! - Validate persisted grid intersections against one live owning grid before emitting IFC records. File-backed axes now require the paired source store read context as the fourth argument to gridIntersectionPlacement; mixed or ambiguous grid owners, same-row axes, deleted axes, and invalid grid placement references refuse. Generic emission preserves valid curved and radial axes. Overlay-only grids remain supported without a source context.
+  
+  Add addColumnOnGridToStore to emit columns bound to persistent IfcGridPlacement graphs. The linear binding consumer revalidates the crossing, native units, height and section heading atomically before emitting the whole graph.
+
+### Minor Changes
+
+- [#6666](https://github.com/LTplus-AG/ifc-lite/pull/6666) [`7d33d8c`](https://github.com/LTplus-AG/ifc-lite/commit/7d33d8cd6917c6a0df5d1b3e6aca741e554c8ba7) Thanks [@louistrue](https://github.com/louistrue)! - Share atomic loaded-model creation for the existing eight ordinary builders across viewer, SDK and the MCP headless backend. Public MCP flows can create the four kinds exposed by existing element-spec nodes: wall, column, beam and slab, with complete recorded undo. Late creation refusals retain all prior records and leave no helper entities. Preserve existing placement and owner-history defaults, and include the IFC2X3 slab PredefinedType attribute in saved records.
+
+- [#6710](https://github.com/LTplus-AG/ifc-lite/pull/6710) [`8a0a03a`](https://github.com/LTplus-AG/ifc-lite/commit/8a0a03a4f9e4ca9cfae457493f0eb50268052ecb) Thanks [@louistrue](https://github.com/louistrue)! - Add optional SDK and loaded-model MCP stair and railing authoring, with atomic tracked replacement and unique stair assembly removal. Reuse canonical builders and retain prior model work when creation or ownership checks refuse a replacement.
+
+### Patch Changes
+
+- [#6744](https://github.com/LTplus-AG/ifc-lite/pull/6744) [`036f227`](https://github.com/LTplus-AG/ifc-lite/commit/036f227605f10d686c8300b1fb5bd95db350df0a) Thanks [@louistrue](https://github.com/louistrue)! - Share canonical IFC placement, unit, profile and storey readers with the viewer to prepare command parity for [#6232](https://github.com/LTplus-AG/ifc-lite/issues/6232).
+
+- [#6745](https://github.com/LTplus-AG/ifc-lite/pull/6745) [`5d3e14f`](https://github.com/LTplus-AG/ifc-lite/commit/5d3e14febefe47f9967efdbb130a6a236c64110f) Thanks [@louistrue](https://github.com/louistrue)! - Share canonical wall readers and hosted opening refit helpers with the viewer for [#6232](https://github.com/LTplus-AG/ifc-lite/issues/6232).
+  
+  Hosted resize planners report safe refusal when canonical unit conversion overflows, preserving their outcome contracts without writing invalid geometry.
+
+- [#6672](https://github.com/LTplus-AG/ifc-lite/pull/6672) [`90163b6`](https://github.com/LTplus-AG/ifc-lite/commit/90163b66a472635d8ee314db4cd430fde0eb324a) Thanks [@louistrue](https://github.com/louistrue)! - Support the six existing type/material SDK methods on loaded MCP models through the shared schema-aware factory, with one public Undo operation per call and live IFC2X3 owner-history resolution.
+  
+  Validate every material layer and layer-set schema field before creating helpers, so late unsupported attributes leave the overlay, journal and allocator unchanged. Metre dimensions, schema declarations and existing SDK anchor policies are retained.
+
+- [#6710](https://github.com/LTplus-AG/ifc-lite/pull/6710) [`8a0a03a`](https://github.com/LTplus-AG/ifc-lite/commit/8a0a03a4f9e4ca9cfae457493f0eb50268052ecb) Thanks [@louistrue](https://github.com/louistrue)! - Refuse unsupported product classes and ordinary aggregate roots before atomic element replacement prepares placement or changes the source graph.
+
 ## 4.0.0
 
 ### Major Changes

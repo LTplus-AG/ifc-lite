@@ -1,5 +1,11 @@
 # @ifc-lite/charts
 
+## 0.9.0
+
+### Minor Changes
+
+- [#6647](https://github.com/LTplus-AG/ifc-lite/pull/6647) [`768c462`](https://github.com/LTplus-AG/ifc-lite/commit/768c46262180cd06d0d46f8b5ba67f77713f4012) Thanks [@louistrue](https://github.com/louistrue)! - Bind comparison charts to completed saved reports with persistent per-chart choices, shared preview/PDF resolution, explicit missing dependencies, and safe recorded-data selection and snapshot behavior. Separate informative recorded-source captions from PDF failure diagnostics through optional error identities, preserving older message-only callers.
+
 ## 0.8.0
 
 ### Minor Changes

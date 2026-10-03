@@ -1,5 +1,21 @@
 # @ifc-lite/export
 
+## 4.10.0
+
+### Minor Changes
+
+- [#6645](https://github.com/LTplus-AG/ifc-lite/pull/6645) [`09745f0`](https://github.com/LTplus-AG/ifc-lite/commit/09745f0f3bb99ac07802ae061f13df92e865683f) Thanks [@louistrue](https://github.com/louistrue)! - Add optional IFC datatype declarations to direct SDK property mutations, validated against the exporter's existing IfcValue schema and domain rules. Specific measures, including whole-number IfcThermalTransmittanceMeasure values, retain their declarations through headless/viewer overlays and STEP export. Existing four-argument calls retain their original primitive inference. Expose the shared declaration validator for the SDK and collaboration adapter consumers.
+
+- [#6646](https://github.com/LTplus-AG/ifc-lite/pull/6646) [`3474bb6`](https://github.com/LTplus-AG/ifc-lite/commit/3474bb6e8be907d6bd1fa58652addf5728bfdee7) Thanks [@louistrue](https://github.com/louistrue)! - Include the effective owning IfcGrid when serializing grid-relative remesh subgraphs, preserving physical placement in IFC2X3, IFC4 and IFC4X3. Report deleted, ambiguous or invalid axis ownership through the existing unreadable result instead of inventing a frame.
+  
+  Add gridPlacementDependents to query live grid ownership and local-child placement dependencies from the same effective records used for export. The stacked viewer layer consumes this shared dependency query for native remeshing.
+
+### Patch Changes
+
+- [#6697](https://github.com/LTplus-AG/ifc-lite/pull/6697) [`5a40ad8`](https://github.com/LTplus-AG/ifc-lite/commit/5a40ad89723df2dca70248c5caaba6d402ffc762) Thanks [@louistrue](https://github.com/louistrue)! - Preserve rigid map rotation through original root placement frames without wrapping representation geometry. Supported openings, fills, annotations and endpoint-local boundaries retain their coordinate ownership; TrueNorth metadata rotates with the engineering frame. Invalid or unsupported ownership still refuses atomically.
+- Updated dependencies [[`04e8c67`](https://github.com/LTplus-AG/ifc-lite/commit/04e8c6752778a444628507478b381ad920979fa6)]:
+  - @ifc-lite/geometry@7.7.1
+
 ## 4.9.0
 
 ### Minor Changes

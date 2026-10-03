@@ -100,7 +100,7 @@ function Item({ item, block, origin, props, lineBreak }: { item: DrawnItem; bloc
       data-table-message={item.role === 'table-message' ? '' : undefined}
       data-report-model-scope={item.role === 'report-model-scope' ? '' : undefined} title={item.tooltip}>{markedText()}{lineBreak ? '\n' : ''}</span>;
     case 'rect':
-    case 'text-background': return <span aria-hidden="true" style={{ ...style, backgroundColor: item.color }} />;
+    case 'text-background': return <span aria-hidden="true" data-composed-fill={item.kind} style={{ ...style, backgroundColor: item.color }} />;
     case 'image':
     case 'topic-snapshot': {
       const topic = block.kind === 'topic' ? props.topics.get(block.guid) : undefined;
@@ -185,7 +185,7 @@ export function ComposedPageItems(props: ComposedPageItemsProps) {
         <div data-block-text={block.kind === 'text' ? '' : undefined} data-block-table={block.kind === 'table' ? '' : undefined}
           data-block-ids-report={block.kind === 'ids-report' ? '' : undefined}
           data-ids-report-variant={block.kind === 'ids-report' ? block.variant : undefined} data-block-manual-report={block.kind === 'manual-report' ? '' : undefined}
-          style={{ width: '100%', height: '100%', ...(block.kind === 'text' ? { color: block.textColor, backgroundColor: block.backgroundColor, whiteSpace: 'pre-wrap',
+          style={{ width: '100%', height: '100%', ...(block.kind === 'text' ? { color: block.textColor, whiteSpace: 'pre-wrap',
             fontFamily: DOCUMENT_FONT_FAMILIES[block.font ?? 'helvetica'], fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * props.scale * blockScale(block), lineHeight: TEXT_STYLES[block.style].lineHeight } : {}) }}>
           {value.items.map((item, index) => <Item key={index} item={item} block={block} origin={box} props={props}
             lineBreak={index < lastText} />)}

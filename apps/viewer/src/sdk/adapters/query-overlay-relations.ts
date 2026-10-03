@@ -2,11 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { effectiveMutationRelationships } from '../../../../../packages/create/src/in-store/edit/effective-mutation-view.js';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import {
   effectiveRelationshipEdges,
-  resolveEffectiveRelationshipOverlay,
-  type EffectiveRelationshipOverlay,
   type IfcDataStore,
 } from '@ifc-lite/parser';
 
@@ -17,22 +16,7 @@ export interface QueuedRelationshipEdge {
   targetId: number;
 }
 
-export function effectiveMutationRelationships(
-  store: IfcDataStore,
-  view: MutablePropertyView,
-): EffectiveRelationshipOverlay {
-  return resolveEffectiveRelationshipOverlay(store, {
-    createdEntities: () => view.getNewEntities(),
-    // Current overlay entries include edits made with skipHistory (undo and
-    // atomic replay); append-only history can also retain undone edits.
-    mutatedEntityIds: () => view.getEffectiveChanges().map(change => change.entityId),
-    namedAttributes: expressId => view.getAttributeMutationsForEntity(expressId)
-      .map(({ name, value }) => [name, value] as const),
-    positionalAttributes: expressId => view.getPositionalMutationsForEntity(expressId) ?? [],
-    entityType: expressId => view.getEntityTypeMutation(expressId)?.newType,
-    isDeleted: expressId => view.isDeleted(expressId),
-  });
-}
+export { effectiveMutationRelationships };
 
 export function foldMutationRelationshipEdges(
   store: IfcDataStore,

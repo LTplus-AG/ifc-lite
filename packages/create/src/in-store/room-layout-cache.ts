@@ -55,8 +55,8 @@ export class RoomLayoutCache {
     return entry;
   }
   /** Transfer ownership only after the IFC/history commit has succeeded. */
-  file(modelId: string, storeyId: number, weld: number, head: string, walls: string, plate: RoomPlate): void {
-    const entry = { walls, plate, faces: readFaces(plate) };
+  file(modelId: string, storeyId: number, weld: number, head: string, walls: string, plate: RoomPlate, faces: LayoutFace[]): void {
+    const entry = { walls, plate, faces };
     this.retain(this.scope(modelId, storeyId, weld), head, entry);
   }
   clearModel(modelId: string): void {

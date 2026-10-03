@@ -1,0 +1,326 @@
+{
+  "issue": 6690,
+  "pr": 6715,
+  "scope": "Native 300px validation-dock containment and real callbacks only; no whole-app, performance, cadence or no-regression claim.",
+  "qualifiedSource": {
+    "head": "7f10789fc1c94e79d4bc5fe6e522eb5d4e124118",
+    "currentMainBase": "baa7d34db1be4bc8bf0b3479df33275da3130fc6",
+    "productionDiffSha256": "b15ca2b8bca51be78fcdc731be76a469239e2750f314748a7153e924da1437d3",
+    "reviewedWitnessSha256": "4c547ea28fc2ccd4ad2bf7066c7df15ec5fa314795e3cd80522d2dae40be316c",
+    "exactBuildLeaseSha256": "a2bf3f5d4f8297d270d798856e74e2cfbdff60498291f647e2f74c1ac89fa09c",
+    "rustBuildInputCount": 1414,
+    "runtimeWasmSha256": "c89243c3969248f719309b8d6a5ade1539003684c72dbac535f9ff7e1ab4d528",
+    "freshWasmProvenance": "Actual 7804 pnpm build:wasm PASS; all 1414 Rust/build input bytes unchanged through 1e7/bc885/7f107. Original e2bf runtime was not reused.",
+    "builtAssetCount": 729
+  },
+  "qualification": {
+    "rootAffectedTests": "34/34 PASS; original 7 resize cases retained; shared scaffold defaults, IDS library/header ownership, pending Cancel/progress, real 12-spec re-run, clear and unload.",
+    "rootTypecheck": "111/111 PASS",
+    "mandatoryTestSourceAudit": "3321/3321 files across 57 packages PASS",
+    "exactBuildE2E": "50/50 PASS; same 7f source cache from actual root-test prerequisite Vite build.",
+    "productionGuards": "bc885 root lint/module-size/source-text-assertions/test-wiring PASS; 7f descendant only corrects IDS test setup.",
+    "nativeExit": 0,
+    "nativeCaseCount": 12,
+    "recordedSettledRectAuditCount": 146,
+    "startedUTC": "2026-10-03T00:28:15.744Z",
+    "endedUTC": "2026-10-03T00:31:10.753Z",
+    "chrome": "154.0.8037.58",
+    "adapter": {
+      "vendor": "nvidia",
+      "architecture": "blackwell",
+      "device": "",
+      "description": "",
+      "fallback": false
+    },
+    "cleanup": "Owned context, CDP transport and preview closed cleanly; shared Chrome stayed running; final sourcehead unchanged."
+  },
+  "models": [
+    {
+      "file": "building-architecture.ifc",
+      "bytes": 225635,
+      "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+      "source": "https://raw.githubusercontent.com/LTplus-AG/ifc-lite/baa7d34db1be4bc8bf0b3479df33275da3130fc6/apps/viewer/public/samples/building-architecture.ifc",
+      "fileNameHeader": "FILE_NAME('Building-Architecture.ifc','2024-11-14T11:09:12',(''),(''),'IFC-manager for SketchUp (5.3.3)','SketchUp 2024 (24.0.594)','None');",
+      "publicSourceBytesIdenticalToQualifiedSource": true
+    },
+    {
+      "file": "building-architecture-rev-b.ifc",
+      "bytes": 226971,
+      "sha256": "0dfb7152db0a845747d2f35ee5ba9ba3772744072cb23040353c469c2a05f366",
+      "source": "https://raw.githubusercontent.com/LTplus-AG/ifc-lite/baa7d34db1be4bc8bf0b3479df33275da3130fc6/apps/viewer/public/samples/building-architecture-rev-b.ifc",
+      "fileNameHeader": "FILE_NAME('Building-Architecture.ifc','2024-11-14T11:09:12',(''),(''),'IFC-manager for SketchUp (5.3.3)','SketchUp 2024 (24.0.594)','None');",
+      "publicSourceBytesIdenticalToQualifiedSource": true
+    }
+  ],
+  "cases": [
+    {
+      "case": "manual-1-collapsed",
+      "host": [
+        352,
+        300
+      ],
+      "chromeHeight": 105,
+      "splitHeight": 195,
+      "summaryHeight": 83.25,
+      "lowerHeight": 101.75,
+      "lowerClientHeight": 102,
+      "inactiveTabHeights": [
+        0,
+        0
+      ],
+      "restoredResizePixelError": 0,
+      "callbacks": "Final manual pass survives tab return"
+    },
+    {
+      "case": "manual-1-expanded",
+      "host": [
+        352,
+        300
+      ],
+      "chromeHeight": 105,
+      "splitHeight": 195,
+      "summaryHeight": 83.25,
+      "lowerHeight": 101.75,
+      "lowerClientHeight": 102,
+      "inactiveTabHeights": [
+        0,
+        0
+      ],
+      "restoredResizePixelError": 0,
+      "callbacks": "Final manual pass survives tab return"
+    },
+    {
+      "case": "rules-1-collapsed",
+      "host": [
+        352,
+        300
+      ],
+      "chromeHeight": 105,
+      "splitHeight": 195,
+      "summaryHeight": 83.25,
+      "lowerHeight": 101.75,
+      "lowerClientHeight": 102,
+      "inactiveTabHeights": [
+        0,
+        0
+      ],
+      "restoredResizePixelError": 0,
+      "callbacks": "Final specification/entity identity and full report survive tab return"
+    },
+    {
+      "case": "rules-1-expanded",
+      "host": [
+        352,
+        300
+      ],
+      "chromeHeight": 105,
+      "splitHeight": 195,
+      "summaryHeight": 83.25,
+      "lowerHeight": 101.75,
+      "lowerClientHeight": 102,
+      "inactiveTabHeights": [
+        0,
+        0
+      ],
+      "restoredResizePixelError": 0,
+      "callbacks": "Final specification/entity identity and full report survive tab return"
+    },
+    {
+      "case": "ids-1-collapsed",
+      "host": [
+        352,
+        300
+      ],
+      "chromeHeight": 105,
+      "splitHeight": 195,
+      "summaryHeight": 83.25,
+      "lowerHeight": 101.75,
+      "lowerClientHeight": 102,
+      "inactiveTabHeights": [
+        0,
+        0
+      ],
+      "restoredResizePixelError": 0,
+      "callbacks": "Final specification/entity identity and full report survive tab return"
+    },
+    {
+      "case": "ids-1-expanded",
+      "host": [
+        352,
+        300
+      ],
+      "chromeHeight": 105,
+      "splitHeight": 195,
+      "summaryHeight": 83.25,
+      "lowerHeight": 101.75,
+      "lowerClientHeight": 102,
+      "inactiveTabHeights": [
+        0,
+        0
+      ],
+      "restoredResizePixelError": 0,
+      "callbacks": "Final specification/entity identity and full report survive tab return"
+    },
+    {
+      "case": "manual-2-collapsed",
+      "host": [
+        352,
+        300
+      ],
+      "chromeHeight": 105,
+      "splitHeight": 195,
+      "summaryHeight": 83.25,
+      "lowerHeight": 101.75,
+      "lowerClientHeight": 102,
+      "inactiveTabHeights": [
+        0,
+        0
+      ],
+      "restoredResizePixelError": 0,
+      "callbacks": "Final manual pass survives tab return"
+    },
+    {
+      "case": "manual-2-expanded",
+      "host": [
+        352,
+        300
+      ],
+      "chromeHeight": 105,
+      "splitHeight": 195,
+      "summaryHeight": 83.25,
+      "lowerHeight": 101.75,
+      "lowerClientHeight": 102,
+      "inactiveTabHeights": [
+        0,
+        0
+      ],
+      "restoredResizePixelError": 0,
+      "callbacks": "Final manual pass survives tab return"
+    },
+    {
+      "case": "rules-2-collapsed",
+      "host": [
+        352,
+        300
+      ],
+      "chromeHeight": 105,
+      "splitHeight": 195,
+      "summaryHeight": 83.25,
+      "lowerHeight": 101.75,
+      "lowerClientHeight": 102,
+      "inactiveTabHeights": [
+        0,
+        0
+      ],
+      "restoredResizePixelError": 0,
+      "callbacks": "Final specification/entity identity and full report survive tab return"
+    },
+    {
+      "case": "rules-2-expanded",
+      "host": [
+        352,
+        300
+      ],
+      "chromeHeight": 105,
+      "splitHeight": 195,
+      "summaryHeight": 83.25,
+      "lowerHeight": 101.75,
+      "lowerClientHeight": 102,
+      "inactiveTabHeights": [
+        0,
+        0
+      ],
+      "restoredResizePixelError": 0,
+      "callbacks": "Final specification/entity identity and full report survive tab return"
+    },
+    {
+      "case": "ids-2-collapsed",
+      "host": [
+        352,
+        300
+      ],
+      "chromeHeight": 105,
+      "splitHeight": 195,
+      "summaryHeight": 83.25,
+      "lowerHeight": 101.75,
+      "lowerClientHeight": 102,
+      "inactiveTabHeights": [
+        0,
+        0
+      ],
+      "restoredResizePixelError": 0,
+      "callbacks": "Final specification/entity identity and full report survive tab return"
+    },
+    {
+      "case": "ids-2-expanded",
+      "host": [
+        352,
+        300
+      ],
+      "chromeHeight": 105,
+      "splitHeight": 195,
+      "summaryHeight": 83.25,
+      "lowerHeight": 101.75,
+      "lowerClientHeight": 102,
+      "inactiveTabHeights": [
+        0,
+        0
+      ],
+      "restoredResizePixelError": 0,
+      "callbacks": "Final specification/entity identity and full report survive tab return"
+    }
+  ],
+  "durableManualReport": {
+    "status": "saved",
+    "name": "Native short-host #6690 reviewed",
+    "groups": 12,
+    "summary": {
+      "total": 12,
+      "pass": 1,
+      "fail": 0,
+      "warning": 0,
+      "unanswered": 11
+    },
+    "lastItemStatus": "pass",
+    "editingCallbacks": "12 editing rows mounted; real rename/done/save callbacks executed while host stayed 300px."
+  },
+  "rawReceipt": {
+    "file": "6690-native-validation-300px.raw.json.gz",
+    "compression": "gzip lossless; decompression byte-for-byte matches immutable actual raw receipt",
+    "uncompressedSha256": "df0ccd38b18dc09bfef0d81d8e930e7f2bbfec1eff453e557018631cf089e2d0",
+    "compressedSha256": "abc0de107c21bc9a24800bac139b24363be78e2be90462cdada19413137e34dc",
+    "uncompressedBytes": 202546,
+    "compressedBytes": 8833,
+    "note": "Raw recorded model URLs name the then-local qualified head; verified public same-byte references are supplied above."
+  },
+  "screenshots": {
+    "6690-native-validation-ids-two-models-expanded.png": {
+      "bytes": 112317,
+      "sha256": "fbeb571093d41f3a848c0ee5983a2ec1f940adcd7e7947a3a74729dfac4499af",
+      "capture": "Unedited actual native viewer screenshot before clicking the last control."
+    },
+    "6690-native-validation-manual-two-models-expanded.png": {
+      "bytes": 111250,
+      "sha256": "4632e921abdb237055fd552f2b87f945011e8fdddd61e422b605874679924d28",
+      "capture": "Unedited actual native viewer screenshot before clicking the last control."
+    }
+  },
+  "disclosures": [
+    "CDP file payload uploads produced isTrusted=false; no native OS picker claim. Actual canonical loader/validator and built viewer pipeline ran.",
+    "Vite preview lacked SharedArrayBuffer, so the canonical loader logged its main-thread parser fallback; this run makes no worker-pool performance claim.",
+    "IfcProject #13 has no directly renderable mesh: actual row selection/report identity passed; logs report no highlight/frame bounds for that project.",
+    "The public revision-B fixture produced an EPSG:32760\u2192EPSG:32760 federation reprojection diagnostic visible in the unedited two-model screenshots; both real models parsed/loaded/rendered."
+  ],
+  "retainedAuditDirectory": "/tmp/6232-takeover/6690-current-main-source-audit",
+  "retainedFailedNativeRuns": [
+    "6715-native-2026-10-02T22-28-49-714Z",
+    "6715-native-2026-10-02T23-42-31-950Z",
+    "6715-native-2026-10-02T23-53-31-412Z",
+    "6715-native-2026-10-03T00-18-57-264Z"
+  ],
+  "retainedFailedFocusedRuns": [
+    "6715-7804-focused7-v2.json",
+    "6715-bc885-affectedTests-v5.json"
+  ],
+  "retainedFailedLint": "6715-3103-lint-v3.json"
+}

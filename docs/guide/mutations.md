@@ -852,3 +852,18 @@ checks effective source and overlay references before an in-place write and
 refuses leaves shared with unrelated products. Callers keep planning and writes
 inside one atomic mutation transaction. The viewer's move, rotate and align
 commands use this common plan and preserve the IFC storey frame and model units.
+
+The shared `copyBatchInStore(dataStore, editor, expressIds, transforms, options?)`
+operation prunes selected hosted/assembly dependants and copies the resulting
+roots atomically. `copySourcesInStore(context, expressIds, copyCount?)` reports
+refusals before planning and checks fan-out after pruning carried children; the
+optional count defaults to one. `copiedProductsInStore` supplies the viewer
+preview's products.
+`arrayCopyTransforms(params)` is the same linear/polar planner used for the
+viewer preview and commit; its count includes the original selection, and a
+full polar turn omits the coincident final copy. Each batch is bounded to
+10,000 new root copies before allocation. Unknown array modes and overflowing
+derived directions/extents refuse before preview or writes. Native-unit
+conversion and placement composition also refuse nonfinite output atomically. The host records
+its compound Undo
+batch and re-meshes returned products after success.

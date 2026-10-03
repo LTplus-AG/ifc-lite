@@ -176,3 +176,7 @@ export type {
   CostValueParams,
   SIUnitParams,
 } from './types-cost.js';
+
+export { copyBatchInStore, copySourcesInStore, copiedProductsInStore } from './in-store/copy-batch.js';
+export { arrayCopyTransforms, type CopyArrayParams } from './in-store/copy-array.js';
+export type { CopyTransform } from './in-store/copy-product.js';

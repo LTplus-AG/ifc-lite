@@ -54,6 +54,8 @@ export function qualifyPostTimerGpuInputs(capture, frozen) {
     && gpu.errors?.length === 0 && !gpu.errorPrefixRefused, 'GPU completion/error ledger');
   require(gpu.deviceLoss?.ending === true && gpu.deviceLoss.reason === 'destroyed', 'only owned final device destruction');
   require(gpu.nativeMethodsUnchanged === true && gpu.wrongUsageRejected === true, 'native methods/original usages');
+  require(isDeepStrictEqual(gpu.negativeSources, { buffer: { size: 16, usage: 44 },
+    atlas: { width: 1, height: 1, usage: 23, format: 'rgba8unorm', mipLevelCount: 1, sampleCount: 1, dimension: '2d', depthOrArrayLayers: 1 } }), 'actual legal augmented negative source descriptors');
   const limits = gpu.deviceLimits;
   require(['maxBufferSize', 'maxTextureDimension2D', 'maxUniformBufferBindingSize', 'minUniformBufferOffsetAlignment'].every(k => uint(limits?.[k]) && limits[k] > 0)
     && limits.maxUniformBufferBindingSize % 16 === 0 && limits.maxUniformBufferBindingSize + 512 <= 2 * 1024 * 1024

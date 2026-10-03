@@ -11,9 +11,10 @@ export async function postTimerGpuReadbackControl(factorySource) {
     return new TextDecoder().decode(bytes.subarray(0, 4096), { stream: true });
   };
   const error = value => {
-    if (receipt.errors.length < 64) receipt.errors.push(boundedMessage(value));
+    const diagnostic = { type: boundedMessage(value?.constructor?.name || typeof value), message: boundedMessage(value?.message ?? value) };
+    if (receipt.errors.length < 64) receipt.errors.push(diagnostic);
     else receipt.errorPrefixRefused = true;
-    console.error('READBACK_CONTROL_ERROR', String(value));
+    console.error('READBACK_CONTROL_ERROR', diagnostic.type, String(value?.message ?? value));
   };
   const require = (ok, reason) => { if (!ok) throw new Error(reason); };
   const own = x => { owned.push(x); return x; };
@@ -63,8 +64,11 @@ export async function postTimerGpuReadbackControl(factorySource) {
     for (let row = 0; row < region.height; row++) sub.set(expected.subarray(((region.y + row) * width + region.x) * 4,
       ((region.y + row) * width + region.x + region.width) * 4), row * region.width * 4);
     await verify('atlas-subrectangle', await reader.readAtlas(atlas, region), sub, { ...reader.planAtlas(atlas, region), source });
-    const wrongBuffer = own(device.createBuffer({ size: 16, usage: 41 }));
+    const wrongBuffer = own(device.createBuffer({ size: 16, usage: 44 }));
     const wrongAtlas = own(device.createTexture({ size: [1, 1], format: 'rgba8unorm', usage: 23 }));
+    receipt.negativeSources = { buffer: { size: wrongBuffer.size, usage: wrongBuffer.usage },
+      atlas: { width: wrongAtlas.width, height: wrongAtlas.height, usage: wrongAtlas.usage, format: wrongAtlas.format,
+        mipLevelCount: wrongAtlas.mipLevelCount, sampleCount: wrongAtlas.sampleCount, dimension: wrongAtlas.dimension, depthOrArrayLayers: wrongAtlas.depthOrArrayLayers } };
     for (const [label, operation] of [['buffer', () => reader.readBuffer(wrongBuffer)], ['atlas', () => reader.readAtlas(wrongAtlas)]]) {
       let rejected = false; try { await operation(); } catch (error) { rejected = /original.*usage/.test(String(error)); }
       require(rejected, label + ' wrong usage accepted');

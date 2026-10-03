@@ -44,6 +44,7 @@ test('#6537 invalid source usages/ranges/state refuse before any GPU allocation'
   let calls = 0;
   const r = createPostTimerGpuReadback({ limits, lost: new Promise(() => {}), createTexture() { calls++; throw new Error('allocation reached'); } });
   await assert.rejects(r.readBuffer(buffer(16, 41)), /original buffer usage40/);
+  await assert.rejects(r.readBuffer(buffer(16, 44)), /original buffer usage40/);
   await assert.rejects(r.readBuffer({ ...buffer(16), mapState: 'mapped' }), /source buffer state/);
   for (const [offset, length] of [[-4, 4], [2, 4], [0, 6], [64 * 1024 * 1024, 4], [0, 0], [0, 33 * 1024 * 1024], [Number.MAX_SAFE_INTEGER, 4]]) await assert.rejects(r.readBuffer(buffer(64 * 1024 * 1024), offset, length), /word range/);
   for (const source of [{ ...atlas(2, 2), usage: 23 }, { ...atlas(2, 2), format: 'rgba8unorm-srgb' }, { ...atlas(2, 2), sampleCount: 4 }, { ...atlas(2, 2), mipLevelCount: 2 }]) await assert.rejects(r.readAtlas(source), /atlas original usage22/);

@@ -5,7 +5,9 @@
 # Prospective post-timer input readback (#6537)
 
 SOURCE QUALIFICATION: ten new functional controls and twelve existing GPU/outer
-controls pass. Actual GPU execution of this layer is UNRUN.
+controls pass. First hosted run37161075655 refused an invalid negative-source
+buffer descriptor after four byte-matching readbacks. Corrected-source GPU
+execution remains UNRUN; the original refusal is retained without qualification.
 This separate layer builds on the qualified standalone integer readback at
 `88e26da7f9bc02eb0add8aabb010af98f380b3c2`; its own shaders/tiling/atlas path
 require independent hosted qualification before any caller or eligibility change.
@@ -51,4 +53,8 @@ child/outer source inventories. The new independent four-role semantic audit
 reconstructs word and RGBA sources, never importing the reader/planner or trusting
 its declared bytes/hashes. It validates complete ranges/rows/binding limits,
 actual diagnostics, source/Chrome identity, post-close events and owned cleanup.
-Actual hosted four-role execution remains UNRUN. No old six-role verdict is reused.
+Corrected-source hosted four-role execution remains UNRUN. No old six-role verdict
+is reused. Negative resources use legal augmented usages44/23, with observed
+descriptors required by the audit; uncaptured GPU errors remain fatal and retain
+their class and message. The failed predecessor used illegal MAP_READ|VERTEX41;
+its source/byte/cleanup audit is diagnostic evidence, not an accepted control.

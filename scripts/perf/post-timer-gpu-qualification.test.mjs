@@ -27,6 +27,7 @@ function witness() {
     chrome: { identity: { pid: 101, ppid: 100, startTime: '2' }, arguments: ['/opt/chrome/chrome', ...PROFILES[1].args], sha256: 'd'.repeat(64), version: '154' },
     gpu: { status: 'observed-pending-outer-qualification', cleanup: 'complete', errors: [], deviceLimits: limits,
       deviceLoss: { reason: 'destroyed', ending: true }, nativeMethodsUnchanged: true, wrongUsageRejected: true,
+      negativeSources: { buffer: { size: 16, usage: 44 }, atlas: { width: 1, height: 1, usage: 23, format: 'rgba8unorm', mipLevelCount: 1, sampleCount: 1, dimension: '2d', depthOrArrayLayers: 1 } },
       controls: POST_TIMER_ROLES.map((label, i) => { const bytes = postTimerExpectedBytes(i, limits); return { label, plan: plans[i], rawBytes: Array.from(bytes), sha256: sha(bytes), expectedSha256: sha(bytes), mutationRejected: true }; }),
       reader: { status: 'complete', operations: 4, tiles: 5, cleanupFailures: [], shaderDiagnostics: Array.from({ length: 5 }, () => ({ totalMessages: 0, messages: [] })) } } };
   return { frozen, capture: { row, exit: { code: 0, signal: null }, cleanup: clean(), flushes: [clean(), clean()], backend: [] } };
@@ -48,6 +49,8 @@ test('#6537 four-role audit rejects independent byte, source, shader, ownership 
     g => { g.reader.shaderDiagnostics.pop(); }, g => { g.reader.shaderDiagnostics[0].messages.push({ type: 'error', message: 'bad' }); g.reader.shaderDiagnostics[0].totalMessages = 1; },
     g => { g.reader.cleanupFailures.push('destroy failed'); }, g => { g.reader.prefixRefusal = 'tail'; },
     g => { g.deviceLoss.ending = false; }, g => { g.nativeMethodsUnchanged = false; }, g => { g.errorPrefixRefused = true; },
+    g => { delete g.negativeSources; }, g => { g.negativeSources.buffer.usage = 41; }, g => { g.negativeSources.buffer.size = 32; },
+    g => { g.negativeSources.atlas.usage = 22; }, g => { g.negativeSources.atlas.width = 2; },
   ]) { const x = witness(); change(x.capture.row.gpu); assert.throws(() => qualifyPostTimerGpuInputs(x.capture, x.frozen)); }
   for (const change of [
     r => { delete r.harness.files[POST_TIMER_CHILD_INPUTS[0]]; r.harness.files['outer-only'] = 'c'.repeat(64); },

@@ -115,6 +115,7 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
 | Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
 | Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
+| Native Room | `room_command` |
 | Wall joins | `join_walls` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
@@ -275,3 +276,9 @@ and planar rotations use radians. Every write is one `mutation_undo` batch;
 unsupported sources and unsafe shared geometry refuse before committing.
 See the [MCP guide](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/guide/mcp.md)
 for parameter contracts.
+
+`room_command` derives Room candidates from the current native geometry and
+runs Auto/Pick/Footprint/Update or layout Drag/Split/Remove/Prune through the
+shared Room core. It requires the WASM runtime. Query does not write; writes
+record one complete Undo batch. Model removal and session termination free
+retained native layout handles.

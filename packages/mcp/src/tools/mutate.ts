@@ -44,6 +44,7 @@ import { joinWallsTool } from './wall-join.js';
 import { hostedEditTool } from './hosted-edit.js';
 import { copyElementsTools } from './copy-elements.js';
 import { physicalEditTool } from './physical-edit.js';
+import { roomCommandTool } from './room-command.js';
 import { designPlaceTools } from './design-place.js';
 
 interface MutationContext {
@@ -355,6 +356,7 @@ export const mutationTools: Tool[] = [
   hostedEditTool,
   ...copyElementsTools,
   physicalEditTool,
+  roomCommandTool,
   joinWallsTool,
   entitySetProperty,
   entityDeleteProperty,

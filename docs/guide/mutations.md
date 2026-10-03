@@ -926,3 +926,5 @@ while native geometry is preparing. In-process callers can supply an
 `AbortSignal`; cancellation before commit leaves IFC history unchanged.
 
 Native Room layout edits also enter ordinary Undo/Redo history when no IFC rooms exist yet. The `recordSessionMutation` helper records a `SESSION_EDIT` marker for local domain state; it does not modify IFC attributes, allocate entities or emit collaboration operations. Hosts retain the native layout under the actual history head, so Undo/Redo restores the corresponding plate.
+
+Native Room SDK preparation raises `RoomCommandConflictError` when another Room command owns preparation or the model changes before commit. Callers may retry against current state. Abort signals retain their cancellation reason; no Room commit is published after cancellation.

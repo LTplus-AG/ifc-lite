@@ -82,6 +82,8 @@ view.clear();
 
 > **Note:** Undo/redo is handled by the viewer's store (mutationSlice), not directly on MutablePropertyView. In the viewer, use Ctrl+Z / Ctrl+Shift+Z.
 
+Single-quantity edits record `oldQuantityType` and `oldUnit` alongside the old value, so Undo restores the previous quantity class and unit and Redo uses the recorded new metadata. `oldUnit: null` records a previously absent unit. Passing `null` as the unit to `setQuantity` explicitly clears a source unit; omitting it retains the existing source inheritance behavior. Quantity overlays and history use `unitRemoved: true` to distinguish an explicitly removed unit from an older overlay that inherits its source unit. Hosts can replay single-quantity edits through `replayQuantityMutation(view, mutation, 'undo' | 'redo', skipHistory)`; forward `view.applyMutations` uses the same metadata rules. Older history entries did not capture prior metadata: Undo restores their old value while retaining the currently effective class and unit, because a historical type change cannot be reconstructed. Write-only replay targets can omit the optional quantity reader; legacy forward records without a recorded type keep the existing Count fallback. Generated quantity export resolves supported unit names through the same existing unit resolver as properties; unresolved units remain `$`.
+
 Whole-set edits (`createPropertySet`, `deletePropertySet`, `createQuantitySet`, `deleteQuantitySet`, `deleteQuantity`) record the set's overlay rows before and after the edit on the returned mutation's `setOverlay`. A host with its own undo history reverts or re-applies one of them with `view.restoreSetOverlay(mutation.setOverlay.before)` / `(...after)`, which is what the viewer does.
 
 ### Enumerating the live entity set
@@ -926,5 +928,7 @@ while native geometry is preparing. In-process callers can supply an
 `AbortSignal`; cancellation before commit leaves IFC history unchanged.
 
 Native Room layout edits also enter ordinary Undo/Redo history when no IFC rooms exist yet. The `recordSessionMutation` helper records a `SESSION_EDIT` marker for local domain state; it does not modify IFC attributes, allocate entities or emit collaboration operations. Hosts retain the native layout under the actual history head, so Undo/Redo restores the corresponding plate.
+
+For append-only authoring, `view.getMutationCount()` captures the current journal cursor and `view.getMutations(cursor)` reads its appended suffix. This bounds recording overhead by the current call; atomic graph preparation remains a separate cost. Viewer ordinary creation publishes its collaboration graph before adding local Undo history and restores its prepared overlay if publication refuses.
 
 Native Room SDK preparation raises `RoomCommandConflictError` when another Room command owns preparation or the model changes before commit. Callers may retry against current state. Abort signals retain their cancellation reason; no Room commit is published after cancellation.

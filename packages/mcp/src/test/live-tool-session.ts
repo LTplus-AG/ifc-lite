@@ -22,7 +22,7 @@ export async function liveToolSession(count: number, readOnly = false) {
   await transport.connect(server);
   let id = 0;
   await transport.send({ jsonrpc: '2.0', id: ++id, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: '#6232 copy', version: 'test' } } });
-  return { registry, async call(name: string, args: Record<string, unknown>) {
+  return { registry, transport, async call(name: string, args: Record<string, unknown>) {
     const result = await transport.send({ jsonrpc: '2.0', id: ++id, method: 'tools/call', params: { name, arguments: args } }) as { result?: CallToolResult };
     if (!result.result) throw new Error('No tool result');
     return result.result;

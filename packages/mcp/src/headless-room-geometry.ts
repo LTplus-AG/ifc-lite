@@ -8,9 +8,15 @@ import { IfcParser } from '@ifc-lite/parser';
 import {
   wallRectsFromMeshes, roomFrameToModelWorld, roomFramePlanOffsets, storeyPlanFrame, toStoreyLocal,
   effectiveStoreyIds, effectiveStoreyElevation, floorToFloorHeight, spaceMeshTriangles,
-  existingSpaceFootprintEntriesByStorey, occupancyTest,
+  existingSpaceFootprintEntriesByStorey, occupancyTest, type RoomPlateFactory,
 } from '@ifc-lite/create';
+import { ToolErrorCode, ToolExecutionError } from './errors.js';
 import type { RoomGeometryProvider } from '@ifc-lite/sdk';
+
+/** Keep native factory closures independent of the large parsed-model scope. */
+function nativeRoomFactory(runtime: typeof import('@ifc-lite/wasm')): RoomPlateFactory {
+  return { fromWallRects: (rects, weld, minArea) => runtime.SpacePlateHandle.fromWallRects(rects, weld, minArea) };
+}
 
 /** Mesh the current export, including authored edits, through the canonical native geometry path. */
 export const provideHeadlessRoomGeometry: RoomGeometryProvider = async (model, storeyId) => {
@@ -25,7 +31,11 @@ export const provideHeadlessRoomGeometry: RoomGeometryProvider = async (model, s
   if (!floor) throw new Error('Room requires a live IfcBuildingStorey');
   const processor = new GeometryProcessor({ enableInstancing: false });
   try {
-    await processor.init();
+    try { await processor.init(); } catch (error) {
+      throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION,
+        message: `Native Room runtime is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+        details: { reason: 'NATIVE_RUNTIME_UNAVAILABLE' } });
+    }
     const { meshes, coordinateInfo: coord } = await processor.process(exported);
     const { dx, dy } = roomFrameToModelWorld(coord);
     const local = (point: [number, number]) => toStoreyLocal(plan, [point[0] + dx, point[1] + dy]);
@@ -36,8 +46,23 @@ export const provideHeadlessRoomGeometry: RoomGeometryProvider = async (model, s
     const { cx, cy } = roomFramePlanOffsets(coord), shiftY = coord?.originShift?.y ?? 0;
     const triangles = spaceMeshTriangles(meshes, { lo: floor.elev - shiftY + .2, hi: floor.elev + floorToFloorHeight(storeys, storeyId) - shiftY - .2 }, (x, _y, z) => local([x + cx, cy - z]), () => true);
     const runtime = await import('@ifc-lite/wasm');
-    return { walls, spaces, occupied: occupancyTest(spaces.map(space => space.footprint), triangles), factory: {
-      fromWallRects: (rects, weld, minArea) => runtime.SpacePlateHandle.fromWallRects(rects, weld, minArea),
-    } };
+    return { walls, spaces, occupied: occupancyTest(spaces.map(space => space.footprint), triangles), factory: nativeRoomFactory(runtime) };
   } finally { processor.dispose(); }
 };
+
+/** One prepared storey per loaded model; cached values hold no native handles. */
+export function createCachedHeadlessRoomGeometryProvider() {
+  type Model = Parameters<RoomGeometryProvider>[0];
+  type Prepared = Awaited<ReturnType<RoomGeometryProvider>>;
+  const entries = new Map<string, { store: WeakRef<Model['store']>; view: WeakRef<Model['mutationView']>; head: string; storeyId: number; geometry: Prepared }>();
+  let generation = 0;
+  const provide: RoomGeometryProvider = async (model, storeyId) => {
+    const head = model.mutationView.getMutations().map(mutation => mutation.id).join('|');
+    const entry = entries.get(model.modelId);
+    if (entry?.store.deref() === model.store && entry.view.deref() === model.mutationView && entry.head === head && entry.storeyId === storeyId) return entry.geometry;
+    const epoch = generation, geometry = await provideHeadlessRoomGeometry(model, storeyId);
+    if (generation === epoch) entries.set(model.modelId, { store: new WeakRef(model.store), view: new WeakRef(model.mutationView), head, storeyId, geometry });
+    return geometry;
+  };
+  return { provide, clear() { generation++; entries.clear(); } };
+}

@@ -9038,6 +9038,7 @@
     "ResolvedCostModel: interface",
     "RoofParams: interface",
     "RoomCommand: type",
+    "RoomCommandConflictError: class",
     "RoomCommandResult: interface",
     "RoomGeometryProvider: type",
     "SVGExportOptions: interface",

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { automationEditorEn } from './catalogues/automation-editor.en';
+import { spaceEnvelopeEn } from './catalogues/space-envelope.en';
 import { semanticIdentityEn } from './catalogues/semantic-identity.en';
 import { semanticResultsEn } from './catalogues/semantic-results.en';
 import { semanticEn } from './catalogues/semantic.en';
@@ -225,6 +226,7 @@ export const en = {
   ...viewportLightingEn,
   ...miscPanelsAEn,
   ...sheetsPdfEn,
+  ...spaceEnvelopeEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

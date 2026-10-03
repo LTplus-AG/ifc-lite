@@ -22,6 +22,7 @@ export interface CopyArrayParams {
 /** The same placement planner for viewer previews, commits and public arrays (#6232 D5). */
 export function arrayCopyTransforms(params: CopyArrayParams): CopyTransform[] | null {
   const { mode, count, anchor, cursor } = params;
+  if (mode !== 'linear' && mode !== 'polar') throw new Error('Unsupported array mode');
   if (!Number.isSafeInteger(count) || count < 2) throw new Error('Array count must be an integer of at least two');
   if (count - 1 > COPY_BATCH_LIMIT) throw new Error(`An array may contain at most ${COPY_BATCH_LIMIT} new copies`);
   if (!anchor) return null;
@@ -35,10 +36,12 @@ export function arrayCopyTransforms(params: CopyArrayParams): CopyTransform[] | 
   }
   if (!cursor) return null;
   const clicked = Math.hypot(cursor[0] - anchor[0], cursor[1] - anchor[1]);
+  if (!Number.isFinite(clicked)) throw new Error('Linear array direction must have finite length');
   if (clicked < 1e-6) return null;
   const distance = params.distance ?? clicked;
   if (!Number.isFinite(distance) || distance <= 0) throw new Error('Linear array distance must be positive finite metres');
   const ux = (cursor[0] - anchor[0]) / clicked, uy = (cursor[1] - anchor[1]) / clicked;
   const step = params.fit ? distance / (count - 1) : distance;
+  if (!Number.isFinite(step * (count - 1))) throw new Error('Linear array extent must be finite metres');
   return copies.map((i) => ({ offset: [ux * step * i, uy * step * i, 0] }));
 }

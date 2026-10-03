@@ -855,12 +855,16 @@ commands use this common plan and preserve the IFC storey frame and model units.
 
 The shared `copyBatchInStore(dataStore, editor, expressIds, transforms, options?)`
 operation prunes selected hosted/assembly dependants and copies the resulting
-roots atomically. `copySourcesInStore` reports refusals before planning and
-`copiedProductsInStore` supplies the viewer preview's products.
+roots atomically. `copySourcesInStore(context, expressIds, copyCount?)` reports
+refusals before planning and checks fan-out after pruning carried children; the
+optional count defaults to one. `copiedProductsInStore` supplies the viewer
+preview's products.
 `arrayCopyTransforms(params)` is the same linear/polar planner used for the
 viewer preview and commit; its count includes the original selection, and a
 full polar turn omits the coincident final copy. Each batch is bounded to
-10,000 new root copies before allocation. The host records its compound Undo
+10,000 new root copies before allocation. Unknown array modes and overflowing
+derived directions/extents refuse before preview or writes. The host records
+its compound Undo
 batch and re-meshes returned products after success.
 
 ### Physical command edits on loaded models

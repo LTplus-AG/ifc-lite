@@ -1,0 +1,116 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Separate fixed allocation diagnostic. No comparator schedule/identity guard change.
+name: Viewer source allocation diagnostic
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      requested_base_ref:
+        type: string
+        default: ''
+      requested_candidate_ref:
+        type: string
+        default: ''
+permissions:
+  contents: read
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_BUILD_JOBS: "2"
+jobs:
+  allocation:
+    name: Fixed O-S1 source allocation diagnostic
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      REQUESTED_BASE_REF: ${{ inputs.requested_base_ref }}
+      REQUESTED_CANDIDATE_REF: ${{ inputs.requested_candidate_ref }}
+      BASE_REF: c61932d4a9d85efe1b0f817a5274a115f0571ee3
+      CANDIDATE_REF: 2feb6545b588e02d55d4d6b4d9afbe8be261452e
+      BASE_DIR: ${{ github.workspace }}/../allocation-base
+      CANDIDATE_DIR: ${{ github.workspace }}/../allocation-candidate
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      # Validate before either input can become a checkout ref or command argument.
+      # Inputs enter through environment values, never shell interpolation.
+      - name: Validate immutable inputs and write prospective fixed protocol
+        run: node scripts/perf/viewer-allocation-prepare.mjs validate
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: c61932d4a9d85efe1b0f817a5274a115f0571ee3
+          path: source-base
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 2feb6545b588e02d55d4d6b4d9afbe8be261452e
+          path: source-candidate
+          persist-credentials: false
+
+      # Move into isolated sibling roots so root Turbo never discovers the other
+      # revision as an untracked nested package. This is not a measurement step.
+      - name: Isolate immutable source checkouts
+        run: |
+          mv source-base "$BASE_DIR"
+          mv source-candidate "$CANDIDATE_DIR"
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: viewer-source-allocation
+          save-if: 'false'
+
+      - name: Install harness and both immutable dependency graphs
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir "$BASE_DIR" install --frozen-lockfile
+          pnpm --dir "$CANDIDATE_DIR" install --frozen-lockfile
+      - name: Run bounded protocol invariants (no viewer timing)
+        run: node --test scripts/perf/viewer-source-slice-observer.test.mjs scripts/perf/viewer-allocation-plan.test.mjs
+      - name: Typecheck the explicit harness and existing benchmark helper program
+        run: pnpm typecheck:viewer-source-allocation
+      - name: Fetch and verify exactly the fixed public fixtures
+        run: node scripts/perf/viewer-allocation-prepare.mjs fixtures
+      - name: Verify source/toolchain closure and mark fresh build start
+        run: node scripts/perf/viewer-allocation-prepare.mjs start
+      - name: Build baseline from source through root Turbo
+        working-directory: ${{ env.BASE_DIR }}
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/allocation-base-cargo
+        run: |
+          set -o pipefail
+          pnpm build --force --filter=@ifc-lite/viewer --concurrency=1 --env-mode=loose 2>&1 | tee "$GITHUB_WORKSPACE/viewer-allocation-results/base-build.log"
+      - name: Build candidate from source through root Turbo
+        working-directory: ${{ env.CANDIDATE_DIR }}
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/allocation-candidate-cargo
+        run: |
+          set -o pipefail
+          pnpm build --force --filter=@ifc-lite/viewer --concurrency=1 --env-mode=loose 2>&1 | tee "$GITHUB_WORKSPACE/viewer-allocation-results/candidate-build.log"
+      - name: Freeze source/runtime/viewer/fixture provenance before timing
+        run: node scripts/perf/viewer-allocation-prepare.mjs freeze
+
+      # Both builds have exited. Serial fresh Chrome processes, two independent primary O-S1 loads. Failure is terminal; no retries.
+      - name: Run exactly two allocation controls (no timing verdict)
+        env:
+          DEBUG: pw:browser
+          DEBUG_COLORS: "0"
+        run: node scripts/perf/viewer-allocation-run.mjs
+      - name: Preserve protocol, provenance, successful and refused samples
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: viewer-source-allocation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: viewer-allocation-results/
+          retention-days: 30
+          if-no-files-found: error

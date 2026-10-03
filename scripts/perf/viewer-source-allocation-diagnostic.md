@@ -1,0 +1,37 @@
+# Prospective canonical-viewer source allocation diagnostic (#6537)
+
+Source proposal only. No Chrome/model/build or measurement has run this protocol. The observer is not installed in the strict four-family comparator, and no prior sample or authored-output refusal is reclassified.
+
+## Fixed scope
+
+- Controller prototype parent: `d7d63e88dd388c503e951e4593bc61e1f289914b`. Subjects are literal BASE `c61932d4a9d85efe1b0f817a5274a115f0571ee3` and CAND `2feb6545b588e02d55d4d6b4d9afbe8be261452e`; never select current branch heads dynamically. #6780 remains draft.
+- Public fixture: `various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc`, exactly 342,657,851 bytes, SHA-256 `e91ddbbd672bbde946af14631de4c732f0cf8a7cfae5dbbf06fbeab03b5c46df`. Validate the manifest and downloaded bytes before launch; the viewer uploads this actual File.
+- Two prespecified independent controls, BASE then CAND, each in one fresh Chrome process/context and loading this file first through the ordinary primary `useIfcLoader.loadFile` UI. No retries, replacement fixtures, URL worker/cache switches, cache preload or alternate ingest path. This is an allocation observation, not the A/A/five-A/B clock protocol.
+- Preserve the qualified requested SwiftShader/Vulkan profile verbatim. Collect actual executable SHA/version, ownership-fenced main-process argv and SystemInfo backend, COI/SAB capabilities, actual default pool worker count/IDs, source-built WASM requests/assets and endpoint/compiler/fixture provenance. Missing actual provenance refuses; flags alone do not prove backend. Reuse the qualified process-identity/provenance seam rather than unsupported `Browser.getBrowserCommandLine` or private browser process fields.
+- Keep the existing finite architecture timeout (600 seconds), 5 GiB sampled owned-tree RSS ceiling/250 ms sampling and 30-second owned cleanup fence. Preserve actual host resource admissions. No memory ceiling increase or inference about physical high-water from sampled RSS. Root allocates the remote job after reviewing a frozen runnable source successor.
+
+## Passive observation
+
+Before navigation, `page.addInitScript(installSourceSliceObserver, {bytes:342657851,fileName:<actual fixture basename>,deferMilestones:true})` installs the native slice callback. After canonical readiness instrumentation is installed and before upload, arm its milestone wrapper; exact restoration then preserves the readiness wrapper. It always calls `Reflect.apply(nativeSlice, this, args)` first, returns the identical native object and lets the identical native exception propagate. Observation failures set refusal evidence while native application calls continue. The descriptor is restored exactly, including deletion when slice was inherited originally. No returned/input buffer is retained; WeakMap IDs are the only source ownership keys.
+
+Only exact full backing-store views matching fixture size are observed. Each call records input kind/byte offset/view and backing-store lengths, native output byte count/kind, weak input/output IDs, page observation time, bounded stack and fixed producer milestone snapshots. Calls on subviews of larger buffers are excluded; partial range returns remain separately labelled. Maximum 32 matching calls and 8 KiB per stack; overflow refuses evidence rather than truncating success. No raw source bytes or normal elapsed-time performance verdict is retained.
+
+Original console receiver/all arguments/return/errors are delegated unchanged. Fixed milestones are the canonical file-read log, first `processParallel start` before default-pool prepass, geometry stream completion, metadata parsing completion and admitted cache-write-start log. Timestamps are observed producer-call boundaries, not OS allocation timestamps. Duplicate/unknown/missing/out-of-order signals refuse.
+
+After actual metadata and geometry completion and the canonical settled-scene witness, obtain the current primary datastore's source through its real readonly one-byte `source.slice(0,1)` view. Pass its actual backing buffer to `freeze` in the page; no full source serialization is needed. It must have the fixture byte length. A copy only qualifies if its weak input ID belongs to that canonical source or a component connected by actual observed native full-copy edges. Both directions are required when a fallback metadata owner is a copied ArrayBuffer. Nonresident/compressed sources refuse before accessing even one byte. Same-size unrelated buffers refuse. Freeze restores the observer before identity hashing and teardown; subsequent native copies cannot enter the frozen record.
+
+## What can be concluded
+
+Baseline's whole-source SAB slice after file read and before first parallel/prepass start directly witnesses the eager preparation allocation. Candidate must have no such canonical-source copy in that interval. Other full-size copies are not silently ignored: a post-geometry call before the admitted cache-write-start log is recorded separately, with stack and exact frozen production-source interpretation. A mid-prepass/unknown-phase copy, missing ownership or species/unsupported output refuses attribution.
+
+O-S1 is in the default 150–400 MiB mesh-only cache band. Candidate may legitimately materialize a 342,657,851-byte owned buffer for an admitted cache/hash consumer after geometry completion. This experiment can show the preparation allocation removed or delayed, not total zero allocation, improved physical RSS, faster normal timing or all-model success.
+
+Retain raw console/page errors, source-slice records, metadata/geometry counts/default worker census, strict scene output identity and unmodified screenshots before close. GPU/runtime faults refuse. Existing authored-text/full-appearance identity guards remain: if full identity is unsupported, retain that refusal plus completed phase/allocation witnesses without issuing a full-viewer fidelity verdict or dropping a channel. The diagnostic does not replace the strict four-family comparator.
+
+## Current source qualification and pending integration
+
+Nineteen cheap Node controls exercise the actual delegated Uint8Array operations in an isolated serialized VM: SAB/AB bytes and mutation isolation, real ranges/subviews, wrong receiver/native exceptions, species/coercion exactly once, cap refusal while native work continues, source-origin mismatch, phase refusal, exact own/inherited descriptor restoration and immutable pre-teardown evidence. This is observer correctness only, not real Chrome qualification.
+
+The standalone reusable workflow and runner are prospective source, reached exclusively through the registered benchmark allocation_diagnostic boolean; mixed paired refs refuse. Ordinary/default paired routes are unchanged when false. Pending: root review, committed controller/fresh subject builds/assets, actual hosted Chrome/default-pool O-S1 runs and independent raw audit. No renderer app, subject source, production flags, comparator schedule or acceptance guard changes are proposed.
+
+The workflow-invoked `pnpm typecheck:viewer-source-allocation` checks the referenced TypeScript benchmark/readiness/diagnostic consumers in an explicit no-emit program and parses the JavaScript entrypoints. It does not claim strict JavaScript type inference (`checkJs` is false); the native behavioral controls, `node --check`, and scoped deny-warnings lint separately qualify those modules.

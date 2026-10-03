@@ -83,6 +83,11 @@ on:
         description: 'Upload a refreshed baseline.json (CI-recorded numbers) as the benchmark-baseline artifact'
         type: boolean
         default: false
+      allocation_diagnostic:
+        description: 'Fixed two-case O-S1 source allocation diagnostic only (no paired refs)'
+        required: false
+        type: boolean
+        default: false
       base_ref:
         description: 'Optional paired mode: exact lowercase 40-hex baseline commit; supply candidate_ref too'
         required: false
@@ -110,7 +115,7 @@ jobs:
     name: Immutable paired viewer comparison
     # Either input opts into paired mode; an incomplete pair must refuse instead
     # of silently running the single-arm committed-baseline comparison.
-    if: github.event_name == 'workflow_dispatch' && (inputs.base_ref != '' || inputs.candidate_ref != '')
+    if: github.event_name == 'workflow_dispatch' && !inputs.allocation_diagnostic && (inputs.base_ref != '' || inputs.candidate_ref != '')
     uses: ./.github/workflows/perf-interleaved.yml
     permissions:
       contents: read
@@ -118,13 +123,23 @@ jobs:
       base_ref: ${{ inputs.base_ref }}
       candidate_ref: ${{ inputs.candidate_ref }}
 
+  source-allocation:
+    name: Fixed canonical viewer allocation diagnostic
+    if: github.event_name == 'workflow_dispatch' && inputs.allocation_diagnostic
+    uses: ./.github/workflows/perf-viewer-allocation.yml
+    permissions:
+      contents: read
+    with:
+      requested_base_ref: ${{ inputs.base_ref }}
+      requested_candidate_ref: ${{ inputs.candidate_ref }}
+
   benchmark:
     name: Viewer benchmark (advisory)
     # Existing triggers keep their single-arm behavior. Explicit paired dispatch
     # runs only the reusable cohort, never this committed-baseline comparison.
     if: >-
       (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:benchmark'))
-      && !(github.event_name == 'workflow_dispatch' && (inputs.base_ref != '' || inputs.candidate_ref != ''))
+      && !(github.event_name == 'workflow_dispatch' && (inputs.allocation_diagnostic || inputs.base_ref != '' || inputs.candidate_ref != ''))
     # Free GitHub-hosted runner (public repo). The benchmark measures a noisy
     # shared VM anyway; the +50% thresholds in benchmark:check absorb the
     # jitter, and the job is advisory. When Rust changed we compile wasm32

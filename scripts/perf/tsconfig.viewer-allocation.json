@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.interleaved.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false
+  },
+  "files": [
+    "viewer-allocation-sample.mjs",
+    "viewer-allocation-run.mjs",
+    "viewer-allocation-prepare.mjs",
+    "viewer-allocation-plan.mjs",
+    "viewer-allocation-chrome.mjs",
+    "viewer-source-slice-observer.mjs",
+    "interleaved-identity.d.mts",
+    "interleaved-plan.d.mts",
+    "../../tests/benchmark/viewer-benchmark-page.ts",
+    "../../tests/benchmark/metadata-render-readiness.ts"
+  ]
+}

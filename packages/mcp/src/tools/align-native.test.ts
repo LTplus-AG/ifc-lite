@@ -3,6 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { loadIfcModel } from '../loader.js';
 import { beforeAll, expect, it } from 'vitest';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { StepExporter } from '@ifc-lite/export';
@@ -95,6 +99,11 @@ it.skipIf(!available)('#6232 distinct Align root shifts carry a joined neighbour
     expect(after.get(a)!.lo[0]).toBeCloseTo(after.get(1222)!.lo[0], 4);
     expect(after.get(column)!.lo[0]).toBeCloseTo(after.get(1222)!.lo[0], 4);
     expect(after.get(b)!.lo[0]).not.toBeCloseTo(original.get(b)!.lo[0]);
+    const alreadyAligned = await graph(model);
+    const conflicting = await call('edit_element_geometry', { operation: { kind: 'align', reference_id: 1222, express_ids: [a,b], mode: 'left' } });
+    expect(conflicting.isError).toBe(true);
+    expect(conflicting.structuredContent?.message).toContain('incompatible translations');
+    expect(await graph(model)).toEqual(alreadyAligned);
     expect((await call('mutation_undo', {})).isError).not.toBe(true);
     expect(await graph(model)).toEqual(before);
     expect(await extents(model, [a,b,column])).toEqual(new Map([a,b,column].map(id => [id,original.get(id)!])));
@@ -164,5 +173,60 @@ it.skipIf(!available)('#6232 stale native Align preparation preserves the interv
     const after = await extents(model, [target]);
     expect(after.get(target)!.lo[0]).toBeCloseTo(before.get(target)!.lo[0], 4);
     expect(after.get(target)!.lo[1]).toBeCloseTo(before.get(target)!.lo[1] + 2, 4);
+  } finally { for (const loaded of registry.list()) loaded.backend.dispose(); }
+});
+
+for (const schema of ['IFC4', 'IFC4X3']) it.skipIf(!available)(`#6232 native Align uses rotated storey metres in a millimetre ${schema} source variant`, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'ifc-align-'));
+  const { registry, call } = await liveToolSession(1);
+  try {
+    // Metamorphic Bonsai source: retain its original graph, vary declared
+    // native length unit/schema, then author a real overlay storey rotation.
+    const source = readFileSync(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url), 'utf8')
+      .replace("FILE_SCHEMA(('IFC4'))", `FILE_SCHEMA(('${schema}'))`)
+      .replace('IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)', 'IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)');
+    const filename = join(directory, 'rotated-millimetres.ifc');
+    await writeFile(filename, source);
+    const model = await loadIfcModel(filename, { modelId: 'alpha' });
+    registry.add(model);
+    const editor = model.backend.ensureEditor(), reader = new AnchorEntityReader(model.store, editor.getMutationView());
+    const refId = (value: unknown) => Number(String(value).slice(1));
+    const placement = reader.entity(refId(reader.entity(42)!.attributes[5]))!;
+    const axisId = refId(placement.attributes[1]);
+    const direction = editor.addEntity('IFCDIRECTION', [[Math.cos(.6), Math.sin(.6), 0]]).expressId;
+    editor.setPositionalAttribute(axisId, 3, `#${direction}`);
+    const a = model.bim.store.addColumn('alpha', 42, { Position: [20,20,0], Width: .4, Depth: .6, Height: 3 }).expressId;
+    const b = model.bim.store.addColumn('alpha', 42, { Position: [30,25,0], Width: .8, Depth: .3, Height: 3 }).expressId;
+    const before = await graph(model), original = await extents(model, [1222,a,b]);
+    expect(original.get(a)!.hi[0] - original.get(a)!.lo[0]).toBeCloseTo(.4, 4);
+    const aligned = await call('edit_element_geometry', { operation: { kind: 'align', reference_id: 1222, express_ids: [a,b], mode: 'right' } });
+    expect(aligned.isError, JSON.stringify(aligned)).not.toBe(true);
+    const after = await extents(model, [1222,a,b]);
+    for (const id of [a,b]) {
+      expect(after.get(id)!.hi[0]).toBeCloseTo(after.get(1222)!.hi[0], 4);
+      expect(after.get(id)!.lo[1]).toBeCloseTo(original.get(id)!.lo[1], 4);
+    }
+    expect((await call('mutation_undo', {})).isError).not.toBe(true);
+    expect(await graph(model)).toEqual(before);
+  } finally {
+    for (const loaded of registry.list()) loaded.backend.dispose();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it.skipIf(!available)('#6232 incompatible Align shifts cannot overwrite a shared neighbour endpoint', async () => {
+  const { registry, call } = await liveToolSession(1), model = registry.get('alpha')!;
+  try {
+    const wall = (Start: [number,number,number], End: [number,number,number]) => model.bim.store.addWall('alpha', 42, { Start, End, Thickness: .2, Height: 3 }).expressId;
+    const a = wall([20,20,0], [24,20,0]), b = wall([24,20,0], [24,24,0]), c = wall([28,20,0], [24,20,0]);
+    model.bim.store.joinWalls('alpha', a, b);
+    model.bim.store.joinWalls('alpha', c, b);
+    const before = await graph(model), view = model.backend.getMutationView()!, journal = structuredClone(view.getMutations()), allocator = view.peekNextExpressId();
+    const result = await call('edit_element_geometry', { operation: { kind: 'align', reference_id: 1222, express_ids: [a,c], mode: 'left' } });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent?.message).toContain('shared joined endpoint');
+    expect(await graph(model)).toEqual(before);
+    expect(view.getMutations()).toEqual(journal);
+    expect(view.peekNextExpressId()).toBe(allocator);
   } finally { for (const loaded of registry.list()) loaded.backend.dispose(); }
 });

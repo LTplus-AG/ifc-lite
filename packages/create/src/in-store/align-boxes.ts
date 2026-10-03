@@ -4,7 +4,7 @@
 
 
 import type { MeshData } from '@ifc-lite/geometry';
-type Vec2 = [number, number];
+type Vec2 = readonly [number, number];
 
 export type AlignMode = 'left' | 'centre' | 'right' | 'top' | 'middle' | 'bottom';
 
@@ -24,7 +24,7 @@ export const alignsAlongU = (mode: AlignMode): boolean => mode === 'left' || mod
 const MAX_COORD = 1e7;
 
 /** `expressId`'s meshes' extent in `plane`, or null when it has no rendered geometry. */
-export function planBoxOf(meshes: readonly MeshData[], globalId: number, plane: { renderToLocal(point: [number, number, number]): [number, number, number] }): PlanBox | null {
+export function planBoxOf(meshes: readonly MeshData[], globalId: number, plane: { renderToLocal(point: readonly [number, number, number]): readonly [number, number, number] }): PlanBox | null {
   let u0 = Infinity, v0 = Infinity, z0 = Infinity, u1 = -Infinity, v1 = -Infinity, z1 = -Infinity;
   for (const mesh of meshes) {
     if (mesh.expressId !== globalId) continue;

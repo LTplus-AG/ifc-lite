@@ -14,12 +14,14 @@ import type { RoomGeometryProvider } from '@ifc-lite/sdk';
 export const provideHeadlessRoomGeometry: RoomGeometryProvider = async (model, storeyId) => {
   const schema = model.store.schemaVersion ?? 'IFC4';
   if (schema !== 'IFC4' && schema !== 'IFC2X3' && schema !== 'IFC4X3') throw new Error(`Room does not support schema ${schema}`);
-  return withHeadlessGeometry(model, async (source, meshes, coord) => {
-  const plan = storeyPlanFrame(source, storeyId);
-  if (!plan) throw new Error('Room storey placement is not a supported upright plane');
-  const storeys = effectiveStoreyIds(source, null).map(id => ({ id, elev: effectiveStoreyElevation(source, null, id) })).sort((a, b) => a.elev - b.elev || a.id - b.id);
-  const floor = storeys.find(storey => storey.id === storeyId);
-  if (!floor) throw new Error('Room requires a live IfcBuildingStorey');
+  return withHeadlessGeometry(model, source => {
+    const plan = storeyPlanFrame(source, storeyId);
+    if (!plan) throw new Error('Room storey placement is not a supported upright plane');
+    const storeys = effectiveStoreyIds(source, null).map(id => ({ id, elev: effectiveStoreyElevation(source, null, id) })).sort((a, b) => a.elev - b.elev || a.id - b.id);
+    const floor = storeys.find(storey => storey.id === storeyId);
+    if (!floor) throw new Error('Room requires a live IfcBuildingStorey');
+    return { source, plan, storeys, floor };
+  }, async ({ source, plan, storeys, floor }, meshes, coord) => {
     const { dx, dy } = roomFrameToModelWorld(coord);
     const local = (point: [number, number]) => toStoreyLocal(plan, [point[0] + dx, point[1] + dy]);
     const walls = wallRectsFromMeshes(meshes, coord, floor.elev, floorToFloorHeight(storeys, storeyId)).map(wall => ({

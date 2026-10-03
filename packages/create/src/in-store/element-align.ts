@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { ALIGN_MODES, alignMoves, type AlignMode, type PlanBox } from './align-boxes.js';
+import { ALIGN_MODES, alignMoves, alignShift, type AlignMode, type PlanBox } from './align-boxes.js';
 import { expandAffectedSet } from '@ifc-lite/export';
 import { readWallJoinRels } from './wall-join-read.js';
 import { effectiveStoreyId } from './edit/effective-storey.js';
@@ -37,7 +37,12 @@ export function alignElementsInStore(
   if (moves.length === 0) throw new Error('The targets are already aligned');
   const selected = moves.map(move => move.id);
   const shifts = new Map<number, [number, number]>();
-  for (const move of moves) {
+  const carried = new Set(plan.carried);
+  const requested = params.targets.filter(id => !carried.has(id)).map<{ id: number; shift: [number, number] }>(id => {
+    const [u, v] = alignShift(params.mode, boxes.get(params.reference)!, boxes.get(id)!);
+    return { id, shift: [u, v] };
+  });
+  for (const move of requested) {
     for (const id of expandAffectedSet(input.dataStore, input.view, [move.id], 'hostsChanged')) {
       if (id === params.reference) throw new Error('The Align reference would move with a target');
       const prior = shifts.get(id);
@@ -46,10 +51,18 @@ export function alignElementsInStore(
     }
     shifts.set(move.id, move.shift);
   }
+  const joinedEnds = new Map<string, [number, number]>();
   for (const rel of readWallJoinRels(input.dataStore, input.view)) {
     const a = shifts.get(rel.relatingId), b = shifts.get(rel.relatedId);
     if ((a && rel.relatedId === params.reference) || (b && rel.relatingId === params.reference)) throw new Error('The Align reference is joined to a target');
     if (a && b && Math.hypot(a[0] - b[0], a[1] - b[1]) > 1e-4) throw new Error('Joined Align targets require incompatible translations');
+    const delta = a ?? b;
+    const connection = a ? rel.relatedConnection : rel.relatingConnection;
+    if (delta && !(a && b) && connection !== 'ATPATH') {
+      const key = `${a ? rel.relatedId : rel.relatingId}:${connection}`, prior = joinedEnds.get(key);
+      if (prior && Math.hypot(prior[0] - delta[0], prior[1] - delta[1]) > 1e-4) throw new Error('Align targets require incompatible translations at a shared joined endpoint');
+      joinedEnds.set(key, delta);
+    }
   }
   return transformElementsInStore({ ...input, selected, op: { kind: 'move', delta: [0, 0] },
     translationForElement: (id, storeyId) => {

@@ -7,9 +7,11 @@ import { planBoxOf, storeyPlanFrame, roomFramePlanOffsets, roomFrameToModelWorld
 import { recordCompoundMutation, StoreEditor } from '@ifc-lite/mutations';
 import { withHeadlessGeometry } from './headless-native-geometry.js';
 
-export const provideHeadlessAlignGeometry: AlignGeometryProvider = (model, storeyId, ids) => withHeadlessGeometry(model, (source, meshes, coord) => {
+export const provideHeadlessAlignGeometry: AlignGeometryProvider = (model, storeyId, ids) => withHeadlessGeometry(model, source => {
     const plan = storeyPlanFrame(source, storeyId);
     if (!plan) throw new Error('Align storey placement is not a supported upright plane');
+    return plan;
+  }, (plan, meshes, coord) => {
     const { cx, cy } = roomFramePlanOffsets(coord), { dx, dy } = roomFrameToModelWorld(coord);
     const boxes = new Map<number, PlanBox>();
     for (const id of ids) {

@@ -8,14 +8,15 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { ModellingStoreModelResolver } from '@ifc-lite/sdk';
 
 /** One fresh current-overlay native pipeline for headless geometry commands. */
-export async function withHeadlessGeometry<T>(model: ReturnType<ModellingStoreModelResolver>, consume: (source: IfcDataStore, meshes: readonly MeshData[], coord: CoordinateInfo | undefined) => T | Promise<T>): Promise<T> {
+export async function withHeadlessGeometry<P, T>(model: ReturnType<ModellingStoreModelResolver>, prepare: (source: IfcDataStore) => P, consume: (prepared: P, meshes: readonly MeshData[], coord: CoordinateInfo | undefined) => T | Promise<T>): Promise<T> {
   const schema = model.store.schemaVersion ?? 'IFC4';
   const exported = new StepExporter(model.store, model.mutationView).export({ schema, applyMutations: true }).content;
   const source = await new IfcParser().parseColumnar(exported.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  const prepared = prepare(source);
   const processor = new GeometryProcessor({ enableInstancing: false });
   try {
     await processor.init();
     const { meshes, coordinateInfo } = await processor.process(exported);
-    return await consume(source, meshes, coordinateInfo);
+    return await consume(prepared, meshes, coordinateInfo);
   } finally { processor.dispose(); }
 }

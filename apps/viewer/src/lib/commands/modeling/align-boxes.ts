@@ -43,4 +43,3 @@ export function storeyBoxes(s: ViewerState, modelId: string, storeyId: number, p
   }
   return boxes;
 }
-

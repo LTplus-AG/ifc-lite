@@ -27,6 +27,27 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Lower initial entity-index speculation (#6537)
+
+A shared reservation helper limits the first source-byte estimate used by the
+hash decoder, columnar scan and serial WASM prepass. Every real record still
+inserts and can grow the collection; a prebuilt prepass keeps its empty staging
+map. This reduces unnecessary initial reservation on comment-heavy input,
+without changing scanner or geometry policy. It does not cap accepted entities,
+final table size, source copies or physical process memory.
+
+Dense and comment-heavy behavioral controls preserve exact spans and duplicate
+replacement. This differs from the rejected viewer shared-index conversion:
+no intermediate shared-index representation is introduced. The current-main
+candidate passes its scanner regressions and strict workspace Clippy. Full
+runtime/contracts and completed heavy/default-worker controls remain pending. No speedup, universal model coverage or unknown
+private-file reproduction is established.
+
+Lesson: bound allocation speculation separately from genuine record growth,
+and test sparse source bytes as well as dense entities before interpreting a
+memory counter or load time. [Source attribution and qualification scope](evidence/index-reservation-6537/README.md)
+retain the distinction between a requested reservation and an end-to-end verdict.
+
 ## Direct vertex packing: do not ship the current candidate (#6537)
 
 The candidate removes an intermediate vertex buffer for eligible quantized

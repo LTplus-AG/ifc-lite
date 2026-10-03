@@ -209,7 +209,7 @@ impl ColumnarEntityIndex {
         T: AsRef<[u8]> + ?Sized,
     {
         let content = content.as_ref();
-        let estimated = content.len() / 50;
+        let estimated = crate::limits::initial_entity_index_capacity(content.len());
         let mut ids = Vec::with_capacity(estimated);
         let mut starts = Vec::with_capacity(estimated);
         let mut lengths = Vec::with_capacity(estimated);

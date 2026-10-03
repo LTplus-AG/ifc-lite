@@ -1,0 +1,65 @@
+{
+  "main": "a1b53db95e3738f8f9d9e330dd16531583e2a730",
+  "qualificationSourceHead": "ba987467e609d3b60ee8a05e2db4e019746842cb",
+  "rustTree": "3d95e9190f69127fb1934e115481bccf838f490f",
+  "cargoLockBlob": "d7168805f763e93a3b9b5649eff5983db8c9da4e",
+  "sourceUnion": {
+    "featurePaths": 8,
+    "mainIncomingPaths": 21,
+    "unrelatedMainBlobsVerified": 13167,
+    "overlap": [],
+    "productionAndRegressionBlobsIdenticalToHistorical": "9af8964367895b53904189f1d62e8a07a08e10fd"
+  },
+  "checks": [
+    {
+      "name": "workspace-clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit": 0,
+      "startedUTC": "2026-10-02T20:29:34.371731+00:00",
+      "endedUTC": "2026-10-02T20:31:00.269072+00:00",
+      "logSHA256": "b47b5973d55bcd69ca215764d42d406b94c610a817c580ca18e2adb210047f3f",
+      "logBytes": 10443,
+      "peakOwnedRSSKiB": 1418024,
+      "scope": "Correctness-only run under host load; no timing/performance verdict."
+    },
+    {
+      "name": "core-regressions",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-core",
+        "--test",
+        "issue_6537_initial_index_reservation"
+      ],
+      "exit": 0,
+      "startedUTC": "2026-10-02T20:31:45.679523+00:00",
+      "endedUTC": "2026-10-02T20:33:32.815949+00:00",
+      "logSHA256": "04a7878967c85a1905f1882899680e798a36b95179dd7ee2472782da2ff5ed4b",
+      "logBytes": 2775,
+      "peakOwnedRSSKiB": 1152264,
+      "scope": "Correctness-only run under host load; no timing/performance verdict.",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "remaining": [
+    "full canonical build and freshly attributed WASM",
+    "WASM contracts",
+    "root typecheck with mandatory test-program audit",
+    "workspace runtime tests",
+    "current-source production inverse",
+    "source-matched public corpus/default-worker end-to-end A/B with output identities",
+    "resolved substantive review"
+  ],
+  "performanceVerdict": "PENDING: no completed end-to-end or physical-peak-memory verdict; keep draft unmerged"
+}

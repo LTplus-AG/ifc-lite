@@ -39,6 +39,7 @@ import {
   resolvePlacementChain,
 } from './placement-core.js';
 import { clipPolygonByLine, type Point2D, type PolygonClipResult } from './polygon-clip.js';
+import { polygonArea } from '../room-footprint-offset.js';
 import { resolveSolidPositionXform, slabExtrusionFrame, type Xform2D } from './slab-edit-frame.js';
 
 /**
@@ -181,9 +182,8 @@ function polylineFootprint(
  * lift a native-unit (e.g. millimetre) STEP read into the viewer's
  * metre working space — see `resolveSlabEditChain`'s `lengthUnitScale`.
  */
-function scaleSlabChain(chain: SlabEditChain, scale: number): SlabEditChain {
-  if (scale === 1) return chain;
-  return {
+function scaleSlabChain(chain: SlabEditChain, scale: number): SlabEditChain | null {
+  const scaled: SlabEditChain = scale === 1 ? chain : {
     ...chain,
     placementOrigin: [
       chain.placementOrigin[0] * scale,
@@ -194,6 +194,12 @@ function scaleSlabChain(chain: SlabEditChain, scale: number): SlabEditChain {
     footprint: chain.footprint.map(([x, y]) => [x * scale, y * scale] as Point2D),
     thickness: chain.thickness * scale,
   };
+  if (!Number.isFinite(scaled.thickness) || scaled.thickness <= 0
+    || !scaled.placementOrigin.every(Number.isFinite)
+    || (scaled.baseElevation !== null && !Number.isFinite(scaled.baseElevation))
+    || scaled.footprint.some(point => !point.every(Number.isFinite))) return null;
+  const area = polygonArea(scaled.footprint);
+  return Number.isFinite(area) && area > 0 ? scaled : null;
 }
 
 /**
@@ -223,6 +229,7 @@ export function resolveSlabEditChain(
   if (!elementType) return null;
 
   const scale = lengthUnitScale;
+  if (!Number.isFinite(scale) || scale <= 0) return null;
 
   const chain = resolvePlacementChain(dataStore, view, editor, expressId);
   if (!chain) return null;
@@ -248,7 +255,7 @@ export function resolveSlabEditChain(
   if (!solidAttrs) return null;
   const profileId = asExpressIdRef(solidAttrs[0]);
   const thicknessRaw = solidAttrs[3];
-  if (profileId === null || typeof thicknessRaw !== 'number') return null;
+  if (profileId === null || typeof thicknessRaw !== 'number' || !Number.isFinite(thicknessRaw) || thicknessRaw <= 0) return null;
   // Only a vertical extrusion of the plan outline can be cut in plan (#6233).
   const frame = slabExtrusionFrame(dataStore, view, editor, chain.axisPlacementId, solidAttrs, thicknessRaw);
   const baseElevation = frame === null ? null : placementOrigin[2] + frame.base;
@@ -296,7 +303,8 @@ export function resolveSlabEditChain(
   if (profileType && profileType.toUpperCase() === 'IFCRECTANGLEPROFILEDEF') {
     const xdim = profileAttrs[3];
     const ydim = profileAttrs[4];
-    if (typeof xdim !== 'number' || typeof ydim !== 'number') return null;
+    if (typeof xdim !== 'number' || typeof ydim !== 'number'
+      || !Number.isFinite(xdim) || xdim <= 0 || !Number.isFinite(ydim) || ydim <= 0) return null;
     return scaleSlabChain({
       elementType,
       placementOrigin,

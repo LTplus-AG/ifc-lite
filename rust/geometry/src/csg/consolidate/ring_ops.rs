@@ -95,19 +95,55 @@ pub(super) fn weld_near_coincident_2d(
 /// without this pass earcut would emit one sliver triangle per phantom.
 pub(super) fn simplify_2d_collinear(ring: &[nalgebra::Point2<f64>]) -> Vec<nalgebra::Point2<f64>> {
     let n = ring.len();
+    #[cfg(feature = "opening-perf-trace")]
+    let mut work = crate::opening_perf_trace::RingSimplifierWork {
+        input_vertices: n as u64,
+        ..Default::default()
+    };
     if n < 4 {
+        #[cfg(feature = "opening-perf-trace")]
+        work.record();
         return ring.to_vec();
     }
     let mut keep = vec![true; n];
     let mut changed = true;
     while changed {
+        #[cfg(feature = "opening-perf-trace")]
+        {
+            work.sweeps = work.sweeps.saturating_add(1);
+        }
         changed = false;
         for i in 0..n {
             if !keep[i] {
                 continue;
             }
-            let prev = (1..n).map(|k| (i + n - k) % n).find(|&k| keep[k]);
-            let next = (1..n).map(|k| (i + k) % n).find(|&k| keep[k]);
+            #[cfg(feature = "opening-perf-trace")]
+            {
+                work.live_vertex_visits = work.live_vertex_visits.saturating_add(1);
+            }
+            // Each lazily generated candidate is exactly one find/keep probe.
+            // Diagnostic accounting neither looks up extra candidates nor
+            // changes the circular index order or the search predicate.
+            let prev = (1..n)
+                .map(|k| {
+                    #[cfg(feature = "opening-perf-trace")]
+                    {
+                        work.prev_probes = work.prev_probes.saturating_add(1);
+                        work.max_prev_probe_distance = work.max_prev_probe_distance.max(k as u64);
+                    }
+                    (i + n - k) % n
+                })
+                .find(|&k| keep[k]);
+            let next = (1..n)
+                .map(|k| {
+                    #[cfg(feature = "opening-perf-trace")]
+                    {
+                        work.next_probes = work.next_probes.saturating_add(1);
+                        work.max_next_probe_distance = work.max_next_probe_distance.max(k as u64);
+                    }
+                    (i + k) % n
+                })
+                .find(|&k| keep[k]);
             let (prev, next) = match (prev, next) {
                 (Some(p), Some(n)) if p != i && n != i && p != n => (p, n),
                 _ => continue,
@@ -130,9 +166,15 @@ pub(super) fn simplify_2d_collinear(ring: &[nalgebra::Point2<f64>]) -> Vec<nalge
             if denom < 1.0e-18 || (cross.abs() / denom) < 1.0e-4 {
                 keep[i] = false;
                 changed = true;
+                #[cfg(feature = "opening-perf-trace")]
+                {
+                    work.removals = work.removals.saturating_add(1);
+                }
             }
         }
     }
+    #[cfg(feature = "opening-perf-trace")]
+    work.record();
     ring.iter()
         .zip(keep.iter())
         .filter_map(|(p, k)| if *k { Some(*p) } else { None })
@@ -211,3 +253,7 @@ pub(super) fn floor_pow2(x: f64) -> f64 {
     // representable exponent range we hit (|coords| ≲ 1e7 ⇒ exponent ≲ 24).
     2.0_f64.powi(unbiased as i32)
 }
+
+#[cfg(test)]
+#[path = "ring_ops_tests.rs"]
+mod tests;

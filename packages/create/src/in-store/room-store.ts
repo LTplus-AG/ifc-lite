@@ -6,7 +6,7 @@
 import { editOwnershipRefusal } from '@ifc-lite/export';
 import { QuantityType } from '@ifc-lite/data';
 import { getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
-import type { StoreEditor } from '@ifc-lite/mutations';
+import { recordSessionMutation, type StoreEditor } from '@ifc-lite/mutations';
 import { addSpaceToStore } from './space.js';
 import { GENERATED_SPACE_OBJECTTYPE } from './generate-spaces.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
@@ -115,9 +115,10 @@ function faceHolding<F extends LayoutFace>(faces: readonly F[], p: Pt): F | null
 }
 
 /** Native layout edit keeps the larger split/merged room identity and its metadata. */
-export function syncRoomLayoutInStore(store: IfcDataStore, editor: StoreEditor, before: readonly RoomCandidate[], after: readonly LayoutFace[], globalIdScopes: readonly GlobalIdScope[] = []): LayoutSync {
+export function syncRoomLayoutInStore(store: IfcDataStore, editor: StoreEditor, before: readonly RoomCandidate[], after: readonly LayoutFace[], globalIdScopes: readonly GlobalIdScope[] = [], editedStoreyId?: number): LayoutSync {
   return editor.runAtomic(draft => {
     const out: LayoutSync = { created: [], deleted: [], remesh: [] }, view = draft.getMutationView();
+    const seen = new Set(view.getMutations().map(mutation => mutation.id));
     const pre = new Map(before.map(c => [c.face, c])), post = new Map(after.map(f => [f.face, f]));
     const removed = before.filter(c => !post.has(c.face)), handled = new Set<number>();
     for (const face of after) {
@@ -166,6 +167,10 @@ export function syncRoomLayoutInStore(store: IfcDataStore, editor: StoreEditor, 
         if (!draft.removeEntity(entry.link.expressId)) throw new Error('Room layout could not remove merged room');
         out.deleted.push(entry.link.expressId);
       }
+    }
+    // Native callers pass the storey after a changed layout operation.
+    if (editedStoreyId !== undefined && !view.getMutations().some(mutation => !seen.has(mutation.id))) {
+      recordSessionMutation(view, editedStoreyId, 'room-layout');
     }
     return out;
   });

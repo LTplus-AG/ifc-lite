@@ -6970,6 +6970,7 @@
     "propertyKey: function",
     "quantityKey: function",
     "recordCompoundMutation: function",
+    "recordSessionMutation: function",
     "setEntityTypeNormalizer: function",
     "storeHasSourceEntity: function",
     "undoRecordedMutationOperations: function"

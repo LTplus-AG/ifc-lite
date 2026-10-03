@@ -129,6 +129,9 @@ export function applyMutationsBatch(
       continue;
     }
     switch (mutation.type) {
+      case 'SESSION_EDIT':
+        // Imported IFC changes cannot replay a host-owned native layout.
+        break;
       case 'CREATE_PROPERTY':
       case 'UPDATE_PROPERTY':
         if (mutation.psetName && mutation.propName && mutation.newValue !== undefined) {

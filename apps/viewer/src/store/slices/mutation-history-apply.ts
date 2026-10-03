@@ -61,6 +61,7 @@ function reportUnreplayable(
 
 /** Apply the inverse of `mutation` to `view` (one undo step, stacks untouched). */
 export function applyUndoToView(get: Get, set: Set, modelId: string, view: MutablePropertyView, mutation: Mutation): void {
+  if (mutation.type === 'SESSION_EDIT') return; // Its retained domain state follows the Undo head.
   // Apply inverse mutation (skipHistory=true); skip onto a peer-deleted entity (#5223, see mutation-redo-remote-guard.ts)
   if (isTargetTombstoned(view, mutation)) {
     set({ collabGeometryNotice: 'An element was removed by a collaborator. Its local history was skipped.' });
@@ -202,6 +203,7 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
 
 /** Re-apply `mutation` to `view` (one redo step, stacks untouched). */
 export function applyRedoToView(get: Get, set: Set, modelId: string, view: MutablePropertyView, mutation: Mutation): void {
+  if (mutation.type === 'SESSION_EDIT') return; // Revisit the retained domain state at the Redo head.
   // Re-apply mutation (skipHistory=true); same tombstone guard as undo() (#5223)
   if (isTargetTombstoned(view, mutation)) {
     set({ collabGeometryNotice: 'An element was removed by a collaborator. Its local history was skipped.' });

@@ -6,6 +6,7 @@
  * Types for IFC mutation tracking
  */
 
+import type { MutationType } from './mutation-type.js';
 import type { PropertyValueType, PropertySet, QuantitySet, IfcAttributeValue as CanonicalIfcAttributeValue } from '@ifc-lite/data';
 
 /**
@@ -47,26 +48,7 @@ type _IfcAttributeValueMirrorInSync = AssertTrue<
 /** Property value types supported by mutations */
 export type PropertyValue = string | number | boolean | null | PropertyValue[];
 
-/** Types of mutations that can be applied to IFC data */
-export type MutationType =
-  | 'CREATE_PROPERTY'
-  | 'UPDATE_PROPERTY'
-  | 'DELETE_PROPERTY'
-  | 'CREATE_PROPERTY_SET'
-  | 'DELETE_PROPERTY_SET'
-  | 'CREATE_QUANTITY'
-  | 'UPDATE_QUANTITY'
-  | 'DELETE_QUANTITY'
-  /** A whole quantity set removed, the twin of `DELETE_PROPERTY_SET`. Distinct
-   *  from `DELETE_QUANTITY`, which names one quantity inside a set: replaying a
-   *  set removal as a member removal drops the set's other members on the
-   *  floor, and both replay consumers key off `propName` being present. */
-  | 'DELETE_QUANTITY_SET'
-  | 'UPDATE_ATTRIBUTE'
-  | 'UPDATE_POSITIONAL_ATTRIBUTE'
-  | 'UPDATE_ENTITY_TYPE'
-  | 'CREATE_ENTITY'
-  | 'DELETE_ENTITY';
+export type { MutationType } from './mutation-type.js';
 
 /**
  * A single mutation operation
@@ -82,6 +64,9 @@ export interface Mutation {
   modelId: string;
   /** Entity EXPRESS ID */
   entityId: number;
+
+  /** Domain label for a SESSION_EDIT, e.g. a retained native Room layout. */
+  sessionKind?: string;
 
   // Property/Quantity specific fields
   /** Property set or quantity set name */

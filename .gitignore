@@ -157,3 +157,6 @@ apps/*/tsconfig.tests.json
 # for the shape.
 scripts/perf/.browser-cold-ab-results/
 scripts/perf/browser-corpus.local.json
+
+# Frozen prospective SDK comparison artifacts, never source inputs.
+/sdk-results/

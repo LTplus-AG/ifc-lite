@@ -1,0 +1,66 @@
+{
+  "browser": "WSL Google Chrome 153; WebGPU SwiftShader",
+  "model": "AC20-FZK-Haus.ifc",
+  "snap": {
+    "local": [
+      5,
+      3.3867514610290526
+    ],
+    "winner": {
+      "kind": "vertex",
+      "local": [
+        5,
+        3.3867514610290526
+      ],
+      "elevation": -6.5,
+      "source": "mesh"
+    },
+    "guides": [],
+    "locked": false,
+    "render": [
+      6,
+      6.086751461029053,
+      -5
+    ],
+    "modifiers": {
+      "shift": false,
+      "alt": false
+    },
+    "metresPerPixel": 0.03028833662187047
+  },
+  "saved": {
+    "envelope": {
+      "floor": 0,
+      "ceiling": [
+        {
+          "a": 0,
+          "b": -0.4622504870096842,
+          "c": 5.6980038960774735
+        },
+        {
+          "a": 0,
+          "b": 0.4622504870096842,
+          "c": 1.0754990259806316
+        }
+      ]
+    },
+    "quantities": [
+      {
+        "Name": "GrossFloorArea",
+        "Value": 24
+      },
+      {
+        "Name": "NetFloorArea",
+        "Value": 24
+      },
+      {
+        "Name": "GrossPerimeter",
+        "Value": 20
+      },
+      {
+        "Name": "GrossVolume",
+        "Value": 64.64101753234863
+      }
+    ]
+  }
+}

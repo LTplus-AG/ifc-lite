@@ -1,0 +1,209 @@
+{
+  "issue": 6232,
+  "charter": "Frozen original 24 modelling commands; source-only gap map c47, not the later main command registry",
+  "exclusions": [
+    "SpaceEnvelope #6686 is a separate landed feature",
+    "Duplicate is a copy-route follow-up, not a 25th frozen command",
+    "Inspector size/defaults/profile and ChangeSet/history are cross-cutting acceptance controls"
+  ],
+  "captureState": "Physical, Align and Placement passed on integrated bfc6d467 in WSL Chrome with one and two models; Room cut Undo blocked on quantity metadata",
+  "alignRegisteredNativeProof": "Registered-command native controls passed; six-mode SDK browser controls passed on bfc6d467 with two targets requiring distinct shifts in one and two model contexts",
+  "pending": [
+    "Final integrated parent ancestry, source and WASM must be freshly qualified",
+    "All required PR checks and actual feedback must be resolved before merge"
+  ],
+  "rows": [
+    {
+      "command": "element.split",
+      "sdk": "splitElements",
+      "mcp": "edit_element_geometry: split",
+      "tests": "element-split.test.ts / physical-edit.test.ts",
+      "browser": "physical: split",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "wall.place",
+      "sdk": "addWall",
+      "mcp": "run_flow: wall",
+      "tests": "ordinary-element.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "browser": "physical: authored-wall",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "wall.moveEndpoint",
+      "sdk": "resizeWall",
+      "mcp": "edit_element_geometry: endpoints",
+      "tests": "element-transform-size.e2e.test.ts / physical-edit.test.ts",
+      "browser": "physical: endpoints",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "slab.place",
+      "sdk": "addSlab",
+      "mcp": "run_flow: slab",
+      "tests": "ordinary-element.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "browser": "placement: slab",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "column.place",
+      "sdk": "addColumn",
+      "mcp": "run_flow: column",
+      "tests": "column.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "browser": "align: column-a/column-b",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "beam.place",
+      "sdk": "addBeam",
+      "mcp": "run_flow: beam",
+      "tests": "beam.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "browser": "placement: beam",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "room.place",
+      "sdk": "roomCommand",
+      "mcp": "room_command: query/auto/pick/footprint/update/edit",
+      "tests": "room-command.test.ts / room-place.test.tsx / room-layout.test.tsx",
+      "browser": "room: query/pick/cut; other modes native MCP",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "opening.place",
+      "sdk": "addOpening",
+      "mcp": "place_opening",
+      "tests": "hosted-place.test.ts / hosted-place.test.tsx",
+      "browser": "placement: opening",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "door.place",
+      "sdk": "addHostedDoor",
+      "mcp": "place_door",
+      "tests": "hosted-place.test.ts / hosted-place.test.tsx",
+      "browser": "placement: door",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "window.place",
+      "sdk": "addHostedWindow",
+      "mcp": "place_window",
+      "tests": "hosted-place.test.ts / hosted-place.test.tsx",
+      "browser": "placement: window",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "hosted.slide",
+      "sdk": "editHostedElement",
+      "mcp": "edit_hosted_element",
+      "tests": "hosted-place.test.ts / store-adapter-hosted.test.ts",
+      "browser": "placement: hosted-slide",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "plan.move",
+      "sdk": "transformElements",
+      "mcp": "edit_element_geometry: transform/move",
+      "tests": "store-adapter-native-physical-room.test.ts / element-move-rotate.test.ts",
+      "browser": "physical: move; registered command native regression",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "element.paste",
+      "sdk": "copyElements",
+      "mcp": "copy_elements",
+      "tests": "copy-elements.test.ts / copy-array.test.tsx",
+      "browser": "physical: paste",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "element.array",
+      "sdk": "arrayElements",
+      "mcp": "array_elements",
+      "tests": "copy-elements.test.ts / copy-array.test.tsx",
+      "browser": "physical: array",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "element.move",
+      "sdk": "transformElements",
+      "mcp": "edit_element_geometry: transform/move",
+      "tests": "physical-edit.test.ts / element-move-rotate.test.ts",
+      "browser": "physical: move",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "element.rotate",
+      "sdk": "transformElements",
+      "mcp": "edit_element_geometry: transform/rotate",
+      "tests": "physical-edit.test.ts / element-move-rotate.test.ts",
+      "browser": "physical: rotate",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "stair.place",
+      "sdk": "addStair",
+      "mcp": "run_flow: stair",
+      "tests": "stair-railing.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "browser": "placement: stair",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "railing.place",
+      "sdk": "addRailing",
+      "mcp": "run_flow: railing",
+      "tests": "stair-railing.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "browser": "placement: railing",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "split.multi",
+      "sdk": "splitElements",
+      "mcp": "edit_element_geometry: split (batched targets)",
+      "tests": "element-split.test.ts / multi-split.test.tsx / physical-edit.test.ts",
+      "browser": "physical: split; native batch invariants",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "element.pushPull",
+      "sdk": "setElementSize / transformElements",
+      "mcp": "edit_element_geometry: size / transform",
+      "tests": "element-transform-size.e2e.test.ts / element-push-pull.test.tsx",
+      "browser": "physical: size / move",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "element.align",
+      "sdk": "alignElements",
+      "mcp": "edit_element_geometry: align",
+      "tests": "align-native.test.ts / store-adapter-native-align.test.ts / element-align.test.tsx",
+      "browser": "align: all six modes, distinct shifts",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "curtainwall.place",
+      "sdk": "addCurtainWall",
+      "mcp": "place_curtain_wall",
+      "tests": "design-place.test.ts / curtain-wall-grid.e2e.test.ts",
+      "browser": "placement: curtain-wall",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "grid.place",
+      "sdk": "addGrid / addColumnOnGrid",
+      "mcp": "place_grid / place_grid_column",
+      "tests": "design-place.test.ts / grid-column.e2e.test.ts",
+      "browser": "placement: grid / grid-column",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    },
+    {
+      "command": "element.trimExtend",
+      "sdk": "trimExtendElement",
+      "mcp": "edit_element_geometry: trim",
+      "tests": "element-trim-extend.test.ts / physical-edit.test.ts",
+      "browser": "physical: trim",
+      "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
+    }
+  ]
+}

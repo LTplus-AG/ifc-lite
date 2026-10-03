@@ -157,6 +157,7 @@ export function copyProductInStore(ctx: CopyContext, sourceId: number, transform
   const [ox, oy, oz] = transform.offset ?? [0, 0, 0];
   const [px, py] = transform.pivot ?? [0, 0];
   const move = turnThenMove(transform.turn ?? 0, [native(px), native(py)], [native(ox), native(oy), native(oz)]);
+  if (![...move.origin, move.c, move.s].every(Number.isFinite)) throw new Error('Copy frame must remain finite in native model units');
 
   const targetStoreyId = transform.targetStoreyId ?? source.storeyId;
   const placed = placeOnStorey(ctx.read, source, targetStoreyId, move);
@@ -281,12 +282,15 @@ function follow(
 }
 
 function writeCopy(ctx: CopyContext, source: SourceAttributes, placed: Placed, storeyId: number | null, name?: string): { id: number; placementId: number } {
+  if (![...placed.location, ...placed.turn.origin, placed.turn.c, placed.turn.s].every(Number.isFinite)) throw new Error('Copy placement must remain finite in native model units');
   const turned = Math.abs(placed.turn.s) > 1e-12 || placed.turn.c < 0;
   const own = turned ? readOwnPlacement(ctx.read, source.placementExpressId) : null;
   const direction = (v: CopyVec3 | null, fallback: CopyVec3 | null): string | null => {
     const base = v ?? fallback;
     if (!base) return null;
-    return `#${ctx.editor.addEntity('IfcDirection', [turnDirection(placed.turn, base)]).expressId}`;
+    const moved = turnDirection(placed.turn, base);
+    if (!moved.every(Number.isFinite)) throw new Error('Copy direction must remain finite in native model units');
+    return `#${ctx.editor.addEntity('IfcDirection', [moved]).expressId}`;
   };
   const attributes = [...source.attributes];
   const shape = cloneCreatedShape(ctx, source.representationId);

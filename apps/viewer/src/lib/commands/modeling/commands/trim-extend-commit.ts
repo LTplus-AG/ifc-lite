@@ -14,7 +14,7 @@ import type { TrimExtendPreview } from './trim-extend-plan.js';
 
 /** Replan against the live source inside the same shared atomic writer. */
 export function commitTrimExtend(tx: AuthoringTransaction, target: TrimTarget, boundary: Boundary, plan: Extract<TrimExtendPreview, { ok: true }>): CommitResult {
-  const joinsBoundary = target.kind === 'wall' && boundary.kind === 'wall' && boundary.ref !== null;
+  const joinsBoundary = plan.joinKind !== null && boundary.kind === 'wall' && boundary.ref !== null;
   if (joinsBoundary) {
     const refusal = wallJoinRefusal(tx.store, target.modelId);
     if (refusal) throw new Error(refusal);
@@ -27,7 +27,9 @@ export function commitTrimExtend(tx: AuthoringTransaction, target: TrimTarget, b
     : [axis.p0[0] + axis.dir[0] * axis.length, axis.p0[1] + axis.dir[1] * axis.length];
   const result = recordModellingCommit(tx.api, target.modelId, (editor, store) => trimExtendElementInStore(store, editor, target.expressId, {
     mode: plan.op, click,
-    boundary: boundary.kind === 'wall' && boundary.ref ? { wallId: boundary.ref.expressId } : boundary,
+    boundary: joinsBoundary && boundary.ref
+      ? { wallId: boundary.ref.expressId }
+      : { a: boundary.a, b: boundary.b, tMin: boundary.tMin, tMax: boundary.tMax, reach: boundary.reach },
   }), tx.batchId);
   toast.success(`${translate(result.op === 'trim' ? 'trimExtend.done.trim' : 'trimExtend.done.extend', { name: target.label })}${result.joined ? ` · ${translate('trimExtend.done.joined')}` : ''} — ${shortcutLabel('edit.undo')}`);
   return { modelId: target.modelId, created: [], deleted: [], remesh: result.walls,

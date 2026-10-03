@@ -44,7 +44,9 @@ import { fileURLToPath } from 'node:url';
 import postcss from 'postcss';
 import tailwindcss from '@tailwindcss/postcss';
 import autoprefixer from 'autoprefixer';
-import { chromium, type Browser, type Page } from '@playwright/test';
+// Import the browser API directly: Playwright Test fixture construction asks
+// Happy DOM to fetch filesystem source maps over localhost before these tests (#6610).
+import { chromium, type Browser, type Page } from 'playwright-core';
 import { contrastRatio, type Rgba } from './wcag';
 import { extractFirstStringLiteralAfter } from './extract-classname';
 

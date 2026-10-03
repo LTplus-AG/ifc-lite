@@ -160,3 +160,6 @@ scripts/perf/browser-corpus.local.json
 
 # Frozen prospective SDK comparison artifacts, never source inputs.
 /sdk-results/
+
+# Hosted native raw attribution receipts.
+/native-results/

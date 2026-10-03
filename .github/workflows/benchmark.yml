@@ -84,9 +84,9 @@ on:
         type: boolean
         default: false
       comparison_mode:
-        description: 'Viewer or SDK paired boundary; cpu performs only a sampler control'
+        description: 'Viewer/SDK/native paired boundary; cpu performs only a sampler control'
         type: choice
-        options: [viewer, sdk, cpu]
+        options: [viewer, sdk, cpu, native]
         default: viewer
       base_ref:
         description: 'Optional paired mode: exact lowercase 40-hex baseline commit; supply candidate_ref too'
@@ -115,7 +115,7 @@ jobs:
     name: Immutable paired viewer comparison
     # Either input opts into paired mode; an incomplete pair must refuse instead
     # of silently running the single-arm committed-baseline comparison.
-    if: github.event_name == 'workflow_dispatch' && inputs.comparison_mode != 'sdk' && inputs.comparison_mode != 'cpu' && (inputs.base_ref != '' || inputs.candidate_ref != '')
+    if: github.event_name == 'workflow_dispatch' && inputs.comparison_mode == 'viewer' && (inputs.base_ref != '' || inputs.candidate_ref != '')
     uses: ./.github/workflows/perf-interleaved.yml
     permissions:
       contents: read
@@ -141,14 +141,23 @@ jobs:
     permissions:
       contents: read
 
+  native-comparison:
+    name: Immutable native phase attribution
+    if: github.event_name == 'workflow_dispatch' && inputs.comparison_mode == 'native'
+    uses: ./.github/workflows/perf-native.yml
+    permissions:
+      contents: read
+    with:
+      base_ref: ${{ inputs.base_ref }}
+      candidate_ref: ${{ inputs.candidate_ref }}
+
   benchmark:
     name: Viewer benchmark (advisory)
     # Existing triggers keep their single-arm behavior. Explicit paired dispatch
     # runs only the reusable cohort, never this committed-baseline comparison.
     if: >-
       (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:benchmark'))
-      && !(github.event_name == 'workflow_dispatch' && inputs.comparison_mode == 'cpu')
-      && !(github.event_name == 'workflow_dispatch' && (inputs.comparison_mode == 'sdk' || inputs.base_ref != '' || inputs.candidate_ref != ''))
+      && !(github.event_name == 'workflow_dispatch' && (inputs.comparison_mode != 'viewer' || inputs.base_ref != '' || inputs.candidate_ref != ''))
     # Free GitHub-hosted runner (public repo). The benchmark measures a noisy
     # shared VM anyway; the +50% thresholds in benchmark:check absorb the
     # jitter, and the job is advisory. When Rust changed we compile wasm32

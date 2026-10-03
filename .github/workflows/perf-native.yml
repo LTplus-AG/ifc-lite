@@ -1,0 +1,72 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+name: Hosted native phase attribution
+on:
+  workflow_call:
+    inputs:
+      base_ref:
+        required: true
+        type: string
+      candidate_ref:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    env:
+      BASE_REF: ${{ inputs.base_ref }}
+      CANDIDATE_REF: ${{ inputs.candidate_ref }}
+      BASE_DIR: ${{ github.workspace }}/../native-base
+      CANDIDATE_DIR: ${{ github.workspace }}/../native-candidate
+      CARGO_BUILD_JOBS: 1
+      OBS: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Validate exact subjects before checkout
+        run: node scripts/perf/native-hosted-prepare.mjs validate
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.base_ref }}
+          path: source-base
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate_ref }}
+          path: source-candidate
+          persist-credentials: false
+      - name: Isolate source arms and install the repository-pinned native toolchain
+        run: |
+          mv source-base "$BASE_DIR"
+          mv source-candidate "$CANDIDATE_DIR"
+          rustup show
+      - name: Functional native protocol controls
+        run: node --test scripts/perf/native-hosted.test.mjs
+      - name: Verify fixtures, freeze source/tools and build both fresh native probes serially
+        run: node scripts/perf/native-hosted-prepare.mjs build
+      - name: Run fixed Linux-gated native attribution cohort
+        run: node scripts/perf/native-hosted-cohort.mjs
+      - name: Retain terminal scope and refusals
+        if: always()
+        run: |
+          if [ -f native-results/report.md ]; then
+            cat native-results/report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '%s\n' 'Native setup/build refused or cancelled before attribution; no native or SDK timing verdict.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: native-phase-${{ github.run_id }}-${{ github.run_attempt }}
+          path: native-results/
+          retention-days: 30
+          if-no-files-found: error

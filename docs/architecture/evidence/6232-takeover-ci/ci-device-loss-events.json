@@ -1,0 +1,54 @@
+[
+  {
+    "type": "console",
+    "messageType": "warning",
+    "text": "[WebGPU] Device lost: A valid external Instance reference no longer exists. (reason: unknown)",
+    "args": [
+      {
+        "preview": "[WebGPU] Device lost:",
+        "value": "[WebGPU] Device lost:"
+      },
+      {
+        "preview": "A valid external Instance reference no longer exists.",
+        "value": "A valid external Instance reference no longer exists."
+      },
+      {
+        "preview": "(reason: unknown)",
+        "value": "(reason: unknown)"
+      }
+    ],
+    "location": {
+      "url": "http://localhost:3000/assets/src-XH9so599.js",
+      "lineNumber": 0,
+      "columnNumber": 2380
+    },
+    "time": 368915.569,
+    "pageId": "page@033d880f29665e920b1b1754c9c4c23e"
+  },
+  {
+    "type": "console",
+    "messageType": "warning",
+    "text": "[WebGPU] Device lost: Device was destroyed. (reason: destroyed)",
+    "args": [
+      {
+        "preview": "[WebGPU] Device lost:",
+        "value": "[WebGPU] Device lost:"
+      },
+      {
+        "preview": "Device was destroyed.",
+        "value": "Device was destroyed."
+      },
+      {
+        "preview": "(reason: destroyed)",
+        "value": "(reason: destroyed)"
+      }
+    ],
+    "location": {
+      "url": "http://localhost:3000/assets/src-XH9so599.js",
+      "lineNumber": 0,
+      "columnNumber": 2380
+    },
+    "time": 369599.921,
+    "pageId": "page@033d880f29665e920b1b1754c9c4c23e"
+  }
+]

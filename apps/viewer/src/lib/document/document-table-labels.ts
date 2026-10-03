@@ -42,11 +42,11 @@ const TABLE_MESSAGES: Record<Exclude<TableMessageKind, 'error' | 'no-rows'>, str
 
 /** Generated table labels must remain visible even when a captured catalogue
  * explicitly contains an empty/whitespace translation (#6610, review4172078887). */
-function tableLabel(key: string, t?: DocumentLabelFormatter, fallback = resolveEnglish(key)): string {
+function tableLabel(key: Parameters<DocumentLabelFormatter>[0], t?: DocumentLabelFormatter, fallback = resolveEnglish(key)): string {
   return t?.(key).trim() || fallback;
 }
 
-const messageKeys: Record<Exclude<TableMessageKind, 'error' | 'no-rows'>, string> = {
+const messageKeys: Record<Exclude<TableMessageKind, 'error' | 'no-rows'>, Parameters<DocumentLabelFormatter>[0]> = {
   resolving: 'document.table.resolving', 'no-model': 'document.table.noModel',
   'no-report': 'document.table.noReport', 'rule-not-found': 'document.table.ruleNotFound',
 };

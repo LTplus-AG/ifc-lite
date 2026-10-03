@@ -249,7 +249,8 @@ END-ISO-10303-21;`);
       return <output data-volume-total>{result?.total ?? 'missing'}</output>;
     }
     const ui = render(<Probe />);
-    await settle();
+    await waitFor(() => ui.querySelector('[data-volume-total]')?.textContent !== 'missing',
+      'actual document aggregation resolves without mounting a paper preview (#6731)');
     assert.equal(ui.querySelector('[data-volume-total]')?.textContent, '5');
   });
 

@@ -15,7 +15,7 @@ import type { HbjsonStats } from './hbjson-stats.js';
 import * as energyExport from './energy-export-bridge.js';
 import type { GeometryDiagnostics } from './diagnostics.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
-import { getStartedSharedWasmModule } from './wasm-shared-module.js';
+import { prepareSharedWasmInit } from './wasm-shared-module.js';
 import {
   isWasmRuntimeTrap,
   notifyWasmRuntimeUnrecoverable,
@@ -167,30 +167,14 @@ export class IfcLiteBridge {
         const wasmPath: string = requireFromHere.resolve('@ifc-lite/wasm/ifc-lite_bg.wasm');
         wasmInitArg = (await nodeFs.readFile(wasmPath)) as BufferSource;
       }
-      // Reuse the shared compiled module when some other consumer (an idle
-      // prewarm, or the N-worker pool on an earlier load) already fetched this
-      // binary — passing the `WebAssembly.Module` skips the network entirely and
-      // skips a redundant compile of the same ~3.9 MB. `getStartedSharedWasmModule`
-      // never *starts* a compile, so when nothing else did, this path is exactly
-      // what it was before: wasm-bindgen fetches from import.meta.url itself.
-      // Node is excluded — it hands over bytes it read off disk.
-      const sharedModule = wasmInitArg ? null : await (getStartedSharedWasmModule() ?? null);
-
-      // Browser: init() with no arg fetches from import.meta.url. Node: pass the
-      // bytes via the modern object form ({ module_or_path }) to avoid the
-      // deprecated positional-bytes signature.
-      //
-      // Wrapped in `initWasmWithRetry` (issue #1903) so one blip on the ~1.3 MB
-      // (brotli) engine download no longer kills the whole load. This was the
-      // only self-fetching `init()` in the app WITHOUT the retry both workers
-      // already use, and it is the one a first-time visitor hits first — a
-      // returning visitor has the binary in the immutable `/assets/*` cache.
-      // `isTransientWasmLoadError` gates the retry, so a corrupt/invalid module
-      // still fails fast; the shared-module and Node paths pass a prebuilt
-      // `Module`/bytes and cannot be transient, so they never retry.
-      const initArg = wasmInitArg ?? sharedModule ?? undefined;
+      // A bundled fetch starts only when cold public init reads its options.
+      // Acquisition remains inside the existing delayed transport retry.
+      // Raw package resolution and Node's supplied bytes retain their paths.
       await initWasmWithRetry(
-        () => init(initArg ? { module_or_path: initArg } : undefined),
+        async () => {
+          const options = wasmInitArg ? { module_or_path: wasmInitArg } : await prepareSharedWasmInit();
+          await init(options);
+        },
         { label: 'ifc-lite-bridge' },
       );
 

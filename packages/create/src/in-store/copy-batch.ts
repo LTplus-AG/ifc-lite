@@ -7,8 +7,9 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { copyProductInStore, copyRefusal, createCopyContext, productStoreyOrigin, type CopyContext, type CopyProductResult, type CopyTransform } from './copy-product.js';
 import type { DuplicateInStoreOptions } from './duplicate.js';
+import { copiedProductWork, COPY_PRODUCT_WORK_LIMIT } from './copy-dependent-walk.js';
 
-/** Bound caller-supplied copy fan-out before allocating products/transforms. */
+/** Bound pruned root fan-out before allocating products/transforms. */
 export const COPY_BATCH_LIMIT = 10_000;
 
 /** Keep roots once; their openings, fillings and assembly parts travel with them. */
@@ -26,11 +27,14 @@ export function copySourcesInStore(ctx: CopyContext, ids: readonly number[], cop
     return false;
   };
   const kept = [...chosen].filter((id) => !carried(id));
-  if (!Number.isSafeInteger(copyCount) || copyCount < 1 || kept.length * copyCount > COPY_BATCH_LIMIT) return { refusal: `A copy batch may contain at most ${COPY_BATCH_LIMIT} product copies` };
+  if (!Number.isSafeInteger(copyCount) || copyCount < 1 || kept.length * copyCount > COPY_BATCH_LIMIT) return { refusal: `A copy batch may contain at most ${COPY_BATCH_LIMIT} root copies` };
+  let productWork = 0;
   for (const id of kept) {
     const refusal = copyRefusal(ctx, id);
     if (refusal) return { refusal };
     try {
+      productWork += copiedProductWork(ctx, id);
+      if (productWork * copyCount > COPY_PRODUCT_WORK_LIMIT) return { refusal: `Copy carried products exceed ${COPY_PRODUCT_WORK_LIMIT} product writes` };
       if (!productStoreyOrigin(ctx, id)) return { refusal: `#${id} has no placement to copy from` };
     } catch (error) {
       return { refusal: error instanceof Error ? error.message : String(error) };

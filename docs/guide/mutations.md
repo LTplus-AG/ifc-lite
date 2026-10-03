@@ -924,3 +924,5 @@ Settings use metres: `weld`, `minArea`, `height`, `z` and optional edit
 requires the WASM geometry package. The command refuses if its model changes
 while native geometry is preparing. In-process callers can supply an
 `AbortSignal`; cancellation before commit leaves IFC history unchanged.
+
+Native Room layout edits also enter ordinary Undo/Redo history when no IFC rooms exist yet. The `recordSessionMutation` helper records a `SESSION_EDIT` marker for local domain state; it does not modify IFC attributes, allocate entities or emit collaboration operations. Hosts retain the native layout under the actual history head, so Undo/Redo restores the corresponding plate.

@@ -21,6 +21,9 @@ type MutationView = MutablePropertyView;
  */
 function revertMutation(view: MutationView, mutation: Mutation): void {
   switch (mutation.type) {
+    case 'SESSION_EDIT':
+      // Recorded session edits have no IFC mutation to reverse.
+      return;
     case 'CREATE_PROPERTY':
       if (mutation.psetName && mutation.propName) {
         view.deleteProperty(mutation.entityId, mutation.psetName, mutation.propName, true);

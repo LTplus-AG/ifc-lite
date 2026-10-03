@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createRoomCommandBackend, type createModellingStoreBackend } from '@ifc-lite/sdk';
-import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { SpacePlateHandle } from '@ifc-lite/wasm';
 import type { StoreApi } from './types.js';
 import { normalizeMutationModelId } from './mutation-view.js';
@@ -14,7 +13,7 @@ import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
 import { mutationDenial } from '@/store/mutation-permission';
 import { ensureSpaceWasm } from '@/lib/rooms/space-wasm';
 import { roomLayoutCache, undoHead } from '@/lib/rooms/room-layout';
-import { storeyWalls, storeySpaces, storeyOccupancy } from '@/lib/rooms/storey-rooms';
+import { storeyWalls, storeySpaces, storeyOccupancy, storeyRoomGeometryIds } from '@/lib/rooms/storey-rooms';
 import { buildStoreyWorkplane } from '@/lib/commands/modeling/workplane';
 import { requestRemesh } from '@/lib/remesh/remesh-service';
 
@@ -33,7 +32,9 @@ export function roomMutationTracking(store: StoreApi): Pick<Methods, 'roomComman
     await ensureSpaceWasm();
     // Await the canonical native mesh producer so an immediately preceding
     // script edit cannot derive rooms from an older renderer snapshot.
-    const ids = [...iterateEffectiveEntityIds(model.store, model.mutationView, ['IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCSPACE'])].map(entity => entity.expressId);
+    const initial = store.getState(), initialPlane = buildStoreyWorkplane(initial, model.modelId, storeyId, 0);
+    if ('refused' in initialPlane) throw new Error(initialPlane.refused);
+    const ids = storeyRoomGeometryIds(initial, model.modelId, storeyId, initialPlane);
     if (ids.length) {
       const mesh = await requestRemesh(store.getState, model.modelId, ids, 'shape');
       if (mesh.status !== 'applied') throw new Error(`Room native geometry preparation ${mesh.status}; retry after the model finishes updating`);

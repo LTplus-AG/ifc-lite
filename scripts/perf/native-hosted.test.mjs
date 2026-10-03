@@ -114,14 +114,18 @@ test('#6537 directed frozen Rustup-to-Cargo exec keeps every ownership fence and
   const record = { pid: 21, startTime: '99', pgrp: 20, cwd: '/arm', executableObserved: true,
     executable: expected.rustup, argv: ['cargo', ...cargoArgs] };
   const member = { pid: 21, startTime: '99', pgrp: 20 }, snapshot = { members: [member] };
-  const current = { ...record, executable: expected.cargo };
+  const current = { ...record, executable: expected.cargo, argv: [expected.cargo, ...cargoArgs] };
   const transition = cargoWitnessRefreshPredicates(record, expected, snapshot, current);
   assert.equal(transition.currentEligible, true, 'both exact frozen executables meet the unchanged ownership predicates');
   assert.ok(Object.values(transition).every(Boolean));
   assert.deepEqual(refreshedCargoWitness(record, expected, snapshot, current), member);
+  assert.deepEqual(refreshedCargoWitness(record, expected, snapshot, { ...current, argv: record.argv }), member, 'unchanged argv also remains valid');
   assert.equal(refreshedCargoWitness(current, expected, snapshot, record), null, 'reverse Cargo-to-Rustup transition is not admitted');
+  assert.equal(refreshedCargoWitness(record, expected, snapshot, { ...record, argv: current.argv }), null, 'argv0 rewrite without the directed executable transition is refused');
+  assert.equal(refreshedCargoWitness(current, expected, snapshot, { ...current, argv: record.argv }), null, 'a stationary Cargo process cannot reverse the argv0 rewrite');
   for (const changes of [{ pid: 22 }, { startTime: '100' }, { pgrp: 19 }, { cwd: '/foreign' },
-    { argv: ['cargo', 'test'] }, { executable: '/third/cargo' }, { executableObserved: false }]) {
+    { argv: ['cargo', 'test'] }, { argv: ['/arbitrary/cargo', ...cargoArgs] },
+    { argv: [expected.cargo, ...cargoArgs, '--locked'] }, { executable: '/third/cargo' }, { executableObserved: false }]) {
     assert.equal(refreshedCargoWitness(record, expected, snapshot, { ...current, ...changes }), null);
   }
   const absent = cargoWitnessRefreshPredicates(record, expected, { members: [] }, record);
@@ -132,8 +136,8 @@ test('#6537 directed frozen Rustup-to-Cargo exec keeps every ownership fence and
 });
 
 // Real exec identity control; Node executables stand in for the two frozen paths.
-// This exercises OS PID/start/group/argv preservation, not Cargo compilation.
-test('#6537 actual same-PID exec preserves directed witness ownership with exact argv and fresh root ancestry', async t => {
+// This exercises OS PID/start/group and directed argv0 continuity, not Cargo compilation.
+test('#6537 actual same-PID exec rewrites only argv0 to the frozen target while retaining fresh root ancestry', async t => {
   if (typeof process.execve !== 'function') {
     if (process.env.NATIVE_COMPILER_CONTROL_REQUIRED === '1') assert.fail('Node execve required for real directed witness control');
     t.skip('Node >=22.15 with execve required'); return;
@@ -142,13 +146,13 @@ test('#6537 actual same-PID exec preserves directed witness ownership with exact
   let child, closed, before;
   const output = [], errors = [];
   try {
-    const source = realpathSync(process.execPath), target = join(directory, 'target-node');
+    const source = realpathSync(process.execPath), target = join(directory, 'cargo');
     copyFileSync(source, target);
     writeFileSync(join(directory, 'build'), `
 if (process.env.NATIVE_WITNESS_EXEC_STAGE === 'before') {
   console.log('before');
   process.stdin.once('data', () => process.execve(process.env.NATIVE_WITNESS_EXEC_TARGET,
-    ['cargo', 'build', ...process.argv.slice(2)], { ...process.env, NATIVE_WITNESS_EXEC_STAGE: 'after' }));
+    [process.env.NATIVE_WITNESS_EXEC_TARGET, 'build', ...process.argv.slice(2)], { ...process.env, NATIVE_WITNESS_EXEC_STAGE: 'after' }));
 } else { console.log('after'); setTimeout(() => {}, 5000); }
 `);
     child = spawn(source, cargoArgs, { argv0: 'cargo', cwd: directory, detached: true,
@@ -173,7 +177,8 @@ if (process.env.NATIVE_WITNESS_EXEC_STAGE === 'before') {
     assert.equal(before.executable, source);
     child.stdin.write('execute\n');
     await waitFor('after'); const current = record();
-    assert.deepEqual(current.argv, before.argv);
+    assert.deepEqual(current.argv, [target, ...cargoArgs]);
+    assert.deepEqual(current.argv.slice(1), before.argv.slice(1), 'every actual build argument remains unchanged');
     assert.equal(current.pid, before.pid); assert.equal(current.startTime, before.startTime);
     assert.equal(current.pgrp, before.pgrp); assert.equal(current.executable, target);
     const expected = { group: child.pid, directory, rustup: source, cargo: target };

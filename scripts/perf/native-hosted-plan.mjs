@@ -68,7 +68,9 @@ export function cargoWitnessRefreshPredicates(record, expected, snapshot, curren
     currentEligible: Boolean(current && freshnessException(current, record, expected)),
     permittedExecutableTransition: Boolean(current && (current.executable === record.executable
       || (record.executable === expected.rustup && current.executable === expected.cargo))),
-    sameArgv: Boolean(current && isDeepStrictEqual(current.argv, record.argv)),
+    permittedArgvContinuation: Boolean(current && (isDeepStrictEqual(current.argv, record.argv)
+      || (record.executable === expected.rustup && current.executable === expected.cargo
+        && current.argv[0] === expected.cargo && isDeepStrictEqual(record.argv.slice(1), current.argv.slice(1))))),
     ancestryMemberPresent: Boolean(member),
     ancestryStartTime: Boolean(member && member.startTime === record.startTime),
     ancestryGroup: Boolean(member && member.pgrp === record.pgrp),

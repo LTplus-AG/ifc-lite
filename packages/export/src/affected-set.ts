@@ -22,6 +22,7 @@
  * rather than walking the graph a second way. Tombstoned ids are dropped.
  */
 
+import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { gridPlacementDependents, remeshContextRoots } from './entity-subgraph.js';
@@ -60,7 +61,7 @@ export function expandAffectedSet(
     for (const id of gridPlacementDependents(store, view, targets)) out.add(id);
   }
   const context = remeshContextRoots(store, view, targets);
-  const openingTargets = [...targets].some((id) => typeOf(store, view, id) === 'IFCOPENINGELEMENT');
+  const openingTargets = [...targets].some((id) => IfcTypeEnumFromString(typeOf(store, view, id) ?? '') === IfcTypeEnum.IfcOpeningElement);
   for (const id of context) {
     const type = typeOf(store, view, id);
     if (!type || type === 'IFCPROJECT' || type.startsWith('IFCREL')) continue;
@@ -69,7 +70,7 @@ export function expandAffectedSet(
       continue;
     }
     // A reshaped opening re-cuts its host; nothing else moves.
-    if (openingTargets && type !== 'IFCOPENINGELEMENT') out.add(id);
+    if (openingTargets && IfcTypeEnumFromString(type) !== IfcTypeEnum.IfcOpeningElement) out.add(id);
   }
   for (const id of out) if (!isLive(store, view, id)) out.delete(id);
   return out;

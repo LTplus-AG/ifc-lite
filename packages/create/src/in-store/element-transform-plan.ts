@@ -23,6 +23,7 @@
  * not reach its storey's placement is refused, never moved by a guess.
  */
 
+import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { expandAffectedSet } from '@ifc-lite/export';
@@ -75,7 +76,7 @@ function typeOf(input: TransformPlanInput, id: number): string {
   return (source ?? dataStore.entities.getTypeName(id) ?? '').toUpperCase();
 }
 
-const isOpening = (type: string) => type === 'IFCOPENINGELEMENT' || type === 'IFCOPENINGSTANDARDCASE';
+const isOpening = (type: string) => IfcTypeEnumFromString(type) === IfcTypeEnum.IfcOpeningElement;
 
 /**
  * The moved set: each selected element and what moves with it, mapped to the

@@ -101,11 +101,299 @@
     "scope": "Same declared dual-host admission; no timings generated or pooled with historical cohorts."
   },
   "remaining": [
-    "Full current-source build and WASM attribution/contracts",
-    "Full Rust runtime and root TypeScript/test-program audit",
-    "Current-source production inverse",
     "Interleaved native heavy and default-worker end-to-end public-model comparisons/output identities",
+    "Actual end-to-end performance/peak-memory verdict; default sharded prepass coverage and dense-growth tradeoff remain unproved",
     "Final-source CI and all substantive review resolved"
   ],
-  "performanceVerdict": "PENDING: current native comparison excluded before any probe; no end-to-end or physical-peak-memory result; keep draft unmerged."
+  "performanceVerdict": "PENDING: current native comparison excluded before any probe; no end-to-end or physical-peak-memory result; keep draft unmerged.",
+  "currentCorrectnessQualification": {
+    "sourceHead": "9f130aeae021443daabb01dd9872cc23a351beca",
+    "rootBuildTasks": 62,
+    "rootTypecheckTasks": 111,
+    "auditTestFiles": 3319,
+    "auditPackages": 57,
+    "firstContractRun": {
+      "passed": 144,
+      "failed": 0,
+      "skipped": 1,
+      "reason": "retained baseline runtime was not configured"
+    },
+    "finalContractRun": {
+      "passed": 147,
+      "failed": 0,
+      "skipped": 0,
+      "baselineRuntimeConfigured": true
+    },
+    "checks": [
+      {
+        "phase": "full-root-build",
+        "sourceHead": "9f130aeae021443daabb01dd9872cc23a351beca",
+        "actual": {
+          "startedUTC": "2026-10-03T00:19:57.801607+00:00",
+          "cwd": "/home/louistrue/wt/6537-initial-reserve-main04e-session6503",
+          "command": [
+            "pnpm",
+            "build",
+            "--concurrency=1"
+          ],
+          "minimumStartKiB": 25165824,
+          "minimumLiveKiB": 8388608,
+          "maximumTreeRssKiB": 12582912,
+          "initialAvailableKiB": 43997564,
+          "scope": "Correctness-only run under host load; no timing/performance verdict.",
+          "peakTreeRssKiB": 8987576,
+          "minimumObservedAvailableKiB": 35311244,
+          "ownedProcessGroup": 31329,
+          "childExit": 0,
+          "exit": 0,
+          "endedUTC": "2026-10-03T00:23:50.473223+00:00"
+        },
+        "log": "6730-mainbaa-current-root-build-v1.log.gz",
+        "logSHA256": "7ba2c8cefdf730c62a0497fbdbcafbe2447ff29180876d339c86c042df6aaced",
+        "compressedSHA256": "b009b487073ee77619220ecb3f1ed6ab26ede51ea83655e892d7d59d31aa831a",
+        "compression": "lossless gzip; mtime=0"
+      },
+      {
+        "phase": "root-typecheck",
+        "sourceHead": "9f130aeae021443daabb01dd9872cc23a351beca",
+        "actual": {
+          "startedUTC": "2026-10-03T00:30:33.959793+00:00",
+          "cwd": "/home/louistrue/wt/6537-initial-reserve-main04e-session6503",
+          "command": [
+            "pnpm",
+            "exec",
+            "turbo",
+            "typecheck",
+            "--env-mode=loose",
+            "--concurrency=1"
+          ],
+          "minimumStartKiB": 25165824,
+          "minimumLiveKiB": 8388608,
+          "maximumTreeRssKiB": 12582912,
+          "initialAvailableKiB": 43582440,
+          "scope": "Correctness-only run under host load; no timing/performance verdict.",
+          "peakTreeRssKiB": 4049232,
+          "minimumObservedAvailableKiB": 39766312,
+          "ownedProcessGroup": 48581,
+          "childExit": 0,
+          "exit": 0,
+          "endedUTC": "2026-10-03T00:34:40.822602+00:00"
+        },
+        "log": "6730-mainbaa-current-typecheck-v1.log.gz",
+        "logSHA256": "3537e03aa50868d54342cba3aa489eb8a93a7479d491286e0d47e2c06ed2af69",
+        "compressedSHA256": "46771b046ae0550ea6d209a419a8f5379cc4deb6c3ec792bd4fe0383be1f6f03",
+        "compression": "lossless gzip; mtime=0"
+      },
+      {
+        "phase": "mandatory-test-source-audit",
+        "sourceHead": "9f130aeae021443daabb01dd9872cc23a351beca",
+        "actual": {
+          "startedUTC": "2026-10-03T00:35:21.212921+00:00",
+          "cwd": "/home/louistrue/wt/6537-initial-reserve-main04e-session6503",
+          "command": [
+            "node",
+            "scripts/typecheck-tests.mjs",
+            "--audit"
+          ],
+          "minimumStartKiB": 25165824,
+          "minimumLiveKiB": 8388608,
+          "maximumTreeRssKiB": 12582912,
+          "initialAvailableKiB": 43877104,
+          "scope": "Correctness-only run under host load; no timing/performance verdict.",
+          "peakTreeRssKiB": 134864,
+          "minimumObservedAvailableKiB": 43822144,
+          "ownedProcessGroup": 56116,
+          "childExit": 0,
+          "exit": 0,
+          "endedUTC": "2026-10-03T00:35:24.222921+00:00"
+        },
+        "log": "6730-mainbaa-current-typecheck-audit-v1.log.gz",
+        "logSHA256": "c11686cb0468f12bb09f35d6d2f824bb94860cb1100e18033a5f0da461a7af86",
+        "compressedSHA256": "fa76b3726de78ee8ea2fdc03ee3b3b07977154b5a5924f03ad982c87ac3d7d59",
+        "compression": "lossless gzip; mtime=0"
+      },
+      {
+        "phase": "initial-current-wasm-contracts",
+        "sourceHead": "9f130aeae021443daabb01dd9872cc23a351beca",
+        "actual": {
+          "startedUTC": "2026-10-03T00:29:41.457119+00:00",
+          "cwd": "/home/louistrue/wt/6537-initial-reserve-main04e-session6503",
+          "command": [
+            "pnpm",
+            "test:wasm-contract"
+          ],
+          "minimumStartKiB": 25165824,
+          "minimumLiveKiB": 8388608,
+          "maximumTreeRssKiB": 12582912,
+          "initialAvailableKiB": 43584076,
+          "scope": "Correctness-only run under host load; no timing/performance verdict.",
+          "peakTreeRssKiB": 530544,
+          "minimumObservedAvailableKiB": 43157728,
+          "ownedProcessGroup": 47633,
+          "childExit": 0,
+          "exit": 0,
+          "endedUTC": "2026-10-03T00:29:45.729777+00:00"
+        },
+        "log": "6730-mainbaa-current-wasm-contract-v1.log.gz",
+        "logSHA256": "dcbea1925984cad25ebc4adc7f4c29f3891e46413af6f46420159232b636e543",
+        "compressedSHA256": "e615c23cd07e6e552e0034f20e11fddb3e7461d12ec40391ea6bd6418f0d29b2",
+        "compression": "lossless gzip; mtime=0"
+      },
+      {
+        "phase": "current-wasm-contracts-with-fresh-base",
+        "sourceHead": "9f130aeae021443daabb01dd9872cc23a351beca",
+        "actual": {
+          "startedUTC": "2026-10-03T00:41:01.345426+00:00",
+          "cwd": "/home/louistrue/wt/6537-initial-reserve-main04e-session6503",
+          "command": [
+            "pnpm",
+            "test:wasm-contract"
+          ],
+          "minimumStartKiB": 25165824,
+          "minimumLiveKiB": 8388608,
+          "maximumTreeRssKiB": 12582912,
+          "initialAvailableKiB": 43877992,
+          "scope": "Correctness-only run under host load; no timing/performance verdict.",
+          "peakTreeRssKiB": 600464,
+          "minimumObservedAvailableKiB": 43382608,
+          "ownedProcessGroup": 65886,
+          "childExit": 0,
+          "exit": 0,
+          "endedUTC": "2026-10-03T00:41:05.618720+00:00"
+        },
+        "log": "6730-mainbaa-current-wasm-contract-with-base-v2.log.gz",
+        "logSHA256": "14cd82f87a3617408ae246c20575fdeb9374ca03cdc29d5d219c62830d1a072a",
+        "compressedSHA256": "b2038316c30ea85db3d749a77968d71e7159071b308df12d6d26341adc046313",
+        "compression": "lossless gzip; mtime=0"
+      }
+    ],
+    "candidateRuntime": {
+      "head": "9f130aeae021443daabb01dd9872cc23a351beca",
+      "capturedUTC": "2026-10-03T00:29:36.623998+00:00",
+      "actualBuild": {
+        "startedUTC": "2026-10-03T00:19:57.801607+00:00",
+        "cwd": "/home/louistrue/wt/6537-initial-reserve-main04e-session6503",
+        "command": [
+          "pnpm",
+          "build",
+          "--concurrency=1"
+        ],
+        "minimumStartKiB": 25165824,
+        "minimumLiveKiB": 8388608,
+        "maximumTreeRssKiB": 12582912,
+        "initialAvailableKiB": 43997564,
+        "scope": "Correctness-only run under host load; no timing/performance verdict.",
+        "peakTreeRssKiB": 8987576,
+        "minimumObservedAvailableKiB": 35311244,
+        "ownedProcessGroup": 31329,
+        "childExit": 0,
+        "exit": 0,
+        "endedUTC": "2026-10-03T00:23:50.473223+00:00"
+      },
+      "inputCount": 1413,
+      "allFrozenInputsUnchanged": true,
+      "freshCompilationLogSHA256": "7ba2c8cefdf730c62a0497fbdbcafbe2447ff29180876d339c86c042df6aaced",
+      "artifacts": {
+        "ifc-lite_bg.wasm": {
+          "bytes": 9511149,
+          "SHA256": "e8a1240354b57cc0d6f80fa360d37270a7ecdf537e424f89c91bddda2e22098a",
+          "mtimeUTC": "2026-10-03T00:21:16.546704+00:00"
+        },
+        "ifc-lite.js": {
+          "bytes": 294778,
+          "SHA256": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+          "mtimeUTC": "2026-10-03T00:21:16.546704+00:00"
+        },
+        "ifc-lite.d.ts": {
+          "bytes": 157474,
+          "SHA256": "a34371c64be9a3deb0997261df9d9ce4ee92633ad9c94ae2b41d575c26bddca0",
+          "mtimeUTC": "2026-10-03T00:21:16.694724+00:00"
+        }
+      },
+      "trackedClean": true,
+      "perfVerdict": "Not measured; correctness only"
+    },
+    "baselineRuntime": {
+      "head": "baa7d34db1be4bc8bf0b3479df33275da3130fc6",
+      "capturedUTC": "2026-10-03T00:41:01.326297+00:00",
+      "actualBuild": {
+        "startedUTC": "2026-10-03T00:36:22.032075+00:00",
+        "cwd": "/home/louistrue/wt/6537-initial-reserve-base-baa-session6503",
+        "command": [
+          "bash",
+          "scripts/build-wasm.sh"
+        ],
+        "minimumStartKiB": 25165824,
+        "minimumLiveKiB": 8388608,
+        "maximumTreeRssKiB": 12582912,
+        "initialAvailableKiB": 43875652,
+        "scope": "Correctness-only run under host load; no timing/performance verdict.",
+        "peakTreeRssKiB": 2698128,
+        "minimumObservedAvailableKiB": 41627656,
+        "ownedProcessGroup": 57755,
+        "childExit": 0,
+        "exit": 0,
+        "endedUTC": "2026-10-03T00:38:32.217400+00:00"
+      },
+      "inputCount": 1412,
+      "allFrozenInputsUnchanged": true,
+      "buildLogSHA256": "a33a52b48f063c04484c2ccbc0ac5464cb732c1317da611b087ecada366d8614",
+      "artifacts": {
+        "ifc-lite_bg.wasm": {
+          "bytes": 9511053,
+          "SHA256": "af51928627752955aa54e1ddb12a39d0ec32fa86224a0c1a716940ca8dc0471d",
+          "mtimeUTC": "2026-10-03T00:38:31.968344+00:00"
+        },
+        "ifc-lite.js": {
+          "bytes": 294778,
+          "SHA256": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+          "mtimeUTC": "2026-10-03T00:38:31.972344+00:00"
+        },
+        "ifc-lite.d.ts": {
+          "bytes": 157474,
+          "SHA256": "a34371c64be9a3deb0997261df9d9ce4ee92633ad9c94ae2b41d575c26bddca0",
+          "mtimeUTC": "2026-10-03T00:38:32.108361+00:00"
+        }
+      },
+      "trackedClean": true,
+      "perfVerdict": "Not measured; correctness only"
+    }
+  },
+  "currentCI": {
+    "run": 37080365277,
+    "url": "https://github.com/LTplus-AG/ifc-lite/actions/runs/37080365277",
+    "headSha": "9f130aeae021443daabb01dd9872cc23a351beca",
+    "conclusion": "success",
+    "actualMergeCheckout": "8de2b1b18b07db9824f0e30765921e00ff6d81b9",
+    "candidateVsMergeTreeFiles": [],
+    "sourceTreeEqualityVerifiedBy": "GitHub compare API: candidate...actualMergeCheckout, ahead=1, files=[]",
+    "fullRustWorkspaceTests": "success",
+    "strictWorkspaceClippy": "success",
+    "viewerE2E": "both shards success",
+    "inverse": {
+      "base": "baa7d34db1be4bc8bf0b3479df33275da3130fc6",
+      "wholeProductionPaths": 6,
+      "normalPassed": 2,
+      "normalFailed": 0,
+      "revertedPassed": 1,
+      "revertedAssertionFailed": 1,
+      "restoration": "verified",
+      "verdict": "OBSERVED",
+      "log": "main-baa-ci-whole-production-inverse.log.gz",
+      "logSHA256": "eb9042c5d9c663422536e5429e28bb3d4d68772212b2be27db24057aa11b1763",
+      "scope": "The six-path revert includes four Rust production modules and two evidence JSON files; it proves the observed defect class, not every individual path."
+    }
+  },
+  "advisoryBenchmark": {
+    "run": 37080384370,
+    "url": "https://github.com/LTplus-AG/ifc-lite/actions/runs/37080384370",
+    "headSha": "9f130aeae021443daabb01dd9872cc23a351beca",
+    "conclusion": "success",
+    "source": "workflow_dispatch",
+    "scope": "Single candidate production viewer against committed advisory baseline, NOT base-vs-candidate or a performance win. Hardware/time cannot be substituted for native controlled cohorts.",
+    "actualMeshCounts": {
+      "AC20-FZK-Haus.ifc": 317,
+      "01_Snowdon_Towers_Sample_Structural(1).ifc": 17380
+    }
+  }
 }

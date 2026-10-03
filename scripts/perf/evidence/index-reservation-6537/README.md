@@ -83,8 +83,21 @@ host load and supply no performance verdict.
 The fixed native comparison stopped at its first admission check before any
 probe executed. Linux graph/memory checks passed; Windows CPU checks refused.
 The excluded attempt and its observations are retained without substitutes or
-pooling with historical runs. Current full build, WASM contracts, root
-typecheck/audit, workspace runtime tests and inverse remain pending.
+pooling with historical runs. Source `9f130aeae021443daabb01dd9872cc23a351beca`
+has now passed a freshly compiled 62-task root build, all 111 root typecheck
+tasks and the mandatory audit of 3,319 test files in 57 packages. The first WASM
+contract run passed 144 checks with one retained-baseline skip; after a fresh
+exact-base WASM build, all 147 checks passed with zero skips. The source receipt
+retains both runs and lossless actual logs/runtime identities.
+
+Current-source CI passed full Rust tests, strict Clippy and both viewer E2E
+shards. Its actual merge checkout is tree-identical to the candidate. The
+whole-production inverse passed two checks normally and produced one genuine
+assertion failure on reversion, with restoration verified. That is class-level
+evidence across the six reverted paths, including two evidence files. The
+single-candidate advisory viewer benchmark passed its two fixtures; it is not
+an interleaved A/B and supplies no performance-win verdict.
+
 Source-matched native heavy/default-worker A/B, output identities and resolved
-review also remain pending. This draft must stay unmerged until the final source
+review remain pending. This draft must stay unmerged until the final source
 and an end-to-end verdict qualify; no speedup or physical-memory claim is made.

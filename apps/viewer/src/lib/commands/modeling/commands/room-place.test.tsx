@@ -60,7 +60,10 @@ const at = (x: number, y: number): SnapResult => ({ local: [x, y], winner: null,
 const click = (x: number, y: number) => act(() => { commandPointerMove(at(x, y)); commandPointerDown(at(x, y)); });
 const gesture = () => getCommandRuntime().gesture as RoomPlaceGesture;
 const ctx = () => getCommandRuntime().ctx as CommandContext;
-const undoDepth = () => useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0;
+const undoDepth = () => {
+  const state = useViewerStore.getState();
+  return new Set((state.undoStacks.get(MODEL_ID) ?? []).map(mutation => state.mutationBatchTags.get(mutation.id) ?? mutation.id)).size;
+};
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
 /** A wall's box mesh from `a` to `b` (storey-local plan, metres), 0.2 m thick, 3 m tall. */

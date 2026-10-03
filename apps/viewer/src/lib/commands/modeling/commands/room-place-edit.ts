@@ -99,7 +99,7 @@ export function commitLayoutEdit(g: RoomPlaceGesture, tx: AuthoringTransaction):
   }
   try {
     if (!edited.changed) throw new Error(translate(op.kind === 'prune' ? 'roomLayout.prune.none' : 'roomLayout.edit.none'));
-    const sync = syncLayoutEdit(get, modelId, before.rooms, edited.faces);
+    const sync = syncLayoutEdit(tx.api, modelId, before.rooms, edited.faces);
     dropPending();
     pending = { modelId, storeyId, weld, walls: edited.walls, plate: edited.plate };
     return { created: sync.created, deleted: sync.deleted, remesh: sync.remesh, select: sync.remesh };

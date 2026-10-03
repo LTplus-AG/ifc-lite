@@ -25,6 +25,7 @@ function PageBandEditor({ document, band, onChange }: { document: DocumentSpec; 
   }, [document.id]);
   const spec = document[band] ?? {};
   const key = band === 'pageHeading' ? 'document.pageHeading' : 'document.pageFooter';
+  const cancelLogoRead = () => { uploadVersion.current++; setBusy(false); };
   const update = (next: Partial<PageBand>) => onChange({ ...document, [band]: { ...spec, ...next } });
   const pickLogo = async (file: File | undefined) => {
     if (!file) return;
@@ -77,10 +78,10 @@ function PageBandEditor({ document, band, onChange }: { document: DocumentSpec; 
       {spec.logo && <>
         <ClampedNumberInput value={spec.logo.height} min={PAGE_LOGO_HEIGHT_MIN} max={PAGE_LOGO_HEIGHT_MAX}
           ariaLabel={t(`${key}.logoHeight`)} onCommit={height => update({ logo: { ...spec.logo!, height: height ?? PAGE_LOGO_HEIGHT_DEFAULT } })} />
-        <Button variant="ghost" size="sm" aria-label={t(`${key}.removeLogo`)} onClick={() => update({ logo: undefined })}>{t(`${key}.removeLogo`)}</Button>
+        <Button variant="ghost" size="sm" aria-label={t(`${key}.removeLogo`)} onClick={() => { cancelLogoRead(); update({ logo: undefined }); }}>{t(`${key}.removeLogo`)}</Button>
       </>}
       <Button variant="ghost" size="sm" disabled={document[band] === undefined} aria-label={t(`${key}.reset`)}
-        onClick={() => onChange({ ...document, [band]: undefined })}>{t(`${key}.reset`)}</Button>
+        onClick={() => { cancelLogoRead(); onChange({ ...document, [band]: undefined }); }}>{t(`${key}.reset`)}</Button>
     </div>
   </details>;
 }

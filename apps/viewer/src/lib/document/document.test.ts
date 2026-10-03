@@ -919,7 +919,7 @@ describe('validation-results table source (#5138)', () => {
     const { seams, calls } = recordingSeams();
     const pdf = await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map([['vt1', absentState]]) }, seams);
     const texts = calls.filter((c) => c.op === 'text').map((c) => String(c.args[0]));
-    assert.ok(texts.includes('No validation report yet — run validation, then export again.'));
+    assert.ok(texts.includes('No validation report yet — run validation to include results.'));
     assert.deepEqual(pdf.tableFailures, ['vt1']);
 
     const emptyReport = {

@@ -315,7 +315,7 @@ export const documentEn = {
   'document.block.tableRuleAriaLabel': 'Filter to one rule',
   'document.block.tableRuleAll': 'Every rule',
   'document.block.tableColumnsLabel': 'Columns',
-  'document.table.noReport': 'No validation report yet — run validation, then this table fills in.',
+  'document.table.noReport': 'No validation report yet — run validation to include results.',
   'document.table.ruleNotFound': 'The rule this table refers to is not in the current validation report.',
   'document.table.validationNoRows': 'No rows match this rule.',
 

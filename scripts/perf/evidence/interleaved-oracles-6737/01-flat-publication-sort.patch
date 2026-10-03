@@ -1,0 +1,12 @@
+diff --git a/scripts/perf/interleaved-identity.mjs b/scripts/perf/interleaved-identity.mjs
+--- a/scripts/perf/interleaved-identity.mjs
++++ b/scripts/perf/interleaved-identity.mjs
+@@ -165,7 +165,7 @@
+     refuse('GPU instance occurrence census incomplete');
+   }
+ 
+-  const result = { flat: flat, instances: instances.sort(), coordinateInfo: geometry.coordinateInfo,
++  const result = { flat: flat.sort(), instances: instances.sort(), coordinateInfo: geometry.coordinateInfo,
+     totalTriangles: geometry.totalTriangles, totalVertices: geometry.totalVertices,
+     instancedGeometryHashes: geometry.instancedGeometryHashes,
+     instancedGeometryAabbs: geometry.instancedGeometryAabbs, instancedGeometryVolumes: geometry.instancedGeometryVolumes };

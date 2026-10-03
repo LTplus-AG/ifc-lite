@@ -216,6 +216,8 @@ export function resolveSlabEditChain(
   editor: StoreEditor,
   expressId: number,
   lengthUnitScale = 1,
+  /** A validated extrusion beneath an envelope's clipping results. */
+  bodyItemId?: number,
 ): SlabEditChain | null {
   const rawType = editor.getEntityType(expressId);
   if (!rawType) return null;
@@ -242,8 +244,9 @@ export function resolveSlabEditChain(
   if (!shapeRepAttrs) return null;
   const items = shapeRepAttrs[3];
   if (!Array.isArray(items) || items.length === 0) return null;
-  const solidId = asExpressIdRef(items[0]);
+  const solidId = bodyItemId ?? asExpressIdRef(items[0]);
   if (solidId === null) return null;
+  if (editor.getEntityType(solidId)?.toUpperCase() !== 'IFCEXTRUDEDAREASOLID') return null;
   const solidAttrs = readAttributes(dataStore, view, editor, solidId);
   if (!solidAttrs) return null;
   const profileId = asExpressIdRef(solidAttrs[0]);

@@ -133,7 +133,7 @@ describe('section 2D shader sources', () => {
     assert.ok(/select\(uniforms\.capFillColor, input\.color, useVertex\)/.test(SECTION_2D_CAP_FILL_WGSL));
   });
 
-  it('the line shader keeps the #812 reverse-Z decal nudge', () => {
-    assert.ok(/clip\.z \+ 5e-5 \* clip\.w/.test(SECTION_2D_OVERLAY_LINE_WGSL));
+  it('the line shader keeps the #812 reverse-Z decal lift', () => {
+    assert.ok(/overlayLiftedClipZ\(clip, uniforms\.viewProj\)/.test(SECTION_2D_OVERLAY_LINE_WGSL));
   });
 });

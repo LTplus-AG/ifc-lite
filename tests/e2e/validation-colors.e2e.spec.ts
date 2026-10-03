@@ -4,13 +4,12 @@
 import { test, expect, type Page, type TestInfo } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
+import { readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { rendererColorFrame } from './federation-control-triplet.rendering';
 import { watchGpuDeviceLoss } from './gpu-device-loss';
+import { startViewerDevServer, type ViewerDevServer } from './viewer-dev-server';
 import type { RuleSetFile } from '@ifc-lite/rules';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -20,23 +19,13 @@ const SNOWDON = join(ROOT, 'tests/models/various/01_Snowdon_Towers_Sample_Struct
 const SNOWDON_SHA256 = 'fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4';
 const RULE_NAME = 'Name requirement 6490';
 let viewerUrl: string;
-let cacheDir: string | undefined;
-let server: { listen(): Promise<void>; close(): Promise<void>; resolvedUrls: { local: string[] } | null } | undefined;
+let server: ViewerDevServer | undefined;
 
 test.beforeAll(async () => {
-  const require = createRequire(join(ROOT, 'apps/viewer/package.json'));
-  const { createServer } = await import(pathToFileURL(require.resolve('vite')).href);
-  cacheDir = await mkdtemp(join(tmpdir(), 'ifc-validation-colors-'));
-  const created: NonNullable<typeof server> = await createServer({ root: join(ROOT, 'apps/viewer'), cacheDir, logLevel: 'error', server: { host: '127.0.0.1', port: 0 } });
-  server = created;
-  await created.listen();
-  viewerUrl = created.resolvedUrls?.local[0] ?? '';
-  if (!viewerUrl) throw new Error('Validation browser server did not expose its URL');
+  server = await startViewerDevServer('validation-colors');
+  viewerUrl = server.url;
 });
-test.afterAll(async () => {
-  try { await server?.close(); }
-  finally { if (cacheDir) await rm(cacheDir, { recursive: true, force: true }); }
-});
+test.afterAll(async () => { await server?.close(); });
 
 function ruleSet(instanced: boolean): RuleSetFile {
   return { version: 1, name: '6490 color restoration', rules: [{

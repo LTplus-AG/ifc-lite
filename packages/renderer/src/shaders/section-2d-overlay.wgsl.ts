@@ -18,6 +18,8 @@
  * out of these sources and fails if either drifts from the slot table.
  */
 
+import { overlayDepthLiftWgsl } from './depth-nudge.wgsl.js';
+
 /**
  * Float32 indices of each field in the shared uniform buffer.
  *
@@ -276,6 +278,7 @@ export const SECTION_2D_OVERLAY_LINE_WGSL = /* wgsl */ `
           originDeltaLow: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
+        ${overlayDepthLiftWgsl}
 
         struct VertexInput {
           @location(0) position: vec3<f32>,
@@ -292,14 +295,12 @@ export const SECTION_2D_OVERLAY_LINE_WGSL = /* wgsl */ `
           let global = uniforms.viewProj * vec4<f32>(offsetPos, 1.0);
           let relative = (offsetPos + uniforms.originDeltaHigh.xyz) + uniforms.originDeltaLow.xyz;
           let clip = select(global, uniforms.rteViewProj * vec4<f32>(relative, 1.0), uniforms.originDeltaHigh.w == 1.0);
-          // Reverse-Z decal nudge for lines coplanar with model faces
+          // Reverse-Z decal lift for lines coplanar with model faces
           // (issue #812). WebGPU forbids depthStencil.depthBias on non-
-          // triangle topologies, so we do the equivalent in clip space:
-          // adding a small positive multiple of clip.w raises NDC z by a
-          // constant after the w-divide, which under reverse-Z means
-          // "slightly closer" — enough to beat MSAA jitter on annotation
+          // triangle topologies, so we do the equivalent in clip space —
+          // enough to beat MSAA jitter and the mesh depth nudge on annotation
           // lines that ride exactly on a wall/floor.
-          output.position = vec4<f32>(clip.x, clip.y, clip.z + 5e-5 * clip.w, clip.w);
+          output.position = vec4<f32>(clip.x, clip.y, overlayLiftedClipZ(clip, uniforms.viewProj), clip.w);
           return output;
         }
 

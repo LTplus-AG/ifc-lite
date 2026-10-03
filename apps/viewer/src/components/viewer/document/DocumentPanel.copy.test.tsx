@@ -116,14 +116,14 @@ describe('DocumentPanel copies every authored block (#6689)', () => {
     const ui = await mount(textBlock());
     click(copyButton(ui, 'original'));
     const copied = useViewerStore.getState().documents[0].blocks[1];
-    await waitFor(() => ui.querySelector(`[data-preview-block="${copied.id}"] [data-block-text]`)?.textContent === 'Structure', 'copy resolves its retained Structure source');
+    await waitFor(() => ui.querySelector(`[data-preview-block="${copied.id}"] [data-block-text]`)?.textContent === 'Coordination\nStructure', 'copy retains its authored heading and resolves its Structure source');
     act(() => useViewerStore.setState({ activeModelId: 'b' }));
     act(() => useViewerStore.setState({ activeModelId: 'a' }));
     const textarea = ui.querySelector<HTMLTextAreaElement>(`[data-block-editor="${copied.id}"] textarea`);
     assert.ok(textarea);
     type(textarea, `Copied {${binding}}`);
-    await waitFor(() => ui.querySelector(`[data-preview-block="${copied.id}"] [data-block-text]`)?.textContent === 'Copied Structure', 'edited copy renders independently');
-    assert.equal(ui.querySelector('[data-preview-block="original"] [data-block-text]')?.textContent, 'Structure');
+    await waitFor(() => ui.querySelector(`[data-preview-block="${copied.id}"] [data-block-text]`)?.textContent === 'Coordination\nCopied Structure', 'edited copy renders independently and retains its heading');
+    assert.equal(ui.querySelector('[data-preview-block="original"] [data-block-text]')?.textContent, 'Coordination\nStructure');
     const saved = await committed();
     assert.ok(saved.blocks[0].kind === 'text' && saved.blocks[1].kind === 'text');
     assert.equal(saved.blocks[0].text, `{${binding}}`);
@@ -132,7 +132,7 @@ describe('DocumentPanel copies every authored block (#6689)', () => {
     assert.ok(remove);
     click(remove);
     assert.equal((await committed()).blocks[0].id, 'original');
-    assert.equal(ui.querySelector('[data-preview-block="original"] [data-block-text]')?.textContent, 'Structure');
+    assert.equal(ui.querySelector('[data-preview-block="original"] [data-block-text]')?.textContent, 'Coordination\nStructure');
   });
 
   it('does not share nested chart, list or report payloads between mounted copies', async () => {

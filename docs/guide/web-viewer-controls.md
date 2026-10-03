@@ -156,3 +156,33 @@ known survey coordinates, including units and the complete placement chain.
 Cancellation between a placement rotation and a map-conversion rotation is
 only expected when the model's original map alignment is known; it is not a
 general validity requirement.
+
+## Space floors and ceilings
+
+Select a created `IfcSpace`, enter the Model workspace, and choose **Edit space
+envelope** in the command palette or the Room tool's bar. Use a front view or
+an active vertical section along the roof slope. Choose **Flat**, **Sloped**,
+or **Pitched** for the ceiling. Click a floor, eave, or ridge handle, move it
+to a roof edge or vertex, and click again to apply the snapped elevation.
+Eaves move vertically; a pitched ridge can also move between the eaves.
+**Alt** suspends snapping. You can also type the storey-local floor, eave, and
+ridge elevations in metres and press **Enter**. **Escape** cancels the edit.
+
+Each applied envelope is one Undo/Redo operation. It keeps the space's
+`GlobalId`, name, properties, surface styles and spatial aggregation. The exported IFC contains planar clipping solids, so sloped and
+pitched ceilings survive saving and reopening. Floor areas stay unchanged;
+`Height` is retained only for constant-height spaces, as required by IFC.
+Gross and net volumes are updated only when their source floor areas and
+volumes identify the edited body; otherwise those quantities are cleared.
+Ceiling, wall and finish quantities that require construction boundaries are
+also cleared, so an edit does not leave stale measurements.
+
+Editable sources are upward vertical rectangle or simple polyline extrusions
+with at most 256 footprint vertices, directly placed on their storey, plus
+supported envelopes previously saved by this tool. Mapped bodies, mesh bodies,
+profiles with holes, tilted extrusions, extra placement parents, explicit
+quantity units, and unreadable geometry refuse before writing. Horizontal,
+tilted, and box sections cannot be used for this edit. A source model that was
+reprojected into another CRS is also refused.
+Spaces carrying `ElevationWithFlooring` allow ceiling edits, but refuse floor
+moves until the building elevation frame can be resolved.

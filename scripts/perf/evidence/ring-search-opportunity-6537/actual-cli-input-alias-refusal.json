@@ -1,0 +1,7 @@
+{
+  "exit": 1,
+  "fixtureSha256BeforeAndAfter": "1d1cd11c57d80fe4f769a05db49cf1a96973b1af6cbee2d75ef541cfa3cb8fa0",
+  "stdoutBytes": 0,
+  "stderrSha256": "631b7b13872862622f2cf3e89c346da69c3045cb00f04bd13ddee48baa94e09c",
+  "inputPreserved": true
+}

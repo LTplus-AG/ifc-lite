@@ -139,9 +139,19 @@ unclaimed. Record any eventual measured verdict and lesson in the performance
 ledger only after an independently reviewed actual cohort.
 
 The root `typecheck:perf-interleaved` script runs the explicit no-emit
-`scripts/perf/tsconfig.interleaved.json` program, wired in this workflow. It
+`scripts/perf/tsconfig.interleaved.json` program, wired in the existing PR
+node-tests job and the dispatch workflow. It
 covers the sample, input/result/callback declarations and the reused benchmark
 helpers without workspace sibling `dist` dependencies. Runtime configuration
 parsing starts from `unknown`; private-shape JavaScript behavior is covered by
-the wired invariants. This source-only change records no executed validation
-or performance verdict.
+the wired invariants.
+
+Correctness validation on 2026-10-03 passed the standalone root typecheck,
+all fourteen plan/identity/server/cleanup invariant tests with no skips,
+module-size, source-text assertion, test-wiring and license-header guards,
+and targeted oxlint over the new source/test modules. Commands ran serially
+under a correctness-only guardian with a 12 GiB own-tree RSS ceiling,
+24 GiB starting available memory and 8 GiB live reserve. The initial lint
+failure and corrected rerun are retained separately. No browser fixture
+acceptance or performance cohort was executed; the performance verdict
+remains pending.

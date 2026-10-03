@@ -158,6 +158,14 @@ function persistReport() {
   writeFileSync(join(output, 'report.md'), lines.join('\n'));
 }
 
+async function verifyFrozenInputs() {
+  for (const arm of ['base', 'candidate']) {
+    if (JSON.stringify(await inventory(join(provenance.builds[arm].dir, 'apps/viewer/dist')))
+      !== JSON.stringify(provenance.builds[arm].viewer)) throw new Error('Frozen viewer changed during cohort');
+  }
+  for (const fixture of provenance.fixtures) if (await fileHash(fixture.file) !== fixture.sha256) throw new Error('Fixture changed during cohort');
+}
+
 try {
   if (process.platform !== 'linux' || process.env.CI !== 'true') throw new Error('REFUSE: intended same-job Linux CI environment required');
   for (const arm of ['base', 'candidate']) {
@@ -182,11 +190,7 @@ try {
 } finally {
   killOwnedGroup(activeChild);
   try {
-    for (const arm of ['base', 'candidate']) {
-      if (JSON.stringify(await inventory(join(provenance.builds[arm].dir, 'apps/viewer/dist')))
-        !== JSON.stringify(provenance.builds[arm].viewer)) throw new Error('Frozen viewer changed during cohort');
-    }
-    for (const fixture of provenance.fixtures) if (await fileHash(fixture.file) !== fixture.sha256) throw new Error('Fixture changed during cohort');
+    await verifyFrozenInputs();
     report.finalAssetVerification = 'complete';
   } catch (error) {
     report.status = 'refused'; report.reason = `REFUSE: ${error}`; report.families = {};

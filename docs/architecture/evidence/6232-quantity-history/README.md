@@ -7,14 +7,17 @@ Values and persistent product geometry were restored. This evidence concerns the
 quantity classes and metadata, independently of synthetic export-generated
 Pset/Qto identities.
 
-`viewer-before.log` contains the actual test stdout on the unmodified integrated
+`viewer-before.log.gz` contains the actual test stdout on the unmodified integrated
 base: the Bonsai native-mesh Room cut and source-backed, authored, and legacy
 quantity controls failed. The source-backed fixture materializes a canonical
 quantity set in the retained real Bonsai IFC bytes before reparsing it; no source
 quantity is invented by an assertion. The native control reports the three
-exported Area/Volume-to-Count changes. `quantity-unit-before.log` separately shows
+exported Area/Volume-to-Count changes. `quantity-unit-before.log.gz` separately shows
 an existing supported metre unit (#2) exported as `$`. Build chatter is omitted;
-test stdout and assertion differences are preserved.
+test stdout and assertion differences are preserved losslessly in gzip archives
+with zero timestamps. The raw-byte SHA-256 values in `receipt.json` identify the
+original captured excerpts, including their trailing spaces. Read them with
+`gzip -dc viewer-before.log.gz` or `gzip -dc quantity-unit-before.log.gz`.
 
 The repaired controls include a mounted registered Room command through the real
 native DCEL and an adapter control meshing actual Bonsai IFC geometry through the

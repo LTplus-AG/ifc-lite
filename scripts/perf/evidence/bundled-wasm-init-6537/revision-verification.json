@@ -1,0 +1,12 @@
+{
+  "status": "verified-extracted",
+  "members": 304,
+  "revisionStored": 228,
+  "originalReferences": 76,
+  "revisionArchiveSha256": "1edd195d212da29ebe72ab75b50585b3472d8eae85e0ecb23453c6afffd4a87a",
+  "originalArchiveSha256": "a98cb6f0aef25109636460c15f353be5124016955c1b21847edf5d6cd9fdce37",
+  "originalManifestSha256": "5dd311d9df4deff0299c8c2607dd2685fe4e8ffd42a1c8d83321ff0d0742b2e7",
+  "originalArchiveAndManifestUnchanged": true,
+  "method": "extract-revision.py verified both tar member censuses and safe regular paths, resolved exact references, and reread all 304 extracted member hashes. No tests, builds, browsers, models, or new measurements.",
+  "extractorSha256": "69295a4fd2d61b9064626e066739e673ba52e8cc44b914369f8c0b8daa9a834c"
+}

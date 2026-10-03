@@ -88,3 +88,9 @@ GUIDs remain exact. This is necessary because export allocates scaffold IDs
 above the monotonic allocator and creates fresh container GUIDs each time.
 The future Room producer retains both raw and canonical graphs; this adjustment
 does not turn the failed Room run into a pass.
+
+Run `node producers/audit-browser-receipts.cjs` from this evidence directory
+to independently verify all six archived receipts: 148 stages and 320 actual
+native witnesses. The audit checks compressed receipt hashes, fetched runtime
+bytes, complete peer state, finite native/displayed bounds and exact triangle/
+vertex counts. It passed for these recorded receipts.

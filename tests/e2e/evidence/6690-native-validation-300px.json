@@ -3,27 +3,27 @@
   "pr": 6715,
   "scope": "Native 300px validation-dock containment and real callbacks only; no whole-app, performance, cadence or no-regression claim.",
   "qualifiedSource": {
-    "head": "7f10789fc1c94e79d4bc5fe6e522eb5d4e124118",
-    "currentMainBase": "baa7d34db1be4bc8bf0b3479df33275da3130fc6",
-    "productionDiffSha256": "b15ca2b8bca51be78fcdc731be76a469239e2750f314748a7153e924da1437d3",
+    "head": "869a4720eaf16035f11cc47382559b9d74f60399",
+    "currentMainBase": "002876c49393798efa246464ca5c285a9b372826",
+    "productionDiffSha256": "c02dbd98e82af7c1d82e19025ae4e6c5b6fb9b18cd55fed0cb8e378cf4ad6006",
     "reviewedWitnessSha256": "4c547ea28fc2ccd4ad2bf7066c7df15ec5fa314795e3cd80522d2dae40be316c",
-    "exactBuildLeaseSha256": "a2bf3f5d4f8297d270d798856e74e2cfbdff60498291f647e2f74c1ac89fa09c",
+    "exactBuildLeaseSha256": "bdbef0cee3dc4c072ace9516fda41f37afd621543a6358565572e2295189441e",
     "rustBuildInputCount": 1414,
     "runtimeWasmSha256": "c89243c3969248f719309b8d6a5ade1539003684c72dbac535f9ff7e1ab4d528",
-    "freshWasmProvenance": "Actual 7804 pnpm build:wasm PASS; all 1414 Rust/build input bytes unchanged through 1e7/bc885/7f107. Original e2bf runtime was not reused.",
+    "freshWasmProvenance": "Actual source-built 7804 runtime; all 1414 Rust/build input bytes unchanged through current qualified source869, verified before and after current root gates. No Rust change in this PR.",
     "builtAssetCount": 729
   },
   "qualification": {
-    "rootAffectedTests": "34/34 PASS; original 7 resize cases retained; shared scaffold defaults, IDS library/header ownership, pending Cancel/progress, real 12-spec re-run, clear and unload.",
+    "rootAffectedTests": "37/37 PASS, 0 failures/skips; includes standalone/embedded stale chrome and one/two-model cases.",
     "rootTypecheck": "111/111 PASS",
-    "mandatoryTestSourceAudit": "3321/3321 files across 57 packages PASS",
-    "exactBuildE2E": "50/50 PASS; same 7f source cache from actual root-test prerequisite Vite build.",
-    "productionGuards": "bc885 root lint/module-size/source-text-assertions/test-wiring PASS; 7f descendant only corrects IDS test setup.",
+    "mandatoryTestSourceAudit": "3324/3324 files across 57 packages PASS",
+    "exactBuildE2E": "50/50 tasks PASS; same-source cached assets produced by actual affected-test prerequisite viewer build, verified all729 assets before native launch.",
+    "productionGuards": "Current869 root lint/module-size/source-text-assertions/test-wiring PASS.",
     "nativeExit": 0,
     "nativeCaseCount": 12,
     "recordedSettledRectAuditCount": 146,
-    "startedUTC": "2026-10-03T00:28:15.744Z",
-    "endedUTC": "2026-10-03T00:31:10.753Z",
+    "startedUTC": "2026-10-03T01:34:49.853Z",
+    "endedUTC": "2026-10-03T01:37:41.243Z",
     "chrome": "154.0.8037.58",
     "adapter": {
       "vendor": "nvidia",
@@ -32,24 +32,22 @@
       "description": "",
       "fallback": false
     },
-    "cleanup": "Owned context, CDP transport and preview closed cleanly; shared Chrome stayed running; final sourcehead unchanged."
+    "cleanup": "Witness completed owned context close, CDP disconnect and owned preview server close before exit0; final source head unchanged."
   },
   "models": [
     {
       "file": "building-architecture.ifc",
       "bytes": 225635,
       "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
-      "source": "https://raw.githubusercontent.com/LTplus-AG/ifc-lite/baa7d34db1be4bc8bf0b3479df33275da3130fc6/apps/viewer/public/samples/building-architecture.ifc",
-      "fileNameHeader": "FILE_NAME('Building-Architecture.ifc','2024-11-14T11:09:12',(''),(''),'IFC-manager for SketchUp (5.3.3)','SketchUp 2024 (24.0.594)','None');",
-      "publicSourceBytesIdenticalToQualifiedSource": true
+      "source": "https://raw.githubusercontent.com/LTplus-AG/ifc-lite/869a4720eaf16035f11cc47382559b9d74f60399/apps/viewer/public/samples/building-architecture.ifc",
+      "fileNameHeader": "FILE_NAME('Building-Architecture.ifc','2024-11-14T11:09:12',(''),(''),'IFC-manager for SketchUp (5.3.3)','SketchUp 2024 (24.0.594)','None');"
     },
     {
       "file": "building-architecture-rev-b.ifc",
       "bytes": 226971,
       "sha256": "0dfb7152db0a845747d2f35ee5ba9ba3772744072cb23040353c469c2a05f366",
-      "source": "https://raw.githubusercontent.com/LTplus-AG/ifc-lite/baa7d34db1be4bc8bf0b3479df33275da3130fc6/apps/viewer/public/samples/building-architecture-rev-b.ifc",
-      "fileNameHeader": "FILE_NAME('Building-Architecture.ifc','2024-11-14T11:09:12',(''),(''),'IFC-manager for SketchUp (5.3.3)','SketchUp 2024 (24.0.594)','None');",
-      "publicSourceBytesIdenticalToQualifiedSource": true
+      "source": "https://raw.githubusercontent.com/LTplus-AG/ifc-lite/869a4720eaf16035f11cc47382559b9d74f60399/apps/viewer/public/samples/building-architecture-rev-b.ifc",
+      "fileNameHeader": "FILE_NAME('Building-Architecture.ifc','2024-11-14T11:09:12',(''),(''),'IFC-manager for SketchUp (5.3.3)','SketchUp 2024 (24.0.594)','None');"
     }
   ],
   "cases": [
@@ -287,21 +285,21 @@
   "rawReceipt": {
     "file": "6690-native-validation-300px.raw.json.gz",
     "compression": "gzip lossless; decompression byte-for-byte matches immutable actual raw receipt",
-    "uncompressedSha256": "df0ccd38b18dc09bfef0d81d8e930e7f2bbfec1eff453e557018631cf089e2d0",
-    "compressedSha256": "abc0de107c21bc9a24800bac139b24363be78e2be90462cdada19413137e34dc",
+    "uncompressedSha256": "2aae3fa94fc26a2750b3b13b8e70f9b3220e39fd4cf868d6d4c6eca55b27a719",
+    "compressedSha256": "77d2c50deafbe53183ba7e1509763d6ca07f7750a5b77de423a07192d91f8e28",
     "uncompressedBytes": 202546,
-    "compressedBytes": 8833,
-    "note": "Raw recorded model URLs name the then-local qualified head; verified public same-byte references are supplied above."
+    "compressedBytes": 8813,
+    "note": "Lossless actual current869 receipt, including loader diagnostics and real callback records. Earlier evidence is retained in Git history."
   },
   "screenshots": {
     "6690-native-validation-ids-two-models-expanded.png": {
-      "bytes": 112317,
-      "sha256": "fbeb571093d41f3a848c0ee5983a2ec1f940adcd7e7947a3a74729dfac4499af",
+      "bytes": 112335,
+      "sha256": "ca7bf92ccc62c2ee814069f656bd888287912bba7143f10afff9ca621e6f34f4",
       "capture": "Unedited actual native viewer screenshot before clicking the last control."
     },
     "6690-native-validation-manual-two-models-expanded.png": {
-      "bytes": 111250,
-      "sha256": "4632e921abdb237055fd552f2b87f945011e8fdddd61e422b605874679924d28",
+      "bytes": 111201,
+      "sha256": "e2fb8dfe38a37e8919af8a226aa079ee3bd8ee651e96907dc951b9b073316038",
       "capture": "Unedited actual native viewer screenshot before clicking the last control."
     }
   },
@@ -322,5 +320,277 @@
     "6715-7804-focused7-v2.json",
     "6715-bc885-affectedTests-v5.json"
   ],
-  "retainedFailedLint": "6715-3103-lint-v3.json"
+  "retainedFailedLint": "6715-3103-lint-v3.json",
+  "reviewRegression": {
+    "finding": "Embedded IDS chrome and stale notification were incorrectly dimmed together with old results. Wrappers now contain only result summary/filter/list; actions and notification remain outside.",
+    "redSource": "afbe96e68791fe170ba6c37dfdb8638a7956b15b",
+    "red": "11 PASS, 2 genuine embedded ASSERT failures, 0 skips; retained formatter-budget failure from earlier attempt is inconclusive.",
+    "greenSource": "4c34087bd8d074d168523f7ac42625ee1fffa340",
+    "green": "13 PASS, 0 failures/skips, unchanged regression assertions; subsequent source869 qualifies full37 and actualnative12.",
+    "runs": [
+      {
+        "file": "6690-6715-stale-chrome-red-v2.log.gz",
+        "uncompressedSha256": "697f73186b7d6c75aaf4b0f25647cd54c988ae0ca7363014d3d991e50de35d4e",
+        "compressedSha256": "aca005b1dfd29fb785d061d19b8faf0be2ae73fbaca98009df64cac96db6ad24",
+        "guardian": {
+          "startedUTC": "2026-10-03T01:02:37.525354+00:00",
+          "cwd": "/home/louistrue/wt/6690-validation-results-current-main-session6503",
+          "command": [
+            "pnpm",
+            "test",
+            "--filter=@ifc-lite/viewer",
+            "--env-mode=loose",
+            "--concurrency=1"
+          ],
+          "minimumStartKiB": 25165824,
+          "minimumLiveKiB": 8388608,
+          "maximumTreeRssKiB": 12582912,
+          "initialAvailableKiB": 43562908,
+          "scope": "Correctness-only run under host load; no timing/performance verdict.",
+          "peakTreeRssKiB": 9241480,
+          "minimumObservedAvailableKiB": 31105120,
+          "ownedProcessGroup": 93624,
+          "childExit": 1,
+          "exit": 1,
+          "endedUTC": "2026-10-03T01:03:54.996964+00:00"
+        }
+      },
+      {
+        "file": "6690-6715-stale-chrome-green-v1.log.gz",
+        "uncompressedSha256": "b327ce83417ec399640626dfbbb751da8b019eccb2465b914086e8675669df60",
+        "compressedSha256": "f59f15025edbb54fc7d5bed2f2f6aff1cf25aba6539dd5f8dbdbe54d42e6db4a",
+        "guardian": {
+          "startedUTC": "2026-10-03T01:11:33.471152+00:00",
+          "cwd": "/home/louistrue/wt/6690-validation-results-current-main-session6503",
+          "command": [
+            "pnpm",
+            "test",
+            "--filter=@ifc-lite/viewer",
+            "--env-mode=loose",
+            "--concurrency=1"
+          ],
+          "minimumStartKiB": 25165824,
+          "minimumLiveKiB": 8388608,
+          "maximumTreeRssKiB": 12582912,
+          "initialAvailableKiB": 44113428,
+          "scope": "Correctness-only run under host load; no timing/performance verdict.",
+          "peakTreeRssKiB": 8991884,
+          "minimumObservedAvailableKiB": 35123264,
+          "ownedProcessGroup": 99602,
+          "childExit": 0,
+          "exit": 0,
+          "endedUTC": "2026-10-03T01:12:45.871244+00:00"
+        }
+      }
+    ]
+  },
+  "currentGuardReceipts": [
+    {
+      "phase": "typecheck",
+      "receipt": {
+        "startedUTC": "2026-10-03T01:23:57.264922+00:00",
+        "cwd": "/home/louistrue/wt/6690-validation-results-current-main-session6503",
+        "command": [
+          "pnpm",
+          "exec",
+          "turbo",
+          "typecheck",
+          "--env-mode=loose",
+          "--concurrency=1"
+        ],
+        "minimumStartKiB": 25165824,
+        "minimumLiveKiB": 8388608,
+        "maximumTreeRssKiB": 12582912,
+        "initialAvailableKiB": 44059976,
+        "scope": "Correctness-only run under host load; no timing/performance verdict.",
+        "peakTreeRssKiB": 4135256,
+        "minimumObservedAvailableKiB": 40004680,
+        "ownedProcessGroup": 18968,
+        "childExit": 0,
+        "exit": 0,
+        "endedUTC": "2026-10-03T01:27:43.469504+00:00"
+      }
+    },
+    {
+      "phase": "typecheckAudit",
+      "receipt": {
+        "startedUTC": "2026-10-03T01:27:44.321836+00:00",
+        "cwd": "/home/louistrue/wt/6690-validation-results-current-main-session6503",
+        "command": [
+          "node",
+          "scripts/typecheck-tests.mjs",
+          "--audit"
+        ],
+        "minimumStartKiB": 25165824,
+        "minimumLiveKiB": 8388608,
+        "maximumTreeRssKiB": 12582912,
+        "initialAvailableKiB": 44083580,
+        "scope": "Correctness-only run under host load; no timing/performance verdict.",
+        "peakTreeRssKiB": 155080,
+        "minimumObservedAvailableKiB": 44024424,
+        "ownedProcessGroup": 26984,
+        "childExit": 0,
+        "exit": 0,
+        "endedUTC": "2026-10-03T01:27:47.336942+00:00"
+      }
+    },
+    {
+      "phase": "lint",
+      "receipt": {
+        "startedUTC": "2026-10-03T01:27:48.168260+00:00",
+        "cwd": "/home/louistrue/wt/6690-validation-results-current-main-session6503",
+        "command": [
+          "pnpm",
+          "lint"
+        ],
+        "minimumStartKiB": 25165824,
+        "minimumLiveKiB": 8388608,
+        "maximumTreeRssKiB": 12582912,
+        "initialAvailableKiB": 44088864,
+        "scope": "Correctness-only run under host load; no timing/performance verdict.",
+        "peakTreeRssKiB": 3958676,
+        "minimumObservedAvailableKiB": 39394428,
+        "ownedProcessGroup": 27436,
+        "childExit": 0,
+        "exit": 0,
+        "endedUTC": "2026-10-03T01:30:46.339953+00:00"
+      }
+    },
+    {
+      "phase": "moduleSize",
+      "receipt": {
+        "startedUTC": "2026-10-03T01:30:46.904694+00:00",
+        "cwd": "/home/louistrue/wt/6690-validation-results-current-main-session6503",
+        "command": [
+          "node",
+          "scripts/check-module-size.mjs"
+        ],
+        "minimumStartKiB": 25165824,
+        "minimumLiveKiB": 8388608,
+        "maximumTreeRssKiB": 12582912,
+        "initialAvailableKiB": 44030968,
+        "scope": "Correctness-only run under host load; no timing/performance verdict.",
+        "peakTreeRssKiB": 107484,
+        "minimumObservedAvailableKiB": 43959336,
+        "ownedProcessGroup": 34664,
+        "childExit": 0,
+        "exit": 0,
+        "endedUTC": "2026-10-03T01:30:47.910079+00:00"
+      }
+    },
+    {
+      "phase": "sourceTextAssertions",
+      "receipt": {
+        "startedUTC": "2026-10-03T01:30:48.459669+00:00",
+        "cwd": "/home/louistrue/wt/6690-validation-results-current-main-session6503",
+        "command": [
+          "node",
+          "scripts/check-source-text-assertions.mjs"
+        ],
+        "minimumStartKiB": 25165824,
+        "minimumLiveKiB": 8388608,
+        "maximumTreeRssKiB": 12582912,
+        "initialAvailableKiB": 44034608,
+        "scope": "Correctness-only run under host load; no timing/performance verdict.",
+        "peakTreeRssKiB": 423240,
+        "minimumObservedAvailableKiB": 43664680,
+        "ownedProcessGroup": 34803,
+        "childExit": 0,
+        "exit": 0,
+        "endedUTC": "2026-10-03T01:30:53.234064+00:00"
+      }
+    },
+    {
+      "phase": "testWiring",
+      "receipt": {
+        "startedUTC": "2026-10-03T01:30:54.054571+00:00",
+        "cwd": "/home/louistrue/wt/6690-validation-results-current-main-session6503",
+        "command": [
+          "node",
+          "scripts/check-test-wiring.mjs"
+        ],
+        "minimumStartKiB": 25165824,
+        "minimumLiveKiB": 8388608,
+        "maximumTreeRssKiB": 12582912,
+        "initialAvailableKiB": 44077444,
+        "scope": "Correctness-only run under host load; no timing/performance verdict.",
+        "peakTreeRssKiB": 3072,
+        "minimumObservedAvailableKiB": 44076944,
+        "ownedProcessGroup": 35135,
+        "childExit": 0,
+        "exit": 0,
+        "endedUTC": "2026-10-03T01:30:54.306156+00:00"
+      }
+    },
+    {
+      "phase": "affectedTests",
+      "receipt": {
+        "startedUTC": "2026-10-03T01:30:55.127209+00:00",
+        "cwd": "/home/louistrue/wt/6690-validation-results-current-main-session6503",
+        "command": [
+          "pnpm",
+          "test",
+          "--filter=@ifc-lite/viewer",
+          "--env-mode=loose",
+          "--concurrency=1"
+        ],
+        "minimumStartKiB": 25165824,
+        "minimumLiveKiB": 8388608,
+        "maximumTreeRssKiB": 12582912,
+        "initialAvailableKiB": 44075992,
+        "scope": "Correctness-only run under host load; no timing/performance verdict.",
+        "peakTreeRssKiB": 9317788,
+        "minimumObservedAvailableKiB": 30468768,
+        "ownedProcessGroup": 35189,
+        "childExit": 0,
+        "exit": 0,
+        "endedUTC": "2026-10-03T01:32:37.232354+00:00"
+      }
+    },
+    {
+      "phase": "viewerBuild",
+      "receipt": {
+        "startedUTC": "2026-10-03T01:32:38.071295+00:00",
+        "cwd": "/home/louistrue/wt/6690-validation-results-current-main-session6503",
+        "command": [
+          "pnpm",
+          "build:e2e",
+          "--concurrency=1",
+          "--env-mode=loose"
+        ],
+        "minimumStartKiB": 25165824,
+        "minimumLiveKiB": 8388608,
+        "maximumTreeRssKiB": 12582912,
+        "initialAvailableKiB": 36471696,
+        "scope": "Correctness-only run under host load; no timing/performance verdict.",
+        "peakTreeRssKiB": 395552,
+        "minimumObservedAvailableKiB": 36177520,
+        "ownedProcessGroup": 37222,
+        "childExit": 0,
+        "exit": 0,
+        "endedUTC": "2026-10-03T01:32:38.826295+00:00"
+      }
+    }
+  ],
+  "nativeGuardReceipt": {
+    "startedUTC": "2026-10-03T01:34:48.908209+00:00",
+    "cwd": "/home/louistrue/wt/6690-validation-results-current-main-session6503",
+    "command": [
+      "node",
+      "/tmp/6232-takeover/6690-current-main-source-audit/6715-native-containment-successor-witness.mjs",
+      "--root-allocated-native-slot",
+      "869a4720eaf16035f11cc47382559b9d74f60399"
+    ],
+    "minimumStartKiB": 25165824,
+    "minimumLiveKiB": 8388608,
+    "maximumTreeRssKiB": 12582912,
+    "initialAvailableKiB": 43134108,
+    "scope": "Correctness-only run under host load; no timing/performance verdict.",
+    "peakTreeRssKiB": 340144,
+    "minimumObservedAvailableKiB": 42387436,
+    "ownedProcessGroup": 40636,
+    "childExit": 0,
+    "exit": 0,
+    "endedUTC": "2026-10-03T01:37:41.862450+00:00"
+  }
 }

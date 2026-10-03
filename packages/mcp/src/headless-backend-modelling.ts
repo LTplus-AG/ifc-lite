@@ -24,6 +24,38 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
     });
   }
   return {
+    transformElements: (...args: Parameters<NonNullable<Methods['transformElements']>>) => record(args[0], methods => {
+      if (!methods.transformElements) throw new Error('Missing transformElements capability');
+      return methods.transformElements(...args);
+    }),
+    setElementSize: (...args: Parameters<NonNullable<Methods['setElementSize']>>) => record(args[0].modelId, methods => {
+      if (!methods.setElementSize) throw new Error('Missing setElementSize capability');
+      return methods.setElementSize(...args);
+    }),
+    resizeWall: (...args: Parameters<NonNullable<Methods['resizeWall']>>) => record(args[0].modelId, methods => {
+      if (!methods.resizeWall) throw new Error('Missing resizeWall capability');
+      return methods.resizeWall(...args);
+    }),
+    splitElements: (...args: Parameters<NonNullable<Methods['splitElements']>>) => record(args[0], methods => {
+      if (!methods.splitElements) throw new Error('Missing splitElements capability');
+      return methods.splitElements(...args);
+    }),
+    trimExtendElement: (...args: Parameters<NonNullable<Methods['trimExtendElement']>>) => record(args[0].modelId, methods => {
+      if (!methods.trimExtendElement) throw new Error('Missing trimExtendElement capability');
+      return methods.trimExtendElement(...args);
+    }),
+    copyElements: (...args: Parameters<NonNullable<Methods['copyElements']>>) => record(args[0], methods => {
+      if (!methods.copyElements) throw new Error('Missing copy capability');
+      return methods.copyElements(...args);
+    }),
+    duplicateElement: (...args: Parameters<NonNullable<Methods['duplicateElement']>>) => record(args[0].modelId, methods => {
+      if (!methods.duplicateElement) throw new Error('Missing duplicate capability');
+      return methods.duplicateElement(...args);
+    }),
+    arrayElements: (...args: Parameters<NonNullable<Methods['arrayElements']>>) => record(args[0], methods => {
+      if (!methods.arrayElements) throw new Error('Missing array capability');
+      return methods.arrayElements(...args);
+    }),
     editHostedElement: (...args: Parameters<NonNullable<Methods['editHostedElement']>>) => record(args[0].modelId, methods => {
       if (!methods.editHostedElement) throw new Error('Missing hosted edit capability');
       return methods.editHostedElement(...args);

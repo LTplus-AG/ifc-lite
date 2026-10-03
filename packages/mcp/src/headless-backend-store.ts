@@ -11,7 +11,13 @@ import { createRecordedModellingBackend } from './headless-backend-modelling.js'
 
 export function createHeadlessStoreAdapter(
   dataStore: IfcDataStore, modelId: string, get: () => StoreEditor, assertKnownModelId: (id: string) => void,
+  getPeerScopes: () => import('@ifc-lite/create').ElementSplitOptions['globalIdScopes'],
 ): StoreBackendMethods {
+  const resolveModel = (requestedModelId?: string) => {
+    if (requestedModelId !== undefined) assertKnownModelId(requestedModelId);
+    const editor = get();
+    return { modelId, store: dataStore, editor, mutationView: editor.getMutationView(), ownerHistoryId: null, globalIdScopes: getPeerScopes() };
+  };
   return {
     addEntity: (modelId, def) => {
       // The ref carries `modelId`, and `bim.mutate.*` refuses one this
@@ -30,14 +36,6 @@ export function createHeadlessStoreAdapter(
     addDoor: () => { throw new Error('addDoor not supported in MCP v0.1; use entity_create'); },
     addWindow: () => { throw new Error('addWindow not supported in MCP v0.1; use entity_create'); },
     ...unsupportedStoreAuthoring(),
-    ...createRecordedModellingBackend(requestedModelId => {
-      if (requestedModelId !== undefined) assertKnownModelId(requestedModelId);
-      const editor = get();
-      const mutationView = editor.getMutationView();
-      return {
-        modelId, store: dataStore, editor, mutationView,
-        ownerHistoryId: null, // Hosted placement resolves the host's live anchor in the shared core.
-      };
-    }),
+    ...createRecordedModellingBackend(resolveModel),
   };
 }

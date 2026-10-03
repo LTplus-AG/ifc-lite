@@ -113,6 +113,8 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
+| Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
+| Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
 | Wall joins | `join_walls` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
@@ -263,3 +265,13 @@ See the [ifc-lite docs](https://ifclite.dev/docs/) for the full
 platform documentation.
 
 Licensed under MPL-2.0.
+
+Loaded-model physical edits use the same command cores as the viewer and typed
+SDK. `edit_element_geometry` handles Move/Rotate, Size, Wall Endpoints, Split and
+Trim/Extend. `copy_elements`, `duplicate_element` and `array_elements` carry
+hosted graph records and share the viewer placement and naming policies.
+References are model-local EXPRESS IDs; offsets use IFC storey-local metres
+and planar rotations use radians. Every write is one `mutation_undo` batch;
+unsupported sources and unsafe shared geometry refuse before committing.
+See the [MCP guide](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/guide/mcp.md)
+for parameter contracts.

@@ -27,6 +27,8 @@ import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '@/lib/comman
 import { planElementTransform, type TransformPlan } from './plan.js';
 import { transformElementsInStore, describeTransformRefusal } from '../../../../../packages/create/src/in-store/element-transform-edit.js';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
+import { alignElementsInStore, type ElementAlignParams, type PlanBox } from '@ifc-lite/create';
+import type { Workplane } from '@/lib/commands/modeling/types';
 import { carryWallJoins } from './wall-join-carrier.js';
 
 type Vec2 = [number, number];
@@ -100,16 +102,40 @@ export function commitElementTransform(
       return op.kind === 'move' ? { kind: 'move', delta: sub2(toLocal(op.to), toLocal(op.from)) }
         : { kind: 'rotate', pivot: toLocal(op.pivot), angle: op.angle };
     },
-    translate: (id, delta) => {
-      const moved = tx.store.translateEntity(modelId, id, delta, tx.batchId);
-      if (!moved.ok) throw new Error(moved.reason);
-    },
-    rotate: (id, angle) => {
-      const turned = tx.store.rotateEntity(modelId, id, angle);
-      if (!turned.ok) throw new Error(turned.reason);
-    },
+    ...placementHooks(tx, modelId),
     carryJoins: plan => joinCarrier?.({ tx, modelId, plan, op }) ?? [],
   });
   return { modelId, created: [], deleted: [], remesh: result.remesh,
     ...(result.hostsChanged ? { remeshCause: 'hostsChanged' as const } : {}), select: [...selected] };
+}
+
+function placementHooks(tx: AuthoringTransaction, modelId: string) {
+  return {
+    translate: (id: number, delta: [number, number, number]) => {
+      const moved = tx.store.translateEntity(modelId, id, delta, tx.batchId);
+      if (!moved.ok) throw new Error(moved.reason);
+    },
+    rotate: (id: number, angle: number) => {
+      const turned = tx.store.rotateEntity(modelId, id, angle);
+      if (!turned.ok) throw new Error(turned.reason);
+    },
+  };
+}
+
+/** One planned batch: hosted roots travel once even when several targets are picked. */
+export function commitElementAlignment(tx: AuthoringTransaction, modelId: string, params: ElementAlignParams, boxes: ReadonlyMap<number, PlanBox>, plane: Workplane): CommitResult {
+  const target = modelEditTarget(tx.store, modelId);
+  if (!target) throw new Error('The model has no editable IFC data.');
+  const planes = new Map<number, (p: Vec3) => Vec2>();
+  const origin = plane.localToRender([0, 0, 0]);
+  const op: ElementTransformOp = { kind: 'move', from: origin, to: origin };
+  const result = alignElementsInStore({ ...target, ...placementHooks(tx, modelId),
+    storeyOf: id => elementStoreyId(tx.store, modelId, id),
+    carryJoins: plan => joinCarrier?.({ tx, modelId, plan, op }) ?? [],
+  }, params, boxes, (_id, storey, shift) => {
+    const local = storeyLocal(tx.store, modelId, storey, planes);
+    return sub2(local(plane.localToRender([shift[0], shift[1], 0])), local(origin));
+  });
+  return { modelId, created: [], deleted: [], remesh: result.remesh,
+    ...(result.hostsChanged ? { remeshCause: 'hostsChanged' as const } : {}), select: [params.reference, ...params.targets] };
 }

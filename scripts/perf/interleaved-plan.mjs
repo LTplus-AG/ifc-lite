@@ -78,7 +78,7 @@ export function describeFamily(rows) {
       const base = rows.slice(i, i + 2).find(row => row.arm === 'base');
       const candidate = rows.slice(i, i + 2).find(row => row.arm === 'candidate');
       const a = base.metrics[metric], b = candidate.metrics[metric];
-      if (!(a > 0) || !(b >= 0)) return [metric, { available: false }];
+      if (!Number.isFinite(a) || !Number.isFinite(b) || !(a > 0) || !(b >= 0)) return [metric, { available: false }];
       pairs.push((b / a - 1) * 100);
     }
     return [metric, { available: true, pairedPercent: pairs, medianPercent: median(pairs),

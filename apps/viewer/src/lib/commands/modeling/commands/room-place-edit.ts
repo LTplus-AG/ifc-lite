@@ -19,7 +19,7 @@
  * files the edited layout under the new undo step.
  */
 
-import type { SpacePlateHandle } from '@ifc-lite/wasm';
+import type { RoomPlate } from '../../../../../../../packages/create/src/in-store/room-layout-core.js';
 import { resolve as translate } from '@/i18n/registry';
 import { editError } from '@/lib/space-edit-error';
 import type { SnapResult } from '@/lib/snap/types';
@@ -75,7 +75,7 @@ export function editPointerUp(g: RoomPlaceGesture): RoomPlaceGesture | CommandSi
 }
 
 /** The edited layout a commit made, waiting for its transaction to stand. */
-let pending: { modelId: string; storeyId: number; weld: number; walls: string; plate: SpacePlateHandle } | null = null;
+let pending: { modelId: string; storeyId: number; weld: number; walls: string; plate: RoomPlate } | null = null;
 
 function dropPending(): void {
   pending?.plate.free();

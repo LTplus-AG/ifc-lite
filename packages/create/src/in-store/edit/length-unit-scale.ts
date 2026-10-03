@@ -13,12 +13,13 @@
  * file's **native** units (e.g. millimetres). Multiply those by this
  * factor to bring them into the same metre space as everything else.
  *
- * Returns `1` when the scale can't be determined (already-metres models,
- * or bounded-geometry mode having released the source buffer) — the
- * safe identity that leaves native-unit reads untouched.
+ * Bounded geometry without retained source uses identity when no validated
+ * scale is cached. Retained source uses the builders' validated extraction;
+ * an unreliable extraction refuses the edit rather than guessing units.
  */
 
-import { extractLengthUnitScale, type IfcDataStore } from '@ifc-lite/parser';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { safeLengthUnitScale } from '../length-unit-scale.js';
 import { fromNativeLength, toNativeLength } from '../anchor.js';
 
 type Vec3 = [number, number, number];
@@ -35,9 +36,11 @@ export function getModelLengthUnitScale(dataStore: IfcDataStore | null | undefin
   let scale = typeof dataStore.lengthUnitScale === 'number' ? dataStore.lengthUnitScale : undefined;
   if (scale === undefined || !Number.isFinite(scale) || scale <= 0) {
     if (!dataStore.source?.length || !dataStore.entityIndex) return 1;
-    scale = extractLengthUnitScale(dataStore.source, dataStore.entityIndex);
+    const extracted = safeLengthUnitScale(dataStore.source, dataStore.entityIndex,
+      'getModelLengthUnitScale', dataStore.spatialHierarchy?.project?.expressId);
+    if (extracted === null) throw new Error('Cannot edit geometry without a reliable model length unit scale');
+    scale = extracted;
   }
-  if (!Number.isFinite(scale) || scale <= 0) scale = 1;
 
   scaleCache.set(dataStore, scale);
   return scale;

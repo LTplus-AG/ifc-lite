@@ -161,3 +161,35 @@ for (const count of [1, 2]) it.skipIf(!available)(`public Prune removes a native
     expect(exported(peer)).toEqual(peerBefore);
   } finally { for (const loaded of registry.list()) loaded.backend.dispose(); }
 }, 60000);
+
+for (const count of [1, 2]) it.skipIf(!available)(`#6232 layout-only public Room edit has its own Undo without changing IFC (${count} models)`, async () => {
+  const { registry, call } = await liveToolSession(count);
+  const target = count === 1 ? 'alpha' : 'beta', model = registry.get(target)!;
+  const peer = count === 2 ? registry.get('alpha')! : null, peerBefore = exported(peer);
+  try {
+    const points: [number, number, number][] = [[20,20,0],[24,20,0],[24,23,0],[20,23,0]];
+    for (const [i, Start] of points.entries()) model.bim.store.addWall(target, 42, { Start, End: points[(i + 1) % points.length], Thickness: .2, Height: 3 });
+    const room = (command: Record<string, unknown>) => call('room_command', { model_id: target, storey_express_id: 42, command });
+    const farFaces = async () => outcome(await room({ action: 'query' })).candidates.filter(face => face.centre.some(([x]) => x > 20));
+    const original = await farFaces();
+    expect(original).toHaveLength(1);
+    expect(original[0].taken).toBe(false);
+    const view = model.backend.getMutationView()!, before = exported(model), next = view.peekNextExpressId();
+    const records = structuredClone(view.getNewEntities());
+    const split = outcome(await room({ action: 'edit', operation: { kind: 'split', a: [21,20], b: [21,23] } }));
+    expect(split.created).toEqual([]);
+    expect(split.updated).toEqual([]);
+    expect(split.deleted).toEqual([]);
+    expect(await farFaces()).toHaveLength(2);
+    expect(exported(model)).toBe(before);
+    expect(view.getNewEntities()).toEqual(records);
+    expect(view.peekNextExpressId()).toBe(next);
+    expect(exported(peer)).toBe(peerBefore);
+    expect((await call('mutation_undo', { model_id: target, n: 1 })).isError).not.toBe(true);
+    expect(exported(model)).toBe(before);
+    expect(await farFaces()).toEqual(original);
+    expect(view.getNewEntities()).toEqual(records);
+    expect(view.peekNextExpressId()).toBe(next);
+    expect(exported(peer)).toBe(peerBefore);
+  } finally { for (const loaded of registry.list()) loaded.backend.dispose(); }
+});

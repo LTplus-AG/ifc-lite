@@ -168,10 +168,10 @@ export function resolveLinearElementChain(
       return null;
     }
     const len = Math.hypot(ratios[0], ratios[1], ratios[2]);
-    // Zero-length axis isn't translatable; refuse rather than fall
+    // Zero-length or unrepresentable axis isn't translatable; refuse rather than fall
     // back silently to world +Z (which would silently mis-orient
     // every downstream operation).
-    if (len < 1e-9) return null;
+    if (!Number.isFinite(len) || len < 1e-9) return null;
     axisDirection = [ratios[0] / len, ratios[1] / len, ratios[2] / len];
   }
 

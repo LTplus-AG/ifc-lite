@@ -40,7 +40,7 @@ function scriptTool(script) {
   if (/\/(?:tsx|vitest)\/(?:dist|bin)\/(?:cli|index)(?:\.[cm]?js)?$/.test(normalized)) {
     return normalized.includes('/tsx/') ? 'tsx' : 'vitest';
   }
-  if (/\/npm\/bin\/npm-cli\.js$/.test(normalized)) return 'npm';
+  if (normalized.endsWith('/npm/bin/npm-cli.js')) return 'npm';
   return null;
 }
 

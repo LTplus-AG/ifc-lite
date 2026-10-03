@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readFileSync, writeFileSync, mkdirSync, realpathSync, existsSync, symlinkSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { join, resolve } from 'node:path';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { fileHash } from './interleaved-assets.mjs';
-const command = (program, args) => execFileSync(program, args, { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 ** 2 }).trim();
+const command = (program, args, cwd) => execFileSync(program, args, { cwd, encoding: 'utf8', timeout: 30000, maxBuffer: 1024 ** 2 }).trim();
 
 export async function selectPnpm(root, output) {
   if (!process.env.RUNNER_TEMP || !process.env.GITHUB_PATH) throw new Error('hosted own tool selection required');
@@ -13,30 +13,42 @@ export async function selectPnpm(root, output) {
   const version = /^pnpm@(\d+\.\d+\.\d+)(?:\+[^\s]+)?$/.exec(packageManager)?.[1];
   if (!version) throw new Error('exact root pnpm version required');
   const launcher = realpathSync(command('which', ['pnpm']));
-  if (command(launcher, ['--version']) !== version) throw new Error('action launcher version differs');
-  const candidates = [];
-  for (let directory = dirname(launcher), depth = 0; depth < 12; depth++, directory = dirname(directory)) candidates.push(directory);
-  // Primary pnpm@10.8.1 tools/path + installPnpmToTools: .tools/name/version,
-  // then hoisted node_modules. No recursive lookup or arbitrary launcher parsing.
-  if (process.env.PNPM_HOME) candidates.push(join(process.env.PNPM_HOME, '.tools', 'pnpm', version, 'node_modules', 'pnpm'));
-  const directory = candidates.find(path => {
-    const file = join(path, 'package.json');
-    if (!existsSync(file)) return false;
-    const metadata = JSON.parse(readFileSync(file, 'utf8'));
-    return metadata.name === 'pnpm' && metadata.version === version;
-  });
-  if (!directory) throw new Error('exact installed pnpm package absent from supported finite candidates');
-  const metadata = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8'));
-  if (typeof metadata.bin?.pnpm !== 'string') throw new Error('installed pnpm CLI metadata absent');
-  const packageRoot = realpathSync(directory), executable = realpathSync(resolve(packageRoot, metadata.bin.pnpm));
-  if (!executable.startsWith(`${packageRoot}/`) || command(process.execPath, [executable, '--version']) !== version) throw new Error('installed CLI/version mismatch');
+  const launcherVersion = command(launcher, ['--version'], root);
+  if (launcherVersion !== version) throw new Error('action launcher version differs');
+  const packageDirectory = join(process.env.RUNNER_TEMP, 'sdk-pnpm-package');
   const ownedBin = join(process.env.RUNNER_TEMP, 'sdk-pnpm-bin');
-  if (existsSync(ownedBin)) throw new Error('new own pnpm selector required');
-  mkdirSync(ownedBin); const link = join(ownedBin, 'pnpm'); symlinkSync(executable, link);
-  const receipt = { version, launcher, launcherSha256: await fileHash(launcher), packageRoot,
-    packageMetadataSha256: await fileHash(join(packageRoot, 'package.json')), executable,
-    executableSha256: await fileHash(executable), link, selectedBeforeInputFreeze: true,
-    primaryLayout: 'https://github.com/pnpm/pnpm/blob/v10.8.1/tools/path/src/index.ts' };
-  writeFileSync(join(output, 'pnpm-selection.json'), JSON.stringify(receipt, null, 2));
-  writeFileSync(process.env.GITHUB_PATH, `${ownedBin}\n`, { flag: 'a' });
+  if (existsSync(packageDirectory) || existsSync(ownedBin)) throw new Error('new own pnpm installation/selector required');
+  mkdirSync(packageDirectory);
+  const installer = realpathSync(command('which', ['npm']));
+  const args = ['install', '--prefix', packageDirectory, '--ignore-scripts', '--no-audit', '--no-fund', '--save-exact', `pnpm@${version}`];
+  const receiptPath = join(output, 'pnpm-selection.json');
+  const receipt = { status: 'installing', version, launcher, launcherVersion, launcherSha256: await fileHash(launcher),
+    installer, installerSha256: await fileHash(installer), installerVersion: command(installer, ['--version'], packageDirectory),
+    command: [installer, ...args], startedUTC: new Date().toISOString(), files: {} };
+  const save = () => writeFileSync(receiptPath, JSON.stringify(receipt, null, 2)); save();
+  try {
+    const result = spawnSync(installer, args, { cwd: packageDirectory, timeout: 120000, killSignal: 'SIGKILL', maxBuffer: 16 * 1024 ** 2 });
+    receipt.exit = result.status; receipt.signal = result.signal;
+    for (const [stream, bytes] of [['stdout', result.stdout], ['stderr', result.stderr]]) {
+      const path = join(output, `pnpm-install.${stream}.log`);
+      writeFileSync(path, bytes ?? Buffer.alloc(0), { flag: 'wx' }); receipt.files[path] = await fileHash(path);
+    }
+    if (result.error || result.status !== 0 || result.signal) throw result.error ?? new Error('owned pnpm install failed');
+    const packageRoot = realpathSync(join(packageDirectory, 'node_modules/pnpm'));
+    const metadataPath = join(packageRoot, 'package.json'), metadata = JSON.parse(readFileSync(metadataPath, 'utf8'));
+    const lockPath = join(packageDirectory, 'package-lock.json'), lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const locked = lock.packages?.['node_modules/pnpm'];
+    if (metadata.name !== 'pnpm' || metadata.version !== version || typeof metadata.bin?.pnpm !== 'string'
+      || locked?.version !== version || locked.resolved !== `https://registry.npmjs.org/pnpm/-/pnpm-${version}.tgz`
+      || !/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(locked.integrity ?? '')) throw new Error('actual installed pnpm metadata/lock/integrity mismatch');
+    const executable = realpathSync(resolve(packageRoot, metadata.bin.pnpm));
+    if (!executable.startsWith(`${packageRoot}/`) || command(process.execPath, [executable, '--version'], packageDirectory) !== version) throw new Error('installed CLI/version mismatch');
+    mkdirSync(ownedBin); const link = join(ownedBin, 'pnpm'); symlinkSync(executable, link);
+    Object.assign(receipt, { status: 'selected', packageRoot, packageMetadataSha256: await fileHash(metadataPath), executable,
+      executableSha256: await fileHash(executable), integrity: locked.integrity, resolved: locked.resolved, link,
+      selectedBeforeInputFreeze: true, scope: 'Fresh exact-version npm installation; original action launcher retained; no action self-update layout assumptions' });
+    for (const path of [launcher, installer, metadataPath, lockPath, join(packageDirectory, 'package.json')]) receipt.files[path] = await fileHash(path);
+    writeFileSync(process.env.GITHUB_PATH, `${ownedBin}\n`, { flag: 'a' });
+  } catch (error) { receipt.status = 'refused'; receipt.reason = String(error); throw error; }
+  finally { receipt.endedUTC = new Date().toISOString(); save(); }
 }

@@ -60,7 +60,8 @@ async function main() {
     const bindgenReceiptPath = join(output, 'bindgen-prefetch.json');
     const bindgen = JSON.parse(readFileSync(bindgenReceiptPath, 'utf8'));
     const transform = await requireBindgen(bindgen, directories);
-    const frozenFiles = { ...bindgen.files, [bindgenReceiptPath]: await fileHash(bindgenReceiptPath),
+    if (pnpmSelection.status !== 'selected') throw new Error('actual pnpm selection receipt incomplete');
+    const frozenFiles = { ...bindgen.files, ...pnpmSelection.files, [bindgenReceiptPath]: await fileHash(bindgenReceiptPath),
       [pnpmReceiptPath]: await fileHash(pnpmReceiptPath), [pnpmSelection.launcher]: pnpmSelection.launcherSha256 }, closures = {};
     const automation = await installedClosure([{ name: '@playwright/test', from: join(root, 'package.json') }]);
     Object.assign(frozenFiles, automation.files);

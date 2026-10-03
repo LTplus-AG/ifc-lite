@@ -22,10 +22,12 @@ export async function installedClosure(seeds) {
     seen.add(directory);
     const metadata = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8'));
     const label = `${metadata.name}@${metadata.version}`;
-    async function walk(path, depth = 0) {
+    const walk = async (path, depth = 0) => {
       if (depth > 32) throw new Error('installed dependency depth bound');
       for (const entry of readdirSync(path, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-        if (entry.name === 'node_modules') continue;
+        // Direct installed dependencies are resolved below; nested directories
+        // can be shipped runtime bundles, such as pnpm's dist/node_modules.
+        if (entry.name === 'node_modules' && path === directory) continue;
         const child = join(path, entry.name);
         if (entry.isSymbolicLink()) throw new Error(`unqualified dependency symlink: ${child}`);
         if (entry.isDirectory()) await walk(child, depth + 1);
@@ -36,7 +38,7 @@ export async function installedClosure(seeds) {
           files[child] = hash; normalized[key] = hash;
         }
       }
-    }
+    };
     await walk(directory);
     const optionalDependencies = metadata.optionalDependencies ?? {};
     for (const dependency of new Set([...Object.keys(metadata.dependencies ?? {}), ...Object.keys(optionalDependencies)])) {

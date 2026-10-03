@@ -43,6 +43,17 @@ test('#6537 installed closure follows real transitive resolution and hashes cons
   assert.equal(before.normalized['entry@1.0.0/index.js'], after.normalized['entry@1.0.0/index.js']);
   await assert.rejects(installedClosure([{ name: 'absent', from: join(directory, 'package.json') }]), /absent/);
 }));
+test('#6537 installed package identity includes shipped nested runtime dependency bytes', temporary(async directory => {
+  writeFileSync(join(directory, 'package.json'), '{"name":"invariant-root"}');
+  const bundled = join(directory, 'node_modules/entry/dist/node_modules/runtime');
+  mkdirSync(bundled, { recursive: true });
+  writeFileSync(join(directory, 'node_modules/entry/package.json'), '{"name":"entry","version":"1.0.0"}');
+  const runtime = join(bundled, 'index.js'); writeFileSync(runtime, 'export const value = 1;');
+  const seeds = [{ name: 'entry', from: join(directory, 'package.json') }];
+  const before = await installedClosure(seeds); assert.ok(before.files[runtime]);
+  writeFileSync(runtime, 'export const value = 2;');
+  const after = await installedClosure(seeds); assert.notEqual(before.files[runtime], after.files[runtime]);
+}));
 test('#6537 source-build producing receipt requires every fresh task plus successful WASM emission', () => {
   const names = ['geometry', 'data', 'encoding', 'wasm-lifecycle', 'wasm'];
   const log = names.map(name => `@ifc-lite/${name}:build: cache bypass, force executing abcd`).join('\n')

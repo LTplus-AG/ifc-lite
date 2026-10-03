@@ -31,8 +31,10 @@ SDK job has only `contents: read`. Cancellation supplies no completed verdict.
 ## Source builds and byte witnesses
 
 Before the input snapshot, an owned symlink selects the exact version-qualified
-installed pnpm CLI; the action launcher bytes and selection witness are retained.
-Finite supported package paths are checked, with no broad directory search.
+pnpm CLI installed by npm into a fresh owned directory with scripts disabled.
+The original action launcher/version, producing install command/exit, raw stdout
+and stderr, package lock/integrity and selection hashes are retained. Exact
+installed metadata and version must match; no action bootstrap layout is assumed.
 Both source arms have frozen installs and new, separate Cargo target directories.
 Root Turbo builds each SDK with `--force --concurrency=1 --env-mode=loose`, serially,
 before either endpoint is bundled or timed. There is no prebuilt WASM route.

@@ -199,7 +199,8 @@ function scaleSlabChain(chain: SlabEditChain, scale: number): SlabEditChain | nu
     || (scaled.baseElevation !== null && !Number.isFinite(scaled.baseElevation))
     || scaled.footprint.some(point => !point.every(Number.isFinite))) return null;
   const area = polygonArea(scaled.footprint);
-  return Number.isFinite(area) && area > 0 ? scaled : null;
+  // Tilted extrusions may project to a line; their null baseElevation already refuses plan splitting.
+  return Number.isFinite(area) && (scaled.baseElevation === null || area > 0) ? scaled : null;
 }
 
 /**

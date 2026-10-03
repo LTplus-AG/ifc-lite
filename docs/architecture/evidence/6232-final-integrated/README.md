@@ -112,3 +112,5 @@ package with `--only --force` at clean `ba2dedc424cd7ce196dd4c3ef1892ed74e754d5c
 passed and five existing optional controls skipped across 68 files. No
 dependency build/cache restoration ran; actual WASM hash was verified unchanged
 before and after. `quantity-mcp.log.gz` preserves the run.
+
+The later `physical-repaired-forward/` directory records two fresh Physical WSL Chrome captures at clean `77246bddd0f5e0b42b3440e9017fee3ab9aa9e92`, after the actual CI and StandardCase/shared-placement review fixes. Its composed eight-receipt audit retains the six Align/Placement/Room captures at their original `acbc97c0b` source identity and passes 184 stages/436 native/displayed witnesses. Its source-labelled qualification distinguishes current 111-task/3,389-file typecheck and 8,479-file lint from earlier union tests and bounded cleanup controls. Remaining main landings, current-head required CI and feedback still gate completion.

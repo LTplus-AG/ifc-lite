@@ -24,11 +24,12 @@ import { RoomPlacePlan, RoomPlaceScene } from '@/components/viewer/tools/command
 import { resolve as translate } from '@/i18n/registry';
 import { ensureSpaceWasm } from '@/lib/rooms/space-wasm';
 import { roomAt, roomOutline, sessionRooms, storeyRooms, storeySpaceFootprints, storeyWalls, type RoomCandidate } from '@/lib/rooms/storey-rooms';
-import { addRoom, candidateRoom, selectedRooms, updateRoomOutline } from '@/lib/rooms/room-writes';
+import { addRoom, addRooms, candidateRoom, selectedRooms, updateRoomOutline } from '@/lib/rooms/room-writes';
 import { storeyFootprintFace } from '@/lib/rooms/storey-footprint';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { polyArea } from '@/lib/rooms/plate-geometry';
 import type { ViewerState } from '@/store';
+import { planRoomCreation } from '../../../../../../../packages/create/src/in-store/room-creation-plan.js';
 import { commandGhostId } from '../ghost.js';
 import { prismGhostMesh } from '../ghost-shapes.js';
 import { notifyCommandRefusal } from '../runtime.js';
@@ -82,10 +83,12 @@ function roomsOf(ctx: CommandContext, g: RoomPlaceGesture): RoomCandidate[] {
 function autoRooms(tx: AuthoringTransaction, g: RoomPlaceGesture, storeyId: number, plane: Workplane): number[] {
   const get = () => tx.store;
   const height = dimOf({ get }, 'space', 'Height');
-  const name = roomNamer(get(), tx.modelId, storeyId, g.namePattern);
-  return readyRooms(get(), tx.modelId, storeyId, plane, weldOf(g), g.minArea).filter((r) => !r.taken).map((room, i) => addRoom(get, tx.modelId, storeyId, {
-    ...candidateRoom(room, g.boundary), height, z: planeZ(plane), name: name(i), PredefinedType: g.PredefinedType, ObjectType: g.ObjectType, derived: true,
-  }));
+  const planned = planRoomCreation(readyRooms(get(), tx.modelId, storeyId, plane, weldOf(g), g.minArea), {
+    action: 'auto', boundary: g.boundary, height, z: planeZ(plane),
+    existingCount: storeySpaceFootprints(get(), tx.modelId, storeyId).length,
+    namePattern: g.namePattern, PredefinedType: g.PredefinedType, ObjectType: g.ObjectType,
+  });
+  return addRooms(tx.api, tx.modelId, storeyId, planned);
 }
 
 function commitAction(g: RoomPlaceGesture, tx: AuthoringTransaction, storeyId: number, workplane: Workplane): CommitResult | null {
@@ -101,7 +104,7 @@ function commitAction(g: RoomPlaceGesture, tx: AuthoringTransaction, storeyId: n
       const updated: number[] = [];
       let skipped = 0;
       for (const id of selectedRooms(get(), modelId)) {
-        const res = updateRoomOutline(get, modelId, id, g.boundary, roomsOn);
+        const res = updateRoomOutline(tx.api, modelId, id, g.boundary, roomsOn);
         if (res.ok) updated.push(id);
         else skipped++;
       }
@@ -124,9 +127,9 @@ function commitAction(g: RoomPlaceGesture, tx: AuthoringTransaction, storeyId: n
       if (readyRooms(get(), modelId, storeyId, workplane, weldOf(g), 0).some((r) => r.taken)) throw new Error(translate('roomLayout.footprint.taken'));
       const face = storeyFootprintFace(storeyWalls(get(), modelId, storeyId, workplane), weldOf(g));
       if (!face) throw new Error(translate('roomTool.noWalls'));
-      const id = addRoom(get, modelId, storeyId, {
+      const id = addRoom(tx.api, modelId, storeyId, {
         outline: roomOutline(face, g.boundary), grossArea: polyArea(face.centre), netArea: polyArea(face.inner),
-        height: dimOf({ get }, 'space', 'Height'), z: planeZ(workplane), name: roomNamer(get(), modelId, storeyId, g.namePattern)(0), PredefinedType: g.PredefinedType, ObjectType: g.ObjectType, derived: true,
+        height: dimOf({ get }, 'space', 'Height'), z: planeZ(workplane), Name: roomNamer(get(), modelId, storeyId, g.namePattern)(0), PredefinedType: g.PredefinedType, ObjectType: g.ObjectType, derived: true,
       });
       return made([id]);
     }
@@ -233,7 +236,7 @@ export const ROOM_PLACE: ModelingCommand<RoomPlaceGesture> = {
     } else {
       const room = g.hover;
       if (!room || room.taken) throw new Error(translate(room ? 'roomTool.pick.taken' : 'roomTool.pick.none'));
-      id = addRoom(get, modelId, storeyId, { ...candidateRoom(room, g.boundary), height, z, name, PredefinedType: g.PredefinedType, ObjectType: g.ObjectType, derived: true });
+      id = addRoom(tx.api, modelId, storeyId, { ...candidateRoom(room, g.boundary), height, z, Name: name, PredefinedType: g.PredefinedType, ObjectType: g.ObjectType, derived: true });
     }
     return { created: [id], authored: [id], deleted: [], remesh: [id], select: [id] };
   },

@@ -32,7 +32,7 @@ import { RING_COLORS } from '@/lib/validation/manual/ring';
 import { REPORT_MARGIN } from '@/lib/export/report/compose';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { render, cleanup, click, type as typeInput } from '@/test/render';
+import { render, cleanup, click, waitFor, type as typeInput } from '@/test/render';
 import { ValidationPanel } from '../validation/ValidationPanel';
 import { DocumentPanel } from './DocumentPanel';
 
@@ -127,7 +127,9 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
         useViewerStore.getState().setIdsValidationReport(report, validationReportSnapshot(report, useViewerStore.getState().models, 'live'));
         setValidationSourceChoice(report.source.kind);
       });
-      const ui = render(<ValidationPanel />); await settle();
+      const ui = render(<ValidationPanel />);
+      await waitFor(() => ui.querySelector('[data-validation-benchmark]') !== null,
+        'the actual live Validation panel renders its benchmark, without a document preview (#6731)');
       assertRing(ui, report);
       assert.equal(useViewerStore.getState().idsValidationReport, report, 'benchmark display does not replace the actual engine report');
       assert.equal(useViewerStore.getState().savedValidationReports.length, 0, 'displaying the result does not save it');

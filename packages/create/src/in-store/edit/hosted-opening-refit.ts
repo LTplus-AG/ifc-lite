@@ -151,7 +151,14 @@ export function planCutRefit(
 /** Why a wall cannot be `topNative` high (the host's frame, native units): an opening reaches above it. Null when all fit. */
 export function heightRefusal(target: ModelEditTarget, hostId: number, topNative: number, lengthUnitScale: number): string | null {
   const { dataStore, view } = target;
+  if (!Number.isFinite(topNative) || topNative <= 0
+    || !Number.isFinite(lengthUnitScale) || lengthUnitScale <= 0) {
+    return 'The wall height and model length unit scale must be finite and positive';
+  }
   const slack = toNativeLength({ lengthUnitScale }, 1e-4);
+  if (!Number.isFinite(slack) || !Number.isFinite(topNative + slack)) {
+    return 'The wall height exceeds the supported numeric range';
+  }
   for (const openingId of openingsOf(target, hostId)) {
     const extent = placedBodyExtent(dataStore, openingId, view);
     if (!extent) return `The size of opening #${openingId} can't be read, so the wall can't be resized safely`;

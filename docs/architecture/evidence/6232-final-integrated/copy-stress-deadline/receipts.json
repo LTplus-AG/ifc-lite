@@ -16,5 +16,11 @@
     "source": "527454446389e25f3792630dc7a87743e88da8e5",
     "rawSha256": "35c20bd6671edb3fd0c2e72e94a75fde416197f389e5e463de59c0b569f59ad1",
     "gzipSha256": "13378a10acf110d90a712cb477f00a69ff07caf455072266b3e007bef80919b7"
+  },
+  {
+    "file": "deleted-boundary-assertion-tests.log.gz",
+    "source": "387a4f835b67b3bb1d12a97992351227d406f586",
+    "rawSha256": "3c10eedb617e61bfa09deeda1d5e0c4ed489fb12664c730f8151ee4ca35a6da8",
+    "gzipSha256": "2312e4b74bf105d4f6474ed50b4966896d94d5b7e7c7724508077ca5e6e1e1af"
   }
 ]

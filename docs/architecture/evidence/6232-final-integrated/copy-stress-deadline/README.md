@@ -7,3 +7,19 @@ The original Copy CI job 111290828553 on `aade1f668f18c964dc905da5550c270954ef85
 The repair `fc8e0b711ea9e911ad25a84a0b3139f8e07e3ec0` passes the six-file, 31-control Copy cohort through root Turbo with `--only --force`: zero skips, 22.93 seconds of tests, 27.642 seconds total. Actual runtime hashes were checked before and after: WASM `7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b`, JS `4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d`. The complete source-labelled logs and hashes are retained in `receipts.json`; successful old CI is not represented as qualification of a new head.
 
 Production remains identical to the source-bound browser receipts in `../parent-boundary-forward/`; this test-only change requires fresh current-head CI and review before merging.
+
+## Review assertion strengthening
+
+Repair `387a4f835b67b3bb1d12a97992351227d406f586` changes only the deleted-boundary Trim test from accepting any thrown error to requiring `/^Boundary wall /`. The owning `element-trim-extend.test.ts` has four controls; all four pass without skips through root Turbo on the matching pinned runtime. Its source-labelled complete log and raw/compressed hashes are archived. No production behavior changes. Rerun through the repository root:
+
+```sh
+pnpm test --filter=@ifc-lite/create --only --force -- src/in-store/element-trim-extend.test.ts
+```
+
+The preceding six-file Copy receipt is independently rerunnable through root Turbo:
+
+```sh
+pnpm test --filter=@ifc-lite/create --only --force -- src/in-store/copy-product.test.ts src/in-store/copy-batch.test.ts src/in-store/copy-assembly.test.ts src/in-store/copy-work-budget.test.ts src/in-store/copy-parent-frame.e2e.test.ts src/in-store/copy-deep-assembly.e2e.test.ts
+```
+
+Build dependencies through root Turbo and verify the actual pinned native runtime before using `--only`; those flags intentionally avoid rebuilding or replacing runtime artifacts during these checks.

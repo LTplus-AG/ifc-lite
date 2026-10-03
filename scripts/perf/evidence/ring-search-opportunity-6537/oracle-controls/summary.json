@@ -1,0 +1,63 @@
+{
+  "sourceHead": "e975a29ff83abe6a01ad7d749c9d7dc429faee6a",
+  "sourceHashes": {
+    "rust/geometry/src/csg/consolidate/ring_ops.rs": "37b1961d9fd7a8fc01e5a1a44eac6f1c5f0f74a43b0fce0708b431769add8038",
+    "rust/geometry/src/csg/consolidate/ring_ops_tests.rs": "26c18e0d4d00c828a0051b52fbc585a4017daaf66d27cc5181cc0ab387268709",
+    "scripts/perf/opening-work-diagnostic.mjs": "c0cb413e98517ad560d4344165065abad4c68cac5843706745925332a7113758",
+    "scripts/perf/opening-work-diagnostic.test.mjs": "4ccc567da674c2fbd9deff41b65a4a33b7769118478d464834baf022b12b549d"
+  },
+  "scope": "Correctness controls only; no timing or mesh-production change",
+  "surgicalControls": [
+    {
+      "name": "node",
+      "mutation": "node.patch.gz",
+      "log": "node-oracle.log.gz",
+      "testedHead": "e975a29ff83abe6a01ad7d749c9d7dc429faee6a",
+      "verdict": "OBSERVED",
+      "restoration": "verified",
+      "baseline": {
+        "passed": 6,
+        "failed": 0
+      },
+      "mutated": {
+        "passed": 4,
+        "failed": 2,
+        "kind": "assertion-failure"
+      },
+      "restored": {
+        "passed": 6,
+        "failed": 0,
+        "log": "restored-node.log.gz"
+      }
+    },
+    {
+      "name": "rust",
+      "mutation": "rust.patch.gz",
+      "log": "rust-oracle.log.gz",
+      "testedHead": "e975a29ff83abe6a01ad7d749c9d7dc429faee6a",
+      "verdict": "OBSERVED",
+      "restoration": "verified",
+      "baseline": {
+        "passed": 6,
+        "failed": 0
+      },
+      "mutated": {
+        "passed": 4,
+        "failed": 2,
+        "kind": "assertion-failure"
+      },
+      "restored": {
+        "passed": 6,
+        "failed": 0,
+        "log": "restored-rust.log.gz"
+      }
+    }
+  ],
+  "wholeNodeRevert": {
+    "verdict": "REVERT-BROKE-BUILD",
+    "exit": 3,
+    "reason": "new aggregateOpeningCounters export removed; changed tests cannot load",
+    "restoration": "verified",
+    "log": "node-whole-revert.log.gz"
+  }
+}

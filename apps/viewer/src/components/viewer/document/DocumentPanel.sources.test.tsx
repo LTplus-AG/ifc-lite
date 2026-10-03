@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import '@/test/content-fixture.js';
 import { beforeEach, afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -43,6 +44,7 @@ ENDSEC; END-ISO-10303-21;`;
 }
 async function settle(): Promise<void> {
   for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+  await documentPreviewReady();
 }
 async function choose(select: HTMLSelectElement, value: string): Promise<void> {
   await act(async () => {
@@ -90,14 +92,17 @@ describe('Document field source and page-break UI (#6485)', () => {
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
     await choose(picker, property);
     await settle();
-    const preview = ui.querySelector('[data-preview-block="text"] [data-block-text]');
-    assert.equal(preview?.textContent, 'Structure / REI120');
+    const preview = () => ui.querySelector('[data-preview-block="text"] [data-block-text]');
+    assert.ok(preview()?.isConnected, 'the current composed sheet is mounted (#6731)');
+    assert.equal(preview()?.textContent, 'Structure / REI120');
     act(() => useViewerStore.setState({ activeModelId: 'b' }));
     await settle();
-    assert.equal(preview?.textContent, 'Structure / REI120');
+    assert.ok(preview()?.isConnected, 'the current composed sheet is mounted (#6731)');
+    assert.equal(preview()?.textContent, 'Structure / REI120');
     act(() => useViewerStore.setState({ activeModelId: 'a' }));
     await settle();
-    assert.equal(preview?.textContent, 'Structure / REI120');
+    assert.ok(preview()?.isConnected, 'the current composed sheet is mounted (#6731)');
+    assert.equal(preview()?.textContent, 'Structure / REI120');
     const saved = (await loadDocuments())[0];
     assert.ok(saved);
     const imported = parseDocumentFile(JSON.stringify(saved));

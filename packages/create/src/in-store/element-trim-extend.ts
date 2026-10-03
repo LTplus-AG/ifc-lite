@@ -92,7 +92,8 @@ export function trimExtendElementInStore(store: IfcDataStore, editor: StoreEdito
         walls.add(params.boundary.wallId);
       }
     } else {
-      const ownership = editOwnershipRefusal(store, view, [chain!.extrudedSolidId, chain!.startPointId], new Set([id]));
+      const writtenIds = [chain!.extrudedSolidId, ...(plan.end === 'start' ? [chain!.startPointId] : [])];
+      const ownership = editOwnershipRefusal(store, view, writtenIds, new Set([id]));
       if (ownership) throw new Error(ownership);
       draft.setPositionalAttribute(chain!.extrudedSolidId, 3, toNativeLength({ lengthUnitScale: scale }, plan.length));
       if (plan.end === 'start') draft.setPositionalAttribute(chain!.startPointId, 0, plan.start.map(v => toNativeLength({ lengthUnitScale: scale }, v)));

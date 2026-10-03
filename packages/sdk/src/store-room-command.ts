@@ -106,7 +106,7 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
             if (!applyLayoutOp(plate, op.operation, tolerance)) throw new Error('Room layout edit changed nothing');
             const after = readFaces(plate);
             const sync = host.record(modelId, draft => syncRoomLayoutInStore(draft.store, draft.editor, rooms, after, host.globalIdScopes?.() ?? []));
-            host.layouts.file(modelId, storeyId, weld, host.historyHead(modelId), entry.walls, plate);
+            host.layouts.file(modelId, storeyId, weld, host.historyHead(modelId), entry.walls, plate, after);
             transferred = true;
             return result(sync.created, sync.remesh.filter(id => !sync.created.includes(id)), sync.deleted);
           } finally { if (!transferred) plate.free(); }

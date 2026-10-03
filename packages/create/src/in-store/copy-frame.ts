@@ -59,6 +59,12 @@ export function turnThenMove(turn: number, pivot: readonly [number, number], off
   };
 }
 
+/** Both the preview planner and writer refuse arithmetic overflow. */
+export function finiteCopyFrame(frame: RigidFrame, units = 'native model units'): RigidFrame {
+  if (![...frame.origin, frame.c, frame.s].every(Number.isFinite)) throw new Error(`Copy frame must remain finite in ${units}`);
+  return frame;
+}
+
 export function numberTriple(value: unknown): CopyVec3 | null {
   if (!Array.isArray(value) || value.length < 2) return null;
   const out = [0, 0, 0].map((_, i) => (i < value.length ? value[i] : 0));

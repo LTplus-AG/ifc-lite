@@ -12,6 +12,9 @@ import { createCopyContext } from './copy-product.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { meshStairs as meshProducts, stairMeshBounds as bounds, stairWasmAvailable } from './__test__/stair-mesh.oracle.js';
 
+// This finite correctness stress control retains the 5000-level old-source
+// RangeError oracle. It took ~23.5 s focused, but 192607 ms in the concurrent
+// full CI suite (#6753); its deadline is not a performance threshold.
 it.skipIf(!stairWasmAvailable)('#6232 public Copy traverses a real 5000-level acyclic imported assembly without call-stack recursion', async () => {
   const bytes = await readFile(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
   let store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { disableWorkerScan: true });
@@ -52,4 +55,4 @@ it.skipIf(!stairWasmAvailable)('#6232 public Copy traverses a real 5000-level ac
   const after = bounds(meshes.get(wall)!);
   for (const edge of ['min', 'max'] as const) for (let i = 0; i < 3; i++)
     expect(after[edge][i] - before[edge][i]).toBeCloseTo(i === 1 ? 3 : 0, 4);
-}, 120000);
+}, 300000);

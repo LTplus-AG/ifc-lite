@@ -11,19 +11,19 @@ The real public SketchUp IFC is parsed to four walls; a real committed PNG is
 decoded and actual PDF bytes are independently read with PDF.js. This is paper
 correctness, not a new native-browser or performance claim.
 
-The red root-Turbo run completed 4PASS/1 genuine PDF output assertion failure,
-0skips; the new mounted/headless/translated subcontrols were UNRUN after that
+The red root-Turbo run completed 4 PASS/1 genuine PDF output assertion failure,
+0 skips; the new mounted/headless/translated subcontrols were UNRUN after that
 first PDF assertion. The unchanged new control on the minimal fix checks all
 four: captured English PDF, mounted English paper, headless English PDF and
 translated PDF after catalog/locale replacement during actual PNG preparation.
 
-The green selected root test graph completed 51PASS/0FAIL/0SKIP: five actual-PDF
+The green selected root test graph completed 51 PASS/0 FAIL/0 SKIP: five actual-PDF
 producer tests, three captured-number controls and 43 document invariants.
 Its logged missing chart column is the deliberate #6612 chart-failure control
 in document.test.ts; it is followed by that passing warning/output assertion.
-The exact plain root `pnpm typecheck` wrapper passed all111 Turbo tasks and its
-mandatory audit of 3,326 test files across57 packages. Root lint, module-size,
-source-text-test and test-wiring gates all exited0 under the same guardian.
+The exact plain root `pnpm typecheck` wrapper passed all 111 Turbo tasks and its
+mandatory audit of 3,326 test files across 57 packages. Root lint, module-size,
+source-text-test and test-wiring gates all exited 0 under the same guardian.
 
 `raw-red-green.tar.gz` contains complete red/green logs and guardian JSON, exact
 test-only/fix patches, gate logs/JSON and an internal SHA-256 file manifest.
@@ -31,7 +31,7 @@ Archive: 86417 bytes; SHA-256 `30a4b0f803852c7585605436199fb20438f4769f29a26d06d
 The evidence commit changes only this manifest/archive; qualified source,
 tests, dependencies and build inputs remain byte-identical.
 
-B's separate same-input image-reflow fix has its own actual17-test red/green
+B's separate same-input image-reflow fix has its own actual 17-test red/green
 qualification. C/D source propagation does not add new runtime/native claims;
 the inherited four-export native proof remains scoped to historical D325 only.
 Fresh exact-head CI and answered substantive review still gate each landing.

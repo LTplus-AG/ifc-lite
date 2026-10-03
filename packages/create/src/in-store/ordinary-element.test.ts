@@ -72,7 +72,12 @@ async function session(withOwnerHistory = false, wallType: 'IfcWall' | 'IfcWallS
 describe('#6232 D5 ordinary atomic commit', () => {
   for (const wallType of ['IfcWall', 'IfcWallStandardCase'] as const) {
     it(`#6710 still replaces a parsed ${wallType} source without weakening schema subtype admission`, async () => {
-      const s = await session(false, wallType), before = s.snapshot();
+      const s = await session(false, wallType);
+      // This admission control uses a host without live void relationships;
+      // the unmodified Bonsai host is the refusal control below.
+      s.editor.removeEntity(1328);
+      s.editor.removeEntity(1457);
+      const before = s.snapshot();
       expect(new EntityExtractor(s.store.source).extractEntity(s.store.entityIndex.byId.get(1222)!)?.type)
         .toBe(wallType.toUpperCase());
       // #6710: missing public capability must fail an assertion before the
@@ -92,6 +97,23 @@ describe('#6232 D5 ordinary atomic commit', () => {
         .toBe('IFCPRODUCTDEFINITIONSHAPE');
       expect(parsed.spatialHierarchy?.elementToStorey.get(replacement.expressId)).toBe(STOREY);
       expect(s.view.getMutations().slice(0, before.journal.length)).toEqual(before.journal);
+    });
+  }
+
+  for (const wallType of ['IfcWall', 'IfcWallStandardCase'] as const) {
+    it(`#6710 refuses a parsed ${wallType} with live openings before preparation, preserving fillings and exported bytes`, async () => {
+      const s = await session(false, wallType), before = s.snapshot(), bytes = s.saved(), next = s.view.peekNextExpressId();
+      let prepared = false;
+      expect(() => replaceElementInStore(s.store, s.editor, 1222, draft => {
+        prepared = true;
+        draft.addEntity('IfcCartesianPoint', [[99, 99, 99]]);
+        return resolveSpatialAnchor(s.store, STOREY, draft.getMutationView());
+      }, WALL)).toThrow(/unsupported hosted-opening source/);
+      expect(prepared).toBe(false);
+      expect(s.snapshot()).toEqual(before);
+      expect(s.view.peekNextExpressId()).toBe(next);
+      expect(s.saved()).toEqual(bytes);
+      for (const id of [1222, 1299, 1262, 1443, 1407, 1328, 1334, 1457, 1463]) expect(s.view.isDeleted(id)).toBe(false);
     });
   }
 

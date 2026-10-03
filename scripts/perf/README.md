@@ -27,6 +27,31 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Bundled main-first module sharing: mixed initial verdict (#6537)
+
+The original bundled initialization candidate removes the second observed WASM
+request before the default SDK worker pool. Its complete fresh-browser cohort
+retains equal CPU-channel output and full diagnostics across the fixed public
+families, but elapsed results are mixed: small-house loads improve, while the
+heavy CSG family includes slower pairs. Do not call this a general geometry fix
+or an all-model win. The revised failure-handling source has a separate pending
+comparison; the original success-path measurements do not qualify it.
+
+Starting shared acquisition exposes failure semantics that merely joining an
+existing optional promise did not exercise. Preserve the original rejection
+inside canonical retry, keep optional callers' null fallback, and use the same
+response for permitted MIME fallback. Fatal bytes must not trigger refetches;
+successful streaming must not leave an unnecessary cloned body. Behavioral
+controls and actual Vite/generated-loader execution establish those contracts.
+
+Lesson: count actual default-path requests before optimizing initialization,
+then measure whole worker-pool completion. Separately fresh engine builds can
+embed different absolute checkout paths even with identical Rust inputs; their
+individually qualified output is not binary identity or isolated-stage causality.
+Keep complete cohorts, superseded-source boundaries and failed test-oracle
+attempts explicit. [Original raw cohort, revised functional proof and scope](
+evidence/bundled-wasm-init-6537/README.md) are retained together for review.
+
 ## Direct vertex packing: do not ship the current candidate (#6537)
 
 The candidate removes an intermediate vertex buffer for eligible quantized

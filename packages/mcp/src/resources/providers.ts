@@ -96,7 +96,15 @@ class EntityProvider implements ResourceProvider {
     if (!m) return [];
     const model = getAllowedModel(ctx, m[1]);
     if (!model) return [];
-    const gid = decodeURIComponent(m[2]);
+    let gid: string;
+    try {
+      gid = decodeURIComponent(m[2]);
+    } catch {
+      // A malformed percent-escape cannot name any GlobalId: the same "no such
+      // entity" answer as an unknown id, not a thrown URIError (which the
+      // server would report as an internal error).
+      return [];
+    }
     // `findByGlobalId` + `bim.entity`, so the header agrees with the body: this
     // used to scan the parsed store for the header fields and then fill the rest
     // from `bim.*`, which folds — one payload reporting a stale name beside

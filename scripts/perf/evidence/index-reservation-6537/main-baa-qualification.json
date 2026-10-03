@@ -1,0 +1,111 @@
+{
+  "main": "baa7d34db1be4bc8bf0b3479df33275da3130fc6",
+  "qualificationSourceHead": "b344900031121f57a8f115404df109d56fb22e80",
+  "rustTree": "6221857909775c81662e5396af964678c84d8d68",
+  "sourceScope": "Four production modules and scanner regression file preserve the prior mechanism exactly; main production Rust input includes the landed worker heartbeat. Subsequent evidence-only commit does not change Rust.",
+  "checks": [
+    {
+      "phase": "core-scanner-regressions",
+      "startedUTC": "2026-10-02T23:48:24.515891+00:00",
+      "cwd": "/home/louistrue/wt/6537-initial-reserve-main04e-session6503",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "ifc-lite-core",
+        "--test",
+        "issue_6537_initial_index_reservation"
+      ],
+      "minimumStartKiB": 25165824,
+      "minimumLiveKiB": 8388608,
+      "maximumTreeRssKiB": 12582912,
+      "initialAvailableKiB": 44519848,
+      "scope": "Correctness-only run under host load; no timing/performance verdict.",
+      "peakTreeRssKiB": 1140696,
+      "minimumObservedAvailableKiB": 43584096,
+      "ownedProcessGroup": 64107,
+      "childExit": 0,
+      "exit": 0,
+      "endedUTC": "2026-10-02T23:49:26.840004+00:00",
+      "logSHA256": "8e40574c2e41812752f0c72f8d246c51f009729b38c2db160690322ce29d9df4",
+      "logBytes": 3037
+    },
+    {
+      "phase": "strict-workspace-clippy",
+      "startedUTC": "2026-10-02T23:49:41.691376+00:00",
+      "cwd": "/home/louistrue/wt/6537-initial-reserve-main04e-session6503",
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "minimumStartKiB": 25165824,
+      "minimumLiveKiB": 8388608,
+      "maximumTreeRssKiB": 12582912,
+      "initialAvailableKiB": 44516624,
+      "scope": "Correctness-only run under host load; no timing/performance verdict.",
+      "peakTreeRssKiB": 1670232,
+      "minimumObservedAvailableKiB": 43181896,
+      "ownedProcessGroup": 67572,
+      "childExit": 0,
+      "exit": 0,
+      "endedUTC": "2026-10-02T23:50:50.553441+00:00",
+      "logSHA256": "3928506f4fb2946f01a1ae3743612dae4b3f11742ae7616eb4b49a1a2e6fc69b",
+      "logBytes": 10260
+    }
+  ],
+  "nativeBuild": {
+    "head": "b344900031121f57a8f115404df109d56fb22e80",
+    "rustTree": "6221857909775c81662e5396af964678c84d8d68",
+    "actualBuildExit": 0,
+    "binarySHA256": "643cf4743b8b4a0f52430bcc19791ada30e2c56e9b9c38865bcfb69b20fd7307",
+    "binaryBytes": 23909728,
+    "binaryNewerThanAllInputs": true,
+    "buildLogSHA256": "c8f2fe379940dd7c9cb8a0e3cfa9e65bdbf35b54f246166eb167d9c614358263"
+  },
+  "nativeComparisonAttempt": {
+    "status": "EXCLUDED_BEFORE_ANY_PROBE",
+    "pairsMeasured": 0,
+    "sourceSHA256": "ba040f08d96e2d69d7a8bddd66f995041272d87efb0a22f2038b2924b629785d",
+    "linuxActiveGraphs": [],
+    "linuxAvailableKiB": 43922568,
+    "windowsSamples": [
+      {
+        "capturedAt": "2026-10-02T23:57:31.3663852Z",
+        "totalProcessorPercent": 14,
+        "freePhysicalKiB": 35138552,
+        "totalVisiblePhysicalKiB": 100294828
+      },
+      {
+        "capturedAt": "2026-10-02T23:57:32.7163526Z",
+        "totalProcessorPercent": 22,
+        "freePhysicalKiB": 35103388,
+        "totalVisiblePhysicalKiB": 100294828
+      },
+      {
+        "capturedAt": "2026-10-02T23:57:34.0625873Z",
+        "totalProcessorPercent": 12,
+        "freePhysicalKiB": 35101816,
+        "totalVisiblePhysicalKiB": 100294828
+      }
+    ],
+    "failure": {
+      "type": "RuntimeError",
+      "message": "Idle/resource guard refused before probe; no sample substitution"
+    },
+    "replacements": false,
+    "scope": "Same declared dual-host admission; no timings generated or pooled with historical cohorts."
+  },
+  "remaining": [
+    "Full current-source build and WASM attribution/contracts",
+    "Full Rust runtime and root TypeScript/test-program audit",
+    "Current-source production inverse",
+    "Interleaved native heavy and default-worker end-to-end public-model comparisons/output identities",
+    "Final-source CI and all substantive review resolved"
+  ],
+  "performanceVerdict": "PENDING: current native comparison excluded before any probe; no end-to-end or physical-peak-memory result; keep draft unmerged."
+}

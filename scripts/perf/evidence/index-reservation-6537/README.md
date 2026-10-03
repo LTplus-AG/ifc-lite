@@ -33,7 +33,7 @@ The frozen candidate is `9c9132fd12301250a88dfc6d08eac8ebc19e4e2e`, based on
 `bd0d02782b92581ed8e007effc9d00e37a09476e`. Its production WASM is SHA-256
 `f2f35ff9284bfa8ff57aaa31d724462a44f50bb573cdedb3d7ada33ff1d8547a`.
 The main integration preserves its four changed production modules and dense/
-commented test file exactly. This successor integrates main `a1b53db95e3738f8f9d9e330dd16531583e2a730`.
+commented test file exactly. That historical successor integrated main `a1b53db95e3738f8f9d9e330dd16531583e2a730`.
 The four production modules and regression test remain byte-identical to the
 previously qualified `9af8964367895b53904189f1d62e8a07a08e10fd` integration.
 All unrelated main files remain byte-identical. The performance ledger retains
@@ -67,14 +67,24 @@ the candidate and failed one actual assertion when production was restored;
 restoration was verified. Those results belong to its source and runtime,
 not this current-main successor.
 
-This successor passed the two Rust scanner regressions and strict
-`cargo clippy --workspace --all-targets -- -D warnings` on its current Rust tree.
-The [current-source receipt](current-source-qualification.json) records exact
-source attribution and log hashes. These correctness runs under host load are
-not performance measurements. Its own full build, WASM contracts, root
-typecheck, workspace runtime tests and inverse remain pending.
-Completed source-matched public corpus/default-pool A/B, retained
-output identities and an end-to-end verdict also remain pending. A draft PR
-may run those correctness gates remotely while measurement resources are
-busy; it must stay unmerged until the final source, review and performance
-verdict qualify. Numeric evidence will retain every excluded attempt.
+The historical a1b-based successor passed its two scanner regressions and
+strict workspace Clippy; its [historical receipt](current-source-qualification.json)
+keeps those results attached to their original source.
+
+The latest normal merge integrates main `baa7d34db1be4bc8bf0b3479df33275da3130fc6`.
+Its four production changes and scanner test remain byte-identical to the prior
+mechanism. Both native profiling executables were freshly compiled from the
+exact base and candidate, without copying artifacts. The candidate's two
+scanner regression cases and strict workspace Clippy passed on this Rust tree.
+The [latest source receipt](main-baa-qualification.json) records actual commands,
+log hashes, resource bounds and executable identity. These checks ran under
+host load and supply no performance verdict.
+
+The fixed native comparison stopped at its first admission check before any
+probe executed. Linux graph/memory checks passed; Windows CPU checks refused.
+The excluded attempt and its observations are retained without substitutes or
+pooling with historical runs. Current full build, WASM contracts, root
+typecheck/audit, workspace runtime tests and inverse remain pending.
+Source-matched native heavy/default-worker A/B, output identities and resolved
+review also remain pending. This draft must stay unmerged until the final source
+and an end-to-end verdict qualify; no speedup or physical-memory claim is made.

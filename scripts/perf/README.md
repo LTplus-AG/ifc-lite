@@ -39,8 +39,8 @@ final table size, source copies or physical process memory.
 Dense and comment-heavy behavioral controls preserve exact spans and duplicate
 replacement. This differs from the rejected viewer shared-index conversion:
 no intermediate shared-index representation is introduced. The current-main
-candidate is still awaiting its own functional qualification and completed
-heavy/default-worker controls. No speedup, universal model coverage or unknown
+candidate passes its scanner regressions and strict workspace Clippy. Full
+runtime/contracts and completed heavy/default-worker controls remain pending. No speedup, universal model coverage or unknown
 private-file reproduction is established.
 
 Lesson: bound allocation speculation separately from genuine record growth,

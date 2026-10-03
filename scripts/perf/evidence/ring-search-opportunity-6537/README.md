@@ -63,3 +63,19 @@ interpreting work. Revisit neighbour indexing only after a canonical public-mode
 profile demonstrates substantial search cost, then preserve exact ascending
 sweep order, predicates, coordinates and topology and qualify ordinary
 end-to-end worker-pool A/B on representative fixtures.
+
+The [oracle controls](oracle-controls/summary.json) retain two surgical changes
+at source head `e975a29ff`: count only the first predecessor probe, and add
+job maximum distances instead of taking their maximum. Each official oracle
+collected six passing controls, then four passes and two genuine assertion
+failures; independent restored runs passed all six. Test registration and
+production interfaces stayed present, and restoration was byte-verified. The
+five feature-specific Rust tests explicitly declare their feature so the oracle
+schedules them. These are correctness controls, not performance comparisons.
+
+The separately retained whole Node production revert removes the new helper
+export and cannot load its tests (`REVERT-BROKE-BUILD`, exit 3). It establishes
+no assertion observation. Complete logs, applied patches and guardian receipts
+are losslessly archived with digests in `oracle-controls/`; the original native
+receipts remain unchanged. Later evidence-only commits do not relabel the
+qualified source head.

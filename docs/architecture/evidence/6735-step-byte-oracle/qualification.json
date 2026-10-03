@@ -1,0 +1,200 @@
+{
+  "issue": 6735,
+  "scope": "Exact-byte test-harness assertion. Correctness qualification under host load; no browser or worker-pool performance claim.",
+  "runtimeSourceHead": "b51481d3271e9b259fac12452ad81d1063899c52",
+  "runtimeSourceTree": "84aa7ffc51dda71dde78639f0cd4e41a4c136d79",
+  "runtimeMainBase": "04e8c6752778a444628507478b381ad920979fa6",
+  "sourceInputs": {
+    "files": 1415,
+    "sha256": "ada1618bac9bf084fb71cb25513f34f6eeb280489b9d4149bcf1f7cf033acd4c"
+  },
+  "normalTestSourceSHA256": "25b6bf6f8493923b1907a6ad41167b7a0344f76583fa7a04dd7ef90d8e46c2c9",
+  "freshWasm": {
+    "path": "packages/wasm/pkg/ifc-lite_bg.wasm",
+    "bytes": 9510989,
+    "sha256": "ba427f74b12b222d081432173c7a74567dbf482520cda62ab0c2fa84d94f5cf0"
+  },
+  "catalogueFixtures": [
+    {
+      "path": "ara3d/AC20-FZK-Haus.ifc",
+      "bytes": 2526544,
+      "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+      "catalogueMatch": true
+    },
+    {
+      "path": "georeferencer/MiniBIM-3.1-DO_01_VORM.ifc",
+      "bytes": 7459201,
+      "sha256": "7d3ae097a2f1ca5e63f7698d12215cb58427cdb6a932e75e6bf1ca222bcf873b",
+      "catalogueMatch": true
+    }
+  ],
+  "versions": {
+    "node": "v24.21.0",
+    "pnpm": "10.8.1",
+    "rust": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+  },
+  "rootDependencyBuild": {
+    "passed": 13,
+    "cacheHits": 0
+  },
+  "forcedWasmBuild": {
+    "passed": 1,
+    "cacheHits": 0
+  },
+  "normal": {
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0
+  },
+  "restoredNormal": {
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0,
+    "prospectiveIdentityReceipt": true
+  },
+  "originalSurfaceOracles": [
+    {
+      "path": "ara3d/AC20-FZK-Haus.ifc",
+      "productCount": 127,
+      "changedRoots": 4,
+      "surfaces": [
+        {
+          "expressId": 17040,
+          "maximumDistanceMetres": 1.079029028611749e-05
+        },
+        {
+          "expressId": 18698,
+          "maximumDistanceMetres": 9.153082629860414e-06
+        },
+        {
+          "expressId": 21966,
+          "maximumDistanceMetres": 8.697706520137826e-06
+        },
+        {
+          "expressId": 17468,
+          "maximumDistanceMetres": 2.340179629536127e-08
+        }
+      ]
+    },
+    {
+      "path": "georeferencer/MiniBIM-3.1-DO_01_VORM.ifc",
+      "productCount": 2668,
+      "changedRoots": 1,
+      "surfaces": [
+        {
+          "expressId": 135719,
+          "maximumDistanceMetres": 6.303738434049471e-06
+        },
+        {
+          "expressId": 135923,
+          "maximumDistanceMetres": 0.00028883472059044725
+        },
+        {
+          "expressId": 137489,
+          "maximumDistanceMetres": 1.354272913674895e-05
+        },
+        {
+          "expressId": 200207,
+          "maximumDistanceMetres": 1.1821300674173484e-05
+        },
+        {
+          "expressId": 147941,
+          "maximumDistanceMetres": 6.315283014681197e-07
+        },
+        {
+          "expressId": 201198,
+          "maximumDistanceMetres": 1.1820096492400631e-05
+        },
+        {
+          "expressId": 148007,
+          "maximumDistanceMetres": 8.12892136375846e-06
+        },
+        {
+          "expressId": 201979,
+          "maximumDistanceMetres": 8.243837582759866e-06
+        },
+        {
+          "expressId": 202696,
+          "maximumDistanceMetres": 1.2010592741270724e-06
+        },
+        {
+          "expressId": 136868,
+          "maximumDistanceMetres": 2.6821211430015364e-08
+        }
+      ]
+    }
+  ],
+  "negativeWitnesses": [
+    {
+      "mutation": "length-only",
+      "passed": 3,
+      "failed": 2,
+      "skipped": 0,
+      "models": [
+        "ara3d/AC20-FZK-Haus.ifc",
+        "georeferencer/MiniBIM-3.1-DO_01_VORM.ifc"
+      ],
+      "actualFailure": "AssertionError: expected [Function] to throw an error",
+      "timeoutOrLoadFailure": false,
+      "helperOnlyPatch": "diff --git a/packages/export/src/step-map-rigid-fixtures.test.ts b/packages/export/src/step-map-rigid-fixtures.test.ts\nindex 23128045b..7e450ed9b 100644\n--- a/packages/export/src/step-map-rigid-fixtures.test.ts\n+++ b/packages/export/src/step-map-rigid-fixtures.test.ts\n@@ -47,7 +47,7 @@ describe('fail-closed fixture policy (#6692)', () => {\n });\n // #6735: compare the complete real-fixture STEP bytes without a per-byte deep matcher.\n function assertIdenticalStepBytes(actual: Uint8Array, expected: Uint8Array): void {\n-  expect(Buffer.compare(actual, expected), 'STEP bytes differ').toBe(0);\n+  expect(actual.length === expected.length ? 0 : 1, 'STEP bytes differ').toBe(0);\n }\n \n async function parse(content: string | Uint8Array) {\n",
+      "traceSHA256": "71a1c171887cb9750f324ce69e15bfba8b25b403d0ee717fa15dc17446a1d7b6"
+    },
+    {
+      "mutation": "prefix-only",
+      "passed": 3,
+      "failed": 2,
+      "skipped": 0,
+      "models": [
+        "ara3d/AC20-FZK-Haus.ifc",
+        "georeferencer/MiniBIM-3.1-DO_01_VORM.ifc"
+      ],
+      "actualFailure": "AssertionError: expected [Function] to throw an error",
+      "timeoutOrLoadFailure": false,
+      "helperOnlyPatch": "diff --git a/packages/export/src/step-map-rigid-fixtures.test.ts b/packages/export/src/step-map-rigid-fixtures.test.ts\nindex 23128045b..fa68302c0 100644\n--- a/packages/export/src/step-map-rigid-fixtures.test.ts\n+++ b/packages/export/src/step-map-rigid-fixtures.test.ts\n@@ -47,7 +47,8 @@ describe('fail-closed fixture policy (#6692)', () => {\n });\n // #6735: compare the complete real-fixture STEP bytes without a per-byte deep matcher.\n function assertIdenticalStepBytes(actual: Uint8Array, expected: Uint8Array): void {\n-  expect(Buffer.compare(actual, expected), 'STEP bytes differ').toBe(0);\n+  const length = Math.min(actual.length, expected.length) - 1;\n+  expect(Buffer.compare(actual.subarray(0, length), expected.subarray(0, length)), 'STEP bytes differ').toBe(0);\n }\n \n async function parse(content: string | Uint8Array) {\n",
+      "traceSHA256": "38cfc87f99bf29f8efc8fe4855b9b08427f61f7f931d3a2c880a40a28259f548"
+    }
+  ],
+  "typecheck": {
+    "command": [
+      "pnpm",
+      "exec",
+      "turbo",
+      "typecheck",
+      "--concurrency=1"
+    ],
+    "tasksPassed": 111,
+    "tasksTotal": 111
+  },
+  "testProgramAudit": {
+    "command": [
+      "node",
+      "scripts/typecheck-tests.mjs",
+      "--audit"
+    ],
+    "filesCovered": 3319,
+    "packagesCovered": 57
+  },
+  "allProductionAndTestSourceRestored": true,
+  "allRuntimeAndFixtureHashesPreserved": true,
+  "guardian": {
+    "minimumStartKiB": 25165824,
+    "minimumLiveKiB": 8388608,
+    "maximumTreeRssKiB": 12582912,
+    "maximumObservedOwnedTreeRssKiB": 4036424,
+    "aborts": 0
+  },
+  "localTraceSHA256": {
+    "root-build": "3fe1a66013992f272740fd9d07e945b97683803634bf55c0240b5dbbd7f0a688",
+    "forced-wasm": "d37c6ee81adebbe55d462881098040c57836fe1fa0a23162e9116e799f1fcee9",
+    "normal-fixture": "2aa34a36a50171caacbae8857203ced3263c301b8c34f17be6713ecbbb178958",
+    "length-only-fixture": "71a1c171887cb9750f324ce69e15bfba8b25b403d0ee717fa15dc17446a1d7b6",
+    "prefix-only-fixture": "38cfc87f99bf29f8efc8fe4855b9b08427f61f7f931d3a2c880a40a28259f548",
+    "restored-normal-fixture": "b5b9824ba25efc53e6667bba93517ece9d5f69a9d2cf6eddaf34399f3ae32d67",
+    "root-typecheck": "d902fab8fa97ba0692edaacaf3e596bac429d86b6072ef07482bfad57f1b1cbb",
+    "test-program-audit": "c11686cb0468f12bb09f35d6d2f824bb94860cb1100e18033a5f0da461a7af86"
+  },
+  "operationalCorrections": [
+    "First normal run succeeded, but its auxiliary pretest artifact receipt failed on a nonexistent emitted geometry-converter.js path after source verification/WASM reads. Retained failure, recorded actual geometry-coordinate.js afterward, enabled fail-fast shell boundaries, then captured full source/runtime/fixture identity prospectively before the successful restored-normal run. No claim that the first normal had a complete pretest receipt.",
+    "Initial negative-log parser expected identical assertion text twice. Vitest grouped both model failures under one assertion. Retained parser failure and qualified from both actual FAIL model contexts plus explicit2-fail/3-pass summary; no additional mutation test run."
+  ]
+}

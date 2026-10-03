@@ -9,6 +9,8 @@ import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-
 import { canReuseWorkerSource, type BytePrepassApi, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
 import { applyStyleFinishes } from './style-finishes.js';
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
+import * as wasmBindings from '@ifc-lite/wasm';
+import { createInCallHeartbeat, installInCallHeartbeat, postWorkerHeartbeat } from './in-call-heartbeat.js';
 import { initWasmWithRetry } from './wasm-init-retry.js';
 import { largeFilePrepassError } from './huge-file-error.js';
 import { isWasmRuntimeTrap } from './wasm-runtime-trap.js';
@@ -497,6 +499,7 @@ let cachedWasmUrl: string | undefined = undefined;
 async function ensureInit(): Promise<IfcAPI> {
   if (api) return api;
   await initWasmWithRetry(() => init(cachedWasmUrl), { label: 'geometry.worker' });
+  installInCallHeartbeat(wasmBindings, inCallHeartbeat);
   api = new IfcAPI();
   mergeLayersApplied = false;
   applyMergeLayersToApi();
@@ -813,12 +816,7 @@ let activeSession: ProcessingSession | null = null;
 let batchSizing: BatchSizingConfig = DEFAULT_BATCH_SIZING;
 let adaptiveBatchJobs = batchSizing.maxJobs;
 
-/** Liveness ping (no slice context) for recovery paths that recurse/re-init. */
-function postWorkerHeartbeat(): void {
-  (self as unknown as Worker).postMessage(
-    { type: 'progress', processedJobs: 0, totalJobs: 0 } as GeometryWorkerProgressMessage,
-  );
-}
+const inCallHeartbeat = createInCallHeartbeat(postWorkerHeartbeat);
 
 function startSession(input: {
   sharedBuffer: SharedArrayBuffer;
@@ -1287,7 +1285,7 @@ async function processSliceStreaming(session: ProcessingSession, jobsFlat: Uint3
       { type: 'progress', processedJobs: jobOffset, totalJobs, seq, callJobs: jobsThisBatch, diagnostics } as GeometryWorkerProgressMessage,
     );
     const callStart = performance.now();
-    await processBatch(session, jobsFlat.subarray(start, end));
+    await inCallHeartbeat.run(() => processBatch(session, jobsFlat.subarray(start, end)));
     flushPending(session);
     // Resize the next call from this one's measured throughput so the silent
     // window stays near TARGET_BATCH_MS regardless of CSG density (#1097).
@@ -1581,6 +1579,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         // `undefined` and threw `new WebAssembly.Module(undefined)`, which is
         // why the shared-module path was never actually taken.
         initSync({ module: e.data.wasmModule });
+        installInCallHeartbeat(wasmBindings, inCallHeartbeat);
         api = new IfcAPI();
         mergeLayersApplied = false;
         applyMergeLayersToApi();

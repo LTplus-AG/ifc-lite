@@ -9421,6 +9421,7 @@
     "intersection2d: function",
     "meshOutline2d: function",
     "resolve2d: function",
+    "setGeometryProgressCallback: function",
     "splitMeshByZones: function",
     "union2d: function",
     "version: function"

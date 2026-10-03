@@ -59,7 +59,6 @@ import { GeoreferencingPanel } from './properties/GeoreferencingPanel';
 import { RawStepCard } from './properties/RawStepCard';
 import { UnitDisplayControl } from './properties/UnitDisplayControl';
 import { EntityHeaderActions } from './properties/EntityHeaderActions';
-import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
 import { attributesFromOverlayEntity } from './properties/overlayAttributes';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
@@ -1217,7 +1216,7 @@ export function PropertiesPanel() {
     }
     // Multi-model or no model loaded: show empty state
     return (
-      <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
+      <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
           <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">{t('properties.panel.title')}</h2>
         </div>
@@ -1237,7 +1236,7 @@ export function PropertiesPanel() {
   const entityGlobalId = renderedEntityGlobalId;
 
   return (
-    <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
+    <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
       {/* Entity Header */}
       <div className="p-4 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black space-y-3">
         <div className="flex items-start gap-3">

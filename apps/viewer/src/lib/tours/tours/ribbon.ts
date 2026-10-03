@@ -34,24 +34,17 @@ export const RIBBON_TOUR: TourDefinition = {
       },
     },
     {
-      id: 'open-view',
-      kind: 'action',
-      anchor: TOUR_ANCHORS.ribbonTabs,
-      placement: 'bottom',
-      title: 'Open the View tab',
-      body: 'Click View. Each tab swaps the band beneath it for its own groups.',
-      gate: { predicate: (s) => s.ribbonTab === 'view' },
-    },
-    {
       id: 'follow-work',
       kind: 'passive',
       anchor: TOUR_ANCHORS.ribbonFollowWork,
       placement: 'bottom',
-      // Idempotent re-open: the anchors below live in the View band, and the
-      // user may have skipped the step that opened it.
+      // The tour opens the View band itself: the anchors below live there.
+      // An "Open the View tab" action step used to do it and was skipped in
+      // 70 of 76 field runs, on the same tab strip the step before had just
+      // spotlighted; the switch is now shown, not assigned.
       prepare: (store) => store.getState().setRibbonTab('view'),
       title: 'Tabs follow your work',
-      body: 'Select something in 3D and the Elements tab opens itself; clear the selection and you land back where you were. Turning on edit mode does the same for Author. Follow work switches that off if you would rather steer by hand.',
+      body: 'This is the View tab: each tab swaps the band beneath it for its own groups. Select something in 3D and the Elements tab opens itself; clear the selection and you land back where you were. Turning on edit mode does the same for Author. Follow work switches that off if you would rather steer by hand.',
     },
     {
       id: 'collapse',

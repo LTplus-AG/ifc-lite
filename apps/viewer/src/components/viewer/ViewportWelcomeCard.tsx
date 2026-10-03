@@ -12,12 +12,12 @@
  * without growing it. Living here it is also testable on its own.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Upload, Clock3, Sparkles, ArrowUpRight, PackagePlus, Cloud, ShieldCheck, Building2, GitMerge } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
 import { toast } from '@/components/ui/toast';
-import { fetchDemoProjectFile } from '@/lib/tours/demo-kit';
+import { loadDemoProjectVia } from '@/lib/tours/demo-kit';
 import { MODEL_FILE_EXTENSIONS } from '@/services/supported-model-files';
 import { useViewerStore } from '@/store';
 import type { WebGPUStatus } from '@/hooks/useWebGPU';
@@ -26,6 +26,7 @@ import { WebGpuDisabledCaption } from './WebGpuTroubleshooting';
 import { TourInvite } from '@/components/tours/TourInvite';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
+import { trackUiEvent } from '@/lib/analytics';
 
 /** Plain CSS text, not UI copy — kept as a module-level constant (rather than
  *  an inline `<style>{`…`}</style>` template literal) so the i18n literal
@@ -60,14 +61,18 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   const { t } = useTranslation();
   const actionsDisabled = !webgpu.supported || webgpu.checking;
   const [demoLoading, setDemoLoading] = useState(false);
+  // One impression per mount: the denominator for the two clicks below.
+  useEffect(() => { trackUiEvent('onboarding_surface', { surface: 'welcome_card', action: 'shown' }); }, []);
 
   // The first-run primary action (#5840): 43% of sessions never loaded a
   // model, and the sample the tours use already ships with the viewer. It
   // goes through the same `loadFile` as every other open.
   const loadDemo = async () => {
+    // Which way in a first visit takes; the panel empty state reports the same pair.
+    trackUiEvent('onboarding_surface', { surface: 'welcome_card', action: 'load_sample' });
     setDemoLoading(true);
     try {
-      await loadFile(await fetchDemoProjectFile());
+      await loadDemoProjectVia(loadFile);
     } catch (err) {
       console.error('[welcome] demo project failed to load', err);
       toast.error(t('viewportLighting.container.emptyState.loadDemo.failed'));
@@ -146,7 +151,10 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
 
       <button
         type="button"
-        onClick={onOpenClick}
+        onClick={() => {
+          trackUiEvent('onboarding_surface', { surface: 'welcome_card', action: 'open_file' });
+          onOpenClick();
+        }}
         disabled={actionsDisabled}
         className={`group w-full flex items-center justify-center gap-3 px-6 py-3 font-mono text-sm border transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
           actionsDisabled

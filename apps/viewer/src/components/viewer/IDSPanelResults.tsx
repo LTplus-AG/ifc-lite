@@ -17,8 +17,10 @@
  * targeted (it already ran across all of them in one pass).
  */
 
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { ValidationBenchmark } from './validation/ValidationBenchmark';
+import { AnalysisStaleRegion } from './analysis/AnalysisPanel';
+import { ValidationResultsSplit } from './validation/ValidationResultsSplit';
 import { validationReportSummary } from '@/lib/validation/report-summary';
 import { Boxes, Eye, EyeOff, Filter, Focus, Layers, Palette } from 'lucide-react';
 import type { ValidationReport, IDSAuditReport } from '@ifc-lite/ids';
@@ -42,6 +44,8 @@ import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 interface IDSPanelResultsProps {
   results: UseValidationResults;
+  /** Growing definition/editor controls scroll with the summary (#6690). */
+  summaryControls?: ReactNode;
   /** IDS-only: re-run against a different federated model. Unused (never
    *  called) for a rule-set report — its switcher does not render. */
   runValidation: (targetModelId?: string) => Promise<ValidationReport | null>;
@@ -62,6 +66,7 @@ interface IDSPanelResultsProps {
 
 export function IDSPanelResults({
   results,
+  summaryControls,
   runValidation,
   auditReport = null,
   multiModel: idsMultiModel = false,
@@ -101,7 +106,9 @@ export function IDSPanelResults({
   const involvedLabel = involvedActive ? t('idsPanel.showAllInvolved') : t(specScope ? 'idsPanel.isolateInvolvedSpec' : 'idsPanel.isolateInvolvedIds');
 
   return (
-    <>
+    <ValidationResultsSplit summary={<>
+      {summaryControls}
+      <AnalysisStaleRegion>
       {auditReport && auditReport.status !== 'valid' && (
         <div className="p-3 border-b">
           <IDSAuditSummary report={auditReport} auditing={false} />
@@ -289,7 +296,10 @@ export function IDSPanelResults({
         </div>
       </div>
 
-      <ScrollArea className="flex-1" {...tourAnchor(TOUR_ANCHORS.idsResults)}>
+      </AnalysisStaleRegion>
+    </>}>
+      <AnalysisStaleRegion className="flex-1 min-h-0 flex flex-col">
+      <ScrollArea className="flex-1 min-h-0" {...tourAnchor(TOUR_ANCHORS.idsResults)}>
         <div className="p-2 space-y-2">
           {report.specificationResults.map((specResult) => (
             <SpecificationCard
@@ -306,6 +316,7 @@ export function IDSPanelResults({
           ))}
         </div>
       </ScrollArea>
-    </>
+      </AnalysisStaleRegion>
+    </ValidationResultsSplit>
   );
 }

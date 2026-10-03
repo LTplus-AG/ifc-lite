@@ -22,7 +22,7 @@ import { trackExportCompleted } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { blankDocument, DOCUMENT_PRESETS } from '@/lib/document/presets';
-import { freshBlockId, freshListCopyId } from '@/lib/document/persistence';
+import { copyDocumentBlock, freshBlockId, freshListCopyId } from '@/lib/document/persistence';
 import { LIST_PRESETS } from '@/lib/lists';
 import { newChartSpec } from '@/lib/charts/presets';
 import { largestBucketIds } from '@/lib/charts/buckets';
@@ -90,6 +90,17 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const remove = useCallback((id: string) => deleteDocument(id).then(warnUnsaved), [deleteDocument, warnUnsaved]);
   const update = upsert;
   const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update({ ...document, blocks }); }, [document, update]);
+
+  const copyBlock = (id: string): void => {
+    const live = useViewerStore.getState();
+    const current = live.documents.find((entry) => entry.id === live.activeDocumentId);
+    const index = current?.blocks.findIndex((block) => block.id === id) ?? -1;
+    if (!current || index < 0) return;
+    const copy = copyDocumentBlock(current.blocks[index]);
+    // Read current content so consecutive copies keep each other's staged durable writes.
+    void update({ ...current, blocks: [...current.blocks.slice(0, index + 1), copy, ...current.blocks.slice(index + 1)] });
+    setSelectedBlockId(copy.id);
+  };
 
   const addBlock = (kind: Exclude<DocumentBlock['kind'], 'ids-report' | 'manual-report'>): void => {
     if (!document) return;
@@ -248,6 +259,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
                     [blocks[index], blocks[target]] = [blocks[target], blocks[index]];
                     setBlocks(blocks);
                   }}
+                  onCopy={() => copyBlock(block.id)}
                   onRemove={() => setBlocks(document.blocks.filter((b) => b.id !== block.id))}
                 />
               </div>

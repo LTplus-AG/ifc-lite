@@ -75,3 +75,16 @@ metamorphic millimetre/IFC4X3 controls are not independent vendor fixtures.
 Later main SpaceEnvelope is preserved and separately tested, outside that
 charter. These browser runs do not replace required current-head CI, current
 review, resolution of every feedback thread, or final main integration.
+
+The recorded Room failure is retained in `room-before-failed.json.gz` and its
+original error log. `node producers/audit-room-before.cjs` (from this evidence
+directory) proves that the narrowed export identity comparison still detects
+all three actual class changes: GrossFloorArea and NetFloorArea become Count,
+and GrossVolume becomes Count. It removes no quantity class, name, value or
+unit from the oracle. `metadata-graph.cjs` normalizes only IDs/GUIDs of export
+generated Pset/Qto scaffolding absent from both persistent source and overlay;
+it rejects unexpected nonpersistent entity classes. Persistent product IDs and
+GUIDs remain exact. This is necessary because export allocates scaffold IDs
+above the monotonic allocator and creates fresh container GUIDs each time.
+The future Room producer retains both raw and canonical graphs; this adjustment
+does not turn the failed Room run into a pass.

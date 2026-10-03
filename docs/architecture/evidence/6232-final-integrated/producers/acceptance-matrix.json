@@ -6,8 +6,8 @@
     "Duplicate is a copy-route follow-up, not a 25th frozen command",
     "Inspector size/defaults/profile and ChangeSet/history are cross-cutting acceptance controls"
   ],
-  "captureState": "PRODUCERS READY; NO FINAL CAPTURE RUN",
-  "alignRegisteredNativeProof": "Registered-command native controls passed 5/5; final-head browser capture remains pending",
+  "captureState": "Physical, Align and Placement passed on integrated bfc6d467 in WSL Chrome with one and two models; Room cut Undo blocked on quantity metadata",
+  "alignRegisteredNativeProof": "Registered-command native controls passed; six-mode SDK browser controls passed on bfc6d467 with two targets requiring distinct shifts in one and two model contexts",
   "pending": [
     "Final integrated parent ancestry, source and WASM must be freshly qualified",
     "All required PR checks and actual feedback must be resolved before merge"
@@ -25,7 +25,7 @@
       "command": "wall.place",
       "sdk": "addWall",
       "mcp": "run_flow: wall",
-      "tests": "ordinary-element.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "tests": "ordinary-element.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
       "browser": "physical: authored-wall",
       "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
     },
@@ -41,7 +41,7 @@
       "command": "slab.place",
       "sdk": "addSlab",
       "mcp": "run_flow: slab",
-      "tests": "ordinary-element.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "tests": "ordinary-element.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
       "browser": "placement: slab",
       "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
     },
@@ -49,7 +49,7 @@
       "command": "column.place",
       "sdk": "addColumn",
       "mcp": "run_flow: column",
-      "tests": "column.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "tests": "column.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
       "browser": "align: column-a/column-b",
       "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
     },
@@ -57,7 +57,7 @@
       "command": "beam.place",
       "sdk": "addBeam",
       "mcp": "run_flow: beam",
-      "tests": "beam.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "tests": "beam.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
       "browser": "placement: beam",
       "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
     },
@@ -145,7 +145,7 @@
       "command": "stair.place",
       "sdk": "addStair",
       "mcp": "run_flow: stair",
-      "tests": "stair-railing.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "tests": "stair-railing.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
       "browser": "placement: stair",
       "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
     },
@@ -153,7 +153,7 @@
       "command": "railing.place",
       "sdk": "addRailing",
       "mcp": "run_flow: railing",
-      "tests": "stair-railing.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "tests": "stair-railing.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
       "browser": "placement: railing",
       "finalAcceptance": "PENDING final integrated source, fresh receipts and required PR gates"
     },

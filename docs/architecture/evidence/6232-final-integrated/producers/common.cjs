@@ -8,6 +8,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const cp = require('node:child_process');
 const assert = require('node:assert/strict');
+const { metadataGraph } = require('./metadata-graph.cjs');
 const root = fs.realpathSync(process.env.IFC_SOURCE_ROOT || process.cwd());
 const baseURL = process.env.IFC_VIEWER_URL || 'http://127.0.0.1:5189';
 const evidenceRoot = path.resolve(process.env.IFC_EVIDENCE_DIR || '/tmp/6232-final-evidence');
@@ -89,6 +90,9 @@ async function runSuite(name, exercise) {
             };
           }
         }, root);
+        await page.evaluate(source => {
+          globalThis.parityMetadataGraph = new Function('return (' + source + ')')();
+        }, metadataGraph.toString());
         const proofs = [], calls = []; let sequence = 0;
         const send = async (method, args) => {
           const reply = await page.evaluate(request => globalThis.parityTransport.send(request), {
@@ -153,6 +157,9 @@ async function runSuite(name, exercise) {
               const row = extractor.extractEntity({ ...location, expressId: id, lineNumber: 0 }); if (!row) throw new Error(`Unreadable exported entity #${id}`);
               return { id, type: row.type, attributes: row.attributes };
             }).sort((a,b) => a.id-b.id);
+            const persistentIds = new Set([...imports.getCompleteEntityIndex(model.ifcDataStore)].map(([id]) => id));
+            for (const record of view?.getNewEntities() ?? []) persistentIds.add(record.expressId);
+            const canonicalGraph = globalThis.parityMetadataGraph(graph, persistentIds);
             const meshes = [];
             for (const mesh of model.geometryResult?.meshes ?? []) {
               const ref = s.resolveGlobalIdFromModels(mesh.expressId);
@@ -162,7 +169,7 @@ async function runSuite(name, exercise) {
                   normals: mesh.normals ? Array.from(mesh.normals) : [], color: mesh.color, origin: mesh.origin }) });
             }
             meshes.sort((a,b) => a.globalId-b.globalId || a.hash.localeCompare(b.hash));
-            const result = { modelId: key, schema: model.ifcDataStore.schemaVersion, graph, graphHash: await digest(graph), meshes,
+            const result = { modelId: key, schema: model.ifcDataStore.schemaVersion, graph, canonicalGraph, syntheticMetadataIds: graph.filter(row => !persistentIds.has(row.id)).map(row => row.id), graphHash: await digest(canonicalGraph), meshes,
               geometryHash: await digest({ meshes, coordinateInfo: model.geometryResult?.coordinateInfo }), coordinateInfo: model.geometryResult?.coordinateInfo,
               records: structuredClone(view?.getNewEntities() ?? []).sort((a,b)=>a.expressId-b.expressId), journal: structuredClone(view?.getMutations() ?? []),
               allocator: view?.peekNextExpressId(), undo: historySteps(s.undoStacks.get(key)), redo: historySteps(s.redoStacks.get(key)), undoRows: s.undoStacks.get(key)?.length ?? 0, redoRows: s.redoStacks.get(key)?.length ?? 0 };
@@ -223,7 +230,7 @@ async function runSuite(name, exercise) {
         };
         const undo = async () => { await page.keyboard.press('Control+z'); await settle(); };
         const sameGraphGeometry = (actual, expected) => {
-          assert.deepEqual(actual.graph, expected.graph, 'Undo restores full sorted EXPRESS graph');
+          assert.deepEqual(actual.canonicalGraph ?? actual.graph, expected.canonicalGraph ?? expected.graph, 'Undo restores persistent EXPRESS graph and complete typed exported metadata; only synthetic export identities are normalized');
           assert.deepEqual(actual.meshes, expected.meshes, 'Undo restores actual owning-model geometry incl origins');
           assert.equal(actual.undo, expected.undo, 'one Undo restores the prior recorded history head');
         };

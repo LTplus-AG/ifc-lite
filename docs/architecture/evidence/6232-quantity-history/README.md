@@ -38,7 +38,9 @@ pnpm typecheck
 pnpm lint
 ```
 
-`receipt.json` records the actual results and local log paths. Existing optional
+`receipt.json` records the original integrated-base results and local log paths.
+`owning14-receipt.json` records the separately qualified owning history branch,
+including forced native execution and exact runtime hashes before and after. Existing optional
 fixture skips in the complete package suites are retained; the selected native
 viewer controls have no skips. Quantity export reuses the existing property
 unit resolver for its supported unit names. This does not claim broader unit

@@ -862,7 +862,13 @@ preview's products.
 `arrayCopyTransforms(params)` is the same linear/polar planner used for the
 viewer preview and commit; its count includes the original selection, and a
 full polar turn omits the coincident final copy. Each batch is bounded to
-10,000 new root copies before allocation. Unknown array modes and overflowing
+10,000 new root copies before allocation. A separate work budget permits at
+most 50,000 actual product writes per batch, including carried assembly parts,
+openings and fillings. Deep acyclic assembly traversal is iterative; excessive
+reference fan-out refuses before emission. Parent placement frames between an
+occurrence and its storey must be upright; tilted or negative-Z parents refuse
+rather than projecting the requested movement. Tilted occurrence leaves remain
+supported under upright parents. Unknown array modes and overflowing
 derived directions/extents refuse before preview or writes. Native-unit
 conversion and placement composition also refuse nonfinite output atomically. The host records
 its compound Undo

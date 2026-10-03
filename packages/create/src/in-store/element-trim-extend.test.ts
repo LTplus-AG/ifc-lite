@@ -12,6 +12,8 @@ import { addHostedElementInStore } from './hosted-element.js';
 import { readHostedFill } from './hosted-fill-read.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { readWallJoinTarget, readWallJoinRels } from './wall-join-read.js';
+import { resolveLinearElementChain } from './edit/linear-element-edit.js';
+import { resolvePlacementChain } from './edit/placement-core.js';
 import { readAttributes } from './edit/placement-core.js';
 
 async function session() {
@@ -61,4 +63,22 @@ describe('#6232 D5 shared trim/extend', () => {
     expect(() => trimExtendElementInStore(s.store, s.editor, s.wall, { mode: 'extend', click: [8, 5], boundary: { wallId: s.boundary } })).toThrow();
     expect(s.snapshot()).toEqual(before);
   });
+});
+
+it('#6232 end-only beam reach leaves a shared start point and peer untouched, while start reach refuses atomically', async () => {
+  const s = await session();
+  const beam = (y: number) => addOrdinaryElementInStore(s.editor, s.anchor, { kind: 'beam', params: { Start: [0, y, 0], End: [8, y, 0], Width: .2, Height: .3 } });
+  const id = beam(20), peer = beam(25);
+  const chain = resolveLinearElementChain(s.store, s.view, s.editor, id, 1)!;
+  const peerPlacement = resolvePlacementChain(s.store, s.view, s.editor, peer)!;
+  s.editor.setPositionalAttribute(peerPlacement.axisPlacementId, 0, `#${chain.startPointId}`);
+  const peerBefore = resolveLinearElementChain(s.store, s.view, s.editor, peer, 1);
+  const result = trimExtendElementInStore(s.store, s.editor, id, { mode: 'extend', click: [8, 20], boundary: { a: [10, 18], b: [10, 22], tMin: 0, tMax: 1, reach: 0 } });
+  expect(result.end).toBe('end');
+  expect(result.length).toBeCloseTo(10);
+  expect(resolveLinearElementChain(s.store, s.view, s.editor, peer, 1)).toEqual(peerBefore);
+  const before = s.snapshot(), next = s.view.peekNextExpressId();
+  expect(() => trimExtendElementInStore(s.store, s.editor, id, { mode: 'extend', click: [0, 20], boundary: { a: [-2, 18], b: [-2, 22], tMin: 0, tMax: 1, reach: 0 } })).toThrow(/shares placement or geometry/);
+  expect(s.snapshot()).toEqual(before);
+  expect(s.view.peekNextExpressId()).toBe(next);
 });

@@ -23,7 +23,7 @@ import type { RoomPlate } from '../../../../../../../packages/create/src/in-stor
 import { resolve as translate } from '@/i18n/registry';
 import { editError } from '@/lib/space-edit-error';
 import type { SnapResult } from '@/lib/snap/types';
-import { DEFAULT_WELD, editedLayout, fileLayout, type LayoutOp } from '@/lib/rooms/room-layout';
+import { DEFAULT_WELD, editedLayout, fileLayout, type LayoutFace, type LayoutOp } from '@/lib/rooms/room-layout';
 import { layoutHit } from '@/lib/rooms/room-layout-hit';
 import { syncLayoutEdit } from '@/lib/rooms/room-layout-sync';
 import { storeyRooms, storeyWallRects, type RoomCandidate } from '@/lib/rooms/storey-rooms';
@@ -75,7 +75,7 @@ export function editPointerUp(g: RoomPlaceGesture): RoomPlaceGesture | CommandSi
 }
 
 /** The edited layout a commit made, waiting for its transaction to stand. */
-let pending: { modelId: string; storeyId: number; weld: number; walls: string; plate: RoomPlate } | null = null;
+let pending: { modelId: string; storeyId: number; weld: number; walls: string; plate: RoomPlate; faces: LayoutFace[] } | null = null;
 
 function dropPending(): void {
   pending?.plate.free();
@@ -101,7 +101,7 @@ export function commitLayoutEdit(g: RoomPlaceGesture, tx: AuthoringTransaction):
     if (!edited.changed) throw new Error(translate(op.kind === 'prune' ? 'roomLayout.prune.none' : 'roomLayout.edit.none'));
     const sync = syncLayoutEdit(tx.api, modelId, before.rooms, edited.faces);
     dropPending();
-    pending = { modelId, storeyId, weld, walls: edited.walls, plate: edited.plate };
+    pending = { modelId, storeyId, weld, walls: edited.walls, plate: edited.plate, faces: edited.faces };
     return { created: sync.created, deleted: sync.deleted, remesh: sync.remesh, select: sync.remesh };
   } catch (error) {
     edited.plate.free();
@@ -112,10 +112,12 @@ export function commitLayoutEdit(g: RoomPlaceGesture, tx: AuthoringTransaction):
 /** The transaction stood: file the edited layout under the model's new undo step. */
 export function afterLayoutCommit(ctx: CommandContext): void {
   const p = pending;
-  pending = null;
   if (!p) return;
-  if (p.modelId !== ctx.modelId) { p.plate.free(); return; }
-  fileLayout(ctx.get(), p.modelId, p.storeyId, p.weld, p.walls, p.plate);
+  if (p.modelId !== ctx.modelId) { dropPending(); return; }
+  try {
+    fileLayout(ctx.get(), p.modelId, p.storeyId, p.weld, p.walls, p.plate, p.faces);
+    pending = null;
+  } catch (error) { dropPending(); throw error; }
 }
 
 /** Forget an edit whose transaction didn't stand. */

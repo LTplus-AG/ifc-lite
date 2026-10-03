@@ -195,3 +195,9 @@ export { roomOutline, roomCandidatesFromFaces, occupancyTest, type RoomCandidate
 export { createRoomsInStore, updateRoomOutlineInStore, syncRoomLayoutInStore } from './in-store/room-store.js';
 export { storeyFootprintFaceInStore, type RoomWallRect } from './in-store/room-footprint-native.js';
 export { planRoomCreation } from './in-store/room-creation-plan.js';
+
+export { wallRectsFromMeshes, roomFrameToModelWorld, roomFramePlanOffsets } from './in-store/room-wall-rects.js';
+export { floorToFloorHeight } from './in-store/room-floor-height.js';
+export { effectiveStoreyElevation } from './in-store/room-storey-elevation.js';
+export { effectiveStoreyIds } from './in-store/edit/effective-storeys.js';
+export { spaceMeshTriangles } from './in-store/room-space-meshes.js';

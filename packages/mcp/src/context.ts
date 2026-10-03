@@ -78,11 +78,14 @@ export class InMemoryModelRegistry implements ModelRegistry {
   }
 
   add(model: LoadedModel): void {
+    const previous = this.models.get(model.id);
+    if (previous && previous !== model) previous.backend.dispose();
     this.models.set(model.id, model);
     model.backend.setPeerScopes(() => this.list().filter(peer => peer !== model).map(peer => ({ dataStore: peer.store, view: peer.backend.getMutationView() })));
   }
 
   remove(id: string): boolean {
+    this.models.get(id)?.backend.dispose();
     return this.models.delete(id);
   }
 

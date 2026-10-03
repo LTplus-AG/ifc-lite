@@ -401,10 +401,10 @@ describe('a moved or turned wall takes its joined walls along (#6232 B2)', () =>
 describe('edits that cannot keep a wall\'s joins valid refuse, and edits that land say so (#6232 B2)', () => {
   it('one edit of thickness AND height on a joined wall lands both on the wall and re-cuts its corners', () => {
     drawRoom();
-    const [first, second] = wallIds();
+    const [first, second, , fourth] = wallIds();
     const before = batches();
     const outcome = setWallSection(useViewerStore, MODEL_ID, first, { thickness: 0.3, height: 2.5 });
-    assert.deepEqual(outcome, { ok: true, remesh: [first] }, 'the write names the wall (and any opening it re-cut) for the re-mesh');
+    assert.deepEqual(outcome, { ok: true, remesh: [first, second, fourth] }, 'the write names every wall whose joined body changed for re-mesh (#6232 D5)');
     const wall = shape(first);
     assert.ok(Math.abs(wall.wall.thickness - 0.3) < 1e-9, `thickness ${wall.wall.thickness}`);
     assert.ok(Math.abs(wall.height - 2.5) < 1e-9, `height ${wall.height}`);

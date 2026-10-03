@@ -5,6 +5,9 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createElement } from 'react';
+import { render, cleanup, waitFor } from '@/test/render';
+import { DocumentPreview } from '@/components/viewer/document/DocumentPreview';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
@@ -26,7 +29,7 @@ const { registerLocale, setLocale } = translations;
 // A producer inverse must fail its output assertions, not an absent new export.
 const capturedCatalogue: { captureTranslation?: () => typeof translations.resolve } = translations;
 const captureLabels = () => capturedCatalogue.captureTranslation?.() ?? translations.resolve;
-afterEach(() => setLocale('en'));
+afterEach(() => { cleanup(); setLocale('en'); });
 
 function actualImageSize(dataUrl: string): Promise<{ w: number; h: number }> {
   const bytes = Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
@@ -176,5 +179,29 @@ it('preserves every overflow source identity and wrapped unresolved field in the
     assert.equal(printed.result.unresolved.length, 1);
     const pdfText = printed.pages.map(page => page.text).join('\n');
     for (let index = 0; index < 100; index++) assert.ok(pdfText.includes(`Evidence ${index}`), 'actual PDF keeps every overflow line');
+  }
+});
+
+// Missing user-facing failure text must not resemble an empty successful table (#6610, review4171410340).
+it('keeps failed table warnings visible in mounted paper and real PDF for blank captured translations (#6610)', async () => {
+  const input = await publicInput();
+  for (const control of [
+    { translation: '', engine: '  ', expected: 'The list could not be run.' },
+    { translation: '  \t ', engine: '', expected: 'The list could not be run.' },
+    { translation: 'Captured failed list', engine: '', expected: 'Captured failed list' },
+    { translation: '', engine: 'Real source failure', expected: 'Real source failure' },
+  ]) {
+    registerLocale(locale, { 'document.table.error': control.translation }); setLocale(locale);
+    input.labels = captureLabels();
+    input.tables = new Map([['table', { status: 'error', message: control.engine }]]);
+    const ui = render(createElement(DocumentPreview, { ...input, selectedBlockId: null, onSelectBlock: () => {} }));
+    await waitFor(() => ui.querySelector('[data-preview-block="table"]') !== null && ui.querySelector('[data-layout-pending="true"]') === null,
+      'actual failed-table paper preparation completes');
+    assert.ok(ui.querySelector('[data-preview-block="table"]')?.textContent?.includes(control.expected),
+      `visible mounted failure: ${control.expected}`);
+    const { result, pages } = await actualPdf(input);
+    assert.deepEqual(result.imageFailures, [], 'actual committed PNG still exports');
+    assert.ok(pages.map(page => page.text).join('\n').includes(control.expected), `actual PDF failure: ${control.expected}`);
+    cleanup();
   }
 });

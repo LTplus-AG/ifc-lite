@@ -45,10 +45,16 @@ export function freshnessLog(text) {
   }
 }
 export function freshnessException(record, witness, expected) {
-  return Boolean(witness && record.pid === witness.pid && record.startTime === witness.startTime
+  return Boolean(record.executableObserved === true && witness && record.pid === witness.pid && record.startTime === witness.startTime
     && record.pgrp === expected.group && record.cwd === expected.directory
     && [expected.cargo, expected.rustup].includes(record.executable)
     && record.argv[0]?.split('/').at(-1) === 'cargo' && isDeepStrictEqual(record.argv.slice(1), cargoArgs));
+}
+export function refreshedCargoWitness(record, expected, snapshot, current) {
+  if (!freshnessException(record, record, expected) || !current || !freshnessException(current, record, expected)
+    || current.executable !== record.executable || !isDeepStrictEqual(current.argv, record.argv)) return null;
+  const member = snapshot.members.find(item => item.pid === record.pid);
+  return member?.startTime === record.startTime && member.pgrp === record.pgrp ? member : null;
 }
 export function median(values) { return [...values].sort((a, b) => a - b)[2]; }
 export function requirePair(left, right, control, witness) {

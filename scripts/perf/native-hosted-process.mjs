@@ -3,12 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { spawn } from 'node:child_process';
 import { basename, dirname, isAbsolute } from 'node:path';
-import { createWriteStream, readFileSync, readdirSync, readlinkSync } from 'node:fs';
+import { createWriteStream, readdirSync, readlinkSync } from 'node:fs';
 import { fileHash } from './interleaved-assets.mjs';
 import { processIdentity, finishLog, stopWitnessedProcesses } from './interleaved-cleanup.mjs';
-import { available, ownedSnapshot } from './sdk-resources.mjs';
-import { classifyBuildTestProcess } from './sdk-process-classification.mjs';
-import { freshnessException, limits } from './native-hosted-plan.mjs';
+import { available, ownedSnapshot, processObservation } from './sdk-resources.mjs';
+import { freshnessException, refreshedCargoWitness, limits } from './native-hosted-plan.mjs';
 export function compilerEnvironment(environment, tools) {
   if (!tools) return environment;
   if (![tools.cargo, tools.rustc, tools.rustdoc].every(path => typeof path === 'string' && isAbsolute(path))
@@ -20,26 +19,37 @@ export function compilerEnvironment(environment, tools) {
   return { ...environment, RUSTC: tools.rustc, RUSTDOC: tools.rustdoc, RUSTUP_TOOLCHAIN: tools.toolchain };
 }
 function graphScan(witnesses, expected) {
-  const exceptions = [];
+  const exceptions = [], permissionFallbacks = [], witnessRefreshes = []; let freshSnapshot;
   for (const name of readdirSync('/proc').filter(value => /^\d+$/.test(value))) {
     try {
-      const argv = readFileSync(`/proc/${name}/cmdline`, 'utf8').split('\0').filter(Boolean);
-      const executable = readlinkSync(`/proc/${name}/exe`), classification = classifyBuildTestProcess(argv, executable);
+      const observed = processObservation(name); if (!observed) continue;
+      const { classification } = observed;
+      if (!observed.executableObserved) permissionFallbacks.push({ pid: observed.pid, executableObserved: false, executableAccessError: observed.executableAccessError });
       if (!classification) continue;
-      const identity = processIdentity(name);
-      if (!identity) continue;
-      const record = { ...identity, argv, executable, cwd: readlinkSync(`/proc/${name}/cwd`) };
-      if (!freshnessException(record, witnesses.get(record.pid), expected)) throw new Error(`non-exempt compiler/test graph: ${JSON.stringify({ pid: record.pid, classification, ownWitnessPresent: witnesses.has(record.pid) })}`);
-      exceptions.push({ ...identity, classification, executable, cwd: record.cwd });
+      const identity = processIdentity(name); if (!identity) continue;
+      const record = { ...identity, ...observed, cwd: readlinkSync(`/proc/${name}/cwd`) };
+      if (!witnesses.has(record.pid) && freshnessException(record, record, expected)) {
+        freshSnapshot ??= ownedSnapshot(process.pid); // At most one bounded fresh own-ancestry census per scan.
+        const currentObserved = processObservation(name), currentIdentity = processIdentity(name);
+        const current = currentObserved && currentIdentity ? { ...currentIdentity, ...currentObserved, cwd: readlinkSync(`/proc/${name}/cwd`) } : null;
+        const refreshed = refreshedCargoWitness(record, expected, freshSnapshot, current);
+        if (refreshed) {
+          witnesses.set(refreshed.pid, refreshed);
+          witnessRefreshes.push({ ...refreshed, source: 'fresh-own-ancestry-census-plus-current-observation', capturedAt: freshSnapshot.at,
+            censusMembers: freshSnapshot.members.length, depthBound: 32, processBound: 4096 });
+        }
+      }
+      if (!freshnessException(record, witnesses.get(record.pid), expected)) throw new Error(`non-exempt compiler/test graph: ${JSON.stringify({ pid: record.pid, classification, ownWitnessPresent: witnesses.has(record.pid), executableObserved: record.executableObserved, executableAccessError: record.executableAccessError })}`);
+      exceptions.push({ ...identity, classification, executable: record.executable, executableObserved: true, cwd: record.cwd });
     } catch (error) { if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error; }
   }
-  return exceptions;
+  return { exceptions, permissionFallbacks, witnessRefreshes };
 }
 export async function execute(command, directory, prefix, { sample = false, tools, wallMs = 180000 } = {}) {
   const executable = tools && ['bash', 'cargo'].includes(command[0]) ? tools[command[0]] : command[0];
   const paths = { stdout: `${prefix}.stdout`, stderr: `${prefix}.stderr` };
   const logs = Object.values(paths).map(path => createWriteStream(path, { flags: 'wx' }));
-  const row = { status: 'pending', command, executable, directory, paths, startedUTC: new Date().toISOString(), samples: [], cargoExceptions: [],
+  const row = { status: 'pending', command, executable, directory, paths, startedUTC: new Date().toISOString(), samples: [], cargoExceptions: [], permissionFallbacks: [], witnessRefreshes: [],
     compilerSelection: tools ? { rustc: tools.rustc, rustdoc: tools.rustdoc, toolchain: tools.toolchain } : undefined };
   const witnesses = new Map(); let child, refusal, monitor, deadline, pipeDeadline, settle, exit, abortCleanup;
   const abort = reason => {
@@ -69,8 +79,14 @@ export async function execute(command, directory, prefix, { sample = false, tool
         if (row.samples.length >= 100000) throw new Error('native observation bound');
         row.samples.push({ at: snapshot.at, bytes: snapshot.bytes });
         if (snapshot.bytes > limits.rssBytes || available() < limits.liveBytes) throw new Error('native ownedRSS/live reserve refused');
-        if (sample) for (const item of graphScan(witnesses, { ...tools, directory, group: child.pid })) {
-          if (!row.cargoExceptions.some(prior => prior.pid === item.pid && prior.startTime === item.startTime)) row.cargoExceptions.push(item);
+        if (sample) {
+          const scan = graphScan(witnesses, { ...tools, directory, group: child.pid });
+          for (const [key, rows] of [['cargoExceptions', scan.exceptions], ['permissionFallbacks', scan.permissionFallbacks], ['witnessRefreshes', scan.witnessRefreshes]]) {
+            for (const item of rows) if (!row[key].some(prior => prior.pid === item.pid && prior.startTime === item.startTime)) {
+              if (row[key].length >= 4096) throw new Error('native process observation evidence bound');
+              row[key].push(item);
+            }
+          }
         }
       } catch (error) { abort(error); }
     };

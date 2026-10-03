@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { schedule, revisions, validateRefs, probeResult, freshnessLog, freshnessException, cargoArgs, requirePair, phases, requireCompletion } from './native-hosted-plan.mjs';
+import { schedule, revisions, validateRefs, probeResult, freshnessLog, freshnessException, cargoArgs, requirePair, phases, requireCompletion, refreshedCargoWitness } from './native-hosted-plan.mjs';
 function result() {
   return { ...Object.fromEntries(phases.map(key => [key, 1])), fileMb: 2.4, entities: 100, meshes: 5, vertices: 30, triangles: 10,
     pointCacheHits: 0, pointCacheMisses: 0, csgFailures: 0, degenerateDropped: 0, path: '/fixture.ifc',
@@ -36,9 +36,9 @@ test('#6537 no-op Cargo receipt distinguishes actual compilation and missing/dup
 });
 test('#6537 Cargo exception requires own PID/start fence, exact args, executable, process group and source cwd', () => {
   const expected = { group: 20, directory: '/arm', cargo: '/tool/cargo', rustup: '/tool/rustup' };
-  const record = { pid: 21, startTime: '99', pgrp: 20, cwd: '/arm', executable: '/tool/cargo', argv: ['cargo', ...cargoArgs] };
+  const record = { pid: 21, startTime: '99', pgrp: 20, cwd: '/arm', executableObserved: true, executable: '/tool/cargo', argv: ['cargo', ...cargoArgs] };
   assert.equal(freshnessException(record, record, expected), true);
-  for (const changes of [{ startTime: '100' }, { pgrp: 19 }, { cwd: '/foreign' }, { executable: '/tool/rustc' },
+  for (const changes of [{ executableObserved: false }, { startTime: '100' }, { pgrp: 19 }, { cwd: '/foreign' }, { executable: '/tool/rustc' },
     { argv: ['cargo', 'test'] }, { argv: ['cargo', ...cargoArgs, '--features', 'observability'] }]) {
     assert.equal(freshnessException({ ...record, ...changes }, record, expected), false);
   }
@@ -58,4 +58,18 @@ test('#6537 final cancellation or failed frozen verification cannot become a com
   assert.throws(() => requireCompletion(undefined, pairs, 'refused'));
   assert.throws(() => requireCompletion(undefined, pairs.slice(1), 'complete'));
   pairs[16].status = 'refused'; assert.throws(() => requireCompletion(undefined, pairs, 'complete'));
+});
+test('#6537 refreshed Cargo witness still requires actual executable, fresh own ancestry and matching current PID/start/group', () => {
+  const expected = { group: 20, directory: '/arm', cargo: '/tool/cargo', rustup: '/tool/rustup' };
+  const record = { pid: 21, startTime: '99', pgrp: 20, cwd: '/arm', executableObserved: true, executable: '/tool/cargo', argv: ['cargo', ...cargoArgs] };
+  const member = { pid: 21, startTime: '99', pgrp: 20 }, snapshot = { members: [member] };
+  assert.deepEqual(refreshedCargoWitness(record, expected, snapshot, record), member);
+  for (const members of [[], [{ ...member, pid: 22 }], [{ ...member, startTime: '100' }], [{ ...member, pgrp: 19 }]]) {
+    assert.equal(refreshedCargoWitness(record, expected, { members }, record), null);
+  }
+  for (const changes of [{ pid: 22 }, { startTime: '100' }, { pgrp: 19 }, { cwd: '/foreign' },
+    { executable: '/tool/rustc' }, { executableObserved: false }, { argv: ['cargo', 'test'] }]) {
+    assert.equal(refreshedCargoWitness(record, expected, snapshot, { ...record, ...changes }), null);
+  }
+  assert.equal(refreshedCargoWitness({ ...record, executableObserved: false }, expected, snapshot, record), null);
 });

@@ -51,20 +51,31 @@ export function qualifyCPU(receipt) {
     throw cpuRefusal(receipt, cause);
   }
 }
-export function noBuildGraphs() {
-  const active = [];
-  for (const name of readdirSync('/proc').filter(value => /^\d+$/.test(value))) {
-    try {
-      const args = readFileSync(`/proc/${name}/cmdline`, 'utf8').split('\0').filter(Boolean);
-      let executable;
-      try { executable = readlinkSync(`/proc/${name}/exe`); }
-      catch (error) { if (!['EACCES', 'EPERM'].includes(error.code)) throw error; executable = args[0] ?? ''; }
-      const classification = classifyBuildTestProcess(args, executable);
-      if (classification) active.push({ pid: Number(name), ...classification });
-    } catch (error) { if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error; }
+// Permission-denied exe observations retain the process and its argv classifier.
+// cmdline failures remain terminal; only disappearing process races return null.
+export function processObservation(pid, { readFile = readFileSync, readLink = readlinkSync } = {}) {
+  try {
+    const argv = readFile(`/proc/${pid}/cmdline`, 'utf8').split('\0').filter(Boolean);
+    let executable, executableObserved = true, executableAccessError;
+    try { executable = readLink(`/proc/${pid}/exe`); }
+    catch (error) {
+      if (!['EACCES', 'EPERM'].includes(error.code)) throw error;
+      executable = argv[0] ?? ''; executableObserved = false; executableAccessError = error.code;
+    }
+    return { pid: Number(pid), argv, executable, executableObserved, executableAccessError,
+      classification: classifyBuildTestProcess(argv, executable) };
+  } catch (error) { if (['ENOENT', 'ESRCH'].includes(error.code)) return null; throw error; }
+}
+export function noBuildGraphs({ pids = readdirSync('/proc').filter(value => /^\d+$/.test(value)), observe = processObservation } = {}) {
+  const active = [], permissionFallbacks = [];
+  for (const pid of pids) {
+    const record = observe(pid); if (!record) continue;
+    const evidence = { pid: record.pid, executableObserved: record.executableObserved, executableAccessError: record.executableAccessError };
+    if (!record.executableObserved) permissionFallbacks.push(evidence);
+    if (record.classification) active.push({ ...evidence, ...record.classification });
   }
   if (active.length) throw new Error(`observable Linux build/test graphs: ${JSON.stringify(active)}`);
-  return { capturedUTC: new Date().toISOString(), active };
+  return { capturedUTC: new Date().toISOString(), active, permissionFallbacks };
 }
 export async function quiet() {
   const receipt = { rows: [],

@@ -119,7 +119,9 @@
     "generate:epsg-index": "tsx scripts/generate-epsg-index.ts",
     "check:templates": "pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates",
     "check:codegen-sync": "node scripts/check-codegen-sync.mjs",
-    "check:generated": "node scripts/check-generated.mjs"
+    "check:generated": "node scripts/check-generated.mjs",
+    "typecheck:perf-sdk": "tsc --project scripts/perf/tsconfig.sdk.json",
+    "test:perf-sdk-identity": "tsx --tsconfig scripts/perf/tsconfig.sdk-runtime.json --test scripts/perf/sdk-client/identity.test.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

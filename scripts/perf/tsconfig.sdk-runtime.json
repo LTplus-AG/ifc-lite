@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@ifc-lite/geometry": [
+        "packages/geometry/dist/index.js"
+      ],
+      "@ifc-lite/wasm": [
+        "packages/wasm/pkg/ifc-lite.js"
+      ]
+    }
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "skipLibCheck": false,
+    "rootDir": "../..",
+    "types": [
+      "node"
+    ],
+    "paths": {
+      "@ifc-lite/wasm": [
+        "packages/wasm/pkg/ifc-lite.d.ts"
+      ],
+      "@ifc-lite/wasm/*": [
+        "packages/wasm/pkg/*"
+      ],
+      "@ifc-lite/wasm-lifecycle": [
+        "packages/wasm-lifecycle/src/index.ts"
+      ],
+      "@ifc-lite/wasm-lifecycle/*": [
+        "packages/wasm-lifecycle/src/*"
+      ],
+      "@ifc-lite/geometry": [
+        "packages/geometry/src/index.ts"
+      ],
+      "@ifc-lite/geometry/*": [
+        "packages/geometry/src/*"
+      ],
+      "@ifc-lite/data": [
+        "packages/data/src/index.ts"
+      ],
+      "@ifc-lite/data/*": [
+        "packages/data/src/*"
+      ],
+      "@ifc-lite/encoding": [
+        "packages/encoding/src/index.ts"
+      ],
+      "@ifc-lite/encoding/*": [
+        "packages/encoding/src/*"
+      ],
+      "vite": [
+        "apps/viewer/node_modules/vite/dist/node/index.d.ts"
+      ]
+    }
+  },
+  "include": [],
+  "files": [
+    "sdk-client/consumer.ts",
+    "sdk-client/contracts.ts",
+    "sdk-client/entry.ts",
+    "sdk-client/identity.ts",
+    "sdk-client/retention.ts",
+    "sdk-client/identity.test.ts",
+    "sdk-client/vite-config.mts"
+  ]
+}

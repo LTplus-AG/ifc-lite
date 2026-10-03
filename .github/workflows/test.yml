@@ -1634,6 +1634,10 @@ jobs:
       # This root-scoped harness is outside the workspace Turbo TS programs.
       - name: Typecheck the interleaved performance harness
         run: pnpm typecheck:perf-interleaved
+      - name: Typecheck the explicit SDK consumer program
+        run: pnpm typecheck:perf-sdk
+      - name: Check SDK produced-output identity invariants
+        run: pnpm test:perf-sdk-identity
       # Committed codegen output (packages/codegen/generated/**,
       # packages/parser/src/generated/**, packages/data/src/ifc-schema/
       # generated/**) had no CI freshness gate at all — a generator bug fixed

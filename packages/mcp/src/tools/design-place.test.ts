@@ -6,6 +6,8 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { EntityExtractor, IfcParser } from '@ifc-lite/parser';
+import { getCompleteEntityIndex } from '../../../export/src/entity-iteration.js';
+import type { GridInStoreParams } from '@ifc-lite/create';
 import { fullScope, readOnlyScope } from '../auth/scope.js';
 import { InMemoryModelRegistry } from '../context.js';
 import { loadIfcModel } from '../loader.js';
@@ -17,7 +19,7 @@ import { buildDefaultToolRegistry } from './index.js';
 import type { CallToolResult } from '../protocol/index.js';
 
 const SAMPLE = fileURLToPath(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
-const GRID = { UAxes: [{ Tag: 'U', Start: [0, 0], End: [4, 0] }], VAxes: [{ Tag: 'V', Start: [2, -2], End: [2, 2] }] };
+const GRID: GridInStoreParams = { UAxes: [{ Tag: 'U', Start: [0, 0], End: [4, 0] }], VAxes: [{ Tag: 'V', Start: [2, -2], End: [2, 2] }] };
 const CURTAIN = { Start: [0, 5, 0], End: [4, 5, 0], Height: 3, UGrid: 2, VGrid: 2 };
 async function session(count = 1, readOnly = false) {
   const registry = new InMemoryModelRegistry();
@@ -111,11 +113,50 @@ describe('#6232 public design placement', () => {
     expect((await writable.call('place_grid', { storey_express_id: 42, params: { ...GRID, UAxes: [] } })).isError).toBe(true);
     expect((await writable.call('place_grid_column', { storey_express_id: 42, params: { Position: [0, 0, 0], Height: 3 }, binding: { GridId: 1, IntersectingAxes: [2, 3] } })).isError).toBe(true);
     expect(writable.registry.get('alpha')!.backend.getMutationView()).toBeNull();
-    const readonly = await session(1, true);
+    const grid = await writable.call('place_grid', { storey_express_id: 42, params: GRID });
+    expect(grid.isError, JSON.stringify(grid)).not.toBe(true);
+    const writableView = writable.registry.get('alpha')!.backend.getMutationView()!;
+    const gridId = grid.structuredContent?.expressId as number;
+    const axes = writableView.getNewEntities().filter(entity => entity.type === 'IfcGridAxis').map(entity => entity.expressId);
+    const readonly = await session(1, true), model = readonly.registry.get('alpha')!;
+    // Arrange the same actual live grid before testing the token boundary.
+    // The server token governs JSON-RPC; fixture setup uses the canonical SDK.
+    const seed = model.bim.store.addGrid('alpha', 42, GRID), view = model.backend.getMutationView()!;
+    expect(seed.expressId).toBe(gridId);
+    expect(view.getNewEntities().filter(entity => entity.type === 'IfcGridAxis').map(entity => entity.expressId)).toEqual(axes);
+    const snapshot = async () => {
+      const exported = model.bim.export.ifc(), bytes = typeof exported === 'string' ? new TextEncoder().encode(exported) : exported;
+      const parsed = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+      const extractor = new EntityExtractor(parsed.source);
+      return {
+        graph: [...getCompleteEntityIndex(parsed)].map(([id, location]) => {
+          const row = extractor.extractEntity({ ...location, expressId: id, lineNumber: 0 });
+          expect(row).not.toBeNull();
+          return { id, type: row!.type, attributes: row!.attributes };
+        }).sort((a, b) => a.id - b.id),
+        records: structuredClone(view.getNewEntities()), journal: structuredClone(view.getMutations()), allocator: view.peekNextExpressId(),
+      };
+    };
+    const before = await snapshot();
     const listed = await readonly.transport.send({ jsonrpc: '2.0', id: 100, method: 'tools/list' }) as { result: { tools: Array<{ name: string }> } };
-    for (const name of ['place_curtain_wall', 'place_grid', 'place_grid_column']) {
-      expect(listed.result.tools.some(t => t.name === name)).toBe(false);
-      expect((await readonly.call(name, { storey_express_id: 42, params: GRID })).isError).toBe(true);
+    const controls: Array<[string, Record<string, unknown>]> = [
+      ['place_curtain_wall', { storey_express_id: 42, params: CURTAIN }],
+      ['place_grid', { storey_express_id: 42, params: GRID }],
+      ['place_grid_column', { storey_express_id: 42, params: { Position: [2,0,0], Profile: { Type: 'Circle', Radius: .2 }, Height: 3 }, binding: { GridId: gridId, IntersectingAxes: axes } }],
+    ];
+    for (const [name, input] of controls) {
+      // #6738: first prove this exact payload succeeds against real IFC state;
+      // a generic error from malformed params cannot certify scope enforcement.
+      const control = await writable.call(name, input);
+      expect(control.isError, JSON.stringify(control)).not.toBe(true);
+      expect(typeof control.structuredContent?.expressId).toBe('number');
+      expect(listed.result.tools.some(tool => tool.name === name)).toBe(false);
+      const denied = await readonly.call(name, input);
+      expect(denied.isError).toBe(true);
+      expect(denied.structuredContent?.code).toBe('PERMISSION_DENIED');
+      expect(denied.structuredContent?.message).toBe(`Tool '${name}' requires scope 'mutate'`);
+      expect(denied.structuredContent?.details).toEqual({ required: 'mutate', granted: readOnlyScope().scopes });
+      expect(await snapshot()).toEqual(before);
     }
   });
 });

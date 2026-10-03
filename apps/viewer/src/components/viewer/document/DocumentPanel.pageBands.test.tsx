@@ -91,12 +91,15 @@ it('repeats authored header/footer text, captured date, logos and current/total 
   for (const page of pages) {
     assert.match(page.text, /Issued for coordination/);
     assert.match(page.text, /Controlled report copy/);
-    assert.equal(page.text.match(/2026-10-02/g)?.length, 2, 'both date stamps use the same captured date');
+    const dates = page.items.filter(item => item.str === '2026-10-02');
+    assert.equal(dates.length, 2, 'exactly the two authored bands print the captured date (#6733)');
     assert.equal(page.text.split(`Page ${page.number} / ${pages.length}`).length - 1, 2, 'each band prints its truthful counter');
     assert.equal(page.images, 2, 'both embedded logos actually reach every PDF page');
     const header = page.items.find(item => item.str === 'Issued for coordination');
     const footer = page.items.find(item => item.str === 'Controlled report copy');
     assert.ok(header && footer);
+    assert.equal(dates.filter(item => item.transform[5] > page.height / 2).length, 1, 'exactly one date is in the upper band');
+    assert.equal(dates.filter(item => item.transform[5] < page.height / 2).length, 1, 'exactly one date is in the lower band');
     assert.equal(header.transform[0], 12, 'authored header typography reaches the real PDF');
     assert.equal(footer.transform[0], 10, 'the footer keeps its independent authored size');
     const body = page.items.filter(item => item.str.startsWith('Evidence line '));
@@ -152,7 +155,11 @@ it('authors and resets an actual footer through the mounted editor, persisted im
   const reset = ui.querySelector<HTMLButtonElement>('button[aria-label="Reset page footer"]');
   assert.ok(reset); click(reset); await documentPreviewReady();
   assert.equal(Reflect.get(useViewerStore.getState().documents[0], 'pageFooter'), undefined);
-  assert.ok(Array.from(ui.querySelectorAll('[data-page-footer]')).every(node => node.textContent?.includes('Generated ')));
+  const resetFooters = [...ui.querySelectorAll('[data-page-footer]')];
+  assert.equal(resetFooters.length, sheets.length, 'reset keeps every mounted footer (#6733)');
+  assert.ok(resetFooters.length > 0);
+  assert.ok(resetFooters.every(node => node.textContent?.includes('Generated ')
+    && !node.textContent.includes('Controlled report copy')));
 });
 
 it('refuses malformed imported band options before the writer/layout can consume them (#6610)', () => {

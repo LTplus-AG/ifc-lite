@@ -82,6 +82,9 @@ export function composePageFrame(input: ComposeDocumentInput, size: { w: number;
     if (counter.kind === 'text') { defaults.push(counter); pendingCounters.push({ item: counter, width: Infinity }); }
   }
   const assertBody = (body: readonly DrawnItem[]): void => {
+    // Preserve the existing no-band document acceptance contract. This refusal
+    // protects space reserved by authored bands; changing oversized legacy
+    // graphic handling would be a separate compatibility change (#6733).
     if (!authoredHeading && !input.pageFooter) return;
     // Some blocks contain indivisible graphics (topic snapshots, report rings).
     // The paginator cannot split those; refuse instead of painting over a band.

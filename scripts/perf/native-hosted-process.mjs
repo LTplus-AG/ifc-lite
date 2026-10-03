@@ -7,7 +7,7 @@ import { createWriteStream, readdirSync, readlinkSync } from 'node:fs';
 import { fileHash } from './interleaved-assets.mjs';
 import { processIdentity, finishLog, stopWitnessedProcesses } from './interleaved-cleanup.mjs';
 import { available, ownedSnapshot, processObservation } from './sdk-resources.mjs';
-import { freshnessException, refreshedCargoWitness, limits } from './native-hosted-plan.mjs';
+import { cargoArgs, freshnessException, freshnessPredicates, refreshedCargoWitness, limits } from './native-hosted-plan.mjs';
 export function compilerEnvironment(environment, tools) {
   if (!tools) return environment;
   if (![tools.cargo, tools.rustc, tools.rustdoc].every(path => typeof path === 'string' && isAbsolute(path))
@@ -39,7 +39,14 @@ function graphScan(witnesses, expected) {
             censusMembers: freshSnapshot.members.length, depthBound: 32, processBound: 4096 });
         }
       }
-      if (!freshnessException(record, witnesses.get(record.pid), expected)) throw new Error(`non-exempt compiler/test graph: ${JSON.stringify({ pid: record.pid, classification, ownWitnessPresent: witnesses.has(record.pid), executableObserved: record.executableObserved, executableAccessError: record.executableAccessError })}`);
+      const witness = witnesses.get(record.pid);
+      if (!freshnessException(record, witness, expected)) {
+        const details = { actual: record, expected: { ...expected, argv: ['cargo', ...cargoArgs] },
+          witness: witness ?? null, predicates: freshnessPredicates(record, witness, expected) };
+        const error = new Error(`non-exempt compiler/test graph: ${JSON.stringify(details)}`);
+        error.freshnessRefusal = details;
+        throw error;
+      }
       exceptions.push({ ...identity, classification, executable: record.executable, executableObserved: true, cwd: record.cwd });
     } catch (error) { if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error; }
   }
@@ -54,6 +61,7 @@ export async function execute(command, directory, prefix, { sample = false, tool
   const witnesses = new Map(); let child, refusal, monitor, deadline, pipeDeadline, settle, exit, abortCleanup;
   const abort = reason => {
     refusal ??= String(reason);
+    if (reason?.freshnessRefusal && !row.freshnessRefusal) row.freshnessRefusal = reason.freshnessRefusal;
     const witness = witnesses.get(child?.pid), current = child?.pid && processIdentity(child.pid);
     if (witness && current?.startTime === witness.startTime && current.pgrp === child.pid) {
       try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') refusal += `; ${error}`; }

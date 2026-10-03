@@ -11,10 +11,16 @@ on:
       candidate_ref:
         required: true
         type: string
+      control_only:
+        description: 'Only functional startup admission controls; no model builds or timing'
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
   native:
+    name: ${{ inputs.control_only && 'Native startup control (no model timing)' || 'Native phase attribution' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 125
     env:
@@ -33,37 +39,55 @@ jobs:
         with:
           node-version: 22
       - name: Validate exact subjects before checkout
+        if: ${{ !inputs.control_only }}
         run: node scripts/perf/native-hosted-prepare.mjs validate
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ !inputs.control_only }}
         with:
           ref: ${{ inputs.base_ref }}
           path: source-base
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ !inputs.control_only }}
         with:
           ref: ${{ inputs.candidate_ref }}
           path: source-candidate
           persist-credentials: false
-      - name: Isolate source arms and install the repository-pinned native toolchain
+      - name: Isolate source arms
+        if: ${{ !inputs.control_only }}
         run: |
           mv source-base "$BASE_DIR"
           mv source-candidate "$CANDIDATE_DIR"
-          rustup show
+      - name: Install the repository-pinned native toolchain
+        run: rustup show
       - name: Functional native protocol controls
         env:
           NATIVE_COMPILER_CONTROL_REQUIRED: "1"
         run: node --test scripts/perf/native-hosted.test.mjs scripts/perf/native-compiler.test.mjs scripts/perf/sdk-resources.test.mjs
+      - name: Real Cargo-shim sample-startup control before model builds
+        env:
+          NATIVE_COMPILER_CONTROL_REQUIRED: "1"
+        run: node scripts/perf/native-startup-control.mjs
       - name: Verify fixtures, freeze source/tools and build both fresh native probes serially
+        if: ${{ !inputs.control_only }}
         run: node scripts/perf/native-hosted-prepare.mjs build
       - name: Run fixed Linux-gated native attribution cohort
+        if: ${{ !inputs.control_only }}
         run: node scripts/perf/native-hosted-cohort.mjs
       - name: Retain terminal scope and refusals
-        if: always()
+        if: ${{ always() && !inputs.control_only }}
         run: |
           if [ -f native-results/report.md ]; then
             cat native-results/report.md >> "$GITHUB_STEP_SUMMARY"
           else
             printf '%s\n' 'Native setup/build refused or cancelled before attribution; no native or SDK timing verdict.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain startup-only scope and refusal
+        if: ${{ always() && inputs.control_only }}
+        run: |
+          printf '%s\n' 'Native startup guard control only; no model loaded or timing verdict.' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f native-results/startup-control/control.json ]; then
+            node -e 'const r = JSON.parse(require("node:fs").readFileSync("native-results/startup-control/control.json")); console.log(JSON.stringify({status:r.status, reason:r.reason, scope:r.scope}));' >> "$GITHUB_STEP_SUMMARY"
           fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()

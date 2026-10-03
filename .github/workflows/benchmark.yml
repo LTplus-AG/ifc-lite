@@ -84,9 +84,9 @@ on:
         type: boolean
         default: false
       comparison_mode:
-        description: 'Viewer/SDK/native paired boundary; cpu performs only a sampler control'
+        description: 'Viewer/SDK/native paired boundary; cpu/native-startup perform only controls'
         type: choice
-        options: [viewer, sdk, cpu, native]
+        options: [viewer, sdk, cpu, native, native-startup]
         default: viewer
       base_ref:
         description: 'Optional paired mode: exact lowercase 40-hex baseline commit; supply candidate_ref too'
@@ -150,6 +150,17 @@ jobs:
     with:
       base_ref: ${{ inputs.base_ref }}
       candidate_ref: ${{ inputs.candidate_ref }}
+
+  native-startup-control:
+    name: Native startup guard control (no model timing)
+    if: github.event_name == 'workflow_dispatch' && inputs.comparison_mode == 'native-startup'
+    uses: ./.github/workflows/perf-native.yml
+    permissions:
+      contents: read
+    with:
+      base_ref: ${{ inputs.base_ref }}
+      candidate_ref: ${{ inputs.candidate_ref }}
+      control_only: true
 
   benchmark:
     name: Viewer benchmark (advisory)

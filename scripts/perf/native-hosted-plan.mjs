@@ -44,11 +44,21 @@ export function freshnessLog(text) {
     throw new Error('canonical Cargo freshness/diagnostic log refused');
   }
 }
+export function freshnessPredicates(record, witness, expected) {
+  return {
+    executableObserved: record.executableObserved === true,
+    witnessPresent: Boolean(witness),
+    samePid: Boolean(witness && record.pid === witness.pid),
+    sameStartTime: Boolean(witness && record.startTime === witness.startTime),
+    ownGroup: record.pgrp === expected.group,
+    sourceCwd: record.cwd === expected.directory,
+    frozenExecutable: [expected.cargo, expected.rustup].includes(record.executable),
+    cargoArgv0: record.argv[0]?.split('/').at(-1) === 'cargo',
+    exactBuildArgs: isDeepStrictEqual(record.argv.slice(1), cargoArgs),
+  };
+}
 export function freshnessException(record, witness, expected) {
-  return Boolean(record.executableObserved === true && witness && record.pid === witness.pid && record.startTime === witness.startTime
-    && record.pgrp === expected.group && record.cwd === expected.directory
-    && [expected.cargo, expected.rustup].includes(record.executable)
-    && record.argv[0]?.split('/').at(-1) === 'cargo' && isDeepStrictEqual(record.argv.slice(1), cargoArgs));
+  return Object.values(freshnessPredicates(record, witness, expected)).every(Boolean);
 }
 export function refreshedCargoWitness(record, expected, snapshot, current) {
   if (!freshnessException(record, record, expected) || !current || !freshnessException(current, record, expected)

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { schedule, revisions, validateRefs, probeResult, freshnessLog, freshnessException, cargoArgs, requirePair, phases, requireCompletion, refreshedCargoWitness } from './native-hosted-plan.mjs';
+import { schedule, revisions, validateRefs, probeResult, freshnessLog, freshnessException, freshnessPredicates, cargoArgs, requirePair, phases, requireCompletion, refreshedCargoWitness } from './native-hosted-plan.mjs';
 function result() {
   return { ...Object.fromEntries(phases.map(key => [key, 1])), fileMb: 2.4, entities: 100, meshes: 5, vertices: 30, triangles: 10,
     pointCacheHits: 0, pointCacheMisses: 0, csgFailures: 0, degenerateDropped: 0, path: '/fixture.ifc',
@@ -43,6 +43,10 @@ test('#6537 Cargo exception requires own PID/start fence, exact args, executable
     assert.equal(freshnessException({ ...record, ...changes }, record, expected), false);
   }
   assert.equal(freshnessException(record, undefined, expected), false);
+  assert.equal(freshnessPredicates({ ...record, argv: ['cargo', 'test'] }, record, expected).exactBuildArgs, false);
+  assert.equal(freshnessPredicates({ ...record, startTime: '100' }, record, expected).sameStartTime, false);
+  assert.equal(freshnessPredicates({ ...record, cwd: '/foreign' }, record, expected).sourceCwd, false);
+  assert.equal(freshnessPredicates({ ...record, executableObserved: false }, record, expected).executableObserved, false);
 });
 test('#6537 native paired controls use all-five medians, reject census/FNV drift and retain AA noise refusal', () => {
   const left = result(), right = structuredClone(left);

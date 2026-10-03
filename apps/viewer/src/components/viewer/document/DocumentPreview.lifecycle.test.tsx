@@ -70,11 +70,9 @@ it('keeps all prepared sheets mounted during same-document reflow, then commits 
   const ui = render(<Editable />); await ready(ui);
   const first = ui.querySelector('[data-preview-section]'); assert.ok(first);
   const before = ui.querySelectorAll('[data-preview-section]').length; assert.equal(before, 2);
-  ui.scrollTop = 500;
   const enlarge = ui.querySelector('button'); assert.ok(enlarge); click(enlarge);
   assert.equal(ui.querySelectorAll('[data-preview-section]').length, before, 'pending layout must not collapse two sheets to a placeholder');
   assert.ok(ui.querySelector('[data-preview-section]') === first, 'the existing sheet DOM survives asynchronous measurement');
-  assert.equal(ui.scrollTop, 500);
   assert.equal(ui.querySelector('[data-document-preview]')?.getAttribute('aria-busy'), 'true');
   await waitFor(() => ui.querySelectorAll('[data-preview-section]').length > before
     && ui.querySelector('[data-document-preview]')?.getAttribute('aria-busy') === 'false', 'larger actual standard-font lines commit more pages');

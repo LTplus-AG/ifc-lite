@@ -174,7 +174,7 @@ export const NO_MARKER_REQUIRED = new Map([
     'mesh. Nothing here originates from an entity a user or a host script named.',
   ],
   [
-    'apps/viewer/src/store/slices/mutationSlice.ts',
+    'apps/viewer/src/store/slices/mutation-mesh-stash.ts',
     'Hides the mesh of the ONE entity a delete-entity mutation just removed, by the express id ' +
     'that was deleted. Expanding it to an aggregated subtree would hide parts the mutation did ' +
     'not delete, and the undo branch shows back the same single id, so the two halves must ' +
@@ -183,7 +183,7 @@ export const NO_MARKER_REQUIRED = new Map([
   [
     'apps/viewer/src/store/slices/collabSlice.ts',
     "The peer-delete handler: hides the single entity a collaborator's onEntityDelete event " +
-    'names. Same reasoning as mutationSlice above -- the parts of a deleted assembly were not ' +
+    'names. Same reasoning as deletion completion above -- the parts of a deleted assembly were not ' +
     'themselves deleted, so expanding would hide geometry that is still in the model.',
   ],
   [

@@ -44,7 +44,7 @@ import { geometryForOwningModel, meshesForOwningModel } from '../owningModelMesh
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import type { AuthoredElement } from './authoredElement.js';
 import { completeAuthoredGeometry, revealAddedGeometryInModelView } from './authoredGeometryCompletion.js';
-import { authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
+import { authoredDataStore } from './authoredTreeEntry.js';
 import { ensureStoreyPlacement } from './storeyPlacement.js';
 import { effectiveStoreyId } from '@/lib/effective-storey';
 import { copyElements, copySources, withHostedFillings } from '@/lib/commands/modeling/copy-elements';
@@ -54,7 +54,7 @@ import { remeshGridPlacementAfterCommit } from './mutation-grid-remesh';
 
 export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
-import { stashAndPruneEntityMesh, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
+import { completeEntityRemoval, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
 import { pruneMutationHistory } from './mutation-history-prune.js';
 import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
@@ -933,15 +933,7 @@ function recordEntityRemovalIn(
   expressId: number,
   overlayRecord: NewEntity | null | undefined,
 ): void {
-  syncAuthoredTreeEntry(get(), modelId, expressId, overlayRecord, false);
-  // Drop the entity's mesh out of `geometryResult` (stashed first so
-  // undo can restore it) rather than only hiding it — #4925: a
-  // hide-only mesh desyncs from a split's separate hard removal.
-  // `hideEntities` is a fallback for entities with no mesh to prune.
-  const globalIdForMesh = toGlobalIdFromModels(get().models, modelId, expressId);
-  if (!stashAndPruneEntityMesh(get, set, modelId, expressId)) {
-    get().hideEntities([globalIdForMesh]);
-  }
+  completeEntityRemoval(get, set, modelId, expressId, overlayRecord);
 
   set((state) => {
     const newRemoved = new Map(state.removedNewEntities);

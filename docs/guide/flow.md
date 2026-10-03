@@ -155,7 +155,19 @@ currently matches nothing, because the CLI's columnar parser does not populate `
 
 ## Creating elements, and re-running
 
-`element.wall`, `element.column`, `element.beam` and `element.slab` build
+`element.stair` takes a storey and `Position` point input; `NumberOfRisers`,
+`RiserHeight`, `TreadLength`, `Width`, optional `Direction` and `WaistThickness`
+use the canonical stair builder. `element.railing` takes a storey and a `Path`
+polyline parameter, `Height`, and optional `RailDiameter`, `PostDiameter` and
+`PostSpacing`. Lengths are metres and positions are storey-local. Both specs
+connect to the existing `model.addElement`; hosts lacking the corresponding SDK
+capability refuse explicitly. Public MCP uses the existing `run_flow` tool,
+with one compound `mutation_undo` per creation. Each MCP call has fresh tracking;
+persistent create/keep/update/remove requires the CLI sidecar or an embedding
+that reuses its `TrackingStore`. There is no new creation RPC alias.
+
+`element.wall`, `element.column`, `element.beam`, `element.slab`,
+`element.stair` and `element.railing` build
 parametric specs (a value, not yet an element); `model.addElement` writes
 them. That node is **tracked**: it owns the elements it creates.
 
@@ -169,9 +181,17 @@ them. That node is **tracked**: it owns the elements it creates.
   **removed** — the orphan Dynamo leaves behind. A tracked node deleted
   from the graph (or given a new tracking key) has its whole set removed
   on the next run.
+- An **update** uses the optional atomic `bim.store.replaceElement` capability:
+  removal and canonical creation either both commit or leave the previous
+  product/flight, journal, allocator and tracked entry intact. Unsupported
+  hosts refuse before removal. This also applies when a tracked spec changes
+  kind. The public MCP tool still has fresh per-call tracking.
 - An **update** replaces the product; the representation items of the
   previous body stay in the exported file as unreferenced entities (the
-  store tombstones the product only). A stable GlobalId says the element
+  store tombstones the product only). Stairs remove their uniquely owned
+  `IfcStair`/`IfcStairFlight` pair instead: ownership ambiguity, foreign product
+  references or unreadable live records refuse the update before writing.
+  Shared representation/style/material leaves remain. A stable GlobalId says the element
   is the same one, not that the file's entity set is unchanged.
 - The tracked sets live in a sidecar, not in the graph: `ifc-lite flow
   run` writes `<graph>.tracking.json` beside the graph (`--tracking F`,

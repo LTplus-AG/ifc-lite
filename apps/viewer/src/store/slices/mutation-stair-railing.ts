@@ -87,7 +87,21 @@ function write(
   }
 
   const state = get();
-  const target = modelEditTarget(state, modelId);
+  const stack = state.undoStacks.get(modelId) ?? [];
+  const last = stack.length > undoBefore ? stack[stack.length - 1] : undefined;
+  completeStairRailingGeometry(store, modelId, storeyId, written, ifcType,
+    last ? state.mutationBatchTags.get(last.id) ?? null : null, options.batchId === undefined);
+
+  return written;
+}
+
+/** Tree and native mesh completion after a successful stair/railing commit. */
+export function completeStairRailingGeometry(
+  store: ModellingStore, modelId: string, storeyId: number, written: Written,
+  ifcType: 'IFCSTAIR' | 'IFCRAILING', batchId: string | null, remesh = true,
+): void {
+  const get = store.getState;
+  const target = modelEditTarget(get(), modelId);
   const hierarchy = target?.dataStore.spatialHierarchy;
   if (hierarchy) {
     const name = target?.view.getNewEntity(written.expressId)?.attributes?.[2];
@@ -96,14 +110,7 @@ function write(
     if (written.flightId !== undefined) hierarchy.elementToStorey.set(written.flightId, storeyId);
   }
 
-  if (options.batchId === undefined) {
-    // The batch `recordModellingEdit` just recorded: its last mutation's tag.
-    const stack = state.undoStacks.get(modelId) ?? [];
-    const last = stack.length > undoBefore ? stack[stack.length - 1] : undefined;
-    const batchId = last ? state.mutationBatchTags.get(last.id) ?? null : null;
-    remeshAfterCommit(get, modelId, batchId, [written.flightId ?? written.expressId], 'created');
-  }
-  return written;
+  if (remesh) remeshAfterCommit(get, modelId, batchId, [written.flightId ?? written.expressId], 'created');
 }
 
 /** Write a straight-run stair (and its flight) into `storeyId`; `params` are metres, storey-local. */

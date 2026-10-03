@@ -273,12 +273,16 @@ Tools are grouped by capability. Everything below is registered in the default t
     output downstream of it comes back with no data rather than reporting the
     half-applied model as a success.
 
-    `element.wall`, `element.column`, `element.slab` and `element.beam` specs
+    `element.wall`, `element.column`, `element.slab`, `element.beam`,
+    `element.stair` and `element.railing` specs
     connected to `model.addElement` create geometry in the selected loaded
     model through the same atomic builders as the SDK and viewer. The supplied
     storey must have a readable placement; dimensions are metres. Each creation
     is one compound operation for `mutation_undo`. A failed creation leaves no
-    partial helper graph or journal entries, but this does not roll back earlier
+    partial helper graph or journal entries. Stair/railing specs use the same
+    canonical parameters as their SDK methods; stairs aggregate one flight.
+    Each call has fresh tracking, so persistent update/remove needs a caller
+    retaining a `TrackingStore`. This does not roll back earlier
     successful nodes in the flow. Free door/window placement remains unsupported
     by this adapter; use the hosted placement tools with an actual host.
 

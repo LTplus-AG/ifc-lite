@@ -24,6 +24,26 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
     });
   }
   return {
+    replaceElement: (...args: Parameters<NonNullable<Methods['replaceElement']>>) => record(args[0].modelId, methods => {
+      const replace = methods.replaceElement;
+      if (!replace) throw new Error('bim.store.replaceElement is not supported by this backend');
+      return replace.call(methods, ...args);
+    }),
+    removeStair: (ref: Parameters<NonNullable<Methods['removeStair']>>[0]) => record(ref.modelId, methods => {
+      const remove = methods.removeStair;
+      if (!remove) throw new Error('bim.store.removeStair is not supported by this backend');
+      return remove(ref);
+    }),
+    addStair: (...args: Parameters<NonNullable<Methods['addStair']>>) => record(args[0], methods => {
+      const create = methods.addStair;
+      if (!create) throw new Error('bim.store.addStair is not supported by this backend');
+      return create(...args);
+    }),
+    addRailing: (...args: Parameters<NonNullable<Methods['addRailing']>>) => record(args[0], methods => {
+      const create = methods.addRailing;
+      if (!create) throw new Error('bim.store.addRailing is not supported by this backend');
+      return create(...args);
+    }),
     addElementType: (...args: Parameters<Methods['addElementType']>) => record(args[0], methods => methods.addElementType(...args), true),
     assignType: (...args: Parameters<Methods['assignType']>) => record(args[0], methods => methods.assignType(...args), true),
     addMaterial: (...args: Parameters<Methods['addMaterial']>) => record(args[0], methods => methods.addMaterial(...args), true),

@@ -13,3 +13,5 @@ Validation:
 - Before review corrections, source `9d68e4436`: broad document selection 584 tests in 90 suites passed, zero skips; root lint passed 8,336 files across four targets. These logs remain explicitly baseline evidence, not a final-head rerun.
 
 The first development-server proof used unsuitable GPU flags and was excluded. This directory contains the qualified production proof only. There is no performance claim. Merge still requires fresh main-base CI and resolved PR feedback.
+
+Subsequent test-only correction C `2726325ff` removes the unmeasured Happy DOM scrollTop readback while retaining genuine page-count and sheet-DOM checks. The focused C lifecycle controls pass 5/5, zero skips. Full current-union root lint passed 8,337 files/four targets with no errors. These successors change no production source covered by the browser/PDF proof.

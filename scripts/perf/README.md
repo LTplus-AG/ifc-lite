@@ -27,6 +27,40 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Bundled main-first module sharing: scoped SDK result (#6537)
+
+Bundled initialization removes the second observed WASM request before the
+default SDK worker pool. Both completed historical candidates retain equal
+CPU-channel output and full unnormalized diagnostics across the fixed public
+families, but elapsed observations remain small or mixed with all outliers kept.
+They do not establish an all-model win. Separately fresh engines differ in code
+and data despite equal captured Rust/build inputs, including absolute checkout
+paths; their elapsed differences do not isolate the JavaScript mechanism.
+
+Starting shared acquisition exposes failure semantics that merely joining an
+optional promise did not exercise. Preserve original rejection inside canonical
+retry, optional callers' null fallback, and the same response for permitted MIME
+fallback. Fatal bytes must not cause refetches; successful streaming must not
+leave a cloned body. Public glue also returns its initialized engine before
+reading options: eager acquisition broke warm-engine offline compatibility.
+Prepare lazy public-init options so that only a cold engine acquires a module.
+Actual generated-loader controls preserve the predecessor assertion failure,
+the intermediate cross-realm harness refusal, and the corrected warm-engine proof.
+
+The corrected lazy source now has its own qualified fresh default-worker SDK
+comparison, with equal produced CPU-channel identity and untouched diagnostics,
+passing preceding noise controls, resource gates, final freeze and cleanup.
+The house and heavy CSG observations consistently improve; the CSG and large
+architecture pairs are mixed. Every observation remains, including high baseline
+values. The second observed request is removed, but independently fresh engine
+bytes still differ, so elapsed results do not isolate JavaScript's contribution.
+This is a scoped SDK result, not a universal speed, RSS or full-viewer verdict.
+The lesson is to share cold acquisition without breaking public glue's warm
+fast path, preserve failure contracts, and qualify actual worker-pool completion
+separately from cached-artifact functional proofs. [All raw cohorts, compatibility
+failures, corrected proofs and limits](evidence/bundled-wasm-init-6537/README.md)
+remain available without replacing or pooling earlier evidence.
+
 ## Direct vertex packing: do not ship the current candidate (#6537)
 
 The candidate removes an intermediate vertex buffer for eligible quantized

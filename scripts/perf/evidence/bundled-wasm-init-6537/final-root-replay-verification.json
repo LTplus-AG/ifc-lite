@@ -1,0 +1,18 @@
+{
+  "status": "equal-replayed-audits",
+  "checks": [
+    {
+      "file": "qualification.json",
+      "expectedRecordedChecks": 1508,
+      "equal": true
+    },
+    {
+      "file": "git-and-closure-attachment.json",
+      "expectedRecordedChecks": 59242,
+      "equal": true
+    }
+  ],
+  "finalArchiveSha256": "6fe1cfedb851e91e36174187ed718da71f72e3c897e80f8de1a4ef01560afcd2",
+  "finalManifestSha256": "55fb157bf1e5abaa7caf59ac5c5034ad56d528b970bad8ac093e1efeea8aa53b",
+  "scope": "Read-only retained data and immutable Git audit replay after full three-container extraction; no build/model/browser/measurement. Complete derived results agree except explicitly excluded replay-local capture time and artifact directory. Historical receipts unchanged."
+}

@@ -20,6 +20,7 @@ import { generateDocumentPdf, resolveBlocks, type DocumentPdfInput, type Documen
 import { manualReportBlockFromChecklist } from './manual-report';
 import { CHECKLIST_VERSION } from '../validation/manual/checklist';
 import { DOCUMENT_VERSION, type DocumentSpec } from './types';
+import type { TableState } from './resolve-table';
 
 const capturedAt = new Date('2026-10-02T12:00:00Z');
 const icon = readFileSync(new URL('../../../public/favicon-16x16-cropped.png', import.meta.url));
@@ -226,6 +227,34 @@ it('keeps failed table warnings visible in mounted paper and real PDF for blank 
     const { result, pages } = await actualPdf(input);
     assert.deepEqual(result.imageFailures, [], 'actual committed PNG still exports');
     assert.ok(pages.map(page => page.text).join('\n').includes(control.expected), `actual PDF failure: ${control.expected}`);
+    cleanup();
+  }
+});
+
+// Blank captured catalogues must not hide any table diagnostic or source title.
+it('keeps every unresolved and empty table status visible in mounted paper and real PDF for blank labels (#6610, review4172078887)', async () => {
+  const input = await publicInput();
+  const cases: { key: string; state: TableState; expected: string }[] = [
+    { key: 'document.table.resolving', state: { status: 'resolving' }, expected: 'Running the list…' },
+    { key: 'document.table.noModel', state: { status: 'no-model' }, expected: 'Load a model to fill this table.' },
+    { key: 'document.table.noReport', state: { status: 'no-report' }, expected: 'No validation report yet — run validation to include results.' },
+    { key: 'document.table.ruleNotFound', state: { status: 'rule-not-found' }, expected: 'The rule this table refers to is not in the current validation report.' },
+    { key: 'document.table.noRows', state: { status: 'ok', kind: 'list', model: { title: 'Empty captured list', generatedAt: capturedAt.toISOString(), columns: [], groups: null, rows: [], groupColumnId: null, groupColumnIds: [], sumColumnIds: [], totals: { count: 0, sums: {} }, schedule: null } }, expected: 'No rows match this list.' },
+    { key: 'document.table.validationNoRows', state: { status: 'ok', kind: 'validation', model: { columns: [], rows: [], totalRows: 0 } }, expected: 'No rows match this rule.' },
+    { key: 'document.table.comparisonNoRows', state: { status: 'ok', kind: 'comparison', model: { columns: [], rows: [], totalRows: 0 } }, expected: 'No changes in this saved comparison.' },
+  ];
+  for (const blank of ['', '  \t ']) for (const control of cases) {
+    registerLocale(locale, { [control.key]: blank, 'document.block.tableSourceValidation': blank }); setLocale(locale);
+    input.labels = captureLabels(); input.tables = new Map([['table', control.state]]);
+    const ui = render(createElement(DocumentPreview, { ...input, selectedBlockId: null, onSelectBlock: () => {} }));
+    await waitFor(() => ui.querySelector('[data-preview-block="table"]') !== null && ui.querySelector('[data-layout-pending="true"]') === null,
+      'actual blank-catalogue table preparation completes');
+    const preview = ui.querySelector('[data-preview-block="table"]')?.textContent ?? '';
+    assert.ok(preview.includes(control.expected), `mounted ${control.key}: ${blank}`);
+    assert.ok(preview.includes('Validation results'), 'source title remains visible');
+    const { pages } = await actualPdf(input); const printed = pages.map(page => page.text).join('\n');
+    assert.ok(printed.includes(control.expected), `real PDF ${control.key}: ${blank}`);
+    assert.ok(printed.includes('Validation results'), 'real PDF source title remains visible');
     cleanup();
   }
 });

@@ -131,6 +131,7 @@
     "happy-dom": "^20.14.5",
     "jszip": "^3.10.2",
     "oxigraph": "^0.5.11",
+    "playwright-core": "1.63.0",
     "svgo": "^4.1.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",

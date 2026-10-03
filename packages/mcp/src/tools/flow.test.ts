@@ -145,7 +145,9 @@ describe('#5167 describe_flow / run_flow', () => {
     const summary = structured(result) as { ok: boolean; outputs: Array<{ key: string; data: unknown }> };
     expect(summary.ok).toBe(true);
     const table = summary.outputs.find((o) => o.key === 'table.table');
-    const rows = (table?.data as { rows: Array<Record<string, unknown>> }).rows;
+    expect(table).toBeDefined();
+    if (!table) throw new Error('run_flow did not return its declared table output');
+    const rows = (table.data as { rows: Array<Record<string, unknown>> }).rows;
     // The rows the run just wrote (walls that had no FireRating) now carry
     // the overridden value, never the graph's own default ('REI60').
     expect(rows.some((r) => r['Pset_WallCommon.FireRating'] === 'REI90')).toBe(true);

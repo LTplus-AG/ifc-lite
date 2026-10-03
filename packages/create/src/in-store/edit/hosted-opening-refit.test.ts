@@ -10,7 +10,7 @@ import { addWallToStore } from '../wall.js';
 import { addOpeningToStore } from '../opening.js';
 import { resolveSpatialAnchor } from '../resolve-anchor.js';
 import { placedBodyExtent, resolveHostAnchor } from '../resolve-host.js';
-import { planCutRefit } from './hosted-opening-refit.js';
+import { heightRefusal, planCutRefit } from './hosted-opening-refit.js';
 
 it('#6232 rejects nonfinite, reversed and overflowing cut extents without emitting invalid geometry', async () => {
   const bytes = new Uint8Array(await readFile(new URL('../../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url)));
@@ -23,6 +23,10 @@ it('#6232 rejects nonfinite, reversed and overflowing cut extents without emitti
   const extents: Array<[number, number]> = [[NaN, 1], [0, Infinity], [-Infinity, 1], [1, -1], [0, 0], [-Number.MAX_VALUE, Number.MAX_VALUE]];
   for (const extent of extents) expect(planCutRefit(target, wall, 1, extent, 1).ok).toBe(false);
   for (const scale of [NaN, Infinity, 0, -1, Number.MIN_VALUE]) expect(planCutRefit(target, wall, 1, [-.6, .6], scale).ok).toBe(false);
+  for (const height of [NaN, Infinity, -Infinity, 0, -1]) expect(heightRefusal(target, wall, height, 1)).not.toBeNull();
+  for (const scale of [NaN, Infinity, 0, -1, Number.MIN_VALUE]) expect(heightRefusal(target, wall, 3, scale)).not.toBeNull();
+  expect(heightRefusal(target, wall, .5, 1)).toContain('reaches above');
+  expect(heightRefusal(target, wall, 3, 1)).toBeNull();
   expect({ records: view.getNewEntities(), journal: view.getMutations(), next: view.peekNextExpressId() }).toEqual(before);
 
   const fit = planCutRefit(target, wall, 1, [-.6, .6], 1);

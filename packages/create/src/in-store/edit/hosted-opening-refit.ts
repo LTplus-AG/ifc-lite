@@ -120,7 +120,13 @@ export function planCutRefit(
     || !Number.isFinite(lengthUnitScale) || lengthUnitScale <= 0) {
     return { ok: false, reason: 'The host extent and model length unit scale must be finite and positive' };
   }
-  const over = toNativeLength({ lengthUnitScale }, CLEARANCE_M);
+  let over: number;
+  try {
+    over = toNativeLength({ lengthUnitScale }, CLEARANCE_M);
+  } catch (error) {
+    console.warn('[modeling] Opening cut clearance conversion failed; host resize refused', error);
+    return { ok: false, reason: 'The opening cut extent exceeds the supported numeric range' };
+  }
   const depth = span + 2 * over;
   if (!Number.isFinite(over) || !Number.isFinite(depth)) return { ok: false, reason: 'The opening cut extent exceeds the supported numeric range' };
   const fit = over / 10;
@@ -155,7 +161,13 @@ export function heightRefusal(target: ModelEditTarget, hostId: number, topNative
     || !Number.isFinite(lengthUnitScale) || lengthUnitScale <= 0) {
     return 'The wall height and model length unit scale must be finite and positive';
   }
-  const slack = toNativeLength({ lengthUnitScale }, 1e-4);
+  let slack: number;
+  try {
+    slack = toNativeLength({ lengthUnitScale }, 1e-4);
+  } catch (error) {
+    console.warn('[modeling] Wall height tolerance conversion failed; host resize refused', error);
+    return 'The wall height exceeds the supported numeric range';
+  }
   if (!Number.isFinite(slack) || !Number.isFinite(topNative + slack)) {
     return 'The wall height exceeds the supported numeric range';
   }

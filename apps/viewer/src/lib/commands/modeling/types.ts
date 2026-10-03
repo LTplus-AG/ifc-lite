@@ -142,6 +142,10 @@ export interface ModelingCommand<G = unknown> {
   /** Per-command keys: rows in the `command.<id>` context of `KEY_COMMANDS`. */
   readonly keys?: readonly { commandKey: KeyCommandId; run(g: G, ctx: CommandContext): G | CommandSignal }[];
   init(ctx: CommandContext): G;
+  /** Command-specific editing plane; null gives a visible refusal in its HUD. */
+  workplane?(ctx: CommandContext): Workplane | null;
+  /** Editable bodies excluded from picking (e.g. a space covering the roof target). */
+  pickExclusions?(g: G): readonly { modelId: string; expressId: number }[];
   /** What the snap solver constrains against: the anchor, the chain so far, typed locks. */
   snapQuery?(g: G): Pick<SnapQuery, 'anchor' | 'chain' | 'locks'>;
   pointerMove(g: G, s: SnapResult, ctx: CommandContext): G;

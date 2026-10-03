@@ -1,0 +1,148 @@
+{
+  "issue": 6537,
+  "PR": 6773,
+  "run": 37144781861,
+  "head": "4a1a750028f33a075de4d1c1ba695bad785a7135",
+  "scope": "Standalone hosted graphics environment; no IFC, full-viewer or performance verdict",
+  "verdict": {
+    "corrected": "exact GPU readback and independently decoded red/blue/terminal PNGs; actual SwiftShader/Vulkan backend; no observed device/backend errors; complete owned cleanup",
+    "original": "owned Chrome executable-hash deadline before SystemInfo/canvas; no demonstrated GPU failure",
+    "rawErrors": "DBus and GCM lines retained; not relabelled absent"
+  },
+  "archive": {
+    "file": "run37144781861.tar.gz",
+    "sha256": "7efb16ba6e0f2353257129144f2196c9945f4816521767b5aca56d9a6badc2a8"
+  },
+  "members": [
+    {
+      "path": "independent-audit/audit.py",
+      "bytes": 10036,
+      "sha256": "b8e98cb5d490d498629a241c89b943b63874cd1de1f8582bf4a5402884fccd94"
+    },
+    {
+      "path": "independent-audit/gpu-control.mjs",
+      "bytes": 5139,
+      "sha256": "ff24afa8b0a098899d0cec3915c356888cedc6b7a4e56267abedc9272f0bf3d3"
+    },
+    {
+      "path": "independent-audit/gpu-page.mjs",
+      "bytes": 4824,
+      "sha256": "4827fd5bba94d755c4b305699b6a61a0ddece003727156191eecd5a8928b3535"
+    },
+    {
+      "path": "independent-audit/gpu-run.mjs",
+      "bytes": 7694,
+      "sha256": "504172121f661c5874126cf184157b1e9dd3a739794611c8879e0ee38625439f"
+    },
+    {
+      "path": "independent-audit/gpu-sample.mjs",
+      "bytes": 7995,
+      "sha256": "9be4f4d38e5af09fda32cbc9fe060799c5b5b6ac573ed52219591e0db7f18509"
+    },
+    {
+      "path": "independent-audit/receipt.json",
+      "bytes": 25677,
+      "sha256": "8a1d3bf09c3c1161df6a8644ed46c77becb4216b4d7e34669a648c2d6ef611bc"
+    },
+    {
+      "path": "independent-audit/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "independent-audit/stdout.log",
+      "bytes": 3964,
+      "sha256": "ba76a4a734c1555bb6bcc72fedb50cd4f0ea23835e64e8af7ff9804365871dc8"
+    },
+    {
+      "path": "raw/corrected-blue.png",
+      "bytes": 3166,
+      "sha256": "ca0030b7620bb9d31e63169027c121788b51601ba92dbad2f649f0440f84c7d4"
+    },
+    {
+      "path": "raw/corrected-red.png",
+      "bytes": 3166,
+      "sha256": "7ac1e0adb19b41ab07a9b0eb958723f11f486dd034f1edad9504e0e9305390da"
+    },
+    {
+      "path": "raw/corrected-terminal.png",
+      "bytes": 3166,
+      "sha256": "ca0030b7620bb9d31e63169027c121788b51601ba92dbad2f649f0440f84c7d4"
+    },
+    {
+      "path": "raw/corrected.events.jsonl",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/corrected.json",
+      "bytes": 19250,
+      "sha256": "c5a61ce0595e73ce7cd6a36c185c75f7157b4bed9e5394b87912430fa406bc9e"
+    },
+    {
+      "path": "raw/corrected.stderr.log",
+      "bytes": 7367,
+      "sha256": "4c5b99b02ad60a849c8fbd91dc31aad1f5ade96c54901f0b39579e440152f019"
+    },
+    {
+      "path": "raw/corrected.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/original.events.jsonl",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/original.json",
+      "bytes": 1173,
+      "sha256": "4373535f4a143a4d8dabe85e471ade7fb2e6c08e2c6fdee75d230252d9e627f0"
+    },
+    {
+      "path": "raw/original.stderr.log",
+      "bytes": 7063,
+      "sha256": "b84ceb7485ac3369992550939eb1534993f8783006c8217ca47669aaa3e61433"
+    },
+    {
+      "path": "raw/original.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/pnpm-install.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/pnpm-install.stdout.log",
+      "bytes": 23,
+      "sha256": "da13ab9d025b19c91553bc7d4c450975d3e4e36dd7c5fef6f223f8008ba39547"
+    },
+    {
+      "path": "raw/pnpm-selection.json",
+      "bytes": 2595,
+      "sha256": "06b59777ae060711da8be843a8da8906129a5ab675afcb6aca6f97f10a078f98"
+    },
+    {
+      "path": "raw/report.json",
+      "bytes": 23979,
+      "sha256": "e1b027e521b1a44e8f28e1a279b5bb50121e28cee9843ad2d7a214114f608dc0"
+    },
+    {
+      "path": "run/dispatch.json",
+      "bytes": 481,
+      "sha256": "6814b72e45364fe8db6796f71f5051d2e53b4c0a32676dc19cb07a63fa830a3c"
+    },
+    {
+      "path": "run/job.log",
+      "bytes": 63480,
+      "sha256": "77063edbc5f0d66150a43f384f1bf5e785862294a0921765ca3329c422e2c9cc"
+    },
+    {
+      "path": "run/terminal-receipt.json",
+      "bytes": 1188,
+      "sha256": "f2c8f11aca4ebb27867ca9af783275f3717e8ce347bf88319bd4a4a19afb3316"
+    }
+  ]
+}

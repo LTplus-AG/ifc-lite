@@ -43,6 +43,16 @@ or authorizes production renderer flags. `gpu-results/` retains refusals too.
 Raw logs and event records have fixed bounds; hitting a bound refuses and labels
 the retained prefix incomplete. Cancellation always prevents completion.
 
+The first hosted control observed corrected-profile GPU readback and real PNG
+pixels with a live SwiftShader/Vulkan device. Independent decoding, backend and
+source-hash checks confirm that narrow result. The original profile refused its
+owned executable-hash deadline before canvas setup, so this run does not compare
+the two profiles’ graphics behavior. Retain non-GPU DBus/GCM errors as recorded.
+Use the qualified environment for a separate prospective viewer comparison;
+no full-load or production-renderer claim follows from the control. Raw evidence
+and the independent audit are retained in
+[`evidence/hosted-gpu-control-6537/manifest.json`](evidence/hosted-gpu-control-6537/manifest.json).
+
 ## Direct vertex packing: do not ship the current candidate (#6537)
 
 The candidate removes an intermediate vertex buffer for eligible quantized

@@ -19,6 +19,8 @@ import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { clearStoreyRoomsCache } from '@/lib/rooms/storey-rooms';
 import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
 import { createStoreAdapter } from './store-adapter.js';
+import '@/lib/commands/modeling/builtin';
+import { getModelingCommand } from '@/lib/commands/modeling/registry';
 import { PLAN_MOVE, readPlanMoveTarget } from '@/lib/commands/modeling/commands/plan-move';
 import { runTransaction } from '@/lib/commands/modeling/transaction';
 import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workplane';
@@ -139,9 +141,11 @@ it('plan.move carries joined walls through the shared physical writer and one Un
   assert.ok(isWorkplane(plane));
   const target = readPlanMoveTarget(useViewerStore.getState(), MODEL, first.expressId);
   assert.ok(target);
-  const outcome = runTransaction(useViewerStore, PLAN_MOVE, { target, base: [20,20], to: [21,20] },
+  const command = getModelingCommand(PLAN_MOVE.id);
+  assert.ok(command);
+  const outcome = runTransaction(useViewerStore, command, { target, base: [20,20], to: [21,20] },
     { get: useViewerStore.getState, modelId: MODEL, storeyId: 42, workplane: plane });
-  assert.ok(outcome.ok, outcome.ok ? undefined : outcome.reason);
+  assert.ok(outcome.ok, outcome.ok ? 'plan.move committed' : outcome.reason);
   const endpoints = useViewerStore.getState().readWallEndpoints(MODEL, second.expressId);
   assert.ok(endpoints);
   assert.deepEqual(endpoints.start.slice(0, 2), [25,20], 'the adjacent joined endpoint follows the moved wall');

@@ -7,6 +7,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, unlinkSync, rmSync 
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { sourceSnapshot, verifySource } from './sdk-prepare.mjs';
 import { installedClosure } from './sdk-tools.mjs';
 import { buildOutcomes } from './sdk-build-contract.mjs';
@@ -17,6 +18,26 @@ const temporary = fn => async () => {
   const directory = mkdtempSync(join(tmpdir(), 'sdk-provenance-'));
   try { await fn(directory); } finally { rmSync(directory, { recursive: true, force: true }); }
 };
+test('#6537 sourceSnapshot covers a real committed Git tree larger than Node default output buffer', { timeout: 90000 }, temporary(async directory => {
+  const git = (...args) => execFileSync('git', ['-C', directory, ...args], {
+    encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 ** 2, stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+  git('init', '--quiet'); git('config', 'user.name', 'SDK invariant'); git('config', 'user.email', 'sdk-invariant@example.invalid');
+  const count = 6000, names = [];
+  for (let index = 0; index < count; index++) {
+    const name = `entity-${String(index).padStart(4, '0')}-${'x'.repeat(160)}.txt`;
+    names.push(name); writeFileSync(join(directory, name), `entity ${index}\n`);
+  }
+  git('add', '--', '.'); git('commit', '--quiet', '-m', 'large tree invariant fixture');
+  assert.ok(Buffer.byteLength(git('ls-tree', '-r', '-z', 'HEAD')) > 1024 ** 2);
+  const snapshot = await sourceSnapshot(directory, git('rev-parse', 'HEAD'));
+  assert.equal(Object.keys(snapshot.files).length, count);
+  for (const index of [0, 2999, 5999]) {
+    assert.equal(snapshot.files[join(directory, names[index])], createHash('sha256').update(`entity ${index}\n`).digest('hex'));
+  }
+  writeFileSync(join(directory, names[5999]), 'changed last file beyond the former buffer boundary');
+  await assert.rejects(verifySource(snapshot), /source/);
+}));
 test('#6537 actual Git snapshot refuses tracked changes and retargeted byte-identical source links', temporary(async directory => {
   const git = (...args) => execFileSync('git', ['-C', directory, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   git('init'); git('config', 'user.name', 'SDK invariant'); git('config', 'user.email', 'sdk-invariant@example.invalid');

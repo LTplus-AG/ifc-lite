@@ -13,7 +13,9 @@ import { prefetchBindgen, requireBindgen } from './sdk-bindgen.mjs';
 import { selectPnpm } from './sdk-pnpm.mjs';
 import { refs, fixtures, schedule, limits } from './sdk-plan.mjs';
 export const root = resolve(import.meta.dirname, '../..'), output = join(root, 'sdk-results');
-const git = (directory, ...args) => execFileSync('git', ['-C', directory, ...args], { encoding: 'utf8', timeout: 30000 });
+const git = (directory, ...args) => execFileSync('git', ['-C', directory, ...args], {
+  encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 ** 2,
+});
 export async function sourceSnapshot(directory, expectedHead) {
   if (git(directory, 'rev-parse', 'HEAD').trim() !== expectedHead
     || git(directory, 'status', '--porcelain', '--untracked-files=no').trim()) throw new Error('immutable clean source required');

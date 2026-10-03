@@ -119,6 +119,30 @@ it('captures table/report/footer labels before actual PDF asset preparation and 
   }
 });
 
+// #6610/review4171484425: a printed report must not imply it updates itself.
+it('uses the same static-report-safe missing-validation instruction in captured paper and PDF (#6610)', async () => {
+  const expected = 'No validation report yet — run validation to include results.';
+  const input = await publicInput();
+  input.tables = new Map([['table', { status: 'no-report' }]]);
+  setLocale('en'); input.labels = captureLabels();
+  const printed = await actualPdf(input);
+  assert.ok(printed.pages.map(page => page.text).join('\n').includes(expected), 'captured PDF has an instruction that does not promise live updates');
+  const ui = render(createElement(DocumentPreview, { ...input, selectedBlockId: null, onSelectBlock: () => {} }));
+  await waitFor(() => ui.querySelector('[data-preview-block="table"]') !== null && ui.querySelector('[data-layout-pending="true"]') === null,
+    'actual missing-report paper preparation completes');
+  assert.ok(ui.querySelector('[data-preview-block="table"]')?.textContent?.includes(expected), 'mounted paper uses the same instruction');
+  cleanup();
+  input.labels = undefined;
+  const headless = await actualPdf(input);
+  assert.ok(headless.pages.map(page => page.text).join('\n').includes(expected), 'omitted-label English PDF uses the same canonical instruction');
+  registerLocale(locale, { 'document.table.noReport': 'Captured missing validation instruction' }); setLocale(locale);
+  input.labels = captureLabels();
+  const translated = await actualPdf(input, () => { registerLocale(locale, { 'document.table.noReport': 'WRONG later instruction' }); setLocale('en'); });
+  const text = translated.pages.map(page => page.text).join('\n');
+  assert.ok(text.includes('Captured missing validation instruction'), 'captured translated instruction survives actual PNG preparation');
+  assert.ok(!text.includes('WRONG later instruction'));
+});
+
 it('keeps omitted-label PDF callers English and default heading geometry even with an active translated UI (#6660)', async () => {
   registerLocale(locale, { 'document.print.footer': 'WRONG footer', 'document.print.pageCounter': 'WRONG counter',
     'document.block.tableSourceValidation': 'WRONG title', 'document.table.column.rule': 'WRONG column' }); setLocale(locale);

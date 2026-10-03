@@ -2,7 +2,9 @@
 
 This is a review checklist, not a completion receipt. The original finite charter contains the following 24 commands. Later main SpaceEnvelope (#6686) is outside this charter. Ordinary placement uses the existing public `run_flow` nodes and shared SDK cores. Duplicate and inspector dimensions are cross-cutting follow-ups.
 
-Eight clean integrated source/WASM captures are recorded at `acbc97c0be9ec495ecf6e57ce5e1b71885b85f74` under `../visible-integrated/`, with their exact scope and later narrow forward repairs kept separately. The latest composed evidence under `../parent-boundary-forward/` contains two fresh Physical receipts on clean `983bf1665a45906ef6f26b6e2e625186f5bc70d3` and six retained original-source Align/Placement/Room receipts: 8 receipts, 184 stages and 436 native/displayed geometry witnesses. The test-only Copy deadline change is documented separately under `../copy-stress-deadline/`. Final acceptance remains conditional on predecessor landings, all four actual current-head required gates, complete fresh feedback and reviewed merge-tree identity. Test names identify behavioral controls; they do not assert that an unrecorded final-head run occurred.
+Source-bound WSL Chrome evidence is recorded under parent-boundary-forward: two fresh Physical receipts at clean 983bf1665a45906ef6f26b6e2e625186f5bc70d3 plus six retained Align/Placement/Room receipts at their original clean acbc97c0be9ec495ecf6e57ce5e1b71885b85f74. Strict composed audit: 8 receipts, 184 stages, 436 native/displayed geometry witnesses. Scope limitations and earlier historical captures remain explicitly labelled.
+
+Merge acceptance requires predecessor landings, all four actual current-head required gates, complete fresh feedback and reviewed merge-tree identity. The test-only Copy deadline and surviving-writer witness are recorded separately under `../copy-stress-deadline/` and `../copy-revert-witness/`. Test names identify behavioral controls; they do not assert that an unrecorded final-head run occurred.
 
 | Command | SDK route | MCP route | Behavioral controls | Browser producer |
 |---|---|---|---|---|

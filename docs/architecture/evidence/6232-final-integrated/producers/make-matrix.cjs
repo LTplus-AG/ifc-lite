@@ -29,11 +29,29 @@ const rows=[
  ['curtainwall.place','addCurtainWall','place_curtain_wall','design-place.test.ts / curtain-wall-grid.e2e.test.ts','placement: curtain-wall'],
  ['grid.place','addGrid / addColumnOnGrid','place_grid / place_grid_column','design-place.test.ts / grid-column.e2e.test.ts','placement: grid / grid-column'],
  ['element.trimExtend','trimExtendElement','edit_element_geometry: trim_extend','element-trim-extend.test.ts / physical-edit.test.ts','physical: trim'],
-].map(([command,sdk,mcp,tests,browser])=>({command,sdk,mcp,tests,browser,finalAcceptance:'PENDING final integrated source, fresh receipts and required PR gates'}));
+].map(([command,sdk,mcp,tests,browser])=>({command,sdk,mcp,tests,browser,finalAcceptance:'Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings'}));
 assert.equal(rows.length,24);assert.equal(new Set(rows.map(row=>row.command)).size,24);
-const matrix={issue:6232,charter:'Frozen original 24 modelling commands; source-only gap map c47, not the later main command registry',exclusions:['SpaceEnvelope #6686 is a separate landed feature','Duplicate is a copy-route follow-up, not a 25th frozen command','Inspector size/defaults/profile and ChangeSet/history are cross-cutting acceptance controls'],captureState:'Physical, Align and Placement passed on integrated bfc6d467 in WSL Chrome with one and two models; Room Query/Pick/cut and typed Undo/Redo passed on repaired 435e8842 with one and two models. Final integrated-head captures remain pending.',alignRegisteredNativeProof:'Registered-command native controls passed; six-mode SDK browser controls passed on bfc6d467 with two targets requiring distinct shifts in one and two model contexts',pending:['Final integrated parent ancestry, source and WASM must be freshly qualified','All required PR checks and actual feedback must be resolved before merge'],rows};
+const metadata={
+  "issue": 6232,
+  "charter": "Frozen original 24 modelling commands; source-only gap map c47, not the later main command registry",
+  "exclusions": [
+    "SpaceEnvelope #6686 is a separate landed feature",
+    "Duplicate is a copy-route follow-up, not a 25th frozen command",
+    "Inspector size/defaults/profile and ChangeSet/history are cross-cutting acceptance controls"
+  ],
+  "captureState": "Source-bound WSL Chrome evidence is recorded under parent-boundary-forward: two fresh Physical receipts at clean 983bf1665a45906ef6f26b6e2e625186f5bc70d3 plus six retained Align/Placement/Room receipts at their original clean acbc97c0be9ec495ecf6e57ce5e1b71885b85f74. Strict composed audit: 8 receipts, 184 stages, 436 native/displayed geometry witnesses. Scope limitations and earlier historical captures remain explicitly labelled.",
+  "alignRegisteredNativeProof": "Registered-command native controls and six-mode SDK browser controls passed; the retained clean acbc97c0be9ec495ecf6e57ce5e1b71885b85f74 Align receipts preserve distinct target shifts and one/two model contexts.",
+  "mergeAcceptanceConditions": [
+    "All preceding stack layers must actually land on main",
+    "All four latest required current-head PR contexts must actually succeed and complete fresh feedback must be addressed",
+    "Actual-main merge trees must match reviewed qualified source immediately before each merge"
+  ]
+};
+const matrix={...metadata,rows};
 fs.writeFileSync(path.join(dir,'acceptance-matrix.json'),JSON.stringify(matrix,null,2)+'\n');
-let md='# #6232 frozen 24-command acceptance matrix\n\nThis is a review checklist, not a completion receipt. The original finite charter contains the following 24 commands. Later main SpaceEnvelope (#6686) is outside this charter. Ordinary placement uses the existing public `run_flow` nodes and shared SDK cores. Duplicate and inspector dimensions are cross-cutting follow-ups.\n\nFinal acceptance remains pending final clean integrated source/WASM capture, forward-qualified review fixes, and required PR gates. Test names identify behavioral controls; they do not assert that an unrecorded final-head run occurred.\n\n| Command | SDK route | MCP route | Behavioral controls | Browser producer |\n|---|---|---|---|---|\n';
+let md='# #6232 frozen 24-command acceptance matrix\n\nThis is a review checklist, not a completion receipt. The original finite charter contains the following 24 commands. Later main SpaceEnvelope (#6686) is outside this charter. Ordinary placement uses the existing public `run_flow` nodes and shared SDK cores. Duplicate and inspector dimensions are cross-cutting follow-ups.\n\n';
+md+=`${metadata.captureState}\n\nMerge acceptance requires predecessor landings, all four actual current-head required gates, complete fresh feedback and reviewed merge-tree identity. The test-only Copy deadline and surviving-writer witness are recorded separately under \`../copy-stress-deadline/\` and \`../copy-revert-witness/\`. Test names identify behavioral controls; they do not assert that an unrecorded final-head run occurred.`;
+md+='\n\n| Command | SDK route | MCP route | Behavioral controls | Browser producer |\n|---|---|---|---|---|\n';
 for(const row of rows)md+=`| ${row.command} | ${row.sdk} | ${row.mcp} | ${row.tests} | ${row.browser} |\n`;
 md+='\nEvery final receipt must identify the exact source commit, loaded fixture hash and fetched WASM hash, show actual owning-model native meshes including origins, verify whole exported IFC graph/geometry Undo and unchanged peer state in one and multiple loaded models. Align native tests additionally cover source variants, per-root joined/hosted ownership and stale preparation. Browser six-mode receipts use two targets requiring different shifts. Room native MCP controls qualify Auto/Footprint/Update/Drag/Remove/Prune; this browser producer claims only Query/Pick/cut. Source metamorphic IFC4X3/mm variants are not independent authoring-tool fixtures.\n';
 fs.writeFileSync(path.join(dir,'acceptance-matrix.md'),md);

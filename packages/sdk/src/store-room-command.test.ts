@@ -238,3 +238,22 @@ it.skipIf(!available)('native triangle occupancy refuses Footprint even above th
     expect(view.peekNextExpressId()).toBe(next);
   } finally { backend.disposeRooms(); }
 });
+
+it.skipIf(!available)('layout-only native split has an ordinary Undo step without IFC graph edits (#6758)', async () => {
+  const { view, editor, backend } = await setup();
+  try {
+    const before = await backend.roomCommand('m', 42, { action: 'query' });
+    const next = view.peekNextExpressId();
+    expect(await backend.roomCommand('m', 42, { action: 'edit', operation: { kind: 'split', a: [21,20], b: [21,23] } })).toMatchObject({ created: [], updated: [], deleted: [] });
+    expect((await backend.roomCommand('m', 42, { action: 'query' })).candidates).toHaveLength(2);
+    expect(view.getMutations()).toHaveLength(1);
+    expect(view.getMutations()[0].type).toBe('SESSION_EDIT');
+    expect(view.getEffectiveChanges()).toEqual([]);
+    expect(editor.getNewEntities()).toEqual([]);
+    expect(view.peekNextExpressId()).toBe(next);
+    expect(undoRecordedMutationOperations(view, 1, () => { throw new Error('Expected compound session history'); })).toBe(1);
+    expect((await backend.roomCommand('m', 42, { action: 'query' })).candidates).toEqual(before.candidates);
+    expect(view.getMutations()).toEqual([]);
+    expect(view.getEffectiveChanges()).toEqual([]);
+  } finally { backend.disposeRooms(); }
+});

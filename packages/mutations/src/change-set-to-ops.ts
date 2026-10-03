@@ -148,6 +148,8 @@ export function changeSetToOps(
 
   const skipped: Mutation[] = [];
   for (const mutation of changeSet.mutations) {
+    // Session layouts belong to local history, never IFC collaboration ops.
+    if (mutation.type === 'SESSION_EDIT') continue;
     const entity = identityOf(mutation.entityId);
     if (entity === undefined) continue;
     applyMutation(mutation, entity, setMember, componentFor, entityOps, resolver, skipped);

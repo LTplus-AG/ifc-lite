@@ -1,7 +1,7 @@
 # Integrated #6232 qualification
 
 These are measured receipts, not a claim that the issue or stack is complete.
-The captured source is clean commit
+The Physical, Align and Placement captured source is clean commit
 `bfc6d467c3e10387cf1e4dfe9da43066f139cb0e`: the complete modeling stack,
 actual main through `43e9b79202e01c16ecb990f22496f33864260eb0`, the canonical
 SpaceEnvelope body-item compatibility guard, and public MCP Flow creation
@@ -22,7 +22,7 @@ runtime, fixture, browser user agent, requests/replies and actual WASM responses
 | Physical | 21 stages passed | 21 stages passed | Paste, Duplicate, Array, Move, Rotate, dimensions, endpoints, Trim, Split and their Undo |
 | Align | 17 stages passed | 17 stages passed | Six modes, two targets needing different translations, fixed orthogonal axes/reference, one Undo |
 | Placement | 36 stages passed | 36 stages passed | Slab, beam, stair/flight, railing, curtain wall/members/plates, grid-bound column, opening, door, window, hosted slide and their Undo |
-| Room | **Blocked** | Pending | Pick/cut render, but cut Undo loses quantity type metadata; no successful Room receipt is claimed |
+| Room | 18 stages passed | 18 stages passed | Query, Pick, cut, Cut Undo/Redo/Undo, Pick Undo and wall Undo; complete graph, typed quantities and geometry |
 
 Receipts preserve the complete sorted exported EXPRESS graph, actual owning-model
 mesh hashes including positions/indices/normals/color/origin, overlay records,
@@ -54,7 +54,6 @@ export IFC_EVIDENCE_DIR=/tmp/6232-final-evidence
 node docs/architecture/evidence/6232-final-integrated/producers/physical.cjs
 node docs/architecture/evidence/6232-final-integrated/producers/align.cjs
 node docs/architecture/evidence/6232-final-integrated/producers/placement.cjs
-# Room must pass after the canonical quantity-history repair; it has not passed here.
 node docs/architecture/evidence/6232-final-integrated/producers/room.cjs
 ```
 
@@ -86,11 +85,20 @@ generated Pset/Qto scaffolding absent from both persistent source and overlay;
 it rejects unexpected nonpersistent entity classes. Persistent product IDs and
 GUIDs remain exact. This is necessary because export allocates scaffold IDs
 above the monotonic allocator and creates fresh container GUIDs each time.
-The future Room producer retains both raw and canonical graphs; this adjustment
+The Room producer retains both raw and canonical graphs; this adjustment
 does not turn the failed Room run into a pass.
 
 Run `node producers/audit-browser-receipts.cjs` from this evidence directory
-to independently verify all six archived receipts: 148 stages and 320 actual
-native witnesses. The audit checks compressed receipt hashes, fetched runtime
+to independently verify all eight archived receipts, each at its recorded source identity. The audit checks compressed receipt hashes, fetched runtime
 bytes, complete peer state, finite native/displayed bounds and exact triangle/
-vertex counts. It passed for these recorded receipts.
+vertex counts. It passed for these recorded receipts: 184 stages and 436 native witnesses.
+
+Room was captured separately at clean `435e8842c07e757f08bf8607e0a52f7a429c9be3`,
+after the canonical quantity-history repair. The fixture, Rust tree and fetched
+WASM hashes remain identical. Both model counts pass actual keyboard Cut
+Undo, Redo and a second Undo, including complete typed exported quantities,
+canonical graph and actual native/displayed geometry. The original failing
+receipt remains archived. The separate `quantity-types.log.gz` and
+`quantity-viewer.log.gz` show root typecheck (111 tasks/3,381 test files) and
+27 native/mounted viewer controls with zero skips for the repaired production
+source. Earlier qualification logs retain their original source scope.

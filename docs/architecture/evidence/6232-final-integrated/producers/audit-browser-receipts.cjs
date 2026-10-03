@@ -41,5 +41,5 @@ for (const entry of manifest) {
     stages++;
   }
 }
-assert.equal(manifest.length, 6);
+assert.equal(manifest.length, 8);
 console.log(JSON.stringify({ receipts: manifest.length, stages, nativeWitnesses, verdict: 'All archived captured runtime hashes, native/displayed counts/bounds and complete peer states agree' }, null, 2));

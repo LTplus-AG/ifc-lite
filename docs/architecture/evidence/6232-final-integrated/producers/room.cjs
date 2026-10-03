@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 'use strict';
 const { runSuite, assert } = require('./common.cjs');
-runSuite('room', async ({ modelId, baseline, send, capture, undo, sameGraphGeometry }) => {
+runSuite('room', async ({ modelId, baseline, send, capture, undo, redo, sameGraphGeometry }) => {
   const walls=[], box=[[[0,-8,0],[4,-8,0]],[[4,-8,0],[4,-4,0]],[[4,-4,0],[0,-4,0]],[[0,-4,0],[0,-8,0]]];
   for(const [Start,End] of box) {
     const wall=await send('addWall',[modelId,42,{Start,End,Height:3,Thickness:.2}]); walls.push(wall.expressId);
@@ -21,6 +21,8 @@ runSuite('room', async ({ modelId, baseline, send, capture, undo, sameGraphGeome
   const cutState=await capture('room-cut',[...walls,ref.expressId,cut.created[0].expressId]);
   assert.equal(cutState.undo,pickState.undo+1); assert.notEqual(cutState.graphHash,pickState.graphHash);
   await undo(); sameGraphGeometry(await capture('room-cut-undo',[...walls,ref.expressId]),pickState);
+  await redo(); sameGraphGeometry(await capture('room-cut-redo',[...walls,ref.expressId,cut.created[0].expressId]),cutState);
+  await undo(); sameGraphGeometry(await capture('room-cut-undo-again',[...walls,ref.expressId]),pickState);
   await undo(); sameGraphGeometry(await capture('room-pick-undo',walls),before);
   // Auto, Footprint, Update, Drag/Remove/Prune are separately qualified through
   // actual native MCP controls. This browser producer claims only query/Pick/cut.

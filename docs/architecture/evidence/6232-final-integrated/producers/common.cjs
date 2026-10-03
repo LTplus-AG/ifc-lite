@@ -229,13 +229,14 @@ async function runSuite(name, exercise) {
           return target;
         };
         const undo = async () => { await page.keyboard.press('Control+z'); await settle(); };
+        const redo = async () => { await page.keyboard.press('Control+Shift+z'); await settle(); };
         const sameGraphGeometry = (actual, expected) => {
           assert.deepEqual(actual.canonicalGraph ?? actual.graph, expected.canonicalGraph ?? expected.graph, 'Undo restores persistent EXPRESS graph and complete typed exported metadata; only synthetic export identities are normalized');
           assert.deepEqual(actual.meshes, expected.meshes, 'Undo restores actual owning-model geometry incl origins');
           assert.equal(actual.undo, expected.undo, 'one Undo restores the prior recorded history head');
         };
         await capture('baseline', [1222]);
-        await exercise({ page, modelId, count, baseline: baseline.find(model=>model.modelId===modelId), send, capture, undo, sameGraphGeometry });
+        await exercise({ page, modelId, count, baseline: baseline.find(model=>model.modelId===modelId), send, capture, undo, redo, sameGraphGeometry });
         await Promise.all(networkTasks);
         assert.ok(wasmResponses.some(response => response.sha256 === source.wasmSHA256), 'Capture must observe actual final WASM bytes loaded by Chrome');
         assert.ok(!logs.some(line => line.startsWith('PAGEERROR') || line.includes('LOAD_FAILURE') || line.includes('WASM_RECEIPT_ERROR')), 'Runtime/load errors do not qualify mutation evidence');

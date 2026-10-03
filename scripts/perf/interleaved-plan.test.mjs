@@ -44,3 +44,15 @@ test('#6537 report requires complete family and reports unavailable phase instea
   assert.deepEqual(result.dataModelParseMs, { available: false });
   assert.throws(() => describeFamily(samples.slice(0, 10)), /twelve/);
 });
+
+test('#6737 missing or nonfinite phase values cannot fabricate paired improvements', () => {
+  const valid = schedule().slice(0, 12).map(sample => ({ ...row(sample), metrics: {
+    ...row(sample).metrics, dataModelParseMs: sample.arm === 'candidate' ? 80 : 100,
+  } }));
+  assert.equal(describeFamily(valid).dataModelParseMs.medianPercent, -20);
+  for (const arm of ['base', 'candidate']) for (const value of [null, undefined, NaN, Infinity, -Infinity, -1, '80']) {
+    const rows = valid.map(sample => sample.kind === 'AB' && sample.arm === arm
+      ? { ...sample, metrics: { ...sample.metrics, dataModelParseMs: value } } : sample);
+    assert.deepEqual(describeFamily(rows).dataModelParseMs, { available: false }, `${arm} invalid phase: ${value}`);
+  }
+});

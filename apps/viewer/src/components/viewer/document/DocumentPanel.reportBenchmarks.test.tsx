@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import '@/test/content-fixture.js';
 import { beforeEach, afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -31,7 +32,7 @@ import { RING_COLORS } from '@/lib/validation/manual/ring';
 import { REPORT_MARGIN } from '@/lib/export/report/compose';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { render, cleanup, click, type as typeInput } from '@/test/render';
+import { render, cleanup, click, waitFor, type as typeInput } from '@/test/render';
 import { ValidationPanel } from '../validation/ValidationPanel';
 import { DocumentPanel } from './DocumentPanel';
 
@@ -57,7 +58,7 @@ const rules: RuleSetFile = { version: 1, name: 'Public wall information checks',
 const original = useViewerStore.getState();
 let reports: ValidationReport[];
 let spec: DocumentSpec;
-const settle = async () => { for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); }); };
+const settle = async () => { for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); }); await documentPreviewReady(); };
 
 beforeEach(async () => {
   localStorage.clear(); setValidationSourceChoice(null);
@@ -114,7 +115,7 @@ function assertRing(root: Element, report: ValidationReport): void {
     start += count / report.summary.totalEntitiesChecked * 2 * Math.PI;
   }
   assert.ok(image.getAttribute('alt')?.includes(`${report.summary.overallPassRate}%`), 'accessible label retains the engine pass rate');
-  assert.ok(benchmark.textContent?.includes(`${report.summary.overallPassRate}%`), 'visible rate retains the engine rounding');
+  assert.ok((benchmark.closest('[data-preview-block]') ?? benchmark).textContent?.includes(`${report.summary.overallPassRate}%`), 'visible rate retains the engine rounding');
 }
 
 describe('IDS and information-validation ring benchmarks (#6552)', () => {
@@ -126,7 +127,9 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
         useViewerStore.getState().setIdsValidationReport(report, validationReportSnapshot(report, useViewerStore.getState().models, 'live'));
         setValidationSourceChoice(report.source.kind);
       });
-      const ui = render(<ValidationPanel />); await settle();
+      const ui = render(<ValidationPanel />);
+      await waitFor(() => ui.querySelector('[data-validation-benchmark]') !== null,
+        'the actual live Validation panel renders its benchmark, without a document preview (#6731)');
       assertRing(ui, report);
       assert.equal(useViewerStore.getState().idsValidationReport, report, 'benchmark display does not replace the actual engine report');
       assert.equal(useViewerStore.getState().savedValidationReports.length, 0, 'displaying the result does not save it');
@@ -198,6 +201,7 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     act(() => useViewerStore.setState({ documents: [{ ...spec, blocks: [block] }], activeDocumentId: spec.id }));
     const ui = render(<DocumentPanel />); await settle(); assertRing(ui, reports[0]);
     registerLocale('de-x-rings', { 'manualValidation.report.benchmarks': 'Ring anzeigen', 'manualValidation.verdict.pass': 'Bestanden',
+      'document.preview.idsReportPassed': 'Bestanden', 'document.preview.idsReportFailed': 'Fehler',
       'manualValidation.verdict.fail': 'Fehler', 'document.preview.idsReportPassRate': 'Prüfquote',
       'manualValidation.ring.label': '{name}: {pass} bestanden, {warning} Warnungen, {fail} Fehler, {unanswered} offen' });
     act(() => setLocale('de-x-rings')); await settle();
@@ -288,6 +292,8 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
       assert.ok(!/Validation run|Models:/.test(preview.textContent ?? '') && !pdf.some((text) => /^(Validation run|Models:)/.test(text)), `${when}: both outputs omit the stamp`);
       assert.equal(preview.querySelector('[data-ids-report-requirements]'), null, `${when}: the preview omits requirement rows`);
       const names = block.checks.flatMap((check) => check.rules.map((rule) => rule.name ?? rule.shortDescription));
+      const glyphs = Array.from(preview.querySelectorAll('span')).filter(node => node.children.length === 0).map(node => node.textContent?.trim());
+      assert.ok(!names.some(name => glyphs.includes(name)), `${when}: the actual composed preview omits requirement glyphs`);
       assert.ok(names.length > 0 && !pdf.some((text) => names.includes(text)), `${when}: the PDF omits requirement rows`);
       assert.ok(block.checks.every((check) => pdf.includes(check.shortDescription)), `${when}: both outputs keep every specification`);
     };

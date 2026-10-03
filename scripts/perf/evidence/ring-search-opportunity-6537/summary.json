@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "scope": "Native single-worker canonical work opportunity and instrumented-versus-ordinary output control, not elapsed-time or worker-pool performance",
+  "baseCommit": "0a16f532ceb8f177d02ee29f4645e6f048fbace5",
+  "runtimeSourceMatch": true,
+  "fixtures": [
+    {
+      "name": "994",
+      "fixturePath": null,
+      "downloadUrl": "https://raw.githubusercontent.com/IfcOpenShell/files/9fc2267d7f1ff35284c5b0fc28cc97bff7ace8e7/994--slab--segfault--augmented.ifc",
+      "inputBytes": 189918,
+      "inputSha256": "1d1cd11c57d80fe4f769a05db49cf1a96973b1af6cbee2d75ef541cfa3cb8fa0",
+      "meshCount": 9,
+      "triangles": 6039,
+      "ringCounters": {
+        "ringSimplifierCalls": 1086,
+        "ringSimplifierInputVertices": 10134,
+        "ringSimplifierLiveVertexVisits": 8859,
+        "ringSimplifierMaxNextProbeDistance": 2,
+        "ringSimplifierMaxPrevProbeDistance": 2,
+        "ringSimplifierNextProbes": 8912,
+        "ringSimplifierPrevProbes": 8945,
+        "ringSimplifierRemovals": 43,
+        "ringSimplifierSweeps": 591
+      },
+      "totalNeighbourProbes": 17857,
+      "extraProbesAboveTwoPerVisit": 139,
+      "serializedCaptureBytesEqual": true,
+      "serializedCaptureSha256": "083cbd77177427de2bacb9e489eb26473155f38452891bfd286b91704fa8c8fd",
+      "serializedCaptureBytes": 1430837,
+      "orderedGeometryFnv1a64": "12dca779419b3126"
+    },
+    {
+      "name": "house",
+      "fixturePath": "ara3d/AC20-FZK-Haus.ifc",
+      "downloadUrl": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+      "inputBytes": 2526544,
+      "inputSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+      "meshCount": 285,
+      "triangles": 20322,
+      "ringCounters": {
+        "ringSimplifierCalls": 235,
+        "ringSimplifierInputVertices": 1097,
+        "ringSimplifierLiveVertexVisits": 1223,
+        "ringSimplifierMaxNextProbeDistance": 3,
+        "ringSimplifierMaxPrevProbeDistance": 3,
+        "ringSimplifierNextProbes": 1287,
+        "ringSimplifierPrevProbes": 1336,
+        "ringSimplifierRemovals": 55,
+        "ringSimplifierSweeps": 254
+      },
+      "totalNeighbourProbes": 2623,
+      "extraProbesAboveTwoPerVisit": 177,
+      "serializedCaptureBytesEqual": true,
+      "serializedCaptureSha256": "afa8d65fe1e2d548780820989ae297da1bcedc5436d5d58b8a8ed0509618ba46",
+      "serializedCaptureBytes": 3462945,
+      "orderedGeometryFnv1a64": "c4d504b83ff698ea"
+    },
+    {
+      "name": "csg",
+      "fixturePath": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "downloadUrl": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+      "inputBytes": 12030684,
+      "inputSha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+      "meshCount": 1402,
+      "triangles": 136807,
+      "ringCounters": {
+        "ringSimplifierCalls": 11837,
+        "ringSimplifierInputVertices": 65069,
+        "ringSimplifierLiveVertexVisits": 78311,
+        "ringSimplifierMaxNextProbeDistance": 77,
+        "ringSimplifierMaxPrevProbeDistance": 77,
+        "ringSimplifierNextProbes": 83772,
+        "ringSimplifierPrevProbes": 100333,
+        "ringSimplifierRemovals": 4470,
+        "ringSimplifierSweeps": 10893
+      },
+      "totalNeighbourProbes": 184105,
+      "extraProbesAboveTwoPerVisit": 27483,
+      "serializedCaptureBytesEqual": true,
+      "serializedCaptureSha256": "d74478b9aa858e04e4ccb443d321ef79438efd983b6d1274dc3876a8a95c1f04",
+      "serializedCaptureBytes": 23007768,
+      "orderedGeometryFnv1a64": "ff42e1a3f7fcf540"
+    },
+    {
+      "name": "holter",
+      "fixturePath": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "downloadUrl": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "inputBytes": 177465622,
+      "inputSha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "meshCount": 109514,
+      "triangles": 2895362,
+      "ringCounters": {
+        "ringSimplifierCalls": 4542,
+        "ringSimplifierInputVertices": 22392,
+        "ringSimplifierLiveVertexVisits": 22392,
+        "ringSimplifierMaxNextProbeDistance": 1,
+        "ringSimplifierMaxPrevProbeDistance": 1,
+        "ringSimplifierNextProbes": 22392,
+        "ringSimplifierPrevProbes": 22392,
+        "ringSimplifierRemovals": 0,
+        "ringSimplifierSweeps": 4542
+      },
+      "totalNeighbourProbes": 44784,
+      "extraProbesAboveTwoPerVisit": 0,
+      "serializedCaptureBytesEqual": true,
+      "serializedCaptureSha256": "0053a80ea673dd8e408be854db3a260075682269c636d63e43ed0cf965610835",
+      "serializedCaptureBytes": 439891777,
+      "orderedGeometryFnv1a64": "52d69b2909024f56"
+    }
+  ],
+  "limitations": [
+    "Whole fixture; does not isolate host #344 or establish sampled time dominance",
+    "Native default flat output, not browser scheduling, GPU, instancing, picking or federation qualification",
+    "Matched produced output is not an IFC reference-oracle fidelity verdict",
+    "No elapsed timings or physical peak-memory verdict"
+  ],
+  "disposition": "Do not prototype linked-neighbour indices as a general speed fix from this work screen. Slab and Holter lack substantial extra searching; house and CSG counts alone do not establish end-to-end opportunity.",
+  "currentBuildReceipts": [
+    "instrumented-build-receipt-v2.json.gz",
+    "ordinary-build-receipt-v2.json.gz"
+  ],
+  "initialBuildReceiptsPreserved": true,
+  "outputGuard": {
+    "policy": "atomic create_new; refuse existing targets",
+    "featureExampleTests": 3,
+    "guardedFourFixturePairs": true,
+    "reportsByteIdenticalToInitialAdapter": true
+  }
+}

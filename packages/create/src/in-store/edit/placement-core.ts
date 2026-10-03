@@ -32,8 +32,9 @@ export type SourceAttrsReader = (
 
 let configuredSourceReader: SourceAttrsReader | null = (store, id) => {
   // @raw-entity-enumeration-ok source baseline; readAttributes applies positional overlay edits
-  if (!store.source?.length || !store.entityIndex?.byId) return null;
-  const ref = store.entityIndex.byId.get(id);
+  const byId = store.entityIndex?.byId;
+  if (!store.source?.length || !byId) return null;
+  const ref = byId.get(id);
   return ref ? new EntityExtractor(store.source).extractEntity(ref)?.attributes ?? null : null;
 };
 

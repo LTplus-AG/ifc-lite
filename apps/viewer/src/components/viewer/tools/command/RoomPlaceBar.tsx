@@ -12,7 +12,7 @@
  * commits through the running command, so it is one undo step.
  */
 
-import { RefreshCw, Wand2 } from 'lucide-react';
+import { ArrowUpFromLine, RefreshCw, Wand2 } from 'lucide-react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { useViewerStore } from '@/store';
@@ -20,6 +20,7 @@ import type { CommandHudProps } from '@/lib/commands/modeling/types';
 import type { RoomBoundary } from '@/lib/rooms/storey-rooms';
 import type { SlabDrawMode } from '@/store/slices/authoringDefaultsSlice';
 import { initSlabGesture } from '@/lib/commands/modeling/commands/slab-place-geometry';
+import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
 import { selectedRooms } from '@/lib/rooms/room-writes';
 import { initRoomGesture, roomSettings, type RoomMode, type RoomPlaceGesture } from '@/lib/commands/modeling/commands/room-place-gesture';
 import { HudDivider, HudSegmented } from '../../../viewport-ui/hud';
@@ -90,6 +91,14 @@ export function RoomPlaceBar({ gesture, ctx }: CommandHudProps<RoomPlaceGesture>
         icon={<Wand2 aria-hidden className="h-3.5 w-3.5" />}
       >
         {t('roomTool.auto.label', { countDisplay: formatLocaleNumber(locale, free) })}
+      </BarAction>
+      <BarAction
+        onClick={() => { launchModelCommand('space.envelope', { drawsOnWorkplane: false }); }}
+        disabled={selected !== 1}
+        title={t('spaceEnvelope.pick')}
+        icon={<ArrowUpFromLine aria-hidden className="h-3.5 w-3.5" />}
+      >
+        {t('spaceEnvelope.label')}
       </BarAction>
       <BarAction
         onClick={() => { void runRoomAction('update'); }}

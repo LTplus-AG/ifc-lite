@@ -24,7 +24,24 @@ export const documentEn = {
   'document.pageHeading.color': 'Page heading colour',
   'document.pageHeading.resetColor': 'Reset page heading colour',
   'document.pageHeading.reset': 'Reset page heading',
-  // Canonical paper labels are formatted before PDF pagination (#6660).
+  'document.pageHeading.date': 'Page heading date',
+  'document.pageHeading.pageNumbers': 'Page heading page numbers',
+  'document.pageHeading.logo': 'Page heading logo',
+  'document.pageHeading.logoHeight': 'Page heading logo height',
+  'document.pageHeading.removeLogo': 'Remove page heading logo',
+  'document.pageFooter.date': 'Page footer date',
+  'document.pageFooter.pageNumbers': 'Page footer page numbers',
+  'document.pageFooter.logo': 'Page footer logo',
+  'document.pageFooter.logoHeight': 'Page footer logo height',
+  'document.pageFooter.removeLogo': 'Remove page footer logo',
+  'document.pageFooter.label': 'Page footer',
+  'document.pageFooter.text': 'Page footer text',
+  'document.pageFooter.font': 'Page footer font',
+  'document.pageFooter.size': 'Page footer size',
+  'document.pageFooter.color': 'Page footer colour',
+  'document.pageFooter.resetColor': 'Reset page footer colour',
+  'document.pageFooter.reset': 'Reset page footer',
+  // Canonical paper labels are formatted before preview/PDF pagination (#6610).
   'document.print.footer': 'Generated {timestamp} · ifc-lite',
   'document.print.pageCounter': 'Page {page} / {total}',
   'document.print.passPercent': '{percent}% passed',
@@ -39,6 +56,11 @@ export const documentEn = {
   'document.print.setLimit': 'The validation run capped its set results',
   'document.print.comment': 'Comment: {comment}',
   'document.print.noGroupChecks': 'No checks in this group.',
+  'document.print.snapshot': '3D snapshot in the PDF',
+  'document.print.preparing': 'Preparing document pages…',
+  'document.print.imageError': 'The image could not be decoded.',
+  'document.print.bandFrameTooShort': 'The header and footer leave too little space for this block. Reduce their height or the block size.',
+  'document.print.layoutError': 'Document preview could not be prepared: {message}',
   'document.block.tableSourceComparison': 'Saved comparison',
   'document.block.comparisonPicker': 'Choose saved comparison for document',
   'document.block.comparisonSnapshotHint': 'This document embeds a copy of the completed report. Renaming or deleting its saved comparison does not change this copy.',
@@ -202,7 +224,7 @@ export const documentEn = {
   'document.preview.topicNotLoaded': 'BCF topic {guid} is not among the loaded topics.',
   'document.preview.emptyPage': 'An empty page — add a block on the left.',
 
-  // Table block (#5142): TableBlockEditor.tsx, TablePreview.tsx, DocumentPanel.tsx.
+  // Table block (#5142): TableBlockEditor.tsx, ComposedPageItems.tsx, DocumentPanel.tsx.
   'document.addBlock.table': 'Table (from a list)',
   'document.block.tableSourceLabel': 'Source',
   'document.block.tableSourceAriaLabel': 'Table source',
@@ -300,7 +322,7 @@ export const documentEn = {
   'document.preview.idsReportSetsTruncated': 'More sets exist than the validation run kept.',
 
   // Validation-results table source (#5138): ValidationSourceEditor in TableBlockEditor.tsx, and
-  // the placeholder states TablePreview.tsx shows in place of rows.
+  // the placeholder states the canonical preview shows in place of rows.
   'document.block.tableValidationRowsLabel': 'Rows',
   'document.block.tableValidationRowsAriaLabel': 'Which rows to show',
   'document.block.tableValidationRowsFailed': 'Failed entities',

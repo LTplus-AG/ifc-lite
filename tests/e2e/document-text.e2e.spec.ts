@@ -533,7 +533,10 @@ test('#6489 real IFC document tables retain independent ordering and coloured re
   }, [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcBuildingElementProxy, IfcTypeEnum.IfcFurniture, IfcTypeEnum.IfcBeam]);
   const panel = page.locator('[data-document-panel]:visible');
   await expect(panel).toHaveCount(1);
-  await expect(panel.locator('[data-block-table] table')).toHaveCount(2);
+  // Each authored table can continue across real composed pages (#6610).
+  await expect(panel.locator('[data-preview-block="largest"] table').first()).toBeVisible();
+  await expect(panel.locator('[data-preview-block="labels"] table').first()).toBeVisible();
+  await expect(panel.locator('[data-block-table] tbody tr[data-role="row"]')).toHaveCount(62);
   await page.getByRole('button', { name: 'Maximize', exact: true }).click();
   const editor = panel.locator('[data-block-editor="labels"]');
   const preview = panel.locator('[data-preview-block="labels"]');
@@ -556,7 +559,7 @@ test('#6489 real IFC document tables retain independent ordering and coloured re
   await expect(firstPreview.locator('th').first()).toHaveCSS('color', 'rgb(255, 255, 255)');
   const dismiss = page.getByRole('button', { name: 'Dismiss notification', exact: true });
   while (await dismiss.count()) await dismiss.first().click();
-  await preview.scrollIntoViewIfNeeded();
+  await preview.first().scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath('document-table-options.png') });
   const downloadPromise = page.waitForEvent('download'); await panel.locator('[data-document-export]').click();
   const pdfPath = testInfo.outputPath('document-table-options.pdf');
@@ -664,7 +667,7 @@ test('#6507 real IFC discipline checklists remain independent and print their ch
   await expect(previews).toHaveCount(2);
   await expect(previews.first()).toContainText('Architecture survey approved');
   await expect(previews.last()).not.toContainText('Structure survey pending');
-  await expect(previews.last()).toContainText('Warning');
+  await expect(previews.last()).toContainText('WARNING');
   await expect(previews.locator('[data-manual-report-benchmarks]')).toHaveCount(1);
   // Remove the selected live Structure review. Its embedded report still
   // prints, while explicit source availability disables its Refresh.

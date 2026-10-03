@@ -1,0 +1,22 @@
+{
+  "startedUTC": "2026-10-03T10:27:18.033652+00:00",
+  "cwd": "/home/louistrue/wt/6516-ring-work-counters-session6503",
+  "command": [
+    "python3",
+    "/tmp/6232-takeover/6537-ring-work-public-diagnostic-v1/run.py",
+    "/tmp/6232-takeover/6537-ring-work-public-diagnostic-v1/instrumented-native",
+    "/tmp/6516-ring-work-counter-diagnostic-public-v1/994--slab--segfault--augmented.ifc",
+    "/tmp/6232-takeover/6537-ring-work-public-diagnostic-v1/994-instrumented"
+  ],
+  "minimumStartKiB": 25165824,
+  "minimumLiveKiB": 8388608,
+  "maximumTreeRssKiB": 12582912,
+  "initialAvailableKiB": 44473764,
+  "scope": "Correctness-only run under host load; no timing/performance verdict.",
+  "peakTreeRssKiB": 35396,
+  "minimumObservedAvailableKiB": 43926776,
+  "ownedProcessGroup": 61340,
+  "childExit": 0,
+  "exit": 0,
+  "endedUTC": "2026-10-03T10:27:19.542858+00:00"
+}

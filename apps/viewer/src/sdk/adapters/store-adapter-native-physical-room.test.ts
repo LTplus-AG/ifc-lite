@@ -19,6 +19,9 @@ import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { clearStoreyRoomsCache } from '@/lib/rooms/storey-rooms';
 import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
 import { createStoreAdapter } from './store-adapter.js';
+import { PLAN_MOVE, readPlanMoveTarget } from '@/lib/commands/modeling/commands/plan-move';
+import { runTransaction } from '@/lib/commands/modeling/transaction';
+import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workplane';
 
 const MODEL = 'native', frame = { x: 0, y: 0, z: 0, needsShift: false };
 const sample = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
@@ -118,4 +121,39 @@ it('SDK Room derives current native meshes and cut Undo restores IFC, renderer a
   assert.deepEqual({ records: view.getNewEntities() }, before);
   assert.ok(!meshes().some(mesh => mesh.expressId === cut.created[0].expressId));
   assert.equal(nearby(await query()).length, 1);
+});
+
+
+it('plan.move carries joined walls through the shared physical writer and one Undo restores native geometry (#6232)', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const { adapter, view } = await seed();
+  const first = adapter.addWall(MODEL, 42, { Start: [20,20,0], End: [24,20,0], Thickness: .2, Height: 3 });
+  const second = adapter.addWall(MODEL, 42, { Start: [24,20,0], End: [24,23,0], Thickness: .2, Height: 3 });
+  adapter.joinWalls(MODEL, first.expressId, second.expressId);
+  await settle();
+  // Undo restores deleted auxiliary records by id; Map insertion order is not the graph contract.
+  const graph = () => structuredClone([...view.getNewEntities()].sort((a, b) => a.expressId - b.expressId));
+  const before = graph(), undo = depth();
+  const secondBefore = meshes().filter(mesh => mesh.expressId === second.expressId).map(mesh => Array.from(mesh.positions));
+  const plane = buildStoreyWorkplane(useViewerStore.getState(), MODEL, 42, 0);
+  assert.ok(isWorkplane(plane));
+  const target = readPlanMoveTarget(useViewerStore.getState(), MODEL, first.expressId);
+  assert.ok(target);
+  const outcome = runTransaction(useViewerStore, PLAN_MOVE, { target, base: [20,20], to: [21,20] },
+    { get: useViewerStore.getState, modelId: MODEL, storeyId: 42, workplane: plane });
+  assert.ok(outcome.ok, outcome.ok ? undefined : outcome.reason);
+  const endpoints = useViewerStore.getState().readWallEndpoints(MODEL, second.expressId);
+  assert.ok(endpoints);
+  assert.deepEqual(endpoints.start.slice(0, 2), [25,20], 'the adjacent joined endpoint follows the moved wall');
+  assert.ok(outcome.result.remesh.includes(second.expressId), 'the joined neighbour is remeshed in the same transaction');
+  await settle();
+  assert.notDeepEqual(meshes().filter(mesh => mesh.expressId === second.expressId).map(mesh => Array.from(mesh.positions)), secondBefore);
+  const state = useViewerStore.getState();
+  const writes = state.undoStacks.get(MODEL)!.slice(undo);
+  assert.equal(new Set(writes.map(mutation => state.mutationBatchTags.get(mutation.id))).size, 1);
+  state.undo(MODEL);
+  await settle();
+  assert.equal(depth(), undo);
+  assert.deepEqual(graph(), before);
+  assert.deepEqual(meshes().filter(mesh => mesh.expressId === second.expressId).map(mesh => Array.from(mesh.positions)), secondBefore);
 });

@@ -1,8 +1,8 @@
 ## Latest integrated evidence
 
-Prefer [physical-repaired-forward/README.md](./physical-repaired-forward/README.md): the two fresh Physical runs use clean repaired source `77246bddd`; the six retained Align, Placement and Room runs keep their original clean `acbc97c0b` source labels. The composed audit verifies all eight receipts, 184 stages and 436 native/displayed witnesses. Public camera framing and normal Spaces visibility show changed products. Source/fixture/fetched-WASM identities and qualification scopes remain explicit. Lower main merges, required current-head CI and final readiness review remain pending.
+Prefer [parent-boundary-forward/README.md](./parent-boundary-forward/README.md): two fresh Physical runs use clean integrated source `983bf1665`, including the joined-Split parent-placement and Trim boundary fixes. Six retained Align, Placement and Room runs keep their original clean `acbc97c0b` source labels. The composed audit verifies all eight receipts,184 stages and436 native/displayed witnesses. Exact source/fixture/runtime identities and qualification scopes remain explicit; remaining main landings and current-head CI still gate readiness.
 
-The earlier [complete eight-run capture](./visible-integrated/README.md) remains available with its original source identities.
+Earlier [772 Physical captures](./physical-repaired-forward/README.md) and the [complete acbc capture](./visible-integrated/README.md) remain available with their original identities.
 
 # Integrated #6232 qualification
 

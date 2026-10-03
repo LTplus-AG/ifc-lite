@@ -15,12 +15,11 @@ import { tableHeaderStyle } from '../table-header-style';
 import { comparisonSummary } from '../compare/savedComparisonSchema';
 import type { Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
-import { REPORT_MARGIN } from '../export/report/compose.js';
 import type { ReportDoc, ReportPdfSeams } from '../export/report/generate-report-pdf.js';
 import { dataUrlToBytes } from '../export/download.js';
-import { renderTemplate, type BindingContext } from './bindings.js';
+import { localIsoDate, renderTemplate, type BindingContext } from './bindings.js';
 import type { DocumentLayout, ResolvedBlock } from './compose.js';
-import { composeResolvedDocument, documentTextMeasure } from './document-layout.js';
+import { composeResolvedDocument, documentTextMeasure, pageBandImageAspects } from './document-layout.js';
 import { flattenExportModel, flattenRawModel, type TableState } from './resolve-table.js';
 import { TABLE_ROWS_DEFAULT, type DocumentSpec } from './types.js';
 import { ringSvg } from '../validation/manual/ring.js';
@@ -199,18 +198,12 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
   return blocks;
 }
 
-function drawHeaderFooter(doc: ReportDoc, layout: DocumentLayout, pageIndex: number): void {
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(150);
-  if (layout.pageHeading) {
-    const heading = layout.pageHeading;
-    doc.setFont(heading.font, 'normal'); doc.setFontSize(heading.fontSize); doc.setTextColor(heading.textColor);
-    doc.text(heading.text, REPORT_MARGIN, heading.y);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(150);
-  } else doc.text(layout.header, REPORT_MARGIN, REPORT_MARGIN - 8);
-  doc.text(layout.footer, REPORT_MARGIN, layout.size.h - REPORT_MARGIN + 12);
-  doc.text(layout.pageCounters?.[pageIndex] ?? `Page ${pageIndex + 1} / ${layout.pages.length}`, layout.size.w - REPORT_MARGIN - 60, layout.size.h - REPORT_MARGIN + 12);
+function drawHeaderFooter(doc: ReportDoc, layout: DocumentLayout, pageIndex: number, result: DocumentPdfResult): void {
+  for (const item of layout.pageFrames[pageIndex]) {
+    if (item.kind === 'image') { placeImage(doc, item.dataUrl, `page ${item.band} logo`, item, result); continue; }
+    doc.setFont(item.font, 'normal'); doc.setFontSize(item.size); doc.setTextColor(item.color ?? item.gray);
+    doc.text(item.text, item.x, item.y);
+  }
   doc.setTextColor(0);
 }
 
@@ -244,13 +237,15 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
   const doc = await seams.createDoc(format, input.document.page.orientation);
   const blocks = await resolveBlocks(input, seams.imageSize, result);
 
-  const layout = composeResolvedDocument(input.document, blocks, seams.now().toLocaleString(), documentTextMeasure(doc), input.labels);
+  const logoAspects = await pageBandImageAspects(input.document, seams.imageSize);
+  const layout = composeResolvedDocument(input.document, blocks, seams.now().toLocaleString(), documentTextMeasure(doc), input.labels,
+    logoAspects, localIsoDate(input.bindings.today));
   const byId = new Map(input.document.blocks.map((b) => [b.id, b]));
   const topicsByBlock = new Map(input.document.blocks.filter((b) => b.kind === 'topic').map((b) => [b.id, input.topics.get((b as { guid: string }).guid)]));
 
   for (const page of layout.pages) {
     if (page.index > 0) doc.addPage(format, input.document.page.orientation);
-    drawHeaderFooter(doc, layout, page.index);
+    drawHeaderFooter(doc, layout, page.index, result);
     for (const item of page.items) {
       switch (item.kind) {
         case 'text':

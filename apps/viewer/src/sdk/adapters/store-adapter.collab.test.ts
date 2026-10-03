@@ -94,6 +94,13 @@ async function parseStoreyStore(): Promise<IfcDataStore> {
 
 type MirrorCall = { kind: 'create' | 'remove' | 'attribute'; args: unknown[] };
 
+function roomAttribute(call: MirrorCall | undefined, name: string): unknown {
+  assert.ok(call, 'the adapter must publish the room record');
+  const attributes = call.args[5];
+  assert.ok(attributes !== null && typeof attributes === 'object', 'the room record must carry attributes');
+  return Reflect.get(attributes, name);
+}
+
 function fixture(
   canEdit = true,
   modelStore = dataStore,
@@ -154,7 +161,7 @@ describe('bim.store collaboration mirroring (#5008)', () => {
       MODEL, created.expressId, 'IFCWALL', '0created000000000000000',
     ]);
     assert.equal(
-      (calls.find(call => call.kind === 'create')?.args[5] as Record<string, unknown>)['bsi::ifc::prop::Name'],
+      roomAttribute(calls.find(call => call.kind === 'create'), 'bsi::ifc::prop::Name'),
       'Created',
     );
     assert.ok(calls.some(call => call.kind === 'attribute'
@@ -183,7 +190,7 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     assert.match(String(peerRoomKey), /^ifc-lite-store-[0-9a-f-]{36}$/);
     assert.notEqual(roomKey, peerRoomKey);
     assert.equal(
-      (calls[0]?.args[5] as Record<string, unknown>)['bsi::ifc::prop::AppliedValue'],
+      roomAttribute(calls[0], 'bsi::ifc::prop::AppliedValue'),
       12.5,
     );
   });
@@ -287,7 +294,7 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     const { adapter, calls } = fixture();
     const point = adapter.addEntity(MODEL, { type: 'IFCCARTESIANPOINT', attributes: [[1, 2, 3]] });
     assert.deepEqual(
-      (calls[0]?.args[5] as Record<string, unknown>)['bsi::ifc::prop::Coordinates'],
+      roomAttribute(calls[0], 'bsi::ifc::prop::Coordinates'),
       [1, 2, 3],
     );
     const typed = { typed: { type: 'IfcLengthMeasure', value: 4 } };
@@ -375,7 +382,7 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     const retried = calls.filter(call => call.kind === 'create' && call.args[1] === referenced.expressId);
     assert.equal(retried.length, 2, 'the pre-room overlay entity must be published again');
     const parent = calls.filter(call => call.kind === 'create').at(-1);
-    const components = (parent?.args[5] as Record<string, unknown>)['bsi::ifc::prop::Components'];
+    const components = roomAttribute(parent, 'bsi::ifc::prop::Components');
     assert.deepEqual(components, [{
       'ifc-lite::entityPath': pathForGuid(retryStore, retried[1]?.args[3] as string),
     }]);

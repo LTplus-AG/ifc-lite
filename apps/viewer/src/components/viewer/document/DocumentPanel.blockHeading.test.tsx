@@ -18,6 +18,7 @@ import { DEFAULT_THEME } from '@ifc-lite/charts';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import { useViewerStore } from '@/store/index.js';
 import { blur, click, cleanup, render, type, waitFor } from '@/test/render.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import type { BindingContext } from '@/lib/document/bindings';
 import type { DocumentPdfSeams } from '@/lib/document/generate-document-pdf.js';
@@ -53,10 +54,11 @@ const spec = (): DocumentSpec => ({ version: DOCUMENT_VERSION, id: 'doc-6632', n
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); });
+  await documentPreviewReady();
 }
 /** The element a preview block renders its heading in: the smallest element whose own text is exactly the heading. */
 function headingOf(ui: HTMLElement, blockId: string, text: string): HTMLElement {
-  const found = [...ui.querySelectorAll<HTMLElement>(`[data-preview-block="${blockId}"] *`)].find((el) => el.children.length === 0 && el.textContent === text);
+  const found = [...ui.querySelectorAll<HTMLElement>(`[data-preview-block="${blockId}"] *`)].find((el) => el.children.length === 0 && el.textContent?.trim() === text);
   assert.ok(found, `${blockId}: the preview renders the heading "${text}"`);
   return found;
 }
@@ -111,7 +113,13 @@ describe('shared block heading controls (#6632)', () => {
       const style = window.getComputedStyle(heading);
       assert.ok(Math.abs(Number.parseFloat(style.fontSize) - SIZE * (PREVIEW_WIDTH / A4_WIDTH)) < 1e-3, `${kind}: preview size ${style.fontSize} is the authored points at the sheet scale`);
       assert.equal(style.color, INK, `${kind}: preview ink`);
-      assert.equal(style.backgroundColor, FILL, `${kind}: preview background`);
+      // The shared composer draws the strip as its own backing rectangle.
+      const strip = Array.from(ui.querySelectorAll<HTMLElement>(`[data-preview-block="${block}"] [aria-hidden="true"]`))
+        .find(node => window.getComputedStyle(node).backgroundColor === FILL);
+      assert.ok(strip, `${kind}: preview background`);
+      const inside = (axis: 'left' | 'top') => parseFloat(heading.style[axis]) >= parseFloat(strip.style[axis]) - 0.01;
+      assert.ok(inside('left') && inside('top'), `${kind}: the strip backs the heading`);
+      assert.ok(parseFloat(strip.style.height) >= parseFloat(heading.style.fontSize), `${kind}: the strip contains its type`);
     }
 
     await waitFor(() => useViewerStore.getState().documentsStorage.items['doc-6632'] === 'saved', 'all heading edits must commit before reloading');

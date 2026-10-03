@@ -26,7 +26,7 @@ import { IDSCorrectionDialog, getCorrectableRequirements } from './IDSCorrection
 import { useTranslation } from '@/i18n';
 import { IDSPanelResults } from './IDSPanelResults';
 import { IDSPanelStates, idsProgressState } from './IDSPanelStates';
-import { AnalysisPanel, AnalysisPanelChrome, AnalysisStaleRegion } from './analysis/AnalysisPanel';
+import { AnalysisPanel, AnalysisPanelChrome } from './analysis/AnalysisPanel';
 import { DefinitionLibraryToolbar } from './validation/DefinitionLibraryToolbar';
 
 // ============================================================================
@@ -216,27 +216,25 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
           onFileSelect={handleFileSelect}
           onLoadClick={() => { void handleLoadIdsClick(); }}
         />
-        <AnalysisStaleRegion className="flex-1 min-h-0 flex flex-col">
-          <IDSPanelResults
-            results={ids}
-            summaryControls={
-              <>
-                <AnalysisPanelChrome />
-                <DefinitionLibraryToolbar kind="ids" onImport={() => { void handleLoadIdsClick(); }} />
-              </>
-            }
-            runValidation={runValidation}
-            auditReport={ids.auditReport}
-            multiModel={idsMultiModel}
-            models={idsModelList}
-            pendingModelId={pendingModelId}
-            setPendingModelId={setPendingModelId}
-            validating={loading}
-            onEntityClick={handleEntityClick}
-            onCorrect={setCorrectionSpecId}
-            correctableSpecIds={correctableSpecIds}
-          />
-        </AnalysisStaleRegion>
+        <IDSPanelResults
+          results={ids}
+          summaryControls={
+            <>
+              <AnalysisPanelChrome />
+              <DefinitionLibraryToolbar kind="ids" onImport={() => { void handleLoadIdsClick(); }} />
+            </>
+          }
+          runValidation={runValidation}
+          auditReport={ids.auditReport}
+          multiModel={idsMultiModel}
+          models={idsModelList}
+          pendingModelId={pendingModelId}
+          setPendingModelId={setPendingModelId}
+          validating={loading}
+          onEntityClick={handleEntityClick}
+          onCorrect={setCorrectionSpecId}
+          correctableSpecIds={correctableSpecIds}
+        />
       </div>
 
       {report && correctionSpecResult && (

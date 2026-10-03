@@ -19,6 +19,7 @@
 
 import { useMemo, type ReactNode } from 'react';
 import { ValidationBenchmark } from './validation/ValidationBenchmark';
+import { AnalysisStaleRegion } from './analysis/AnalysisPanel';
 import { ValidationResultsSplit } from './validation/ValidationResultsSplit';
 import { validationReportSummary } from '@/lib/validation/report-summary';
 import { Boxes, Eye, EyeOff, Filter, Focus, Layers, Palette } from 'lucide-react';
@@ -107,6 +108,7 @@ export function IDSPanelResults({
   return (
     <ValidationResultsSplit summary={<>
       {summaryControls}
+      <AnalysisStaleRegion>
       {auditReport && auditReport.status !== 'valid' && (
         <div className="p-3 border-b">
           <IDSAuditSummary report={auditReport} auditing={false} />
@@ -294,7 +296,9 @@ export function IDSPanelResults({
         </div>
       </div>
 
+      </AnalysisStaleRegion>
     </>}>
+      <AnalysisStaleRegion className="flex-1 min-h-0 flex flex-col">
       <ScrollArea className="flex-1 min-h-0" {...tourAnchor(TOUR_ANCHORS.idsResults)}>
         <div className="p-2 space-y-2">
           {report.specificationResults.map((specResult) => (
@@ -312,6 +316,7 @@ export function IDSPanelResults({
           ))}
         </div>
       </ScrollArea>
+      </AnalysisStaleRegion>
     </ValidationResultsSplit>
   );
 }

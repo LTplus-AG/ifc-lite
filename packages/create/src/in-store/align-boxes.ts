@@ -100,4 +100,3 @@ export function alignMoves(g: { reference: number | null; targets: readonly numb
   }
   return moves;
 }
-

@@ -4,6 +4,14 @@
 
 # Hosted default SDK worker comparison (#6537)
 
+The CPU sampler waits for a measured monotonic deadline between readings;
+an early timer wake never lowers the one-second floor. Every CPU admission
+failure retains the raw readings collected so far, including counter/interval
+provenance failures. Thresholds and terminal refusal remain unchanged.
+The registered benchmark dispatch's `comparison_mode=cpu` runs three prospective
+sampler controls without compiling or loading a model. Its results qualify the
+sampler only, not an earlier refused cohort or any performance claim.
+
 This prospective protocol compares the produced CPU geometry stream from public
 `GeometryProcessor.processParallel`. It has no measured performance verdict.
 The unchanged reviewed consumer times initialization through complete stream

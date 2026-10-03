@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cpuReading, cpuIntervals } from './sdk-resources.mjs';
+import { cpuReading, cpuIntervals, waitUntil, qualifyCPU } from './sdk-resources.mjs';
 import { classifyBuildTestProcess } from './sdk-process-classification.mjs';
 function readings(busy = 10n, idle = 90n) {
   return Array.from({ length: 4 }, (_unused, index) => {
@@ -30,6 +30,29 @@ test('#6537 missing, stale and invalid CPU counters refuse rather than estimate 
   for (const change of [rows => { rows[1].monotonicNs = '999999999'; }, rows => { rows[1].total = '0'; },
     rows => { rows[1].idle = '101'; }, rows => { rows[1].total = '9007199254740992'; }]) {
     const rows = readings(); change(rows); assert.throws(() => cpuIntervals(rows));
+  }
+});
+test('#6537 early timer wakes cannot shorten the measured one-second CPU interval', async () => {
+  let elapsed = 0n;
+  const advances = [999500000n, 200000n, 300000n], requested = [];
+  await waitUntil(1000000000n, () => elapsed, async milliseconds => {
+    requested.push(milliseconds);
+    assert.ok(advances.length, 'deadline must terminate once the minimum interval is met');
+    elapsed += advances.shift();
+  });
+  assert.ok(elapsed >= 1000000000n);
+  assert.deepEqual(requested, [1000, 1, 1]);
+});
+test('#6537 counter provenance and busy-CPU refusals retain all untouched raw readings', () => {
+  for (const rows of [readings(), readings(11n, 89n)]) {
+    if (rows[1].idle === '90') rows[1].monotonicNs = '999999999';
+    const evidence = { rows, before: { active: [] }, after: { active: [] } };
+    let refused;
+    try { qualifyCPU(evidence); } catch (error) { refused = error; }
+    assert.ok(refused, 'unsafe CPU observations must refuse');
+    assert.deepEqual(refused.receipt.rows, rows);
+    assert.equal(refused.receipt.status, 'refused');
+    assert.deepEqual(JSON.parse(refused.message.slice(refused.message.indexOf('{'))).rows, rows);
   }
 });
 test('#6537 observable graph classifier refuses actual tool/task entries without matching remembered guardian payloads', () => {

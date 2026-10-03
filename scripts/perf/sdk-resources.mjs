@@ -28,6 +28,29 @@ export function cpuIntervals(rows) {
     return { startUTC: prior.capturedUTC, endUTC: row.capturedUTC, elapsedNs: String(ns), totalTicks: String(total), idleTicks: String(idle), cpuPercent, eligible: idle * 10n >= total * 9n };
   });
 }
+// Timers may wake early. Acceptance depends on the measured monotonic interval,
+// so keep waiting until the deadline instead of lowering the one-second floor.
+export async function waitUntil(deadline, now = () => process.hrtime.bigint(), delay = pause) {
+  let remaining;
+  while ((remaining = deadline - now()) > 0n) {
+    await delay(Number((remaining + 999999n) / 1000000n));
+  }
+}
+function cpuRefusal(receipt, cause) {
+  const evidence = { ...receipt, status: 'refused', reason: String(cause) };
+  const error = new Error(`Linux CPU admission refused: ${JSON.stringify(evidence)}`, { cause });
+  error.receipt = evidence;
+  return error;
+}
+export function qualifyCPU(receipt) {
+  try {
+    receipt.intervals = cpuIntervals(receipt.rows);
+    if (receipt.intervals.some(row => !row.eligible)) throw new Error('Linux CPU <=10% admission refused');
+    return receipt;
+  } catch (cause) {
+    throw cpuRefusal(receipt, cause);
+  }
+}
 export function noBuildGraphs() {
   const active = [];
   for (const name of readdirSync('/proc').filter(value => /^\d+$/.test(value))) {
@@ -44,16 +67,21 @@ export function noBuildGraphs() {
   return { capturedUTC: new Date().toISOString(), active };
 }
 export async function quiet() {
-  const rows = [], before = noBuildGraphs();
-  for (let index = 0; index < 4; index++) {
-    if (index) await pause(1000);
-    if (available() < limits.liveBytes) throw new Error('Linux4GiB live reserve refused');
-    rows.push(cpuReading(readFileSync('/proc/stat', 'utf8'), process.hrtime.bigint()));
+  const receipt = { rows: [],
+    idleDefinition: 'idle+iowait; first8 aggregate counters, guest excluded to avoid double counting' };
+  try {
+    receipt.before = noBuildGraphs();
+    for (let index = 0; index < 4; index++) {
+      if (index) await waitUntil(BigInt(receipt.rows.at(-1).monotonicNs) + 1000000000n);
+      if (available() < limits.liveBytes) throw new Error('Linux4GiB live reserve refused');
+      receipt.rows.push(cpuReading(readFileSync('/proc/stat', 'utf8'), process.hrtime.bigint()));
+    }
+    receipt.after = noBuildGraphs();
+    return qualifyCPU(receipt);
+  } catch (cause) {
+    if (cause.receipt) throw cause;
+    throw cpuRefusal(receipt, cause);
   }
-  const intervals = cpuIntervals(rows), after = noBuildGraphs();
-  const receipt = { before, after, rows, intervals, idleDefinition: 'idle+iowait; first8 aggregate counters, guest excluded to avoid double counting' };
-  if (intervals.some(row => !row.eligible)) throw new Error(`Linux CPU <=10% admission refused: ${JSON.stringify(receipt)}`);
-  return receipt;
 }
 export function ownedSnapshot(rootPid) {
   const identities = readdirSync('/proc').filter(name => /^\d+$/.test(name)).map(processIdentity).filter(Boolean);

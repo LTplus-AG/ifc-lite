@@ -1,0 +1,3 @@
+These producers are for the next clean integrated-head capture. They have not yet produced a final acceptance receipt. The original parent producer files are retained to preserve the provenance of already archived receipts.
+
+Each screenshot frames the verified owning-model products through public `bim.viewer.flyTo`, waits for finite camera position/target to settle, then waits two render frames. Room capture enables Spaces through the existing command palette when hidden. Neither step writes IFC or requests an extra remesh. Native/displayed geometry, complete exported typed IFC metadata, Undo/Redo and peer-state checks remain required.

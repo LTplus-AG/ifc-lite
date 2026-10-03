@@ -31,21 +31,26 @@ export function representativeElementId(store: ViewerStoreApi): number | null {
   return fallback;
 }
 
-/** The element `inspect` selected on the user's behalf, if any. */
-let autoSelectedId: number | null = null;
+/**
+ * The selection `inspect` made on the user's behalf, if any: the id plus the
+ * store's `selectionRevision` right after it, so ANY later selection change
+ * (even re-picking the same element) marks the selection as the user's.
+ */
+let autoSelection: { id: number; revision: number } | null = null;
 
 /**
  * Drop the tour's own selection when the tour ends (finish or abort), but
- * only while it is still the selection: an element the user picked since is
+ * only while nothing has touched the selection since: one the user made is
  * theirs. On every step from `inspect` on, since a SKIPPED step's cleanup
  * never runs; the cleanups are idempotent.
  */
 function clearAutoSelection(store: ViewerStoreApi): void {
-  const id = autoSelectedId;
-  autoSelectedId = null;
-  if (id === null || store.getState().selectedEntityId !== id) return;
-  store.getState().clearSelection();
-  store.getState().clearEntitySelection();
+  const auto = autoSelection;
+  autoSelection = null;
+  const s = store.getState();
+  if (auto === null || s.selectedEntityId !== auto.id || s.selectionRevision !== auto.revision) return;
+  s.clearSelection();
+  s.clearEntitySelection();
 }
 
 export const WELCOME_TOUR: TourDefinition = {
@@ -55,6 +60,12 @@ export const WELCOME_TOUR: TourDefinition = {
   minutes: 2,
   // 2: right-drag became fly navigation (#4864); completed users see the new orbit step.
   version: 2,
+  // The element the user selects in "Select an element" (and any storey they
+  // focus) is their outcome: a normal finish keeps it instead of restoring
+  // the pre-tour selection. The tour's OWN auto-selection is still dropped
+  // by `clearAutoSelection`, which runs before the restore. Abort restores
+  // everything, as for every tour.
+  keepOnFinish: ['selection'],
   steps: [
     {
       id: 'load',
@@ -118,8 +129,8 @@ export const WELCOME_TOUR: TourDefinition = {
             // renderer highlight (apps/viewer/AGENTS.md: two channels).
             store.getState().setSelectedEntityId(id);
             store.getState().setSelectedEntityIds([id]);
+            autoSelection = { id, revision: store.getState().selectionRevision };
           }
-          autoSelectedId = id;
         }
         store.getState().showWorkspacePanel('properties', 'programmatic');
         store.getState().setPropertiesActiveTab('properties');

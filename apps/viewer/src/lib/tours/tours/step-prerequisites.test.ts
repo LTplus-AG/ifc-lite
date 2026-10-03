@@ -20,6 +20,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { EVENT_LOAD_FILE } from '../events.js';
 import { ensureTourModel, loadDemoProjectVia } from '../demo-kit.js';
 import type { TourStep } from '../types.js';
+import { captureUiSnapshot, restoreUiSnapshot } from '../snapshot.js';
 import { WELCOME_TOUR, representativeElementId } from './welcome.js';
 import { LENS_TOUR } from './lens.js';
 import { RIBBON_TOUR } from './ribbon.js';
@@ -81,6 +82,28 @@ describe('welcome tour steps after a skipped select (#6720)', () => {
     useViewerStore.getState().setSelectedEntityId(30); // the user picks something else
     step(WELCOME_TOUR, 'wrap').cleanup?.(useViewerStore, ctx);
     assert.equal(useViewerStore.getState().selectedEntityId, 30, 'a selection the user made is theirs');
+  });
+
+  it('re-picking the auto-selected element makes it the user\'s: cleanup leaves it', async () => {
+    seedLoaded(loadedModel(0, [{ expressId: 12, ifcType: 'IfcWall' }, { expressId: 30, ifcType: 'IfcDoor' }]));
+    useViewerStore.getState().clearSelection();
+    const inspect = step(WELCOME_TOUR, 'inspect');
+    await inspect.prepare?.(useViewerStore);
+    useViewerStore.getState().setSelectedEntityId(30);
+    useViewerStore.getState().setSelectedEntityId(12); // same id as the tour picked, chosen by the user
+    inspect.cleanup?.(useViewerStore, { baseline: {}, artifacts: new Map() });
+    assert.equal(useViewerStore.getState().selectedEntityId, 12);
+  });
+
+  it('a normal finish keeps the user\'s own selection; abort still restores the pre-tour one', () => {
+    seedLoaded(loadedModel(0, [{ expressId: 30, ifcType: 'IfcDoor' }]));
+    useViewerStore.getState().clearSelection();
+    const snapshot = captureUiSnapshot(useViewerStore);
+    useViewerStore.getState().setSelectedEntityId(30); // "Select an element", done by the user
+    restoreUiSnapshot(useViewerStore, snapshot, WELCOME_TOUR.keepOnFinish ?? []); // finishTour's call
+    assert.equal(useViewerStore.getState().selectedEntityId, 30, 'finish keeps it');
+    restoreUiSnapshot(useViewerStore, snapshot, []); // abortTour's call
+    assert.equal(useViewerStore.getState().selectedEntityId, null, 'abort restores the pre-tour selection');
   });
 
   it('inspect keeps the element the user selected', async () => {

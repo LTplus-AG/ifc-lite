@@ -36,7 +36,7 @@ export function documentTableLabels(t?: DocumentLabelFormatter): TableLabels {
 const TABLE_MESSAGES: Record<Exclude<TableMessageKind, 'error' | 'no-rows'>, string> = {
   resolving: 'Table not ready: the list is still running.',
   'no-model': 'Load a model to fill this table.',
-  'no-report': 'No validation report yet — run validation, then export again.',
+  'no-report': resolveEnglish('document.table.noReport'),
   'rule-not-found': 'The rule this table refers to is not in the current validation report.',
 };
 

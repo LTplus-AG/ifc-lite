@@ -1,0 +1,110 @@
+[
+  {
+    "suite": "physical",
+    "models": 1,
+    "receipt": "physical-1-browser.json.gz",
+    "receiptSHA256": "cd92d6c6e34ac56d7d7613f18cda5f61824fd17e9483987b607e4b092f2ebfc2",
+    "source": {
+      "head": "bfc6d467c3e10387cf1e4dfe9da43066f139cb0e",
+      "dirty": "",
+      "rustTree": "7bcb4b9c4f923e745d0b69d56476605c0f20652e",
+      "fixturePath": "/tmp/6232-final-qualification16/apps/viewer/public/samples/hello-wall.ifc",
+      "fixtureSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "wasmSHA256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+      "wasmModified": "2026-10-03T14:03:53.451Z",
+      "sourceRoot": "/tmp/6232-final-qualification16",
+      "baseURL": "http://127.0.0.1:5189"
+    },
+    "stages": 21
+  },
+  {
+    "suite": "physical",
+    "models": 2,
+    "receipt": "physical-2-browser.json.gz",
+    "receiptSHA256": "8784e138039ae88cafd260fe9c781a4286fbfe4574feb4166639b8733c20599f",
+    "source": {
+      "head": "bfc6d467c3e10387cf1e4dfe9da43066f139cb0e",
+      "dirty": "",
+      "rustTree": "7bcb4b9c4f923e745d0b69d56476605c0f20652e",
+      "fixturePath": "/tmp/6232-final-qualification16/apps/viewer/public/samples/hello-wall.ifc",
+      "fixtureSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "wasmSHA256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+      "wasmModified": "2026-10-03T14:03:53.451Z",
+      "sourceRoot": "/tmp/6232-final-qualification16",
+      "baseURL": "http://127.0.0.1:5189"
+    },
+    "stages": 21
+  },
+  {
+    "suite": "align",
+    "models": 1,
+    "receipt": "align-1-browser.json.gz",
+    "receiptSHA256": "55d660c92d48cf2b25fa9cef5757a0ed2a3453f28d84159a5197c7d8aac236e8",
+    "source": {
+      "head": "bfc6d467c3e10387cf1e4dfe9da43066f139cb0e",
+      "dirty": "",
+      "rustTree": "7bcb4b9c4f923e745d0b69d56476605c0f20652e",
+      "fixturePath": "/tmp/6232-final-qualification16/apps/viewer/public/samples/hello-wall.ifc",
+      "fixtureSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "wasmSHA256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+      "wasmModified": "2026-10-03T14:03:53.451Z",
+      "sourceRoot": "/tmp/6232-final-qualification16",
+      "baseURL": "http://127.0.0.1:5189"
+    },
+    "stages": 17
+  },
+  {
+    "suite": "align",
+    "models": 2,
+    "receipt": "align-2-browser.json.gz",
+    "receiptSHA256": "2fb7153cd1ae7c2c06d26a9de35fd18b893c92d0c7f16b78f5189d76ae37200f",
+    "source": {
+      "head": "bfc6d467c3e10387cf1e4dfe9da43066f139cb0e",
+      "dirty": "",
+      "rustTree": "7bcb4b9c4f923e745d0b69d56476605c0f20652e",
+      "fixturePath": "/tmp/6232-final-qualification16/apps/viewer/public/samples/hello-wall.ifc",
+      "fixtureSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "wasmSHA256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+      "wasmModified": "2026-10-03T14:03:53.451Z",
+      "sourceRoot": "/tmp/6232-final-qualification16",
+      "baseURL": "http://127.0.0.1:5189"
+    },
+    "stages": 17
+  },
+  {
+    "suite": "placement",
+    "models": 1,
+    "receipt": "placement-1-browser.json.gz",
+    "receiptSHA256": "5e180a2855180aa80b542d83c630fc9331429614bd8e469a6673d1cfd28e37d9",
+    "source": {
+      "head": "bfc6d467c3e10387cf1e4dfe9da43066f139cb0e",
+      "dirty": "",
+      "rustTree": "7bcb4b9c4f923e745d0b69d56476605c0f20652e",
+      "fixturePath": "/tmp/6232-final-qualification16/apps/viewer/public/samples/hello-wall.ifc",
+      "fixtureSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "wasmSHA256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+      "wasmModified": "2026-10-03T14:03:53.451Z",
+      "sourceRoot": "/tmp/6232-final-qualification16",
+      "baseURL": "http://127.0.0.1:5189"
+    },
+    "stages": 36
+  },
+  {
+    "suite": "placement",
+    "models": 2,
+    "receipt": "placement-2-browser.json.gz",
+    "receiptSHA256": "b5f21d9c6acea721cce4fd640e22ee0747a632e40516e626579fbd9658c520f3",
+    "source": {
+      "head": "bfc6d467c3e10387cf1e4dfe9da43066f139cb0e",
+      "dirty": "",
+      "rustTree": "7bcb4b9c4f923e745d0b69d56476605c0f20652e",
+      "fixturePath": "/tmp/6232-final-qualification16/apps/viewer/public/samples/hello-wall.ifc",
+      "fixtureSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "wasmSHA256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+      "wasmModified": "2026-10-03T14:03:53.451Z",
+      "sourceRoot": "/tmp/6232-final-qualification16",
+      "baseURL": "http://127.0.0.1:5189"
+    },
+    "stages": 36
+  }
+]

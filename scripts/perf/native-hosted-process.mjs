@@ -7,7 +7,7 @@ import { createWriteStream, readdirSync, readlinkSync } from 'node:fs';
 import { fileHash } from './interleaved-assets.mjs';
 import { processIdentity, finishLog, stopWitnessedProcesses } from './interleaved-cleanup.mjs';
 import { available, ownedSnapshot, processObservation } from './sdk-resources.mjs';
-import { cargoArgs, freshnessException, freshnessPredicates, refreshedCargoWitness, limits } from './native-hosted-plan.mjs';
+import { cargoArgs, freshnessException, freshnessPredicates, refreshedCargoWitness, cargoWitnessRefreshPredicates, limits } from './native-hosted-plan.mjs';
 import { nativeFileIdentity } from './native-file-identity.mjs';
 export function compilerEnvironment(environment, tools) {
   if (!tools) return environment;
@@ -40,21 +40,25 @@ function graphScan(witnesses, expected) {
       if (!classification) continue;
       const identity = processIdentity(name); if (!identity) continue;
       const record = nativeRecord(name, identity, observed);
+      let refreshAttempt;
       if (!witnesses.has(record.pid) && freshnessException(record, record, expected)) {
         freshSnapshot ??= ownedSnapshot(process.pid); // At most one bounded fresh own-ancestry census per scan.
         const currentObserved = processObservation(name), currentIdentity = processIdentity(name);
         const current = currentObserved && currentIdentity ? nativeRecord(name, currentIdentity, currentObserved) : null;
+        refreshAttempt = { capturedAt: freshSnapshot.at, censusMembers: freshSnapshot.members.length,
+          ancestryMember: freshSnapshot.members.find(item => item.pid === record.pid) ?? null,
+          current, predicates: cargoWitnessRefreshPredicates(record, expected, freshSnapshot, current) };
         const refreshed = refreshedCargoWitness(record, expected, freshSnapshot, current);
         if (refreshed) {
           witnesses.set(refreshed.pid, refreshed);
           witnessRefreshes.push({ ...refreshed, source: 'fresh-own-ancestry-census-plus-current-observation', capturedAt: freshSnapshot.at,
-            censusMembers: freshSnapshot.members.length, depthBound: 32, processBound: 4096 });
+            censusMembers: freshSnapshot.members.length, depthBound: 32, processBound: 4096, refreshAttempt });
         }
       }
       const witness = witnesses.get(record.pid);
       if (!freshnessException(record, witness, expected)) {
         const details = { actual: record, expected: { ...expected, argv: ['cargo', ...cargoArgs] },
-          witness: witness ?? null, predicates: freshnessPredicates(record, witness, expected) };
+          witness: witness ?? null, refreshAttempt: refreshAttempt ?? null, predicates: freshnessPredicates(record, witness, expected) };
         const error = new Error(`non-exempt compiler/test graph: ${JSON.stringify(details)}`);
         error.freshnessRefusal = details;
         throw error;

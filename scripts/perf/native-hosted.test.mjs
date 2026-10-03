@@ -3,11 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, linkSync, copyFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, linkSync, copyFileSync, rmSync, readlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { setTimeout as pause } from 'node:timers/promises';
+import { processIdentity } from './interleaved-cleanup.mjs';
+import { ownedSnapshot, processObservation } from './sdk-resources.mjs';
 import { tmpdir } from 'node:os';
 import { nativeFileIdentity, sameNativeFile } from './native-file-identity.mjs';
-import { schedule, revisions, validateRefs, probeResult, freshnessLog, freshnessException, freshnessPredicates, cargoArgs, requirePair, phases, requireCompletion, refreshedCargoWitness } from './native-hosted-plan.mjs';
+import { schedule, revisions, validateRefs, probeResult, freshnessLog, freshnessException, freshnessPredicates, cargoArgs, requirePair, phases, requireCompletion, refreshedCargoWitness, cargoWitnessRefreshPredicates } from './native-hosted-plan.mjs';
 function result() {
   return { ...Object.fromEntries(phases.map(key => [key, 1])), fileMb: 2.4, entities: 100, meshes: 5, vertices: 30, triangles: 10,
     pointCacheHits: 0, pointCacheMisses: 0, csgFailures: 0, degenerateDropped: 0, path: '/fixture.ifc',
@@ -102,4 +107,90 @@ test('#6537 Cargo admission requires selected executable path even when another 
     }
     assert.equal(freshnessException(record, undefined, expected), false);
   } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('#6537 directed frozen Rustup-to-Cargo exec keeps every ownership fence and rejects reverse/foreign transitions', () => {
+  const expected = { group: 20, directory: '/arm', cargo: '/pinned/cargo', rustup: '/selected/rustup' };
+  const record = { pid: 21, startTime: '99', pgrp: 20, cwd: '/arm', executableObserved: true,
+    executable: expected.rustup, argv: ['cargo', ...cargoArgs] };
+  const member = { pid: 21, startTime: '99', pgrp: 20 }, snapshot = { members: [member] };
+  const current = { ...record, executable: expected.cargo };
+  const transition = cargoWitnessRefreshPredicates(record, expected, snapshot, current);
+  assert.equal(transition.currentEligible, true, 'both exact frozen executables meet the unchanged ownership predicates');
+  assert.ok(Object.values(transition).every(Boolean));
+  assert.deepEqual(refreshedCargoWitness(record, expected, snapshot, current), member);
+  assert.equal(refreshedCargoWitness(current, expected, snapshot, record), null, 'reverse Cargo-to-Rustup transition is not admitted');
+  for (const changes of [{ pid: 22 }, { startTime: '100' }, { pgrp: 19 }, { cwd: '/foreign' },
+    { argv: ['cargo', 'test'] }, { executable: '/third/cargo' }, { executableObserved: false }]) {
+    assert.equal(refreshedCargoWitness(record, expected, snapshot, { ...current, ...changes }), null);
+  }
+  const absent = cargoWitnessRefreshPredicates(record, expected, { members: [] }, record);
+  assert.deepEqual(Object.entries(absent).filter(([, pass]) => !pass).map(([key]) => key),
+    ['ancestryMemberPresent', 'ancestryStartTime', 'ancestryGroup']);
+  const reused = cargoWitnessRefreshPredicates(record, expected, snapshot, { ...record, startTime: '100' });
+  assert.equal(reused.currentEligible, false, 'a changed start fence refuses even with ancestry membership');
+});
+
+// Real exec identity control; Node executables stand in for the two frozen paths.
+// This exercises OS PID/start/group/argv preservation, not Cargo compilation.
+test('#6537 actual same-PID exec preserves directed witness ownership with exact argv and fresh root ancestry', async t => {
+  if (typeof process.execve !== 'function') {
+    if (process.env.NATIVE_COMPILER_CONTROL_REQUIRED === '1') assert.fail('Node execve required for real directed witness control');
+    t.skip('Node >=22.15 with execve required'); return;
+  }
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), 'native-witness-exec-')));
+  let child, closed, before;
+  const output = [], errors = [];
+  try {
+    const source = realpathSync(process.execPath), target = join(directory, 'target-node');
+    copyFileSync(source, target);
+    writeFileSync(join(directory, 'build'), `
+if (process.env.NATIVE_WITNESS_EXEC_STAGE === 'before') {
+  console.log('before');
+  process.stdin.once('data', () => process.execve(process.env.NATIVE_WITNESS_EXEC_TARGET,
+    ['cargo', 'build', ...process.argv.slice(2)], { ...process.env, NATIVE_WITNESS_EXEC_STAGE: 'after' }));
+} else { console.log('after'); setTimeout(() => {}, 5000); }
+`);
+    child = spawn(source, cargoArgs, { argv0: 'cargo', cwd: directory, detached: true,
+      env: { ...process.env, NATIVE_WITNESS_EXEC_STAGE: 'before', NATIVE_WITNESS_EXEC_TARGET: target },
+      stdio: ['pipe', 'pipe', 'pipe'] });
+    before = processIdentity(child.pid);
+    closed = once(child, 'close');
+    child.stdout.on('data', data => output.push(data.toString()));
+    child.stderr.on('data', data => errors.push(data.toString()));
+    const waitFor = async marker => {
+      const deadline = Date.now() + 5000;
+      while (!output.join('').split('\n').includes(marker)) {
+        assert.equal(child.exitCode, null, `child exited: ${errors.join('')}`);
+        assert.ok(Date.now() < deadline, `real exec ${marker} deadline: ${errors.join('')}`);
+        await pause(10);
+      }
+    };
+    const record = () => ({ ...processIdentity(child.pid), ...processObservation(child.pid),
+      cwd: readlinkSync(`/proc/${child.pid}/cwd`) });
+    await waitFor('before'); before = record();
+    assert.deepEqual(before.argv, ['cargo', ...cargoArgs]);
+    assert.equal(before.executable, source);
+    child.stdin.write('execute\n');
+    await waitFor('after'); const current = record();
+    assert.deepEqual(current.argv, before.argv);
+    assert.equal(current.pid, before.pid); assert.equal(current.startTime, before.startTime);
+    assert.equal(current.pgrp, before.pgrp); assert.equal(current.executable, target);
+    const expected = { group: child.pid, directory, rustup: source, cargo: target };
+    const snapshot = ownedSnapshot(process.pid);
+    const witness = refreshedCargoWitness(before, expected, snapshot, current);
+    assert.equal(witness?.pid, child.pid, 'the actual freshly observed descendant admits the directed exec');
+    assert.equal(witness.startTime, before.startTime);
+    assert.equal(refreshedCargoWitness(before, expected, { members: [] }, current), null);
+    assert.equal(refreshedCargoWitness(current, expected, snapshot, before), null);
+    if (process.env.NATIVE_WITNESS_EXEC_TEST_OUTPUT) {
+      writeFileSync(process.env.NATIVE_WITNESS_EXEC_TEST_OUTPUT, JSON.stringify({ before, current, witness,
+        predicates: cargoWitnessRefreshPredicates(before, expected, snapshot, current), stderr: errors.join(''),
+        scope: 'Real OS exec identity control using owned Node binaries; no Cargo/model/startup sample' }, null, 2), { flag: 'wx' });
+    }
+  } finally {
+    if (child && before && processIdentity(child.pid)?.startTime === before.startTime) child.kill('SIGKILL');
+    if (closed) await closed;
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

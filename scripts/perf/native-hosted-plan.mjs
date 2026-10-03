@@ -60,11 +60,23 @@ export function freshnessPredicates(record, witness, expected) {
 export function freshnessException(record, witness, expected) {
   return Object.values(freshnessPredicates(record, witness, expected)).every(Boolean);
 }
-export function refreshedCargoWitness(record, expected, snapshot, current) {
-  if (!freshnessException(record, record, expected) || !current || !freshnessException(current, record, expected)
-    || current.executable !== record.executable || !isDeepStrictEqual(current.argv, record.argv)) return null;
+export function cargoWitnessRefreshPredicates(record, expected, snapshot, current) {
   const member = snapshot.members.find(item => item.pid === record.pid);
-  return member?.startTime === record.startTime && member.pgrp === record.pgrp ? member : null;
+  return {
+    initialEligible: freshnessException(record, record, expected),
+    currentPresent: Boolean(current),
+    currentEligible: Boolean(current && freshnessException(current, record, expected)),
+    permittedExecutableTransition: Boolean(current && (current.executable === record.executable
+      || (record.executable === expected.rustup && current.executable === expected.cargo))),
+    sameArgv: Boolean(current && isDeepStrictEqual(current.argv, record.argv)),
+    ancestryMemberPresent: Boolean(member),
+    ancestryStartTime: Boolean(member && member.startTime === record.startTime),
+    ancestryGroup: Boolean(member && member.pgrp === record.pgrp),
+  };
+}
+export function refreshedCargoWitness(record, expected, snapshot, current) {
+  if (!Object.values(cargoWitnessRefreshPredicates(record, expected, snapshot, current)).every(Boolean)) return null;
+  return snapshot.members.find(item => item.pid === record.pid);
 }
 export function median(values) { return [...values].sort((a, b) => a - b)[2]; }
 export function requirePair(left, right, control, witness) {

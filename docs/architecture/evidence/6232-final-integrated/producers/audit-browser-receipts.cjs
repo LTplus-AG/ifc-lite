@@ -7,7 +7,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { gunzipSync } = require('node:zlib');
 const assert = require('node:assert/strict');
-const dir = path.join(__dirname, '..');
+const dir = path.resolve(process.argv[2] || path.join(__dirname, '..'));
 const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json')));
 let stages = 0, nativeWitnesses = 0;
 for (const entry of manifest) {
@@ -26,6 +26,10 @@ for (const entry of manifest) {
     assert.deepEqual(proof.models.filter(model => model.modelId !== receipt.modelId), peer);
     const target = proof.models.find(model => model.modelId === receipt.modelId);
     assert.ok(target);
+    if (entry.cameraFramed && target.sourceNative?.bounds.length) {
+      assert.ok(proof.camera?.position?.length === 3 && proof.camera?.target?.length === 3);
+      assert.ok([...proof.camera.position, ...proof.camera.target].every(Number.isFinite));
+    }
     for (const native of target.sourceNative?.bounds ?? []) {
       const shown = target.displayedBounds.find(box => box.id === native.id);
       assert.ok(shown);

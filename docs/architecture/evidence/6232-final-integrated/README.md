@@ -1,3 +1,7 @@
+## Latest integrated evidence
+
+Prefer [visible-integrated/README.md](./visible-integrated/README.md): all eight fresh WSL Chrome runs pass on clean `acbc97c0b`, including normally integrated Copy/Split/Trim repairs and typed Room Undo/Redo. Public camera framing and normal Spaces visibility show changed products. The independent audit checks 184 stages and 436 native/displayed witnesses. Source/fixture/fetched-WASM identities and exact qualification scope are preserved; lower main merges, required current-head CI and final readiness review remain pending.
+
 # Integrated #6232 qualification
 
 These are measured receipts, not a claim that the issue or stack is complete.

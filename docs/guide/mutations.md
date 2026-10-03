@@ -863,6 +863,7 @@ preview's products.
 viewer preview and commit; its count includes the original selection, and a
 full polar turn omits the coincident final copy. Each batch is bounded to
 10,000 new root copies before allocation. Unknown array modes and overflowing
-derived directions/extents refuse before preview or writes. The host records
+derived directions/extents refuse before preview or writes. Native-unit
+conversion and placement composition also refuse nonfinite output atomically. The host records
 its compound Undo
 batch and re-meshes returned products after success.

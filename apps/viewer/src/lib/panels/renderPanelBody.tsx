@@ -12,7 +12,7 @@
  */
 
 import { lazy, Suspense, type ReactNode } from 'react';
-import type { WorkspacePanelId } from './registry';
+import { panelModelGateMode, type WorkspacePanelId } from './registry';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { HierarchyPanel } from '@/components/viewer/HierarchyPanel';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
@@ -36,6 +36,8 @@ import { PointCloudPanel } from '@/components/viewer/PointCloudPanel';
 import { MeasurementsPanel } from '@/components/viewer/MeasurementsPanel';
 import { PlacementPanel } from '@/components/viewer/placement/PlacementPanel';
 import { ModelInspectorPanel } from '@/components/viewer/model-inspector/ModelInspectorPanel';
+import { PanelModelGate } from '@/components/viewer/PanelModelGate';
+import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
 // Lazy: the Layers panel pulls in @ifc-lite/merge (engine + blake3); a
 // dynamic chunk keeps it out of the initial bundle until first opened.
@@ -133,12 +135,21 @@ function PointCloudPanelBody({ onClose }: { onClose: () => void }) {
  * retired in favour of the strip header's single Close.
  */
 export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
+  const body = panelBody(id, onClose);
+  const gate = panelModelGateMode(id);
+  return gate ? <PanelModelGate id={id} mode={gate} onClose={onClose}>{body}</PanelModelGate> : body;
+}
+
+function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
   switch (id) {
     // Hierarchy's home is the left slot (#1267); it is never routed to the right
     // pane / float / pop-out, but the case keeps the id to body map exhaustive.
     case 'appearance': return <AppearancePanelBody />;
     case 'hierarchy': return <HierarchyPanel />;
-    case 'properties': return <PropertiesPanel />;
+    // The anchor wraps every Information branch (entity, model metadata,
+    // multi-selection, empty): the welcome tour's "Read its data" step broke
+    // whenever the panel showed one of the branches that lacked it.
+    case 'properties': return <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full"><PropertiesPanel /></div>;
     case 'compare': return <ComparePanel onClose={onClose} />;
     case 'bcf': return <BCFPanel onClose={onClose} />;
     case 'validation': return <ValidationPanel onClose={onClose} />;

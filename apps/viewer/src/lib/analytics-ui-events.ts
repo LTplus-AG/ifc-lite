@@ -34,8 +34,12 @@ export type ToolChangeVia = ToolExitVia | 'programmatic';
 /** `unsupported_format` = a format we recognise and explain; otherwise `unrecognized_format`. */
 export type FileOpenRejectReason = 'unsupported_format' | 'unrecognized_format';
 
-export type OnboardingSurfaceId = 'tour_invite' | 'ribbon_notice';
-export type OnboardingAction = 'dismiss' | 'start_tour' | 'keep_classic';
+/** `welcome_card` = the no-model start screen in the viewport;
+ *  `panel_empty_state` = a model-dependent panel opened with no model. */
+export type OnboardingSurfaceId = 'tour_invite' | 'ribbon_notice' | 'welcome_card' | 'panel_empty_state';
+/** `shown` = an impression (the panel empty state, once per mount), so the
+ *  `load_sample` / `open_file` clicks have a denominator. */
+export type OnboardingAction = 'dismiss' | 'start_tour' | 'keep_classic' | 'shown' | 'load_sample' | 'open_file';
 
 export interface UiEventProperties {
   command_executed: { command_id: string; surface: UiSurface };
@@ -48,7 +52,8 @@ export interface UiEventProperties {
   /** `code` is a fixed id (a `LoadErrorKind` or a per-path failure id), never a message. */
   error_shown: { code: string; surface: 'load_error' };
   file_open_rejected: { reason: FileOpenRejectReason };
-  onboarding_surface: { surface: OnboardingSurfaceId; action: OnboardingAction };
+  /** `panel_id` is a registry id, set only by the panel empty state. */
+  onboarding_surface: { surface: OnboardingSurfaceId; action: OnboardingAction; panel_id?: WorkspacePanelId };
 }
 
 export type UiEventName = keyof UiEventProperties;
@@ -63,7 +68,7 @@ const UI_EVENT_KEYS: { readonly [E in UiEventName]: ReadonlyArray<keyof UiEventP
   view_reset: ['trigger'],
   error_shown: ['code', 'surface'],
   file_open_rejected: ['reason'],
-  onboarding_surface: ['surface', 'action'],
+  onboarding_surface: ['surface', 'action', 'panel_id'],
 };
 
 // Properties the SDK or our own `register()` adds to every event. They are not
@@ -78,11 +83,11 @@ export const isSdkProperty = (key: string): boolean =>
 
 // Closed vocabularies: a value outside them is dropped.
 const ENUM_VALUES: Readonly<Record<string, ReadonlySet<string>>> = {
-  surface: new Set<string>(['ribbon', 'classic', 'rail', 'palette', 'shortcut', 'mobile', 'context', 'load_error', 'tour_invite', 'ribbon_notice']),
+  surface: new Set<string>(['ribbon', 'classic', 'rail', 'palette', 'shortcut', 'mobile', 'context', 'load_error', 'tour_invite', 'ribbon_notice', 'welcome_card', 'panel_empty_state']),
   via: new Set<string>(['esc', 'switch']),
   trigger: new Set<string>(['a', 'show_all']),
   reason: new Set<string>(['unsupported_format', 'unrecognized_format']),
-  action: new Set<string>(['dismiss', 'start_tour', 'keep_classic']),
+  action: new Set<string>(['dismiss', 'start_tour', 'keep_classic', 'shown', 'load_sample', 'open_file']),
 };
 
 // Everything else is a code-defined id: registry ids (`loadReport`), tool ids

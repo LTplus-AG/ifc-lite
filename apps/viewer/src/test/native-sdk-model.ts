@@ -63,4 +63,3 @@ export async function settle(modelId = MODEL): Promise<void> {
 }
 export const nativeSdkMeshes = () => useViewerStore.getState().models.get(MODEL)!.geometryResult!.meshes;
 export const nativeSdkUndoDepth = () => useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0;
-

@@ -8,11 +8,6 @@
   ],
   "captureState": "Source-bound WSL Chrome evidence is recorded under parent-boundary-forward: two fresh Physical receipts at clean 983bf1665a45906ef6f26b6e2e625186f5bc70d3 plus six retained Align/Placement/Room receipts at their original clean acbc97c0be9ec495ecf6e57ce5e1b71885b85f74. Strict composed audit: 8 receipts, 184 stages, 436 native/displayed geometry witnesses. Scope limitations and earlier historical captures remain explicitly labelled.",
   "alignRegisteredNativeProof": "Registered-command native controls and six-mode SDK browser controls passed; the retained clean acbc97c0be9ec495ecf6e57ce5e1b71885b85f74 Align receipts preserve distinct target shifts and one/two model contexts.",
-  "pending": [
-    "All preceding stack layers must actually land on main",
-    "All four latest required current-head PR contexts must actually succeed and complete fresh feedback must be addressed",
-    "Actual-main merge trees must match reviewed qualified source immediately before each merge"
-  ],
   "rows": [
     {
       "command": "element.split",
@@ -20,7 +15,7 @@
       "mcp": "edit_element_geometry: split",
       "tests": "element-split.test.ts / physical-edit.test.ts",
       "browser": "physical: split",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "wall.place",
@@ -28,7 +23,7 @@
       "mcp": "run_flow: wall",
       "tests": "ordinary-element.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
       "browser": "physical: authored-wall",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "wall.moveEndpoint",
@@ -36,7 +31,7 @@
       "mcp": "edit_element_geometry: wall_endpoints",
       "tests": "element-transform-size.e2e.test.ts / physical-edit.test.ts",
       "browser": "physical: endpoints",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "slab.place",
@@ -44,7 +39,7 @@
       "mcp": "run_flow: slab",
       "tests": "ordinary-element.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
       "browser": "placement: slab",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "column.place",
@@ -52,7 +47,7 @@
       "mcp": "run_flow: column",
       "tests": "column.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
       "browser": "align: column-a/column-b",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "beam.place",
@@ -60,7 +55,7 @@
       "mcp": "run_flow: beam",
       "tests": "beam.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
       "browser": "placement: beam",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "room.place",
@@ -68,7 +63,7 @@
       "mcp": "room_command: query/auto/pick/footprint/update/edit",
       "tests": "room-command.test.ts / room-place.test.tsx / room-layout.test.tsx",
       "browser": "room: query/pick/cut; other modes native MCP",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "opening.place",
@@ -76,7 +71,7 @@
       "mcp": "place_opening",
       "tests": "hosted-place.test.ts / hosted-place.test.tsx",
       "browser": "placement: opening",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "door.place",
@@ -84,7 +79,7 @@
       "mcp": "place_door",
       "tests": "hosted-place.test.ts / hosted-place.test.tsx",
       "browser": "placement: door",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "window.place",
@@ -92,7 +87,7 @@
       "mcp": "place_window",
       "tests": "hosted-place.test.ts / hosted-place.test.tsx",
       "browser": "placement: window",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "hosted.slide",
@@ -100,7 +95,7 @@
       "mcp": "edit_hosted_element",
       "tests": "hosted-place.test.ts / store-adapter-hosted.test.ts",
       "browser": "placement: hosted-slide",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "plan.move",
@@ -108,7 +103,7 @@
       "mcp": "edit_element_geometry: transform/move",
       "tests": "store-adapter-native-physical-room.test.ts / element-move-rotate.test.ts",
       "browser": "physical: move; registered command native regression",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "element.paste",
@@ -116,7 +111,7 @@
       "mcp": "copy_elements",
       "tests": "copy-elements.test.ts / copy-array.test.tsx",
       "browser": "physical: paste",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "element.array",
@@ -124,7 +119,7 @@
       "mcp": "array_elements",
       "tests": "copy-elements.test.ts / copy-array.test.tsx",
       "browser": "physical: array",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "element.move",
@@ -132,7 +127,7 @@
       "mcp": "edit_element_geometry: transform/move",
       "tests": "physical-edit.test.ts / element-move-rotate.test.ts",
       "browser": "physical: move",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "element.rotate",
@@ -140,7 +135,7 @@
       "mcp": "edit_element_geometry: transform/rotate",
       "tests": "physical-edit.test.ts / element-move-rotate.test.ts",
       "browser": "physical: rotate",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "stair.place",
@@ -148,7 +143,7 @@
       "mcp": "run_flow: stair",
       "tests": "stair-railing.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
       "browser": "placement: stair",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "railing.place",
@@ -156,7 +151,7 @@
       "mcp": "run_flow: railing",
       "tests": "stair-railing.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
       "browser": "placement: railing",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "split.multi",
@@ -164,7 +159,7 @@
       "mcp": "edit_element_geometry: split (batched targets)",
       "tests": "element-split.test.ts / multi-split.test.tsx / physical-edit.test.ts",
       "browser": "physical: split; native batch invariants",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "element.pushPull",
@@ -172,7 +167,7 @@
       "mcp": "edit_element_geometry: size / transform",
       "tests": "element-transform-size.e2e.test.ts / element-push-pull.test.tsx",
       "browser": "physical: size / move",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "element.align",
@@ -180,7 +175,7 @@
       "mcp": "edit_element_geometry: align",
       "tests": "align-native.test.ts / store-adapter-native-align.test.ts / element-align.test.tsx",
       "browser": "align: all six modes, distinct shifts",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "curtainwall.place",
@@ -188,7 +183,7 @@
       "mcp": "place_curtain_wall",
       "tests": "design-place.test.ts / curtain-wall-grid.e2e.test.ts",
       "browser": "placement: curtain-wall",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "grid.place",
@@ -196,7 +191,7 @@
       "mcp": "place_grid / place_grid_column",
       "tests": "design-place.test.ts / grid-column.e2e.test.ts",
       "browser": "placement: grid / grid-column",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     },
     {
       "command": "element.trimExtend",
@@ -204,7 +199,12 @@
       "mcp": "edit_element_geometry: trim_extend",
       "tests": "element-trim-extend.test.ts / physical-edit.test.ts",
       "browser": "physical: trim",
-      "finalAcceptance": "Source-bound behavioral evidence recorded; pending required current-head gates, complete feedback and predecessor landings"
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
     }
+  ],
+  "mergeAcceptanceConditions": [
+    "All preceding stack layers must actually land on main",
+    "All four latest required current-head PR contexts must actually succeed and complete fresh feedback must be addressed",
+    "Actual-main merge trees must match reviewed qualified source immediately before each merge"
   ]
 }

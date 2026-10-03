@@ -102,3 +102,9 @@ receipt remains archived. The separate `quantity-types.log.gz` and
 `quantity-viewer.log.gz` show root typecheck (111 tasks/3,381 test files) and
 27 native/mounted viewer controls with zero skips for the repaired production
 source. Earlier qualification logs retain their original source scope.
+
+After the quantity repair and receipt archival, root Turbo reran the whole MCP
+package with `--only --force` at clean `ba2dedc424cd7ce196dd4c3ef1892ed74e754d5c`: 615 tests
+passed and five existing optional controls skipped across 68 files. No
+dependency build/cache restoration ran; actual WASM hash was verified unchanged
+before and after. `quantity-mcp.log.gz` preserves the run.

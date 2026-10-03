@@ -117,31 +117,37 @@ export function compileSharedWasmModule(explicitUrl?: string): Promise<WebAssemb
   return url ? optionalModule(acquireModule(url)) : Promise.resolve(null);
 }
 
+/** Modern public init options; deliberately not a package-root export. */
+type SharedWasmInitOptions = {
+  module_or_path: WebAssembly.Module | Promise<WebAssembly.Module>;
+};
+
 /**
- * Acquire the existing default module for bridge init. Start it only when a
- * bundler rewrote our static asset URL: a raw sibling path is not proof of the
- * installed dependency location (a nested npm dependency can live elsewhere).
- * Such unbundled consumers keep wasm-bindgen's working bare-import resolution.
+ * Prepare main init without starting a bundled fetch. Generated public init
+ * returns an already initialized engine BEFORE reading module_or_path. A cold
+ * loader reads this getter and starts/joins the strict memo inside its retry.
  *
- * The second URL constructor uses a parameter, not import.meta.url, so bundlers
- * leave it untouched. Compare before fetching; never probe a speculative URL.
- * Bundled acquisition rejects inside the bridge retry. Raw package paths only
- * join an already-started optional compile and retain ordinary loader fallback.
- * These arguments are an internal URL-policy seam, not package-root API.
+ * Raw sibling URLs do not prove the installed npm asset location. Only join an
+ * existing optional memo there, then give the loader concrete options or no
+ * options. Promise<undefined> would bypass the loader's default URL selection.
+ * The second URL constructor uses a parameter so bundlers leave it untouched.
  */
-export function acquireSharedWasmModuleForInit(
+export async function prepareSharedWasmInit(
   resolvedUrl: string | URL | null = resolveWasmUrl(),
   moduleUrl: string = import.meta.url,
-): Promise<WebAssembly.Module | null> | null {
-  if (!resolvedUrl || typeof WebAssembly === 'undefined') return null;
+): Promise<SharedWasmInitOptions | undefined> {
+  if (!resolvedUrl || typeof WebAssembly === 'undefined') return undefined;
   const cacheKey = resolvedUrl instanceof URL ? resolvedUrl.href : resolvedUrl;
   const resolved = new URL(cacheKey, moduleUrl);
   const unbundled = new URL('../../wasm/pkg/ifc-lite_bg.wasm', moduleUrl);
   if (resolved.href === unbundled.href || !['http:', 'https:'].includes(resolved.protocol)) {
     const cached = sharedWasmModulePromises.get(cacheKey);
-    return cached ? optionalModule(cached) : null;
+    const module = cached ? await optionalModule(cached) : null;
+    return module ? { module_or_path: module } : undefined;
   }
-  return acquireModule(cacheKey);
+  return {
+    get module_or_path(): Promise<WebAssembly.Module> { return acquireModule(cacheKey); },
+  };
 }
 
 /**

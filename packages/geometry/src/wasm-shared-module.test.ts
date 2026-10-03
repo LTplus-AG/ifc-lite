@@ -5,13 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compileSharedWasmModule } from './wasm-shared-module.js';
 import * as sharedModules from './wasm-shared-module.js';
 import { IfcLiteBridge } from './ifc-lite-bridge.js';
+import init from '@ifc-lite/wasm';
 
 const binding = vi.hoisted(() => ({ actions: [] as string[], instance: undefined as WebAssembly.Instance | undefined, loaderUrl: 'https://viewer.test/fallback.wasm' }));
 vi.mock('@ifc-lite/wasm', () => ({
   // Public loader contract, backed by actual WebAssembly instantiation. An
   // omitted module must perform a second fetch, making bridge bypass observable.
-  default: async (arg?: { module_or_path: WebAssembly.Module }) => {
-    if (arg) binding.instance = await WebAssembly.instantiate(arg.module_or_path);
+  default: async (arg?: { module_or_path: WebAssembly.Module | Promise<WebAssembly.Module> }) => {
+    // Actual public init checks its initialized engine before reading options.
+    if (binding.instance) return;
+    if (arg) binding.instance = await WebAssembly.instantiate(await arg.module_or_path);
     else {
       // The baseline bridge must run the same public loader contract, including
       // its MIME fallback, rather than fail at a missing new helper export.
@@ -58,16 +61,23 @@ const response = (bytes = answerBytes(), mime = 'application/wasm') =>
 // seam. Exercise its existing shared compiler rather than throw on an absent
 // export. Assertions still observe actual fetches, compilation and rejection;
 // the real baseline bridge below keeps its ordinary self-fetching loader.
-function acquireForInit(url: URL, moduleUrl: string): Promise<WebAssembly.Module | null> | null {
-  const acquire = sharedModules.acquireSharedWasmModuleForInit;
-  return typeof acquire === 'function' ? acquire(url, moduleUrl) : compileSharedWasmModule(url.href);
+async function prepareForInit(url: URL, moduleUrl: string) {
+  const prepare = sharedModules.prepareSharedWasmInit;
+  if (typeof prepare === 'function') return prepare(url, moduleUrl);
+  const module = await compileSharedWasmModule(url.href);
+  return module ? { module_or_path: module } : undefined;
+}
+
+async function acquireForInit(url: URL, moduleUrl: string): Promise<WebAssembly.Module | null> {
+  const options = await prepareForInit(url, moduleUrl);
+  return options ? options.module_or_path : null;
 }
 
 function routeBundledAsset(wasm: string, moduleUrl: string): void {
   binding.loaderUrl = wasm;
-  const acquire = sharedModules.acquireSharedWasmModuleForInit;
-  if (typeof acquire === 'function') {
-    vi.spyOn(sharedModules, 'acquireSharedWasmModuleForInit').mockImplementation(() => acquire(new URL(wasm), moduleUrl));
+  const prepare = sharedModules.prepareSharedWasmInit;
+  if (typeof prepare === 'function') {
+    vi.spyOn(sharedModules, 'prepareSharedWasmInit').mockImplementation(() => prepare(new URL(wasm), moduleUrl));
   }
 }
 
@@ -103,6 +113,42 @@ describe('bundled main-init-first shared module ownership #6537', () => {
     expect(binding.actions.at(-1)).toBe('free');
   });
 
+  it('preparing bundled options does not fetch until the public loader consumes them', async () => {
+    const { wasm, moduleUrl } = urls(); let requests = 0;
+    vi.stubGlobal('fetch', async () => { requests++; return response(); });
+    const options = await prepareForInit(new URL(wasm), moduleUrl);
+    expect(requests).toBe(0);
+    await init(options); expect(requests).toBe(1);
+    const instance = binding.instance;
+    if (!instance || typeof instance.exports.answer !== 'function') throw new Error('cold public loader did not execute wasm');
+    expect(instance.exports.answer()).toBe(42);
+  });
+
+  it('a warmed public engine with an empty shared memo remains usable when further asset delivery fails', async () => {
+    const { wasm, moduleUrl } = urls(); let requests = 0;
+    routeBundledAsset(wasm, moduleUrl);
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('fetch', async () => { requests++; return response(); });
+    // Initialize through the public loader, not the geometry memo or state setter.
+    await init(); const originalInstance = binding.instance;
+    expect(requests).toBe(1);
+    vi.stubGlobal('fetch', async () => { requests++; throw new TypeError('Failed to fetch'); });
+    const options = await prepareForInit(new URL(wasm), moduleUrl);
+    expect(requests).toBe(1);
+    await init(options); expect(requests).toBe(1); expect(binding.instance).toBe(originalInstance);
+    const bridge = new IfcLiteBridge();
+    bridge.setMergeLayers(true); bridge.setComputeGeometryHashes(0.25);
+    bridge.setTessellationQuality('high'); bridge.setSkipSmallCuts(true);
+    try {
+      await bridge.init(); expect(bridge.isInitialized()).toBe(true); expect(requests).toBe(1);
+      expect(binding.actions).toEqual(['instantiate', 'create-api', 'merge:true', 'hash:0.25', 'quality:high', 'skip:true']);
+      const instance = binding.instance;
+      if (!instance || typeof instance.exports.answer !== 'function') throw new Error('warmed engine became unavailable');
+      expect(instance.exports.answer()).toBe(42);
+    } finally { bridge.dispose(); }
+    expect(binding.actions.at(-1)).toBe('free'); expect(requests).toBe(1);
+  });
+
   it('main-first compiles one fetched body, executes it and hands the same module to the later pool', async () => {
     const { wasm, moduleUrl } = urls(), requested: string[] = [];
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => { requested.push(String(input)); return response(); });
@@ -129,7 +175,7 @@ describe('bundled main-init-first shared module ownership #6537', () => {
     expect(await answer(a)).toBe(42); expect(await answer(c)).toBe(7);
   });
 
-  it('unbundled scoped, nested dependency and Node file URLs never initiate speculative fetches', () => {
+  it('unbundled scoped, nested dependency and Node file URLs never initiate speculative fetches', async () => {
     const requested: string[] = [];
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => { requested.push(String(input)); return response(); });
     for (const moduleUrl of [
@@ -139,9 +185,9 @@ describe('bundled main-init-first shared module ownership #6537', () => {
       'file:///workspace/packages/geometry/src/wasm-shared-module.ts',
     ]) {
       const raw = new URL('../../wasm/pkg/ifc-lite_bg.wasm', moduleUrl);
-      expect(acquireForInit(raw, moduleUrl)).toBeNull();
+      expect(await prepareForInit(raw, moduleUrl)).toBeUndefined();
     }
-    expect(acquireForInit(new URL('file:///engine/compiled.wasm'), 'file:///app/module.js')).toBeNull();
+    expect(await prepareForInit(new URL('file:///engine/compiled.wasm'), 'file:///app/module.js')).toBeUndefined();
     expect(requested).toEqual([]);
   });
 
@@ -397,6 +443,6 @@ describe('bundled main-init-first shared module ownership #6537', () => {
     const pool = compileSharedWasmModule(wasm.href), main = acquireForInit(wasm, moduleUrl);
     expect(await pool).toBeNull(); expect(await main).toBeNull(); expect(requests).toBe(1);
     expect(console.warn).toHaveBeenCalledOnce();
-    expect(acquireForInit(wasm, moduleUrl)).toBeNull(); expect(requests).toBe(1);
+    expect(await acquireForInit(wasm, moduleUrl)).toBeNull(); expect(requests).toBe(1);
   });
 });

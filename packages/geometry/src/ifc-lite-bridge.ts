@@ -15,7 +15,7 @@ import type { HbjsonStats } from './hbjson-stats.js';
 import * as energyExport from './energy-export-bridge.js';
 import type { GeometryDiagnostics } from './diagnostics.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
-import { acquireSharedWasmModuleForInit } from './wasm-shared-module.js';
+import { prepareSharedWasmInit } from './wasm-shared-module.js';
 import {
   isWasmRuntimeTrap,
   notifyWasmRuntimeUnrecoverable,
@@ -167,14 +167,13 @@ export class IfcLiteBridge {
         const wasmPath: string = requireFromHere.resolve('@ifc-lite/wasm/ifc-lite_bg.wasm');
         wasmInitArg = (await nodeFs.readFile(wasmPath)) as BufferSource;
       }
-      // Acquire bundled assets inside the existing retry: one transport failure
-      // gets one delayed retry; fatal compilation errors propagate immediately.
+      // A bundled fetch starts only when cold public init reads its options.
+      // Acquisition remains inside the existing delayed transport retry.
       // Raw package resolution and Node's supplied bytes retain their paths.
       await initWasmWithRetry(
         async () => {
-          const sharedModule = wasmInitArg ? null : await acquireSharedWasmModuleForInit();
-          const initArg = wasmInitArg ?? sharedModule ?? undefined;
-          await init(initArg ? { module_or_path: initArg } : undefined);
+          const options = wasmInitArg ? { module_or_path: wasmInitArg } : await prepareSharedWasmInit();
+          await init(options);
         },
         { label: 'ifc-lite-bridge' },
       );

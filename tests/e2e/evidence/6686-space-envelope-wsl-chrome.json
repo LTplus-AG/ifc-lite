@@ -3,14 +3,14 @@
   "model": "AC20-FZK-Haus.ifc",
   "snap": {
     "local": [
-      5.03999999910593,
-      3.3867513492703436
+      5,
+      3.3867514610290526
     ],
     "winner": {
-      "kind": "endpoint",
+      "kind": "vertex",
       "local": [
-        5.03999999910593,
-        3.3867513492703436
+        5,
+        3.3867514610290526
       ],
       "elevation": -6.5,
       "source": "mesh"
@@ -19,14 +19,14 @@
     "locked": false,
     "render": [
       6,
-      6.086751349270344,
-      -5.03999999910593
+      6.086751461029053,
+      -5
     ],
     "modifiers": {
       "shift": false,
       "alt": false
     },
-    "metresPerPixel": 0.025150457455882957
+    "metresPerPixel": 0.03028833662187047
   },
   "saved": {
     "envelope": {
@@ -59,10 +59,6 @@
       },
       {
         "Name": "GrossVolume",
-        "Value": 64.64101753234863
-      },
-      {
-        "Name": "NetVolume",
         "Value": 64.64101753234863
       }
     ]

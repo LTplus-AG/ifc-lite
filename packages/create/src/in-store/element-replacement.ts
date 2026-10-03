@@ -63,13 +63,13 @@ export function replaceElementInStore(
         throw new Error(`replaceElementInStore: unsupported hosted-opening source #${oldId} (${old.type}); edit the host in place`);
       }
     }
-    const resolved = typeof anchor === 'function' ? anchor(draft) : anchor;
     const removedIds = [oldId];
     if (old.type.toUpperCase() === 'IFCSTAIR') {
       removedIds.push(removeStairFromDraft(store, draft, oldId).flightId);
     } else if (!draft.removeEntity(oldId)) {
       throw new Error(`replaceElementInStore: #${oldId} could not be removed`);
     }
+    const resolved = typeof anchor === 'function' ? anchor(draft) : anchor;
     if (element.kind === 'stair') {
       const built = addStairToStore(draft, resolved, element.params);
       return { expressId: built.stairId, flightId: built.flightId, removedIds };

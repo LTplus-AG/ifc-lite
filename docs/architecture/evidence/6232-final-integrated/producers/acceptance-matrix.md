@@ -8,7 +8,7 @@ Final acceptance remains pending final clean integrated source/WASM capture, for
 |---|---|---|---|---|
 | element.split | splitElements | edit_element_geometry: split | element-split.test.ts / physical-edit.test.ts | physical: split |
 | wall.place | addWall | run_flow: wall | ordinary-element.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts | physical: authored-wall |
-| wall.moveEndpoint | resizeWall | edit_element_geometry: endpoints | element-transform-size.e2e.test.ts / physical-edit.test.ts | physical: endpoints |
+| wall.moveEndpoint | resizeWall | edit_element_geometry: wall_endpoints | element-transform-size.e2e.test.ts / physical-edit.test.ts | physical: endpoints |
 | slab.place | addSlab | run_flow: slab | ordinary-element.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts | placement: slab |
 | column.place | addColumn | run_flow: column | column.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts | align: column-a/column-b |
 | beam.place | addBeam | run_flow: beam | beam.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts | placement: beam |
@@ -29,6 +29,6 @@ Final acceptance remains pending final clean integrated source/WASM capture, for
 | element.align | alignElements | edit_element_geometry: align | align-native.test.ts / store-adapter-native-align.test.ts / element-align.test.tsx | align: all six modes, distinct shifts |
 | curtainwall.place | addCurtainWall | place_curtain_wall | design-place.test.ts / curtain-wall-grid.e2e.test.ts | placement: curtain-wall |
 | grid.place | addGrid / addColumnOnGrid | place_grid / place_grid_column | design-place.test.ts / grid-column.e2e.test.ts | placement: grid / grid-column |
-| element.trimExtend | trimExtendElement | edit_element_geometry: trim | element-trim-extend.test.ts / physical-edit.test.ts | physical: trim |
+| element.trimExtend | trimExtendElement | edit_element_geometry: trim_extend | element-trim-extend.test.ts / physical-edit.test.ts | physical: trim |
 
 Every final receipt must identify the exact source commit, loaded fixture hash and fetched WASM hash, show actual owning-model native meshes including origins, verify whole exported IFC graph/geometry Undo and unchanged peer state in one and multiple loaded models. Align native tests additionally cover source variants, per-root joined/hosted ownership and stale preparation. Browser six-mode receipts use two targets requiring different shifts. Room native MCP controls qualify Auto/Footprint/Update/Drag/Remove/Prune; this browser producer claims only Query/Pick/cut. Source metamorphic IFC4X3/mm variants are not independent authoring-tool fixtures.

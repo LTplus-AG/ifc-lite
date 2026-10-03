@@ -2,12 +2,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { spawn } from 'node:child_process';
+import { basename, dirname, isAbsolute } from 'node:path';
 import { createWriteStream, readFileSync, readdirSync, readlinkSync } from 'node:fs';
 import { fileHash } from './interleaved-assets.mjs';
 import { processIdentity, finishLog, stopWitnessedProcesses } from './interleaved-cleanup.mjs';
 import { available, ownedSnapshot } from './sdk-resources.mjs';
 import { classifyBuildTestProcess } from './sdk-process-classification.mjs';
 import { freshnessException, limits } from './native-hosted-plan.mjs';
+export function compilerEnvironment(environment, tools) {
+  if (!tools) return environment;
+  if (![tools.cargo, tools.rustc, tools.rustdoc].every(path => typeof path === 'string' && isAbsolute(path))
+    || dirname(tools.cargo) !== dirname(tools.rustc) || dirname(tools.cargo) !== dirname(tools.rustdoc)
+    || basename(dirname(dirname(tools.rustc))) !== tools.toolchain
+    || typeof tools.toolchain !== 'string' || !/^nightly-\d{4}-\d{2}-\d{2}-[a-z0-9_-]+$/.test(tools.toolchain)) {
+    throw new Error('native compiler selection refused');
+  }
+  return { ...environment, RUSTC: tools.rustc, RUSTDOC: tools.rustdoc, RUSTUP_TOOLCHAIN: tools.toolchain };
+}
 function graphScan(witnesses, expected) {
   const exceptions = [];
   for (const name of readdirSync('/proc').filter(value => /^\d+$/.test(value))) {
@@ -28,7 +39,8 @@ export async function execute(command, directory, prefix, { sample = false, tool
   const executable = tools && ['bash', 'cargo'].includes(command[0]) ? tools[command[0]] : command[0];
   const paths = { stdout: `${prefix}.stdout`, stderr: `${prefix}.stderr` };
   const logs = Object.values(paths).map(path => createWriteStream(path, { flags: 'wx' }));
-  const row = { status: 'pending', command, executable, directory, paths, startedUTC: new Date().toISOString(), samples: [], cargoExceptions: [] };
+  const row = { status: 'pending', command, executable, directory, paths, startedUTC: new Date().toISOString(), samples: [], cargoExceptions: [],
+    compilerSelection: tools ? { rustc: tools.rustc, rustdoc: tools.rustdoc, toolchain: tools.toolchain } : undefined };
   const witnesses = new Map(); let child, refusal, monitor, deadline, pipeDeadline, settle, exit, abortCleanup;
   const abort = reason => {
     refusal ??= String(reason);
@@ -44,7 +56,7 @@ export async function execute(command, directory, prefix, { sample = false, tool
   for (const log of logs) log.on('error', error => abort(`log write: ${error}`));
   try {
     child = spawn(executable, command.slice(1), { cwd: directory, detached: true,
-      env: { ...process.env, OBS: '0', CARGO_BUILD_JOBS: '1', CARGO_TERM_COLOR: 'never' }, stdio: ['ignore', 'pipe', 'pipe'] });
+      env: compilerEnvironment({ ...process.env, OBS: '0', CARGO_BUILD_JOBS: '1', CARGO_TERM_COLOR: 'never' }, tools), stdio: ['ignore', 'pipe', 'pipe'] });
     const identity = processIdentity(child.pid); if (!identity) throw new Error('child PID witness absent'); witnesses.set(identity.pid, identity);
     let bytes = 0;
     [child.stdout, child.stderr].forEach((stream, index) => {

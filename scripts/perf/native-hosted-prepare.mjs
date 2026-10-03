@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync, readdirSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileHash } from './interleaved-assets.mjs';
 import { sourceSnapshot, verifySource } from './sdk-prepare.mjs';
 import { execute } from './native-hosted-process.mjs';
@@ -23,10 +23,17 @@ async function libraries(path, files) {
   for (const match of raw.matchAll(/(?:=>\s+|^\s*)(\/[^\s]+)\s/gm)) { const library = realpathSync(match[1]); files[library] = await fileHash(library); }
   return raw;
 }
+export function repositoryNightlyChannel() {
+  const channels = [...readFileSync(join(root, 'rust-toolchain.toml'), 'utf8').matchAll(/^channel\s*=\s*"(nightly-\d{4}-\d{2}-\d{2})"\s*$/gm)];
+  if (channels.length !== 1) throw new Error('native repository nightly selector refused');
+  return channels[0][1];
+}
 async function toolFreeze() {
+  const channel = repositoryNightlyChannel();
+  const rustTool = name => realpathSync(command('rustup', ['which', '--toolchain', channel, name]));
   const tools = { node: realpathSync(process.execPath), bash: realpathSync(command('which', ['bash'])),
-    rustup: realpathSync(command('which', ['rustup'])), cargo: realpathSync(command('rustup', ['which', 'cargo'])),
-    rustc: realpathSync(command('rustup', ['which', 'rustc'])), cc: realpathSync(command('which', ['cc'])) };
+    rustup: realpathSync(command('which', ['rustup'])), cargo: rustTool('cargo'),
+    rustc: rustTool('rustc'), rustdoc: rustTool('rustdoc'), cc: realpathSync(command('which', ['cc'])) };
   const files = {}, linkedLibraries = {};
   for (const [name, path] of Object.entries(tools)) {
     files[path] = await fileHash(path);
@@ -45,6 +52,8 @@ async function toolFreeze() {
   await walk(join(sysroot, 'lib'));
   const cargoEnvironment = join(process.env.HOME, '.cargo/env');
   if (existsSync(cargoEnvironment)) files[cargoEnvironment] = await fileHash(cargoEnvironment);
+  tools.toolchain = basename(dirname(dirname(tools.rustc)));
+  if (!tools.toolchain.startsWith(`${channel}-`)) throw new Error('native installed selector differs from repository pin');
   return { tools, files, linkedLibraries, sysroot, rust: command(tools.rustc, ['--version']), cargoVersion: command(tools.cargo, ['--version']) };
 }
 async function main() {

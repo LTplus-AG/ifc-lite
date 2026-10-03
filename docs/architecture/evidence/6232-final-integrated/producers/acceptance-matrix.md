@@ -2,7 +2,7 @@
 
 This is a review checklist, not a completion receipt. The original finite charter contains the following 24 commands. Later main SpaceEnvelope (#6686) is outside this charter. Ordinary placement uses the existing public `run_flow` nodes and shared SDK cores. Duplicate and inspector dimensions are cross-cutting follow-ups.
 
-Final acceptance remains pending final clean integrated source/WASM capture, forward-qualified review fixes, and required PR gates. Test names identify behavioral controls; they do not assert that an unrecorded final-head run occurred.
+Eight clean integrated source/WASM captures are recorded at `acbc97c0be9ec495ecf6e57ce5e1b71885b85f74` under `../visible-integrated/`, with their exact scope and later narrow forward repairs kept separately. Final acceptance remains pending remaining review fixes and current-head required PR gates. Test names identify behavioral controls; they do not assert that an unrecorded final-head run occurred.
 
 | Command | SDK route | MCP route | Behavioral controls | Browser producer |
 |---|---|---|---|---|

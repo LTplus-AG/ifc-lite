@@ -31,6 +31,8 @@ import type { StoreApi } from './types.js';
 import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
+import { addCurtainWallIn, addGridIn } from '@/store/slices/mutation-curtain-grid';
+import { addGridColumnIn } from '@/store/slices/mutation-grid-column';
 import { addStairIn, addRailingIn } from '@/store/slices/mutation-stair-railing';
 import { replaceElementIn } from '@/store/slices/mutation-element-replacement';
 import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
@@ -58,6 +60,36 @@ export function withModellingMutationTracking(
       return { modelId: normalized, expressId: outcome.expressId };
     };
   return {
+    addCurtainWall(modelId, storeyExpressId, params) {
+      const normalized = normalizeMutationModelId(store.getState(), modelId);
+      const setState = store.setState;
+      if (!setState) throw new Error('bim.store.addCurtainWall: the adapter requires a writable store');
+      const undoBefore = store.getState().undoStacks.get(normalized)?.length ?? 0;
+      const outcome = addCurtainWallIn({ ...store, setState }, normalized, storeyExpressId, params);
+      if ('error' in outcome) throw new Error(`bim.store.addCurtainWall: ${outcome.error}`);
+      const state = store.getState();
+      const stack = state.undoStacks.get(normalized) ?? [];
+      const last = stack.length > undoBefore ? stack.at(-1) : undefined;
+      remeshAfterCommit(store.getState, normalized,
+        last ? state.mutationBatchTags.get(last.id) ?? null : null, [...outcome.partIds], 'created');
+      return { modelId: normalized, expressId: outcome.expressId };
+    },
+    addGrid(modelId, storeyExpressId, params) {
+      const normalized = normalizeMutationModelId(store.getState(), modelId);
+      const setState = store.setState;
+      if (!setState) throw new Error('bim.store.addGrid: the adapter requires a writable store');
+      const outcome = addGridIn({ ...store, setState }, normalized, storeyExpressId, params);
+      if ('error' in outcome) throw new Error(`bim.store.addGrid: ${outcome.error}`);
+      return { modelId: normalized, expressId: outcome.expressId };
+    },
+    addColumnOnGrid(modelId, storeyExpressId, params, binding) {
+      const normalized = normalizeMutationModelId(store.getState(), modelId);
+      const setState = store.setState;
+      if (!setState) throw new Error('bim.store.addColumnOnGrid: the adapter requires a writable store');
+      const outcome = addGridColumnIn({ ...store, setState }, normalized, storeyExpressId, params, binding);
+      if ('error' in outcome) throw new Error(`bim.store.addColumnOnGrid: ${outcome.error}`);
+      return { modelId: normalized, expressId: outcome.expressId };
+    },
     replaceElement(ref, storeyExpressId, element) {
       const normalized = normalizeMutationModelId(store.getState(), ref.modelId);
       const setState = store.setState;

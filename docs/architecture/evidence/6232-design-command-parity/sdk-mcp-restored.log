@@ -1,0 +1,33 @@
+@ifc-lite/sdk:test: cache bypass, force executing 6cfcf97e7dcd7566
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: > @ifc-lite/sdk@9.0.0 test /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/sdk
+@ifc-lite/sdk:test: > vitest run store-design.test.ts design-place.test.ts
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  RUN  v4.1.11 /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/sdk
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  ✓ src/store-design.test.ts (2 tests) 71ms
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  Test Files  1 passed (1)
+@ifc-lite/sdk:test:       Tests  2 passed (2)
+@ifc-lite/sdk:test:    Start at  07:56:26
+@ifc-lite/sdk:test:    Duration  497ms (transform 29ms, setup 0ms, import 334ms, tests 71ms, environment 0ms)
+@ifc-lite/sdk:test: 
+@ifc-lite/mcp:test: cache bypass, force executing c7dd2d3d95d8731e
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test: > @ifc-lite/mcp@0.23.0 test /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/mcp
+@ifc-lite/mcp:test: > vitest run store-design.test.ts design-place.test.ts
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test:  RUN  v4.1.11 /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/mcp
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test:  ✓ src/tools/design-place.test.ts (5 tests) 106ms
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test:  Test Files  1 passed (1)
+@ifc-lite/mcp:test:       Tests  5 passed (5)
+@ifc-lite/mcp:test:    Start at  07:56:31
+@ifc-lite/mcp:test:    Duration  1.08s (transform 353ms, setup 0ms, import 889ms, tests 106ms, environment 0ms)
+@ifc-lite/mcp:test: 
+ Tasks:    40 successful, 40 total
+Cached:    33 cached, 40 total
+  Time:    8.074s 

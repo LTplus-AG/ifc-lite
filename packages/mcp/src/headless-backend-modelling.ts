@@ -24,6 +24,18 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
     });
   }
   return {
+    addCurtainWall: (...args: Parameters<NonNullable<Methods['addCurtainWall']>>) => record(args[0], methods => {
+      if (!methods.addCurtainWall) throw new Error('Missing curtain wall capability');
+      return methods.addCurtainWall(...args);
+    }),
+    addGrid: (...args: Parameters<NonNullable<Methods['addGrid']>>) => record(args[0], methods => {
+      if (!methods.addGrid) throw new Error('Missing grid capability');
+      return methods.addGrid(...args);
+    }),
+    addColumnOnGrid: (...args: Parameters<NonNullable<Methods['addColumnOnGrid']>>) => record(args[0], methods => {
+      if (!methods.addColumnOnGrid) throw new Error('Missing grid column capability');
+      return methods.addColumnOnGrid(...args);
+    }),
     replaceElement: (...args: Parameters<NonNullable<Methods['replaceElement']>>) => record(args[0].modelId, methods => {
       const replace = methods.replaceElement;
       if (!replace) throw new Error('bim.store.replaceElement is not supported by this backend');

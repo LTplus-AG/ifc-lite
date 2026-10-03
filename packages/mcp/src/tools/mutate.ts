@@ -41,6 +41,7 @@ import { propertyValueTypeOf } from '@ifc-lite/sdk';
 import { undoPendingMutations } from './mutation-undo.js';
 import { hostedPlaceTools } from './hosted-place.js';
 import { joinWallsTool } from './wall-join.js';
+import { designPlaceTools } from './design-place.js';
 
 interface MutationContext {
   m: ReturnType<typeof resolveModel>;
@@ -347,6 +348,7 @@ const modelSave: Tool = {
 
 export const mutationTools: Tool[] = [
   ...hostedPlaceTools,
+  ...designPlaceTools,
   joinWallsTool,
   entitySetProperty,
   entityDeleteProperty,

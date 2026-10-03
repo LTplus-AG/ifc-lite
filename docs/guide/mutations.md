@@ -800,3 +800,33 @@ const wall: WallJoinWall = {
 const extended = reshapeWallAxis(wall, [0, 0], [6, 0]);
 const body = wallBodyOutline(extended); // The original start face is retained.
 ```
+
+### Curtain walls and design grids in a loaded model
+
+`bim.store.addCurtainWall(modelId, storeyExpressId, params)` creates the
+`IfcCurtainWall`, its aggregated `IfcMember` mullions/transoms and `IfcPlate`
+panels. It accepts the same `CurtainWallInStoreParams` as the Model workspace.
+`bim.store.addGrid(modelId, storeyExpressId, params)` creates an `IfcGrid` with
+straight tagged axes and a `FootPrint` representation. Both write the complete
+graph in one atomic operation; the viewer and headless hosts record one Undo.
+
+```typescript
+function addDesignGrid(modelId: string, storeyExpressId: number) {
+  return bim.store.addGrid(modelId, storeyExpressId, {
+    Name: 'Design grid',
+    UAxes: [{ Tag: '1', Start: [0, 0], End: [4, 0] }],
+    VAxes: [{ Tag: 'A', Start: [2, -2], End: [2, 2] }],
+  });
+}
+```
+
+Lengths are metres. Curtain-wall endpoints and grid `Position` are
+storey-local; axis endpoints are grid-local; `Direction` is radians.
+`bim.store.addColumnOnGrid(modelId, storeyExpressId, params, binding)` accepts
+rectangular or profiled column parameters and a `GridColumnBinding` containing
+`GridId` and the two actual `IntersectingAxes` express ids. `Position` must
+match their current crossing in the storey frame. A stale crossing, foreign
+axis owner or unsupported placement refuses the entire operation without
+allocating partial geometry. The emitted column retains a real
+`IfcGridPlacement` binding when exported. These optional backend capabilities
+throw a clear error on a host that does not implement them.

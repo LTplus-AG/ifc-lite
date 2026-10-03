@@ -4,6 +4,7 @@
 
 /** Loaded-model modelling methods of bim.store (#6232 D5). */
 import type {
+  CurtainWallInStoreParams, GridInStoreParams, GridColumnBinding, ColumnInStoreParams, ProfiledColumnInStoreParams,
   HostedDoorInStoreParams, HostedWindowInStoreParams, OpeningInStoreParams, ElementTypeInStoreParams,
   MaterialInStoreParams, MaterialLayerSetInStoreParams, MaterialLayerSetUsageInStoreParams, WallJoinApplyOptions,
   StairInStoreParams, RailingInStoreParams, InStoreReplacementElement,
@@ -12,6 +13,27 @@ import type { BimBackend, EntityRef } from '../types.js';
 
 export class StoreModellingNamespace {
   constructor(protected backend: BimBackend) {}
+
+  /** Create the curtain wall and all its members/panels in one undo batch. Metres, storey-local. */
+  addCurtainWall(modelId: string, storeyExpressId: number, params: CurtainWallInStoreParams): EntityRef {
+    const method = this.backend.store.addCurtainWall;
+    if (!method) throw new Error('bim.store.addCurtainWall: not available on this backend');
+    return method.call(this.backend.store, modelId, storeyExpressId, params);
+  }
+
+  /** Create straight tagged grid axes. Position and axis endpoints are metres in their local frame. */
+  addGrid(modelId: string, storeyExpressId: number, params: GridInStoreParams): EntityRef {
+    const method = this.backend.store.addGrid;
+    if (!method) throw new Error('bim.store.addGrid: not available on this backend');
+    return method.call(this.backend.store, modelId, storeyExpressId, params);
+  }
+
+  /** Create a column at the actual live crossing and retain its IfcGridPlacement binding. */
+  addColumnOnGrid(modelId: string, storeyExpressId: number, params: ColumnInStoreParams | ProfiledColumnInStoreParams, binding: GridColumnBinding): EntityRef {
+    const method = this.backend.store.addColumnOnGrid;
+    if (!method) throw new Error('bim.store.addColumnOnGrid: not available on this backend');
+    return method.call(this.backend.store, modelId, storeyExpressId, params, binding);
+  }
 
   /** Remove a single-flight stair and its flight; shared geometry, styles and materials are retained. */
   removeStair(ref: EntityRef): boolean {

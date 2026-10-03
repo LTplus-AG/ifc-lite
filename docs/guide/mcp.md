@@ -469,3 +469,17 @@ MCP is the richest integration: stateful sessions, live viewer control, subscrip
 Reach for MCP when you want the model held open across a conversation, the viewer in the loop, or scoped permissions. Reach for the CLI when a one-shot command answers the question. Both share the same kernel, so results are consistent either way.
 
 See the [`@ifc-lite/mcp` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/mcp) for the complete tool and resource catalogue.
+
+### Loaded-model design placement
+
+`place_curtain_wall`, `place_grid` and `place_grid_column` create elements in
+an existing model through the same builders as the Model workspace and typed
+SDK. Supply `storey_express_id`, canonical PascalCase `params`, and `model_id`
+when more than one model is loaded. `place_grid_column` also requires
+`binding: { GridId, IntersectingAxes: [axisIdA, axisIdB] }`; its storey-local
+`Position` must match the live crossing. Profiled columns may supply `Profile`
+instead of `Width`/`Depth`.
+
+Each call creates a new element and records one `mutation_undo` batch,
+including all curtain-wall parts or grid-placement helpers. Lengths are
+metres; grid `Direction` is radians. These tools require mutation scope.

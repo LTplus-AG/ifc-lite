@@ -10,6 +10,11 @@
  */
 
 import type {
+  CurtainWallInStoreParams,
+  GridInStoreParams,
+  GridColumnBinding,
+  ColumnInStoreParams,
+  ProfiledColumnInStoreParams,
   ElementTypeInStoreParams,
   MaterialInStoreParams,
   MaterialLayerSetInStoreParams,
@@ -25,6 +30,12 @@ import type {
 import type { EntityRef } from './types.js';
 
 export interface ModellingStoreBackendMethods {
+  /** Complete IfcCurtainWall aggregate, including its member and panel bodies. */
+  addCurtainWall?(modelId: string, storeyExpressId: number, params: CurtainWallInStoreParams): EntityRef;
+  /** IfcGrid with straight, tagged axes and its FootPrint representation. */
+  addGrid?(modelId: string, storeyExpressId: number, params: GridInStoreParams): EntityRef;
+  /** Persist a column on a live grid crossing; stale or foreign bindings are refused. */
+  addColumnOnGrid?(modelId: string, storeyExpressId: number, params: ColumnInStoreParams | ProfiledColumnInStoreParams, binding: GridColumnBinding): EntityRef;
   /** Optional capability: replace a live product and its uniquely owned stair flight atomically. */
   replaceElement?(ref: EntityRef, storeyExpressId: number, element: InStoreReplacementElement): EntityRef;
   /** Optional host capability: a storey-local IfcStair aggregating one IfcStairFlight. Returns the stair. */

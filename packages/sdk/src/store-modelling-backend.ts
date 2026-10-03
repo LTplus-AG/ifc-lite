@@ -15,6 +15,9 @@
  */
 
 import {
+  addCurtainWallToStore,
+  addGridToStore,
+  addColumnOnGridToStore,
   addElementTypeToStore,
   addMaterialLayerSetToStore,
   addMaterialLayerSetUsageToStore,
@@ -73,6 +76,27 @@ export function createModellingStoreBackend(resolve: ModellingStoreModelResolver
   };
 
   return {
+    addCurtainWall(modelId, storeyExpressId, params) {
+      const model = resolve(modelId);
+      const built = model.editor.runAtomic(draft => addCurtainWallToStore(
+        draft, resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), params,
+      ));
+      return ref(model.modelId, built.curtainWallId);
+    },
+    addGrid(modelId, storeyExpressId, params) {
+      const model = resolve(modelId);
+      const built = model.editor.runAtomic(draft => addGridToStore(
+        draft, resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), params,
+      ));
+      return ref(model.modelId, built.gridId);
+    },
+    addColumnOnGrid(modelId, storeyExpressId, params, binding) {
+      const model = resolve(modelId);
+      const built = model.editor.runAtomic(draft => addColumnOnGridToStore(
+        draft, model.store, resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), params, binding,
+      ));
+      return ref(model.modelId, built.columnId);
+    },
     replaceElement(entity, storeyExpressId, element) {
       const model = resolve(entity.modelId);
       const built = replaceElementInStore(model.store, model.editor, entity.expressId,

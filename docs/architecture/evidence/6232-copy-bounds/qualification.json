@@ -1,0 +1,78 @@
+{
+  "issue": 6232,
+  "parentMerge": "1c9eb756b29fa2fc667b99c04305123181c640c0",
+  "scope": "Final uncommitted production/test tree immediately before this evidence commit. Production/test SHA256 values identify the qualified source without claiming a cyclic self-commit identity.",
+  "runtimeSha256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+  "results": {
+    "coreNative": {
+      "passed": 31,
+      "skipped": 0,
+      "files": 6,
+      "turboTasks": 1,
+      "dependencyBuilds": false
+    },
+    "mountedViewer": {
+      "passed": 13,
+      "skipped": 0,
+      "turboTasks": 51
+    },
+    "typecheck": {
+      "passedTasks": 111,
+      "testFiles": 3352,
+      "packages": 57
+    },
+    "lint": {
+      "files": 8391,
+      "errors": 0
+    },
+    "api": {
+      "packages": 52,
+      "surfaces": 85,
+      "exports": 9277,
+      "matchesSnapshot": true
+    },
+    "moduleSize": {
+      "newOversize": 0,
+      "allowanceRaises": 0
+    },
+    "license": true,
+    "wiring": true,
+    "newSourceTextAssertions": 0
+  },
+  "sourceSha256": {
+    "packages/create/src/in-store/copy-batch.ts": "4aea4cd4e742b3c2016f3ac28dd9778a8565aad84e71479d140be51e212e7997",
+    "packages/create/src/in-store/copy-batch.test.ts": "10712e1f1c8519ae83b000acd8a25ee6f963438435025089fb3682b7300a5110",
+    "packages/create/src/in-store/copy-frame.ts": "556c767feed18d10faa4d3048b949967f87a6b53ef0c973d2faad0f4b1c84e20",
+    "packages/create/src/in-store/copy-product.ts": "cfb63143b7224022ada4ece886abc8d20bd2e7ee21c0a15a86fa3cd226a2b737",
+    "packages/create/src/in-store/copy-dependent-walk.ts": "223a2b88b4cb967e50aac407ec776a01b3ec101e824499c22c637cd3e03c31a1",
+    "packages/create/src/in-store/copy-parent-frame.e2e.test.ts": "7f85eb666c3e45f7469ac50775e9754109601390d4c0df64d921c269cb90a2ee",
+    "packages/create/src/in-store/copy-deep-assembly.e2e.test.ts": "62ca87d3db0e477a515677833f360c84a612a823a08abe8b00cc826a25e427f9",
+    "packages/create/src/in-store/copy-work-budget.test.ts": "a3fea8c23614200aca8a84f99245865ea3e8359c4d4ee7d0972e53fe2874cd38"
+  },
+  "archives": {
+    "core-native": {
+      "rawBytes": 1543,
+      "rawSha256": "1d800f4089cdb0d44bc49d3716f3282132242a2381ee367f2e270f57c4f5f238",
+      "gzipSha256": "bdee18bdd2b5bd54d20bd6d4a236e921bef4665102affcac213e59a419ac0558",
+      "gzipMtime": 0
+    },
+    "mounted-viewer": {
+      "rawBytes": 87612,
+      "rawSha256": "2cfeb3befefb5d4dfd01724b57f887ca24349c0bfe0029699e51a26ada749131",
+      "gzipSha256": "cb38e689acd965262349894c16a3fccfc6c3cb859d94c78b1a9ab016dbbbbebc",
+      "gzipMtime": 0
+    },
+    "typecheck": {
+      "rawBytes": 47576,
+      "rawSha256": "935a758a527f8211c60dafa599626d16901dee69be23ba3d5ed47b77ecda01fa",
+      "gzipSha256": "2f6ffa19f01b6c244834a80cff2a04d822010163e8fd80866ad7ef9858bcd04d",
+      "gzipMtime": 0
+    },
+    "lint": {
+      "rawBytes": 175773,
+      "rawSha256": "e0c1d28287861681d33c7d5263b05704233a5d571448c59290867ebce6f5090d",
+      "gzipSha256": "a590d020968a8af0ba15efdaef232a9fa5125d3cb373ad58e0dbf9ed269e018c",
+      "gzipMtime": 0
+    }
+  }
+}

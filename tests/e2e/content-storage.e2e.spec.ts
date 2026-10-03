@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readFile, writeFile } from 'node:fs/promises';
 import { test, expect, type Page } from '@playwright/test';
+import { DOCUMENT_VERSION } from '../../apps/viewer/src/lib/document/document-version';
 import type { DocumentSpec } from '../../apps/viewer/src/lib/document/types';
 import type { RuleSetFile } from '@ifc-lite/rules';
 import type { ContentBackup } from '../../apps/viewer/src/lib/storage/content-backup';
@@ -174,6 +175,7 @@ test('#6695 repeated quota-refused backup imports preserve one edited draft thro
 test('#6695 an unfinished image round-trips as raw evidence without poisoning valid library imports', async ({ page, browser }, info) => {
   await page.goto('/'); await ready(page);
   const saved = documentEntry('complete-6695', 'Complete document beside unfinished image');
+  const migratedSaved = { ...saved, version: DOCUMENT_VERSION };
   const incomplete: DocumentSpec = { ...documentEntry('unfinished-6695', 'Unfinished image evidence'), blocks: [
     { kind: 'image', id: 'pending-image-6695', dataUrl: '', height: 60, align: 'left' },
   ] };
@@ -187,7 +189,7 @@ test('#6695 an unfinished image round-trips as raw evidence without poisoning va
   const exportedPath = info.outputPath('unfinished-draft-library-backup.json');
   await (await downloaded).saveAs(exportedPath);
   const text = await readFile(exportedPath, 'utf8'), backup = JSON.parse(text) as ContentBackup;
-  expect(backup.libraries.document).toEqual([saved]);
+  expect(backup.libraries.document).toEqual([migratedSaved]);
   expect(backup.drafts).toEqual([{ kind: 'document', id: incomplete.id, raw: JSON.stringify(incomplete) }]);
 
   // A fresh browser profile has no saved source library or in-memory raw sidecar.
@@ -199,7 +201,7 @@ test('#6695 an unfinished image round-trips as raw evidence without poisoning va
     await restoredPanel.getByLabel('Import library backup', { exact: true }).setInputFiles({ name: 'unfinished.json', mimeType: 'application/json', buffer: Buffer.from(text) });
     await expect(restored.getByText('Preserved 1 incomplete draft as raw recovery evidence.', { exact: false })).toBeVisible();
     // The persistence notice precedes the asynchronous visible-library refresh.
-    await expect.poll(() => restored.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents.find(entry => entry.id === 'complete-6695'))).toEqual(saved);
+    await expect.poll(() => restored.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents.find(entry => entry.id === 'complete-6695'))).toEqual(migratedSaved);
     expect(await restored.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents.some(entry => entry.id === 'unfinished-6695'))).toBe(false);
     await restored.reload(); await ready(restored); await openDocument(restored, saved.id);
     await restoredPanel.locator('summary').filter({ hasText: 'Storage and backup' }).click();

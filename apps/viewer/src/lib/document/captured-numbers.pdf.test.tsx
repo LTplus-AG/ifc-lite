@@ -113,6 +113,8 @@ it('captures large table/IDS counts with the label locale through actual PNG pre
   }
   const compact = ui.querySelector('[data-preview-block="compact"]'); assert.ok(compact);
   assert.ok(compact.textContent?.includes('1.234/1.234'), 'actual compact rule glyphs use the selected grouping');
+  const manual = ui.querySelector('[data-preview-block="manual"]'); assert.ok(manual);
+  for (const value of ['Pass 1.001', 'Fail 1.001', '(1.001 of 2.004 checks)']) assert.ok(manual.textContent?.includes(value), `mounted captured German manual count: ${value}`);
   const text = await printed(input, () => act(() => {
     registerLocale('de', { 'document.table.moreRows': 'WRONG {countDisplay}', 'document.table.total': 'WRONG {count}' }); setLocale('fr');
   }));
@@ -127,6 +129,9 @@ it('captures large table/IDS counts with the label locale through actual PNG pre
 
 it('preserves uncaptured English PDF counts and host-grouped table defaults despite an active German UI (#6610)', async () => {
   registerLocale('de', { 'document.table.moreRows': 'WRONG {countDisplay}', 'document.preview.idsReportChecked': 'WRONG' }); setLocale('de');
+  const ui = render(<DocumentPreview {...declaredInput()} labels={(await import('@/i18n/registry')).resolveEnglish} selectedBlockId={null} onSelectBlock={() => {}} />);
+  await waitFor(() => ui.querySelector('[data-preview-block="manual"]') !== null && ui.querySelector('[data-layout-pending="true"]') === null, 'explicit uncaptured paper labels finish actual mounted preparation');
+  for (const value of ['Pass 1001', 'Fail 1001', '(1001 of 2004 checks)']) assert.ok(ui.querySelector('[data-preview-block="manual"]')?.textContent?.includes(value), `mounted raw-default manual count: ${value}`);
   const text = await printed(declaredInput());
   for (const expected of [`${(1003).toLocaleString()} more rows`, `Total (${(1004).toLocaleString()})`, 'Checked 22344',
     'Passed 19999', 'Checked 5678', 'Found 12345', '1234 to 20000', '1234/1234']) assert.ok(text.includes(expected), `old direct default: ${expected}`);
@@ -149,6 +154,8 @@ it('preserves captured French grouping in mounted counts and actual PDF glyphs (
   assert.ok(normalizeGrouping(classic.textContent ?? '').includes('22 344'));
   const compact = ui.querySelector('[data-preview-block="compact"]'); assert.ok(compact);
   assert.ok(normalizeGrouping(compact.textContent ?? '').includes('1 234/1 234'));
+  const manual = ui.querySelector('[data-preview-block="manual"]'); assert.ok(manual);
+  for (const value of ['Warning 1 001', 'Not checked 1 001', '(1 of 2 004 checks)']) assert.ok(normalizeGrouping(manual.textContent ?? '').includes(value), `mounted captured French manual count: ${value}`);
   const text = normalizeGrouping(await printed(input, () => act(() => setLocale('de'))));
   for (const expected of ['Reste 1 003', 'Total 1 004', 'Checked 22 344', 'Passed 19 999', 'Failed 1 111',
     'Warnings 1 234', 'Checked 12 345', 'Checked 5 678', 'Found 12 345', '1 234 to 20 000', '1 234/1 234']) {

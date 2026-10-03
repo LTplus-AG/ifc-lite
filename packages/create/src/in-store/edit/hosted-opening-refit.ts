@@ -115,7 +115,14 @@ export function planCutRefit(
   lengthUnitScale: number,
 ): RefitOutcome {
   const { dataStore, view } = target;
+  const span = newExtent[1] - newExtent[0];
+  if (!newExtent.every(Number.isFinite) || !Number.isFinite(span) || span <= 0
+    || !Number.isFinite(lengthUnitScale) || lengthUnitScale <= 0) {
+    return { ok: false, reason: 'The host extent and model length unit scale must be finite and positive' };
+  }
   const over = toNativeLength({ lengthUnitScale }, CLEARANCE_M);
+  const depth = span + 2 * over;
+  if (!Number.isFinite(over) || !Number.isFinite(depth)) return { ok: false, reason: 'The opening cut extent exceeds the supported numeric range' };
   const fit = over / 10;
   const updates: PositionalUpdate[] = [];
   const openings: number[] = [];
@@ -131,9 +138,9 @@ export function planCutRefit(
     if (!layout || !expected || Math.abs(expected[0] - extent.min[axis]) > fit || Math.abs(expected[1] - extent.max[axis]) > fit) {
       return { ok: false, reason: `Opening #${openingId} is not a plain cut, so it can't follow the resize; move or delete it first` };
     }
-    const depth = newExtent[1] - newExtent[0] + 2 * over;
     const location: [number, number, number] = [...layout.location];
     location[axis] = layout.sign > 0 ? newExtent[0] - over : newExtent[1] + over;
+    if (!location.every(Number.isFinite)) return { ok: false, reason: 'The opening location exceeds the supported numeric range' };
     updates.push({ entityId: layout.pointId, index: 0, value: location });
     updates.push({ entityId: layout.solidId, index: 3, value: depth });
     openings.push(openingId);

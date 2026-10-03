@@ -5,9 +5,10 @@
 import type { RoomCommand } from '@ifc-lite/sdk';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
+import type { JsonSchema } from '../protocol/index.js';
 import { okResult, resolveModel } from './util.js';
 const xy = { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2 };
-const edit = (properties: Record<string, unknown>, required: string[]) => ({ type: 'object', properties, required, additionalProperties: false });
+const edit = (properties: Record<string, JsonSchema>, required: string[]): JsonSchema => ({ type: 'object', properties, required, additionalProperties: false });
 
 /** #6232 D5: real mesh-derived native DCEL, shared occupancy/layout/writer and Undo policy. */
 export const roomCommandTool: Tool = {
@@ -25,18 +26,18 @@ export const roomCommandTool: Tool = {
           boundary: { enum: ['inner', 'center', 'outer'] }, height: { type: 'number', exclusiveMinimum: 0 },
           z: { type: 'number' }, namePattern: { type: 'string' }, PredefinedType: { type: 'string' }, ObjectType: { type: 'string' },
           tolerance: { type: 'number', exclusiveMinimum: 0 },
-          operation: { oneOf: [
-            edit({ kind: { const: 'drag' }, from: xy, to: xy }, ['kind', 'from', 'to']),
-            edit({ kind: { const: 'split' }, a: xy, b: xy }, ['kind', 'a', 'b']),
-            edit({ kind: { const: 'remove' }, at: xy }, ['kind', 'at']),
-            edit({ kind: { const: 'prune' } }, ['kind']),
+          operation: { anyOf: [
+            edit({ kind: { enum: ['drag'] }, from: xy, to: xy }, ['kind', 'from', 'to']),
+            edit({ kind: { enum: ['split'] }, a: xy, b: xy }, ['kind', 'a', 'b']),
+            edit({ kind: { enum: ['remove'] }, at: xy }, ['kind', 'at']),
+            edit({ kind: { enum: ['prune'] } }, ['kind']),
           ] },
         }, required: ['action'], additionalProperties: false,
-        oneOf: [
+        anyOf: [
           { properties: { action: { enum: ['query', 'auto', 'footprint'] } } },
-          { properties: { action: { const: 'pick' } }, required: ['point'] },
-          { properties: { action: { const: 'update' } }, required: ['expressIds'] },
-          { properties: { action: { const: 'edit' } }, required: ['operation'] },
+          { properties: { action: { enum: ['pick'] } }, required: ['point'] },
+          { properties: { action: { enum: ['update'] } }, required: ['expressIds'] },
+          { properties: { action: { enum: ['edit'] } }, required: ['operation'] },
         ],
       },
     }, required: ['storey_express_id', 'command'], additionalProperties: false,

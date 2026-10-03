@@ -23,7 +23,9 @@
  * room (its outline, `linkFaces`) carries that room, which Edit mode reshapes.
  */
 
-import type { MeshData } from '@ifc-lite/geometry';
+import { CoordinateHandler, type MeshData } from '@ifc-lite/geometry';
+import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
+import { liveStoreyMembers } from '@/lib/visibility/storey-context';
 import { existingSpaceFootprintEntriesByStorey, type SpaceFootprint } from '@ifc-lite/create';
 import type { ViewerState } from '@/store';
 import { roomFramePlanOffsets, wallRectsFromMeshes } from '@/lib/wall-rects-from-meshes';
@@ -112,6 +114,37 @@ function storeyPlan(s: ViewerState, modelId: string, storeyId: number, plane: Wo
     band: { lo: storey.elevation - shiftY + BAND_MARGIN, hi: storey.elevation + floorToFloor - shiftY - BAND_MARGIN },
     toLocal: roomFrameToLocal(s, modelId, plane, coord),
   };
+}
+
+/** Refresh contained products plus spanning geometry the same height-band readers use. */
+export function storeyRoomGeometryIds(s: ViewerState, modelId: string, storeyId: number, plane: Workplane): number[] {
+  const store = s.models.get(modelId)?.ifcDataStore, at = storeyPlan(s, modelId, storeyId, plane);
+  if (!store || !at) return [];
+  const view = s.mutationViews.get(modelId), ids = new Set<number>();
+  const contained = new Set(liveStoreyMembers(store, view, [storeyId]).get(storeyId) ?? []);
+  const candidates = new Set<number>();
+  for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCSPACE'])) {
+    candidates.add(expressId);
+    if (contained.has(expressId)) ids.add(expressId);
+  }
+  const coordinates = new CoordinateHandler(), live = liveMesh(s, modelId);
+  for (const mesh of at.meshes) {
+    if ((!mesh.ifcType || !WALL_TYPES.has(mesh.ifcType)) && mesh.ifcType !== 'IfcSpace') continue;
+    if (!live(mesh)) continue;
+    const bounds = coordinates.calculateBounds([mesh], Infinity);
+    if (!(bounds.max.y > at.band.lo && bounds.min.y < at.band.hi)) continue;
+    const local = s.resolveGlobalIdFromModels(mesh.expressId);
+    if (local?.modelId === modelId) ids.add(local.expressId);
+  }
+  // Native instanced-only products may have no flat CPU mesh yet. These
+  // authoritative absolute Y-up boxes use the same band before JS shifting.
+  const shiftY = at.coord?.originShift?.y ?? 0;
+  for (const [globalId, bounds] of s.models.get(modelId)?.geometryResult?.instancedGeometryAabbs ?? []) {
+    if (!(bounds.max[1] > at.band.lo + shiftY && bounds.min[1] < at.band.hi + shiftY)) continue;
+    const local = s.resolveGlobalIdFromModels(globalId);
+    if (local?.modelId === modelId && candidates.has(local.expressId)) ids.add(local.expressId);
+  }
+  return [...ids];
 }
 
 let wallsCache: { meshes: unknown; count: number; version: number; plane: Workplane; storeyId: number; walls: LocalWall[] } | null = null;

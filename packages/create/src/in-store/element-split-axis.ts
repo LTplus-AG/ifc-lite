@@ -14,6 +14,7 @@ import { reassignWallOpenings } from './edit/wall-opening-reassign.js';
 import { readWallJoinTarget, readWallJoinRels } from './wall-join-read.js';
 import { splitJoinedWallDraft } from './element-split-joined.js';
 import type { ElementSplitResult, SplitEnvironment } from './element-split.js';
+import { readSplitPlacement, preserveSplitPlacement } from './element-split-placement.js';
 
 type Vec3 = [number, number, number];
 const native = (v: number, k: number) => toNativeLength({ lengthUnitScale: k }, v);
@@ -50,6 +51,7 @@ export function splitWallDraft(env: SplitEnvironment, id: number, chain: WallEdi
 }
 
 export function splitLinearDraft(env: SplitEnvironment, id: number, chain: LinearElementEditChain, distance: number): ElementSplitResult {
+  const placement = readSplitPlacement(env, id);
   const ownership = editOwnershipRefusal(env.dataStore, env.view, [chain.extrudedSolidId, chain.startPointId], new Set([id]));
   if (ownership) throw new Error(ownership);
   const geo = computeLinearElementSplitGeometry(chain, distance);
@@ -68,6 +70,7 @@ export function splitLinearDraft(env: SplitEnvironment, id: number, chain: Linea
       params: { ...common, Start: newStart, End: along(newStart, chain.axisDirection, newLength), ...section } };
   const { editor, dataStore, view } = env;
   const addedId = emitOrdinaryElement(editor, resolveSpatialAnchor(dataStore, env.storeyExpressId, view), element);
+  preserveSplitPlacement(env, addedId, placement);
   editor.setPositionalAttribute(chain.extrudedSolidId, 3, native(keptLength, chain.lengthUnitScale));
   if (!keepFirst) editor.setPositionalAttribute(chain.startPointId, 0, scaled(keptStart, chain.lengthUnitScale));
   cloneElementMetadata(dataStore, view, editor, id, [addedId]);

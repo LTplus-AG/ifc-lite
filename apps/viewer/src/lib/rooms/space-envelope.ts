@@ -31,7 +31,7 @@ export function sectionEnvelope(section: EnvelopeSection): SpaceEnvelope | null 
   const ceiling: CeilingPlane[] = [];
   for (let i = 1; i < points.length; i++) {
     const [u0, z0] = points[i - 1], [u1, z1] = points[i];
-    if (u1 - u0 < 0.01) return null;
+    if (u1 - u0 < 0.01 - 1e-9) return null;
     const slope = (z1 - z0) / (u1 - u0);
     ceiling.push({ a: slope * dx, b: slope * dy, c: z0 - slope * u0 });
   }

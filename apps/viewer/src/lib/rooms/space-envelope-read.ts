@@ -59,6 +59,8 @@ export function readSpaceEnvelope(target: ModelEditTarget, expressId: number): S
     if (type(halfId) !== 'IFCHALFSPACESOLID' || !half || ![false, '.F.', 'F'].includes(half[1] as string | boolean)) return null;
     const planeId = ref(half[0]), plane = read(planeId);
     if (type(planeId) !== 'IFCPLANE' || !plane) return null;
+    const planePosition = ref(plane[0]);
+    if (type(planePosition) !== 'IFCAXIS2PLACEMENT3D' || !read(planePosition)) return null;
     const frame = axis3d(reader, plane[0]);
     if (!frame || frame.z[2] < 1e-6) return null;
     const a = -frame.z[0] / frame.z[2], b = -frame.z[1] / frame.z[2];

@@ -40,12 +40,14 @@ export function envelopeMesh(text: string, expressId: number) {
     const collection = api.processGeometryBatch(bytes, pre.jobs, pre.unitScale, x, y, z, pre.needsShift, pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors);
     try {
       const points: number[][] = [];
+      const colors: number[][] = [];
       let volume = 0;
       for (let i = 0; i < collection.length; i++) {
         const mesh = collection.get(i);
         if (!mesh) continue;
         try {
           if (mesh.expressId !== expressId) continue;
+          colors.push(Array.from(mesh.color));
           const positions = mesh.positions, indices = mesh.indices, o = mesh.origin;
           for (let j = 0; j < positions.length; j += 3) points.push([o[0] + positions[j], -(o[2] + positions[j + 2]), o[1] + positions[j + 1]]);
           for (let j = 0; j < indices.length; j += 3) {
@@ -57,7 +59,7 @@ export function envelopeMesh(text: string, expressId: number) {
           }
         } finally { mesh.free(); }
       }
-      return { points, volume: Math.abs(volume), minZ: Math.min(...points.map(p => p[2])), maxZ: Math.max(...points.map(p => p[2])) };
+      return { points, colors, volume: Math.abs(volume), minZ: Math.min(...points.map(p => p[2])), maxZ: Math.max(...points.map(p => p[2])) };
     } finally { collection.free(); }
   } finally {
     try { api.clearPrePassCache(); } finally { api.free(); }

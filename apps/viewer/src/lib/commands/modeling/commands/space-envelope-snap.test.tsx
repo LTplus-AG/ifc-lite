@@ -5,6 +5,9 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { IfcTypeEnum } from '@ifc-lite/data';
+import { exportEnvelope } from '@/test/space-envelope-oracle';
+import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
@@ -18,6 +21,8 @@ import { getCommandRuntime, updateCommandGesture, writeCommandField, commitComma
 import type { SpaceEnvelopeGesture } from './space-envelope';
 import { getModelingCommand } from '../registry';
 let SPACE_ENVELOPE: typeof import('./space-envelope')['SPACE_ENVELOPE'];
+let setEnvelopeMode: typeof import('./space-envelope')['setEnvelopeMode'];
+let moveEnvelopeHandle: typeof import('./space-envelope')['moveEnvelopeHandle'];
 import '../builtin';
 
 const s = () => useViewerStore.getState();
@@ -35,7 +40,7 @@ let restore: () => void = () => {};
 beforeEach(async () => {
   await seedModelingSession();
   assert.ok(getModelingCommand('space.envelope'), '#6686 requires the envelope command to be registered');
-  ({ SPACE_ENVELOPE } = await import('./space-envelope'));
+  ({ SPACE_ENVELOPE, setEnvelopeMode, moveEnvelopeHandle } = await import('./space-envelope'));
   ({ readSpaceEnvelope } = await import('@/lib/rooms/space-envelope-read'));
   useViewerStore.setState({ sectionPlane: { ...s().sectionPlane, enabled: false, custom: undefined, box: undefined } });
   restore = setRequestRemesh(() => {});
@@ -67,6 +72,49 @@ function roofPointer(id: number) {
 }
 
 describe('vertical space snapping (#6686)', () => {
+  for (const edge of ['left', 'right'] as const) {
+    it(`a ridge at the ${edge} clamp survives save/reload and a floor edit without flattening`, async () => {
+      const id = room(); start(id);
+      const pitched = setEnvelopeMode(gesture(), 'pitched');
+      const u = edge === 'left' ? pitched.points[0][0] - 1 : pitched.points[2][0] + 1;
+      updateCommandGesture(() => moveEnvelopeHandle({ ...pitched, active: 1 }, [u, 4]));
+      commitCommand();
+      const source = readSpaceEnvelope(modelEditTarget(s(), MODEL_ID)!, id)!;
+      assert.equal(source.envelope.ceiling.length, 2);
+      const exported = await exportEnvelope(MODEL_ID);
+      const savedId = exported.parsed.entities.getByType(IfcTypeEnum.IfcSpace)[0];
+      const model = s().models.get(MODEL_ID)!;
+      // Match the loader's parse-time ownership range: these formerly overlay
+      // IDs now belong to the reopened source, whose mutation view is empty.
+      useViewerStore.setState({ models: new Map([[MODEL_ID, { ...model, ifcDataStore: exported.parsed,
+        maxExpressId: getMaxExpressId(exported.parsed, []) }]]),
+        mutationViews: new Map([[MODEL_ID, exported.view]]), storeEditors: new Map([[MODEL_ID, exported.editor]]) });
+      assert.ok(readSpaceEnvelope(modelEditTarget(s(), MODEL_ID)!, savedId), 'saved clipping source remains readable');
+      start(savedId);
+      assert.equal(gesture().points.length, 3, 'the saved ridge must remain a ridge');
+      writeCommandField(0, 0.5); commitCommand();
+      const edited = readSpaceEnvelope(modelEditTarget(s(), MODEL_ID)!, savedId)!;
+      for (let i = 0; i < 2; i++) for (const key of ['a', 'b', 'c'] as const) {
+        assert.ok(Math.abs(edited.envelope.ceiling[i][key] - source.envelope.ceiling[i][key]) < 1e-8);
+      }
+      assert.equal(edited.envelope.floor, 0.5);
+    });
+  }
+
+  it('a clipping plane missing mandatory Position refuses before any envelope write', () => {
+    const id = room(); start(id);
+    updateCommandGesture(g => setEnvelopeMode(g as SpaceEnvelopeGesture, 'pitched'));
+    commitCommand();
+    const target = modelEditTarget(s(), MODEL_ID)!;
+    const plane = target.view.getNewEntities().find(e => e.type.toUpperCase() === 'IFCPLANE');
+    assert.ok(plane);
+    target.editor.setPositionalAttribute(plane.expressId, 0, null);
+    const before = target.view.getMutations().slice();
+    assert.equal(readSpaceEnvelope(target, id), null);
+    s().setSelectedEntityId(id); s().startCommand('space.envelope'); commitCommand();
+    assert.deepEqual(target.view.getMutations(), before);
+  });
+
   it('an unchanged handle creates no entities, quantities or Undo records', () => {
     const id = room(); start(id);
     const view = s().mutationViews.get(MODEL_ID)!;

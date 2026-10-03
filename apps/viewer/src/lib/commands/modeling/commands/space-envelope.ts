@@ -61,9 +61,10 @@ function init(ctx: CommandContext): SpaceEnvelopeGesture {
     const [a, b] = planes;
     const denominator = (a.a - b.a) * direction[0] + (a.b - b.b) * direction[1];
     const ridge = (b.c - a.c) / denominator;
-    if (Number.isFinite(ridge) && ridge > lo + 0.01 && ridge < hi - 0.01) points = [at(lo), at(ridge), at(hi)];
+    if (Number.isFinite(ridge) && ridge > lo + 1e-9 && ridge < hi - 1e-9) points = [at(lo), at(ridge), at(hi)];
   }
   const mode = points.length === 3 ? 'pitched' : Math.abs(points[0][1] - points[1][1]) > 1e-6 ? 'slope' : 'flat';
+  if (!sectionEnvelope({ direction, points, floor: target.envelope.floor })) return empty;
   return { ...empty, target, direction, points, floor: target.envelope.floor, mode };
 }
 

@@ -6,6 +6,8 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcTypeEnum, QuantityType } from '@ifc-lite/data';
+import { applyStylesInStore } from '@ifc-lite/create';
+import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -68,8 +70,8 @@ describe('space envelope editing (#6686)', () => {
       if (!envelopeWasm(t)) return;
       const id = room(), before = read(id);
       const globalId = s().storeEditors.get(MODEL_ID)!.getNewEntity(id)!.attributes[0];
-      start(id); apply(mode, 2, mode === 'slope' ? 4 : 2);
-      const edited = read(id), expectedVolume = 36;
+      start(id); apply(mode, 2, mode === 'slope' ? 5 : 2, 5);
+      const edited = read(id), expectedVolume = 42;
       near(envelopeMeasures(edited.chain.footprint, edited.envelope)!.volume, expectedVolume);
       assert.equal(edited.storeyId, before.storeyId);
       assert.equal(remeshes.length, 1);
@@ -81,7 +83,7 @@ describe('space envelope editing (#6686)', () => {
       near(envelopeMeasures(saved.chain.footprint, saved.envelope)!.volume, expectedVolume);
       assert.equal(exported.parsed.entities.getGlobalId(parsedId), globalId);
       const mesh = envelopeMesh(exported.text, parsedId);
-      near(mesh.volume, expectedVolume); near(mesh.minZ, 0); near(mesh.maxZ, 4);
+      near(mesh.volume, expectedVolume); near(mesh.minZ, 0); near(mesh.maxZ, 5);
       assert.ok(mesh.points.some(p => Math.abs(p[2] - 2) < 1e-4));
       near(exported.view.getQuantitiesForEntity(parsedId).flatMap(q => q.quantities).find(q => q.name === 'GrossVolume')!.value, expectedVolume);
       assert.equal(exported.view.getQuantitiesForEntity(parsedId).flatMap(q => q.quantities).find(q => q.name === 'Height'), undefined,
@@ -91,9 +93,14 @@ describe('space envelope editing (#6686)', () => {
       assert.equal(read(id).envelope.ceiling.length, 1);
       assert.equal(read(id).envelope.ceiling[0].a, 0);
       near(s().mutationViews.get(MODEL_ID)!.getQuantitiesForEntity(id).flatMap(q => q.quantities).find(q => q.name === 'Height')!.value, 3);
+      near(s().mutationViews.get(MODEL_ID)!.getQuantitiesForEntity(id).flatMap(q => q.quantities).find(q => q.name === 'GrossVolume')!.value, 36);
       s().redo(MODEL_ID);
       near(envelopeMeasures(read(id).chain.footprint, read(id).envelope)!.volume, expectedVolume);
       assert.equal(read(id).envelope.ceiling.length, mode === 'slope' ? 1 : 2);
+      const redone = await exportEnvelope(MODEL_ID), redoneId = redone.parsed.entities.getByType(IfcTypeEnum.IfcSpace)[0];
+      const redoneMesh = envelopeMesh(redone.text, redoneId);
+      near(redoneMesh.volume, expectedVolume); near(redoneMesh.maxZ, 5);
+      near(redone.view.getQuantitiesForEntity(redoneId).flatMap(q => q.quantities).find(q => q.name === 'GrossVolume')!.value, expectedVolume);
     });
   }
 
@@ -155,6 +162,7 @@ describe('space envelope editing (#6686)', () => {
     const id = made(s().addSpace(MODEL_ID, STOREY, { Profile: 'polygon', OuterCurve: [[0, 0], [4, 0], [4, 3], [0, 3]],
       Position: [0, 0, 0], Height: 3, grossFloorArea: 15, netFloorArea: 12 }));
     const view = s().mutationViews.get(MODEL_ID)!;
+    view.setQuantity(id, 'Qto_SpaceBaseQuantities', 'NetVolume', 36, QuantityType.Volume);
     // These valid source quantities become unverifiable after roof/floor edits.
     for (const name of ['GrossWallArea', 'NetWallArea', 'GrossCeilingArea', 'NetCeilingArea']) {
       view.setQuantity(id, 'Qto_SpaceBaseQuantities', name, 12, QuantityType.Area);
@@ -190,10 +198,70 @@ describe('space envelope editing (#6686)', () => {
   it('does not invent gross-volume provenance when the source has no gross floor measure', () => {
     const id = room(), view = s().mutationViews.get(MODEL_ID)!;
     view.deleteQuantity(id, 'Qto_SpaceBaseQuantities', 'GrossFloorArea');
+    view.setQuantity(id, 'Qto_SpaceBaseQuantities', 'NetVolume', 36, QuantityType.Volume);
     start(id); apply('slope', 2, 4, 4, 0.5);
     const quantities = view.getQuantitiesForEntity(id).flatMap(q => q.quantities);
     assert.equal(quantities.find(q => q.name === 'GrossVolume'), undefined);
     near(quantities.find(q => q.name === 'NetVolume')!.value, 30);
+  });
+
+  it('does not invent gross or net volumes when the source lacks their provenance (#6739)', () => {
+    const id = room(), view = s().mutationViews.get(MODEL_ID)!;
+    view.deleteQuantity(id, 'Qto_SpaceBaseQuantities', 'GrossVolume');
+    start(id); apply('slope', 2, 5);
+    near(envelopeMeasures(read(id).chain.footprint, read(id).envelope)!.volume, 42);
+    const quantities = view.getQuantitiesForEntity(id).flatMap(q => q.quantities);
+    for (const name of ['GrossVolume', 'NetVolume']) assert.equal(quantities.find(q => q.name === name), undefined);
+  });
+
+  it('refuses an unreadable source style attachment before creating body entities (#6739)', () => {
+    const id = room(), target = modelEditTarget(s(), MODEL_ID)!;
+    target.editor.addEntity('IfcStyledItem', [`#${read(id).chain.extrudedSolidId}`, ['#999999999'], null]);
+    start(id);
+    const mutations = target.view.getMutations().slice(), entities = target.view.getNewEntities().slice();
+    const outcome = runTransaction(useViewerStore, getModelingCommand(SPACE_ENVELOPE.id)!, { ...gesture(), floor: 0.5 }, context());
+    assert.equal(outcome.ok, false);
+    assert.deepEqual(target.view.getMutations(), mutations); assert.deepEqual(target.view.getNewEntities(), entities);
+    assert.equal(remeshes.length, 0);
+  });
+
+  it('preserves actual wasm style colour on a replaced body and after reload/re-edit', async t => {
+    if (!envelopeWasm(t)) return;
+    const id = room(), target = modelEditTarget(s(), MODEL_ID)!;
+    applyStylesInStore(target.editor, target.dataStore, [{ products: [id], color: { red: 0.8, green: 0.2, blue: 0.1, alpha: 0.75 } }]);
+    const before = await exportEnvelope(MODEL_ID), beforeId = before.parsed.entities.getByType(IfcTypeEnum.IfcSpace)[0];
+    const colors = envelopeMesh(before.text, beforeId).colors;
+    // The WASM prepass colour wire is RGBA8. Compare actual mesh output across
+    // edits below, and verify this source's known quantized RGBA independently.
+    assert.ok(colors.length > 0);
+    colors.forEach(c => [204, 51, 26, 191].forEach((byte, i) => near(c[i], byte / 255)));
+    start(id); apply('pitched', 2, 2, 4, 0.5);
+    const exported = await exportEnvelope(MODEL_ID), parsedId = exported.parsed.entities.getByType(IfcTypeEnum.IfcSpace)[0];
+    assert.deepEqual(envelopeMesh(exported.text, parsedId).colors, colors);
+    const model = s().models.get(MODEL_ID)!;
+    useViewerStore.setState({ models: new Map([[MODEL_ID, { ...model, ifcDataStore: exported.parsed,
+      maxExpressId: getMaxExpressId(exported.parsed, []) }]]), mutationViews: new Map(), storeEditors: new Map() });
+    start(parsedId); apply('slope', 2, 4, 4, 0.5);
+    const again = await exportEnvelope(MODEL_ID), againId = again.parsed.entities.getByType(IfcTypeEnum.IfcSpace)[0];
+    assert.deepEqual(envelopeMesh(again.text, againId).colors, colors);
+    s().undo(MODEL_ID);
+    const undone = await exportEnvelope(MODEL_ID);
+    assert.deepEqual(envelopeMesh(undone.text, againId).colors, colors);
+  });
+
+  it('refuses a floor change with ElevationWithFlooring before writes but allows a ceiling change', () => {
+    const id = room(), target = modelEditTarget(s(), MODEL_ID)!;
+    target.editor.setPositionalAttribute(id, 10, 0);
+    start(id);
+    const mutations = target.view.getMutations().slice(), entities = target.view.getNewEntities().slice();
+    const outcome = runTransaction(useViewerStore, getModelingCommand(SPACE_ENVELOPE.id)!, { ...gesture(), floor: 0.5 }, context());
+    assert.equal(outcome.ok, false);
+    assert.deepEqual(target.view.getMutations(), mutations); assert.deepEqual(target.view.getNewEntities(), entities);
+    assert.equal(remeshes.length, 0);
+    apply('slope', 2, 4);
+    assert.equal(read(id).envelope.floor, 0);
+    assert.equal(target.view.getPositionalMutationsForEntity(id)!.get(10), 0);
+    assert.equal(remeshes.length, 1);
   });
 
   it('concave footprints integrate both sides of a ridge without assuming a rectangle', () => {

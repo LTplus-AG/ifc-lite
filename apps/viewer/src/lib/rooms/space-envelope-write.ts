@@ -12,6 +12,7 @@ import { emitClippedProfile } from '@/store/slices/mutation-split-slab';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import { readSpaceEnvelope } from './space-envelope-read';
 import { ceilingAt, envelopeMeasures, type SpaceEnvelope } from './space-envelope';
+import { asRef, createStyleEntityReader, indexExistingStyles } from '../../../../../packages/create/src/in-store/style-entity-reader';
 
 /** One write path for typed values and snapped gestures. Re-read at commit:
  * selection, permissions, source shape or overlay may have changed since init. */
@@ -24,6 +25,23 @@ export function writeSpaceEnvelope(tx: AuthoringTransaction, modelId: string, ex
   if (!target || !read || !measures) throw new Error('The space has no supported vertical envelope, or the ceiling crosses its floor.');
   const { chain } = read;
   const previous = envelopeMeasures(chain.footprint, read.envelope)!;
+  const sourceEntity = createStyleEntityReader(target.dataStore, target.editor);
+  const flooring = sourceEntity(expressId)?.attributes[10];
+  if (flooring != null && Math.abs(envelope.floor - read.envelope.floor) > 1e-8) {
+    throw new Error('This space carries ElevationWithFlooring; its floor cannot be moved without resolving the building elevation frame.');
+  }
+  const styledBy = indexExistingStyles(target.dataStore, target.editor, sourceEntity);
+  const rootItem = asRef((read.shapeRep[3] as unknown[])[0])!;
+  const oldProfile = asRef(sourceEntity(chain.extrudedSolidId)?.attributes[0])!;
+  const attachments = new Map<number, { refs: string[]; name: string | null }>();
+  for (const from of [rootItem, chain.extrudedSolidId, oldProfile]) {
+    const styleId = styledBy.get(from), style = styleId === undefined ? null : sourceEntity(styleId);
+    if (styleId === undefined) continue;
+    const refs = style?.attributes[1], name = style?.attributes[2];
+    if (!style || !Array.isArray(refs) || refs.length === 0 || refs.some(v => asRef(v) === null || !sourceEntity(asRef(v)!))
+      || name != null && typeof name !== 'string') throw new Error('The space has an unreadable style attachment.');
+    attachments.set(from, { refs: refs.map(v => `#${asRef(v)!}`), name: name ?? null });
+  }
   const k = getModelLengthUnitScale(target.dataStore);
   const qsets = target.view.getQuantitiesForEntity(expressId);
   const units = extractProjectUnits(target.dataStore.source, target.dataStore.entityIndex);
@@ -40,7 +58,8 @@ export function writeSpaceEnvelope(tx: AuthoringTransaction, modelId: string, ex
     const add = (type: string, attrs: IfcAttributeValue[]) => draft.addEntity(type, attrs).expressId;
     const n = (v: number) => v / k;
     const emitted = emitClippedProfile(draft, chain.footprint, chain.placementOrigin, envelope.floor - chain.placementOrigin[2], k);
-    let item = add('IfcExtrudedAreaSolid', [`#${emitted.profile}`, `#${emitted.solidPosition}`, `#${emitted.up}`, n(measures.height)]);
+    const solid = add('IfcExtrudedAreaSolid', [`#${emitted.profile}`, `#${emitted.solidPosition}`, `#${emitted.up}`, n(measures.height)]);
+    let item = solid;
     for (const { a, b, c } of envelope.ceiling) {
       const [x, y, z] = chain.placementOrigin;
       const point = add('IfcCartesianPoint', [[0, 0, n(c + a * x + b * y - z)]]);
@@ -50,6 +69,14 @@ export function writeSpaceEnvelope(tx: AuthoringTransaction, modelId: string, ex
       // AgreementFlag false selects the normal side: subtract ABOVE the plane.
       const half = add('IfcHalfSpaceSolid', [`#${plane}`, '.F.']);
       item = add('IfcBooleanClippingResult', ['.DIFFERENCE.', `#${item}`, `#${half}`]);
+    }
+    // Rebind style attachments to the replaced records, retaining shared style
+    // leaves. The outer representation item remains the colour source used by
+    // Rust; leaf attachments stay on leaves without promoting an inactive style.
+    // A previously un-clipped solid becomes both a leaf and a styled outer item.
+    for (const [from, to] of [[rootItem, item], [chain.extrudedSolidId, solid], [oldProfile, emitted.profile]]) {
+      const style = attachments.get(from);
+      if (style) add('IfcStyledItem', [`#${to}`, style.refs, style.name]);
     }
     // Copy representation records as well as the solid: other spaces may share
     // a source representation, and a space edit must never modify their bodies.
@@ -86,7 +113,8 @@ export function writeSpaceEnvelope(tx: AuthoringTransaction, modelId: string, ex
         });
         // A pre-existing net volume can exclude columns/recesses not encoded
         // in the simple body. Preserve that distinction by invalidating it.
-        const volumesMatchBody = quantities.filter(q => q.name === `${prefix}Volume`).every(q => q.type === QuantityType.Volume
+        const volumes = quantities.filter(q => q.name === `${prefix}Volume`);
+        const volumesMatchBody = volumes.length > 0 && volumes.every(q => q.type === QuantityType.Volume
           && Math.abs(q.value * volumeScale - previous.volume) <= Math.max(1e-6, previous.volume * 1e-6));
         if (matchesBody && volumesMatchBody) view.setQuantity(expressId, qset, `${prefix}Volume`, measures.volume / volumeScale, QuantityType.Volume);
         else view.deleteQuantity(expressId, qset, `${prefix}Volume`);

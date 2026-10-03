@@ -169,7 +169,7 @@ Eaves move vertically; a pitched ridge can also move between the eaves.
 ridge elevations in metres and press **Enter**. **Escape** cancels the edit.
 
 Each applied envelope is one Undo/Redo operation. It keeps the space's
-`GlobalId`, name, properties and spatial aggregation. The exported IFC contains planar clipping solids, so sloped and
+`GlobalId`, name, properties, surface styles and spatial aggregation. The exported IFC contains planar clipping solids, so sloped and
 pitched ceilings survive saving and reopening. Floor areas stay unchanged;
 `Height` is retained only for constant-height spaces, as required by IFC.
 Gross and net volumes are updated only when their source floor areas and
@@ -184,3 +184,5 @@ profiles with holes, tilted extrusions, extra placement parents, explicit
 quantity units, and unreadable geometry refuse before writing. Horizontal,
 tilted, and box sections cannot be used for this edit. A source model that was
 reprojected into another CRS is also refused.
+Spaces carrying `ElevationWithFlooring` allow ceiling edits, but refuse floor
+moves until the building elevation frame can be resolved.

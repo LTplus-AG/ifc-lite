@@ -31,7 +31,7 @@ describe('Document text colours (#6492)', () => {
         version: DOCUMENT_VERSION, id: 'doc-6492', name: 'Colour report',
         page: { size: 'A4', orientation: 'portrait' },
         blocks: [
-          { kind: 'text', id: 'colour', style: 'caption', text: width === 'full' ? ['Authored ink', ...Array.from({ length: 199 }, (_, i) => `Line ${i}`)].join('\n') : 'Authored ink', width },
+          { kind: 'text', id: 'colour', title: 'Coordination', style: 'caption', text: width === 'full' ? ['Authored ink', ...Array.from({ length: 199 }, (_, i) => `Line ${i}`)].join('\n') : 'Authored ink', width },
           { kind: 'text', id: 'default', style: 'body', text: 'Default ink', width },
         ],
       };
@@ -65,7 +65,13 @@ describe('Document text colours (#6492)', () => {
       const preview = ui.querySelector<HTMLElement>('[data-preview-block="colour"] [data-block-text]');
       assert.ok(preview);
       assert.equal(window.getComputedStyle(preview).color, '#1264c8');
-      assert.equal(window.getComputedStyle(preview).backgroundColor, '#f1c35a');
+      assert.equal(preview.style.backgroundColor, '', '#6731: only composed body-line rectangles carry the fill; the title wrapper stays transparent');
+      const fillsInPreview = Array.from(ui.querySelectorAll<HTMLElement>('[data-preview-block="colour"] [data-composed-fill="text-background"]'));
+      assert.equal(fillsInPreview.length, width === 'full' ? 200 : 1);
+      assert.ok(fillsInPreview.every(fill => fill.style.backgroundColor === '#f1c35a'));
+      const heading = Array.from(preview.querySelectorAll('span')).find(span => span.textContent?.trim() === 'Coordination');
+      assert.ok(heading);
+      assert.ok(parseFloat(fillsInPreview[0].style.top) > parseFloat(heading.style.top), 'body fill starts below the title glyph');
       const saved = (await loadDocuments()).find((document) => document.id === spec.id);
       assert.ok(saved);
       const imported = parseDocumentFile(JSON.stringify(saved));

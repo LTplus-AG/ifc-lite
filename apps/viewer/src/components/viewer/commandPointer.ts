@@ -35,6 +35,7 @@ import {
   NO_MODIFIERS, modelSnapSources, solveCommandSnap, type PointerModifiers,
 } from '@/lib/commands/modeling/snap-solve';
 import { useViewerStore } from '@/store';
+import { toGlobalIdFromModels } from '@/store/globalId';
 import { createMeshSource, type MeshPick } from '@/lib/snap/sources/mesh';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
@@ -72,10 +73,15 @@ function onPlane(ctx: MouseHandlerContext, plane: Workplane, x: number, y: numbe
 /** Pick options that never hit the command's own ghost preview. */
 function pickOptions(ctx: MouseHandlerContext, command: ModelingCommand) {
   const options = ctx.getPickOptions();
-  if (!command.ghost) return options;
+  const excluded = command.pickExclusions?.(getCommandRuntime().gesture) ?? [];
+  if (!command.ghost && !excluded.length) return options;
   const hiddenIds = new Set(options.hiddenIds);
-  const first = commandGhostId(useViewerStore.getState());
-  for (let i = 0; i < GHOST_PICK_GUARD; i++) hiddenIds.add(first + i);
+  const state = useViewerStore.getState();
+  for (const ref of excluded) hiddenIds.add(toGlobalIdFromModels(state.models, ref.modelId, ref.expressId));
+  if (command.ghost) {
+    const first = commandGhostId(state);
+    for (let i = 0; i < GHOST_PICK_GUARD; i++) hiddenIds.add(first + i);
+  }
   return { ...options, hiddenIds };
 }
 
@@ -113,7 +119,7 @@ function resolveCommandSnap(
     const l = plane.renderToLocal([p.x, p.y, p.z]);
     return { local: [l[0], l[1]] as Vec2, elevation: l[2] };
   };
-  const cursor = hit ? toLocal(hit.point).local : onPlane(ctx, plane, x, y);
+  const cursor = plane.spec.kind === 'section' ? onPlane(ctx, plane, x, y) : hit ? toLocal(hit.point).local : onPlane(ctx, plane, x, y);
   if (!cursor) return null;
   const beside = onPlane(ctx, plane, x + 1, y);
   const here = onPlane(ctx, plane, x, y);
@@ -124,7 +130,7 @@ function resolveCommandSnap(
       lock: { get: () => ctx.edgeLockStateRef.current, set: ctx.setEdgeLock, clear: ctx.clearEdgeLock },
       toLocal,
     }),
-    ...modelSnapSources(commandCtx.modelId),
+    ...(plane.spec.kind === 'section' ? [] : modelSnapSources(commandCtx.modelId)),
   ] : [];
   ctx.setSnapTarget(pick?.snapTarget ?? null);
   return solveCommandSnap(runtime, plane, { cursor, metresPerPixel, sources, mods });

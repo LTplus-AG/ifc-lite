@@ -11,7 +11,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { activate, click, waitFor } from '@/test/render.js';
 import { aggregate } from '@ifc-lite/charts';
 import { DocumentPreview } from './DocumentPreview.js';
-import { TEXT_STYLES } from '@/lib/document/compose.js';
+import { TEXT_STYLES, composeDocument, estimateTextWidth } from '@/lib/document/compose.js';
 import { pageBox } from '@/lib/export/report/compose.js';
 import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types.js';
 import { dataUrlToBytes } from '@/lib/export/download';
@@ -326,7 +326,11 @@ it('keeps scaled preview text line pitch consistent with PDF layout (#6548)', as
       const first: HTMLElement | undefined = glyphs.find(node => node.textContent?.trim() === 'First line');
       const second: HTMLElement | undefined = glyphs.find(node => node.textContent?.trim() === 'Second line'); assert.ok(first && second);
       const pitch = parseFloat(second.style.top) - parseFloat(first.style.top);
-      const expected = TEXT_STYLES[style].size * TEXT_STYLES[style].lineHeight * factor * pageScale;
+      const layout = composeDocument({ name: doc.name, page: doc.page, generatedAt: 'now', measure: estimateTextWidth,
+        blocks: [{ kind: 'text', id: style, style, text: 'First line\nSecond line', scale: factor }] });
+      const printed = layout.pages.flatMap(page => page.items).filter(item => item.kind === 'text' && (item.text === 'First line' || item.text === 'Second line'));
+      assert.equal(printed.length, 2, '#6731: both printed glyph rows provide the independent layout pitch');
+      const expected = (printed[1].y - printed[0].y) * pageScale;
       assert.ok(Math.abs(pitch - expected) < 0.01, `${style} at ${factor}x has the measured PDF line pitch`);
     }
   }

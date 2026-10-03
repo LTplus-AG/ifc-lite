@@ -81,7 +81,7 @@ describe.each([false, true])('#6232 transform/size IFC4 native millimetres=%s', 
     expect(resolveHostAnchor(target.dataStore, wall, target.view).hostKind).toBe('wall');
   });
 
-  it('refits wall/slab void depths and rolls back late combined-size refusal', async () => {
+  it('refits wall/slab void depths and preserves state on combined-size preflight refusal', async () => {
     const target = await setup(millimetres);
     const wall = addWallToStore(target.editor, target.anchor, { Start: [0, 6, 0], End: [5, 6, 0], Thickness: .2, Height: 3 }).wallId;
     const cut = addOpeningToStore(target.editor, resolveHostAnchor(target.dataStore, wall, target.view), { Offset: 2, Width: 1, Height: 2 }).openingId;

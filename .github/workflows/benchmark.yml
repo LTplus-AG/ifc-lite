@@ -83,6 +83,16 @@ on:
         description: 'Upload a refreshed baseline.json (CI-recorded numbers) as the benchmark-baseline artifact'
         type: boolean
         default: false
+      base_ref:
+        description: 'Optional paired mode: exact lowercase 40-hex baseline commit; supply candidate_ref too'
+        required: false
+        type: string
+        default: ''
+      candidate_ref:
+        description: 'Optional paired mode: exact lowercase 40-hex candidate commit; supply base_ref too'
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -96,10 +106,25 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  paired-comparison:
+    name: Immutable paired viewer comparison
+    # Either input opts into paired mode; an incomplete pair must refuse instead
+    # of silently running the single-arm committed-baseline comparison.
+    if: github.event_name == 'workflow_dispatch' && (inputs.base_ref != '' || inputs.candidate_ref != '')
+    uses: ./.github/workflows/perf-interleaved.yml
+    permissions:
+      contents: read
+    with:
+      base_ref: ${{ inputs.base_ref }}
+      candidate_ref: ${{ inputs.candidate_ref }}
+
   benchmark:
     name: Viewer benchmark (advisory)
-    # On a PR only when asked for by label; every other trigger runs it.
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:benchmark')
+    # Existing triggers keep their single-arm behavior. Explicit paired dispatch
+    # runs only the reusable cohort, never this committed-baseline comparison.
+    if: >-
+      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:benchmark'))
+      && !(github.event_name == 'workflow_dispatch' && (inputs.base_ref != '' || inputs.candidate_ref != ''))
     # Free GitHub-hosted runner (public repo). The benchmark measures a noisy
     # shared VM anyway; the +50% thresholds in benchmark:check absorb the
     # jitter, and the job is advisory. When Rust changed we compile wasm32

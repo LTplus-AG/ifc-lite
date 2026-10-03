@@ -1,0 +1,136 @@
+{
+  "scope": "Actual untimed diagnostics; no full-corpus/readiness/identity/performance verdict",
+  "archiveSHA256": "9d68a5a8e04aafca97d92347682394f262c0b62b5143880c601f6d4235201ba3",
+  "files": [
+    {
+      "path": "6537-map-gl-admission-root-v2-actual-v1.json",
+      "bytes": 880,
+      "sha256": "ad56fb72f66e9f0a17a6e472bab76067caa9fa269598eac457ac6180965a6fee"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2-actual-v1.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "6537-output-pressure-diagnostic-actual-v1/house-control.json",
+      "bytes": 629,
+      "sha256": "5909c03d59c937c6d4b788b06be8de6499c619a82116bb0d4688a928ee3e716a"
+    },
+    {
+      "path": "6537-output-pressure-diagnostic-actual-v1/report.json",
+      "bytes": 137889,
+      "sha256": "72eee9de5466aa31069d81d778ecf88960b5b2aa8b2f1996242dc75a8e613f6a"
+    },
+    {
+      "path": "6537-output-pressure-diagnostic-actual-v2/house-control.json",
+      "bytes": 13138,
+      "sha256": "efe3c44c2d00d0299994a34df1b0882b8afaf460ed8ab216f629eddb53972f47"
+    },
+    {
+      "path": "6537-output-pressure-diagnostic-actual-v2/report.json",
+      "bytes": 137988,
+      "sha256": "a0494e0e168055eb43c2b6383df030f57d37706516228184523c8188e007b052"
+    },
+    {
+      "path": "6537-output-pressure-diagnostic-actual-v3/house-control.json",
+      "bytes": 13597,
+      "sha256": "02db74385370dfc382d4def51356b60409676a085ed4d8796d997d2c4e4a2b54"
+    },
+    {
+      "path": "6537-output-pressure-diagnostic-actual-v3/report.json",
+      "bytes": 138110,
+      "sha256": "9ad9daafee73f3359ce3f6ff7f832f99c5ae2579abf3918d340194cee59ef504"
+    },
+    {
+      "path": "6537-map-gl-admission-actual-v1/house-gl-observed.json",
+      "bytes": 23121,
+      "sha256": "f4e5f854f9dcaa936710d4f1fdd33bf267eb2d138fa14f0e9c2758653682575e"
+    },
+    {
+      "path": "6537-map-gl-admission-actual-v1/report.json",
+      "bytes": 136788,
+      "sha256": "e82e2a0f35908d3ca9dc0cb86271c13b65cea412228282a79a171f742b45536a"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2/README.md",
+      "bytes": 3712,
+      "sha256": "5c37d46d6c0fb1f4787ec133ab4dc371e4719bb1dd2212cdd6e7499a1dbe9170"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2/borrowed-sources.json",
+      "bytes": 1979,
+      "sha256": "77f3e583a69e1334cd7ea98fd10848ecedb34397ec05b237448f74d77275849e"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2/gl-observer.mjs",
+      "bytes": 6254,
+      "sha256": "9199337989bc702fc24d870c3efee3cb4945f104abda855b21b688467ebe727f"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2/preview-status-actual-v1.json",
+      "bytes": 268,
+      "sha256": "002d1c124444629e77b3028497bd4bc83e818700f4281fdda082c8973587fd95"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2/qualification.mjs",
+      "bytes": 6798,
+      "sha256": "13873b1117621dff5162f363e178873e29cf08aa1a7a5de22963fb93923a51b9"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2/root-source-manifest.json",
+      "bytes": 1959,
+      "sha256": "512200c0599668519725c897d932d56208d549565cffb1d6390682eafe0fe6b2"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2/runner.mjs",
+      "bytes": 13812,
+      "sha256": "6b9a98a987142f1f61190eae076e587516860ec5bbb9b60ce48d018b1f74ec81"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2/runtime-lease-actual-v1.json",
+      "bytes": 782,
+      "sha256": "4bb8ebda967a53dcefa3dbfc2d0953078958abcf3e80f1d55159da7798e3e175"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2/source-manifest.json",
+      "bytes": 1922,
+      "sha256": "1502669a5d7c625375ed925216f6605e33a1275abcd2a139b8b64562dc712415"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2/vendor/interleaved-assets.mjs",
+      "bytes": 1311,
+      "sha256": "8d3f88e9e855523dd8bf2d10134dd8f7e06aa89de58fb7b74656341545da4aad"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2/vendor/interleaved-cleanup.mjs",
+      "bytes": 2376,
+      "sha256": "eb01a9dfbd3ee2ac0948d773e3e12d0b13cd6a3f3e4ce6fa92e348802bc6a7b2"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2/vendor/interleaved-plan.mjs",
+      "bytes": 4727,
+      "sha256": "2c536b834901609417747080def1b5c68be3c6538fc651e2b5bb780c2807d25f"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2/vendor/interleaved-server.mjs",
+      "bytes": 3398,
+      "sha256": "24852e6dbc38c065cf7dce4016e4633035f9f03e671b487e034ee22f56cbf9b8"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2/vendor/metadata-render-readiness.ts",
+      "bytes": 1604,
+      "sha256": "d18572f578953ca9044ed256da8ad612633cf74afa5cc92e1de2be4b4b3845ec"
+    },
+    {
+      "path": "6537-map-gl-admission-root-v2/vendor/viewer-benchmark-page.ts",
+      "bytes": 28778,
+      "sha256": "f26cdd079c8fcc387a0f266ffe2500a8b2f82c884f2d59e0e3299e027c5c6b22"
+    },
+    {
+      "path": "6537-output-pressure-diagnostic-root-v3/startup-correction-receipt.json",
+      "bytes": 661,
+      "sha256": "723d4d77f94f2c622c4e74a3e10331ce5e66f6b5bb7f1dd66717d6948edf84fa"
+    }
+  ]
+}

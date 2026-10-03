@@ -85,6 +85,14 @@ BENCHMARK_BASELINE=/tmp/my-baseline.json node scripts/update-benchmark-baseline.
 BENCHMARK_BASELINE=/tmp/my-baseline.json pnpm benchmark:check
 ```
 
+For a finite, immutable-source comparison on one CI host, the dispatch-only
+[`perf-interleaved.yml`](../../.github/workflows/perf-interleaved.yml) builds
+both production viewers before timing and runs a fixed A/A plus alternating
+A/B schedule on four public fixtures. Exact retained CPU channel identity,
+runtime/fixture provenance and terminal refusals accompany the measurements.
+See the [prospective protocol and interpretation limits](../../scripts/perf/INTERLEAVED.md).
+This lane has no recorded speedup verdict and does not refresh the committed baseline.
+
 ## Metrics Captured
 
 Primary metrics captured in the current benchmark log format:

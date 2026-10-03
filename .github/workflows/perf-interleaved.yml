@@ -1,0 +1,136 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Prospective #6537 evidence only. No scheduling trigger, committed baseline,
+# auto-publish, PR comment or claim of native GPU rendering performance.
+name: Interleaved viewer comparison
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: 'Exact immutable lowercase 40-hex baseline commit'
+        required: true
+        type: string
+      candidate_ref:
+        description: 'Exact immutable lowercase 40-hex candidate commit'
+        required: true
+        type: string
+
+  workflow_call:
+    inputs:
+      base_ref:
+        description: 'Exact immutable lowercase 40-hex baseline commit'
+        required: true
+        type: string
+      candidate_ref:
+        description: 'Exact immutable lowercase 40-hex candidate commit'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  interleaved:
+    name: Fixed same-job production viewer cohort
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      BASE_REF: ${{ inputs.base_ref }}
+      CANDIDATE_REF: ${{ inputs.candidate_ref }}
+      BASE_DIR: ${{ github.workspace }}/../interleaved-base
+      CANDIDATE_DIR: ${{ github.workspace }}/../interleaved-candidate
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      # Validate before either input can become a checkout ref or command argument.
+      # Inputs enter through environment values, never shell interpolation.
+      - name: Validate immutable inputs and write prospective fixed protocol
+        run: node scripts/perf/interleaved-prepare.mjs validate-inputs
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.base_ref }}
+          path: source-base
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate_ref }}
+          path: source-candidate
+          persist-credentials: false
+
+      # Move into isolated sibling roots so root Turbo never discovers the other
+      # revision as an untracked nested package. This is not a measurement step.
+      - name: Isolate immutable source checkouts
+        run: |
+          mv source-base "$BASE_DIR"
+          mv source-candidate "$CANDIDATE_DIR"
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: perf-interleaved
+          save-if: 'false'
+
+      - name: Install harness and both immutable dependency graphs
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir "$BASE_DIR" install --frozen-lockfile
+          pnpm --dir "$CANDIDATE_DIR" install --frozen-lockfile
+      - name: Run bounded protocol invariants (no viewer timing)
+        run: node --test scripts/perf/interleaved-plan.test.mjs scripts/perf/interleaved-identity.test.mjs scripts/perf/interleaved-server.test.mjs scripts/perf/interleaved-cleanup.test.mjs
+      - name: Typecheck the explicit harness and existing benchmark helper program
+        run: pnpm typecheck:perf-interleaved
+      - name: Fetch and verify exactly the fixed public fixtures
+        run: node scripts/perf/interleaved-prepare.mjs fixtures
+      - name: Verify source/toolchain closure and mark fresh build start
+        run: node scripts/perf/interleaved-prepare.mjs mark-builds
+      - name: Build baseline from source through root Turbo
+        working-directory: ${{ env.BASE_DIR }}
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/interleaved-base-cargo
+        run: |
+          set -o pipefail
+          pnpm turbo build --force --filter=@ifc-lite/viewer 2>&1 | tee "$GITHUB_WORKSPACE/interleaved-results/base-build.log"
+      - name: Build candidate from source through root Turbo
+        working-directory: ${{ env.CANDIDATE_DIR }}
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/interleaved-candidate-cargo
+        run: |
+          set -o pipefail
+          pnpm turbo build --force --filter=@ifc-lite/viewer 2>&1 | tee "$GITHUB_WORKSPACE/interleaved-results/candidate-build.log"
+      - name: Freeze source/runtime/viewer/fixture provenance before timing
+        run: node scripts/perf/interleaved-prepare.mjs freeze
+
+      # Both builds have exited. Serial fresh Chrome processes, fixed A/A + five
+      # alternating A/B pairs per fixture. Failure is terminal; never retry a sample.
+      - name: Run the fixed 48-sample comparison
+        run: node scripts/perf/interleaved-run.mjs
+      - name: Publish available terminal report to job summary
+        if: always()
+        run: |
+          if [ -f interleaved-results/report.md ]; then
+            cat interleaved-results/report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No timing verdict: cohort never reached a terminal report. Inspect retained setup/build diagnostics.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Preserve protocol, provenance, successful and refused samples
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: interleaved-viewer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: interleaved-results/
+          retention-days: 30
+          if-no-files-found: error

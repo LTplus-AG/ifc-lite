@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "skipLibCheck": false,
+    "rootDir": "../..",
+    "types": ["node"]
+  },
+  "include": [],
+  "files": [
+    "interleaved-sample.ts",
+    "interleaved-types.ts",
+    "interleaved-identity.d.mts",
+    "interleaved-plan.d.mts",
+    "../../tests/benchmark/viewer-benchmark-page.ts",
+    "../../tests/benchmark/metadata-render-readiness.ts"
+  ]
+}

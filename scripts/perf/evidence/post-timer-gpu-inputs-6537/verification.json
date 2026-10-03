@@ -1,0 +1,20 @@
+{
+  "status": "PASS",
+  "members": 137,
+  "originalBytes": 7921112,
+  "storedBytes": 949153,
+  "archiveSHA256": "27d8c136507add28aa3764287d4eb1248fb9c622677132b82e95335431d1c262",
+  "safeExtraction": "all exact regular member paths; no absolute/traversal/symlink entries",
+  "roundtrip": "all member sizes/SHA256 verified",
+  "originalAuditReplay": {
+    "refused": {
+      "checks": 135,
+      "qualificationSHA256": "439c8441a44ad2ec801dd561d79df7b47e08ec2fb5d798f46a88c94406c87e54"
+    },
+    "qualified": {
+      "checks": 137,
+      "qualificationSHA256": "8efa2e2aa4447f7b6270e31b182c03348ab25dea4b2a45b4dbcd678140ea8d8b"
+    }
+  },
+  "scope": "Offline source/raw audit only; no GPU/model/network/build work; original results byte-identical"
+}

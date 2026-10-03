@@ -1,0 +1,15 @@
+v1: {
+  "status": "AUDITED_REFUSAL_WITH_FOUR_MATCHING_READBACKS",
+  "checks": 135,
+  "failedChecks": [],
+  "qualificationSha256": "439c8441a44ad2ec801dd561d79df7b47e08ec2fb5d798f46a88c94406c87e54",
+  "artifactManifestSha256": "3958c4e7bcbcac30a48f780a7748321144bebf32730b8e26f28752aa15b5e583"
+}
+v2: {
+  "status": "QUALIFIED_STANDALONE_POST_TIMER_GPU_INPUT_CONTROL",
+  "checks": 137,
+  "failedChecks": [],
+  "qualificationSha256": "8efa2e2aa4447f7b6270e31b182c03348ab25dea4b2a45b4dbcd678140ea8d8b",
+  "artifactManifestSha256": "1f0effdec5ac1ad401e8202d0a15cab7425e603ea9df6507950684b01a8a51c3"
+}
+PASS: all original bytes/hashes, safe extraction, exact refused and qualified audits; temporary files removed.

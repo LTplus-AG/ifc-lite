@@ -67,6 +67,21 @@ and load-time benefit before changing an eligibility guard.
 [Exact source, raw run and independent audit](evidence/symbolic-upload-gpu-6537/README.md)
 are retained, including the earlier source-gate refusals.
 
+## Live buffer and atlas inputs: standalone GPU control qualified (#6537)
+
+The separate extractor reads original live vertex/uniform buffers and a
+single-mip atlas through owned render targets, without write interception or
+source-usage augmentation. Independent byte reconstruction, binding/row coverage,
+shader diagnostics and owned cleanup qualify the standalone seeded control.
+The first actual run remains refused: its negative fixture itself used an
+invalid buffer descriptor. Correcting that fixture preserved fatal error guards
+and added observed negative-descriptor checks. Lesson: distinguish an extractor
+failure from invalid test setup, and preserve both results before using the
+control as a prerequisite. No viewer caller, comparator or authored-text guard
+changes follow; IFC completeness, frame readiness, pixels and performance remain
+unqualified. [Both raw runs and exact offline replay](evidence/post-timer-gpu-inputs-6537/README.md)
+are retained; whole-machine closure is unclaimed.
+
 ## Direct vertex packing: do not ship the current candidate (#6537)
 
 The candidate removes an intermediate vertex buffer for eligible quantized

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { resolveEnglish } from '@/i18n/registry';
 import { blockTitle } from './block-title.js';
 import type { TableBlock } from './types.js';
 import { tableMessageKind, type TableLabels, type TableMessageKind, type TableState, type TableColumnOut } from './resolve-table.js';
@@ -44,7 +45,8 @@ export function tableMessage(state: TableState | undefined, t?: DocumentLabelFor
   const kind = tableMessageKind(state);
   if (kind === null) return null;
   // An engine error with an empty message (review finding) still has to read as an error, not as an empty grid.
-  if (kind === 'error') return (state?.status === 'error' && state.message.trim()) || (t?.('document.table.error') ?? 'The list could not be run.');
+  if (kind === 'error') return (state?.status === 'error' && state.message.trim())
+    || t?.('document.table.error').trim() || resolveEnglish('document.table.error');
   // "No rows" reads differently per source: a list matched nothing, a validation table's rule/rows filter did.
   if (kind === 'no-rows') return state?.status === 'ok' && state.kind === 'comparison'
     ? t?.('document.table.comparisonNoRows') ?? 'No changes in this saved comparison.'

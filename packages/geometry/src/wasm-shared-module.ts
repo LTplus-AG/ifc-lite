@@ -30,7 +30,7 @@
 // skew can load a DIFFERENT binary in the same session, and returning the first
 // compiled module for a later, incompatible URL would initialize the consumer's
 // wasm-bindgen glue against the wrong module. One promise per distinct binary.
-const sharedWasmModulePromises = new Map<string, Promise<WebAssembly.Module | null>>();
+const sharedWasmModulePromises = new Map<string, Promise<WebAssembly.Module>>();
 
 function resolveWasmUrl(explicitUrl?: string): string | URL | null {
   if (explicitUrl) return explicitUrl;
@@ -51,64 +51,70 @@ function resolveWasmUrl(explicitUrl?: string): string | URL | null {
   }
 }
 
-/**
- * Compile (or join the in-flight compile of) the engine binary for `explicitUrl`
- * — or the default resolution when omitted.
- *
- * Resolves to `null` — the caller then leaves the consumer on its own `init()` —
- * when the URL can't be resolved or compilation fails, so non-Vite consumers and
- * offline/edge failures degrade to the previous behaviour rather than breaking.
- */
-export async function compileSharedWasmModule(
-  explicitUrl?: string,
-): Promise<WebAssembly.Module | null> {
-  if (typeof WebAssembly === 'undefined') return null;
-  const url = resolveWasmUrl(explicitUrl);
-  if (!url) return null;
-  const cacheKey = url instanceof URL ? url.href : url;
-  const cached = sharedWasmModulePromises.get(cacheKey);
+// Match wasm-bindgen's public loader: a successful ordinary response with the
+// wrong MIME type may use its bytes; transport/validation failures retain their
+// original rejection. In particular, invalid application/wasm is not retried.
+function permitsMimeFallback(response: Response): boolean {
+  return response.ok
+    && ['basic', 'cors', 'default'].includes(response.type)
+    && response.headers.get('Content-Type') !== 'application/wasm';
+}
+
+function acquireModule(url: string | URL): Promise<WebAssembly.Module> {
+  const key = url instanceof URL ? url.href : url;
+  const cached = sharedWasmModulePromises.get(key);
   if (cached) return cached;
-  const p = (async (): Promise<WebAssembly.Module | null> => {
-    try {
-      if (typeof WebAssembly.compileStreaming === 'function') {
-        try {
-          // Compile WHILE the binary downloads (one streaming fetch + compile
-          // for every consumer).
-          return await WebAssembly.compileStreaming(fetch(url));
-        } catch (err) {
-          // Some static hosts serve `.wasm` with the wrong MIME type, which
-          // rejects compileStreaming — fall through to the buffer path.
-          //
-          // Worth a line even though the fallback works: the streaming fetch is
-          // already spent, so the buffer path downloads the ~1.3 MB binary a
-          // SECOND time, and nothing else reports that. Once per URL per realm
-          // (this runs inside the single-flight memo).
-          console.warn('[stream] wasm compileStreaming rejected; refetching for the buffer path:', err);
-        }
+  const promise: Promise<WebAssembly.Module> = (async () => {
+    const response = await fetch(url);
+    if (typeof WebAssembly.compileStreaming !== 'function') {
+      // Preserve the optional helper's HTTP refusal even when its streaming API
+      // is absent. Main init must not accept bytes a present public streaming
+      // loader would reject. This is stricter than glue with both APIs absent.
+      if (!response.ok) throw new TypeError('WebAssembly HTTP status code is not ok');
+      if (!['basic', 'cors', 'default'].includes(response.type)) {
+        throw new TypeError('WebAssembly response type is not supported');
       }
-      const resp = await fetch(url);
-      if (!resp.ok) return null;
-      return await WebAssembly.compile(await resp.arrayBuffer());
-    } catch (err) {
-      console.warn('[stream] shared wasm compile failed; consumers will self-init:', err);
-      return null;
+      return WebAssembly.compile(await response.arrayBuffer());
     }
-  })();
-  sharedWasmModulePromises.set(cacheKey, p);
-  const result = await p;
-  // Don't cache a failure — evict ONLY this URL's entry so the next load retries
-  // (a transient fetch error shouldn't permanently disable the shared-module fast
-  // path for the session), while other URLs' successful modules stay cached.
-  //
-  // Evict only if THIS promise is still the installed one. A failed compile can
-  // have several awaiters; the first to resume evicts and a retry may install a
-  // fresh promise before the rest resume. Without the identity check those late
-  // awaiters would delete the *replacement*, breaking single-flight and letting
-  // a second compile of the same binary start.
-  if (result === null && sharedWasmModulePromises.get(cacheKey) === p) {
-    sharedWasmModulePromises.delete(cacheKey);
-  }
-  return result;
+    // Like generated init, permitted MIME rejection leaves the original body
+    // available for arrayBuffer. Do not tee/clone or fetch the binary again.
+    try {
+      return await WebAssembly.compileStreaming(response);
+    } catch (error) {
+      if (!permitsMimeFallback(response)) throw error;
+      console.warn('[stream] wasm compileStreaming rejected MIME; using the same response bytes:', error);
+      return WebAssembly.compile(await response.arrayBuffer());
+    }
+  })().catch((error: unknown) => {
+    // Evict the owner, not a replacement installed by a later load. All joining
+    // callers see the original rejection; the bridge's retry can start anew.
+    if (sharedWasmModulePromises.get(key) === promise) sharedWasmModulePromises.delete(key);
+    throw error;
+  });
+  sharedWasmModulePromises.set(key, promise);
+  return promise;
+}
+
+const warnedFailures = new WeakSet<Promise<WebAssembly.Module>>();
+
+function optionalModule(promise: Promise<WebAssembly.Module>): Promise<WebAssembly.Module | null> {
+  return promise.catch((error: unknown) => {
+    if (!warnedFailures.has(promise)) {
+      warnedFailures.add(promise);
+      console.warn('[stream] shared wasm compile failed; consumers will self-init:', error);
+    }
+    return null;
+  });
+}
+
+/**
+ * Compile or join the engine binary. The pool's optional contract stays null on
+ * failure; the memo itself preserves rejection for the main loader's retry.
+ */
+export function compileSharedWasmModule(explicitUrl?: string): Promise<WebAssembly.Module | null> {
+  if (typeof WebAssembly === 'undefined') return Promise.resolve(null);
+  const url = resolveWasmUrl(explicitUrl);
+  return url ? optionalModule(acquireModule(url)) : Promise.resolve(null);
 }
 
 /**
@@ -119,21 +125,23 @@ export async function compileSharedWasmModule(
  *
  * The second URL constructor uses a parameter, not import.meta.url, so bundlers
  * leave it untouched. Compare before fetching; never probe a speculative URL.
- * A failed optional shared compile retains the ordinary loader/retry path.
+ * Bundled acquisition rejects inside the bridge retry. Raw package paths only
+ * join an already-started optional compile and retain ordinary loader fallback.
  * These arguments are an internal URL-policy seam, not package-root API.
  */
 export function acquireSharedWasmModuleForInit(
   resolvedUrl: string | URL | null = resolveWasmUrl(),
   moduleUrl: string = import.meta.url,
 ): Promise<WebAssembly.Module | null> | null {
-  if (!resolvedUrl) return null;
+  if (!resolvedUrl || typeof WebAssembly === 'undefined') return null;
   const cacheKey = resolvedUrl instanceof URL ? resolvedUrl.href : resolvedUrl;
-  const cached = sharedWasmModulePromises.get(cacheKey);
-  if (cached) return cached;
   const resolved = new URL(cacheKey, moduleUrl);
   const unbundled = new URL('../../wasm/pkg/ifc-lite_bg.wasm', moduleUrl);
-  if (resolved.href === unbundled.href || !['http:', 'https:'].includes(resolved.protocol)) return null;
-  return compileSharedWasmModule(cacheKey);
+  if (resolved.href === unbundled.href || !['http:', 'https:'].includes(resolved.protocol)) {
+    const cached = sharedWasmModulePromises.get(cacheKey);
+    return cached ? optionalModule(cached) : null;
+  }
+  return acquireModule(cacheKey);
 }
 
 /**

@@ -167,26 +167,15 @@ export class IfcLiteBridge {
         const wasmPath: string = requireFromHere.resolve('@ifc-lite/wasm/ifc-lite_bg.wasm');
         wasmInitArg = (await nodeFs.readFile(wasmPath)) as BufferSource;
       }
-      // Bundled browser assets acquire the shared compile before main init,
-      // so the subsequent pool joins it. Unbundled URLs keep loader resolution;
-      // Node still supplies its bytes. Null retains ordinary init/retry.
-      const sharedModule = wasmInitArg ? null : await acquireSharedWasmModuleForInit();
-
-      // Browser: init() with no arg fetches from import.meta.url. Node: pass the
-      // bytes via the modern object form ({ module_or_path }) to avoid the
-      // deprecated positional-bytes signature.
-      //
-      // Wrapped in `initWasmWithRetry` (issue #1903) so one blip on the ~1.3 MB
-      // (brotli) engine download no longer kills the whole load. This was the
-      // only self-fetching `init()` in the app WITHOUT the retry both workers
-      // already use, and it is the one a first-time visitor hits first — a
-      // returning visitor has the binary in the immutable `/assets/*` cache.
-      // `isTransientWasmLoadError` gates the retry, so a corrupt/invalid module
-      // still fails fast; the shared-module and Node paths pass a prebuilt
-      // `Module`/bytes and cannot be transient, so they never retry.
-      const initArg = wasmInitArg ?? sharedModule ?? undefined;
+      // Acquire bundled assets inside the existing retry: one transport failure
+      // gets one delayed retry; fatal compilation errors propagate immediately.
+      // Raw package resolution and Node's supplied bytes retain their paths.
       await initWasmWithRetry(
-        () => init(initArg ? { module_or_path: initArg } : undefined),
+        async () => {
+          const sharedModule = wasmInitArg ? null : await acquireSharedWasmModuleForInit();
+          const initArg = wasmInitArg ?? sharedModule ?? undefined;
+          await init(initArg ? { module_or_path: initArg } : undefined);
+        },
         { label: 'ifc-lite-bridge' },
       );
 

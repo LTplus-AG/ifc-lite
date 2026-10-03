@@ -1,0 +1,44 @@
+
+Running 1 test using 1 worker
+
+(node:37333) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 [viewer-e2e-ci] › tests/e2e/ortho-depth-nudge.e2e.spec.ts:345:3 › orthographic: coplanar plates, annotations, selection and an override on a 1 km site (#6729) (6.3s)
+
+
+  1) [viewer-e2e-ci] › tests/e2e/ortho-depth-nudge.e2e.spec.ts:345:3 › orthographic: coplanar plates, annotations, selection and an override on a 1 km site (#6729) 
+
+    Error: #38 has a drawn colour
+
+    expect(received).not.toBeNull()
+
+    Received: null
+
+      199 |   }, expressId);
+      200 |   expect(owner.instance, `#${expressId} draws on the flat path`).toBe(false);
+    > 201 |   expect(owner.color, `#${expressId} has a drawn colour`).not.toBeNull();
+          |                                                               ^
+      202 |   return zHash(owner.globalId, owner.color!);
+      203 | }
+      204 |
+        at drawnHash (/home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/tests/e2e/ortho-depth-nudge.e2e.spec.ts:201:63)
+        at /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/tests/e2e/ortho-depth-nudge.e2e.spec.ts:381:39
+        at Object.requireLiveGpu (/home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/tests/e2e/gpu-device-loss.ts:130:16)
+        at /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/tests/e2e/ortho-depth-nudge.e2e.spec.ts:378:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../tmp/6232-ci-missing-mesh-results-final/e2e-ortho-depth-nudge.e2e--689f5-erride-on-a-1-km-site-6729--viewer-e2e-ci/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../../../tmp/6232-ci-missing-mesh-results-final/e2e-ortho-depth-nudge.e2e--689f5-erride-on-a-1-km-site-6729--viewer-e2e-ci/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../../../../../../tmp/6232-ci-missing-mesh-results-final/e2e-ortho-depth-nudge.e2e--689f5-erride-on-a-1-km-site-6729--viewer-e2e-ci/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ../../../../../../tmp/6232-ci-missing-mesh-results-final/e2e-ortho-depth-nudge.e2e--689f5-erride-on-a-1-km-site-6729--viewer-e2e-ci/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [viewer-e2e-ci] › tests/e2e/ortho-depth-nudge.e2e.spec.ts:345:3 › orthographic: coplanar plates, annotations, selection and an override on a 1 km site (#6729) 

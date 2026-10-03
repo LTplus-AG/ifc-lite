@@ -299,42 +299,46 @@ test('orthographic: rods 30 mm inside beams stay hidden on a 1 km site, adverse 
     pairs.push({ beam, rod });
   }
   const gpu = await watchGpuDeviceLoss(page);
-  await loadScene(page, gpu, scene.toString());
-  for (const { beam, rod } of pairs) {
-    expect(await drawnHash(page, beam), `beam #${beam} hashes to the bottom of the range`).toBeLessThanOrEqual(15);
-    expect(await drawnHash(page, rod), `rod #${rod} hashes to the top of the range`).toBeGreaterThanOrEqual(240);
-  }
+  // #6232 F3: scene ownership and pixel assertions also need the live GPU,
+  // including a device lost after a successful frame readback.
+  await gpu.requireLiveGpu('orthographic geometry and pixel assertions', async () => {
+    await loadScene(page, gpu, scene.toString());
+    for (const { beam, rod } of pairs) {
+      expect(await drawnHash(page, beam), `beam #${beam} hashes to the bottom of the range`).toBeLessThanOrEqual(15);
+      expect(await drawnHash(page, rod), `rod #${rod} hashes to the top of the range`).toBeGreaterThanOrEqual(240);
+    }
 
-  const middle = BEAM / 2 + ((ROWS - 1) / 2) * PITCH;
-  // Each row's front face (IFC y = -BEAM / 2): its bottom and top edge.
-  const edges: Point[] = Array.from({ length: ROWS }, (_, row): Point[] => [[0, -BEAM / 2, row * PITCH], [0, -BEAM / 2, row * PITCH + BEAM]]).flat();
-  for (const [elevation, azimuth] of [[0, 0], [0, 35], [0, -50], [25, 0], [45, 0]] as const) {
-    const e = (elevation * Math.PI) / 180, a = (azimuth * Math.PI) / 180;
-    const eye: Point = [8 * Math.cos(e) * Math.sin(a), -8 * Math.cos(e) * Math.cos(a), middle + 8 * Math.sin(e)];
-    const frame = await orthoFrame(page, gpu, `rods-${elevation}-${azimuth}`, eye, [0, 0, middle], 2.6);
-    const pose = `${elevation}°/${azimuth}°`;
-    const largestShift = (frame.levels - 1) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL * frame.depthRange;
-    expect(frame.depthRange, `${pose}: kilometre depth range`).toBeGreaterThan(1000);
-    expect(largestShift, `${pose}: the largest nudge stays under the 30 mm clearance`).toBeLessThan(0.03);
-    let rodInFace = 0, beamInFace = 0;
-    for (let row = 0; row < ROWS; row++) {
-      const [bottom, top] = [edges[row * 2]!, edges[row * 2 + 1]!];
-      // Full width: the face edges are horizontal on screen in all five poses.
-      const yBottom = frame.px(bottom).y, yTop = frame.px(top).y;
-      for (let y = Math.ceil(Math.min(yBottom, yTop)) + 3; y <= Math.floor(Math.max(yBottom, yTop)) - 3; y++) {
-        for (let x = 0; x < frame.width; x++) {
-          const i = (y * frame.width + x) * 4;
-          if (isRed(frame.rgba[i]!, frame.rgba[i + 1]!, frame.rgba[i + 2]!)) rodInFace++;
-          else if (isBlue(frame.rgba[i]!, frame.rgba[i + 1]!, frame.rgba[i + 2]!)) beamInFace++;
+    const middle = BEAM / 2 + ((ROWS - 1) / 2) * PITCH;
+    // Each row's front face (IFC y = -BEAM / 2): its bottom and top edge.
+    const edges: Point[] = Array.from({ length: ROWS }, (_, row): Point[] => [[0, -BEAM / 2, row * PITCH], [0, -BEAM / 2, row * PITCH + BEAM]]).flat();
+    for (const [elevation, azimuth] of [[0, 0], [0, 35], [0, -50], [25, 0], [45, 0]] as const) {
+      const e = (elevation * Math.PI) / 180, a = (azimuth * Math.PI) / 180;
+      const eye: Point = [8 * Math.cos(e) * Math.sin(a), -8 * Math.cos(e) * Math.cos(a), middle + 8 * Math.sin(e)];
+      const frame = await orthoFrame(page, gpu, `rods-${elevation}-${azimuth}`, eye, [0, 0, middle], 2.6);
+      const pose = `${elevation}°/${azimuth}°`;
+      const largestShift = (frame.levels - 1) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL * frame.depthRange;
+      expect(frame.depthRange, `${pose}: kilometre depth range`).toBeGreaterThan(1000);
+      expect(largestShift, `${pose}: the largest nudge stays under the 30 mm clearance`).toBeLessThan(0.03);
+      let rodInFace = 0, beamInFace = 0;
+      for (let row = 0; row < ROWS; row++) {
+        const [bottom, top] = [edges[row * 2]!, edges[row * 2 + 1]!];
+        // Full width: the face edges are horizontal on screen in all five poses.
+        const yBottom = frame.px(bottom).y, yTop = frame.px(top).y;
+        for (let y = Math.ceil(Math.min(yBottom, yTop)) + 3; y <= Math.floor(Math.max(yBottom, yTop)) - 3; y++) {
+          for (let x = 0; x < frame.width; x++) {
+            const i = (y * frame.width + x) * 4;
+            if (isRed(frame.rgba[i]!, frame.rgba[i + 1]!, frame.rgba[i + 2]!)) rodInFace++;
+            else if (isBlue(frame.rgba[i]!, frame.rgba[i + 1]!, frame.rgba[i + 2]!)) beamInFace++;
+          }
         }
       }
+      let rodElsewhere = 0;
+      for (let i = 0; i < frame.rgba.length; i += 4) if (isRed(frame.rgba[i]!, frame.rgba[i + 1]!, frame.rgba[i + 2]!)) rodElsewhere++;
+      expect(beamInFace, `${pose}: beam faces are drawn`).toBeGreaterThan(500);
+      expect(rodElsewhere, `${pose}: rods are drawn above and below the beams`).toBeGreaterThan(500);
+      expect(rodInFace, `${pose}: no rod pixel shows through a beam face`).toBe(0);
     }
-    let rodElsewhere = 0;
-    for (let i = 0; i < frame.rgba.length; i += 4) if (isRed(frame.rgba[i]!, frame.rgba[i + 1]!, frame.rgba[i + 2]!)) rodElsewhere++;
-    expect(beamInFace, `${pose}: beam faces are drawn`).toBeGreaterThan(500);
-    expect(rodElsewhere, `${pose}: rods are drawn above and below the beams`).toBeGreaterThan(500);
-    expect(rodInFace, `${pose}: no rod pixel shows through a beam face`).toBe(0);
-  }
+  });
 });
 
 for (const site of [{ name: '40 m', size: 40 }, { name: '1 km', size: 1000 }] as const) {
@@ -369,60 +373,64 @@ for (const site of [{ name: '40 m', size: 40 }, { name: '1 km', size: 1000 }] as
     for (const { x } of tops.slice(2, 4)) scene.text('AB', [x - 0.3, topRowY - 0.1, TOP]);
 
     const gpu = await watchGpuDeviceLoss(page);
-    await loadScene(page, gpu, scene.toString());
-    for (const { red, green } of pairs) {
-      const [redHash, greenHash] = [await drawnHash(page, red), await drawnHash(page, green)];
-      expect(level(greenHash, levels), `#${green} ranks one level above #${red}`).toBe(level(redHash, levels) + 1);
-    }
-    for (const { id } of tops) expect(await drawnHash(page, id), `#${id} hashes to the top of the range`).toBeGreaterThanOrEqual(250);
+    // #6232 F3: scene ownership and pixel assertions also need the live GPU,
+    // including a device lost after a successful frame readback.
+    await gpu.requireLiveGpu('orthographic geometry and pixel assertions', async () => {
+      await loadScene(page, gpu, scene.toString());
+      for (const { red, green } of pairs) {
+        const [redHash, greenHash] = [await drawnHash(page, red), await drawnHash(page, green)];
+        expect(level(greenHash, levels), `#${green} ranks one level above #${red}`).toBe(level(redHash, levels) + 1);
+      }
+      for (const { id } of tops) expect(await drawnHash(page, id), `#${id} hashes to the top of the range`).toBeGreaterThanOrEqual(250);
 
-    // Annotation overlays upload after the model finishes loading.
-    await page.waitForFunction(() => (globalThis.__ifc_lite_annotation_line_vertices__?.() ?? 0) >= 4);
-    // Straight down (a hair off vertical, so the view keeps a horizontal up axis).
-    const middle: Point = [0, topRowY / 2 + 0.6, TOP];
-    const eye: Point = [middle[0], middle[1] - 0.01, 30];
-    const overlapBoxes = pairs.map(({ x, y }): [Point, Point] => [[x, y - 0.2, TOP], [x + 0.5, y + 0.5, TOP]]);
-    const topBoxes = tops.map(({ x }): [Point, Point] => [[x - 0.5, topRowY - 0.5, TOP], [x + 0.5, topRowY + 0.5, TOP]]);
-    const lineEnds = tops.slice(0, 2).map(({ x }): [Point, Point] => [[x - 0.35, topRowY - 0.06, TOP], [x + 0.35, topRowY + 0.06, TOP]]);
-    const textBoxes = tops.slice(2, 4).map(({ x }): [Point, Point] => [[x - 0.4, topRowY - 0.2, TOP], [x + 0.45, topRowY + 0.35, TOP]]);
-    const frame = await orthoFrame(page, gpu, `plates-${site.size}`, eye, middle, 5);
-    expect(frame.levels, 'the frame ranks with the predicted number of levels').toBe(levels);
+      // Annotation overlays upload after the model finishes loading.
+      await page.waitForFunction(() => (globalThis.__ifc_lite_annotation_line_vertices__?.() ?? 0) >= 4);
+      // Straight down (a hair off vertical, so the view keeps a horizontal up axis).
+      const middle: Point = [0, topRowY / 2 + 0.6, TOP];
+      const eye: Point = [middle[0], middle[1] - 0.01, 30];
+      const overlapBoxes = pairs.map(({ x, y }): [Point, Point] => [[x, y - 0.2, TOP], [x + 0.5, y + 0.5, TOP]]);
+      const topBoxes = tops.map(({ x }): [Point, Point] => [[x - 0.5, topRowY - 0.5, TOP], [x + 0.5, topRowY + 0.5, TOP]]);
+      const lineEnds = tops.slice(0, 2).map(({ x }): [Point, Point] => [[x - 0.35, topRowY - 0.06, TOP], [x + 0.35, topRowY + 0.06, TOP]]);
+      const textBoxes = tops.slice(2, 4).map(({ x }): [Point, Point] => [[x - 0.4, topRowY - 0.2, TOP], [x + 0.45, topRowY + 0.35, TOP]]);
+      const frame = await orthoFrame(page, gpu, `plates-${site.size}`, eye, middle, 5);
+      expect(frame.levels, 'the frame ranks with the predicted number of levels').toBe(levels);
 
-    for (const [k, [corner, opposite]] of overlapBoxes.entries()) {
-      const [red, green] = count(frame, corner, opposite, 3, isRed, isGreen);
-      expect(green, `overlap ${k}: the higher-ranked plate is drawn`).toBeGreaterThan(200);
-      expect(red, `overlap ${k}: the lower-ranked coplanar plate never shows through`).toBe(0);
-    }
-    for (const [k, [from, to]] of lineEnds.entries()) {
-      const [ink] = count(frame, from, to, 0, isInk);
-      const span = Math.abs(frame.px(to).x - frame.px(from).x);
-      expect(ink, `line on top-hash plate ${k} is drawn over the face`).toBeGreaterThan(span * 0.5);
-    }
-    for (const [k, [corner, opposite]] of textBoxes.entries()) {
-      const [ink] = count(frame, corner, opposite, 0, isInk);
-      expect(ink, `text on top-hash plate ${k} is drawn over the face`).toBeGreaterThan(20);
-    }
+      for (const [k, [corner, opposite]] of overlapBoxes.entries()) {
+        const [red, green] = count(frame, corner, opposite, 3, isRed, isGreen);
+        expect(green, `overlap ${k}: the higher-ranked plate is drawn`).toBeGreaterThan(200);
+        expect(red, `overlap ${k}: the lower-ranked coplanar plate never shows through`).toBe(0);
+      }
+      for (const [k, [from, to]] of lineEnds.entries()) {
+        const [ink] = count(frame, from, to, 0, isInk);
+        const span = Math.abs(frame.px(to).x - frame.px(from).x);
+        expect(ink, `line on top-hash plate ${k} is drawn over the face`).toBeGreaterThan(span * 0.5);
+      }
+      for (const [k, [corner, opposite]] of textBoxes.entries()) {
+        const [ink] = count(frame, corner, opposite, 0, isInk);
+        expect(ink, `text on top-hash plate ${k} is drawn over the face`).toBeGreaterThan(20);
+      }
 
-    // Selection highlight on one top-hash plate, a colour override on another.
-    await page.evaluate(({ selected, overridden }) => {
-      const state = globalThis.__ifc_lite_viewer_store__.getState();
-      const model = [...state.models.values()][0]!;
-      const selectedId = state.toGlobalId(model.id, selected);
-      state.setSelectedEntityId(selectedId);
-      state.setSelectedEntity({ modelId: model.id, expressId: selected });
-      state.setSelectedEntityIds([selectedId]);
-      state.setPendingColorUpdates(new Map([[state.toGlobalId(model.id, overridden), [1, 1, 0, 1]]]));
-    }, { selected: tops[4]!.id, overridden: tops[5]!.id });
-    await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__.getState().pendingColorUpdates === null);
-    const marked = await orthoFrame(page, gpu, `plates-${site.size}-marked`, eye, middle, 5);
-    const [selectedCorner, selectedOpposite] = topBoxes[4]!;
-    const [highlight, unhighlighted] = count(marked, selectedCorner, selectedOpposite, 4, isBlue, isGreen);
-    expect(unhighlighted, 'the selection highlight covers the whole top-hash plate').toBe(0);
-    expect(highlight, 'the selected plate is drawn in the highlight colour').toBeGreaterThan(500);
-    const [overrideCorner, overrideOpposite] = topBoxes[5]!;
-    const [overridden, original] = count(marked, overrideCorner, overrideOpposite, 4, isYellow, isGreen);
-    expect(original, 'the override covers the whole top-hash plate').toBe(0);
-    expect(overridden, 'the overridden plate is drawn in the override colour').toBeGreaterThan(500);
+      // Selection highlight on one top-hash plate, a colour override on another.
+      await page.evaluate(({ selected, overridden }) => {
+        const state = globalThis.__ifc_lite_viewer_store__.getState();
+        const model = [...state.models.values()][0]!;
+        const selectedId = state.toGlobalId(model.id, selected);
+        state.setSelectedEntityId(selectedId);
+        state.setSelectedEntity({ modelId: model.id, expressId: selected });
+        state.setSelectedEntityIds([selectedId]);
+        state.setPendingColorUpdates(new Map([[state.toGlobalId(model.id, overridden), [1, 1, 0, 1]]]));
+      }, { selected: tops[4]!.id, overridden: tops[5]!.id });
+      await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__.getState().pendingColorUpdates === null);
+      const marked = await orthoFrame(page, gpu, `plates-${site.size}-marked`, eye, middle, 5);
+      const [selectedCorner, selectedOpposite] = topBoxes[4]!;
+      const [highlight, unhighlighted] = count(marked, selectedCorner, selectedOpposite, 4, isBlue, isGreen);
+      expect(unhighlighted, 'the selection highlight covers the whole top-hash plate').toBe(0);
+      expect(highlight, 'the selected plate is drawn in the highlight colour').toBeGreaterThan(500);
+      const [overrideCorner, overrideOpposite] = topBoxes[5]!;
+      const [overridden, original] = count(marked, overrideCorner, overrideOpposite, 4, isYellow, isGreen);
+      expect(original, 'the override covers the whole top-hash plate').toBe(0);
+      expect(overridden, 'the overridden plate is drawn in the override colour').toBeGreaterThan(500);
+    });
   });
 }
 
@@ -452,45 +460,49 @@ test.describe('clip planes', () => {
     // A horizontal plate running from inside the range out through the far plane.
     const crossing = scene.product('IFCPLATE', '.NOTDEFINED.', [0, 2, -0.6], scene.rectangle(0.4, 8), 0.01, BLUE, top);
     const gpu = await watchGpuDeviceLoss(page);
-    await loadScene(page, gpu, scene.toString(), server!.url);
-    for (const id of [beyondFar, insideNear, control, crossing]) {
-      expect(await drawnHash(page, id), `#${id} hashes to the top of the range`).toBeGreaterThanOrEqual(250);
-    }
-
-    await page.waitForFunction(() => (globalThis.__ifc_lite_annotation_line_vertices__?.() ?? 0) >= 4);
-    const ahead = await orthoFrame(page, gpu, 'clip-level', [0, -10, 0], [0, 0, 0], 1.5, bounds);
-    expect(ahead.depth([0, yFar, 0]), 'the far plane is where the narrowed bounds put it').toBeCloseTo(0, 5);
-    expect(ahead.depth([0, yNear, 0]), 'the near plane is where the narrowed bounds put it').toBeCloseTo(1, 5);
-    expect((ahead.levels - 1) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL, 'one largest nudge reaches past the sliver').toBeGreaterThan(sliver / ahead.depthRange);
-    const face = (x: number, y: number, z: number): [Point, Point] => [[x - 0.25, y, z - 0.25], [x + 0.25, y, z + 0.25]];
-    const [farRed] = count(ahead, ...face(-1, yFar + sliver, 0), 0, isRed);
-    expect(farRed, 'a top-hash plate just beyond the far plane stays clipped').toBe(0);
-    const [nearGreen] = count(ahead, ...face(1, yNear + sliver, 0), 0, isGreen);
-    expect(nearGreen, 'a top-hash plate just inside the near plane stays drawn').toBeGreaterThan(5000);
-    const lineBand = (x0: number, x1: number, y: number): [Point, Point] => [[x0 + 0.05, y, 0.9 - 0.03], [x1 - 0.05, y, 0.9 + 0.03]];
-    const [farInk] = count(ahead, ...lineBand(-1.2, -0.4, yFar + sliver), 0, isInk);
-    expect(farInk, 'an annotation line just beyond the far plane stays clipped').toBe(0);
-    const [nearInk] = count(ahead, ...lineBand(0.4, 1.2, yNear + sliver), 0, isInk);
-    expect(nearInk, 'an annotation line just inside the near plane stays drawn').toBeGreaterThan(50);
-    const [controlYellow] = count(ahead, ...face(0, 0, -1.2), 0, isYellow);
-    expect(controlYellow, 'a plate mid-range is drawn').toBeGreaterThan(5000);
-
-    // Looking down 25°, the crossing plate's far end is cut by the far plane.
-    const e = (25 * Math.PI) / 180;
-    const down = await orthoFrame(page, gpu, 'clip-crossing', [0, -10 * Math.cos(e), 10 * Math.sin(e)], [0, 0, 0], 1.5, bounds);
-    // Depth is linear along the plate's top centreline; find where it is 0.
-    const at = (y: number): Point => [0, y, -0.59];
-    const d0 = down.depth(at(0)), d1 = down.depth(at(1));
-    const cut = at(-d0 / (d1 - d0));
-    expect(down.depth(cut)).toBeCloseTo(0, 6);
-    const predicted = down.px(cut);
-    let topmost = Infinity;
-    for (let x = Math.round(predicted.x) - 3; x <= Math.round(predicted.x) + 3; x++) {
-      for (let y = 0; y < down.height; y++) {
-        const i = (y * down.width + x) * 4;
-        if (isBlue(down.rgba[i]!, down.rgba[i + 1]!, down.rgba[i + 2]!)) { topmost = Math.min(topmost, y); break; }
+    // #6232 F3: scene ownership and pixel assertions also need the live GPU,
+    // including a device lost after a successful frame readback.
+    await gpu.requireLiveGpu('orthographic geometry and pixel assertions', async () => {
+      await loadScene(page, gpu, scene.toString(), server!.url);
+      for (const id of [beyondFar, insideNear, control, crossing]) {
+        expect(await drawnHash(page, id), `#${id} hashes to the top of the range`).toBeGreaterThanOrEqual(250);
       }
-    }
-    expect(Math.abs(topmost - predicted.y), `the crossing plate is cut at the far plane (row ${topmost}, predicted ${predicted.y.toFixed(1)})`).toBeLessThanOrEqual(2);
+
+      await page.waitForFunction(() => (globalThis.__ifc_lite_annotation_line_vertices__?.() ?? 0) >= 4);
+      const ahead = await orthoFrame(page, gpu, 'clip-level', [0, -10, 0], [0, 0, 0], 1.5, bounds);
+      expect(ahead.depth([0, yFar, 0]), 'the far plane is where the narrowed bounds put it').toBeCloseTo(0, 5);
+      expect(ahead.depth([0, yNear, 0]), 'the near plane is where the narrowed bounds put it').toBeCloseTo(1, 5);
+      expect((ahead.levels - 1) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL, 'one largest nudge reaches past the sliver').toBeGreaterThan(sliver / ahead.depthRange);
+      const face = (x: number, y: number, z: number): [Point, Point] => [[x - 0.25, y, z - 0.25], [x + 0.25, y, z + 0.25]];
+      const [farRed] = count(ahead, ...face(-1, yFar + sliver, 0), 0, isRed);
+      expect(farRed, 'a top-hash plate just beyond the far plane stays clipped').toBe(0);
+      const [nearGreen] = count(ahead, ...face(1, yNear + sliver, 0), 0, isGreen);
+      expect(nearGreen, 'a top-hash plate just inside the near plane stays drawn').toBeGreaterThan(5000);
+      const lineBand = (x0: number, x1: number, y: number): [Point, Point] => [[x0 + 0.05, y, 0.9 - 0.03], [x1 - 0.05, y, 0.9 + 0.03]];
+      const [farInk] = count(ahead, ...lineBand(-1.2, -0.4, yFar + sliver), 0, isInk);
+      expect(farInk, 'an annotation line just beyond the far plane stays clipped').toBe(0);
+      const [nearInk] = count(ahead, ...lineBand(0.4, 1.2, yNear + sliver), 0, isInk);
+      expect(nearInk, 'an annotation line just inside the near plane stays drawn').toBeGreaterThan(50);
+      const [controlYellow] = count(ahead, ...face(0, 0, -1.2), 0, isYellow);
+      expect(controlYellow, 'a plate mid-range is drawn').toBeGreaterThan(5000);
+
+      // Looking down 25°, the crossing plate's far end is cut by the far plane.
+      const e = (25 * Math.PI) / 180;
+      const down = await orthoFrame(page, gpu, 'clip-crossing', [0, -10 * Math.cos(e), 10 * Math.sin(e)], [0, 0, 0], 1.5, bounds);
+      // Depth is linear along the plate's top centreline; find where it is 0.
+      const at = (y: number): Point => [0, y, -0.59];
+      const d0 = down.depth(at(0)), d1 = down.depth(at(1));
+      const cut = at(-d0 / (d1 - d0));
+      expect(down.depth(cut)).toBeCloseTo(0, 6);
+      const predicted = down.px(cut);
+      let topmost = Infinity;
+      for (let x = Math.round(predicted.x) - 3; x <= Math.round(predicted.x) + 3; x++) {
+        for (let y = 0; y < down.height; y++) {
+          const i = (y * down.width + x) * 4;
+          if (isBlue(down.rgba[i]!, down.rgba[i + 1]!, down.rgba[i + 2]!)) { topmost = Math.min(topmost, y); break; }
+        }
+      }
+      expect(Math.abs(topmost - predicted.y), `the crossing plate is cut at the far plane (row ${topmost}, predicted ${predicted.y.toFixed(1)})`).toBeLessThanOrEqual(2);
+    });
   });
 });

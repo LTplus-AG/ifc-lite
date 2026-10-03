@@ -54,6 +54,15 @@ export function replaceElementInStore(
         }
       }
     }
+    // Rebuilding the root alone cannot transfer its openings/fillings. Refuse
+    // rather than deleting the host and leaving independently live children.
+    for (const relationshipId of reader.ids('IFCRELVOIDSELEMENT')) {
+      const relationship = reader.entity(relationshipId);
+      if (!relationship) throw new Error(`replaceElementInStore: void relationship #${relationshipId} cannot be read`);
+      if (asRef(relationship.attributes[4]) === oldId) {
+        throw new Error(`replaceElementInStore: unsupported hosted-opening source #${oldId} (${old.type}); edit the host in place`);
+      }
+    }
     const resolved = typeof anchor === 'function' ? anchor(draft) : anchor;
     const removedIds = [oldId];
     if (old.type.toUpperCase() === 'IFCSTAIR') {

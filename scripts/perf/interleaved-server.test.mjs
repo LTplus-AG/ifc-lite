@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { connect } from 'node:net';
 import { serveFrozen } from './interleaved-server.mjs';
 import { fileHash } from './interleaved-assets.mjs';
 
@@ -27,4 +28,23 @@ test('#6537 frozen server preserves isolation, exact asset bytes and bounded fil
   assert.equal((await fetch(`${server.origin}/unlisted.js`)).status, 404);
   assert.equal((await fetch(`${server.origin}/index.html`, { method: 'POST' })).status, 404);
   assert.equal(server.requests[0].sha256, sha256);
+});
+
+test('#6537 an incomplete owned HTTP request cannot hang terminal server teardown', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'interleaved-stalled-server-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const server = await serveFrozen(root, []);
+  const socket = connect(Number(new URL(server.origin).port), '127.0.0.1');
+  t.after(() => socket.destroy());
+  await new Promise((resolveConnected, reject) => { socket.once('connect', resolveConnected); socket.once('error', reject); });
+  socket.write('GET / HTTP/1.1\r\nHost: incomplete');
+  let timer;
+  try {
+    const receipt = await Promise.race([server.close(30), new Promise((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('Owned server teardown did not bound the open socket')), 1000);
+    })]);
+    assert.ok(['refused', 'complete'].includes(receipt.status));
+    assert.equal(receipt.remainingSockets, 0);
+    if (receipt.status === 'refused') { assert.equal(receipt.destroyedSockets, 1); assert.match(receipt.reason, /deadline/); }
+  } finally { clearTimeout(timer); }
 });

@@ -8,6 +8,7 @@ import { join, resolve } from 'node:path';
 import { LIMITS, FIXTURES, schedule, requireIdentityPair, describeFamily } from './interleaved-plan.mjs';
 import { inventory, fileHash } from './interleaved-assets.mjs';
 import { serveFrozen } from './interleaved-server.mjs';
+import { processIdentity, finishLog, stopWitnessedProcesses } from './interleaved-cleanup.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const output = join(root, 'interleaved-results');
@@ -24,9 +25,8 @@ function sampledDescendantRss(rootPid) {
   const processes = [];
   for (const pid of readdirSync('/proc').filter(name => /^\d+$/.test(name))) {
     try {
-      const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
-      const ppid = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]);
-      processes.push({ pid: Number(pid), ppid });
+      const identity = processIdentity(pid);
+      if (identity) processes.push(identity);
     } catch (error) { if (error.code !== 'ENOENT' && error.code !== 'ESRCH') throw error; }
   }
   const descendants = new Set([rootPid]);
@@ -44,11 +44,11 @@ function sampledDescendantRss(rootPid) {
       if (match) bytes += Number(match[1]) * 1024;
     } catch (error) { if (error.code !== 'ENOENT' && error.code !== 'ESRCH') throw error; }
   }
-  return { bytes, processes: descendants.size };
+  return { bytes, processes: descendants.size, members: processes.filter(member => descendants.has(member.pid)) };
 }
 
 function killOwnedGroup(child) {
-  if (!child?.pid) return;
+  if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return;
   try { process.kill(-child.pid, 'SIGKILL'); }
   catch (error) { if (error.code !== 'ESRCH') throw error; }
 }
@@ -68,13 +68,32 @@ async function oneSample(sample) {
   activeChild = child;
   child.stdout.pipe(log, { end: false }); child.stderr.pipe(log, { end: false });
   const samples = [];
+  const owned = new Map();
+  const rootIdentity = child.pid && processIdentity(child.pid);
+  if (rootIdentity) owned.set(rootIdentity.pid, rootIdentity);
   let refusal;
-  const abort = reason => { refusal ??= reason; killOwnedGroup(child); };
+  let logFlush, cleanup;
+  let settleExit, exitDeadline, abortCleanup, forcedExit = false;
+  log.on('error', error => { refusal ??= `REFUSE: runner log write failed: ${error}`; killOwnedGroup(child); });
+  const abort = reason => {
+    refusal ??= reason; killOwnedGroup(child);
+    abortCleanup ??= stopWitnessedProcesses([...owned.values()], LIMITS.teardownMs)
+      .catch(error => ({ status: 'refused', reason: String(error) }));
+    exitDeadline ??= setTimeout(() => {
+      forcedExit = true;
+      // Own pipes only. A refusal explicitly records that an unreachable tail
+      // could not be certified lossless; never turn this into a complete row.
+      child.stdout.destroy(); child.stderr.destroy(); child.unref();
+      settleExit?.({ code: null, signal: 'owned-close-deadline' });
+    }, LIMITS.teardownMs);
+  };
   const timer = setTimeout(() => abort('REFUSE: sample wall/identity/teardown deadline'),
     sample.timeoutMs + LIMITS.identityMs + LIMITS.teardownMs + 60_000);
   const monitor = setInterval(() => {
     try {
+      if (child.exitCode !== null || child.signalCode !== null) return;
       const snapshot = { at: Date.now(), ...sampledDescendantRss(child.pid) };
+      for (const member of snapshot.members) owned.set(member.pid, member);
       samples.push(snapshot);
       if (snapshot.bytes > LIMITS.sampledTreeRssBytes) abort('REFUSE: sampled own-tree RSS ceiling');
       if (Date.now() - startedAt > LIMITS.cohortMs) abort('REFUSE: cohort wall ceiling');
@@ -83,23 +102,40 @@ async function oneSample(sample) {
   let exit;
   try {
     exit = await new Promise((resolveExit, reject) => {
+      settleExit = resolveExit;
       child.once('error', reject); child.once('close', (code, signal) => resolveExit({ code, signal }));
     });
   } catch (error) {
     exit = { code: null, signal: null, spawnError: String(error) };
     refusal = `REFUSE: sample could not spawn: ${error}`;
   } finally {
-    clearTimeout(timer); clearInterval(monitor); log.end(); killOwnedGroup(child); activeChild = undefined;
+    clearTimeout(timer); clearTimeout(exitDeadline); clearInterval(monitor); killOwnedGroup(child); activeChild = undefined;
+    // One shared 30s cleanup budget; report the actual flush and PID-fenced drain.
+    const deadline = Date.now() + LIMITS.teardownMs;
+    [cleanup, logFlush] = await Promise.all([
+      stopWitnessedProcesses([...owned.values()], Math.max(1, deadline - Date.now()))
+        .catch(error => ({ status: 'refused', reason: String(error) })),
+      finishLog(log, Math.max(1, deadline - Date.now())),
+    ]);
+    if (abortCleanup) {
+      const aborted = await abortCleanup;
+      if (aborted.status !== 'complete') cleanup = aborted;
+    }
+    if (forcedExit) logFlush = { status: 'refused', reason: 'Owned-close deadline; captured log flushed, unreachable tail uncertified' };
   }
   let row;
   try { row = JSON.parse(readFileSync(path, 'utf8')); }
   catch (error) { row = { ...config, status: 'refused', reason: `No readable child result: ${error}` }; }
   row.exit = exit;
+  row.ownedCleanup = cleanup; row.runnerLogFlush = logFlush;
   row.hostAfter = { loadavg: readFileSync('/proc/loadavg', 'utf8').trim() };
   if (refusal || exit.code !== 0 || row.teardown !== 'complete') {
     row.status = 'refused'; row.reason = refusal ?? row.reason ?? 'REFUSE: nonzero child or incomplete teardown';
   }
   if (!samples.length) { row.status = 'refused'; row.reason = 'REFUSE: no own-tree RSS samples'; }
+  if (cleanup.status !== 'complete' || logFlush.status !== 'complete') {
+    row.status = 'refused'; row.reason = 'REFUSE: incomplete owned cleanup or runner log flush';
+  }
   row.sampledTreeRss = { metric: '250ms aggregate sample descendant RSS; shared pages may be double-counted; not physical peak',
     peakBeforeReadyBytes: row.readyAtMs ? samples.filter(point => point.at <= row.readyAtMs).reduce((max, point) => Math.max(max, point.bytes), 0) : null,
     peakWholeSampleBytes: samples.reduce((max, point) => Math.max(max, point.bytes), 0) };
@@ -108,6 +144,18 @@ async function oneSample(sample) {
   writeFileSync(join(output, 'rss.json'), JSON.stringify(rss));
   appendFileSync(join(output, 'samples.jsonl'), `${JSON.stringify(row)}\n`);
   return row;
+}
+
+function persistReport() {
+  report.completedSamples = rows.length; report.plannedSamples = 48; report.elapsedMs = Date.now() - startedAt;
+  writeFileSync(join(output, 'report.json'), JSON.stringify(report, null, 2));
+  const lines = [`Same-job viewer comparison: ${report.status}`, '', report.verdict, '',
+    `${rows.length}/48 planned samples retained. Failure/refusal is terminal; no replacements.`, report.reason ?? ''];
+  for (const fixture of FIXTURES) {
+    const family = report.families[fixture.family];
+    lines.push('', `${fixture.family}: ${family ? JSON.stringify(family) : 'no complete family comparison'}`);
+  }
+  writeFileSync(join(output, 'report.md'), lines.join('\n'));
 }
 
 try {
@@ -144,22 +192,20 @@ try {
     report.status = 'refused'; report.reason = `REFUSE: ${error}`; report.families = {};
     report.finalAssetVerification = 'failed'; process.exitCode = 1;
   }
-  for (const [arm, server] of Object.entries(servers)) {
+  report.serverCleanup = 'pending';
+  if (report.status === 'complete') report.status = 'pending-server-cleanup';
+  persistReport(); // Terminal measurement result exists BEFORE any server close.
+  const receipts = await Promise.allSettled(Object.entries(servers).map(async ([arm, server]) => {
     writeFileSync(join(output, `${arm}.served-assets.json`), JSON.stringify(server.requests, null, 2));
     if (server.requests.some(request => request.status === 500)) {
       report.status = 'refused'; report.reason = 'REFUSE: frozen server fault'; process.exitCode = 1;
     }
-    await server.close();
-  }
-  report.completedSamples = rows.length;
-  report.plannedSamples = 48;
-  report.elapsedMs = Date.now() - startedAt;
-  writeFileSync(join(output, 'report.json'), JSON.stringify(report, null, 2));
-  const lines = [`Same-job viewer comparison: ${report.status}`, '', report.verdict, '',
-    `${rows.length}/48 planned samples retained. Failure/refusal is terminal; no replacements.`, report.reason ?? ''];
-  for (const fixture of FIXTURES) {
-    const family = report.families[fixture.family];
-    lines.push('', `${fixture.family}: ${family ? JSON.stringify(family) : 'no complete family comparison'}`);
-  }
-  writeFileSync(join(output, 'report.md'), lines.join('\n'));
+    return { arm, ...await server.close(LIMITS.teardownMs) };
+  }));
+  report.serverCleanup = receipts.map(receipt => receipt.status === 'rejected'
+    ? { status: 'rejected', reason: String(receipt.reason) } : receipt);
+  if (receipts.some(receipt => receipt.status !== 'fulfilled' || receipt.value.status !== 'complete')) {
+    report.status = 'refused'; report.reason = 'REFUSE: incomplete bounded owned server cleanup'; process.exitCode = 1;
+  } else if (report.status === 'pending-server-cleanup') report.status = 'complete';
+  persistReport();
 }

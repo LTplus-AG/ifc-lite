@@ -56,13 +56,14 @@ export async function captureIdentity(limits) {
   const geometry = model.geometryResult, data = model.ifcDataStore;
   if (!geometry || !Array.isArray(geometry.meshes) || !data?.entities || !data?.properties) refuse('geometry/properties not ready');
   if (geometry.pointClouds?.length) refuse('point-cloud output unsupported');
-  if (!data.entityIndex?.byType || !Number.isInteger(data.properties.count)
+  if (!data.entityIndex?.byType || !Number.isInteger(data.entities.count) || !Number.isInteger(data.properties.count)
     || typeof data.properties.getForEntity !== 'function') refuse('metadata/private property shape changed');
   for (const type of data.entityIndex.byType.keys()) {
     if (String(type).toUpperCase().startsWith('IFCTEXT')) refuse('authored text appearance unsupported');
   }
   const propertyOwner = data.properties.count ? data.properties.entityId[0] : null;
   const propertyWitness = propertyOwner === null ? [] : data.properties.getForEntity(propertyOwner);
+  if (!Array.isArray(propertyWitness)) refuse('authored property callback shape');
   if (data.properties.count && !propertyWitness.length) refuse('authored property read unavailable');
 
   // React internals are inspected only now; no renderer interception during timing.
@@ -85,6 +86,7 @@ export async function captureIdentity(limits) {
   }
   if (!renderer?.isReady()) refuse('renderer unavailable/not ready');
   const scene = renderer.getScene();
+  if (typeof scene.isGeometryDataReleased !== 'function' || scene.isGeometryDataReleased()) refuse('scene CPU geometry released/unknown');
   if (!(scene.instancedEntityMap instanceof Map) || !Array.isArray(scene.instancedTemplateCpu)
     || typeof scene.getAllMeshDataExpressIds !== 'function') refuse('private scene shape changed');
 
@@ -99,7 +101,8 @@ export async function captureIdentity(limits) {
     if (mesh.uvs || mesh.texture || mesh.textureRef || mesh.textureBitmap) refuse('UV/texture output unsupported');
     if (!(mesh.positions instanceof Float32Array) || !(mesh.normals instanceof Float32Array)
       || !(mesh.indices instanceof Uint32Array) || mesh.positions.length !== mesh.normals.length
-      || mesh.positions.length % 3 || mesh.indices.length % 3 || !Array.isArray(mesh.color) || mesh.color.length !== 4) {
+      || !mesh.positions.length || !mesh.indices.length || mesh.positions.length % 3 || mesh.indices.length % 3
+      || !Array.isArray(mesh.color) || mesh.color.length !== 4) {
       refuse('flat raw buffer shape changed');
     }
     if (mesh.material && Object.keys(mesh.material).some(key => !['metallic', 'roughness'].includes(key))) refuse('unknown flat finish');
@@ -125,7 +128,8 @@ export async function captureIdentity(limits) {
       if (!(template.positions instanceof Float32Array) || !(template.normals instanceof Float32Array)
         || !(template.indices instanceof Uint32Array) || !(template.instanceData instanceof ArrayBuffer)
         || !(template.canonicalAnchors instanceof Float64Array) || !(template.canonicalMatrixTranslations instanceof Float32Array)
-        || template.positions.length !== template.normals.length || template.positions.length % 3 || template.indices.length % 3
+        || template.positions.length !== template.normals.length || !template.positions.length || !template.indices.length
+        || template.positions.length % 3 || template.indices.length % 3
         || template.instanceData.byteLength % 88) refuse('raw instance shape/stride changed');
       const offset = occurrence.byteOffset, index = offset / 88;
       if (!Number.isInteger(index) || index < 0 || offset + 88 > template.instanceData.byteLength
@@ -154,6 +158,7 @@ export async function captureIdentity(limits) {
   const owners = [...expectedOwners].sort((a, b) => a - b);
   if (JSON.stringify(actualOwners) !== JSON.stringify(owners)) refuse('flat/instance scene owner census mismatch');
   if (scene.getInstancedEntityCount() !== scene.instancedEntityMap.size) refuse('instance scene census changed');
+  if (!flat.length && !occurrenceCount) refuse('no retained geometric output');
   const gpuTemplates = scene.getInstancedTemplates?.();
   if (!Array.isArray(gpuTemplates) || gpuTemplates.reduce((sum, template) => sum + template.instanceCount, 0) !== occurrenceCount) {
     refuse('GPU instance occurrence census incomplete');

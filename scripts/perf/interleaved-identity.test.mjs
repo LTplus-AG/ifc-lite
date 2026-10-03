@@ -22,6 +22,7 @@ function fixture(t) {
     instancedEntityMap: new Map([[42, [{ templateIndex: 0, byteOffset: 0, originalColor: [1, 0, 0, 1], finishBits: 0 }]]]),
     getAllMeshDataExpressIds: () => [10, ...scene.instancedEntityMap.keys()],
     getInstancedEntityCount: () => scene.instancedEntityMap.size,
+    isGeometryDataReleased: () => false,
     getInstancedTemplates: () => [{ instanceCount: 1 }] };
   const geometry = { meshes: [mesh], coordinateInfo: {}, totalVertices: 6, totalTriangles: 2 };
   const data = { entities: { count: 2 }, properties: { count: 0, getForEntity: () => [] },
@@ -87,4 +88,16 @@ test('#6537 missing instance owners, duplicate records and bounded work refuse',
   await assert.rejects(captureIdentity({ ...LIMITS, records: 1 }), /walk bound/);
   scene.instancedEntityMap.clear();
   await assert.rejects(captureIdentity(LIMITS), /unowned retained template/);
+});
+
+test('#6537 released CPU arrays cannot produce a successful empty geometry fingerprint', async t => {
+  const { scene, template, mesh } = fixture(t);
+  scene.isGeometryDataReleased = () => true;
+  await assert.rejects(captureIdentity(LIMITS), /CPU geometry released/);
+  scene.isGeometryDataReleased = () => false;
+  template.positions = new Float32Array(); template.normals = new Float32Array(); template.indices = new Uint32Array();
+  await assert.rejects(captureIdentity(LIMITS), /instance shape/);
+  scene.instancedEntityMap.clear(); scene.instancedTemplateCpu = [];
+  mesh.positions = new Float32Array(); mesh.normals = new Float32Array(); mesh.indices = new Uint32Array();
+  await assert.rejects(captureIdentity(LIMITS), /flat raw buffer/);
 });

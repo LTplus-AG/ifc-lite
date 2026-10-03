@@ -13,6 +13,7 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'applic
 export async function serveFrozen(root, files) {
   const allowed = new Map(files.map(file => [file.path, file]));
   const requests = [];
+  const sockets = new Set();
   const server = createServer((request, response) => {
     try {
       const url = new URL(request.url, 'http://127.0.0.1');
@@ -41,7 +42,21 @@ export async function serveFrozen(root, files) {
       response.end('Frozen asset refusal');
     }
   });
+  server.on('connection', socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
   await new Promise((resolveReady, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolveReady); });
   const origin = `http://127.0.0.1:${server.address().port}`;
-  return { origin, requests, close: () => new Promise((resolveClosed, reject) => server.close(error => error ? reject(error) : resolveClosed())) };
+  return { origin, requests, close: (timeoutMs = 30_000) => new Promise(resolveClosed => {
+    let done = false;
+    const finish = receipt => { if (!done) { done = true; clearTimeout(timer); resolveClosed(receipt); } };
+    const timer = setTimeout(() => {
+      const destroyedSockets = sockets.size;
+      for (const socket of sockets) socket.destroy();
+      server.closeAllConnections();
+      finish({ status: 'refused', reason: 'Owned server close deadline', destroyedSockets,
+        remainingSockets: [...sockets].filter(socket => !socket.destroyed).length });
+    }, timeoutMs);
+    server.close(error => finish({ status: error ? 'refused' : 'complete', reason: error ? String(error) : null,
+      remainingSockets: [...sockets].filter(socket => !socket.destroyed).length }));
+    server.closeIdleConnections();
+  }) };
 }

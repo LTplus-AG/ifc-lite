@@ -54,6 +54,14 @@ short-lived peaks. It is not physical peak memory, WASM linear-memory peak, or
 GPU allocation peak. The report separates samples before first readiness from
 post-readiness hashing/capture. Only owned sample process groups are terminated.
 
+Runner logs are awaited through stream completion. Witnessed descendants are
+fenced by Linux PID/start-time and drained within a shared 30-second cleanup
+budget; receipts disclose remaining live processes and zombies. A forced pipe
+close is refused because its unreachable tail cannot be certified lossless.
+Both servers close in parallel within 30 seconds, destroying only their tracked
+sockets on timeout. The report is saved before server close and rewritten with
+shutdown receipts. Pending shutdown never presents as a complete cohort.
+
 ## Completion and exact identity
 
 Timing uses the existing strict benchmark readiness helper: metadata complete,
@@ -90,6 +98,16 @@ template ordinals and publication order are excluded from the sorted multiset.
 Private shape changes or released/incomplete geometry refuse. Coordinate info
 and instanced geometry hash/AABB/volume side channels are also included.
 
+The reviewed primary loader sets bounded geometry mode false, and the viewport
+passes `releaseGeometryAfterStream=false`. Scene vertex release is conditional
+on that opt-in path. The default 3072 MiB host budget evicts CPU buckets only
+with a cold restore provider; fresh primary loading clears that provider, which
+cache-hit loading alone installs. None of the four fixture sizes forces CPU
+release on this first-file path. This is source eligibility, not observed
+acceptance: positive flat/template buffers and the Scene release flag are
+checked after readiness. Unsupported appearance or any original work/memory/
+time bound can still refuse a real fixture.
+
 SHA-256s are compared within A/A and every A/B pair. They prove identity only
 for the listed retained CPU channels. They do not prove producer-internal
 diagnostics, metadata values beyond the recorded property witness, GPU buffer
@@ -119,3 +137,11 @@ headless Chrome with SwiftShader: any verdict is about CPU worker-pool/full
 readiness there. Native GPU rendering benefit and interactive FPS remain
 unclaimed. Record any eventual measured verdict and lesson in the performance
 ledger only after an independently reviewed actual cohort.
+
+The root `typecheck:perf-interleaved` script runs the explicit no-emit
+`scripts/perf/tsconfig.interleaved.json` program, wired in this workflow. It
+covers the sample, input/result/callback declarations and the reused benchmark
+helpers without workspace sibling `dist` dependencies. Runtime configuration
+parsing starts from `unknown`; private-shape JavaScript behavior is covered by
+the wired invariants. This source-only change records no executed validation
+or performance verdict.

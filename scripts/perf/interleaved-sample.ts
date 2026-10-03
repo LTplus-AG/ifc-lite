@@ -6,11 +6,48 @@ import { chromium } from '@playwright/test';
 import { writeFileSync, readFileSync } from 'node:fs';
 import { ViewerBenchmarkPage } from '../../tests/benchmark/viewer-benchmark-page.js';
 import { captureIdentity } from './interleaved-identity.mjs';
-import { LIMITS } from './interleaved-plan.mjs';
+import { LIMITS, immutableRef, FIXTURES } from './interleaved-plan.mjs';
+import type { SampleConfig, SampleResult } from './interleaved-types.js';
+import { isAbsolute } from 'node:path';
 
-const sample = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+function sampleConfig(value: unknown): SampleConfig {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('REFUSE: invalid sample configuration');
+  const fields = value as Record<string, unknown>;
+  const string = (key: string): string => {
+    const result = fields[key];
+    if (typeof result !== 'string' || !result) throw new Error(`REFUSE: invalid sample ${key}`);
+    return result;
+  };
+  const integer = (key: string): number => {
+    const result = fields[key];
+    if (typeof result !== 'number' || !Number.isInteger(result) || result < 0) throw new Error(`REFUSE: invalid sample ${key}`);
+    return result;
+  };
+  const arm = fields.arm, kind = fields.kind;
+  if ((arm !== 'base' && arm !== 'candidate') || (kind !== 'AA' && kind !== 'AB')) throw new Error('REFUSE: invalid arm/control');
+  const family = string('family'), path = string('path'), timeoutMs = integer('timeoutMs');
+  if (!FIXTURES.some(fixture => fixture.family === family && fixture.path === path && fixture.timeoutMs === timeoutMs)) throw new Error('REFUSE: non-protocol fixture');
+  const pair = integer('pair'), slot = integer('slot'), id = string('id'), file = string('file'), origin = string('origin');
+  if (pair > 5 || slot > 1 || kind !== (pair === 0 ? 'AA' : 'AB') || id !== `${family}-${pair}-${slot}-${arm}` || !isAbsolute(file)) throw new Error('REFUSE: invalid sample identity');
+  const expectedArm = pair === 0 ? 'base' : pair % 2 ? (slot === 0 ? 'base' : 'candidate') : (slot === 0 ? 'candidate' : 'base');
+  if (arm !== expectedArm) throw new Error('REFUSE: sample arm departs from fixed schedule');
+  const url = new URL(origin);
+  if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.pathname !== '/' || url.search || url.hash) throw new Error('REFUSE: invalid frozen origin');
+  const rawPaths: unknown = fields.defaultWasmPaths;
+  if (!Array.isArray(rawPaths) || !rawPaths.length) throw new Error('REFUSE: missing default WASM paths');
+  const defaultWasmPaths = rawPaths.map((item: unknown) => {
+    if (typeof item !== 'string' || !item.startsWith('/') || !item.endsWith('.wasm')) throw new Error('REFUSE: invalid WASM path');
+    return item;
+  });
+  const host = fields.hostBefore;
+  if (!host || typeof host !== 'object' || !('loadavg' in host) || typeof host.loadavg !== 'string') throw new Error('REFUSE: missing host receipt');
+  return { arm, kind, family, path, timeoutMs, pair, slot, id, file, origin,
+    revision: immutableRef(fields.revision), defaultWasmPaths, hostBefore: { loadavg: host.loadavg } };
+}
+const input: unknown = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const sample = sampleConfig(input);
 const output = process.argv[3];
-const row: Record<string, unknown> = { ...sample, status: 'started', startedAt: new Date().toISOString() };
+const row: SampleResult = { ...sample, status: 'started', startedAt: new Date().toISOString() };
 const logs: string[] = [], errors: string[] = [];
 const responseWitness: Array<{ url: string; status: number }> = [];
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
@@ -63,7 +100,9 @@ try {
   // Renderer-owned evidence, no native-GPU/FPS/pixel-identity verdict.
   const colorFrame = await page.evaluate(async () => {
     const hook = (globalThis as Record<string, unknown>).__ifc_lite_capture_color_frame__;
-    return typeof hook === 'function' ? await hook() as string | null : null;
+    const result: unknown = typeof hook === 'function' ? await hook() : null;
+    if (result !== null && typeof result !== 'string') throw new Error('REFUSE: unsupported color-frame callback result');
+    return result;
   });
   if (colorFrame?.startsWith('data:image/png;base64,')) {
     writeFileSync(`${output}.color.png`, Buffer.from(colorFrame.split(',')[1]!, 'base64'));

@@ -16,8 +16,12 @@ const command = (program, args, directory = root) => execFileSync(program, args,
 export async function verify(provenance) {
   for (const source of provenance.sources) await verifySource(source);
   for (const [path, hash] of Object.entries(provenance.files)) if (await fileHash(path) !== hash) throw new Error(`native frozen file changed: ${path}`);
-  if (!sameNativeFile(nativeFileIdentity(provenance.tools.rustup), provenance.tools.rustupFileIdentity)) {
-    throw new Error('native frozen rustup file identity changed');
+  for (const name of ['rustup', 'cargo', 'rustc']) {
+    if (!sameNativeFile(nativeFileIdentity(provenance.tools[name]), provenance.tools[`${name}FileIdentity`])
+      || provenance.files[provenance.tools[name]] !== provenance.tools[`${name}Sha256`]
+      || statSync(provenance.tools[name]).size !== provenance.tools[`${name}FileBytes`]) {
+      throw new Error(`native frozen ${name} file identity/hash binding changed`);
+    }
   }
   for (const resolution of Object.values(provenance.cargoShimResolutions)) await verifyCanonicalCargoResolution(resolution);
 }
@@ -56,7 +60,11 @@ async function toolFreeze(directories) {
     linkedLibraries[name] = await libraries(path, files);
   }
   for (const receipt of Object.values(cargoShimResolutions)) Object.assign(files, receipt.files);
-  tools.rustupFileIdentity = nativeFileIdentity(tools.rustup);
+  for (const name of ['rustup', 'cargo', 'rustc']) {
+    tools[`${name}FileIdentity`] = nativeFileIdentity(tools[name]);
+    tools[`${name}Sha256`] = files[tools[name]];
+    tools[`${name}FileBytes`] = statSync(tools[name]).size;
+  }
   const sysroot = realpathSync(command(tools.rustc, ['--print', 'sysroot'])); let count = 0;
   const walk = async (directory, depth = 0) => {
     if (depth > 32) throw new Error('native sysroot depth bound');

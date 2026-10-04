@@ -4,12 +4,12 @@
 // #6537 real sample-startup admission; no IFC, timing verdict or guard bypass.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { execute, compilerEnvironment } from './native-hosted-process.mjs';
+import { execute, executeStartupControl, compilerEnvironment } from './native-hosted-process.mjs';
 import { cargoArgs, freshnessLog } from './native-hosted-plan.mjs';
 import { repositoryNightlyChannel } from './native-hosted-prepare.mjs';
 import { nativeFileIdentity, sameNativeFile } from './native-file-identity.mjs';
@@ -46,6 +46,11 @@ try {
     tools.rustup = report.cargoShimResolution.after.cargo.realPath;
     report.shim = report.cargoShimResolution.after.cargo.commandPath;
     tools.rustupFileIdentity = nativeFileIdentity(tools.rustup);
+    for (const name of ['rustup', 'cargo', 'rustc']) {
+      tools[`${name}FileIdentity`] = nativeFileIdentity(tools[name]);
+      tools[`${name}Sha256`] = hash(readFileSync(tools[name]));
+      tools[`${name}FileBytes`] = statSync(tools[name]).size;
+    }
     report.tools = tools;
     report.frozenRustup = { path: tools.rustup, fileIdentity: tools.rustupFileIdentity,
       sha256: hash(readFileSync(tools.rustup)) };
@@ -59,7 +64,15 @@ try {
     report.sources = { probeSha256: hash(probe), manifestSha256: hash(manifest), exampleSha256: hash(example), sandbox };
     report.warm = await execute(['cargo', ...cargoArgs, '--offline'], sandbox, join(output, 'warm'), { tools, wallMs: 60000 });
     assert.equal(report.warm.status, 'complete', report.warm.reason); save();
-    // Cargo's real lock makes its no-op build visible to the 250ms monitor.
+    // Only this owned temp target's version cache is removed. The real Cargo
+    // must query the actual frozen rustc; no wrapper or compiler flags change.
+    const versionCache = join(sandbox, 'target/.rustc_info.json');
+    report.versionProbeControl = { versionCache, removed: false, observationPolicy: 'actual complete live ownership proof required; unobserved probe is refusal' };
+    try {
+      report.versionProbeControl.previousSha256 = hash(readFileSync(versionCache));
+      rmSync(versionCache); report.versionProbeControl.removed = true;
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    // Cargo's real lock exposes its no-op build to the startup-only 2ms monitor.
     // The lock holder is finite, owned and not a compiler. No source is changed.
     const lock = join(sandbox, 'target/profiling/.cargo-lock');
     const lockScript = 'import fcntl,sys,time\nf=open(sys.argv[1],"r+")\nfcntl.flock(f,fcntl.LOCK_EX)\nprint("locked",flush=True)\ntime.sleep(1.25)\n';
@@ -77,14 +90,17 @@ try {
       holder.once('close', code => { clearTimeout(timer); if (code !== 0) reject(new Error(`lock holder ${code}: ${lockError}`)); });
     });
     report.lockControl = { tool: '/usr/bin/python3', sourceSha256: hash(lockScript), holdMs: 1250, lock };
-    report.sample = await execute(['bash', 'scripts/perf/probe.sh', 'startup-control', '--iters', '5', '--json', '--fingerprint'],
+    report.sample = await executeStartupControl(['bash', 'scripts/perf/probe.sh', 'startup-control', '--iters', '5', '--json', '--fingerprint'],
       sandbox, join(output, 'sample'), { sample: true, tools, wallMs: 15000 });
     save();
+    assert.deepEqual(report.sample.observationPolicy, { scope: 'startup-control-only', intervalMs: 2 });
     const [lockExit, lockSignal] = await holderClosed;
     report.lockHolderExit = { code: lockExit, signal: lockSignal, stderr: lockError }; save();
     assert.equal(report.sample.status, 'complete', report.sample.reason);
     assert.equal(lockExit, 0, lockError);
     assert.ok(report.sample.cargoExceptions.length > 0, 'real Cargo freshness process must actually be observed and admitted');
+    assert.ok(report.sample.versionProbeExceptions.length > 0,
+      'actual Cargo version child was not witnessed; cannot qualify the new compiler-child admission');
     freshnessLog(readFileSync(report.sample.paths.stderr, 'utf8'));
     assert.equal(readFileSync(report.sample.paths.stdout, 'utf8'), 'canonical startup control executed\n');
     report.status = 'complete-real-startup-control';
@@ -105,6 +121,11 @@ try {
         sha256: hash(readFileSync(report.frozenRustup.path)) };
       assert.ok(sameNativeFile(actual.fileIdentity, report.frozenRustup.fileIdentity), 'frozen rustup file identity changed');
       assert.equal(actual.sha256, report.frozenRustup.sha256, 'frozen rustup executable bytes changed');
+      for (const name of ['rustup', 'cargo', 'rustc']) {
+        assert.equal(statSync(report.tools[name]).size, report.tools[`${name}FileBytes`], `frozen ${name} size changed`);
+        assert.ok(sameNativeFile(nativeFileIdentity(report.tools[name]), report.tools[`${name}FileIdentity`]), `frozen ${name} identity changed`);
+        assert.equal(hash(readFileSync(report.tools[name])), report.tools[`${name}Sha256`], `frozen ${name} bytes changed`);
+      }
       report.frozenRustupFinalVerification = { status: 'complete', ...actual };
     } catch (error) {
       report.frozenRustupFinalVerification = { status: 'refused', reason: String(error) };

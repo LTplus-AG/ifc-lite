@@ -2936,3 +2936,15 @@ prototype removing unused nested value trees on this evidence or revisit the
 rejected general constructor. A different worker capture must first establish
 substantial unused materialization on the critical path. This native opportunity
 screen is not a browser speedup or a measurement of indirect style decoding.
+
+### Native startup version-query observation (#6537)
+
+A canonical Cargo freshness check can spawn a short-lived compiler version query.
+The local dependency-free control now proves exact live ancestry and arguments,
+pins the observed executable files before hashing, and distinguishes final PID
+absence from reuse without requiring a completed query to stay alive. Normal
+benchmark sampling is unchanged; finer observation is confined to the startup
+control. Earlier missing-observation and final-liveness refusals are retained.
+The lesson is to certify contemporaneous provenance rather than prolonging the
+observed process. [The retained controls and inverse failures](evidence/native-version-query-6537/README.md)
+qualify local admission only; hosted model timing remains unqualified.

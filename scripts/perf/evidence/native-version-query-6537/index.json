@@ -1,0 +1,63 @@
+{
+  "scope": "Local dependency-free native startup correctness, not hosted/model/performance qualification",
+  "base": "9baab5249df8dbce2ae3f461ef9a95ba5d726f7e",
+  "qualifiedSourceFreeze": "native-version-child-source-v4.1/source-manifest.json",
+  "qualifiedSevenSources": [
+    {
+      "path": ".github/workflows/perf-native.yml",
+      "bytes": 4439,
+      "lines": 98,
+      "sha256": "e24785a3441ba8d0ac58b98939f062d70801cc40c1cda1674d4f817c0c7b78ac"
+    },
+    {
+      "path": "scripts/perf/native-hosted-prepare.mjs",
+      "bytes": 11652,
+      "lines": 150,
+      "sha256": "73a79db405d059159396dff3321b98051fe349735c4cf8c4a923d873585e5b60"
+    },
+    {
+      "path": "scripts/perf/native-hosted-process.mjs",
+      "bytes": 14682,
+      "lines": 213,
+      "sha256": "2ffa7650c2402aeebe190de8aff9af0d0d1968fe4e08c3412e7148bd33c6a892"
+    },
+    {
+      "path": "scripts/perf/native-startup-control.mjs",
+      "bytes": 9536,
+      "lines": 138,
+      "sha256": "67e5f0b781b6eee60540ca98ae89bbb735490452f9c1ac5fd38e398c1a287cd6"
+    },
+    {
+      "path": "scripts/perf/native-version-probe.mjs",
+      "bytes": 10125,
+      "lines": 150,
+      "sha256": "dc64c2f194bfeddbd565a77b6e9bdfc62d0489c9b125897fc09034b93ce10a28"
+    },
+    {
+      "path": "scripts/perf/native-version-probe.test.mjs",
+      "bytes": 12526,
+      "lines": 171,
+      "sha256": "25c0c93e9ca152eb3f9761f9cc6d9e097bae9e32bcadff04667de5b3ba47ded9"
+    },
+    {
+      "path": "scripts/perf/native-observation-policy.test.mjs",
+      "bytes": 3015,
+      "lines": 51,
+      "sha256": "8f4da4c156a17db9392d1e070365564510da22d1975d5d0cd9b20eb547d15870"
+    }
+  ],
+  "actualPriorRefusals": [
+    "explicit-orientation-hosted-native-remote-v1/artifacts/native-phase-37167463547-1/pair-0.json",
+    "native-version-child-validation-v2/startup-control/control.json",
+    "native-version-child-validation-v3/startup-control/control.json"
+  ],
+  "actualPositive": "native-version-child-validation-v4/startup-control/control.json",
+  "actualControlLogs": [
+    "native-version-child-validation-v4/normal-controls.log",
+    "native-version-child-validation-v4/pinned-hash-inverse.log",
+    "native-version-child-validation-v4/final-reuse-inverse.log",
+    "native-version-child-validation-v4/restored-controls.log"
+  ],
+  "independentRootReview": "root-tooling/6537-native-version-child-root-review-v5.json",
+  "archiveDoesNotExecuteCode": true
+}

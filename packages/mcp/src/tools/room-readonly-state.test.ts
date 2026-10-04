@@ -8,6 +8,7 @@ import { StepExporter } from '@ifc-lite/export';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import type { LoadedModel } from '../context.js';
 import type { CallToolResult } from '../protocol/index.js';
+import { createCachedHeadlessRoomGeometryProvider } from '../headless-room-geometry.js';
 import { liveToolSession } from '../test/live-tool-session.js';
 
 const wasm = new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url), available = existsSync(wasm);
@@ -91,4 +92,29 @@ it.skipIf(!available)('#6232 unavailable native Room runtime is a capability fai
     expect(result.structuredContent?.details).toEqual({reason:'NATIVE_RUNTIME_UNAVAILABLE'});
     expect(snapshot(model)).toEqual(before);
   } finally { model.backend.dispose(); }
+});
+
+for (const count of [1, 2]) it.skipIf(!available)(`#6232 / #6759 history-free placement edits invalidate native Room cache (${count} models)`, async () => {
+  const { registry } = await liveToolSession(count), model = registry.get(count === 1 ? 'alpha' : 'beta')!;
+  const peer = count === 2 ? registry.get('alpha')! : null, peerBefore = peer ? snapshot(peer) : null;
+  const cache = createCachedHeadlessRoomGeometryProvider();
+  const resolution = (loaded: LoadedModel) => ({ modelId: loaded.id, store: loaded.store, editor: loaded.backend.ensureEditor(), mutationView: loaded.backend.ensureEditor().getMutationView() });
+  const process = vi.spyOn(GeometryProcessor.prototype, 'process');
+  try {
+    if (peer) await cache.provide(resolution(peer), 42);
+    const first = await cache.provide(resolution(model), 42), calls = process.mock.calls.length;
+    expect(first.walls.length).toBeGreaterThan(0);
+    expect(await cache.provide(resolution(model), 42)).toBe(first);
+    expect(process).toHaveBeenCalledTimes(calls);
+    const view = resolution(model).mutationView, history = structuredClone(view.getMutations());
+    view.setPositionalAttribute(1231, 0, [{ real: 100 }, { real: 0 }, { real: 0 }], true);
+    expect(view.getMutations()).toEqual(history);
+    const after = await cache.provide(resolution(model), 42);
+    expect(process).toHaveBeenCalledTimes(calls + 1);
+    expect(after.walls).not.toEqual(first.walls);
+    expect(Math.max(...after.walls.flatMap(wall => wall.corners.map(point => point[0])))).toBeGreaterThan(90);
+    if (peer) { await cache.provide(resolution(peer), 42); expect(process).toHaveBeenCalledTimes(calls + 1); }
+    expect(peer ? snapshot(peer) : null).toEqual(peerBefore);
+    expect(view.getMutations()).toEqual(history);
+  } finally { cache.clear(); for (const loaded of registry.list()) registry.remove(loaded.id); }
 });

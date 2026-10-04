@@ -229,10 +229,11 @@ export class CopcLodController {
       return !r || r.stride > stride;
     });
     let added = 0;
-    this.requeue = (node) => {
+    const requeue = (node: CopcLodNode) => {
       const stride = this.keep.get(node.id);
       if (stride !== undefined && !queue.some(([queued]) => queued.id === node.id)) queue.push([node, stride]);
     };
+    this.requeue = requeue;
     const worker = async () => {
       while (queue.length > 0 && !signal.aborted) {
         const [node, stride] = queue.shift() as [CopcLodNode, number];
@@ -254,7 +255,9 @@ export class CopcLodController {
     try {
       await Promise.all(Array.from({ length: lanes }, worker));
     } finally {
-      this.requeue = null;
+      // A superseded pass unwinds after the newer one has armed its own
+      // requeue: only disarm our own.
+      if (this.requeue === requeue) this.requeue = null;
     }
     return added;
   }

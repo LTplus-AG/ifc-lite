@@ -288,6 +288,49 @@ describe('CopcLodController review fixes (#6880)', () => {
     assert.ok(sink.total() <= 1_200);
   });
 
+  it('a superseded pass finishing late does not disarm the new pass\'s requeue (#6880 merge review)', async () => {
+    // Same root + 8 children shape as above, but every read is held, so the
+    // superseded pass's lanes are still awaiting their reads when the new
+    // pass starts loading. When they unwind, the new pass must still requeue
+    // a fat keep-set node it evicts.
+    const rootPage: CopcHierarchyPage = { nodes: [{ key: { d: 0, x: 0, y: 0, z: 0 }, offset: 10, byteSize: 10, pointCount: 1_000 }], pages: [] };
+    for (const key of copcChildKeys({ d: 0, x: 0, y: 0, z: 0 })) rootPage.nodes.push({ key, offset: 10, byteSize: 10, pointCount: 1_000 });
+    const hierarchy = new CopcHierarchy();
+    hierarchy.addPage({ offset: 0, byteSize: 32 }, rootPage);
+    const tree = createCopcLodTree(hierarchy, INFO);
+    const hold: Deferred[] = [];
+    const { reader } = fakeReader(hierarchy, new Map(), { hold });
+    const sink = budgetSink(1_200);
+    const controller = new CopcLodController(tree, reader, sink.sink, {
+      pointBudget: 1_200,
+      pacer: new LodPacer({ initialPointsPerMs: 5, firstPassMs: 200, minFirstPassPoints: 1 }),
+      now: () => 0,
+      schedule: () => {},
+    });
+    const cam = camera([-300, 128, 128], [128, 128, 128], 1.0);
+    const first = controller.update(cam);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(hold.length > 0, 'the first pass has reads in flight');
+    const stale = hold.splice(0);
+    const second = controller.update(cam);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(hold.length > 0, 'the second pass is loading before the first unwinds');
+    // Finish the new view's first (root-only) pass; its full pass then holds
+    // child reads, and the fat root must be evicted to fit them.
+    hold.splice(0).forEach((d) => d.run());
+    for (let i = 0; i < 20 && hold.length === 0; i++) await new Promise((r) => setTimeout(r, 0));
+    assert.ok(hold.length > 0, 'the full pass is loading children');
+    // Only now does the superseded pass unwind.
+    stale.forEach((d) => d.run());
+    await first;
+    while (hold.length > 0 || !(await Promise.race([second.then(() => true), new Promise((r) => setTimeout(() => r(false), 0))]))) {
+      hold.splice(0).forEach((d) => d.run());
+    }
+    const ids = [...sink.resident.keys()].sort();
+    assert.ok(ids.includes('0-0-0-0'), `root must be resident, have ${ids.join(',')}`);
+    assert.equal(ids.length, 9);
+  });
+
   it('a pass with a failed node does not retire the old view and retries, bounded', async () => {
     // Fails on both passes of the first update (one read per pass), then works.
     const { controller, sink, scheduled, passes } = setup(400_000, {

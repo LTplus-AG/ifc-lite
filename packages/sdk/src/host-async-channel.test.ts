@@ -48,6 +48,18 @@ for (const channel of ['broadcast', 'port'] as const) {
       expect(await result).toEqual({ id: 'room', result: { indices: Uint32Array.of(1,2,3) } });
     } finally { wait.release(); connection.close(); }
   });
+  it(`${channel} channel reports an unclonable resolved result without timing out and remains usable (#6232 / #6760)`, async () => {
+    let calls = 0;
+    const backend = { store: { async roomCommand() { return ++calls === 1 ? { callback: () => {} } : { indices: Uint32Array.of(4, 5, 6) }; } }, subscribe: () => () => {} } as unknown as BimBackend;
+    const connection = connect(backend, channel);
+    try {
+      const refused = await connection.transport.send(request);
+      expect(refused.id).toBe(request.id);
+      expect(refused.error?.message).toMatch(/clone/i);
+      expect(refused.result).toBeUndefined();
+      expect(await connection.transport.send({ ...request, id: 'after-clone-refusal' })).toEqual({ id: 'after-clone-refusal', result: { indices: Uint32Array.of(4, 5, 6) } });
+    } finally { connection.close(); }
+  });
   it(`${channel} channel returns delayed rejection as the same error envelope used by sync dispatch (#6232)`, async () => {
     const wait = gate(), entered = gate();
     const failure = new Error('Native Room preparation refused');

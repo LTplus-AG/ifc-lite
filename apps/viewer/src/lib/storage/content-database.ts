@@ -6,9 +6,9 @@ import { IdbConnectionLifecycle } from '../../services/idb-connection.js';
 import { sameReportEvidence } from '../flow/report-provenance.js';
 import { announceContentChange } from './content-events.js';
 import { contentImportIdentity } from './content-import-identity.js';
+import { CONTENT_POLICIES, type ContentKind } from './content-kinds.js';
 
 const CONTENT_DATABASE = 'ifc-lite-user-content';
-export type ContentKind = 'validation' | 'comparison' | 'document' | 'assistant';
 export type ContentFailure = 'quota' | 'unavailable' | 'conflict' | 'invalid';
 export type ContentResult = { ok: true; revision: number } | { ok: false; reason: ContentFailure };
 export interface ContentRow {
@@ -99,7 +99,7 @@ export async function writeContent(kind: ContentKind, id: string, payload: unkno
     request.onsuccess = () => {
       const current = request.result as ContentRow | undefined;
       if ((current?.revision ?? 0) !== expected || (current?.deleted && payload !== null)) return;
-      if ((kind === 'validation' || kind === 'comparison') && current && payload !== null) {
+      if (CONTENT_POLICIES[kind].immutableEvidence && current && payload !== null) {
         const withoutName = (value: unknown): unknown => {
           if (!value || typeof value !== 'object') return value;
           const { name: _name, ...evidence } = value as Record<string, unknown>;

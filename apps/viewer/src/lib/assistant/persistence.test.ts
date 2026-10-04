@@ -10,7 +10,7 @@ import { captureEvidence } from './evidence';
 import { decodeConversation, assistantContent, type SavedConversation } from './persistence';
 import { createContentLibrary, initialContentStatus } from '../storage/content-library';
 import { contentTransaction, transactionDone, readContentRows } from '../storage/content-database';
-import { createContentBackup, parseContentBackup, importContentBackup } from '../storage/content-backup';
+import { createContentBackup, parseContentBackup, importContentBackup, preserveLegacyChange, readContentRecovery } from '../storage/content-backup';
 import { openConversation } from './library';
 import { useAssistant, cancelAssistant } from './conversation';
 import { sendAssistant } from './request';
@@ -36,6 +36,26 @@ beforeEach(async () => {
   localStorage.clear();
 });
 afterEach(() => cancelAssistant());
+
+test('later legacy assistant values are preserved without replaying over current committed turns (#6842)', async () => {
+  const entry = conversation(), content = library();
+  await content.initialize();
+  assert.equal(await content.put(entry.id, entry), true);
+  const legacy = JSON.stringify([{ ...entry, name: 'Older tab review', messages: [
+    { role: 'user', content: 'Different old question' }, { role: 'assistant', model: 'old-provider', content: 'Old explanation' },
+  ] }]);
+  localStorage.setItem(assistantContent.legacyKey, legacy);
+  await preserveLegacyChange(assistantContent.legacyKey, legacy);
+  await content.refresh();
+  assert.deepEqual(content.entries()[0].messages, entry.messages);
+  assert.equal(content.entries()[0].name, entry.name);
+  assert.equal(localStorage.getItem(assistantContent.legacyKey), legacy);
+  const recovery = await readContentRecovery();
+  assert.ok(recovery.some(row => row.key.startsWith(`${assistantContent.legacyKey}:later:`) && row.raw === legacy));
+  const rows = await readContentRows('assistant');
+  assert.equal(rows.length, 1);
+  assert.deepEqual(decodeConversation(rows[0].payload)?.messages, entry.messages);
+});
 
 // #6820: portable evidence never revives transient ownership/freshness objects.
 test('portable decoding rejects malformed turns and mismatched evidence and strips runtime fields', () => {

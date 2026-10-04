@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { contentTransaction, contentCreatedAt, transactionDone, requestValue, type ContentKind, type ContentRow, type MigrationRow, type RecoveryRow } from './content-database.js';
+import { contentTransaction, contentCreatedAt, transactionDone, requestValue, type ContentRow, type MigrationRow, type RecoveryRow } from './content-database.js';
+import type { ContentKind } from './content-kinds.js';
 
 export interface ContentDefinition<T extends { id: string }> {
   kind: ContentKind;

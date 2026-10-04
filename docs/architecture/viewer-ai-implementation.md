@@ -30,7 +30,7 @@ Publication acceptance uses a local test server, selected by the user. The user 
 | P03 | Partial | Five discussion projections exist, including native load diagnostics. Complete immutable facts/identity contracts, historical adapters, overlays and duplicate/missing GlobalId coverage for every source. |
 | P04 | Partial | Native Flow patch review exists. Complete typed action families, grants, revision checks and durable effect accounting for all proposed operations. |
 | P05 | Partial | Contextual shell and conversation controls exist. Complete task contexts, common artifact/proposal renderers, accessibility/locale coverage and script migration. |
-| P06 | Partial | Conversations reuse native content libraries. Add proposals, receipts, grouping policies, review workspaces and outbox; full import/corruption/concurrency acceptance. |
+| P06 | Partial | Conversations reuse native content libraries; shared kind/policy/codec registry and exhaustive native hosts prevent skipped recovery paths. Add proposals, receipts, grouping policies, review workspaces and outbox; full import/corruption/concurrency acceptance. |
 | P07 | Partial explanation only | Conversational IDS/rule/document authoring with native validation, unsupported requirement retention and real check runs. |
 | P08 | Initial integration | Complete all registered analysis adapters, structured claims/evidence, native narrative blocks, edited-document refresh reconciliation and multilingual preview/PDF verification. |
 | P09 | Partial graph editing | Complete graph creation/debugging with actual run diagnostics, tracking branches and real-fixture authoring/rerun acceptance. |

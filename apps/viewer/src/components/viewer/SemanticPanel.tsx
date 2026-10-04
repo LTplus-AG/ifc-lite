@@ -45,7 +45,7 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
   const [mappingId, setMappingId] = useState(PROJECTION_MAPPINGS[0].id);
   const [policy, setPolicy] = useState<ConflictPolicy>('error');
   const sourceInput = { mode, payload, endpoint, host, query, mapping, bearer: bearer || undefined, relayProvider: relayProvider || undefined };
-  useEffect(() => { setPlan(undefined); setRecordPage(0); }, [pilot.document, pilot.profile, pilot.revisions, scope]);
+  useEffect(() => { setPlan(undefined); setRecordPage(0); }, [pilot.document, pilot.profile, pilot.revisions, pilot.strategy, pilot.uriConfig, scope]);
   const models = useViewerStore(s => s.models);
   const mutationVersion = useViewerStore(s => s.mutationVersion);
   const selectedIds = useViewerStore(s => s.selectedEntityIds);
@@ -91,7 +91,7 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
       <label className="block text-sm">{t('semantic.relay')}<input className={control} value={relayProvider} onChange={e => setRelayProvider(e.target.value)} /></label>
     </details>}
     {['json', 'sparql', 'construct'].includes(mode) && <button className={button} disabled={pilot.busy || !host || !endpoint} onClick={() => void pilot.related(sourceInput)}>{t('semantic.querySelected')}</button>}
-    <SemanticIdentityControls strategy={pilot.strategy} onStrategy={pilot.setStrategy} links={pilot.links} onLinks={pilot.setLinks} profile={pilot.profile} identityFields={pilot.identityFields} onIdentityFields={pilot.setIdentityFields} onError={pilot.setError} />
+    <SemanticIdentityControls uriConfig={pilot.uriConfig} onUriConfig={pilot.setUriConfig} strategy={pilot.strategy} onStrategy={pilot.setStrategy} links={pilot.links} onLinks={pilot.setLinks} profile={pilot.profile} identityFields={pilot.identityFields} onIdentityFields={pilot.setIdentityFields} onError={pilot.setError} />
     <SemanticProfileControls profile={pilot.profile} onProfile={pilot.setProfile} onError={pilot.setError} />
     <details><summary>{t('semantic.workspace')}</summary>
       <button className={button} onClick={pilot.saveWorkspace}>{t('semantic.saveWorkspace')}</button>

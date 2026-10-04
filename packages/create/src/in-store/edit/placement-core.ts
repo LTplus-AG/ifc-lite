@@ -203,6 +203,12 @@ export function resolvePlacementChain(
   return { localPlacementId, axisPlacementId, cartesianPointId, coordinates };
 }
 
+/** Pure preview shared by atomic preflight and the placement writer. */
+export function translatedCoordinates(coordinates: readonly number[], delta: readonly number[]): [number, number, number] | null {
+  const next: [number, number, number] = [coordinates[0] + delta[0], coordinates[1] + delta[1], coordinates[2] + delta[2]];
+  return delta.every(Number.isFinite) && next.every(Number.isFinite) ? next : null;
+}
+
 export type TranslateResult =
   | { ok: true; oldCoordinates: [number, number, number]; newCoordinates: [number, number, number] }
   | { ok: false; reason: string };
@@ -229,8 +235,8 @@ export function translateProduct(
         'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint chain',
     };
   }
-  const [x, y, z] = chain.coordinates;
-  const next: [number, number, number] = [x + delta[0], y + delta[1], z + delta[2]];
+  const next = translatedCoordinates(chain.coordinates, delta);
+  if (!next) return { ok: false, reason: 'Placement translation overflow: derived coordinates must be finite' };
   editor.setPositionalAttribute(chain.cartesianPointId, 0, next);
   return { ok: true, oldCoordinates: chain.coordinates, newCoordinates: next };
 }
@@ -255,6 +261,7 @@ export function setProductPosition(
         'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint chain',
     };
   }
+  if (!position.every(Number.isFinite)) return { ok: false, reason: 'Placement coordinates must be finite' };
   editor.setPositionalAttribute(chain.cartesianPointId, 0, position);
   return { ok: true, oldCoordinates: chain.coordinates, newCoordinates: position };
 }
@@ -352,6 +359,7 @@ export function rotateProductYaw(
     Math.sin(newYaw),
     state.refDirection[2],
   ];
+  if (!Number.isFinite(newYaw) || !newRatios.every(Number.isFinite)) return { ok: false, reason: 'Placement rotation overflow: derived direction must be finite' };
   editor.setPositionalAttribute(state.refDirectionId, 0, newRatios);
   return { ok: true, oldYawZ: state.yawZ, newYawZ: newYaw, newRefDirection: newRatios };
 }

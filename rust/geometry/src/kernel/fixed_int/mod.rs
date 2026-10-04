@@ -44,7 +44,7 @@ use num_traits::{
 };
 
 mod mul;
-use mul::{mul_full, mul_low};
+use mul::{mul_full, mul_low, mul_low_magnitude};
 
 /// Little-endian, two's-complement fixed-width signed integer with `K` u64
 /// limbs (`self.0[0]` is the least-significant limb; the sign bit is bit 63 of
@@ -220,7 +220,7 @@ fn checked_mul_limbs<const K: usize>(a: &FixedInt<K>, b: &FixedInt<K>) -> Option
 
     if la + lb <= w - 1 {
         // Fast-accept: provably fits.
-        let lo = mul_low(&ma, &mb);
+        let lo = mul_low_magnitude(&ma, &mb, la, lb);
         let out = if neg { negate(&lo) } else { lo };
         return Some(FixedInt(out));
     }

@@ -1042,6 +1042,12 @@ importers:
       '@ifc-lite/encoding':
         specifier: workspace:^
         version: link:../encoding
+      '@ifc-lite/export':
+        specifier: workspace:^
+        version: link:../export
+      '@ifc-lite/geometry':
+        specifier: workspace:^
+        version: link:../geometry
       '@ifc-lite/mutations':
         specifier: workspace:^
         version: link:../mutations
@@ -1049,9 +1055,6 @@ importers:
         specifier: workspace:^
         version: link:../parser
     devDependencies:
-      '@ifc-lite/export':
-        specifier: workspace:^
-        version: link:../export
       '@ifc-lite/wasm':
         specifier: workspace:^
         version: link:../wasm

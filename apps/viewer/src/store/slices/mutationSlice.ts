@@ -1565,7 +1565,7 @@ export const createMutationSlice: StateCreator<
   },
 
   splitLinearElementAtDistance: (modelId, expressId, distanceFromStart) =>
-    splitLinear(get, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, distanceFromStart),
+    splitLinear(get, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, distanceFromStart, api),
 
   readSlabFootprint: (modelId, expressId) => {
     const ctx = resolveEditReadContext(get, set, modelId);

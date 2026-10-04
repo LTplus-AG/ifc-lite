@@ -3,14 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Shared opaque document-table palette for preview and every PDF header (#6489, #6543). */
-import { isRgbColor, contrastRatio } from './color-contrast';
+import { isRgbColor, contrastRatio, rgbChannels } from './color-contrast';
 
 export interface TableHeaderStyle { backgroundColor: string; textColor: string }
 export const DEFAULT_TABLE_HEADER_BACKGROUND = '#334155';
 
 /** Opaque black or white, whichever of the two meets the higher WCAG contrast on `background` (`#RRGGBB`). */
 export function readableInkOn(background: string): '#000000' | '#ffffff' {
-  const rgb = [1, 3, 5].map((start) => Number.parseInt(background.slice(start, start + 2), 16) / 255);
+  const rgb = rgbChannels(background);
   return contrastRatio(rgb, [0, 0, 0]) >= contrastRatio(rgb, [1, 1, 1]) ? '#000000' : '#ffffff';
 }
 

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0-windows7.0": {
+      "Autodesk.DataExchange": {
+        "type": "Direct",
+        "requested": "[8.0.0, )",
+        "resolved": "8.0.0",
+        "contentHash": "SYX3U6vZk8xfRaxMiGkI0CUZo+baGh4Ga+p1fVa6UBig++qM8AwyckGv48nnaqIBA8SJrTNQs7mZYM7YGn5xeg==",
+        "dependencies": {
+          "System.Drawing.Common": "8.0.0"
+        }
+      },
+      "Microsoft.Win32.SystemEvents": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "9opKRyOKMCi2xJ7Bj7kxtZ1r9vbzosMvRrdEhVhDz8j8MoBGgB+WmC94yH839NPH+BclAjtQ/pyagvi/8gDLkw=="
+      },
+      "System.Drawing.Common": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "JkbHJjtI/dWc5dfmEdJlbe3VwgZqCkZRtfuWFh5GOv0f+gGCfBtzMpIVkmdkj2AObO9y+oiOi81UGwH3aBYuqA==",
+        "dependencies": {
+          "Microsoft.Win32.SystemEvents": "8.0.0"
+        }
+      }
+    }
+  }
+}

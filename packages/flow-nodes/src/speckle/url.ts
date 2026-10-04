@@ -36,7 +36,14 @@ export type SpeckleTarget =
 const SEGMENT = /^[A-Za-z0-9_-]+$/;
 
 function segment(value: string | undefined, what: string, url: string): string {
-  const v = value === undefined ? '' : decodeURIComponent(value);
+  let v: string;
+  try {
+    v = value === undefined ? '' : decodeURIComponent(value);
+  } catch {
+    // A malformed percent-escape is not a usable id; refuse it by name below
+    // rather than letting a bare URIError escape the parser's contract.
+    v = '';
+  }
   if (!SEGMENT.test(v)) throw new Error(`speckle.receive: "${url}" has no usable ${what}`);
   return v;
 }

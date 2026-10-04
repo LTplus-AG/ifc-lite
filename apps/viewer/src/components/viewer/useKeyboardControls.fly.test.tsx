@@ -4,11 +4,12 @@
 
 /**
  * #4868 review: in Walk mode, hold W and then press the right button. The
- * keyboard controller already holds W and keeps calling `moveFirstPerson`,
- * while the fly controller (which reads the same key) starts translating the
- * same camera, so the two speeds add up instead of flying at the selected fly
- * speed along the look direction. The keyboard movement loop has to stand
- * down while a flight is live, and pick up again once it ends.
+ * walk controller already holds W and keeps moving the camera, while the fly
+ * controller (which reads the same key) starts translating the same camera,
+ * so the two speeds add up instead of flying at the selected fly speed along
+ * the look direction. The walk controller (and, outside Walk mode, the
+ * arrow-key pan loop) has to stand down while a flight is live, and pick up
+ * again once it ends.
  */
 
 import '@/test/setup-dom.js';
@@ -19,16 +20,27 @@ import { useRef } from 'react';
 import { render, cleanup } from '@/test/render.js';
 import { useKeyboardControls, type UseKeyboardControlsParams } from './useKeyboardControls.js';
 import { setFlySpeedState } from './flySpeedStore.js';
+import { useViewerStore } from '@/store';
 
 interface Moves { walk: number; pan: number }
 
 function Harness(props: { tool: string; moves: Moves }) {
+  const pose = { position: { x: 0, y: 1.6, z: 0 }, target: { x: 0, y: 1.6, z: 5 } };
+  // An empty scene: the walker stands on an invisible floor at its spawn height.
+  const scene = {
+    getAllMeshDataExpressIds: () => [], getBatchedMeshes: () => [], getMeshes: () => [], getInstancedEntityCount: () => 0,
+  };
   const rendererRef = useRef({
     getCamera: () => ({
-      moveFirstPerson: () => { props.moves.walk++; },
+      setPosition: (x: number, y: number, z: number) => { pose.position = { x, y, z }; props.moves.walk++; },
+      setTarget: (x: number, y: number, z: number) => { pose.target = { x, y, z }; },
+      getPosition: () => ({ ...pose.position }),
+      getTarget: () => ({ ...pose.target }),
       pan: () => { props.moves.pan++; },
+      stopInertia: () => {},
       getRotation: () => ({ azimuth: 0, elevation: 0 }),
     }),
+    getScene: () => scene,
     requestRender: () => {},
   } as unknown as UseKeyboardControlsParams['rendererRef']['current']);
 
@@ -62,15 +74,19 @@ describe('useKeyboardControls while a right-button flight is live (#4868)', () =
   afterEach(() => {
     setFlySpeedState({ active: false });
     cleanup();
+    useViewerStore.setState({ activeTool: 'select' });
   });
 
   for (const [tool, k, channel] of [['walk', 'w', 'walk'], ['select', 'ArrowUp', 'pan']] as const) {
     it(`${tool} tool: a held ${k} stops moving the camera while flying, and resumes after`, async () => {
       const moves: Moves = { walk: 0, pan: 0 };
+      useViewerStore.setState({ activeTool: tool });
       render(<Harness tool={tool} moves={moves} />);
+      await frames(); // let walk mode set the walker down first: that write is not W's
+      const idle = moves[channel];
       key('keydown', k); // held BEFORE the right press, so fly never got to swallow it
       await frames();
-      assert.ok(moves[channel] > 0, `precondition: a held ${k} moves the camera`);
+      assert.ok(moves[channel] > idle, `precondition: a held ${k} moves the camera`);
 
       setFlySpeedState({ active: true }); // right button pressed: fly owns the camera
       await frames();

@@ -1,0 +1,252 @@
+{
+  "rootSource": "6fcee10246506226f26fcb4381fecdb75a7869eb",
+  "owningLeaves": [
+    "764725a901ef0f2b4ef76ae833defd232a5a83a1",
+    "9797bb18b4768c0ab68eb43b618a5e240aa2c968",
+    "a3fac5a61cfca27fb10bdc4250b6fce2d601f695"
+  ],
+  "boundedFixtureOrderCommit": "032ff051fd53ff9e8a8495a31e2ad46fcd29982c",
+  "published": false,
+  "rows": [
+    {
+      "pr": 6759,
+      "old": "bb3cccbbed934bae9d6fb258d1ef0d77db7ab426",
+      "head": "032ff051fd53ff9e8a8495a31e2ad46fcd29982c",
+      "tree": "c20f9bf5698417926a3fa85db7f39e094e6a6334",
+      "actualMain": "2e2f65a66e1375ef6cc52b8a310526de1a36e1a0",
+      "cleanActualMainComposition": true,
+      "changedPaths": [
+        ".changeset/room-detach-cleanup.md",
+        ".changeset/room-overlay-revision.md",
+        ".changeset/room-query-review.md",
+        "docs/guide/mutations.md",
+        "packages/mcp/README.md",
+        "packages/mcp/src/headless-room-geometry.ts",
+        "packages/mcp/src/server-detach-native.test.ts",
+        "packages/mcp/src/server.ts",
+        "packages/mcp/src/session-cleanup.ts",
+        "packages/mcp/src/tools/room-preparation-errors.test.ts",
+        "packages/mcp/src/tools/room-readonly-state.test.ts",
+        "packages/mutations/src/mutable-overlay-state.ts",
+        "packages/mutations/src/mutable-property-view.ts",
+        "packages/sdk/src/store-room-command.test.ts",
+        "packages/sdk/src/store-room-command.ts"
+      ],
+      "changedPathsIdenticalRoot": [
+        ".changeset/room-detach-cleanup.md",
+        ".changeset/room-overlay-revision.md",
+        ".changeset/room-query-review.md",
+        "packages/mcp/README.md",
+        "packages/mcp/src/server-detach-native.test.ts",
+        "packages/mcp/src/server.ts",
+        "packages/mcp/src/session-cleanup.ts",
+        "packages/mcp/src/tools/room-preparation-errors.test.ts",
+        "packages/mutations/src/mutable-overlay-state.ts",
+        "packages/sdk/src/store-room-command.test.ts",
+        "packages/sdk/src/store-room-command.ts"
+      ],
+      "rootDifferences": [
+        "docs/guide/mutations.md",
+        "packages/mcp/src/headless-room-geometry.ts",
+        "packages/mcp/src/tools/room-readonly-state.test.ts",
+        "packages/mutations/src/mutable-property-view.ts"
+      ],
+      "apiUnchanged": true,
+      "oldOwnPatchSha256": "fedb4e83c4c7819487e1108d1f3320e00a95f94eb438d98be4dc5bd30b185c00",
+      "newOwnPatchSha256": "a0793bce4fbb116bfa16d0b113cb6cf0a2b7496a905fdde6d820ee870a007bd9",
+      "ownPatchIdentical": false,
+      "ownPatchChangedPaths": [
+        ".changeset/room-detach-cleanup.md",
+        ".changeset/room-overlay-revision.md",
+        ".changeset/room-query-review.md",
+        "docs/guide/mutations.md",
+        "packages/mcp/README.md",
+        "packages/mcp/src/headless-room-geometry.ts",
+        "packages/mcp/src/server-detach-native.test.ts",
+        "packages/mcp/src/server.ts",
+        "packages/mcp/src/session-cleanup.ts",
+        "packages/mcp/src/tools/room-preparation-errors.test.ts",
+        "packages/mcp/src/tools/room-readonly-state.test.ts",
+        "packages/mutations/src/mutable-overlay-state.ts",
+        "packages/mutations/src/mutable-property-view.ts",
+        "packages/sdk/src/store-room-command.test.ts",
+        "packages/sdk/src/store-room-command.ts"
+      ],
+      "oldParent": "2e2f65a66e1375ef6cc52b8a310526de1a36e1a0",
+      "newParent": "2e2f65a66e1375ef6cc52b8a310526de1a36e1a0",
+      "changedBlobs": {
+        ".changeset/room-detach-cleanup.md": "549a8ead5b7d3e7203c1ab414c3c164601ecfe4d",
+        ".changeset/room-overlay-revision.md": "a51c991bebb24fc7228d3a7eef29346f27a16bde",
+        ".changeset/room-query-review.md": "c18457c6a614b2ff7e84701e7739a469f0c6778b",
+        "docs/guide/mutations.md": "52157f85ef57bd604943e5464aa41f9fa539ef61",
+        "packages/mcp/README.md": "a72652a6cce36a6cd12fdd57db089b32c9a45c97",
+        "packages/mcp/src/headless-room-geometry.ts": "0a6105450644dbdc1f93bda8c78b467743757dd5",
+        "packages/mcp/src/server-detach-native.test.ts": "814d9feb8154ffa45912335a3191b2c1c9b40ab2",
+        "packages/mcp/src/server.ts": "289fdfaa3274fedb3d8a355778b8d01ba845a409",
+        "packages/mcp/src/session-cleanup.ts": "6a7635704ddf97ff70ee606e35c7ccc7e1a3dbb9",
+        "packages/mcp/src/tools/room-preparation-errors.test.ts": "e6e618d102de909454f42c4f9ec7306e0db0f9e9",
+        "packages/mcp/src/tools/room-readonly-state.test.ts": "f9d74d1242ba311907d0dace2d243a01c6916134",
+        "packages/mutations/src/mutable-overlay-state.ts": "40c8f2b17ee46c4c97263a388c1adab4e6c15250",
+        "packages/mutations/src/mutable-property-view.ts": "b301f44b065f9f68981dfd4a58f7650aea372216",
+        "packages/sdk/src/store-room-command.test.ts": "18bd9c06f5f30dcf6f8c7f5a34dee929fd761d18",
+        "packages/sdk/src/store-room-command.ts": "d3d8074caad78170079909b9f1c9cd537ec0f3df"
+      }
+    },
+    {
+      "pr": 6760,
+      "old": "39866ab7e71762956a484df8690ac6e732193ba0",
+      "head": "bffa52216d0ebf274ef1e3121c23f4f256a02b8c",
+      "tree": "3a054c63631f5dd61d10135d59bce694e106fec8",
+      "actualMain": "2e2f65a66e1375ef6cc52b8a310526de1a36e1a0",
+      "cleanActualMainComposition": true,
+      "changedPaths": [
+        ".changeset/room-detach-cleanup.md",
+        ".changeset/room-overlay-revision.md",
+        ".changeset/room-query-review.md",
+        "docs/guide/mutations.md",
+        "packages/mcp/README.md",
+        "packages/mcp/src/headless-room-geometry.ts",
+        "packages/mcp/src/server-detach-native.test.ts",
+        "packages/mcp/src/server.ts",
+        "packages/mcp/src/session-cleanup.ts",
+        "packages/mcp/src/tools/room-preparation-errors.test.ts",
+        "packages/mcp/src/tools/room-readonly-state.test.ts",
+        "packages/mutations/src/mutable-overlay-state.ts",
+        "packages/mutations/src/mutable-property-view.ts",
+        "packages/sdk/src/store-room-command.test.ts",
+        "packages/sdk/src/store-room-command.ts"
+      ],
+      "changedPathsIdenticalRoot": [
+        ".changeset/room-detach-cleanup.md",
+        ".changeset/room-overlay-revision.md",
+        ".changeset/room-query-review.md",
+        "docs/guide/mutations.md",
+        "packages/mcp/README.md",
+        "packages/mcp/src/server-detach-native.test.ts",
+        "packages/mcp/src/server.ts",
+        "packages/mcp/src/session-cleanup.ts",
+        "packages/mcp/src/tools/room-preparation-errors.test.ts",
+        "packages/mutations/src/mutable-overlay-state.ts",
+        "packages/mutations/src/mutable-property-view.ts",
+        "packages/sdk/src/store-room-command.test.ts",
+        "packages/sdk/src/store-room-command.ts"
+      ],
+      "rootDifferences": [
+        "packages/mcp/src/headless-room-geometry.ts",
+        "packages/mcp/src/tools/room-readonly-state.test.ts"
+      ],
+      "apiUnchanged": true,
+      "oldOwnPatchSha256": "07d16e0ff65e4fa8254dabb8bf27b8fbf7cce206f69f535f979752e8b8150e81",
+      "newOwnPatchSha256": "024900ce8c861058e12655ae36be9f51a801984733ebed92fc63a0541bef38b8",
+      "ownPatchIdentical": false,
+      "ownPatchChangedPaths": [
+        "docs/guide/mutations.md",
+        "packages/mutations/src/mutable-property-view.ts"
+      ],
+      "oldParent": "bb3cccbbed934bae9d6fb258d1ef0d77db7ab426",
+      "newParent": "032ff051fd53ff9e8a8495a31e2ad46fcd29982c",
+      "changedBlobs": {
+        ".changeset/room-detach-cleanup.md": "549a8ead5b7d3e7203c1ab414c3c164601ecfe4d",
+        ".changeset/room-overlay-revision.md": "a51c991bebb24fc7228d3a7eef29346f27a16bde",
+        ".changeset/room-query-review.md": "c18457c6a614b2ff7e84701e7739a469f0c6778b",
+        "docs/guide/mutations.md": "069d5d4e6779e6b7cc08dee7642673c3bdce4310",
+        "packages/mcp/README.md": "a72652a6cce36a6cd12fdd57db089b32c9a45c97",
+        "packages/mcp/src/headless-room-geometry.ts": "0a6105450644dbdc1f93bda8c78b467743757dd5",
+        "packages/mcp/src/server-detach-native.test.ts": "814d9feb8154ffa45912335a3191b2c1c9b40ab2",
+        "packages/mcp/src/server.ts": "289fdfaa3274fedb3d8a355778b8d01ba845a409",
+        "packages/mcp/src/session-cleanup.ts": "6a7635704ddf97ff70ee606e35c7ccc7e1a3dbb9",
+        "packages/mcp/src/tools/room-preparation-errors.test.ts": "e6e618d102de909454f42c4f9ec7306e0db0f9e9",
+        "packages/mcp/src/tools/room-readonly-state.test.ts": "f9d74d1242ba311907d0dace2d243a01c6916134",
+        "packages/mutations/src/mutable-overlay-state.ts": "40c8f2b17ee46c4c97263a388c1adab4e6c15250",
+        "packages/mutations/src/mutable-property-view.ts": "741b3db92a258c759d9045b1566e221dff59f7bf",
+        "packages/sdk/src/store-room-command.test.ts": "18bd9c06f5f30dcf6f8c7f5a34dee929fd761d18",
+        "packages/sdk/src/store-room-command.ts": "d3d8074caad78170079909b9f1c9cd537ec0f3df"
+      },
+      "boundedContextProof": {
+        "docs/guide/mutations.md": {
+          "addedRemovedLinesIdentical": true,
+          "reason": "inherited revision helper extraction and documentation insertion shift own-history hunk positions/context"
+        },
+        "packages/mutations/src/mutable-property-view.ts": {
+          "addedRemovedLinesIdentical": true,
+          "reason": "inherited revision helper extraction and documentation insertion shift own-history hunk positions/context"
+        }
+      }
+    },
+    {
+      "pr": 6761,
+      "old": "99d181efd48c3569dcddd545b3acf1365d89048e",
+      "head": "59f42c7b81dfa1833daa6be055c6dea4e0c038ee",
+      "tree": "7d103068416d5ddc6694b5eae85c95e06aa853e6",
+      "actualMain": "2e2f65a66e1375ef6cc52b8a310526de1a36e1a0",
+      "cleanActualMainComposition": true,
+      "changedPaths": [
+        ".changeset/room-detach-cleanup.md",
+        ".changeset/room-overlay-revision.md",
+        ".changeset/room-query-review.md",
+        "docs/guide/mutations.md",
+        "packages/mcp/README.md",
+        "packages/mcp/src/headless-room-geometry.ts",
+        "packages/mcp/src/server-detach-native.test.ts",
+        "packages/mcp/src/server.ts",
+        "packages/mcp/src/session-cleanup.ts",
+        "packages/mcp/src/tools/room-preparation-errors.test.ts",
+        "packages/mcp/src/tools/room-readonly-state.test.ts",
+        "packages/mutations/src/mutable-overlay-state.ts",
+        "packages/mutations/src/mutable-property-view.ts",
+        "packages/sdk/src/store-room-command.test.ts",
+        "packages/sdk/src/store-room-command.ts"
+      ],
+      "changedPathsIdenticalRoot": [
+        ".changeset/room-detach-cleanup.md",
+        ".changeset/room-overlay-revision.md",
+        ".changeset/room-query-review.md",
+        "docs/guide/mutations.md",
+        "packages/mcp/README.md",
+        "packages/mcp/src/headless-room-geometry.ts",
+        "packages/mcp/src/server-detach-native.test.ts",
+        "packages/mcp/src/server.ts",
+        "packages/mcp/src/session-cleanup.ts",
+        "packages/mcp/src/tools/room-preparation-errors.test.ts",
+        "packages/mcp/src/tools/room-readonly-state.test.ts",
+        "packages/mutations/src/mutable-overlay-state.ts",
+        "packages/mutations/src/mutable-property-view.ts",
+        "packages/sdk/src/store-room-command.test.ts",
+        "packages/sdk/src/store-room-command.ts"
+      ],
+      "rootDifferences": [],
+      "apiUnchanged": true,
+      "oldOwnPatchSha256": "29ddc9664ec2949f9cc39687dcf848d12dcee2c35904a7daefcf280b371c3f6f",
+      "newOwnPatchSha256": "8b5a1f1bb3d6ee7a590ea7cb7b6a1ae49bcf511b524a2b3fc96700a1e027a484",
+      "ownPatchIdentical": false,
+      "ownPatchChangedPaths": [
+        "packages/mcp/src/headless-room-geometry.ts",
+        "packages/mcp/src/tools/room-readonly-state.test.ts"
+      ],
+      "oldParent": "39866ab7e71762956a484df8690ac6e732193ba0",
+      "newParent": "bffa52216d0ebf274ef1e3121c23f4f256a02b8c",
+      "changedBlobs": {
+        ".changeset/room-detach-cleanup.md": "549a8ead5b7d3e7203c1ab414c3c164601ecfe4d",
+        ".changeset/room-overlay-revision.md": "a51c991bebb24fc7228d3a7eef29346f27a16bde",
+        ".changeset/room-query-review.md": "c18457c6a614b2ff7e84701e7739a469f0c6778b",
+        "docs/guide/mutations.md": "069d5d4e6779e6b7cc08dee7642673c3bdce4310",
+        "packages/mcp/README.md": "a72652a6cce36a6cd12fdd57db089b32c9a45c97",
+        "packages/mcp/src/headless-room-geometry.ts": "5df7bc53819933f0162c50f6ac15b555bff8809c",
+        "packages/mcp/src/server-detach-native.test.ts": "814d9feb8154ffa45912335a3191b2c1c9b40ab2",
+        "packages/mcp/src/server.ts": "289fdfaa3274fedb3d8a355778b8d01ba845a409",
+        "packages/mcp/src/session-cleanup.ts": "6a7635704ddf97ff70ee606e35c7ccc7e1a3dbb9",
+        "packages/mcp/src/tools/room-preparation-errors.test.ts": "e6e618d102de909454f42c4f9ec7306e0db0f9e9",
+        "packages/mcp/src/tools/room-readonly-state.test.ts": "2ee8c71701ad6ac06035d9129263005d85f5dae3",
+        "packages/mutations/src/mutable-overlay-state.ts": "40c8f2b17ee46c4c97263a388c1adab4e6c15250",
+        "packages/mutations/src/mutable-property-view.ts": "741b3db92a258c759d9045b1566e221dff59f7bf",
+        "packages/sdk/src/store-room-command.test.ts": "18bd9c06f5f30dcf6f8c7f5a34dee929fd761d18",
+        "packages/sdk/src/store-room-command.ts": "d3d8074caad78170079909b9f1c9cd537ec0f3df"
+      },
+      "boundedIntegrationProof": {
+        "provider": "approved Room-only classifier wrapper/revision carried around unchanged current withHeadlessGeometry; exact new blob equals root6fcee",
+        "nativeHelper": "byte-unchanged from published99d",
+        "runtimeFaultControl": "existing Room+Align init classification test retained; inherited new revision controls change hunk context in same test file"
+      }
+    }
+  ]
+}

@@ -1,0 +1,427 @@
+{
+  "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/compare/8ab47142562a79862df6d14700a39723351f00df...a0f7cfa07fc7a220b93e316c1523536859a808c5",
+  "html_url": "https://github.com/LTplus-AG/ifc-lite/compare/8ab47142562a79862df6d14700a39723351f00df...a0f7cfa07fc7a220b93e316c1523536859a808c5",
+  "permalink_url": "https://github.com/LTplus-AG/ifc-lite/compare/LTplus-AG:8ab4714...LTplus-AG:a0f7cfa",
+  "diff_url": "https://github.com/LTplus-AG/ifc-lite/compare/8ab47142562a79862df6d14700a39723351f00df...a0f7cfa07fc7a220b93e316c1523536859a808c5.diff",
+  "patch_url": "https://github.com/LTplus-AG/ifc-lite/compare/8ab47142562a79862df6d14700a39723351f00df...a0f7cfa07fc7a220b93e316c1523536859a808c5.patch",
+  "base_commit": {
+    "sha": "8ab47142562a79862df6d14700a39723351f00df",
+    "node_id": "C_kwDOQ3UF-9oAKDhhYjQ3MTQyNTYyYTc5ODYyZGY2ZDE0NzAwYTM5NzIzMzUxZjAwZGY",
+    "commit": {
+      "author": {
+        "name": "Louis Tr\u00fcmpler",
+        "email": "78563314+louistrue@users.noreply.github.com",
+        "date": "2026-10-04T09:51:18Z"
+      },
+      "committer": {
+        "name": "GitHub",
+        "email": "noreply@github.com",
+        "date": "2026-10-04T09:51:18Z"
+      },
+      "message": "Merge pull request #6806 from LTplus-AG/fix/6804-room-export-clock-session6503\n\ntest(mcp): pin Room refusal export timestamps",
+      "tree": {
+        "sha": "828e290302c72e5edc86b8aa73275d8fea20c376",
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/trees/828e290302c72e5edc86b8aa73275d8fea20c376"
+      },
+      "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/commits/8ab47142562a79862df6d14700a39723351f00df",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJqwiGWCRC1aQ7uu5UhlAAAY40QAE451SEOretpI9DnPiKR4hBG\neBWsnBG/QlZXY/5YCQS5EOpdCwuW779ep8i0tYrjky04JkqK8MGs+V4VWFWheEEX\ni3J2LhRvbnO+Vu7QEFlKJr8M2+NOxbY1vbUhRsWtS4D9GpIGVu6dW2EEZ+2kpIJB\nfAv1amBuJ0ooJ/lto75gU60BZaZwAWgOfJOXE27NFlOgPuL+VPE1DfNV7d1tvfCr\nBkIRbW+MUaLWXdPLbVAkoqb5mXPEpzRrfNAJLAQ1iaWgl7ltK5RzBQUlZ6Sq+q3u\nKpFPLOjxhO9Rp3kN6wphN9eC5bUobrFMryqnqzcFZd5HyHd+QHopip7LyVo6WApL\nytEl2l8Ls3g/LM7QDqpZ0ka84cFr6rpoAg5lWEILwebXELPrTRkCX+ewlGBvm1a7\nK0x7wNDZO/tMuIAwsJKNRD8yyU5YK2/XHoCo/akU8Qdb9YTMlPqsZNIhR6QMi0qO\nRZq75um2hFm14qufDhZG8n0NLZiEckS4ccz1E8kn4vPjVt0zeJ3PynLeIRKQBcfw\naXIl/rKBeJ6yraGbmsdNpPmYH1W0HZk/NkLYsAQFRkIqvxtBuKdT+xc4/OILaXpo\n+ZDDTNyVls6vwatnVgPefWLnkk6pE03fIx7+nX+1taKMh5j/4qjrilsSxOabDYBU\nD1uPyd+Ec7/gTsP0SKWp\n=7T8V\n-----END PGP SIGNATURE-----\n",
+        "payload": "tree 828e290302c72e5edc86b8aa73275d8fea20c376\nparent 5c87f0af55107663805ce81d2a9d357bbe36205b\nparent 269abf7e497bdbef1d21533c8cd35883b38a7d9e\nauthor Louis Tr\u00fcmpler <78563314+louistrue@users.noreply.github.com> 1791107478 +0200\ncommitter GitHub <noreply@github.com> 1791107478 +0200\n\nMerge pull request #6806 from LTplus-AG/fix/6804-room-export-clock-session6503\n\ntest(mcp): pin Room refusal export timestamps",
+        "verified_at": "2026-10-04T09:51:19Z"
+      }
+    },
+    "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/8ab47142562a79862df6d14700a39723351f00df",
+    "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/8ab47142562a79862df6d14700a39723351f00df",
+    "comments_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/8ab47142562a79862df6d14700a39723351f00df/comments",
+    "author": {
+      "login": "louistrue",
+      "id": 78563314,
+      "node_id": "MDQ6VXNlcjc4NTYzMzE0",
+      "avatar_url": "https://avatars.githubusercontent.com/u/78563314?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/louistrue",
+      "html_url": "https://github.com/louistrue",
+      "followers_url": "https://api.github.com/users/louistrue/followers",
+      "following_url": "https://api.github.com/users/louistrue/following{/other_user}",
+      "gists_url": "https://api.github.com/users/louistrue/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/louistrue/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/louistrue/subscriptions",
+      "organizations_url": "https://api.github.com/users/louistrue/orgs",
+      "repos_url": "https://api.github.com/users/louistrue/repos",
+      "events_url": "https://api.github.com/users/louistrue/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/louistrue/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "web-flow",
+      "id": 19864447,
+      "node_id": "MDQ6VXNlcjE5ODY0NDQ3",
+      "avatar_url": "https://avatars.githubusercontent.com/u/19864447?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/web-flow",
+      "html_url": "https://github.com/web-flow",
+      "followers_url": "https://api.github.com/users/web-flow/followers",
+      "following_url": "https://api.github.com/users/web-flow/following{/other_user}",
+      "gists_url": "https://api.github.com/users/web-flow/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/web-flow/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/web-flow/subscriptions",
+      "organizations_url": "https://api.github.com/users/web-flow/orgs",
+      "repos_url": "https://api.github.com/users/web-flow/repos",
+      "events_url": "https://api.github.com/users/web-flow/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/web-flow/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "5c87f0af55107663805ce81d2a9d357bbe36205b",
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/5c87f0af55107663805ce81d2a9d357bbe36205b",
+        "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/5c87f0af55107663805ce81d2a9d357bbe36205b"
+      },
+      {
+        "sha": "269abf7e497bdbef1d21533c8cd35883b38a7d9e",
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/269abf7e497bdbef1d21533c8cd35883b38a7d9e",
+        "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/269abf7e497bdbef1d21533c8cd35883b38a7d9e"
+      }
+    ]
+  },
+  "merge_base_commit": {
+    "sha": "8ab47142562a79862df6d14700a39723351f00df",
+    "node_id": "C_kwDOQ3UF-9oAKDhhYjQ3MTQyNTYyYTc5ODYyZGY2ZDE0NzAwYTM5NzIzMzUxZjAwZGY",
+    "commit": {
+      "author": {
+        "name": "Louis Tr\u00fcmpler",
+        "email": "78563314+louistrue@users.noreply.github.com",
+        "date": "2026-10-04T09:51:18Z"
+      },
+      "committer": {
+        "name": "GitHub",
+        "email": "noreply@github.com",
+        "date": "2026-10-04T09:51:18Z"
+      },
+      "message": "Merge pull request #6806 from LTplus-AG/fix/6804-room-export-clock-session6503\n\ntest(mcp): pin Room refusal export timestamps",
+      "tree": {
+        "sha": "828e290302c72e5edc86b8aa73275d8fea20c376",
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/trees/828e290302c72e5edc86b8aa73275d8fea20c376"
+      },
+      "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/commits/8ab47142562a79862df6d14700a39723351f00df",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJqwiGWCRC1aQ7uu5UhlAAAY40QAE451SEOretpI9DnPiKR4hBG\neBWsnBG/QlZXY/5YCQS5EOpdCwuW779ep8i0tYrjky04JkqK8MGs+V4VWFWheEEX\ni3J2LhRvbnO+Vu7QEFlKJr8M2+NOxbY1vbUhRsWtS4D9GpIGVu6dW2EEZ+2kpIJB\nfAv1amBuJ0ooJ/lto75gU60BZaZwAWgOfJOXE27NFlOgPuL+VPE1DfNV7d1tvfCr\nBkIRbW+MUaLWXdPLbVAkoqb5mXPEpzRrfNAJLAQ1iaWgl7ltK5RzBQUlZ6Sq+q3u\nKpFPLOjxhO9Rp3kN6wphN9eC5bUobrFMryqnqzcFZd5HyHd+QHopip7LyVo6WApL\nytEl2l8Ls3g/LM7QDqpZ0ka84cFr6rpoAg5lWEILwebXELPrTRkCX+ewlGBvm1a7\nK0x7wNDZO/tMuIAwsJKNRD8yyU5YK2/XHoCo/akU8Qdb9YTMlPqsZNIhR6QMi0qO\nRZq75um2hFm14qufDhZG8n0NLZiEckS4ccz1E8kn4vPjVt0zeJ3PynLeIRKQBcfw\naXIl/rKBeJ6yraGbmsdNpPmYH1W0HZk/NkLYsAQFRkIqvxtBuKdT+xc4/OILaXpo\n+ZDDTNyVls6vwatnVgPefWLnkk6pE03fIx7+nX+1taKMh5j/4qjrilsSxOabDYBU\nD1uPyd+Ec7/gTsP0SKWp\n=7T8V\n-----END PGP SIGNATURE-----\n",
+        "payload": "tree 828e290302c72e5edc86b8aa73275d8fea20c376\nparent 5c87f0af55107663805ce81d2a9d357bbe36205b\nparent 269abf7e497bdbef1d21533c8cd35883b38a7d9e\nauthor Louis Tr\u00fcmpler <78563314+louistrue@users.noreply.github.com> 1791107478 +0200\ncommitter GitHub <noreply@github.com> 1791107478 +0200\n\nMerge pull request #6806 from LTplus-AG/fix/6804-room-export-clock-session6503\n\ntest(mcp): pin Room refusal export timestamps",
+        "verified_at": "2026-10-04T09:51:19Z"
+      }
+    },
+    "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/8ab47142562a79862df6d14700a39723351f00df",
+    "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/8ab47142562a79862df6d14700a39723351f00df",
+    "comments_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/8ab47142562a79862df6d14700a39723351f00df/comments",
+    "author": {
+      "login": "louistrue",
+      "id": 78563314,
+      "node_id": "MDQ6VXNlcjc4NTYzMzE0",
+      "avatar_url": "https://avatars.githubusercontent.com/u/78563314?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/louistrue",
+      "html_url": "https://github.com/louistrue",
+      "followers_url": "https://api.github.com/users/louistrue/followers",
+      "following_url": "https://api.github.com/users/louistrue/following{/other_user}",
+      "gists_url": "https://api.github.com/users/louistrue/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/louistrue/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/louistrue/subscriptions",
+      "organizations_url": "https://api.github.com/users/louistrue/orgs",
+      "repos_url": "https://api.github.com/users/louistrue/repos",
+      "events_url": "https://api.github.com/users/louistrue/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/louistrue/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "web-flow",
+      "id": 19864447,
+      "node_id": "MDQ6VXNlcjE5ODY0NDQ3",
+      "avatar_url": "https://avatars.githubusercontent.com/u/19864447?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/web-flow",
+      "html_url": "https://github.com/web-flow",
+      "followers_url": "https://api.github.com/users/web-flow/followers",
+      "following_url": "https://api.github.com/users/web-flow/following{/other_user}",
+      "gists_url": "https://api.github.com/users/web-flow/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/web-flow/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/web-flow/subscriptions",
+      "organizations_url": "https://api.github.com/users/web-flow/orgs",
+      "repos_url": "https://api.github.com/users/web-flow/repos",
+      "events_url": "https://api.github.com/users/web-flow/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/web-flow/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "5c87f0af55107663805ce81d2a9d357bbe36205b",
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/5c87f0af55107663805ce81d2a9d357bbe36205b",
+        "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/5c87f0af55107663805ce81d2a9d357bbe36205b"
+      },
+      {
+        "sha": "269abf7e497bdbef1d21533c8cd35883b38a7d9e",
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/269abf7e497bdbef1d21533c8cd35883b38a7d9e",
+        "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/269abf7e497bdbef1d21533c8cd35883b38a7d9e"
+      }
+    ]
+  },
+  "status": "ahead",
+  "ahead_by": 1,
+  "behind_by": 0,
+  "total_commits": 1,
+  "commits": [
+    {
+      "sha": "a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "node_id": "C_kwDOQ3UF-9oAKGEwZjdjZmEwN2ZjN2EyMjBiOTNlMzE2YzE1MjM1MzY4NTlhODA4YzU",
+      "commit": {
+        "author": {
+          "name": "Louis Tr\u00fcmpler",
+          "email": "78563314+louistrue@users.noreply.github.com",
+          "date": "2026-10-04T10:01:22Z"
+        },
+        "committer": {
+          "name": "GitHub",
+          "email": "noreply@github.com",
+          "date": "2026-10-04T10:01:22Z"
+        },
+        "message": "fix(schedule): fall back to EarlyStart/EarlyFinish for task windows (#6803) (#6805)\n\n* fix(schedule): fall back to EarlyStart/EarlyFinish for task windows (#6803)\n\nA task whose IfcTaskTime carries only CPM dates (EarlyStart/EarlyFinish,\nScheduleStart/ScheduleFinish `$`) got no Gantt bar, no 4D window and was\n'unscheduled' in charts. buildingSMART's construction-scheduling sample\nwrites every leaf task this way.\n\nOne resolver (store/slices/schedule-task-dates.ts) now serves the Gantt\nrange/bars, the 4D animator, the charts dataset, the Properties schedule\ncard, bar drag, add-task anchoring and the milestone toggle, replacing\nthree diverged copies (the animator ignored start + duration; charts\nparsed TZ-less IfcDateTime as local time). Early dates are used only\nwhen no planned or actual date exists, so such files resolve as before.\n\n* test(schedule): drive the early-window animator test through IfcRelAssignsToProduct outputs (#6803)\n\n* fix(schedule): seed early dates as planned on first edit; editor and task tree read the resolver (#6803)\n\n* fix(schedule): calendar-correct month/year durations, card dates parsed like the Gantt, cover date writes (#6803)\n\n---------\n\nCo-authored-by: Louis True <louistrue@users.noreply.github.com>",
+        "tree": {
+          "sha": "ea080f6b90005f61bdcccdf73bf53c9d39dddeef",
+          "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/trees/ea080f6b90005f61bdcccdf73bf53c9d39dddeef"
+        },
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/commits/a0f7cfa07fc7a220b93e316c1523536859a808c5",
+        "comment_count": 0,
+        "verification": {
+          "verified": true,
+          "reason": "valid",
+          "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJqwiPyCRC1aQ7uu5UhlAAAgMMQAEcJdBL/9AcJy6nqm0EnFAQ2\nItFQv+PpXvfyQPaKX3vMF+otDytTRQNQZEQzub5W4GkVdRo2TnCBgTdm/UbUw5rj\nEE/UjzbMVPmRl7DtYrzB+jcGmhIcPRNh4fhS+vNLny3WZnfnkLs/fjnIuxAcabpQ\n2nV7j+kCrkrq87Ih/SxUW1UCA63LPKsv9TN7qJjYzrne9IUHD9byig778x97dgnc\nHkwmYa97L5ErzAzC0aWkRy729hHUKA7KqEDz3oFtiVw1eq9NxGb924l7sBtlEtv1\nsGjlu81jIkkBddKZ04YsTI3KhbAlJA3ukEucEFVfXODbZ1gTVlyHVeDKMccs0QGx\nu60yBzzBrTPlPdTDB8/5Xxy29mHK2EqGQWwrHp144ImV+Qk7kE4ZM88pE5BdS4ck\nH2hvp7GVnnTFXwCnL0QuDAOnfg7D+xonXqJgChAbCRleoTIyS4LZQ54BUADTQ5NH\nCQvv1H/fH2K5jk+deyMvZKAGIbJB+n2DW7cJM3MpTW41/vDBwrB4dyKSz1s42VH5\nmb9Gk4S7LEoQfMAe3VHRstIMueWldjKDOPbIz+aiNWxflYldGCflK0hmXGtUSeW1\n0gHloxsQlG3jN1Uydf0HfjPsIGmgfwk0z3/IfInnGfG2zl4TVDbCbS1yz+QmslU2\nKITeSsYsw3cNGPJo8P3E\n=Ivpg\n-----END PGP SIGNATURE-----\n",
+          "payload": "tree ea080f6b90005f61bdcccdf73bf53c9d39dddeef\nparent 8ab47142562a79862df6d14700a39723351f00df\nauthor Louis Tr\u00fcmpler <78563314+louistrue@users.noreply.github.com> 1791108082 +0200\ncommitter GitHub <noreply@github.com> 1791108082 +0200\n\nfix(schedule): fall back to EarlyStart/EarlyFinish for task windows (#6803) (#6805)\n\n* fix(schedule): fall back to EarlyStart/EarlyFinish for task windows (#6803)\n\nA task whose IfcTaskTime carries only CPM dates (EarlyStart/EarlyFinish,\nScheduleStart/ScheduleFinish `$`) got no Gantt bar, no 4D window and was\n'unscheduled' in charts. buildingSMART's construction-scheduling sample\nwrites every leaf task this way.\n\nOne resolver (store/slices/schedule-task-dates.ts) now serves the Gantt\nrange/bars, the 4D animator, the charts dataset, the Properties schedule\ncard, bar drag, add-task anchoring and the milestone toggle, replacing\nthree diverged copies (the animator ignored start + duration; charts\nparsed TZ-less IfcDateTime as local time). Early dates are used only\nwhen no planned or actual date exists, so such files resolve as before.\n\n* test(schedule): drive the early-window animator test through IfcRelAssignsToProduct outputs (#6803)\n\n* fix(schedule): seed early dates as planned on first edit; editor and task tree read the resolver (#6803)\n\n* fix(schedule): calendar-correct month/year durations, card dates parsed like the Gantt, cover date writes (#6803)\n\n---------\n\nCo-authored-by: Louis True <louistrue@users.noreply.github.com>",
+          "verified_at": "2026-10-04T10:01:22Z"
+        }
+      },
+      "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "comments_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/a0f7cfa07fc7a220b93e316c1523536859a808c5/comments",
+      "author": {
+        "login": "louistrue",
+        "id": 78563314,
+        "node_id": "MDQ6VXNlcjc4NTYzMzE0",
+        "avatar_url": "https://avatars.githubusercontent.com/u/78563314?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/louistrue",
+        "html_url": "https://github.com/louistrue",
+        "followers_url": "https://api.github.com/users/louistrue/followers",
+        "following_url": "https://api.github.com/users/louistrue/following{/other_user}",
+        "gists_url": "https://api.github.com/users/louistrue/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/louistrue/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/louistrue/subscriptions",
+        "organizations_url": "https://api.github.com/users/louistrue/orgs",
+        "repos_url": "https://api.github.com/users/louistrue/repos",
+        "events_url": "https://api.github.com/users/louistrue/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/louistrue/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "committer": {
+        "login": "web-flow",
+        "id": 19864447,
+        "node_id": "MDQ6VXNlcjE5ODY0NDQ3",
+        "avatar_url": "https://avatars.githubusercontent.com/u/19864447?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/web-flow",
+        "html_url": "https://github.com/web-flow",
+        "followers_url": "https://api.github.com/users/web-flow/followers",
+        "following_url": "https://api.github.com/users/web-flow/following{/other_user}",
+        "gists_url": "https://api.github.com/users/web-flow/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/web-flow/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/web-flow/subscriptions",
+        "organizations_url": "https://api.github.com/users/web-flow/orgs",
+        "repos_url": "https://api.github.com/users/web-flow/repos",
+        "events_url": "https://api.github.com/users/web-flow/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/web-flow/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "parents": [
+        {
+          "sha": "8ab47142562a79862df6d14700a39723351f00df",
+          "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/8ab47142562a79862df6d14700a39723351f00df",
+          "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/8ab47142562a79862df6d14700a39723351f00df"
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "sha": "5e54d22627bf5722134b0aa6c05debc963505757",
+      "filename": ".changeset/schedule-early-dates-6803.md",
+      "status": "added",
+      "additions": 5,
+      "deletions": 0,
+      "changes": 5,
+      "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/a0f7cfa07fc7a220b93e316c1523536859a808c5/.changeset%2Fschedule-early-dates-6803.md",
+      "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/a0f7cfa07fc7a220b93e316c1523536859a808c5/.changeset%2Fschedule-early-dates-6803.md",
+      "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/.changeset%2Fschedule-early-dates-6803.md?ref=a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "patch": "@@ -0,0 +1,5 @@\n+---\n+\"@ifc-lite/viewer\": patch\n+---\n+\n+Fall back to `EarlyStart`/`EarlyFinish` for a task's window when its IfcTaskTime has no planned or actual date (#6803). buildingSMART's construction-scheduling sample writes leaf tasks this way, and those tasks used to get no Gantt bar or 4D window. The Gantt, schedule range, 4D animator, charts, Properties schedule card, bar drag and add-task anchoring now all resolve the window through one resolver. This removes the old copies that had diverged: the animator ignored start + duration, and the charts parsed TZ-less dates as local time. Files that carry planned or actual dates resolve exactly as before. A task with a start and a duration but no finish now gets a derived finish in the 4D animation and charts, matching its Gantt bar. TaskEditCard shows the resolved window. The first planned edit to an early-only task copies its early dates into the planned fields, so editing a single field no longer removes the bar. Whole months and years in a start-anchored duration are now added as calendar months, clamped to month end, as IfcDuration specifies: 2024-01-01 + P1M ends on 2024-02-01, not after a 30.44-day average. The Properties schedule card parses dates the way the Gantt does, so the two show the same day."
+    },
+    {
+      "sha": "59db9a365eda2cedbf11c623624cd71ab28a3dc5",
+      "filename": "apps/viewer/src/components/viewer/properties/ScheduleCard.tsx",
+      "status": "modified",
+      "additions": 8,
+      "deletions": 5,
+      "changes": 13,
+      "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fproperties%2FScheduleCard.tsx",
+      "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fproperties%2FScheduleCard.tsx",
+      "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fproperties%2FScheduleCard.tsx?ref=a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "patch": "@@ -26,6 +26,8 @@ import { taskProductExpressIds, taskProductGlobalIds } from '@ifc-lite/parser';\n import { useTranslation } from '@/i18n';\n import { formatLocaleNumber } from '@/i18n/intlFormat';\n import { PersistentCollapsible } from './PersistentCollapsible';\n+import { taskStartIso, taskFinishIso, taskDurationIso } from '@/store/slices/schedule-task-dates';\n+import { parseIsoDate } from '@/store/slices/schedule-edit-helpers';\n \n interface ScheduleCardProps {\n   /** Schedule data from the viewer's slice (parsed or generated). */\n@@ -114,9 +116,9 @@ interface TaskRowProps {\n \n function TaskRow({ task, scheduleNames, locale }: TaskRowProps) {\n   const { t } = useTranslation();\n-  const start = formatDate(task.taskTime?.scheduleStart, locale);\n-  const finish = formatDate(task.taskTime?.scheduleFinish, locale);\n-  const duration = task.taskTime?.scheduleDuration;\n+  const start = formatDate(taskStartIso(task), locale);\n+  const finish = formatDate(taskFinishIso(task), locale);\n+  const duration = taskDurationIso(task);\n   const completion = task.taskTime?.completion;\n   const isCritical = task.taskTime?.isCritical === true;\n   const scheduleLabels = task.controllingScheduleGlobalIds\n@@ -226,10 +228,11 @@ function buildScheduleNameLookup(data: ScheduleExtraction | null): Map<string, s\n   return map;\n }\n \n+/** Parsed like the Gantt (TZ-less IfcDateTime is UTC, `parseIsoDate`), displayed in local time like its bars. */\n function formatDate(iso: string | undefined, locale: string): string | undefined {\n   if (!iso) return undefined;\n-  const t = Date.parse(iso);\n-  if (Number.isNaN(t)) return iso;\n+  const t = parseIsoDate(iso);\n+  if (t === undefined) return iso;\n   return new Date(t).toLocaleDateString(locale, {\n     year: 'numeric', month: 'short', day: 'numeric',\n   });"
+    },
+    {
+      "sha": "f53720747eaf1677206b7f53314d0a05ede6272a",
+      "filename": "apps/viewer/src/components/viewer/properties/TaskEditCard.tsx",
+      "status": "modified",
+      "additions": 8,
+      "deletions": 7,
+      "changes": 15,
+      "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fproperties%2FTaskEditCard.tsx",
+      "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fproperties%2FTaskEditCard.tsx",
+      "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fproperties%2FTaskEditCard.tsx?ref=a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "patch": "@@ -32,6 +32,7 @@ import { useShallow } from 'zustand/react/shallow';\n import { useViewerStore } from '@/store';\n import type { ScheduleTaskInfo } from '@ifc-lite/parser';\n import { taskProductExpressIds } from '@ifc-lite/parser';\n+import { taskStartIso, taskExplicitFinishIso, taskDurationIso } from '@/store/slices/schedule-task-dates';\n import { useTranslation } from '@/i18n';\n import { formatLocaleNumber } from '@/i18n/intlFormat';\n import { EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_IDENTIFICATION_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE, EXPRESS_PREDEFINED_TYPE_ATTRIBUTE } from './express-labels';\n@@ -423,17 +424,17 @@ interface DerivedTimeFields {\n \n function deriveTimeFields(task: ScheduleTaskInfo | null): DerivedTimeFields {\n   if (!task?.taskTime) return { startLocal: '', finishLocal: '', durationDays: 0 };\n-  const startLocal = toDatetimeLocal(task.taskTime.scheduleStart);\n-  const finishLocal = toDatetimeLocal(task.taskTime.scheduleFinish);\n+  // The window the Gantt draws (#6803); `updateTaskTime` seeds early dates as planned on first edit.\n+  const [startIso, finishIso, duration] = [taskStartIso(task), taskExplicitFinishIso(task), taskDurationIso(task)];\n+  const start = parseIso(startIso);\n+  const finish = parseIso(finishIso);\n   let durationDays = 0;\n-  const start = parseIso(task.taskTime.scheduleStart);\n-  const finish = parseIso(task.taskTime.scheduleFinish);\n   if (start !== undefined && finish !== undefined) {\n     durationDays = Math.round(((finish - start) / MS_PER_DAY) * 100) / 100;\n-  } else if (task.taskTime.scheduleDuration) {\n-    durationDays = isoDurationToDays(task.taskTime.scheduleDuration);\n+  } else if (duration) {\n+    durationDays = isoDurationToDays(duration);\n   }\n-  return { startLocal, finishLocal, durationDays };\n+  return { startLocal: toDatetimeLocal(startIso), finishLocal: toDatetimeLocal(finishIso), durationDays };\n }\n \n /** ISO-8601 \u2192 `datetime-local` string (strips seconds and any TZ). */"
+    },
+    {
+      "sha": "5ea7f392b356cece7b5b64cfe0a093c6c89e18f8",
+      "filename": "apps/viewer/src/components/viewer/schedule/GanttTaskTree.tsx",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 1,
+      "changes": 3,
+      "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fschedule%2FGanttTaskTree.tsx",
+      "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fschedule%2FGanttTaskTree.tsx",
+      "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fschedule%2FGanttTaskTree.tsx?ref=a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "patch": "@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';\n import { useTranslation } from '@/i18n';\n import type { FlattenedTask } from './schedule-utils';\n import { formatDurationShort } from './schedule-utils';\n+import { taskDurationIso } from '@/store/slices/schedule-task-dates';\n \n export const GANTT_ROW_HEIGHT = 28;\n /** Keep the focusable clear control visible without desynchronizing the panes. */\n@@ -263,7 +264,7 @@ export const GanttTaskTree = memo(function GanttTaskTree({\n                       deliberately out of scope (#4830) \u2014 calendars currently\n                       round-trip and surface, nothing more.\n                     */}\n-                    {formatDurationShort(task.taskTime?.scheduleDuration)}\n+                    {formatDurationShort(taskDurationIso(task))}\n                   </td>\n                 </tr>\n               );"
+    },
+    {
+      "sha": "8113ef34361c58393e6d79f840b185589be12dd0",
+      "filename": "apps/viewer/src/components/viewer/schedule/schedule-animator.ts",
+      "status": "modified",
+      "additions": 4,
+      "deletions": 18,
+      "changes": 22,
+      "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fschedule%2Fschedule-animator.ts",
+      "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fschedule%2Fschedule-animator.ts",
+      "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fschedule%2Fschedule-animator.ts?ref=a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "patch": "@@ -33,6 +33,7 @@\n  */\n \n import { taskProductExpressIds, type ScheduleExtraction, type ScheduleTaskInfo } from '@ifc-lite/parser';\n+import { taskStartEpoch, taskFinishEpoch } from '@/store/slices/schedule-task-dates';\n \n // \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n // Types\n@@ -231,25 +232,10 @@ function easeInCubic(t: number): number {\n   return clamped * clamped * clamped;\n }\n \n-/**\n- * Parse an ISO 8601 datetime \u2192 epoch ms. Identical to\n- * `scheduleSlice.parseIsoDate`. We keep a local copy rather than importing\n- * from `@/store` because `scheduleSlice` already imports from this module\n- * for `AnimationSettings` / `DEFAULT_ANIMATION_SETTINGS` \u2014 sharing the\n- * helper through `@/store` closes the loop and breaks ESM initialisation\n- * order (\"Cannot access X before initialization\"). Any fix to TZ-less\n- * normalization must land in both copies; linked via comment.\n- */\n-function parseEpoch(value: string | undefined): number | undefined {\n-  if (!value) return undefined;\n-  const hasTz = /Z$|[+-]\\d{2}:?\\d{2}$/.test(value);\n-  const t = Date.parse(hasTz ? value : `${value}Z`);\n-  return Number.isNaN(t) ? undefined : t;\n-}\n-\n+/** The task's window from the canonical resolver (`schedule-task-dates.ts`, #6803). */\n function taskWindow(task: ScheduleTaskInfo): { start: number; finish: number } | null {\n-  const start = parseEpoch(task.taskTime?.scheduleStart ?? task.taskTime?.actualStart);\n-  const finish = parseEpoch(task.taskTime?.scheduleFinish ?? task.taskTime?.actualFinish);\n+  const start = taskStartEpoch(task);\n+  const finish = taskFinishEpoch(task);\n   if (start === undefined || finish === undefined || finish < start) return null;\n   return { start, finish };\n }"
+    },
+    {
+      "sha": "1148b6d3fea357140e0c09046b1cfa430ddaba0f",
+      "filename": "apps/viewer/src/components/viewer/schedule/useGanttBarDrag.early-dates.test.tsx",
+      "status": "added",
+      "additions": 60,
+      "deletions": 0,
+      "changes": 60,
+      "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fschedule%2FuseGanttBarDrag.early-dates.test.tsx",
+      "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fschedule%2FuseGanttBarDrag.early-dates.test.tsx",
+      "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fschedule%2FuseGanttBarDrag.early-dates.test.tsx?ref=a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "patch": "@@ -0,0 +1,60 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+/**\n+ * #6803: an early-only task (EarlyStart/EarlyFinish, no planned dates) draws\n+ * a bar, so it must drag. The drop writes the shifted window as planned\n+ * ScheduleStart/ScheduleFinish; undo restores the untouched early dates.\n+ */\n+\n+import '@/test/setup-dom.js';\n+import { afterEach, it } from 'node:test';\n+import assert from 'node:assert/strict';\n+import { act } from 'react';\n+import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';\n+import { cleanup, render } from '@/test/render.js';\n+import { useViewerStore } from '@/store';\n+import { useGanttBarDrag } from './useGanttBarDrag.js';\n+\n+const DAY = 86_400_000;\n+const start = Date.parse('2010-09-20T00:00:00Z');\n+const earlyTime = { earlyStart: '2010-09-20T08:00:00', earlyFinish: '2010-09-20T16:00:00' };\n+const task: ScheduleTaskInfo = {\n+  expressId: 1, globalId: 'task-1', name: 'Wall #1', isMilestone: false,\n+  childGlobalIds: [], productExpressIds: [], productGlobalIds: [],\n+  controllingScheduleGlobalIds: [], taskTime: { ...earlyTime },\n+};\n+const data: ScheduleExtraction = { tasks: [task], workSchedules: [], sequences: [], hasSchedule: true };\n+const originalState = useViewerStore.getState();\n+\n+afterEach(() => {\n+  cleanup();\n+  useViewerStore.setState(originalState, true);\n+});\n+\n+function Harness() {\n+  // 300px over 3 days: 100px is one day.\n+  const drag = useGanttBarDrag({ range: { start, end: start + 3 * DAY, synthetic: false }, pixelWidth: 300, scale: 'day' });\n+  return <svg><rect data-testid=\"task-bar\" onPointerDown={(event) => drag.onPointerDown(event, 'task-1', 'shift')} /></svg>;\n+}\n+\n+it('#6803 dragging an early-only bar writes the shifted window as planned dates', () => {\n+  useViewerStore.setState({ scheduleData: data, scheduleUndoStack: [], scheduleRedoStack: [],\n+    scheduleTransaction: { active: false, label: '', pushedAt: -1 } });\n+  const ui = render(<Harness />);\n+  const bar = ui.querySelector('[data-testid=\"task-bar\"]');\n+  assert.ok(bar);\n+  act(() => { bar.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, clientX: 100 })); });\n+  assert.equal(useViewerStore.getState().scheduleTransaction.active, true, 'an early-only bar starts a drag');\n+  act(() => { window.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 200 })); });\n+  act(() => { window.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 200 })); });\n+\n+  const tt = useViewerStore.getState().scheduleData!.tasks[0].taskTime!;\n+  assert.equal(tt.scheduleStart, '2010-09-21T08:00:00');\n+  assert.equal(tt.scheduleFinish, '2010-09-21T16:00:00');\n+  assert.equal(tt.earlyStart, earlyTime.earlyStart, 'the CPM dates are kept');\n+\n+  useViewerStore.getState().undoScheduleEdit();\n+  assert.deepEqual(useViewerStore.getState().scheduleData!.tasks[0].taskTime, earlyTime);\n+});"
+    },
+    {
+      "sha": "d58902d0e089974676c80f0c98b9ab322a072dcb",
+      "filename": "apps/viewer/src/components/viewer/schedule/useGanttBarDrag.ts",
+      "status": "modified",
+      "additions": 5,
+      "deletions": 9,
+      "changes": 14,
+      "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fschedule%2FuseGanttBarDrag.ts",
+      "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fschedule%2FuseGanttBarDrag.ts",
+      "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/apps%2Fviewer%2Fsrc%2Fcomponents%2Fviewer%2Fschedule%2FuseGanttBarDrag.ts?ref=a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "patch": "@@ -30,6 +30,7 @@\n \n import { useCallback, useEffect, useRef, useState } from 'react';\n import { useViewerStore } from '@/store';\n+import { taskStartEpoch, taskFinishEpoch } from '@/store/slices/schedule-task-dates';\n import type { GanttTimeScale, ScheduleTimeRange } from '@/store';\n import { KEYBOARD_PRIORITY, registerKeyboardCommand } from '@/lib/commands/dispatcher';\n \n@@ -72,13 +73,6 @@ function epochToIso(ms: number): string {\n   );\n }\n \n-function parseIso(iso?: string): number | undefined {\n-  if (!iso) return undefined;\n-  const hasTz = /Z$|[+-]\\d{2}:?\\d{2}$/.test(iso);\n-  const t = Date.parse(hasTz ? iso : `${iso}Z`);\n-  return Number.isNaN(t) ? undefined : t;\n-}\n-\n /** Milliseconds \u2192 ISO-8601 duration (same shape the animator / exporter emit). */\n function msToIsoDuration(ms: number): string {\n   const clamped = Math.max(0, Math.round(ms));\n@@ -252,8 +246,10 @@ export function useGanttBarDrag(opts: UseGanttBarDragOptions): UseGanttBarDragRe\n     const store = useViewerStore.getState();\n     const task = store.scheduleData?.tasks.find(t => t.globalId === taskGlobalId);\n     if (!task) return;\n-    const origStart = parseIso(task.taskTime?.scheduleStart);\n-    const origFinish = parseIso(task.taskTime?.scheduleFinish);\n+    // The bar's drawn window (#6803), so early-only or actual-only tasks drag too;\n+    // the drop writes ScheduleStart/ScheduleFinish, making the window planned.\n+    const origStart = taskStartEpoch(task);\n+    const origFinish = taskFinishEpoch(task);\n     if (origStart === undefined || origFinish === undefined) return;\n     // Don't try to resize a zero-width bar: shift-only instead. Also\n     // milestones should never hit this path (caller gates them out) but"
+    },
+    {
+      "sha": "836f3a6bbd195d9713c548ac92f1b550b2cb9dc8",
+      "filename": "apps/viewer/src/lib/charts/datasets/schedule.ts",
+      "status": "modified",
+      "additions": 10,
+      "deletions": 15,
+      "changes": 25,
+      "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Flib%2Fcharts%2Fdatasets%2Fschedule.ts",
+      "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Flib%2Fcharts%2Fdatasets%2Fschedule.ts",
+      "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/apps%2Fviewer%2Fsrc%2Flib%2Fcharts%2Fdatasets%2Fschedule.ts?ref=a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "patch": "@@ -17,6 +17,7 @@ import type { ScheduleTaskInfo } from '@ifc-lite/parser';\n import { taskProductExpressIds } from '@ifc-lite/parser';\n import type { ViewerState } from '@/store';\n import { toGlobalIdFromModels } from '@/store/globalId';\n+import { taskStartEpoch, taskFinishEpoch, taskStartIso, taskFinishIso } from '@/store/slices/schedule-task-dates';\n \n export const SCHEDULE_COLUMNS = {\n   task: 'Task',\n@@ -46,17 +47,11 @@ export const SCHEDULE_DATASET_COLUMNS: ChartDatasetColumn[] = [\n \n const MS_PER_DAY = 86_400_000;\n \n-function epoch(iso: string | undefined): number | null {\n-  if (!iso) return null;\n-  const t = Date.parse(iso);\n-  return Number.isFinite(t) ? t : null;\n-}\n-\n-/** The task's lifecycle state at `time`, from its scheduled (or actual) window. */\n+/** The task's lifecycle state at `time`, from its resolved window (`schedule-task-dates.ts`). */\n export function phaseAt(task: ScheduleTaskInfo, time: number | null): string {\n-  const start = epoch(task.taskTime?.scheduleStart ?? task.taskTime?.actualStart);\n-  const finish = epoch(task.taskTime?.scheduleFinish ?? task.taskTime?.actualFinish);\n-  if (start === null || finish === null) return 'unscheduled';\n+  const start = taskStartEpoch(task);\n+  const finish = taskFinishEpoch(task);\n+  if (start === undefined || finish === undefined) return 'unscheduled';\n   if (time === null) return 'scheduled';\n   if (time < start) return 'not started';\n   if (time > finish) return 'done';\n@@ -71,8 +66,8 @@ export function buildScheduleDataset(state: ScheduleDatasetState): ChartDataset\n   const modelId = state.scheduleSourceModelId ?? state.activeModelId ?? 'legacy';\n   const cursor = state.animationEnabled ? state.playbackTime : null;\n   for (const task of tasks) {\n-    const start = epoch(task.taskTime?.scheduleStart ?? task.taskTime?.actualStart);\n-    const finish = epoch(task.taskTime?.scheduleFinish ?? task.taskTime?.actualFinish);\n+    const start = taskStartEpoch(task);\n+    const finish = taskFinishEpoch(task);\n     // A product can be both an input and an output of one task; count it once.\n     const productIds = [...new Set(taskProductExpressIds(task))];\n     rows.push({\n@@ -84,9 +79,9 @@ export function buildScheduleDataset(state: ScheduleDatasetState): ChartDataset\n         task.predefinedType ?? '',\n         task.taskTime?.isCritical ?? false,\n         task.isMilestone,\n-        task.taskTime?.scheduleStart ?? task.taskTime?.actualStart ?? null,\n-        task.taskTime?.scheduleFinish ?? task.taskTime?.actualFinish ?? null,\n-        start !== null && finish !== null ? Math.max(0, (finish - start) / MS_PER_DAY) : null,\n+        taskStartIso(task) ?? null,\n+        taskFinishIso(task) ?? null,\n+        start !== undefined && finish !== undefined ? Math.max(0, (finish - start) / MS_PER_DAY) : null,\n         productIds.length,\n       ],\n     });"
+    },
+    {
+      "sha": "d75e2795ab7de7c3b186b60c50b38e4108caca5a",
+      "filename": "apps/viewer/src/store/slices/schedule-edit-helpers.ts",
+      "status": "modified",
+      "additions": 23,
+      "deletions": 4,
+      "changes": 27,
+      "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fstore%2Fslices%2Fschedule-edit-helpers.ts",
+      "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fstore%2Fslices%2Fschedule-edit-helpers.ts",
+      "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/apps%2Fviewer%2Fsrc%2Fstore%2Fslices%2Fschedule-edit-helpers.ts?ref=a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "patch": "@@ -59,23 +59,42 @@ export function msToIsoDuration(ms: number): string {\n   return out === 'P' ? 'P0D' : out;\n }\n \n+/**\n+ * Add an ISO 8601 duration to an epoch (ms). Whole years and months are\n+ * calendar arithmetic in UTC, applied first and clamped to the target\n+ * month's last day (XML Schema's date + duration, which IfcDuration\n+ * follows): 2024-01-31 + P1M is 2024-02-29, and 2024-01-01 + P1M is\n+ * 2024-02-01 rather than a 30.44-day average (#6803). Fractional years or\n+ * months, and the W/D/H/M/S components, add as fixed lengths. Returns\n+ * undefined for a string that is not a duration.\n+ */\n export function addIsoDurationToEpoch(start: number, iso: string): number | undefined {\n   const match = iso.match(\n     /^P(?:(\\d+(?:\\.\\d+)?)Y)?(?:(\\d+(?:\\.\\d+)?)M)?(?:(\\d+(?:\\.\\d+)?)W)?(?:(\\d+(?:\\.\\d+)?)D)?(?:T(?:(\\d+(?:\\.\\d+)?)H)?(?:(\\d+(?:\\.\\d+)?)M)?(?:(\\d+(?:\\.\\d+)?)S)?)?$/,\n   );\n   if (!match) return undefined;\n   const [, y, mo, w, d, h, mi, s] = match;\n+  const years = y ? parseFloat(y) : 0;\n+  const months = mo ? parseFloat(mo) : 0;\n+  const wholeMonths = Math.trunc(years) * 12 + Math.trunc(months);\n+  const date = new Date(start);\n+  if (wholeMonths !== 0) {\n+    const day = date.getUTCDate();\n+    date.setUTCDate(1);\n+    date.setUTCMonth(date.getUTCMonth() + wholeMonths);\n+    const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();\n+    date.setUTCDate(Math.min(day, lastDay));\n+  }\n   const yearMs = 365.2425 * 86_400_000;\n-  const monthMs = yearMs / 12;\n   const total =\n-    (y ? parseFloat(y) * yearMs : 0) +\n-    (mo ? parseFloat(mo) * monthMs : 0) +\n+    (years % 1) * yearMs +\n+    (months % 1) * (yearMs / 12) +\n     (w ? parseFloat(w) * 7 * 86_400_000 : 0) +\n     (d ? parseFloat(d) * 86_400_000 : 0) +\n     (h ? parseFloat(h) * 3_600_000 : 0) +\n     (mi ? parseFloat(mi) * 60_000 : 0) +\n     (s ? parseFloat(s) * 1000 : 0);\n-  return start + total;\n+  return date.getTime() + total;\n }\n \n /** Epoch ms \u2192 ISO-8601 UTC (no milliseconds), matching the extractor. */"
+    },
+    {
+      "sha": "1dfdc21c108b4bddaa09dccd8ad96bcbc0314149",
+      "filename": "apps/viewer/src/store/slices/schedule-task-dates.test.ts",
+      "status": "added",
+      "additions": 127,
+      "deletions": 0,
+      "changes": 127,
+      "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fstore%2Fslices%2Fschedule-task-dates.test.ts",
+      "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fstore%2Fslices%2Fschedule-task-dates.test.ts",
+      "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/apps%2Fviewer%2Fsrc%2Fstore%2Fslices%2Fschedule-task-dates.test.ts?ref=a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "patch": "@@ -0,0 +1,127 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+/**\n+ * #6803 \u2014 the canonical task-window resolver, and the readers that used to\n+ * carry their own diverged copy (Gantt range, 4D animator, charts).\n+ *\n+ * The early-only task mirrors buildingSMART's construction-scheduling-task\n+ * sample: ScheduleStart/ScheduleFinish `$`, EarlyStart/EarlyFinish set.\n+ */\n+\n+import { describe, it } from 'node:test';\n+import assert from 'node:assert/strict';\n+import type { ScheduleExtraction, ScheduleTaskInfo, ScheduleTaskTimeInfo } from '@ifc-lite/parser';\n+import {\n+  taskStartEpoch,\n+  taskFinishEpoch,\n+  taskStartIso,\n+  taskFinishIso,\n+  taskDurationIso,\n+} from './schedule-task-dates.js';\n+import { computeScheduleRange } from './scheduleSlice.js';\n+import { computeAnimationFrame, DEFAULT_ANIMATION_SETTINGS } from '../../components/viewer/schedule/schedule-animator.js';\n+import { phaseAt } from '../../lib/charts/datasets/schedule.js';\n+\n+const utc = (iso: string) => Date.parse(`${iso}Z`);\n+\n+function task(taskTime: ScheduleTaskTimeInfo, over: Partial<ScheduleTaskInfo> = {}): ScheduleTaskInfo {\n+  return {\n+    expressId: 1, globalId: 't', name: 'T', isMilestone: false,\n+    childGlobalIds: [], productExpressIds: [], productGlobalIds: [],\n+    controllingScheduleGlobalIds: [], taskTime, ...over,\n+  };\n+}\n+\n+const earlyOnly = task({\n+  scheduleDuration: 'P0Y0M0DT8H0M0S',\n+  earlyStart: '2010-09-20T08:00:00',\n+  earlyFinish: '2010-09-20T16:00:00',\n+});\n+\n+describe('task window resolution (#6803)', () => {\n+  it('uses EarlyStart/EarlyFinish when the task has no planned or actual date', () => {\n+    assert.equal(taskStartEpoch(earlyOnly), utc('2010-09-20T08:00:00'));\n+    assert.equal(taskFinishEpoch(earlyOnly), utc('2010-09-20T16:00:00'));\n+    assert.equal(taskStartIso(earlyOnly), '2010-09-20T08:00:00');\n+    assert.equal(taskFinishIso(earlyOnly), '2010-09-20T16:00:00');\n+    assert.equal(taskDurationIso(earlyOnly), 'P0Y0M0DT8H0M0S');\n+  });\n+\n+  it('derives a missing EarlyFinish from EarlyStart + ScheduleDuration', () => {\n+    const t = task({ earlyStart: '2010-09-21T08:00:00', scheduleDuration: 'PT8H' });\n+    assert.equal(taskFinishEpoch(t), utc('2010-09-21T16:00:00'));\n+    assert.equal(taskFinishIso(t), '2010-09-21T16:00:00');\n+  });\n+\n+  it('keeps planned dates winning over early ones', () => {\n+    const t = task({\n+      scheduleStart: '2024-05-01T08:00:00', scheduleFinish: '2024-05-03T17:00:00',\n+      earlyStart: '2010-01-01T00:00:00', earlyFinish: '2010-01-02T00:00:00',\n+    });\n+    assert.equal(taskStartEpoch(t), utc('2024-05-01T08:00:00'));\n+    assert.equal(taskFinishEpoch(t), utc('2024-05-03T17:00:00'));\n+  });\n+\n+  it('never pairs a planned start with an early finish', () => {\n+    const t = task({\n+      scheduleStart: '2024-05-01T08:00:00', scheduleDuration: 'P1D',\n+      earlyFinish: '2010-01-02T00:00:00',\n+    });\n+    assert.equal(taskFinishEpoch(t), utc('2024-05-02T08:00:00'));\n+  });\n+\n+  it('adds whole months and years as calendar arithmetic, clamped to month end', () => {\n+    const finish = (earlyStart: string, scheduleDuration: string) => taskFinishEpoch(task({ earlyStart, scheduleDuration }));\n+    assert.equal(finish('2024-01-01T00:00:00', 'P1M'), utc('2024-02-01T00:00:00'));\n+    assert.equal(finish('2024-01-31T08:00:00', 'P1M'), utc('2024-02-29T08:00:00'));\n+    assert.equal(finish('2024-02-29T00:00:00', 'P1Y'), utc('2025-02-28T00:00:00'));\n+    assert.equal(finish('2024-01-01T00:00:00', 'P1Y2M3DT4H'), utc('2025-03-04T04:00:00'));\n+  });\n+\n+  it('a task with no dates at all stays unscheduled', () => {\n+    const t = task({ scheduleDuration: 'P1D' });\n+    assert.equal(taskStartEpoch(t), undefined);\n+    assert.equal(taskFinishEpoch(t), undefined);\n+  });\n+});\n+\n+describe('readers share the resolver (#6803)', () => {\n+  const data: ScheduleExtraction = {\n+    hasSchedule: true, workSchedules: [], sequences: [], workCalendars: [],\n+    tasks: [\n+      // The bSI sample's shape end to end: early-only dates AND products bound\n+      // as IfcRelAssignsToProduct outputs (#6749).\n+      { ...earlyOnly, globalId: 'a', outputProductExpressIds: [7], outputProductGlobalIds: ['p7'] },\n+      task({ earlyStart: '2010-09-21T08:00:00', earlyFinish: '2010-09-21T16:00:00' },\n+        { globalId: 'b', outputProductExpressIds: [8], outputProductGlobalIds: ['p8'] }),\n+    ],\n+  };\n+\n+  it('the Gantt range spans the early windows', () => {\n+    const range = computeScheduleRange(data);\n+    assert.equal(range?.start, utc('2010-09-20T08:00:00'));\n+    assert.equal(range?.end, utc('2010-09-21T16:00:00'));\n+  });\n+\n+  it('the 4D animator reveals products by their early window', () => {\n+    const frame = computeAnimationFrame(data, utc('2010-09-20T23:00:00'), { ...DEFAULT_ANIMATION_SETTINGS });\n+    assert.ok(!frame.hiddenIds.has(7), 'task a is complete');\n+    assert.ok(frame.hiddenIds.has(8), 'task b has not started');\n+  });\n+\n+  it('the animator honours start + duration like the Gantt does', () => {\n+    const durationOnly: ScheduleExtraction = {\n+      ...data,\n+      tasks: [task({ scheduleStart: '2024-05-01T08:00:00', scheduleDuration: 'P1D' }, { productExpressIds: [9] })],\n+    };\n+    const frame = computeAnimationFrame(durationOnly, utc('2024-05-03T00:00:00'), { ...DEFAULT_ANIMATION_SETTINGS });\n+    assert.equal(frame.stats.complete, 1, 'a start + duration task has a window');\n+  });\n+\n+  it('charts phase the early window instead of reporting unscheduled', () => {\n+    assert.equal(phaseAt(earlyOnly, null), 'scheduled');\n+    assert.equal(phaseAt(earlyOnly, utc('2010-09-20T12:00:00')), 'in progress');\n+  });\n+});"
+    },
+    {
+      "sha": "20743630f24c42a286fbd6025f4deaa69fd625a8",
+      "filename": "apps/viewer/src/store/slices/schedule-task-dates.ts",
+      "status": "added",
+      "additions": 98,
+      "deletions": 0,
+      "changes": 98,
+      "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fstore%2Fslices%2Fschedule-task-dates.ts",
+      "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fstore%2Fslices%2Fschedule-task-dates.ts",
+      "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/apps%2Fviewer%2Fsrc%2Fstore%2Fslices%2Fschedule-task-dates.ts?ref=a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "patch": "@@ -0,0 +1,98 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+/**\n+ * The one place a task's time window is resolved from its IfcTaskTime\n+ * (#6803). The Gantt bars, the schedule range, the 4D animator, the charts\n+ * dataset, the Properties schedule card, bar drag and add-task anchoring\n+ * all read through here; three diverged copies used to live in those\n+ * modules.\n+ *\n+ * Precedence:\n+ *   1. The planned/as-built window: ScheduleStart ?? ActualStart, and\n+ *      ScheduleFinish ?? ActualFinish ?? start + (ScheduleDuration ??\n+ *      ActualDuration). Unchanged from before #6803.\n+ *   2. Only when the task has none of those four dates, the CPM window:\n+ *      EarlyStart, and EarlyFinish ?? EarlyStart + ScheduleDuration.\n+ *      buildingSMART's construction-scheduling sample writes leaf tasks\n+ *      this way (ScheduleStart/ScheduleFinish `$`). Gating on \"no planned\n+ *      or actual date at all\" keeps every file that has one byte-identical\n+ *      and never mixes a planned start with an early finish.\n+ *\n+ * Pure, and free of `@/store` imports: the animator imports this module,\n+ * and `scheduleSlice` imports the animator, so routing it through the\n+ * store barrel would reintroduce the ESM initialisation cycle the\n+ * animator's old local copy existed to dodge.\n+ */\n+\n+import type { ScheduleTaskInfo, ScheduleTaskTimeInfo } from '@ifc-lite/parser';\n+import { addIsoDurationToEpoch, parseIsoDate, toIsoUtc } from './schedule-edit-helpers.js';\n+\n+type TaskLike = Pick<ScheduleTaskInfo, 'taskTime'>;\n+\n+/** True when the task carries any planned or as-built date. */\n+function hasPlannedOrActual(tt: ScheduleTaskTimeInfo): boolean {\n+  return Boolean(tt.scheduleStart || tt.actualStart || tt.scheduleFinish || tt.actualFinish);\n+}\n+\n+/** The start ISO string the window is anchored on, as written in the file. */\n+export function taskStartIso(task: TaskLike): string | undefined {\n+  const tt = task.taskTime;\n+  if (!tt) return undefined;\n+  return hasPlannedOrActual(tt) ? (tt.scheduleStart ?? tt.actualStart) : tt.earlyStart;\n+}\n+\n+/** The explicit finish ISO string, as written in the file (no duration fallback). */\n+export function taskExplicitFinishIso(task: TaskLike): string | undefined {\n+  const tt = task.taskTime;\n+  if (!tt) return undefined;\n+  return hasPlannedOrActual(tt) ? (tt.scheduleFinish ?? tt.actualFinish) : tt.earlyFinish;\n+}\n+\n+/** The duration paired with the resolved start, for the finish fallback and display. */\n+export function taskDurationIso(task: TaskLike): string | undefined {\n+  const tt = task.taskTime;\n+  if (!tt) return undefined;\n+  return hasPlannedOrActual(tt) ? (tt.scheduleDuration ?? tt.actualDuration) : tt.scheduleDuration;\n+}\n+\n+export function taskStartEpoch(task: TaskLike): number | undefined {\n+  return parseIsoDate(taskStartIso(task));\n+}\n+\n+/**\n+ * The finish epoch: the explicit finish when present, otherwise start plus\n+ * the paired duration, otherwise the start itself. Undefined only when the\n+ * task has neither a finish nor a start.\n+ */\n+export function taskFinishEpoch(task: TaskLike): number | undefined {\n+  const finish = parseIsoDate(taskExplicitFinishIso(task));\n+  if (finish !== undefined) return finish;\n+  const start = taskStartEpoch(task);\n+  if (start === undefined) return undefined;\n+  const duration = taskDurationIso(task);\n+  if (!duration) return start;\n+  return addIsoDurationToEpoch(start, duration) ?? start;\n+}\n+\n+/**\n+ * The base an edit to ScheduleStart/ScheduleFinish/ScheduleDuration merges\n+ * onto. An early-only task gets its CPM window copied into the planned\n+ * fields first: the first planned date written flips resolution to the\n+ * planned window, so without this, editing only the finish would leave a\n+ * task with no start and the bar would vanish.\n+ */\n+export function plannedEditBase(tt: ScheduleTaskTimeInfo | undefined): ScheduleTaskTimeInfo {\n+  if (!tt) return {};\n+  if (hasPlannedOrActual(tt) || !tt.earlyStart) return tt;\n+  return { ...tt, scheduleStart: tt.earlyStart, scheduleFinish: tt.earlyFinish };\n+}\n+\n+/** The finish as an ISO string: as written when explicit, else derived (UTC). */\n+export function taskFinishIso(task: TaskLike): string | undefined {\n+  const explicit = taskExplicitFinishIso(task);\n+  if (explicit) return explicit;\n+  const finish = taskFinishEpoch(task);\n+  return finish === undefined ? undefined : toIsoUtc(finish);\n+}"
+    },
+    {
+      "sha": "fb57307ac84c6b88e20593b1e066b0bd2d032d9a",
+      "filename": "apps/viewer/src/store/slices/scheduleSlice.test.ts",
+      "status": "modified",
+      "additions": 40,
+      "deletions": 0,
+      "changes": 40,
+      "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fstore%2Fslices%2FscheduleSlice.test.ts",
+      "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fstore%2Fslices%2FscheduleSlice.test.ts",
+      "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/apps%2Fviewer%2Fsrc%2Fstore%2Fslices%2FscheduleSlice.test.ts?ref=a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "patch": "@@ -506,6 +506,46 @@ describe('scheduleSlice editing \u2014 IfcRelAssignsToProduct outputs (#6749)', ()\n   });\n });\n \n+describe('scheduleSlice editing \u2014 early-only task windows (#6803)', () => {\n+  it('editing only the finish keeps the early start as the planned start', () => {\n+    const store = bootScheduleStore();\n+    store.getState().setScheduleData(mkExtraction([mkTask({\n+      globalId: 'a',\n+      taskTime: { earlyStart: '2010-09-20T08:00:00', earlyFinish: '2010-09-20T16:00:00' },\n+    })]));\n+    store.getState().updateTaskTime('a', { scheduleFinish: '2010-09-21T16:00:00' });\n+    const tt = store.getState().scheduleData!.tasks[0].taskTime!;\n+    assert.equal(tt.scheduleStart, '2010-09-20T08:00:00');\n+    assert.equal(tt.scheduleFinish, '2010-09-21T16:00:00');\n+  });\n+\n+  const earlyTask = () => mkTask({\n+    globalId: 'a',\n+    taskTime: { earlyStart: '2010-09-20T08:00:00', earlyFinish: '2010-09-20T16:00:00' },\n+  });\n+\n+  it('a task added after an early-only predecessor starts at its early finish', () => {\n+    const store = bootScheduleStore();\n+    store.getState().setScheduleData(mkExtraction([earlyTask()]));\n+    const gid = store.getState().addTask({ afterGlobalId: 'a' });\n+    const added = store.getState().scheduleData!.tasks.find(t => t.globalId === gid)!;\n+    assert.equal(added.taskTime?.scheduleStart, '2010-09-20T16:00:00');\n+  });\n+\n+  it('the milestone toggle collapses an early-only task onto its early start, and undo restores it', () => {\n+    const store = bootScheduleStore();\n+    store.getState().setScheduleData(mkExtraction([earlyTask()]));\n+    store.getState().updateTask('a', { isMilestone: true });\n+    const tt = store.getState().scheduleData!.tasks[0].taskTime!;\n+    assert.equal(tt.scheduleStart, '2010-09-20T08:00:00');\n+    assert.equal(tt.scheduleFinish, '2010-09-20T08:00:00');\n+    assert.equal(tt.scheduleDuration, 'PT0S');\n+    store.getState().undoScheduleEdit();\n+    assert.deepStrictEqual(store.getState().scheduleData!.tasks[0].taskTime,\n+      { earlyStart: '2010-09-20T08:00:00', earlyFinish: '2010-09-20T16:00:00' });\n+  });\n+});\n+\n describe('scheduleSlice editing \u2014 deleteTask', () => {\n   it('removes the task and cascades sequences referring to it', () => {\n     const store = bootScheduleStore();"
+    },
+    {
+      "sha": "979b7ddf3ca2fb588d404b252fcbf60739815fc3",
+      "filename": "apps/viewer/src/store/slices/scheduleSlice.ts",
+      "status": "modified",
+      "additions": 8,
+      "deletions": 40,
+      "changes": 48,
+      "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fstore%2Fslices%2FscheduleSlice.ts",
+      "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/a0f7cfa07fc7a220b93e316c1523536859a808c5/apps%2Fviewer%2Fsrc%2Fstore%2Fslices%2FscheduleSlice.ts",
+      "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/apps%2Fviewer%2Fsrc%2Fstore%2Fslices%2FscheduleSlice.ts?ref=a0f7cfa07fc7a220b93e316c1523536859a808c5",
+      "patch": "@@ -33,6 +33,7 @@ import {\n   addTaskInputProducts,\n   dropTaskProducts,\n } from './schedule-edit-helpers.js';\n+import { taskStartEpoch, taskFinishEpoch, taskStartIso, plannedEditBase } from './schedule-task-dates.js';\n \n export type GanttTimeScale = 'hour' | 'day' | 'week' | 'month' | 'year';\n \n@@ -279,39 +280,6 @@ export interface ScheduleSlice {\n   abortScheduleTransaction: () => void;\n }\n \n-/**\n- * Derive a plausible finish time for a task when `ScheduleFinish` is absent.\n- * Uses ScheduleDuration (ISO 8601 seconds) on top of ScheduleStart. Returns\n- * undefined when no start time is available.\n- */\n-function taskFinishEpoch(task: ScheduleTaskInfo): number | undefined {\n-  const start = parseIsoDate(task.taskTime?.scheduleStart ?? task.taskTime?.actualStart);\n-  const finish = parseIsoDate(task.taskTime?.scheduleFinish ?? task.taskTime?.actualFinish);\n-  if (finish !== undefined) return finish;\n-  if (start === undefined) return undefined;\n-  const duration = task.taskTime?.scheduleDuration ?? task.taskTime?.actualDuration;\n-  if (!duration) return start;\n-  const match = duration.match(\n-    /^P(?:(\\d+(?:\\.\\d+)?)Y)?(?:(\\d+(?:\\.\\d+)?)M)?(?:(\\d+(?:\\.\\d+)?)W)?(?:(\\d+(?:\\.\\d+)?)D)?(?:T(?:(\\d+(?:\\.\\d+)?)H)?(?:(\\d+(?:\\.\\d+)?)M)?(?:(\\d+(?:\\.\\d+)?)S)?)?$/,\n-  );\n-  if (!match) return start;\n-  const [, y, mo, w, d, h, mi, s] = match;\n-  const yearMs = 365.2425 * 86400_000;\n-  const monthMs = yearMs / 12;\n-  const totalMs =\n-    (y ? parseFloat(y) * yearMs : 0) +\n-    (mo ? parseFloat(mo) * monthMs : 0) +\n-    (w ? parseFloat(w) * 7 * 86400_000 : 0) +\n-    (d ? parseFloat(d) * 86400_000 : 0) +\n-    (h ? parseFloat(h) * 3_600_000 : 0) +\n-    (mi ? parseFloat(mi) * 60_000 : 0) +\n-    (s ? parseFloat(s) * 1000 : 0);\n-  return start + totalMs;\n-}\n-\n-function taskStartEpoch(task: ScheduleTaskInfo): number | undefined {\n-  return parseIsoDate(task.taskTime?.scheduleStart ?? task.taskTime?.actualStart);\n-}\n \n /**\n  * Compute the schedule time range across all tasks. Prefers real dates from\n@@ -617,7 +585,9 @@ export const createScheduleSlice: StateCreator<\n         // PT0S explicitly so the serializer emits it verbatim on export.\n         t.taskTime = {\n           ...t.taskTime,\n-          scheduleFinish: t.taskTime.scheduleStart ?? t.taskTime.scheduleFinish,\n+          // Anchor on the resolved start (#6803) so an early-only task keeps its date.\n+          scheduleStart: taskStartIso(t),\n+          scheduleFinish: taskStartIso(t) ?? t.taskTime.scheduleFinish,\n           scheduleDuration: 'PT0S',\n         };\n       }\n@@ -637,7 +607,7 @@ export const createScheduleSlice: StateCreator<\n     // re-render. With field-patch snapshots we only need the `taskTime`\n     // field's prior state, so compute the validation check against a\n     // dry-run merge first.\n-    const prevTimeProbe = current.tasks[idx].taskTime ?? {};\n+    const prevTimeProbe = plannedEditBase(current.tasks[idx].taskTime);\n     const mergedProbe = { ...prevTimeProbe, ...patch };\n     const reconciledProbe = reconcileTaskTime(mergedProbe);\n     if (!reconciledProbe) return; // finish < start \u2014 silent reject\n@@ -652,7 +622,7 @@ export const createScheduleSlice: StateCreator<\n \n     const next = cloneExtraction(current);\n     const t = next.tasks[idx];\n-    const prevTime = t.taskTime ?? {};\n+    const prevTime = plannedEditBase(t.taskTime);\n     // Combine prior + patch; then reconcile start/finish/duration so\n     // whichever pair the user supplied wins and the third is derived.\n     const merged = { ...prevTime, ...patch };\n@@ -798,10 +768,8 @@ export const createScheduleSlice: StateCreator<\n     const predIdx = afterGid ? next.tasks.findIndex(t => t.globalId === afterGid) : -1;\n     let startIso: string;\n     if (predIdx >= 0) {\n-      const predFinish = parseIsoDate(next.tasks[predIdx].taskTime?.scheduleFinish);\n-      startIso = predFinish !== undefined\n-        ? toIsoUtc(predFinish)\n-        : (next.tasks[predIdx].taskTime?.scheduleStart ?? isoNowAt8());\n+      const predFinish = taskFinishEpoch(next.tasks[predIdx]);\n+      startIso = predFinish !== undefined ? toIsoUtc(predFinish) : isoNowAt8();\n     } else {\n       const rangeStart = computeScheduleRange(next)?.start;\n       startIso = rangeStart !== undefined ? toIsoUtc(rangeStart) : isoNowAt8();"
+    }
+  ]
+}

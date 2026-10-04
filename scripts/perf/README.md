@@ -27,6 +27,34 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Historical CSG job observations (#6516)
+
+Use the existing ordered CSG census for a small feature-gated diagnostic before
+adding geometry hooks or porting newer algorithms into historical releases.
+Complete public-model loads preserve the ordinary output within each release,
+and individual job replays reproduce their canonical batches. Matching original
+source tuples localizes the public slab's changed output and larger later host
+operands, consistent with the source's retained-hole correction. This does not
+establish the private reported regression's cause or a performance improvement.
+
+Interpret these as positive wrapper observations only. Existing recording can
+precede empty checks, silently return empty on a poisoned lock, and retain an
+unbounded vector within a call. Do not infer zero work, complete invocation
+counts or causal workload ratios. Preserve the earlier validator refusal: the
+old streaming helper performs a separate verification load, so its aggregate
+log counts cannot be compared directly with a single-load diagnostic. Compare
+ordinary logs within the same load boundary. Delivery and private-file output
+checks are documented in [stream-diagnostic.md](stream-diagnostic.md).
+
+The isolated Actions bundle also passed complete public-model checks on Linux
+and Windows, including the uploaded and downloaded file inventory. Both
+platforms preserve the same per-release output and original-job replay results.
+Fresh source builds still differ from the published engines and earlier local
+builds; the qualified delivery does not establish byte-equivalent engines,
+timings or private-model compatibility. Keep those identities separate and
+require the same-release output checks on the reporter's model. The committed
+[delivery summary](csg-work-delivery-qualification.json) pins the actual run.
+
 ## Bundled main-first module sharing: scoped SDK result (#6537)
 
 Bundled initialization removes the second observed WASM request before the
@@ -109,6 +137,27 @@ representation from the final load metric. Preserve true sticky keys and the
 canonical parser; defer mechanisms whose correctness or end-to-end verdict
 remains incomplete. [Raw dispositions and prerequisites](evidence/deferred-worker-mechanisms-6537/README.md)
 retain source attribution and the excluded attempts.
+
+## Known-explicit orientation: rejected, do not ship (#6537 / #6788)
+
+The private known-explicit helper preserved adaptive arithmetic and passed the
+predicate/workspace correctness controls. Earlier default-worker SDK results
+showed a scoped ISSUE129 benefit; the separate native comparison remained mixed.
+The fresh integrated default-worker SDK comparison retained CPU output identity
+and complete diagnostics, but every observed Holter pair was slower. Haus and
+O-S1 were mixed. The heavy-family regression blocks shipment under the project's
+no-regressions requirement; the orientation implementation is removed. Freshly
+built WASM artifacts differ between arms, so this rejects the candidate
+combination without isolating dispatch as the cause of the Holter slowdown.
+
+Lesson: a scoped CSG signal cannot justify a regression on a heavy public model.
+Instruction attribution and avoided dispatch do not establish consumer benefit.
+Stop this candidate, preserve every pair and refusal, and keep the rejected patch
+as data so the mechanism is not proposed again without genuinely new evidence.
+The [lossless rejection record](evidence/explicit-orientation-6537/README.md)
+retains immutable sources, correctness controls, historical SDK/native cohorts
+and the new integrated comparison. No universal, full-viewer, physical-memory or
+complete IFC fidelity benefit is claimed.
 
 ## Checked-magnitude products: native benefit, SDK mixed (#6537 / #6764)
 

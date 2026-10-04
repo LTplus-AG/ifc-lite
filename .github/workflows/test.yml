@@ -330,6 +330,8 @@ jobs:
               # whoever touches the frontend next. Add it here when you add it.
               - 'apps/viewer/**'
               - 'apps/viewer-embed/**'
+              - 'apps/autodesk-exchange-worker/**'
+              - 'apps/autodesk-service/**'
               # `examples/*` is a pnpm-workspace member and is now a lint target
               # (scripts/check-lint-ran.mjs). Without it here, an examples-only
               # PR leaves `frontend` false, the Lint job never runs, and the new

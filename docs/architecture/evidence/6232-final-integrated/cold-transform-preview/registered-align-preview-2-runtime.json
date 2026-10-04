@@ -1,0 +1,49 @@
+{
+  "modelId": "164f7375-8ea3-4d64-92ec-423dc0b7413d",
+  "count": 2,
+  "started": {
+    "command": "align",
+    "selected": [
+      1222,
+      1407,
+      1262
+    ],
+    "ghostBounds": {
+      "min": [
+        1.7676749229431152,
+        0
+      ],
+      "max": [
+        11.767675399780273,
+        0.10000000149011612
+      ]
+    },
+    "pivot": null,
+    "loadedViewBefore": true,
+    "editorPresentBefore": false,
+    "loadedViewRetained": true,
+    "effectiveOverlayEmpty": true,
+    "roots": [
+      1222
+    ],
+    "carried": [
+      1407,
+      1299,
+      1443,
+      1262
+    ],
+    "alignMoveIds": [
+      1222
+    ],
+    "meshSourceIds": [
+      1222
+    ],
+    "movedLocalIds": null,
+    "ghostCount": 1,
+    "ghostsFinite": true,
+    "journal": [],
+    "records": [],
+    "allocator": 9993
+  },
+  "scope": "Registered command first-authoring preview and real Escape cancellation only. The real viewer initializes an empty mutation view at load; missing-view cold behavior is qualified separately by native regression controls. Same-host Align reference intentionally does not claim commit agreement; independent-reference native controls qualify commit."
+}

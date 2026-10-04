@@ -63,3 +63,53 @@ ordinary streaming path. This public seven-non-rectangular-opening fixture did
 not reproduce the private model's slowdown or failures. Neither the script nor
 that observation resolves #6516. No opening bypass or production routing change
 is included.
+
+## Job-level CSG observations
+
+The manual **Benchmark** workflow's `diagnostic_6516` option builds a separate
+historical diagnostic bundle. It bypasses the viewer benchmark. Download the
+`csg-work-bundle` artifact from that run and extract it into a temporary directory.
+The bundle contains the published release pairs above, two separately identified
+source-built engines, their source patches, package licenses and a file manifest.
+It requires Node 24.21.0; the reporter does not need Rust or an application update.
+
+From the extracted directory, run:
+
+```sh
+node run-csg-work-bundle.mjs "path/to/private.ifc" "path/to/new-report-directory"
+```
+
+Keep the IFC and report directory outside the extracted bundle. Adding or
+modifying bundle files, including `.DS_Store`, `Thumbs.db` or `desktop.ini`
+created by a file browser, causes `BUNDLE_FILE_HASH`. If that refusal occurs,
+extract the artifact into a fresh directory and run it from a terminal.
+
+The launcher verifies the bundle's file hashes, then starts six fresh Node
+processes: published ordinary, instrumented ordinary, and instrumented diagnostic
+for each release. It stops at the first failure. Within each release, both the
+raw WASM mesh digest and converted SDK mesh digest must match before diagnostic
+records are accepted. Each stream must complete normally; each additional job
+replay must reproduce its original streaming batch. This is an output check,
+not a performance measurement. The two releases may legitimately differ.
+
+The feature only drains existing CSG records. Each retained job carries its
+original source tuple, stable source-content key, duplicate occurrence, mesh
+digest and ordered observed wrapper entries. Those entries can precede an empty
+or non-overlapping operation: they are not uniformly completed kernel calls.
+Completeness, count truncation and lock health remain unverified. An empty record
+array does not prove zero work. The serialization cap does not bound the existing
+recording vector during a synchronous WASM call.
+
+Reports stay in the new local directory; nothing uploads the IFC or reports.
+Inspect JSON before sharing it: source hashes, entity IDs and source offsets can
+identify private content even though filenames, coordinates and raw logs are
+withheld. The launcher bounds each child process and captured output, but does
+not certify a host-memory ceiling.
+
+The workflow separately qualifies its actual bundle on Linux and Windows using
+the pinned public slab fixture and known converted outputs. Inspect both jobs'
+results before using an artifact. A public self-check does not prove compatibility
+with the private file; the same-release checks above are required on that file.
+The local preparation evidence is in `csg-work-qualification.json`; the actual
+Linux and Windows delivery verdict is in `csg-work-delivery-qualification.json`.
+Neither this diagnostic nor the public slab observation resolves #6516.

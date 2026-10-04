@@ -1,0 +1,184 @@
+{
+  "source": "57cb2ed558ab9d4cbd6244063f2d796f9b71a64c",
+  "scope": "Derived read-only original receipt audit: canonical allocator initialization is 1\u2192source max9992+1; no allocation after initialization through preview/cancel. No new browser execution.",
+  "receipts": [
+    {
+      "suite": "registered-align-preview",
+      "count": 1,
+      "path": "/tmp/6232-registered-preview-final-stable-browser-evidence/registered-align-preview/1-browser.json",
+      "sha256": "85eefdc6a2f87bd0115f50e37878cb62bfabda23663dc80ff832e17b9c40cb7b",
+      "sourceMaxExpressId": 9992,
+      "canonicalWatermark": 9993,
+      "transitions": [
+        {
+          "stage": "baseline",
+          "nextExpressId": 1
+        },
+        {
+          "stage": "before-preview",
+          "nextExpressId": 1
+        },
+        {
+          "stage": "registered-preview",
+          "nextExpressId": 9993
+        },
+        {
+          "stage": "cancelled-preview",
+          "nextExpressId": 9993
+        }
+      ],
+      "graphGeometryOverlayHistoryPeerUnchanged": true
+    },
+    {
+      "suite": "registered-align-preview",
+      "count": 2,
+      "path": "/tmp/6232-registered-preview-final-stable-browser-evidence/registered-align-preview/2-browser.json",
+      "sha256": "8d925fe80229aecf4349cfac97ba11d1fbceba7d32e20761864ed51db1b469fd",
+      "sourceMaxExpressId": 9992,
+      "canonicalWatermark": 9993,
+      "transitions": [
+        {
+          "stage": "baseline",
+          "nextExpressId": 1
+        },
+        {
+          "stage": "before-preview",
+          "nextExpressId": 1
+        },
+        {
+          "stage": "registered-preview",
+          "nextExpressId": 9993
+        },
+        {
+          "stage": "cancelled-preview",
+          "nextExpressId": 9993
+        }
+      ],
+      "graphGeometryOverlayHistoryPeerUnchanged": true
+    },
+    {
+      "suite": "registered-move-preview",
+      "count": 1,
+      "path": "/tmp/6232-registered-preview-final-stable-browser-evidence/registered-move-preview/1-browser.json",
+      "sha256": "5fdc3eaaeff3f43342a68dc247a4214edce102710bc78bbbde439e51559f88de",
+      "sourceMaxExpressId": 9992,
+      "canonicalWatermark": 9993,
+      "transitions": [
+        {
+          "stage": "baseline",
+          "nextExpressId": 1
+        },
+        {
+          "stage": "before-preview",
+          "nextExpressId": 1
+        },
+        {
+          "stage": "preview-native-source",
+          "nextExpressId": 9993
+        },
+        {
+          "stage": "registered-preview",
+          "nextExpressId": 9993
+        },
+        {
+          "stage": "cancelled-preview",
+          "nextExpressId": 9993
+        }
+      ],
+      "graphGeometryOverlayHistoryPeerUnchanged": true
+    },
+    {
+      "suite": "registered-move-preview",
+      "count": 2,
+      "path": "/tmp/6232-registered-preview-final-stable-browser-evidence/registered-move-preview/2-browser.json",
+      "sha256": "0f8b52f19044bcfb152f4483c7bb1e62a627dee9b8b52336b89c045e218247e9",
+      "sourceMaxExpressId": 9992,
+      "canonicalWatermark": 9993,
+      "transitions": [
+        {
+          "stage": "baseline",
+          "nextExpressId": 1
+        },
+        {
+          "stage": "before-preview",
+          "nextExpressId": 1
+        },
+        {
+          "stage": "preview-native-source",
+          "nextExpressId": 9993
+        },
+        {
+          "stage": "registered-preview",
+          "nextExpressId": 9993
+        },
+        {
+          "stage": "cancelled-preview",
+          "nextExpressId": 9993
+        }
+      ],
+      "graphGeometryOverlayHistoryPeerUnchanged": true
+    },
+    {
+      "suite": "registered-rotate-preview",
+      "count": 1,
+      "path": "/tmp/6232-registered-preview-final-stable-browser-evidence/registered-rotate-preview/1-browser.json",
+      "sha256": "d4d27e0b441d87c05319f33e0586836d680686d53c810c856e945b4e6307116b",
+      "sourceMaxExpressId": 9992,
+      "canonicalWatermark": 9993,
+      "transitions": [
+        {
+          "stage": "baseline",
+          "nextExpressId": 1
+        },
+        {
+          "stage": "before-preview",
+          "nextExpressId": 1
+        },
+        {
+          "stage": "preview-native-source",
+          "nextExpressId": 9993
+        },
+        {
+          "stage": "registered-preview",
+          "nextExpressId": 9993
+        },
+        {
+          "stage": "cancelled-preview",
+          "nextExpressId": 9993
+        }
+      ],
+      "graphGeometryOverlayHistoryPeerUnchanged": true
+    },
+    {
+      "suite": "registered-rotate-preview",
+      "count": 2,
+      "path": "/tmp/6232-registered-preview-final-stable-browser-evidence/registered-rotate-preview/2-browser.json",
+      "sha256": "eb9ef90643175f2428101f19585942f43c0ae3c2690b8bbaaaff09f73e9715b3",
+      "sourceMaxExpressId": 9992,
+      "canonicalWatermark": 9993,
+      "transitions": [
+        {
+          "stage": "baseline",
+          "nextExpressId": 1
+        },
+        {
+          "stage": "before-preview",
+          "nextExpressId": 1
+        },
+        {
+          "stage": "preview-native-source",
+          "nextExpressId": 9993
+        },
+        {
+          "stage": "registered-preview",
+          "nextExpressId": 9993
+        },
+        {
+          "stage": "cancelled-preview",
+          "nextExpressId": 9993
+        }
+      ],
+      "graphGeometryOverlayHistoryPeerUnchanged": true
+    }
+  ]
+}

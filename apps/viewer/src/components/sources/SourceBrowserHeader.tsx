@@ -20,6 +20,7 @@ interface SourceBrowserHeaderProps {
   catalogUpdatedAt: number | null;
   syncing: boolean;
   busy: boolean;
+  onCancelDownload?: () => void;
   onBack: () => void;
   onSync: () => void;
 }
@@ -45,6 +46,7 @@ export function SourceBrowserHeader({
   catalogUpdatedAt,
   syncing,
   busy,
+  onCancelDownload,
   onBack,
   onSync,
 }: SourceBrowserHeaderProps) {
@@ -61,7 +63,8 @@ export function SourceBrowserHeader({
       <span className="truncate text-sm font-medium">
         {step === 'projects' && providerTitle}
         {step === 'file-areas' && selectedProject?.name}
-        {step === 'folders' && `${selectedProject?.name} / ${selectedFileArea?.name}`}
+        {busy && onCancelDownload && <Button variant="outline" size="sm" onClick={onCancelDownload}>{t('sources.sourceBrowserHeader.cancelDownload')}</Button>}
+      {step === 'folders' && `${selectedProject?.name} / ${selectedFileArea?.name}`}
       </span>
       {step === 'folders' && selectedProject && selectedFileArea && (
         <div className="ml-auto flex items-center gap-2">

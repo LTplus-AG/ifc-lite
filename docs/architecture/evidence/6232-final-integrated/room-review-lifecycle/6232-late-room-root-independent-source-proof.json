@@ -1,0 +1,77 @@
+{
+  "base": "bc2fff30f8fe2ed343ad5e70d7571430c76909e0",
+  "head": "6fcee10246506226f26fcb4381fecdb75a7869eb",
+  "tree": "e54251248272271742afe25ee35d134dfb895b62",
+  "owningLeaves": [
+    "764725a901ef0f2b4ef76ae833defd232a5a83a1",
+    "9797bb18b4768c0ab68eb43b618a5e240aa2c968",
+    "c2714457e75461d433e4651cab6ccb680e8e1f93",
+    "a3fac5a61cfca27fb10bdc4250b6fce2d601f695"
+  ],
+  "files": [
+    {
+      "path": ".changeset/room-detach-cleanup.md",
+      "sha256": "24093a85d815e2c087b6df5dde71c319e0475c5835c0f87258b9ee405aa5e4ef"
+    },
+    {
+      "path": ".changeset/room-overlay-revision.md",
+      "sha256": "60137d2bda9d94d63a5d2175720d1023c64dd4e9d911975143e715de3d9e21ce"
+    },
+    {
+      "path": ".changeset/room-query-review.md",
+      "sha256": "a8487f509a854da42abee7449114a08e7c09c5698a8360389e890c88c5d0472a"
+    },
+    {
+      "path": "docs/guide/mutations.md",
+      "sha256": "8e3db84033f1f41d313713de9800b8551869ac01acac9de92b3d98caebe0b3b6"
+    },
+    {
+      "path": "packages/mcp/README.md",
+      "sha256": "5440602b57322607a575b93648268cc91b0520b0f196487256045eed97affe3b"
+    },
+    {
+      "path": "packages/mcp/src/headless-room-geometry.ts",
+      "sha256": "042eb40178a0c29f339da92436c5b661beedc7412e402eb6618fa41981541f55"
+    },
+    {
+      "path": "packages/mcp/src/server-detach-native.test.ts",
+      "sha256": "acf8443e1a236cefebf93b28ad2e3c78ec1941d0271dc60a1034122000cb9f00"
+    },
+    {
+      "path": "packages/mcp/src/server.ts",
+      "sha256": "4c7bf2682a28ce208ab9aa1a5e89449e6a3e336e66783e7771e2905afd4749f1"
+    },
+    {
+      "path": "packages/mcp/src/session-cleanup.ts",
+      "sha256": "bcdb315c17de60c8d1b6389c6822733f212d8c7e06f856d445d5d039071e8629"
+    },
+    {
+      "path": "packages/mcp/src/tools/room-preparation-errors.test.ts",
+      "sha256": "aa77ee728e9e03d7c8face4a2a51e92f84416e4de3653a54b94bf685e5c10855"
+    },
+    {
+      "path": "packages/mcp/src/tools/room-readonly-state.test.ts",
+      "sha256": "be8c0d07c380e4d336b1368f6ad369b55b7b718a690994a5d06dba3bbc52ec75"
+    },
+    {
+      "path": "packages/mutations/src/mutable-overlay-state.ts",
+      "sha256": "f65ae9da3c434aaba2376eab0c364bc60d3f5f9d47d608d11d43a3e1e0c20003"
+    },
+    {
+      "path": "packages/mutations/src/mutable-property-view.ts",
+      "sha256": "0c17fa889919b92f487688d5ad5b638295c6d2cab2681d17d3782948b520299c"
+    },
+    {
+      "path": "packages/sdk/src/store-room-command.test.ts",
+      "sha256": "821c69625bad43548975f6c494b600f25bb96c685d26634f517c530e3d956a58"
+    },
+    {
+      "path": "packages/sdk/src/store-room-command.ts",
+      "sha256": "baacac1da472b7401d4a10623c3fb43f607a54c0f6588866e2e862f7d8e11322"
+    }
+  ],
+  "sharedPipelineUnchanged": true,
+  "apiSnapshotUnchanged": true,
+  "status": "",
+  "classificationForward": "Original higher withHeadlessGeometry body retained; only3typedrefusals+wrapper added. Both independent peers approve."
+}

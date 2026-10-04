@@ -1,0 +1,175 @@
+{
+  "archiveRoot": {
+    "head": "886ffb1790fd0689d1f75ac7f5ccf3e161b5accd",
+    "tree": "8fb30482a12408aa5ce02b881f04345ab9140209"
+  },
+  "combinedSource": {
+    "head": "dc04b1ef80961ee9d372170c1dd9e76ca08bf7f2",
+    "tree": "8fb30482a12408aa5ce02b881f04345ab9140209"
+  },
+  "owningLeaf": "90ae64e266486a19f8a65ac01e99af32eda70f46",
+  "runtime": {
+    "wasm": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+    "js": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d"
+  },
+  "originalFailures": [
+    {
+      "head": "bffa52216d0ebf274ef1e3121c23f4f256a02b8c",
+      "job": 111371739098,
+      "run": 37180076210,
+      "testMs": 5192
+    },
+    {
+      "head": "59f42c7b81dfa1833daa6be055c6dea4e0c038ee",
+      "job": 111371808989,
+      "run": 37180088261,
+      "testMs": 5299
+    }
+  ],
+  "scope": "Only eight new two-model native fault/recovery test deadlines, every assertion and production/API/request/global limit unchanged",
+  "artifacts": [
+    {
+      "path": "/tmp/6232-6760-bffa-node-failure.log",
+      "sha256": "ecd0165f2ae624094ec4ba90b3c6835890fa5f0bf48c42f71f6f3ee72db38119",
+      "scope": "Original current #6760 full-CI 5,192 ms default-deadline failure",
+      "archive": "6232-6760-bffa-node-failure.log.gz",
+      "originalBytes": 3246272,
+      "originalSha256": "ecd0165f2ae624094ec4ba90b3c6835890fa5f0bf48c42f71f6f3ee72db38119",
+      "encoding": "gzip",
+      "archiveBytes": 508177,
+      "archiveSha256": "3b1d638638890671fe4ca2c87142ec9e3240d99abf0d680fa708d9ba68f55116"
+    },
+    {
+      "path": "/tmp/6232-6761-59f42-node-failure.log",
+      "sha256": "59af631452bec48cba20ce4c6905e537b0184129f221080deb5367907706445c",
+      "scope": "Original current #6761 full-CI 5,299 ms default-deadline failure",
+      "archive": "6232-6761-59f42-node-failure.log.gz",
+      "originalBytes": 2988956,
+      "originalSha256": "59af631452bec48cba20ce4c6905e537b0184129f221080deb5367907706445c",
+      "encoding": "gzip",
+      "archiveBytes": 479632,
+      "archiveSha256": "3fddc123d367697299aa5086f3dcb8d4212e9744ef5e41c43dcab1e466c74c23"
+    },
+    {
+      "path": "/tmp/6232-6761-room-preparation-timeout-diagnostic.log",
+      "sha256": "1e4196269b4d019dfbe484a2b20f7b264e01746853d1b684c86b98d310a44f01",
+      "scope": "INCONCLUSIVE first --only diagnostic with stale sibling build output",
+      "archive": "6232-6761-room-preparation-timeout-diagnostic.log.gz",
+      "originalBytes": 7616,
+      "originalSha256": "1e4196269b4d019dfbe484a2b20f7b264e01746853d1b684c86b98d310a44f01",
+      "encoding": "gzip",
+      "archiveBytes": 1165,
+      "archiveSha256": "158d0e2563e066861e5a4904e47aa3e28127dc9cf2d85db5a4cf4770a7bf7fce"
+    },
+    {
+      "path": "/tmp/6232-6761-room-preparation-prerequisites.log",
+      "sha256": "26a21b68e93b82183ce68bee2a090e9b2488fed672a263cfec470ecf8b41c1c6",
+      "scope": "Corrected old-deadline exact 59f source: root Turbo 39-task prerequisite/test run, ten passes",
+      "archive": "6232-6761-room-preparation-prerequisites.log.gz",
+      "originalBytes": 13103,
+      "originalSha256": "26a21b68e93b82183ce68bee2a090e9b2488fed672a263cfec470ecf8b41c1c6",
+      "encoding": "gzip",
+      "archiveBytes": 2842,
+      "archiveSha256": "c7f7a9f958cf14d9e7e3bab8c0ead17f4d3b0bca67b327c94f1c455fa8727c71"
+    },
+    {
+      "path": "/tmp/6232-6761-room-preparation-timeout-diagnostic-corrected.log",
+      "sha256": "5316b7d6bdcbfb5453ac4ad33e50d84b659dc8d31bd4b891b9ef104f3774e0c6",
+      "scope": "Corrected exact 59f source: forced no-build ten passes after prerequisites",
+      "archive": "6232-6761-room-preparation-timeout-diagnostic-corrected.log.gz",
+      "originalBytes": 1069,
+      "originalSha256": "5316b7d6bdcbfb5453ac4ad33e50d84b659dc8d31bd4b891b9ef104f3774e0c6",
+      "encoding": "gzip",
+      "archiveBytes": 474,
+      "archiveSha256": "fe8f9283b0c08d736d6cbeed0381c33aaab638917354eb913c50552611dd46a1"
+    },
+    {
+      "path": "/tmp/6232-room-preparation-native-timeout-diagnosis.json",
+      "sha256": "08325172e3d6e9194d05499b07da9305a246f521b1284b16cb129949dbaf8eba",
+      "scope": "Literal original source/runtime and diagnosis hashes",
+      "archive": "6232-room-preparation-native-timeout-diagnosis.json",
+      "originalBytes": 1995,
+      "originalSha256": "08325172e3d6e9194d05499b07da9305a246f521b1284b16cb129949dbaf8eba",
+      "encoding": "original",
+      "archiveBytes": 1995,
+      "archiveSha256": "08325172e3d6e9194d05499b07da9305a246f521b1284b16cb129949dbaf8eba"
+    },
+    {
+      "path": "/tmp/6232-native-preparation-budget-receipt.json",
+      "sha256": "cbcb3214a345e3934c87bda2cbc146924c61c63b78b70873b11100c0593e1ded",
+      "scope": "Owning 90ae source qualification: ten controls and 111-task types /3389 test files",
+      "archive": "6232-native-preparation-budget-receipt.json",
+      "originalBytes": 2329,
+      "originalSha256": "cbcb3214a345e3934c87bda2cbc146924c61c63b78b70873b11100c0593e1ded",
+      "encoding": "original",
+      "archiveBytes": 2329,
+      "archiveSha256": "cbcb3214a345e3934c87bda2cbc146924c61c63b78b70873b11100c0593e1ded"
+    },
+    {
+      "path": "/tmp/6232-native-preparation-budget-tests.log",
+      "sha256": "b30be45ed2a9a5468f05c1ffc6dbe2134265350ebec53afb79d924f9c30e1153",
+      "scope": "Owning repaired 90ae source root Turbo39-task ten-pass cohort",
+      "archive": "6232-native-preparation-budget-tests.log.gz",
+      "originalBytes": 22492,
+      "originalSha256": "b30be45ed2a9a5468f05c1ffc6dbe2134265350ebec53afb79d924f9c30e1153",
+      "encoding": "gzip",
+      "archiveBytes": 3312,
+      "archiveSha256": "7f272560cf06047504f2daf110ac2a05ce3eb2d24e684c5052110e84edcab702"
+    },
+    {
+      "path": "/tmp/6232-native-preparation-budget-types.log",
+      "sha256": "b1e6c1b680b1991fb11c3931953554f6c8fbbecb4af73fb56cf64f38acb48c76",
+      "scope": "Owning repaired 90ae source mandatory typecheck111/3389, 63 cached tasks",
+      "archive": "6232-native-preparation-budget-types.log.gz",
+      "originalBytes": 45933,
+      "originalSha256": "b1e6c1b680b1991fb11c3931953554f6c8fbbecb4af73fb56cf64f38acb48c76",
+      "encoding": "gzip",
+      "archiveBytes": 7113,
+      "archiveSha256": "326e7c4fddac2a67746411a6fc81698c6d2357814a4f704f98a5ffe6a8cc6cf0"
+    },
+    {
+      "path": "/tmp/6232-native-preparation-budget-integrated-receipt.json",
+      "sha256": "e6f63bb1f0e574bbd8e9b4c9e946fa2bab34e24e37d8b83eab003bdca72ad775",
+      "scope": "Combined dc04 source qualification and ancestry-only886 identities",
+      "archive": "6232-native-preparation-budget-integrated-receipt.json",
+      "originalBytes": 4639,
+      "originalSha256": "e6f63bb1f0e574bbd8e9b4c9e946fa2bab34e24e37d8b83eab003bdca72ad775",
+      "encoding": "original",
+      "archiveBytes": 4639,
+      "archiveSha256": "e6f63bb1f0e574bbd8e9b4c9e946fa2bab34e24e37d8b83eab003bdca72ad775"
+    },
+    {
+      "path": "/tmp/6232-native-preparation-budget-integrated-types.log",
+      "sha256": "6343803dd2ca548963f4ea391586ddbb6c5a95248f08cff71e05177a160d0f94",
+      "scope": "Combined dc04 root mandatory typecheck111/3399,106 cached tasks",
+      "archive": "6232-native-preparation-budget-integrated-types.log.gz",
+      "originalBytes": 45429,
+      "originalSha256": "6343803dd2ca548963f4ea391586ddbb6c5a95248f08cff71e05177a160d0f94",
+      "encoding": "gzip",
+      "archiveBytes": 6919,
+      "archiveSha256": "38c6579fccc6602c98c70e1759ca4411db46cade638d0a753981cb2a4fd54531"
+    },
+    {
+      "path": "/tmp/6232-native-preparation-budget-integrated-controls.log",
+      "sha256": "e36afeeadcff536bb18f6fa1e13ba437ab45d1c67b3d90e6ad1842aecda7927b",
+      "scope": "Combined dc04 exact ten native controls PASS,zero skips/test cache",
+      "archive": "6232-native-preparation-budget-integrated-controls.log.gz",
+      "originalBytes": 9690,
+      "originalSha256": "e36afeeadcff536bb18f6fa1e13ba437ab45d1c67b3d90e6ad1842aecda7927b",
+      "encoding": "gzip",
+      "archiveBytes": 929,
+      "archiveSha256": "5557bb3dcb721bae1e299524863a5fa5dab021bc9640b8ee2862a72075a0b317"
+    },
+    {
+      "path": "/tmp/6232-native-preparation-budget-three-forward.json",
+      "sha256": "7ead85850710f8d9dce2207abf08a93d53f81e342f73918d1d86eb296f6aed21",
+      "scope": "Exact one-test-only three-layer forward/source/API/upper own patch/live main tree proof",
+      "archive": "6232-native-preparation-budget-three-forward.json",
+      "originalBytes": 3202,
+      "originalSha256": "7ead85850710f8d9dce2207abf08a93d53f81e342f73918d1d86eb296f6aed21",
+      "encoding": "original",
+      "archiveBytes": 3202,
+      "archiveSha256": "7ead85850710f8d9dce2207abf08a93d53f81e342f73918d1d86eb296f6aed21"
+    }
+  ]
+}

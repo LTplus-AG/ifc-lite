@@ -1,0 +1,16 @@
+<service>
+  <id>IFCliteExchangeWorker</id>
+  <name>IFClite Data Exchange Worker</name>
+  <description>Authenticated Autodesk Data Exchange exports for IFClite.</description>
+  <executable>C:\Program Files\nodejs\node.exe</executable>
+  <arguments>--env-file=C:\IFClite\config\exchange-worker.env.local C:\IFClite\current\service\dist\exchange-worker-bin.js</arguments>
+  <workingdirectory>C:\IFClite\current\service</workingdirectory>
+  <serviceaccount><domain>NT AUTHORITY</domain><user>LocalService</user></serviceaccount>
+  <startmode>Automatic</startmode>
+  <onfailure action="restart" delay="10 sec"/>
+  <resetfailure>1 day</resetfailure>
+  <stoptimeout>10 sec</stoptimeout>
+  <stopparentprocessfirst>true</stopparentprocessfirst>
+  <logpath>C:\IFClite\logs\worker</logpath>
+  <log mode="roll"/>
+</service>

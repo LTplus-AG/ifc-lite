@@ -48,6 +48,7 @@
     "@ifc-lite/semantic": "workspace:^",
     "@ifc-lite/server-client": "workspace:^",
     "@ifc-lite/solar": "workspace:^",
+    "@ifc-lite/source-autodesk": "workspace:^",
     "@ifc-lite/source-dalux": "workspace:^",
     "@ifc-lite/source-dropbox": "workspace:^",
     "@ifc-lite/source-msgraph": "workspace:^",

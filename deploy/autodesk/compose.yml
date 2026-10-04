@@ -1,0 +1,30 @@
+# Build the viewer with VITE_AUTODESK_HOSTED=true before starting this stack.
+services:
+  gateway:
+    image: caddy:2.10
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      IFCLITE_PUBLIC_HOST: ${IFCLITE_PUBLIC_HOST:?Set the public viewer hostname}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../../apps/viewer/dist:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [autodesk]
+  autodesk:
+    build:
+      context: ../..
+      dockerfile: apps/autodesk-service/Dockerfile
+    restart: unless-stopped
+    env_file: ${AUTODESK_ENV_FILE:-../../apps/autodesk-service/.env.local}
+    environment:
+      AUTODESK_VIEWER_ORIGIN: https://${IFCLITE_PUBLIC_HOST:?Set the public viewer hostname}
+      AUTODESK_INSECURE_LOCALHOST: "false"
+    # Session tokens live only in this one process. No shared volume of user data.
+    tmpfs: ["/tmp:size=2g,mode=1777"]
+    mem_limit: 4g
+    pids_limit: 128
+volumes:
+  caddy_data:
+  caddy_config:

@@ -30,6 +30,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { taskStartEpoch, taskFinishEpoch } from '@/store/slices/schedule-task-dates';
 import type { GanttTimeScale, ScheduleTimeRange } from '@/store';
 import { KEYBOARD_PRIORITY, registerKeyboardCommand } from '@/lib/commands/dispatcher';
 
@@ -70,13 +71,6 @@ function epochToIso(ms: number): string {
     `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T` +
     `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
   );
-}
-
-function parseIso(iso?: string): number | undefined {
-  if (!iso) return undefined;
-  const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(iso);
-  const t = Date.parse(hasTz ? iso : `${iso}Z`);
-  return Number.isNaN(t) ? undefined : t;
 }
 
 /** Milliseconds → ISO-8601 duration (same shape the animator / exporter emit). */
@@ -252,8 +246,10 @@ export function useGanttBarDrag(opts: UseGanttBarDragOptions): UseGanttBarDragRe
     const store = useViewerStore.getState();
     const task = store.scheduleData?.tasks.find(t => t.globalId === taskGlobalId);
     if (!task) return;
-    const origStart = parseIso(task.taskTime?.scheduleStart);
-    const origFinish = parseIso(task.taskTime?.scheduleFinish);
+    // The bar's drawn window (#6803), so early-only or actual-only tasks drag too;
+    // the drop writes ScheduleStart/ScheduleFinish, making the window planned.
+    const origStart = taskStartEpoch(task);
+    const origFinish = taskFinishEpoch(task);
     if (origStart === undefined || origFinish === undefined) return;
     // Don't try to resize a zero-width bar: shift-only instead. Also
     // milestones should never hit this path (caller gates them out) but

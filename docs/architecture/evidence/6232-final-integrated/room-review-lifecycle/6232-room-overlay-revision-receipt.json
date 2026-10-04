@@ -1,0 +1,87 @@
+{
+  "head": "c2714457e75461d433e4651cab6ccb680e8e1f93",
+  "tree": "1034ba20227ab8e22091529dc7f0f23c96d0f43d",
+  "base": "bb3cccbbed934bae9d6fb258d1ef0d77db7ab426",
+  "files": [
+    {
+      "path": ".changeset/room-overlay-revision.md",
+      "sha256": "60137d2bda9d94d63a5d2175720d1023c64dd4e9d911975143e715de3d9e21ce"
+    },
+    {
+      "path": "docs/guide/mutations.md",
+      "sha256": "812d03391d6c5491657ed74b74f7da9cd0f43bc4214bff811bafb15cab7278ca"
+    },
+    {
+      "path": "packages/mcp/src/headless-room-geometry.ts",
+      "sha256": "be421c0963e705b3eeb8a03d1cd98d9c62e652ca7fdd077a40f7bef9553213cb"
+    },
+    {
+      "path": "packages/mcp/src/tools/room-readonly-state.test.ts",
+      "sha256": "edfe10b55e080973c425e2c4cbdcea20984a680927c2fd31e77bfb0ec1dda055"
+    },
+    {
+      "path": "packages/mutations/src/mutable-overlay-state.ts",
+      "sha256": "f65ae9da3c434aaba2376eab0c364bc60d3f5f9d47d608d11d43a3e1e0c20003"
+    },
+    {
+      "path": "packages/mutations/src/mutable-property-view.ts",
+      "sha256": "5347c61aaeb7b5d2dec877257f602344ac7f21064f8a767a27ccfaf23d653715"
+    },
+    {
+      "path": "packages/sdk/src/store-room-command.test.ts",
+      "sha256": "821c69625bad43548975f6c494b600f25bb96c685d26634f517c530e3d956a58"
+    },
+    {
+      "path": "packages/sdk/src/store-room-command.ts",
+      "sha256": "baacac1da472b7401d4a10623c3fb43f607a54c0f6588866e2e862f7d8e11322"
+    }
+  ],
+  "before": {
+    "sdk": "1 genuine pending Auto resolved instead of conflict;10priorcontrolsPASS",
+    "cache": "2 genuine no-re-mesh assertionsFAIL1/N;6priorcontrolsPASS"
+  },
+  "fixed": {
+    "sdk": 15,
+    "cache": 8,
+    "mutations": 356,
+    "existingFixtureSkips": 10,
+    "cached": 0
+  },
+  "qualification": "types/lint pending mandatory root combined run; focused root Turbo no-build tests use exact qualified runtime; no own Cargo build",
+  "runtime": {
+    "ifc-lite.js": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+    "ifc-lite_bg.wasm": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3"
+  },
+  "rustTree": "49138ee42f1e8f6d7f398c8b75dc1e3d61ccd541",
+  "api": "getter inherited public member; class symbol snapshot unchanged; initial update unrelated9ancestor removals restored, final root union to validate",
+  "logs": [
+    {
+      "path": "/tmp/6232-room-revision-sdk-before.log",
+      "sha256": "123ec844885c57b2b70f5995064c7a479375e5f344746c29ebb7ae79c7515708"
+    },
+    {
+      "path": "/tmp/6232-room-revision-cache-before.log",
+      "sha256": "30000ca86e84c1dc7464af23a883d7db327ddc5a231c4ee59a661822fc3e25a9"
+    },
+    {
+      "path": "/tmp/6232-room-revision-sdk-final.log",
+      "sha256": "096fd871a92431b0de01980f12b6b915e206ff07b5cce588a231e55c6efb4981"
+    },
+    {
+      "path": "/tmp/6232-room-revision-cache-after.log",
+      "sha256": "8cb53a301cc3148965fe59c3e39d29f7dd4c1cda5b1fdb8c6e06f205bf517d34"
+    },
+    {
+      "path": "/tmp/6232-room-revision-mutations-suite.log",
+      "sha256": "369892baa5e265425307869ce2688bd755ec07ca08f115615ccb5a4f038ee157"
+    },
+    {
+      "path": "/tmp/6232-room-revision-build.log",
+      "sha256": "d96c3c4d8b3e463e3e399a99170a3214be3cb9683b1f9589bd4b6fbfaa695fac"
+    },
+    {
+      "path": "/tmp/6232-room-revision-api-update.log",
+      "sha256": "019e31ef3af4c8ec043bcdb5f7441cd9182c1340fa421143e0dd8d28ee467fc4"
+    }
+  ]
+}

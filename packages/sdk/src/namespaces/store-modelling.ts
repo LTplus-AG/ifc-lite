@@ -4,7 +4,7 @@
 
 /** Loaded-model modelling methods of bim.store (#6232 D5). */
 import type {
-  ElementTransformInput, ElementSplitRequest, ElementTrimExtendParams,
+  AlignMode, ElementTransformInput, ElementSplitRequest, ElementTrimExtendParams,
   CopyTransform, CopyArrayParams,
   HostedElementEdit, CurtainWallInStoreParams, GridInStoreParams, GridColumnBinding, ColumnInStoreParams, ProfiledColumnInStoreParams,
   HostedDoorInStoreParams, HostedWindowInStoreParams, OpeningInStoreParams, ElementTypeInStoreParams,
@@ -22,6 +22,12 @@ export class StoreModellingNamespace {
     const method = this.backend.store.roomCommand;
     if (!method) throw new Error('bim.store.roomCommand: native Room capability is unavailable on this backend');
     return method.call(this.backend.store, modelId, storeyId, command);
+  }
+
+  async alignElements(modelId: string, reference: number, targets: readonly number[], mode: AlignMode): Promise<EntityRef[]> {
+    const method = this.backend.store.alignElements;
+    if (!method) throw new Error('bim.store.alignElements: native Align capability is unavailable on this backend');
+    return method.call(this.backend.store, modelId, reference, targets, mode);
   }
 
   transformElements(modelId: string, expressIds: readonly number[], operation: ElementTransformInput['op']): EntityRef[] {

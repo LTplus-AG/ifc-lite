@@ -7,6 +7,7 @@ import type { StoreBackendMethods } from '@ifc-lite/sdk';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { unsupportedStoreAuthoring } from './headless-backend-store-stubs.js';
+import { createHeadlessAlignBackend } from './headless-backend-align.js';
 import { createHeadlessRoomBackend } from './headless-backend-room.js';
 import { createRecordedModellingBackend } from './headless-backend-modelling.js';
 
@@ -39,5 +40,6 @@ export function createHeadlessStoreAdapter(
     ...unsupportedStoreAuthoring(),
     ...createRecordedModellingBackend(resolveModel),
     ...createHeadlessRoomBackend(resolveModel),
+    ...createHeadlessAlignBackend(resolveModel),
   };
 }

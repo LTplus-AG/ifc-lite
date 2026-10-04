@@ -28,9 +28,8 @@ const REPO_ROOT = resolve(here, '../../../../');
 const SAMPLE_IFC = resolve(REPO_ROOT, 'apps/viewer/public/samples/building-architecture.ifc');
 // The same shipped example the CLI's `flow.test.ts` runs: a write-capable
 // graph (`model.setProperty`, gated on the exact pset) with no element
-// creation, so it runs fine against `HeadlessLikeBackend`'s store adapter
-// (which does not yet implement `addColumn`/`addWall`/etc. — see flow.ts's
-// module doc).
+// creation. Public creation routes and native Undo are independently exercised
+// in flow-creation-native.test.ts (#6232).
 const AUDIT_FLOW = resolve(REPO_ROOT, 'apps/viewer/src/lib/flow/examples/05-fire-rating-audit.flow.json');
 
 const registry = buildDefaultToolRegistry();

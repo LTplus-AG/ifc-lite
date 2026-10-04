@@ -6,7 +6,7 @@ const fs = require('node:fs'), path = require('node:path');
 const root = fs.realpathSync(process.env.IFC_SOURCE_ROOT || process.cwd());
 const { runSuite, assert } = require(path.join(root, 'docs/architecture/evidence/6232-final-integrated/producers/common.cjs'));
 async function run(command) {
-  await runSuite(`cold-${command}`, async ({ page, modelId, count, capture, sameGraphGeometry }) => {
+  await runSuite(`registered-${command}-preview`, async ({ page, modelId, count, capture, sameGraphGeometry }) => {
     const before = await capture('before-preview', [1222, 1262, 1407]);
     const started = await page.evaluate(async ({ modelId, command }) => {
       const url = file => '/' + file;
@@ -16,9 +16,11 @@ async function run(command) {
         import(url('src/lib/commands/modeling/align-gesture.ts')),
         import(url('src/lib/element-transform/commit.ts')),
       ]);
-      globalThis.coldPreviewRuntime = runtime;
+      globalThis.registeredPreviewRuntime = runtime;
       const store = globalThis.__ifc_lite_viewer_store__, s = store.getState();
-      if (s.mutationViews.has(modelId) || s.storeEditors.has(modelId)) throw new Error('Requires genuine first-edit loaded model; do not clear active overlays.');
+      const loadedView = s.mutationViews.get(modelId);
+      if (s.storeEditors.has(modelId) || loadedView?.getMutations().length || loadedView?.getNewEntities().length) throw new Error('Requires first authoring edit with an unchanged loaded overlay; do not clear active overlays.');
+      const loadedViewBefore = Boolean(loadedView);
       const selected = command === 'align' ? [1222, 1407, 1262] : [1407, 1222];
       s.setSelectedEntityIds(selected.map(id => ids.toGlobalIdFromModels(s.models, modelId, id)));
       store.getState().startCommand(`element.${command}`);
@@ -28,7 +30,7 @@ async function run(command) {
       if (command === 'move') { runtime.commandPointerDown(snap([0, 0])); runtime.commandPointerMove(snap([2, 3])); }
       if (command === 'rotate') {
         const pivot = state.gesture.pivot;
-        if (!pivot) throw new Error('Cold Rotate has no selection pivot');
+        if (!pivot) throw new Error('Registered Rotate has no selection pivot');
         runtime.commandPointerDown(snap([pivot[0] + 1, pivot[1]]));
         runtime.commandPointerMove(snap([pivot[0], pivot[1] + 1]));
       }
@@ -42,7 +44,7 @@ async function run(command) {
         const point = state.ctx.workplane.renderToLocal(Array.from(mesh.positions.slice(i, i + 3)));
         for (let axis = 0; axis < 2; axis++) { ghostBounds.min[axis] = Math.min(ghostBounds.min[axis], point[axis]); ghostBounds.max[axis] = Math.max(ghostBounds.max[axis], point[axis]); }
       }
-      return { command, selected, ghostBounds, pivot: g.pivot ?? null, coldViewBefore: true, roots: plan.roots.map(r => r.expressId), carried: plan.carried,
+      return { command, selected, ghostBounds, pivot: g.pivot ?? null, loadedViewBefore, roots: plan.roots.map(r => r.expressId), carried: plan.carried,
         alignMoveIds: command === 'align' ? align.alignMoves(g).map(m => m.id) : null,
         meshSourceIds: command === 'align' ? [1222] : [...new Set(current.models.get(modelId).geometryResult.meshes.filter(mesh => g.selection.movedGlobalIds.includes(mesh.expressId)).map(mesh => current.resolveGlobalIdFromModels(mesh.expressId).expressId))],
         movedLocalIds: command === 'align' ? null : g.selection.movedGlobalIds.map(id => current.resolveGlobalIdFromModels(id).expressId),
@@ -80,17 +82,17 @@ async function run(command) {
       assert.ok(Math.abs(started.ghostBounds[edge][axis] - expected[edge][axis]) < 1e-4, `actual ${command} preview bounds ${edge}/${axis} vs native fixture oracle`);
     sameGraphGeometry(await capture('registered-preview', [1222, 1262, 1407]), before);
     for (let attempt = 0; attempt < 3; attempt++) {
-      if (!(await page.evaluate(() => globalThis.coldPreviewRuntime.getCommandRuntime().command !== null))) break;
+      if (!(await page.evaluate(() => globalThis.registeredPreviewRuntime.getCommandRuntime().command !== null))) break;
       await page.keyboard.press('Escape');
     }
-    assert.equal(await page.evaluate(() => globalThis.coldPreviewRuntime.getCommandRuntime().command), null);
+    assert.equal(await page.evaluate(() => globalThis.registeredPreviewRuntime.getCommandRuntime().command), null);
     const cancelled = await capture('cancelled-preview', [1222, 1262, 1407]);
     sameGraphGeometry(cancelled, before);
     assert.deepEqual(cancelled.journal, before.journal); assert.deepEqual(cancelled.records, before.records);
     assert.equal(cancelled.allocator, started.allocator, 'preview cancellation allocates no IFC entities');
-    const dir = path.join(process.env.IFC_EVIDENCE_DIR, `cold-${command}`);
+    const dir = path.join(process.env.IFC_EVIDENCE_DIR, `registered-${command}-preview`);
     fs.writeFileSync(path.join(dir, `${count}-runtime.json`), JSON.stringify({ modelId, count, started,
-      scope: 'Registered command first-edit preview and real Escape cancellation only. Same-host Align reference intentionally does not claim commit agreement; independent-reference native controls qualify commit.' }, null, 2));
+      scope: 'Registered command first-authoring preview and real Escape cancellation only. The real viewer initializes an empty mutation view at load; missing-view cold behavior is qualified separately by native regression controls. Same-host Align reference intentionally does not claim commit agreement; independent-reference native controls qualify commit.' }, null, 2));
   });
 }
 (async () => { for (const command of ['align', 'move', 'rotate']) await run(command); })().catch(error => { console.error(error); process.exitCode = 1; });

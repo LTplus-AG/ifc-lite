@@ -51,7 +51,7 @@ async function coldModel(federated: boolean) {
   // Use the canonical federation conversion for every displayed mesh/selection.
   geometry.meshes = geometry.meshes.map(mesh => ({ ...mesh, expressId: toGlobalIdFromModels(models.models, MODEL, mesh.expressId) }));
   useViewerStore.setState({ ...models, geometryResult: geometry, mutationViews: new Map(), storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(), removedNewEntities: new Map(), removedMeshes: new Map(), pendingMeshRemovals: null, pendingMeshEdits: null, mutationVersion: 0, editEnabled: true, collabRoomId: null, canCollabEdit: () => true });
-  return { store, peer, geometry, next: baseline.peekNextExpressId(), source: store.source.slice(0, store.source.byteLength) };
+  return { store, peer, geometry, next: baseline.peekNextExpressId(), source: new Uint8Array(store.source.slice(0, store.source.byteLength)), native: structuredClone(geometry.meshes) };
 }
 
 for (const federated of [false, true]) for (const id of ['element.align', 'element.move', 'element.rotate']) {
@@ -104,6 +104,7 @@ for (const federated of [false, true]) for (const id of ['element.align', 'eleme
     assert.deepEqual([...useViewerStore.getState().redoStacks], []);
     assert.deepEqual(fixture.store.source.slice(0, fixture.store.source.byteLength), fixture.source);
     assert.equal(useViewerStore.getState().models.get(MODEL)?.geometryResult, fixture.geometry);
+    assert.deepEqual(fixture.geometry.meshes, fixture.native, 'every actual native mesh payload is unchanged');
     if (fixture.peer) {
       assert.equal(useViewerStore.getState().models.get('peer')?.ifcDataStore, fixture.peer);
       assert.deepEqual(fixture.peer.source.slice(0, fixture.peer.source.byteLength), fixture.source);

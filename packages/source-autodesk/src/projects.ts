@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { ListProjectsOptions, Page, SourceProject } from '@ifc-lite/plugin-api';
 import { attributes, AutodeskError, enc, nextLink, record, rows, text, type Api, type Region } from './api.js';
-import { address, parseAddress, parseDocsProjectLink, parseSiteLink } from './refs.js';
+import { address, parseAddress, parseAutodeskLink, parseDocsProjectLink, parseSiteLink } from './refs.js';
 
 interface ProjectCursor { hubs: { id: string; name: string; region: Region }[]; index: number; next?: string }
 function cursorEncode(cursor: ProjectCursor): string { return encodeURIComponent(JSON.stringify(cursor)); }
@@ -20,8 +20,9 @@ function cursorDecode(raw: string): ProjectCursor {
 }
 export async function listProjects(api: Api, options?: ListProjectsOptions): Promise<Page<SourceProject>> {
   const query = options?.query?.trim();
-  if (query && ['acc.autodesk.com', 'acc.autodesk.eu'].includes(new URL(query).hostname)) {
-    const link = parseDocsProjectLink(query);
+  const url = query ? parseAutodeskLink(query) : undefined;
+  if (url && ['acc.autodesk.com', 'acc.autodesk.eu'].includes(url.hostname)) {
+    const link = parseDocsProjectLink(url);
     let cursor: string | undefined; const seen = new Set<string>();
     for (let pages = 0; pages < 100; pages++) {
       const page = await listProjects(api, { ...options, query: undefined, cursor });
@@ -33,9 +34,9 @@ export async function listProjects(api: Api, options?: ListProjectsOptions): Pro
     }
     throw new AutodeskError('listing-limit', 'Project lookup exceeds the configured page limit. Browse by account.');
   }
-  if (query) {
+  if (url) {
     // Site discovery is deliberately link-driven; no account-wide site crawl.
-    const site = parseSiteLink(query);
+    const site = parseSiteLink(url);
     const value = record(await api.get(`/forma/site/v1alpha/sites/${enc(site.id)}`, site.region, options?.signal));
     if (value.id !== site.id) throw new AutodeskError('site-mismatch', 'Autodesk returned another site.');
     return { items: [{

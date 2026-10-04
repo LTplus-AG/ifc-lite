@@ -29,6 +29,13 @@ function harness(reply: (path: string) => unknown, identity = 'user') {
   return { provider: new AutodeskProvider({ service }), ctx, calls, storage };
 }
 describe('Autodesk native file sources', () => {
+  it('explains that project queries require an Autodesk link before any request (#6825)', async () => {
+    const h = harness(() => { throw new Error('Must not request'); });
+    await expect(h.provider.listProjects(h.ctx, { query: 'House' })).rejects.toMatchObject({
+      code: 'invalid-link', message: 'Paste an HTTPS Autodesk Docs or Forma Site Design project link.',
+    });
+    expect(h.calls).toEqual([]);
+  });
   it('routes an EU hub using the documented attributes.region field (#6823)', async () => {
     const h = harness((path) => path === '/project/v1/hubs'
       ? { data: [{ id: 'b.eu-hub', attributes: { name: 'EU account', region: 'EMEA', extension: { data: {} } } }] }

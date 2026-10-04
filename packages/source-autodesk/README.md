@@ -30,4 +30,6 @@ Data Exchanges and Site Design proposals are **not IFC files**. Their rows are u
 
 The hosted service includes a Rust immutable Forma snapshot converter and a Windows .NET 8 Autodesk SDK exchange worker. Configure their executable paths or the authenticated remote Windows worker as described in [the service guide](../../apps/autodesk-service/README.md). Files and proposals support explicit historical version selection. Whole-exchange IFC export supports the current version only; the worker checks Docs version and exchange snapshot before/after export and rejects a changed source. Proposal meshes preserve occurrences, geometry, placement, color/opacity and source properties; the details panel identifies appearance/overlay limitations.
 
+Hosted imports have a 15-minute client deadline, including preparation, status requests and artifact download. Timeout or cancellation releases an unconsumed server job; cleanup requests have their own five-second deadline.
+
 No live Autodesk account or import fidelity was verified during local implementation. Tests exercise decoded upstream-shaped fixtures and session/security invariants.

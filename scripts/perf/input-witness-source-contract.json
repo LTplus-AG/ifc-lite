@@ -1,0 +1,498 @@
+{
+  "protocol": "independent-viewer-input-v1-instrumented",
+  "subjects": {
+    "base": "7dfc29870b0aa6a593c163592fcb84a92e5dfa19",
+    "candidate": "9fc86cb8ead77486b0bcd29726b775c27085524b"
+  },
+  "sourceContract": [
+    {
+      "path": "Cargo.lock",
+      "baseSha256": "52daaf31ac1bcf5a6996a91bc8049147c2c15ed2b5161d1145868b3831dc6e60",
+      "candidateSha256": "52daaf31ac1bcf5a6996a91bc8049147c2c15ed2b5161d1145868b3831dc6e60"
+    },
+    {
+      "path": "apps/viewer/package.json",
+      "baseSha256": "04027503bca02207aebe39ad501c3026bfe423d161637891c58c47bd5475b5d9",
+      "candidateSha256": "04027503bca02207aebe39ad501c3026bfe423d161637891c58c47bd5475b5d9"
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/Viewport.tsx",
+      "baseSha256": "145d298a534aa7c97fcbb7bfd65005d52215297146a4e86a5071bf01dd28ab62",
+      "candidateSha256": "145d298a534aa7c97fcbb7bfd65005d52215297146a4e86a5071bf01dd28ab62"
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/ViewportContainer.tsx",
+      "baseSha256": "4a7a1670ea9b98f80daa8e849d9a1fa0a9408e6e69b45531b85e3f0d44bfe039",
+      "candidateSha256": "4a7a1670ea9b98f80daa8e849d9a1fa0a9408e6e69b45531b85e3f0d44bfe039"
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/useFederatedGeometry.ts",
+      "baseSha256": "693733db10c8ae5e6fa96a094ebe5b6595c1ca77f43ea4c61d9ef7d7dc7d2258",
+      "candidateSha256": "693733db10c8ae5e6fa96a094ebe5b6595c1ca77f43ea4c61d9ef7d7dc7d2258"
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/useGeometryStreaming.ts",
+      "baseSha256": "106913e06e73ca612d592f84b7c4b3bce3a363b2ecb5e00caf98c69c948f6327",
+      "candidateSha256": "106913e06e73ca612d592f84b7c4b3bce3a363b2ecb5e00caf98c69c948f6327"
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcCache.ts",
+      "baseSha256": "97948d084e8ccd004acba7cc603b0ca04cbe92af10d8db6ba13949878b177624",
+      "candidateSha256": "97948d084e8ccd004acba7cc603b0ca04cbe92af10d8db6ba13949878b177624"
+    },
+    {
+      "path": "apps/viewer/src/hooks/useIfcLoader.ts",
+      "baseSha256": "5b937abb035349e98e16119ca616e51d2e80b5cab663029a3a71342c120c99a7",
+      "candidateSha256": "40914bf1b55dfac115c9de29832bdbcd3dd2a982cb160a684a584554bb25db68"
+    },
+    {
+      "path": "apps/viewer/src/lib/level-arrival.ts",
+      "baseSha256": "a14ed00788a8e2bfa930b4a4aa2a801760a6f6b81edee212a7d39b4fb7672129",
+      "candidateSha256": "a14ed00788a8e2bfa930b4a4aa2a801760a6f6b81edee212a7d39b4fb7672129"
+    },
+    {
+      "path": "apps/viewer/src/lib/model-placement/model-indices.ts",
+      "baseSha256": "eb017195fa395bd90b8f16c14dc55730734e8d4f0212e1850aa4736ba6df0232",
+      "candidateSha256": "eb017195fa395bd90b8f16c14dc55730734e8d4f0212e1850aa4736ba6df0232"
+    },
+    {
+      "path": "apps/viewer/src/store/index.ts",
+      "baseSha256": "09f3230e1747a71740bfa22afbe70639b20532dcb09efcab1526d93abd244d5d",
+      "candidateSha256": "09f3230e1747a71740bfa22afbe70639b20532dcb09efcab1526d93abd244d5d"
+    },
+    {
+      "path": "apps/viewer/src/store/slices/dataSlice.ts",
+      "baseSha256": "eab2794e019a5534a2b5d39de7aab094b35e45f0854310bff1ae5629c5f017bc",
+      "candidateSha256": "eab2794e019a5534a2b5d39de7aab094b35e45f0854310bff1ae5629c5f017bc"
+    },
+    {
+      "path": "apps/viewer/src/store/types.ts",
+      "baseSha256": "da61bb1cd995fd72b129d4bcad8c33d4c365d28b5a3729f037b6473a2077ab70",
+      "candidateSha256": "da61bb1cd995fd72b129d4bcad8c33d4c365d28b5a3729f037b6473a2077ab70"
+    },
+    {
+      "path": "apps/viewer/tsconfig.json",
+      "baseSha256": "97bc7bd64f44b6f0e020a166f1730f3bde7d0f3bb581f09852ba559b7dfff255",
+      "candidateSha256": "97bc7bd64f44b6f0e020a166f1730f3bde7d0f3bb581f09852ba559b7dfff255"
+    },
+    {
+      "path": "packages/cache/src/sections/instanced-shards.ts",
+      "baseSha256": "2df6844deb87cd19a19c4b87e85fbdf1ed2243994e1225b99eeb7cbf88ca71f9",
+      "candidateSha256": "2df6844deb87cd19a19c4b87e85fbdf1ed2243994e1225b99eeb7cbf88ca71f9"
+    },
+    {
+      "path": "packages/cache/src/utils/buffer-utils.ts",
+      "baseSha256": "9c7e7ac1ba0fbc0d108931863c4e9ff2bb34beda5d5c008e85b667b1821e47cc",
+      "candidateSha256": "9c7e7ac1ba0fbc0d108931863c4e9ff2bb34beda5d5c008e85b667b1821e47cc"
+    },
+    {
+      "path": "packages/cache/src/writer.ts",
+      "baseSha256": "9e256e4a4daff87b7a3e1d8325929ffc83840fd2457c0806e5ac94bbf599199e",
+      "candidateSha256": "9e256e4a4daff87b7a3e1d8325929ffc83840fd2457c0806e5ac94bbf599199e"
+    },
+    {
+      "path": "packages/geometry/src/packed-geometry-decoder.ts",
+      "baseSha256": "b7739d6ac9224edbabe36f23162cc31d2513b45b6ab52f7a4ffbba790361a467",
+      "candidateSha256": "b7739d6ac9224edbabe36f23162cc31d2513b45b6ab52f7a4ffbba790361a467"
+    },
+    {
+      "path": "packages/geometry/src/packed-instanced-decoder.ts",
+      "baseSha256": "593e188a9d0019df06d13fc31b441c2d5b522c8a37210101bca1d6f1a378e0ff",
+      "candidateSha256": "593e188a9d0019df06d13fc31b441c2d5b522c8a37210101bca1d6f1a378e0ff"
+    },
+    {
+      "path": "packages/renderer/src/instanced-render.ts",
+      "baseSha256": "a14cdf09227f71eb000ec20269daa1dcf1e28bd0a247da228ca312af68affa85",
+      "candidateSha256": "a14cdf09227f71eb000ec20269daa1dcf1e28bd0a247da228ca312af68affa85"
+    },
+    {
+      "path": "packages/renderer/src/model-translation.ts",
+      "baseSha256": "bb89482e81e0e7df8d93fa38d0c01f7237ebb2865ec63eaf536f0b97df1a7413",
+      "candidateSha256": "bb89482e81e0e7df8d93fa38d0c01f7237ebb2865ec63eaf536f0b97df1a7413"
+    },
+    {
+      "path": "packages/renderer/src/index.ts",
+      "baseSha256": "f8fac553b63218c8261f1b4d9ab5dafa79347e33368e1c27fdd086f8165494b7",
+      "candidateSha256": "f8fac553b63218c8261f1b4d9ab5dafa79347e33368e1c27fdd086f8165494b7"
+    },
+    {
+      "path": "packages/renderer/src/scene-stream-split.ts",
+      "baseSha256": "b91fc85faacf647febfc9d1d7b5f281687de7e24f388fff03e7c561e15c1c9a8",
+      "candidateSha256": "b91fc85faacf647febfc9d1d7b5f281687de7e24f388fff03e7c561e15c1c9a8"
+    },
+    {
+      "path": "packages/renderer/src/scene.ts",
+      "baseSha256": "8172036b7e479ce10fa12dee138fb0f568e00e8505f53304357aa82b9036784b",
+      "candidateSha256": "8172036b7e479ce10fa12dee138fb0f568e00e8505f53304357aa82b9036784b"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "baseSha256": "3d093b6fc5d3261b05b0bcc86cd4679a221545232874c317569a1c0d518a94ca",
+      "candidateSha256": "3d093b6fc5d3261b05b0bcc86cd4679a221545232874c317569a1c0d518a94ca"
+    },
+    {
+      "path": "rust-toolchain.toml",
+      "baseSha256": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "candidateSha256": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
+    },
+    {
+      "path": "rust/geometry/src/instancing/wire.rs",
+      "baseSha256": "2abe65475d775f7254c62ad5a1d87be6ebf2e96c3f09b7f2fde09807673e34f8",
+      "candidateSha256": "2abe65475d775f7254c62ad5a1d87be6ebf2e96c3f09b7f2fde09807673e34f8"
+    },
+    {
+      "path": "scripts/build-wasm.sh",
+      "baseSha256": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+      "candidateSha256": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b"
+    }
+  ],
+  "referenceArgumentContract": "Actual frozen canonical delivery/decoder/preparation/cache/placement paths read retained nested input without mutation for single-primary/zero-offset/no-level-load; unsupported mutation paths remain native-delegating sticky refusals. Posttimer revision checks do not replace this source condition.",
+  "mechanisms": [
+    {
+      "topic": "raw delivery",
+      "path": "apps/viewer/src/hooks/useIfcLoader.ts",
+      "mechanism": "Canonical primary batch collects original ArrayBuffers and forwards every instancedShards batch through appendInstancedShards. Loader is the one differing audited source path: eager/lazy source-buffer fix; no shard mutation is introduced.",
+      "baseLines": [
+        1764,
+        1785
+      ],
+      "candidateLines": [
+        1763,
+        1784
+      ]
+    },
+    {
+      "topic": "synchronous state admission",
+      "path": "apps/viewer/src/store/slices/dataSlice.ts",
+      "mechanism": "New entry objects accumulate over previous entries. Zustand setState commits state then synchronously notifies subscribers; React drain is a useEffect, not inside this store action.",
+      "baseLines": [
+        367,
+        379
+      ],
+      "candidateLines": [
+        367,
+        379
+      ]
+    },
+    {
+      "topic": "canonical decode and drain",
+      "path": "apps/viewer/src/components/viewer/useGeometryStreaming.ts",
+      "mechanism": "Full Uint8Array view of the original ArrayBuffer, decode, primary offset 0/no level lifts, native Scene ingestion then queue clear. A missed observed delivery refuses via native template-buffer linkage. Decode/upload failures caught by the app still produce unaccepted delivery refusal.",
+      "baseLines": [
+        807,
+        822
+      ],
+      "candidateLines": [
+        807,
+        822
+      ]
+    },
+    {
+      "topic": "original buffer identity",
+      "path": "packages/geometry/src/packed-geometry-decoder.ts",
+      "mechanism": "ArrayBuffer returns unchanged; a full Uint8Array over an ArrayBuffer returns its original buffer. Other payloads copy; the prototype requires original identity and refuses a copy.",
+      "baseLines": [
+        19,
+        39
+      ],
+      "candidateLines": [
+        19,
+        39
+      ]
+    },
+    {
+      "topic": "wire envelope",
+      "path": "packages/geometry/src/packed-instanced-decoder.ts",
+      "mechanism": "Header u32[8], exact currently produced forms v1/88 with word7=0; v2/92; v3/100. Canonical decoder otherwise permits larger future stride/trailing bytes. New post-timer envelope check refuses unknown forms/tails and pool coverage gaps.",
+      "baseLines": [
+        161,
+        230
+      ],
+      "candidateLines": [
+        161,
+        230
+      ]
+    },
+    {
+      "topic": "template channels",
+      "path": "packages/geometry/src/packed-instanced-decoder.ts",
+      "mechanism": "Template offset/length columns bind pool subviews; origin is three decoded f64 numbers. Shape/normal/index arrays alias original source ArrayBuffer; no geometry copy. Canonical pool range checks prevent clamping.",
+      "baseLines": [
+        234,
+        267
+      ],
+      "candidateLines": [
+        234,
+        267
+      ]
+    },
+    {
+      "topic": "occurrence channels",
+      "path": "packages/geometry/src/packed-instanced-decoder.ts",
+      "mechanism": "templateIndex and entityId u32; color4 f32; transform16 f32 copied; optional itemId u32 with 0=>undefined; metallic/roughness f32 with nonfinite=>undefined. Both flags returned from stride. All decoded keys are in the prototype allowlists and hashes.",
+      "baseLines": [
+        266,
+        312
+      ],
+      "candidateLines": [
+        266,
+        312
+      ]
+    },
+    {
+      "topic": "encoder field coverage",
+      "path": "rust/geometry/src/instancing/wire.rs",
+      "mechanism": "The pinned producer emits no trailing fields beyond itemId and finishes. Header/table pools are contiguous with no padding; all template origins, arrays and occurrence fields are decoded. Future encoder changes require a new audit and fail current unknown-envelope policy.",
+      "baseLines": [
+        166,
+        250
+      ],
+      "candidateLines": [
+        166,
+        250
+      ]
+    },
+    {
+      "topic": "offset and level mutation before entry",
+      "path": "apps/viewer/src/lib/level-arrival.ts",
+      "mechanism": "Transform[11] changes only with a nonempty current-level map. The observer refuses any appliedEntityLevelOffsets throughout loading. Primary idOffset 0 makes the canonical federation offset function a no-op.",
+      "baseLines": [
+        63,
+        72
+      ],
+      "candidateLines": [
+        63,
+        72
+      ]
+    },
+    {
+      "topic": "preparation reads nested input",
+      "path": "packages/renderer/src/instanced-render.ts",
+      "mechanism": "Preparation creates fresh bucket/output/matrix/packed arrays. Origin, transform and color are read; no assignments into decoded shard objects or template arrays. Template arrays are borrowed into output. Alpha!=1/empty/invalid unsupported cases refuse in prototype.",
+      "baseLines": [
+        226,
+        286
+      ],
+      "candidateLines": [
+        226,
+        286
+      ]
+    },
+    {
+      "topic": "native scene ingress",
+      "path": "packages/renderer/src/scene.ts",
+      "mechanism": "Scene reads prepared template views and writes new vertex/packed buffers. CPU template views remain original references. Original colors are copied out of packed output. Subsequent canonical removal/translation/suppression/release routes are refused; post-timer scene/pointer/state checks fence freshness.",
+      "baseLines": [
+        2986,
+        3151
+      ],
+      "candidateLines": [
+        2986,
+        3151
+      ]
+    },
+    {
+      "topic": "cache adapter",
+      "path": "apps/viewer/src/hooks/useIfcCache.ts",
+      "mechanism": "Cache source hash and geometry serialization read input. The IFNS source buffer path is passed to BinaryCacheWriter, not transferred/detached by this hook.",
+      "baseLines": [
+        513,
+        576
+      ],
+      "candidateLines": [
+        513,
+        576
+      ]
+    },
+    {
+      "topic": "cache IFNS write",
+      "path": "packages/cache/src/writer.ts",
+      "mechanism": "Uses separate BufferWriter; InstancedShards write is separate from compressed flat Geometry chunk serialization.",
+      "baseLines": [
+        141,
+        152
+      ],
+      "candidateLines": [
+        141,
+        152
+      ]
+    },
+    {
+      "topic": "cache byte copy",
+      "path": "packages/cache/src/sections/instanced-shards.ts",
+      "mechanism": "Creates a Uint8Array view of each source shard; writer.writeBytes copies the bytes into writer-owned storage, does not mutate source.",
+      "baseLines": [
+        17,
+        28
+      ],
+      "candidateLines": [
+        17,
+        28
+      ]
+    },
+    {
+      "topic": "cache storage copy",
+      "path": "packages/cache/src/utils/buffer-utils.ts",
+      "mechanism": "ensureCapacity updates writer-owned storage then currentChunk.set(data,offset) copies from source. No source assignment or transfer.",
+      "baseLines": [
+        78,
+        83
+      ],
+      "candidateLines": [
+        78,
+        83
+      ]
+    },
+    {
+      "topic": "scene reset",
+      "path": "packages/renderer/src/scene.ts",
+      "mechanism": "Full clear destroys instance views and is wrapped; reset after delivery refuses. Flat rebuild preserves instances unless appearance suppression/discarded authoring owners apply; cold single-model scope forbids authoring/removal and current expected owner/census checks also detect dropped data.",
+      "baseLines": [
+        3658,
+        3699
+      ],
+      "candidateLines": [
+        3658,
+        3699
+      ]
+    },
+    {
+      "topic": "flat piece retention",
+      "path": "packages/renderer/src/scene.ts",
+      "mechanism": "placeMesh then append each incoming piece once under every unique contributor, else representative; duplicates retained",
+      "baseLines": [
+        950,
+        974
+      ],
+      "candidateLines": [
+        950,
+        974
+      ]
+    },
+    {
+      "topic": "streaming ingress",
+      "path": "packages/renderer/src/scene.ts",
+      "mechanism": "queueMeshes invokes canonical split before append; oversized inputs unsupported by minimal exact-piece oracle",
+      "baseLines": [
+        1858,
+        1865
+      ],
+      "candidateLines": [
+        1858,
+        1865
+      ]
+    },
+    {
+      "topic": "split limits",
+      "path": "packages/renderer/src/scene.ts",
+      "mechanism": "canonical 180000 indices and 8MiB positions/normals split thresholds",
+      "baseLines": [
+        374,
+        380
+      ],
+      "candidateLines": [
+        374,
+        380
+      ]
+    },
+    {
+      "topic": "stream split no-op",
+      "path": "packages/renderer/src/scene-stream-split.ts",
+      "mechanism": "no split returns the original input when both fixed limits satisfied",
+      "baseLines": [
+        7,
+        16
+      ],
+      "candidateLines": [
+        7,
+        16
+      ]
+    },
+    {
+      "topic": "zero placement oracle",
+      "path": "packages/renderer/src/model-translation.ts",
+      "mechanism": "shallow-copy plus zero origin/matrix-translation/AABB, preserving other channels; output raw hash is never normalized",
+      "baseLines": [
+        119,
+        136
+      ],
+      "candidateLines": [
+        119,
+        136
+      ]
+    },
+    {
+      "topic": "primary namespace stamping",
+      "path": "apps/viewer/src/lib/model-placement/model-indices.ts",
+      "mechanism": "geometryWithModelIndex stamps the canonical renderer ownership index before current props",
+      "baseLines": [
+        21,
+        26
+      ],
+      "candidateLines": [
+        21,
+        26
+      ]
+    },
+    {
+      "topic": "primary merge caller",
+      "path": "apps/viewer/src/components/viewer/useFederatedGeometry.ts",
+      "mechanism": "single visible primary invokes canonical stamping with its modelIdToIndex value",
+      "baseLines": [
+        49,
+        61
+      ],
+      "candidateLines": [
+        49,
+        61
+      ]
+    },
+    {
+      "topic": "actual current input",
+      "path": "apps/viewer/src/components/viewer/ViewportContainer.tsx",
+      "mechanism": "filteredGeometry is the actual Viewport geometry input with canonical model index map; no hidden source geometry used as expectation",
+      "baseLines": [
+        999,
+        1010
+      ],
+      "candidateLines": [
+        999,
+        1010
+      ]
+    },
+    {
+      "topic": "unchanged empty level placements",
+      "path": "apps/viewer/src/lib/level-arrival.ts",
+      "mechanism": "empty current level map returns original flat meshes without lift",
+      "baseLines": [
+        45,
+        60
+      ],
+      "candidateLines": [
+        45,
+        60
+      ]
+    },
+    {
+      "topic": "native flat upload caller",
+      "path": "apps/viewer/src/components/viewer/useGeometryStreaming.ts",
+      "mechanism": "canonical input reaches queueMeshes or appendToBatches after no-op required empty level placement",
+      "baseLines": [
+        478,
+        500
+      ],
+      "candidateLines": [
+        478,
+        500
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "path": "apps/viewer/node_modules/zustand/esm/vanilla.mjs",
+      "sha256": "27f48c11ca4de834f68c505b695d5e2db1c1ebface7303c0e920ab3957260357",
+      "version": "5.0.15",
+      "mechanism": "Actual browser ESM createStore commits next state then synchronously notifies listeners; subscription adds before next setState. Same implementation as previously audited CJS control with module export syntax changed."
+    }
+  ]
+}

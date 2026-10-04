@@ -14,6 +14,12 @@
     "interleaved-identity.d.mts",
     "interleaved-plan.d.mts",
     "../../tests/benchmark/viewer-benchmark-page.ts",
-    "../../tests/benchmark/metadata-render-readiness.ts"
+    "../../tests/benchmark/metadata-render-readiness.ts",
+    "input-witness-integration.mjs",
+    "input-witness-install.mjs",
+    "input-witness-discovery.mjs",
+    "input-witness-capture.mjs",
+    "input-witness-policy.mjs",
+    "input-witness-zero-placement.mjs"
   ]
 }

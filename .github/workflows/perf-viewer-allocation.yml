@@ -6,8 +6,16 @@
 name: Viewer source allocation diagnostic
 on:
   workflow_dispatch:
+    inputs:
+      independent_input:
+        description: 'Final-head O-S1 input/retained-scene correctness; two instrumented UI loads, no timing verdict'
+        type: boolean
+        default: false
   workflow_call:
     inputs:
+      independent_input:
+        type: boolean
+        default: false
       requested_base_ref:
         type: string
         default: ''
@@ -27,8 +35,9 @@ jobs:
     env:
       REQUESTED_BASE_REF: ${{ inputs.requested_base_ref }}
       REQUESTED_CANDIDATE_REF: ${{ inputs.requested_candidate_ref }}
-      BASE_REF: c61932d4a9d85efe1b0f817a5274a115f0571ee3
-      CANDIDATE_REF: 2feb6545b588e02d55d4d6b4d9afbe8be261452e
+      INDEPENDENT_INPUT_DIAGNOSTIC: ${{ inputs.independent_input && 'true' || 'false' }}
+      BASE_REF: ${{ inputs.independent_input && '7dfc29870b0aa6a593c163592fcb84a92e5dfa19' || 'c61932d4a9d85efe1b0f817a5274a115f0571ee3' }}
+      CANDIDATE_REF: ${{ inputs.independent_input && '9fc86cb8ead77486b0bcd29726b775c27085524b' || '2feb6545b588e02d55d4d6b4d9afbe8be261452e' }}
       BASE_DIR: ${{ github.workspace }}/../allocation-base
       CANDIDATE_DIR: ${{ github.workspace }}/../allocation-candidate
     steps:
@@ -44,12 +53,12 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: c61932d4a9d85efe1b0f817a5274a115f0571ee3
+          ref: ${{ env.BASE_REF }}
           path: source-base
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 2feb6545b588e02d55d4d6b4d9afbe8be261452e
+          ref: ${{ env.CANDIDATE_REF }}
           path: source-candidate
           persist-credentials: false
 
@@ -77,12 +86,26 @@ jobs:
           pnpm --dir "$CANDIDATE_DIR" install --frozen-lockfile
       - name: Run bounded protocol invariants (no viewer timing)
         run: node --test scripts/perf/viewer-source-slice-observer.test.mjs scripts/perf/viewer-allocation-plan.test.mjs
+      - name: Run independent input functional controls (no model/GPU/timing)
+        if: inputs.independent_input
+        env:
+          INPUT_WITNESS_FIXTURES_REQUIRED: 'true'
+        run: node --test scripts/perf/input-witness.test.mjs scripts/perf/input-witness-integration.test.mjs
       - name: Typecheck the explicit harness and existing benchmark helper program
         run: pnpm typecheck:viewer-source-allocation
       - name: Fetch and verify exactly the fixed public fixtures
         run: node scripts/perf/viewer-allocation-prepare.mjs fixtures
       - name: Verify source/toolchain closure and mark fresh build start
         run: node scripts/perf/viewer-allocation-prepare.mjs start
+      - name: Typecheck both final immutable consumer graphs and test sources
+        if: inputs.independent_input
+        env:
+          TURBO_FORCE: 'true'
+          TURBO_CONCURRENCY: '2'
+        run: |
+          set -o pipefail
+          (cd "$BASE_DIR" && CARGO_TARGET_DIR="$RUNNER_TEMP/allocation-base-cargo" pnpm typecheck) 2>&1 | tee "$GITHUB_WORKSPACE/viewer-allocation-results/base-typecheck.log"
+          (cd "$CANDIDATE_DIR" && CARGO_TARGET_DIR="$RUNNER_TEMP/allocation-candidate-cargo" pnpm typecheck) 2>&1 | tee "$GITHUB_WORKSPACE/viewer-allocation-results/candidate-typecheck.log"
       - name: Build baseline from source through root Turbo
         working-directory: ${{ env.BASE_DIR }}
         env:

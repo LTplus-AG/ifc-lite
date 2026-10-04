@@ -3,13 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { classifySourceSlices } from './viewer-source-slice-observer.mjs';
+import { INPUT_SUBJECTS } from './input-witness-integration.mjs';
 export const SUBJECTS = Object.freeze({base:'c61932d4a9d85efe1b0f817a5274a115f0571ee3', candidate:'2feb6545b588e02d55d4d6b4d9afbe8be261452e'});
 export const FIXTURE = Object.freeze({path:'various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc',size:342657851,
   sha256:'e91ddbbd672bbde946af14631de4c732f0cf8a7cfae5dbbf06fbeab03b5c46df'});
-export function allocationVerdict(rows, interrupted) {
+export function allocationVerdict(rows, interrupted, independentInput = false) {
+  if (typeof independentInput !== 'boolean') throw new Error('REFUSE: unknown allocation protocol');
+  const subjects = independentInput ? INPUT_SUBJECTS : SUBJECTS;
   if (interrupted || rows.length !== 2 || rows[0].arm !== 'base' || rows[1].arm !== 'candidate')
     throw new Error('REFUSE: two fixed ordered controls required without interruption');
-  for (const row of rows) if (row.revision !== SUBJECTS[row.arm] || row.status !== 'allocation-observed'
+  for (const row of rows) if (row.revision !== subjects[row.arm] || row.status !== 'allocation-observed'
     || row.ownedCleanup?.status !== 'complete' || row.logFlush?.status !== 'complete' || row.teardown !== 'complete'
     || row.allocation?.bytes!==FIXTURE.size || row.backendErrors?.length || !(row.sampledRss?.samples > 0) || row.sampledRss.peak > 5*1024**3)
     throw new Error('REFUSE: source revision, load, runtime or cleanup control incomplete');

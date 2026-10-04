@@ -13,11 +13,14 @@ import {GRAPHICS_PROFILE,LIMITS} from './interleaved-plan.mjs';
 import {SUBJECTS,FIXTURE} from './viewer-allocation-plan.mjs';
 import {installSourceSliceObserver,freezeResidentSource,classifySourceSlices} from './viewer-source-slice-observer.mjs';
 import {ownedChrome} from './viewer-allocation-chrome.mjs';
+import {INPUT_PROTOCOL,INPUT_SUBJECTS,registerInputWitness,captureInputWitness,disposeInputWitness} from './input-witness-integration.mjs';
 const [configPath,output]=process.argv.slice(2),config=JSON.parse(readFileSync(configPath,'utf8'));
-if(!Object.hasOwn(SUBJECTS,config.arm)||config.revision!==SUBJECTS[config.arm]||config.fixture?.sha256!==FIXTURE.sha256||config.fixture?.size!==FIXTURE.size)
+if(config.inputProtocol!==null&&config.inputProtocol!==undefined&&config.inputProtocol!==INPUT_PROTOCOL)throw new Error('Unknown independent input protocol');
+const subjects=config.inputProtocol?INPUT_SUBJECTS:SUBJECTS;
+if(!Object.hasOwn(subjects,config.arm)||config.revision!==subjects[config.arm]||config.fixture?.sha256!==FIXTURE.sha256||config.fixture?.size!==FIXTURE.size)
   throw new Error('Fixed allocation subject/fixture mismatch');
-const row={arm:config.arm,revision:config.revision,status:'started',events:[],wasmResponses:[],scope:'Instrumented allocation only; no normal timing or physical-memory verdict'};
-let browser,page,phase='setup',eventBytes=0;
+const row={arm:config.arm,revision:config.revision,inputProtocol:config.inputProtocol??null,inputProof:config.inputProof,status:'started',events:[],wasmResponses:[],scope:'Instrumented allocation only; no normal timing or physical-memory verdict'};
+let browser,page,phase='setup',eventBytes=0,inputRegistered=false;
 const event=item=>{
   if(row.eventRefusal)return;
   const value={...item,phase,observerUTC:new Date().toISOString()},bytes=Buffer.byteLength(JSON.stringify(value));
@@ -42,10 +45,16 @@ try {
   await page.addInitScript(installSourceSliceObserver,{bytes:FIXTURE.size,fileName:FIXTURE.path.split('/').at(-1),deferMilestones:true});
   const benchmark=new ViewerBenchmarkPage(page,config.origin);await benchmark.setup();await benchmark.installSceneReadinessObserver();
   await page.evaluate(()=>globalThis.__ifc_lite_source_slice_observer__.armMilestones());
+  if(config.inputProtocol){
+    row.inputWitnessRegistration=await requireObserved(registerInputWitness(page,config.inputProof,config.arm,config.revision),2000);
+    inputRegistered=true;
+    row.instrumentation={inputReferenceBudget:256*1024**2,scope:'Same both arms: bounded synchronous delivery/native argument references; posttimer hashes. Retention/instrumentation overhead unmeasured; no normal timing claim'};
+  }
   row.runtime=await page.evaluate(()=>({hardwareConcurrency:navigator.hardwareConcurrency,crossOriginIsolated,sharedArrayBuffer:typeof SharedArrayBuffer!=='undefined'}));
   if(!row.runtime.crossOriginIsolated||!row.runtime.sharedArrayBuffer)throw new Error('Default isolated SAB runtime unavailable');
   phase='canonical-load';await benchmark.loadFile(config.fixture.file,false);await benchmark.waitForCompletion(600000,true);
-  checkErrors();row.readiness=await requireObserved(page.evaluate(refusedRendererSnapshot),2000);
+  checkErrors();row.measuredMilestones=benchmark.getMetrics();
+  row.readiness=await requireObserved(page.evaluate(refusedRendererSnapshot),2000);
   const logs=benchmark.getConsoleLogs().join('\n'),starts=[...logs.matchAll(/processParallel start, fileSizeMB=[\d.]+ workerCount=(\d+)/g)];
   const workerIds=[...new Set([...logs.matchAll(/\[stream\] worker\[(\d+)\]/g)].map(match=>Number(match[1])))].sort((a,b)=>a-b);
   const workerCount=starts.length===1?Number(starts[0][1]):0;
@@ -55,9 +64,10 @@ try {
   row.attributedCopies=classifySourceSlices(row.allocation);row.status='allocation-observed';
   writeAtomicEvidence(output,JSON.stringify(row,null,2));
   phase='post-allocation-identity';
-  const identity=await boundedDiagnostic(page.evaluate(captureIdentity,LIMITS),LIMITS.identityMs);
+  const identity=await boundedDiagnostic(config.inputProtocol?captureInputWitness(page,LIMITS):page.evaluate(captureIdentity,LIMITS),LIMITS.identityMs);
   row.fullAppearanceIdentity=identity; // Unsupported authored channels remain an explicit refusal; allocation witness survives.
   if(identity.status==='observed'&&identity.value?.complete!==true)row.fullAppearanceIdentity={status:'unavailable',reason:'Full identity incomplete',raw:identity.value};
+  if(config.inputProtocol&&(row.fullAppearanceIdentity.status!=='observed'||row.fullAppearanceIdentity.value?.complete!==true))throw new Error('Independent input/retained appearance identity refused');
   checkErrors();
   if(!row.wasmResponses.some(response=>response.status===200&&new URL(response.url).origin===config.origin
     && config.defaultWasmPaths.includes(new URL(response.url).pathname))||row.wasmResponses.some(response=>response.status!==200||new URL(response.url).origin!==config.origin))throw new Error('Default source-built WASM response absent/foreign/failed');
@@ -77,6 +87,13 @@ finally {
     row.preTeardownUTC=new Date().toISOString();writeAtomicEvidence(output,JSON.stringify(row,null,2));
   } catch(error){row.finalEvidenceFailure=String(error);row.status='refused';row.reason??=row.finalEvidenceFailure;process.exitCode=1;}
   finally {
+    if(inputRegistered&&page){
+      row.inputWitnessCleanup=await boundedDiagnostic(disposeInputWitness(page),2000);
+      if(row.inputWitnessCleanup.status==='observed')row.inputWitnessCleanup=row.inputWitnessCleanup.value;
+      if(row.inputWitnessCleanup?.restored!==true){row.status='refused';row.reason??='Input witness cleanup/refusal';process.exitCode=1;}
+    }
+    // Disposal is still before intentional teardown: late load faults remain fatal.
+    if(row.status==='allocation-observed')try{checkErrors();}catch(error){row.status='refused';row.reason=String(error);process.exitCode=1;}
     phase='teardown';console.log('[allocation-phase] teardown');
     row.teardown=browser?(await boundedDiagnostic(browser.close(),30000)).status==='observed'?'complete':'refused':'complete';
     if(row.teardown!=='complete'){row.status='refused';process.exitCode=1;}

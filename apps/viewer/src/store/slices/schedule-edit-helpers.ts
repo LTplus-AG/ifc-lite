@@ -59,23 +59,42 @@ export function msToIsoDuration(ms: number): string {
   return out === 'P' ? 'P0D' : out;
 }
 
+/**
+ * Add an ISO 8601 duration to an epoch (ms). Whole years and months are
+ * calendar arithmetic in UTC, applied first and clamped to the target
+ * month's last day (XML Schema's date + duration, which IfcDuration
+ * follows): 2024-01-31 + P1M is 2024-02-29, and 2024-01-01 + P1M is
+ * 2024-02-01 rather than a 30.44-day average (#6803). Fractional years or
+ * months, and the W/D/H/M/S components, add as fixed lengths. Returns
+ * undefined for a string that is not a duration.
+ */
 export function addIsoDurationToEpoch(start: number, iso: string): number | undefined {
   const match = iso.match(
     /^P(?:(\d+(?:\.\d+)?)Y)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/,
   );
   if (!match) return undefined;
   const [, y, mo, w, d, h, mi, s] = match;
+  const years = y ? parseFloat(y) : 0;
+  const months = mo ? parseFloat(mo) : 0;
+  const wholeMonths = Math.trunc(years) * 12 + Math.trunc(months);
+  const date = new Date(start);
+  if (wholeMonths !== 0) {
+    const day = date.getUTCDate();
+    date.setUTCDate(1);
+    date.setUTCMonth(date.getUTCMonth() + wholeMonths);
+    const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+    date.setUTCDate(Math.min(day, lastDay));
+  }
   const yearMs = 365.2425 * 86_400_000;
-  const monthMs = yearMs / 12;
   const total =
-    (y ? parseFloat(y) * yearMs : 0) +
-    (mo ? parseFloat(mo) * monthMs : 0) +
+    (years % 1) * yearMs +
+    (months % 1) * (yearMs / 12) +
     (w ? parseFloat(w) * 7 * 86_400_000 : 0) +
     (d ? parseFloat(d) * 86_400_000 : 0) +
     (h ? parseFloat(h) * 3_600_000 : 0) +
     (mi ? parseFloat(mi) * 60_000 : 0) +
     (s ? parseFloat(s) * 1000 : 0);
-  return start + total;
+  return date.getTime() + total;
 }
 
 /** Epoch ms → ISO-8601 UTC (no milliseconds), matching the extractor. */

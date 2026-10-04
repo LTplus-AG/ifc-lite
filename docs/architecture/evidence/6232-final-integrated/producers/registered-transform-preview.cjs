@@ -52,6 +52,7 @@ async function run(command) {
         ghostCount: ghosts.length, ghostsFinite: ghosts.every(m => Array.from(m.positions).every(Number.isFinite)),
         journal: view.getMutations(), records: view.getNewEntities(), allocator: view.peekNextExpressId() };
     }, { modelId, command });
+    assert.equal(started.loadedViewBefore, true, 'real loader installed its empty view before authoring');
     assert.equal(started.editorPresentBefore, false);
     assert.equal(started.loadedViewRetained, true); assert.equal(started.effectiveOverlayEmpty, true);
     assert.deepEqual(started.roots, [1222]);

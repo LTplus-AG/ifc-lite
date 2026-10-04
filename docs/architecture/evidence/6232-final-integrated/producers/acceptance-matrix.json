@@ -30,6 +30,15 @@
     "scope": "Test-only finite 30-second per-case deadline for eight two-model native fault/recovery controls; two input-only controls retain default. Assertions, production, API and request/global deadlines unchanged.",
     "qualification": "Root typecheck: 111 successful tasks, 106 cached, all 3399 test files; exact native controls: 10 passed, zero skips/cache. Original CI deadline failures and inconclusive stale prerequisite diagnosis are retained. Earlier full-suite, browser and oracle runs retain their literal source labels."
   },
+  "transformPreviewQualification": {
+    "nativeMissingViewSource": "04337a98649415f8c1c65949be614d25cdddb4cf",
+    "combinedNativeSource": "422a46bf7c824ddf68b8e22cd807ade4d4c8d800",
+    "actualMainIntegratedSource": "57cb2ed558ab9d4cbd6244063f2d796f9b71a64c",
+    "finalBrowserSource": "57cb2ed558ab9d4cbd6244063f2d796f9b71a64c",
+    "archive": "../cold-transform-preview/",
+    "qualification": "Six genuine native old-planner assertion failures become six fixed passes; root422a types111/all3401,viewer33,lint8494; main57cb types111/all3403,document130. Native/document controls zero skips/cache. Source/API/Rust/runtime identities and original failed attempts retained.",
+    "browserScope": "Six real WSL Chrome first-authoring registered Align/Move/Rotate preview/Escape-cancel one/two-model contexts,28stages, initialized empty view retained. Native missing-view behavior and independent-reference commit controls are separate; no browser missing-view or same-host commit claim. Historical eight-receipt/184-stage/436-witness audit remains unchanged."
+  },
   "mergeAcceptanceConditions": [
     "All preceding stack layers must actually land on main",
     "All four latest required current-head PR contexts must actually succeed and complete fresh feedback must be addressed",

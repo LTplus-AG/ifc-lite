@@ -1,0 +1,9 @@
+{
+  "oldHead": "777019f359db2c5cb6d993010056b663433b9697",
+  "newHead": "5285c5bd972faea18933b94fe4a1891a26bd8fa0",
+  "newTree": "5a1d63d6105fe934e6500ecf95292cfefded5408",
+  "actualMain": "1b37c4c5e56d10cced65fdd81d07cca0b97b5824",
+  "onlyAddedPath": "apps/viewer/src/components/viewer/document/DocumentPanel.labels.test.tsx",
+  "newTestBlob": "f663a87bfb050a30b1a6a30e361670ddef8ebf24",
+  "scope": "Unrelated actual-main test adopted unchanged; production/API/Rust/runtime/evidence byte-identical. Current source fix and qualification pending; no fresh tests claimed."
+}

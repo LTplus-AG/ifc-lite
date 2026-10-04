@@ -1,0 +1,114 @@
+{
+  "pr": 6761,
+  "oldPublishedHead": "814cac74dd2815e59ab78dbd4a7354fd7a425a33",
+  "oldMain": "1b37c4c5e56d10cced65fdd81d07cca0b97b5824",
+  "actualMain": "8a78fbf19910313d6ac9ac66da0a717accd6e71f",
+  "preparedHead": "05ca86645dfa07345dc51f658398326dec97400b",
+  "preparedTree": "be8ca7ffd25cea6955b1a650d8171432c467fef4",
+  "wholeDeltaExactlyMainPaths": true,
+  "mainBlobIdentities": {
+    ".changeset/tidy-titles-agree.md": {
+      "new": "d7a3216b9dcea740f1b4cd158ea54714b1fb526b",
+      "actualMain": "d7a3216b9dcea740f1b4cd158ea54714b1fb526b"
+    },
+    "apps/viewer/src/components/viewer/document/DocumentPanel.blockHeading.test.tsx": {
+      "new": "7593c771b747aae6d9ae0d3a9e201db3b98536a6",
+      "actualMain": "7593c771b747aae6d9ae0d3a9e201db3b98536a6"
+    },
+    "apps/viewer/src/components/viewer/document/DocumentPanel.blockHeadingFollowUps.test.tsx": {
+      "new": "4ebd8a76f9e9d05b635ba0b121034e34de427823",
+      "actualMain": "4ebd8a76f9e9d05b635ba0b121034e34de427823"
+    },
+    "apps/viewer/src/components/viewer/document/DocumentPanel.blockTitles.test.tsx": {
+      "new": "f23738fdedcba6d2ecbf47a3f503585ddb7fef24",
+      "actualMain": "f23738fdedcba6d2ecbf47a3f503585ddb7fef24"
+    },
+    "apps/viewer/src/i18n/catalogues/document.en.ts": {
+      "new": "efd96f87d91021f49b60cdb325a4362454679f44",
+      "actualMain": "efd96f87d91021f49b60cdb325a4362454679f44"
+    },
+    "apps/viewer/src/lib/document/block-heading-follow-ups.test.ts": {
+      "new": "08c38a14aef7c937ca62e64e9fa77ecb2511381d",
+      "actualMain": "08c38a14aef7c937ca62e64e9fa77ecb2511381d"
+    },
+    "apps/viewer/src/lib/document/block-title-style.test.ts": {
+      "new": "b668de75397b82239b7bbdeda15d44de056d92bc",
+      "actualMain": "b668de75397b82239b7bbdeda15d44de056d92bc"
+    },
+    "apps/viewer/src/lib/document/compose-block-title.ts": {
+      "new": "4c58a62a0bf237f7fa1cdd5ac7af0c5677cadd63",
+      "actualMain": "4c58a62a0bf237f7fa1cdd5ac7af0c5677cadd63"
+    },
+    "apps/viewer/src/lib/document/compose.ts": {
+      "new": "e440558f083529434fcee727a8bb2a6281fdcc3e",
+      "actualMain": "e440558f083529434fcee727a8bb2a6281fdcc3e"
+    },
+    "apps/viewer/src/lib/document/document.test.ts": {
+      "new": "f1145d472b4c849beb03bcfdeb591e7728619ea7",
+      "actualMain": "f1145d472b4c849beb03bcfdeb591e7728619ea7"
+    },
+    "apps/viewer/src/lib/document/generate-document-pdf.ts": {
+      "new": "490ae34c49bb68e26b46f99aeae8213f927e9e6c",
+      "actualMain": "490ae34c49bb68e26b46f99aeae8213f927e9e6c"
+    },
+    "docs/architecture/evidence/block-heading-follow-ups/README.md": {
+      "new": "0d7c1e1deb95d62daaf403611dd08a7d920ddb75",
+      "actualMain": "0d7c1e1deb95d62daaf403611dd08a7d920ddb75"
+    },
+    "docs/architecture/evidence/block-heading-follow-ups/f1-topic-branch.png": {
+      "new": "54bb0eaa838cb9c611f5c33542fd03dcd1b5d9cc",
+      "actualMain": "54bb0eaa838cb9c611f5c33542fd03dcd1b5d9cc"
+    },
+    "docs/architecture/evidence/block-heading-follow-ups/f1-topic-fallback-title-branch.pdf": {
+      "new": "00eacd5ff9cad238e504cfefb757d2793d34697a",
+      "actualMain": "00eacd5ff9cad238e504cfefb757d2793d34697a"
+    },
+    "docs/architecture/evidence/block-heading-follow-ups/f1-topic-fallback-title-main.pdf": {
+      "new": "f9e2d05c53f22bd90d0f81dd5f55da5d3db6a0d1",
+      "actualMain": "f9e2d05c53f22bd90d0f81dd5f55da5d3db6a0d1"
+    },
+    "docs/architecture/evidence/block-heading-follow-ups/f1-topic-main.png": {
+      "new": "7e51912c9cae812e78e3eb60aaae361f5abfe893",
+      "actualMain": "7e51912c9cae812e78e3eb60aaae361f5abfe893"
+    },
+    "docs/architecture/evidence/block-heading-follow-ups/f3-chart-beside-text-branch.pdf": {
+      "new": "8ef2cc5f2dfadba6653cefa5cc0cfef043c12494",
+      "actualMain": "8ef2cc5f2dfadba6653cefa5cc0cfef043c12494"
+    },
+    "docs/architecture/evidence/block-heading-follow-ups/f3-chart-beside-text-main.pdf": {
+      "new": "281a7af5ace63a85f9fd81a760f624d30ba6be74",
+      "actualMain": "281a7af5ace63a85f9fd81a760f624d30ba6be74"
+    },
+    "docs/architecture/evidence/block-heading-follow-ups/generate-pdfs.mjs": {
+      "new": "298d6fcb28d0ed93d79592145ea258b4aa12a35f",
+      "actualMain": "298d6fcb28d0ed93d79592145ea258b4aa12a35f"
+    },
+    "docs/architecture/evidence/block-heading-follow-ups/preview-shots.mjs": {
+      "new": "739ce5719958786ddc93339637f5c771209bad7f",
+      "actualMain": "739ce5719958786ddc93339637f5c771209bad7f"
+    },
+    "docs/architecture/evidence/block-heading-follow-ups/readback.mjs": {
+      "new": "351148a5cf52481be156bb2fba7ddf821ff44036",
+      "actualMain": "351148a5cf52481be156bb2fba7ddf821ff44036"
+    },
+    "docs/architecture/evidence/block-heading-follow-ups/readback.txt": {
+      "new": "1a9a662e0fb8fb2466dfeab2d3eafc19529a268d",
+      "actualMain": "1a9a662e0fb8fb2466dfeab2d3eafc19529a268d"
+    },
+    "docs/guide/documents.md": {
+      "new": "5520d92f30fc14c993c78bfc7e3e79da01bd522b",
+      "actualMain": "5520d92f30fc14c993c78bfc7e3e79da01bd522b"
+    }
+  },
+  "ownFullBinaryPatchExactlyUnchanged": true,
+  "ownFullBinaryPatchSha256": "48ede5b9b79ee3987f67d4bdaeb79987fdfd1bb1d6249d9e098d998e81905693",
+  "apiBlob": "ed7c5d43b9bd9f39c7f40bdc88aea9cbe3bdb5fe",
+  "coldSourceBlobsUnchanged": {
+    "apps/viewer/src/lib/element-transform/commit.ts": "0c2b740b17e4946ec4358539d8e07d1dd6f60049",
+    "apps/viewer/src/lib/commands/modeling/commands/element-transform-cold-native.test.ts": "0511971f953d3f28c7187d8108066964ea7b7ba8"
+  },
+  "actualMainMergeTree": "be8ca7ffd25cea6955b1a650d8171432c467fef4",
+  "actualMainMergeTreeEqualsPrepared": true,
+  "worktreeClean": true,
+  "publication": "held pending root combined main/document qualification and independent source proof"
+}

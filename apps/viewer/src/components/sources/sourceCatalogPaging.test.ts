@@ -25,7 +25,7 @@ import { fetchAllFilePages } from './sourceCatalogPaging';
 const ctx = {} as PluginContext;
 
 function file(id: string): SourceFile {
-  return { id, name: `${id}.ifc`, containerId: 'c', size: 1 } as unknown as SourceFile;
+  return { id, name: `${id}.ifc`, containerId: 'c', currentRevisionId: 'r1', sizeBytes: 1 };
 }
 
 /**
@@ -38,20 +38,28 @@ function providerOf(pages: SourceFile[][]): {
   calls: (string | undefined)[];
 } {
   const calls: (string | undefined)[] = [];
-  const provider = {
+  const provider: FileSourceProvider = {
+    manifest: {
+      name: 'paging-fixture', title: 'Paging fixture', api: '^2.0.0', auth: 'preferences',
+      permissions: { network: [] }, preferences: [], contributes: { fileSources: [] },
+      capabilities: { containerListing: 'direct-children', listFilesIsRecursive: false,
+        revisionHistory: false, downloadHistoricalRevisions: false, changeDetection: false, search: false },
+    },
+    listProjects: async () => ({ items: [] }), listContainers: async () => ({ items: [] }),
+    download: async () => { throw new Error('Not exercised'); },
     listFiles: async (
       _c: PluginContext,
       _p: string,
       _container: string,
       _filter: unknown,
-      opts: { cursor?: string },
+      opts?: { cursor?: string },
     ) => {
-      calls.push(opts.cursor);
-      const idx = opts.cursor === undefined ? 0 : Number(opts.cursor);
+      calls.push(opts?.cursor);
+      const idx = opts?.cursor === undefined ? 0 : Number(opts?.cursor);
       const isLast = idx >= pages.length - 1;
       return { items: pages[idx] ?? [], cursor: isLast ? undefined : String(idx + 1) };
     },
-  } as unknown as FileSourceProvider;
+  };
   return { provider, calls };
 }
 
@@ -118,13 +126,14 @@ describe('fetchAllFilePages', () => {
     // whose listFiles filters client-side by folder scope and `*.ifc`, so a
     // file area dominated by non-IFC files yields exactly these empty pages.
     let served = 0;
-    const provider = {
-      listFiles: async (_c: PluginContext, _p: string, _cid: string, _f: unknown, opts: { cursor?: string }) => {
+    const provider: FileSourceProvider = {
+      ...providerOf([]).provider,
+      listFiles: async (_c: PluginContext, _p: string, _cid: string, _f: unknown, opts?: { cursor?: string }) => {
         served += 1;
-        const n = opts.cursor === undefined ? 0 : Number(opts.cursor);
+        const n = opts?.cursor === undefined ? 0 : Number(opts?.cursor);
         return { items: [], cursor: String(n + 1) };
       },
-    } as unknown as FileSourceProvider;
+    };
 
     await assert.rejects(() => sweep(provider), /exceeded/, 'empty pages must still hit the page ceiling');
     // Bounded by the page ceiling, not by the item ceiling (which never moves).
@@ -134,12 +143,13 @@ describe('fetchAllFilePages', () => {
 
   it('throws rather than hanging when a provider mints cursors forever', async () => {
     // Never yields a cursorless page: the runaway the ceiling exists for.
-    const provider = {
-      listFiles: async (_c: PluginContext, _p: string, _container: string, _f: unknown, opts: { cursor?: string }) => {
-        const n = opts.cursor === undefined ? 0 : Number(opts.cursor);
+    const provider: FileSourceProvider = {
+      ...providerOf([]).provider,
+      listFiles: async (_c: PluginContext, _p: string, _container: string, _f: unknown, opts?: { cursor?: string }) => {
+        const n = opts?.cursor === undefined ? 0 : Number(opts?.cursor);
         return { items: [file(`f${n}`)], cursor: String(n + 1) };
       },
-    } as unknown as FileSourceProvider;
+    };
 
     await assert.rejects(
       () => sweep(provider),

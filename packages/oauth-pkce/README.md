@@ -125,3 +125,5 @@ specifically; make the call above before reusing it for a new provider.
   returns a URL; navigating to it (or opening it in a popup) is the caller's
   job, per the plugin contract's `SourceAuth.signIn` (interactive, called
   only from a user gesture).
+
+`waitForOAuthCallback` accepts an optional `signal` for cancellation. Aborting rejects the pending wait with the signal’s reason and releases its BroadcastChannel and timer; it does not cancel a server-side OAuth transaction. Hosted providers must invalidate that transaction through their own session service.

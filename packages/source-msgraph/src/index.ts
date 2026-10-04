@@ -5,3 +5,6 @@
 export { MsGraphProvider } from './provider.js';
 export { MSGRAPH_MANIFEST } from './manifest.js';
 export { REDIRECT_PATH } from './auth.js';
+
+export type { MsGraphProviderOptions } from './provider.js';
+export type { GraphApiClient } from './http-client.js';

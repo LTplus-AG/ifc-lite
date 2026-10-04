@@ -131,3 +131,12 @@ describe('display geometry and property rows (#5925 review)', () => {
     expect(Object.entries(rows)).toEqual([['__proto__', 'v-__proto__'], ['constructor', 'v-constructor'], ['toString', 'v-toString'], ['hasOwnProperty', 'v-hasOwnProperty']]);
   });
 });
+
+describe('parseSpeckleUrl with a malformed percent-escape', () => {
+  it('refuses with the named "no usable" error, not a bare URIError', () => {
+    const url = 'https://speckle.xyz/projects/%E0%A4%A/models/def456';
+    expect(() => parseSpeckleUrl(url)).toThrow(/speckle\.receive: ".*" has no usable project id/);
+    expect(() => parseSpeckleUrl(url)).not.toThrow(URIError);
+  });
+});
+

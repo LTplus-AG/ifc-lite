@@ -101,6 +101,34 @@ importers:
         specifier: ^2.9.1
         version: 2.9.1
 
+  apps/autodesk-service:
+    dependencies:
+      '@ifc-lite/oauth-pkce':
+        specifier: workspace:^
+        version: link:../../packages/oauth-pkce
+      '@ifc-lite/plugin-api':
+        specifier: workspace:^
+        version: link:../../packages/plugin-api
+    devDependencies:
+      '@ifc-lite/ifcx':
+        specifier: workspace:^
+        version: link:../../packages/ifcx
+      '@ifc-lite/source-autodesk':
+        specifier: workspace:^
+        version: link:../../packages/source-autodesk
+      '@types/node':
+        specifier: ^26.6.2
+        version: 26.6.2
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.11(@edge-runtime/vm@3.2.0)(@types/node@26.6.2)(happy-dom@20.14.5)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
   apps/viewer:
     dependencies:
       '@anthropic-ai/sdk':
@@ -238,6 +266,9 @@ importers:
       '@ifc-lite/solar':
         specifier: workspace:^
         version: link:../../packages/solar
+      '@ifc-lite/source-autodesk':
+        specifier: workspace:^
+        version: link:../../packages/source-autodesk
       '@ifc-lite/source-dalux':
         specifier: workspace:^
         version: link:../../packages/source-dalux
@@ -575,6 +606,9 @@ importers:
       '@ifc-lite/solar':
         specifier: workspace:^
         version: link:../../packages/solar
+      '@ifc-lite/source-autodesk':
+        specifier: workspace:^
+        version: link:../../packages/source-autodesk
       '@ifc-lite/source-dalux':
         specifier: workspace:^
         version: link:../../packages/source-dalux
@@ -1891,6 +1925,22 @@ importers:
         version: 4.1.11(@edge-runtime/vm@3.2.0)(@types/node@26.6.2)(happy-dom@20.14.5)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/solar:
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.11(@edge-runtime/vm@3.2.0)(@types/node@26.6.2)(happy-dom@20.14.5)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/source-autodesk:
+    dependencies:
+      '@ifc-lite/oauth-pkce':
+        specifier: workspace:^
+        version: link:../oauth-pkce
+      '@ifc-lite/plugin-api':
+        specifier: workspace:^
+        version: link:../plugin-api
     devDependencies:
       typescript:
         specifier: ^6.0.3

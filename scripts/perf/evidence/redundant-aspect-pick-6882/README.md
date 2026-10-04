@@ -65,7 +65,7 @@ scene republication still invalidates snapshots.
 ## Inventory and reproduction
 
 Each directory's `manifest.json` records original and stored SHA-256 hashes.
-JSON and logs are losslessly gzip-compressed with a fixed timestamp; PNGs are
+JSON, logs and replay/build scripts are losslessly gzip-compressed with a fixed timestamp; PNGs are
 unaltered. The compiled archive includes both declared protocols, actual scripts,
 build configurations, source/build inventories, all results/admission receipts,
 screenshots and validation logs. Paths in the scripts identify the original

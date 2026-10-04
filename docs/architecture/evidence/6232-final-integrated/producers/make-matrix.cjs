@@ -72,6 +72,14 @@ const metadata={
     "qualification": "Six genuine native old-planner assertion failures become six fixed passes; root422a types111/all3401,viewer33,lint8494; main57cb types111/all3403,document130. Native/document controls zero skips/cache. Source/API/Rust/runtime identities and original failed attempts retained.",
     "browserScope": "Six real WSL Chrome first-authoring registered Align/Move/Rotate preview/Escape-cancel one/two-model contexts,28stages, initialized empty view retained. Native missing-view behavior and independent-reference commit controls are separate; no browser missing-view or same-host commit claim. Historical eight-receipt/184-stage/436-witness audit remains unchanged."
   },
+  "scheduleMainForwardQualification": {
+    "qualifiedSource": "6c4b1c5ca5f2d5af5cac67dfb15dde42121e0011",
+    "sourceTree": "22e323839e223e9c4a5a4245ecfc1ff612ac21ff",
+    "actualMain": "1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9",
+    "archive": "../schedule-main-forward/",
+    "scope": "25 inherited actual-main scheduling paths; exact additive API/generated declaration union; modelling/Rust/runtime unchanged. Prior captures retain literal57cb/902/e98 source labels, no retake claimed.",
+    "qualification": "Root typecheck111/all3405/94cache; SDK341/parserSchedule59/sandboxSchedule12/viewerSchedule104 PASS0skip/cache; API9344/52pkgs/85surfaces and generatedBim14namespace freshness pass."
+  },
   "mergeAcceptanceConditions": [
     "All preceding stack layers must actually land on main",
     "All four latest required current-head PR contexts must actually succeed and complete fresh feedback must be addressed",

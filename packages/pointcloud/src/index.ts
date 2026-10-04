@@ -124,3 +124,24 @@ export {
   type CopcWorkerReader,
   type OpenCopcOptions,
 } from './copc/copc-worker-client.js';
+
+// View-dependent LOD selection + progressive pacing, renderer-agnostic (#6869)
+export {
+  selectLod,
+  type LodNode,
+  type LodCamera,
+  type LodOptions,
+  type LodSelection,
+  type LodSelectedNode,
+} from './lod/select.js';
+export {
+  LodPacer,
+  shouldReplacePass,
+  type LodPacerOptions,
+  type LodPassQuality,
+} from './lod/pacer.js';
+export {
+  createCopcLodTree,
+  type CopcLodNode,
+  type CopcLodTree,
+} from './lod/copc-lod-tree.js';

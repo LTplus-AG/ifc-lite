@@ -113,6 +113,46 @@ checked by its exact length. Hierarchy pages come from the file, so the
 page walk is iterative with a visited set and page, node and byte budgets;
 exceeding a budget is an error, never a silently truncated octree.
 
+## View-dependent level of detail
+
+`selectLod(root, camera, { pointBudget })` picks which octree nodes to show.
+It is pure (no renderer, no I/O) and works on any additive octree through the
+small `LodNode` interface; `createCopcLodTree` adapts a COPC hierarchy.
+
+- Nodes outside the view frustum are never selected.
+- The selected node with the largest projected screen span refines first,
+  while its span exceeds `pixelThreshold` (default 96 px) and the selection
+  stays within `maxNodes` (default `clamp(pointBudget / 128, 8, 1024)`).
+  Parents always precede their children.
+- The point budget is water-filled across the selection: each node gets an
+  equal share capped by its own point count, and every node carries a
+  `stride` hint whose decoded count never exceeds its share.
+- Nodes that should refine but whose hierarchy page is not loaded yet are
+  listed in `needsChildren`.
+
+`LodPacer` sizes a fast first pass to a time budget (default 200 ms) from a
+learned read rate, an asymmetric moving average that drops fast and rises
+slowly, with outlier clipping. `shouldReplacePass` swaps what is on screen
+only for something better: more points for the same view, or a complete
+pass for a newer view.
+
+```ts
+import { LodPacer, createCopcLodTree, selectLod, type CopcWorkerReader, type LodCamera } from '@ifc-lite/pointcloud';
+
+declare const reader: CopcWorkerReader;
+declare const camera: LodCamera;
+// Bounds in the decoded frame; move the camera into it (view-projection x placement).
+const tree = createCopcLodTree(reader.hierarchy, reader.file.info, reader.originOffset);
+const pacer = new LodPacer();
+const [firstPass] = pacer.passBudgets(10_000_000);
+if (tree.root) {
+  const selection = selectLod(tree.root, camera, { pointBudget: firstPass });
+  for (const node of selection.needsChildren) {
+    for (const ref of tree.pendingPagesUnder(node)) void reader.loadPage(ref);
+  }
+}
+```
+
 ## API
 
 See the [docs site](https://ifclite.dev/docs/) for guides and the full API reference.

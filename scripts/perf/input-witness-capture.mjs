@@ -65,7 +65,8 @@ export async function captureViewerInputIdentity(limits) {
     return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', value)), byte => byte.toString(16).padStart(2, '0')).join('');
   }
   async function canonical(value, depth = 0) {
-    if (depth > 24 || ++records > limits.records) refuse('canonical work bound');
+    if (depth > 24) refuse(`canonical depth bound (depth=${depth}, limit=24)`);
+    if (++records > limits.records) refuse(`canonical record bound (records=${records}, limit=${limits.records})`);
     if (value === undefined) return ['absent'];
     if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
     if (typeof value === 'bigint') return ['bigint', value.toString()];

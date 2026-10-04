@@ -161,6 +161,36 @@ test('#6537 real decoder, preparation, placement and Scene qualify supported tri
   } finally { c.cleanup(); }
 });
 
+test('#6537 canonical depth bound refuses depth 25 after accepting depth 24', async () => {
+  for (const wrappers of [23, 24]) {
+    const c = control();
+    try {
+      // The produced envelope adds one level above coordinateInfo. Its scalar
+      // leaf reaches depth 24 with 23 array wrappers, then depth 25 with 24.
+      let nested = 0;
+      for (let level = 0; level < wrappers; level++) nested = [nested];
+      c.geometry.coordinateInfo = nested;
+      c.begin();
+      if (wrappers === 23) assert.equal((await c.capture()).complete, true);
+      else await assert.rejects(c.capture(), /canonical depth bound \(depth=25, limit=24\)/);
+    } finally { c.cleanup(); }
+  }
+});
+
+test('#6537 canonical cumulative record bound refuses a small budget on real retained Scene input', async () => {
+  for (const budget of [100000, 20]) {
+    const c = control();
+    try {
+      c.begin();
+      // Each shallow mesh has fewer than 20 scalar/container records, but the
+      // cumulative traversal of produced and viewport meshes exceeds that cap.
+      c.limits.records = budget;
+      if (budget === 100000) assert.equal((await c.capture()).complete, true);
+      else await assert.rejects(c.capture(), /canonical record bound \(records=21, limit=20\)/);
+    } finally { c.cleanup(); }
+  }
+});
+
 test('#6537 unchanged Rust-produced v1/v2 decode through real Scene but strict triangle identity refuses', async () => {
   const expected = { v1: '74ec1798793a265d1900538a839631f07ebd573e35f02fb455adb41a37d8696a',
     v2: 'f20ad75faebfd6e4ba22739e363308ee2dd86ee470112c6501879eff45377a19' };

@@ -18,10 +18,11 @@ test('native clash evidence reaches the assistant without executing model output
   await viewer.loadFile(fixture);
   await expect.poll(() => page.evaluate(() => {
     const store = (globalThis as unknown as { __ifc_lite_viewer_store__?: {
-      getState(): { ifcDataStore: { entityCount: number } | null; models: Map<string, unknown> };
+      getState(): { ifcDataStore: { entityCount: number } | null; models: Map<string, unknown>; loading: boolean; geometryStreamingActive: boolean };
     } }).__ifc_lite_viewer_store__;
     const state = store?.getState();
-    return state?.models.size === 1 && (state.ifcDataStore?.entityCount ?? 0) > 100;
+    return state?.models.size === 1 && !state.loading && !state.geometryStreamingActive
+      && (state.ifcDataStore?.entityCount ?? 0) > 100;
   }), { timeout: 120_000 }).toBe(true);
   await page.evaluate(() => {
     const store = (globalThis as unknown as { __ifc_lite_viewer_store__: {

@@ -130,3 +130,5 @@ Latest final review repairs and all eight fresh WSL Chrome captures: [`review-fi
 Intervening explicit semantic loopback main integration: [`loopback-main-forward/`](./loopback-main-forward/). Its bounded source qualification preserves all actual modelling browser source labels and requires new published-head CI.
 
 Latest Room input boundary fix and mixed source-labelled browser acceptance: [`room-input-forward/`](./room-input-forward/), two fresh Room captures at clean `977846c5` plus six retained `e98` captures, with the unchanged eight-receipt/184-stage/436-witness audit.
+
+Latest finite native wire test deadline qualification: [`native-wire-deadline/`](./native-wire-deadline/). Full integrated SDK 334 passes with no skips; original current-head CI timeouts are retained. Production and browser source identities remain unchanged.

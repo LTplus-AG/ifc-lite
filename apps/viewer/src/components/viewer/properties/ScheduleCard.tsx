@@ -26,6 +26,7 @@ import { taskProductExpressIds, taskProductGlobalIds } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { PersistentCollapsible } from './PersistentCollapsible';
+import { taskStartIso, taskFinishIso, taskDurationIso } from '@/store/slices/schedule-task-dates';
 
 interface ScheduleCardProps {
   /** Schedule data from the viewer's slice (parsed or generated). */
@@ -114,9 +115,9 @@ interface TaskRowProps {
 
 function TaskRow({ task, scheduleNames, locale }: TaskRowProps) {
   const { t } = useTranslation();
-  const start = formatDate(task.taskTime?.scheduleStart, locale);
-  const finish = formatDate(task.taskTime?.scheduleFinish, locale);
-  const duration = task.taskTime?.scheduleDuration;
+  const start = formatDate(taskStartIso(task), locale);
+  const finish = formatDate(taskFinishIso(task), locale);
+  const duration = taskDurationIso(task);
   const completion = task.taskTime?.completion;
   const isCritical = task.taskTime?.isCritical === true;
   const scheduleLabels = task.controllingScheduleGlobalIds

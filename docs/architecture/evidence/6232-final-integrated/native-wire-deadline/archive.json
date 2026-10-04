@@ -1,0 +1,85 @@
+{
+  "executionSource": "fa3fbefcaf7d23d09392389907c4e89e2eb2fca3",
+  "owningSDKSource": "3a6d9a38fe92b08b94dcf2cd4fe16614462f7776",
+  "productionCaptureSource": "977846c5b3aac7b70a397d0e166acdc3019a2c99",
+  "scope": "Two native integration test deadlines only; production, assertions, per-request deadlines and API unchanged",
+  "scopes": {
+    "typecheckTasks": 111,
+    "typecheckedTestFiles": 3397,
+    "fullSDKTests": 334,
+    "fullSDKFiles": 32,
+    "skips": 0,
+    "testCacheHits": 0
+  },
+  "entries": [
+    {
+      "file": "own-0.log.gz",
+      "rawPath": "/tmp/6232-room-wire-budget-final-old-guard.log",
+      "rawBytes": 3368,
+      "rawSHA256": "d372785fbe9da244467eb47127ae6145a0a7047acec3946a4d23a19d70cb46b7",
+      "compressedSHA256": "b42fa8199ec7fc42674663f7f3e2f6f63fd4ded53b772703d22c231252511bcb"
+    },
+    {
+      "file": "own-1.log.gz",
+      "rawPath": "/tmp/6232-room-wire-budget-full-sdk.log",
+      "rawBytes": 1007,
+      "rawSHA256": "93544d972c50d5a2ec101ae7f035bd318273551f054e5a1ec75eb28b716a638a",
+      "compressedSHA256": "e43cfb473cbc4cd16bac216b49610d90dc481dbc08e0ca93d84a294cbbb99d74"
+    },
+    {
+      "file": "own-2.log.gz",
+      "rawPath": "/tmp/6232-room-wire-budget-cost-fixture.log",
+      "rawBytes": 47,
+      "rawSHA256": "93ae1d3e50abae5f7f05bf33f5946058f669a64103f9953ad35201e9dc13d42e",
+      "compressedSHA256": "2c8f3ccbfd340ca35016250fe1e401ac9fe3db4fb304985d80728aff31cfedd8"
+    },
+    {
+      "file": "own-3.log.gz",
+      "rawPath": "/tmp/6232-room-wire-budget-full-sdk-with-fixture.log",
+      "rawBytes": 983,
+      "rawSHA256": "de8bda9d01224586842971946ad2f8e4976811724072556408e07de9a1d5590e",
+      "compressedSHA256": "a0788add53939b083bf4f5d087c7aa394eebc8ba79965d8d0027db6d4ab625e8"
+    },
+    {
+      "file": "own-4.log.gz",
+      "rawPath": "/tmp/6232-6758-d86-node-failure.log",
+      "rawBytes": 5791113,
+      "rawSHA256": "37a93be2d0939c53bd1cb06533ed4efdc22c7f0e383f847d78ce96bb7b6531d5",
+      "compressedSHA256": "6c5e685c53f5b47dc3553f7de5dc6efdf7e760625a95a5a02a1d3c7fb05666e8"
+    },
+    {
+      "file": "own-5.log.gz",
+      "rawPath": "/tmp/6232-final-b432-node-failure.log",
+      "rawBytes": 2956450,
+      "rawSHA256": "53d29a69c70e3333e77c7551c284be0bb83b4ffce9b8972e273a8370d9552233",
+      "compressedSHA256": "3859dfd7141a88b41de1aa050eb952a7a490fd23d7ba1c6c3da6c1b6760475a4"
+    },
+    {
+      "file": "integrated-types.log.gz",
+      "rawPath": "/tmp/6232-room-wire-budget-integrated-types.log",
+      "rawBytes": 45388,
+      "rawSHA256": "e7ff64d10a54e36a1f4fe34c9f6e1deb01cd14f5486577d3495ef173278282fa",
+      "compressedSHA256": "5fc844e0cbcee69b6e487a17c9e90c1df06347119b41100a4b87240b02802d0a"
+    },
+    {
+      "file": "integrated-full-sdk.log.gz",
+      "rawPath": "/tmp/6232-room-wire-budget-integrated-full-sdk.log",
+      "rawBytes": 82963,
+      "rawSHA256": "b7f2c75fca5893a5b133b5d9d39e65d16e0c17f2d38fa8cb8dedfeda268feb0e",
+      "compressedSHA256": "02783e70648156ea6f40fad645def250a72ff6b592316d6fc0b1c3e3d5147718"
+    },
+    {
+      "file": "integrated-fixture.log.gz",
+      "rawPath": "/tmp/6232-room-wire-budget-root-fixture.log",
+      "rawBytes": 47,
+      "rawSHA256": "9467adf0c348971eec0d084914a5e83deec0cfd1df091075d2556cffa2a975ef",
+      "compressedSHA256": "30cc6e656abc69a8d007cf0ce6fbfa38618507a1bac6708724133a670083da99"
+    },
+    {
+      "file": "owning-receipt.json",
+      "rawPath": "/tmp/6232-room-wire-budget-receipt.json",
+      "rawBytes": 5073,
+      "rawSHA256": "df1e54ce08304d99e36338e7c92a13bec761c36c5d1972aa668c93b2f8adfa25"
+    }
+  ]
+}

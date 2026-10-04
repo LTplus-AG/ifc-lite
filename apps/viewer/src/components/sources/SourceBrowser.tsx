@@ -22,6 +22,7 @@ import { usePagedList } from './usePagedList';
 import { SourceProjectsStep } from './SourceProjectsStep';
 import { SourceFileAreasStep } from './SourceFileAreasStep';
 import { SourceFolderStep } from './SourceFolderStep';
+import { useSourceSelection } from './useSourceSelection';
 import { SourceBrowserHeader } from './SourceBrowserHeader';
 import { AlertCircle } from 'lucide-react';
 
@@ -32,6 +33,7 @@ interface SourceBrowserProps {
   onBack: () => void;
   /** True while a previously submitted selection is downloading — disables the load button. */
   busy?: boolean;
+  onCancelDownload?: () => void;
   /** Per-file state of the running Load batch, by file id (#6375). */
   downloadStates?: ReadonlyMap<string, SourceDownloadState>;
   /** A favourite to jump straight to, consumed once on mount. */
@@ -49,6 +51,7 @@ export function SourceBrowser({
   onDownload,
   onBack,
   busy = false,
+  onCancelDownload,
   downloadStates = NO_DOWNLOADS,
   openTarget = null,
   onFavouritesChanged,
@@ -60,7 +63,6 @@ export function SourceBrowser({
   const [selectedContainer, setSelectedContainer] = useState<SourceContainer | null>(null);
   // Selections persist across folders within a file area, so files picked
   // from several folders can be loaded together as one federated model.
-  const [selectedFiles, setSelectedFiles] = useState<Map<string, SourceFile>>(new Map());
   const [downloadedRecords, setDownloadedRecords] = useState(() => loadDownloadedSourceFileRecords());
   const [error, setError] = useState<string | null>(null);
 
@@ -93,6 +95,7 @@ export function SourceBrowser({
   );
 
   const search = useSourceFileSearch({ provider, ctx, projectIdRef, setError });
+  const { selectedFiles, setSelectedFiles, toggleFile, selectRevision } = useSourceSelection(allFiles, search.items);
 
   const loadedModels = useLoadedSourceModels({
     providerName: provider.manifest.name,
@@ -177,15 +180,6 @@ export function SourceBrowser({
     onChanged: onFavouritesChanged,
   });
 
-  const toggleFile = useCallback((file: SourceFile) => {
-    setSelectedFiles((prev) => {
-      const next = new Map(prev);
-      if (next.has(file.id)) next.delete(file.id);
-      else next.set(file.id, file);
-      return next;
-    });
-  }, []);
-
   const handleLoad = useCallback(() => {
     const toLoad = Array.from(selectedFiles.values());
     if (toLoad.length > 0 && selectedProject) {
@@ -226,32 +220,6 @@ export function SourceBrowser({
       onBack();
     }
   }, [catalog, clearSearch, fileAreasPaged, step, onBack]);
-
-  // Keep selected files fresh as listings update; files that vanished from
-  // the source drop out of the selection.
-  useEffect(() => {
-    // Files selected while a search is active come from the search results,
-    // not `allFiles` — reconciling against `allFiles` alone would drop a
-    // search-origin selection the moment the catalog changes underneath it
-    // (e.g. "Load more files" or a manual sync), with no message to the user.
-    const byId = new Map(
-      [...allFiles, ...search.items].map((file) => [file.id, file] as const),
-    );
-    setSelectedFiles((previous) => {
-      let changed = false;
-      const next = new Map<string, SourceFile>();
-      for (const [id, file] of previous) {
-        const fresh = byId.get(id);
-        if (!fresh) {
-          changed = true;
-          continue;
-        }
-        next.set(id, fresh);
-        if (fresh !== file) changed = true;
-      }
-      return changed ? next : previous;
-    });
-  }, [allFiles, search.items]);
 
   // Opening a favourite is one entry point plus the hook that drives the
   // two-phase jump. It cannot reuse `openFileArea` above: that one reads the
@@ -305,6 +273,7 @@ export function SourceBrowser({
         catalogUpdatedAt={catalog.catalogUpdatedAt}
         syncing={catalog.syncing}
         busy={busy}
+        onCancelDownload={onCancelDownload}
         onBack={goBack}
         onSync={handleSync}
       />
@@ -342,6 +311,9 @@ export function SourceBrowser({
       {step === 'folders' && selectedFileArea && (
         <SourceFolderStep
           providerName={provider.manifest.name}
+          provider={provider}
+          ctx={ctx}
+          onSelectRevision={selectRevision}
           selectedProject={selectedProject}
           selectedFileArea={selectedFileArea}
           selectedContainer={selectedContainer}

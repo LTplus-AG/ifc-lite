@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo } from 'react';
-import type { SourceContainer, SourceFile, SourceProject } from '@ifc-lite/plugin-api';
+import type { FileSourceProvider, PluginContext, SourceContainer, SourceFile, SourceProject } from '@ifc-lite/plugin-api';
 import type { DownloadedSourceFileRecord } from '@/lib/sources/persistence';
 import type { SourceDownloadState } from '@/lib/sources/downloadProgress';
 import { getDownloadedSourceFileRecord, getDownloadedSourceFileStatus } from '@/lib/sources/persistence';
@@ -18,6 +18,9 @@ import { useTranslation } from '@/i18n';
 
 interface SourceFolderStepProps {
   providerName: string;
+  provider?: FileSourceProvider;
+  ctx?: PluginContext;
+  onSelectRevision?: (file: SourceFile) => void;
   selectedProject: SourceProject | null;
   selectedFileArea: SourceContainer;
   selectedContainer: SourceContainer | null;
@@ -64,6 +67,9 @@ interface SourceFolderStepProps {
 
 export function SourceFolderStep({
   providerName,
+  provider,
+  ctx,
+  onSelectRevision,
   selectedProject,
   selectedFileArea,
   selectedContainer,
@@ -331,6 +337,7 @@ export function SourceFolderStep({
                         downloadedStatus={getDownloadedSourceFileStatus(f, downloadedRecord)}
                         favourited={isFileFavourite(f)}
                         onToggleFavourite={() => onToggleFileFavourite(f)}
+                        details={provider?.listRevisions && ctx && selectedProject && onSelectRevision ? { provider, ctx, projectId: selectedProject.id, selectedFile: selectedFiles.get(f.id), busy, onSelect: onSelectRevision } : undefined}
                       />
                     );
                   })}

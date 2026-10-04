@@ -1894,6 +1894,8 @@ jobs:
       # No browser download: the CI project uses channel:'chrome' (the
       # runner's preinstalled Chrome) because Playwright's headless
       # shell has a broken WebGPU device under software rendering.
+      - name: Install Playwright video encoder
+        run: pnpm exec playwright install ffmpeg
       - name: Run E2E smoke
         # E2E_GPU_STRICT=0: the runner's SwiftShader WebGPU device is
         # unstable under load (drops mid-upload), so GPU-dependent

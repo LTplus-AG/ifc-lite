@@ -26,3 +26,13 @@ test('charter #6643 identity result bindings reject typed numbers and language-t
   assert.equal(identityFromRow({ GlobalId: { type: 'literal', value: GlobalId }, modelRevision: { type: 'literal', value: '42', datatype: 'http://www.w3.org/2001/XMLSchema#integer' } }, {}), undefined);
   assert.equal(identityFromRow({ alias: { type: 'literal', value: GlobalId } }, { customGuid: 'alias' }, { strategy: 'profile-fields', links: [], identityFields: { GlobalId: 'customGuid' } })?.customGuid, GlobalId);
 });
+
+test('URI identity #6783 accepts URI RDF terms only and never changes explicit direct GUID semantics', () => {
+  const settings = { strategy: 'resource-uri', links: [] };
+  const id = `https://lbd.org/${GlobalId}`;
+  const mapped = identityFromRow({ resource: { type: 'uri', value: id } }, { id: 'resource' }, settings);
+  assert.ok(mapped); assert.equal(mapped.id, id); assert.equal(resolveWithStrategy(mapped, context, settings).status, 'resolved');
+  for (const type of ['literal', 'bnode'] as const) assert.equal(identityFromRow({ id: { type, value: id } }, {}, settings), undefined);
+  const direct = { strategy: 'ifc-global-id', links: [] };
+  assert.equal(resolveWithStrategy({ id, GlobalId: 'wrong' }, context, direct).status, 'invalid');
+});

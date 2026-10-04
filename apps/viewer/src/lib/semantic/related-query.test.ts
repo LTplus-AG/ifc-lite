@@ -61,3 +61,31 @@ test('charter #6643 adjacency queries exclude outsiders and deduplicate shared e
   const rows = (JSON.parse(output as string) as { results: { bindings: { subject: { value: string }; object: { value: string } }[] } }).results.bindings;
   assert.equal(rows.length, 1); assert.equal(rows[0].subject.value, a); assert.equal(rows[0].object.value, b);
 });
+
+test('URI identity #6783 reverse template discovery works before results and retains once-encoded known RDF subjects', () => {
+  const guid = '1Oms875aH3Wg$9l65H2ZGw'; const rawId = `https://lbd.org/${guid}`; const encodedId = rawId.replace('$', '%24');
+  const settings = { strategy: 'resource-uri', links: [], uriConfig: { mode: 'template' as const, template: 'https://lbd.org/{GlobalId}' } };
+  const base = { ...input, entities: [{ ...selected, GlobalId: guid }], settings };
+  const engine = new Oxigraph(); engine.load(`<${rawId}> <urn:label> "raw" . <${encodedId}> <urn:label> "encoded" . <urn:inspection> <urn:about> <${encodedId}> . <urn:outsider> <urn:label> "outside" .`, { format: 'text/turtle' });
+  const before = queryForSelection(base); const known = queryForSelection({ ...base, mapping: { id: 'resource' }, results: { columns: ['resource'], rows: [{ resource: { type: 'uri', value: encodedId } }] } });
+  assert.equal(assertReadOnlyQuery(before), 'select'); assert.equal(assertReadOnlyQuery(known), 'select');
+  const run = (query: string) => { const value = engine.query(query, { results_format: 'application/sparql-results+json' }); assert.equal(typeof value, 'string'); return JSON.parse(value as string) as { results: { bindings: { subject: { value: string }; object: { value: string } }[] } }; };
+  const initial = run(before).results.bindings; assert.equal(initial.length, 1); assert.equal(initial[0].subject.value, rawId);
+  const rows = run(known).results.bindings; assert.equal(rows.length, 2); assert.ok(rows.some(row => row.subject.value === encodedId)); assert.ok(rows.some(row => row.subject.value === 'urn:inspection'));
+  assert.ok(!rows.some(row => row.subject.value === 'urn:outsider' || row.subject.value === rawId));
+  assert.throws(() => queryForSelection({ ...base, settings: { ...settings, uriConfig: { mode: 'last-path-segment' } } }), /full URI template|known resource/);
+  assert.ok(queryForSelection({ ...base, settings: { ...settings, uriConfig: { mode: 'last-path-segment' } }, mapping: { id: 'resource' }, results: { columns: ['resource'], rows: [{ resource: { type: 'uri', value: encodedId } }] } }).includes(encodedId));
+});
+
+test('URI identity #6783 mixed known and unknown selected entities preserve encoded subjects and discover every uncovered entity', () => {
+  const firstGuid = '1Oms875aH3Wg$9l65H2ZGw'; const secondGuid = '0000000000000000000002';
+  const encoded = `https://lbd.org/${firstGuid.replace('$', '%24')}`; const generated = `https://lbd.org/${secondGuid}`;
+  const other = { modelId: 'live', expressId: 8 };
+  const settings = { strategy: 'resource-uri', links: [], uriConfig: { mode: 'template' as const, template: 'https://lbd.org/{GlobalId}' } };
+  const mixed = { ...input, settings, selection: [selected, other], entities: [{ ...selected, GlobalId: firstGuid }, { ...other, GlobalId: secondGuid }], mapping: { id: 'resource' }, results: { columns: ['resource'], rows: [{ resource: { type: 'uri' as const, value: encoded } }] } };
+  const engine = new Oxigraph(); engine.load(`<${encoded}> <urn:p> "first" . <${generated}> <urn:p> "second" . <https://lbd.org/${firstGuid}> <urn:p> "wrong alias" .`, { format: 'text/turtle' });
+  const response = engine.query(queryForSelection(mixed), { results_format: 'application/sparql-results+json' }); assert.equal(typeof response, 'string');
+  const result = JSON.parse(response as string) as { results: { bindings: { subject: { value: string } }[] } };
+  assert.deepEqual(result.results.bindings.map(row => row.subject.value).sort(), [encoded, generated].sort());
+  assert.throws(() => queryForSelection({ ...mixed, settings: { ...settings, uriConfig: { mode: 'last-path-segment' } } }), /full URI template|known resource/);
+});

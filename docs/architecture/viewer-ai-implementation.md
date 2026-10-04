@@ -12,7 +12,7 @@ The [full program](viewer-ai-plan.md) remains the completion contract. Every pac
 | [#6819](https://github.com/LTplus-AG/ifc-lite/pull/6819) | Contextual analysis assistant | Real ArchiCAD IDS oracle; bounded frozen evidence; cancellation/staleness; mounted source actions. Browser fixture journey is wired into CI; screenshots require a successful run. |
 | [#6821](https://github.com/LTplus-AG/ifc-lite/pull/6821) | Durable completed conversations | Actual IndexedDB reload, CAS conflicts, refused writes, backup/import and mounted Save/Open. Archived evidence does not become current. |
 | [#6828](https://github.com/LTplus-AG/ifc-lite/pull/6828) | Reviewed native Flow graph patches | Native registry validation; approval-gated apply/undo; standard-registry math execution oracle; no automatic graph execution. Receipts are session-only; graph durability uses native Save. |
-| Issue [#6830](https://github.com/LTplus-AG/ifc-lite/issues/6830) | Reviewed native document drafts | Initial analysis answer/evidence conversion, citation existence, native document storage/PDF. Broader narrative schema and adapter coverage remain open. |
+| [#6832](https://github.com/LTplus-AG/ifc-lite/pull/6832) | Reviewed native document drafts | Initial analysis answer/evidence conversion, citation existence, native document storage/PDF. Broader narrative schema and adapter coverage remain open. |
 
 CI results are live measurements on each PR, not a permanent green claim in this document. Exhausted provider budgets are infrastructure failures, remain visible and do not replace evidence-based self-review. A successful “Review posted” job does not establish that a provider actually reviewed the code.
 

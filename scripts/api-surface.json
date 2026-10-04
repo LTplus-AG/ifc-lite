@@ -6409,7 +6409,7 @@
     "ScanSegmentationReport: interface",
     "ScanSegmentationStats: interface",
     "ScanVec3: type",
-    "segmentScanPlanes: function"
+    "segmentScan: function"
   ],
   "@ifc-lite/geometry/world-frame": [
     "FrameCandidate: interface",

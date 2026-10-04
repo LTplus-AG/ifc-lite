@@ -25,7 +25,11 @@ export interface ScanRegion {
 export interface ScanSegmentationOptions {
   /** Averaging voxel edge. Default 0.03 m; 0.005..=1. */
   voxelSizeMetres?: number;
-  /** Voxel budget; past it the voxel size doubles. Default 1,500,000. */
+  /**
+   * Voxel budget; past it the voxel size doubles. Default 1,500,000. Memory
+   * is roughly 180 bytes per voxel: the 8,000,000 maximum (with 2 normal
+   * rings) peaks near 1.4 GB, more than a browser tab should spend.
+   */
   maxVoxels?: number;
   /** Normal neighbourhood: 1 = 26 neighbours (default), 2 = 124. */
   normalNeighborRings?: number;
@@ -89,6 +93,8 @@ export interface ScanSegmentationStats {
   acceptedPoints: number;
   rejectedPoints: number;
   outsideRegionPoints: number;
+  /** f32 spacing at the largest coordinate: the finest resolution the positions carry. */
+  coordinateSpacingMetres: number;
   voxelSizeMetres: number;
   coarsenings: number;
   voxels: number;
@@ -105,6 +111,8 @@ export interface ScanSegmentationStats {
 export interface ScanSegmentationLimits {
   voxelBudgetCoarsened: boolean;
   planeLimitHit: boolean;
+  /** Positions too far from their frame origin for the voxel size; pass a local `origin`. */
+  coordinatePrecisionDegraded: boolean;
 }
 
 export interface ScanSegmentationReport {
@@ -127,8 +135,11 @@ export interface ScanPointInput {
 /** The wasm surface this needs: an initialised `IfcAPI` satisfies it. */
 export type ScanSegmentationEngine = Pick<IfcAPI, 'segmentScanPoints'>;
 
-/** Detect planes in `input`. Throws the Rust error message on invalid options. */
-export function segmentScanPlanes(
+/**
+ * Segment `input` into geometric primitives (planes; cylinders once supported
+ * by the engine). Throws the Rust error message on invalid options.
+ */
+export function segmentScan(
   engine: ScanSegmentationEngine,
   input: ScanPointInput,
   options: ScanSegmentationOptions = {},

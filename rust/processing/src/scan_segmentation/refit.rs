@@ -11,6 +11,10 @@ use ifc_lite_geometry::UnionFind;
 
 /// Fixed number of median/MAD trims per region.
 const ROBUST_PASSES: usize = 2;
+/// Regions within this many voxels of each other are merge candidates: a scan
+/// gap one voxel wide (a cable, a shadow) must not split a wall in two, while
+/// coplanar faces a partition apart (0.2 m) stay separate planes.
+const MERGE_RINGS: i32 = 2;
 /// Scale from the median absolute deviation to a Gaussian sigma.
 const MAD_TO_SIGMA: f64 = 1.4826;
 
@@ -65,7 +69,7 @@ pub(crate) fn robust_refit(
     Some(region)
 }
 
-/// Joins adjacent regions whose planes agree within the angle tolerance and
+/// Joins nearby regions (within `MERGE_RINGS` voxels) whose planes agree within the angle tolerance and
 /// whose centroids each lie within the distance tolerance of the other's
 /// plane. Pairs are visited in ascending order, so the union-find roots, and
 /// the merged regions' member order, are deterministic. Returns the merged
@@ -82,7 +86,15 @@ pub(crate) fn merge_coplanar(
         if a == UNCLAIMED {
             continue;
         }
-        voxels.for_each_neighbor(i, 1, |j| {
+        // Only a region's boundary voxels (some neighbour missing or not in
+        // the region) can see another region; interior voxels skip the wider
+        // search.
+        let mut same = 0;
+        voxels.for_each_neighbor(i, 1, |j| same += usize::from(labels[j as usize] == a));
+        if same == 26 {
+            continue;
+        }
+        voxels.for_each_neighbor(i, MERGE_RINGS, |j| {
             let b = labels[j as usize];
             if b != UNCLAIMED && a < b {
                 pairs.push((a, b));

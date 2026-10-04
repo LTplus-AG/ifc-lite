@@ -811,18 +811,26 @@ canonical Rust `ifc_lite_processing::scan_segmentation` (#6870). `positions` are
 xyz `Float32Array` metres (at most 100,000,000 points); `optionsJson` is a
 camelCase options object, `{}` for the defaults. Unknown fields are refused. The
 call loads nothing and changes nothing. The typed wrapper is
-`segmentScanPlanes` in `@ifc-lite/geometry/scan-segmentation`.
+`segmentScan` in `@ifc-lite/geometry/scan-segmentation`.
 
 The pipeline averages points into voxels (default 0.03 m) with integer
 fixed-point sums, so the report is byte-identical for any point order or
 chunking. When the voxel count exceeds `maxVoxels` (default 1,500,000), the
 voxel edge doubles and the existing voxels fold exactly into the coarser
-lattice; `limits.voxelBudgetCoarsened` reports this. A PCA over the 26
-neighbouring voxel means gives each voxel a normal and a curvature. Regions
+lattice; `limits.voxelBudgetCoarsened` reports this. Memory is roughly 180 bytes per
+voxel; the 8,000,000 maximum peaks near 1.4 GB, so browser callers should stay
+near the default. Positions far from their frame origin lose f32 precision:
+when the f32 spacing at the largest coordinate exceeds a tenth of the voxel
+edge, `limits.coordinatePrecisionDegraded` is set (`stats.coordinateSpacingMetres`
+carries the spacing). Subtract a local origin before narrowing to f32 and pass
+it as `origin`.
+
+A PCA over the 26 neighbouring voxel means gives each voxel a normal and a curvature. Regions
 grow from the flattest voxels (curvature at most `maxSeedCurvature`, 0.02)
 while a voxel's normal stays within `maxNormalAngleDegrees` (10) of the
 refitted plane and its mean within `maxPlaneDistanceMetres` (0.02). Each
-region then gets a median/MAD refit, and adjacent coplanar regions merge.
+region then gets a median/MAD refit. Coplanar regions within two voxels of
+each other merge, so a one-voxel scan gap does not split a wall.
 Regions whose normals turn faster than `maxBendPerMetre` (1, i.e. a radius of
 curvature under 1 m: column faces) are refused. So are regions smaller than
 `minPlaneAreaSquareMetres` (0.25).

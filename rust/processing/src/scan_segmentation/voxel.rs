@@ -39,6 +39,8 @@ pub(crate) struct VoxelGrid {
     pub accepted: u64,
     pub rejected: u64,
     pub outside: u64,
+    /// Largest |coordinate| among accepted points (order-independent).
+    pub max_abs: f64,
 }
 
 /// Finished voxels sorted by key: every later stage iterates in this order.
@@ -65,6 +67,7 @@ impl VoxelGrid {
             accepted: 0,
             rejected: 0,
             outside: 0,
+            max_abs: 0.,
         }
     }
 
@@ -90,6 +93,7 @@ impl VoxelGrid {
                 }
             }
             self.accepted += 1;
+            self.max_abs = p.iter().fold(self.max_abs, |m, v| m.max(v.abs()));
             let q = p.map(|v| (v * QUANTA_PER_METRE).round() as i64);
             let key = q.map(|v| v.div_euclid(self.size_quanta) as i32);
             let slot = match self.index.entry(key) {
@@ -142,6 +146,15 @@ impl VoxelGrid {
         }
         (self.index, self.keys, self.sums, self.counts) = (index, keys, sums, counts);
         Ok(())
+    }
+
+    /// Spacing of adjacent f32 values at the largest accepted coordinate: the
+    /// resolution the input positions can carry at all.
+    pub fn f32_spacing(&self) -> f64 {
+        if self.max_abs < f64::from(f32::MIN_POSITIVE) {
+            return 0.;
+        }
+        2_f64.powi(self.max_abs.log2().floor() as i32 - 23)
     }
 
     pub fn size_metres(&self) -> f64 {

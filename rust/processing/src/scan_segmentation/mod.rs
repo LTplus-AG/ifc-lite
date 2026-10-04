@@ -76,6 +76,7 @@ impl ScanVoxelizer {
             accepted_points: grid.accepted,
             rejected_points: grid.rejected,
             outside_region_points: grid.outside,
+            coordinate_spacing_metres: grid.f32_spacing(),
             voxel_size_metres: grid.size_metres(),
             coarsenings: grid.coarsenings,
             ..Default::default()
@@ -118,6 +119,7 @@ impl ScanVoxelizer {
         let limits = ScanSegmentationLimits {
             voxel_budget_coarsened: stats.coarsenings > 0,
             plane_limit_hit: planes.len() > params.max_planes,
+            coordinate_precision_degraded: stats.coordinate_spacing_metres > stats.voxel_size_metres / 10.,
         };
         planes.truncate(params.max_planes);
         Ok(ScanSegmentationReport { algorithm: ALGORITHM.into(), planes, stats, limits })

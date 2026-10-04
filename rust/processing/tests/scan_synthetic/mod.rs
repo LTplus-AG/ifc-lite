@@ -241,3 +241,19 @@ pub fn pure_noise(seed: u64, points: usize, side: f64) -> Vec<f32> {
     let mut rng = Rng::new(seed);
     (0..points * 3).map(|_| rng.range(0., side) as f32).collect()
 }
+
+/// One 4 x 2.7 m wall (y = 0, facing +y) with a horizontal band of missing
+/// points at z 1.2..1.27 (a scan shadow): wide enough to leave a whole 3 cm
+/// voxel layer empty even with noise, so region growing cannot cross it and the wall grows as two regions
+/// that must merge into one plane.
+pub fn banded_wall(spec: &ScanSpec) -> Vec<f32> {
+    let mut s = Sampler { rng: Rng::new(spec.seed), spec, out: Vec::new() };
+    s.patch([0., 0., 0.], [4., 0., 0.], [0., 0., 2.7], &|_, z| !(1.2..=1.27).contains(&z));
+    s.out
+}
+
+/// `positions` moved by `offset` metres (computed in f64, stored as f32 like a
+/// georeferenced scan decoded without a decode origin).
+pub fn shifted(positions: &[f32], offset: [f64; 3]) -> Vec<f32> {
+    positions.chunks_exact(3).flat_map(|p| [0, 1, 2].map(|a| (f64::from(p[a]) + offset[a]) as f32)).collect()
+}

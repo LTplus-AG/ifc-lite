@@ -4,7 +4,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { segmentScanPlanes, type ScanSegmentationEngine } from './scan-segmentation.js';
+import { segmentScan, type ScanSegmentationEngine } from './scan-segmentation.js';
 
 // Real wasm, never a mock: a mocked engine would only echo its own report.
 // Skips when the runtime is not built (`bash scripts/build-wasm.sh`).
@@ -27,7 +27,7 @@ function corner(points: number): Float32Array {
   return out;
 }
 
-describe.skipIf(!built)('segmentScanPlanes over the real wasm boundary (#6870)', () => {
+describe.skipIf(!built)('segmentScan over the real wasm boundary (#6870)', () => {
   let api: (ScanSegmentationEngine & { free(): void }) | undefined;
   beforeAll(async () => {
     const wasm = await import('@ifc-lite/wasm');
@@ -42,7 +42,7 @@ describe.skipIf(!built)('segmentScanPlanes over the real wasm boundary (#6870)',
     // A reservoir allocates ahead of its fill: trailing slots are junk.
     const buffer = new Float32Array(filled.length + 3 * 5_000).fill(Number.NaN);
     buffer.set(filled);
-    const report = segmentScanPlanes(api, { positions: buffer, count: 40_000 }, { upAxis: [0, 1, 0] });
+    const report = segmentScan(api, { positions: buffer, count: 40_000 }, { upAxis: [0, 1, 0] });
     expect(report.stats.inputPoints).toBe(40_000);
     expect(report.stats.rejectedPoints).toBe(0);
     const floor = report.planes.find((p) => p.orientation === 'horizontal');
@@ -57,7 +57,7 @@ describe.skipIf(!built)('segmentScanPlanes over the real wasm boundary (#6870)',
   it('refuses a count beyond the buffer before calling wasm, and surfaces Rust option errors', () => {
     if (!api) throw new Error('wasm engine not initialised');
     const positions = corner(10);
-    expect(() => segmentScanPlanes(api!, { positions, count: 11 })).toThrow(RangeError);
-    expect(() => segmentScanPlanes(api!, { positions }, { voxelSizeMetres: 5 })).toThrow(/voxelSizeMetres/);
+    expect(() => segmentScan(api!, { positions, count: 11 })).toThrow(RangeError);
+    expect(() => segmentScan(api!, { positions }, { voxelSizeMetres: 5 })).toThrow(/voxelSizeMetres/);
   });
 });

@@ -33,6 +33,9 @@ pub struct ScanSegmentationOptions {
     pub voxel_size_metres: f64,
     /// Voxel budget: past it the voxel size doubles and existing voxels fold
     /// into the coarser lattice (exactly). Default 1,500,000; 1,000..=8,000,000.
+    /// Working memory is roughly 180 bytes per voxel: the 8,000,000 maximum
+    /// with two normal rings measured 1.42 GB native RSS, too much for a
+    /// browser tab, so wasm callers should stay near the default.
     pub max_voxels: u32,
     /// Neighbourhood for voxel normals: 1 = the 26 neighbours, 2 = 124.
     /// Default 1.

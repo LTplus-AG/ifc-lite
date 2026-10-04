@@ -73,6 +73,9 @@ pub struct ScanSegmentationStats {
     /// Non-finite, or farther than 1e6 m from the positions' frame origin.
     pub rejected_points: u64,
     pub outside_region_points: u64,
+    /// Spacing of adjacent f32 values at the largest accepted coordinate.
+    /// Positions far from their frame origin cannot resolve finer than this.
+    pub coordinate_spacing_metres: f64,
     /// Effective voxel edge after any coarsening (the quantised lattice step).
     pub voxel_size_metres: f64,
     pub coarsenings: u32,
@@ -97,6 +100,12 @@ pub struct ScanSegmentationLimits {
     pub voxel_budget_coarsened: bool,
     /// More planes passed than `maxPlanes`; the smallest were dropped.
     pub plane_limit_hit: bool,
+    /// The f32 positions are coarser than a tenth of the voxel edge
+    /// (`stats.coordinateSpacingMetres`): the data lies too far from its frame
+    /// origin, so normals and planes degrade (a room 300 km out splits into
+    /// strips). Subtract a local origin before narrowing to f32 and pass it as
+    /// `options.origin`.
+    pub coordinate_precision_degraded: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

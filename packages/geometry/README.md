@@ -173,12 +173,12 @@ Every option is optional; see the
 for the defaults.
 
 ```ts
-import { segmentScanPlanes } from '@ifc-lite/geometry/scan-segmentation';
+import { segmentScan } from '@ifc-lite/geometry/scan-segmentation';
 
 const api = new IfcAPI(); // after the wasm module is initialised
 const positions = new Float32Array([/* x, y, z, ... in metres */]);
 try {
-  const report = segmentScanPlanes(api, { positions }, { scannerPosition: [3, 2, 1.5] });
+  const report = segmentScan(api, { positions }, { scannerPosition: [3, 2, 1.5] });
   for (const plane of report.planes) {
     console.log(plane.orientation, plane.normal, plane.d, plane.areaSquareMetres);
   }

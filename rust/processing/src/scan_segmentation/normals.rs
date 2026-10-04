@@ -11,17 +11,8 @@ use super::voxel::VoxelSet;
 use crate::point_pca::symmetric_eigen_ascending;
 use nalgebra::Matrix3;
 
-pub(crate) type Vec3 = [f64; 3];
+pub(crate) use crate::appearance::transfer_math::{cross, dot, sub, Point as Vec3};
 
-pub(crate) fn dot(a: Vec3, b: Vec3) -> f64 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-pub(crate) fn sub(a: Vec3, b: Vec3) -> Vec3 {
-    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-pub(crate) fn cross(a: Vec3, b: Vec3) -> Vec3 {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-}
 pub(crate) fn unit(a: Vec3) -> Option<Vec3> {
     let length = dot(a, a).sqrt();
     (length.is_finite() && length > 1e-12).then(|| a.map(|v| v / length))

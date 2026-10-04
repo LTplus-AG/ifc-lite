@@ -17,7 +17,7 @@ use ifc_lite_processing::scan_segmentation::{
     segment_scan_points, NormalSource, PlaneOrientation, ScanPlane, ScanSegmentationOptions,
     ScanSegmentationReport, ScanVoxelizer,
 };
-use scan_synthetic::{pure_noise, two_rooms, ExpectedPlane, Kind, Rng, ScanSpec};
+use scan_synthetic::{banded_wall, pure_noise, shifted, two_rooms, ExpectedPlane, Kind, Rng, ScanSpec};
 use std::sync::OnceLock;
 
 const ANGLE_TOLERANCE_DEGREES: f64 = 1.5;
@@ -252,6 +252,32 @@ fn issue_6870_region_and_origin_frame_the_output() {
     assert!(floor.centroid[0] > 1000. && floor.centroid[0] < 1006.);
     // Room B's walls are outside the region.
     assert!(report.planes.iter().all(|p| p.centroid[0] < 1006.));
+}
+
+#[test]
+fn issue_6870_coplanar_regions_split_by_a_scan_gap_merge_into_one_plane() {
+    // Review M7: disabling the merge must fail this test.
+    let wall = banded_wall(&ScanSpec::default());
+    let report = segment_scan_points(&wall, &ScanSegmentationOptions::default()).unwrap();
+    assert!(report.stats.regions_merged > 0, "{:?}", report.stats);
+    assert_eq!(report.planes.len(), 1, "{:?}", report.planes.iter().map(|p| (p.centroid, p.area_square_metres)).collect::<Vec<_>>());
+    let wall = &report.planes[0];
+    assert!(wall.normal[1].abs() > 0.9999 && wall.d.abs() < 0.005);
+    assert!((wall.extent.v_length - 2.7).abs() < 0.08, "spans the gap: {}", wall.extent.v_length);
+}
+
+#[test]
+fn issue_6870_far_from_origin_coordinates_are_flagged() {
+    let scan = two_rooms(&ScanSpec { density: 1_500., ..Default::default() });
+    let near = segment_scan_points(&scan.positions, &ScanSegmentationOptions::default()).unwrap();
+    assert!(!near.limits.coordinate_precision_degraded);
+    // 300 km out, f32 spacing is 3.1 cm: coarser than the 3 cm voxel.
+    let far = segment_scan_points(&shifted(&scan.positions, [300_000., 0., 0.]), &ScanSegmentationOptions::default()).unwrap();
+    assert!(far.limits.coordinate_precision_degraded, "{:?}", far.stats);
+    assert!(far.stats.coordinate_spacing_metres > 0.03, "{}", far.stats.coordinate_spacing_metres);
+    // 10 km out the spacing (about 1 mm) is still fine for 3 cm voxels.
+    let town = segment_scan_points(&shifted(&scan.positions, [10_000., 0., 0.]), &ScanSegmentationOptions::default()).unwrap();
+    assert!(!town.limits.coordinate_precision_degraded, "{}", town.stats.coordinate_spacing_metres);
 }
 
 /// Native throughput at 2M points (#6870 perf evidence). Run with

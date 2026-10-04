@@ -4,7 +4,7 @@
 
 use super::super::broadphase::Aabb;
 use super::super::interner::Vid;
-use super::super::predicates::{orient2d_any, orient3d_explicit};
+use super::super::predicates::{orient2d_any, orient3d};
 use super::super::rational::point_of;
 use super::super::{DropAxis, ImplicitPoint, Sign};
 use super::coincident::coincident_planes;
@@ -129,7 +129,7 @@ fn point_in_tri_proj(c: [f64; 3], t: &Tri, n: [f64; 3]) -> bool {
 
 /// Per-triangle exact coincident-face test (see [`on_surface_normal`]).
 fn on_surface_tri(c: [f64; 3], t: &Tri) -> Option<[f64; 3]> {
-    if orient3d_explicit(t[0], t[1], t[2], c) != Sign::Zero {
+    if orient3d(&e(t[0]), &e(t[1]), &e(t[2]), &e(c)) != Sign::Zero {
         return None; // c not on t's plane
     }
     let n = cross3(sub_f64(t[1], t[0]), sub_f64(t[2], t[0]));

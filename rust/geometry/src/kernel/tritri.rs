@@ -13,7 +13,7 @@
 //! input coordinates — never materialised — so downstream predicates stay exact
 //! and platform-deterministic.
 
-use super::predicates::orient3d_explicit;
+use super::predicates::orient3d;
 use super::{ImplicitPoint, Lpi, Sign};
 
 #[inline]
@@ -109,9 +109,9 @@ enum PlaneInterval {
 
 fn plane_interval(tri: &[[f64; 3]; 3], plane: &[[f64; 3]; 3]) -> PlaneInterval {
     let s = [
-        orient3d_explicit(plane[0], plane[1], plane[2], tri[0]),
-        orient3d_explicit(plane[0], plane[1], plane[2], tri[1]),
-        orient3d_explicit(plane[0], plane[1], plane[2], tri[2]),
+        orient3d(&e(plane[0]), &e(plane[1]), &e(plane[2]), &e(tri[0])),
+        orient3d(&e(plane[0]), &e(plane[1]), &e(plane[2]), &e(tri[1])),
+        orient3d(&e(plane[0]), &e(plane[1]), &e(plane[2]), &e(tri[2])),
     ];
     let zeros: Vec<usize> = (0..3).filter(|&i| s[i] == Sign::Zero).collect();
     match zeros.len() {

@@ -110,27 +110,24 @@ canonical parser; defer mechanisms whose correctness or end-to-end verdict
 remains incomplete. [Raw dispositions and prerequisites](evidence/deferred-worker-mechanisms-6537/README.md)
 retain source attribution and the excluded attempts.
 
-## Known-explicit orientation: scoped SDK benefit, native mixed (#6537 / #6788)
+## Known-explicit orientation: rejected, do not ship (#6537 / #6788)
 
-Known-explicit coordinates reach one private helper shared with the general
-dispatcher's explicit arm. Adaptive arithmetic, argument order, sign conversion,
-degeneracy and mixed-point fallbacks remain unchanged. Rational permutation and
-existing predicate controls, workspace tests and strict Clippy pass; earlier
-correctness failures remain retained.
+The private known-explicit helper preserved adaptive arithmetic and passed the
+predicate/workspace correctness controls. Earlier default-worker SDK results
+showed a scoped ISSUE129 benefit; the separate native comparison remained mixed.
+The fresh integrated default-worker SDK comparison retained CPU output identity
+and complete diagnostics, but every observed Holter pair was slower. Haus and
+O-S1 were mixed. The heavy-family regression blocks shipment under the project's
+no-regressions requirement; the orientation implementation is removed.
 
-The fresh default-worker SDK produced-CPU comparison improves on ISSUE129 in all
-observed pairs; Haus, Holter and O-S1 are mixed. The separate source-built native
-phase comparison qualifies with mixed small changes, rather than a consistent
-speed win. Counts and fingerprints agree within each protocol's declared coverage;
-complete SDK diagnostics and selected native diagnostics remain distinct. Earlier
-compiler-query and controller-summary refusals remain failures. No universal,
-full-viewer, physical-memory or isolated-dispatch/instruction benefit is claimed.
-
-Lesson: source equivalence and historical adaptive-arithmetic attribution do not
-quantify removable dispatch cost. Measure the consumer, retain every pair and
-refusal, and separate a scoped model signal from a general throughput claim.
-[Source, correctness and cohort scope](evidence/explicit-orientation-6537/README.md)
-links immutable subjects and the existing durable evidence child.
+Lesson: a scoped CSG signal cannot justify a regression on a heavy public model.
+Instruction attribution and avoided dispatch do not establish consumer benefit.
+Stop this candidate, preserve every pair and refusal, and keep the rejected patch
+as data so the mechanism is not proposed again without genuinely new evidence.
+The [lossless rejection record](evidence/explicit-orientation-6537/README.md)
+retains immutable sources, correctness controls, historical SDK/native cohorts
+and the new integrated comparison. No universal, full-viewer, physical-memory or
+complete IFC fidelity benefit is claimed.
 
 ## Checked-magnitude products: native benefit, SDK mixed (#6537 / #6764)
 

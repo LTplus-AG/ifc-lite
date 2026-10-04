@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo } from 'react';
-import { AlertTriangle, ArrowUpRight, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ArrowLeftRight, ArrowUpRight, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
@@ -21,11 +21,12 @@ const STATE_TONE: Record<EvidenceState, string> = {
 };
 
 /** One-glance scope of what the assistant sees; full caveats stay in Evidence details. */
-export function EvidenceSummary({ evidence, state, onReturn, onRefresh }: {
+export function EvidenceSummary({ evidence, state, onReturn, onRefresh, onChange }: {
   evidence: SavedConversation['evidence'];
   state: EvidenceState;
   onReturn: () => void;
   onRefresh: () => void;
+  onChange: () => void;
 }) {
   const { t } = useTranslation();
   const availability = useMemo(() => sourceAvailability(evidence.payload), [evidence.payload]);
@@ -37,6 +38,7 @@ export function EvidenceSummary({ evidence, state, onReturn, onRefresh }: {
       <span className="font-semibold truncate">{t(panelTitleKey(evidence.source))}</span>
       <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-2xs font-medium', STATE_TONE[state])}>{t(STATE_LABEL[state])}</span>
       <div className="ml-auto flex shrink-0 items-center">
+        <IconButton label={t('assistant.changeSource')} className="h-7 w-7" onClick={onChange}><ArrowLeftRight className="h-3.5 w-3.5" /></IconButton>
         <IconButton label={t('assistant.returnSource')} className="h-7 w-7" onClick={onReturn}><ArrowUpRight className="h-3.5 w-3.5" /></IconButton>
         <IconButton label={t('assistant.refresh')} className="h-7 w-7" onClick={onRefresh}><RefreshCw className="h-3.5 w-3.5" /></IconButton>
       </div>

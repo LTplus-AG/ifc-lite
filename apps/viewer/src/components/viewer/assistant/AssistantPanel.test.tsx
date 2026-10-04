@@ -14,10 +14,15 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { AssistantPanel } from './AssistantPanel';
 import { UNCONFIGURED_MODEL_ID } from '@/lib/llm/models';
-import { useAssistant, cancelAssistant } from '@/lib/assistant/conversation';
+import { useAssistant, cancelAssistant, replaceEvidence } from '@/lib/assistant/conversation';
+import { captureEvidence } from '@/lib/assistant/evidence';
+import { summarizeClashes, type Clash } from '@ifc-lite/clash';
 
 const initial = useViewerStore.getState();
-afterEach(() => { cleanup(); cancelAssistant(); setValidationSourceChoice(null); useViewerStore.setState(initial, true); });
+afterEach(() => {
+  cleanup(); cancelAssistant(); setValidationSourceChoice(null); useViewerStore.setState(initial, true);
+  useAssistant.setState({ snapshot: null, archived: null, messages: [], error: null, status: 'idle' });
+});
 
 // #6813: real button wiring and rendered composer state, not source-string assertions.
 test('context action opens the registered assistant with frozen evidence and refresh clears the old conversation', () => {
@@ -96,4 +101,44 @@ test('suggestions fill the composer, Enter sends and typed proposals render as r
   assert.equal(ui.querySelector('fieldset[aria-label="Suggested questions"]'), null, 'suggestions give way to the conversation');
   const json = [...ui.querySelectorAll('pre')].find(pre => pre.textContent === proposal);
   assert.ok(json?.closest('details'), 'raw JSON is only available behind Show JSON');
+});
+
+// #6873: the Assistant is a starting point, not a dead end that sends the user elsewhere.
+test('opening the Assistant without evidence offers every source with its live status and attaches in place', () => {
+  useViewerStore.setState(fixtureModels(fixtureModel('m')));
+  const ui = render(<AssistantPanel />);
+  assert.match(ui.textContent ?? '', /What do you want to discuss\?/);
+  assert.equal(ui.querySelector('textarea')!.disabled, true);
+  const row = (title: string) => [...ui.querySelectorAll('li')].find(li => li.querySelector('span')?.textContent === title)!;
+  assert.match(row('Clash detection').textContent ?? '', /Not run yet/);
+  assert.ok([...row('Clash detection').querySelectorAll('button')].some(b => b.textContent === 'Run clash detection'));
+  assert.match(row('Compare models').textContent ?? '', /Needs two models/);
+  assert.match(row('Load report').textContent ?? '', /1 model/);
+  click(ui.querySelector('button[aria-label="Discuss Load report"]')!);
+  assert.equal(useAssistant.getState().snapshot?.source, 'loadReport');
+  assert.equal(ui.querySelector('textarea')!.disabled, false);
+  assert.match(ui.textContent ?? '', /1 of 1 rows attached/);
+  click(ui.querySelector('button[aria-label="Discuss something else"]')!);
+  assert.match(ui.textContent ?? '', /What do you want to discuss\?/);
+  click([...ui.querySelectorAll('button')].find(b => b.textContent === 'Cancel')!);
+  assert.equal(useAssistant.getState().snapshot?.source, 'loadReport', 'cancelling keeps the attached source');
+});
+
+test('citations open the captured row and clash rows offer the native model focus', () => {
+  const clash: Clash = { id: 'c1', rule: 'coordination', status: 'hard', severity: 'major', distance: -0.02, distanceKind: 'estimate',
+    a: { model: 'a', key: 'wall', ref: 1, tag: 'IfcWall' }, b: { model: 'a', key: 'pipe', ref: 2, tag: 'IfcPipeSegment' },
+    point: [0, 0, 0], bounds: { min: [0, 0, 0], max: [1, 1, 1] } };
+  const result = { clashes: [clash], summary: summarizeClashes([clash]), rulesRun: [], settings: { tolerance: 0.002, excludeVoidsAndHosts: true } };
+  useViewerStore.setState({ clashResult: result, clashRawResult: result });
+  replaceEvidence(captureEvidence('clash'));
+  act(() => useAssistant.setState({ messages: [{ role: 'user', content: 'Where?' }, { role: 'assistant', model: 'recorded', content: '## Finding\n\nThe wall [E1] is hit.' }] }));
+  const ui = render(<AssistantPanel />);
+  assert.equal(ui.querySelector('h2 + *, p')?.textContent?.startsWith('##'), false);
+  click(ui.querySelector('button[data-citation="E1"]')!);
+  const peek = ui.querySelector('section[aria-label="Captured row E1"]')!;
+  assert.ok(peek, 'citation opens its captured row');
+  assert.match(peek.textContent ?? '', /a\.tag\s*IfcWall/);
+  assert.ok([...peek.querySelectorAll('button')].some(b => b.textContent === 'Show this clash in the model'), 'live clash rows can be focused');
+  act(() => useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 }));
+  assert.equal([...ui.querySelectorAll('button')].some(b => b.textContent === 'Show this clash in the model'), false, 'stale evidence never drives the scene');
 });

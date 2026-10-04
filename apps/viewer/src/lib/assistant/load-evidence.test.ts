@@ -82,7 +82,8 @@ test('native load panel action produces portable conversation and native report 
     { role: 'assistant', model: 'test-provider', content: 'Diagnostics were unavailable for this cache load [E1].' }] });
   const draft = prepareReportDraft('Load diagnostics');
   assert.deepEqual(validateDocumentSpec(draft.document), []);
-  assert.ok(draft.document.blocks.some(block => block.kind === 'text' && block.text.includes('"diagnosticsAvailable": false')));
+  // The readable appendix keeps the native availability fact on the cited row's line.
+  assert.ok(draft.document.blocks.some(block => block.kind === 'text' && /^E1\s.*diagnosticsAvailable: no/m.test(block.text)));
   assert.ok(decodeConversation(draft.source));
   assert.deepEqual(draft.citations, ['E1']);
 });

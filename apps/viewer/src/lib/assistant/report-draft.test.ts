@@ -43,7 +43,11 @@ test('native report preserves complete sample coverage and literal text after so
   assert.match(rendered, /unseen findings are not evaluated/);
   assert.match(rendered, /actual-provider/);
   assert.match(rendered, /Literal \{Model.Name\} remains captured/);
-  assert.match(rendered, /"distanceKind": "estimate"/);
+  // Readable appendix: every included row on one line with its native facts, no raw JSON dump.
+  assert.match(rendered, /^E1\s+IfcWall vs IfcPipeSegment · hard · major · -0\.02 m \(estimate\) · disciplines ARCH\/STR vs MEP\/FIRE · a0 vs b0$/m);
+  assert.match(rendered, /^E100\s+IfcWall vs IfcPipeSegment/m);
+  assert.doesNotMatch(rendered, /^E101\s/m);
+  assert.doesNotMatch(rendered, /"citation":/);
   assert.deepEqual(draft.citations, ['E1']);
   const frozen = JSON.stringify(draft.document);
   useViewerStore.setState({ clashResult: null, clashRawResult: null });
@@ -152,7 +156,8 @@ test('actual native PDF retains evidence and literal braces against a parsed rea
     assert.match(text, /estimate -0.02 \[E1\]/);
     assert.match(text, /actual-provider/);
     assert.match(text, /1 of 1 native rows/);
-    assert.match(text, /"distanceKind": "estimate"/);
+    // Standard PDF fonts only: the appendix line must extract as real text, not re-encoded glyphs.
+    assert.match(text, /E1\s+IfcWall vs IfcPipeSegment · hard · major · -0\.02 m \(estimate\)/);
     assert.equal(pdf.numPages, result.pages);
   } finally { await task.destroy(); }
 });

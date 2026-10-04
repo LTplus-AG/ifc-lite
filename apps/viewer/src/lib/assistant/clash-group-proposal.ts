@@ -106,3 +106,66 @@ export function prepareClashGroupPreview(answer: string, evidence: EvidenceSnaps
     unclassifiedFindings: result.clashes.length - assigned.size, omittedFromEvidence: evidence.totalRows - evidence.includedRows };
 }
 
+
+/**
+ * The live native finding a captured citation names, or null when the evidence is
+ * stale, the row is not a complete clash row, or the occurrence is gone/ambiguous.
+ */
+export function resolveCapturedClash(evidence: EvidenceSnapshot, citation: string): Clash | null {
+  if (evidence.source !== 'clash' || !evidenceIsCurrent(evidence) || evidence.payload.length > 200_000) return null;
+  let payload: unknown;
+  try { payload = JSON.parse(evidence.payload); }
+  catch (error) { console.warn('[Assistant] Captured clash evidence is not JSON', error); return null; }
+  if (!record(payload) || !record(payload.evidence) || !Array.isArray(payload.evidence.rows)) return null;
+  const row: unknown = payload.evidence.rows.find(candidate => record(candidate) && candidate.citation === citation);
+  if (!record(row) || row.rowProjectionTruncated || !record(row.data)) return null;
+  const occurrence = capturedOccurrence(row.data);
+  const matches = (useViewerStore.getState().clashResult?.clashes ?? []).filter(clash => manualClashOccurrenceKey(clash) === occurrence);
+  return occurrence && matches.length === 1 && matches[0].id === row.data.id ? matches[0] : null;
+}
+
+export interface NormalizedClashAnswer {
+  /** Strict-contract JSON, safe to hand to `prepareClashGroupPreview`. */
+  answer: string;
+  removedRepeats: number;
+  removedUnknown: number;
+  droppedGroups: number;
+}
+
+/**
+ * Explicit, disclosed fallback for models that repeat or invent citations: the first
+ * group keeps a repeated finding, unknown or incomplete citations are dropped, and
+ * emptied groups disappear. Envelope, name and explanation limits stay strict.
+ * Null when nothing would remain or the envelope itself is invalid.
+ */
+export function normalizeClashGroupAnswer(answer: string, evidence: EvidenceSnapshot): NormalizedClashAnswer | null {
+  if (answer.length > 48_000 || evidence.source !== 'clash' || evidence.payload.length > 200_000) return null;
+  const trimmed = answer.trim();
+  const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```$/.exec(trimmed);
+  let value: unknown, payload: unknown;
+  try { value = JSON.parse(fenced ? fenced[1] : trimmed); payload = JSON.parse(evidence.payload); }
+  catch (error) { console.warn('[Assistant] Clash proposal cannot be normalized', error); return null; }
+  if (!record(value) || value.kind !== 'clash.groups' || value.version !== 1 || !Array.isArray(value.groups)
+    || !value.groups.length || value.groups.length > 30) return null;
+  if (!record(payload) || !record(payload.evidence) || !Array.isArray(payload.evidence.rows)) return null;
+  const complete = new Set(payload.evidence.rows.flatMap(row => record(row) && typeof row.citation === 'string'
+    && !row.rowProjectionTruncated && record(row.data) && capturedOccurrence(row.data) ? [row.citation] : []));
+  const claimed = new Set<string>();
+  let removedRepeats = 0, removedUnknown = 0, droppedGroups = 0;
+  const groups: ProposedGroup[] = [];
+  for (const group of value.groups) {
+    if (!record(group) || !text(group.name, 100) || !text(group.explanation, 1200) || !Array.isArray(group.citations)) return null;
+    const name = group.name.trim();
+    if (groups.some(existing => existing.name === name)) { droppedGroups++; continue; }
+    const citations: string[] = [];
+    for (const citation of group.citations.slice(0, 100)) {
+      if (typeof citation !== 'string' || !complete.has(citation)) { removedUnknown++; continue; }
+      if (claimed.has(citation)) { removedRepeats++; continue; }
+      claimed.add(citation); citations.push(citation);
+    }
+    if (!citations.length) { droppedGroups++; continue; }
+    groups.push({ name, explanation: group.explanation, citations });
+  }
+  if (!groups.length) return null;
+  return { answer: JSON.stringify({ version: 1, kind: 'clash.groups', groups }), removedRepeats, removedUnknown, droppedGroups };
+}

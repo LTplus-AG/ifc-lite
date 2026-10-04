@@ -53,3 +53,20 @@ test('mounted group preview shows full accounting, escapes output and refuses st
   assert.ok(focus.every(button => button.disabled), 'a stale preview cannot drive the scene');
   assert.ok(ui.querySelector('[role="alert"]'));
 });
+
+test('a refused proposal is previewable only by explicit choice, with every adjustment disclosed', () => {
+  const clashes: Clash[] = ['one', 'two'].map((key, i) => ({ id: `c-${key}`, rule: 'coordination', status: 'hard', severity: 'info', distance: -0.01,
+    a: { model: 'a', key: `wall-${key}`, ref: i + 1, tag: 'IfcWall' }, b: { model: 'b', key: `pipe-${key}`, ref: i + 1, tag: 'IfcPipeSegment' },
+    point: [0, 0, 0], bounds: { min: [0, 0, 0], max: [1, 1, 1] } }));
+  const result = { clashes, summary: summarizeClashes(clashes), rulesRun: [], settings: { tolerance: 0.002, excludeVoidsAndHosts: true } };
+  useViewerStore.setState({ clashResult: result, clashRawResult: result });
+  replaceEvidence(captureEvidence('clash'));
+  useAssistant.setState({ messages: [{ role: 'user', content: 'Group' }, { role: 'assistant', model: 'free', content: JSON.stringify({ version: 1,
+    kind: 'clash.groups', groups: [{ name: 'A', explanation: 'x', citations: ['E1', 'E2'] }, { name: 'B', explanation: 'y', citations: ['E2', 'E76'] }] }) }] });
+  const ui = render(<ClashGroupReview />);
+  const buttons = () => [...ui.querySelectorAll('button')].map(button => button.textContent);
+  assert.ok(!buttons().includes('Preview groups'), 'a refused proposal is never previewed as-is');
+  click([...ui.querySelectorAll('button')].find(button => button.textContent === 'Preview with repeats removed')!);
+  assert.match(ui.querySelector('[role="note"]')?.textContent ?? '', /1 repeated and 1 unknown citations removed, 1 emptied or duplicate groups dropped/);
+  assert.deepEqual([...ui.querySelectorAll('dd')].map(value => value.textContent), ['2', '2', '0', '0']);
+});

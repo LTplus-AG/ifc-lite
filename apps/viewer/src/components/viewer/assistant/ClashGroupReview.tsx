@@ -13,7 +13,7 @@ import { useClash } from '@/hooks/useClash';
 import { manualClashOccurrenceKey } from '@/lib/clash/manual-groups';
 import { useAssistant } from '@/lib/assistant/conversation';
 import { evidenceIsCurrent } from '@/lib/assistant/evidence';
-import { prepareClashGroupPreview, type ClashGroupPreview } from '@/lib/assistant/clash-group-proposal';
+import { normalizeClashGroupAnswer, prepareClashGroupPreview, type ClashGroupPreview, type NormalizedClashAnswer } from '@/lib/assistant/clash-group-proposal';
 import { EvidenceView } from '../analysis/EvidenceView';
 import { proposalOf } from './AssistantConversation';
 
@@ -38,29 +38,41 @@ export function ClashGroupReview() {
   const assistant = useAssistant();
   const [preview, setPreview] = useState<ClashGroupPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [adjusted, setAdjusted] = useState<NormalizedClashAnswer | null>(null);
   // Native edits must refresh the visible freshness guard.
   useViewerStore(state => state);
   const reply = assistant.messages.at(-1);
-  const proposed = useMemo(() => reply?.role === 'assistant' && proposalOf(reply.content)?.kind === 'clash', [reply]);
-  const eligible = assistant.snapshot?.source === 'clash' && evidenceIsCurrent(assistant.snapshot)
-    && proposed && assistant.status !== 'streaming' && assistant.error !== 'truncated-output';
+  const parsed = useMemo(() => reply?.role === 'assistant' ? proposalOf(reply.content) : null, [reply]);
+  const proposed = parsed?.kind === 'clash';
+  const live = assistant.snapshot?.source === 'clash' && evidenceIsCurrent(assistant.snapshot)
+    && assistant.status !== 'streaming' && assistant.error !== 'truncated-output';
+  const eligible = live && proposed;
+  // A refused proposal can still be previewed, but only by explicit choice and with its adjustments disclosed.
+  const normalized = useMemo(() => parsed?.kind === 'invalid' && parsed.declared === 'clash' && assistant.snapshot
+    ? normalizeClashGroupAnswer(reply!.content, assistant.snapshot) : null, [parsed, reply, assistant.snapshot]);
   const stale = preview ? !evidenceIsCurrent(preview.evidence) : false;
   const { result, focusClash, focusClashes } = useClash();
   // Resolve against the live native report; a stale preview never drives the scene.
   const native = useMemo(() => new Map((result?.clashes ?? []).map(clash => [manualClashOccurrenceKey(clash), clash])), [result]);
   const resolve = (findings: Finding[]): Clash[] => stale ? [] : findings.flatMap(finding => native.get(finding.occurrence) ?? []);
-  if (!proposed && !preview && !error) return null;
+  if (!proposed && !normalized && !preview && !error) return null;
   return <section aria-label={t('assistant.clashGroupReview')} className="mx-3 my-2 rounded border border-border text-xs">
     <h3 className="flex items-center gap-1.5 border-b border-border px-2 py-1.5 font-semibold">
       <Layers className="h-3.5 w-3.5 text-primary" aria-hidden="true" />{t('assistant.clashGroupReview')}
     </h3>
     <div className="p-2 space-y-2">
-      {!preview && <p className="text-muted-foreground">{t('assistant.clashGroupHint')}</p>}
-      <Button size="sm" variant={preview ? 'outline' : 'default'} className="h-7" disabled={!eligible} onClick={() => {
-        try { setPreview(prepareClashGroupPreview(reply!.content, assistant.snapshot!)); setError(null); }
+      {!preview && <p className="text-muted-foreground">{t(proposed ? 'assistant.clashGroupHint' : 'assistant.clashGroupAdjustHint')}</p>}
+      {proposed && <Button size="sm" variant={preview ? 'outline' : 'default'} className="h-7" disabled={!eligible} onClick={() => {
+        try { setPreview(prepareClashGroupPreview(reply!.content, assistant.snapshot!)); setAdjusted(null); setError(null); }
         catch (error) { setPreview(null); setError(error instanceof Error ? error.message : String(error)); }
-      }}>{t('assistant.previewClashGroups')}</Button>
+      }}>{t('assistant.previewClashGroups')}</Button>}
+      {!proposed && normalized && <Button size="sm" variant={preview ? 'outline' : 'default'} className="h-7" disabled={!live} onClick={() => {
+        try { setPreview(prepareClashGroupPreview(normalized.answer, assistant.snapshot!)); setAdjusted(normalized); setError(null); }
+        catch (error) { setPreview(null); setError(error instanceof Error ? error.message : String(error)); }
+      }}>{t('assistant.previewAdjusted')}</Button>}
       {preview && <>
+        {adjusted && <p role="note" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('assistant.clashGroupAdjusted', {
+          repeats: adjusted.removedRepeats, unknown: adjusted.removedUnknown, groups: adjusted.droppedGroups })}</p>}
         {stale && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('assistant.stale')}</p>}
         <dl aria-label={t('assistant.clashGroupCounts', { total: preview.totalFindings, proposed: preview.proposedFindings,
           unclassified: preview.unclassifiedFindings, omitted: preview.omittedFromEvidence })} className="grid grid-cols-2 gap-1">

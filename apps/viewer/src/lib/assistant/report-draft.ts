@@ -9,6 +9,7 @@ import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type TextBlo
 import { useAssistant } from './conversation';
 import { evidenceIsCurrent } from './evidence';
 import { decodeConversation, type SavedConversation } from './persistence';
+import { appendixBlocks, narrativeBlocks } from './report-narrative';
 
 export interface ReportDraft {
   source: SavedConversation;
@@ -66,12 +67,12 @@ export function prepareReportDraft(name: string): ReportDraft {
         + (source.evidence.includedRows < source.evidence.totalRows ? 'This is a sample; unseen findings are not evaluated by this narrative.\n' : '')
         + (source.evidence.projectionTruncated ? 'Some evidence values were shortened or omitted.\n' : '')
         + 'Captured evidence is historical. AI prose requires human verification and does not change native results or certify compliance.'),
-      text('heading', 'Narrative for review'), text('body', answer.content),
+      text('heading', 'Narrative for review'), ...narrativeBlocks(answer.content, text),
       text('small', citations.length ? `Referenced evidence: ${citations.join(', ')}. Citation existence does not prove that a claim is supported.`
         : 'The narrative has no row citations. Verify each factual claim against the captured evidence.'),
       { kind: 'page-break', id: freshBlockId() }, text('heading', 'Captured evidence appendix'),
-      // All values and omitted-population notices travel with the native document, never live bindings.
-      text('small', JSON.stringify(payload, null, 2)),
+      // Every included row and omission notice travels with the document as literal text, never live bindings.
+      ...appendixBlocks(payload as Record<string, unknown>, rows as Array<{ citation: string; data: unknown }>, text),
     ] };
   const errors = validateDocumentSpec(document);
   if (errors.length) throw new Error(`Invalid native document: ${errors.map(error => error.message).join('; ')}`);

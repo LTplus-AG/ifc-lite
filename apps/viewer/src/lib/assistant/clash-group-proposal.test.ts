@@ -9,7 +9,7 @@ import { summarizeClashes, type Clash } from '@ifc-lite/clash';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { captureEvidence } from './evidence';
-import { parseClashGroupPatch, prepareClashGroupPreview } from './clash-group-proposal';
+import { normalizeClashGroupAnswer, parseClashGroupPatch, prepareClashGroupPreview, resolveCapturedClash } from './clash-group-proposal';
 
 const initial = useViewerStore.getState();
 afterEach(() => useViewerStore.setState(initial, true));
@@ -82,4 +82,30 @@ test('native result replacement, geometry edits and changed native facts refuse 
   const replaced = install(findings(1));
   useViewerStore.setState({ clashResult: { ...useViewerStore.getState().clashResult! } });
   assert.throws(() => prepareClashGroupPreview(answer(['E1']), replaced), /stale/);
+});
+
+// Free models (qwen3-coder-next, 2026-10-04) repeated citations across groups and cited E76 of 75 rows.
+test('a refused proposal normalizes only by disclosed first-group-wins and unknown removal', () => {
+  const snapshot = install();
+  const raw = JSON.stringify({ version: 1, kind: 'clash.groups', groups: [
+    { name: 'Roof', explanation: 'Rafters', citations: ['E1', 'E2', 'E2', 'E999'] },
+    { name: 'Walls', explanation: 'Slabs', citations: ['E2', 'E3'] },
+    { name: 'Roof', explanation: 'Duplicate name', citations: ['E4'] },
+    { name: 'Ghost', explanation: 'Only invented rows', citations: ['E101'] }] });
+  assert.throws(() => parseClashGroupPatch(raw), /unique captured evidence citations/);
+  const normalized = normalizeClashGroupAnswer(raw, snapshot)!;
+  assert.deepEqual({ repeats: normalized.removedRepeats, unknown: normalized.removedUnknown, dropped: normalized.droppedGroups },
+    { repeats: 2, unknown: 2, dropped: 2 });
+  const preview = prepareClashGroupPreview(normalized.answer, snapshot);
+  assert.deepEqual(preview.groups.map(group => [group.name, group.citations]), [['Roof', ['E1', 'E2']], ['Walls', ['E3']]]);
+  assert.equal(preview.proposedFindings + preview.unclassifiedFindings, preview.totalFindings, 'every finding still accounted once');
+  assert.equal(normalizeClashGroupAnswer(JSON.stringify({ version: 1, kind: 'clash.groups', groups: [{ name: 'X', explanation: 'Y', citations: ['E999'] }] }), snapshot), null);
+});
+
+test('a citation resolves to its live native finding only while evidence is current', () => {
+  const snapshot = install();
+  assert.equal(resolveCapturedClash(snapshot, 'E3')?.id, 'finding-2');
+  assert.equal(resolveCapturedClash(snapshot, 'E999'), null);
+  useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
+  assert.equal(resolveCapturedClash(snapshot, 'E3'), null);
 });

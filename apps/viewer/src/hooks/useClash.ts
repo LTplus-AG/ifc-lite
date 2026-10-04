@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useRef } from 'react';
+import { clashElementCache } from '@/lib/clash/element-cache';
 import { beginAbortableRun, cancelClashRun, invalidateAbortableRun } from './analysisRunCancellation';
 import { captureAnalysisStamp, stampAnalysisReport, type AnalysisStamp } from './useAnalysisStaleness';
 import { rememberPlacementSnapshot, jobPlacementIsCurrent } from '@/lib/model-placement/placement-snapshot';
@@ -212,10 +213,9 @@ export function useClash() {
   // deliberately SHARED across every occurrence of a GPU-instanced entity, while
   // `key` folds in `mesh.occurrenceKey` to stay distinct per physical occurrence
   // (#2865). Keying this cache by `ref` collapsed multiple occurrences onto one
-  // map entry (last-write-wins), so `focusClash` below could build the contact
-  // interface / intersection solid from the WRONG occurrence's geometry whenever
-  // two instanced copies of one element actually clashed.
-  const elementsByIdentity = useRef(new Map<string, ClashElement>());
+  // map entry (last-write-wins), so `focusClash` could build the contact interface /
+  // solid from the WRONG occurrence's geometry when two instanced copies clashed.
+  const elementsByIdentity = clashElementCache; // shared across hook instances
   const elementIdentity = (element: Pick<ClashElement, 'model' | 'key'>): string =>
     JSON.stringify([element.model, element.key]);
 

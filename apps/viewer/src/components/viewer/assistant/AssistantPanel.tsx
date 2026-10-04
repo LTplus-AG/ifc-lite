@@ -5,6 +5,8 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { History, Key, RefreshCw, Send, Sparkles, Square } from 'lucide-react';
 import { ConversationLibrary } from './ConversationLibrary';
+import { SourcePicker } from './SourcePicker';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
@@ -13,8 +15,10 @@ import { usePanelControls } from '@/hooks/usePanelControls';
 import { ModelSelector } from '../chat/ModelSelector';
 import { ByokKeyModal } from '../chat/ByokKeyModal';
 import { useAssistant, cancelAssistant, replaceEvidence } from '@/lib/assistant/conversation';
-import { captureEvidence, evidenceIsCurrent } from '@/lib/assistant/evidence';
+import { captureEvidence, evidenceIsCurrent, type AssistantSource } from '@/lib/assistant/evidence';
 import { sendAssistant } from '@/lib/assistant/request';
+import { resolveCapturedClash } from '@/lib/assistant/clash-group-proposal';
+import { useClash } from '@/hooks/useClash';
 import { EvidenceSummary } from './EvidenceSummary';
 import { AssistantConversation } from './AssistantConversation';
 
@@ -32,6 +36,8 @@ export function AssistantPanel() {
   const [prompt, setPrompt] = useState('');
   const [keysOpen, setKeysOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const { confirmDialog } = useDialogs();
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const busy = state.status === 'streaming';
@@ -50,6 +56,19 @@ export function AssistantPanel() {
   };
   const refresh = () => { if (evidence) replaceEvidence(captureEvidence(evidence.source)); };
   const suggest = (text: string) => { setPrompt(text); promptRef.current?.focus(); };
+  const attach = async (source: AssistantSource) => {
+    if (state.messages.length && !await confirmDialog({ description: t('assistant.switchConfirm') })) return;
+    replaceEvidence(captureEvidence(source));
+    setPicking(false);
+    promptRef.current?.focus();
+  };
+  const showPicker = !evidence || picking;
+  const { focusClash } = useClash();
+  // Only live clash evidence can drive the scene; archived/stale rows stay read-only.
+  const focusCitation = (citation: string) => {
+    const clash = state.snapshot && !stale ? resolveCapturedClash(state.snapshot, citation) : null;
+    return clash ? () => focusClash(clash) : null;
+  };
   return <section className="h-full min-h-0 min-w-0 flex flex-col bg-background text-foreground" aria-label={t('assistant.title')}>
     <div className="shrink-0 flex items-center gap-1 border-b border-border px-3 py-2">
       <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
@@ -63,21 +82,22 @@ export function AssistantPanel() {
     {/* One scroll region: short docked panels keep the header and composer reachable. */}
     <div className="flex-1 min-h-0 overflow-auto">
       {libraryOpen && <ConversationLibrary />}
-      {evidence ? <EvidenceSummary evidence={evidence} state={state.archived ? 'historical' : stale ? 'stale' : 'captured'}
-        onReturn={() => panels.openInHome(evidence.source)} onRefresh={refresh} />
-        : <div className="shrink-0 border-b border-border p-3 text-xs space-y-1">
-          <p className="font-semibold">{t('assistant.emptyTitle')}</p>
-          <p className="text-muted-foreground">{t('assistant.empty')}</p>
-        </div>}
+      {showPicker ? <SourcePicker current={evidence?.source ?? null} onAttach={source => void attach(source)}
+        onCancel={evidence ? () => setPicking(false) : null} />
+        : <EvidenceSummary evidence={evidence} state={state.archived ? 'historical' : stale ? 'stale' : 'captured'}
+          onReturn={() => panels.openInHome(evidence.source)} onRefresh={refresh} onChange={() => setPicking(true)} />}
+      {!showPicker && <>
       {state.archived && <div aria-live="polite" className="mx-3 mt-2 rounded bg-muted p-2 text-xs space-y-2">
         <p className="text-muted-foreground">{t('assistant.archived')}</p>
         <Button size="sm" variant="outline" className="h-7" onClick={refresh}><RefreshCw className="h-3 w-3 mr-1" />{t('assistant.refreshShort')}</Button>
       </div>}
       <AssistantConversation source={evidence?.source ?? null} messages={state.messages} pendingPrompt={state.pendingPrompt}
-        output={state.output} streaming={busy} error={errorText} canAsk={canAsk} onSuggest={suggest} />
+        output={state.output} streaming={busy} error={errorText} canAsk={canAsk} onSuggest={suggest}
+        evidencePayload={evidence?.payload ?? null} focusCitation={focusCitation} />
       {evidence?.source === 'clash' && <Suspense fallback={null}><ClashGroupReview /></Suspense>}
       {evidence?.source === 'flow' && <Suspense fallback={null}><FlowProposalReview /></Suspense>}
       {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><ReportDraftReview /></Suspense>}
+      </>}
       <div ref={endRef} />
     </div>
     <form className="shrink-0 border-t border-border p-2 space-y-1" onSubmit={event => { event.preventDefault(); submit(); }}>

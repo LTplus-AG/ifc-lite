@@ -13,6 +13,22 @@ const ROW_MEANING: Record<AssistantSource, TranslationKey> = {
   clash: 'assistant.evidenceRowsClash', validation: 'assistant.evidenceRowsValidation',
   compare: 'assistant.evidenceRowsCompare', flow: 'assistant.evidenceRowsFlow', loadReport: 'assistant.evidenceRowsLoadReport',
 };
+const UNAVAILABLE: Record<AssistantSource, TranslationKey> = {
+  clash: 'assistant.evidenceUnavailableClash', validation: 'assistant.evidenceUnavailableValidation',
+  compare: 'assistant.evidenceUnavailableCompare', flow: 'assistant.evidenceUnavailableFlow',
+  loadReport: 'assistant.evidenceUnavailableLoadReport',
+};
+function sourceAvailability(payload: string): 'available' | 'unavailable' | 'unknown' {
+  if (payload.length > 48_000) return 'unknown';
+  try {
+    const parsed: unknown = JSON.parse(payload);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !('sourceAvailability' in parsed)) return 'unknown';
+    return parsed.sourceAvailability === 'available' || parsed.sourceAvailability === 'unavailable' ? parsed.sourceAvailability : 'unknown';
+  } catch (error) {
+    console.warn('[Evidence view] Cannot read source availability', error);
+    return 'unknown';
+  }
+}
 interface ModelMetadata { id: string; name: string; fingerprint?: string }
 
 function capturedModels(payload: string): { models: ModelMetadata[]; total: number; omitted: boolean } | null {
@@ -42,6 +58,7 @@ export function EvidenceView({ evidence, state }: {
   state: 'captured' | 'stale' | 'historical';
 }) {
   const { t } = useTranslation();
+  const availability = useMemo(() => sourceAvailability(evidence.payload), [evidence.payload]);
   const metadata = useMemo(() => capturedModels(evidence.payload), [evidence.payload]);
   return <section aria-label={t('assistant.evidenceContext')} className="space-y-2 rounded border border-border p-2 text-xs">
     <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -49,7 +66,12 @@ export function EvidenceView({ evidence, state }: {
       <span className="text-muted-foreground">{t(state === 'historical' ? 'assistant.evidenceHistorical' : state === 'stale'
         ? 'assistant.evidenceStale' : 'assistant.evidenceCaptured')}</span>
     </div>
-    <p>{t('assistant.scope', { included: evidence.includedRows, total: evidence.totalRows })}</p>
+    {availability === 'unavailable' ? <p>{t(UNAVAILABLE[evidence.source])}</p> : <>
+      {availability === 'unknown' && <p>{t('assistant.evidenceAvailabilityUnknown')}</p>}
+      {availability === 'available' && evidence.totalRows === 0
+        ? <p>{t('assistant.evidenceEmpty')}</p>
+        : <p>{t('assistant.scope', { included: evidence.includedRows, total: evidence.totalRows })}</p>}
+    </>}
     <p className="text-muted-foreground">{t(ROW_MEANING[evidence.source])}</p>
     {evidence.includedRows < evidence.totalRows && <p className="text-muted-foreground">{t('assistant.evidenceSample')}</p>}
     {evidence.projectionTruncated && <p className="text-muted-foreground">{t('assistant.evidenceTruncated')}</p>}

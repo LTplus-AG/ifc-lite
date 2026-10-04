@@ -164,6 +164,7 @@ export function captureEvidence(source: AssistantSource): EvidenceSnapshot {
     totalRows, includedRows: projectedRows.length, projectionTruncated };
   return { ...snapshot, payload: JSON.stringify({ source, capturedAt: snapshot.capturedAt, models: promptModels,
     totalModels: models.length, modelMetadataTruncated,
+    sourceAvailability: (source === 'loadReport' ? models.length > 0 : identity !== null) ? 'available' : 'unavailable',
     reportProvenance: snapshot.reportStamp ? { mutationVersion: snapshot.reportStamp.mutationVersion,
       geometryContentVersion: snapshot.reportStamp.geometryContentVersion } : 'unknown',
     totalRows, includedRows: projectedRows.length, sampled: projectedRows.length < totalRows, projectionTruncated,

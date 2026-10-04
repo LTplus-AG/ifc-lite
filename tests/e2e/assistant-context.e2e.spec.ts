@@ -57,10 +57,11 @@ test('native clash evidence reaches the assistant without executing model output
   });
   await page.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
   const assistant = page.getByRole('region', { name: 'Assistant', exact: true });
-  await expect(assistant.getByText(/Frozen evidence:/)).toBeVisible();
+  await expect(assistant.getByText(/Frozen evidence:|The captured native source contains no result rows/)).toBeVisible();
   await assistant.getByText('Inspect evidence sent to the model', { exact: true }).click();
   await expect(assistant.locator('pre')).toContainText('AC20-FZK-Haus');
   await expect(assistant.locator('pre')).toContainText('"source":"clash"');
+  await expect(assistant.locator('pre')).toContainText('"sourceAvailability":"available"');
   await assistant.getByText('Inspect evidence sent to the model', { exact: true }).click();
   await assistant.getByLabel('Ask about these results').fill('Explain the native duplicate scan and its limitations.');
   await assistant.getByRole('button', { name: 'Send', exact: true }).click();

@@ -22,6 +22,8 @@ Open **Cloud sources → Autodesk Forma / Data Exchange → Sign in**. Browse pr
 
 For Site Design, paste a documented Forma link containing `siteId` or `/sites/<id>` into the project entry. The `.com` / `.eu` host selects US / EMEA. Linked sites are remembered per signed-in account. Site discovery is link-driven; this does not claim to enumerate every accessible site. Documented ACC Docs project/folder links resolve through the account’s accessible projects. Proposal resource names remain distinct from generated `.ifcx` filenames.
 
+Hub discovery reads Autodesk's documented `attributes.region` and routes subsequent requests to that region. This release supports US and EMEA hubs; other regional hubs report an explicit unsupported-region error rather than being sent to US.
+
 ## Native generated artifacts
 
 Data Exchanges and Site Design proposals are **not IFC files**. Their rows are unavailable until the hosted service advertises an installed native artifact adapter. A metadata catalog or Autodesk Viewer derivative is not a native import. The service verifies adapter revision and format, and enforces session ownership and a byte limit. Conversion adapters must preserve geometry, properties, transforms, units and source identity for the selected snapshot and must report fidelity limitations.

@@ -29,6 +29,19 @@ function harness(reply: (path: string) => unknown, identity = 'user') {
   return { provider: new AutodeskProvider({ service }), ctx, calls, storage };
 }
 describe('Autodesk native file sources', () => {
+  it('routes an EU hub using the documented attributes.region field (#6823)', async () => {
+    const h = harness((path) => path === '/project/v1/hubs'
+      ? { data: [{ id: 'b.eu-hub', attributes: { name: 'EU account', region: 'EMEA', extension: { data: {} } } }] }
+      : { data: [{ id: 'b.eu-project', attributes: { name: 'EU project' } }] });
+    const page = await h.provider.listProjects(h.ctx);
+    expect(page.items[0].meta?.region).toBe('EMEA');
+    expect(h.calls.find((call) => call.path.includes('/b.eu-hub/projects'))?.region).toBe('EMEA');
+  });
+  it('refuses unsupported hub regions rather than sending project requests to US (#6823)', async () => {
+    const h = harness(() => ({ data: [{ id: 'b.other-hub', attributes: { name: 'Other account', region: 'CAN' } }] }));
+    await expect(h.provider.listProjects(h.ctx)).rejects.toThrow('unsupported region: CAN');
+    expect(h.calls).toEqual([{ path: '/project/v1/hubs', region: 'US' }]);
+  });
   it('downloads selected historical storage even when current tip has changed', async () => {
     const h = harness((path) => path.includes('/items/') ? { data: item, included: [version('v2')] } : { data: version('v1') });
     const bytes = await h.provider.download(h.ctx, { projectId: project, containerId: folder, fileId: 'item', revisionId: 'v1' });

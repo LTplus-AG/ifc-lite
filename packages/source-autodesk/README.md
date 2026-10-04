@@ -14,6 +14,8 @@ Set `VITE_AUTODESK_CLIENT_ID` at viewer build time, or enter the public applicat
 
 For hosted sessions, set `VITE_AUTODESK_HOSTED=true`, deploy [the Autodesk service](../../apps/autodesk-service/README.md) and reverse-proxy `/api/autodesk/*` on the viewer's origin. Register the service callback rather than the static callback. No end-user application ID entry is needed. The browser never receives Autodesk tokens.
 
+The deployment uses one operator-managed APS application. Each user signs in with their own Autodesk account and retains that account's product entitlements and project permissions; the operator's personal account does not need access to their models. A successful sign-in does not grant product or project access. Real import verification can use consenting production users with existing subscriptions and accessible projects.
+
 Both modes use one connection, verified account identity, PKCE, cryptographic state, explicit cancellation, a BroadcastChannel callback compatible with COOP, and a same-tab fallback when popups are blocked. Disconnect preserves models already loaded in memory.
 
 ## Browse and load
@@ -29,5 +31,7 @@ Hub discovery reads Autodesk's documented `attributes.region` and routes subsequ
 Data Exchanges and Site Design proposals are **not IFC files**. Their rows are unavailable until the hosted service advertises an installed native artifact adapter. A metadata catalog or Autodesk Viewer derivative is not a native import. The service verifies adapter revision and format, and enforces session ownership and a byte limit. Conversion adapters must preserve geometry, properties, transforms, units and source identity for the selected snapshot and must report fidelity limitations.
 
 The hosted service includes a Rust immutable Forma snapshot converter and a Windows .NET 8 Autodesk SDK exchange worker. Configure their executable paths or the authenticated remote Windows worker as described in [the service guide](../../apps/autodesk-service/README.md). Files and proposals support explicit historical version selection. Whole-exchange IFC export supports the current version only; the worker checks Docs version and exchange snapshot before/after export and rejects a changed source. Proposal meshes preserve occurrences, geometry, placement, color/opacity and source properties; the details panel identifies appearance/overlay limitations.
+
+Hosted imports have a 15-minute client deadline, including preparation, status requests and artifact download. Timeout or cancellation releases an unconsumed server job; cleanup requests have their own five-second deadline.
 
 No live Autodesk account or import fidelity was verified during local implementation. Tests exercise decoded upstream-shaped fixtures and session/security invariants.

@@ -32,7 +32,7 @@ describe('hosted cloud security invariants (#6840)', () => {
     const foreign = await app.handle(new Request(`${origin}/api/cloud/msgraph/authorize`, { method: 'POST', headers: { cookie: response.headers.get('set-cookie') ?? '', Origin: origin, 'x-ifclite-csrf': data.csrf } }));
     expect(foreign.status).toBe(403); app.close();
   });
-  it('rejects missing Origin or CSRF before authorization and scopes Dropbox to interactive access', async () => {
+  it('rejects missing Origin before authorization and scopes Dropbox to interactive access', async () => {
     const app = createCloudHandler(config);
     const session = await app.handle(new Request(`${origin}/api/cloud/dropbox/session`));
     const data = await session.json() as { csrf: string }; const cookie = session.headers.get('set-cookie') ?? '';
@@ -41,6 +41,27 @@ describe('hosted cloud security invariants (#6840)', () => {
     const auth = await response.json() as { url: string; state: string }; const url = new URL(auth.url);
     expect(url.searchParams.get('code_challenge_method')).toBe('S256'); expect(url.searchParams.get('token_access_type')).toBeNull();
     expect(url.searchParams.get('redirect_uri')).toBe(`${origin}/api/cloud/dropbox/callback`); expect(auth.url).not.toContain('private-secret'); app.close();
+  });
+  it.each(['dropbox', 'msgraph'] as const)('rejects missing and incorrect CSRF with a valid %s session and Origin (#6848)', async (vendor) => {
+    const app = createCloudHandler(config);
+    try {
+      const session = await app.handle(new Request(`${origin}/api/cloud/${vendor}/session`));
+      const { csrf } = await session.json() as { csrf: string };
+      const cookie = session.headers.get('set-cookie') ?? '';
+      for (const invalid of [undefined, 'incorrect-csrf']) {
+        const headers = new Headers({ cookie, Origin: origin });
+        if (invalid !== undefined) headers.set('x-ifclite-csrf', invalid);
+        const denied = await app.handle(new Request(`${origin}/api/cloud/${vendor}/authorize`, { method: 'POST', headers }));
+        expect(denied.status).toBe(403);
+        expect(await denied.json()).toMatchObject({ error: 'csrf' });
+      }
+      const allowed = await app.handle(new Request(`${origin}/api/cloud/${vendor}/authorize`, {
+        method: 'POST', headers: { cookie, Origin: origin, 'x-ifclite-csrf': csrf },
+      }));
+      expect(allowed.status).toBe(200);
+      const { url } = await allowed.json() as { url: string };
+      expect(new URL(url).searchParams.get('code_challenge_method')).toBe('S256');
+    } finally { await app.close(); }
   });
   it('bounds sessions and makes cancellation invalidate an outstanding callback', async () => {
     const sessions = new CloudSessions({ ...config, maxSessions: 1 }); const session = sessions.create('dropbox');

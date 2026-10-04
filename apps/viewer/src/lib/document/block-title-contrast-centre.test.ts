@@ -62,6 +62,8 @@ describe('a heading that cannot be read is reported (#6705 F5)', () => {
     assert.equal(blockTitleContrast({ titleFontSize: 14 }, 0.5).minimum, 4.5, 'a 14pt title at 50% prints at 7pt');
     assert.equal(blockTitleContrast({ titleFontSize: 11 }, 1.5).minimum, 3, 'an 11pt title at 150% prints at 16.5pt');
     assert.equal(blockTitleContrast({ titleFontSize: 14 }).minimum, 3);
+    assert.equal(blockTitleContrast({}, 1, 1.5).minimum, 3, 'an unstyled chart title at text unit 1.5 prints at 16.5pt');
+    assert.equal(blockTitleContrast({ titleFontSize: 11 }, 1, 1.5).minimum, 4.5, 'an authored size is not scaled by the chart unit');
   });
   it('large bold headings need 3:1, smaller ones 4.5:1 (WCAG AA)', () => {
     // #767676 on white is 4.54:1 and #949494 is 3.03:1.

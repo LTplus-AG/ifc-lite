@@ -80,10 +80,11 @@ const LARGE_BOLD_TITLE_SIZE = 14;
 /**
  * The contrast of a heading's ink on what it is printed on (its strip, or white paper without one),
  * and the WCAG AA minimum for the size it prints at: `scale` is the block's `blockScale`, which a
- * heading follows. Authored colours are never changed, so the editor warns instead.
+ * heading follows, and `unit` a chart's text unit, which its default heading size follows.
+ * Authored colours are never changed, so the editor warns instead.
  */
-export function blockTitleContrast(block: BlockHeaderStyleFields, scale = 1): { ratio: number; minimum: number } {
-  const style = blockTitleStyle(block);
+export function blockTitleContrast(block: BlockHeaderStyleFields, scale = 1, unit = 1): { ratio: number; minimum: number } {
+  const style = blockTitleStyle(block, BLOCK_TITLE_SIZE_DEFAULT * unit);
   const ratio = contrastRatio(rgbChannels(style.textColor ?? '#000000'), rgbChannels(style.backgroundColor ?? '#ffffff'));
   return { ratio, minimum: style.size * scale >= LARGE_BOLD_TITLE_SIZE ? TITLE_CONTRAST_AA_LARGE : TITLE_CONTRAST_AA };
 }

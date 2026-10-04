@@ -11,6 +11,8 @@ import type { BlockTitle } from '@/lib/document/block-title';
 import { BlockTitleEditor } from './BlockTitleEditor.js';
 
 const warning = (block: BlockTitle) => render(<BlockTitleEditor block={block} onChange={() => {}} />).querySelector('[data-block-title-contrast]');
+/** The warning's text, or null: a failing assertion then prints a sentence, not a DOM node. */
+const warningText = (block: BlockTitle) => warning(block)?.textContent ?? null;
 
 describe('BlockTitleEditor contrast warning (#6705 F5)', () => {
   afterEach(cleanup);
@@ -30,13 +32,20 @@ describe('BlockTitleEditor contrast warning (#6705 F5)', () => {
   it('uses the stricter minimum for a large title on a block shrunk below 14pt', () => {
     // #949494 on white is 3.03:1: enough for a 14pt bold title, not for the 7pt it prints at in a 50% block.
     const block = { kind: 'text', id: 't', style: 'body', text: 'x', title: 'Doors', titleTextColor: '#949494', titleFontSize: 14 } as BlockTitle;
-    assert.equal(warning(block), null);
+    assert.equal(warningText(block), null);
     cleanup();
     assert.ok(warning({ ...block, scale: 0.5 } as BlockTitle), 'the 50% block warns');
   });
+  it('judges an unstyled chart title at the size its chart text prints it', () => {
+    // #949494 on white is 3.03:1: enough for the 16.5pt title of 18pt chart text (unit 1.5), not for the 11pt one of 12pt text.
+    const chart = { kind: 'chart', id: 'c', title: 'Doors', titleTextColor: '#949494' };
+    assert.equal(warningText({ ...chart, fontSize: 18 } as BlockTitle), null);
+    cleanup();
+    assert.ok(warning({ ...chart, fontSize: 12 } as BlockTitle), 'the default chart text size warns');
+  });
   it('stays silent for the default heading and for a background with automatic ink', () => {
-    assert.equal(warning({ title: 'Doors' }), null);
-    assert.equal(warning({ title: 'Doors', titleBackgroundColor: '#ffff00' }), null);
-    assert.equal(warning({ title: 'Doors', titleTextColor: '#000000', titleBackgroundColor: '#ffff00' }), null);
+    assert.equal(warningText({ title: 'Doors' }), null);
+    assert.equal(warningText({ title: 'Doors', titleBackgroundColor: '#ffff00' }), null);
+    assert.equal(warningText({ title: 'Doors', titleTextColor: '#000000', titleBackgroundColor: '#ffff00' }), null);
   });
 });

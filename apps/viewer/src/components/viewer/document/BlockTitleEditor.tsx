@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { chartFontScale } from '@ifc-lite/charts';
 import { useTranslation } from '@/i18n';
 import { BLOCK_TITLE_SIZE_DEFAULT, BLOCK_TITLE_SIZE_MAX, BLOCK_TITLE_SIZE_MIN, blockTitleContrast, blockTitleStyle, type BlockTitle } from '@/lib/document/block-title';
 import { blockScale } from '@/lib/document/types';
@@ -17,8 +18,9 @@ export function BlockTitleEditor<T extends BlockTitle>({ block, onChange, placeh
 }) {
   const { t } = useTranslation();
   const style = blockTitleStyle(block);
-  // The heading prints at the block's size, so a title shrunk below 14pt needs the stricter minimum.
-  const contrast = blockTitleContrast(block, 'kind' in block && typeof block.kind === 'string' ? blockScale(block as { kind: string; scale?: number }) : 1);
+  // The heading prints at the block's size (and a chart's default at its text unit), so judge it there.
+  const kinded = 'kind' in block && typeof block.kind === 'string' ? block as unknown as { kind: string; scale?: number; fontSize?: number } : null;
+  const contrast = blockTitleContrast(block, kinded ? blockScale(kinded) : 1, kinded?.kind === 'chart' ? chartFontScale(kinded.fontSize) : 1);
   return <div className="flex min-w-0 flex-1 flex-col gap-1" data-block-title-editor>
     <input className={`${field} min-w-0 flex-1`} value={block.title ?? ''}
       placeholder={placeholder ?? t('document.block.titlePlaceholder')}

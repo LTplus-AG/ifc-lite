@@ -45,14 +45,18 @@ export function FlowProposalReview() {
         useFlowReview.setState({ proposal, approved: false });
       })}>{t('assistant.reviewFlowAnswer')}</Button>
       {review.proposal && <>
-        <p>{t('assistant.flowTarget', { id: review.proposal.target.id, name: review.proposal.target.name })}</p>
-        <EvidenceView evidence={review.proposal.evidence} state={isFlowProposalCurrent(review.proposal) ? 'captured' : 'stale'} />
+        <p className="font-medium break-words">{t('assistant.flowTarget', { id: review.proposal.target.id, name: review.proposal.target.name })}</p>
         <p>{t('assistant.flowGrants', { capabilities: review.proposal.addedCapabilities.join(', ') || t('assistant.none') })}</p>
         {review.proposal.trackingChanged && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('assistant.flowTrackingWarning')}</p>}
         {!isFlowProposalCurrent(review.proposal) && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('assistant.flowProposalStale')}</p>}
         <details><summary className="cursor-pointer">{t('assistant.flowBefore')}</summary><pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{review.proposal.beforeJson}</pre></details>
         <details><summary className="cursor-pointer">{t('assistant.flowAfter')}</summary><pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{review.proposal.afterJson}</pre></details>
-        <p className="font-mono text-2xs text-muted-foreground break-all">{review.proposal.digest}</p>
+        <details><summary className="cursor-pointer">{t('assistant.evidenceDetails')}</summary>
+          <div className="mt-2 space-y-1">
+            <EvidenceView evidence={review.proposal.evidence} state={isFlowProposalCurrent(review.proposal) ? 'captured' : 'stale'} />
+            <p className="font-mono text-2xs text-muted-foreground break-all">{review.proposal.digest}</p>
+          </div>
+        </details>
         <label className="flex items-start gap-2"><input type="checkbox" checked={review.approved}
           disabled={!isFlowProposalCurrent(review.proposal)} onChange={event => useFlowReview.setState({ approved: event.target.checked })} />{t('assistant.flowApproved')}</label>
         <Button size="sm" className="h-7" disabled={!review.approved || !isFlowProposalCurrent(review.proposal)} onClick={() => run(() => {
@@ -60,12 +64,12 @@ export function FlowProposalReview() {
           useFlowReview.setState({ receipts: [...review.receipts, receipt].slice(-20), proposal: null, approved: false });
         })}>{t('assistant.applyFlow')}</Button>
       </>}
-      {receipt && <>
+      {receipt && <div aria-live="polite" className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2 space-y-2">
         <p>{t('assistant.flowApplied')}</p>
-        <Button size="sm" variant="outline" disabled={!isFlowReceiptCurrent(receipt)} onClick={() => run(() => {
+        <Button size="sm" variant="outline" className="h-7" disabled={!isFlowReceiptCurrent(receipt)} onClick={() => run(() => {
           undoFlowProposal(receipt); useFlowReview.setState({ receipts: review.receipts.slice(0, -1) });
         })}>{t('assistant.undoFlow')}</Button>
-      </>}
+      </div>}
       {review.error && <p role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive">{review.error}</p>}
     </div>
   </section>;

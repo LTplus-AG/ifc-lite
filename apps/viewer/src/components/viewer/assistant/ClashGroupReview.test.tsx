@@ -39,8 +39,17 @@ test('mounted group preview shows full accounting, escapes output and refuses st
   assert.equal(ui.querySelector('script, img'), null);
   assert.ok(ui.querySelector('section[aria-label="Captured evidence context"]'));
   assert.equal(useViewerStore.getState(), native);
-  assert.equal(ui.querySelectorAll('button').length, 1, 'preview exposes no apply/BCF action');
+  // Beyond Preview, the only controls show native occurrences in the model: no apply/BCF action.
+  const focus = [...ui.querySelectorAll('button')].filter(button => button !== preview);
+  assert.deepEqual(focus.map(button => button.getAttribute('aria-label') ?? button.title),
+    ['Show <script>bad()</script> in the model', 'Show this clash in the model']);
+  assert.ok(focus.every(button => !button.disabled), 'cited occurrences resolve against the live native report');
+  focus.forEach(button => click(button));
+  const focused = useViewerStore.getState();
+  assert.equal(focused.clashReviews, native.clashReviews, 'focusing never records a review decision');
+  assert.equal(focused.clashResult, native.clashResult);
   act(() => useViewerStore.setState({ mutationVersion: native.mutationVersion + 1 }));
   assert.equal(preview.disabled, true);
+  assert.ok(focus.every(button => button.disabled), 'a stale preview cannot drive the scene');
   assert.ok(ui.querySelector('[role="alert"]'));
 });

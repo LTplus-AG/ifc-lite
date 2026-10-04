@@ -3,10 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo, useState } from 'react';
-import { Layers } from 'lucide-react';
+import { Crosshair, Layers } from 'lucide-react';
+import type { Clash } from '@ifc-lite/clash';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
+import { useClash } from '@/hooks/useClash';
+import { manualClashOccurrenceKey } from '@/lib/clash/manual-groups';
 import { useAssistant } from '@/lib/assistant/conversation';
 import { evidenceIsCurrent } from '@/lib/assistant/evidence';
 import { prepareClashGroupPreview, type ClashGroupPreview } from '@/lib/assistant/clash-group-proposal';
@@ -15,12 +19,17 @@ import { proposalOf } from './AssistantConversation';
 
 type Finding = ClashGroupPreview['groups'][number]['findings'][number];
 
-function FindingRow({ finding }: { finding: Finding }) {
+/** A row focuses its native occurrence; a missing or stale occurrence stays inert text. */
+function FindingRow({ finding, onFocus }: { finding: Finding; onFocus: (() => void) | null }) {
   const { t } = useTranslation();
   const side = (codes: string[]) => codes.length ? codes.join('/') : t('assistant.disciplineUnknown');
-  return <li className="grid grid-cols-[auto_1fr] gap-x-2 py-0.5">
-    <span className="font-mono text-muted-foreground">{finding.citation}</span>
-    <span className="min-w-0 break-words">{finding.nativeType} · {finding.nativeSeverity} · {side(finding.disciplineCandidates.a)} ↔ {side(finding.disciplineCandidates.b)}</span>
+  const label = `${finding.nativeType} · ${finding.nativeSeverity} · ${side(finding.disciplineCandidates.a)} ↔ ${side(finding.disciplineCandidates.b)}`;
+  return <li>
+    <button type="button" disabled={!onFocus} onClick={onFocus ?? undefined} title={t('assistant.clashFindingFocus')}
+      className="grid w-full grid-cols-[auto_1fr] gap-x-2 rounded px-1 py-0.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none">
+      <span className="font-mono text-muted-foreground">{finding.citation}</span>
+      <span className="min-w-0 break-words">{label}</span>
+    </button>
   </li>;
 }
 
@@ -36,6 +45,10 @@ export function ClashGroupReview() {
   const eligible = assistant.snapshot?.source === 'clash' && evidenceIsCurrent(assistant.snapshot)
     && proposed && assistant.status !== 'streaming' && assistant.error !== 'truncated-output';
   const stale = preview ? !evidenceIsCurrent(preview.evidence) : false;
+  const { result, focusClash, focusClashes } = useClash();
+  // Resolve against the live native report; a stale preview never drives the scene.
+  const native = useMemo(() => new Map((result?.clashes ?? []).map(clash => [manualClashOccurrenceKey(clash), clash])), [result]);
+  const resolve = (findings: Finding[]): Clash[] => stale ? [] : findings.flatMap(finding => native.get(finding.occurrence) ?? []);
   if (!proposed && !preview && !error) return null;
   return <section aria-label={t('assistant.clashGroupReview')} className="mx-3 my-2 rounded border border-border text-xs">
     <h3 className="flex items-center gap-1.5 border-b border-border px-2 py-1.5 font-semibold">
@@ -59,13 +72,20 @@ export function ClashGroupReview() {
         </dl>
         <p className="text-muted-foreground">{t('assistant.clashGroupInert')}</p>
         {preview.groups.map((group, index) => <section key={index} className="rounded border border-border p-2 space-y-1" aria-label={group.name}>
-          <h4 className="flex items-baseline justify-between gap-2 font-semibold">
-            <span className="min-w-0 break-words">{group.name}</span>
-            <span className="shrink-0 text-2xs font-normal text-muted-foreground">{t('assistant.proposalFindings', { count: group.findings.length })}</span>
+          <h4 className="flex items-start gap-1 font-semibold">
+            <span className="min-w-0 flex-1 break-words">{group.name}</span>
+            <span className="shrink-0 pt-0.5 text-2xs font-normal text-muted-foreground">{t('assistant.proposalFindings', { count: group.findings.length })}</span>
+            <IconButton label={t('assistant.clashGroupFocus', { name: group.name })} className="-my-1 h-6 w-6 shrink-0"
+              disabled={!resolve(group.findings).length} onClick={() => focusClashes(resolve(group.findings))}>
+              <Crosshair className="h-3.5 w-3.5" />
+            </IconButton>
           </h4>
           <p className="whitespace-pre-wrap break-words">{group.explanation}</p>
           <p className="text-2xs italic text-muted-foreground">{t('assistant.clashGroupInference')}</p>
-          <ul className="border-t border-border pt-1">{group.findings.map(finding => <FindingRow key={finding.occurrence} finding={finding} />)}</ul>
+          <ul className="border-t border-border pt-1">{group.findings.map(finding => {
+            const clash = resolve([finding])[0];
+            return <FindingRow key={finding.occurrence} finding={finding} onFocus={clash ? () => focusClash(clash) : null} />;
+          })}</ul>
         </section>)}
         <details><summary className="cursor-pointer text-muted-foreground hover:text-foreground">{t('assistant.evidenceDetails')}</summary>
           <div className="mt-2"><EvidenceView evidence={preview.evidence} state={stale ? 'stale' : 'captured'} /></div>

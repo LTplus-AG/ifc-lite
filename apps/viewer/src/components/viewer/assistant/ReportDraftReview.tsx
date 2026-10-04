@@ -54,21 +54,30 @@ export function ReportDraftReview() {
       }}>{t('assistant.prepareReport')}</Button>
       </div>
       {draft && <>
-        <p className="font-semibold">{draft.document.name}</p>
-        <EvidenceView evidence={draft.source.evidence} state="historical" />
-        <p>{draft.source.messages.at(-1)?.model}</p>
-        <blockquote className="whitespace-pre-wrap break-words border-l-2 border-border pl-2 max-h-64 overflow-auto">{draft.source.messages.at(-1)?.content}</blockquote>
-        <details><summary>{t('assistant.reportContents')}</summary><pre className="whitespace-pre-wrap break-words max-h-64 overflow-auto">{draft.documentJson}</pre></details>
-        {!current && !saved && <p role="alert">{t('assistant.reportStale')}</p>}
+        <div>
+          <p className="font-semibold break-words">{draft.document.name}</p>
+          <p className="text-2xs text-muted-foreground">{draft.source.messages.at(-1)?.model}</p>
+        </div>
+        <blockquote className="whitespace-pre-wrap break-words border-l-2 border-border pl-2">{draft.source.messages.at(-1)?.content}</blockquote>
+        <details><summary className="cursor-pointer text-muted-foreground hover:text-foreground">{t('assistant.evidenceDetails')}</summary>
+          <div className="mt-2"><EvidenceView evidence={draft.source.evidence} state="historical" /></div>
+        </details>
+        <details><summary className="cursor-pointer text-muted-foreground hover:text-foreground">{t('assistant.reportContents')}</summary><pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{draft.documentJson}</pre></details>
+        {!current && !saved && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('assistant.reportStale')}</p>}
         <label className="flex items-start gap-2"><input type="checkbox" checked={approved} disabled={!current || busy || saved}
           onChange={event => setApproved(event.target.checked)} />{t('assistant.reportApproved')}</label>
-        <Button size="sm" disabled={!approved || !current || busy || saved} onClick={() => void save()}>{t('assistant.saveReport')}</Button>
-        <Button variant="outline" size="sm" disabled={!approved || busy} onClick={() => exportDocument(draft.document)}>{t('assistant.exportReport')}</Button>
-        {saved && <><p>{t('assistant.reportSaved')}</p><Button variant="outline" size="sm" onClick={() => {
-          store.setActiveDocumentId(draft.document.id); panels.openInHome('document');
-        }}>{t('assistant.openReport')}</Button></>}
+        <div className="flex flex-wrap gap-1">
+          <Button size="sm" className="h-7" disabled={!approved || !current || busy || saved} onClick={() => void save()}>{t('assistant.saveReport')}</Button>
+          <Button variant="outline" size="sm" className="h-7" disabled={!approved || busy} onClick={() => exportDocument(draft.document)}>{t('assistant.exportReport')}</Button>
+        </div>
+        {saved && <div aria-live="polite" className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2 space-y-2">
+          <p>{t('assistant.reportSaved')}</p>
+          <Button variant="outline" size="sm" className="h-7" onClick={() => {
+            store.setActiveDocumentId(draft.document.id); panels.openInHome('document');
+          }}>{t('assistant.openReport')}</Button>
+        </div>}
       </>}
-      {error && <p role="alert">{error}</p>}
+      {error && <p role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive">{error}</p>}
     </div>
     <ContentStorageNotice status={store.documentsStorage} retry={store.retryDocumentsSave} restore={store.restoreDocuments} />
   </details>;

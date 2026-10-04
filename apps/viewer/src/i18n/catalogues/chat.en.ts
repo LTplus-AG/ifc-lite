@@ -13,7 +13,7 @@ import type { TranslationValue } from '../types';
  */
 export const chatEn = {
   'assistant.reportReview': 'Review report draft',
-  'assistant.reportHint': 'Prepare the latest completed answer as an editable document with captured evidence. Verify claims and citations before saving or sharing.',
+  'assistant.reportHint': 'Turn the latest answer into an editable document that keeps its captured evidence. Verify claims and citations before saving.',
   'assistant.reportName': 'Report name',
   'assistant.prepareReport': 'Prepare report draft',
   'assistant.reportContents': 'Inspect complete document and evidence',
@@ -117,6 +117,8 @@ export const chatEn = {
   'assistant.proposalNext': 'Review it below. Nothing changes until you apply it.',
   'assistant.proposalJson': 'Show JSON',
   'assistant.disciplineUnknown': 'Unknown',
+  'assistant.clashFindingFocus': 'Show this clash in the model',
+  'assistant.clashGroupFocus': 'Show {name} in the model',
 
   // ── ChatMessage.tsx ──
   'chat.message.attachmentRows': {

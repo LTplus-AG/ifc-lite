@@ -6,6 +6,8 @@
 /// <reference types="unplugin-icons/types/react" />
 
 interface ImportMetaEnv {
+  /** Same-origin cookie-backed Dropbox and Microsoft cloud sign-in. */
+  readonly VITE_CLOUD_HOSTED?: string;
   readonly VITE_AUTODESK_CLIENT_ID?: string;
   readonly VITE_AUTODESK_HOSTED?: string;
   /** Server URL for IFC processing (also used by superset integration) */

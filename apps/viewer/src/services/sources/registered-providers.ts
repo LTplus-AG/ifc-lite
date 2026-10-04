@@ -7,6 +7,7 @@ import { AutodeskProvider, createAutodeskService } from '@ifc-lite/source-autode
 import { DaluxBuildProvider } from '@ifc-lite/source-dalux';
 import { DropboxProvider } from '@ifc-lite/source-dropbox';
 import { MsGraphProvider } from '@ifc-lite/source-msgraph';
+import { hostedDropbox, hostedMsGraph } from './hosted-cloud-providers';
 import type { FileSourceProviderFactory } from './source-host';
 
 /**
@@ -24,7 +25,9 @@ import type { FileSourceProviderFactory } from './source-host';
  * version compatibility is enforced where every provider's is, at
  * `SourceHost.register()` (#5228).
  *
- * `@ifc-lite/source-dropbox` requires a `clientId` preference (a Dropbox app
+ * Hosted deployments enable `VITE_CLOUD_HOSTED=true` for server-managed
+ * Dropbox and Microsoft sign-in, with no end-user app keys or tokens.
+ * Without that flag, `@ifc-lite/source-dropbox` requires a `clientId` preference (a Dropbox app
  * key), and `@ifc-lite/source-msgraph` requires a `clientId` preference (an
  * Azure AD app registration), to actually sign in. See each package's README
  * for what to register. Registering them here with no client id configured is
@@ -38,8 +41,8 @@ export const BUILT_IN_PROVIDER_FACTORIES: readonly FileSourceProviderFactory[] =
     service: import.meta.env.VITE_AUTODESK_HOSTED === 'true' ? createAutodeskService() : undefined,
   }),
   () => new DaluxBuildProvider(),
-  () => new DropboxProvider(),
-  () => new MsGraphProvider(),
+  () => import.meta.env.VITE_CLOUD_HOSTED === 'true' ? hostedDropbox() : new DropboxProvider(),
+  () => import.meta.env.VITE_CLOUD_HOSTED === 'true' ? hostedMsGraph() : new MsGraphProvider(),
 ];
 
 /** Every built-in provider, constructed. The drift guard's view of the list above. */

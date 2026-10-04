@@ -16,10 +16,13 @@ The [full program](viewer-ai-plan.md) remains the completion contract. Every pac
 | [#6835](https://github.com/LTplus-AG/ifc-lite/pull/6835) | Native load diagnostics and adapter register | Unavailable/failure/federation/sample/replacement invariants; native panel action and portable reports. Missing provider refusal and completion-visible CI capture; full adapter charter #6833 remains open. |
 | [#6837](https://github.com/LTplus-AG/ifc-lite/pull/6837) | Local HTTP BCF publication evidence | 50 connector/publication tests; parsed SketchUp identity and native archive roundtrip; permission/vocabulary rejection and committed-but-lost effects. Controlled peer is not vendor conformance or a durable outbox. |
 | [#6841](https://github.com/LTplus-AG/ifc-lite/pull/6841) | Shared frozen evidence view | Mounted discussion/document/Flow integration, captured/historical/stale states, federation omissions and escaped source text. Canonical fingerprint guard; successful CI journey video retention. Broader U02 remains open. |
+| [#6843](https://github.com/LTplus-AG/ifc-lite/pull/6843) | Native content registry/recovery | 92 native storage/assistant/comparison/validation tests. Later legacy assistant values are preserved without replay; kind/policy/codecs and native host mapping are shared. New durable artifact families remain open. |
 
 CI results are live measurements on each PR, not a permanent green claim in this document. Exhausted provider budgets are infrastructure failures, remain visible and do not replace evidence-based self-review. A successful “Review posted” job does not establish that a provider actually reviewed the code.
 
 Publication acceptance uses a local test server, selected by the user. The user will review recorded coordinator workflows; final UX acceptance is still outstanding. Native HTTP publication and recovery boundaries are measured in the [BCF evidence register](viewer-ai-bcf-publication.md).
+
+The user selected native clash type/severity plus discipline pairs as the default classification/grouping taxonomy. BCF drafts leave assignees empty until a verified project mapping is chosen.
 
 ## Package coverage and remaining completion work
 

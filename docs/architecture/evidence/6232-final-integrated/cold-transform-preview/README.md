@@ -6,13 +6,15 @@ Logs are losslessly gzipped with timestamp zero. JSON and PNG bytes are copied u
 
 Native missing-view controls and real-browser first-authoring initialized-empty-view preview/cancel are distinct evidence scopes. Failed attempts and preliminary captures are retained under their literal labels; they are not final success receipts.
 
-Six native missing-view controls genuinely fail with the old planner and pass with the fix, preserving copied source/native meshes, overlay/history/allocator and peers. Same-host Align is preview/cancel proof only; independent-reference controls qualify commits.
+Six native missing-view controls genuinely fail with the old planner and pass with the fix, preserving copied source/native meshes, overlay/history and peers; allocator remains at the canonical source watermark after editor initialization. Same-host Align is preview/cancel proof only; independent-reference controls qualify commits.
 
 Root source422a:111 successful typecheck tasks(all3401 files),33 focused controls with zero skips/cache, lint8494 with no touched warnings. Main-integrated source57cb:111 successful typecheck tasks(all3403),130 document controls with zero skips/cache. Production planner/test/API/Rust/runtime blobs are unchanged across main8a integration.
 
 Historical full SDK/mutations/MCP/browser/oracle artifacts retain their literal earlier labels in the existing archives; this supplement does not claim rerunning them.
 
-Final strengthened headful WSL Chrome source57cb passes all six one/two-model registered Align/Move/Rotate preview and real Escape cancellation contexts,28captured stages. Loaded-view identity/effective emptiness, copied graph/native geometry/history/allocator and peers are asserted. Ghost vertex bounds agree with actual fresh native source geometry. No browser missing-view or same-host Align commit claim.
+Final strengthened headful WSL Chrome source57cb passes all six one/two-model registered Align/Move/Rotate preview and real Escape cancellation contexts,28captured stages. Loaded-view identity/effective emptiness, copied graph/native geometry/history and peers; no allocation after canonical editor initialization are asserted. Ghost vertex bounds agree with actual fresh native source geometry. No browser missing-view or same-host Align commit claim.
+
+Allocator qualification: the real loader view begins at1; first canonical StoreEditor initialization sets its watermark to source maximum EXPRESS ID9992+1=9993 in every context. Preview and Escape retain9993 without new records. Original audit scope used overly broad allocator-preservation wording; the clarified audit records all six actual initialization transitions. Original capture/audit bytes remain preserved.
 
 ## Sources
 
@@ -111,7 +113,7 @@ Final strengthened headful WSL Chrome source57cb passes all six one/two-model re
 
 - [6232-registered-preview-final-stable-browser.log.gz](6232-registered-preview-final-stable-browser.log.gz): **final**, source `57cb2ed558ab9d4cbd6244063f2d796f9b71a64c`. Actual completed stable final run: six PASS, no concurrent dependency builds. Original SHA-256 `fe418f2ed9d26531d9e462c48ead6b9cf9690bd9d4ac15ce3b06c4ac297d2b3f`.
 
-- [6232-registered-preview-final-browser-audit.json](6232-registered-preview-final-browser-audit.json): **final**, source `57cb2ed558ab9d4cbd6244063f2d796f9b71a64c`. Six exact-source/runtime receipts,28stages; effective-empty overlay and loaded-view identity guarded, actual ghost pose and Escape cancellation. Original SHA-256 `efa548c6865efa6a00b9f3c51e908297657fac39f6a441a51cc3f14233006e31`.
+- [6232-registered-preview-final-browser-audit.json](6232-registered-preview-final-browser-audit.json): **final**, source `57cb2ed558ab9d4cbd6244063f2d796f9b71a64c`. Original generated browser audit with overly broad allocator wording, preserved unchanged. Corrected derived audit separately documents canonical initialization1→9993 and no later allocation; original counts/results unchanged. Original SHA-256 `efa548c6865efa6a00b9f3c51e908297657fac39f6a441a51cc3f14233006e31`.
 
 - [registered-align-preview-1-baseline.png](registered-align-preview-1-baseline.png): **final**, source `57cb2ed558ab9d4cbd6244063f2d796f9b71a64c`. Original final browser screenshot/receipt/runtime/console/WASM/remesh witness. Source57cb; same real loaded view retained and peers unchanged. Original SHA-256 `21743b0b719e4ac199a80a7a0b2ba661e7f4de641ba4cb9818744da1570904ee`.
 
@@ -228,3 +230,7 @@ Final strengthened headful WSL Chrome source57cb passes all six one/two-model re
 - [registered-rotate-preview-2-runtime.json](registered-rotate-preview-2-runtime.json): **final**, source `57cb2ed558ab9d4cbd6244063f2d796f9b71a64c`. Original final browser screenshot/receipt/runtime/console/WASM/remesh witness. Source57cb; same real loaded view retained and peers unchanged. Original SHA-256 `e2f0a36d769cec1a7796ad800bc4581aba1771f719e23b950c521194c43705d6`.
 
 - [registered-rotate-preview-2-wasm.json](registered-rotate-preview-2-wasm.json): **final**, source `57cb2ed558ab9d4cbd6244063f2d796f9b71a64c`. Original final browser screenshot/receipt/runtime/console/WASM/remesh witness. Source57cb; same real loaded view retained and peers unchanged. Original SHA-256 `22541c18be22f5b771e8375be144d5f5831e10d3f341d0cfd014d5ae8c94d8b4`.
+
+- [6232-registered-preview-final-browser-audit-clarified.json](6232-registered-preview-final-browser-audit-clarified.json): **proof**, source `57cb2ed558ab9d4cbd6244063f2d796f9b71a64c`. Derived clarification audit: six real source-watermark initializations and unchanged post-initialization allocator. References exact original audit hash; original captures unchanged. Original SHA-256 `fb96d4098c73057ee70dcfc88051d25a3ed229c04b0f6c0fcfa414546e92c923`.
+
+- [6232-cold-preview-independent-allocator-correction-proof.json](6232-cold-preview-independent-allocator-correction-proof.json): **proof**, source `57cb2ed558ab9d4cbd6244063f2d796f9b71a64c`. Independent six-context source-maximum, canonical allocator initialization/no later allocation and exact peer/graph/geometry/history verification. Original SHA-256 `b3fc384692030de133f5ce6ae77015412caecb821bb428dcc1bde9393b976e95`.

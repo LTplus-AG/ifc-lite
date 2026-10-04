@@ -13,7 +13,7 @@
     "wasm": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
     "js": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d"
   },
-  "manifestSHA256": "2ff5811198293bf59092e02121867875fb67112d1245474654cf2ee625dc8b39",
+  "manifestSHA256": "8b5c9d8a37d90e64e945f42a4d52a8a34a10b79fd0241fbe5a78cf3aff6c4b20",
   "artifacts": [
     {
       "path": "/tmp/6232-cold-preview-receipt.json",
@@ -416,7 +416,7 @@
       "sha256": "efa548c6865efa6a00b9f3c51e908297657fac39f6a441a51cc3f14233006e31",
       "status": "final",
       "source": "57cb2ed558ab9d4cbd6244063f2d796f9b71a64c",
-      "scope": "Six exact-source/runtime receipts,28stages; effective-empty overlay and loaded-view identity guarded, actual ghost pose and Escape cancellation.",
+      "scope": "Original generated browser audit with overly broad allocator wording, preserved unchanged. Corrected derived audit separately documents canonical initialization1\u21929993 and no later allocation; original counts/results unchanged.",
       "archive": "6232-registered-preview-final-browser-audit.json",
       "archiveSHA256": "efa548c6865efa6a00b9f3c51e908297657fac39f6a441a51cc3f14233006e31",
       "originalBytes": 2911,
@@ -1059,6 +1059,28 @@
       "archiveSHA256": "22541c18be22f5b771e8375be144d5f5831e10d3f341d0cfd014d5ae8c94d8b4",
       "originalBytes": 829,
       "archiveBytes": 829
+    },
+    {
+      "path": "/tmp/6232-registered-preview-final-browser-audit-clarified.json",
+      "sha256": "fb96d4098c73057ee70dcfc88051d25a3ed229c04b0f6c0fcfa414546e92c923",
+      "status": "proof",
+      "source": "57cb2ed558ab9d4cbd6244063f2d796f9b71a64c",
+      "scope": "Derived clarification audit: six real source-watermark initializations and unchanged post-initialization allocator. References exact original audit hash; original captures unchanged.",
+      "archive": "6232-registered-preview-final-browser-audit-clarified.json",
+      "archiveSHA256": "fb96d4098c73057ee70dcfc88051d25a3ed229c04b0f6c0fcfa414546e92c923",
+      "originalBytes": 4868,
+      "archiveBytes": 4868
+    },
+    {
+      "path": "/tmp/6232-cold-preview-independent-allocator-correction-proof.json",
+      "sha256": "b3fc384692030de133f5ce6ae77015412caecb821bb428dcc1bde9393b976e95",
+      "status": "proof",
+      "source": "57cb2ed558ab9d4cbd6244063f2d796f9b71a64c",
+      "scope": "Independent six-context source-maximum, canonical allocator initialization/no later allocation and exact peer/graph/geometry/history verification.",
+      "archive": "6232-cold-preview-independent-allocator-correction-proof.json",
+      "archiveSHA256": "b3fc384692030de133f5ce6ae77015412caecb821bb428dcc1bde9393b976e95",
+      "originalBytes": 5369,
+      "archiveBytes": 5369
     }
   ]
 }

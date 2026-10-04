@@ -16,7 +16,11 @@ import { clearLastSectionMode } from './slices/sectionSlice.js';
 import { DEFAULT_CONTROLS_MODE } from './slices/cameraSlice.js';
 import { endClashScenePresentation, type ClashSceneTeardown } from '@/lib/clash/visibility-ownership';
 
+import { readCurrentSymbolicParseCensus, type SymbolicParseCensus } from './symbolic-parse-observer.js';
+
 export interface ViewerActions {
+  /** Passive private perf observer; refuses incomplete parses without starting work. */
+  readSymbolicParseOutcomes: () => SymbolicParseCensus;
   resetViewerState: () => void;
   /**
    * Open one right-side analysis panel and close the others, so the chosen
@@ -59,6 +63,7 @@ export interface ViewerActions {
 }
 
 export const createViewerActions: StateCreator<ViewerState, [], [], ViewerActions> = (...args) => ({
+  readSymbolicParseOutcomes: () => readCurrentSymbolicParseCensus(args[1]()),
   // Reset all viewer state when loading new file
   // Note: Does NOT clear models - use clearAllModels() for that
   resetViewerState: () => {

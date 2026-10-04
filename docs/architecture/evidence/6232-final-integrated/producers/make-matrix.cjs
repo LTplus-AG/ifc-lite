@@ -31,61 +31,10 @@ const rows=[
  ['element.trimExtend','trimExtendElement','edit_element_geometry: trim_extend','element-trim-extend.test.ts / physical-edit.test.ts','physical: trim'],
 ].map(([command,sdk,mcp,tests,browser])=>({command,sdk,mcp,tests,browser,finalAcceptance:'Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings'}));
 assert.equal(rows.length,24);assert.equal(new Set(rows.map(row=>row.command)).size,24);
-const metadata={
-  "issue": 6232,
-  "charter": "Frozen original 24 modelling commands; source-only gap map c47, not the later main command registry",
-  "exclusions": [
-    "SpaceEnvelope #6686 is a separate landed feature",
-    "Duplicate is a copy-route follow-up, not a 25th frozen command",
-    "Inspector size/defaults/profile and ChangeSet/history are cross-cutting acceptance controls"
-  ],
-  "captureState": "Latest source-bound WSL Chrome evidence is indexed under room-input-forward: two fresh Room one/two-model receipts at clean 977846c5b3aac7b70a397d0e166acdc3019a2c99 after the strict SDK Update ID boundary repair, plus six retained Physical/Align/Placement receipts at genuine clean e98a99244ecc3f5a86968c485774a77f8845ae66 after the quantity/Align repairs. The unchanged audit verifies all 8 receipts, 184 stages and 436 native/displayed witnesses. Verified matching runtime remains de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3; no new Rust build or other-suite browser run is claimed. Intervening semantic loopback main #6786 is separately qualified at clean ea1eac30b2c4b26eb356c739c42a2e23e2dfe09f under loopback-main-forward. Subsequent native-wire-deadline qualification changes one test scheduling deadline only; production source and actual capture labels remain unchanged. Later channel-profile-review fixes structured-clone error reporting through one canonical helper and strengthens the real profile refusal oracle; integrated SDK336/profile6/native MCP38 pass. Its real-channel proof is separate from the retained browser source labels. The later mcp-revert-witness strengthens one existing native state-conflict assertion, with full official actual-base OBSERVED proof and verified restoration; new-route collection gaps remain explicit. All original source/runtime labels and scope limitations remain preserved. Subsequent Room preparation and lifecycle fixes, corrected full-source qualification and two fresh Room captures at actual 902684264034c676f82fd951b3609b1db65a3e97 are archived under [room-review-lifecycle](../room-review-lifecycle/). Its reproducible mixed-source audit retains the six earlier Physical/Align/Placement capture labels; no other-suite recapture is claimed. The later test-only native-preparation-budget archive records eight scoped 30-second native integration deadlines and fresh combined typecheck/ten-control qualification; assertions, production, API and original browser/oracle source labels remain unchanged.",
-  "alignRegisteredNativeProof": "Registered-command native controls and six-mode SDK browser controls passed; fresh clean e98a99244ecc3f5a86968c485774a77f8845ae66 Align receipts preserve distinct target shifts and one/two model contexts.",
-  "lateRoomReviewQualification": {
-    "qualifiedSource": "6fcee10246506226f26fcb4381fecdb75a7869eb",
-    "sourceTree": "e54251248272271742afe25ee35d134dfb895b62",
-    "freshRoomCaptureSource": "902684264034c676f82fd951b3609b1db65a3e97",
-    "captureWholeTreeIdentical": true,
-    "archive": "../room-review-lifecycle/",
-    "repairs": [
-      "canonical history-free overlay revision for awaited preparation and geometry cache",
-      "attempt every session resource disposal before reporting failures",
-      "typed unexpected Room preparation failures preserve intentional refusals"
-    ],
-    "qualification": "Root types111/all3399, SDK341, mutations370, MCP637+2unrelatedskips, native viewer20, lint8492/API/module-size pass; original failures and corrected fixture preserved. Full official actual-main2e2 revert OBSERVED:327 baseline passes,36 attributed assertions in14 complete files, restoration verified;15 collection gaps remain explicit.",
-    "browserScope": "Only Room one/two-model captures are fresh at902684. Six Physical/Align/Placement receipts retain actual e98a992 labels. The unchanged archive auditor verifies8receipts/184stages/436native-displayed witnesses and peer state. Original source/runtime labels are preserved."
-  },
-  "nativePreparationBudgetQualification": {
-    "qualifiedSource": "dc04b1ef80961ee9d372170c1dd9e76ca08bf7f2",
-    "sourceTree": "8fb30482a12408aa5ce02b881f04345ab9140209",
-    "identicalTreeParentForward": "886ffb1790fd0689d1f75ac7f5ccf3e161b5accd",
-    "archive": "../native-preparation-budget/",
-    "scope": "Test-only finite 30-second per-case deadline for eight two-model native fault/recovery controls; two input-only controls retain default. Assertions, production, API and request/global deadlines unchanged.",
-    "qualification": "Root typecheck: 111 successful tasks, 106 cached, all 3399 test files; exact native controls: 10 passed, zero skips/cache. Original CI deadline failures and inconclusive stale prerequisite diagnosis are retained. Earlier full-suite, browser and oracle runs retain their literal source labels."
-  },
-  "transformPreviewQualification": {
-    "nativeMissingViewSource": "04337a98649415f8c1c65949be614d25cdddb4cf",
-    "combinedNativeSource": "422a46bf7c824ddf68b8e22cd807ade4d4c8d800",
-    "actualMainIntegratedSource": "57cb2ed558ab9d4cbd6244063f2d796f9b71a64c",
-    "finalBrowserSource": "57cb2ed558ab9d4cbd6244063f2d796f9b71a64c",
-    "archive": "../cold-transform-preview/",
-    "qualification": "Six genuine native old-planner assertion failures become six fixed passes; root422a types111/all3401,viewer33,lint8494; main57cb types111/all3403,document130. Native/document controls zero skips/cache. Source/API/Rust/runtime identities and original failed attempts retained.",
-    "browserScope": "Six real WSL Chrome first-authoring registered Align/Move/Rotate preview/Escape-cancel one/two-model contexts,28stages, initialized empty view retained. Native missing-view behavior and independent-reference commit controls are separate; no browser missing-view or same-host commit claim. Historical eight-receipt/184-stage/436-witness audit remains unchanged."
-  },
-  "scheduleMainForwardQualification": {
-    "qualifiedSource": "6c4b1c5ca5f2d5af5cac67dfb15dde42121e0011",
-    "sourceTree": "22e323839e223e9c4a5a4245ecfc1ff612ac21ff",
-    "actualMain": "1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9",
-    "archive": "../schedule-main-forward/",
-    "scope": "25 inherited actual-main scheduling paths; exact additive API/generated declaration union; modelling/Rust/runtime unchanged. Prior captures retain literal57cb/902/e98 source labels, no retake claimed.",
-    "qualification": "Root typecheck111/all3405/94cache; SDK341/parserSchedule59/sandboxSchedule12/viewerSchedule104 PASS0skip/cache; API9344/52pkgs/85surfaces and generatedBim14namespace freshness pass."
-  },
-  "mergeAcceptanceConditions": [
-    "All preceding stack layers must actually land on main",
-    "All four latest required current-head PR contexts must actually succeed and complete fresh feedback must be addressed",
-    "Actual-main merge trees must match reviewed qualified source immediately before each merge"
-  ]
-};
+// Qualification metadata has one canonical input; generated outputs never own it.
+const metadata=JSON.parse(fs.readFileSync(path.join(dir,'acceptance-metadata.json'),'utf8'));
+assert.equal(metadata.issue,6232);
+assert.ok(metadata.captureState && metadata.historicalCaptureState);
 const matrix={...metadata,rows};
 fs.writeFileSync(path.join(dir,'acceptance-matrix.json'),JSON.stringify(matrix,null,2)+'\n');
 let md='# #6232 frozen 24-command acceptance matrix\n\nThis is a review checklist, not a completion receipt. The original finite charter contains the following 24 commands. Later main SpaceEnvelope (#6686) is outside this charter. Ordinary placement uses the existing public `run_flow` nodes and shared SDK cores. Duplicate and inspector dimensions are cross-cutting follow-ups.\n\n';
@@ -93,4 +42,13 @@ md+=`${metadata.captureState}\n\nMerge acceptance requires predecessor landings,
 md+='\n\n| Command | SDK route | MCP route | Behavioral controls | Browser producer |\n|---|---|---|---|---|\n';
 for(const row of rows)md+=`| ${row.command} | ${row.sdk} | ${row.mcp} | ${row.tests} | ${row.browser} |\n`;
 md+='\nEvery final receipt must identify the exact source commit, loaded fixture hash and fetched WASM hash, show actual owning-model native meshes including origins, verify whole exported IFC graph/geometry Undo and unchanged peer state in one and multiple loaded models. Align native tests additionally cover source variants, per-root joined/hosted ownership and stale preparation. Browser six-mode receipts use two targets requiring different shifts. Room native MCP controls qualify Auto/Footprint/Update/Drag/Remove/Prune; this browser producer claims only Query/Pick/cut. Source metamorphic IFC4X3/mm variants are not independent authoring-tool fixtures.\n';
+md+='\nHistorical captures and forward qualifications: '+metadata.historicalCaptureState+'\n';
+for(const [key,info] of Object.entries(metadata)) {
+  if(!info || typeof info!=='object' || Array.isArray(info) || !info.archive) continue;
+  const title=key.replace(/Qualification$/, '').replace(/([a-z])([A-Z])/g,'$1 $2');
+  const source=info.qualifiedSource ?? info.source ?? info.finalBrowserSource;
+  md+=`\n## ${title}\n\n[Source-bound archive](${info.archive})${source ? `; source \`${source}\`` : ''}.\n\n`;
+  for(const field of ['qualification','scope','browserScope']) if(info[field]) md+=info[field]+'\n\n';
+}
 fs.writeFileSync(path.join(dir,'acceptance-matrix.md'),md);
+

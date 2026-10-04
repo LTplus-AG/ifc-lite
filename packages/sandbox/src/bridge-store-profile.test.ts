@@ -10,9 +10,11 @@ import { createOrdinaryStoreBackend, createBimContext, type BimBackend, type Bim
 import { buildStoreNamespace } from './bridge-store.js';
 
 let sdk: BimContext, editor: StoreEditor, view: MutablePropertyView;
+let sourceBytes: () => Uint8Array;
 beforeEach(async () => {
   const bytes = readFileSync(new URL('../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
   const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), { disableWorkerScan: true });
+  sourceBytes = () => store.source.slice(0, store.source.byteLength);
   view = new MutablePropertyView(null, 'm');
   editor = new StoreEditor(store, view);
   // Only the real ordinary SDK namespace is used; unrelated backend
@@ -49,9 +51,12 @@ for (const method of ['addColumn', 'addBeam', 'addMember']) {
   it(`bridge ${method} retains rectangular authoring and invalid canonical profile rollback (#6232)`, () => {
     const placement = method === 'addColumn' ? { Position: [20,20,0], Height: 3, Width: .3, Depth: .4 } : { Start: [20,20,0], End: [24,20,0], Width: .3, Height: .4 };
     invoke(method, placement);
-    const before = structuredClone({ records: editor.getNewEntities(), journal: view.getMutations() }), next = view.peekNextExpressId();
-    expect(() => invoke(method, { ...placement, Profile: { Type: 'CircleHollow', Radius: .2, WallThickness: .3 } })).toThrow();
-    expect({ records: editor.getNewEntities(), journal: view.getMutations() }).toEqual(before);
+    const before = structuredClone({ records: editor.getNewEntities(), journal: view.getMutations(), source: sourceBytes() }), next = view.peekNextExpressId();
+    // #6760 review 4175954704: a profile-only request reaches thickness
+    // validation instead of failing earlier on rectangular/Profile exclusivity.
+    const profilePlacement = method === 'addColumn' ? { Position: [20,20,0], Height: 3 } : { Start: [20,20,0], End: [24,20,0] };
+    expect(() => invoke(method, { ...profilePlacement, Profile: { Type: 'CircleHollow', Radius: .2, WallThickness: .3 } })).toThrow(/WallThickness must be less than Radius/);
+    expect({ records: editor.getNewEntities(), journal: view.getMutations(), source: sourceBytes() }).toEqual(before);
     expect(view.peekNextExpressId()).toBe(next);
   });
 }

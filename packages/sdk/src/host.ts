@@ -27,6 +27,15 @@ function errorResponse(id: string, cause: unknown): SdkResponse {
   return { id, error: { message: error.message, stack: error.stack } };
 }
 
+/** A resolved backend result can still fail the structured-clone boundary. */
+function postResponse(target: { postMessage(message: SdkResponse): void }, response: SdkResponse): void {
+  try {
+    target.postMessage(response);
+  } catch (error) {
+    target.postMessage(errorResponse(response.id, error));
+  }
+}
+
 export class BimHost {
   private backend: BimBackend;
   private channels: BroadcastChannel[] = [];
@@ -48,7 +57,7 @@ export class BimHost {
         return;
       }
       const response = await this.channelResponse(request);
-      if (this.channels.includes(channel)) channel.postMessage(response);
+      if (this.channels.includes(channel)) postResponse(channel, response);
     };
 
     this.forwardEvents((sdkEvent) => {
@@ -66,7 +75,7 @@ export class BimHost {
         return;
       }
       const response = await this.channelResponse(request);
-      if (this.ports.includes(port)) port.postMessage(response);
+      if (this.ports.includes(port)) postResponse(port, response);
     };
 
     this.forwardEvents((sdkEvent) => {

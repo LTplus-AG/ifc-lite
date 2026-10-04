@@ -29,6 +29,23 @@ function deferred() {
   return { adapter, complete, abort };
 }
 describe('session-owned asynchronous native imports', () => {
+  it('refreshes before starting SDK work when the old token cannot cover the job deadline (#6827)', async () => {
+    let now = Date.now(); let started = false;
+    const adapter: NativeArtifactAdapter = { kind: 'exchange', convert: async () => {
+      started = true; return { revisionId: 'version', format: 'ifc', bytes: new TextEncoder().encode('ISO-10303-21;') };
+    } };
+    const h = harness({ now: () => now, adapters: [adapter] });
+    let auth = await sessionCsrf(h.handler, await login(h.handler));
+    for (let step = 0; step < 2; step++) { now += 20 * 60_000; auth = await sessionCsrf(h.handler, auth); }
+    expect(h.calls.filter(call => call.form.get('grant_type') === 'refresh_token')).toHaveLength(0);
+    now += 5 * 60_000; // Fifteen minutes remain: insufficient for a full SDK job plus setup.
+    const accepted = await h.handler(request('import', auth, 'POST', { kind: 'exchange', ref, region: 'EMEA' }));
+    expect(accepted.status).toBe(202);
+    expect(h.calls.filter(call => call.form.get('grant_type') === 'refresh_token')).toHaveLength(1);
+    await new Promise(resolve => setImmediate(resolve)); expect(started).toBe(true);
+    const { id } = await accepted.json() as { id: string };
+    await h.handler(request(`imports/${id}/cancel`, auth, 'POST'));
+  });
   it('returns 202 before conversion, hides another session, pins artifact and consumes it once', async () => {
     const d = deferred(); const h = harness({ adapters: [d.adapter], maxConcurrentImports: 1 });
     const a = await sessionCsrf(h.handler, await login(h.handler));

@@ -115,6 +115,7 @@ function test(name, fn) {
   }
 }
 runEarlyContracts({ IfcAPI, api, test, skip, root: ROOT_DIR });
+runScanOutlineContracts({ test }); // #6871, fixture-free
 await (await import('./lib/wasm-extrusion-bridge-contracts.mjs')).runExtrusionBridgeContracts(test, ROOT_DIR); // #6306
 if (!COLUMN_AVAILABLE) {
   skip('IFC-backed WASM contracts', `column fixture missing — ${FIXTURES_HINT}`);
@@ -2151,7 +2152,6 @@ await runShardRefusalBoundaryTests(api, test);
 // The fixture is built from the viewer's class-toggle table, so a class added
 // there and not to the Rust partition fails here.
 await runClassToggleShardContract(IfcAPI, test);
-runScanOutlineContracts({ test }); // #6871
 await (await import('./lib/wasm-remesh-contracts.mjs')).runRemeshContracts({ IfcAPI, FIXTURES_DIR, FIXTURES_HINT, test, skip }); // #6232
 finishContractRun(api, passed, failed, skipped);
 

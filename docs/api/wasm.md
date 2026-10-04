@@ -429,7 +429,7 @@ The pipeline: a count grid (cell size adaptive to the point density between `min
 
 **Guarantees.** Outer rings wind counter-clockwise and holes clockwise, in plane coordinates. No ring touches or crosses itself or another, and every ring stays inside the ring `ringParents()` names. Any simplification, snap or squaring move that would break that is undone, and `diagnostics().revertedMoves` counts those undo steps. Gaps narrower than `maxGap` are closed, which is what turns the two faces of a wall into one solid band. Wider gaps, such as door openings, stay open.
 
-**Cost.** Linear in the points and the grid cells. A 1.9 M point slab traces in about 0.3 s natively. Run it off the main thread for large slabs.
+**Cost.** Linear in the points and the grid cells. A 2 M point slab at the default 2 cm cells traces in about 0.2 s through the wasm build in Node, and in about 0.3 s natively. Run it off the main thread for large slabs.
 
 ## Data Types
 

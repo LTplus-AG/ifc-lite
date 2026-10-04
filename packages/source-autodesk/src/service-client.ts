@@ -65,19 +65,28 @@ export function createAutodeskService(fetcher: typeof fetch = fetch): AutodeskSe
     },
     async importResource(ref, region, options) {
       const kind = parseAddress(ref.projectId).kind === 'site' ? 'proposal' : 'exchange';
-      options?.onPhase?.('preparing');
-      const prepared = record(await (await mutation('import', { kind, ref, region }, options?.signal)).json());
-      const id = text(prepared.id, 'import job');
-      if (!/^[A-Za-z0-9_-]{32}$/.test(id)) throw new AutodeskError('invalid-import', 'The service returned an invalid import reference.');
+      const controller = new AbortController();
+      const caller = options?.signal;
+      const abort = () => controller.abort(caller?.reason);
+      caller?.addEventListener('abort', abort, { once: true });
+      if (caller?.aborted) abort();
+      const timer = setTimeout(() => controller.abort(new AutodeskError('import-timeout', 'Autodesk import timed out. Try again.')), 15 * 60_000);
+      let id: string | undefined;
       let consumed = false;
       try {
+        options?.onPhase?.('preparing');
+        const prepared = record(await (await mutation('import', { kind, ref, region }, controller.signal)).json());
+        const candidate = text(prepared.id, 'import job');
+        if (!/^[A-Za-z0-9_-]{32}$/.test(candidate)) throw new AutodeskError('invalid-import', 'The service returned an invalid import reference.');
+        id = candidate;
         while (true) {
-          const status = record(await (await call(`imports/${id}`, { signal: options?.signal })).json());
+          controller.signal.throwIfAborted();
+          const status = record(await (await call(`imports/${id}`, { signal: controller.signal })).json());
           if (status.state === 'ready') break;
           if (status.state !== 'preparing') throw new AutodeskError('invalid-import', 'The import returned an unexpected state.');
-          await waitForImport(options?.signal);
+          await waitForImport(controller.signal);
         }
-        const response = await call(`imports/${id}/artifact`, { signal: options?.signal });
+        const response = await call(`imports/${id}/artifact`, { signal: controller.signal });
         consumed = true;
         if (response.headers.get('x-ifclite-revision') !== encodeURIComponent(ref.revisionId ?? '') ||
             response.headers.get('x-ifclite-format') !== (kind === 'proposal' ? 'ifcx' : 'ifc')) {
@@ -86,9 +95,14 @@ export function createAutodeskService(fetcher: typeof fetch = fetch): AutodeskSe
         }
         options?.onPhase?.('downloading');
         return await readWithProgress(response, options?.onProgress);
+      } catch (error) {
+        if (controller.signal.aborted) throw controller.signal.reason;
+        throw error;
       } finally {
-        if (!consumed) {
-          try { await mutation(`imports/${id}/cancel`); }
+        clearTimeout(timer);
+        caller?.removeEventListener('abort', abort);
+        if (id && !consumed) {
+          try { await mutation(`imports/${id}/cancel`, undefined, AbortSignal.timeout(5000)); }
           catch (error) {
             if (!(error instanceof AutodeskError && [401, 404].includes(error.status ?? 0))) {
               console.warn('Autodesk import cleanup failed', error instanceof Error ? error.name : 'Unknown error');

@@ -2,7 +2,7 @@
 
 This is a review checklist, not a completion receipt. The original finite charter contains the following 24 commands. Later main SpaceEnvelope (#6686) is outside this charter. Ordinary placement uses the existing public `run_flow` nodes and shared SDK cores. Duplicate and inspector dimensions are cross-cutting follow-ups.
 
-Source-bound WSL Chrome evidence is recorded under main-initialization-forward: two fresh Physical receipts at clean dc66bdb117009032892c0ef0b50038910f8d5802 plus six retained Align/Placement/Room receipts at their original clean acbc97c0be9ec495ecf6e57ce5e1b71885b85f74. Strict composed audit: 8 receipts, 184 stages, 436 native/displayed geometry witnesses. Scope limitations and earlier historical captures remain explicitly labelled.
+Fresh source-bound WSL Chrome evidence is recorded under current-arithmetic-forward: all eight Physical/Align/Placement/Room receipts at clean 7f97b57aa98022ff478cdb302ab6b6ac0ee00452 with newly regenerated current-main WASM de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3. Strict audit: 8 receipts, 184 stages, 436 native/displayed geometry witnesses. Scope limitations and all earlier historical captures retain their original source/runtime labels.
 
 Merge acceptance requires predecessor landings, all four actual current-head required gates, complete fresh feedback and reviewed merge-tree identity. The test-only Copy deadline and surviving-writer witness are recorded separately under `../copy-stress-deadline/` and `../copy-revert-witness/`. Test names identify behavioral controls; they do not assert that an unrecorded final-head run occurred.
 

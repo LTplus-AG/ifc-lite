@@ -119,3 +119,6 @@ The later `physical-repaired-forward/` directory records two fresh Physical WSL 
 
 
 Current-main initialization composition is qualified separately in [`main-initialization-forward/`](./main-initialization-forward/README.md): fresh Physical one/two-model WSL Chrome receipts at clean `dc66bdb117009032892c0ef0b50038910f8d5802`, 111 root typecheck tasks/all 3,392 tests, 60 loader/bridge controls and 34 public native MCP controls. Six retained Align/Placement/Room receipts retain their original source identities. Earlier broader executions and captures above remain historical, not relabelled.
+
+
+Latest current-main arithmetic/runtime qualification is recorded in [`current-arithmetic-forward/`](./current-arithmetic-forward/README.md): all eight browser receipts are fresh at clean `7f97b57aa98022ff478cdb302ab6b6ac0ee00452` with regenerated `de89ff1b` WASM, strict 184-stage/436-witness audit, Rust workspace and clippy, root typecheck, WASM contract and native command controls. The disk failure and exact successful execution scopes are retained. Earlier sections remain historical evidence with their original labels.

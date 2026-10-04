@@ -6,7 +6,7 @@ import { IdbConnectionLifecycle } from '../../services/idb-connection.js';
 import { sameReportEvidence } from '../flow/report-provenance.js';
 import { announceContentChange } from './content-events.js';
 import { contentImportIdentity } from './content-import-identity.js';
-import { CONTENT_POLICIES, type ContentKind } from './content-kinds.js';
+import { CONTENT_POLICIES, isContentKind, type ContentKind } from './content-kinds.js';
 
 const CONTENT_DATABASE = 'ifc-lite-user-content';
 export type ContentFailure = 'quota' | 'unavailable' | 'conflict' | 'invalid';
@@ -88,37 +88,65 @@ export async function readContentRows(kind: ContentKind): Promise<ContentRow[]> 
   return rows.sort((left, right) => left.createdAt - right.createdAt);
 }
 
-/** Revision check and write share a transaction, including deletion tombstones. */
-export async function writeContent(kind: ContentKind, id: string, payload: unknown, expected: number): Promise<ContentResult> {
+export interface ContentWrite { kind: ContentKind; id: string; payload: unknown; expected: number }
+export type ContentBatchResult = { ok: true; rows: ContentRow[] } | { ok: false; reason: ContentFailure };
+
+/** All revisions and evidence policies are checked before any write in this transaction. */
+export async function writeContentBatch(input: readonly ContentWrite[]): Promise<ContentBatchResult> {
+  if (!input.length || input.length > 100) return { ok: false, reason: 'invalid' };
+  const identities = new Set<string>();
+  for (const item of input) {
+    const identity = JSON.stringify([item.kind, item.id]);
+    if (!isContentKind(item.kind) || typeof item.id !== 'string' || !item.id.length || identities.has(identity)
+      || !Number.isSafeInteger(item.expected) || item.expected < 0 || item.expected >= Number.MAX_SAFE_INTEGER) {
+      return { ok: false, reason: 'invalid' };
+    }
+    identities.add(identity);
+  }
+  // Freeze the reviewed effect before opening an asynchronous database transaction.
+  let writes: ContentWrite[];
+  try { writes = structuredClone([...input]); }
+  catch (error) { console.warn('[User content] Non-portable content transaction refused', error); return { ok: false, reason: 'invalid' }; }
+  let failed: ContentFailure | null = null;
   try {
     const tx = await contentTransaction('items', 'readwrite');
-    const done = transactionDone(tx);
-    const store = tx.objectStore('items');
-    let result: ContentResult = { ok: false, reason: 'conflict' };
-    const request = store.get([kind, id]);
-    request.onsuccess = () => {
-      const current = request.result as ContentRow | undefined;
-      if ((current?.revision ?? 0) !== expected || (current?.deleted && payload !== null)) return;
-      if (CONTENT_POLICIES[kind].immutableEvidence && current && payload !== null) {
-        const withoutName = (value: unknown): unknown => {
-          if (!value || typeof value !== 'object') return value;
-          const { name: _name, ...evidence } = value as Record<string, unknown>;
-          return evidence;
-        };
-        if (!sameReportEvidence(withoutName(current.payload), withoutName(payload))) {
-          result = { ok: false, reason: 'invalid' }; return;
+    const done = transactionDone(tx), store = tx.objectStore('items');
+    const rows: ContentRow[] = [];
+    let remaining = writes.length;
+    writes.forEach((item, index) => {
+      const request = store.get([item.kind, item.id]);
+      request.onsuccess = () => {
+        try {
+          const current = request.result as ContentRow | undefined;
+          if ((current?.revision ?? 0) !== item.expected || current?.deleted && item.payload !== null) failed ??= 'conflict';
+          if (CONTENT_POLICIES[item.kind].immutableEvidence && current && item.payload !== null) {
+            const withoutName = (value: unknown): unknown => {
+              if (!value || typeof value !== 'object') return value;
+              const { name: _name, ...evidence } = value as Record<string, unknown>;
+              return evidence;
+            };
+            if (!sameReportEvidence(withoutName(current.payload), withoutName(item.payload))) failed ??= 'invalid';
+          }
+          const importedFrom = current?.importedFrom ?? (!current ? contentImportIdentity(item.kind, item.id) : undefined);
+          rows[index] = { kind: item.kind, id: item.id, version: 1, revision: item.expected + 1,
+            createdAt: current?.createdAt ?? contentCreatedAt(), modifiedAt: Date.now(), deleted: item.payload === null,
+            payload: item.payload, ...(importedFrom ? { importedFrom } : {}) };
+          if (--remaining === 0 && !failed) for (const row of rows) store.put(row);
+        } catch (error) {
+          failed = contentFailure(error);
+          tx.abort();
         }
-      }
-      const revision = expected + 1;
-      // Only a new, revision-checked identity may consume staged import provenance.
-      const importedFrom = current?.importedFrom ?? (!current ? contentImportIdentity(kind, id) : undefined);
-      store.put({ kind, id, version: 1, revision, createdAt: current?.createdAt ?? contentCreatedAt(),
-        modifiedAt: Date.now(), deleted: payload === null, payload,
-        ...(importedFrom ? { importedFrom } : {}) } satisfies ContentRow);
-      result = { ok: true, revision };
-    };
+      };
+    });
     await done;
-    if (result.ok) announceContentChange(kind);
-    return result;
-  } catch (error) { return { ok: false, reason: contentFailure(error) }; }
+    if (failed) return { ok: false, reason: failed };
+    for (const kind of new Set(writes.map(item => item.kind))) announceContentChange(kind);
+    return { ok: true, rows };
+  } catch (error) { return { ok: false, reason: failed ?? contentFailure(error) }; }
+}
+
+/** Existing single-item callers share the batch transaction and tombstone policy. */
+export async function writeContent(kind: ContentKind, id: string, payload: unknown, expected: number): Promise<ContentResult> {
+  const result = await writeContentBatch([{ kind, id, payload, expected }]);
+  return result.ok ? { ok: true, revision: result.rows[0].revision } : result;
 }

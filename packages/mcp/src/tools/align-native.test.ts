@@ -230,3 +230,48 @@ it.skipIf(!available)('#6232 incompatible Align shifts cannot overwrite a shared
     expect(view.peekNextExpressId()).toBe(allocator);
   } finally { for (const loaded of registry.list()) loaded.backend.dispose(); }
 });
+
+for (const relation of ['joined', 'hosted'] as const) for (const count of [1, 2]) it.skipIf(!available)(`#6232 already-aligned ${relation} target keeps its reference fixed while an independent root moves (${count} models)`, async () => {
+  const { registry, call } = await liveToolSession(count), target = count === 1 ? 'alpha' : 'beta', model = registry.get(target)!;
+  const peer = count === 2 ? registry.get('alpha')! : null;
+  try {
+    const wall = model.bim.store.addWall(target, 42, { Start: [20,20,0], End: [24,20,0], Thickness: .2, Height: 3 }).expressId;
+    const reference = relation === 'joined' ? wall : model.bim.store.addHostedDoor(target, wall, { Offset: 2, Width: 1, Height: 2 }).expressId;
+    const stationary = relation === 'hosted' ? wall : model.bim.store.addWall(target, 42, { Start: [24,20,0], End: [28,20,0], Thickness: .2, Height: 3 }).expressId;
+    if (relation === 'joined') model.bim.store.joinWalls(target, reference, stationary);
+    const mode = relation === 'joined' ? 'bottom' : 'centre', axis = relation === 'joined' ? 1 : 0;
+    const edge = (box: { lo: number[]; hi: number[] }) => mode === 'bottom' ? box.lo[axis] : (box.lo[axis] + box.hi[axis]) / 2;
+    const column = model.bim.store.addColumn(target, 42, { Position: [35,30,0], Width: .4, Depth: .4, Height: 3 }).expressId;
+    const before = await graph(model), peerBefore = peer && await graph(peer), ids = [reference, stationary, column];
+    const original = await extents(model, ids);
+    expect(edge(original.get(stationary)!)).toBeCloseTo(edge(original.get(reference)!), 4);
+    expect(edge(original.get(column)!)).not.toBeCloseTo(edge(original.get(reference)!), 4);
+    const result = await call('edit_element_geometry', { model_id: target, operation: { kind: 'align', reference_id: reference, express_ids: [stationary, column], mode } });
+    expect(result.isError, JSON.stringify(result)).not.toBe(true);
+    const after = await extents(model, ids), graphAfter = await graph(model);
+    expect(after.get(reference)).toEqual(original.get(reference));
+    expect(after.get(stationary)).toEqual(original.get(stationary));
+    expect(edge(after.get(column)!)).toBeCloseTo(edge(original.get(reference)!), 4);
+    const changed = new Set(graphAfter.filter(entity => JSON.stringify(entity) !== JSON.stringify(before.find(previous => previous.id === entity.id))).map(entity => entity.id));
+    const reader = new AnchorEntityReader(model.store, model.backend.getMutationView() ?? null);
+    for (const id of [reference, stationary]) {
+      const placement = reader.entity(id)!.attributes[5];
+      expect(changed.has(id)).toBe(false);
+      expect(typeof placement).toBe('string');
+      const placementId = Number(String(placement).slice(1));
+      expect(changed.has(placementId)).toBe(false);
+    }
+    if (peer) expect(await graph(peer)).toEqual(peerBefore);
+    expect((await call('mutation_undo', { model_id: target })).isError).not.toBe(true);
+    expect(await graph(model)).toEqual(before);
+    expect(await extents(model, ids)).toEqual(original);
+    if (peer) expect(await graph(peer)).toEqual(peerBefore);
+    // The same dependency remains protected when this root actually moves.
+    const activeRefusal = await call('edit_element_geometry', { model_id: target, operation: { kind: 'align', reference_id: reference, express_ids: [stationary, column], mode: 'left' } });
+    expect(activeRefusal.isError).toBe(true);
+    expect(activeRefusal.structuredContent?.message).toContain(relation === 'joined' ? 'reference is joined' : 'reference would move');
+    expect(await graph(model)).toEqual(before);
+    expect(await extents(model, ids)).toEqual(original);
+    if (peer) expect(await graph(peer)).toEqual(peerBefore);
+  } finally { for (const loaded of registry.list()) loaded.backend.dispose(); }
+});

@@ -80,7 +80,7 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
       const height = op.height ?? 3, z = op.z ?? 0;
       if (!Number.isFinite(weld) || weld <= 0 || !Number.isFinite(minArea) || minArea < 0 || !Number.isFinite(height) || height <= 0 || !Number.isFinite(z)) throw new Error('Room settings require finite positive weld/height and nonnegative minimum area');
       if (!['inner', 'center', 'outer'].includes(boundary)) throw new Error('Unsupported room boundary');
-      if (op.action === 'update' && (op.expressIds.length === 0 || op.expressIds.length > 10000 || new Set(op.expressIds).size !== op.expressIds.length)) throw new Error('Room update requires 1..10000 unique rooms');
+      if (op.action === 'update' && (!Array.isArray(op.expressIds) || op.expressIds.length === 0 || op.expressIds.length > 10000 || !Array.from(op.expressIds).every(id => Number.isSafeInteger(id) && id > 0) || new Set(op.expressIds).size !== op.expressIds.length)) throw new Error('Room update requires 1..10000 unique positive safe-integer rooms');
       running.add(modelId);
       try {
         const model = resolve(modelId), head = host.historyHead(modelId), journal = mutationHead(model), epoch = generation;

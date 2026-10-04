@@ -11,7 +11,7 @@ See the [architecture docs](https://ifclite.dev/docs/) for the full design.
 
 ## Registering your own provider in a viewer build
 
-The viewer registers its built-in providers (Dalux, Dropbox, Microsoft 365)
+The viewer registers its built-in providers (Autodesk, Dalux, Dropbox, Microsoft 365)
 itself. A host application that builds the viewer from source can add its own
 `FileSourceProvider` implementations at build time, without patching viewer
 source: point the build's entry at a file of your own that calls the viewer's
@@ -75,3 +75,7 @@ async function downloadBytes(
 
 The `@ifc-lite/source-fixture` conformance suite checks that progress only
 increases and that its last call reports every byte returned.
+
+Providers may report `SourceFile.kind`, an `artifactName` distinct from the resource name, and an `unavailableReason` for resources that cannot be imported. Unavailable rows stay visible with an explanation and cannot be selected. `ProviderCapabilities.sourceNamePatterns` customizes the catalog filter; an empty list shows every resource, including generated models without an IFC filename.
+
+`DownloadOptions.onPhase('preparing')` reports preparation before bytes exist; use `onProgress` only for actual download bytes. Interactive providers may implement `SourceAuth.cancelSignIn` to invalidate a pending login. The host guards late authentication and download results so cancelled operations cannot publish a new identity or enter the loader.

@@ -10,12 +10,15 @@
  */
 
 import type { IfcxFile, ComposedNode } from './types.js';
+import type { IfcxParseResult, IfcxParseOptions } from './parse-result.js';
+export type { IfcxParseResult, IfcxParseOptions } from './parse-result.js';
+import { extractGeoreference } from './georeference.js';
 import { ATTR, SPATIAL_TYPES, isTypedPropertyValue, parseV5aKey } from './types.js';
 import { composeIfcx } from './composition.js';
 import { extractEntities } from './entity-extractor.js';
 import { extractProperties, mirroredFlatPropertyKeys, routesToQuantityTable } from './property-extractor.js';
-import { extractGeometry, type MeshData } from './geometry-extractor.js';
-import { extractPointClouds, type PointCloudExtraction } from './pointcloud-extractor.js';
+import { extractGeometry } from './geometry-extractor.js';
+import { extractPointClouds } from './pointcloud-extractor.js';
 import { buildHierarchy } from './hierarchy-builder.js';
 import {
   StringTable,
@@ -24,7 +27,7 @@ import {
   QuantityTableBuilder,
   safeUtf8Decode,
 } from '@ifc-lite/data';
-import type { SpatialHierarchy, EntityTable, PropertyTable, QuantityTable, RelationshipGraph } from '@ifc-lite/data';
+import type { QuantityTable, RelationshipGraph } from '@ifc-lite/data';
 
 // Federated composition imports
 import { LayerStack, createLayerStack } from './layer-stack.js';
@@ -119,46 +122,6 @@ export {
 } from './writer.js';
 
 /**
- * Result of parsing an IFCX file.
- * Compatible with existing ifc-lite data structures.
- */
-export interface IfcxParseResult {
-  /** Columnar entity table */
-  entities: EntityTable;
-  /** Columnar property table */
-  properties: PropertyTable;
-  /** Columnar quantity table */
-  quantities: QuantityTable;
-  /** Relationship graph */
-  relationships: RelationshipGraph;
-  /** Spatial hierarchy */
-  spatialHierarchy: SpatialHierarchy;
-  /** String table for interned strings */
-  strings: StringTable;
-  /** Pre-tessellated geometry meshes */
-  meshes: MeshData[];
-  /** Decoded point clouds (pcd::base64, points::array, points::base64) */
-  pointClouds: PointCloudExtraction[];
-  /** Mapping from IFCX path to express ID */
-  pathToId: Map<string, number>;
-  /** Mapping from express ID to IFCX path */
-  idToPath: Map<number, string>;
-  /** Schema version */
-  schemaVersion: 'IFC5';
-  /** File size in bytes */
-  fileSize: number;
-  /** Number of entities */
-  entityCount: number;
-  /** Parse time in milliseconds */
-  parseTime: number;
-}
-
-export interface IfcxParseOptions {
-  /** Progress callback */
-  onProgress?: (progress: { phase: string; percent: number }) => void;
-}
-
-/**
  * Parse an IFCX file and return data compatible with existing ifc-lite pipeline.
  */
 export async function parseIfcx(
@@ -238,6 +201,7 @@ export async function parseIfcx(
     fileSize: buffer.byteLength,
     entityCount: entities.count,
     parseTime,
+    georeferencing: extractGeoreference(composed),
   };
 }
 

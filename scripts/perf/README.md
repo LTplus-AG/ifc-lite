@@ -110,6 +110,26 @@ canonical parser; defer mechanisms whose correctness or end-to-end verdict
 remains incomplete. [Raw dispositions and prerequisites](evidence/deferred-worker-mechanisms-6537/README.md)
 retain source attribution and the excluded attempts.
 
+## Known-explicit orientation entrypoint: unqualified prototype (#6537)
+
+Callers already holding explicit coordinates can avoid constructing implicit-point
+variants and using the general dispatcher. The prototype routes those calls and
+the dispatcher's explicit arm through one private helper, preserving the same
+adaptive predicate, argument order, sign conversion and degeneracy policy.
+Independent rational permutation controls and the full existing predicate tests
+remain intact; the latter move into a sibling test module to satisfy the size
+ratchet. Final workspace and strict all-target Clippy checks pass, with the earlier
+disk refusal and test-import compile failure retained.
+
+The performance verdict is unqualified. Historical instruction attribution
+includes adaptive arithmetic and does not quantify removable dispatch work; its
+older subject differs from the current baseline's source/configuration closure.
+Require fresh, source-fenced native and default-worker SDK comparisons before
+deciding whether this entrypoint pays back. No native instruction, elapsed, RSS
+or full-viewer benefit is claimed. [Correctness receipts, source hashes, earlier
+refusals and prospective qualification](evidence/explicit-orientation-6537/README.md)
+preserve this prototype without relabelling prior measurements.
+
 ## Checked-magnitude products: native benefit, SDK mixed (#6537 / #6764)
 
 Bounding provably-fitting checked products by their actual magnitude widths

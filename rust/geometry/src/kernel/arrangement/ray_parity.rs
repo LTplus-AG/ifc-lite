@@ -3,30 +3,25 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::super::broadphase::Aabb;
-use super::super::predicates::orient3d;
-use super::super::{ImplicitPoint, Sign};
+use super::super::predicates::orient3d_explicit;
+use super::super::Sign;
 use super::Tri;
 
 // --- ray parity: sound far endpoint + exact inside test -------------------
-
-#[inline]
-fn e(p: [f64; 3]) -> ImplicitPoint {
-    ImplicitPoint::Explicit(p)
-}
 
 /// EXACT segment–triangle intersection via `orient3d` (no epsilon): the segment
 /// `q1→q2` crosses triangle `t` iff its endpoints straddle `t`'s plane AND the
 /// line passes the same side of all three edges. A grazing hit (`orient3d == 0`)
 /// is rejected — the fixed generic ray direction makes those vanishingly rare.
 pub(super) fn exact_seg_hits_tri(q1: [f64; 3], q2: [f64; 3], t: &Tri) -> bool {
-    let s1 = orient3d(&e(t[0]), &e(t[1]), &e(t[2]), &e(q1));
-    let s2 = orient3d(&e(t[0]), &e(t[1]), &e(t[2]), &e(q2));
+    let s1 = orient3d_explicit(t[0], t[1], t[2], q1);
+    let s2 = orient3d_explicit(t[0], t[1], t[2], q2);
     if s1 == Sign::Zero || s2 == Sign::Zero || s1 == s2 {
         return false;
     }
-    let ea = orient3d(&e(q1), &e(q2), &e(t[0]), &e(t[1]));
-    let eb = orient3d(&e(q1), &e(q2), &e(t[1]), &e(t[2]));
-    let ec = orient3d(&e(q1), &e(q2), &e(t[2]), &e(t[0]));
+    let ea = orient3d_explicit(q1, q2, t[0], t[1]);
+    let eb = orient3d_explicit(q1, q2, t[1], t[2]);
+    let ec = orient3d_explicit(q1, q2, t[2], t[0]);
     ea != Sign::Zero && ea == eb && eb == ec
 }
 

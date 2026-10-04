@@ -1,0 +1,136 @@
+{
+  "base": "187a72e3302447fc49f2264111501223238a24a7",
+  "sourceStatus": "uncommitted final source; eight tested files SHA-pinned",
+  "members": [
+    {
+      "path": "base-source/rust/geometry/src/kernel/predicates.rs",
+      "bytes": 31826,
+      "sha256": "391ca8c068cc68e626b1e346894aa1f5dc7e15fbda9400078a5dfefa416099e5"
+    },
+    {
+      "path": "correctness-v1/aborted-cache-cleanup.json",
+      "bytes": 330,
+      "sha256": "cdeb1818d7b02d92854ba1a37eacd1377e4cfeae8dd0296401c90d032b45e591"
+    },
+    {
+      "path": "correctness-v1/production.patch",
+      "bytes": 6742,
+      "sha256": "58bfbbe084d7afd97ee8d9389e8b60195d6cdc862b7ff7b180f1e74853f3bd50"
+    },
+    {
+      "path": "correctness-v1/rust-workspace-test-no-debuginfo.json",
+      "bytes": 824,
+      "sha256": "9b85a5349a2ccf40bd9b926acf29c365b203914332104ee2823e3e1bed2cf64c"
+    },
+    {
+      "path": "correctness-v1/rust-workspace-test-no-debuginfo.log",
+      "bytes": 13318,
+      "sha256": "7b407235faff8c72c4656f14dde8a1190febb3d15fd35017ff0cba459257b908"
+    },
+    {
+      "path": "correctness-v1/rust-workspace-test.json",
+      "bytes": 942,
+      "sha256": "bb0cf29f5b8f3b25533677c19841fdb96df8df16c5863d648955c1180ddecf0e"
+    },
+    {
+      "path": "correctness-v1/rust-workspace-test.log",
+      "bytes": 10460,
+      "sha256": "9d5f1a3eed440e08101ed825373b334a7b80ca0329344ab53ec800f011a52707"
+    },
+    {
+      "path": "correctness-v1/source-manifest.json",
+      "bytes": 984,
+      "sha256": "a6d72876cc29f59e1d5af64f5bb900a7526dc6265ee2c27034c732c44489ab0b"
+    },
+    {
+      "path": "correctness-v2/final-source-manifest.json",
+      "bytes": 1257,
+      "sha256": "557fcc9748e595d6031a5632b7cbc6f1c03dc56ab9ed87514d92cd5421ca9c94"
+    },
+    {
+      "path": "correctness-v2/predicates_tests.rs",
+      "bytes": 24154,
+      "sha256": "f5073979f5cc628088cc24dff71ebed1975bd258d04651068e1d5c10011f7d1d"
+    },
+    {
+      "path": "correctness-v2/production.patch",
+      "bytes": 33633,
+      "sha256": "ebe947db7bbe788510493f57d307108b00966c78e9ba4c8eabef01a45b93cb57"
+    },
+    {
+      "path": "correctness-v2/rust-clippy.json",
+      "bytes": 879,
+      "sha256": "e6db78060ac48c6bf08ca10ed6ad27ff0a5c0f6b82ebed2dd8ce1120727b1458"
+    },
+    {
+      "path": "correctness-v2/rust-clippy.log",
+      "bytes": 9581,
+      "sha256": "59253bc0fa0b1d786172dffe2eec46c19e315310743d0e78bcdf6f886ee65909"
+    },
+    {
+      "path": "correctness-v2/rust-workspace-test.json",
+      "bytes": 820,
+      "sha256": "e0f0e6d087834c8688b386498084461c6168093ecd724c34d6bf3b3d0b132a53"
+    },
+    {
+      "path": "correctness-v2/rust-workspace-test.log",
+      "bytes": 445533,
+      "sha256": "5dcb70d35cdc28b0c0d89ef6acef021ac1432606ac2723ca078934fe05b49bbd"
+    },
+    {
+      "path": "correctness-v2/structural-correction.json",
+      "bytes": 446,
+      "sha256": "89beb529632022e011646e5bdd47968200d768c98d1647471954c37d230f487d"
+    },
+    {
+      "path": "correctness-v2/test-summary.json",
+      "bytes": 462,
+      "sha256": "38bb344fcf62171d90605378d1f3ebe12d578ed7d4b5ff50fa1b23421d3686ed"
+    },
+    {
+      "path": "final-source/rust/geometry/src/kernel/arrangement/classify.rs",
+      "bytes": 31755,
+      "sha256": "5f417557fef55fae7bf2256b6fdcf26fad1f8297194ca025c3934f2628895db7"
+    },
+    {
+      "path": "final-source/rust/geometry/src/kernel/arrangement/ray_parity.rs",
+      "bytes": 7259,
+      "sha256": "903e132211a7394eb0e9c3b5c4bcb4fe0616a5813330ce9c860a88eae504dc14"
+    },
+    {
+      "path": "final-source/rust/geometry/src/kernel/predicates.rs",
+      "bytes": 7173,
+      "sha256": "6b76fff7814f72cd8e23c44c4f8bda854aa4a660194af619a31ffca62a05a796"
+    },
+    {
+      "path": "final-source/rust/geometry/src/kernel/predicates_tests.rs",
+      "bytes": 24154,
+      "sha256": "f5073979f5cc628088cc24dff71ebed1975bd258d04651068e1d5c10011f7d1d"
+    },
+    {
+      "path": "final-source/rust/geometry/src/kernel/tritri.rs",
+      "bytes": 13315,
+      "sha256": "0415b0051c4d3800d0a0706faa210fad58ebc6357578f924a662c022ce679a6a"
+    },
+    {
+      "path": "final-source/rust/geometry/src/kernel/tritri_tests.rs",
+      "bytes": 6501,
+      "sha256": "a60070077d8727e7d6e310efec2fbb96f9d2688a8a19a4a1f8e57632c7bbcc16"
+    },
+    {
+      "path": "final-source/rust/processing/tests/module_size_allowlist.txt",
+      "bytes": 42582,
+      "sha256": "56df5ba7afc2826789e51bf7037d74f193d355e47c70ca706740734d1bd0eaa9"
+    },
+    {
+      "path": "final-source/rust/processing/tests/module_size_ratchet.rs",
+      "bytes": 24045,
+      "sha256": "9f978433ab9af5611f9bb086562d7929e7352fb15ee2902f41c7bac071afbaff"
+    },
+    {
+      "path": "independent-source-review.json",
+      "bytes": 1018,
+      "sha256": "46ae2629b1f0b3fe504c2cca14b136e203a9cb8a6eb421f8359240f3c84943a8"
+    }
+  ]
+}

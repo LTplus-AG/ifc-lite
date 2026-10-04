@@ -115,7 +115,7 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
 | Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
 | Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
-| Native Room | `room_command` |
+| Native Room | `query_rooms`, `room_command` |
 | Wall joins | `join_walls` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |

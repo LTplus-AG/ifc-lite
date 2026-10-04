@@ -90,6 +90,12 @@ scripts/check-icon-button-adoption.test.mjs apps/landing/** # `apps` is a synthe
 scripts/fixtures/fetch-fixtures.mjs scripts/fixtures/* # the fetcher runs in rust-tests/geometry-census/benchmark, whose filters carry tests/models/manifest.json but not scripts/**
 scripts/fixtures/fetch-fixtures.mjs tests/models/README.md # the rust/geometry filters pin tests/models/manifest.json, the corpus input; the README is not one
 
+# #6516's historical bundle is deliberately manual, not an automatic PR gate.
+# Widening a PR path filter cannot activate its workflow_dispatch-only job; its
+# actual builds consume separately checked-out, pinned release snapshots. The
+# builder/launcher behavioral controls still run in the automatic Node test job.
+scripts/perf/build-csg-work-bundle.mjs ** # manual-only pinned-historical diagnostic utility; source/path fragments are not automatic PR inputs; remove this exemption if an automatic invocation is added (#6516)
+
 # ---------------------------------------------------------------------------
 # 4. THIS CHECK'S OWN REQUIRED_COVERAGE LITERALS. `check-ci-path-coverage.mjs`
 #    NAMES these files in order to assert about them; it does not read them.

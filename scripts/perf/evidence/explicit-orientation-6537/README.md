@@ -1,18 +1,19 @@
 # Known-explicit orientation prototype (#6537)
 
-**Verdict: qualified default-worker SDK produced-CPU comparison with scoped
-ISSUE129 improvement; other SDK families and native phase changes are mixed.**
-Both compare immutable BASE `187a72e3302447fc49f2264111501223238a24a7` with CAND
-`672f1e09c06ce777507244d2f2c4403d7b38c098`. No universal, isolated-dispatch,
-instruction, physical-memory or full-viewer benefit is claimed. Original
-correctness bytes remain unchanged; later receipts do not requalify a docs head.
+**Performance verdict: qualified SDK comparison, scoped ISSUE129 improvement;
+other three families and native phases mixed.** Known-explicit coordinates reach
+the same adaptive predicate; determinant, sign conversion, degeneracy policy and
+geometry contract are unchanged. No universal, isolated-dispatch, instruction,
+memory or full-viewer benefit is claimed. Original source-only correctness evidence
+remains unchanged; the separate durable cohort below records the measured result.
 
 ## Source and correctness
 
 Literal baseline: `187a72e3302447fc49f2264111501223238a24a7`. The candidate was
-uncommitted when these correctness receipts were recorded; its eight source files
-are pinned individually in `correctness-v2/final-source-manifest.json` and retained
-under `final-source/`. An eventual commit must contain those exact source bytes.
+uncommitted when the correctness receipts were recorded; immutable candidate
+`672f1e09c06ce777507244d2f2c4403d7b38c098` contains those eight exact source files,
+pinned in `correctness-v2/final-source-manifest.json` and retained under
+`final-source/`. Subsequent evidence edits preserve those Rust source bytes.
 This is not a complete compiler/dependency closure or a fresh WASM/build receipt.
 
 The private `orient3d_explicit` helper calls the same
@@ -51,7 +52,7 @@ closure differs from this baseline. The orientation attribution includes adaptiv
 predicate arithmetic and cannot quantify removable enum dispatch. Historical
 binaries, source qualification and measurements are not reused as baseline `187`.
 
-## Reproduction and proposed qualification
+## Original correctness reproduction and historical qualification plan
 
 `correctness.tar.gz` contains all original V1/V2 files, all eight final source
 files, baseline predicate source and the independent source-comparison note.
@@ -84,29 +85,117 @@ Separately propose generic SDK controller
 builds: the unchanged four-family 56-process cohort, actual default pool,
 post-timer produced CPU-channel identity, untouched diagnostic census and all
 existing admissions/freezes/refusals. This SDK boundary does not establish GPU,
-metadata, pixel or full-viewer identity. At initial capture, both cohorts were prospective; completed qualifications follow below.
+metadata, pixel or full-viewer identity. These were source-only proposals at the
+correctness freeze; the separate actual runs below do not rewrite that archive.
 
 
-## Completed consumer comparisons
+## Completed SDK cohort and first native refusal
 
-SDK [37167109427](https://github.com/LTplus-AG/ifc-lite/actions/runs/37167109427)
-qualifies all 56 samples/28 pairs under the unchanged default two-worker protocol.
-ISSUE129 improves in all five observed A/B pairs; Haus, Holter and O-S1 are mixed.
-Produced flat/instanced CPU identities and full unnormalized diagnostics agree.
-Native [37182263516](https://github.com/LTplus-AG/ifc-lite/actions/runs/37182263516)
-qualifies 17 pairs/34 processes with controller `200a7eed8eb3170225a5e7c5d78eb135f1bddf6a`.
-The explicit compile-once/held-FD protocol preserves canonical best-total phase
-selection; original arm probes qualify separately. Native changes are small and
-mixed. All counts/ordered mesh FNVs and selected diagnostic fields agree within
-family. Native CSG has 41 failures/6 degenerate drops; SDK has 44 failures, so
-cross-protocol fidelity is not inferred. FNV excludes appearance/text/UV/material/
-texture/instances. Recorded RSS is sampled, not a physical peak; native available-
-memory numerical readings are absent, though the frozen gate ran. No whole-machine
-or complete IFC fidelity claim is made.
+SDK [37167109427](https://github.com/LTplus-AG/ifc-lite/actions/runs/37167109427),
+attempt1, succeeds under unchanged controller
+`4d47506a23e304ed4b772f7890e27e37843e8914`, literal baseline `187a72e3302447fc49f2264111501223238a24a7`
+and candidate `672f1e09c06ce777507244d2f2c4403d7b38c098`. Both arms genuinely build
+fresh SDK/WASM serially before endpoint bundling and measurement. All56 samples/
+28 pairs remain: two A/A controls then five alternating A/B pairs per fixed family.
+All eight A/A controls pass; largest absolute difference9.115330%. Default pool
+is two workers IDs0/1 on four cores, Chrome154.0.8037.57, SAB/COI, no overrides.
 
-Earlier correctness failures, compiler-query refusals and controller-summary
-refusal remain immutable. [Existing evidence child #6792](https://github.com/LTplus-AG/ifc-lite/pull/6792)
-retains complete SDK/first-refusal receipts and the companion native packet.
-[Summary-controller evidence #6798](https://github.com/LTplus-AG/ifc-lite/pull/6798)
-retains the prior canonical-stderr refusal. These are distinct sources and stages;
-no failed run is relabelled, and no unchanged comparison is rerun.
+Cold processor.init, canonical processParallel drain, retention and dispose are
+timed; hashing follows the timer. All flat/instanced produced CPU identities and
+complete unnormalized diagnostics agree for all14 samples within each family.
+Known semantic approximations/omissions remain in raw diagnostics: identity does
+not establish faithful IFC or authored text/UV/texture/full-viewer appearance.
+Raw geometry arrays were not uploaded; their SHA witnesses cannot independently
+be regenerated from this packet without a new model run.
+
+Candidate-minus-baseline elapsed deltas; negative is less elapsed. The paired
+median is the median of five individual ratios, not a ratio of arm medians.
+
+| Family | All five paired deltas (%) | Paired median (%) | Paired range (%) | BASE AB median/range (ms) | CAND AB median/range (ms) |
+| --- | --- | --- | --- | --- | --- |
+| house | +2.352, -0.670, +2.462, -2.076, -4.093 | -0.670 | [-4.093, +2.462] | 536.030 / [529.800, 546.980] | 530.090 / [518.800, 560.445] |
+| csg | -3.111, -1.324, -2.019, -3.305, -1.860 | -2.019 | [-3.305, -1.324] | 4365.170 / [4323.320, 4382.540] | 4237.700 / [4232.650, 4302.310] |
+| heavy-csg | +0.306, +0.360, -1.649, -2.054, +0.059 | +0.059 | [-2.054, +0.360] | 5328.775 / [5269.815, 5360.080] | 5285.940 / [5219.305, 5379.385] |
+| architecture | -1.163, -1.251, +1.818, -0.590, +2.152 | -0.590 | [-1.251, +2.152] | 4199.185 / [4125.815, 4251.635] | 4200.840 / [4161.725, 4235.755] |
+
+ISSUE129 is faster in all five pairs; Haus, Holter and O-S1 are mixed. No sample
+is removed, substituted, pooled or normalized. No significance, physical outlier
+cause or removed-dispatch cost is inferred. Both arms already contain merged init
+sharing and capture one WASM request/response/finished each; this is no new
+acquisition mechanism. Served bytes are qualified through observed requests plus
+finite refetches from the same SHA-frozen origin, not CDP loaded-worker body capture.
+
+Independent SDK audit passes1508 retained-receipt/asset checks and59466 immutable
+Git/declared-closure checks; root's separate raw audit passes562 checks. Actual24
+protocol controls and explicit client typecheck pass. All168 CPU intervals are
+at least1000091521ns and at most2.005013% busy. Initial available memory15520415744B,
+minimum sampled live availability12734840832B, maximum sampled owned RSS3745370112B;
+RSS is no physical peak. Cleanup598 witnesses/0remaining/0zombies; both servers
+close with0sockets/faults and final source/asset/tool verification completes.
+
+Fresh emitted WASM SHA-256s are BASE
+`dfec532eaf3bc9f94a4456bf974b9c9a21af00da89e0323f2b59f96ce1915a3f`, CAND
+`141207f3d0a509cca602537b9857fdb8d9e2c64744f3206d7685e3939a1d796a`.
+Both actual assets, section records and indexed body hashes remain. Source changes
+intentionally, Cargo/config agrees, and separate build paths may also affect bytes.
+Body counts/indices differ; a positional hash mismatch is no semantic-function or
+instruction-cost attribution. Remote installed tools/sysroot/registry and final
+filesystem checks remain producing receipts, with their declared closure limits.
+
+Native [37167463547](https://github.com/LTplus-AG/ifc-lite/actions/runs/37167463547),
+attempt1, uses pin-only successor `9baab5249df8dbce2ae3f461ef9a95ba5d726f7e`.
+Both fresh locked probes and24 protocol controls/startup control pass, then first
+Haus A/A BASE slot refuses actual `rustc -vV` outside the unchanged Cargo exception.
+It is killed before stdout/stderr output; zero samples/pairs complete. Preflight
+CPU passes, sample cleanup/log flush and final freeze complete. This is a preserved
+process-policy refusal, not arithmetic/geometry defect evidence or a partial native
+win. No retry or exemption is applied.
+
+## Durable data-only reconstruction and replay
+
+The original correctness container/index/manifest/extractor are byte-identical.
+The separate `sdk-and-native-refusal.tar.gz` retains both original official ZIPs,
+all run/job/API/dispatch receipts, independent audits, controller sources and root's
+byte-exact raw review. All250 SDK and26 native uploaded members are explicit
+verified ZIP-member references, avoiding duplicated payloads. `cohort-manifest.json`
+pins every logical byte count/hash, storage and original path; `cohort-index.json`
+pins the deterministic gzip-mtime-zero container and original source archive.
+Packaging verified every TAR member and every referenced ZIP member byte-for-byte;
+no archived program, asset, build, model or browser was executed. Fixture files and secrets
+are excluded; actual producing WASM/assets are included as inert evidence.
+
+The reviewed helpers have now passed one bounded data-only guardian run: all525
+members reconstruct, replay passes243468 data/Git checks (not geometry test cases),
+and nine real reader controls pass: one valid ZIP and eight expected refusals for
+unsafe TAR/ZIP paths, symlink/duplicate TAR entries, checksum mismatch, encrypted/
+oversized ZIP metadata and unlisted ZIP members. `cohort-validation.json` retains
+the complete raw command/output/guardian/fixture data and runtime-only helper delta.
+Root independently compares all525 bytes to original filesystem/literal Git origins;
+its lossless `cohort-root-roundtrip-v2.json.gz` also verifies source8/evidence4.
+The first root checker misread Git-origin metadata as a filesystem path; its raw
+failure remains in the separate validation receipt, not relabelled as a model failure.
+Main archive/manifest and original correctness archive remain unchanged.
+These commands reproduce bounded data-only verification:
+bounded safe regular paths, types, unique names, manifest census and hashes, then
+recompute schedule, A/A, raw complete/identity/diagnostics, CPU/resource/cleanup,
+all five deltas, native zero-output refusal and immutable Git source hashes:
+
+```sh
+python3 scripts/perf/evidence/explicit-orientation-6537/cohort_archive.py /tmp/explicit-orientation-cohort-replay
+python3 scripts/perf/evidence/explicit-orientation-6537/replay-cohort.py --repo /path/to/ifc-lite
+```
+
+The replay uses the repository-reviewed helper, JSON, bytes and bounded Git-object
+reads. Archived scripts/JS/WASM remain inert. It does not recreate the terminated
+runner, rehash unavailable tools, regenerate meshes, install, compile or benchmark.
+Exact four controller/subject Git commits must be available locally. Prior raw
+packets and the original source archive remain unmodified. Required CI/review remain separate; this packet asserts no readiness.
+
+
+## Subsequent native qualification
+
+[Native qualified packet](native-qualified/README.md) retains run37182263516 and
+its strict held-FD/canonical-summary protocol against the same187a/672f subjects.
+All17pairs/34processes qualify; native changes are small and mixed. The earlier
+compiler-query refusals stay unchanged in their original archives. No source,
+SDK hash coverage, physical-memory or full-viewer claim is expanded.

@@ -102,7 +102,7 @@ for (const count of [1, 2]) it.skipIf(!available)(`#6232 / #6759 history-free pl
   const { registry } = await liveToolSession(count), model = registry.get(count === 1 ? 'alpha' : 'beta')!;
   const peer = count === 2 ? registry.get('alpha')! : null, peerBefore = peer ? snapshot(peer) : null;
   const cache = createCachedHeadlessRoomGeometryProvider();
-  const resolution = (loaded: LoadedModel) => ({ modelId: loaded.id, ownerHistoryId: null, store: loaded.store, editor: loaded.backend.ensureEditor(), mutationView: loaded.backend.ensureEditor().getMutationView() });
+  const resolution = (loaded: LoadedModel) => ({ modelId: loaded.id, store: loaded.store, editor: loaded.backend.ensureEditor(), mutationView: loaded.backend.ensureEditor().getMutationView(), ownerHistoryId: null });
   const process = vi.spyOn(GeometryProcessor.prototype, 'process');
   try {
     if (peer) await cache.provide(resolution(peer), 42);

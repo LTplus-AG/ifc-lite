@@ -32,8 +32,12 @@ export function parseAddress(raw: string): Address {
 }
 
 export interface SiteLink { id: string; region: Region }
-export function parseSiteLink(input: string): SiteLink {
-  const url = new URL(input);
+export function parseAutodeskLink(input: string): URL {
+  try { return new URL(input); }
+  catch { throw new AutodeskError('invalid-link', 'Paste an HTTPS Autodesk Docs or Forma Site Design project link.'); }
+}
+export function parseSiteLink(input: string | URL): SiteLink {
+  const url = typeof input === 'string' ? parseAutodeskLink(input) : input;
   const hosts: Record<string, Region> = {
     'app.autodeskforma.com': 'US', 'app.autodeskforma.eu': 'EMEA',
   };
@@ -46,8 +50,8 @@ export function parseSiteLink(input: string): SiteLink {
 }
 
 /** ACC's documented project URL contains a UUID; resolve it through accessible hubs. */
-export function parseDocsProjectLink(input: string): { project: string; folder?: string } {
-  const url = new URL(input);
+export function parseDocsProjectLink(input: string | URL): { project: string; folder?: string } {
+  const url = typeof input === 'string' ? parseAutodeskLink(input) : input;
   if (url.protocol !== 'https:' || url.username || url.password || !['acc.autodesk.com', 'acc.autodesk.eu'].includes(url.hostname)) {
     throw new AutodeskError('invalid-link', 'Paste an HTTPS Autodesk Forma Site Design or Data Management project link.');
   }

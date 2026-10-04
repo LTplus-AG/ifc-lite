@@ -67,7 +67,7 @@ export async function captureIdentity(limits) {
   if (data.properties.count && !propertyWitness.length) refuse('authored property read unavailable');
 
   // React internals are inspected only now; no renderer interception during timing.
-  let renderer;
+  let renderer, rendererProps, ambiguousRendererProps = false, currentFiberBranch = false;
   const canvas = document.querySelector('canvas');
   const fiberKey = canvas && Object.keys(canvas).find(key => key.startsWith('__reactFiber$'));
   let fiber = fiberKey && canvas[fiberKey];
@@ -77,6 +77,7 @@ export async function captureIdentity(limits) {
     if (seen.has(fiber)) refuse('fiber cycle');
     seen.add(fiber);
     if (!Number.isSafeInteger(fiber.tag) || fiber.tag < 0 || fiber.tag > 31) refuse('unknown React fiber tag');
+    if (fiber.tag === 3 && fiber.stateNode?.current === fiber) currentFiberBranch = true;
     if (![0, 11, 14, 15].includes(fiber.tag)) continue;
     let hook = fiber.memoizedState;
     const hookSeen = new Set();
@@ -91,6 +92,10 @@ export async function captureIdentity(limits) {
       if (candidate && typeof candidate.getScene === 'function' && typeof candidate.isReady === 'function') {
         if (renderer && renderer !== candidate) refuse('ambiguous renderer');
         renderer = candidate;
+        if (Array.isArray(fiber.memoizedProps?.geometry)) {
+          if (rendererProps && rendererProps.geometry !== fiber.memoizedProps.geometry) ambiguousRendererProps = true;
+          rendererProps = fiber.memoizedProps;
+        }
       }
     }
     if (hook) refuse('hook discovery budget exhausted');
@@ -169,7 +174,9 @@ export async function captureIdentity(limits) {
   if (scene.instancedTemplateCpu.filter(Boolean).length !== templates.size) refuse('unowned retained template');
   const actualOwners = scene.getAllMeshDataExpressIds().sort((a, b) => a - b);
   const owners = [...expectedOwners].sort((a, b) => a - b);
-  if (JSON.stringify(actualOwners) !== JSON.stringify(owners)) refuse('flat/instance scene owner census mismatch');
+  if (JSON.stringify(actualOwners) !== JSON.stringify(owners)) {
+    refuse(`flat/instance scene owner census mismatch; ownerDiagnostic=${JSON.stringify(ownerRefusalDiagnostic())}`);
+  }
   if (scene.getInstancedEntityCount() !== scene.instancedEntityMap.size) refuse('instance scene census changed');
   if (!flat.length && !occurrenceCount) refuse('no retained geometric output');
   const gpuTemplates = scene.getInstancedTemplates?.();
@@ -191,4 +198,124 @@ export async function captureIdentity(limits) {
       entityCount: data.entities.count, propertyCount: data.properties.count,
       propertyWitnessOwner: propertyOwner, propertyWitness },
     renderStats: globalThis.__ifc_lite_render_stats__?.() ?? null };
+
+  // Refusal-only, post-hash evidence. Neither population changes expectedOwners.
+  // Viewport input is not a census of visible draw calls/pixels; user hides,
+  // isolation, instanced suppression and clipping may act after ingestion.
+  function ownerRefusalDiagnostic() {
+    const bounds = { ids: 64, meshesPerPopulation: 100000, contributorReadsPerPopulation: 1000000,
+      tableKeys: 32, detailIdsPerPopulation: 16, detailValuesPerField: 4, scenePiecesPerId: 16, labelChars: 64 };
+    const scalar = value => typeof value === 'boolean' || Number.isSafeInteger(value) ? value : 'unavailable';
+    const label = value => typeof value === 'string' ? value.slice(0, bounds.labelChars) : 'unavailable';
+    const missing = [], extra = [];
+    let missingCount = 0, extraCount = 0, expectedIndex = 0, actualIndex = 0;
+    const integerOwners = owners.every(Number.isSafeInteger) && actualOwners.every(Number.isSafeInteger);
+    if (integerOwners) {
+      while (expectedIndex < owners.length || actualIndex < actualOwners.length) {
+        const expected = owners[expectedIndex], actual = actualOwners[actualIndex];
+        if (expectedIndex < owners.length && (actualIndex === actualOwners.length || expected < actual)) {
+          missingCount++; if (missing.length < bounds.ids) missing.push(expected); expectedIndex++;
+        } else if (actualIndex < actualOwners.length && (expectedIndex === owners.length || actual < expected)) {
+          extraCount++; if (extra.length < bounds.ids) extra.push(actual); actualIndex++;
+        } else { expectedIndex++; actualIndex++; }
+      }
+    }
+    const interested = new Set([...missing, ...extra]);
+    const bump = (map, key, summary) => {
+      if (map.has(key)) map.set(key, map.get(key) + 1);
+      else if (map.size < bounds.tableKeys) map.set(key, 1);
+      else summary.omittedTableEntries++;
+    };
+    function population(meshes) {
+      if (!Array.isArray(meshes)) return { available: false };
+      const classes = new Map(), types = new Map(), details = new Map();
+      const summary = { available: true, meshes: meshes.length, scannedMeshes: 0, complete: true,
+        contributorReads: 0, mergedMeshes: 0, summedDistinctMergedContributors: 0,
+        omittedTableEntries: 0, omittedDetailOccurrences: 0 };
+      function detail(id, mesh, via) {
+        if (!interested.has(id)) return;
+        if (!details.has(id) && details.size === bounds.detailIdsPerPopulation) { summary.omittedDetailOccurrences++; return; }
+        if (!details.has(id)) details.set(id, { id, representativePieces: 0, mergedContributorPieces: 0,
+          classes: [], types: [], complete: true, omittedClassOccurrences: 0, omittedTypeOccurrences: 0 });
+        const entry = details.get(id), meshClass = scalar(mesh.geometryClass ?? 0), type = label(mesh.ifcType);
+        entry[via]++;
+        function value(field, item, omitted) {
+          if (entry[field].includes(item)) return;
+          if (entry[field].length < bounds.detailValuesPerField) entry[field].push(item);
+          else { entry[omitted]++; entry.complete = false; }
+        }
+        value('classes', meshClass, 'omittedClassOccurrences');
+        value('types', type, 'omittedTypeOccurrences');
+      }
+      for (let index = 0; index < Math.min(meshes.length, bounds.meshesPerPopulation); index++) {
+        const mesh = meshes[index];
+        if (!mesh || typeof mesh !== 'object') { summary.complete = false; break; }
+        summary.scannedMeshes++;
+        bump(classes, scalar(mesh.geometryClass ?? 0), summary); bump(types, label(mesh.ifcType), summary);
+        detail(mesh.expressId, mesh, 'representativePieces');
+        if (mesh.entityIds?.length) {
+          summary.mergedMeshes++;
+          if (!(mesh.entityIds instanceof Uint32Array)) { summary.complete = false; continue; }
+          const contributors = new Set();
+          for (let offset = 0; offset < mesh.entityIds.length; offset++) {
+            if (summary.contributorReads === bounds.contributorReadsPerPopulation) { summary.complete = false; break; }
+            summary.contributorReads++;
+            const id = mesh.entityIds[offset];
+            if (!contributors.has(id)) { contributors.add(id); detail(id, mesh, 'mergedContributorPieces'); }
+          }
+          summary.summedDistinctMergedContributors += contributors.size;
+        }
+      }
+      summary.complete = summary.complete && summary.scannedMeshes === meshes.length && !summary.omittedTableEntries
+        && !summary.omittedDetailOccurrences
+        && [...details.values()].every(entry => entry.complete);
+      return { ...summary, classes: [...classes], types: [...types], mismatchIdDetails: [...details.values()] };
+    }
+    const idSet = value => {
+      if (value === null) return { available: true, isNull: true };
+      if (!(value instanceof Set)) return { available: false };
+      const ids = [];
+      for (const id of value) { if (ids.length === bounds.ids) break; ids.push(scalar(id)); }
+      return { available: true, count: value.size, sample: ids, complete: value.size <= bounds.ids };
+    };
+    const typeVisibility = {};
+    for (const key of ['spaces', 'spatialZones', 'openings', 'virtualElements', 'site', 'ifcAnnotations', 'ifcGrid']) {
+      typeVisibility[key] = scalar(state.typeVisibility?.[key]);
+    }
+    const observedProps = currentFiberBranch && !ambiguousRendererProps ? rendererProps : undefined;
+    const sceneOwnerDetails = [];
+    if (scene.meshDataMap instanceof Map) {
+      for (const id of [...interested].slice(0, bounds.detailIdsPerPopulation)) {
+        const pieces = scene.meshDataMap.get(id), occurrences = scene.instancedEntityMap.get(id);
+        const rows = Array.isArray(pieces) ? pieces.slice(0, bounds.scenePiecesPerId) : [];
+        const validRows = rows.filter(mesh => mesh && typeof mesh === 'object');
+        sceneOwnerDetails.push({ id, flatPieces: pieces === undefined ? 0 : Array.isArray(pieces) ? pieces.length : 'unavailable',
+          instanceOccurrences: occurrences === undefined ? 0 : Array.isArray(occurrences) ? occurrences.length : 'unavailable',
+          scannedPieces: rows.length, complete: (pieces === undefined || Array.isArray(pieces))
+            && rows.length === (pieces?.length ?? 0) && validRows.length === rows.length,
+          mergedPiecesObserved: validRows.filter(mesh => mesh.entityIds?.length).length,
+          classes: [...new Set(validRows.map(mesh => scalar(mesh.geometryClass ?? 0)))],
+          types: [...new Set(validRows.map(mesh => label(mesh.ifcType)))] });
+      }
+    }
+    return { version: 1, bounds, expectedOwners: owners.length, actualOwners: actualOwners.length,
+      differenceAvailable: integerOwners, missingCount: integerOwners ? missingCount : null,
+      extraCount: integerOwners ? extraCount : null, missing, extra,
+      samplesComplete: integerOwners && missingCount <= bounds.ids && extraCount <= bounds.ids,
+      policy: { requestedTypeViewMode: label(state.typeViewMode), effectiveViewMode: 'not directly observed',
+        typeVisibility, modelVisible: scalar(model.visible),
+        hiddenEntities: idSet(state.hiddenEntities), isolatedEntities: idSet(state.isolatedEntities),
+        ghostExceptEntities: idSet(state.ghostExceptEntities),
+        computedIsolatedIds: idSet(observedProps?.computedIsolatedIds),
+        geometryVersion: scalar(observedProps?.geometryVersion),
+        geometryContentVersion: scalar(observedProps?.geometryContentVersion),
+        instancedVisible: scalar(scene.instancedVisible) },
+      producedUnfiltered: population(geometry.meshes),
+      viewportInput: population(observedProps?.geometry),
+      sceneOwnerDetailsAvailable: scene.meshDataMap instanceof Map, sceneOwnerDetails,
+      viewportInputSource: ambiguousRendererProps ? 'ambiguous renderer-owning Fiber geometry props'
+        : !currentFiberBranch ? 'current FiberRoot branch not verified'
+          : rendererProps ? 'current renderer-owning Fiber memoizedProps.geometry' : 'unavailable',
+      scope: 'owner refusal evidence only; no visibility causation or rendered-pixel identity' };
+  }
 }

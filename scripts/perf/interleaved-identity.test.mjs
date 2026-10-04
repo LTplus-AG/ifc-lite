@@ -41,6 +41,144 @@ function fixture(t) {
   return { mesh, template, scene, state, data, model, canvas };
 }
 
+// The collector seam receives typed produced payloads and a private CPU owner
+// map. Assertions below test collector evidence/refusal, not Scene ingestion.
+function ownerFixture(t) {
+  const result = fixture(t), { mesh, scene, state, canvas, model } = result;
+  mesh.ifcType = 'IfcWall'; mesh.geometryClass = 0;
+  scene.meshDataMap = new Map([[10, [mesh]]]);
+  scene.getAllMeshDataExpressIds = () => [...new Set([...scene.meshDataMap.keys(), ...scene.instancedEntityMap.keys()])];
+  state.typeViewMode = 'model';
+  state.typeVisibility = { spaces: false, spatialZones: false, openings: false, virtualElements: false,
+    site: true, ifcAnnotations: true, ifcGrid: true };
+  state.hiddenEntities = new Set(); state.isolatedEntities = null; state.ghostExceptEntities = null;
+  model.visible = true;
+  canvas.__reactFiber$test.memoizedProps = { geometry: [mesh], computedIsolatedIds: null,
+    geometryVersion: 3, geometryContentVersion: 0 };
+  const root = { tag: 3, return: null };
+  root.stateNode = { current: root }; canvas.__reactFiber$test.return = root;
+  return result;
+}
+async function ownerRefusal() {
+  let diagnostic;
+  await assert.rejects(captureIdentity(LIMITS), error => {
+    const prefix = 'REFUSE identity: flat/instance scene owner census mismatch; ownerDiagnostic=';
+    assert.ok(error.message.startsWith(prefix), error.message);
+    diagnostic = JSON.parse(error.message.slice(prefix.length));
+    return true;
+  });
+  return diagnostic;
+}
+
+test('#6537 hidden-type refusal retains unfiltered owners separately from actual viewport input', async t => {
+  const { mesh, model, state } = ownerFixture(t);
+  model.geometryResult.meshes.push({ ...mesh, expressId: 20, ifcType: 'IfcSpace' });
+  const diagnostic = await ownerRefusal();
+  assert.deepEqual(diagnostic.missing, [20]); assert.deepEqual(diagnostic.extra, []);
+  assert.equal(diagnostic.policy.typeVisibility.spaces, state.typeVisibility.spaces);
+  assert.equal(diagnostic.producedUnfiltered.meshes, 2); assert.equal(diagnostic.viewportInput.meshes, 1);
+  assert.deepEqual(diagnostic.producedUnfiltered.mismatchIdDetails[0], {
+    id: 20, representativePieces: 1, mergedContributorPieces: 0, classes: [0], types: ['IfcSpace'],
+    complete: true, omittedClassOccurrences: 0, omittedTypeOccurrences: 0 });
+  assert.deepEqual(diagnostic.viewportInput.mismatchIdDetails, []);
+  assert.equal(diagnostic.sceneOwnerDetails[0].flatPieces, 0);
+  // Observation identifies different populations; it does not waive refusal
+  // or claim the visibility switch caused this particular scene census.
+  assert.equal(diagnostic.policy.effectiveViewMode, 'not directly observed');
+});
+test('#6537 orphan-type refusal records actual class and requested view without changing owner rules', async t => {
+  const { mesh, model } = ownerFixture(t);
+  model.geometryResult.meshes.push({ ...mesh, expressId: 30, geometryClass: 1, ifcType: 'IfcWallType' });
+  const diagnostic = await ownerRefusal();
+  assert.deepEqual(diagnostic.missing, [30]);
+  assert.deepEqual(diagnostic.producedUnfiltered.classes, [[0, 1], [1, 1]]);
+  assert.deepEqual(diagnostic.viewportInput.classes, [[0, 1]]);
+  assert.equal(diagnostic.producedUnfiltered.mismatchIdDetails[0].types[0], 'IfcWallType');
+  assert.equal(diagnostic.policy.requestedTypeViewMode, 'model');
+});
+test('#6537 merged-contributor census retains extra owner and distinct counts rather than vertex repetition', async t => {
+  const { mesh, scene } = ownerFixture(t);
+  mesh.entityIds = new Uint32Array([10, 10, 11]);
+  scene.meshDataMap.set(11, [mesh]);
+  const diagnostic = await ownerRefusal();
+  assert.deepEqual(diagnostic.missing, []); assert.deepEqual(diagnostic.extra, [11]);
+  for (const population of [diagnostic.producedUnfiltered, diagnostic.viewportInput]) {
+    assert.equal(population.mergedMeshes, 1); assert.equal(population.contributorReads, 3);
+    assert.equal(population.summedDistinctMergedContributors, 2);
+    assert.deepEqual(population.mismatchIdDetails[0], {
+      id: 11, representativePieces: 0, mergedContributorPieces: 1, classes: [0], types: ['IfcWall'],
+      complete: true, omittedClassOccurrences: 0, omittedTypeOccurrences: 0 });
+  }
+  assert.deepEqual(diagnostic.sceneOwnerDetails[0], { id: 11, flatPieces: 1, instanceOccurrences: 0,
+    scannedPieces: 1, complete: true, mergedPiecesObserved: 1, classes: [0], types: ['IfcWall'] });
+});
+test('#6537 refusal samples bounded IDs while retaining complete difference counts', async t => {
+  const { mesh, model } = ownerFixture(t);
+  for (let id = 100; id < 180; id++) model.geometryResult.meshes.push({ ...mesh, expressId: id });
+  const diagnostic = await ownerRefusal();
+  assert.equal(diagnostic.missingCount, 80); assert.equal(diagnostic.missing.length, 64);
+  assert.deepEqual(diagnostic.missing, Array.from({ length: 64 }, (_, index) => index + 100));
+  assert.equal(diagnostic.samplesComplete, false);
+  assert.equal(diagnostic.producedUnfiltered.mismatchIdDetails.length, 16);
+  assert.equal(diagnostic.producedUnfiltered.omittedDetailOccurrences, 48);
+  assert.equal(diagnostic.producedUnfiltered.complete, false);
+});
+test('#6537 bounded contributor traversal labels partial counts and preserves refusal', async t => {
+  const { mesh, scene } = ownerFixture(t);
+  mesh.entityIds = new Uint32Array(1000001); mesh.entityIds.fill(10); mesh.entityIds[0] = 11;
+  scene.meshDataMap.set(11, [mesh]);
+  const diagnostic = await ownerRefusal();
+  assert.deepEqual(diagnostic.extra, [11]);
+  assert.equal(diagnostic.producedUnfiltered.contributorReads, 1000000);
+  assert.equal(diagnostic.producedUnfiltered.complete, false);
+  assert.equal(diagnostic.viewportInput.complete, false);
+});
+test('#6537 bounded owner detail values report omitted occurrences and partial population', async t => {
+  const { mesh, model } = ownerFixture(t);
+  // Typed collector payloads exercise its reporting bound, not IFC ingestion.
+  // Repeated omitted values count occurrences, not distinct classes/types.
+  for (const [geometryClass, ifcType] of [[0, 'IfcWall'], [1, 'IfcSlab'], [3, 'IfcDoor'],
+    [4, 'IfcWindow'], [5, 'IfcColumn'], [5, 'IfcColumn']]) {
+    model.geometryResult.meshes.push({ ...mesh, expressId: 20, geometryClass, ifcType });
+  }
+  const diagnostic = await ownerRefusal();
+  assert.deepEqual(diagnostic.missing, [20]);
+  const detail = diagnostic.producedUnfiltered.mismatchIdDetails[0];
+  assert.deepEqual(detail.classes, [0, 1, 3, 4]);
+  assert.deepEqual(detail.types, ['IfcWall', 'IfcSlab', 'IfcDoor', 'IfcWindow']);
+  assert.equal(detail.representativePieces, 6);
+  assert.equal(detail.omittedClassOccurrences, 2); assert.equal(detail.omittedTypeOccurrences, 2);
+  assert.equal(detail.complete, false); assert.equal(diagnostic.producedUnfiltered.complete, false);
+  assert.equal(diagnostic.viewportInput.complete, true);
+});
+test('#6537 unavailable policy and ambiguous input remain explicit refusal evidence', async t => {
+  const { mesh, model, state, canvas } = ownerFixture(t);
+  model.geometryResult.meshes.push({ ...mesh, expressId: 20 });
+  delete state.typeVisibility; delete state.typeViewMode;
+  canvas.__reactFiber$test.return = { tag: 0, return: null,
+    memoizedState: canvas.__reactFiber$test.memoizedState, memoizedProps: { geometry: [] } };
+  const diagnostic = await ownerRefusal();
+  assert.equal(diagnostic.policy.requestedTypeViewMode, 'unavailable');
+  assert.equal(diagnostic.policy.typeVisibility.spaces, 'unavailable');
+  assert.deepEqual(diagnostic.viewportInput, { available: false });
+  assert.match(diagnostic.viewportInputSource, /ambiguous/);
+});
+test('#6537 available policy/input witnesses do not change successful produced identity', async t => {
+  const result = fixture(t), baseline = (await captureIdentity(LIMITS)).sha256;
+  result.canvas.__reactFiber$test.memoizedProps = { geometry: [] };
+  result.state.typeViewMode = 'types'; result.state.typeVisibility = { spaces: false };
+  assert.equal((await captureIdentity(LIMITS)).sha256, baseline);
+});
+test('#6537 noncurrent React branch cannot be labelled actual viewport input', async t => {
+  const { mesh, model, canvas } = ownerFixture(t);
+  model.geometryResult.meshes.push({ ...mesh, expressId: 20 });
+  canvas.__reactFiber$test.return.stateNode.current = { tag: 3 };
+  const diagnostic = await ownerRefusal();
+  assert.deepEqual(diagnostic.missing, [20]);
+  assert.deepEqual(diagnostic.viewportInput, { available: false });
+  assert.equal(diagnostic.viewportInputSource, 'current FiberRoot branch not verified');
+});
+
 test('#6537 raw flat position/normal/index/appearance channels each affect identity', async t => {
   const { mesh } = fixture(t), baseline = (await captureIdentity(LIMITS)).sha256;
   for (const [key, index, value] of [['positions', 0, 0.25], ['normals', 0, 0.5], ['indices', 0, 1], ['color', 0, 0.75]]) {

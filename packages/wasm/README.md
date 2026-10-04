@@ -208,6 +208,12 @@ residuals. Frames and asset identities are bound into the report; the call does
 not align a loaded model or approve scan accuracy. See the
 [registration contract](../../docs/api/wasm.md#scan-correspondence-registration).
 
+`IfcAPI.segmentScanPoints` detects planes in an xyz `Float32Array` point cloud
+(voxel means, PCA normals, region growing, a robust refit and coplanar
+merging). The JSON report is independent of point order. See the
+[segmentation contract](../../docs/api/wasm.md#scan-plane-segmentation); the
+typed wrapper is `@ifc-lite/geometry/scan-segmentation`.
+
 `IfcAPI.planMeshTransfer` composes registered opaque textured-mesh observations
 onto supported direct IFC tessellations using the shared atlas planner. Unknown
 samples retain existing target albedo; the IFPA response includes explicit

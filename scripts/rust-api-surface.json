@@ -198,6 +198,7 @@
     "Triangle": "struct { v0: Point3<f64>; v1: Point3<f64>; v2: Point3<f64> }",
     "TriangulatedFaceSetProcessor": "struct (unit)",
     "UNATTRIBUTED_PRODUCT_ID": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "UnionFind": "struct {  }",
     "Vector2": "external re-export",
     "Vector3": "external re-export",
     "VoidIndex": "struct {  }",

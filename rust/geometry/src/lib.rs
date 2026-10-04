@@ -180,6 +180,7 @@ pub mod test_support;
 pub mod space_dcel;
 pub(crate) mod transform;
 pub(crate) mod triangulation;
+mod union_find;
 pub(crate) mod void_index;
 /// World-frame test fixture corpus: far-from-origin placements whose offset
 /// axis differs from the axis under test, plus the normal-projected f32
@@ -202,6 +203,7 @@ pub use contour_bool2d::{
     boolean_2d, boolean_2d_fixed_grid, ContourFillRule, resolve_2d, sanitize as sanitize_contours, BooleanOp2D, ContourSet, Ring2D,
 };
 pub use clash_solid::{intersection_solid, DegenerateReason, IntersectionSolid};
+pub use union_find::UnionFind;
 pub use csg::{calculate_normals, ClippingProcessor, GroupCut, GroupReject, Plane, Triangle};
 pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 pub use error::{Error, Result};

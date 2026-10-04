@@ -23,7 +23,8 @@ use super::{
     transfer_surface::Observation,
     transfer_types::*,
 };
-use nalgebra::{Matrix3, SymmetricEigen};
+use crate::point_pca::{symmetric_eigen_ascending, Eigen3};
+use nalgebra::Matrix3;
 
 const MAX_POINTS: usize = 2_000_000;
 const MAX_VIEWPOINTS: usize = 4_096;
@@ -294,19 +295,14 @@ impl PointSurface {
             let d = sub(self.positions[index as usize], centroid);
             for i in 0..3 { for j in 0..3 { covariance[(i, j)] += d[i] * d[j] / n; } }
         }
-        let eigen = SymmetricEigen::new(covariance);
-        let values: [f64; 3] = std::array::from_fn(|i| eigen.eigenvalues[i]);
-        let mut order = [0_usize, 1, 2];
-        order.sort_by(|a, b| values[*a].total_cmp(&values[*b]));
-        let smallest = order[0];
-        let column = eigen.eigenvectors.column(smallest);
-        let normal = [column[0], column[1], column[2]];
+        let Eigen3 { values, vectors } = symmetric_eigen_ascending(covariance);
+        let normal = vectors[0];
         let length = dot(normal, normal).sqrt();
         // A collinear support has no plane; the middle eigenvalue must carry extent.
-        if !length.is_finite() || length == 0. || values[order[1]] <= 1e-12 * self.radius * self.radius {
+        if !length.is_finite() || length == 0. || values[1] <= 1e-12 * self.radius * self.radius {
             return Ok(None);
         }
-        Ok(Some(Plane { centroid, normal: normal.map(|v| v / length), rms: values[smallest].max(0.).sqrt() }))
+        Ok(Some(Plane { centroid, normal: normal.map(|v| v / length), rms: values[0].max(0.).sqrt() }))
     }
 }
 struct Plane {

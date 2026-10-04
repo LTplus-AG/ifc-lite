@@ -164,6 +164,29 @@ See the [exporting guide](https://ifclite.dev/docs/guide/exporting/) for the
 supported subset and warning handling. Third-party platform bridges may expose
 the optional planner capability; the bundled native bridge explicitly refuses it.
 
+## Scan plane segmentation
+
+`@ifc-lite/geometry/scan-segmentation` types the wasm plane detector for point
+clouds. Pass xyz metres, either a whole buffer or a reservoir with a `count`.
+Every option is optional; see the
+[segmentation contract](https://ifclite.dev/docs/api/wasm/#scan-plane-segmentation)
+for the defaults.
+
+```ts
+import { segmentScanPlanes } from '@ifc-lite/geometry/scan-segmentation';
+
+const api = new IfcAPI(); // after the wasm module is initialised
+const positions = new Float32Array([/* x, y, z, ... in metres */]);
+try {
+  const report = segmentScanPlanes(api, { positions }, { scannerPosition: [3, 2, 1.5] });
+  for (const plane of report.planes) {
+    console.log(plane.orientation, plane.normal, plane.d, plane.areaSquareMetres);
+  }
+} finally {
+  api.free();
+}
+```
+
 ## License
 
 [MPL-2.0](../../LICENSE)

@@ -26,6 +26,11 @@
       "import": "./dist/rtc-rebase.js",
       "default": "./dist/rtc-rebase.js"
     },
+    "./scan-segmentation": {
+      "types": "./dist/scan-segmentation.d.ts",
+      "import": "./dist/scan-segmentation.js",
+      "default": "./dist/scan-segmentation.js"
+    },
     "./remesh": {
       "types": "./dist/remesh/index.d.ts",
       "import": "./dist/remesh/index.js",

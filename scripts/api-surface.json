@@ -6396,6 +6396,21 @@
     "rtcRebaseDeltaFor: function",
     "rtcRebaseDeltaYup: function"
   ],
+  "@ifc-lite/geometry/scan-segmentation": [
+    "ScanNormalSource: type",
+    "ScanPlane: interface",
+    "ScanPlaneExtent: interface",
+    "ScanPlaneOrientation: type",
+    "ScanPointInput: interface",
+    "ScanRegion: interface",
+    "ScanSegmentationEngine: type",
+    "ScanSegmentationLimits: interface",
+    "ScanSegmentationOptions: interface",
+    "ScanSegmentationReport: interface",
+    "ScanSegmentationStats: interface",
+    "ScanVec3: type",
+    "segmentScanPlanes: function"
+  ],
   "@ifc-lite/geometry/world-frame": [
     "FrameCandidate: interface",
     "RenderFrameInfo: type",

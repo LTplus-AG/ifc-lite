@@ -804,6 +804,40 @@ produce null summary values, not zero error. No observations are automatically
 removed as outliers. Reflections and scale changes remain visible as mismatch;
 the emitted rotation is proper and has unit scale.
 
+### Scan plane segmentation
+
+`IfcAPI.segmentScanPoints(positions, optionsJson)` returns UTF-8 JSON from the
+canonical Rust `ifc_lite_processing::scan_segmentation` (#6870). `positions` are
+xyz `Float32Array` metres (at most 100,000,000 points); `optionsJson` is a
+camelCase options object, `{}` for the defaults. Unknown fields are refused. The
+call loads nothing and changes nothing. The typed wrapper is
+`segmentScanPlanes` in `@ifc-lite/geometry/scan-segmentation`.
+
+The pipeline averages points into voxels (default 0.03 m) with integer
+fixed-point sums, so the report is byte-identical for any point order or
+chunking. When the voxel count exceeds `maxVoxels` (default 1,500,000), the
+voxel edge doubles and the existing voxels fold exactly into the coarser
+lattice; `limits.voxelBudgetCoarsened` reports this. A PCA over the 26
+neighbouring voxel means gives each voxel a normal and a curvature. Regions
+grow from the flattest voxels (curvature at most `maxSeedCurvature`, 0.02)
+while a voxel's normal stays within `maxNormalAngleDegrees` (10) of the
+refitted plane and its mean within `maxPlaneDistanceMetres` (0.02). Each
+region then gets a median/MAD refit, and adjacent coplanar regions merge.
+Regions whose normals turn faster than `maxBendPerMetre` (1, i.e. a radius of
+curvature under 1 m: column faces) are refused. So are regions smaller than
+`minPlaneAreaSquareMetres` (0.25).
+
+Each plane reports `normal` and `d` (`normal . x + d = 0`), `centroid`,
+`inlierPoints`, `inlierVoxels`, `areaSquareMetres` (occupied voxel columns),
+`rmsMetres`, an in-plane `extent` box (up-aligned for vertical and sloped
+planes, minimum-area for horizontal ones) and `orientation`
+(`horizontal`/`vertical`/`sloped` relative to `upAxis`, default +Z; the
+viewer's Y-up scan sample passes `[0, 1, 0]`). With `scannerPosition` every
+normal faces the scanner (`normalSource: 'scanner'`). Without it the
+orientation is `canonical`: horizontal planes face up. `region` crops to a box,
+and `origin` is added to every output coordinate. `stats` counts points,
+voxels and the regions grown, merged and refused.
+
 `requestSha256` hashes the algorithm ID `ifclite-rigid-correspondence-v1`, one
 zero byte, and compact typed request JSON in Rust field order. It binds all frame
 identities, coordinates, observation identities and the ordered fit/check partition.

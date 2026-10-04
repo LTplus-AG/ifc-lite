@@ -1141,6 +1141,13 @@ export class IfcAPI {
      */
     scanGeometryEntitiesFast(content: string): any;
     /**
+     * Detect planes in a point cloud (#6870). `positions` are xyz f32 metres
+     * (at most 100,000,000 points); `options_json` is a camelCase
+     * `ScanSegmentationOptions` object (`{}` for the defaults). Returns the
+     * UTF-8 JSON `ScanSegmentationReport`. Pure: loads and changes nothing.
+     */
+    segmentScanPoints(positions: Float32Array, options_json: string): Uint8Array;
+    /**
      * Enable or disable per-entity geometry fingerprinting in
      * `processGeometryBatch`, used by the viewer's revision-diff feature.
      *
@@ -2570,6 +2577,7 @@ export interface InitOutput {
     readonly ifcapi_scanEntityIndexShard: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly ifcapi_scanEntityIndexShardFromSource: (a: number, b: number, c: number) => number;
     readonly ifcapi_scanGeometryEntitiesFast: (a: number, b: number, c: number) => number;
+    readonly ifcapi_segmentScanPoints: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_setComputeGeometryHashes: (a: number, b: number, c: number) => void;
     readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_setInstantiatedTypeIds: (a: number, b: number, c: number) => void;

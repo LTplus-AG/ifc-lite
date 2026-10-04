@@ -292,7 +292,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
           <div className="grid gap-2 rounded border border-border/60 p-2">
             <div className="flex items-center justify-between">
               <Label className="text-2xs">{t('properties.taskEdit.productsLabel')}</Label>
-              <span className="text-2xs font-mono text-muted-foreground">{t('properties.taskEdit.productsAssignedCount', { countDisplay: formatLocaleNumber(locale, taskProductExpressIds(task).length) })}</span>
+              <span className="text-2xs font-mono text-muted-foreground">{t('properties.taskEdit.productsAssignedCount', { countDisplay: formatLocaleNumber(locale, new Set(taskProductExpressIds(task)).size) })}</span>
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               <Tooltip>

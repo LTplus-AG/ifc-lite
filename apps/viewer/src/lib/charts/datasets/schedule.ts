@@ -73,7 +73,8 @@ export function buildScheduleDataset(state: ScheduleDatasetState): ChartDataset 
   for (const task of tasks) {
     const start = epoch(task.taskTime?.scheduleStart ?? task.taskTime?.actualStart);
     const finish = epoch(task.taskTime?.scheduleFinish ?? task.taskTime?.actualFinish);
-    const productIds = taskProductExpressIds(task);
+    // A product can be both an input and an output of one task; count it once.
+    const productIds = [...new Set(taskProductExpressIds(task))];
     rows.push({
       ids: productIds.map((id) => toGlobalIdFromModels(state.models, modelId, id)),
       values: [

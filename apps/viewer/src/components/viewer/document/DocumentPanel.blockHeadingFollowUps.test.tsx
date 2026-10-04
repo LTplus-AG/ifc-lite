@@ -34,7 +34,7 @@ const spec = (blockList: DocumentBlock[], orientation: 'portrait' | 'landscape' 
 beforeEach(() => {
   localStorage.clear();
   useViewerStore.setState({ models: new Map(), activeModelId: null, documents: [], activeDocumentId: null, dashboards: [], selectedEntityIds: new Set(),
-    mutationViews: new Map(), mutationVersion: 0, idsValidationReport: null, validationSource: null, savedValidationReports: [], validationReportsLoadIssue: null,
+    mutationViews: new Map(), mutationVersion: 0, idsValidationReport: null, validationSource: null, savedValidationReports: [],
     bcfProject: { version: '3.0', topics: new Map([['topic-guid', { guid: 'topic-guid', title: LONG, description: 'Coordinate', viewpoints: [], comments: [] }]]) } });
 });
 afterEach(() => { cleanup(); localStorage.clear(); });

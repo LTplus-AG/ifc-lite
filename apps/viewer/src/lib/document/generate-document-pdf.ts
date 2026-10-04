@@ -176,7 +176,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         const topic = input.topics.get(block.guid);
         if (!topic) {
           result.missingTopics.push(block.guid);
-          blocks.push({ kind: 'topic', id: block.id, authoredTitle: !!blockTitle(block), title: blockTitle(block, `[BCF topic ${block.guid}: not among the loaded topics]`), lines: blockTitle(block) ? [`[BCF topic ${block.guid}: not among the loaded topics]`] : [], snapshotAspect: null, scale: block.scale, ...blockHeaderStyleFields(block) });
+          blocks.push({ kind: 'topic', id: block.id, title: blockTitle(block, `[BCF topic ${block.guid}: not among the loaded topics]`), lines: blockTitle(block) ? [`[BCF topic ${block.guid}: not among the loaded topics]`] : [], snapshotAspect: null, scale: block.scale, ...blockHeaderStyleFields(block) });
           break;
         }
         let snapshotAspect: number | null = null;
@@ -190,7 +190,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
             snapshotAspect = 4 / 3;
           }
         }
-        blocks.push({ kind: 'topic', id: block.id, authoredTitle: !!blockTitle(block), title: blockTitle(block, topic.title), lines: topicLines(topic), snapshotAspect, scale: block.scale, ...blockHeaderStyleFields(block) });
+        blocks.push({ kind: 'topic', id: block.id, title: blockTitle(block, topic.title), lines: topicLines(topic), snapshotAspect, scale: block.scale, ...blockHeaderStyleFields(block) });
         break;
       }
     }

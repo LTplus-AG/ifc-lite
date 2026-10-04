@@ -44,7 +44,7 @@ export type ResolvedBlock =
   | PageBreakBlock
   | ({ kind: 'image'; id: string; height: number; align: 'left' | 'center' | 'right'; caption?: string; title?: string; /** natural width / height */ aspect: number; width?: BlockWidth; scale?: number } & BlockHeaderStyleFields)
   | ({ kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth; fontSize?: number; scale?: number } & BlockHeaderStyleFields)
-  | ({ kind: 'topic'; id: string; title: string; authoredTitle?: boolean; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null; scale?: number } & BlockHeaderStyleFields)
+  | ({ kind: 'topic'; id: string; title: string; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null; scale?: number } & BlockHeaderStyleFields)
   | { kind: 'spacer'; id: string; height: number }
   | ({ kind: 'table' } & TableLayoutBlock)
   | ({ kind: 'ids-report' } & IdsReportLayoutBlock)

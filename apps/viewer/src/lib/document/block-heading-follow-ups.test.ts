@@ -37,7 +37,7 @@ const block = (kind: typeof KINDS[number], extra: object = {}): ResolvedBlock =>
     case 'text': return { kind: 'text', id: kind, style: 'body', text: 'One short line', title, ...STYLE, ...extra } as ResolvedBlock;
     case 'image': return { kind: 'image', id: kind, height: 100, align: 'center', aspect: 2, title, ...STYLE, ...extra } as ResolvedBlock;
     case 'chart': return { kind: 'chart', id: kind, title, subtitle: '3 buckets', hasData: true, snapshot: false, height: 200, ...STYLE, ...extra } as ResolvedBlock;
-    case 'topic': return { kind: 'topic', id: kind, title, authoredTitle: true, lines: ['Open'], snapshotAspect: null, ...STYLE, ...extra } as ResolvedBlock;
+    case 'topic': return { kind: 'topic', id: kind, title, lines: ['Open'], snapshotAspect: null, ...STYLE, ...extra } as ResolvedBlock;
     case 'table': return { kind: 'table', id: kind, title, columns: [{ label: 'Name', numeric: false }], rows: [{ role: 'row' as const, cells: ['Wall'] }], ...STYLE, ...extra } as ResolvedBlock;
     case 'ids': return { ...IDS, title, ...STYLE, ...extra } as ResolvedBlock;
     case 'manual': return { ...MANUAL, title, ...STYLE, ...extra } as ResolvedBlock;
@@ -56,7 +56,7 @@ describe('a topic heading that is not authored stays inside its strip (#6632 fol
   for (const [label, title] of [['the topic\'s own title', LONG], ['the not-loaded placeholder', PLACEHOLDER]] as const) {
     for (const snapshotAspect of [null, 4 / 3]) {
       it(`${label}, ${snapshotAspect ? 'with' : 'without'} a snapshot, at the largest size: the text ends inside the strip and the frame`, () => {
-        const layout = compose([block('topic', { title, authoredTitle: false, lines: title === LONG ? ['Status: Open'] : [], snapshotAspect })]);
+        const layout = compose([block('topic', { title, lines: title === LONG ? ['Status: Open'] : [], snapshotAspect })]);
         const strip = stripOf(layout);
         const text = itemsOf(layout).find((item) => item.kind === 'text' && item.bold && item.size === STYLE.titleFontSize);
         assert.ok(text && text.kind === 'text', 'the heading is drawn');
@@ -67,7 +67,7 @@ describe('a topic heading that is not authored stays inside its strip (#6632 fol
     }
   }
   it('an unstyled topic title keeps the width it is cut to, so nothing is cut that was not before', () => {
-    const layout = compose([block('topic', { title: 'Short title', authoredTitle: false, titleFontSize: undefined, titleBackgroundColor: undefined })]);
+    const layout = compose([block('topic', { title: 'Short title', titleFontSize: undefined, titleBackgroundColor: undefined })]);
     assert.ok(itemsOf(layout).some((item) => item.kind === 'text' && item.text === 'Short title'), 'a short fallback title is drawn whole');
   });
 });

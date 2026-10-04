@@ -87,11 +87,15 @@ describe('every kind draws the same heading strip (#6632 follow-up)', () => {
     }
   }
   it('a chart title is still cut short of the column edge it was cut to before', () => {
-    const long = 'W'.repeat(120);
-    const layout = compose([block('chart', { title: long, titleBackgroundColor: undefined, titleFontSize: undefined })]);
-    const text = itemsOf(layout).find((item) => item.kind === 'text' && item.bold);
-    assert.ok(text && text.kind === 'text');
-    assert.ok(text.x + estimateTextWidth(text.text, text.size, true) <= A4.w - REPORT_MARGIN - 4 + 1e-6, 'the text keeps its 4pt margin to the column edge');
+    // The estimate gives every glyph 0.56 em, so the cut lands within one glyph of the limit: at 6pt a glyph
+    // is 3.36pt, narrower than the 4pt reserve, so a lost reserve shows. At 11pt the two limits cut alike.
+    for (const titleFontSize of [undefined, 6, 7, 9, 13, 24]) {
+      const layout = compose([block('chart', { title: 'W'.repeat(400), titleBackgroundColor: undefined, titleFontSize })]);
+      const text = itemsOf(layout).find((item) => item.kind === 'text' && item.bold);
+      assert.ok(text && text.kind === 'text' && text.text.endsWith('…'), `size ${titleFontSize}: the title is cut`);
+      const end = text.x + estimateTextWidth(text.text, text.size, true);
+      assert.ok(end <= A4.w - REPORT_MARGIN - 4 + 1e-6, `size ${titleFontSize}: the text ends at ${end}, inside its 4pt margin to the column edge ${A4.w - REPORT_MARGIN}`);
+    }
   });
 });
 

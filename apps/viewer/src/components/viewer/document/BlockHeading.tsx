@@ -13,7 +13,7 @@ export interface BlockHeadingProps {
   pointScale: number;
   /** 1, or a chart's text-size factor: the heading's default size follows it (see `blockTitleStyle`). */
   unit?: number;
-  /** The kind's own classes and inline style; the heading's size, strip and one-line cut are applied over them. */
+  /** The kind's own classes and inline style, kept exactly while no heading style is authored. */
   className: string;
   style?: CSSProperties;
   title?: string;
@@ -26,20 +26,16 @@ export interface BlockHeadingProps {
  */
 export function BlockHeading({ block, text, pointScale, unit = 1, className, style, title }: BlockHeadingProps) {
   const heading = blockTitleStyle(block, BLOCK_TITLE_SIZE_DEFAULT * unit);
+  const authored = heading.size !== BLOCK_TITLE_SIZE_DEFAULT * unit || heading.textColor !== undefined || heading.backgroundColor !== undefined;
+  if (!authored) return <div className={className} style={style} title={title}>{text}</div>;
   const strip = (BLOCK_TITLE_HEIGHT * unit + heading.extra) * pointScale;
-  // Always the point-based size and strip, authored or not: the unstyled heading is the PDF's 11pt line, so
-  // raising the size never shrinks it, and a background alone changes neither its size nor the content below.
-  // One line, cut with an ellipsis like the PDF's `truncateToWidth`, whatever class the kind passes.
-  const headingStyle: CSSProperties = {
+  const authoredStyle: CSSProperties = {
     ...style,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
     fontSize: heading.size * pointScale,
     lineHeight: `${strip}px`,
     height: strip,
     ...(heading.textColor ? { color: heading.textColor } : {}),
     ...(heading.backgroundColor ? { backgroundColor: heading.backgroundColor, paddingLeft: BLOCK_TITLE_PAD * pointScale, paddingRight: BLOCK_TITLE_PAD * pointScale } : {}),
   };
-  return <div className={className} style={headingStyle} title={title}>{text}</div>;
+  return <div className={className} style={authoredStyle} title={title}>{text}</div>;
 }

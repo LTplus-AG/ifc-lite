@@ -121,7 +121,7 @@ export function isHostGranted(grants: readonly Capability[], hostname: string): 
 
 function assertEndpointAndGranted(url: URL, grants: readonly Capability[], rawUrl: string, authorizedOrigin?: string): void {
   try { assertNetworkEndpoint(rawUrl, authorizedOrigin); }
-  catch (error) { throw new NetworkDeniedError(error instanceof Error ? error.message : 'Invalid endpoint'); }
+  catch (error) { throw new NetworkDeniedError(`network.fetch refused: ${error instanceof Error ? error.message : 'Invalid endpoint'}`); }
   const exact = url.protocol === 'http:' ? createLoopbackHostGrant(url.hostname) : undefined;
   const allowed = exact ? grants.some(grant => grant.scope === exact.scope && grant.action === exact.action
     && grant.target?.segments.length === 1 && grant.target.segments[0].kind === 'literal'

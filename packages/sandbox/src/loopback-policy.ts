@@ -29,5 +29,5 @@ export function assertNetworkEndpoint(endpoint: string, authorizedOrigin?: strin
   }
   if (url.protocol === 'https:' && authorizedOrigin === undefined) return;
   if (url.protocol === 'http:' && authorizedOrigin !== undefined && loopbackHttpOrigin(endpoint) === authorizedOrigin) return;
-  throw new Error('Only https: URLs are permitted without an explicit exact loopback HTTP origin authorization');
+  throw new Error(`only https: URLs are permitted, got "${url.protocol}" without an explicit exact loopback HTTP origin authorization`);
 }

@@ -26,7 +26,11 @@ the vendor account settings.
 
 API JSON is bounded to 8 MiB; request JSON to 64 KiB. File transfers are capped
 at 512 MiB and two concurrent downloads, with 15-minute cancellation deadlines.
-Files spool to private ephemeral directories before streaming. Reserve at least
+Preparation returns a session-owned job immediately. Short status polls keep
+slow upstream downloads below the edge proxy response deadline. Files spool to
+private ephemeral directories before streaming and can be claimed once. Ready
+artifacts expire after two minutes; cancellation, signout and shutdown remove
+them. Capacity remains occupied until cancelled upstream work settles. Reserve at least
 1.5 GiB temporary disk; no model artifact is intentionally retained after a
 transfer. Startup removes owned crash leftovers from its dedicated private
 runtime directory before serving requests. Shutdown aborts transfers and awaits

@@ -22,6 +22,9 @@ const snapshot = (model: LoadedModel) => {
     records: view.getNewEntities(), journal: view.getMutations(), next: view.peekNextExpressId() });
 };
 
+// Loading two real IFC models and cold native processing plus successful retry
+// can exceed Vitest's default 5s under full CI contention (5.192s/5.299s).
+// Bound only these native integration controls; input-only checks retain defaults.
 for (const route of ['room_command', 'query_rooms']) for (const fault of ['export', 'parse', 'process', 'import'] as const) {
   it.skipIf(!available)(`#6232 / #6759 ${route} reports unexpected native ${fault} failure as INTERNAL_ERROR atomically`, async () => {
     const { registry, call } = await liveToolSession(2), model = registry.get('beta')!, peer = registry.get('alpha')!;
@@ -45,7 +48,7 @@ for (const route of ['room_command', 'query_rooms']) for (const fault of ['expor
       // A fresh successful request proves failed preparation is not cached or locked.
       expect((await call(route, { model_id: 'beta', storey_express_id: 42, ...(route === 'room_command' ? { command: { action: 'query' } } : {}) })).isError).not.toBe(true);
     } finally { for (const loaded of registry.list()) loaded.backend.dispose(); }
-  });
+  }, 30_000);
 }
 
 for (const route of ['room_command', 'query_rooms']) it.skipIf(!available)(`#6232 ${route} keeps invalid live-storey preparation as INVALID_INPUT`, async () => {

@@ -898,8 +898,13 @@ least `minCylinderInlierFraction` (0.6) of the group, and it is refused when:
 - a sphere fits its inliers as well;
 - they cover less than `minCylinderArcDegrees` (90);
 - they are shorter than `minCylinderLengthMetres` (0.3);
-- it has fewer inlier voxels than voxel steps along its length (a loose fit
-  through scattered voxels);
+- its normals do not turn around the axis as a cylinder's do: the median, over
+  neighbouring inlier voxels, of normal turn per radian of position is under
+  0.6 (about 1 on a real cylinder, near 0 on flat facets meeting at an angle,
+  such as a pier or a chamfered corner);
+- the median axial slice (3 voxels thick) shows under half of the arc the
+  whole candidate covers: fragments at different heights, such as clutter in
+  a wall corner, not one round surface;
 - the radius falls outside `minCylinderRadiusMetres`..`maxCylinderRadiusMetres`.
   The minimum defaults to two voxel edges (0.06 m at the default voxel; below
   that a circumference cannot carry its curvature), the maximum to 1.5 m.

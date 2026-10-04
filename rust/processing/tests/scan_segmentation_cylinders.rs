@@ -16,7 +16,7 @@ mod scan_synthetic;
 use ifc_lite_processing::scan_segmentation::{
     segment_scan_points, AxisOrientation, ScanCylinder, ScanSegmentationOptions, ScanSegmentationReport,
 };
-use scan_synthetic::{cylinder_room, room_with, two_rooms, ExpectedCylinder, Rng, ScanSpec};
+use scan_synthetic::{cylinder_room, room_with, room_with_facets, twisted_fragments, two_rooms, vertical_strips, ExpectedCylinder, Rng, ScanSpec};
 use std::f64::consts::TAU;
 use std::sync::OnceLock;
 
@@ -169,9 +169,13 @@ fn issue_6870_minimum_radius_defaults_to_two_voxels() {
     let pipe = ExpectedCylinder { start: [1., 2., 1.5], end: [4., 2., 1.5], radius: 0.07 };
     let report = segment_scan_points(&room_with(&ScanSpec::default(), &[(pipe.clone(), TAU)]), &ScanSegmentationOptions::default()).unwrap();
     assert_finds_exactly(&report, &[pipe]);
-    // An explicit minimum still applies, and must not undercut the voxel floor silently.
-    let explicit = ScanSegmentationOptions { min_cylinder_radius_metres: Some(0.1), ..Default::default() };
-    assert!(segment_scan_points(&half, &explicit).unwrap().cylinders.is_empty());
+    // The boundary itself: a clean, dense, whole r 0.05 pipe fits well (an
+    // explicit 0.03 m minimum finds it), yet the two-voxel default refuses it.
+    let whole = ExpectedCylinder { start: [1., 2., 1.5], end: [4., 2., 1.5], radius: 0.05 };
+    let dense = room_with(&ScanSpec { density: 9_000., ..Default::default() }, &[(whole.clone(), TAU)]);
+    assert!(segment_scan_points(&dense, &ScanSegmentationOptions::default()).unwrap().cylinders.is_empty());
+    let explicit = ScanSegmentationOptions { min_cylinder_radius_metres: Some(0.03), ..Default::default() };
+    assert_finds_exactly(&segment_scan_points(&dense, &explicit).unwrap(), &[whole]);
 }
 
 #[test]
@@ -182,7 +186,8 @@ fn issue_6870_every_cylinder_refusal_is_counted() {
     let s = &report.stats;
     let refused = s.cylinder_candidates_below_share + s.cylinder_refits_failed + s.cylinders_rejected_as_spheres
         + s.cylinders_rejected_for_arc + s.cylinders_rejected_for_length + s.cylinders_rejected_as_duplicates
-        + s.cylinders_rejected_for_radius + s.cylinders_rejected_as_sparse;
+        + s.cylinders_rejected_for_radius + s.cylinders_rejected_as_facets
+        + s.cylinders_rejected_for_uneven_arc;
     assert!(s.cylinder_candidates_below_share >= 1, "the whole sphere fits no cylinder: {s:?}");
     assert!(refused + report.cylinders.len() as u64 >= s.cylinder_groups, "every group ends in a count: {s:?}");
 }
@@ -218,4 +223,63 @@ fn issue_6870_noisy_pipes_are_found_across_seeds() {
         let report = segment_scan_points(&room_with(&spec, &[(pipe.clone(), TAU)]), &ScanSegmentationOptions::default()).unwrap();
         assert_finds_exactly(&report, std::slice::from_ref(&pipe));
     }
+}
+
+#[test]
+fn issue_6870_flat_facets_meeting_at_an_angle_are_not_cylinders() {
+    // Review of #6878: facets under the plane area minimum never become
+    // planes. Within 2 cm a flat facet about 8 cm from a candidate axis
+    // matches the radius over roughly +-35 degrees with normals inside the
+    // radial gate, and two such facets add up to more than 90 degrees of arc.
+    // Apartment.e57 reported two such "cylinders" in wall corners.
+    let polar = |angle: f64, length: f64| [3. + length * angle.to_radians().cos(), 2. + length * angle.to_radians().sin()];
+    // (name, plan polyline, height range)
+    type Decoy = (&'static str, Vec<[f64; 2]>, (f64, f64));
+    let decoys: [Decoy; 4] = [
+        ("two 0.15 m strips at 90 degrees", vec![polar(0., 0.15), polar(0., 0.), polar(90., 0.15)], (0.7, 2.0)),
+        ("two 0.15 m strips at 120 degrees", vec![polar(0., 0.15), polar(0., 0.), polar(120., 0.15)], (0.7, 2.0)),
+        // A corner with a 45 degree chamfer: three facets.
+        ("chamfered corner", vec![[3.2, 2.], [3.06, 2.], [3., 2.06], [3., 2.2]], (0.7, 2.0)),
+        // A narrow 45 degree chamfer across the room corner, floor to ceiling.
+        ("corner chamfer strip", vec![[0.1, 0.], [0., 0.1]], (0., 2.7)),
+    ];
+    let mut refused_as_facets = 0;
+    for (name, corners, z) in decoys {
+        let spec = ScanSpec { seed: 31, ..Default::default() };
+        let positions = room_with_facets(&spec, &[], &vertical_strips(&corners, z));
+        let report = segment_scan_points(&positions, &ScanSegmentationOptions::default()).unwrap();
+        assert!(report.cylinders.is_empty(), "{name}: {:?}", report.cylinders);
+        refused_as_facets += report.stats.cylinders_rejected_as_facets;
+    }
+    assert!(refused_as_facets >= 3, "the facet guard itself refuses them");
+}
+
+#[test]
+fn issue_6870_partial_and_wall_flush_pipes_pass_the_facet_guard() {
+    // Real round surfaces must still pass the turning test when only part of
+    // the circumference is scanned, or when the pipe sits against a wall.
+    let along_x = |y: f64, radius: f64| ExpectedCylinder { start: [1., y, 1.5], end: [4., y, 1.5], radius };
+    for (name, pipe, arc) in [
+        ("half-visible", along_x(2., 0.08), TAU / 2.),
+        ("third-visible", along_x(2., 0.08), TAU / 3.),
+        ("flush against the wall", along_x(0.09, 0.08), TAU),
+        ("sparse (2,500 points/m2)", along_x(2., 0.08), TAU),
+    ] {
+        let density = if name.starts_with("sparse") { 2_500. } else { 6_000. };
+        let spec = ScanSpec { density, ..Default::default() };
+        let report = segment_scan_points(&room_with(&spec, &[(pipe.clone(), arc)]), &ScanSegmentationOptions::default()).unwrap();
+        assert_eq!(report.cylinders.len(), 1, "{name}: {:?}", report.stats);
+        assert!(matches(&report.cylinders[0], &pipe).is_ok(), "{name}: {:?}", matches(&report.cylinders[0], &pipe));
+    }
+}
+
+#[test]
+fn issue_6870_fragments_at_different_heights_are_not_one_cylinder() {
+    // Review of #6878: on a real apartment scan, clutter in a wall corner was
+    // reported as a cylinder although no height shows a circular arc. Each
+    // fragment here is truly curved (the facet guard passes it); only the
+    // per-slice arc test sees that the arc is not the same at every height.
+    let report = segment_scan_points(&twisted_fragments(&ScanSpec { seed: 31, ..Default::default() }), &ScanSegmentationOptions::default()).unwrap();
+    assert!(report.cylinders.is_empty(), "{:?}", report.cylinders);
+    assert!(report.stats.cylinders_rejected_for_uneven_arc >= 1, "{:?}", report.stats);
 }

@@ -17,8 +17,9 @@
 //!    group. It is refused when its radius is out of range (the minimum
 //!    defaults to two voxels), when a sphere fits its inliers as well, when
 //!    they cover less than the minimum arc, when they are shorter than the
-//!    minimum length, or when they are sparser than one voxel per voxel step
-//!    along the axis. Its inliers then leave the group, and the next candidate
+//!    minimum length, when their normals do not turn around the axis as a
+//!    cylinder's do (flat facets meeting at an angle), or when the median
+//!    axial slice shows under half of the claimed arc (clutter in a corner). Its inliers then leave the group, and the next candidate
 //!    is sought; at most `MAX_PER_GROUP` tries per group. Every exit is
 //!    counted in the stats.
 //! 4. Near-identical cylinders (one surface found twice, across groups or
@@ -30,6 +31,7 @@
 //! ordered by key, so results do not depend on point order.
 use super::cylinder_fit::{arc_degrees, refine, sphere_rms, Cylinder};
 use super::normals::{canonical_sign, cross, dot, sub, unit, Normals, Vec3};
+use super::refit::plane_basis;
 use super::options::{CylinderParams, Params};
 use super::report::{AxisOrientation, ScanCylinder, ScanSegmentationStats};
 use super::voxel::VoxelSet;
@@ -46,6 +48,25 @@ const MIN_PAIR_SIN: f64 = 0.5; // sin 30 degrees
 /// extents) are one surface found twice; only the best supported is kept.
 const DUPLICATE_SIN: f64 = 0.087; // sin 5 degrees
 const DUPLICATE_RADIUS_RATIO: f64 = 1.25;
+/// Across a cylinder the normal turns as fast as the position around the
+/// axis (median ratio 0.7..0.9 measured over real pipes and columns, half and
+/// third arcs, 1 cm noise). Across flat facets meeting at an angle it barely
+/// turns (0.14..0.44 measured for 90 and 120 degree strip pairs and a
+/// chamfered corner): within 2 cm a facet 8 cm from an axis matches a radius
+/// over about +-35 degrees, so two facets otherwise pass for a pipe.
+const MIN_TURNING_RATIO: f64 = 0.6;
+/// Every axial slice (3 voxels thick) of a real cylinder shows most of the
+/// arc the whole cylinder covers: 0.70..1.00 of the occupied 10 degree bins
+/// at the median slice, measured over pipes and columns (half, third and
+/// wall-flush arcs, 1 cm noise). Clutter in a wall corner or a wedge of
+/// sheets shows different fragments at different heights (0.36 and 0.10 on
+/// the two false cylinders of a real apartment scan).
+const MIN_SLICE_ARC_SHARE: f64 = 0.5;
+const SLICE_VOXELS: f64 = 3.;
+const ARC_BINS_10_DEGREES: usize = 36;
+/// Neighbour pairs closer than this around the axis are not used to judge
+/// turning: their angle difference is mostly noise.
+const MIN_PAIR_TURN: f64 = 0.052; // 3 degrees
 
 /// SplitMix64, as in the test generator: tiny and identical everywhere.
 struct Rng(u64);
@@ -213,15 +234,17 @@ pub(crate) fn detect(
                 stats.cylinders_rejected_for_arc += 1;
                 continue;
             }
+            if turning_ratio(&cylinder, &inliers, voxels, &normal_of).is_none_or(|ratio| ratio < MIN_TURNING_RATIO) {
+                stats.cylinders_rejected_as_facets += 1;
+                continue;
+            }
+            if slice_arc_share(&cylinder, &inliers, voxels) < MIN_SLICE_ARC_SHARE {
+                stats.cylinders_rejected_for_uneven_arc += 1;
+                continue;
+            }
             let out = describe(&cylinder, &inliers, voxels, rms, arc, params);
             if out.length < c.min_length {
                 stats.cylinders_rejected_for_length += 1;
-                continue;
-            }
-            // A surface has at least one inlier voxel per voxel step along its
-            // axis; fewer is a loose fit threaded through scattered voxels.
-            if (inliers.len() as f64) < out.length / voxels.size {
-                stats.cylinders_rejected_as_sparse += 1;
                 continue;
             }
             found.push((out, cylinder));
@@ -234,6 +257,66 @@ pub(crate) fn detect(
         })
     });
     (found, limit_hit)
+}
+
+/// Occupied 10 degree bins at the median axial slice, over the bins the whole
+/// cylinder occupies: about 1 when the same arc is seen at every height.
+fn slice_arc_share(cylinder: &Cylinder, inliers: &[u32], voxels: &VoxelSet) -> f64 {
+    let (u, _) = plane_basis(cylinder.axis);
+    let v = cross(cylinder.axis, u);
+    let along = |i: u32| dot(sub(voxels.means[i as usize], cylinder.point), cylinder.axis);
+    let (lo, hi) = inliers.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &i| (lo.min(along(i)), hi.max(along(i))));
+    let thickness = SLICE_VOXELS * voxels.size;
+    // Bounded: inliers span at most the group, so slices <= inliers.
+    let count = (((hi - lo) / thickness) as usize + 1).min(inliers.len());
+    let mut slices = vec![[false; ARC_BINS_10_DEGREES]; count];
+    let mut whole = [false; ARC_BINS_10_DEGREES];
+    for &i in inliers {
+        let d = sub(voxels.means[i as usize], cylinder.point);
+        let angle = dot(d, v).atan2(dot(d, u)).rem_euclid(std::f64::consts::TAU);
+        let bin = ((angle / std::f64::consts::TAU * ARC_BINS_10_DEGREES as f64) as usize).min(ARC_BINS_10_DEGREES - 1);
+        slices[(((along(i) - lo) / thickness) as usize).min(count - 1)][bin] = true;
+        whole[bin] = true;
+    }
+    let mut occupied: Vec<usize> = slices.iter().map(|s| s.iter().filter(|b| **b).count()).collect();
+    let mid = occupied.len() / 2;
+    let median = *occupied.select_nth_unstable(mid).1;
+    median as f64 / whole.iter().filter(|b| **b).count().max(1) as f64
+}
+
+/// Median, over neighbouring inlier pairs at least `MIN_PAIR_TURN` apart
+/// around the axis, of how far the normal turns per radian of position: about
+/// 1 on a cylinder, about 0 on flat facets. None when no pair qualifies.
+fn turning_ratio(cylinder: &Cylinder, inliers: &[u32], voxels: &VoxelSet, normal_of: &dyn Fn(u32) -> Option<Vec3>) -> Option<f64> {
+    let (u, _) = plane_basis(cylinder.axis);
+    let v = cross(cylinder.axis, u);
+    // (position angle, normal angle) about the axis, the normal facing out.
+    let angles = |i: u32| -> Option<(f64, f64)> {
+        let normal = normal_of(i)?;
+        let (_, radial) = cylinder.radial(voxels.means[i as usize]);
+        let normal = if dot(normal, radial) < 0. { normal.map(|x| -x) } else { normal };
+        Some((dot(radial, v).atan2(dot(radial, u)), dot(normal, v).atan2(dot(normal, u))))
+    };
+    let wrap = |d: f64| (d + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI;
+    let mut ratios = Vec::new();
+    for &i in inliers {
+        let Some((pi, ni)) = angles(i) else { continue };
+        voxels.for_each_neighbor(i, 1, |j| {
+            if j <= i || inliers.binary_search(&j).is_err() {
+                return;
+            }
+            let Some((pj, nj)) = angles(j) else { return };
+            let turn = wrap(pj - pi);
+            if turn.abs() >= MIN_PAIR_TURN {
+                ratios.push(wrap(nj - ni) / turn);
+            }
+        });
+    }
+    if ratios.is_empty() {
+        return None;
+    }
+    let mid = ratios.len() / 2;
+    Some(*ratios.select_nth_unstable_by(mid, f64::total_cmp).1)
 }
 
 fn duplicates(a: &(ScanCylinder, Cylinder), b: &(ScanCylinder, Cylinder)) -> bool {

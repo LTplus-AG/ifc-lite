@@ -153,6 +153,10 @@ impl Sampler<'_> {
     /// Lateral surface of a cylinder, over `arc` radians of its circumference
     /// starting at angle 0 (the first in-plane axis).
     fn cylinder(&mut self, c: &ExpectedCylinder, arc: f64) {
+        self.cylinder_from(c, 0., arc);
+    }
+    /// As `cylinder`, over `arc` radians starting at angle `from`.
+    fn cylinder_from(&mut self, c: &ExpectedCylinder, from: f64, arc: f64) {
         let axis = sub(c.end, c.start);
         let length = norm(axis);
         let a = axis.map(|v| v / length);
@@ -161,7 +165,7 @@ impl Sampler<'_> {
         let v = cross(a, u);
         let area = arc * c.radius * length;
         for _ in 0..(area * self.spec.density).round() as usize {
-            let (angle, t) = (self.rng.range(0., arc), self.rng.range(0., length));
+            let (angle, t) = (from + self.rng.range(0., arc), self.rng.range(0., length));
             let p: [f64; 3] = std::array::from_fn(|k| {
                 c.start[k] + t * a[k] + c.radius * (angle.cos() * u[k] + angle.sin() * v[k])
             });
@@ -350,7 +354,25 @@ pub fn cylinder_room(spec: &ScanSpec) -> CylinderScene {
 /// sampled over its arc (radians from the first in-plane axis). Vertical
 /// cylinders cut their footprint from floor and ceiling.
 pub fn room_with(spec: &ScanSpec, cylinders: &[(ExpectedCylinder, f64)]) -> Vec<f32> {
+    room_with_facets(spec, cylinders, &[])
+}
+
+/// Vertical flat strips through the plan polyline `corners`, from `z.0` to
+/// `z.1`: one facet per segment, sharing edges (an angled pier, a chamfered
+/// corner). Each facet is `[origin, u, v]` for `room_with_facets`.
+pub fn vertical_strips(corners: &[[f64; 2]], z: (f64, f64)) -> Vec<[[f64; 3]; 3]> {
+    corners
+        .windows(2)
+        .map(|w| [[w[0][0], w[0][1], z.0], [w[1][0] - w[0][0], w[1][1] - w[0][1], 0.], [0., 0., z.1 - z.0]])
+        .collect()
+}
+
+/// `room_with` plus flat facets (parallelograms `[origin, u, v]`).
+pub fn room_with_facets(spec: &ScanSpec, cylinders: &[(ExpectedCylinder, f64)], facets: &[[[f64; 3]; 3]]) -> Vec<f32> {
     let mut s = Sampler { rng: Rng::new(spec.seed), spec, out: Vec::new() };
+    for f in facets {
+        s.patch(f[0], f[1], f[2], &|_, _| true);
+    }
     let free = |x: f64, y: f64| {
         cylinders.iter().all(|(c, _)| c.start[2] == c.end[2] || (x - c.start[0]).hypot(y - c.start[1]) > c.radius)
     };
@@ -362,6 +384,22 @@ pub fn room_with(spec: &ScanSpec, cylinders: &[(ExpectedCylinder, f64)]) -> Vec<
     s.patch([0., 4., 0.], [6., 0., 0.], [0., 0., 2.7], &|_, _| true);
     for (c, arc) in cylinders {
         s.cylinder(c, *arc);
+    }
+    s.out
+}
+
+/// Clutter decoy: 90 degree arc fragments of one r 0.1 axis at (3, 2), each
+/// 0.15 m tall and turned 45 degrees from the one below, from z 0.7 to 2.05.
+/// Each piece is truly curved and overlaps its neighbours (one connected
+/// group covering the whole circumference), but every height shows only one
+/// or two neighbouring pieces.
+pub fn twisted_fragments(spec: &ScanSpec) -> Vec<f32> {
+    let mut s = Sampler { rng: Rng::new(spec.seed), spec, out: Vec::new() };
+    s.out = room_with(spec, &[]);
+    for k in 0..9 {
+        let z = 0.7 + 0.15 * k as f64;
+        let piece = ExpectedCylinder::vertical([3., 2.], 0.1, (z, z + 0.15));
+        s.cylinder_from(&piece, k as f64 * std::f64::consts::FRAC_PI_4, std::f64::consts::FRAC_PI_2);
     }
     s.out
 }

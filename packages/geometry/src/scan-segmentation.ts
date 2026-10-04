@@ -147,7 +147,8 @@ export interface ScanSegmentationStats {
   cylinderCandidatesBelowShare: number;
   cylinderRefitsFailed: number;
   cylindersRejectedForRadius: number;
-  cylindersRejectedAsSparse: number;
+  cylindersRejectedAsFacets: number;
+  cylindersRejectedForUnevenArc: number;
   cylindersRejectedAsDuplicates: number;
   cylindersRejectedForArc: number;
   cylindersRejectedForLength: number;

@@ -49,3 +49,35 @@ describe('resource URI identity (#6783)', () => {
     expect(() => resourceUriForGlobalId(GlobalId, segment)).toThrow(/full URI template|known resource/);
   });
 });
+
+describe('URI template rendering invariants (#6783 review)', () => {
+  it('preserves every compressed identifier character, including consecutive dollar signs', () => {
+    const GlobalId = '0' + '$'.repeat(21);
+    const uri = resourceUriForGlobalId(GlobalId, config);
+    expect(uri).toBe(`https://lbd.org/${GlobalId}`);
+    const context = { entities: [{ modelId: 'dollars', expressId: 7, GlobalId }], revisions: new Map<string, string>() };
+    expect(createResourceUriStrategy(config).resolve({ id: uri }, context)).toEqual({ status: 'resolved', ref: { modelId: 'dollars', expressId: 7 } });
+  });
+  it('accepts the expanded length boundary and every rendered URI resolves through the same strategy', () => {
+    const templateAtExpandedLength = (length: number) => 'https://lbd.org/' + 'a'.repeat(length - 'https://lbd.org/'.length - GlobalId.length) + '{GlobalId}';
+    const boundary = { mode: 'template' as const, template: templateAtExpandedLength(2048) };
+    const uri = resourceUriForGlobalId(GlobalId, boundary); expect(uri.length).toBe(2048);
+    expect(createResourceUriStrategy(boundary).resolve({ id: uri }, context).status).toBe('resolved');
+    for (const length of [2049, 2060]) {
+      const tooLong = { mode: 'template' as const, template: templateAtExpandedLength(length) };
+      expect(() => assertResourceUriIdentityConfig(tooLong)).toThrow(/Expanded resource URI/);
+      expect(() => resourceUriForGlobalId(GlobalId, tooLong)).toThrow(/2048/);
+    }
+  });
+  it('rejects placeholders consuming percent escapes while complete literal escapes remain reversible', () => {
+    for (const prefix of ['%', '%2', '%A', '%a']) {
+      const partial = { mode: 'template' as const, template: `https://lbd.org/${prefix}{GlobalId}` };
+      expect(() => assertResourceUriIdentityConfig(partial)).toThrow(/percent escape/);
+      expect(() => resourceUriForGlobalId(GlobalId, partial)).toThrow(/percent escape/);
+    }
+    const literalEscape = { mode: 'template' as const, template: 'https://lbd.org/%25{GlobalId}' };
+    const uri = resourceUriForGlobalId(GlobalId, literalEscape);
+    expect(createResourceUriStrategy(literalEscape).resolve({ id: uri }, context).status).toBe('resolved');
+    expect(uri).toBe(`https://lbd.org/%25${GlobalId}`);
+  });
+});

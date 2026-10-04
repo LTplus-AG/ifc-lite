@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { DEFAULT_RESOURCE_URI_CONFIG, assertResourceUriIdentityConfig, type ResourceUriIdentityConfig, GUID_PATTERN, LIMITS, assertIri, createResourceLinkStrategy, type ProfileDefinition, type ResourceIdentityLink } from '@ifc-lite/semantic';
 import { useTranslation } from '@/i18n';
 import type { IdentityFields } from '@/lib/semantic/resolver-context';
@@ -31,8 +31,12 @@ const control = 'w-full rounded border border-border bg-background p-2 text-sm';
 export function SemanticIdentityControls({ strategy, onStrategy, links, onLinks, profile, onError,
   uriConfig = DEFAULT_RESOURCE_URI_CONFIG, onUriConfig, identityFields = { GlobalId: 'GlobalId', modelRevision: 'modelRevision' }, onIdentityFields }: SemanticIdentityControlsProps) {
   const { t } = useTranslation(); const [draft, setDraft] = useState(JSON.stringify(links, null, 2));
-  const [uriDraft, setUriDraft] = useState(uriConfig.mode === 'template' ? uriConfig.template : DEFAULT_RESOURCE_URI_CONFIG.mode === 'template' ? DEFAULT_RESOURCE_URI_CONFIG.template : '');
-  useEffect(() => { if (uriConfig.mode === 'template') setUriDraft(uriConfig.template); }, [uriConfig]);
+  const initialTemplate = uriConfig.mode === 'template' ? uriConfig.template : DEFAULT_RESOURCE_URI_CONFIG.mode === 'template' ? DEFAULT_RESOURCE_URI_CONFIG.template : '';
+  const [uriDraft, setUriDraft] = useState(initialTemplate);
+  const lastValidTemplate = useRef(initialTemplate);
+  useEffect(() => {
+    if (uriConfig.mode === 'template') { lastValidTemplate.current = uriConfig.template; setUriDraft(uriConfig.template); }
+  }, [uriConfig]);
   useEffect(() => setDraft(JSON.stringify(links, null, 2)), [links]);
   const guidFields = Object.keys(profile.fields).filter(key => profile.fields[key].kind === 'string');
   const revisionFields = Object.keys(profile.fields).filter(key => ['iri', 'string'].includes(profile.fields[key].kind));
@@ -43,7 +47,7 @@ export function SemanticIdentityControls({ strategy, onStrategy, links, onLinks,
     </select>
     {strategy === 'resource-uri' && <div className="space-y-2">
       <label className="block text-xs">{t('semantic.identityUriMode')}<select className={control} value={uriConfig.mode} onChange={event => {
-        try { const next: ResourceUriIdentityConfig = event.target.value === 'last-path-segment' ? { mode: 'last-path-segment' } : { mode: 'template', template: uriDraft }; assertResourceUriIdentityConfig(next); onUriConfig?.(next); }
+        try { const next: ResourceUriIdentityConfig = event.target.value === 'last-path-segment' ? { mode: 'last-path-segment' } : { mode: 'template', template: lastValidTemplate.current }; assertResourceUriIdentityConfig(next); onUriConfig?.(next); }
         catch (error) { onError(error instanceof Error ? error.message : String(error)); }
       }}><option value="template">{t('semantic.identityUriTemplateMode')}</option><option value="last-path-segment">{t('semantic.identityUriSegmentMode')}</option></select></label>
       {uriConfig.mode === 'template' && <><label className="block text-xs">{t('semantic.identityUriTemplate')}<input className={control} value={uriDraft} onChange={event => setUriDraft(event.target.value)} /></label>

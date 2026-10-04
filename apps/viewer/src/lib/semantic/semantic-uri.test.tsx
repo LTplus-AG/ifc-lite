@@ -35,6 +35,31 @@ function change(select: HTMLSelectElement, value: string) { act(() => { select.v
 function rowButton(ui: HTMLElement): HTMLButtonElement { const button = ui.querySelector<HTMLButtonElement>('button[aria-label="Select mapped row"]'); assert.ok(button); return button; }
 const results = (uri: string) => ({ columns: ['resource'], rows: [{ resource: { type: 'uri' as const, value: uri } }] });
 
+for (const initial of [{ mode: 'template' as const, template: 'https://example.org/items/{GlobalId}' }, { mode: 'last-path-segment' as const }]) {
+  test(`URI identity #6783: invalid draft cannot trap the controls when returning from last-path mode (${initial.mode})`, () => {
+    useSemanticSession.setState({ strategy: 'resource-uri', uriConfig: initial, profile: DEFAULT_PROFILE, document: undefined, results: undefined, graph: '' });
+    const ui = render(<SemanticPanel />);
+    const mode = [...ui.querySelectorAll('select')].find(select => [...select.options].some(option => option.value === 'last-path-segment'));
+    assert.ok(mode);
+    if (initial.mode === 'last-path-segment') change(mode, 'template');
+    const draft = [...ui.querySelectorAll('input')].find(input => input.value.includes('{GlobalId}'));
+    assert.ok(draft); const lastValid = draft.value;
+    type(draft, 'not a URI template');
+    const apply = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Apply URI template');
+    assert.ok(apply); click(apply);
+    assert.equal(useSemanticSession.getState().uriConfig.mode, 'template');
+    assert.ok(ui.querySelector('[role="alert"]'), 'invalid draft is reported');
+    change(mode, 'last-path-segment'); assert.equal(useSemanticSession.getState().uriConfig.mode, 'last-path-segment');
+    change(mode, 'template');
+    assert.deepEqual(useSemanticSession.getState().uriConfig, { mode: 'template', template: lastValid });
+    const recovered = [...ui.querySelectorAll('input')].find(input => input.value === lastValid); assert.ok(recovered);
+    type(recovered, 'https://example.org/recovered/{GlobalId}/resource');
+    const recoveredApply = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Apply URI template');
+    assert.ok(recoveredApply); click(recoveredApply);
+    assert.deepEqual(useSemanticSession.getState().uriConfig, { mode: 'template', template: 'https://example.org/recovered/{GlobalId}/resource' });
+  });
+}
+
 test('URI identity #6783 mounted controls enable real ArchiCAD door selection in renderer and property channels', async context => {
   if (!existsSync(fixture)) { context.skip('Run pnpm fixtures for the real ArchiCAD fixture'); return; }
   await seed(1);

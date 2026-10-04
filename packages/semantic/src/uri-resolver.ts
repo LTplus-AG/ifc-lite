@@ -29,6 +29,8 @@ export function assertResourceUriIdentityConfig(value: unknown): asserts value i
   if (value.template.length > MAX_URI_LENGTH) throw new Error('Resource URI template exceeds 2048 characters');
   const parts = value.template.split(PLACEHOLDER);
   if (parts.length !== 2 || /[{}]/u.test(parts.join(''))) throw new Error('URI template requires exactly one {GlobalId} placeholder');
+  if (value.template.length - PLACEHOLDER.length + TEST_GUID.length > MAX_URI_LENGTH) throw new Error('Expanded resource URI exceeds 2048 characters');
+  if (/%[0-9a-f]?$/iu.test(parts[0])) throw new Error('GlobalId placeholder must not participate in a percent escape');
   absolutePathUri(parts.join(TEST_GUID));
   if (!rawPath(value.template).includes(PLACEHOLDER)) throw new Error('GlobalId placeholder must occur in the URI path');
 }
@@ -36,7 +38,9 @@ export function resourceUriForGlobalId(GlobalId: string, config: ResourceUriIden
   assertResourceUriIdentityConfig(config);
   if (!new RegExp(GUID_PATTERN).test(GlobalId)) throw new Error('Invalid IFC GlobalId');
   if (config.mode !== 'template') throw new Error('Last path segment cannot infer a resource base URI; configure a full URI template or load known resource URIs first');
-  return config.template.replace(PLACEHOLDER, GlobalId);
+  const uri = config.template.replace(PLACEHOLDER, () => GlobalId);
+  absolutePathUri(uri);
+  return uri;
 }
 export function createResourceUriStrategy(config: ResourceUriIdentityConfig): IdentityStrategy {
   assertResourceUriIdentityConfig(config);

@@ -7,6 +7,7 @@ import { checkMeshGetterOwnershipContract } from './wasm-mesh-getter-ownership-c
 import { checkSourceFingerprintContract, checkPrepassReservationContract } from './wasm-source-fingerprint-contract.mjs';
 import { checkAffinityChunkContract } from './wasm-affinity-chunk-contract.mjs';
 import { checkPrepassSourceContract } from './wasm-prepass-source-contract.mjs';
+import { runOwnedShardedPrepassContracts } from './wasm-prepass-owned-columns-contract.mjs';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
@@ -52,6 +53,7 @@ export async function runColdLoadContracts({
   test('prepass full-source fingerprint preserves old entry points and malformed tails (#3985)', () => {
     checkSourceFingerprintContract(IfcAPI, new TextEncoder().encode(columnContent), true);
   });
+  runOwnedShardedPrepassContracts(IfcAPI, test, ownershipWasmExports.memory);
 
   // Optional retained baseline artifacts exercise a genuinely matched historical pair.
   if (process.env.IFC_WASM_BASE_JS || process.env.IFC_WASM_BASE_BINARY) {
@@ -59,6 +61,8 @@ export async function runColdLoadContracts({
       'Both IFC_WASM_BASE_JS and IFC_WASM_BASE_BINARY must identify the same retained build');
     const baselineWasm = await import(pathToFileURL(process.env.IFC_WASM_BASE_JS).href);
     const baselineOwnershipExports = baselineWasm.initSync(readFileSync(process.env.IFC_WASM_BASE_BINARY));
+    runOwnedShardedPrepassContracts(IfcAPI,
+      (name, callback) => test(`matched historical ${name}`, callback), ownershipWasmExports.memory, baselineWasm.IfcAPI);
     test('matched historical mesh getters preserve owned-buffer contract (#3989)', () => {
       checkMeshGetterOwnershipContract(baselineWasm.IfcAPI, baselineOwnershipExports.memory, new TextEncoder().encode(columnContent));
     });

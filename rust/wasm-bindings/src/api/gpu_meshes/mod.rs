@@ -15,6 +15,7 @@ mod batch_partition;
 mod instancing;
 pub(crate) mod prepass;
 mod prepass_discovery;
+mod prepass_owned_columns;
 mod prepass_sharded;
 mod source_fingerprint;
 mod style_finishes;

@@ -5,11 +5,10 @@
 //! Sharded pre-pass wasm APIs (split from `prepass.rs`): the per-worker
 //! entity-index shard scan, the per-worker styled-item slice resolver, and
 //! the canonical styles finalize that merges the shard results. The main
-//! sharded pre-pass entry (`buildPrePassStreamingSharded`) stays in
-//! `prepass.rs` beside its serial twin.
+//! sharded pre-pass entry (`buildPrePassStreamingSharded`) lives in
+//! `prepass_owned_columns.rs`; its serial twin lives in `prepass.rs`.
 
 use crate::api::IfcAPI;
-use js_sys::Function;
 use wasm_bindgen::prelude::*;
 
 /// One `[r, g, b, a]` per id. `finalizePrepassStyles` reads four floats per id
@@ -54,39 +53,6 @@ pub(super) fn set_stream_meta_props(
 
 #[wasm_bindgen]
 impl IfcAPI {
-    /// Sharded pre-pass variant: same scan/discovery/jobs/columns pipeline as
-    /// `buildPrePassStreaming`, but
-    ///  1. the entity index is PREBUILT from the host's stitched shard columns
-    ///     (file order; see `scanEntityIndexShard`) — the scan skips its inline
-    ///     index build, the meta RTC ladder resolves against the FULL index
-    ///     (no partial-ladder full-rescan detour), and the post-scan
-    ///     `entity-index` event is skipped (the host already delivered it), and
-    ///  2. styles resolution is EXTERNAL: the styled-item spans are resolved as
-    ///     shard slices on the geometry workers (`resolveStyledItemsShard`);
-    ///     this call stashes the SUPPORT spans + plane-angle scale, and the
-    ///     follow-up `finalizePrepassStyles` merges + flattens into the exact
-    ///     styles payload the serial path emits. NO `styles` event is emitted
-    ///     here.
-    #[wasm_bindgen(js_name = buildPrePassStreamingSharded)]
-    #[allow(clippy::too_many_arguments)]
-    pub fn build_pre_pass_streaming_sharded(
-        &self,
-        data: &[u8],
-        on_event: &Function,
-        chunk_size: u32,
-        disabled_type_names: Option<Vec<String>>,
-        skip_type_geometry: bool,
-        index_ids: &[u32],
-        index_starts: &[u32],
-        index_lengths: &[u32],
-        index_classes: &[u8],
-    ) -> Result<JsValue, JsValue> {
-        self.pre_pass_streaming_sharded_impl(
-            data, on_event, chunk_size, disabled_type_names, skip_type_geometry,
-            index_ids, index_starts, index_lengths, index_classes, false,
-        )
-    }
-
     /// SPIKE (sharded pre-pass): scan the entity index over a single byte range.
     ///
     /// Each idle browser geometry worker calls this on its `[range_start,

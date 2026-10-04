@@ -15,6 +15,14 @@ Write-Host 'IFClite: preparing key-only operator access'
 if(-not(Get-Service sshd -ErrorAction SilentlyContinue)){Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Out-Null}
 $sshDir=Join-Path $env:ProgramData 'ssh'
 New-Item -ItemType Directory -Path $sshDir -Force | Out-Null
+$logsDir=Join-Path $sshDir 'logs'
+New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
+# Windows OpenSSH checks directory write permissions when running as a service.
+$directoryAcl=New-Object Security.AccessControl.DirectorySecurity
+$directoryAcl.SetAccessRuleProtection($true,$false)
+$directoryAcl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
+foreach($sid in @('S-1-5-32-544','S-1-5-18')){$directoryAcl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($sid)),'FullControl','ContainerInherit,ObjectInherit','None','Allow')))}
+foreach($directory in @($sshDir,$logsDir)){Set-Acl -LiteralPath $directory -AclObject $directoryAcl}
 $keyFile=Join-Path $sshDir 'administrators_authorized_keys'
 if(-not(Test-Path $keyFile)){New-Item -ItemType File -Path $keyFile | Out-Null}
 if(-not((Get-Content $keyFile) -contains $publicKey)){Add-Content -Path $keyFile -Value $publicKey -Encoding ascii}

@@ -51,4 +51,7 @@ export const clashGroupsEn = {
   'clashGroups.severity.major': 'Major',
   'clashGroups.severity.minor': 'Minor',
   'clashGroups.severity.info': 'Info',
+  'clashGroups.workspace': 'Grouping workspace',
+  'clashGroups.defaultWorkspace': 'Manual clash groups',
+  'clashGroups.storageNotReady': 'Grouping storage is not ready or the membership partition is invalid. Keep this draft and retry after recovery.',
 } satisfies Record<string, TranslationValue>;

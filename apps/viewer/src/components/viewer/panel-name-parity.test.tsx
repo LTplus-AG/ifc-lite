@@ -69,6 +69,19 @@ describe('workspace panel name parity (#5858)', () => {
     cleanup();
   });
 
+  it('opens the contextual Assistant through the palette (#6813)', async () => {
+    setLocale('en');
+    useViewerStore.setState({ sidebarActivePanel: 'properties', sidebarHiddenIds: [], floatingPanels: [], poppedOutIds: [] });
+    render(<BimReactContext.Provider value={{} as BimContext}><CommandPalette open onOpenChange={() => {}} /></BimReactContext.Provider>);
+    const search = document.querySelector('input') as HTMLInputElement;
+    typeInto(search, 'Assistant');
+    const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(row => row.textContent?.includes('Assistant'));
+    assert.ok(option, 'Assistant is discoverable through the palette');
+    click(option);
+    await advance(25);
+    assert.equal(useViewerStore.getState().sidebarActivePanel, 'assistant');
+  });
+
   it('opens Linked records through its searchable palette command (#6643)', async () => {
     setLocale('en');
     useViewerStore.setState({ sidebarActivePanel: 'properties', sidebarHiddenIds: [], floatingPanels: [], poppedOutIds: [] });

@@ -29,6 +29,11 @@ validation:
 # Autodesk's delivery plan records qualification work; public usage belongs in
 # the web viewer guide rather than the implementation checklist.
 not_in_nav: |
+  # Issue-scoped viewer AI charter; linked from its user guide as layers ship.
+  architecture/viewer-ai-plan.md
+  architecture/viewer-ai-implementation.md
+  architecture/viewer-ai-adapters.md
+  architecture/viewer-ai-bcf-publication.md
   architecture/section-6614-6615-spec.md
   architecture/autodesk-cloud-sources-plan.md
   architecture/evidence/**
@@ -148,6 +153,7 @@ nav:
     - Quick Start: guide/quickstart.md
     - Web Viewer Controls: guide/web-viewer-controls.md
     - Cloud Sources: guide/cloud-sources.md
+    - Viewer Assistant: guide/viewer-assistant.md
     - CLI Toolkit: guide/cli.md
     - MCP for AI Agents: guide/mcp.md
     - 3D Viewer & Analysis: guide/viewer-api.md

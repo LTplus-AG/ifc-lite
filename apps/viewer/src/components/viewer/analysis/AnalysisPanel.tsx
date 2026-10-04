@@ -24,6 +24,7 @@
  */
 
 import { createContext, useContext, type HTMLAttributes, type ReactNode } from 'react';
+import { AssistantAction } from '../assistant/AssistantAction';
 import { Eraser, X } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
@@ -93,6 +94,7 @@ export function AnalysisPanel({
               </IconButton>
             )}
             {actions}
+            {!embedded && <AssistantAction />}
             {onClose && !embedded && (
               <IconButton label={t('analysisPanel.close')} className="h-7 w-7" onClick={onClose}>
                 <X className="h-4 w-4" />

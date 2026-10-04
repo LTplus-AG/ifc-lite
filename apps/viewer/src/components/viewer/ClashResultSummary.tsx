@@ -5,6 +5,7 @@
 import { cn } from '@/lib/utils';
 import type { ClashSeverity } from '@ifc-lite/clash';
 import { useTranslation, type TranslationKey } from '@/i18n';
+import { ClashGroupStorage } from './ClashGroupStorage';
 
 export type ClashResultView = 'pairs' | 'issues' | 'groups';
 
@@ -94,6 +95,7 @@ export function ClashResultSummary({
           </div>
         </>
       )}
+      {effectiveView === 'groups' && <ClashGroupStorage />}
     </>
   );
 }

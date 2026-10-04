@@ -116,7 +116,7 @@ function finishBranches(branches) {
     );
   }
   for (const b of branches) {
-    if (/[*?[\]!+]/.test(b)) {
+    if (/[*?[\]!+]/.test(b) && !/^[^*?\[\]!+]+\*$/.test(b)) {
       throw new DirtyPrScanError(
         'UNSUPPORTED_BRANCH_PATTERN',
         `The \`pull_request\` \`branches:\` filter contains the glob \`${b}\`, which this gate ` +
@@ -126,4 +126,17 @@ function finishBranches(branches) {
     }
   }
   return branches;
+}
+
+/** GitHub Actions single-star branch suffixes match characters except slash.
+ * Other glob syntax remains rejected by the parser rather than guessed (#6817).
+ * @param {string[]} patterns
+ * @param {string} branch
+ */
+export function matchesBaseBranch(patterns, branch) {
+  return patterns.some(pattern => {
+    if (!pattern.endsWith('*')) return pattern === branch;
+    const prefix = pattern.slice(0, -1);
+    return branch.startsWith(prefix) && !branch.slice(prefix.length).includes('/');
+  });
 }

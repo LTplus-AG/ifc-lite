@@ -9,8 +9,10 @@
  * back as SSE. Extracts usage headers from the response for UI display.
  */
 
+import { outputTokenLimit, PROXY_OUTPUT_TOKEN_CEILING } from '../../../../../shared/ai/output-budget.js';
+import { readSseStream } from './sse-reader.js';
+export { drainSseBuffer, readSseStream } from './sse-reader.js';
 import { buildCacheableSystem, logCacheHit } from './prompt-cache.js';
-
 /** A text content part in a multimodal message */
 export interface TextContentPart {
   type: 'text';
@@ -55,6 +57,8 @@ export interface StreamOptions {
   messages: StreamMessage[];
   /** System prompt */
   system?: string;
+  /** Positive output token ceiling, including reasoning; does not guarantee visible text. */
+  maxOutputTokens?: number;
   /** AbortSignal for cancellation */
   signal?: AbortSignal;
   /** Called for each text chunk as it arrives */
@@ -100,74 +104,6 @@ function parseUsageFromHeaders(headers: Headers): UsageInfo | null {
   }
 
   return null;
-}
-
-export function drainSseBuffer(buffer: string, flush: boolean = false): { events: string[]; remainder: string } {
-  if (flush) {
-    const trimmed = buffer.trim();
-    return {
-      events: trimmed ? trimmed.split('\n\n').filter(Boolean) : [],
-      remainder: '',
-    };
-  }
-  const parts = buffer.split('\n\n');
-  return {
-    events: parts.slice(0, -1).filter(Boolean),
-    remainder: parts.at(-1) ?? '',
-  };
-}
-
-/**
- * Read an SSE stream, invoking onEvent for each `data:` payload.
- * Skips `[DONE]` sentinels and malformed lines. Returns true if the stream
- * completed normally; false on abort or error (errors are forwarded via
- * onError, aborts are silent).
- */
-export async function readSseStream(
-  body: ReadableStream<Uint8Array>,
-  signal: AbortSignal | undefined,
-  onEvent: (data: string) => void,
-  onError: (err: Error) => void,
-): Promise<boolean> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  const dispatchDrained = (events: string[]) => {
-    for (const evt of events) {
-      for (const line of evt.split('\n')) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-        try {
-          onEvent(data);
-        } catch (err) {
-          // Malformed JSON payloads are expected and skipped, but a genuine
-          // callback failure (onChunk/onUsageInfo/logCacheHit/fullText) would
-          // otherwise be silently dropped — surface it for diagnosability.
-          console.debug('[sse] skipped event', err);
-        }
-      }
-    }
-  };
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const drained = drainSseBuffer(buffer);
-      buffer = drained.remainder;
-      dispatchDrained(drained.events);
-    }
-    buffer += decoder.decode();
-    dispatchDrained(drainSseBuffer(buffer, true).events);
-    return true;
-  } catch (err) {
-    if (signal?.aborted) return false;
-    onError(err instanceof Error ? err : new Error(String(err)));
-    return false;
-  }
 }
 
 /**
@@ -228,9 +164,13 @@ export async function streamChat(options: StreamOptions): Promise<void> {
   // Authoring turns (which ship the ~5 KiB manifest/widget/capability
   // contract) hit this path; one-shot turns fall under the threshold
   // and pass through as plain string.
+  let maxOutputTokens: number;
+  try { maxOutputTokens = outputTokenLimit(options.maxOutputTokens, PROXY_OUTPUT_TOKEN_CEILING); }
+  catch (error) { onError(error instanceof Error ? error : new Error(String(error))); return; }
   const requestBody = JSON.stringify({
     messages,
     model,
+    maxOutputTokens,
     system: buildCacheableSystem(system),
   });
   const fetchChat = async (url: string) => {

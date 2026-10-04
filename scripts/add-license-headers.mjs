@@ -176,6 +176,7 @@ function main() {
         'rust',
         'scripts',
         'server',
+        'shared',
         'tests',
         'tools',
     ];

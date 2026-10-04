@@ -24,6 +24,7 @@ import { flowRegistry } from '@/lib/flow/runner';
 import { useContributedFlows } from '@/hooks/useContributedFlows';
 import { isContributedFlowId } from '@/services/extensions/host-flows.js';
 import { FlowCanvas, useCanvasDropPosition } from './FlowCanvas';
+import { AssistantAction } from '../assistant/AssistantAction';
 import { FlowExampleGallery, FlowExamplePicker } from './FlowExamples';
 import { FlowInspector } from './FlowInspector';
 import { FlowPalette } from './FlowPalette';
@@ -197,6 +198,7 @@ export function FlowPanel() {
         </select>
         <button type="button" className={button} onClick={onNew}>{t('flowPanel.new')}</button>
         <FlowExamplePicker onOpen={onOpenExample} />
+        <AssistantAction />
         <button type="button" className={button} onClick={() => fileInput.current?.click()}>{t('flowPanel.import')}</button>
         <input ref={fileInput} type="file" accept=".json,application/json" className="hidden" aria-label={t('flowPanel.importAriaLabel')} onChange={(e) => { const f = e.target.files?.[0]; if (f) void onImportFile(f); e.target.value = ''; }} />
         {flowDoc && openedContributed && (

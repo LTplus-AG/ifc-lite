@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { clashReviewKey, type Clash } from '@ifc-lite/clash';
-import { optionalLocalStorage, preserveUnreadableEntry } from '../storage/unreadable-entry.js';
 
 export interface ManualClashGroup {
   id: string;
@@ -26,16 +25,10 @@ export interface ResolvedManualClashGroup {
   memberDefinitions: ManualClashMember[];
 }
 
-export type ManualGroupSaveResult =
-  | { ok: true }
-  | { ok: false; reason: 'quota' | 'serialize' | 'too_many' | 'unreadable'; message: string };
-
 export const MANUAL_CLASH_GROUPS_KEY = 'ifc-lite-clash-manual-groups';
-const SCHEMA_VERSION = 2;
 const MAX_GROUPS = 200;
 const MAX_MEMBERS_PER_GROUP = 2_000;
 const MAX_NAME_LENGTH = 100;
-let storageUnwritable = false;
 
 function normalizeName(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -93,45 +86,6 @@ export function normalizeManualClashGroups(raw: unknown): ManualClashGroup[] {
     if (groups.length >= MAX_GROUPS) break;
   }
   return groups;
-}
-
-export function loadManualClashGroups(): ManualClashGroup[] {
-  try {
-    const value = localStorage.getItem(MANUAL_CLASH_GROUPS_KEY);
-    const groups = value ? normalizeManualClashGroups(JSON.parse(value)) : [];
-    storageUnwritable = false;
-    return groups;
-  } catch (error) {
-    console.warn('[clash] Could not read saved manual clash groups:', error);
-    storageUnwritable = !preserveUnreadableEntry(optionalLocalStorage(), MANUAL_CLASH_GROUPS_KEY, error);
-    return [];
-  }
-}
-
-export function saveManualClashGroups(groups: readonly ManualClashGroup[]): ManualGroupSaveResult {
-  if (storageUnwritable) {
-    return {
-      ok: false,
-      reason: 'unreadable',
-      message: 'Stored clash groups could not be read or backed up — they were left untouched.',
-    };
-  }
-  if (groups.length > MAX_GROUPS || groups.some((group) => group.members.length > MAX_MEMBERS_PER_GROUP)) {
-    return { ok: false, reason: 'too_many', message: 'Too many clash groups or members to save.' };
-  }
-  let payload: string;
-  try {
-    payload = JSON.stringify({ schemaVersion: SCHEMA_VERSION, groups });
-  } catch (error) {
-    return { ok: false, reason: 'serialize', message: `Could not serialize clash groups: ${String(error)}` };
-  }
-  try {
-    localStorage.setItem(MANUAL_CLASH_GROUPS_KEY, payload);
-    return { ok: true };
-  } catch (error) {
-    console.warn('[clash] Could not save manual clash groups:', error);
-    return { ok: false, reason: 'quota', message: 'Browser storage is full — clash groups were not saved.' };
-  }
 }
 
 /** Resolve durable group definitions against one run without deleting absent ids. */

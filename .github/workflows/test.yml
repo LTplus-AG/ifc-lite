@@ -50,7 +50,8 @@ on:
   # a full 16-lane run for every label the risk/review bots apply to a PR.
   pull_request:
     types: [opened, synchronize, reopened, edited]
-    branches: [main]
+    # Exercise the authorized viewer AI stack while its layers target feature branches.
+    branches: [main, 't3code/explore-ai-viewer-ux', 't3code/viewer-ai-*']
   # Post-merge guard. Two PRs can each be green against their own base and be
   # broken as a pair on main: #2551 removed a helper from
   # measure-parity.test.tsx at 01:41 on 2026-08-12, #2538 added a caller of it
@@ -105,6 +106,9 @@ permissions:
 # haven't shipped a Node-24-native release yet.
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Recorded-provider browser journeys (including the revert oracle) need a
+  # selectable model. Their requests are intercepted; this grants no API key.
+  VITE_LLM_FREE_MODELS: openai/gpt-4o-mini
 
 jobs:
   # Path filter — emits booleans the downstream jobs use as `if:` gates.
@@ -285,6 +289,7 @@ jobs:
               - 'packages/**'
               - 'rust/**'
               - 'server/**'
+              - 'shared/ai/**'
               - 'tests/**'
               - 'tools/**'
               # The gate's own source and its scanned `scripts/` tree, one
@@ -343,6 +348,7 @@ jobs:
               # never fire, which is the failure this filter block already warns
               # about twice above.
               - 'server/**'
+              - 'shared/ai/**'
               - 'api/**'
               - 'tests/api/**'
               # `pnpm test:integration` runs THIS EXACT FILE in the Node tests
@@ -1891,6 +1897,8 @@ jobs:
       # No browser download: the CI project uses channel:'chrome' (the
       # runner's preinstalled Chrome) because Playwright's headless
       # shell has a broken WebGPU device under software rendering.
+      - name: Install Playwright video encoder
+        run: pnpm exec playwright install ffmpeg
       - name: Run E2E smoke
         # E2E_GPU_STRICT=0: the runner's SwiftShader WebGPU device is
         # unstable under load (drops mid-upload), so GPU-dependent
@@ -1905,6 +1913,16 @@ jobs:
         # failure summary and test-results artifact survive a slow/hung test.
         # The list reporter also names completed tests while the job runs.
         run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=${{ matrix.shard }}/2 --reporter=list
+      - name: Upload assistant browser evidence
+        if: always() && hashFiles('test-results/**/assistant-*.png', 'test-results/*assistant-context*/video.webm') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: assistant-browser-evidence-${{ matrix.shard }}
+          path: |
+            test-results/**/assistant-*.png
+            test-results/*assistant-context*/video.webm
+          if-no-files-found: error
+          retention-days: 3
       - name: Upload E2E failure context
         # Playwright's error-context.md / traces for the failed tests only.
         if: failure()

@@ -9,13 +9,12 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import {
   defaultManualClashGroupName,
-  loadManualClashGroups,
   manualClashMember,
   removeResolvedManualClashMember,
   resolveManualClashGroups,
-  saveManualClashGroups,
   type ManualClashGroup,
 } from '@/lib/clash/manual-groups';
+import { clashGroupLibrary, useClashGroupLibrary, EMPTY_MANUAL_GROUPS, saveCurrentClashGroups } from '@/lib/clash/group-workspace';
 import {
   focusedCameraViewpointIsCurrent,
   focusedSceneRevisionIsCurrent,
@@ -78,7 +77,8 @@ export function useManualClashGroups({
   setCreatingTopic,
   showGroups,
 }: UseManualClashGroupsOptions) {
-  const [definitions, setDefinitions] = useState<ManualClashGroup[]>(loadManualClashGroups);
+  const definitions = useClashGroupLibrary(state => state.entries.find(entry => entry.id === state.activeId)?.groups ?? EMPTY_MANUAL_GROUPS);
+  const workspaceId = useClashGroupLibrary(state => state.activeId);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [dialog, setDialog] = useState<ManualGroupDialog | null>(null);
   const { createViewpointFromState, headerFilesForViewpoints } = useBCF();
@@ -90,6 +90,8 @@ export function useManualClashGroups({
   const { t } = useTranslation();
 
   useEffect(() => setCheckedIds(new Set()), [clashes]);
+  useEffect(() => { void clashGroupLibrary.initialize(); }, []);
+  useEffect(() => { setCheckedIds(new Set()); setDialog(null); }, [workspaceId]);
 
   const resolved = useMemo(
     () => resolveManualClashGroups(definitions, clashes ?? []),
@@ -129,14 +131,12 @@ export function useManualClashGroups({
   );
 
   const commit = useCallback((next: ManualClashGroup[]): boolean => {
-    const saved = saveManualClashGroups(next);
-    if (!saved.ok) {
-      toast.error(saved.message);
+    if (!saveCurrentClashGroups(next)) {
+      toast.error(t('clashGroups.storageNotReady'));
       return false;
     }
-    setDefinitions(next);
     return true;
-  }, []);
+  }, [t]);
 
   const openCreate = useCallback((): void => {
     if (selected.length < 2) return;

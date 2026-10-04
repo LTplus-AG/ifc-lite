@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { ContentKind } from './content-database.js';
+import { isContentKind, type ContentKind } from './content-kinds.js';
 
 let channel: BroadcastChannel | null = null;
 const listeners = new Set<(kind: ContentKind) => void>();
@@ -12,7 +12,7 @@ function contentChannel(): BroadcastChannel | null {
     // Node's DOM harness supplies a channel that otherwise keeps test workers alive.
     (channel as BroadcastChannel & { unref?: () => void }).unref?.();
     channel.onmessage = event => {
-      if (event.data === 'document' || event.data === 'validation' || event.data === 'comparison') {
+      if (isContentKind(event.data)) {
         for (const listener of listeners) listener(event.data);
       }
     };

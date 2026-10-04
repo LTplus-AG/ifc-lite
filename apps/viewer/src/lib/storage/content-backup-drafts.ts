@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { ContentKind, RecoveryRow } from './content-database.js';
+import type { RecoveryRow } from './content-database.js';
+import { isContentKind, type ContentKind } from './content-kinds.js';
 import { computeFullSourceHash } from '../../utils/sourceContentHash.js';
 
 /** Incomplete content is recovery evidence, never a relaxed durable-library entry. */
@@ -18,14 +19,14 @@ export function parseContentDrafts(value: unknown): ContentDraftEvidence[] {
   return value.map((raw: unknown) => {
     if (!raw || typeof raw !== 'object') throw new Error('Invalid draft recovery entry');
     const draft = raw as Record<string, unknown>;
-    if (typeof draft.kind !== 'string' || !['validation', 'comparison', 'document'].includes(draft.kind)
+    if (!isContentKind(draft.kind)
       || typeof draft.id !== 'string' || !draft.id || typeof draft.raw !== 'string') {
       throw new Error('Invalid draft recovery entry');
     }
     const payload: unknown = JSON.parse(draft.raw);
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)
       || (payload as Record<string, unknown>).id !== draft.id) throw new Error('Draft recovery identity does not match');
-    return { kind: draft.kind as ContentKind, id: draft.id, raw: draft.raw };
+    return { kind: draft.kind, id: draft.id, raw: draft.raw };
   });
 }
 

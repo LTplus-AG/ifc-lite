@@ -11,6 +11,7 @@
  * hosts stay in lock-step.
  */
 
+import { AssistantSourceContext } from '@/components/viewer/assistant/AssistantAction';
 import { lazy, Suspense, type ReactNode } from 'react';
 import { panelModelGateMode, type WorkspacePanelId } from './registry';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
@@ -60,6 +61,8 @@ const FlowPanel = lazy(() => import('@/components/viewer/flow/FlowPanel').then((
 const DrawingPanel = lazy(() => import('@/components/viewer/drawing/DrawingPanel').then((m) => ({ default: m.DrawingPanel })));
 // Lazy: the filmstrip of saved basket views (#5508), out of the first-paint bundle like the other bottom panels.
 const PresentationPanel = lazy(() => import('@/components/viewer/presentation/PresentationPanel').then((m) => ({ default: m.PresentationPanel })));
+
+const AssistantPanel = lazy(() => import('@/components/viewer/assistant/AssistantPanel').then(m => ({ default: m.AssistantPanel })));
 
 const SemanticPanel = lazy(() => import('@/components/viewer/SemanticPanel').then(m => ({ default: m.SemanticPanel })));
 function SemanticPanelBody() {
@@ -137,13 +140,14 @@ function PointCloudPanelBody({ onClose }: { onClose: () => void }) {
 export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
   const body = panelBody(id, onClose);
   const gate = panelModelGateMode(id);
-  return gate ? <PanelModelGate id={id} mode={gate} onClose={onClose}>{body}</PanelModelGate> : body;
+  return <AssistantSourceContext panel={id}>{gate ? <PanelModelGate id={id} mode={gate} onClose={onClose}>{body}</PanelModelGate> : body}</AssistantSourceContext>;
 }
 
 function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
   switch (id) {
     // Hierarchy's home is the left slot (#1267); it is never routed to the right
     // pane / float / pop-out, but the case keeps the id to body map exhaustive.
+    case 'assistant': return <ChunkErrorBoundary label="Assistant panel"><Suspense fallback={null}><AssistantPanel /></Suspense></ChunkErrorBoundary>;
     case 'appearance': return <AppearancePanelBody />;
     case 'hierarchy': return <HierarchyPanel />;
     // The anchor wraps every Information branch (entity, model metadata,

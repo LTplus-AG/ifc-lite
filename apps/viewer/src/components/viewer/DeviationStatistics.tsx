@@ -7,16 +7,21 @@
  *
  * Both blocks read the signed distances the panel read back once after the
  * compute pass. The |d| percentiles and moments are computed once per
- * readback; the tolerance share and the histogram are O(n) passes with no
- * allocation, so editing the tolerance or dragging the range slider never
- * re-runs the percentile selection.
+ * readback; the tolerance share and the histogram are single O(n) passes, so
+ * editing the tolerance or dragging the range slider never re-runs the
+ * percentile selection.
+ *
+ * Every pass runs through the renderer's `…Async` variants: time-boxed
+ * slices that yield to the event loop, so 25M points never freeze the
+ * viewer, and an AbortSignal so a superseded pass (the next slider tick, a
+ * new run, unmount) stops instead of finishing for nothing.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  computeDeviationStatistics,
-  countWithinTolerance,
-  deviationHistogram,
+  computeDeviationStatisticsAsync,
+  countWithinToleranceAsync,
+  deviationHistogramAsync,
   type DeviationDistances,
 } from '@ifc-lite/renderer';
 import { formatLocaleNumber, useTranslation, type TranslationKey } from '@/i18n';
@@ -25,6 +30,26 @@ import { deviationRampColor } from '@/lib/point-cloud/deviation-ramp';
 /** Even, so the ramp centre falls on a bin edge. */
 const HISTOGRAM_BINS = 20;
 
+/**
+ * The latest result of a sliced pass. A change in `inputs` aborts the pass in
+ * flight; until the new one lands the previous result stays on screen, so
+ * results carry the inputs they were computed for where a label shows them.
+ */
+function useSlicedPass<T>(run: (signal: AbortSignal) => Promise<T>, inputs: readonly unknown[]): T | null {
+  const [result, setResult] = useState<T | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    run(controller.signal).then(
+      (value) => { if (!controller.signal.aborted) setResult(value); },
+      (err: unknown) => { if (!controller.signal.aborted) console.error('[DeviationStatistics] pass failed', err); },
+    );
+    return () => controller.abort();
+    // `inputs` lists everything `run` closes over.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, inputs);
+  return result;
+}
+
 /** Bars aligned with the legend gradient: same width, same [c − h, c + h]. */
 export function DeviationHistogramBars({ distances, center, halfRange }: {
   distances: DeviationDistances;
@@ -32,10 +57,12 @@ export function DeviationHistogramBars({ distances, center, halfRange }: {
   halfRange: number;
 }) {
   const { t, locale } = useTranslation();
-  const histogram = useMemo(
-    () => deviationHistogram(distances.values, { center, halfRange, bins: HISTOGRAM_BINS }),
+  const histogram = useSlicedPass(
+    (signal) => deviationHistogramAsync(distances.values, { center, halfRange, bins: HISTOGRAM_BINS }, { signal }),
     [distances, center, halfRange],
   );
+  // Hold the bars' height while the first pass runs, so the legend stays put.
+  if (!histogram) return <div className="mt-1 h-8" aria-hidden="true" />;
   const peak = Math.max(1, ...histogram.counts);
   const mm = (m: number) => formatLocaleNumber(locale, m * 1000, { maximumFractionDigits: 1 });
   const count = (n: number) => formatLocaleNumber(locale, n);
@@ -95,11 +122,14 @@ export interface DeviationSummaryProps {
 
 export function DeviationSummary({ distances, tolerance, onToleranceChange, clipRange }: DeviationSummaryProps) {
   const { t, locale } = useTranslation();
-  const summary = useMemo(
-    () => computeDeviationStatistics(distances.values, { clipRange }),
+  const summary = useSlicedPass(
+    (signal) => computeDeviationStatisticsAsync(distances.values, { clipRange, signal }),
     [distances, clipRange],
   );
-  const within = useMemo(() => countWithinTolerance(distances.values, tolerance), [distances, tolerance]);
+  const within = useSlicedPass(
+    async (signal) => ({ tolerance, count: await countWithinToleranceAsync(distances.values, tolerance, { signal }) }),
+    [distances, tolerance],
+  );
   const [draft, setDraft] = useState(() => String(tolerance * 1000));
   const mm = (m: number | null) => (m !== null
     ? t('deviationStats.valueMm', {
@@ -107,6 +137,14 @@ export function DeviationSummary({ distances, tolerance, onToleranceChange, clip
     })
     : t('deviationStats.notAvailable'));
   const count = (n: number) => formatLocaleNumber(locale, n);
+
+  if (!summary) {
+    return (
+      <span className="text-2xs text-muted-foreground mt-1" data-testid="deviation-summary-pending">
+        {t('deviationStats.reading')}
+      </span>
+    );
+  }
 
   return (
     <section aria-label={t('deviationStats.sectionLabel')} className="flex flex-col gap-1 mt-1" data-testid="deviation-summary">
@@ -140,16 +178,18 @@ export function DeviationSummary({ distances, tolerance, onToleranceChange, clip
         />
         <span>{t('deviationStats.unitMm')}</span>
       </label>
-      <span className="text-2xs" data-testid="deviation-within-tolerance">
-        {t('deviationStats.withinTolerance', {
-          share: summary.validCount > 0
-            ? formatLocaleNumber(locale, within / summary.validCount, { style: 'percent', maximumFractionDigits: 1 })
-            : t('deviationStats.notAvailable'),
-          tolerance: formatLocaleNumber(locale, tolerance * 1000, { maximumFractionDigits: 1 }),
-          count: count(within),
-          total: count(summary.validCount),
-        })}
-      </span>
+      {within && (
+        <span className="text-2xs" data-testid="deviation-within-tolerance">
+          {t('deviationStats.withinTolerance', {
+            share: summary.validCount > 0
+              ? formatLocaleNumber(locale, within.count / summary.validCount, { style: 'percent', maximumFractionDigits: 1 })
+              : t('deviationStats.notAvailable'),
+            tolerance: formatLocaleNumber(locale, within.tolerance * 1000, { maximumFractionDigits: 1 }),
+            count: count(within.count),
+            total: count(summary.validCount),
+          })}
+        </span>
+      )}
       {summary.clippedCount > 0 && (
         <span className="text-2xs text-muted-foreground">
           {t('deviationStats.clippedPoints', {

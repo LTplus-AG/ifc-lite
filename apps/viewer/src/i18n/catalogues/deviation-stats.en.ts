@@ -14,7 +14,7 @@ import type { TranslationValue } from '../types';
 
 export const deviationStatsEn = {
   'deviationStats.sectionLabel': 'Deviation statistics',
-  'deviationStats.reading': 'Reading distances…',
+  'deviationStats.reading': 'Computing statistics…',
   'deviationStats.valueMm': '{value} mm',
   'deviationStats.unitMm': 'mm',
   'deviationStats.notAvailable': '—',

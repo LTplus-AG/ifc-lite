@@ -215,8 +215,8 @@ import { DeviationComputer, type DeviationComputeContext, type DeviationComputeO
 export type { DeviationAssetStats } from './deviation/deviation-readback.js';
 import type { DeviationAssetStats } from './deviation/deviation-readback.js';
 import type { DeviationDistances } from './deviation/deviation-statistics.js';
-export { computeDeviationStatistics, countWithinTolerance, deviationHistogram, summarizeDeviationAssets } from './deviation/deviation-statistics.js';
-export type { DeviationAssetRange, DeviationAssetSummary, DeviationDistances, DeviationHistogram, DeviationHistogramRange, DeviationStatistics, DeviationStatisticsOptions, DeviationToleranceShare } from './deviation/deviation-statistics.js';
+export { computeDeviationStatistics, computeDeviationStatisticsAsync, countWithinToleranceAsync, deviationHistogramAsync, summarizeDeviationAssetsAsync } from './deviation/deviation-statistics.js';
+export type { DeviationAssetRange, DeviationAssetSummary, DeviationAsyncOptions, DeviationDistances, DeviationHistogram, DeviationHistogramRange, DeviationStatistics, DeviationStatisticsOptions, DeviationToleranceShare } from './deviation/deviation-statistics.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
 import { recoverRendererDevice, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
 

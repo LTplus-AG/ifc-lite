@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { computeDeviationStatistics, summarizeDeviationAssets, type DeviationDistances } from '@ifc-lite/renderer';
+import { computeDeviationStatisticsAsync, summarizeDeviationAssetsAsync, type DeviationDistances } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { getGlobalRenderer } from '@/hooks/useBCF';
@@ -65,40 +65,70 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   const [distances, setDistances] = useState<DeviationDistances | null>(null);
   const [tolerance, setTolerance] = useState(DEFAULT_TOLERANCE_M);
 
-  // A placement change or model removal clears `computed`; drop the copy too.
+  // Export is a sliced CPU pass over the held readback. While it runs,
+  // Recompute stays disabled (the #5832 lock), and anything that replaces or
+  // drops the readback aborts it, so a CSV never describes a stale run.
+  const [exporting, setExporting] = useState(false);
+  const exportRef = useRef<{ distances: DeviationDistances; controller: AbortController } | null>(null);
+
+  // A placement change, model removal or device loss clears `computed`; drop
+  // the copy too (4 B/point), and stop an export reading it.
   useEffect(() => {
     if (!computed) setDistances(null);
   }, [computed]);
+  useEffect(() => {
+    const pending = exportRef.current;
+    if (pending && pending.distances !== distances) pending.controller.abort();
+  }, [distances]);
 
-  const handleExport = useCallback(() => {
-    if (!computed || !distances || running) return;
+  const handleExport = useCallback(async () => {
+    if (!computed || !distances || running || exportRef.current) return;
+    const controller = new AbortController();
+    exportRef.current = { distances, controller };
+    setExporting(true);
+    setError(null);
     const sourceModels = useViewerStore.getState().models;
     const idsByIndex = new Map([...modelIndices(sourceModels)].map(([id, index]) => [index, id]));
-    const options = { tolerance, clipRange: DEVIATION_CLIP_RANGE_M };
-    const assets = summarizeDeviationAssets(distances, options).map((asset) => {
-      const modelId = idsByIndex.get(asset.modelIndex);
-      const model = modelId ? sourceModels.get(modelId) : undefined;
-      const ref = resolveEntityRef(asset.expressId);
-      const entities = ref.modelId === modelId ? model?.ifcDataStore?.entities : undefined;
-      return {
-        Model: model?.name ?? '',
-        GlobalId: entities?.getGlobalId(ref.expressId) ?? '',
-        Name: entities?.getName(ref.expressId) ?? '',
-        IfcClass: entities?.getTypeName(ref.expressId) ?? '',
-        statistics: asset.statistics,
-      };
-    });
-    const overall = assets.length > 1
-      ? { name: t('deviationStats.csvAllAssetsName'), statistics: computeDeviationStatistics(distances.values, options) }
-      : null;
-    const report = buildDeviationCsvReport({ assets, overall }, [...sourceModels.values()].map((model) => model.name));
-    if (report) {
-      downloadFile(report.content, report.filename, 'text/csv;charset=utf-8');
-      trackExportCompleted({ format: 'csv', surface: 'deviation_panel', row_count: report.rows });
+    try {
+      const options = { tolerance, clipRange: DEVIATION_CLIP_RANGE_M, signal: controller.signal };
+      const summaries = await summarizeDeviationAssetsAsync(distances, options);
+      // The pooled row is a pass over every point, never a mean of the rows.
+      const overall = summaries.length > 1
+        ? { name: t('deviationStats.csvAllAssetsName'), statistics: await computeDeviationStatisticsAsync(distances.values, options) }
+        : null;
+      if (useViewerStore.getState().models !== sourceModels) {
+        throw new Error(t('deviationPanel.positionsChangedError'));
+      }
+      const assets = summaries.map((asset) => {
+        const modelId = idsByIndex.get(asset.modelIndex);
+        const model = modelId ? sourceModels.get(modelId) : undefined;
+        const ref = resolveEntityRef(asset.expressId);
+        const entities = ref.modelId === modelId ? model?.ifcDataStore?.entities : undefined;
+        return {
+          Model: model?.name ?? '',
+          GlobalId: entities?.getGlobalId(ref.expressId) ?? '',
+          Name: entities?.getName(ref.expressId) ?? '',
+          IfcClass: entities?.getTypeName(ref.expressId) ?? '',
+          statistics: asset.statistics,
+        };
+      });
+      const report = buildDeviationCsvReport({ assets, overall }, [...sourceModels.values()].map((model) => model.name));
+      if (report) {
+        downloadFile(report.content, report.filename, 'text/csv;charset=utf-8');
+        trackExportCompleted({ format: 'csv', surface: 'deviation_panel', row_count: report.rows });
+      }
+    } catch (err) {
+      setError(controller.signal.aborted
+        ? t('deviationPanel.resultsChangedError')
+        : err instanceof Error ? err.message : String(err));
+    } finally {
+      exportRef.current = null;
+      setExporting(false);
     }
   }, [computed, distances, running, t, tolerance]);
 
   const handleCompute = useCallback(async () => {
+    if (exportRef.current) return;
     const renderer = getGlobalRenderer();
     if (!renderer) {
       setError(t('deviationPanel.rendererNotReadyError'));
@@ -143,7 +173,10 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       setColorMode('deviation');
       // The heatmap is already on screen; the statistics follow the readback.
       const read = await renderer.readDeviationDistances();
-      if (!placementSnapshotIsCurrent(placement, useViewerStore.getState())) {
+      const after = useViewerStore.getState();
+      // `computed` falls whenever the run is invalidated (placement, model
+      // removal, device loss); a readback that outlived its run is dropped.
+      if (!placementSnapshotIsCurrent(placement, after) || !after.pointCloudDeviationComputed) {
         setError(t('deviationPanel.positionsChangedError')); return;
       }
       setDistances(read);
@@ -186,7 +219,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       <button
         type="button"
         onClick={handleCompute}
-        disabled={running}
+        disabled={running || exporting}
         className={cn(
           'text-xs px-2 py-1 rounded transition-colors',
           running
@@ -216,9 +249,9 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
 
       {computed && distances && (
         <button type="button" onClick={handleExport}
-          disabled={running}
+          disabled={running || exporting}
           className="text-xs px-2 py-1 rounded border border-border text-left hover:bg-accent">
-          {t('deviationPanel.exportCsv')}
+          {exporting ? t('deviationPanel.exportingCsv') : t('deviationPanel.exportCsv')}
         </button>
       )}
 

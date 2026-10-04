@@ -15,13 +15,26 @@
  *   the standard deviation is a second pass over (d − mean)², so neither the
  *   mean nor σ loses digits to cancellation on large clouds.
  * - Percentiles of |d| are EXACT nearest-rank order statistics
- *   (rank ⌈p·n⌉, the convention `frame-timing-stats.ts` uses), found by
- *   three-way quickselect on one float32 scratch copy of the valid |d|. Memory
- *   is 4 bytes per valid point, the same size as the GPU deviation buffer and
- *   bounded by the viewer's resident point cap. Selection is O(n) expected; a
- *   depth limit falls back to a native sort of the remaining range, so a
- *   pathological input stays O(n log n). The input array is never reordered.
+ *   (rank ⌈p·n⌉, the convention `frame-timing-stats.ts` uses), found by a
+ *   two-pass radix select on the float32 bit patterns
+ *   (`deviation-statistics-kernel.ts`): O(n) worst case, a fixed 1 MiB of
+ *   count tables whatever n is, and the input is never copied or reordered.
+ *
+ * Main thread: every figure is at most two linear passes. The `…Async`
+ * variants run those passes in slices of a few milliseconds that yield to
+ * the event loop, so a 25M-point summary never blocks one task for long, and
+ * take an `AbortSignal` so a superseded request stops early. The viewer only
+ * uses those; the synchronous {@link computeDeviationStatistics} suits a
+ * worker, a CLI or a test.
  */
+
+import {
+    HistogramPass,
+    StatisticsPasses,
+    ToleranceCount,
+    runPhases,
+    runPhasesSliced,
+} from './deviation-statistics-kernel.js';
 
 /** A bin layout that lines up with the deviation colour ramp. */
 export interface DeviationHistogramRange {
@@ -82,7 +95,11 @@ export interface DeviationStatisticsOptions {
     valid?: ArrayLike<number>;
     /** Report the share of points with |d| ≤ tolerance (metres, ≥ 0). */
     tolerance?: number;
-    /** The `maxRange` the compute pass clamped to, to count pegged points. */
+    /**
+     * The `maxRange` the compute pass clamped to, to count pegged points. The
+     * shader pegs at the float32 value, so the comparison is against
+     * `Math.fround(clipRange)`: 0.7 m pegs at 0.699999988 m.
+     */
     clipRange?: number;
     histogram?: DeviationHistogramRange;
 }
@@ -101,231 +118,110 @@ export interface DeviationDistances {
     assets: DeviationAssetRange[];
 }
 
+/** Cancellation for the sliced `…Async` variants. */
+export interface DeviationAsyncOptions {
+    /** Aborting rejects with the signal's reason at the next slice boundary. */
+    signal?: AbortSignal;
+}
+
 export interface DeviationAssetSummary {
     expressId: number;
     modelIndex: number;
     statistics: DeviationStatistics;
 }
 
-/** Neumaier compensated sum: exact-to-rounding for mixed magnitudes. */
-class CompensatedSum {
-    private sum = 0;
-    private compensation = 0;
-    add(x: number): void {
-        const t = this.sum + x;
-        if (Math.abs(this.sum) >= Math.abs(x)) this.compensation += (this.sum - t) + x;
-        else this.compensation += (x - t) + this.sum;
-        this.sum = t;
-    }
-    value(): number {
-        return this.sum + this.compensation;
-    }
-}
-
-function checkMask(values: Float32Array, valid: ArrayLike<number> | undefined): void {
-    if (valid && valid.length !== values.length) {
-        throw new RangeError(`deviation statistics: mask length ${valid.length} != values length ${values.length}`);
-    }
-}
-
-function checkTolerance(tolerance: number): void {
-    if (!(tolerance >= 0) || !Number.isFinite(tolerance)) {
-        throw new RangeError(`deviation statistics: tolerance must be a finite value ≥ 0, got ${tolerance}`);
-    }
-}
-
-/** Valid points with |d| ≤ tolerance. O(n), no allocation. */
-export function countWithinTolerance(values: Float32Array, tolerance: number, valid?: ArrayLike<number>): number {
-    checkMask(values, valid);
-    checkTolerance(tolerance);
-    let count = 0;
-    for (let i = 0; i < values.length; i++) {
-        // NaN and ±Infinity fail the comparison on their own.
-        if (Math.abs(values[i]) <= tolerance && (!valid || valid[i] !== 0)) count++;
-    }
-    return count;
-}
-
-/** Fixed-bin histogram over the ramp range. O(n), allocation = `bins`. */
-export function deviationHistogram(
-    values: Float32Array,
-    range: DeviationHistogramRange,
-    valid?: ArrayLike<number>,
-): DeviationHistogram {
-    checkMask(values, valid);
-    const binner = createBinner(range);
-    for (let i = 0; i < values.length; i++) {
-        const v = values[i];
-        if (Number.isFinite(v) && (!valid || valid[i] !== 0)) binner.add(v);
-    }
-    return binner.histogram;
-}
-
-function createBinner(range: DeviationHistogramRange): { histogram: DeviationHistogram; add(v: number): void } {
-    const { center, halfRange, bins } = range;
-    if (!(halfRange > 0) || !Number.isFinite(halfRange) || !Number.isFinite(center)) {
-        throw new RangeError(`deviation histogram: halfRange must be finite and > 0, got ${halfRange}`);
-    }
-    if (!Number.isInteger(bins) || bins < 1) {
-        throw new RangeError(`deviation histogram: bins must be a positive integer, got ${bins}`);
-    }
-    const min = center - halfRange;
-    const max = center + halfRange;
-    const binWidth = (2 * halfRange) / bins;
-    const histogram: DeviationHistogram = { min, max, binWidth, counts: new Array<number>(bins).fill(0), below: 0, above: 0 };
-    const last = bins - 1;
-    return {
-        histogram,
-        add(v: number): void {
-            if (v < min) histogram.below++;
-            else if (v > max) histogram.above++;
-            else histogram.counts[Math.min(last, Math.floor((v - min) / binWidth))]++;
-        },
-    };
-}
-
-/** Partially orders `a[lo..hi]` so `a[k]` holds the k-th smallest value. */
-function select(a: Float32Array, lo: number, hi: number, k: number): void {
-    let depth = 2 * Math.ceil(Math.log2(hi - lo + 2)) + 8;
-    while (hi > lo) {
-        if (depth-- === 0) {
-            a.subarray(lo, hi + 1).sort();
-            return;
-        }
-        // Median of three as the pivot value.
-        const mid = lo + ((hi - lo) >> 1);
-        const x = a[lo], y = a[mid], z = a[hi];
-        const pivot = x < y ? (y < z ? y : x < z ? z : x) : (x < z ? x : y < z ? z : y);
-        // Three-way partition: [lo, lt) < pivot, [lt, gt] == pivot, (gt, hi] > pivot.
-        // Ties (a flat wall scanned at one offset) collapse in a single pass.
-        let lt = lo, gt = hi, i = lo;
-        while (i <= gt) {
-            const v = a[i];
-            if (v < pivot) {
-                a[i++] = a[lt];
-                a[lt++] = v;
-            } else if (v > pivot) {
-                a[i] = a[gt];
-                a[gt--] = v;
-            } else {
-                i++;
-            }
-        }
-        if (k < lt) hi = lt - 1;
-        else if (k > gt) lo = gt + 1;
-        else return;
-    }
-}
-
-function rankOf(p: number, n: number): number {
-    return Math.min(n - 1, Math.max(0, Math.ceil(p * n) - 1));
-}
-
-export function computeDeviationStatistics(
-    values: Float32Array,
-    options: DeviationStatisticsOptions = {},
-): DeviationStatistics {
-    const { valid, tolerance, clipRange } = options;
-    checkMask(values, valid);
-    if (tolerance !== undefined) checkTolerance(tolerance);
-    const binner = options.histogram ? createBinner(options.histogram) : null;
-
-    // Pass 1: moments, extremes, counts, histogram, and the |d| scratch copy.
-    const scratch = new Float32Array(valid ? countValid(values, valid) : values.length);
-    const sum = new CompensatedSum();
-    const sumAbs = new CompensatedSum();
-    const sumSq = new CompensatedSum();
-    let n = 0;
-    let within = 0;
-    let clipped = 0;
-    let min = Infinity;
-    let max = -Infinity;
-    let maxAbs = 0;
-    for (let i = 0; i < values.length; i++) {
-        const v = values[i];
-        if (!Number.isFinite(v) || (valid && valid[i] === 0)) continue;
-        const abs = Math.abs(v);
-        scratch[n++] = abs;
-        sum.add(v);
-        sumAbs.add(abs);
-        sumSq.add(v * v);
-        if (v < min) min = v;
-        if (v > max) max = v;
-        if (abs > maxAbs) maxAbs = abs;
-        if (tolerance !== undefined && abs <= tolerance) within++;
-        if (clipRange !== undefined && abs >= clipRange) clipped++;
-        binner?.add(v);
-    }
-
+function statisticsOf(passes: StatisticsPasses, count: number, tolerance: number | undefined): DeviationStatistics {
+    const { n } = passes;
     const withinTolerance = tolerance === undefined
         ? null
-        : { tolerance, count: within, share: n > 0 ? within / n : null };
-    const histogram = binner?.histogram ?? null;
+        : { tolerance, count: passes.within, share: n > 0 ? passes.within / n : null };
+    const histogram = passes.binner?.histogram ?? null;
     if (n === 0) {
         return {
-            count: values.length, validCount: 0, clippedCount: 0,
+            count, validCount: 0, clippedCount: 0,
             min: null, max: null, mean: null, meanAbs: null, rms: null, stdDev: null,
             p50Abs: null, p95Abs: null, p99Abs: null, maxAbs: null,
             withinTolerance, histogram,
         };
     }
-
-    // Pass 2: σ from squared residuals, not E[d²] − mean², which cancels.
-    const mean = sum.value() / n;
-    const residual = new CompensatedSum();
-    for (let i = 0; i < values.length; i++) {
-        const v = values[i];
-        if (!Number.isFinite(v) || (valid && valid[i] === 0)) continue;
-        residual.add((v - mean) * (v - mean));
-    }
-
-    // Exact percentiles, highest first: everything ≤ the p99 element sits in
-    // [0, k99) afterwards, so each later selection runs on a shrinking prefix
-    // that excludes (and so cannot move) the element already placed.
-    const work = n === scratch.length ? scratch : scratch.subarray(0, n);
-    const k99 = rankOf(0.99, n);
-    const k95 = rankOf(0.95, n);
-    const k50 = rankOf(0.5, n);
-    select(work, 0, n - 1, k99);
-    if (k95 < k99) select(work, 0, k99 - 1, k95);
-    if (k50 < k95) select(work, 0, k95 - 1, k50);
-
+    const [p50Abs, p95Abs, p99Abs] = passes.percentiles;
     return {
-        count: values.length,
+        count,
         validCount: n,
-        clippedCount: clipped,
-        min,
-        max,
-        mean,
-        meanAbs: sumAbs.value() / n,
-        rms: Math.sqrt(sumSq.value() / n),
-        stdDev: Math.sqrt(residual.value() / n),
-        p50Abs: work[k50],
-        p95Abs: work[k95],
-        p99Abs: work[k99],
-        maxAbs,
+        clippedCount: passes.clipped,
+        min: passes.min,
+        max: passes.max,
+        mean: passes.mean,
+        meanAbs: passes.sumAbs.value() / n,
+        rms: Math.sqrt(passes.sumSq.value() / n),
+        // σ from squared residuals about the mean, not E[d²] − mean², which cancels.
+        stdDev: Math.sqrt(passes.residual.value() / n),
+        p50Abs,
+        p95Abs,
+        p99Abs,
+        maxAbs: passes.maxAbs,
         withinTolerance,
         histogram,
     };
 }
 
-function countValid(values: Float32Array, valid: ArrayLike<number>): number {
-    let n = 0;
-    for (let i = 0; i < values.length; i++) if (valid[i] !== 0 && Number.isFinite(values[i])) n++;
-    return n;
+/** Full summary in one synchronous call: two O(n) passes, no copy. */
+export function computeDeviationStatistics(
+    values: Float32Array,
+    options: DeviationStatisticsOptions = {},
+): DeviationStatistics {
+    const passes = new StatisticsPasses(values, options);
+    runPhases(values.length, passes.phases);
+    return statisticsOf(passes, values.length, options.tolerance);
 }
 
-/** Per-asset statistics over each asset's slice of one readback array. */
-export function summarizeDeviationAssets(
+/** {@link computeDeviationStatistics} in time-boxed slices that yield to the event loop. */
+export async function computeDeviationStatisticsAsync(
+    values: Float32Array,
+    options: DeviationStatisticsOptions & DeviationAsyncOptions = {},
+): Promise<DeviationStatistics> {
+    const passes = new StatisticsPasses(values, options);
+    await runPhasesSliced(values.length, passes.phases, options.signal);
+    return statisticsOf(passes, values.length, options.tolerance);
+}
+
+/** Valid points with |d| ≤ tolerance: one O(n) pass in yielding slices, no allocation. */
+export async function countWithinToleranceAsync(
+    values: Float32Array,
+    tolerance: number,
+    options: { valid?: ArrayLike<number> } & DeviationAsyncOptions = {},
+): Promise<number> {
+    const pass = new ToleranceCount(values, tolerance, options.valid);
+    await runPhasesSliced(values.length, [pass], options.signal);
+    return pass.count;
+}
+
+/** Fixed-bin histogram over the ramp range: one O(n) pass in yielding slices. */
+export async function deviationHistogramAsync(
+    values: Float32Array,
+    range: DeviationHistogramRange,
+    options: { valid?: ArrayLike<number> } & DeviationAsyncOptions = {},
+): Promise<DeviationHistogram> {
+    const pass = new HistogramPass(values, range, options.valid);
+    await runPhasesSliced(values.length, [pass], options.signal);
+    return pass.binner.histogram;
+}
+
+/** Per-asset statistics over each asset's slice of one readback array, in yielding slices. */
+export async function summarizeDeviationAssetsAsync(
     distances: DeviationDistances,
-    options: Omit<DeviationStatisticsOptions, 'valid'> = {},
-): DeviationAssetSummary[] {
-    return distances.assets.map((asset) => ({
-        expressId: asset.expressId,
-        modelIndex: asset.modelIndex,
-        statistics: computeDeviationStatistics(
-            distances.values.subarray(asset.offset, asset.offset + asset.count),
-            options,
-        ),
-    }));
+    options: Omit<DeviationStatisticsOptions, 'valid'> & DeviationAsyncOptions = {},
+): Promise<DeviationAssetSummary[]> {
+    const summaries: DeviationAssetSummary[] = [];
+    for (const asset of distances.assets) {
+        summaries.push({
+            expressId: asset.expressId,
+            modelIndex: asset.modelIndex,
+            statistics: await computeDeviationStatisticsAsync(
+                distances.values.subarray(asset.offset, asset.offset + asset.count),
+                options,
+            ),
+        });
+    }
+    return summaries;
 }

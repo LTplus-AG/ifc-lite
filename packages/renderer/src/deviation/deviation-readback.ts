@@ -4,7 +4,7 @@
 
 import type { PointCloudNode } from '../pointcloud/point-cloud-node.js';
 import {
-    summarizeDeviationAssets,
+    summarizeDeviationAssetsAsync,
     type DeviationAssetRange,
     type DeviationDistances,
     type DeviationStatistics,
@@ -78,14 +78,18 @@ export async function readDeviationDistances(
     return { values, assets };
 }
 
-/** Per-scan-asset statistics over {@link readDeviationDistances}. */
+/**
+ * Per-scan-asset statistics over {@link readDeviationDistances}. Holds the
+ * readback (4 bytes per point) for the duration of the call; the statistics
+ * themselves add a fixed ~1 MiB and run in slices that yield to the event loop.
+ */
 export async function readDeviationAssetStats(
     device: GPUDevice,
     nodes: Iterable<PointCloudNode>,
     wasComputed: (buffer: GPUBuffer) => boolean,
 ): Promise<DeviationAssetStats[]> {
     const distances = await readDeviationDistances(device, nodes, wasComputed);
-    return summarizeDeviationAssets(distances).map(({ expressId, modelIndex, statistics }) => ({
+    return (await summarizeDeviationAssetsAsync(distances)).map(({ expressId, modelIndex, statistics }) => ({
         expressId,
         modelIndex,
         pointsProcessed: statistics.count,

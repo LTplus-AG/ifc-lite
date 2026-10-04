@@ -50,7 +50,7 @@ describe('session-owned asynchronous native imports', () => {
     await artifact.arrayBuffer();
     expect((await h.handler(request(`imports/${id}/artifact`, a))).status).toBe(404);
   });
-  it('bounds preparing jobs and retained artifacts, and cancellation frees the owned slot', async () => {
+  it('bounds preparing jobs and retained artifacts until cancelled work settles', async () => {
     const d = deferred(); const h = harness({ adapters: [d.adapter], maxConcurrentImports: 1 });
     const a = await sessionCsrf(h.handler, await login(h.handler));
     const start = () => h.handler(request('import', a, 'POST', { kind: 'proposal', ref, region: 'US' }));
@@ -59,6 +59,9 @@ describe('session-owned asynchronous native imports', () => {
     const cancelled = await h.handler(request(`imports/${id}/cancel`, a, 'POST'));
     expect(cancelled.status).toBe(200); await d.abort;
     expect((await h.handler(request(`imports/${id}`, a))).status).toBe(404);
+    expect((await start()).status).toBe(429);
+    d.complete({ revisionId: 'version', format: 'ifcx', bytes: new Uint8Array([1]) });
+    await new Promise(resolve => setImmediate(resolve));
     const second = await start(); expect(second.status).toBe(202);
     const next = (await second.json() as { id: string }).id;
     d.complete({ revisionId: 'version', format: 'ifcx', bytes: new Uint8Array([1]) });

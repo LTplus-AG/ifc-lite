@@ -134,7 +134,7 @@ export function createAutodeskHandler(config: AutodeskServiceConfig) {
       return json({ code: known.code, message: known.message }, known.status);
     }
   };
-  return Object.assign(handle, { close() { sessions.close(); jobs.close(); } });
+  return Object.assign(handle, { async close() { sessions.close(); await jobs.close(); } });
 }
 function ownedStream(response: Response, session: Session, controller: AbortController, release?: () => void): Response {
   const reader = response.body!.getReader();

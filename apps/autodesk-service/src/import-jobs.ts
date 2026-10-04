@@ -19,14 +19,16 @@ interface Job {
 }
 /** Bounded in-process jobs. Slots cover conversion AND retained artifact bytes. */
 export class ImportJobs {
+  private readonly running = new Map<string, Promise<void>>();
+  private closing = false;
   private readonly jobs = new Map<string, Job>();
   constructor(private readonly capacity: number, private readonly maxBytes: number) {}
 
   start(owner: JobOwner, adapter: NativeArtifactAdapter, input: Parameters<NativeArtifactAdapter['convert']>[0]): string {
     input.signal.throwIfAborted();
-    if (!owner.active) throw new ServiceError(503, 'worker-stopping', 'The import service is stopping.');
+    if (this.closing || !owner.active) throw new ServiceError(503, 'worker-stopping', 'The import service is stopping.');
     this.prune();
-    if (this.jobs.size >= this.capacity) throw new ServiceError(429, 'import-busy', 'The import service is busy. Try again shortly.');
+    if (new Set([...this.jobs.keys(), ...this.running.keys()]).size >= this.capacity) throw new ServiceError(429, 'import-busy', 'The import service is busy. Try again shortly.');
     const id = randomBytes(24).toString('base64url');
     const controller = new AbortController();
     const job: Job = { owner, controller, state: 'preparing', timer: setTimeout(() => this.remove(id), 15 * 60_000) };
@@ -36,7 +38,7 @@ export class ImportJobs {
     controller.signal.addEventListener('abort', () => this.remove(id), { once: true });
     const signal = AbortSignal.any([input.signal, controller.signal]);
     // Run outside the HTTP request: return 202 before waiting for any SDK work.
-    void Promise.resolve().then(() => adapter.convert({ ...input, signal })).then((result) => {
+    const work = Promise.resolve().then(() => adapter.convert({ ...input, signal })).then((result) => {
       signal.throwIfAborted();
       if (!owner.active || !this.jobs.has(id)) return;
       if (result.revisionId !== input.ref.revisionId) throw new ServiceError(502, 'revision-mismatch', 'The converted model does not match the selected revision.');
@@ -50,7 +52,8 @@ export class ImportJobs {
       job.state = 'failed';
       job.error = error instanceof ServiceError ? error : new ServiceError(502, 'conversion-failed', 'The Autodesk import failed. Refresh and retry.');
       this.expireResult(id, job);
-    });
+    }).finally(() => { this.running.delete(id); });
+    this.running.set(id, work);
     return id;
   }
   status(id: string, owner: JobOwner): { state: 'preparing' | 'ready' } {
@@ -88,7 +91,11 @@ export class ImportJobs {
     job.owner.operations.delete(job.controller);
     job.controller.abort();
   }
-  close(): void { for (const id of this.jobs.keys()) this.remove(id); }
+  async close(): Promise<void> {
+    this.closing = true;
+    for (const id of this.jobs.keys()) this.remove(id);
+    await Promise.allSettled(this.running.values());
+  }
   private prune(): void {
     for (const [id, job] of this.jobs) if (!job.owner.active || job.controller.signal.aborted) this.remove(id);
   }

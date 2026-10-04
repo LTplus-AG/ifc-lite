@@ -22,6 +22,7 @@ export interface Session {
 }
 /** Bounded single-process store. Restart signs users out; never persists tokens to disk. */
 export class Sessions {
+  private closed = false;
   private readonly sessions = new Map<string, Session>();
   readonly cookieName: string;
   private readonly fetcher: typeof fetch;
@@ -41,7 +42,7 @@ export class Sessions {
       return original(input, { ...init, body, headers, redirect: 'error', signal: AbortSignal.timeout(30_000) });
     };
   }
-  close(): void { for (const session of this.sessions.values()) this.discard(session); }
+  close(): void { this.closed = true; for (const session of this.sessions.values()) this.discard(session); }
   cookie(session?: Session): string {
     return `${this.cookieName}=${session?.id ?? ''}; Path=/; HttpOnly; SameSite=Lax; ${this.config.insecureLocalhost ? '' : 'Secure; '}Max-Age=${session ? 8 * 3600 : 0}`;
   }
@@ -53,6 +54,7 @@ export class Sessions {
     return session?.active ? session : undefined;
   }
   create(): Session {
+    if (this.closed) throw new ServiceError(503, 'service-stopping', 'The Autodesk service is stopping.');
     this.prune();
     if (this.sessions.size >= (this.config.maxSessions ?? 1000)) throw new ServiceError(503, 'session-capacity', 'Autodesk connections are at capacity. Try again later.');
     let raw: string | undefined;

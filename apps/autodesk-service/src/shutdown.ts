@@ -4,15 +4,19 @@
 import type { Server } from 'node:http';
 
 /** Abort native process trees and streams before the container/service exits. */
-export function installShutdown(server: Server, close: () => void): void {
+export function installShutdown(server: Server, close: () => Promise<void>): void {
   let stopping = false;
   const stop = () => {
     if (stopping) return;
     stopping = true;
-    close();
+    const pending = close();
     const deadline = setTimeout(() => { server.closeAllConnections(); process.exit(0); }, 5000);
     deadline.unref();
-    server.close(() => { clearTimeout(deadline); process.exit(0); });
+    const disconnected = new Promise<void>(resolve => server.close(() => resolve()));
+    void Promise.allSettled([pending, disconnected]).then(results => {
+      if (results.some(result => result.status === 'rejected')) console.warn('Autodesk shutdown cleanup failed');
+      clearTimeout(deadline); process.exit(0);
+    });
     server.closeIdleConnections();
   };
   process.once('SIGTERM', stop);

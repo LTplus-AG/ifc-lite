@@ -3,15 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { autodeskHttpServer } from './http-server.js';
 import { installShutdown } from './shutdown.js';
+import { remoteExchangeAdapter } from './remote-exchange-adapter.js';
 import { createAutodeskHandler } from './handler.js';
 import { formaAdapter } from './forma-adapter.js';
 import { exchangeAdapter } from './exchange-adapter.js';
 
 const origin = process.env.AUTODESK_VIEWER_ORIGIN ?? '';
+if (process.env.AUTODESK_EXCHANGE_WORKER && process.env.AUTODESK_EXCHANGE_WORKER_ORIGIN) throw new Error('Choose local or remote exchange worker.');
+if (Boolean(process.env.AUTODESK_EXCHANGE_WORKER_ORIGIN) !== Boolean(process.env.AUTODESK_EXCHANGE_WORKER_KEY)) throw new Error('Configure both remote exchange worker origin and key.');
 const handler = createAutodeskHandler({
   origin, clientId: process.env.AUTODESK_CLIENT_ID ?? '', clientSecret: process.env.AUTODESK_CLIENT_SECRET ?? '',
   adapters: [
     ...(process.env.AUTODESK_FORMA_CONVERTER ? [formaAdapter(process.env.AUTODESK_FORMA_CONVERTER)] : []),
+    ...(process.env.AUTODESK_EXCHANGE_WORKER_ORIGIN ? [remoteExchangeAdapter(process.env.AUTODESK_EXCHANGE_WORKER_ORIGIN, process.env.AUTODESK_EXCHANGE_WORKER_KEY ?? '')] : []),
     ...(process.env.AUTODESK_EXCHANGE_WORKER ? [exchangeAdapter(process.env.AUTODESK_EXCHANGE_WORKER)] : []),
   ],
   insecureLocalhost: process.env.AUTODESK_INSECURE_LOCALHOST === 'true',

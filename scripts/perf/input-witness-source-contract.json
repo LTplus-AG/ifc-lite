@@ -1,5 +1,5 @@
 {
-  "protocol": "independent-viewer-input-v1-instrumented",
+  "protocol": "independent-viewer-input-v2-late-attachment-instrumented",
   "subjects": {
     "base": "7dfc29870b0aa6a593c163592fcb84a92e5dfa19",
     "candidate": "9fc86cb8ead77486b0bcd29726b775c27085524b"
@@ -56,6 +56,11 @@
       "candidateSha256": "eb017195fa395bd90b8f16c14dc55730734e8d4f0212e1850aa4736ba6df0232"
     },
     {
+      "path": "apps/viewer/src/lib/viewport-debug-hooks.ts",
+      "baseSha256": "51f833897e915e34fb75ce64ae9c65213d685c397b8f867ed0d4ad4d7a32e958",
+      "candidateSha256": "51f833897e915e34fb75ce64ae9c65213d685c397b8f867ed0d4ad4d7a32e958"
+    },
+    {
       "path": "apps/viewer/src/store/index.ts",
       "baseSha256": "09f3230e1747a71740bfa22afbe70639b20532dcb09efcab1526d93abd244d5d",
       "candidateSha256": "09f3230e1747a71740bfa22afbe70639b20532dcb09efcab1526d93abd244d5d"
@@ -101,6 +106,11 @@
       "candidateSha256": "593e188a9d0019df06d13fc31b441c2d5b522c8a37210101bca1d6f1a378e0ff"
     },
     {
+      "path": "packages/renderer/src/index.ts",
+      "baseSha256": "f8fac553b63218c8261f1b4d9ab5dafa79347e33368e1c27fdd086f8165494b7",
+      "candidateSha256": "f8fac553b63218c8261f1b4d9ab5dafa79347e33368e1c27fdd086f8165494b7"
+    },
+    {
       "path": "packages/renderer/src/instanced-render.ts",
       "baseSha256": "a14cdf09227f71eb000ec20269daa1dcf1e28bd0a247da228ca312af68affa85",
       "candidateSha256": "a14cdf09227f71eb000ec20269daa1dcf1e28bd0a247da228ca312af68affa85"
@@ -109,11 +119,6 @@
       "path": "packages/renderer/src/model-translation.ts",
       "baseSha256": "bb89482e81e0e7df8d93fa38d0c01f7237ebb2865ec63eaf536f0b97df1a7413",
       "candidateSha256": "bb89482e81e0e7df8d93fa38d0c01f7237ebb2865ec63eaf536f0b97df1a7413"
-    },
-    {
-      "path": "packages/renderer/src/index.ts",
-      "baseSha256": "f8fac553b63218c8261f1b4d9ab5dafa79347e33368e1c27fdd086f8165494b7",
-      "candidateSha256": "f8fac553b63218c8261f1b4d9ab5dafa79347e33368e1c27fdd086f8165494b7"
     },
     {
       "path": "packages/renderer/src/scene-stream-split.ts",

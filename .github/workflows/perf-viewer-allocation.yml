@@ -90,7 +90,7 @@ jobs:
         if: inputs.independent_input
         env:
           INPUT_WITNESS_FIXTURES_REQUIRED: 'true'
-        run: node --test scripts/perf/input-witness.test.mjs scripts/perf/input-witness-integration.test.mjs
+        run: node --test scripts/perf/input-witness.test.mjs scripts/perf/input-witness-integration.test.mjs scripts/perf/input-witness-attachment.test.mjs
       - name: Typecheck the explicit harness and existing benchmark helper program
         run: pnpm typecheck:viewer-source-allocation
       - name: Fetch and verify exactly the fixed public fixtures
@@ -107,6 +107,9 @@ jobs:
           set -o pipefail
           (cd "$BASE_DIR" && CARGO_TARGET_DIR="$RUNNER_TEMP/allocation-base-cargo" pnpm typecheck) 2>&1 | tee "$GITHUB_WORKSPACE/viewer-allocation-results/base-typecheck.log"
           (cd "$CANDIDATE_DIR" && CARGO_TARGET_DIR="$RUNNER_TEMP/allocation-candidate-cargo" pnpm typecheck) 2>&1 | tee "$GITHUB_WORKSPACE/viewer-allocation-results/candidate-typecheck.log"
+      - name: Qualify mounted lazy-init input attachment with canonical baseline Scene
+        if: inputs.independent_input
+        run: node --test scripts/perf/input-witness-attachment-mounted.test.mjs
       - name: Build baseline from source through root Turbo
         working-directory: ${{ env.BASE_DIR }}
         env:

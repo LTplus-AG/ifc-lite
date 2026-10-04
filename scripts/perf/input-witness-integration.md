@@ -112,3 +112,41 @@ fixture when neither source is available, directing it to the dedicated workflow
 such a skip is not a passing mandatory hosted source-binding control.
 Final-subject fresh builds and actual mounted before-upload delivery, current Fiber discovery, full O-S1
 identity and screenshot remain required prospective hosted evidence.
+
+## Prospective v2 lazy-viewport attachment (locally qualified; hosted UNRUN)
+
+Run 37179467566 at controller `b33ec60` refused before upload because the welcome
+branch has no Viewport/canvas. Both final-subject typechecks and source builds
+passed; no model or allocation comparison ran. That original refusal is retained.
+
+The separately named `independent-viewer-input-v2-late-attachment-instrumented`
+protocol subscribes to the empty canonical store before upload. It retains raw
+pending deliveries while Viewport mounts. A descriptor-fenced interceptor binds
+the actual unique current renderer and empty Scene synchronously at the existing
+`__ifc_lite_render_stats__` assignment, before the canonical initialized commit
+permits flat and IFNS ingestion. It records failure without interrupting the
+application's assignment, and preserves the native-created hook value/descriptor
+on observer disposal. Missing, late, replaced, nonempty or unknown owners refuse.
+No extra wait, polling, render request, blank model or production flags are added.
+
+The debug-hook producer is now independently pinned in both literal subject
+source contracts (29 paths). Six serialized attachment lifecycle controls and a
+real mounted `useGeometryStreaming` control with actual Zustand, canonical
+decoder, Camera and Scene are proposed. The mounted test uses synthetic triangle
+compatibility bytes, seeded bounded metadata and an explicitly adapted GPU byte
+allocator/bind-group facade. It proves neither real IFC parsing nor GPU pixels.
+Hosted execution follows both fresh root typechecks so canonical dependencies
+are actually built, and binds the mounted fixture to the literal baseline source.
+The guarded fresh root typecheck passed 111 tasks with zero cache hits and
+covered 3,324 test sources. The first 62-control selection passed 61 and failed
+one mounted fixture due to a missing renderer.getCanvas adapter. That raw
+failure is retained. The repaired mounted control passes, fails against the old
+installer at genuine before-canvas registration, and passes after exact source
+restoration. All seven scoped gates pass. The named harness typecheck checks
+its TypeScript programs; the new mounted MJS is behavior-tested, not TS checked.
+Actual hosted v2 model/renderer qualification remains UNRUN.
+
+The prior four-family protocol, old refusal records, full-produced digest,
+owner/piece/instance guards, strict authored channels and fixed two O-S1 loads
+remain intact. This new observer has nonzero unmeasured overhead in both arms;
+its future correctness result cannot be pooled with earlier timing receipts.

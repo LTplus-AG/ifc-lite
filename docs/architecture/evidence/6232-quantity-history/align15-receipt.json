@@ -1,0 +1,62 @@
+{
+  "issue": 6232,
+  "pr": "https://github.com/LTplus-AG/ifc-lite/pull/6761",
+  "qualifiedSourceHead": "886ee435a96631c7396b47da098afac813c863ad",
+  "parent": "7a8cccbc158e1aaa4cc3a85eb9de8a524f00d707",
+  "merge": "Normal merge of owning14; original660a5e9 Align production retained without conflicts.",
+  "checks": {
+    "rootTypecheck": {
+      "tasksPassed": 111,
+      "testFiles": 3370
+    },
+    "mcp": {
+      "passed": 603,
+      "failed": 0,
+      "existingOptionalSkips": 5,
+      "scope": "Complete MCP suite, including native Align/Room and runtime error classification."
+    },
+    "viewer": {
+      "passed": 49,
+      "failed": 0,
+      "skipped": 0,
+      "scope": "Native Align/physical/Room adapters, real publication rollback, mounted registered Align/Room and typed quantity history."
+    },
+    "lint": {
+      "files": 8443,
+      "errors": 0
+    },
+    "apiExports": 9334,
+    "docsSnippets": 433,
+    "moduleSize": {
+      "files": 4799,
+      "newOversize": 0,
+      "budgetRaises": 0
+    },
+    "licenseHeaders": true
+  },
+  "nativeRuntime": {
+    "wasmSha256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+    "jsSha256": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+    "provenance": "Matching generated final16 runtime pair restored after root dependency qualification.",
+    "mcpBeforeAfterHashMatched": true,
+    "viewerBeforeAfterHashMatched": true,
+    "execution": "Both root Turbo test runs used --only --force after root111 dependency qualification; no cached test tasks or build/Cargo tasks during native execution."
+  },
+  "logs": {
+    "types": "/tmp/6232-align15-history-types.log",
+    "mcp": "/tmp/6232-align15-history-mcp.log",
+    "viewer": "/tmp/6232-align15-history-viewer.log",
+    "runtimeBefore": "/tmp/6232-align15-history-runtime-before.sha256",
+    "mcpRuntimeAfter": "/tmp/6232-align15-history-mcp-runtime-after.log",
+    "viewerRuntimeAfter": "/tmp/6232-align15-history-viewer-runtime-after.log",
+    "lint": "/tmp/6232-align15-history-lint.log",
+    "docs": "/tmp/6232-align15-history-docs.log",
+    "api": "/tmp/6232-align15-history-api.log",
+    "module": "/tmp/6232-align15-history-module.log",
+    "license": "/tmp/6232-align15-history-license.log"
+  },
+  "limits": [
+    "Local stack qualification does not establish main-required CI or landing readiness.",
+    "Quantity export preserves only the existing supported unit resolution scope."
+  ]
+}

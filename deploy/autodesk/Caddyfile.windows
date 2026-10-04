@@ -1,0 +1,21 @@
+# Full-source deployment: Node + both native importers on this Windows host.
+# Set IFCLITE_PUBLIC_HOST and IFCLITE_VIEWER_ROOT in the gateway environment.
+{$IFCLITE_PUBLIC_HOST} {
+    header Cross-Origin-Opener-Policy same-origin
+    header Cross-Origin-Embedder-Policy credentialless
+    @autodeskCallback path /oauth/autodesk/*
+    header @autodeskCallback Cache-Control no-store
+    header @autodeskCallback Referrer-Policy no-referrer
+    handle /api/autodesk/* {
+        reverse_proxy 127.0.0.1:3002 {
+            transport http {
+                response_header_timeout 15m
+            }
+        }
+    }
+    handle {
+        root * {$IFCLITE_VIEWER_ROOT}
+        try_files {path} {path}.html /index.html
+        file_server
+    }
+}

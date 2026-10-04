@@ -8,32 +8,17 @@
  * importing it back.
  */
 
-import { alignShift, type AlignMode, type PlanBox } from './align-boxes.js';
+import type { AlignMode, PlanBox } from './align-boxes.js';
 
 export interface AlignGesture {
   /** The session storey's elements with geometry, in the session workplane. */
   readonly boxes: ReadonlyMap<number, PlanBox>;
   readonly reference: number | null;
   readonly targets: readonly number[];
+  /** Dependants whose selected host governs the preview and commit. */
+  readonly carried?: readonly number[];
   readonly mode: AlignMode;
   readonly hover: number | null;
 }
 
-/** A shift below this (metres) is already aligned. */
-const ALIGNED = 1e-4;
-
-
-/** The moves the gesture would make: each target's shift, the ones already aligned left out. */
-export function alignMoves(g: AlignGesture): { id: number; shift: [number, number] }[] {
-  const reference = g.reference === null ? null : g.boxes.get(g.reference);
-  if (!reference) return [];
-  const moves: { id: number; shift: [number, number] }[] = [];
-  for (const id of g.targets) {
-    const box = g.boxes.get(id);
-    if (!box) continue;
-    const [du, dv] = alignShift(g.mode, reference, box);
-    if (Math.hypot(du, dv) > ALIGNED) moves.push({ id, shift: [du, dv] });
-  }
-  return moves;
-}
-
+export { alignMoves } from '@ifc-lite/create';

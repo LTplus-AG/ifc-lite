@@ -1,0 +1,86 @@
+{
+  "captureAndExecutionSource": "983bf1665a45906ef6f26b6e2e625186f5bc70d3",
+  "rootTypecheckTasks": 111,
+  "rootTypecheckTestFiles": 3391,
+  "corePassed": 33,
+  "coreSkipped": 0,
+  "viewerPassed": 59,
+  "viewerSkipped": 0,
+  "mcpPassed": 615,
+  "mcpExistingOptionalSkips": 5,
+  "lintFiles": 8481,
+  "lintErrors": 0,
+  "warningsInTouchedFiles": [],
+  "lowerUnionSource": "7d45c46a3acfe8af937602277d71159d8d2aa93f",
+  "lowerUnionCorePassed": 54,
+  "lowerUnionViewerPassed": 91,
+  "lowerUnionSkipped": 0,
+  "archives": [
+    {
+      "path": "types.log.gz",
+      "rawSHA256": "75a89820ff9debc3cfc42d203691504c8c815742a4a75c6591a835f1476bdb29",
+      "gzipSHA256": "61593b49982d9ab0d6689cdaed2565fb7b37801a22227f7eb8866131f3fb4b12"
+    },
+    {
+      "path": "lint.log.gz",
+      "rawSHA256": "fc0b5e61ac136398e383aa9879081a11f2d67220232c7a9f2cccfe081c0ed332",
+      "gzipSHA256": "f82eb3a069677cb661b1b47766a1f1f3d58280ef7d76d82a8f1ded4badf7826c"
+    },
+    {
+      "path": "core.log.gz",
+      "rawSHA256": "64a46aac8350a127250800b4091f8271daa8aee8a5b6146fe06cc595623270c3",
+      "gzipSHA256": "1f659ecfd62b3329af7817440b1c53361d99dfcdd54488b63eec0cee46e83215"
+    },
+    {
+      "path": "viewer.log.gz",
+      "rawSHA256": "9a5f19339d3815ff86ce785cc93d06d0782a87d4f95921039b6a6b7a95103ce7",
+      "gzipSHA256": "cee1e376b76b67731c1b34b5eb567e037e992fbe31f07850a024dc0a3d474607"
+    },
+    {
+      "path": "mcp.log.gz",
+      "rawSHA256": "69d4354cd9e4cff495e8931a6a32544fc713a459c187a28d97121aeeaff3d15f",
+      "gzipSHA256": "5f9c8ce3b5f0e603d7a08a94b53f22972381ebb1080128427394c1dc49bba057"
+    },
+    {
+      "path": "browser.log.gz",
+      "rawSHA256": "5a256adabb1d1c3ba167a08a25c1b688b678a8ac667b985af068f4e0747db34e",
+      "gzipSHA256": "a27e35b3c6543a3c817b0ae2c00a35a32df427a2690cf6e9abd372ce3db7b521"
+    },
+    {
+      "path": "runtime-after.sha256.gz",
+      "rawSHA256": "c89311a71f3eb3465c1005e09cf6d7ec45c6c798bb7009ebe310b060fbf1a65c",
+      "gzipSHA256": "3c5ea84b6d84681e732e4134f53b9f631dcfba9dc91f9b9a331359b58ab25595"
+    },
+    {
+      "path": "lower-union-core.log.gz",
+      "rawSHA256": "b9b90446b53f99a97a95c27eb50652cedd7b35074471f12cc9dba208e975e054",
+      "gzipSHA256": "4e98eadc85f1381901592106b9fab7eb39c93589d5636be2fa2f69a71b611fe8"
+    },
+    {
+      "path": "lower-union-viewer.log.gz",
+      "rawSHA256": "16d3bc2f1580f2a60f34c65255b506b08420ad8a1f4ac29997fe0aab76a8ac24",
+      "gzipSHA256": "8797955c1d5d7a82e2c0b6d35c0b367a3b8d4a5f9fa45a8ad22e70a4811f4c2a"
+    },
+    {
+      "path": "joined-parent-before.log.gz",
+      "rawSHA256": "81a6662074d1e89e9605ecf4ef3f0fd73d499702ba3733dd92f709e04fbe07c6",
+      "gzipSHA256": "7c4868c0045cbffb0abc2034ba44eec8d9b4b286af20c428e6100c77806168d1"
+    },
+    {
+      "path": "boundary-before.log.gz",
+      "rawSHA256": "27d6ae3f5ee5f76304a2bfa2e5bf9788039ca52263d1c3eabbbeef7ae2ed2ec4",
+      "gzipSHA256": "d8de0c2eb532367b4c33d646a875f3a4eb0f52f4182a64ad6a411c8be0d90730"
+    },
+    {
+      "path": "boundary-after.log.gz",
+      "rawSHA256": "fa84f05f10747873f25d0013c7f355049652317ef3b0231e465d2d6cbe00d270",
+      "gzipSHA256": "b52764119ed8988d6bc331a068a4ae23f3ce30b5773c5e6dc49e72658c6347a8"
+    },
+    {
+      "path": "joined-parent-after.log.gz",
+      "rawSHA256": "e08eb3bdccb7e37f04084308256a8e89e2464cec89b3f715c1a48983fc529d00",
+      "gzipSHA256": "ad97dfb04048b28623f73115b374ccc0c45346face75610f1c34df55b75aceab"
+    }
+  ],
+  "scope": "Two fresh Physical1/N receipts at983bf; six original Align/Placement/Room receipts retainacbc source. All current root runs execute at983bf; lower union qualification remains7d45. JS/WASM hashes verified before forced root tests by sha256sum preflight and after tests unchanged; no dependency build during forced tests, no new Cargo build or performance claim. Source-independent archive/docs and ancestry commits after capture do not relabel receipts. Current-head required CI and remaining main landings are pending."
+}

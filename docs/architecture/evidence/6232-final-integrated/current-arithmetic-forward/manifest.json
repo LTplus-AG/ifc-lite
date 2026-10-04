@@ -1,0 +1,154 @@
+[
+  {
+    "suite": "physical",
+    "models": 1,
+    "receipt": "physical-1-browser.json.gz",
+    "receiptSHA256": "cfcc0615df419c2c1babb736feb46e89c6044ca870eac8f85d9643afbdc4a57d",
+    "source": {
+      "head": "7f97b57aa98022ff478cdb302ab6b6ac0ee00452",
+      "dirty": "",
+      "rustTree": "49138ee42f1e8f6d7f398c8b75dc1e3d61ccd541",
+      "fixturePath": "/tmp/6232-final-qualification16/apps/viewer/public/samples/hello-wall.ifc",
+      "fixtureSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "wasmSHA256": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+      "wasmModified": "2026-10-04T00:17:28.400Z",
+      "sourceRoot": "/tmp/6232-final-qualification16",
+      "baseURL": "http://127.0.0.1:5189"
+    },
+    "stages": 21,
+    "cameraFramed": true
+  },
+  {
+    "suite": "physical",
+    "models": 2,
+    "receipt": "physical-2-browser.json.gz",
+    "receiptSHA256": "5d4cc9fac75c552aab9691eafbd7083d89bc27189a44d6ee0fa5e279f897efda",
+    "source": {
+      "head": "7f97b57aa98022ff478cdb302ab6b6ac0ee00452",
+      "dirty": "",
+      "rustTree": "49138ee42f1e8f6d7f398c8b75dc1e3d61ccd541",
+      "fixturePath": "/tmp/6232-final-qualification16/apps/viewer/public/samples/hello-wall.ifc",
+      "fixtureSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "wasmSHA256": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+      "wasmModified": "2026-10-04T00:17:28.400Z",
+      "sourceRoot": "/tmp/6232-final-qualification16",
+      "baseURL": "http://127.0.0.1:5189"
+    },
+    "stages": 21,
+    "cameraFramed": true
+  },
+  {
+    "suite": "align",
+    "models": 1,
+    "receipt": "align-1-browser.json.gz",
+    "receiptSHA256": "a90408fdf890ef92bd538a1f9776cd4527b3cf9931dd11c9fa1799371cde37a2",
+    "source": {
+      "head": "7f97b57aa98022ff478cdb302ab6b6ac0ee00452",
+      "dirty": "",
+      "rustTree": "49138ee42f1e8f6d7f398c8b75dc1e3d61ccd541",
+      "fixturePath": "/tmp/6232-final-qualification16/apps/viewer/public/samples/hello-wall.ifc",
+      "fixtureSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "wasmSHA256": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+      "wasmModified": "2026-10-04T00:17:28.400Z",
+      "sourceRoot": "/tmp/6232-final-qualification16",
+      "baseURL": "http://127.0.0.1:5189"
+    },
+    "stages": 17,
+    "cameraFramed": true
+  },
+  {
+    "suite": "align",
+    "models": 2,
+    "receipt": "align-2-browser.json.gz",
+    "receiptSHA256": "42b58240f69224fb9295c959856989d4a8f3ab2f74c90cad7bb545e52f1f8cf9",
+    "source": {
+      "head": "7f97b57aa98022ff478cdb302ab6b6ac0ee00452",
+      "dirty": "",
+      "rustTree": "49138ee42f1e8f6d7f398c8b75dc1e3d61ccd541",
+      "fixturePath": "/tmp/6232-final-qualification16/apps/viewer/public/samples/hello-wall.ifc",
+      "fixtureSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "wasmSHA256": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+      "wasmModified": "2026-10-04T00:17:28.400Z",
+      "sourceRoot": "/tmp/6232-final-qualification16",
+      "baseURL": "http://127.0.0.1:5189"
+    },
+    "stages": 17,
+    "cameraFramed": true
+  },
+  {
+    "suite": "placement",
+    "models": 1,
+    "receipt": "placement-1-browser.json.gz",
+    "receiptSHA256": "966962297a98acc5e9d6b255edbcc4a11f8e5920a8430a28ab7e372c1a08e171",
+    "source": {
+      "head": "7f97b57aa98022ff478cdb302ab6b6ac0ee00452",
+      "dirty": "",
+      "rustTree": "49138ee42f1e8f6d7f398c8b75dc1e3d61ccd541",
+      "fixturePath": "/tmp/6232-final-qualification16/apps/viewer/public/samples/hello-wall.ifc",
+      "fixtureSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "wasmSHA256": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+      "wasmModified": "2026-10-04T00:17:28.400Z",
+      "sourceRoot": "/tmp/6232-final-qualification16",
+      "baseURL": "http://127.0.0.1:5189"
+    },
+    "stages": 36,
+    "cameraFramed": true
+  },
+  {
+    "suite": "placement",
+    "models": 2,
+    "receipt": "placement-2-browser.json.gz",
+    "receiptSHA256": "36ad578dd56c94e2a985096432cce9425637522f1f50b7b28ebd2524dff65a2d",
+    "source": {
+      "head": "7f97b57aa98022ff478cdb302ab6b6ac0ee00452",
+      "dirty": "",
+      "rustTree": "49138ee42f1e8f6d7f398c8b75dc1e3d61ccd541",
+      "fixturePath": "/tmp/6232-final-qualification16/apps/viewer/public/samples/hello-wall.ifc",
+      "fixtureSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "wasmSHA256": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+      "wasmModified": "2026-10-04T00:17:28.400Z",
+      "sourceRoot": "/tmp/6232-final-qualification16",
+      "baseURL": "http://127.0.0.1:5189"
+    },
+    "stages": 36,
+    "cameraFramed": true
+  },
+  {
+    "suite": "room",
+    "models": 1,
+    "receipt": "room-1-browser.json.gz",
+    "receiptSHA256": "b46828323a7bcdeafd3f66cfd99d56af8f395c6cb48e741e6002a5210e296a30",
+    "source": {
+      "head": "7f97b57aa98022ff478cdb302ab6b6ac0ee00452",
+      "dirty": "",
+      "rustTree": "49138ee42f1e8f6d7f398c8b75dc1e3d61ccd541",
+      "fixturePath": "/tmp/6232-final-qualification16/apps/viewer/public/samples/hello-wall.ifc",
+      "fixtureSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "wasmSHA256": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+      "wasmModified": "2026-10-04T00:17:28.400Z",
+      "sourceRoot": "/tmp/6232-final-qualification16",
+      "baseURL": "http://127.0.0.1:5189"
+    },
+    "stages": 18,
+    "cameraFramed": true
+  },
+  {
+    "suite": "room",
+    "models": 2,
+    "receipt": "room-2-browser.json.gz",
+    "receiptSHA256": "e8f092267f9c159acca717a1c6620cd7aacb289b6254b0184b899bab8f2b514e",
+    "source": {
+      "head": "7f97b57aa98022ff478cdb302ab6b6ac0ee00452",
+      "dirty": "",
+      "rustTree": "49138ee42f1e8f6d7f398c8b75dc1e3d61ccd541",
+      "fixturePath": "/tmp/6232-final-qualification16/apps/viewer/public/samples/hello-wall.ifc",
+      "fixtureSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "wasmSHA256": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+      "wasmModified": "2026-10-04T00:17:28.400Z",
+      "sourceRoot": "/tmp/6232-final-qualification16",
+      "baseURL": "http://127.0.0.1:5189"
+    },
+    "stages": 18,
+    "cameraFramed": true
+  }
+]

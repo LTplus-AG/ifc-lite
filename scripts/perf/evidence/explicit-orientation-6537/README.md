@@ -1,9 +1,11 @@
 # Known-explicit orientation prototype (#6537)
 
-**Performance verdict: UNQUALIFIED.** This draft changes how known-explicit
-coordinates reach the existing adaptive predicate; it changes no determinant,
-sign conversion, degeneracy policy or geometry contract. It claims no instruction,
-elapsed-time, memory or full-viewer improvement.
+**Verdict: qualified default-worker SDK produced-CPU comparison with scoped
+ISSUE129 improvement; other SDK families and native phase changes are mixed.**
+Both compare immutable BASE `187a72e3302447fc49f2264111501223238a24a7` with CAND
+`672f1e09c06ce777507244d2f2c4403d7b38c098`. No universal, isolated-dispatch,
+instruction, physical-memory or full-viewer benefit is claimed. Original
+correctness bytes remain unchanged; later receipts do not requalify a docs head.
 
 ## Source and correctness
 
@@ -82,4 +84,29 @@ Separately propose generic SDK controller
 builds: the unchanged four-family 56-process cohort, actual default pool,
 post-timer produced CPU-channel identity, untouched diagnostic census and all
 existing admissions/freezes/refusals. This SDK boundary does not establish GPU,
-metadata, pixel or full-viewer identity. Neither proposed cohort has run.
+metadata, pixel or full-viewer identity. At initial capture, both cohorts were prospective; completed qualifications follow below.
+
+
+## Completed consumer comparisons
+
+SDK [37167109427](https://github.com/LTplus-AG/ifc-lite/actions/runs/37167109427)
+qualifies all 56 samples/28 pairs under the unchanged default two-worker protocol.
+ISSUE129 improves in all five observed A/B pairs; Haus, Holter and O-S1 are mixed.
+Produced flat/instanced CPU identities and full unnormalized diagnostics agree.
+Native [37182263516](https://github.com/LTplus-AG/ifc-lite/actions/runs/37182263516)
+qualifies 17 pairs/34 processes with controller `200a7eed8eb3170225a5e7c5d78eb135f1bddf6a`.
+The explicit compile-once/held-FD protocol preserves canonical best-total phase
+selection; original arm probes qualify separately. Native changes are small and
+mixed. All counts/ordered mesh FNVs and selected diagnostic fields agree within
+family. Native CSG has 41 failures/6 degenerate drops; SDK has 44 failures, so
+cross-protocol fidelity is not inferred. FNV excludes appearance/text/UV/material/
+texture/instances. Recorded RSS is sampled, not a physical peak; native available-
+memory numerical readings are absent, though the frozen gate ran. No whole-machine
+or complete IFC fidelity claim is made.
+
+Earlier correctness failures, compiler-query refusals and controller-summary
+refusal remain immutable. [Existing evidence child #6792](https://github.com/LTplus-AG/ifc-lite/pull/6792)
+retains complete SDK/first-refusal receipts and the companion native packet.
+[Summary-controller evidence #6798](https://github.com/LTplus-AG/ifc-lite/pull/6798)
+retains the prior canonical-stderr refusal. These are distinct sources and stages;
+no failed run is relabelled, and no unchanged comparison is rerun.

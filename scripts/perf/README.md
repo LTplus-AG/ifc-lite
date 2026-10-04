@@ -110,25 +110,27 @@ canonical parser; defer mechanisms whose correctness or end-to-end verdict
 remains incomplete. [Raw dispositions and prerequisites](evidence/deferred-worker-mechanisms-6537/README.md)
 retain source attribution and the excluded attempts.
 
-## Known-explicit orientation entrypoint: unqualified prototype (#6537)
+## Known-explicit orientation: scoped SDK benefit, native mixed (#6537 / #6788)
 
-Callers already holding explicit coordinates can avoid constructing implicit-point
-variants and using the general dispatcher. The prototype routes those calls and
-the dispatcher's explicit arm through one private helper, preserving the same
-adaptive predicate, argument order, sign conversion and degeneracy policy.
-Independent rational permutation controls and the full existing predicate tests
-remain intact; the latter move into a sibling test module to satisfy the size
-ratchet. Final workspace and strict all-target Clippy checks pass, with the earlier
-disk refusal and test-import compile failure retained.
+Known-explicit coordinates reach one private helper shared with the general
+dispatcher's explicit arm. Adaptive arithmetic, argument order, sign conversion,
+degeneracy and mixed-point fallbacks remain unchanged. Rational permutation and
+existing predicate controls, workspace tests and strict Clippy pass; earlier
+correctness failures remain retained.
 
-The performance verdict is unqualified. Historical instruction attribution
-includes adaptive arithmetic and does not quantify removable dispatch work; its
-older subject differs from the current baseline's source/configuration closure.
-Require fresh, source-fenced native and default-worker SDK comparisons before
-deciding whether this entrypoint pays back. No native instruction, elapsed, RSS
-or full-viewer benefit is claimed. [Correctness receipts, source hashes, earlier
-refusals and prospective qualification](evidence/explicit-orientation-6537/README.md)
-preserve this prototype without relabelling prior measurements.
+The fresh default-worker SDK produced-CPU comparison improves on ISSUE129 in all
+observed pairs; Haus, Holter and O-S1 are mixed. The separate source-built native
+phase comparison qualifies with mixed small changes, rather than a consistent
+speed win. Counts and fingerprints agree within each protocol's declared coverage;
+complete SDK diagnostics and selected native diagnostics remain distinct. Earlier
+compiler-query and controller-summary refusals remain failures. No universal,
+full-viewer, physical-memory or isolated-dispatch/instruction benefit is claimed.
+
+Lesson: source equivalence and historical adaptive-arithmetic attribution do not
+quantify removable dispatch cost. Measure the consumer, retain every pair and
+refusal, and separate a scoped model signal from a general throughput claim.
+[Source, correctness and cohort scope](evidence/explicit-orientation-6537/README.md)
+links immutable subjects and the existing durable evidence child.
 
 ## Checked-magnitude products: native benefit, SDK mixed (#6537 / #6764)
 

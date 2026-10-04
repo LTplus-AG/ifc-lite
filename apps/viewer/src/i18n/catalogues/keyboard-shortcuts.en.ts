@@ -34,9 +34,9 @@ export const keyboardShortcutsEn = {
 
   // About tab — privacy banner
   'keyboardShortcuts.privacy.banner': 'Local model viewing runs on your device.',
-  'keyboardShortcuts.privacy.intro': 'Files opened from your device are processed in the browser with',
+  'keyboardShortcuts.privacy.intro': 'Local model viewing uses',
   'keyboardShortcuts.privacy.wasmLink': 'WebAssembly (WASM)',
-  'keyboardShortcuts.privacy.outro': 'Cloud imports use hosted downloads and, for Forma and Data Exchange, server-side conversion.',
+  'keyboardShortcuts.privacy.outro': 'in your browser. Cloud imports use hosted downloads and, for Forma and Data Exchange, server-side conversion.',
   'keyboardShortcuts.privacy.verifyIntro': 'Verify: press',
   'keyboardShortcuts.privacy.verifyKey': 'F12',
   'keyboardShortcuts.privacy.verifyOutro': '→ Network tab → inspect requests from enabled features.',

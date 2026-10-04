@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { SavedConversation } from '../assistant/persistence.js';
+import type { ClashGroupWorkspace } from '../clash/group-workspace.js';
 import type { SavedValidationReport } from '../validation/reports/history.js';
 import type { SavedComparison } from '../compare/savedComparisonSchema.js';
 import type { DocumentSpec } from '../document/types.js';
@@ -23,6 +24,7 @@ export interface ContentLibraries {
   document: DocumentSpec[];
   /** Optional for backups written before assistant conversations existed. */
   assistant?: SavedConversation[];
+  clashGroups?: ClashGroupWorkspace[];
 }
 export interface ContentBackup {
   version: 1;
@@ -50,6 +52,7 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
     comparison: partition('comparison', copied.comparison, CONTENT_DEFINITIONS.comparison.decode),
     document: partition('document', copied.document, CONTENT_DEFINITIONS.document.decode),
     ...(copied.assistant ? { assistant: partition('assistant', copied.assistant, CONTENT_DEFINITIONS.assistant.decode) } : {}),
+    ...(copied.clashGroups ? { clashGroups: partition('clashGroups', copied.clashGroups, CONTENT_DEFINITIONS.clashGroups.decode) } : {}),
   }, drafts: mergeContentDrafts(parseContentDrafts(preservedDrafts), pendingContentDrafts(), drafts) };
 }
 
@@ -78,6 +81,7 @@ export function parseContentBackup(text: string): ContentBackup {
     comparison: parse('comparison', CONTENT_DEFINITIONS.comparison.decode),
     document: parse('document', CONTENT_DEFINITIONS.document.decode),
     ...(libraries.assistant !== undefined ? { assistant: parse('assistant', CONTENT_DEFINITIONS.assistant.decode) } : {}),
+    ...(libraries.clashGroups !== undefined ? { clashGroups: parse('clashGroups', CONTENT_DEFINITIONS.clashGroups.decode) } : {}),
   }, drafts: parseContentDrafts(backup.drafts) };
 }
 
@@ -126,12 +130,13 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
     planned = planContentImport(prepared, existing, visible, trusted);
     rememberContentImports(planned);
     const entries: ContentLibraries = { validation: [], comparison: [], document: [],
-      ...(parsed.libraries.assistant ? { assistant: [] } : {}) };
+      ...(parsed.libraries.assistant ? { assistant: [] } : {}), ...(parsed.libraries.clashGroups ? { clashGroups: [] } : {}) };
     for (const row of planned) {
       // Keep newer edits to an already-staged identity. Reimport is not an undo.
       const current = visible?.[row.kind]?.find(entry => entry.id === row.id);
       if (current && (CONTENT_POLICIES[row.kind].immutableEvidence || sameReportEvidence(current, row.payload))) continue;
       if (row.kind === 'assistant') { const entry = CONTENT_DEFINITIONS.assistant.decode(row.payload); if (entry) (entries.assistant ??= []).push(entry); }
+      if (row.kind === 'clashGroups') { const entry = CONTENT_DEFINITIONS.clashGroups.decode(row.payload); if (entry) (entries.clashGroups ??= []).push(entry); }
       if (row.kind === 'document') { const entry = CONTENT_DEFINITIONS.document.decode(row.payload); if (entry) entries.document.push(entry); }
       if (row.kind === 'comparison') { const entry = CONTENT_DEFINITIONS.comparison.decode(row.payload); if (entry) entries.comparison.push(entry); }
       if (row.kind === 'validation') { const entry = CONTENT_DEFINITIONS.validation.decode(row.payload); if (entry) entries.validation.push(entry); }

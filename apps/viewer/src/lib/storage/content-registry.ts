@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { assistantContent } from '../assistant/persistence.js';
+import { clashGroupsContent } from '../clash/group-workspace.js';
 import { comparisonContent } from '../compare/savedComparisonPersistence.js';
 import { documentContent } from '../document/persistence.js';
 import { validationContent } from '../validation/reports/persistence.js';
@@ -15,6 +16,7 @@ export const CONTENT_DEFINITIONS = {
   comparison: comparisonContent,
   document: documentContent,
   assistant: assistantContent,
+  clashGroups: clashGroupsContent,
 } satisfies Record<ContentKind, Pick<ContentDefinition<{ id: string }>, 'kind' | 'legacyKey' | 'decode'>>;
 
 export function contentKindForLegacyKey(key: string): ContentKind | undefined {

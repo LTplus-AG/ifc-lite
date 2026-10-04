@@ -7,6 +7,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, mock } from 'node:test';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
+import { clashGroupLibrary, useClashGroupLibrary, DEFAULT_GROUP_WORKSPACE } from '@/lib/clash/group-workspace';
 import { waitFor } from './render.js';
 import { createDocumentSlice } from '@/store/slices/documentSlice';
 import { createValidationReportsSlice } from '@/store/slices/validationReportsSlice';
@@ -57,6 +58,9 @@ beforeEach(async () => {
     localStorage.removeItem('ifc-lite-documents');
     localStorage.removeItem('ifc-lite-validation-reports-v1');
     localStorage.removeItem('ifc-lite-saved-comparisons');
+    localStorage.removeItem('ifc-lite-clash-manual-groups');
+    await clashGroupLibrary.restore();
+    useClashGroupLibrary.setState({ activeId: DEFAULT_GROUP_WORKSPACE });
     useViewerStore.setState({
       ...createDocumentSlice(useViewerStore.setState, useViewerStore.getState, useViewerStore),
       ...createValidationReportsSlice(useViewerStore.setState, useViewerStore.getState, useViewerStore),

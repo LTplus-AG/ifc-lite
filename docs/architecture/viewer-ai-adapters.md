@@ -26,7 +26,7 @@ This is a gap list, not authorization to defer a context. Each family needs subt
 | Changes / Change sets | Native mutation journal, expected prior values, undo ownership, export receipts and revision associations; separate from model comparison. |
 | BCF | Local and server topics, viewpoints, review decisions, project vocabulary, publication receipts and uncertain outcomes; current scene references versus historical evidence. |
 | Validation | Manual checklist answers/unsupported items and retained report history; conversational IDS/rule authoring and separate semantic profile validation. |
-| Clash | Duplicate/coincident sets, native grouping, durable manual membership/review, labeled classification policies and complete finding accounting beyond the discussion sample. |
+| Clash | Duplicate/coincident sets and native group/review evidence adapters, labeled classification policies and full-run classification beyond the discussion sample. Native manual membership now uses whole-partition CAS storage with backup/recovery; AI approve/apply/undo remains open. |
 | Lens / Lists / Charts | Editable filter groups, actual query population, table mappings, native aggregation units and denominators, missing values and revision invalidation. |
 | Measurements | Finished distance/polyline/angle/radius readings, stale placement markers, point/georeference readouts, native quantity and centreline inspection; unlike units/kinds cannot share an invented total. |
 | Cost | Native quantities, rate schedule, currency/unit conversion, scope, missing rates and selection/federation distinctions. |

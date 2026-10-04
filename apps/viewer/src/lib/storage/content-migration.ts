@@ -9,6 +9,8 @@ export interface ContentDefinition<T extends { id: string }> {
   kind: ContentKind;
   legacyKey: string;
   decode(value: unknown): T | null;
+  /** Native legacy envelopes can hold one atomic workspace rather than a library array. */
+  readLegacy?(value: unknown): { entries: unknown[]; recovered: boolean };
   /** Apply only source-reference changes from an acknowledged own import. */
   mergeCommitted?(current: T, before: unknown, committed: T): T;
 }
@@ -53,8 +55,11 @@ export async function migrateContent<T extends { id: string }>(definition: Conte
   if (raw !== null) {
     try {
       const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed)) throw new Error('Legacy library is not an array');
-      for (const value of parsed) {
+      const legacy = definition.readLegacy?.(parsed);
+      const values = legacy?.entries ?? parsed;
+      recovered ||= legacy?.recovered ?? false;
+      if (!Array.isArray(values)) throw new Error('Legacy library is not an array');
+      for (const value of values) {
         const entry = definition.decode(value);
         if (!entry || entries.has(entry.id)) { recovered = true; continue; }
         entries.set(entry.id, entry);

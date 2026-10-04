@@ -4,7 +4,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { fixtures, limits } from './sdk-plan.mjs';
 export { limits };
-export const revisions = Object.freeze({ base: '0a16f532ceb8f177d02ee29f4645e6f048fbace5', candidate: '07bdf45b5d470413d3796b3189d588a91a09a0d6' });
+export const revisions = Object.freeze({ base: '187a72e3302447fc49f2264111501223238a24a7', candidate: '672f1e09c06ce777507244d2f2c4403d7b38c098' });
 export const families = ['house', 'csg', 'heavy-csg'];
 export const inputs = families.map(family => ({ family, ...fixtures[family] }));
 export const methodPaths = ['scripts/perf/probe.sh', 'rust/processing/examples/perf_probe.rs',

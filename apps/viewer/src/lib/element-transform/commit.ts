@@ -59,10 +59,9 @@ export function setTransformJoinCarrier(carrier: TransformJoinCarrier | null): (
 
 /** Plan a transform of `selected` (model-local ids) as the store sees it now. */
 export function planSelectionTransform(s: ViewerState, modelId: string, selected: readonly number[]): TransformPlan | null {
-  const dataStore = s.models.get(modelId)?.ifcDataStore;
-  const view = s.mutationViews.get(modelId);
-  if (!dataStore || !view) return null;
-  return planElementTransform({ dataStore, view, selected, storeyOf: (id) => elementStoreyId(s, modelId, id) });
+  const target = modelEditTarget(s, modelId);
+  if (!target) return null;
+  return planElementTransform({ dataStore: target.dataStore, view: target.view, selected, storeyOf: (id) => elementStoreyId(s, modelId, id) });
 }
 
 export const describeRefusal = describeTransformRefusal;

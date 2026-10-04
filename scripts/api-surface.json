@@ -9341,6 +9341,12 @@
     "sunTimes: function",
     "toJulianDay: function"
   ],
+  "@ifc-lite/source-autodesk": [
+    "AutodeskProvider: class",
+    "AutodeskProviderOptions: interface",
+    "AutodeskService: interface",
+    "createAutodeskService: function"
+  ],
   "@ifc-lite/source-dalux": [
     "DALUX_MANIFEST: const",
     "DaluxBuildProvider: class"

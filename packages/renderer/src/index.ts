@@ -211,9 +211,12 @@ import {
     type PointCloudStreamHost,
 } from './pointcloud/point-cloud-stream-lifecycle.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
-import { DeviationComputer, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
+import { DeviationComputer, type DeviationComputeContext, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
 export type { DeviationAssetStats } from './deviation/deviation-readback.js';
 import type { DeviationAssetStats } from './deviation/deviation-readback.js';
+import type { DeviationDistances } from './deviation/deviation-statistics.js';
+export { computeDeviationStatistics, countWithinTolerance, deviationHistogram, summarizeDeviationAssets } from './deviation/deviation-statistics.js';
+export type { DeviationAssetRange, DeviationAssetSummary, DeviationDistances, DeviationHistogram, DeviationHistogramRange, DeviationStatistics, DeviationStatisticsOptions, DeviationToleranceShare } from './deviation/deviation-statistics.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
 import { recoverRendererDevice, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
 
@@ -1152,22 +1155,21 @@ export class Renderer {
      * `deviation/deviation-computer.ts` for the full contract.
      */
     async computeDeviations(opts: DeviationComputeOptions = {}): Promise<DeviationComputeResult> {
-        return this.deviationComputer.compute(opts, {
-            device: this.device,
-            scene: this.scene,
-            pointCloudRenderer: this.pointCloudRenderer,
-            requestRender: () => this.requestRender(),
-        });
+        return this.deviationComputer.compute(opts, this.deviationContext());
     }
 
     /** Read per-scan-asset signed-distance statistics after a completed run. */
     async readDeviationAssetStats(): Promise<DeviationAssetStats[]> {
-        return this.deviationComputer.readAssetStats({
-            device: this.device,
-            scene: this.scene,
-            pointCloudRenderer: this.pointCloudRenderer,
-            requestRender: () => this.requestRender(),
-        });
+        return this.deviationComputer.readAssetStats(this.deviationContext());
+    }
+
+    /** Read every computed point's signed distance (4 B/point) for summary statistics (#6872). */
+    async readDeviationDistances(): Promise<DeviationDistances> {
+        return this.deviationComputer.readDistances(this.deviationContext());
+    }
+
+    private deviationContext(): DeviationComputeContext {
+        return { device: this.device, scene: this.scene, pointCloudRenderer: this.pointCloudRenderer, requestRender: () => this.requestRender() };
     }
 
     /**

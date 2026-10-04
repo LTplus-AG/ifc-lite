@@ -18,11 +18,26 @@
  *   cool end   0.10, 0.30, 0.85  ==  rgb(26,77,217)
  *   warm end   0.85, 0.20, 0.10  ==  rgb(217,51,26)
  */
-export const DEVIATION_RAMP_STOPS = [
-  'rgb(26,77,217)', // far negative — scan inside the BIM surface
-  'rgb(242,242,242)', // on surface
-  'rgb(217,51,26)', // far positive — scan outside the BIM surface
+const RAMP_RGB = [
+  [26, 77, 217], // far negative — scan inside the BIM surface
+  [242, 242, 242], // on surface
+  [217, 51, 26], // far positive — scan outside the BIM surface
 ] as const;
+
+const css = ([r, g, b]: readonly number[]) => `rgb(${r},${g},${b})`;
+
+const DEVIATION_RAMP_STOPS = RAMP_RGB.map(css);
 
 /** Ready-to-use CSS `background` value for the legend swatch. */
 export const DEVIATION_RAMP_CSS_GRADIENT = `linear-gradient(to right, ${DEVIATION_RAMP_STOPS.join(', ')})`;
+
+/**
+ * The ramp colour at normalised position `t` ∈ [−1, 1] (clamped), the same
+ * piecewise-linear mix `deviation_ramp()` applies, so a histogram bar is
+ * painted exactly like the points it counts (#6872).
+ */
+export function deviationRampColor(t: number): string {
+  const s = Math.min(1, Math.max(-1, Number.isFinite(t) ? t : 0));
+  const [from, to, k] = s < 0 ? [RAMP_RGB[0], RAMP_RGB[1], s + 1] : [RAMP_RGB[1], RAMP_RGB[2], s];
+  return css(from.map((channel, i) => Math.round(channel + (to[i] - channel) * k)));
+}

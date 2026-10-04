@@ -22,7 +22,9 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { WebGPUDevice } from '../device.js';
 import type { Scene } from '../scene.js';
 import type { PointCloudRenderer } from '../pointcloud/point-cloud-renderer.js';
-import { readDeviationAssetStats, type DeviationAssetStats } from './deviation-readback.js';
+import type { PointCloudNode } from '../pointcloud/point-cloud-node.js';
+import { readDeviationAssetStats, readDeviationDistances, type DeviationAssetStats } from './deviation-readback.js';
+import type { DeviationDistances } from './deviation-statistics.js';
 
 /**
  * Build a deterministic fingerprint of the BVH input mesh set so
@@ -132,20 +134,32 @@ export class DeviationComputer {
         this.computedBuffers = null;
     }
 
-    /** Export-only GPU readback; each row belongs to one scan asset. */
+    /** On-demand GPU readback; each row belongs to one scan asset. */
     async readAssetStats(ctx: DeviationComputeContext): Promise<DeviationAssetStats[]> {
+        return this.readComputed(ctx, readDeviationAssetStats);
+    }
+
+    /** Every computed point's signed distance, grouped by scan asset (#6872). */
+    async readDistances(ctx: DeviationComputeContext): Promise<DeviationDistances> {
+        return this.readComputed(ctx, readDeviationDistances);
+    }
+
+    private async readComputed<T>(
+        ctx: DeviationComputeContext,
+        read: (device: GPUDevice, nodes: Iterable<PointCloudNode>, wasComputed: (buffer: GPUBuffer) => boolean) => Promise<T>,
+    ): Promise<T> {
         const computed = this.computedBuffers;
         if (!computed || !ctx.pointCloudRenderer) {
-            throw new Error('No completed deviation run to export.');
+            throw new Error('No completed deviation run to read back.');
         }
-        const rows = await readDeviationAssetStats(
+        const result = await read(
             ctx.device.getDevice(), ctx.pointCloudRenderer.getInternalNodes(),
             (buffer) => computed.has(buffer),
         );
         if (this.computedBuffers !== computed) {
-            throw new Error('Deviation results changed during export. Recompute and try again.');
+            throw new Error('Deviation results changed during readback. Recompute and try again.');
         }
-        return rows;
+        return result;
     }
 
     /**

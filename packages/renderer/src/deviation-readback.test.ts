@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readDeviationAssetStats } from './deviation/deviation-readback.js';
+import { readDeviationAssetStats, readDeviationDistances } from './deviation/deviation-readback.js';
 import type { PointCloudNode } from './pointcloud/point-cloud-node.js';
 
 (globalThis as Record<string, unknown>).GPUBufferUsage = { COPY_DST: 8, MAP_READ: 1 };
@@ -69,7 +69,7 @@ describe('on-demand signed-distance readback (#5832)', () => {
       node(8, 2, [b]),
     ], (candidate) => candidate !== (uncomputed as unknown as GPUBuffer));
 
-    assert.deepEqual(rows, [
+    assert.deepEqual(rows.map(({ statistics: _statistics, ...row }) => row), [
       { expressId: 7, modelIndex: 1, pointsProcessed: 4, finitePoints: 3,
         minimumDeviation: -0.25, maximumDeviation: 0.5, meanDeviation: 1 / 6 },
       { expressId: 8, modelIndex: 2, pointsProcessed: 2, finitePoints: 2,
@@ -77,6 +77,27 @@ describe('on-demand signed-distance readback (#5832)', () => {
     ]);
     assert.equal(staging.length, 3);
     assert.ok(staging.every((item) => item.unmapped === 1 && item.destroyed === 1));
+    // #6872: each row carries the full summary over that asset's points only.
+    assert.equal(rows[0].statistics.p95Abs, 0.5);
+    assert.equal(rows[1].statistics.rms, 1);
+  });
+
+  it('#6872 lays every asset out as one contiguous range of a single shared array', async () => {
+    const a1 = buffer([-0.25, 0.5]);
+    const a2 = buffer([0.25]);
+    const empty = buffer([]);
+    const b = buffer([-1, 1, 2]);
+    const { device } = gpu();
+    const distances = await readDeviationDistances(device, [
+      node(7, 1, [a1, empty, a2]),
+      node(9, 0, [empty]),
+      node(8, 2, [b]),
+    ], () => true);
+    assert.deepEqual([...distances.values], [-0.25, 0.5, 0.25, -1, 1, 2]);
+    assert.deepEqual(distances.assets, [
+      { expressId: 7, modelIndex: 1, offset: 0, count: 3 },
+      { expressId: 8, modelIndex: 2, offset: 3, count: 3 },
+    ]);
   });
 
   it('destroys the staging buffer when GPU mapping rejects', async () => {

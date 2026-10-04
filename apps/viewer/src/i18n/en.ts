@@ -34,6 +34,7 @@ import { commandsEn } from './catalogues/commands.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { comparePanelEn } from './catalogues/compare-panel.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
+import { deviationStatsEn } from './catalogues/deviation-stats.en';
 import { exportDialogEn } from './catalogues/export-dialog.en';
 import { dataConnectorEn } from './catalogues/data-connector.en';
 import { extensionsFlavorsEn } from './catalogues/extensions-flavors.en';
@@ -225,6 +226,7 @@ export const en = {
   ...miscPanelsBEn,
   ...viewportLightingEn,
   ...miscPanelsAEn,
+  ...deviationStatsEn,
   ...sheetsPdfEn,
   ...spaceEnvelopeEn,
 } as const;

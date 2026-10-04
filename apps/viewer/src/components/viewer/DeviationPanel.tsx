@@ -9,13 +9,15 @@
  * one mesh and one point cloud. Once compute completes, exposes a
  * range slider + diverging-ramp legend; the splat shader's
  * deviation colour mode then visualises signed distance to the
- * nearest mesh surface.
+ * nearest mesh surface. After each run the signed distances are read
+ * back once for the summary statistics, histogram and CSV (#6872).
  *
  * Lives inside the `PointCloudPanel`; rendered conditionally on
  * `pointCloudAssetCount > 0`.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { computeDeviationStatistics, summarizeDeviationAssets, type DeviationDistances } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { getGlobalRenderer } from '@/hooks/useBCF';
@@ -28,6 +30,12 @@ import { trackExportCompleted } from '@/lib/analytics';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { cn } from '@/lib/utils';
+import { DeviationHistogramBars, DeviationSummary } from './DeviationStatistics';
+
+/** The compute pass pegs |d| here; the statistics count points at the peg. */
+const DEVIATION_CLIP_RANGE_M = 1.0;
+/** Initial "within tolerance" band, metres; the summary's input edits it. */
+const DEFAULT_TOLERANCE_M = 0.01;
 
 export interface DeviationPanelProps {
   /** Total number of triangles currently in the scene — gates the
@@ -38,6 +46,7 @@ export interface DeviationPanelProps {
 export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   const { t } = useTranslation();
   const halfRange = useViewerStore((s) => s.pointCloudDeviationHalfRange);
+  const centerOffset = useViewerStore((s) => s.pointCloudDeviationCenterOffset);
   const setHalfRange = useViewerStore((s) => s.setPointCloudDeviationHalfRange);
   const computed = useViewerStore((s) => s.pointCloudDeviationComputed);
   const setComputed = useViewerStore((s) => s.setPointCloudDeviationComputed);
@@ -51,66 +60,58 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     durationMs: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const exportingRef = useRef(false);
+  // Signed distances read back once per run (#6872): 4 bytes per point, the
+  // size of the GPU deviation buffers. Statistics and the CSV derive from it.
+  const [distances, setDistances] = useState<DeviationDistances | null>(null);
+  const [tolerance, setTolerance] = useState(DEFAULT_TOLERANCE_M);
 
-  const handleExport = useCallback(async () => {
-    const renderer = getGlobalRenderer();
-    if (!renderer || !computed || !stats || running || exportingRef.current) return;
-    exportingRef.current = true;
-    setExporting(true);
-    setError(null);
+  // A placement change or model removal clears `computed`; drop the copy too.
+  useEffect(() => {
+    if (!computed) setDistances(null);
+  }, [computed]);
+
+  const handleExport = useCallback(() => {
+    if (!computed || !distances || running) return;
     const sourceModels = useViewerStore.getState().models;
     const idsByIndex = new Map([...modelIndices(sourceModels)].map(([id, index]) => [index, id]));
-    try {
-      const assetStats = await renderer.readDeviationAssetStats();
-      if (useViewerStore.getState().models !== sourceModels) {
-        throw new Error(t('deviationPanel.positionsChangedError'));
-      }
-      const rows = assetStats.map((asset) => {
-        const modelId = idsByIndex.get(asset.modelIndex);
-        const model = modelId ? sourceModels.get(modelId) : undefined;
-        const ref = resolveEntityRef(asset.expressId);
-        const entities = ref.modelId === modelId ? model?.ifcDataStore?.entities : undefined;
-        return {
-          Model: model?.name ?? '',
-          GlobalId: entities?.getGlobalId(ref.expressId) ?? '',
-          Name: entities?.getName(ref.expressId) ?? '',
-          IfcClass: entities?.getTypeName(ref.expressId) ?? '',
-          PointsProcessed: asset.pointsProcessed,
-          FinitePoints: asset.finitePoints,
-          MinimumDeviationM: asset.minimumDeviation,
-          MaximumDeviationM: asset.maximumDeviation,
-          MeanDeviationM: asset.meanDeviation,
-        };
-      });
-      const report = buildDeviationCsvReport(rows, [...sourceModels.values()].map((model) => model.name));
-      if (report) {
-        downloadFile(report.content, report.filename, 'text/csv;charset=utf-8');
-        trackExportCompleted({ format: 'csv', surface: 'deviation_panel', row_count: report.rows });
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      exportingRef.current = false;
-      setExporting(false);
+    const options = { tolerance, clipRange: DEVIATION_CLIP_RANGE_M };
+    const assets = summarizeDeviationAssets(distances, options).map((asset) => {
+      const modelId = idsByIndex.get(asset.modelIndex);
+      const model = modelId ? sourceModels.get(modelId) : undefined;
+      const ref = resolveEntityRef(asset.expressId);
+      const entities = ref.modelId === modelId ? model?.ifcDataStore?.entities : undefined;
+      return {
+        Model: model?.name ?? '',
+        GlobalId: entities?.getGlobalId(ref.expressId) ?? '',
+        Name: entities?.getName(ref.expressId) ?? '',
+        IfcClass: entities?.getTypeName(ref.expressId) ?? '',
+        statistics: asset.statistics,
+      };
+    });
+    const overall = assets.length > 1
+      ? { name: t('deviationStats.csvAllAssetsName'), statistics: computeDeviationStatistics(distances.values, options) }
+      : null;
+    const report = buildDeviationCsvReport({ assets, overall }, [...sourceModels.values()].map((model) => model.name));
+    if (report) {
+      downloadFile(report.content, report.filename, 'text/csv;charset=utf-8');
+      trackExportCompleted({ format: 'csv', surface: 'deviation_panel', row_count: report.rows });
     }
-  }, [computed, running, stats, t]);
+  }, [computed, distances, running, t, tolerance]);
 
   const handleCompute = useCallback(async () => {
-    if (exportingRef.current) return;
     const renderer = getGlobalRenderer();
     if (!renderer) {
       setError(t('deviationPanel.rendererNotReadyError'));
       return;
     }
     setError(null);
+    setDistances(null);
     setRunning(true);
     const t0 = performance.now();
     const placement = placementSnapshot(useViewerStore.getState());
     try {
       noteDeviationWrite(renderer);
-      const result = await renderer.computeDeviations({ maxRange: 1.0 });
+      const result = await renderer.computeDeviations({ maxRange: DEVIATION_CLIP_RANGE_M });
       if (!placementSnapshotIsCurrent(placement, useViewerStore.getState())) {
         setError(t('deviationPanel.positionsChangedError')); return;
       }
@@ -140,6 +141,12 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       // Auto-switch the colour mode to deviation so the user sees
       // the result immediately.
       setColorMode('deviation');
+      // The heatmap is already on screen; the statistics follow the readback.
+      const read = await renderer.readDeviationDistances();
+      if (!placementSnapshotIsCurrent(placement, useViewerStore.getState())) {
+        setError(t('deviationPanel.positionsChangedError')); return;
+      }
+      setDistances(read);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -179,7 +186,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       <button
         type="button"
         onClick={handleCompute}
-        disabled={running || exporting}
+        disabled={running}
         className={cn(
           'text-xs px-2 py-1 rounded transition-colors',
           running
@@ -207,11 +214,11 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
         </div>
       )}
 
-      {computed && stats && (
+      {computed && distances && (
         <button type="button" onClick={handleExport}
-          disabled={running || exporting}
+          disabled={running}
           className="text-xs px-2 py-1 rounded border border-border text-left hover:bg-accent">
-          {exporting ? t('deviationPanel.exportingCsv') : t('deviationPanel.exportCsv')}
+          {t('deviationPanel.exportCsv')}
         </button>
       )}
 
@@ -236,6 +243,8 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
             />
           </label>
 
+          {distances && <DeviationHistogramBars distances={distances} center={centerOffset} halfRange={halfRange} />}
+
           {/* Legend: blue → white → red gradient with labelled endpoints. */}
           <div
             className="h-2 rounded-sm border border-foreground/10 mt-0.5"
@@ -247,6 +256,15 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
             <span>0</span>
             <span>{t('deviationPanel.legendMaxLabel', { value: (halfRange * 1000).toFixed(0) })}</span>
           </div>
+
+          {distances && (
+            <DeviationSummary
+              distances={distances}
+              tolerance={tolerance}
+              onToleranceChange={setTolerance}
+              clipRange={DEVIATION_CLIP_RANGE_M}
+            />
+          )}
 
           {colorMode !== 'deviation' && (
             <button

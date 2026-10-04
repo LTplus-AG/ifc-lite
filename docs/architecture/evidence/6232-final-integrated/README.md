@@ -134,3 +134,5 @@ Latest Room input boundary fix and mixed source-labelled browser acceptance: [`r
 Latest finite native wire test deadline qualification: [`native-wire-deadline/`](./native-wire-deadline/). Full integrated SDK 334 passes with no skips; original current-head CI timeouts are retained. Production and browser source identities remain unchanged.
 
 Latest channel clone-error and unmasked profile-validation controls: [`channel-profile-review/`](./channel-profile-review/). Full integrated SDK336, profile6 and native MCP38 pass; all historical browser receipts retain their actual sources.
+
+Latest surviving native state-conflict production-revert proof: [`mcp-revert-witness/`](./mcp-revert-witness/). Official full actual-base oracle is OBSERVED with verified restoration; its original structural failure and new-route collection gaps remain archived.

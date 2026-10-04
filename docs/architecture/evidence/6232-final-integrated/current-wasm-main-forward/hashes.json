@@ -1412,9 +1412,9 @@
     },
     {
       "original": "/tmp/6232-main5c-preview-audit.cjs",
-      "archive": "6232-main5c-preview-audit.cjs",
+      "archive": "6232-main5c-preview-audit.cjs.gz",
       "originalSHA256": "12e2c11e603a48870cfa17b7ce46055910beb7affee799b7114d27ee89023f45",
-      "archiveSHA256": "12e2c11e603a48870cfa17b7ce46055910beb7affee799b7114d27ee89023f45",
+      "archiveSHA256": "937e6325670ce8ba1f9733546ff97267409a857f31b2f76357ee740b88238244",
       "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
       "status": "proof",
       "scope": "Rerunnable external supplemental evidence auditor; no new browser execution."
@@ -1457,5 +1457,11 @@
     }
   ],
   "supplementalPreview": "COMPLETE at literal730f9 source:6 separate preview/Escape contexts/28 stages; original core receipt pending wording preserved. See derived completion.",
-  "supplementalSource": "730f9e6da331c46febc31eded37d131a8f862b9a"
+  "supplementalSource": "730f9e6da331c46febc31eded37d131a8f862b9a",
+  "licensedAuditHelper": {
+    "path": "6232-main5c-preview-audit.cjs",
+    "sha256": "cf85849feb417e7a4165e3c6f270a1991dbfc6ce3f83a996aef046b0d00c1523",
+    "originalArchive": "6232-main5c-preview-audit.cjs.gz",
+    "scope": "Derived runnable copy adds only the MPL notice; the original executed proof code bytes remain losslessly preserved and hash-bound. All assertions unchanged."
+  }
 }

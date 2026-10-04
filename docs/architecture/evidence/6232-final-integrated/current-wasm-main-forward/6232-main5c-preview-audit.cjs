@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const root='/tmp/6232-final-main5c-preview-diagnostic', expected='730f9e6da331c46febc31eded37d131a8f862b9a',wasm='a050aed5572273e63c8a08a243f5ebe6180da0ea202875e6cf97b7e6d726b23b';
 const receipts=[];

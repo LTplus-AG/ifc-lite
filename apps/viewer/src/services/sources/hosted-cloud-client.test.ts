@@ -20,12 +20,52 @@ function gateway(vendor: 'dropbox' | 'msgraph', handler: (path: string, body: Re
 }
 describe('hosted cloud transport (#6840)', () => {
   it('proxies Dropbox revision downloads with byte progress and cancellation, without vendor credentials', async () => {
-    const { client, calls } = gateway('dropbox', () => new Response(new Uint8Array([1, 2, 3]), { headers: { 'Content-Length': '3' } }));
+    const jobId = 'a'.repeat(43);
+    const { client, calls } = gateway('dropbox', path => path.endsWith('/prepare-download')
+      ? Response.json({ jobId }, { status: 202 }) : path.endsWith('/download-status')
+      ? Response.json({ state: 'ready' }) : new Response(new Uint8Array([1, 2, 3]), { headers: { 'Content-Length': '3' } }));
     const progress: number[] = []; const signal = new AbortController().signal;
     const bytes = await client.download({ path: 'rev:revision-123' }, { signal, onProgress: n => progress.push(n) });
     assert.deepEqual([...new Uint8Array(bytes)], [1, 2, 3]); assert.equal(progress.at(-1), 3);
-    assert.equal(calls[0].body.path, 'rev:revision-123'); assert.equal(calls[0].init?.signal, signal);
-    assert.equal(calls[0].path, '/api/cloud/dropbox/download');
+    assert.equal(calls[0].body.path, 'rev:revision-123'); assert.equal(calls[0].init?.signal?.aborted, false);
+    assert.deepEqual(calls.map(call => call.path.split('/').at(-1)), ['prepare-download', 'download-status', 'download']);
+    assert.deepEqual(calls[2].body, { jobId });
+  });
+  it('cancels a preparing job when the caller aborts, preserving its reason (#6840)', async () => {
+    const controller = new AbortController(); const reason = new Error('user cancelled'); const jobId = 'b'.repeat(43);
+    const { client, calls } = gateway('msgraph', path => {
+      if (path.endsWith('/prepare-download')) return Response.json({ jobId }, { status: 202 });
+      if (path.endsWith('/download-status')) { controller.abort(reason); return Response.json({ state: 'preparing' }); }
+      return Response.json({ ok: true });
+    });
+    await assert.rejects(client.download({ path: '/me/drive/items/file/content', revision: 'v1' }, { signal: controller.signal }), error => error === reason);
+    assert.equal(calls.at(-1)?.path, '/api/cloud/msgraph/cancel-download');
+    assert.deepEqual(calls.at(-1)?.body, { jobId });
+    assert.equal(calls.at(-1)?.init?.signal?.aborted, false);
+  });
+  it('bounds a stalled status request and cancels the job at the deadline (#6840)', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const jobId = 'd'.repeat(43); let polling: (() => void) | undefined;
+    const started = new Promise<void>(resolve => { polling = resolve; }); let cancelled = false;
+    const fetcher: typeof fetch = async (input, init) => {
+      const path = String(input);
+      if (path.endsWith('/session')) return Response.json({ identity: { id: 'user' }, csrf: 'fixture', configured: true });
+      if (path.endsWith('/prepare-download')) return Response.json({ jobId }, { status: 202 });
+      if (path.endsWith('/cancel-download')) { cancelled = true; return Response.json({ ok: true }); }
+      polling?.();
+      return new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true }));
+    };
+    const downloading = new HostedCloudClient('dropbox', fetcher).download({ path: 'rev:fixture' });
+    const rejected = assert.rejects(downloading, (error: unknown) => error instanceof HostedCloudError && error.code === 'download-timeout');
+    await started; t.mock.timers.tick(15 * 60_000); await rejected; assert.equal(cancelled, true);
+  });
+  it('reports preparation and byte-transfer phases without cancelling a consumed artifact (#6840)', async () => {
+    const phases: string[] = []; const jobId = 'c'.repeat(43);
+    const { client, calls } = gateway('msgraph', path => path.endsWith('/prepare-download') ? Response.json({ jobId }, { status: 202 })
+      : path.endsWith('/download-status') ? Response.json({ state: 'ready' }) : new Response('ISO-10303-21;'));
+    await client.download({ path: '/me/drive/items/file/content', revision: 'v1' }, { onPhase: phase => phases.push(phase) });
+    assert.deepEqual(phases, ['preparing', 'downloading']);
+    assert.equal(calls.some(call => call.path.endsWith('/cancel-download')), false);
   });
   it('creates hosted providers that restore account identity without preferences or scoped fetch', async () => {
     for (const vendor of ['dropbox', 'msgraph'] as const) {

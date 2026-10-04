@@ -13,6 +13,7 @@ export class HostedCloudError extends Error {
       : status === 401 ? 'Your cloud session expired. Sign in again.'
       : status === 409 ? 'This file changed. Refresh the file list and try again.'
       : status === 503 ? 'This cloud source is busy or unavailable. Try again shortly.'
+      : code === 'download-timeout' ? 'Cloud download timed out. Try again.'
       : 'The cloud request could not be completed. Try again.');
     this.name = 'HostedCloudError';
   }
@@ -54,7 +55,43 @@ export class HostedCloudClient {
   }
   async request(body: unknown, signal?: AbortSignal): Promise<unknown> { return (await this.post('request', body, signal)).json(); }
   async download(body: unknown, options?: DownloadOptions): Promise<ArrayBuffer> {
-    const response = await this.post('download', body, options?.signal);
-    return readWithProgress(response, options?.onProgress);
+    const controller = new AbortController(); const caller = options?.signal;
+    const abort = () => controller.abort(caller?.reason);
+    caller?.addEventListener('abort', abort, { once: true }); if (caller?.aborted) abort();
+    const timer = setTimeout(() => controller.abort(new HostedCloudError(504, 'download-timeout')), 15 * 60_000);
+    let jobId: string | undefined; let consumed = false;
+    try {
+      options?.onPhase?.('preparing');
+      const prepared = object(await (await this.post('prepare-download', body, controller.signal)).json());
+      if (typeof prepared.jobId !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(prepared.jobId)) throw new Error('Invalid cloud download job.');
+      jobId = prepared.jobId;
+      while (true) {
+        controller.signal.throwIfAborted();
+        const status = object(await (await this.post('download-status', { jobId }, controller.signal)).json());
+        if (status.state === 'ready') break;
+        if (status.state !== 'preparing') throw new Error('Invalid cloud download status.');
+        await waitForDownload(controller.signal);
+      }
+      const response = await this.post('download', { jobId }, controller.signal); consumed = true;
+      options?.onPhase?.('downloading');
+      return await readWithProgress(response, options?.onProgress);
+    } catch (error) {
+      if (controller.signal.aborted) throw controller.signal.reason;
+      throw error;
+    } finally {
+      clearTimeout(timer); caller?.removeEventListener('abort', abort);
+      if (jobId && !consumed) {
+        try { await this.post('cancel-download', { jobId }, AbortSignal.timeout(5000)); }
+        catch (error) { console.warn('[sources] Cloud download cleanup failed', error instanceof Error ? error.name : 'unknown'); }
+      }
+    }
   }
+}
+function waitForDownload(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    signal.throwIfAborted();
+    const abort = () => { clearTimeout(timer); signal.removeEventListener('abort', abort); reject(signal.reason); };
+    const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, 1000);
+    signal.addEventListener('abort', abort, { once: true });
+  });
 }

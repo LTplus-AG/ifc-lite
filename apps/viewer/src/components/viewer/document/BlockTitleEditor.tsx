@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useTranslation } from '@/i18n';
-import { BLOCK_TITLE_SIZE_DEFAULT, BLOCK_TITLE_SIZE_MAX, BLOCK_TITLE_SIZE_MIN, blockTitleStyle, type BlockTitle } from '@/lib/document/block-title';
+import { BLOCK_TITLE_SIZE_DEFAULT, BLOCK_TITLE_SIZE_MAX, BLOCK_TITLE_SIZE_MIN, blockTitleContrast, blockTitleStyle, type BlockTitle } from '@/lib/document/block-title';
 import { ClampedNumberInput, field } from './BlockEditor.parts';
 import { OptionalColorPicker } from './OptionalColorPicker';
 
@@ -16,6 +16,7 @@ export function BlockTitleEditor<T extends BlockTitle>({ block, onChange, placeh
 }) {
   const { t } = useTranslation();
   const style = blockTitleStyle(block);
+  const contrast = blockTitleContrast(block);
   return <div className="flex min-w-0 flex-1 flex-col gap-1" data-block-title-editor>
     <input className={`${field} min-w-0 flex-1`} value={block.title ?? ''}
       placeholder={placeholder ?? t('document.block.titlePlaceholder')}
@@ -34,5 +35,7 @@ export function BlockTitleEditor<T extends BlockTitle>({ block, onChange, placeh
         value={block.titleBackgroundColor} defaultValue="#ffffff"
         onChange={(titleBackgroundColor) => onChange({ ...block, titleBackgroundColor })} />
     </div>
+    {contrast.ratio < contrast.minimum && <output className="block text-xs text-amber-700 dark:text-amber-400" data-block-title-contrast>
+      {t('document.block.titleLowContrast', { ratio: contrast.ratio.toFixed(1), minimum: contrast.minimum })}</output>}
   </div>;
 }

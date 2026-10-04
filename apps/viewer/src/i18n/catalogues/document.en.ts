@@ -99,6 +99,7 @@ export const documentEn = {
   'document.block.titleTextColorReset': 'Reset title colour',
   'document.block.titleBackgroundColorLabel': 'Title background',
   'document.block.titleBackgroundColorReset': 'Clear title background',
+  'document.block.titleLowContrast': 'The title colour has low contrast on its background ({ratio}:1, at least {minimum}:1 recommended), so the title may be hard or impossible to read.',
 
   // BlockEditor.tsx (#4918 doc slice): the block-kind badge, and every
   // field/control each block kind renders.

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { isRgbColor } from '../color-contrast';
+import { contrastRatio, isRgbColor } from '../color-contrast';
 import { readableInkOn } from '../table-header-style';
 import type { DocumentValidationError } from './types.js';
 
@@ -70,6 +70,23 @@ export function blockTitleStyle(block: BlockHeaderStyleFields, defaultSize = BLO
   // Authored ink wins; with only a background the ink is whichever of black/white contrasts better, never the default black.
   const textColor = isRgbColor(block.titleTextColor) ? block.titleTextColor : backgroundColor ? readableInkOn(backgroundColor) : undefined;
   return { size, extra: Math.max(0, size - defaultSize) * (BLOCK_TITLE_HEIGHT / BLOCK_TITLE_SIZE_DEFAULT), ...(textColor ? { textColor } : {}), ...(backgroundColor ? { backgroundColor } : {}) };
+}
+
+/** WCAG AA text contrast: 4.5:1, or 3:1 for large text, which bold text is from 14pt (#6705 F5). */
+const TITLE_CONTRAST_AA = 4.5;
+const TITLE_CONTRAST_AA_LARGE = 3;
+const LARGE_BOLD_TITLE_SIZE = 14;
+
+const rgbChannels = (hex: string): number[] => [1, 3, 5].map((start) => Number.parseInt(hex.slice(start, start + 2), 16) / 255);
+
+/**
+ * The contrast of a heading's ink on what it is printed on (its strip, or white paper without one),
+ * and the WCAG AA minimum for its size. Authored colours are never changed, so the editor warns instead.
+ */
+export function blockTitleContrast(block: BlockHeaderStyleFields): { ratio: number; minimum: number } {
+  const style = blockTitleStyle(block);
+  const ratio = contrastRatio(rgbChannels(style.textColor ?? '#000000'), rgbChannels(style.backgroundColor ?? '#ffffff'));
+  return { ratio, minimum: style.size >= LARGE_BOLD_TITLE_SIZE ? TITLE_CONTRAST_AA_LARGE : TITLE_CONTRAST_AA };
 }
 
 /** Headings occupy one line; preserve the authored value and normalize only its display. */

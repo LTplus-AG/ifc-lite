@@ -42,7 +42,7 @@ export function AssistantPanel() {
       if (success) setPrompt(current => current === text ? '' : current);
     });
   };
-  return <section className="h-full min-h-0 flex flex-col bg-background text-foreground" aria-label={t('assistant.title')}>
+  return <section className="h-full min-h-0 min-w-0 flex flex-col bg-background text-foreground" aria-label={t('assistant.title')}>
     <div className="shrink-0 flex items-center gap-2 border-b border-border p-3">
       <h2 className="text-sm font-semibold">{t('assistant.title')}</h2>
       <div className="ml-auto"><IconButton label={t('assistant.keys')} onClick={() => setKeysOpen(true)}><Key className="h-4 w-4" /></IconButton></div>
@@ -55,8 +55,8 @@ export function AssistantPanel() {
         <EvidenceView evidence={evidence} state={state.archived ? 'historical' : stale ? 'stale' : 'captured'} />
         <p className="text-xs text-muted-foreground">{state.archived ? t('assistant.archived') : t('assistant.saveHint')}</p>
         {stale && !state.archived && <output className="block text-xs text-amber-600">{t('assistant.stale')}</output>}
-        <Button variant="outline" size="sm" onClick={() => replaceEvidence(captureEvidence(evidence.source))}>
-          <RefreshCw className="h-3 w-3 mr-1" />{t('assistant.refresh')}
+        <Button variant="outline" size="sm" className="h-auto min-h-8 w-full whitespace-normal justify-start text-left" onClick={() => replaceEvidence(captureEvidence(evidence.source))}>
+          <RefreshCw className="h-3 w-3 mr-1 shrink-0" />{t('assistant.refresh')}
         </Button>
       </> : <p className="text-xs text-muted-foreground">{t('assistant.empty')}</p>}
     </div>

@@ -58,6 +58,14 @@ test('native clash evidence reaches the assistant without executing model output
   await page.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
   const assistant = page.getByRole('region', { name: 'Assistant', exact: true });
   await expect(assistant.getByText(/Frozen evidence:|The captured native source contains no result rows/)).toBeVisible();
+  // #6860: the coordinator's default sidebar must fit the refresh action.
+  const refresh = assistant.getByRole('button', { name: 'Refresh evidence and start a new conversation', exact: true });
+  const panelBounds = await assistant.boundingBox();
+  const refreshBounds = await refresh.boundingBox();
+  expect(panelBounds).not.toBeNull();
+  expect(refreshBounds).not.toBeNull();
+  expect(refreshBounds!.x + refreshBounds!.width).toBeLessThanOrEqual(panelBounds!.x + panelBounds!.width + 1);
+
   await assistant.getByText('Inspect evidence sent to the model', { exact: true }).click();
   await expect(assistant.locator('pre')).toContainText('AC20-FZK-Haus');
   await expect(assistant.locator('pre')).toContainText('"source":"clash"');

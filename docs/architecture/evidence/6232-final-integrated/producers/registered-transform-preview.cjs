@@ -19,8 +19,9 @@ async function run(command) {
       globalThis.registeredPreviewRuntime = runtime;
       const store = globalThis.__ifc_lite_viewer_store__, s = store.getState();
       const loadedView = s.mutationViews.get(modelId);
-      if (s.storeEditors.has(modelId) || loadedView?.getMutations().length || loadedView?.getNewEntities().length) throw new Error('Requires first authoring edit with an unchanged loaded overlay; do not clear active overlays.');
-      const loadedViewBefore = Boolean(loadedView);
+      if (s.storeEditors.has(modelId) || loadedView?.hasPendingChanges() || loadedView?.hasChanges() || loadedView?.getMutations().length || loadedView?.getNewEntities().length) throw new Error('Requires first authoring edit with an unchanged loaded overlay; do not clear active overlays.');
+      const loadedViewBefore = Boolean(loadedView), editorPresentBefore = s.storeEditors.has(modelId);
+      globalThis.registeredPreviewLoadedView = loadedView;
       const selected = command === 'align' ? [1222, 1407, 1262] : [1407, 1222];
       s.setSelectedEntityIds(selected.map(id => ids.toGlobalIdFromModels(s.models, modelId, id)));
       store.getState().startCommand(`element.${command}`);
@@ -44,13 +45,15 @@ async function run(command) {
         const point = state.ctx.workplane.renderToLocal(Array.from(mesh.positions.slice(i, i + 3)));
         for (let axis = 0; axis < 2; axis++) { ghostBounds.min[axis] = Math.min(ghostBounds.min[axis], point[axis]); ghostBounds.max[axis] = Math.max(ghostBounds.max[axis], point[axis]); }
       }
-      return { command, selected, ghostBounds, pivot: g.pivot ?? null, loadedViewBefore, roots: plan.roots.map(r => r.expressId), carried: plan.carried,
+      return { command, selected, ghostBounds, pivot: g.pivot ?? null, loadedViewBefore, editorPresentBefore, loadedViewRetained: !loadedView || view === loadedView, effectiveOverlayEmpty: !view.hasPendingChanges() && !view.hasChanges(), roots: plan.roots.map(r => r.expressId), carried: plan.carried,
         alignMoveIds: command === 'align' ? align.alignMoves(g).map(m => m.id) : null,
         meshSourceIds: command === 'align' ? [1222] : [...new Set(current.models.get(modelId).geometryResult.meshes.filter(mesh => g.selection.movedGlobalIds.includes(mesh.expressId)).map(mesh => current.resolveGlobalIdFromModels(mesh.expressId).expressId))],
         movedLocalIds: command === 'align' ? null : g.selection.movedGlobalIds.map(id => current.resolveGlobalIdFromModels(id).expressId),
         ghostCount: ghosts.length, ghostsFinite: ghosts.every(m => Array.from(m.positions).every(Number.isFinite)),
         journal: view.getMutations(), records: view.getNewEntities(), allocator: view.peekNextExpressId() };
     }, { modelId, command });
+    assert.equal(started.editorPresentBefore, false);
+    assert.equal(started.loadedViewRetained, true); assert.equal(started.effectiveOverlayEmpty, true);
     assert.deepEqual(started.roots, [1222]);
     assert.ok(started.carried.includes(1407), 'real loaded filling is governed by its selected host');
     assert.ok(started.ghostCount > 0 && started.ghostsFinite, 'registered command emits actual finite previews');
@@ -90,6 +93,10 @@ async function run(command) {
     sameGraphGeometry(cancelled, before);
     assert.deepEqual(cancelled.journal, before.journal); assert.deepEqual(cancelled.records, before.records);
     assert.equal(cancelled.allocator, started.allocator, 'preview cancellation allocates no IFC entities');
+    assert.equal(await page.evaluate(modelId => {
+      const view = globalThis.__ifc_lite_viewer_store__.getState().mutationViews.get(modelId);
+      return (!globalThis.registeredPreviewLoadedView || view === globalThis.registeredPreviewLoadedView) && !view.hasPendingChanges() && !view.hasChanges();
+    }, modelId), true, 'preview and Escape retain the real loaded view without effective overlay writes');
     const dir = path.join(process.env.IFC_EVIDENCE_DIR, `registered-${command}-preview`);
     fs.writeFileSync(path.join(dir, `${count}-runtime.json`), JSON.stringify({ modelId, count, started,
       scope: 'Registered command first-authoring preview and real Escape cancellation only. The real viewer initializes an empty mutation view at load; missing-view cold behavior is qualified separately by native regression controls. Same-host Align reference intentionally does not claim commit agreement; independent-reference native controls qualify commit.' }, null, 2));

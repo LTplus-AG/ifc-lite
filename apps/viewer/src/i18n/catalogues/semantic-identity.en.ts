@@ -4,6 +4,13 @@
 
 export const semanticIdentityEn = {
   'semantic.identityControls': 'IFC identity strategy',
+  'semantic.identityUri': 'Resource URI contains IFC GlobalId',
+  'semantic.identityUriMode': 'Resource URI matching',
+  'semantic.identityUriTemplateMode': 'Full URI template',
+  'semantic.identityUriSegmentMode': 'Last path segment (opt in)',
+  'semantic.identityUriTemplate': 'Full resource URI template',
+  'semantic.identityUriApply': 'Apply URI template',
+  'semantic.identityUriHint': 'The template uses one {GlobalId} placeholder. Last path segment needs known resource URIs for reverse queries. URI matching never replaces the selected direct GlobalId strategy.',
   'semantic.identityDirect': 'IFC GlobalId and model revision',
   'semantic.identityLinks': 'Explicit resource links',
   'semantic.identityProfile': 'Profile identity fields',

@@ -28,20 +28,57 @@ pub(super) fn mul_low<const K: usize>(a: &[u64; K], b: &[u64; K]) -> [u64; K] {
     }
 }
 
+/// Low product for the checked-multiply PROVABLY-FIT magnitude branch only.
+/// Bit lengths come from its existing overflow precheck, not a new scan.
+/// Wrapping signed callers must retain full widths (sign-extension is real).
+#[inline]
+pub(super) fn mul_low_magnitude<const K: usize>(
+    a: &[u64; K], b: &[u64; K], a_bits: usize, b_bits: usize,
+) -> [u64; K] {
+    debug_assert!(a_bits > 0 && b_bits > 0 && a_bits + b_bits < K * 64);
+    #[cfg(target_arch = "wasm32")]
+    {
+        mul_low_u32_bounded(a, b, a_bits.div_ceil(32), b_bits.div_ceil(32))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        mul_low_u64_bounded(a, b, a_bits.div_ceil(64), b_bits.div_ceil(64))
+    }
+}
+
 /// u64-limb schoolbook low product.
 #[inline]
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub(super) fn mul_low_u64<const K: usize>(a: &[u64; K], b: &[u64; K]) -> [u64; K] {
+    mul_low_u64_bounded(a, b, K, K)
+}
+
+/// Shared low-product core. Only zero HIGH limbs may be excluded by bounds.
+/// An untruncated row i ends at i+active_b: earlier rows end one limb lower,
+/// so the row-end carry slot is fresh zero and may be ASSIGNED, not added.
+/// If that slot reaches K, its carry is zero modulo 2^(K*64). The fit caller
+/// separately guarantees no mathematically significant product overflow.
+#[inline]
+pub(super) fn mul_low_u64_bounded<const K: usize>(
+    a: &[u64; K], b: &[u64; K], active_a: usize, active_b: usize,
+) -> [u64; K] {
+    debug_assert!(active_a <= K && active_b <= K);
+    debug_assert!(a[active_a..].iter().all(|&v| v == 0));
+    debug_assert!(b[active_b..].iter().all(|&v| v == 0));
     let mut out = [0u64; K];
-    for i in 0..K {
+    for i in 0..active_a {
         let mut carry: u128 = 0;
         let mut j = 0;
-        while i + j < K {
+        while j < active_b && i + j < K {
             let idx = i + j;
             let t = (a[i] as u128) * (b[j] as u128) + (out[idx] as u128) + carry;
             out[idx] = t as u64;
             carry = t >> 64;
             j += 1;
+        }
+        if i + j < K {
+            debug_assert_eq!(out[i + j], 0, "row-end carry slot must be fresh");
+            out[i + j] = carry as u64;
         }
     }
     out
@@ -54,8 +91,18 @@ pub(super) fn mul_low_u64<const K: usize>(a: &[u64; K], b: &[u64; K]) -> [u64; K
 #[inline]
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub(super) fn mul_low_u32<const K: usize>(a: &[u64; K], b: &[u64; K]) -> [u64; K] {
+    mul_low_u32_bounded(a, b, 2 * K, 2 * K)
+}
+
+/// Same fresh carry-slot proof as the u64 core, in radix 2^32. Preserves the
+/// existing zero-A-digit skip; this prototype does not introduce that skip.
+#[inline]
+pub(super) fn mul_low_u32_bounded<const K: usize>(
+    a: &[u64; K], b: &[u64; K], active_a: usize, active_b: usize,
+) -> [u64; K] {
     debug_assert!(K <= 32, "FixedInt u32-digit scratch supports only K <= 32");
     let n = 2 * K;
+    debug_assert!(active_a <= n && active_b <= n);
     let mut ad = [0u32; 64];
     let mut bd = [0u32; 64];
     for i in 0..K {
@@ -64,20 +111,26 @@ pub(super) fn mul_low_u32<const K: usize>(a: &[u64; K], b: &[u64; K]) -> [u64; K
         bd[2 * i] = b[i] as u32;
         bd[2 * i + 1] = (b[i] >> 32) as u32;
     }
+    debug_assert!(ad[active_a..n].iter().all(|&v| v == 0));
+    debug_assert!(bd[active_b..n].iter().all(|&v| v == 0));
     let mut out = [0u32; 64];
-    for i in 0..n {
+    for i in 0..active_a {
         let d = ad[i] as u64;
         if d == 0 {
             continue;
         }
         let mut carry: u64 = 0;
         let mut j = 0;
-        while i + j < n {
+        while j < active_b && i + j < n {
             let idx = i + j;
             let t = d * (bd[j] as u64) + (out[idx] as u64) + carry;
             out[idx] = t as u32;
             carry = t >> 32;
             j += 1;
+        }
+        if i + j < n {
+            debug_assert_eq!(out[i + j], 0, "row-end carry digit must be fresh");
+            out[i + j] = carry as u32;
         }
     }
     let mut res = [0u64; K];
@@ -161,3 +214,7 @@ pub(super) fn mul_full_u32<const K: usize>(ma: &[u64; K], mb: &[u64; K], full: &
         *slot = (out[2 * i] as u64) | ((out[2 * i + 1] as u64) << 32);
     }
 }
+
+#[cfg(test)]
+#[path = "magnitude_mul_tests.rs"]
+mod magnitude_mul_tests;

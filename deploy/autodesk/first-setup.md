@@ -1,6 +1,6 @@
 # First production setup
 
-The deployment needs one APS application owned by IFClite. End users only need Autodesk accounts with permission to the files/sites/exchanges they select. The Railway project already contains a separate configured `autodesk` service; it has not been activated.
+The deployment needs one APS application owned by IFClite. End users only need Autodesk accounts with permission to the files/sites/exchanges they select. The Railway project already contains a separate configured `autodesk` service; it is running and passes unsigned HTTPS checks; the public viewer and real account qualification remain pending.
 
 ## Register the APS app
 
@@ -15,7 +15,7 @@ The read-only import integration requests `data:read user-profile:read`. Do not 
 
 ## Choose the Windows worker host
 
-Railway runs the gateway and native Forma converter. Autodesk's current Data Exchange SDK worker needs a Windows x64 host. Use an existing organization-managed AWS/Azure Windows VM when available. Otherwise compare a Windows Lightsail instance with an Azure Windows VM in the intended region. Check the current provider quote, Windows licensing, backup/snapshot and transfer costs before creating the host; estimate memory with real exchanges rather than treating the smallest instance as qualified.
+Railway runs the gateway and native Forma converter. Autodesk's current Data Exchange SDK worker needs a Windows x64 host. Use an existing organization-managed AWS/Azure Windows VM when available. For a new small deployment, compare a monthly Windows VPS before selecting a hyperscaler. The maintainer has no existing provider account and considers the proposed $74/month Lightsail worker too expensive. OVHcloud is the current budget candidate, pending the actual checkout quote and availability; no paid host has been ordered. Check the current provider quote, Windows licensing, backup/snapshot and transfer costs before creating the host; estimate memory with real exchanges rather than treating the smallest instance as qualified.
 
 The host needs Node 24, .NET 8, a dedicated low-privilege service account, automatic restart/start-on-boot, security updates, restricted administrator access, a public HTTPS worker hostname and persistent Caddy certificate storage. The worker's backend port remains loopback-only. Follow [the remote worker setup](./remote-exchange.md); the release bundle contains its Node entry point and published SDK executable. No host or provider account is created by this document.
 
@@ -26,3 +26,9 @@ The host needs Node 24, .NET 8, a dedicated low-privilege service account, autom
 3. Connect Railway to the merged implementation with the supplied Dockerfile and configured APS variables. Deploy and verify its `/healthz`, then check importer declarations. One replica, sleep disabled; restarts sign users out.
 4. Set VITE_AUTODESK_HOSTED=true for the production viewer build. Ship the prepared Vercel rewrite through the repository's normal production deployment process.
 5. Run the operational smoke, then real Autodesk sign-in and source-versus-import acceptance for Docs, Forma and Data Exchange. An unsigned HTTPS smoke or configured importer does not prove account access, real geometry fidelity or a working export.
+
+## Worker hosting comparison (checked 2026-10-04)
+
+AWS lists its Windows/public-IPv4 8 GB bundle at $74/month before extras in [Lightsail bundles](https://docs.aws.amazon.com/lightsail/latest/userguide/amazon-lightsail-bundles.html). OVHcloud's [public French VPS catalogue](https://eu.api.ovh.com/v1/order/catalog/public/vps?ovhSubsidiary=FR) lists monthly, zero-commitment `vps-2027-model2` at €8.49, its Windows option at €8.00 and mandatory basic backup at €0.50: €16.99/month before tax. That reference catalogue is not a Swiss checkout quote, regional availability or a performance qualification. The advertised [Windows VPS price](https://www.ovhcloud.com/en/vps/os/vps-windows/) links to annual prepayment; select monthly billing and include the Windows option when comparing. Contabo is another budget candidate, but [its Windows licence is charged separately](https://help.contabo.com/en/support/solutions/articles/103000270398-can-i-use-my-own-windows-license-on-my-contabo-erver-) and its exact configuration/term total has not been verified.
+
+Prefer a one-month qualification deployment to an annual commitment. Confirm the final tax-inclusive checkout, region, Windows version, backup and cancellation terms with the maintainer before ordering. These are unmanaged Windows servers: updates, restricted administration, service recovery and monitoring remain operational work whichever provider is selected. Measure real exports before choosing capacity or promising throughput.

@@ -77,4 +77,4 @@ On a failed release, stop the gateway/backend service pair, select the previous 
 
 Monitor process restarts, importer failures/timeouts, scratch-disk and memory usage, busy responses and HTTPS renewal. Do not log bearer tokens, authorization codes, signed URLs or raw SDK errors. A real import succeeds only after the viewer loads/registers the returned pinned artifact; successful gateway health alone is insufficient.
 
-Local preparation on 2026-10-04 established the Docker build/native contract and SDK compilation. The isolated Railway service/domain is provisioned, but no Windows host, registered APS app, running Autodesk backend or live sign-in is available yet.
+Local preparation on 2026-10-04 established the Docker build/native contract and SDK compilation. The isolated Railway backend is running and passes unsigned HTTPS checks, with APS variables configured. No Windows host, public viewer activation or live account sign-in/export qualification is complete.

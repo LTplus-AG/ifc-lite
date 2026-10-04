@@ -6,9 +6,9 @@ The Linux Docker image hosts the Autodesk session gateway and Rust Forma convert
 
 ## Provisioned service (2026-10-04)
 
-CLI authentication was renewed and the production project was verified against the dashboard. Service `autodesk` was created with ID `16b59891-9fbd-4946-a871-9365b702a91e`, and `https://autodesk-production-50bc.up.railway.app` targets port 3002. Its Dockerfile/root, health check, restart policy, one replica and disabled sleep settings were applied through the live-schema public API, then read back. The four non-secret origin/host/port variables were set without triggering deployment. Existing services were not edited.
+CLI authentication was renewed and the production project was verified against the dashboard. Service `autodesk` was created with ID `16b59891-9fbd-4946-a871-9365b702a91e`, and `https://autodesk-production-50bc.up.railway.app` targets port 3002. Its Dockerfile/root, health check, restart policy, one replica and disabled sleep settings were applied through the live-schema public API, then read back. The non-secret origin/host/port variables were configured separately from the APS app credentials. Existing services were not edited.
 
-The repository's Vercel rewrite now points to this reserved hostname. **No backend is running there yet:** APS app variables, source activation and the hosted viewer production build are pending. No registered APS app or real Autodesk project was available. The domain reservation is not a successful health check or live sign-in.
+The backend is running from uploaded implementation revision `d7083c0cf`; successful deployment `0f8d4363-76a5-44ab-b294-f464506fd356` passes `/healthz`. Live HTTPS checks passed unsigned sessions, secure host-only cookies, CSRF rejection, unsigned proxy rejection, PKCE authorization URL/canonical callback, cancellation and sign-out. These checks made no Autodesk calls and do not qualify the app credentials or source access. The first deployment failed its platform health check because the explicit service port lacked a matching PORT variable; the corrected configuration below passed. The Vercel rewrite is prepared but has not reached the public viewer.
 
 The current CLI's `environment edit` returned “No changes to apply” for these new-service settings; the public API's `ServiceInstanceUpdateInput` succeeded. Its input Builder enum does not include DOCKERFILE: setting dockerfilePath selects Dockerfile discovery, and the configuration readback reports the effective builder as DOCKERFILE.
 
@@ -42,11 +42,12 @@ AUTODESK_VIEWER_ORIGIN=https://www.ifclite.com
 AUTODESK_CLIENT_ID=<deployment APS app ID>
 AUTODESK_CLIENT_SECRET=<server-only APS app secret>
 AUTODESK_INSECURE_LOCALHOST=false
-AUTODESK_SERVICE_HOST=::
+AUTODESK_SERVICE_HOST=0.0.0.0
 AUTODESK_SERVICE_PORT=3002
+PORT=3002
 ```
 
-Use the actual canonical viewer origin if different. The image already sets `AUTODESK_FORMA_CONVERTER=/usr/local/bin/ifc-lite-cloud-import`. Leave AUTODESK_EXCHANGE_WORKER unset on Linux. The Node entry point also honors Railway's injected PORT when no explicit service port is configured.
+Use the actual canonical viewer origin if different. The image already sets `AUTODESK_FORMA_CONVERTER=/usr/local/bin/ifc-lite-cloud-import`. Leave AUTODESK_EXCHANGE_WORKER unset on Linux. The Node entry point also honors Railway's injected PORT when no explicit service port is configured. With the explicit port shown above, set PORT to the same value: Railway uses it for health checks. Omitting it caused the first real deployment to start successfully but fail the platform health check. See [Railway's health-check port instructions](https://docs.railway.com/deployments/healthchecks#configure-the-healthcheck-port).
 
 Register an APS **Traditional Web App**, with exact callback `https://www.ifclite.com/api/autodesk/callback` (or the actual canonical origin), API access for the required products, and participating hub administrators' Custom Integration approval. [Autodesk app/provisioning setup](https://get-started.aps.autodesk.com/)
 
@@ -63,7 +64,7 @@ The following **fixed external rewrite before the SPA fallback** is now prepared
 }
 ```
 
-The hostname is reserved; the backend has not been deployed. Set `VITE_AUTODESK_HOSTED=true` in the viewer's production build. No APS client secret belongs in Vercel's browser build. The browser still uses its viewer-origin cookie; do not replace this with cross-origin credentialed browser fetches.
+The Railway backend is live; the public viewer rewrite remains pending. Set `VITE_AUTODESK_HOSTED=true` in the viewer's production build. No APS client secret belongs in Vercel's browser build. The browser still uses its viewer-origin cookie; do not replace this with cross-origin credentialed browser fetches.
 
 Deploy/verify Railway before enabling the hosted viewer build. Ship the frontend through the existing main/production branch process. Its workflow does not install this backend.
 
@@ -85,4 +86,4 @@ Set AUTODESK_EXCHANGE_WORKER_ORIGIN and AUTODESK_EXCHANGE_WORKER_KEY on the gate
 
 Two slots bound conversion, retained artifacts and their downloads together. Prepared results expire after two minutes; unfinished jobs/downloads expire after fifteen minutes. Jobs belong to one signed-in session, artifacts are claimable once, and cancellation/sign-out abort owned work. Restarts drop sessions/jobs. Keep sleep disabled and one replica until shared session/job storage and refresh coordination are implemented.
 
-Railway service/domain configuration exists, but no backend deployment has been made. A registered APS app, source activation, hosted viewer deployment and live acceptance remain separate rollout steps.
+The Railway backend and unsigned HTTPS contract are verified. Hosted viewer activation, real account login/source access and the Windows exchange host remain open rollout steps.

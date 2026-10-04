@@ -1752,6 +1752,10 @@ The [retained source-matched hosted qualification](evidence/owned-prepass-column
 
 Both sharded prepass bindings adopt numeric columns already copied into WASM by the ABI; geometry-worker index installation already adopts them under #3989. Original-order discovery precedes sorting/deduplication, preserving class alignment, all discovery occurrences and last-occurrence lookup precedence. Actual native pointer and real-WASM controls qualify that ownership contract. On unsorted input, later index construction can overlap existing sort transients with discovered jobs/spans: deleting a clone does not prove a lower physical memory peak or faster loading. The finite hosted result does not isolate that allocation lifetime or an elapsed cause. The evidence container passed bounded data-only extraction, literal-original comparison and replay controls; integration and review disposition remain separate.
 
+### Public large-model default-pool completion (#6537)
+
+The [retained public GNI inspection](evidence/public-gni-fullpool-6537/README.md) completed canonical default-pool CPU mesh production with full stream drain, reported diagnostics and fenced cleanup. This closes the public full-geometry observation gap left by scan/prepass-only research; it does not qualify the original private-file cause, full viewer/metadata readiness or a performance comparison. A separate correctness memory budget enabled inspection and must not be treated as passing the unchanged timing-cohort ceiling. Preserve reported diagnostics and output identity without promoting a single observed run into faithful-IFC or comparative memory proof. The earlier CommonJS/ESM automation-entry refusal is retained: qualify the actual installed module contract before starting a bounded model window. The unchanged qualified reader passed bounded data-only extraction and literal-original comparison; retained historical refusals and excluded input payloads remain explicit.
+
 ### Standing constraints
 - Geometry is **client-side only** (no server meshing).
 - One mesh home: `produce_element_meshes` - a fix in one pipeline diverges the other.

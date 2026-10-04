@@ -3,18 +3,18 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { CloudError, validateConfig, type CloudConfig, type Vendor } from './config.js';
 import { CloudSessions } from './sessions.js';
-import { downloadBytes, requestJson } from './upstream.js';
+import { requestJson } from './upstream.js';
 import { readJson } from './bounded.js';
-import { downloadResponse } from './download-response.js';
+import { DownloadJobs } from './download-jobs.js';
 const json = (value: unknown, status = 200, headers?: HeadersInit) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', ...Object.fromEntries(new Headers(headers)) } });
 export function createCloudHandler(config: CloudConfig): { ready: Promise<void>; handle: (request: Request) => Promise<Response>; close: () => Promise<void> } {
-  validateConfig(config); const sessions = new CloudSessions(config); let downloads = 0;
+  validateConfig(config); const sessions = new CloudSessions(config); const downloads = new DownloadJobs(sessions);
   return { ready: sessions.downloads.ready, close: () => sessions.close(), async handle(request) {
     await sessions.downloads.ready;
     const url = new URL(request.url);
     if (url.origin !== config.origin) return json({ error: 'not-found', message: 'Not found.' }, 404);
     if (url.pathname === '/healthz') return json({ ok: true });
-    const route = /^\/api\/cloud\/(dropbox|msgraph)\/(session|authorize|callback|cancel-signin|signout|request|download)$/.exec(url.pathname);
+    const route = /^\/api\/cloud\/(dropbox|msgraph)\/(session|authorize|callback|cancel-signin|signout|request|prepare-download|download-status|cancel-download|download)$/.exec(url.pathname);
     if (!route) return json({ error: 'not-found', message: 'Not found.' }, 404);
     const vendor = route[1] as Vendor; const action = route[2]; let session = sessions.get(request, vendor);
     if (action !== 'callback' && request.headers.get('sec-fetch-site') === 'cross-site') return json({ error: 'cross-origin', message: 'Open cloud sources from this viewer.' }, 403);
@@ -43,27 +43,27 @@ export function createCloudHandler(config: CloudConfig): { ready: Promise<void>;
       if (action === 'authorize') return json(await sessions.authorize(session));
       if (action === 'cancel-signin') { sessions.cancel(session); return json({ ok: true }); }
       if (action === 'signout') { sessions.discard(session); return json({ ok: true }, 200, { 'Set-Cookie': sessions.cookie(vendor) }); }
-      if (action !== 'request' && action !== 'download') throw new CloudError(405, 'method-not-allowed', 'Method not allowed.');
+      if (!['request', 'prepare-download', 'download-status', 'cancel-download', 'download'].includes(action ?? '')) throw new CloudError(405, 'method-not-allowed', 'Method not allowed.');
       if (!session.identity) throw new CloudError(401, 'signed-out', 'Sign in again.');
       if (!request.headers.get('content-type')?.startsWith('application/json')) throw new CloudError(415, 'content-type', 'JSON is required.');
       let raw: unknown;
       try { raw = await readJson(new Response(request.body), 64 * 1024); }
       catch (error) { if (error instanceof CloudError && error.code === 'invalid-json') throw new CloudError(400, 'invalid-request', 'The cloud request must contain valid JSON.'); throw error; }
-      if (!raw || typeof raw !== 'object' || !('path' in raw) || typeof raw.path !== 'string') throw new CloudError(400, 'invalid-request', 'A cloud operation path is required.');
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new CloudError(400, 'invalid-request', 'Invalid cloud operation.');
+      if (action === 'download-status' || action === 'cancel-download' || action === 'download') {
+        if (!('jobId' in raw) || typeof raw.jobId !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(raw.jobId)) throw new CloudError(400, 'invalid-request', 'A download job is required.');
+        if (action === 'download-status') return json(downloads.status(session, raw.jobId));
+        if (action === 'cancel-download') { downloads.cancel(session, raw.jobId); return json({ ok: true }); }
+        return downloads.claim(session, raw.jobId, request.signal);
+      }
+      if (!('path' in raw) || typeof raw.path !== 'string') throw new CloudError(400, 'invalid-request', 'A cloud operation path is required.');
       const body = raw as { path: string; args?: unknown; params?: Record<string, string | number>; revision?: string };
       if (body.params && (typeof body.params !== 'object' || Object.values(body.params).some(v => typeof v !== 'string' && typeof v !== 'number'))) throw new CloudError(400, 'invalid-request', 'Invalid cloud parameters.');
       if (body.revision !== undefined && typeof body.revision !== 'string') throw new CloudError(400, 'invalid-request', 'Invalid revision.');
-      if (action === 'download' && downloads >= 2) throw new CloudError(503, 'busy', 'Downloads are busy. Try again.');
-      const op = sessions.operation(session, action === 'download' ? 15 * 60_000 : 30_000, request.signal);
-      if (action === 'download') downloads++;
-      let streaming = false;
-      try {
-        if (action === 'request') return json(await requestJson(sessions, session, body, op.signal));
-        const file = await downloadBytes(sessions, session, body, op.signal);
-        const response = downloadResponse(file, op.signal, () => { op.done(); downloads--; });
-        streaming = true;
-        return response;
-      } finally { if (!streaming) { op.done(); if (action === 'download') downloads--; } }
+      if (action === 'prepare-download') return json({ jobId: downloads.start(session, body) }, 202);
+      const op = sessions.operation(session, 30_000, request.signal);
+      try { return json(await requestJson(sessions, session, body, op.signal)); }
+      finally { op.done(); }
     } catch (error) {
       if (error instanceof CloudError) return json({ error: error.code, message: error.message }, error.status);
       console.warn('Cloud request failed', vendor, 'request-failed');

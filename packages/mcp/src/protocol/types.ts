@@ -257,6 +257,7 @@ export interface JsonSchema {
   enum?: readonly unknown[];
   default?: unknown;
   minimum?: number;
+  exclusiveMinimum?: number;
   maximum?: number;
   minLength?: number;
   maxLength?: number;

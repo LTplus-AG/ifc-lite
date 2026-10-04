@@ -104,6 +104,8 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` *(planned)* |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
+| Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
+| Native Room | `query_rooms`, `room_command` |
 | Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
 | Wall joins | `join_walls` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
@@ -492,3 +494,43 @@ federated, and a nonempty `patch` containing `OverallWidth`, `OverallHeight`,
 without replacing identity or relationships. Unsupported, overlapping and
 out-of-host changes leave the graph unchanged. The tool requires mutation scope;
 one `mutation_undo` restores the previous graph.
+
+### Physical command edits
+
+`copy_elements` and `array_elements` copy selections with their hosted
+dependants, fresh GlobalIds and the viewer array policy. `duplicate_element`
+accepts an `express_id`, explicit IFC `offset` and optional `Name`; it preserves
+the viewer Duplicate naming policy and copies the complete hosted graph.
+`edit_element_geometry` accepts a discriminated `operation`: `transform`
+(move/rotate), `size`, `wall_endpoints`, `split`, or `trim_extend`. Coordinates
+are IFC storey-local metres; rotation angles are radians. Dimension names
+retain their IFC spelling (`Depth`, `XDim`, `YDim`).
+
+Supply `model_id` when multiple models are loaded. These tools require mutation
+scope. Each write records one `mutation_undo` batch including its graph helpers.
+Unsupported shapes, independent hosted copies, unsafe shared geometry, read-only
+access and ambiguous model routing refuse without partial IFC writes.
+
+### Native Room operations
+
+`room_command` accepts `storey_express_id` and `command` with `query`, `auto`,
+`pick`, `footprint`, `update` or `edit`. It uses current native wall/space
+geometry and the retained native Room topology; install the WASM runtime.
+Supply `model_id` when multiple models are loaded. Each write records one
+`mutation_undo` batch including synchronized spaces. Unsupported shapes,
+occupied Footprint, read-only access, and ambiguous routing refuse without
+partial writes. Preparation refuses stale model state and observes request
+cancellation before committing. Session termination and model removal release
+the retained native layout handles.
+
+`query_rooms` is available with read-only tokens. It accepts `storey_express_id`,
+optional `model_id`, and optional `settings` (`weld`, `minArea`, `boundary`),
+and delegates to the same native candidate service without IFC or Undo writes.
+Write actions remain protected by `room_command`'s mutation scope. Unchanged
+headless storeys reuse prepared geometry; source, overlay or journal changes
+invalidate it, and model removal releases the cache.
+
+Cancelled requests return `CANCELLED`; concurrent changes or preparation ownership
+return `STATE_CHANGED`, both with `details.retryable: true`. An unavailable native
+runtime returns `UNSUPPORTED_OPERATION` with reason `NATIVE_RUNTIME_UNAVAILABLE`.
+Malformed commands and unsupported input shapes retain `INVALID_INPUT`.

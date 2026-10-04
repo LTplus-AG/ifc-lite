@@ -32,7 +32,7 @@
  * layer.
  */
 
-import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
+import { taskProductExpressIds, type ScheduleExtraction, type ScheduleTaskInfo } from '@ifc-lite/parser';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Types
@@ -449,11 +449,11 @@ export function computeAnimationFrame(
         && !task.controllingScheduleGlobalIds.includes(scheduleGlobalId)) {
       continue;
     }
-    if (task.productExpressIds.length === 0) continue;
-    const phase = computeTaskPhase(task, playbackTime, settings);
+    const productIds = taskProductExpressIds(task);
+    const phase = productIds.length > 0 ? computeTaskPhase(task, playbackTime, settings) : null;
     if (!phase) continue;
 
-    for (const id of task.productExpressIds) {
+    for (const id of productIds) {
       const existing = chosenByProduct.get(id);
       if (!existing || phasePriority[phase.phase] > phasePriority[existing.phase]) {
         chosenByProduct.set(id, phase);

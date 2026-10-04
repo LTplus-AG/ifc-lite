@@ -60,7 +60,7 @@ describe('#6232 D5 shared trim/extend', () => {
     const s = await session();
     s.editor.removeEntity(s.boundary);
     const before = s.snapshot();
-    expect(() => trimExtendElementInStore(s.store, s.editor, s.wall, { mode: 'extend', click: [8, 5], boundary: { wallId: s.boundary } })).toThrow();
+    expect(() => trimExtendElementInStore(s.store, s.editor, s.wall, { mode: 'extend', click: [8, 5], boundary: { wallId: s.boundary } })).toThrow(/^Boundary wall /);
     expect(s.snapshot()).toEqual(before);
   });
 });

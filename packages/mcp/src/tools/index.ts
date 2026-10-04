@@ -4,7 +4,7 @@
 
 import { ToolRegistry } from './types.js';
 import { discoveryTools } from './discovery.js';
-import { queryTools } from './query.js';
+import { queryTools } from './query-tools.js';
 import { geometryTools } from './geometry.js';
 import { clashTools } from './clash.js';
 import { validationTools } from './validation.js';

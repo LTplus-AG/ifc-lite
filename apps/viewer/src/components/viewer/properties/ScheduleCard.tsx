@@ -22,6 +22,7 @@ import { useMemo } from 'react';
 import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { CalendarClock, Diamond, Flag, ChevronDown } from 'lucide-react';
 import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
+import { taskProductExpressIds, taskProductGlobalIds } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { PersistentCollapsible } from './PersistentCollapsible';
@@ -200,15 +201,16 @@ function findControllingTasks(
   if (selectedExpressId === null && !selectedGlobalId) return [];
   const out: ScheduleTaskInfo[] = [];
   for (const task of data.tasks) {
-    const taskHasGlobalIds = task.productGlobalIds.some(Boolean);
+    const productGlobalIds = taskProductGlobalIds(task);
+    const taskHasGlobalIds = productGlobalIds.some(Boolean);
     if (selectedGlobalId && taskHasGlobalIds) {
-      if (task.productGlobalIds.includes(selectedGlobalId)) out.push(task);
+      if (productGlobalIds.includes(selectedGlobalId)) out.push(task);
       // When globalIds are the authoritative side, do NOT also match on
       // expressId — a collision across models would produce a false positive.
       continue;
     }
     if (selectedExpressId !== null && selectedExpressId > 0
-        && task.productExpressIds.includes(selectedExpressId)) {
+        && taskProductExpressIds(task).includes(selectedExpressId)) {
       out.push(task);
     }
   }

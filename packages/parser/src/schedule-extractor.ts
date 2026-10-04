@@ -4,7 +4,7 @@
 
 /**
  * Schedule (4D) extractor — walks IfcTask, IfcTaskTime, IfcRelSequence,
- * IfcRelAssignsToProcess, IfcRelAssignsToControl, IfcRelNests, IfcWorkSchedule,
+ * IfcRelAssignsToProcess, IfcRelAssignsToProduct, IfcRelAssignsToControl, IfcRelNests, IfcWorkSchedule,
  * IfcWorkPlan, IfcWorkCalendar, IfcLagTime entities in a parsed IfcDataStore
  * and assembles a normalized ScheduleExtraction that the viewer can drive a
  * Gantt/4D animation from.
@@ -58,6 +58,7 @@ import {
   extractWorkCalendars,
   tryAssignCalendar,
 } from './schedule-control-extractor.js';
+import { assignTaskOutputProducts } from './schedule-task-products.js';
 
 // Re-exported for backward compatibility — this is where consumers
 // (including this package's own public surface, see index.ts) have always
@@ -66,6 +67,8 @@ import {
 // `secondsToIso8601Duration`, so the round-trip property between the two is
 // visible in one place.
 export { parseIso8601Duration };
+// Inputs + outputs union for consumers (#6749); lives beside the output pass.
+export { taskProductExpressIds, taskProductGlobalIds } from './schedule-task-products.js';
 
 // Re-exported so `import ... from './schedule-extractor.js'` (this
 // package's public surface, see index.ts) still resolves every type it did
@@ -87,7 +90,7 @@ export type { WorkCalendarInfo, WorkTimeInfo, RecurrencePatternInfo, TimePeriodI
  * Extract all scheduling data from a parsed IFC store.
  *
  * Walks every IfcTask / IfcTaskTime / IfcRelSequence / IfcRelAssignsToProcess /
- * IfcRelAssignsToControl / IfcRelNests / IfcWorkSchedule / IfcWorkPlan entity
+ * IfcRelAssignsToProduct / IfcRelAssignsToControl / IfcRelNests / IfcWorkSchedule / IfcWorkPlan entity
  * and assembles a connected ScheduleExtraction.
  */
 export function extractScheduleOnDemand(store: IfcDataStore, options?: { overlay?: CostMutationOverlay }): ScheduleExtraction {
@@ -103,6 +106,7 @@ export function extractScheduleOnDemand(store: IfcDataStore, options?: { overlay
   const workPlanIds = reader.ids('IFCWORKPLAN');
   const relSeqIds = reader.ids('IFCRELSEQUENCE');
   const relAssignsProcessIds = reader.ids('IFCRELASSIGNSTOPROCESS');
+  const relAssignsProductIds = reader.ids('IFCRELASSIGNSTOPRODUCT');
   const relAssignsControlIds = reader.ids('IFCRELASSIGNSTOCONTROL');
   const relNestsIds = reader.ids('IFCRELNESTS');
   const workCalendarIds = reader.ids('IFCWORKCALENDAR');
@@ -231,6 +235,12 @@ export function extractScheduleOnDemand(store: IfcDataStore, options?: { overlay
       if (gid) globalIdByExpressId.set(productId, gid);
     }
   }
+
+  // Pass 3b: resolve IfcRelAssignsToProduct — products each task OUTPUTS
+  // (the task in RelatedObjects, the product in RelatingProduct). The
+  // buildingSMART construction-scheduling examples bind tasks to products
+  // only this way (#6749).
+  assignTaskOutputProducts(reader, relAssignsProductIds, taskByExpressId, globalIdByExpressId);
 
   // Pass 4: extract work schedules / work plans. The per-entity decode
   // lives in `schedule-control-extractor.ts` alongside the calendar one.

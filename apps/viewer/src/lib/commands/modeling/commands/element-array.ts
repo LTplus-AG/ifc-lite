@@ -17,7 +17,7 @@
  * transaction, so one undo step. The copies are selected.
  */
 
-import type { CopyTransform } from '@ifc-lite/create';
+import { arrayCopyTransforms, type CopyTransform } from '@ifc-lite/create';
 import { ArrayBar } from '@/components/viewer/tools/command/ArrayBar';
 import type { TranslationKey } from '@/i18n';
 import type { Vec2 } from '@/lib/snap/types';
@@ -91,18 +91,17 @@ export function clickedDistance(g: ArrayGesture): number | null {
 
 /** One transform per copy (count − 1 of them), or null while the array is not defined yet. */
 export function arrayTransforms(g: ArrayGesture): CopyTransform[] | null {
-  if (!g.anchor || g.count < 2) return null;
-  const copies = Array.from({ length: g.count - 1 }, (_, i) => i + 1);
-  if (g.mode === 'polar') {
-    const step = Math.abs(g.angle) >= 360 ? (Math.sign(g.angle) * 360) / g.count : g.angle / (g.count - 1);
-    return copies.map((i) => ({ turn: (step * i * Math.PI) / 180, pivot: [g.anchor![0], g.anchor![1]] }));
+  if (g.count < 2) return null;
+  return arrayCopyTransforms({ ...g, angleDegrees: g.angle });
+}
+
+/** Preview refuses invalid settings; commit reports the canonical planner error. */
+function arrayPreview(g: ArrayGesture): CopyTransform[] | null | { refusal: unknown } {
+  try { return arrayTransforms(g); }
+  catch (error) {
+    console.debug('[element.array] preview refused', error);
+    return { refusal: error };
   }
-  const clicked = clickedDistance(g);
-  if (!g.cursor || !clicked || clicked < 1e-6) return null;
-  const [ux, uy] = [(g.cursor[0] - g.anchor[0]) / clicked, (g.cursor[1] - g.anchor[1]) / clicked];
-  const distance = g.distance ?? clicked;
-  const step = g.fit ? distance / (g.count - 1) : distance;
-  return copies.map((i) => ({ offset: [ux * step * i, uy * step * i, 0] }));
 }
 
 const FIELDS: readonly CommandField<ArrayGesture>[] = [
@@ -155,7 +154,9 @@ export const ELEMENT_ARRAY: ModelingCommand<ArrayGesture> = {
     if (g.refusal) return { ok: true };
     if (g.ids.length === 0) return { ok: false, reasonKey: 'copyArray.array.noSelection' };
     if (!g.plane) return { ok: false, reasonKey: 'modelingCommand.noPlane' };
-    return arrayTransforms(g) ? { ok: true } : { ok: false, reasonKey: hint(g) };
+    const plan = arrayPreview(g);
+    // Let the transaction report the precise planner refusal, like a refused selection.
+    return plan ? { ok: true } : { ok: false, reasonKey: hint(g) };
   },
   commit(g) {
     // A selection that cannot be arrayed says why, in the words of the copy.
@@ -168,8 +169,8 @@ export const ELEMENT_ARRAY: ModelingCommand<ArrayGesture> = {
   afterCommit: () => ({ exit: true }),
   cancel: (g) => (g.anchor ? 'reset' : 'exit'),
   ghost(g, ctx) {
-    const transforms = arrayTransforms(g);
-    if (!g.modelId || !g.plane || !transforms) return [];
+    const transforms = arrayPreview(g);
+    if (!g.modelId || !g.plane || !transforms || 'refusal' in transforms) return [];
     const s = ctx.get();
     return copyGhosts(s, sourceMeshes(s, g.modelId, g.shown), g.plane, g.plane, transforms);
   },

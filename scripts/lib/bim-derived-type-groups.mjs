@@ -6,8 +6,17 @@
 export const BIM_DERIVED_TYPE_GROUPS = [
   {
     title: 'Modelling operation types', namespace: 'BimCreate',
-    sources: ['packages/create/src/in-store/wall-join.ts', 'packages/create/src/in-store/wall-join-apply.ts'],
-    roots: ['WallJoinApplyOptions', 'WallJoinOptions'],
+    sources: [
+      'packages/create/src/in-store/wall-join.ts', 'packages/create/src/in-store/wall-join-apply.ts',
+      'packages/create/src/in-store/column.ts', 'packages/create/src/in-store/beam.ts',
+      'packages/create/src/in-store/member.ts', 'packages/create/src/in-store/profile.ts',
+    ],
+    roots: [
+      'WallJoinApplyOptions', 'WallJoinOptions',
+      'ColumnInStoreParams', 'ProfiledColumnInStoreParams',
+      'BeamInStoreParams', 'ProfiledBeamInStoreParams',
+      'MemberInStoreParams', 'ProfiledMemberInStoreParams',
+    ],
   },
   {
     title: 'Clash engine types', namespace: 'BimClash',

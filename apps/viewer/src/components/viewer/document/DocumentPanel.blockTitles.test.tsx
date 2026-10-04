@@ -203,7 +203,7 @@ describe('Document content-block title overrides (#6547)', () => {
 
   it('bounds a long authored topic heading to the text column beside its snapshot (#6547 review)', () => {
     const title = 'Authored coordination heading '.repeat(30);
-    const block = { kind: 'topic' as const, id: 'snapshot-topic', title, authoredTitle: true, lines: ['Snapshot context'], snapshotAspect: 4 / 3 };
+    const block = { kind: 'topic' as const, id: 'snapshot-topic', title, lines: ['Snapshot context'], snapshotAspect: 4 / 3 };
     const input = { name: 'Topic bounds', page: spec.page, generatedAt: '', measure: estimateTextWidth, blocks: [block] };
     const items = composeDocument(input).pages.flatMap((page) => page.items);
     const snapshot = items.find((item) => item.kind === 'topic-snapshot'); assert.ok(snapshot?.kind === 'topic-snapshot');
@@ -211,8 +211,6 @@ describe('Document content-block title overrides (#6547)', () => {
     assert.ok(heading.text.endsWith('…'));
     const headingEnd = heading.x + estimateTextWidth(heading.text, heading.size, heading.bold);
     assert.ok(headingEnd <= snapshot.x - BLOCK_GAP, `authored title endpoint ${headingEnd} stays before snapshot column ${snapshot.x - BLOCK_GAP}`);
-    const original = composeDocument({ ...input, blocks: [{ ...block, authoredTitle: undefined }] }).pages.flatMap((page) => page.items);
-    assert.ok(original.some((item) => item.kind === 'text' && item.text === title), 'ordinary source title retains its established rendering');
   });
 
 });

@@ -59,8 +59,12 @@ export interface ScheduleTaskData {
   taskTime?: ScheduleTaskTimeData;
   parentGlobalId?: string;
   childGlobalIds: string[];
+  /** Products assigned via IfcRelAssignsToProcess (the task's inputs). */
   productExpressIds: number[];
   productGlobalIds: string[];
+  /** Products the task outputs via IfcRelAssignsToProduct (#6749). Absent ≡ `[]`. */
+  outputProductExpressIds?: number[];
+  outputProductGlobalIds?: string[];
   controllingScheduleGlobalIds: string[];
   /** IfcWorkCalendar globalIds assigned to this task via IfcRelAssignsToControl. */
   calendarGlobalIds?: string[];

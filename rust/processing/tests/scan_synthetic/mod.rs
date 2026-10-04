@@ -345,3 +345,23 @@ pub fn cylinder_room(spec: &ScanSpec) -> CylinderScene {
     }
     CylinderScene { positions: s.out, cylinders: vec![column, pipe], scanner: SCANNERS[0] }
 }
+
+/// Room x 0..6, y 0..4, z 0..2.7 (no openings) holding `cylinders`, each
+/// sampled over its arc (radians from the first in-plane axis). Vertical
+/// cylinders cut their footprint from floor and ceiling.
+pub fn room_with(spec: &ScanSpec, cylinders: &[(ExpectedCylinder, f64)]) -> Vec<f32> {
+    let mut s = Sampler { rng: Rng::new(spec.seed), spec, out: Vec::new() };
+    let free = |x: f64, y: f64| {
+        cylinders.iter().all(|(c, _)| c.start[2] == c.end[2] || (x - c.start[0]).hypot(y - c.start[1]) > c.radius)
+    };
+    s.patch([0., 0., 0.], [6., 0., 0.], [0., 4., 0.], &free);
+    s.patch([0., 0., 2.7], [6., 0., 0.], [0., 4., 0.], &free);
+    s.patch([0., 0., 0.], [0., 4., 0.], [0., 0., 2.7], &|_, _| true);
+    s.patch([6., 0., 0.], [0., 4., 0.], [0., 0., 2.7], &|_, _| true);
+    s.patch([0., 0., 0.], [6., 0., 0.], [0., 0., 2.7], &|_, _| true);
+    s.patch([0., 4., 0.], [6., 0., 0.], [0., 0., 2.7], &|_, _| true);
+    for (c, arc) in cylinders {
+        s.cylinder(c, *arc);
+    }
+    s.out
+}

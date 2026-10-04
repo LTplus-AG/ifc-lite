@@ -1190,7 +1190,7 @@ export class IfcAPI {
      */
     scanGeometryEntitiesFast(content: string): any;
     /**
-     * Detect planes in a point cloud (#6870). `positions` are xyz f32 metres
+     * Detect planes and cylinders (columns, pipes) in a point cloud (#6870). `positions` are xyz f32 metres
      * (at most 100,000,000 points); `options_json` is a camelCase
      * `ScanSegmentationOptions` object (`{}` for the defaults). Returns the
      * UTF-8 JSON `ScanSegmentationReport`. Pure: loads and changes nothing.

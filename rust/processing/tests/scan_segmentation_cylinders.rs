@@ -16,7 +16,8 @@ mod scan_synthetic;
 use ifc_lite_processing::scan_segmentation::{
     segment_scan_points, AxisOrientation, ScanCylinder, ScanSegmentationOptions, ScanSegmentationReport,
 };
-use scan_synthetic::{cylinder_room, two_rooms, ExpectedCylinder, Rng, ScanSpec};
+use scan_synthetic::{cylinder_room, room_with, two_rooms, ExpectedCylinder, Rng, ScanSpec};
+use std::f64::consts::TAU;
 use std::sync::OnceLock;
 
 const AXIS_TOLERANCE_DEGREES: f64 = 2.;
@@ -89,8 +90,8 @@ fn issue_6870_recovers_the_column_and_the_pipe_and_refuses_the_decoys() {
     assert!(s.cylinders_rejected_as_spheres >= 1, "{s:?}");
     assert!(s.cylinders_rejected_for_length >= 1, "{s:?}");
     assert!(s.cylinders_rejected_for_arc >= 1, "{s:?}");
-    // The wall/floor and wall/ceiling creases are candidates too; refused.
-    assert!(s.cylinders_rejected_as_creases >= 4, "{s:?}");
+    // The wall/floor and wall/ceiling creases never become cylinders: their
+    // voxels touch planes and stay out of every group (the exact count above).
 }
 
 #[test]
@@ -133,4 +134,88 @@ fn issue_6870_pure_noise_yields_no_cylinders() {
     let noise = scan_synthetic::pure_noise(11, 200_000, 3.);
     let report = segment_scan_points(&noise, &ScanSegmentationOptions::default()).unwrap();
     assert!(report.cylinders.is_empty(), "{:?}", report.cylinders);
+}
+
+#[test]
+fn issue_6870_finds_a_column_three_centimetres_from_a_room_corner() {
+    // Review #6878 (1): the wall-edge voxels used to join the column's group
+    // and push its share under 60 %, so the column was never found.
+    let column = ExpectedCylinder::vertical([0.33, 0.33], 0.3, (0., 2.7));
+    let positions = room_with(&ScanSpec::default(), &[(column.clone(), TAU)]);
+    let report = segment_scan_points(&positions, &ScanSegmentationOptions::default()).unwrap();
+    assert_finds_exactly(&report, &[column]);
+}
+
+#[test]
+fn issue_6870_a_pipe_near_a_wall_is_reported_once() {
+    // Review #6878 (2): r 0.05, 8 cm from the wall, used to come out twice.
+    // A 2 cm voxel keeps r 0.05 above the minimum radius (2 voxels).
+    let pipe = ExpectedCylinder { start: [1., 0.13, 1.5], end: [4., 0.13, 1.5], radius: 0.05 };
+    let positions = room_with(&ScanSpec { density: 9_000., ..Default::default() }, &[(pipe.clone(), TAU)]);
+    let options = ScanSegmentationOptions { voxel_size_metres: 0.02, ..Default::default() };
+    let report = segment_scan_points(&positions, &options).unwrap();
+    assert_finds_exactly(&report, &[pipe]);
+}
+
+#[test]
+fn issue_6870_minimum_radius_defaults_to_two_voxels() {
+    // Review #6878 (3): below two voxels a circumference cannot carry its
+    // curvature (a half-visible r 0.05 pipe came out as r 0.0685).
+    let thin = ExpectedCylinder { start: [1., 2., 1.5], end: [4., 2., 1.5], radius: 0.05 };
+    let half = room_with(&ScanSpec::default(), &[(thin, TAU / 2.)]);
+    let report = segment_scan_points(&half, &ScanSegmentationOptions::default()).unwrap();
+    assert!(report.cylinders.is_empty(), "r 0.05 is under 2 x 3 cm: {:?}", report.cylinders);
+    // Just above the boundary (r 0.07 > 0.06) a pipe is found at the default.
+    let pipe = ExpectedCylinder { start: [1., 2., 1.5], end: [4., 2., 1.5], radius: 0.07 };
+    let report = segment_scan_points(&room_with(&ScanSpec::default(), &[(pipe.clone(), TAU)]), &ScanSegmentationOptions::default()).unwrap();
+    assert_finds_exactly(&report, &[pipe]);
+    // An explicit minimum still applies, and must not undercut the voxel floor silently.
+    let explicit = ScanSegmentationOptions { min_cylinder_radius_metres: Some(0.1), ..Default::default() };
+    assert!(segment_scan_points(&half, &explicit).unwrap().cylinders.is_empty());
+}
+
+#[test]
+fn issue_6870_every_cylinder_refusal_is_counted() {
+    // Review #6878 (1): candidates under the inlier share and failed refits
+    // used to leave the loop without a stat.
+    let (_, report) = scene();
+    let s = &report.stats;
+    let refused = s.cylinder_candidates_below_share + s.cylinder_refits_failed + s.cylinders_rejected_as_spheres
+        + s.cylinders_rejected_for_arc + s.cylinders_rejected_for_length + s.cylinders_rejected_as_duplicates
+        + s.cylinders_rejected_for_radius + s.cylinders_rejected_as_sparse;
+    assert!(s.cylinder_candidates_below_share >= 1, "the whole sphere fits no cylinder: {s:?}");
+    assert!(refused + report.cylinders.len() as u64 >= s.cylinder_groups, "every group ends in a count: {s:?}");
+}
+
+#[test]
+fn issue_6870_one_surface_found_twice_is_reported_once() {
+    // Review #6878 (2). These seeds each produce a second, near-identical
+    // cylinder (a refit of the leftover voxels after the first was accepted)
+    // when duplicate suppression is off.
+    let column = ExpectedCylinder::vertical([0.33, 0.33], 0.3, (0., 2.7));
+    let pipe = ExpectedCylinder { start: [1., 2., 1.5], end: [4., 2., 1.5], radius: 0.08 };
+    let mut suppressed = 0;
+    for (expected, spec) in [
+        (column, ScanSpec { seed: 3, density: 6_000., ..Default::default() }),
+        (pipe, ScanSpec { seed: 1, density: 6_000., noise_sigma: 0.008, ..Default::default() }),
+    ] {
+        let report = segment_scan_points(&room_with(&spec, &[(expected.clone(), TAU)]), &ScanSegmentationOptions::default()).unwrap();
+        assert_finds_exactly(&report, &[expected]);
+        suppressed += report.stats.cylinders_rejected_as_duplicates;
+    }
+    // The second find is refused as a duplicate (or, when it is a loose fit,
+    // as sparse); at least one case needs the duplicate test itself.
+    assert!(suppressed >= 1);
+}
+
+#[test]
+fn issue_6870_noisy_pipes_are_found_across_seeds() {
+    // 1 cm noise on an r 0.1 pipe: the best raw RANSAC draw can fit under 60 %
+    // while its least-squares refit fits nearly all (seed 2 was missed).
+    let pipe = ExpectedCylinder { start: [1., 2., 1.5], end: [4., 2., 1.5], radius: 0.1 };
+    for seed in [1, 2, 3] {
+        let spec = ScanSpec { seed, density: 6_000., noise_sigma: 0.01, ..Default::default() };
+        let report = segment_scan_points(&room_with(&spec, &[(pipe.clone(), TAU)]), &ScanSegmentationOptions::default()).unwrap();
+        assert_finds_exactly(&report, std::slice::from_ref(&pipe));
+    }
 }

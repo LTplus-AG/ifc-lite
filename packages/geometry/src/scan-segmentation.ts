@@ -61,8 +61,8 @@ export interface ScanSegmentationOptions {
   maxPlanes?: number;
   /** Look for cylinders (columns, pipes) among non-planar voxels. Default true. */
   detectCylinders?: boolean;
-  /** Accepted cylinder radius range. Default 0.03..=1.5 m. */
-  minCylinderRadiusMetres?: number;
+  /** Accepted cylinder radius range. The minimum defaults to two voxel edges (null), the maximum to 1.5 m. */
+  minCylinderRadiusMetres?: number | null;
   maxCylinderRadiusMetres?: number;
   /** Share of a group a candidate must fit. Default 0.6. */
   minCylinderInlierFraction?: number;
@@ -144,7 +144,11 @@ export interface ScanSegmentationStats {
   planarVoxels: number;
   cylinderGroups: number;
   cylindersRejectedAsSpheres: number;
-  cylindersRejectedAsCreases: number;
+  cylinderCandidatesBelowShare: number;
+  cylinderRefitsFailed: number;
+  cylindersRejectedForRadius: number;
+  cylindersRejectedAsSparse: number;
+  cylindersRejectedAsDuplicates: number;
   cylindersRejectedForArc: number;
   cylindersRejectedForLength: number;
 }

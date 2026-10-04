@@ -879,26 +879,34 @@ orientation is `canonical`: horizontal planes face up. `region` crops to a box,
 and `origin` is added to every output coordinate. `stats` counts points,
 voxels and the regions grown, merged and refused.
 
-Cylinders (columns, pipes) are sought among the voxels no plane claimed, when
-`detectCylinders` is true (the default). Those voxels form groups connected
-across neighbours whose normals turn by at most 35°. For each group, largest
-first and at most `maxCylinderGroups` (1,024), a seeded RANSAC runs
-`cylinderDraws` (256) draws. Each draw takes two voxels with their normals: the
-axis is `n1 × n2`, and the axis line and radius come from the closest approach
-of the two normal lines. Draws are scored on `cylinderScoreSample` (2,048)
-voxels.
+Cylinders (columns, pipes) are sought among the voxels clear of every plane
+(neither in a plane nor next to one), when `detectCylinders` is true (the
+default). Keeping plane-adjacent voxels out stops the rounded crease along a
+wall/floor junction from passing for a thin pipe, or from chaining a column
+near a wall into one room-sized group. The remaining voxels form groups
+connected across neighbours whose normals turn by at most 35°. For each group,
+largest first and at most `maxCylinderGroups` (1,024), a seeded RANSAC runs
+`cylinderDraws` (256) draws. Each draw takes two voxels whose normals are at
+least 30° from parallel: the axis is `n1 × n2`, and the axis line and radius
+come from the closest approach of the two normal lines. Draws are scored on
+`cylinderScoreSample` (2,048) voxels.
 
-A candidate fitting at least `minCylinderInlierFraction` (0.6) of the group is
-refitted by least squares: the axis is the direction all inlier normals are
-perpendicular to, and the circle across it is fitted algebraically, then by
-Gauss-Newton. The candidate is then refused when:
+The best candidate is refitted by least squares: the axis is the direction all
+inlier normals are perpendicular to, and the circle across it is fitted
+algebraically, then by Gauss-Newton. It is kept only when the refit fits at
+least `minCylinderInlierFraction` (0.6) of the group, and it is refused when:
 - a sphere fits its inliers as well;
-- most inliers touch planar voxels (the rounded crease where a wall meets the
-  floor);
 - they cover less than `minCylinderArcDegrees` (90);
 - they are shorter than `minCylinderLengthMetres` (0.3);
-- the radius falls outside `minCylinderRadiusMetres`..`maxCylinderRadiusMetres`
-  (0.03..1.5).
+- it has fewer inlier voxels than voxel steps along its length (a loose fit
+  through scattered voxels);
+- the radius falls outside `minCylinderRadiusMetres`..`maxCylinderRadiusMetres`.
+  The minimum defaults to two voxel edges (0.06 m at the default voxel; below
+  that a circumference cannot carry its curvature), the maximum to 1.5 m.
+
+Near-identical cylinders (axes within 5°, axis lines within half the larger
+radius, radii within 25 %, overlapping extents) are one surface found twice;
+the better supported one is kept.
 
 Each cylinder reports `axisStart`, `axisEnd`, `axisDirection` (up, unless
 horizontal), `radius`, `length`, `heightRange` along `upAxis`, `arcDegrees`,

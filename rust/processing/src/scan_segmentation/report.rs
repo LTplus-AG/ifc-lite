@@ -128,9 +128,19 @@ pub struct ScanSegmentationStats {
     pub cylinder_groups: u64,
     /// Candidates whose inliers fit a sphere at least as well.
     pub cylinders_rejected_as_spheres: u64,
-    /// Candidates whose inliers mostly touch planar voxels: the rounded crease
-    /// along a plane junction (wall meets floor), not a free-standing cylinder.
-    pub cylinders_rejected_as_creases: u64,
+    /// Groups whose best RANSAC candidate fit under `minCylinderInlierFraction`
+    /// of the group (or no pair defined a candidate at all).
+    pub cylinder_candidates_below_share: u64,
+    /// Candidates whose least-squares refit kept too few inliers or degenerated.
+    pub cylinder_refits_failed: u64,
+    /// Refits outside the radius range.
+    pub cylinders_rejected_for_radius: u64,
+    /// Fits with fewer inlier voxels than voxel steps along their length: a
+    /// loose fit through scattered voxels, not a surface.
+    pub cylinders_rejected_as_sparse: u64,
+    /// The same surface found twice (across groups or tries); the better
+    /// supported one is kept.
+    pub cylinders_rejected_as_duplicates: u64,
     /// Candidates covering less than `minCylinderArcDegrees`.
     pub cylinders_rejected_for_arc: u64,
     /// Candidates shorter than `minCylinderLengthMetres`.

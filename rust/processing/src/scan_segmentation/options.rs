@@ -78,9 +78,12 @@ pub struct ScanSegmentationOptions {
     /// Look for cylinders (columns, pipes) among the non-planar voxels.
     /// Default true.
     pub detect_cylinders: bool,
-    /// Accepted radius range. Default 0.03..=1.5 m. Below about two voxels a
-    /// circumference has too few voxels to carry its curvature.
-    pub min_cylinder_radius_metres: f64,
+    /// Accepted radius range. The minimum defaults to two voxel edges (after
+    /// any coarsening; 0.06 m at the default voxel): below that a
+    /// circumference has too few voxels to carry its curvature and radii come
+    /// out biased (a half-visible r 0.05 m pipe fitted r 0.0685). The maximum
+    /// defaults to 1.5 m.
+    pub min_cylinder_radius_metres: Option<f64>,
     pub max_cylinder_radius_metres: f64,
     /// A group must fit a candidate with at least this share of its voxels.
     /// Default 0.6.
@@ -119,7 +122,7 @@ impl Default for ScanSegmentationOptions {
             region: None,
             max_planes: 10_000,
             detect_cylinders: true,
-            min_cylinder_radius_metres: 0.03,
+            min_cylinder_radius_metres: None,
             max_cylinder_radius_metres: 1.5,
             min_cylinder_inlier_fraction: 0.6,
             min_cylinder_arc_degrees: 90.,
@@ -156,7 +159,8 @@ pub(crate) struct Params {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CylinderParams {
-    pub min_radius: f64,
+    /// None: two voxel edges.
+    pub min_radius: Option<f64>,
     pub max_radius: f64,
     pub min_fraction: f64,
     pub min_arc: f64,
@@ -248,9 +252,8 @@ impl ScanSegmentationOptions {
         if !o.detect_cylinders {
             return Ok(None);
         }
-        if !within(o.min_cylinder_radius_metres, 0.005, 10.)
-            || !within(o.max_cylinder_radius_metres, o.min_cylinder_radius_metres, 10.)
-        {
+        let min = o.min_cylinder_radius_metres.unwrap_or(0.005);
+        if !within(min, 0.005, 10.) || !within(o.max_cylinder_radius_metres, min, 10.) {
             return Err("Scan segmentation option cylinder radii must satisfy 0.005 <= min <= max <= 10 m".into());
         }
         if !above(o.min_cylinder_inlier_fraction, 0., 1.)

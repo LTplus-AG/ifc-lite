@@ -4,9 +4,10 @@
 import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
-import { output, verify } from './native-hosted-prepare.mjs';
+import { root, output, verify } from './native-hosted-prepare.mjs';
+import { prebuiltCommand, prebuiltWitness } from './native-prebuilt.mjs';
 import { execute } from './native-hosted-process.mjs';
-import { schedule, limits, probeResult, freshnessLog, requirePair, phases, median, requireCompletion } from './native-hosted-plan.mjs';
+import { schedule, limits, probeResult, requirePair, phases, median, requireCompletion } from './native-hosted-plan.mjs';
 import { available, quiet } from './sdk-resources.mjs';
 const provenance = JSON.parse(readFileSync(join(output, 'provenance.json'), 'utf8'));
 const report = { status: 'pending', scope: 'native phase attribution; not browser worker-pool or full-output identity', pairs: [] };
@@ -14,7 +15,8 @@ let refusal; const started = Date.now(), controls = new Map();
 const handlers = new Map(['SIGINT', 'SIGTERM'].map(signal => [signal, () => { refusal ??= `received ${signal}`; }]));
 for (const [signal, handler] of handlers) process.on(signal, handler);
 try {
-  if (provenance.status !== 'qualified-native-builds-not-timing' || available() < limits.initialBytes) throw new Error('native qualification/initial reserve refused');
+  if (provenance.status !== 'qualified-native-builds-not-timing' || provenance.runtimeProtocol !== 'native-fd-prebuilt-v1'
+    || available() < limits.initialBytes) throw new Error('native qualification/initial reserve refused');
   for (const [index, item] of schedule().entries()) {
     const pair = { ...item, index, status: 'pending', runs: [] }; report.pairs.push(pair);
     try {
@@ -23,13 +25,18 @@ try {
       const fixture = provenance.fixtures.find(row => row.family === item.family);
       for (const [slot, arm] of item.order.entries()) {
         if (refusal) throw new Error(refusal);
-        const row = await execute(['bash', 'scripts/perf/probe.sh', fixture.file, '--iters', '5', '--json', '--fingerprint'],
-          provenance.directories[arm], join(output, `${index}-${slot}-${arm}`), { sample: true, tools: provenance.tools });
+        const prefix = join(output, `${index}-${slot}-${arm}`), witness = `${prefix}.fd-intent.json`;
+        const row = await execute(prebuiltCommand(root, provenance, arm, fixture.file, witness),
+          provenance.directories[arm], prefix, { sample: true, prebuilt: true,
+            tools: { ...provenance.tools, nativeBinary: provenance.builds[arm].binary } });
         pair.runs.push({ arm, ...row });
         if (row.status !== 'complete') throw new Error(row.reason);
-        freshnessLog(readFileSync(row.paths.stderr, 'utf8'));
+        if (readFileSync(row.paths.stderr, 'utf8') !== '') throw new Error('FD probe diagnostics refused');
         row.result = probeResult(readFileSync(row.paths.stdout, 'utf8'), fixture.file);
-        pair.runs.at(-1).result = row.result;
+        row.fdIntent = await prebuiltWitness(root, provenance, arm, fixture.file, witness, row);
+        provenance.files[witness] = row.fdIntent.sha256;
+        row.fdIntent.path = witness;
+        Object.assign(pair.runs.at(-1), { result: row.result, fdIntent: row.fdIntent });
         await verify(provenance);
       }
       await pause(limits.drainMs); pair.after = await quiet();
@@ -55,7 +62,7 @@ finally {
   catch (error) { report.status = 'refused'; refusal ??= String(error); }
   report.reason = refusal; report.endedUTC = new Date().toISOString();
   writeFileSync(join(output, 'report.json'), JSON.stringify(report, null, 2));
-  writeFileSync(join(output, 'report.md'), `Native attribution: ${report.status}. ${report.reason ?? ''}\n\nCanonical phases are from the best-total iteration. Five raw total/wall times and ordered mesh FNVs are retained per process. No browser or full-output identity claim.\n`);
+  writeFileSync(join(output, 'report.md'), `Native attribution: ${report.status}. ${report.reason ?? ''}\n\nExplicit compile-once/held-FD protocol: original arm probes qualified separately. Canonical phases remain the best-total iteration with five raw totals/walls and ordered mesh FNVs. No Cargo in timed processes; FD intent alone is not execution proof. No browser or full-output identity claim.\n`);
   for (const [signal, handler] of handlers) process.off(signal, handler);
   if (report.status !== 'complete-native-attribution') process.exitCode = 1;
 }

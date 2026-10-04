@@ -13,6 +13,27 @@
 # Add OBS=1 to build with `--features observability` (fills faceted_brep_time_ms).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# Explicit hosted protocol: the literal subject's original default probe is
+# separately qualified. This controller mode never rebuilds or path-execs ELF.
+if [ "${1:-}" = "--prebuilt-tools" ]; then
+  [ "$#" = 2 ] && [[ "$2" = /* ]] || exit 64
+  exec "$2" -I -S -B "$ROOT/scripts/perf/native-prebuilt-launcher.py" tools
+fi
+if [ "${1:-}" = "--prebuilt-validate" ]; then
+  [ "$#" = 4 ] && [[ "$4" = /* ]] || exit 64
+  exec "$4" -I -S -B "$ROOT/scripts/perf/native-prebuilt-launcher.py" validate "$2" "$3"
+fi
+if [ "${1:-}" = "--prebuilt-witness" ]; then
+  [ "$#" = 8 ] && [[ "$8" = /* ]] || exit 64
+  exec "$8" -I -S -B "$ROOT/scripts/perf/native-prebuilt-launcher.py" witness "$2" "$3" "$4" "$5" "$6" "$7"
+fi
+if [ "${1:-}" = "--verified-prebuilt" ]; then
+  [ "$#" = 10 ] && [[ "$5" = /* ]] || exit 64
+  RECEIPT="$2"; RECEIPT_SHA="$3"; WITNESS="$4"; PYTHON_EXECUTABLE="$5"
+  shift 5
+  exec "$PYTHON_EXECUTABLE" -I -S -B "$ROOT/scripts/perf/native-prebuilt-launcher.py" exec "$RECEIPT" "$RECEIPT_SHA" "$WITNESS" "$@"
+fi
 cd "$ROOT"
 [ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
 

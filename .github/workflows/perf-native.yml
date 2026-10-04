@@ -63,11 +63,18 @@ jobs:
       - name: Functional native protocol controls
         env:
           NATIVE_COMPILER_CONTROL_REQUIRED: "1"
-        run: node --test scripts/perf/native-hosted.test.mjs scripts/perf/native-version-probe.test.mjs scripts/perf/native-query-semantics.test.mjs scripts/perf/native-query-cache.test.mjs scripts/perf/native-observation-policy.test.mjs scripts/perf/native-cargo-resolution.test.mjs scripts/perf/native-compiler.test.mjs scripts/perf/sdk-resources.test.mjs
+          NATIVE_FD_CONTROL_REQUIRED: "1"
+        run: node --test scripts/perf/native-hosted.test.mjs scripts/perf/native-version-probe.test.mjs scripts/perf/native-query-semantics.test.mjs scripts/perf/native-query-cache.test.mjs scripts/perf/native-observation-policy.test.mjs scripts/perf/native-cargo-resolution.test.mjs scripts/perf/native-compiler.test.mjs scripts/perf/sdk-resources.test.mjs scripts/perf/native-prebuilt.test.mjs
       - name: Real Cargo-shim sample-startup control before model builds
+        if: ${{ inputs.control_only }}
         env:
           NATIVE_COMPILER_CONTROL_REQUIRED: "1"
         run: node scripts/perf/native-startup-control.mjs
+      - name: Real held-FD normal-cadence startup control before model builds
+        if: ${{ !inputs.control_only }}
+        env:
+          NATIVE_FD_CONTROL_REQUIRED: "1"
+        run: node scripts/perf/native-prebuilt-startup-control.mjs
       - name: Verify fixtures, freeze source/tools and build both fresh native probes serially
         if: ${{ !inputs.control_only }}
         run: node scripts/perf/native-hosted-prepare.mjs build

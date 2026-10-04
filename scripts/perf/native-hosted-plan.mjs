@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { isDeepStrictEqual } from 'node:util';
+import { readFileSync } from 'node:fs';
 import { fixtures, limits } from './sdk-plan.mjs';
 export { limits };
-export const revisions = Object.freeze({ base: '187a72e3302447fc49f2264111501223238a24a7', candidate: '672f1e09c06ce777507244d2f2c4403d7b38c098' });
+export const revisions = Object.freeze(JSON.parse(readFileSync(new URL('./native-prebuilt-policy.json', import.meta.url), 'utf8')).revisions);
 export const families = ['house', 'csg', 'heavy-csg'];
 export const inputs = families.map(family => ({ family, ...fixtures[family] }));
 export const methodPaths = ['scripts/perf/probe.sh', 'rust/processing/examples/perf_probe.rs',

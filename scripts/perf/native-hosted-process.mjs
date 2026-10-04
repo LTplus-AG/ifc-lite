@@ -6,7 +6,7 @@ import { basename, dirname, isAbsolute } from 'node:path';
 import { createWriteStream, readdirSync, readlinkSync } from 'node:fs';
 import { fileHash } from './interleaved-assets.mjs';
 import { processIdentity, finishLog, stopWitnessedProcesses } from './interleaved-cleanup.mjs';
-import { available, ownedSnapshot, processObservation } from './sdk-resources.mjs';
+import { available, ownedSnapshot, processObservation, noBuildGraphs } from './sdk-resources.mjs';
 import { cargoArgs, freshnessException, freshnessPredicates, refreshedCargoWitness, cargoWitnessRefreshPredicates, limits } from './native-hosted-plan.mjs';
 import { nativeFileIdentity, sameNativeFile } from './native-file-identity.mjs';
 import { withPinnedNativeExecutables, hashPinnedNativeExecutable, versionPostOpenBindings, rustcReadOnlyQueryKind, versionProbeAdmission, versionProbePredicates } from './native-version-probe.mjs';
@@ -131,7 +131,8 @@ function graphScan(witnesses, admittedCargo, expected) {
 }
 function observationOptions(options) {
   if (!options || typeof options !== 'object' || Array.isArray(options)
-    || Object.keys(options).some(key => !['sample', 'tools', 'wallMs'].includes(key))) {
+    || Object.keys(options).some(key => !['sample', 'prebuilt', 'tools', 'wallMs'].includes(key))
+    || ('prebuilt' in options && typeof options.prebuilt !== 'boolean')) {
     throw new Error('native observation policy override refused');
   }
   return options;
@@ -147,11 +148,11 @@ export async function executeStartupControl(command, directory, prefix, options 
   return executeImplementation(command, directory, prefix, observationOptions(options),
     { scope: 'startup-control-only', intervalMs: 2 });
 }
-async function executeImplementation(command, directory, prefix, { sample = false, tools, wallMs = 180000 }, observationPolicy) {
+async function executeImplementation(command, directory, prefix, { sample = false, prebuilt = false, tools, wallMs = 180000 }, observationPolicy) {
   const executable = tools && ['bash', 'cargo'].includes(command[0]) ? tools[command[0]] : command[0];
   const paths = { stdout: `${prefix}.stdout`, stderr: `${prefix}.stderr` };
   const logs = Object.values(paths).map(path => createWriteStream(path, { flags: 'wx' }));
-  const row = { status: 'pending', command, executable, directory, paths, observationPolicy, startedUTC: new Date().toISOString(), samples: [], cargoExceptions: [], versionProbeExceptions: [], permissionFallbacks: [], witnessRefreshes: [],
+  const row = { status: 'pending', command, executable, directory, paths, observationPolicy, prebuilt, parentPid: process.pid, startedUTC: new Date().toISOString(), samples: [], cargoExceptions: [], versionProbeExceptions: [], permissionFallbacks: [], witnessRefreshes: [], nativeExecutableObservations: [],
     compilerSelection: tools ? { rustc: tools.rustc, rustdoc: tools.rustdoc, toolchain: tools.toolchain } : undefined };
   const witnesses = new Map(), admittedCargo = new Map(); let child, refusal, monitor, deadline, pipeDeadline, settle, exit, abortCleanup;
   const abort = reason => {
@@ -171,6 +172,7 @@ async function executeImplementation(command, directory, prefix, { sample = fals
     child = spawn(executable, command.slice(1), { cwd: directory, detached: true,
       env: compilerEnvironment({ ...process.env, OBS: '0', CARGO_BUILD_JOBS: '1', CARGO_TERM_COLOR: 'never' }, tools), stdio: ['ignore', 'pipe', 'pipe'] });
     const identity = processIdentity(child.pid); if (!identity) throw new Error('child PID witness absent'); witnesses.set(identity.pid, identity);
+    row.initialProcessWitness = identity;
     let bytes = 0;
     [child.stdout, child.stderr].forEach((stream, index) => {
       stream.on('data', data => { bytes += data.length; if (bytes > 16 * 1024 ** 2) abort('native raw log 16MiB bound'); }); stream.pipe(logs[index], { end: false });
@@ -183,6 +185,22 @@ async function executeImplementation(command, directory, prefix, { sample = fals
         row.samples.push({ at: snapshot.at, bytes: snapshot.bytes });
         if (snapshot.bytes > limits.rssBytes || available() < limits.liveBytes) throw new Error('native ownedRSS/live reserve refused');
         if (sample) {
+          if (prebuilt) {
+            // No Cargo/build/query exception in the FD-only timed protocol.
+            const scan = noBuildGraphs();
+            for (const item of scan.permissionFallbacks) if (!row.permissionFallbacks.some(prior => prior.pid === item.pid)) {
+              if (row.permissionFallbacks.length >= 4096) throw new Error('native process observation evidence bound');
+              row.permissionFallbacks.push(item);
+            }
+            let actual;
+            try { actual = liveRecord(child.pid); }
+            catch (error) { if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error; }
+            if (actual?.executable === tools?.nativeBinary && row.nativeExecutableObservations.length === 0) {
+              if (actual.startTime !== identity.startTime || actual.pgrp !== identity.pgrp || actual.cwd !== directory) throw new Error('observed native PID/start/group/cwd changed');
+              row.nativeExecutableObservations.push({ ...actual, scope: 'optional sampled /proc observation; no claim if short program unobserved' });
+            }
+            return;
+          }
           const scan = graphScan(witnesses, admittedCargo, { ...tools, directory, group: child.pid });
           for (const [key, rows] of [['cargoExceptions', scan.exceptions], ['versionProbeExceptions', scan.versionProbeExceptions], ['permissionFallbacks', scan.permissionFallbacks], ['witnessRefreshes', scan.witnessRefreshes]]) {
             for (const item of rows) if (!row[key].some(prior => prior.pid === item.pid && prior.startTime === item.startTime)) {

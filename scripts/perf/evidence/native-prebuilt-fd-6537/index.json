@@ -1,0 +1,75 @@
+{
+  "scope": "local real ELF/kernel FD/control seams only; canonical IFC and hosted timing UNRUN",
+  "ancestor": "59736eab701d20cccaf070ed09668552427b1d1f",
+  "finalLauncherSHA256": "5e1735b43bdff16fab601a5cb4ff6aa7d81ff5eda8fcb9776d390319a8adbca0",
+  "firstNormal": {
+    "registered": 49,
+    "pass": 48,
+    "fail": 1,
+    "skip": 0,
+    "cause": "actual consumed empty Python modules rejected before ELF"
+  },
+  "intermediateNormal": {
+    "registered": 49,
+    "pass": 49,
+    "fail": 0,
+    "skip": 0,
+    "scope": "superseded broad-empty correction"
+  },
+  "finalFDNormal": {
+    "registered": 1,
+    "pass": 1,
+    "fail": 0,
+    "skip": 0,
+    "scope": "strict default/closure-only empty opt-in"
+  },
+  "inverses": {
+    "pathExecution": "real replacement ELF assertion",
+    "digestBypass": "real invalid-SHA receipt assertion",
+    "byteExactRestore": true
+  },
+  "restoration": {
+    "registered": 1,
+    "pass": 1,
+    "fail": 0,
+    "skip": 0
+  },
+  "startup": {
+    "status": "qualified-real-FD-startup-only",
+    "intervalMs": 250,
+    "pid": 59454,
+    "startTime": "20844163",
+    "pgrp": 59454,
+    "dev": "2128",
+    "ino": "20477502",
+    "exit": 0,
+    "compilerExceptions": 0,
+    "cleanup": "complete",
+    "drains": "complete",
+    "ownedTempRemoved": true
+  },
+  "optionalNativeProcSamples": 0,
+  "sourceGates": "syntax/lint/module/wiring/license/diff/source-text PASS; first missing-TypeScript refusal retained with authorized AST-only dependency symlink",
+  "lint": {
+    "files": 7,
+    "rules": 136,
+    "warnings": 0,
+    "errors": 0
+  },
+  "priorHostedRefusal": {
+    "run": 37175610695,
+    "scope": "query exited before live FD observation,0pairs/beforebuilds",
+    "originalPacket": "/tmp/6232-takeover/6537-native-cargo-query-hosted-remote-v1",
+    "publicSource": "https://github.com/LTplus-AG/ifc-lite/pull/6791"
+  },
+  "safeReaderReusedSHA256": "7a97a8ea20c873416e5d9553afe3119c22b87c053fd5b0cb155063a934530ce2",
+  "rawManifest": "manifest.json",
+  "archive": "receipts.tar.gz",
+  "limits": [
+    "no model/binary/package payload",
+    "preexec intent alone is not execution proof",
+    "no all-appearance or worker-pool identity",
+    "no adversarial same-inode-content/machine immutability",
+    "no accepted timing/speed claim"
+  ]
+}

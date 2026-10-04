@@ -2957,3 +2957,19 @@ the same canonical probe entrypoint as its sample. [The compiler-query packet](e
 retains semantic/inverse controls, observation refusals and the final successful
 target-query witness. This qualifies local guard correctness only; the corrected
 hosted model cohort and performance benefit remain unqualified.
+
+### Native held-file execution boundary (#6537)
+
+The subsequent hosted target query exited between its initial observation and
+live-file pinning, so the strict controller correctly refused before builds.
+Local admission success cannot guarantee that a short read-only Cargo child is
+observable on another host. Preserve that refusal rather than extending the
+child's lifetime or relaxing provenance checks.
+
+An explicit compile-once controller now separates original-arm probe
+qualification from paired execution of a verified held ELF file. Independent
+ELF/path-replacement controls, surgical inverse failures and normal-cadence
+startup qualify the local FD/control seam. [The retained packet](evidence/native-prebuilt-fd-6537/README.md)
+does not qualify canonical model commands, hosted timings, complete appearance,
+or a worker-pool benefit. The lesson is to bind the selected execution object
+without making timed execution depend on catching a fleeting compiler query.

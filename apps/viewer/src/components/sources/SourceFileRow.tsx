@@ -7,10 +7,13 @@ import type { DownloadedSourceFileStatus } from '@/lib/sources/persistence';
 import type { SourceDownloadState } from '@/lib/sources/downloadProgress';
 import { FileBox, Star } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+import { SourceResourceDetails } from './SourceResourceDetails';
+import type { ComponentProps } from 'react';
 import { SourceDownloadStatus, SourceSyncIcon } from './SourceDownloadStatus';
 
 interface SourceFileRowProps {
   file: SourceFile;
+  details?: Omit<ComponentProps<typeof SourceResourceDetails>, 'file'>;
   selected: boolean;
   onToggle: () => void;
   loadedModelNames: readonly string[];
@@ -27,6 +30,7 @@ interface SourceFileRowProps {
 
 export function SourceFileRow({
   file,
+  details,
   selected,
   onToggle,
   loadedModelNames,
@@ -53,6 +57,7 @@ export function SourceFileRow({
           type="checkbox"
           className="mt-0.5 shrink-0"
           checked={selected}
+          disabled={Boolean(file.unavailableReason)}
           onChange={onToggle}
           aria-label={
             selected
@@ -64,6 +69,7 @@ export function SourceFileRow({
           type="button"
           className="flex min-w-0 flex-1 items-start gap-2 text-left"
           onClick={onToggle}
+          disabled={Boolean(file.unavailableReason)}
         >
           <FileBox
             className={`mt-0.5 h-4 w-4 shrink-0 ${
@@ -72,6 +78,7 @@ export function SourceFileRow({
           />
           <span className="min-w-0 flex-1">
             <span className="block min-w-0 flex-1 truncate">{file.name}</span>
+            {file.unavailableReason && <span className="block text-xs text-muted-foreground">{file.unavailableReason}</span>}
             <span
               className={`mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs ${
                 isUpdateAvailable ? 'text-orange-500/90 dark:text-orange-300' : 'text-muted-foreground'
@@ -120,7 +127,7 @@ export function SourceFileRow({
               type="button"
               className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
               aria-label={t('sources.sourceFileRow.syncAria', { name: file.name })}
-              disabled={syncingFile}
+              disabled={syncingFile || Boolean(file.unavailableReason)}
               onClick={onSyncLoadedFile}
             >
               <SourceSyncIcon name={file.name} syncing={syncingFile} state={syncState} />
@@ -128,6 +135,7 @@ export function SourceFileRow({
           </span>
         )}
       </div>
+      {details && <SourceResourceDetails {...details} file={file} />}
     </li>
   );
 }

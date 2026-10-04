@@ -186,3 +186,11 @@ tilted, and box sections cannot be used for this edit. A source model that was
 reprojected into another CRS is also refused.
 Spaces carrying `ElevationWithFlooring` allow ceiling edits, but refuse floor
 moves until the building elevation frame can be resolved.
+
+## Autodesk cloud sources
+
+Open **Cloud sources** from Coordinate mode and select **Autodesk Forma / Data Exchange**. The viewer administrator configures either a public APS application ID for static sign-in or a same-origin hosted session service. Hosted mode keeps Autodesk tokens on the server. Static mode keeps tokens in memory and requires sign-in after a reload. A cancelled sign-in cannot complete the pending transaction.
+
+Browse account projects and choose **Forma Data Management files** or **Data Exchanges**. For Forma Site Design, paste a Forma site link in the project entry. IFC, IFCX/IFC5 and GLB files download through the normal loader, pinned to the listed revision. Unsupported resources show an explanation. **Cancel download** stops the active batch; completed models remain loaded.
+
+The hosted service includes a Rust Forma proposal importer and a Windows Autodesk SDK Data Exchange exporter. Enable them with absolute executable paths in the service configuration. The details panel offers file/proposal version selection; whole-exchange IFC export supports the current version only. Generated resources remain disabled when their native importer is not configured. Configuration, deployment limits, current capabilities and the live-account verification checklist are in [Autodesk source setup](../../packages/source-autodesk/README.md) and [the session service guide](../../apps/autodesk-service/README.md).

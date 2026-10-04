@@ -60,6 +60,8 @@
         "index.html"
       ],
       "env": [
+        "VITE_AUTODESK_CLIENT_ID",
+        "VITE_AUTODESK_HOSTED",
         "VITE_SERVER_URL",
         "VITE_IFC_SERVER_URL",
         "VITE_USE_SERVER",

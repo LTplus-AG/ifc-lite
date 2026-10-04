@@ -29,7 +29,9 @@ import { getPointCloudScanSample } from './ingest/pointCloudScanCache.js';
 import { getGlobalRenderer } from './useBCF';
 import { displayedTranslation } from '@/lib/model-placement/state';
 import { toRenderTranslation } from '@/lib/model-placement/translation';
+import { ensureScanOutlineWasm, traceScanOutlineLayer, type ScanOutlineLayer } from '@/lib/scan-outline/scan-outline';
 import {
+  collectScanBandPlaneXY,
   selectScanBand,
   mergeScanBandSelections,
   resolveScanSectionPosition,
@@ -60,9 +62,13 @@ export interface UseScanSectionLayerParams {
   /** Legacy (no-federation) point clouds — `geometryResult.pointClouds`. */
   legacyPointClouds: readonly PointCloudAsset[] | undefined;
   maxRendered?: number;
+  /** Vector outline (#6871): trace the undecimated slab when enabled. */
+  outline?: { enabled: boolean; maxGap: number };
 }
 
 export interface UseScanSectionLayerResult extends ScanBandSelection {
+  /** Traced rings of the slab, `null` while disabled, pending or failed. */
+  outline: ScanOutlineLayer | null;
   /**
    * True when at least one point-cloud source is currently loaded/visible —
    * independent of `enabled`/`showScanSection`, so the panel can still say
@@ -172,9 +178,14 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
     enabled, sectionPlane, coordinateInfo, thickness, classMask,
     models, legacyPointClouds, maxRendered = DEFAULT_SCAN_RENDER_CAP,
   } = params;
+  const outlineEnabled = enabled && params.outline?.enabled === true;
+  const outlineMaxGap = params.outline?.maxGap ?? 0;
 
   const [selection, setSelection] = useState<ScanBandSelection>(EMPTY_SELECTION);
+  const [outline, setOutline] = useState<ScanOutlineLayer | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest outline request; an older trace that resolves late is dropped.
+  const outlineRequestRef = useRef(0);
   // Which matrix each streamed asset is currently drawn through (#1804).
   // Flipping the toggle must move the 2D overlay with the 3D view, so this
   // is a real dependency of the recompute below, not a one-shot read.
@@ -207,18 +218,29 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
 
+    const request = ++outlineRequestRef.current;
     if (!enabled) {
       setSelection(EMPTY_SELECTION);
+      setOutline(null);
       return;
     }
+    if (!outlineEnabled) setOutline(null);
 
     timerRef.current = setTimeout(() => {
       const sources = collectScanSources(models, legacyPointClouds);
       if (sources.length === 0) {
         setSelection(EMPTY_SELECTION);
+        setOutline(null);
         return;
       }
       const plane = toScanSectionPlane(sectionPlane, coordinateInfo);
+      if (outlineEnabled) {
+        traceOutline(sources.map((sample) => collectScanBandPlaneXY({
+          sample, coordinateInfo, plane, thickness, classMask,
+          model: sample.model,
+          modelOutputsRenderFrame: sample.modelOutputsRenderFrame,
+        })), outlineMaxGap, () => request === outlineRequestRef.current, setOutline);
+      }
       const selections = sources.map((sample) => selectScanBand({
         sample, coordinateInfo, plane, thickness, classMask, maxRendered,
         model: sample.model,
@@ -247,12 +269,42 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
     maxRendered,
     alignmentEnabled,
     placementRevision,
+    outlineEnabled,
+    outlineMaxGap,
   ]);
 
   // Stable result identity: consumers put this object in dependency arrays
   // (`useDrawingExport`'s SVG memos), so a fresh spread per render would
   // re-create those callbacks on every unrelated parent render.
-  return useMemo(() => ({ ...selection, hasPointCloud }), [selection, hasPointCloud]);
+  return useMemo(() => ({ ...selection, hasPointCloud, outline }), [selection, hasPointCloud, outline]);
+}
+
+/**
+ * Concatenate the sources' slab points and trace them once the wasm module is
+ * up, delivering the rings only while `current()` still holds. A failed trace
+ * is logged and clears the layer rather than leaving stale rings on screen.
+ */
+function traceOutline(
+  parts: Float32Array[],
+  maxGap: number,
+  current: () => boolean,
+  deliver: (layer: ScanOutlineLayer | null) => void,
+): void {
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const planeXY = new Float32Array(total);
+  let at = 0;
+  for (const p of parts) {
+    planeXY.set(p, at);
+    at += p.length;
+  }
+  ensureScanOutlineWasm()
+    .then(() => {
+      if (current()) deliver(traceScanOutlineLayer(planeXY, maxGap));
+    })
+    .catch((error: unknown) => {
+      console.error('[scan outline] trace failed', error);
+      if (current()) deliver(null);
+    });
 }
 
 export default useScanSectionLayer;

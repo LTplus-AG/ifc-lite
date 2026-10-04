@@ -220,6 +220,8 @@ function coalesceDisplayOptions(
     scanSectionThickness: num('scanSectionThickness'),
     scanSectionOpacity: num('scanSectionOpacity'),
     scanSectionIncludeInExport: bool('scanSectionIncludeInExport'),
+    scanSectionOutline: bool('scanSectionOutline'),
+    scanSectionOutlineMaxGap: num('scanSectionOutlineMaxGap'),
     showPrintPreview: bool('showPrintPreview'),
   };
 }

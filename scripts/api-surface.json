@@ -5329,6 +5329,7 @@
     "DEFAULT_TITLE_BLOCK_FIELDS: const",
     "DXFExportOptions: interface",
     "DXFExporter: class",
+    "DXFPolylineLayer: interface",
     "DXFUnderlayOptions: interface",
     "DashPattern: interface",
     "DoorOperationType: type",

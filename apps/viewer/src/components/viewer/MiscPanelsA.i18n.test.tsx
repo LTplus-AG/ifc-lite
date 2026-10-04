@@ -303,6 +303,31 @@ describe('ScanSectionPanel localization (#4918)', () => {
   });
 });
 
+describe('ScanSectionPanel vector outline localization (#6871)', () => {
+  it('translates the outline toggle, bridge slider and tracing status', () => {
+    useViewerStore.getState().updateDrawing2DDisplayOptions({
+      showScanSection: true, scanSectionOutline: true, scanSectionOutlineMaxGap: 0.3,
+    });
+    const container = render(
+      <ScanSectionPanel hasPointCloud totalInBand={10} renderedCount={10} outline={null} />,
+    );
+    const englishDom = readableStrings(container);
+    const afterDom = domAfterPseudo(container);
+    assertAllTranslate(
+      [
+        { key: 'scanSectionPanel.outlineLabel' },
+        { key: 'scanSectionPanel.outlineTitle' },
+        { key: 'scanSectionPanel.outlineMaxGapLabel', params: { value: '300 mm' } },
+        { key: 'scanSectionPanel.outlineMaxGapTitle' },
+        { key: 'scanSectionPanel.outlineTracingMessage' },
+      ],
+      englishDom,
+      afterDom,
+    );
+    useViewerStore.getState().updateDrawing2DDisplayOptions({ scanSectionOutline: false });
+  });
+});
+
 describe('SpaceMousePanel localization (#4918, #5509)', () => {
   it('translates the no-WebHID-support message', () => {
     useViewerStore.setState({ spaceMouseSupported: false });

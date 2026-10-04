@@ -140,6 +140,18 @@ export const miscPanelsAEn = {
     'A scan is loaded but the overlay is hidden — enable "Show scan points" above.',
   'scanSectionPanel.showingAllMessage': 'Showing all {total} points in band.',
   'scanSectionPanel.showingPartialMessage': 'Showing {rendered} of {total} points in band (decimated for display).',
+  'scanSectionPanel.outlineLabel': 'Vector outline',
+  'scanSectionPanel.outlineTitle':
+    'Trace closed outlines from every point in the band; drawn as lines and exported to DXF on the SCAN-OUTLINE layer',
+  'scanSectionPanel.outlineMaxGapLabel': 'Bridge gaps up to: {value}',
+  'scanSectionPanel.outlineMaxGapTitle':
+    'Gaps in the scan narrower than this are closed, about one wall thickness; wider openings such as doors stay open',
+  'scanSectionPanel.outlineTracingMessage': 'Tracing the outline…',
+  'scanSectionPanel.outlineSummary': {
+    one: '{count} outline ring, traced on {cell} cells.',
+    other: '{count} outline rings, traced on {cell} cells.',
+  },
+  'scanSectionPanel.outlineCapHitMessage': 'The scan is too large for the cell budget, so the outline uses coarser cells.',
 
   // SpaceMousePanel — the Navigation section's own heading comes from
   // `settings.display.spaceMouseTitle` (Settings → Display, #5857), so no

@@ -43,6 +43,7 @@ import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMat
 import { computeSvgExportViewport, svgExportMmToWorld } from '@/hooks/svgExportViewport';
 import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
 import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
+import { scanOutlineDxfLayers, type ScanOutlineLayer } from '@/lib/scan-outline/scan-outline';
 
 function tryDrawingSvg(generate: () => string | null): string | null {
   try { return generate(); }
@@ -241,8 +242,8 @@ interface UseDrawingExportParams {
   ifcDataStore: IfcDataStore | null;
   /** Geometry coordinate info (RTC offset + origin shift), for the DXF world-coordinate re-derivation (issue #1861). */
   coordinateInfo: GeometryResult['coordinateInfo'] | undefined;
-  /** Point-cloud scan overlay, already in drawing space (issue #1805) */
-  scanSection: { points: readonly ScanBandPoint[] };
+  /** Point-cloud scan overlay, already in drawing space (issue #1805), and its traced outline (#6871) */
+  scanSection: { points: readonly ScanBandPoint[]; outline?: ScanOutlineLayer | null };
   /** Pin View state, shared with the preview canvas. While pinned the sheet
    *  placement is HELD across a regenerate; print/export must honour the same
    *  held placement or it silently prints a different layout from the one on
@@ -951,6 +952,9 @@ function useDrawingExport({
       coordinateTransform,
       metadataComment,
       underlays: mappedDxfUnderlayOptions(dxfUnderlays, sectionPlane.axis),
+      // The traced scan outline (#6871) on its own layer, through the same
+      // georeference transform as the cut.
+      polylineLayers: displayOptions.showScanSection ? scanOutlineDxfLayers(scanSection.outline) : [],
     });
     const stem = `section-${sectionPlane.axis}-${sectionPlane.position}`;
     downloadDxf(dxf, `${stem}.dxf`);
@@ -961,8 +965,8 @@ function useDrawingExport({
       georeferenced: isGeoreferenced,
     });
   }, [
-    drawing, dxfUnderlays, displayOptions.showHiddenLines, sectionPlane, ifcDataStore, coordinateInfo,
-    storeModels, anchorModelIdOverride, georefMutations, mutationVersion,
+    drawing, dxfUnderlays, displayOptions.showHiddenLines, displayOptions.showScanSection, scanSection.outline,
+    sectionPlane, ifcDataStore, coordinateInfo, storeModels, anchorModelIdOverride, georefMutations, mutationVersion,
   ]);
   // Export scaled PDF (issue #2042): a true-vector PDF sized so the
   // requested scale ("1:N") is EXACT — the page itself is sized to the

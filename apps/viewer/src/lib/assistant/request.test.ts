@@ -75,3 +75,26 @@ test('provider errors and cancellation never accumulate failed prompts in histor
   assert.equal(await pending, false);
   assert.equal(useAssistant.getState().messages.length, 0);
 });
+
+// #6822: authoring metadata is derived locally and never exposes omitted parameter values.
+test('Flow requests include bounded native contracts while existing parameter values stay outside the prompt', async () => {
+  const { newFlowDocument } = await import('../flow/persistence');
+  const doc = { ...newFlowDocument('Prompt contract test'), nodes: [{ id: 'private', type: 'core.string', params: { value: 'SECRET_EXCLUDED_FROZEN_VALUE' } }] };
+  useViewerStore.setState({ flowDoc: doc, activeFlowId: doc.id, flowRunning: false });
+  replaceEvidence(captureEvidence('flow'));
+  let system = '';
+  globalThis.fetch = async (_url, init) => {
+    const payload = JSON.parse(String(init?.body));
+    system = typeof payload.system === 'string' ? payload.system : payload.system.map((block: { text: string }) => block.text).join('\n');
+    assert.ok(payload.messages.every((message: object) => !Object.hasOwn(message, 'model')));
+    return new Response('data: {"choices":[{"delta":{"content":"Draft remains inert"}}]}\n\n');
+  };
+  assert.equal(await sendAssistant('Draft a Flow patch', model, '/api/chat'), true);
+  assert.match(system, /"kind":"flow.patch"/);
+  assert.match(system, /core.string/);
+  assert.match(system, /"name":"value","kind":"string"/);
+  assert.equal(system.includes('SECRET_EXCLUDED_FROZEN_VALUE'), false);
+  assert.ok(system.length < 90_000);
+  assert.equal(useViewerStore.getState().flowDoc, doc);
+  assert.equal(useViewerStore.getState().flowLastRun, initial.flowLastRun);
+});

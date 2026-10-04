@@ -38,10 +38,16 @@ test('native clash evidence reaches the assistant without executing model output
     const state = store.getState();
     return state.clashResult !== null && !state.clashRunning;
   }), { timeout: 120_000 }).toBe(true);
-  let outbound: { system: string; maxOutputTokens: number } | undefined;
+  type Outbound = { system: string | Array<{ text: string }>; maxOutputTokens: number };
+  let outbound: Outbound | undefined;
   await page.route('**/api/chat', async route => {
-    outbound = route.request().postDataJSON() as { system: string; maxOutputTokens: number };
-    const content = '<script>globalThis.assistantExecuted = true</script> Review native duplicate settings.';
+    outbound = route.request().postDataJSON() as Outbound;
+    const request = route.request().postDataJSON() as { messages: Array<{ content: string }> };
+    const flowDraft = request.messages.at(-1)?.content.includes('Draft a Flow patch');
+    const content = flowDraft ? JSON.stringify({ version: 1, kind: 'flow.patch', operations: [
+      { op: 'addNode', alias: 'wall-query', type: 'model.byType', pos: [0, 0] },
+      { op: 'setParam', node: 'wall-query', param: 'type', value: 'IfcWall' },
+    ] }) : '<script>globalThis.assistantExecuted = true</script> Review native duplicate settings.';
     await route.fulfill({ contentType: 'text/event-stream', body:
       `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: [DONE]\n\n` });
   });
@@ -56,8 +62,38 @@ test('native clash evidence reaches the assistant without executing model output
   await assistant.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(assistant).toContainText('<script>globalThis.assistantExecuted = true</script>');
   expect(outbound?.maxOutputTokens).toBe(4096);
-  expect(outbound?.system).toContain('AC20-FZK-Haus');
-  expect(outbound?.system).toContain('Frozen native evidence');
+  const system = typeof outbound?.system === 'string' ? outbound.system : outbound?.system.map(block => block.text).join('\n');
+  expect(system).toContain('AC20-FZK-Haus');
+  expect(system).toContain('Frozen native evidence');
   expect(await page.evaluate(() => 'assistantExecuted' in globalThis)).toBe(false);
   await page.screenshot({ path: testInfo.outputPath('assistant-context.png') });
+
+  // #6822: real native Flow toolbar -> draft -> reviewed graph effect, still no Run.
+  await page.evaluate(() => {
+    const store = (globalThis as unknown as { __ifc_lite_viewer_store__: {
+      getState(): { createFlow(name: string): string | null; openPanelInHome(panel: 'flow'): void };
+    } }).__ifc_lite_viewer_store__;
+    if (!store.getState().createFlow('AI coordination workflow')) throw new Error('Native Flow creation refused');
+    store.getState().openPanelInHome('flow');
+  });
+  await page.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  await assistant.getByLabel('Ask about these results').fill('Draft a Flow patch to select IfcWall elements.');
+  await assistant.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(assistant).toContainText('wall-query');
+  await assistant.getByText('Review Flow changes', { exact: true }).click();
+  await assistant.getByRole('button', { name: 'Review latest Flow answer', exact: true }).click();
+  await expect(assistant).toContainText('Additional graph capabilities: model.read');
+  const apply = assistant.getByRole('button', { name: 'Apply graph changes', exact: true });
+  await expect(apply).toBeDisabled();
+  await assistant.getByRole('checkbox', { name: 'I reviewed the graph changes, tracking effects and additional capabilities.', exact: true }).check();
+  await apply.click();
+  await expect(assistant).toContainText('No graph execution or model edits were performed');
+  expect(await page.evaluate(() => {
+    const state = (globalThis as unknown as { __ifc_lite_viewer_store__: { getState(): {
+      flowDoc: { nodes: Array<{ type: string; params?: { type?: string } }> }; flowLastRun: unknown;
+    } } }).__ifc_lite_viewer_store__.getState();
+    return { nodes: state.flowDoc.nodes, lastRun: state.flowLastRun };
+  })).toEqual({ nodes: [{ id: 'byType-1', type: 'model.byType', pos: [0, 0], params: { type: 'IfcWall' } }], lastRun: null });
+  await page.screenshot({ path: testInfo.outputPath('assistant-flow.png') });
+  await assistant.getByRole('button', { name: 'Undo graph changes', exact: true }).click();
 });

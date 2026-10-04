@@ -12,6 +12,21 @@ import type { TranslationValue } from '../types';
  * `chat-byok.en.ts`, under the `chatByok.*` namespace.
  */
 export const chatEn = {
+  'assistant.flowReview': 'Review Flow changes',
+  'assistant.flowDraftHint': 'Ask for a Flow patch, then review the complete answer. Applying edits the graph only; run it separately in Flow.',
+  'assistant.reviewFlowAnswer': 'Review latest Flow answer',
+  'assistant.flowTarget': 'Target graph: {name} ({id})',
+  'assistant.flowEvidence': 'Evidence captured {capturedAt} across {count} models.',
+  'assistant.flowGrants': 'Additional graph capabilities: {capabilities}',
+  'assistant.none': 'None',
+  'assistant.flowTrackingWarning': 'Tracking changes or node deletion may change ownership or remove tracked elements on a future Run. Inspect the graph before applying.',
+  'assistant.flowProposalStale': 'Graph or evidence changed. This proposal cannot be applied.',
+  'assistant.flowBefore': 'Graph before changes',
+  'assistant.flowAfter': 'Graph after changes',
+  'assistant.flowApproved': 'I reviewed the graph changes, tracking effects and additional capabilities.',
+  'assistant.applyFlow': 'Apply graph changes',
+  'assistant.flowApplied': 'Graph changes applied. No graph execution or model edits were performed. Save the graph in Flow to keep it after reload.',
+  'assistant.undoFlow': 'Undo graph changes',
   'assistant.title': 'Assistant',
   'assistant.explain': 'Discuss with AI',
   'assistant.keys': 'API keys',

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { lazy, Suspense } from 'react';
 import { ConversationLibrary } from './ConversationLibrary';
 import { useState } from 'react';
 import { Key, RefreshCw, Send, Square } from 'lucide-react';
@@ -16,6 +17,8 @@ import { ByokKeyModal } from '../chat/ByokKeyModal';
 import { useAssistant, cancelAssistant, replaceEvidence } from '@/lib/assistant/conversation';
 import { captureEvidence, sourceIdentity } from '@/lib/assistant/evidence';
 import { sendAssistant } from '@/lib/assistant/request';
+
+const FlowProposalReview = lazy(() => import('./FlowProposalReview').then(m => ({ default: m.FlowProposalReview })));
 
 export function AssistantPanel() {
   const { t } = useTranslation();
@@ -41,10 +44,11 @@ export function AssistantPanel() {
     });
   };
   return <section className="h-full min-h-0 flex flex-col bg-background text-foreground" aria-label={t('assistant.title')}>
-    <div className="flex items-center gap-2 border-b border-border p-3">
+    <div className="shrink-0 flex items-center gap-2 border-b border-border p-3">
       <h2 className="text-sm font-semibold">{t('assistant.title')}</h2>
       <div className="ml-auto"><IconButton label={t('assistant.keys')} onClick={() => setKeysOpen(true)}><Key className="h-4 w-4" /></IconButton></div>
     </div>
+    <div className="flex-1 min-h-0 overflow-auto">
     <div className="p-3 border-b border-border space-y-2">
       <ModelSelector />
       {evidence ? <>
@@ -61,7 +65,8 @@ export function AssistantPanel() {
       </> : <p className="text-xs text-muted-foreground">{t('assistant.empty')}</p>}
     </div>
     <ConversationLibrary />
-    <div className="flex-1 min-h-0 overflow-auto p-3 space-y-3" aria-live="polite">
+    {evidence?.source === 'flow' && <Suspense fallback={null}><FlowProposalReview /></Suspense>}
+    <div className="p-3 space-y-3" aria-live="polite">
       {state.messages.map((message, i) => <div key={i} className="text-xs whitespace-pre-wrap break-words">
         <p className="font-semibold mb-1">{message.role === 'user' ? t('assistant.you') : `${t('assistant.title')} · ${message.model ?? ''}`}</p>
         {typeof message.content === 'string' ? message.content : null}
@@ -70,7 +75,8 @@ export function AssistantPanel() {
       {state.output && <p className="text-xs whitespace-pre-wrap break-words">{state.output}</p>}
       {state.error && <p role="alert" className="text-xs text-destructive">{errorText}</p>}
     </div>
-    <form className="p-3 border-t border-border space-y-2" onSubmit={event => { event.preventDefault(); submit(); }}>
+    </div>
+    <form className="shrink-0 p-3 border-t border-border space-y-2" onSubmit={event => { event.preventDefault(); submit(); }}>
       <label className="text-xs" htmlFor="assistant-prompt">{t('assistant.prompt')}</label>
       <textarea id="assistant-prompt" className="w-full rounded border border-input bg-background p-2 text-xs" rows={3}
         value={prompt} maxLength={8000} disabled={!state.snapshot || busy || stale} onChange={event => setPrompt(event.target.value)} />

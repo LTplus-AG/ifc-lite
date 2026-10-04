@@ -61,6 +61,15 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     onError: error => { if (ownsRequest()) useAssistant.setState({ error: error.message, pendingPrompt: null, output: '', status: 'error', controller: null }); },
   };
   try {
+    if (state.snapshot.source === 'flow') {
+      const { flowPatchGuidance } = await import('./flow-guidance');
+      if (!ownsRequest()) return false;
+      const system = `${options.system ?? ''}\n${flowPatchGuidance()}`;
+      options.system = system;
+      if (JSON.stringify(messages).length + system.length > 90_000) {
+        options.onError(new Error('context-limit')); return false;
+      }
+    }
     if (route.kind === 'proxy') await streamChat(options);
     else if (route.kind === 'anthropic') await streamAnthropicChat(route.credentials, options);
     else await streamOpenAiChat(route.apiKey, options);

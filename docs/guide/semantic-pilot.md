@@ -25,6 +25,21 @@ URL, hostname and authorized provider ID; see [headless providers](semantic-head
 Browser requests require endpoint CORS. Run/cancel bounds transport and worker
 jobs; late data from a changed model session is refused.
 
+For a local GraphDB/Virtuoso endpoint, enter a literal loopback HTTP URL such
+as `http://localhost:7200/repositories/my-repository` or
+`http://127.0.0.1:8890/sparql`. Enter its exact hostname, then explicitly check
+**Allow local HTTP requests to** the displayed origin. The grant includes the
+port. Literal `localhost`, `127.0.0.1` and `[::1]` qualify; alternate IP spellings,
+DNS aliases, private-network addresses and wildcard grants do not.
+
+This grant lives only in the current panel session. Unchecking it, changing the
+source or host, choosing a preset, or restoring/importing a workspace cancels
+pending retrievals and clears the grant. A saved workspace may retain the local
+endpoint as inert configuration, but it cannot authorize a request. Browser
+CORS and local-network permissions still apply; this application grant does not
+bypass them. A relay's loopback address refers to the relay host, while direct
+browser loopback refers to the browser's machine. Remote HTTP remains denied.
+
 Binding mapping names identify the resource URI, GlobalId and revision columns.
 Duplicate GlobalIds show all candidates; choose a candidate explicitly or
 associate a revision with its loaded model. Saved workspaces preserve records,

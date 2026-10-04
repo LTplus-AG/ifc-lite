@@ -20,11 +20,11 @@ export async function semanticServe(options: ReadonlyMap<string, string>): Promi
   for (const [id, provider] of Object.entries(config.providers)) {
     if (!provider || typeof provider !== 'object' || typeof provider.endpoint !== 'string' || typeof provider.grantedHost !== 'string'
       || (provider.kind !== 'json' && provider.kind !== 'sparql')) throw new Error('Invalid relay provider');
-    if (Object.keys(provider).some(key => !['endpoint', 'grantedHost', 'kind', 'bearerEnv'].includes(key))) throw new Error('Only credential environment references may appear in provider configuration');
+    if (Object.keys(provider).some(key => !['endpoint', 'grantedHost', 'kind', 'bearerEnv', 'loopbackHttpOrigin'].includes(key))) throw new Error('Only credential environment references may appear in provider configuration');
     const env = provider.bearerEnv;
     if (env !== undefined) environment(env);
     Object.defineProperty(providers, id, { enumerable: true, value: { endpoint: provider.endpoint, grantedHost: provider.grantedHost,
-      kind: provider.kind, bearerToken: env ? () => environment(env) : undefined } });
+      kind: provider.kind, loopbackHttpOrigin: provider.loopbackHttpOrigin, bearerToken: env ? () => environment(env) : undefined } });
   }
   const port = Number(options.get('--port') ?? '8443');
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid relay port');

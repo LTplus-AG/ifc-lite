@@ -4,13 +4,14 @@
 
 /** Node-only authenticated relay. Provider URLs and credentials are host configuration, never caller input. */
 import { createHash, timingSafeEqual } from 'node:crypto';
-import type { FetchTransport } from '@ifc-lite/sandbox/network';
+import { assertNetworkEndpoint, type FetchTransport } from '@ifc-lite/sandbox/network';
 import { createSemanticProvider } from './provider.js';
 import { assertReadOnlyQuery } from './query.js';
 
 export interface RelayProvider {
   endpoint: string;
   grantedHost: string;
+  loopbackHttpOrigin?: string;
   kind: 'json' | 'sparql';
   /** Resolved at request time from an environment/keychain; never serialized in responses. */
   bearerToken?: () => string | undefined;
@@ -62,8 +63,9 @@ export function createSemanticRelay(options: RelayOptions): (request: Request) =
   const providers = new Map<string, RelayProvider>();
   for (const [id, provider] of Object.entries(options.providers)) {
     const url = new URL(provider.endpoint);
-    if (!/^[A-Za-z0-9_-]{1,80}$/.test(id) || url.protocol !== 'https:' || url.username || url.password || url.search || url.hash
-      || url.hostname !== provider.grantedHost || !['json', 'sparql'].includes(provider.kind)) throw new Error('Provider requires a fixed HTTPS endpoint and exact hostname grant');
+    assertNetworkEndpoint(provider.endpoint, provider.loopbackHttpOrigin);
+    if (!/^[A-Za-z0-9_-]{1,80}$/.test(id) || url.username || url.password || url.search || url.hash
+      || url.hostname !== provider.grantedHost || !['json', 'sparql'].includes(provider.kind)) throw new Error('Provider requires a fixed authorized endpoint and exact hostname grant');
     providers.set(id, { ...provider });
   }
   return async request => {
@@ -98,7 +100,7 @@ export function createSemanticRelay(options: RelayOptions): (request: Request) =
     } catch { return jsonError(400, 'Only bounded SELECT/CONSTRUCT without SERVICE or FROM is allowed', headers); }
     try {
       const result = await createSemanticProvider(options.transport).read({ endpoint: provider.endpoint, host: provider.grantedHost,
-        kind: input.kind as 'json' | 'select' | 'construct', query: typeof input.query === 'string' ? input.query : undefined,
+        loopbackHttpOrigin: provider.loopbackHttpOrigin, kind: input.kind as 'json' | 'select' | 'construct', query: typeof input.query === 'string' ? input.query : undefined,
         bearer: provider.bearerToken?.(), timeoutMs, maxBytes }, signal);
       headers.set('Content-Type', result.kind === 'construct' ? result.format
         : result.kind === 'select' ? 'application/sparql-results+json' : 'application/json');

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Typed entry to plane detection in point clouds (#6870). The algorithm is
+ * Typed entry to plane and cylinder detection in point clouds (#6870). The algorithm is
  * Rust (`ifc_lite_processing::scan_segmentation`); this module only frames
  * the input and types the JSON report the wasm call returns.
  *
@@ -59,6 +59,23 @@ export interface ScanSegmentationOptions {
   region?: ScanRegion | null;
   /** Largest planes kept. Default 10,000. */
   maxPlanes?: number;
+  /** Look for cylinders (columns, pipes) among non-planar voxels. Default true. */
+  detectCylinders?: boolean;
+  /** Accepted cylinder radius range. Default 0.03..=1.5 m. */
+  minCylinderRadiusMetres?: number;
+  maxCylinderRadiusMetres?: number;
+  /** Share of a group a candidate must fit. Default 0.6. */
+  minCylinderInlierFraction?: number;
+  /** Minimum circumference covered. Default 90 degrees. */
+  minCylinderArcDegrees?: number;
+  /** Minimum length along the axis. Default 0.3 m. */
+  minCylinderLengthMetres?: number;
+  /** RANSAC draws per candidate. Default 256. */
+  cylinderDraws?: number;
+  /** Voxels each draw is scored on. Default 2,048. */
+  cylinderScoreSample?: number;
+  /** Largest non-planar groups examined. Default 1,024. */
+  maxCylinderGroups?: number;
 }
 
 export type ScanPlaneOrientation = 'horizontal' | 'vertical' | 'sloped';
@@ -88,6 +105,26 @@ export interface ScanPlane {
   normalSource: ScanNormalSource;
 }
 
+/** Axis relative to `upAxis`: vertical is a column, horizontal a pipe or beam. */
+export type ScanAxisOrientation = 'vertical' | 'horizontal' | 'sloped';
+
+export interface ScanCylinder {
+  axisStart: ScanVec3;
+  axisEnd: ScanVec3;
+  /** Unit; points up unless horizontal. */
+  axisDirection: ScanVec3;
+  radius: number;
+  length: number;
+  /** Lowest and highest axis end along `upAxis`. */
+  heightRange: [number, number];
+  /** Circumference covered by the inliers, in degrees. */
+  arcDegrees: number;
+  inlierPoints: number;
+  inlierVoxels: number;
+  rmsMetres: number;
+  orientation: ScanAxisOrientation;
+}
+
 export interface ScanSegmentationStats {
   inputPoints: number;
   acceptedPoints: number;
@@ -105,6 +142,11 @@ export interface ScanSegmentationStats {
   curvedRegionsRejected: number;
   smallRegionsRejected: number;
   planarVoxels: number;
+  cylinderGroups: number;
+  cylindersRejectedAsSpheres: number;
+  cylindersRejectedAsCreases: number;
+  cylindersRejectedForArc: number;
+  cylindersRejectedForLength: number;
 }
 
 /** Which bounds acted; a bound that acts is always reported. */
@@ -113,12 +155,15 @@ export interface ScanSegmentationLimits {
   planeLimitHit: boolean;
   /** Positions too far from their frame origin for the voxel size; pass a local `origin`. */
   coordinatePrecisionDegraded: boolean;
+  cylinderGroupLimitHit: boolean;
 }
 
 export interface ScanSegmentationReport {
   algorithm: string;
   /** Largest area first. */
   planes: ScanPlane[];
+  /** Longest first. */
+  cylinders: ScanCylinder[];
   stats: ScanSegmentationStats;
   limits: ScanSegmentationLimits;
 }
@@ -135,10 +180,7 @@ export interface ScanPointInput {
 /** The wasm surface this needs: an initialised `IfcAPI` satisfies it. */
 export type ScanSegmentationEngine = Pick<IfcAPI, 'segmentScanPoints'>;
 
-/**
- * Segment `input` into geometric primitives (planes; cylinders once supported
- * by the engine). Throws the Rust error message on invalid options.
- */
+/** Detect planes and cylinders in `input`. Throws the Rust error message on invalid options. */
 export function segmentScan(
   engine: ScanSegmentationEngine,
   input: ScanPointInput,

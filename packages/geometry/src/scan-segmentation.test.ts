@@ -48,6 +48,7 @@ describe.skipIf(!built)('segmentScan over the real wasm boundary (#6870)', () =>
     const floor = report.planes.find((p) => p.orientation === 'horizontal');
     const wall = report.planes.find((p) => p.orientation === 'vertical');
     expect(report.planes).toHaveLength(2);
+    expect(report.cylinders).toHaveLength(0); // the wall/floor crease is not a pipe
     expect(Math.abs(floor?.normal[1] ?? 0)).toBeGreaterThan(0.999);
     expect(Math.abs(wall?.normal[2] ?? 0)).toBeGreaterThan(0.999);
     expect(floor?.normalSource).toBe('canonical');

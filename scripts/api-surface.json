@@ -6398,6 +6398,8 @@
     "rtcRebaseDeltaYup: function"
   ],
   "@ifc-lite/geometry/scan-segmentation": [
+    "ScanAxisOrientation: type",
+    "ScanCylinder: interface",
     "ScanNormalSource: type",
     "ScanPlane: interface",
     "ScanPlaneExtent: interface",

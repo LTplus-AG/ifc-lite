@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Plane detection in point clouds (#6870): scan-to-BIM groundwork.
+//! Plane and cylinder detection in point clouds (#6870): scan-to-BIM groundwork.
 //!
 //! 1. `voxel`: points average into voxels with exact integer sums, so the
 //!    result does not depend on point order or chunking; the voxel size
@@ -15,11 +15,16 @@
 //!    regions merge through union-find; regions whose normals turn like a
 //!    column's are refused.
 //! 5. `plane_report`: area, in-plane extent, orientation hint and facing side.
+//! 6. `cylinder`: seeded RANSAC over the smoothly connected voxels no plane
+//!    claimed, a least-squares refit, and refusal of spheres, narrow arcs and
+//!    short pieces: columns and pipes.
 //!
 //! Every stage is bounded by the voxel count, which the budget bounds; the
 //! report's `limits` says when a budget acted. A clean-room implementation of
 //! the published technique (region growing on voxel means); no third-party
 //! code was consulted.
+mod cylinder;
+mod cylinder_fit;
 mod extent;
 mod grow;
 mod normals;
@@ -31,8 +36,8 @@ mod voxel;
 
 pub use options::{ScanRegion, ScanSegmentationOptions};
 pub use report::{
-    NormalSource, PlaneExtent, PlaneOrientation, ScanPlane, ScanSegmentationLimits,
-    ScanSegmentationReport, ScanSegmentationStats,
+    AxisOrientation, NormalSource, PlaneExtent, PlaneOrientation, ScanCylinder, ScanPlane,
+    ScanSegmentationLimits, ScanSegmentationReport, ScanSegmentationStats,
 };
 
 use grow::{Region, UNCLAIMED};
@@ -98,6 +103,7 @@ impl ScanVoxelizer {
         stats.regions_merged = joins;
 
         let mut planes = Vec::new();
+        let mut planar = vec![false; voxels.len()];
         for region in merged {
             if refit::bend(&region, &voxels, &normals) > params.max_bend {
                 stats.curved_regions_rejected += 1;
@@ -109,6 +115,9 @@ impl ScanVoxelizer {
                 continue;
             }
             stats.planar_voxels += region.voxels.len() as u64;
+            for &i in &region.voxels {
+                planar[i as usize] = true;
+            }
             planes.push(plane_report::describe(&region, &voxels, area, &params));
         }
         planes.sort_by(|a, b| {
@@ -116,13 +125,15 @@ impl ScanVoxelizer {
                 .total_cmp(&a.area_square_metres)
                 .then_with(|| a.centroid.iter().zip(&b.centroid).fold(std::cmp::Ordering::Equal, |o, (x, y)| o.then(x.total_cmp(y))))
         });
+        let (cylinders, cylinder_group_limit_hit) = cylinder::detect(&voxels, &normals, &planar, &params, &mut stats);
         let limits = ScanSegmentationLimits {
             voxel_budget_coarsened: stats.coarsenings > 0,
             plane_limit_hit: planes.len() > params.max_planes,
             coordinate_precision_degraded: stats.coordinate_spacing_metres > stats.voxel_size_metres / 10.,
+            cylinder_group_limit_hit,
         };
         planes.truncate(params.max_planes);
-        Ok(ScanSegmentationReport { algorithm: ALGORITHM.into(), planes, stats, limits })
+        Ok(ScanSegmentationReport { algorithm: ALGORITHM.into(), planes, cylinders, stats, limits })
     }
 }
 

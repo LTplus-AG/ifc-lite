@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import assert from 'node:assert/strict';
 
-/** Seeded box room, Z up: 5 x 4 m, 2.6 m high, 3 mm noise, 1% outliers. */
+/** Seeded box room, Z up: 5 x 4 m, 2.6 m high, a column r 0.25 at (3.5, 2), 3 mm noise, 1% outliers. */
 function room() {
   let state = 6870n;
   const random = () => {
@@ -27,6 +27,11 @@ function room() {
       for (let a = 0; a < 3; a++) points.push(f.at[a] + s * f.u[a] + t * f.v[a] + 0.003 * gauss());
     }
   }
+  const column = Math.round(2 * Math.PI * 0.25 * 2.6 * 3000);
+  for (let i = 0; i < column; i++) {
+    const [angle, z] = [random() * 2 * Math.PI, random() * 2.6];
+    points.push(3.5 + 0.25 * Math.cos(angle) + 0.003 * gauss(), 2 + 0.25 * Math.sin(angle) + 0.003 * gauss(), z + 0.003 * gauss());
+  }
   const outliers = Math.round(points.length / 300);
   for (let i = 0; i < outliers; i++) points.push(random() * 5, random() * 4, random() * 2.6);
   return { positions: Float32Array.from(points), faces };
@@ -46,7 +51,7 @@ function shuffled(positions) {
 
 const PLANE_FIELDS = ['areaSquareMetres', 'centroid', 'd', 'extent', 'inlierPoints', 'inlierVoxels', 'normal', 'normalSource', 'orientation', 'rmsMetres'];
 
-/** Actual Rust/WASM calls: plane recovery, order invariance, strict options. */
+/** Actual Rust/WASM calls: plane and cylinder recovery, order invariance, strict options. */
 export function checkScanSegmentationContract(IfcAPI) {
   const api = new IfcAPI();
   const decode = bytes => JSON.parse(new TextDecoder().decode(bytes));
@@ -67,6 +72,13 @@ export function checkScanSegmentationContract(IfcAPI) {
       assert.equal(found.normalSource, 'scanner');
       assert.equal(found.orientation, face.n[2] === 0 ? 'vertical' : 'horizontal');
     }
+    assert.equal(report.cylinders.length, 1, 'the column, and nothing along the room edges');
+    const [column] = report.cylinders;
+    assert.ok(Math.abs(column.radius - 0.25) < 0.01, `column radius ${column.radius}`);
+    assert.equal(column.orientation, 'vertical');
+    assert.ok(Math.hypot(column.axisStart[0] - 3.5, column.axisStart[1] - 2) < 0.015, `column axis ${column.axisStart}`);
+    assert.ok(column.length > 2.4 && column.length < 2.7, `column length ${column.length}`);
+    assert.equal(decode(api.segmentScanPoints(positions, '{"detectCylinders":false}')).cylinders.length, 0);
     // Integer voxel sums: any point order yields the identical report bytes.
     assert.deepEqual(api.segmentScanPoints(shuffled(positions), options), bytes);
     assert.throws(() => api.segmentScanPoints(positions, '{"surprise":1}'), /unknown field/);

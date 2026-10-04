@@ -166,8 +166,8 @@ the optional planner capability; the bundled native bridge explicitly refuses it
 
 ## Scan plane segmentation
 
-`@ifc-lite/geometry/scan-segmentation` types the wasm plane detector for point
-clouds. Pass xyz metres, either a whole buffer or a reservoir with a `count`.
+`@ifc-lite/geometry/scan-segmentation` types the wasm plane and cylinder
+detector for point clouds. Pass xyz metres, either a whole buffer or a reservoir with a `count`.
 Every option is optional; see the
 [segmentation contract](https://ifclite.dev/docs/api/wasm/#scan-plane-segmentation)
 for the defaults.
@@ -181,6 +181,9 @@ try {
   const report = segmentScan(api, { positions }, { scannerPosition: [3, 2, 1.5] });
   for (const plane of report.planes) {
     console.log(plane.orientation, plane.normal, plane.d, plane.areaSquareMetres);
+  }
+  for (const cylinder of report.cylinders) {
+    console.log(cylinder.orientation, cylinder.axisStart, cylinder.radius, cylinder.length);
   }
 } finally {
   api.free();

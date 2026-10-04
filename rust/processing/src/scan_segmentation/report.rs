@@ -65,6 +65,40 @@ pub struct ScanPlane {
     pub normal_source: NormalSource,
 }
 
+/// Axis direction relative to `options.up_axis`, with the plane tolerance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AxisOrientation {
+    /// Axis along up: a column.
+    Vertical,
+    /// Axis perpendicular to up: a horizontal pipe or beam.
+    Horizontal,
+    Sloped,
+}
+
+/// A detected cylinder (column, pipe). The axis runs from `axis_start` to
+/// `axis_end` over the inliers' extent.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanCylinder {
+    pub axis_start: [f64; 3],
+    pub axis_end: [f64; 3],
+    /// Unit; points up for vertical and sloped axes, along the positive axis
+    /// of its largest component for horizontal ones.
+    pub axis_direction: [f64; 3],
+    pub radius: f64,
+    pub length: f64,
+    /// Lowest and highest axis end, measured along `up_axis`.
+    pub height_range: [f64; 2],
+    /// Share of the circumference the inliers cover, in degrees.
+    pub arc_degrees: f64,
+    pub inlier_points: u64,
+    pub inlier_voxels: u32,
+    /// RMS radial distance of the inlier voxel means from the surface.
+    pub rms_metres: f64,
+    pub orientation: AxisOrientation,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanSegmentationStats {
@@ -90,6 +124,17 @@ pub struct ScanSegmentationStats {
     /// Regions refused for an area under `minPlaneAreaSquareMetres`.
     pub small_regions_rejected: u64,
     pub planar_voxels: u64,
+    /// Smoothly connected non-planar voxel groups large enough to try.
+    pub cylinder_groups: u64,
+    /// Candidates whose inliers fit a sphere at least as well.
+    pub cylinders_rejected_as_spheres: u64,
+    /// Candidates whose inliers mostly touch planar voxels: the rounded crease
+    /// along a plane junction (wall meets floor), not a free-standing cylinder.
+    pub cylinders_rejected_as_creases: u64,
+    /// Candidates covering less than `minCylinderArcDegrees`.
+    pub cylinders_rejected_for_arc: u64,
+    /// Candidates shorter than `minCylinderLengthMetres`.
+    pub cylinders_rejected_for_length: u64,
 }
 
 /// Which bounds acted. A bound that acts is always reported here.
@@ -106,6 +151,9 @@ pub struct ScanSegmentationLimits {
     /// strips). Subtract a local origin before narrowing to f32 and pass it as
     /// `options.origin`.
     pub coordinate_precision_degraded: bool,
+    /// More non-planar groups qualified than `maxCylinderGroups`; the
+    /// smallest were not examined.
+    pub cylinder_group_limit_hit: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -114,6 +162,8 @@ pub struct ScanSegmentationReport {
     pub algorithm: String,
     /// Largest area first; ties by centroid.
     pub planes: Vec<ScanPlane>,
+    /// Longest first; ties by axis start.
+    pub cylinders: Vec<ScanCylinder>,
     pub stats: ScanSegmentationStats,
     pub limits: ScanSegmentationLimits,
 }

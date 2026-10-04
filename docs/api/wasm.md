@@ -838,7 +838,8 @@ the emitted rotation is proper and has unit scale.
 
 ### Scan plane segmentation
 
-`IfcAPI.segmentScanPoints(positions, optionsJson)` returns UTF-8 JSON from the
+`IfcAPI.segmentScanPoints(positions, optionsJson)` returns UTF-8 JSON (planes and
+cylinders) from the
 canonical Rust `ifc_lite_processing::scan_segmentation` (#6870). `positions` are
 xyz `Float32Array` metres (at most 100,000,000 points); `optionsJson` is a
 camelCase options object, `{}` for the defaults. Unknown fields are refused. The
@@ -877,6 +878,33 @@ normal faces the scanner (`normalSource: 'scanner'`). Without it the
 orientation is `canonical`: horizontal planes face up. `region` crops to a box,
 and `origin` is added to every output coordinate. `stats` counts points,
 voxels and the regions grown, merged and refused.
+
+Cylinders (columns, pipes) are sought among the voxels no plane claimed, when
+`detectCylinders` is true (the default). Those voxels form groups connected
+across neighbours whose normals turn by at most 35°. For each group, largest
+first and at most `maxCylinderGroups` (1,024), a seeded RANSAC runs
+`cylinderDraws` (256) draws. Each draw takes two voxels with their normals: the
+axis is `n1 × n2`, and the axis line and radius come from the closest approach
+of the two normal lines. Draws are scored on `cylinderScoreSample` (2,048)
+voxels.
+
+A candidate fitting at least `minCylinderInlierFraction` (0.6) of the group is
+refitted by least squares: the axis is the direction all inlier normals are
+perpendicular to, and the circle across it is fitted algebraically, then by
+Gauss-Newton. The candidate is then refused when:
+- a sphere fits its inliers as well;
+- most inliers touch planar voxels (the rounded crease where a wall meets the
+  floor);
+- they cover less than `minCylinderArcDegrees` (90);
+- they are shorter than `minCylinderLengthMetres` (0.3);
+- the radius falls outside `minCylinderRadiusMetres`..`maxCylinderRadiusMetres`
+  (0.03..1.5).
+
+Each cylinder reports `axisStart`, `axisEnd`, `axisDirection` (up, unless
+horizontal), `radius`, `length`, `heightRange` along `upAxis`, `arcDegrees`,
+inlier counts, `rmsMetres` and `orientation` (`vertical` for a column,
+`horizontal` for a pipe or beam, or `sloped`). `stats` counts each refusal;
+`limits.cylinderGroupLimitHit` reports a group budget that acted.
 
 `requestSha256` hashes the algorithm ID `ifclite-rigid-correspondence-v1`, one
 zero byte, and compact typed request JSON in Rust field order. It binds all frame

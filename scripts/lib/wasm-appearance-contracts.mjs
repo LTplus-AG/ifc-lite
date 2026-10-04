@@ -20,6 +20,6 @@ export function runAppearanceContracts(IfcAPI, test) {
   test('thin-wall, occluder and gap observations classify without painting through (#4381)', () => checkMeshTransferSurfacesContract(IfcAPI));
   test('RGB point-cloud source keeps thin-wall faces apart under every orientation source (#4381)', () => checkPointTransferContract(IfcAPI));
   test('proper rigid scan registration preserves held-out independence and frame binding (#4381)', () => checkScanRegistrationContract(IfcAPI));
-  test('scan plane segmentation recovers a seeded room, order-invariantly, with strict options (#6870)', () => checkScanSegmentationContract(IfcAPI));
+  test('scan segmentation recovers a seeded room and its column, order-invariantly, with strict options (#6870)', () => checkScanSegmentationContract(IfcAPI));
   test('bare style references cross the real WASM boundary (#4694)', () => checkBareStyleReferenceContract(IfcAPI));
 }

@@ -126,7 +126,7 @@ fn issue_6870_columns_are_not_reported_as_planes() {
     // (floor and ceiling centroids may legitimately sit above a column).
     for plane in report.planes.iter().filter(|p| p.orientation == PlaneOrientation::Vertical) {
         for column in &scan.columns {
-            let r = (plane.centroid[0] - column.center[0]).hypot(plane.centroid[1] - column.center[1]);
+            let r = (plane.centroid[0] - column.center()[0]).hypot(plane.centroid[1] - column.center()[1]);
             assert!(r > column.radius + 0.2, "plane at {:?} lies on a column", plane.centroid);
         }
     }
@@ -296,13 +296,18 @@ fn issue_6870_throughput_at_two_million_points() {
         std::fs::write(path, bytes).unwrap();
     }
     let options = options_with_scanner(scan.scanner);
-    let mut best = f64::INFINITY;
-    let mut planes = 0;
-    for _ in 0..3 {
-        let start = std::time::Instant::now();
-        let report = segment_scan_points(&scan.positions, &options).unwrap();
-        best = best.min(start.elapsed().as_secs_f64());
-        planes = report.planes.len();
+    for (label, options) in [
+        ("planes and cylinders", options.clone()),
+        ("planes only", ScanSegmentationOptions { detect_cylinders: false, ..options }),
+    ] {
+        let mut best = f64::INFINITY;
+        let mut found = (0, 0);
+        for _ in 0..3 {
+            let start = std::time::Instant::now();
+            let report = segment_scan_points(&scan.positions, &options).unwrap();
+            best = best.min(start.elapsed().as_secs_f64());
+            found = (report.planes.len(), report.cylinders.len());
+        }
+        println!("scan segmentation ({label}): {n} points, {} planes, {} cylinders, best {best:.3} s, {:.0} points/s", found.0, found.1, n as f64 / best);
     }
-    println!("scan segmentation: {n} points, {planes} planes, best {best:.3} s, {:.0} points/s", n as f64 / best);
 }

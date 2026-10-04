@@ -75,6 +75,28 @@ pub struct ScanSegmentationOptions {
     pub region: Option<ScanRegion>,
     /// At most this many planes are reported, largest first. Default 10,000.
     pub max_planes: u32,
+    /// Look for cylinders (columns, pipes) among the non-planar voxels.
+    /// Default true.
+    pub detect_cylinders: bool,
+    /// Accepted radius range. Default 0.03..=1.5 m. Below about two voxels a
+    /// circumference has too few voxels to carry its curvature.
+    pub min_cylinder_radius_metres: f64,
+    pub max_cylinder_radius_metres: f64,
+    /// A group must fit a candidate with at least this share of its voxels.
+    /// Default 0.6.
+    pub min_cylinder_inlier_fraction: f64,
+    /// Refuse cylinders whose inliers cover less of the circumference.
+    /// Default 90 degrees.
+    pub min_cylinder_arc_degrees: f64,
+    /// Refuse cylinders shorter than this along the axis. Default 0.3 m.
+    pub min_cylinder_length_metres: f64,
+    /// RANSAC draws per candidate. Default 256; 1..=4,096.
+    pub cylinder_draws: u32,
+    /// Voxels each draw is scored on (an evenly strided subsample).
+    /// Default 2,048; 16..=65,536.
+    pub cylinder_score_sample: u32,
+    /// Largest non-planar groups examined for cylinders. Default 1,024.
+    pub max_cylinder_groups: u32,
 }
 
 impl Default for ScanSegmentationOptions {
@@ -96,6 +118,15 @@ impl Default for ScanSegmentationOptions {
             origin: [0.; 3],
             region: None,
             max_planes: 10_000,
+            detect_cylinders: true,
+            min_cylinder_radius_metres: 0.03,
+            max_cylinder_radius_metres: 1.5,
+            min_cylinder_inlier_fraction: 0.6,
+            min_cylinder_arc_degrees: 90.,
+            min_cylinder_length_metres: 0.3,
+            cylinder_draws: 256,
+            cylinder_score_sample: 2_048,
+            max_cylinder_groups: 1_024,
         }
     }
 }
@@ -120,6 +151,19 @@ pub(crate) struct Params {
     pub origin: [f64; 3],
     pub region: Option<ScanRegion>,
     pub max_planes: usize,
+    pub cylinders: Option<CylinderParams>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CylinderParams {
+    pub min_radius: f64,
+    pub max_radius: f64,
+    pub min_fraction: f64,
+    pub min_arc: f64,
+    pub min_length: f64,
+    pub draws: usize,
+    pub sample: usize,
+    pub max_groups: usize,
 }
 
 fn within(value: f64, lo: f64, hi: f64) -> bool {
@@ -175,6 +219,7 @@ impl ScanSegmentationOptions {
         if !(1..=100_000).contains(&o.max_planes) {
             return fail("maxPlanes must be within 1..=100,000");
         }
+        let cylinders = o.cylinder_params()?;
         let class = o.classification_angle_degrees.to_radians();
         Ok(Params {
             base_size_quanta: (o.voxel_size_metres * super::voxel::QUANTA_PER_METRE).round() as i64,
@@ -194,6 +239,41 @@ impl ScanSegmentationOptions {
             origin: o.origin,
             region: o.region,
             max_planes: o.max_planes as usize,
+            cylinders,
         })
+    }
+
+    fn cylinder_params(&self) -> Result<Option<CylinderParams>, String> {
+        let o = self;
+        if !o.detect_cylinders {
+            return Ok(None);
+        }
+        if !within(o.min_cylinder_radius_metres, 0.005, 10.)
+            || !within(o.max_cylinder_radius_metres, o.min_cylinder_radius_metres, 10.)
+        {
+            return Err("Scan segmentation option cylinder radii must satisfy 0.005 <= min <= max <= 10 m".into());
+        }
+        if !above(o.min_cylinder_inlier_fraction, 0., 1.)
+            || !within(o.min_cylinder_arc_degrees, 0., 360.)
+            || !within(o.min_cylinder_length_metres, 0., 1e3)
+        {
+            return Err("Scan segmentation option cylinder fraction (0, 1], arc 0..=360 and length 0..=1000 m are required".into());
+        }
+        if !(1..=4_096).contains(&o.cylinder_draws)
+            || !(16..=65_536).contains(&o.cylinder_score_sample)
+            || !(1..=100_000).contains(&o.max_cylinder_groups)
+        {
+            return Err("Scan segmentation option cylinderDraws 1..=4,096, cylinderScoreSample 16..=65,536 and maxCylinderGroups 1..=100,000 are required".into());
+        }
+        Ok(Some(CylinderParams {
+            min_radius: o.min_cylinder_radius_metres,
+            max_radius: o.max_cylinder_radius_metres,
+            min_fraction: o.min_cylinder_inlier_fraction,
+            min_arc: o.min_cylinder_arc_degrees,
+            min_length: o.min_cylinder_length_metres,
+            draws: o.cylinder_draws as usize,
+            sample: o.cylinder_score_sample as usize,
+            max_groups: o.max_cylinder_groups as usize,
+        }))
     }
 }

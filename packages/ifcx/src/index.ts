@@ -152,6 +152,7 @@ export async function parseIfcx(
   // Phase 2: Compose ECS nodes
   options.onProgress?.({ phase: 'compose', percent: 0 });
   const composed = composeIfcx(file);
+  const georeferencing = extractGeoreference(composed);
   options.onProgress?.({ phase: 'compose', percent: 100 });
 
   // Phase 3: Extract entities
@@ -201,7 +202,7 @@ export async function parseIfcx(
     fileSize: buffer.byteLength,
     entityCount: entities.count,
     parseTime,
-    georeferencing: extractGeoreference(composed),
+    georeferencing,
   };
 }
 
@@ -539,6 +540,7 @@ function finalizeFederatedResult(
   for (const [path, node] of compositionResult.composed) {
     composed.set(path, node as ComposedNode);
   }
+  const georeferencing = extractGeoreference(composed);
 
   // Phase 3: Extract entities
   options.onProgress?.({ phase: 'entities', percent: 0 });
@@ -594,6 +596,7 @@ function finalizeFederatedResult(
     entityCount: entities.count,
     parseTime,
     // Federated-specific fields
+    georeferencing,
     layerStack,
     pathIndex: compositionResult.pathIndex,
     compositionStats: {

@@ -13,15 +13,22 @@ export function extractGeoreference(composed: Map<string, ComposedNode>): {
   for (const node of composed.values()) {
     const value = node.attributes.get('ifclite::georeference::v1');
     if (value === undefined) continue;
-    if (result) throw new Error('IFCX contains conflicting model georeferences.');
     const raw = object(value); const crs = object(raw.IfcProjectedCRS); const map = object(raw.IfcMapConversion);
     if (typeof crs.Name !== 'string' || !/^EPSG:\d+$/.test(crs.Name) || crs.MapUnit !== 'METRE') throw new Error('Invalid IFCX projected CRS.');
     const Eastings = number(map.Eastings); const Northings = number(map.Northings);
     const OrthogonalHeight = number(map.OrthogonalHeight); const XAxisAbscissa = number(map.XAxisAbscissa);
     const XAxisOrdinate = number(map.XAxisOrdinate); const Scale = number(map.Scale);
     if (Scale <= 0 || Math.hypot(XAxisAbscissa, XAxisOrdinate) < 1e-12) throw new Error('Invalid IFCX map conversion.');
-    result = { IfcProjectedCRS: { Name: crs.Name, MapUnit: 'METRE' },
+    const next = { IfcProjectedCRS: { Name: crs.Name, MapUnit: 'METRE' as const },
       IfcMapConversion: { Eastings, Northings, OrthogonalHeight, XAxisAbscissa, XAxisOrdinate, Scale } };
+    const previous = result;
+    const coordinates = ['Eastings', 'Northings', 'OrthogonalHeight', 'XAxisAbscissa', 'XAxisOrdinate', 'Scale'] as const;
+    if (previous && (previous.IfcProjectedCRS.Name !== next.IfcProjectedCRS.Name ||
+        coordinates.some(attribute => previous.IfcMapConversion[attribute] !== next.IfcMapConversion[attribute]))) {
+      throw new Error('IFCX contains conflicting model georeferences.');
+    }
+    // Composition can copy the same placement through inheritance (#6824).
+    result ??= next;
   }
   return result;
 }

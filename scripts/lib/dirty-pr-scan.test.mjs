@@ -538,3 +538,15 @@ test('cadence: a nonsensical interval is a CALLER error and throws', () => {
     );
   }
 });
+
+// #6817: stack workflow filters must produce the same remedy as Actions matching.
+test('single-star suffix permits viewer AI stack bases without accepting nested or unrelated branches', () => {
+  const patterns = pullRequestBaseBranches("on:\n  pull_request:\n    branches: [main, 't3code/viewer-ai-*']\njobs:\n");
+  const pr = { number: 6819, mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', statusCheckRollup: [] };
+  const required = ['Build'];
+  const matching = classifyPr({ ...pr, baseRefName: 't3code/viewer-ai-context' }, required, patterns);
+  assert.equal(matching.cause, null);
+  for (const baseRefName of ['t3code/viewer-ai-context/nested', 'other/viewer-ai-context', 't3code/unrelated']) {
+    assert.equal(classifyPr({ ...pr, baseRefName }, required, patterns).cause, 'BASE_FILTERED');
+  }
+});

@@ -18,6 +18,7 @@ import { dispatchKeyboardDown, registerKeyboardBinding, registerKeyboardCommand,
 import { getEntityBounds } from '../../utils/viewportUtils.js';
 import { flySpeedStore } from './flySpeedStore.js';
 import { createWalkController, type WalkController } from './walk/walkController.js';
+import { viewerEntityType } from './walk/walkEntityType.js';
 
 export interface UseKeyboardControlsParams {
   rendererRef: MutableRefObject<Renderer | null>;
@@ -80,7 +81,12 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
     let walk: WalkController | null = null;
     const syncWalk = (tool: string) => {
       if (tool === 'walk' && !walk) {
-        walk = createWalkController(renderer, (id) => isEntityVisible(id, hiddenEntitiesRef.current, isolatedEntitiesRef.current));
+        walk = createWalkController(
+          renderer,
+          (id) => isEntityVisible(id, hiddenEntitiesRef.current, isolatedEntitiesRef.current),
+          () => useViewerStore.getState().mutationVersion,
+          viewerEntityType,
+        );
       } else if (tool !== 'walk' && walk) {
         walk.dispose();
         walk = null;
@@ -190,7 +196,7 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
       registerKeyboardBinding({ id: 'walk.sprint', when: 'tool.walk', layer: 'tool', keys: [{ key: 'shift', shift: true }], active: isWalkMode, run: startMovement }),
       // A tap can start and end between two physics ticks: queue it, as well as holding it.
       registerKeyboardCommand('walk.jump', (event) => { if (!event.repeat) walk?.queueJump(); holdWalkKey(' ')(event); }, { active: isWalkMode, ignoreModifiers: true }),
-      registerKeyboardCommand('walk.crouch', holdWalkKey('z'), { active: isWalkMode }),
+      registerKeyboardCommand('walk.crouch', holdWalkKey('z'), { active: isWalkMode, ignoreModifiers: true }),
       registerKeyboardCommand('walk.toggleCollision', (event) => { if (!event.repeat) walk?.togglePhysics(); }, { active: isWalkMode }),
       registerKeyboardCommand('camera.viewTop', () => { setViewAndRender('top'); }),
       registerKeyboardCommand('camera.viewBottom', () => { setViewAndRender('bottom'); }),

@@ -51,8 +51,13 @@ const log = (...parts: unknown[]): void => { if (!JSON_OUT) console.log(...parts
 const bytes = readFileSync(file);
 let t = performance.now();
 const processor = new GeometryProcessor();
-await processor.init();
-const result = await processor.process(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
+let result: Awaited<ReturnType<GeometryProcessor['process']>>;
+try {
+  await processor.init();
+  result = await processor.process(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
+} finally {
+  processor.dispose();
+}
 const meshMs = performance.now() - t;
 const meshes = result.meshes;
 log(`${file}: ${meshes.length} meshes, ${result.totalTriangles} triangles, meshed in ${(meshMs / 1000).toFixed(1)} s`);

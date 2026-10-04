@@ -12,6 +12,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TestScene } from '@/test/walk-scene-fixture.js';
 import { WalkCollisionWorld } from './walkCollisionWorld.js';
+import { TriangleList } from './walkTriangles.js';
+import { prefetchAround } from './walkPrefetch.js';
 import { NO_INPUT, WalkSession, WALK_TICK, type Vec3, type WalkInput } from './walkSession.js';
 import { WALK_RADIUS, WALK_STAND_EYE } from './walkCharacter.js';
 
@@ -277,6 +279,92 @@ describe('WalkSession', () => {
     assert.ok(!session.isSettled());
     run(session, 0.2);
     assert.ok(session.character.feetY > 0.5, `in the air (feet ${session.character.feetY})`);
+  });
+
+  it('keeps entity boxes conservative under float32 rounding at georeferenced coordinates', () => {
+    const scene = new TestScene();
+    // At 2.6e6 m float32 steps by 0.25 m: 2600005.13 rounds UP to 2600005.25.
+    // Vertices local to an origin (as georeferenced meshes are): exact; only the world box rounds.
+    scene.box([2_600_005.13, 0, -1], [2_600_005.2, 3, 1], 'IfcWall', [2_600_000, 0, 0]);
+    const world = new WalkCollisionWorld(scene);
+    const tris = new TriangleList();
+    world.gather(2_600_004.8, 0.5, -0.5, 2_600_005.14, 1.5, 0.5, tris);
+    assert.ok(tris.length > 0, 'a query reaching just past the true face must find the wall');
+  });
+
+  it('spawning under a low soffit moves to the nearest spot where a standing capsule fits', () => {
+    const scene = new TestScene();
+    room(scene);
+    // A downstand beam across the room, 1.5 m above the floor, right over the eye.
+    scene.box([-0.2, 1.5, -10], [0.2, 3, 10], 'IfcBeam');
+    const session = new WalkSession(new WalkCollisionWorld(scene));
+    assert.equal(session.spawn({ x: 0, y: 1.2, z: 0 }, FORWARD_Z), 'floor-below');
+    const c = session.character;
+    assert.ok(Math.abs(c.feetY) < 0.05, `same floor (feet ${c.feetY})`);
+    assert.ok(!c.overlaps(c.feetX, c.feetY, c.feetZ, 1.75), `fits where it stands (${c.feetX}, ${c.feetZ})`);
+  });
+
+  it('turning collision off while crouched stands the eye back up without further input', () => {
+    const scene = new TestScene();
+    room(scene);
+    const session = new WalkSession(new WalkCollisionWorld(scene));
+    session.spawn({ x: 0, y: 2.5, z: 0 }, FORWARD_Z);
+    run(session, 1, { ...NO_INPUT, crouch: true });
+    assert.ok(session.character.crouching);
+    session.physics = false;
+    assert.ok(!session.isSettled(), 'the eye still has to rise');
+    const eye = run(session, 1);
+    assert.ok(Math.abs(eye.y - session.character.feetY - WALK_STAND_EYE) < 0.01, `stood up (eye ${eye.y})`);
+    assert.ok(session.isSettled());
+  });
+
+  it('passes through a door whose pieces carry no ifcType (instanced) when the entity type says IfcDoor', () => {
+    const scene = new TestScene();
+    scene.box([-10, -0.3, -10], [10, 0, 10], 'IfcSlab');
+    const door = scene.box([-10, 0, 2], [10, 2.1, 2.1], 'IfcDoor');
+    // Instanced occurrences and colour-merged extracts arrive without ifcType.
+    const pieces = (id: number) => scene.pieces(id)?.map((p) => (id === door ? { ...p, ifcType: undefined } : p));
+    const types = (id: number) => (id === door ? 'IfcDoor' : undefined);
+    const solid = new WalkSession(new WalkCollisionWorld({ entityIds: () => scene.entityIds(), bounds: (id) => scene.bounds(id), pieces }));
+    const open = new WalkSession(new WalkCollisionWorld({ entityIds: () => scene.entityIds(), bounds: (id) => scene.bounds(id), pieces, entityType: types }));
+    for (const s of [solid, open]) { s.spawn({ x: 0, y: 1.6, z: 0 }, FORWARD_Z); run(s, 3, walk()); }
+    assert.ok(solid.character.feetZ < 2, 'without the entity type the untyped door blocks (the defect)');
+    assert.ok(open.character.feetZ > 2.1, `with it, the walker passes (z ${open.character.feetZ})`);
+  });
+
+  it('does not thrash the prepared ring when one entity alone is over the triangle budget', () => {
+    const scene = new TestScene();
+    scene.grid(-20, -20, 40, 0, 40, 'IfcSlab'); // 3 200 triangles
+    for (let i = 0; i < 20; i++) scene.box([-5 + i * 0.5, 0, 3], [-4.8 + i * 0.5, 1, 3.2], 'IfcFurnishingElement');
+    const world = new WalkCollisionWorld(scene, { triangleBudget: 3000 });
+    const session = new WalkSession(world);
+    session.spawn({ x: 0, y: 1.6, z: 0 }, FORWARD_Z);
+    for (let i = 0; i < 120; i++) {
+      session.frame(1 / 60, NO_INPUT, FORWARD_Z);
+      prefetchAround(world, session.character, 2);
+    }
+    assert.ok(world.stats.prepared < 60, `prepared ${world.stats.prepared} times: the ring was rebuilt over and over`);
+  });
+
+  it('a view straight down into an empty courtyard spawns without NaN probes', () => {
+    const scene = new TestScene();
+    scene.box([0, -0.3, 0], [30, 0, 8], 'IfcSlab');
+    scene.box([0, 2.7, 0], [30, 3, 8], 'IfcRoof');
+    scene.box([0, -0.3, 8], [8, 0, 30], 'IfcSlab');
+    scene.box([0, 2.7, 8], [8, 3, 30], 'IfcRoof');
+    const world = new WalkCollisionWorld(scene);
+    // A NaN probe matches every box in the tree, so it would index the whole model.
+    let nanRays = 0;
+    const raycast = world.raycast.bind(world);
+    world.raycast = (...args: Parameters<WalkCollisionWorld['raycast']>) => {
+      if (args.some(Number.isNaN)) nanRays++;
+      return raycast(...args);
+    };
+    const session = new WalkSession(world);
+    assert.equal(session.spawn({ x: 20, y: 50, z: 20 }, { x: 0, y: -1, z: 0 }), 'view-target');
+    const c = session.character;
+    assert.equal(nanRays, 0, 'no NaN probes');
+    assert.ok(Number.isFinite(c.feetX) && Number.isFinite(c.feetY) && Number.isFinite(c.feetZ), `finite (${c.feetX}, ${c.feetY}, ${c.feetZ})`);
   });
 
   it('floats through walls with physics off', () => {

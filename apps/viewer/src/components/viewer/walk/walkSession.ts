@@ -14,7 +14,7 @@
  */
 
 import {
-  WalkCharacter, WALK_CROUCH_EYE, WALK_STAND_EYE, WALK_STAND_HEIGHT,
+  WalkCharacter, WALK_CROUCH_EYE, WALK_CROUCH_HEIGHT, WALK_STAND_EYE, WALK_STAND_HEIGHT,
 } from './walkCharacter.js';
 import type { WalkCollisionWorld } from './walkCollisionWorld.js';
 
@@ -32,6 +32,8 @@ const FLOOR_NORMAL = 0.7;
 const LINE_OF_SIGHT_SAMPLES = 48;
 /** Footprint probes per side for the last-resort spawn. */
 const FOOTPRINT_GRID = 16;
+/** Radii (m) searched around a spawn spot whose capsule does not fit. */
+const FIT_RINGS = [0.35, 0.7, 1.2];
 /** How far a spawn spot looks for a wall on each side to count as indoors. */
 const ENCLOSURE_REACH = 60;
 
@@ -100,7 +102,7 @@ export class WalkSession {
     if (inside) {
       const floor = this.floorBelow(eye.x, eye.y, eye.z);
       if (floor !== null) {
-        this.place(eye.x, floor, eye.z);
+        this.placeFitting(eye.x, floor, eye.z);
         return 'floor-below';
       }
     }
@@ -121,7 +123,7 @@ export class WalkSession {
         // enters the building there instead of standing on top of it.
         const floor = this.interiorFloorBelow(hx, eye.y + dy * hit.t + 0.5, hz);
         if (floor !== null) {
-          this.place(hx, floor, hz);
+          this.placeFitting(hx, floor, hz);
           return 'view-target';
         }
       }
@@ -148,7 +150,9 @@ export class WalkSession {
    */
   private searchFootprint(eye: Vec3, dx: number, dz: number, look: Vec3, b: { min: Vec3; max: Vec3 }): Vec3 | null {
     const footprint = { min: { x: b.min.x, y: -Infinity, z: b.min.z }, max: { x: b.max.x, y: Infinity, z: b.max.z } };
-    const span = rayBox(eye, dx, 0, dz, footprint);
+    // A view straight up or down has no ground track (and would sample at
+    // t = Infinity): go straight to the grid.
+    const span = Math.hypot(dx, dz) > 1e-9 ? rayBox(eye, dx, 0, dz, footprint) : null;
     let firstOpen: Vec3 | null = null;
     if (span) {
       for (let i = 0; i < LINE_OF_SIGHT_SAMPLES; i++) {
@@ -229,6 +233,44 @@ export class WalkSession {
     return first;
   }
 
+  /**
+   * Place at the spot, or, when a standing capsule does not fit there (a low
+   * soffit, a column beside the hit), at the nearest spot on the same floor
+   * within a metre or so that it does fit. Keeps the spot if none fits:
+   * depenetration then pushes the walker out on the first step.
+   */
+  private placeFitting(x: number, y: number, z: number): void {
+    const c = this.character;
+    if (c.overlaps(x, y, z, WALK_STAND_HEIGHT)) {
+      for (const r of FIT_RINGS) {
+        for (let k = 0; k < 8; k++) {
+          const a = (k * Math.PI) / 4;
+          const nx = x + Math.cos(a) * r, nz = z + Math.sin(a) * r;
+          const floor = this.floorBelow(nx, y + WALK_STAND_HEIGHT / 2, nz);
+          if (floor === null || Math.abs(floor - y) > c.stepHeight) continue;
+          if (!c.overlaps(nx, floor, nz, WALK_STAND_HEIGHT)) {
+            this.place(nx, floor, nz);
+            return;
+          }
+        }
+      }
+    }
+    this.place(x, y, z);
+  }
+
+  /**
+   * Stand at these feet without any search: a re-index keeping the walker
+   * where it was (crouched under something stays crouched), or a float-mode
+   * camera move.
+   */
+  resume(x: number, y: number, z: number, crouching = false): void {
+    this.place(x, y, z);
+    const c = this.character;
+    c.crouching = crouching;
+    c.height = crouching ? WALK_CROUCH_HEIGHT : WALK_STAND_HEIGHT;
+    this.eyeHeight = crouching ? WALK_CROUCH_EYE : WALK_STAND_EYE;
+  }
+
   private place(x: number, y: number, z: number): void {
     this.character.teleport(x, y, z);
     this.prevX = x; this.prevY = y; this.prevZ = z;
@@ -290,9 +332,11 @@ export class WalkSession {
   isSettled(): boolean {
     const c = this.character;
     if (this.jumpQueued) return false;
+    // The same target `frame` eases toward: float mode stands up from a crouch.
+    const targetEye = c.crouching && this.physics ? WALK_CROUCH_EYE : WALK_STAND_EYE;
+    if (Math.abs(this.eyeHeight - targetEye) >= 1e-3) return false;
     if (!this.physics) return true;
-    const targetEye = c.crouching ? WALK_CROUCH_EYE : WALK_STAND_EYE;
     return c.grounded && Math.abs(c.velX) < 1e-3 && Math.abs(c.velZ) < 1e-3 && c.velY === 0
-      && Math.abs(c.feetY - this.visualY) < 1e-3 && Math.abs(this.eyeHeight - targetEye) < 1e-3;
+      && Math.abs(c.feetY - this.visualY) < 1e-3;
   }
 }

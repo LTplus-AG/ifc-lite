@@ -37,6 +37,7 @@ function Harness(props: { tool: string; moves: Moves }) {
       getPosition: () => ({ ...pose.position }),
       getTarget: () => ({ ...pose.target }),
       pan: () => { props.moves.pan++; },
+      stopInertia: () => {},
       getRotation: () => ({ azimuth: 0, elevation: 0 }),
     }),
     getScene: () => scene,
@@ -81,9 +82,11 @@ describe('useKeyboardControls while a right-button flight is live (#4868)', () =
       const moves: Moves = { walk: 0, pan: 0 };
       useViewerStore.setState({ activeTool: tool });
       render(<Harness tool={tool} moves={moves} />);
+      await frames(); // let walk mode set the walker down first: that write is not W's
+      const idle = moves[channel];
       key('keydown', k); // held BEFORE the right press, so fly never got to swallow it
       await frames();
-      assert.ok(moves[channel] > 0, `precondition: a held ${k} moves the camera`);
+      assert.ok(moves[channel] > idle, `precondition: a held ${k} moves the camera`);
 
       setFlySpeedState({ active: true }); // right button pressed: fly owns the camera
       await frames();

@@ -9,8 +9,9 @@
  * index is not an option (tens of millions of triangles would cost seconds and
  * gigabytes, for a walker that only ever touches the few metres around it):
  *
- * - **Entity level, built once.** One tree over every entity's cached world
- *   AABB. No vertex is read to build it.
+ * - **Entity level, built once.** One tree over every entity's world AABB,
+ *   read from the scene's per-entity box cache (the scene fills a missing
+ *   entry from the entity's vertices once, then serves it from the cache).
  * - **Triangle level, built lazily.** An entity's triangles are indexed the
  *   first time the walker comes near it. The index references the scene's own
  *   position/index arrays (no copy) in their local frame, so a large mesh costs
@@ -44,6 +45,11 @@ export interface WalkGeometrySource {
   bounds(id: number): WalkBounds | null;
   /** The entity's resident mesh pieces, or undefined when none are on the CPU. */
   pieces(id: number): readonly WalkPiece[] | undefined;
+  /**
+   * The entity's IFC class, when known. Preferred over `WalkPiece.ifcType`,
+   * which instanced and colour-merged pieces do not carry.
+   */
+  entityType?(id: number): string | undefined;
 }
 
 /**
@@ -61,8 +67,22 @@ export function isPassThroughType(ifcType: string | undefined): boolean {
   return ifcType !== undefined && PASS_THROUGH_TYPES.has(ifcType.toLowerCase());
 }
 
-/** Default cap on prepared triangles kept across all entities. */
+/** float32 rounds to within half an ulp; twice the relative epsilon (2^-23) plus a millimetre always covers it. */
+const pad = (v: number): number => 1e-3 + Math.abs(v) * 2.4e-7;
+
+/**
+ * Default cap on prepared triangles kept across all entities. A soft cap:
+ * entities touched in the current tick are never evicted, so a single tick in
+ * geometry denser than the cap holds what it needs and trims afterwards.
+ */
 const DEFAULT_TRIANGLE_BUDGET = 4_000_000;
+/**
+ * Entities used within this many ticks (1 s) are never evicted: the ring the
+ * per-frame prefetch just prepared must survive until the walker reaches it.
+ */
+const PROTECT_TICKS = 120;
+/** Ticks to wait before sweeping again when a sweep could not get under budget. */
+const SWEEP_BACKOFF = 30;
 
 interface PreparedEntity {
   readonly pieces: readonly PreparedPiece[];
@@ -103,6 +123,7 @@ export class WalkCollisionWorld {
   private readonly prepared = new Map<number, PreparedEntity | null>();
   private preparedTriangles = 0;
   private tick = 0;
+  private nextSweep = 0;
   private readonly candidates = new IndexList(512);
   private readonly local = new IndexList(1024);
   private readonly collidable: (id: number) => boolean;
@@ -130,9 +151,12 @@ export class WalkCollisionWorld {
         grown.set(boxes);
         boxes = grown;
       }
-      // Widen by one float32 ulp-ish margin so rounding never shrinks a box.
-      boxes[o] = b.min.x - 1e-3; boxes[o + 1] = b.min.y - 1e-3; boxes[o + 2] = b.min.z - 1e-3;
-      boxes[o + 3] = b.max.x + 1e-3; boxes[o + 4] = b.max.y + 1e-3; boxes[o + 5] = b.max.z + 1e-3;
+      // Stored as float32, which rounds to the nearest representable value:
+      // at georeferenced magnitudes (millions of metres) that step is a
+      // quarter metre, so pad by the magnitude's float32 epsilon as well, or
+      // a thin wall's box can round inward and drop out of a query.
+      boxes[o] = b.min.x - pad(b.min.x); boxes[o + 1] = b.min.y - pad(b.min.y); boxes[o + 2] = b.min.z - pad(b.min.z);
+      boxes[o + 3] = b.max.x + pad(b.max.x); boxes[o + 4] = b.max.y + pad(b.max.y); boxes[o + 5] = b.max.z + pad(b.max.z);
       idList.push(id);
       if (b.min.x < minX) minX = b.min.x; if (b.min.y < minY) minY = b.min.y; if (b.min.z < minZ) minZ = b.min.z;
       if (b.max.x > maxX) maxX = b.max.x; if (b.max.y > maxY) maxY = b.max.y; if (b.max.z > maxZ) maxZ = b.max.z;
@@ -234,6 +258,10 @@ export class WalkCollisionWorld {
   private prepare(id: number): PreparedEntity | null {
     const cached = this.prepared.get(id);
     if (cached !== undefined) return cached;
+    if (isPassThroughType(this.source.entityType?.(id))) {
+      this.prepared.set(id, null);
+      return null;
+    }
     const pieces = this.source.pieces(id);
     if (!pieces || pieces.length === 0) {
       // Not resident (cold-evicted, or the scene released its CPU copy). Do
@@ -267,12 +295,14 @@ export class WalkCollisionWorld {
   }
 
   private enforceBudget(): void {
-    if (this.preparedTriangles <= this.triangleBudget) return;
-    // Evict entities not touched this tick, oldest first, down to 75% of the
-    // budget so the sweep does not rerun on the very next query.
+    if (this.preparedTriangles <= this.triangleBudget || this.tick < this.nextSweep) return;
+    // Evict entities idle past the protection window, oldest first, down to
+    // 75% of the budget so the sweep does not rerun on the very next query.
+    // When the protected set alone is over budget nothing can go: back off
+    // instead of re-sorting the map (and evicting the fresh ring) every query.
     const victims: Array<[number, number]> = [];
     for (const [id, entity] of this.prepared) {
-      if (entity && entity.lastUsed < this.tick) victims.push([entity.lastUsed, id]);
+      if (entity && entity.lastUsed < this.tick - PROTECT_TICKS) victims.push([entity.lastUsed, id]);
     }
     victims.sort((a, b) => a[0] - b[0]);
     const target = this.triangleBudget * 0.75;
@@ -282,7 +312,9 @@ export class WalkCollisionWorld {
       this.stats.evicted++;
     }
     this.stats.preparedTriangles = this.preparedTriangles;
+    this.nextSweep = this.tick + (this.preparedTriangles > this.triangleBudget ? SWEEP_BACKOFF : 1);
   }
+
 
 }
 

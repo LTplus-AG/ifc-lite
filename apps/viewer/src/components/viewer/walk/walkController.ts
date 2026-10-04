@@ -18,6 +18,7 @@ import type { Renderer, SceneContents } from '@ifc-lite/renderer';
 import { WalkCollisionWorld, type WalkGeometrySource } from './walkCollisionWorld.js';
 import { prefetchAround } from './walkPrefetch.js';
 import { WalkSession, type Vec3, type WalkInput, type WalkSpawn } from './walkSession.js';
+import { WALK_STAND_EYE } from './walkCharacter.js';
 import { walkStatusStore } from './walkStatusStore.js';
 import { flySpeedStore } from '../flySpeedStore.js';
 
@@ -38,10 +39,20 @@ export interface WalkController {
 }
 
 /** The scene's resident geometry, flat and instanced, as the collision world reads it. */
-export function sceneWalkSource(scene: SceneContents): WalkGeometrySource {
+export function sceneWalkSource(scene: SceneContents, entityType?: (id: number) => string | undefined): WalkGeometrySource {
   return {
     entityIds: () => scene.getAllMeshDataExpressIds(),
-    bounds: (id) => scene.getEntityBoundingBox(id) ?? scene.getInstancedEntityBounds(id),
+    entityType,
+    bounds: (id) => {
+      // An entity can have flat pieces AND instanced occurrences: cover both.
+      const flat = scene.getEntityBoundingBox(id);
+      const instanced = scene.isInstancedEntity(id) ? scene.getInstancedEntityBounds(id) : null;
+      if (!flat || !instanced) return flat ?? instanced;
+      return {
+        min: { x: Math.min(flat.min.x, instanced.min.x), y: Math.min(flat.min.y, instanced.min.y), z: Math.min(flat.min.z, instanced.min.z) },
+        max: { x: Math.max(flat.max.x, instanced.max.x), y: Math.max(flat.max.y, instanced.max.y), z: Math.max(flat.max.z, instanced.max.z) },
+      };
+    },
     pieces: (id) => {
       const flat = scene.getMeshDataPieces(id);
       if (!scene.isInstancedEntity(id)) return flat;
@@ -51,10 +62,20 @@ export function sceneWalkSource(scene: SceneContents): WalkGeometrySource {
   };
 }
 
-const sceneSignature = (scene: SceneContents): string =>
-  `${scene.getBatchedMeshes().length}:${scene.getMeshes().length}:${scene.getInstancedEntityCount()}`;
+/**
+ * Changes when geometry is added, removed or edited: mesh counts catch a model
+ * streaming in or unloading, `editVersion` catches a moved or reshaped element
+ * (which keeps every count and would otherwise leave stale collision bounds).
+ */
+const sceneSignature = (scene: SceneContents, editVersion: number): string =>
+  `${scene.getBatchedMeshes().length}:${scene.getMeshes().length}:${scene.getInstancedEntityCount()}:${editVersion}`;
 
-export function createWalkController(renderer: Renderer, collidable: (id: number) => boolean): WalkController {
+export function createWalkController(
+  renderer: Renderer,
+  collidable: (id: number) => boolean,
+  editVersion: () => number,
+  entityType?: (id: number) => string | undefined,
+): WalkController {
   const camera = renderer.getCamera();
   const scene = renderer.getScene();
   const keys = new Set<string>();
@@ -63,7 +84,9 @@ export function createWalkController(renderer: Renderer, collidable: (id: number
   let signature = '';
   let builtAt = -Infinity;
   let lastEye: Vec3 | null = null;
-  let lastSpawn: { outcome: WalkSpawn; eye: Vec3; look: Vec3 } | null = null;
+  let lastSpawn: { outcome: WalkSpawn | 'float'; eye: Vec3; look: Vec3 } | null = null;
+  /** While someone else moves the camera: where it was last frame. */
+  let movingFrom: Vec3 | null = null;
   let lastTime = performance.now();
   let frame = 0;
   let raf = 0;
@@ -80,6 +103,13 @@ export function createWalkController(renderer: Renderer, collidable: (id: number
     if (!session) return;
     const eye = camera.getPosition();
     const dir = look();
+    if (!session.physics) {
+      // Floating: go where the camera went, no floor search, view untouched.
+      session.resume(eye.x, eye.y - WALK_STAND_EYE, eye.z);
+      lastSpawn = { outcome: 'float', eye: { ...eye }, look: dir };
+      lastEye = { ...eye };
+      return;
+    }
     lastSpawn = { outcome: session.spawn(eye, dir), eye: { ...eye }, look: dir };
     const flat = Math.hypot(dir.x, dir.z);
     const hx = flat > 1e-6 ? dir.x / flat : 0;
@@ -91,11 +121,16 @@ export function createWalkController(renderer: Renderer, collidable: (id: number
 
   const build = (): void => {
     const start = performance.now();
-    world = new WalkCollisionWorld(sceneWalkSource(scene), { collidable });
-    const physics = session?.physics ?? true;
+    world = new WalkCollisionWorld(sceneWalkSource(scene, entityType), { collidable });
+    const previous = session;
     session = new WalkSession(world);
-    session.physics = physics;
-    signature = sceneSignature(scene);
+    if (previous) {
+      // A re-index keeps the walker where it stands (and the view as it is).
+      session.physics = previous.physics;
+      const c = previous.character;
+      session.resume(c.feetX, c.feetY, c.feetZ, c.crouching);
+    }
+    signature = sceneSignature(scene, editVersion());
     builtAt = performance.now();
     console.log(`[Walk] indexed ${world.stats.entities} entities in ${(builtAt - start).toFixed(1)} ms`);
   };
@@ -124,21 +159,30 @@ export function createWalkController(renderer: Renderer, collidable: (id: number
     lastTime = now;
     frame++;
 
+    // A right-button flight owns the camera (#4868): stand down entirely (no
+    // spawn, no re-index), and set the walker down wherever the flight ends
+    // (the external-move check below).
+    if (flySpeedStore.get().active) return;
+
     if (!world) {
       build();
       spawn();
-    } else if (frame % SCENE_CHECK_FRAMES === 0 && now - builtAt > MIN_REBUILD_MS && sceneSignature(scene) !== signature) {
-      // Geometry was added or removed (a model streamed in or was unloaded): re-index, keep standing where we are.
+    } else if (frame % SCENE_CHECK_FRAMES === 0 && now - builtAt > MIN_REBUILD_MS && sceneSignature(scene, editVersion()) !== signature) {
+      // Geometry was added, removed or edited: re-index in place.
       build();
-      spawn();
     }
     if (!session || !world) return;
-    // A right-button flight owns the camera (#4868): stand down, and set the
-    // walker down wherever the flight ends (the external-move check below).
-    if (flySpeedStore.get().active) return;
 
     const eye = camera.getPosition();
     if (lastEye && Math.hypot(eye.x - lastEye.x, eye.y - lastEye.y, eye.z - lastEye.z) > EXTERNAL_MOVE) {
+      // Someone else moved the camera: a zoom, a preset view, a framing tween,
+      // leftover inertia. Wait until it holds still for a frame, then set the
+      // walker down there once (not once per frame of a tween).
+      const settled = movingFrom !== null
+        && Math.hypot(eye.x - movingFrom.x, eye.y - movingFrom.y, eye.z - movingFrom.z) < 1e-4;
+      movingFrom = { ...eye };
+      if (!settled) return;
+      movingFrom = null;
       spawn();
     }
 
@@ -150,6 +194,8 @@ export function createWalkController(renderer: Renderer, collidable: (id: number
     walkStatusStore.set({ crouching: session.character.crouching });
   };
 
+  // Orbit/zoom inertia from before walk mode would otherwise read as a camera move.
+  camera.stopInertia();
   const clearKeys = (): void => keys.clear();
   window.addEventListener('blur', clearKeys);
   // Read-only evidence for browser E2E, beside the viewport's `__ifc_lite_*` hooks.

@@ -47,7 +47,7 @@ Publication acceptance uses a local test server, selected by the user. The user 
 | P20 | Pending | Save-to-Flow, project-scoped preferences/tools, Ideas integration and task recipes backed by host availability. |
 | P21 | Partial corpus | Real ArchiCAD IDS and committed SketchUp parse/PDF fixtures started. Complete independent labels, live quality/usage evaluations, acceptance journeys and pilot UX thresholds. |
 | U01 | Partial design contract | Recognizable incremental layout/style constraints captured. Complete coordinator task variants, navigation mapping and actual existing-user comparisons. |
-| U02 | Pending | Shared artifact headers, ResultView, scope/selection, libraries and activity tray across all analyses. |
+| U02 | Initial evidence view | Shared frozen source/coverage/model metadata view across discussion, report and Flow review. Complete native artifact headers, ResultView, scope/selection, libraries and activity tray across all analyses. |
 | U03 | Partial contextual entry | Registered assistant opens from native source panels. Complete coordinator preset/common chrome, keyboard/a11y/i18n and narrow-layout journeys. |
 | U04 | Pending | Panel/profile/extension/deep-link/session migration and deletion of replaced paths, with compatibility and rollback evidence. |
 

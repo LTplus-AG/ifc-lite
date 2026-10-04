@@ -9,6 +9,10 @@ import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';
 
 const fixture = join(process.cwd(), 'tests/models/ara3d/AC20-FZK-Haus.ifc');
 
+// #6839: retain the successful coordinator journey for the user's UX review.
+// Recorded provider text verifies product behavior, not live LLM quality.
+test.use({ video: 'on' });
+
 // #6813: real ArchiCAD model, native duplicate scan and actual panel hosts.
 // Only the paid provider response is intercepted; evidence must come from the model.
 test('native clash evidence reaches the assistant without executing model output', async ({ page }, testInfo) => {

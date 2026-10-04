@@ -6,6 +6,8 @@ The assistant explains a frozen snapshot of native results. Native verdicts rema
 
 Snapshots include at most 100 rows. Large values can be shortened or omitted; the panel reports the number of included rows and any projection limits. Inspect the JSON to see exactly which evidence accompanies the question. The model is instructed to cite rows as `[E1]`, distinguish inference from native findings, and acknowledge missing provenance. A citation does not establish that the explanation is correct.
 
+The same captured-evidence view appears in discussions, report drafts and Flow patch reviews. It shows the source, what its rows represent, sample/omission notices and capture time. Expand the model metadata to inspect the names, IDs and supplied fingerprints loaded at capture; that list does not establish an analysis's evaluated scope. Historical evidence stays historical after a model is replaced. The complete escaped JSON remains available for inspection.
+
 If the source or model changes, sending is disabled. **Refresh evidence and start a new conversation** captures the current source and clears the previous discussion. A native result that predates an edit must first be rerun in its source panel. **Return to source** opens that panel.
 
 Model selection and API keys use the existing scripting assistant controls. A request has an output budget and time limit. Incomplete answers are marked. Cancel stops the active request. Failed or cancelled questions stay in the composer for retry and do not consume conversation history.

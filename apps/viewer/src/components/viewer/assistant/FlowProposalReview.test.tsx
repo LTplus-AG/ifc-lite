@@ -26,6 +26,10 @@ test('mounted Flow review requires approval and enables guarded graph undo', () 
   const ui = render(<FlowProposalReview />);
   const button = (text: string) => [...ui.querySelectorAll('button')].find(b => b.textContent === text)!;
   click(button('Review latest Flow answer'));
+  const evidence = ui.querySelector('section[aria-label="Captured evidence context"]');
+  assert.ok(evidence);
+  assert.match(evidence.textContent ?? '', /Captured workspace evidence/);
+  assert.match(evidence.textContent ?? '', /parameters and execution values are excluded/);
   assert.equal(useViewerStore.getState().flowDoc?.name, 'Original workflow');
   assert.equal(button('Apply graph changes').disabled, true);
   assert.match(ui.textContent ?? '', /Additional graph capabilities: None/);

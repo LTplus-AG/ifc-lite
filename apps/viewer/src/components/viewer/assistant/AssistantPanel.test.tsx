@@ -54,3 +54,18 @@ test('registered Clash and Data validation headers expose the actual contextual 
   act(() => setValidationSourceChoice('manual'));
   assert.equal(validation.querySelector('button[aria-label="Discuss with AI"]'), null);
 });
+
+test('fingerprint replacement renders stale evidence and disables sending through the canonical guard (#6839)', () => {
+  useViewerStore.setState(fixtureModels({ ...fixtureModel('m'), sourceFingerprint: 'original' }));
+  const source = render(<AssistantSourceContext panel="clash"><AssistantAction /></AssistantSourceContext>);
+  click(source.querySelector('button')!);
+  const ui = render(<AssistantPanel />);
+  const textarea = ui.querySelector('textarea')!;
+  type(textarea, 'Explain captured results');
+  assert.equal(textarea.disabled, false);
+  act(() => useViewerStore.setState(fixtureModels({ ...fixtureModel('m'), sourceFingerprint: 'replacement' })));
+  assert.equal(textarea.disabled, true);
+  assert.match(ui.textContent ?? '', /Stale workspace evidence/);
+  const send = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Send')!;
+  assert.equal(send.disabled, true);
+});

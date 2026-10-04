@@ -10,13 +10,13 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { ModelSelector } from '../chat/ModelSelector';
 import { ByokKeyModal } from '../chat/ByokKeyModal';
 import { useAssistant, cancelAssistant, replaceEvidence } from '@/lib/assistant/conversation';
-import { captureEvidence, sourceIdentity } from '@/lib/assistant/evidence';
+import { captureEvidence, evidenceIsCurrent } from '@/lib/assistant/evidence';
 import { sendAssistant } from '@/lib/assistant/request';
+import { EvidenceView } from '../analysis/EvidenceView';
 
 const FlowProposalReview = lazy(() => import('./FlowProposalReview').then(m => ({ default: m.FlowProposalReview })));
 const ReportDraftReview = lazy(() => import('./ReportDraftReview').then(m => ({ default: m.ReportDraftReview })));
@@ -27,10 +27,7 @@ export function AssistantPanel() {
   const state = useAssistant();
   const evidence = state.snapshot ?? state.archived?.evidence;
   const model = useViewerStore(s => s.chatActiveModel);
-  const identity = useViewerStore(() => state.snapshot ? sourceIdentity(state.snapshot.source) : null);
-  const contextStale = useAnalysisStaleness(state.snapshot?.contextStamp ?? null);
-  const reportStale = useAnalysisStaleness(state.snapshot?.reportStamp ?? null);
-  const stale = contextStale || reportStale || identity !== state.snapshot?.sourceIdentity;
+  const stale = useViewerStore(() => state.snapshot ? !evidenceIsCurrent(state.snapshot) : true);
   const [prompt, setPrompt] = useState('');
   const [keysOpen, setKeysOpen] = useState(false);
   const busy = state.status === 'streaming';
@@ -54,15 +51,12 @@ export function AssistantPanel() {
       <ModelSelector />
       {evidence ? <>
         <Button variant="outline" size="sm" onClick={() => panels.openInHome(evidence.source)}>{t('assistant.returnSource')}</Button>
-        <p className="text-xs text-muted-foreground">{t('assistant.scope', { included: evidence.includedRows, total: evidence.totalRows })}</p>
-        {evidence.projectionTruncated && <p className="text-xs text-muted-foreground">{t('assistant.evidenceTruncated')}</p>}
-        <p className="text-2xs text-muted-foreground">{evidence.capturedAt}</p>
+        <EvidenceView evidence={evidence} state={state.archived ? 'historical' : stale ? 'stale' : 'captured'} />
         <p className="text-xs text-muted-foreground">{state.archived ? t('assistant.archived') : t('assistant.saveHint')}</p>
         {stale && !state.archived && <output className="block text-xs text-amber-600">{t('assistant.stale')}</output>}
         <Button variant="outline" size="sm" onClick={() => replaceEvidence(captureEvidence(evidence.source))}>
           <RefreshCw className="h-3 w-3 mr-1" />{t('assistant.refresh')}
         </Button>
-        <details className="text-xs"><summary>{t('assistant.evidence')}</summary><pre className="whitespace-pre-wrap break-words max-h-64 overflow-auto">{evidence.payload}</pre></details>
       </> : <p className="text-xs text-muted-foreground">{t('assistant.empty')}</p>}
     </div>
     <ConversationLibrary />

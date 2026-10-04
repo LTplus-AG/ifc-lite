@@ -7,6 +7,7 @@ import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { useAssistant } from '@/lib/assistant/conversation';
+import { EvidenceView } from '../analysis/EvidenceView';
 import { prepareFlowProposal, applyFlowProposal, undoFlowProposal, isFlowProposalCurrent, isFlowReceiptCurrent,
   type FlowProposal, type FlowApplyReceipt } from '@/lib/assistant/flow-proposal';
 
@@ -39,7 +40,7 @@ export function FlowProposalReview() {
       })}>{t('assistant.reviewFlowAnswer')}</Button>
       {review.proposal && <>
         <p>{t('assistant.flowTarget', { id: review.proposal.target.id, name: review.proposal.target.name })}</p>
-        <p>{t('assistant.flowEvidence', { capturedAt: review.proposal.evidence.capturedAt, count: review.proposal.evidence.models.length })}</p>
+        <EvidenceView evidence={review.proposal.evidence} state={isFlowProposalCurrent(review.proposal) ? 'captured' : 'stale'} />
         <p>{t('assistant.flowGrants', { capabilities: review.proposal.addedCapabilities.join(', ') || t('assistant.none') })}</p>
         {review.proposal.trackingChanged && <p role="alert">{t('assistant.flowTrackingWarning')}</p>}
         {!isFlowProposalCurrent(review.proposal) && <p role="alert">{t('assistant.flowProposalStale')}</p>}

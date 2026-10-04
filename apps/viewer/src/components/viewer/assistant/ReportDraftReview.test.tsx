@@ -25,6 +25,10 @@ test('mounted report review requires explicit approval before creating an editab
   const ui = render(<ReportDraftReview />);
   const button = (text: string) => [...ui.querySelectorAll('button')].find(button => button.textContent === text)!;
   click(button('Prepare report draft'));
+  const evidence = ui.querySelector('section[aria-label="Captured evidence context"]');
+  assert.ok(evidence);
+  assert.match(evidence.textContent ?? '', /Historical evidence/);
+  assert.match(evidence.textContent ?? '', /Rows represent native clash findings/);
   assert.equal(button('Save reviewed document').disabled, true);
   assert.equal(button('Export reviewed document JSON').disabled, true);
   act(() => ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());

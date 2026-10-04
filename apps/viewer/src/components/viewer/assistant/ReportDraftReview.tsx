@@ -11,6 +11,7 @@ import { useAssistant } from '@/lib/assistant/conversation';
 import { prepareReportDraft, isReportDraftCurrent, saveReportDraft, type ReportDraft } from '@/lib/assistant/report-draft';
 import { exportDocument } from '@/lib/document/persistence';
 import { ContentStorageNotice } from '../ContentStorageNotice';
+import { EvidenceView } from '../analysis/EvidenceView';
 
 export function ReportDraftReview() {
   const { t } = useTranslation();
@@ -48,8 +49,8 @@ export function ReportDraftReview() {
       }}>{t('assistant.prepareReport')}</Button>
       {draft && <>
         <p className="font-semibold">{draft.document.name}</p>
-        <p>{t('assistant.scope', { included: draft.source.evidence.includedRows, total: draft.source.evidence.totalRows })}</p>
-        <p>{draft.source.evidence.capturedAt} · {draft.source.messages.at(-1)?.model}</p>
+        <EvidenceView evidence={draft.source.evidence} state="historical" />
+        <p>{draft.source.messages.at(-1)?.model}</p>
         <blockquote className="whitespace-pre-wrap break-words border-l-2 border-border pl-2 max-h-64 overflow-auto">{draft.source.messages.at(-1)?.content}</blockquote>
         <details><summary>{t('assistant.reportContents')}</summary><pre className="whitespace-pre-wrap break-words max-h-64 overflow-auto">{draft.documentJson}</pre></details>
         {!current && !saved && <p role="alert">{t('assistant.reportStale')}</p>}

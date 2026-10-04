@@ -78,4 +78,4 @@ increases and that its last call reports every byte returned.
 
 Providers may report `SourceFile.kind`, an `artifactName` distinct from the resource name, and an `unavailableReason` for resources that cannot be imported. Unavailable rows stay visible with an explanation and cannot be selected. `ProviderCapabilities.sourceNamePatterns` customizes the catalog filter; an empty list shows every resource, including generated models without an IFC filename.
 
-`DownloadOptions.onPhase('preparing')` reports preparation before bytes exist; use `onProgress` only for actual download bytes. Interactive providers may implement `SourceAuth.cancelSignIn` to invalidate a pending login. The host guards late authentication and download results so cancelled operations cannot publish a new identity or enter the loader.
+`DownloadOptions.onPhase('preparing')` reports preparation before bytes exist; use `onProgress` only for actual download bytes. Interactive providers may implement `SourceAuth.cancelSignIn` to invalidate a pending login. Hosts must guard late authentication and download results so cancelled operations cannot publish a new identity or enter the loader.

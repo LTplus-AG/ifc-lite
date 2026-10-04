@@ -13,6 +13,7 @@ mod appearance_transfer;
 mod annotation_plane;
 mod captured_mesh;
 mod appearance_calibration;
+mod scan_outline;
 mod scan_registration;
 mod scan_segmentation;
 mod pdf_vector;

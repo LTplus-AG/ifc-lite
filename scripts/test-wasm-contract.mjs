@@ -34,6 +34,7 @@ import { runOverlayFrameContracts } from './lib/wasm-overlay-frame-contracts.mjs
 import { runRtcPrecisionContracts } from './lib/wasm-rtc-precision-contracts.mjs';
 import { finishContractRun } from './lib/wasm-landxml-contracts.mjs';
 import { runEarlyContracts } from './lib/wasm-early-contracts.mjs';
+import { runScanOutlineContracts } from './lib/wasm-scan-outline-contracts.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
 const FIXTURES_DIR = join(ROOT_DIR, 'tests/models');
@@ -2150,6 +2151,7 @@ await runShardRefusalBoundaryTests(api, test);
 // The fixture is built from the viewer's class-toggle table, so a class added
 // there and not to the Rust partition fails here.
 await runClassToggleShardContract(IfcAPI, test);
+runScanOutlineContracts({ test }); // #6871
 await (await import('./lib/wasm-remesh-contracts.mjs')).runRemeshContracts({ IfcAPI, FIXTURES_DIR, FIXTURES_HINT, test, skip }); // #6232
 finishContractRun(api, passed, failed, skipped);
 

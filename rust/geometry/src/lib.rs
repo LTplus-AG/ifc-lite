@@ -127,6 +127,9 @@ pub(crate) mod geom_hash;
 /// geometry pass (single-sourced so independently-evolving passes can't drift
 /// apart on the same tolerance).
 pub(crate) mod grid;
+/// Shared `[f64; 2]` plane primitives (area, point-in-polygon, exact segment
+/// intersection) used by `space_dcel`, `terrain_cdt` and `scan_outline`.
+pub(crate) mod geom2d;
 pub(crate) mod extrusion;
 pub(crate) mod instancing;
 /// Pure-Rust exact mesh-arrangement CSG kernel — the only CSG kernel, on
@@ -167,6 +170,9 @@ mod scalar_adjoint;
 mod telemetry_transaction;
 pub use rect_fast::RectFastStats;
 pub(crate) mod router;
+/// Vector outlines traced from a slab of scan points (#6871). Reached through
+/// the root-level re-exports below.
+pub(crate) mod scan_outline;
 /// Per-element mesh simplification for the demesher (cavity removal, grid
 /// vertex-clustering decimation, bounding-box collapse).
 pub mod simplify;
@@ -268,6 +274,10 @@ pub use router::{
 /// `ifc_lite_core::limits` so core's own bounds scan can use them too.
 pub use ifc_lite_core::limits::{coord_is_large, LARGE_COORD_THRESHOLD_METERS};
 pub use simplify::{simplify_mesh, SimplifyOptions, SimplifyStats};
+pub use scan_outline::{
+    trace_scan_outline, PlaneFrame, ScanOutline, ScanOutlineDiagnostics, ScanOutlineOptions, MAX_CELLS_LIMIT,
+    MAX_GAP_LIMIT,
+};
 pub use tessellation::{scale_segments, TessellationQuality};
 pub use transform::{
     parse_axis2_placement_3d, parse_axis2_placement_3d_from_id, parse_cartesian_point,

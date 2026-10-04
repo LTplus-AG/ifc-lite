@@ -337,7 +337,7 @@ readonly is_ready: boolean; // true once the API is initialized
 
 ### Other Exported Classes
 
-Beyond `IfcAPI` and the mesh types below, the module exports `ClashSession` / `ClashRunResult` (native clash detection over ingested mesh buffers), `GridAxisCollection` / `GridAxisJs` (parsed grid axes), `ProfileCollection` / `ProfileEntryJs`, `PartitionedBatch`, `MeshOutlineJs`, `SpacePlateHandle` (interactive room-layout topology), `Contours2D` (see below), and the `Symbolic*` classes (`SymbolicRepresentationCollection`, `SymbolicPolyline`, `SymbolicCircle`, `SymbolicText`, `SymbolicFillArea`). See `packages/wasm/pkg/ifc-lite.d.ts` for their full definitions.
+Beyond `IfcAPI` and the mesh types below, the module exports `ClashSession` / `ClashRunResult` (native clash detection over ingested mesh buffers), `GridAxisCollection` / `GridAxisJs` (parsed grid axes), `ProfileCollection` / `ProfileEntryJs`, `PartitionedBatch`, `MeshOutlineJs`, `SpacePlateHandle` (interactive room-layout topology), `Contours2D` and `ScanOutlineJs` (see below), and the `Symbolic*` classes (`SymbolicRepresentationCollection`, `SymbolicPolyline`, `SymbolicCircle`, `SymbolicText`, `SymbolicFillArea`). See `packages/wasm/pkg/ifc-lite.d.ts` for their full definitions.
 
 `SymbolicFillArea.geometryItemId` optionally identifies an unambiguous direct
 fill item in a single flat representation. Match it together with the owning
@@ -400,6 +400,36 @@ occluders.free();
 ```
 
 `bounds()` is cheap enough to gate the boolean itself: skip the difference when an accumulated occluder's bounds miss the next element.
+
+### Scan section outlines
+
+`traceScanOutline` turns a slab of scan points, already projected into a section plane, into closed vector rings: the boundary of what the scan shows as solid at the cut (walls, columns, furniture). It is the vector counterpart of the scan section layer's dots, meant for drawings and DXF.
+
+```typescript
+function traceScanOutline(
+  planeXY: Float32Array,                 // [u0, v0, u1, v1, …] slab points in plane coordinates (metres)
+  options?: ScanOutlineOptionsJs,        // every field optional; unknown fields throw
+  planeFrame?: ScanOutlinePlaneFrameJs,  // { origin, uAxis, vAxis }: world = origin + u·uAxis + v·vAxis
+): ScanOutlineJs;
+
+class ScanOutlineJs {
+  readonly ringCount: number;
+  readonly shapeCount: number;
+  coords(): Float64Array;              // every ring's [u, v] concatenated, no closing duplicate
+  ringLengths(): Uint32Array;          // vertices per ring
+  shapeOffsets(): Uint32Array;         // first ring of each shape: its outer ring, then its holes
+  ringParents(): Int32Array;           // direct container of each ring, -1 at top level
+  worldCoords(): Float64Array | undefined; // [x, y, z, …] through planeFrame, when given
+  diagnostics(): ScanOutlineDiagnosticsJs; // cellSize, cellCapHit, ringCount, squaredEdges, …
+  free(): void;
+}
+```
+
+The pipeline: a count grid (cell size adaptive to the point density between `minCellSize` and `maxCellSize`, under a `maxCells` budget that reports `cellCapHit` when it forces coarser cells) thresholded against the median occupied-cell count; a closing that bridges gaps up to `maxGap` (about a wall thickness, clamped to 0.5 m) and an opening by reconstruction that drops speckle; small components dropped and small holes filled; a cell-edge contour trace; Douglas-Peucker simplification; snapping each edge to a least-squares fit of the points along it; and squaring edges within `squareAngleToleranceDeg` of the dominant building direction.
+
+**Guarantees.** Outer rings wind counter-clockwise and holes clockwise, in plane coordinates. No ring touches or crosses itself or another, and every ring stays inside the ring `ringParents()` names. Any simplification, snap or squaring move that would break that is undone, and `diagnostics().revertedMoves` counts those undo steps. Gaps narrower than `maxGap` are closed, which is what turns the two faces of a wall into one solid band. Wider gaps, such as door openings, stay open.
+
+**Cost.** Linear in the points and the grid cells. A 1.9 M point slab traces in about 0.3 s natively. Run it off the main thread for large slabs.
 
 ## Data Types
 

@@ -1,6 +1,53 @@
 /* tslint:disable */
 /* eslint-disable */
 
+/** Every field is optional; absent means the default. Unknown fields are refused. Lengths in metres. */
+export interface ScanOutlineOptionsJs {
+    /** Fixed cell edge; omit to pick it from the point density between minCellSize and maxCellSize. */
+    cellSize?: number;
+    /** Default 0.02. */ minCellSize?: number;
+    /** Default 0.05. */ maxCellSize?: number;
+    /** Adaptive cells grow until the median occupied cell holds this many points. Default 6. */
+    targetPointsPerCell?: number;
+    /** Cell budget for the padded grid (64 ..= 67108864). Default 16777216; hitting it sets diagnostics.cellCapHit. */
+    maxCells?: number;
+    /** Default 1. */ minPointsPerCell?: number;
+    /** A cell is occupied from this fraction of the median occupied-cell count. Default 0.25. */
+    noiseFraction?: number;
+    /** Widest gap the closing bridges, about a wall thickness; clamped to 0.5. Default 0.3. */
+    maxGap?: number;
+    /** Speckle opening radius in cells (0 disables). Default 1. */ openRadiusCells?: number;
+    /** Solid components below this area (m²) are dropped. Default 0.02. */ minComponentArea?: number;
+    /** Enclosed holes below this area (m²) are filled. Default 0.5. */ minHoleArea?: number;
+    /** Douglas-Peucker tolerance in cells. Default 1.5. */ simplifyToleranceCells?: number;
+    /** Refit edges to the points. Default true. */ snap?: boolean;
+    /** Evidence band beside an edge, in cells. Default 3. */ snapDistanceCells?: number;
+    /** Fewest points to refit an edge. Default 8. */ minSnapPoints?: number;
+    /** Largest squaring move, in cells. Default 4. */ maxVertexMoveCells?: number;
+    /** Square edges to the dominant direction. Default true. */ square?: boolean;
+    /** Default 3. */ squareAngleToleranceDeg?: number;
+    /** Squares edges whose ends move at most this far. Default 0.03. */ squareOffsetTolerance?: number;
+}
+/** world = origin + u * uAxis + v * vAxis */
+export interface ScanOutlinePlaneFrameJs {
+    origin: [number, number, number];
+    uAxis: [number, number, number];
+    vAxis: [number, number, number];
+}
+export interface ScanOutlineDiagnosticsJs {
+    inputPoints: number; usedPoints: number; nonFinitePoints: number; outlierPoints: number;
+    cellSize: number; gridWidth: number; gridHeight: number;
+    cellCapHit: boolean; maxGapClamped: boolean; countThreshold: number;
+    occupiedCells: number; solidCells: number; componentsDropped: number; holesFilled: number;
+    ringCount: number; outerRingCount: number; holeRingCount: number; vertexCount: number;
+    simplifyReinsertions: number; snappedEdges: number;
+    /** Degrees in [0, 90); absent when no edge was long enough to tell. */
+    dominantAngleDeg?: number;
+    squaredEdges: number; revertedMoves: number;
+}
+
+
+
 /** Exact browser mesh RTC frame, in IFC Z-up metres. */
 export interface RtcFrame {
     x: number;
@@ -1818,6 +1865,50 @@ export class ProfileEntryJs {
 }
 
 /**
+ * The traced outline. Owns wasm memory: call `free()`.
+ */
+export class ScanOutlineJs {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Every ring's plane coordinates concatenated, `[u0, v0, u1, v1, …]`.
+     */
+    coords(): Float64Array;
+    /**
+     * What the run did: cell size, cap hits, ring counts, repairs.
+     */
+    diagnostics(): ScanOutlineDiagnosticsJs;
+    /**
+     * Vertex count of each ring, in `coords()` order.
+     */
+    ringLengths(): Uint32Array;
+    /**
+     * The ring directly containing each ring (a hole's outer boundary, an
+     * island's hole), or `-1` at top level.
+     */
+    ringParents(): Int32Array;
+    /**
+     * Ring index at which each shape starts; entry `s` is shape `s`'s outer
+     * ring and the rings up to the next entry are its holes.
+     */
+    shapeOffsets(): Uint32Array;
+    /**
+     * Every ring mapped through the plane frame, `[x0, y0, z0, …]` in
+     * `coords()` order, or `undefined` when no frame was given.
+     */
+    worldCoords(): Float64Array | undefined;
+    /**
+     * Total number of rings (outer boundaries and holes).
+     */
+    readonly ringCount: number;
+    /**
+     * Number of outer boundaries.
+     */
+    readonly shapeCount: number;
+}
+
+/**
  * Flat result of `simplifyMeshes`: per surviving element `i`,
  * `vertexCounts[i]` vertices and `indexCounts[i]` indices taken in order
  * from the concatenated arrays (mirrors the `exportGlbFromMeshes` wire
@@ -2415,6 +2506,14 @@ export function setGeometryProgressCallback(callback?: Function | null): void;
 export function splitMeshByZones(positions: Float64Array, indices: Uint32Array, zones: Float64Array, footprints?: Float64Array | null, footprint_counts?: Uint32Array | null): ZoneSplitJs | undefined;
 
 /**
+ * Trace closed outlines from slab points given in plane coordinates.
+ *
+ * THROWS on invalid options or plane frame (unknown field, non-finite or
+ * out-of-range value). Points that are not finite are skipped and counted.
+ */
+export function traceScanOutline(plane_xy: Float32Array, options?: ScanOutlineOptionsJs | null, plane_frame?: ScanOutlinePlaneFrameJs | null): ScanOutlineJs;
+
+/**
  * `a ∪ b`.
  */
 export function union2d(a: Contours2D, b: Contours2D): Contours2D;
@@ -2453,6 +2552,7 @@ export interface InitOutput {
     readonly __wbg_partitionedbatch_free: (a: number, b: number) => void;
     readonly __wbg_profilecollection_free: (a: number, b: number) => void;
     readonly __wbg_profileentryjs_free: (a: number, b: number) => void;
+    readonly __wbg_scanoutlinejs_free: (a: number, b: number) => void;
     readonly __wbg_simplifiedmeshes_free: (a: number, b: number) => void;
     readonly __wbg_spaceplatehandle_free: (a: number, b: number) => void;
     readonly __wbg_symboliccircle_free: (a: number, b: number) => void;
@@ -2666,6 +2766,14 @@ export interface InitOutput {
     readonly profileentryjs_outerPoints: (a: number) => number;
     readonly profileentryjs_transform: (a: number) => number;
     readonly resolve2d: (a: number) => number;
+    readonly scanoutlinejs_coords: (a: number) => number;
+    readonly scanoutlinejs_diagnostics: (a: number, b: number) => void;
+    readonly scanoutlinejs_ringCount: (a: number) => number;
+    readonly scanoutlinejs_ringLengths: (a: number) => number;
+    readonly scanoutlinejs_ringParents: (a: number) => number;
+    readonly scanoutlinejs_shapeCount: (a: number) => number;
+    readonly scanoutlinejs_shapeOffsets: (a: number) => number;
+    readonly scanoutlinejs_worldCoords: (a: number) => number;
     readonly setGeometryProgressCallback: (a: number) => void;
     readonly simplifiedmeshes_cavitiesDropped: (a: number, b: number) => void;
     readonly simplifiedmeshes_elementIds: (a: number, b: number) => void;
@@ -2759,6 +2867,7 @@ export interface InitOutput {
     readonly symbolictext_repIdentifier: (a: number, b: number) => void;
     readonly symbolictext_x: (a: number) => number;
     readonly symbolictext_y: (a: number) => number;
+    readonly traceScanOutline: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly union2d: (a: number, b: number) => number;
     readonly version: (a: number) => void;
     readonly zonepiecejs_indices: (a: number) => number;

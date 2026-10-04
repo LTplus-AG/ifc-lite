@@ -4,8 +4,31 @@
 // #6516 prepared consumer/ABI invariants; in-memory handles are NOT real-WASM proof.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bounds, observedEntries, sourceJob, completePopulation,
-  fingerprintConvertedMeshes, fingerprintCollection, observeOriginalBatches, observeBatches } from './csg-work-diagnostic.mjs';
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+
+const readerUrl = new URL('./csg-work-diagnostic.mjs', import.meta.url);
+test('#6516 a real Node consumer preserves ordered observations and rejects unsafe tuples', () => {
+  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', `
+    import assert from 'node:assert/strict';
+    const { observedEntries } = await import(${JSON.stringify(readerUrl.href)});
+    const entries = [[0, 4294967295, 0], [3, 8, 2], [3, 8, 2]];
+    assert.deepEqual(observedEntries(entries), entries);
+    assert.throws(() => observedEntries([[0, 4294967296, 0]]), /INVALID_CENSUS_TUPLE/);
+  `], { encoding: 'utf8', timeout: 10_000, maxBuffer: 1024 * 1024 });
+  // Assert the consumer's outcome without echoing loader diagnostics as test
+  // output. Deleting the new reader must fail a running consumer assertion,
+  // rather than prevent this whole test file from loading (#6516 revert oracle).
+  assert.equal(result.status, 0, 'the real Node consumer could not satisfy the tuple invariants');
+  assert.equal(result.signal, null);
+});
+
+// In-process ownership controls additionally exercise the available reader.
+// The child consumer above remains executable when a whole-file revert removes
+// the reader, so that case still produces an actual failing assertion.
+if (existsSync(readerUrl)) {
+const { bounds, observedEntries, sourceJob, completePopulation,
+  fingerprintConvertedMeshes, fingerprintCollection, observeOriginalBatches, observeBatches } = await import(readerUrl.href);
 
 const source = { sha256: 'a'.repeat(64), bytes: 100 };
 const job = () => sourceJob(new Uint32Array([344, 10, 20]), 0, source);
@@ -63,11 +86,11 @@ test('#6516 report UTF8 byte budget refuses without clipping into complete succe
   assert.equal(p.status().observedRowsRetainedWithoutClipping,false);
   assert.ok(p.status().retainedRowBytes<bounds.reportBytes);
 });
-function mesh() {
+const mesh = () => {
   const positions=new Float32Array(new ArrayBuffer(44),4,9);positions.set([0,0,0,1,0,0,0,1,0]);
   return {expressId:344,origin:[1,2,3],color:[.5,.6,.7,1],positions,
     normals:new Float32Array([0,0,1,0,0,1,0,0,1]),indices:new Uint32Array([0,1,2])};
-}
+};
 test('#6516 exact stock converted byte-layout recipe includes typed view offsets', () => {
   assert.deepEqual(fingerprintConvertedMeshes([mesh()]),{hashes:['7de2c5678ac809a36473b7d36dcbd23ae3168838d676eff501e7eb2e051d38ac'],triangles:1});
 });
@@ -120,3 +143,4 @@ test('#6516 diagnostic mismatch refuses and frees original plus replay collectio
     /Individual jobs differ from canonical streaming batch/);
   assert.equal(collectionFrees,2);restore();
 });
+}

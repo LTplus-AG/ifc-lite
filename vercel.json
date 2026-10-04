@@ -10,6 +10,10 @@
       "destination": "https://autodesk-production-50bc.up.railway.app/api/autodesk/:path*"
     },
     {
+      "source": "/api/cloud/:path*",
+      "destination": "https://cloud-production-6b9b.up.railway.app/api/cloud/:path*"
+    },
+    {
       "source": "/oauth/autodesk/callback",
       "destination": "/oauth/autodesk/callback.html"
     },
@@ -54,8 +58,14 @@
     {
       "source": "/oauth/autodesk/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "no-store" },
-        { "key": "Referrer-Policy", "value": "no-referrer" }
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
+        }
       ]
     },
     {

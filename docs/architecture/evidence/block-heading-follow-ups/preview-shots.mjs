@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/* Screenshots of the document preview for the block heading follow-ups, in a real Chromium, against a
- * running Vite dev server, and the heading's measured box.
+/* Screenshot of the document preview for the block heading follow-ups, in a real Chromium, against a
+ * running Vite dev server, and the heading's measured box. The preview draws the composer's items (#6731),
+ * so the heading is the composer's bold text span and its strip the composed `rect` fill.
  *   EVIDENCE_TAG=main|branch EVIDENCE_OUT=<dir> EVIDENCE_BASE=http://127.0.0.1:5178/ node docs/architecture/evidence/block-heading-follow-ups/preview-shots.mjs
- * `f1-topic`: a topic with no authored title at heading size 24 on a yellow strip. `f2-unset` and `f2-size12`:
- * a table and an IDS report with their title set, first at the default size and then at 12 pt. */
+ * `f1-topic`: a topic with no authored title at heading size 24 on a yellow strip. */
 import { chromium } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 
@@ -15,17 +15,13 @@ const OUT = process.env.EVIDENCE_OUT ?? '.';
 const TAG = process.env.EVIDENCE_TAG ?? 'main';
 mkdirSync(OUT, { recursive: true });
 
-const ids = (id, extra) => ({ kind: 'ids-report', id, variant: 'compact', benchmarks: true, sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z',
-  summary: { checked: 4, passed: 1, failed: 3, passRate: 25 }, checks: [{ id: 's1', shortDescription: 'Walls', checked: 4, passed: 1, failed: 3, passRate: 25, rules: [] }], title: 'Validation result', ...extra });
 const docs = {
   'f1-topic': [{ kind: 'topic', id: 't', guid: 'topic-1', snapshot: false, titleFontSize: 24, titleBackgroundColor: '#ffff00' },
     { kind: 'text', id: 'after', style: 'body', text: 'Text after the topic block.' }],
-  'f2-unset': [{ kind: 'table', id: 'table', source: { kind: 'validation', rows: 'failed', columns: ['rule'] }, title: 'Failed rules' }, ids('ids', {})],
-  'f2-size12': [{ kind: 'table', id: 'table', source: { kind: 'validation', rows: 'failed', columns: ['rule'] }, title: 'Failed rules', titleFontSize: 12 }, ids('ids', { titleFontSize: 12 })],
 };
 
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
+const page = await browser.newPage({ viewport: { width: 1500, height: 1800 } });
 await page.goto(BASE);
 await page.waitForFunction(() => Boolean(globalThis.__ifc_lite_viewer_store__), null, { timeout: 120000 });
 for (const [name, blocks] of Object.entries(docs)) {
@@ -40,12 +36,15 @@ for (const [name, blocks] of Object.entries(docs)) {
   await page.waitForTimeout(400);
   const first = blocks[0].id;
   const box = await page.evaluate((id) => {
-    const root = document.querySelector(`[data-document-preview] [data-preview-block="${id}"]`);
-    const text = [...root.querySelectorAll('div')].find((d) => d.children.length === 0 && d.textContent.trim());
-    const r = text.getBoundingClientRect(); const cs = getComputedStyle(text);
-    return { fontPx: Number.parseFloat(cs.fontSize), boxHeightPx: r.height, textScrollHeightPx: text.scrollHeight, whiteSpace: cs.whiteSpace };
+    const root = [...document.querySelectorAll(`[data-document-preview] [data-preview-block="${id}"]`)].at(-1);
+    const heading = [...root.querySelectorAll('span')].find((el) => el.style.fontWeight === '700');
+    const strip = root.querySelector('[data-composed-fill="rect"]');
+    const sheet = root.closest('[data-document-preview-paper]'); sheet.setAttribute('data-evidence-sheet', '');
+    const range = document.createRange(); range.selectNodeContents(heading);
+    return { text: heading.textContent.trimEnd(), fontPx: Number.parseFloat(getComputedStyle(heading).fontSize),
+      textRight: range.getBoundingClientRect().right, stripRight: strip.getBoundingClientRect().right, sheetRight: sheet.getBoundingClientRect().right };
   }, first);
-  console.log(`${name}-${TAG}: first heading font ${box.fontPx.toFixed(2)} px, box ${box.boxHeightPx.toFixed(2)} px tall, text needs ${box.textScrollHeightPx} px, white-space ${box.whiteSpace}`);
-  await page.locator('[data-document-preview]').last().screenshot({ path: `${OUT}/${name}-${TAG}.png` });
+  console.log(`${name}-${TAG}: heading "${box.text}" ${box.fontPx.toFixed(2)} px; glyphs end ${(box.textRight - box.stripRight).toFixed(1)} px from the strip's right edge, ${(box.textRight - box.sheetRight).toFixed(1)} px from the sheet's right edge (negative is inside)`);
+  await page.locator('[data-evidence-sheet]').screenshot({ path: `${OUT}/${name}-${TAG}.png` });
 }
 await browser.close();

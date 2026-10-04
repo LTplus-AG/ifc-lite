@@ -1,12 +1,18 @@
 # Block heading follow-ups to #6632: evidence
 
 PDFs exported through the viewer's own path (`prepareDocument` + `exportPreparedDocument`, real jsPDF,
-real Helvetica metrics) in the bundled Chromium, on `upstream/main` at `5e15a26e4` ("main") and on this
-branch ("branch"), and what can be read back from their bytes. The preview screenshots and measurements are
-from the same Vite dev server in the same Chromium.
+real Helvetica metrics) in the bundled Chromium, and what can be read back from their bytes. The preview
+screenshots and measurements are from the same Vite dev server in the same Chromium.
 
-Commands (the "main" files are produced by restoring the three changed source files of `src/lib/document/compose.ts`,
-`compose-block-title.ts` and `components/viewer/document/BlockHeading.tsx` from `upstream/main`):
+Every file here was re-measured on the branch after merging `origin/main` at `73070c2d6` ("branch"), against
+that same tree with `apps/viewer/src/lib/document/compose.ts`, `compose-block-title.ts` and
+`generate-document-pdf.ts` restored from `origin/main` ("main"). The re-measured `readback.txt` is
+identical, line for line, to the first measurement on the pre-merge base `5e15a26e4`. Since #6731 the preview draws the composer's items,
+so the preview screenshots now show the composer's heading, and the earlier preview-only fixes to
+`BlockHeading.tsx` (one line, point size; old F1 preview and F2) were dropped as superseded; their screenshots
+were removed with them.
+
+Commands:
 
 ```
 cd apps/viewer && pnpm exec vite --port 5178 --host 127.0.0.1 --strictPort
@@ -28,9 +34,13 @@ and `qpdf` are not installed. Nothing in `readback.txt` comes from the composer.
 | against the right margin edge (555.3) | past it by 42.6 pt, and past the page edge (595.3) | inside it | pdf.js |
 | last word box | "an" 569.9 to 597.9 | "clo…" 492.5 to 551.2 | `pdftotext -bbox` |
 
-Preview (`f1-topic-main.png`, `f1-topic-branch.png`, measured in the DOM): the heading box is 32.83 px tall on
-both; the text needs 66 px on main (`white-space: normal`, two lines overlapping "Status: Open") and 33 px on
-the branch (`white-space: nowrap`).
+Preview (`f1-topic-main.png`, `f1-topic-branch.png`, measured in the DOM by `preview-shots.mjs`, sheet 560 px wide):
+
+| | main | branch |
+|---|---|---|
+| heading text | "Fire door in corridor 2.14 is missing its closer and label", whole | "Fire door in corridor 2.14 is missing its clo…" |
+| glyphs end, against the strip's right edge | 111.2 px past it | 4.2 px inside it |
+| glyphs end, against the sheet's right edge | 73.5 px past it (clipped) | 41.9 px inside it |
 
 ## F3: a half-width chart beside a half-width text block, heading size 18, yellow strips (`f3-chart-beside-text-*.pdf`)
 
@@ -41,15 +51,6 @@ the branch (`white-space: nowrap`).
 | heading texts | unchanged: 43.0 to 259.1 and 305.6 to 489.7 | same | pdf.js |
 
 The one-pixel difference between 253 and the column's 252.6 is the anti-aliased edge.
-
-## F2: the preview heading's size (`f2-unset-*.png`, `f2-size12-*.png`)
-
-Measured in the DOM, a table block's heading:
-
-| | main | branch |
-|---|---|---|
-| title set, size unset | 14.00 px font, 20.00 px box | 10.35 px (11 pt at the sheet scale), 15.05 px box |
-| size 12 | 11.29 px font, 16.41 px box (smaller than unset) | 11.29 px, 16.41 px |
 
 ## What this does not show
 

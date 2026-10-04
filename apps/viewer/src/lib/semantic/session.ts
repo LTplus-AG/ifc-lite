@@ -4,11 +4,12 @@
 
 import { create } from 'zustand';
 import type { IdentityFields } from './resolver-context';
-import { DEFAULT_PROFILE, assertProfile, sanitizeSource, exportWorkspace, importWorkspace, parseProfileDocument,
-  type ValidationReport, type BindingMapping, type ResourceIdentityLink, type ProfileDefinition, type SemanticWorkspace, type SemanticDocument, type SparqlResults, type ValidationFinding } from '@ifc-lite/semantic';
+import { DEFAULT_PROFILE, DEFAULT_RESOURCE_URI_CONFIG, assertResourceUriIdentityConfig, assertProfile, sanitizeSource, exportWorkspace, importWorkspace, parseProfileDocument,
+  type ResourceUriIdentityConfig, type ValidationReport, type BindingMapping, type ResourceIdentityLink, type ProfileDefinition, type SemanticWorkspace, type SemanticDocument, type SparqlResults, type ValidationFinding } from '@ifc-lite/semantic';
 
 interface SemanticSession {
-  strategy: string; links: ResourceIdentityLink[]; identityFields: IdentityFields;
+  strategy: string; links: ResourceIdentityLink[]; identityFields: IdentityFields; uriConfig: ResourceUriIdentityConfig;
+  setUriConfig: (config: ResourceUriIdentityConfig) => void;
   setStrategy: (strategy: string) => void; setLinks: (links: ResourceIdentityLink[]) => void; setIdentityFields: (fields: IdentityFields) => void;
   document?: SemanticDocument; results?: SparqlResults; graph: string; findings: ValidationFinding[]; report?: ValidationReport; dataVersion: number; resultMapping?: BindingMapping;
   profile: ProfileDefinition; retrievedAt?: string; graphFormat: 'text/turtle' | 'application/n-quads'; pendingRevisions: SemanticWorkspace['revisions']; revisions: Map<string, string>; queries: SemanticWorkspace['queries'];
@@ -28,6 +29,7 @@ interface SemanticSession {
 const STORAGE_KEY = 'ifc-lite.semantic.workspace.v1';
 /** Export portable identities only; endpoint grants, credentials and session addresses never persist. */
 export const useSemanticSession = create<SemanticSession>((set, get) => ({
+  uriConfig: DEFAULT_RESOURCE_URI_CONFIG, setUriConfig: config => { assertResourceUriIdentityConfig(config); set({ uriConfig: config.mode === 'template' ? { mode: config.mode, template: config.template } : { mode: config.mode } }); },
   strategy: 'ifc-global-id', links: [], identityFields: { GlobalId: 'GlobalId', modelRevision: 'modelRevision' },
   setStrategy: strategy => set({ strategy }), setLinks: links => set({ links }), setIdentityFields: identityFields => set({ identityFields }),
   graph: '', findings: [], report: undefined, dataVersion: 0, revisions: new Map(), profile: DEFAULT_PROFILE, queries: [], pendingRevisions: [], graphFormat: 'application/n-quads',
@@ -41,7 +43,7 @@ export const useSemanticSession = create<SemanticSession>((set, get) => ({
     const workspace = exportWorkspace({ version: 1, queries: state.queries, resourceLinks: state.links, revisions: [...new Set([...state.revisions.keys(), ...state.pendingRevisions.map(link => link.revision), ...state.links.map(link => link.modelRevision)])].map(revision => ({ revision, modelLabel: '' })),
       datasets: [{ id: 'current', source: state.document?.source ?? 'urn:ifc-lite:local', completeness: state.document?.completeness ?? 'partial',
         profileId: state.profile.id, rows: state.results, graph: state.graph || undefined, graphFormat: state.graph ? state.graphFormat : undefined }] });
-    const serialized = JSON.stringify({ version: 1, workspace: JSON.parse(workspace) as unknown, profile: state.profile, document: state.document ? { ...parseProfileDocument(state.document, state.profile), source: sanitizeSource(state.document.source) } : undefined, strategy: state.strategy, identityFields: { GlobalId: state.identityFields.GlobalId, modelRevision: state.identityFields.modelRevision } });
+    const serialized = JSON.stringify({ version: 1, workspace: JSON.parse(workspace) as unknown, profile: state.profile, document: state.document ? { ...parseProfileDocument(state.document, state.profile), source: sanitizeSource(state.document.source) } : undefined, strategy: state.strategy, uriConfig: state.uriConfig.mode === 'template' ? { mode: state.uriConfig.mode, template: state.uriConfig.template } : { mode: state.uriConfig.mode }, identityFields: { GlobalId: state.identityFields.GlobalId, modelRevision: state.identityFields.modelRevision } });
     if (new TextEncoder().encode(serialized).length > 5 * 1024 * 1024) throw new Error('Workspace exceeds byte limit');
     localStorage.setItem(STORAGE_KEY, serialized);
     return serialized;
@@ -55,11 +57,14 @@ export const useSemanticSession = create<SemanticSession>((set, get) => ({
     const document = 'document' in raw && raw.document !== undefined ? parseProfileDocument(raw.document, raw.profile) : undefined;
     if (document) document.source = sanitizeSource(document.source);
     const dataset = imported.workspace.datasets[0];
-    const strategy = 'strategy' in raw && ['ifc-global-id', 'resource-links', 'profile-fields'].includes(String(raw.strategy)) ? String(raw.strategy) : 'ifc-global-id';
+    const strategy = 'strategy' in raw && ['ifc-global-id', 'resource-links', 'profile-fields', 'resource-uri'].includes(String(raw.strategy)) ? String(raw.strategy) : 'ifc-global-id';
+    const configuredUri = 'uriConfig' in raw ? raw.uriConfig : DEFAULT_RESOURCE_URI_CONFIG;
+    assertResourceUriIdentityConfig(configuredUri);
+    const uriConfig: ResourceUriIdentityConfig = configuredUri.mode === 'template' ? { mode: configuredUri.mode, template: configuredUri.template } : { mode: configuredUri.mode };
     const fields = 'identityFields' in raw ? raw.identityFields : undefined;
     const identityFields = fields && typeof fields === 'object' && 'GlobalId' in fields && typeof fields.GlobalId === 'string'
       && (!('modelRevision' in fields) || typeof fields.modelRevision === 'string') ? { GlobalId: fields.GlobalId, modelRevision: 'modelRevision' in fields ? fields.modelRevision as string : undefined } : { GlobalId: 'GlobalId', modelRevision: 'modelRevision' };
-    set({ strategy, identityFields, links: imported.workspace.resourceLinks ?? [], profile: raw.profile, document, results: dataset?.rows, resultMapping: imported.workspace.queries[0]?.mapping, graph: dataset?.graph ?? '', queries: imported.workspace.queries,
+    set({ strategy, uriConfig, identityFields, links: imported.workspace.resourceLinks ?? [], profile: raw.profile, document, results: dataset?.rows, resultMapping: imported.workspace.queries[0]?.mapping, graph: dataset?.graph ?? '', queries: imported.workspace.queries,
       revisions: new Map(), pendingRevisions: imported.workspace.revisions, graphFormat: dataset?.graphFormat ?? 'application/n-quads', findings: [], report: undefined, dataVersion: get().dataVersion + 1, retrievedAt: undefined });
   },
 }));

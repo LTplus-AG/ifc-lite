@@ -56,6 +56,40 @@ when it was actually recorded. Grouped undo/redo and the normal IFC export
 retain the canonical editor behavior. External relationships remain in the
 workspace and semantic bundle.
 
+## Map IFC identity encoded in resource URIs
+
+For datasets such as IFC2LBD-Neo, select **Resource URI contains IFC GlobalId**
+in the identity controls. Choose **Full URI template**, enter
+`https://lbd.org/{GlobalId}`, and apply the template. Map the resource binding
+to `resource`; a separate GlobalId binding or RDF property is unnecessary:
+
+```sparql
+SELECT ?resource ?type WHERE { ?resource a ?type } LIMIT 100
+```
+
+Clicking a matching row uses the existing IFC selection/highlighting channel.
+The strategy validates the extracted compressed IFC GlobalId and honors loaded
+model scope and revision associations. Reused GlobalIds remain ambiguous;
+choose a model or associate its revision instead of guessing. Only URI terms
+qualify; literal or blank-node lookalikes cannot identify IFC objects.
+
+The template is a literal absolute HTTP(S) URI with one path placeholder,
+not a regular expression. Query strings, fragments and embedded credentials
+are rejected. A single percent-encoding pass can decode a captured GlobalId,
+including `%24` for `$`, without changing the original RDF resource identifier.
+Invalid, double-encoded or delimiter-bearing identifiers are refused.
+
+**Query records related to IFC selection** uses known resource URIs first and
+can derive previously unseen subjects from a full template. When deriving a
+subject, it inserts the raw compressed GlobalId; known encoded subjects retain
+their exact RDF spelling. **Last path segment** is an explicit alternative for
+matching arbitrary namespaces, but cannot infer an unknown namespace for a
+reverse query. Load matching subjects first or configure a full template.
+
+URI settings survive workspace export/import. Grants, credentials and live
+model associations still require reentry. Selecting this strategy is explicit:
+it never becomes an automatic fallback for the direct GlobalId strategy.
+
 ## Try the complete workflow
 
 1. Load the pilot. Three current installations resolve to the first model;

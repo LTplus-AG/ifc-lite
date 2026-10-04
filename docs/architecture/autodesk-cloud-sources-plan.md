@@ -457,7 +457,7 @@ For changes in performance-sensitive Rust/geometry/wasm paths, follow the perf l
 ## Live qualification still requiring evidence
 
 1. Which exact upstream file/exchange exercised the working rendering app, so its native-import replacement can be compared against the same resource; the corrected repository has now been inspected.
-2. Which real test resources are available; an APS app and preview callback are configured, but successful login/import still requires qualification.
+2. Which real test resources are available; an APS app and preview callback are configured, and real preview login is confirmed by the maintainer. Project availability remains uncertain and no actual source import has been qualified.
 3. Regional availability and live browser download CORS/redirect behavior; site/project link parsing and immutable project/hub authorization contexts are implemented against the published contracts.
 4. Real exchange export using the delivered Windows SDK worker and delegated auth. SDK compilation and offline guards pass; its current-version-only whole-exchange constraint is enforced.
 5. Export fidelity (source IDs, classes, property units, colours, CRS) and GLB representation/material support.

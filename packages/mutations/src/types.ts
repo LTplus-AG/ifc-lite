@@ -81,8 +81,14 @@ export interface Mutation {
   valueType?: PropertyValueType;
   /** Quantity type (Length, Area, Volume, etc.) — for CREATE/UPDATE_QUANTITY */
   quantityType?: number;
+  /** Previous quantity class; absent only in older history entries. */
+  oldQuantityType?: number;
+  /** Previous unit; null records an explicitly absent unit. */
+  oldUnit?: string | null;
   /** Unit (for quantities) */
   unit?: string;
+  /** Explicitly removed unit in a quantity edit; absent in older histories. */
+  unitRemoved?: boolean;
 
   // Attribute specific fields
   /** Attribute name (IFC entity attributes like Name, Description, ObjectType, Tag, etc.) */
@@ -186,8 +192,10 @@ export interface QuantityMutation {
   value?: number;
   /** Quantity type (Length, Area, Volume, etc.) */
   quantityType?: number;
-  /** Unit (optional) */
+  /** Unit (optional). */
   unit?: string;
+  /** Explicitly clear an inherited source unit rather than retaining it. */
+  unitRemoved?: boolean;
 }
 
 /**

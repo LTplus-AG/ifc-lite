@@ -102,22 +102,29 @@ export function recordResolvedModellingCommit<T>(
   target: ModelEditTarget,
   commit: (editor: StoreEditor, dataStore: IfcDataStore) => T,
   batchId?: string,
+  appendOnly = false,
 ): T {
   const state = store.getState();
   const { modelId } = target;
   const { dataStore, view, editor } = target;
   const room = roomSlotFor(state, modelId) ? snapshotOverlay(view) : null;
-  // By id, not by length: forgetting an overlay record also drops its own
-  // earlier history entries from the view.
-  const seen = new Set(view.getMutations().map((m) => m.id));
-  const overlayBefore = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
-
-  const result = commit(editor, dataStore);
-
-  const written = view.getMutations().filter((m) => !seen.has(m.id));
-  stashForgottenRecords(store, modelId, written, overlayBefore);
+  // Ordinary builders only append. Rewrites/deletions retain their id-based
+  // bookkeeping because forgetting a record can remove earlier journal rows.
+  const cursor = appendOnly ? view.getMutationCount() : 0;
+  const seen = appendOnly ? null : new Set(view.getMutations().map(m => m.id));
+  const overlayBefore = appendOnly ? null : new Map(view.getNewEntities().map(e => [e.expressId, e]));
+  const prepared = room ? view.prepareAtomic(draft => commit(new StoreEditor(dataStore, draft), dataStore)) : null;
+  const result = prepared ? prepared.result : commit(editor, dataStore);
+  prepared?.commit();
+  try {
+    if (room) mirrorStoreOverlayDelta(store, modelId, editor, dataStore, room, 'modelling');
+  } catch (error) {
+    prepared?.rollback();
+    throw error;
+  }
+  const written = appendOnly ? view.getMutations(cursor) : view.getMutations().filter(m => !seen!.has(m.id));
+  if (overlayBefore) stashForgottenRecords(store, modelId, written, overlayBefore);
   store.getState().recordMutationBatch(modelId, written, batchId);
-  if (room) mirrorStoreOverlayDelta(store, modelId, editor, dataStore, room, 'modelling');
   return result;
 }
 

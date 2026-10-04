@@ -6,7 +6,9 @@ import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { IfcParser } from '@ifc-lite/parser';
+import { IfcParser, EntityExtractor } from '@ifc-lite/parser';
+import { getCompleteEntityIndex } from '../../../../../packages/export/src/entity-iteration.js';
+import { StepExporter } from '@ifc-lite/export';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { IfcAPI } from '@ifc-lite/wasm';
 import { CoordinateHandler, type GeometryResult } from '@ifc-lite/geometry';
@@ -19,6 +21,7 @@ import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { clearStoreyRoomsCache } from '@/lib/rooms/storey-rooms';
 import { setRemeshClientFactory, requestRemesh } from '@/lib/remesh/remesh-service';
 import { createStoreAdapter } from './store-adapter.js';
+import { settle as settleNative } from '@/test/native-sdk-model';
 
 const MODEL = 'native', frame = { x: 0, y: 0, z: 0, needsShift: false };
 const sample = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
@@ -54,7 +57,7 @@ async function seed() {
   });
   return { store, adapter: createStoreAdapter(useViewerStore), view: useViewerStore.getState().mutationViews.get(MODEL)! };
 }
-const settle = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setTimeout(resolve, 0)); };
+const settle = () => settleNative(MODEL);
 const depth = () => useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0;
 
 it('Room query refreshes its storey while an unrelated upper wall is colour-merged (#6758)', async t => {
@@ -114,4 +117,30 @@ it('layout-only SDK split before IFC rooms uses native viewer Undo and Redo with
   assert.equal(depth(), undo + 1);
   assert.equal(nearby(await query()).length, 2);
   assert.deepEqual(view.getEffectiveChanges(), before);
+});
+
+
+it('native Room cut Undo and Redo preserve typed area/volume metadata in the actual IFC export (#6232)', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const { adapter, view } = await seed();
+  const points: [number, number, number][] = [[20,20,0],[24,20,0],[24,23,0],[20,23,0]];
+  points.forEach((Start,i)=>adapter.addWall(MODEL,42,{Start,End:points[(i+1)%4],Thickness:.2,Height:3}));
+  await settle();
+  const room=(await adapter.roomCommand!(MODEL,42,{action:'pick',point:[22,21]})).created[0];
+  await settle();
+  const snapshot=async()=> {
+    const store=useViewerStore.getState().models.get(MODEL)!.ifcDataStore!;
+    const bytes=new StepExporter(store,view).export({schema:'IFC4',applyMutations:true}).content;
+    const parsed=await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer,{disableWorkerScan:true});
+    const extractor=new EntityExtractor(parsed.source);
+    const quantities=[...getCompleteEntityIndex(parsed)].flatMap(([expressId,location])=>{const row=extractor.extractEntity({...location,expressId,lineNumber:0})!;return row.type.startsWith('IFCQUANTITY')?[{type:row.type,attributes:row.attributes}]:[];}).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    return {typed:structuredClone(view.getQuantitiesForEntity(room.expressId)),quantities};
+  };
+  const before=await snapshot();
+  assert.ok(before.quantities.some(row=>row.type==='IFCQUANTITYAREA'));
+  assert.ok(before.quantities.some(row=>row.type==='IFCQUANTITYVOLUME'));
+  await adapter.roomCommand!(MODEL,42,{action:'edit',operation:{kind:'split',a:[21,20],b:[21,23]}});
+  await settle();const after=await snapshot();
+  useViewerStore.getState().undo(MODEL);await settle();assert.deepEqual(await snapshot(),before);
+  useViewerStore.getState().redo(MODEL);await settle();assert.deepEqual(await snapshot(),after);
 });

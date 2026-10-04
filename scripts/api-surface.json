@@ -9353,12 +9353,16 @@
   ],
   "@ifc-lite/source-dropbox": [
     "DROPBOX_MANIFEST: const",
+    "DropboxApiClient: interface",
     "DropboxProvider: class",
+    "DropboxProviderOptions: interface",
     "REDIRECT_PATH: const"
   ],
   "@ifc-lite/source-msgraph": [
+    "GraphApiClient: interface",
     "MSGRAPH_MANIFEST: const",
     "MsGraphProvider: class",
+    "MsGraphProviderOptions: interface",
     "REDIRECT_PATH: const"
   ],
   "@ifc-lite/spatial": [

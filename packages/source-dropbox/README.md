@@ -5,10 +5,29 @@ Dropbox file-source provider for ifc-lite.
 Implements `FileSourceProvider` from `@ifc-lite/plugin-api` to browse the
 signed-in user's Dropbox, and download IFC files directly into the viewer.
 Authentication is delegated OAuth 2.0 Authorization Code + PKCE, built on
-`@ifc-lite/oauth-pkce` — never a client secret. PKCE is Dropbox's own
+`@ifc-lite/oauth-pkce` for direct SDK consumers. PKCE is Dropbox's own
 explicitly recommended flow for a browser app that cannot keep a
 `client_secret` confidential (`developers.dropbox.com/oauth-guide`, "PKCE"
 section, checked 2026-08-15).
+
+## Hosted sign-in
+
+The IFClite viewer uses a server-hosted OAuth application: users click **Sign in**
+and consent with their vendor account. They do not supply an application ID,
+app secret, or access token. The same-origin gateway holds vendor tokens in a
+server session and streams downloads; browser metadata carries no signed URLs.
+
+SDK consumers can inject a `SourceAuth` and read-only API client with
+`new DropboxProvider({ auth, createClient })`. The exported DropboxApiClient interface
+is the transport boundary. Providing these options removes application settings
+from the provider manifest. The host supplies its own same-origin transport;
+the provider never requests browser token storage through this injected path.
+Dropbox hosted transports implement `rpc` and `downloadContent`, including
+`rev:<revision>` references for historical downloads.
+
+Constructing `new DropboxProvider()` retains direct PKCE for hosts that operate
+without the gateway. The registration and token-storage notes below describe
+that direct mode.
 
 ## Scope (v1)
 

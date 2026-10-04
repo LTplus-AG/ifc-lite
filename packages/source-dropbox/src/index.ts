@@ -11,3 +11,6 @@ export { REDIRECT_PATH } from './auth.js';
 // callback route should import them from there. Publishing the same two names
 // from two packages would make them impossible to remove later without a
 // breaking change on both.
+
+export type { DropboxProviderOptions } from './provider.js';
+export type { DropboxApiClient } from './http-client.js';

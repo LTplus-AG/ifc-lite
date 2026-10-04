@@ -14,6 +14,8 @@ import type {
   PluginContext,
   RevisionEvent,
   RevisionWatchResult,
+  SourceAuth,
+  PluginManifest,
   SourceContainer,
   SourceFile,
   SourceFileRef,
@@ -22,6 +24,7 @@ import type {
 } from '@ifc-lite/plugin-api';
 
 import { msGraphAuth, createTokenManager, getTenant, requireClientId } from './auth.js';
+import type { GraphApiClient } from './http-client.js';
 import { BrowserGraphApiClient, GraphHttpError, fetchPage } from './http-client.js';
 import { decodeDrive, decodeDriveItem } from './msgraph-types.js';
 import {
@@ -47,9 +50,22 @@ import { MSGRAPH_MANIFEST } from './manifest.js';
  *  discovery this scope can't actually back. */
 const ME_PROJECT_ID = 'me';
 
+/** Supply both auth and API transport to use server-hosted vendor sign-in. */
+export interface MsGraphProviderOptions {
+  readonly auth: SourceAuth;
+  createClient(ctx: PluginContext): GraphApiClient | Promise<GraphApiClient>;
+}
+
 export class MsGraphProvider implements FileSourceProvider {
-  readonly manifest = MSGRAPH_MANIFEST;
-  readonly auth = msGraphAuth;
+  readonly manifest: PluginManifest;
+  readonly auth: SourceAuth;
+
+  constructor(private readonly options?: MsGraphProviderOptions) {
+    this.auth = options?.auth ?? msGraphAuth;
+    this.manifest = options
+      ? { ...MSGRAPH_MANIFEST, title: 'OneDrive', preferences: [], permissions: { network: [] } }
+      : MSGRAPH_MANIFEST;
+  }
 
   async listProjects(ctx: PluginContext, _options?: ListProjectsOptions): Promise<Page<SourceProject>> {
     const client = await this.createClient(ctx);
@@ -153,6 +169,7 @@ export class MsGraphProvider implements FileSourceProvider {
    */
   async download(ctx: PluginContext, ref: SourceFileRef, options?: DownloadOptions): Promise<ArrayBuffer> {
     const client = await this.createClient(ctx);
+    if (client.downloadItem) return client.downloadItem(ref, options);
     const raw = await client.get(
       `/me/drive/items/${enc(ref.fileId)}`,
       { $select: 'id,name,size,cTag,eTag,@microsoft.graph.downloadUrl' },
@@ -182,6 +199,7 @@ export class MsGraphProvider implements FileSourceProvider {
       throw new Error(`Microsoft Graph item ${ref.fileId} does not expose a download URL`);
     }
 
+    if (!client.getPublicBinary) throw new Error('Microsoft Graph client has no download transport');
     return client.getPublicBinary(downloadUrl, options, item.size);
   }
 
@@ -259,7 +277,8 @@ export class MsGraphProvider implements FileSourceProvider {
     }
   }
 
-  private async createClient(ctx: PluginContext): Promise<BrowserGraphApiClient> {
+  private async createClient(ctx: PluginContext): Promise<GraphApiClient> {
+    if (this.options) return this.options.createClient(ctx);
     const clientId = await requireClientId(ctx);
     const tenant = await getTenant(ctx);
     const manager = createTokenManager(ctx, clientId, tenant);

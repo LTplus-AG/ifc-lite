@@ -1,0 +1,10 @@
+{
+  "extractedRegularFileCount": 183,
+  "allOriginalBytesAndSHA256Verified": true,
+  "embeddedManifestMatchesOuter": true,
+  "safeExtractionFilter": "data",
+  "temporaryExtractedFilesRemoved": true,
+  "sourceProgramsASTParsed": true,
+  "originalRuntimeDataUnchanged": true,
+  "scope": "File extraction/hash/syntax validation only; no build/test/model/browser/measurement."
+}

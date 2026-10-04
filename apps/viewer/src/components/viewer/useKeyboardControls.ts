@@ -8,7 +8,7 @@
  */
 
 import { useEffect, type MutableRefObject } from 'react';
-import type { Renderer } from '@ifc-lite/renderer';
+import { isEntityVisible, type Renderer } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore, type SectionPlane } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
@@ -17,6 +17,7 @@ import { eventKey, WALK_MOVEMENT_KEYS } from '@/lib/keyboard-event';
 import { dispatchKeyboardDown, registerKeyboardBinding, registerKeyboardCommand, registerKeyboardKeyUp } from '@/lib/commands/dispatcher';
 import { getEntityBounds } from '../../utils/viewportUtils.js';
 import { flySpeedStore } from './flySpeedStore.js';
+import { createWalkController, type WalkController } from './walk/walkController.js';
 
 export interface UseKeyboardControlsParams {
   rendererRef: MutableRefObject<Renderer | null>;
@@ -53,6 +54,8 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
     coordinateInfoRef,
     geometryRef,
     selectedEntityIdRef,
+    hiddenEntitiesRef,
+    isolatedEntitiesRef,
     activeToolRef,
     updateCameraRotationRealtime,
     calculateScale,
@@ -73,9 +76,30 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
       renderer.requestRender();
     };
 
+    // Walk mode: a physics walker owns the camera while the Walk tool is active.
+    let walk: WalkController | null = null;
+    const syncWalk = (tool: string) => {
+      if (tool === 'walk' && !walk) {
+        walk = createWalkController(renderer, (id) => isEntityVisible(id, hiddenEntitiesRef.current, isolatedEntitiesRef.current));
+      } else if (tool !== 'walk' && walk) {
+        walk.dispose();
+        walk = null;
+      }
+    };
+    syncWalk(useViewerStore.getState().activeTool);
+    const unsubscribeTool = useViewerStore.subscribe((state) => syncWalk(state.activeTool));
+    const holdWalkKey = (key: string) => (event: KeyboardEvent) => {
+      if (!walk || event.repeat) return;
+      walk.setKey(key, true);
+    };
+
     const startMovement = (event: KeyboardEvent) => {
       const key = eventKey(event);
       if (key === null) return false;
+      if (walk) {
+        walk.setKey(key, true);
+        return;
+      }
       keyState[key] = true;
       if (MOVEMENT_KEYS.has(key) && !moveLoopRunning) {
         moveLoopRunning = true;
@@ -119,6 +143,7 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
       // but still fall through to the held-key check, which is idempotent.
       const key = eventKey(e);
       if (key !== null) keyState[key] = false;
+      if (key !== null) walk?.setKey(key, false);
 
       // Stop movement loop when no movement keys are held
       const anyHeld = Array.from(MOVEMENT_KEYS).some(k => keyState[k]);
@@ -143,27 +168,13 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
         return;
       }
 
+      // Arrow keys pan the view (walking is the walk controller's).
       let moved = false;
-      const isWalkMode = activeToolRef.current === 'walk';
-
-      if (isWalkMode) {
-        // Walk mode: arrow keys + WASD move on horizontal plane
-        // Up/W = forward, Down/S = backward, Left/A = strafe left, Right/D = strafe right
-        const fwd = (keyState['arrowup'] || keyState['w'] ? 1 : 0) + (keyState['arrowdown'] || keyState['s'] ? -1 : 0);
-        const strafe = (keyState['arrowleft'] || keyState['a'] ? -1 : 0) + (keyState['arrowright'] || keyState['d'] ? 1 : 0);
-        if (fwd !== 0 || strafe !== 0) {
-          const sprint = keyState['shift'] ? 2 : 1;
-          camera.moveFirstPerson(fwd * sprint, strafe * sprint, 0);
-          moved = true;
-        }
-      } else {
-        // Normal mode: arrow keys pan the view
-        const panSpeed = 5;
-        if (keyState['arrowup']) { camera.pan(0, -panSpeed, false); moved = true; }
-        if (keyState['arrowdown']) { camera.pan(0, panSpeed, false); moved = true; }
-        if (keyState['arrowleft']) { camera.pan(panSpeed, 0, false); moved = true; }
-        if (keyState['arrowright']) { camera.pan(-panSpeed, 0, false); moved = true; }
-      }
+      const panSpeed = 5;
+      if (keyState['arrowup']) { camera.pan(0, -panSpeed, false); moved = true; }
+      if (keyState['arrowdown']) { camera.pan(0, panSpeed, false); moved = true; }
+      if (keyState['arrowleft']) { camera.pan(panSpeed, 0, false); moved = true; }
+      if (keyState['arrowright']) { camera.pan(-panSpeed, 0, false); moved = true; }
 
       if (moved) {
         renderScene();
@@ -177,6 +188,10 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
       registerKeyboardCommand('walk.moveArrows', startMovement, { active: isWalkMode, ignoreModifiers: true }),
       registerKeyboardCommand('camera.pan', startMovement, { active: () => !isWalkMode(), ignoreModifiers: true }),
       registerKeyboardBinding({ id: 'walk.sprint', when: 'tool.walk', layer: 'tool', keys: [{ key: 'shift', shift: true }], active: isWalkMode, run: startMovement }),
+      // A tap can start and end between two physics ticks: queue it, as well as holding it.
+      registerKeyboardCommand('walk.jump', (event) => { if (!event.repeat) walk?.queueJump(); holdWalkKey(' ')(event); }, { active: isWalkMode, ignoreModifiers: true }),
+      registerKeyboardCommand('walk.crouch', holdWalkKey('z'), { active: isWalkMode }),
+      registerKeyboardCommand('walk.toggleCollision', (event) => { if (!event.repeat) walk?.togglePhysics(); }, { active: isWalkMode }),
       registerKeyboardCommand('camera.viewTop', () => { setViewAndRender('top'); }),
       registerKeyboardCommand('camera.viewBottom', () => { setViewAndRender('bottom'); }),
       registerKeyboardCommand('camera.viewFront', () => { setViewAndRender('front'); }),
@@ -198,6 +213,9 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
         cancelAnimationFrame(moveFrameId);
       }
       for (const unregister of registrations) unregister();
+      unsubscribeTool();
+      walk?.dispose();
+      walk = null;
       keyboardHandlersRef.current.handleKeyDown = null;
       keyboardHandlersRef.current.handleKeyUp = null;
     };

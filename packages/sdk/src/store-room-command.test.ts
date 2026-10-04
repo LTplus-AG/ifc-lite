@@ -67,6 +67,23 @@ it.skipIf(!available)('native SDK Room cut and Undo restore both IFC and the exa
   } finally { backend.disposeRooms(); }
 });
 
+it.skipIf(!available)('#6232 / #6759 history-free positional edits invalidate awaited native preparation without Room writes', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const { store, view, editor, backend } = await setup(async () => { await gate; return { walls, factory }; });
+  try {
+    const pending = backend.roomCommand('m', 42, { action: 'auto' });
+    const history = structuredClone(view.getMutations());
+    view.setPositionalAttribute(1231, 0, [{ real: 100 }, { real: 0 }, { real: 0 }], true);
+    expect(view.getMutations()).toEqual(history);
+    const graph = () => Array.from(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true, timeStamp: '2026-10-03T00:00:00' }).content);
+    const before = structuredClone({ graph: graph(), records: editor.getNewEntities(), journal: view.getMutations(), next: view.peekNextExpressId() });
+    release();
+    await expect(pending).rejects.toMatchObject({ name: 'RoomCommandConflictError', message: expect.stringMatching(/changed while native/) });
+    expect({ graph: graph(), records: editor.getNewEntities(), journal: view.getMutations(), next: view.peekNextExpressId() }).toEqual(before);
+  } finally { release(); backend.disposeRooms(); }
+});
+
 it.skipIf(!available)('awaited native preparation refuses intervening live source edits before allocating any Room graph', async () => {
   let release: (() => void) | undefined;
   const gate = new Promise<void>(resolve => { release = resolve; });
@@ -257,4 +274,38 @@ it.skipIf(!available)('layout-only native split has an ordinary Undo step withou
     expect(view.getMutations()).toEqual([]);
     expect(view.getEffectiveChanges()).toEqual([]);
   } finally { backend.disposeRooms(); }
+});
+
+for (const edit of ['atomic publish', 'compound Undo', 'history-free removal/reapply'] as const) it.skipIf(!available)(`#6232 / #6759 ${edit} invalidates pending native Room preparation even with restored history`, async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const { store, view, editor, backend } = await setup(async () => { await gate; return { walls, factory }; });
+  try {
+    const shift = (draft: MutablePropertyView) => draft.setPositionalAttribute(1231, 0, [{ real: 100 }, { real: 0 }, { real: 0 }], true);
+    if (edit === 'compound Undo') recordCompoundMutation(view, draft => draft.setPositionalAttribute(1231, 0, [{ real: 50 }, { real: 0 }, { real: 0 }]));
+    const pending = backend.roomCommand('m', 42, { action: 'auto' });
+    if (edit === 'atomic publish') view.runAtomic(shift);
+    else if (edit === 'compound Undo') undoRecordedMutationOperations(view, 1, () => { throw new Error('Expected compound undo'); });
+    else { shift(view); view.removePositionalMutation(1231, 0); shift(view); }
+    const graph = () => Array.from(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true, timeStamp: '2026-10-03T00:00:00' }).content);
+    const before = structuredClone({ graph: graph(), records: editor.getNewEntities(), journal: view.getMutations(), next: view.peekNextExpressId() });
+    release();
+    await expect(pending).rejects.toMatchObject({ name: 'RoomCommandConflictError' });
+    expect({ graph: graph(), records: editor.getNewEntities(), journal: view.getMutations(), next: view.peekNextExpressId() }).toEqual(before);
+  } finally { release(); backend.disposeRooms(); }
+});
+
+it.skipIf(!available)('#6232 / #6759 rejected detached draft preserves live token and pending native Room preparation', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const { store, view, backend } = await setup(async () => { await gate; return { walls, factory }; });
+  try {
+    const graph = () => Array.from(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true, timeStamp: '2026-10-03T00:00:00' }).content);
+    const before = structuredClone({ graph: graph(), records: view.getNewEntities(), journal: view.getMutations(), next: view.peekNextExpressId() });
+    const pending = backend.roomCommand('m', 42, { action: 'auto' });
+    expect(() => view.runAtomic(draft => { draft.setPositionalAttribute(1231, 0, [{ real: 100 }, { real: 0 }, { real: 0 }], true); throw new Error('Refused detached edit'); })).toThrow('Refused detached edit');
+    expect({ graph: graph(), records: view.getNewEntities(), journal: view.getMutations(), next: view.peekNextExpressId() }).toEqual(before);
+    release();
+    expect((await pending).created).toHaveLength(1);
+  } finally { release(); backend.disposeRooms(); }
 });

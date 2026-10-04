@@ -30,21 +30,25 @@ export function alignElementsInStore(
       || box.min[0] > box.max[0] || box.min[1] > box.max[1] || box.z0 > box.z1) throw new Error(`Align requires current native geometry for #${id}`);
   }
   const plan = planElementTransform({ ...input, selected: params.targets, storeyOf: input.storeyOf ?? (id => effectiveStoreyId(input.dataStore, input.view, id) ?? null) });
-  if (plan.carried.includes(params.reference)) throw new Error('The Align reference is hosted by a target and cannot stay fixed');
   // A selected host governs dependants below its placement: aligning the
   // child independently would move its cut twice or detach it from the host.
   const moves = alignMoves({ ...params, carried: plan.carried, boxes });
   if (moves.length === 0) throw new Error('The targets are already aligned');
   const selected = moves.map(move => move.id);
+  const moving = new Set(selected);
   const shifts = new Map<number, [number, number]>();
+  const movingAffected = new Set<number>();
   const carried = new Set(plan.carried);
+  // Stationary selected roots still constrain joined endpoints; only actual
+  // movers can carry the reference away. Keep those two policies distinct.
   const requested = params.targets.filter(id => !carried.has(id)).map<{ id: number; shift: [number, number] }>(id => {
     const [u, v] = alignShift(params.mode, boxes.get(params.reference)!, boxes.get(id)!);
     return { id, shift: [u, v] };
   });
   for (const move of requested) {
     for (const id of expandAffectedSet(input.dataStore, input.view, [move.id], 'hostsChanged')) {
-      if (id === params.reference) throw new Error('The Align reference would move with a target');
+      if (moving.has(move.id)) movingAffected.add(id);
+      if (id === params.reference && movingAffected.has(id)) throw new Error('The Align reference would move with a target');
       const prior = shifts.get(id);
       if (prior && Math.hypot(prior[0] - move.shift[0], prior[1] - move.shift[1]) > 1e-4) throw new Error('Hosted Align targets require incompatible translations');
       shifts.set(id, move.shift);
@@ -54,7 +58,8 @@ export function alignElementsInStore(
   const joinedEnds = new Map<string, [number, number]>();
   for (const rel of readWallJoinRels(input.dataStore, input.view)) {
     const a = shifts.get(rel.relatingId), b = shifts.get(rel.relatedId);
-    if ((a && rel.relatedId === params.reference) || (b && rel.relatingId === params.reference)) throw new Error('The Align reference is joined to a target');
+    if ((a && movingAffected.has(rel.relatingId) && rel.relatedId === params.reference)
+      || (b && movingAffected.has(rel.relatedId) && rel.relatingId === params.reference)) throw new Error('The Align reference is joined to a target');
     if (a && b && Math.hypot(a[0] - b[0], a[1] - b[1]) > 1e-4) throw new Error('Joined Align targets require incompatible translations');
     const delta = a ?? b;
     const connection = a ? rel.relatedConnection : rel.relatingConnection;

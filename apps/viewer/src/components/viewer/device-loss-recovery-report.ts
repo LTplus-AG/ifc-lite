@@ -60,7 +60,7 @@ export function reportDeviceRecovery(result: DeviceRecoveryResult, onRecovered: 
     const detail = result.omissions.length > 0
       ? ` Some transient layers were cleared: ${result.omissions.join(', ')}.`
       : '';
-    notifyDeviceHealth('success', `The 3D view recovered.${detail}`);
+    notifyDeviceHealth('success', `Graphics device restored; the 3D view is restarting.${detail}`);
   } else {
     notifyDeviceHealth('error', 'The 3D view could not recover automatically. Reload the page to restore rendering.');
   }

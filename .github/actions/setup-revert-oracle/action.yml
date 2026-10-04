@@ -73,3 +73,9 @@ runs:
       if: ${{ inputs.browser == 'true' }}
       shell: bash
       run: pnpm fixtures:check
+
+    # Recording-enabled witnesses use the runner's Chrome plus Playwright's encoder.
+    - name: Install Playwright video encoder
+      if: ${{ inputs.browser == 'true' }}
+      shell: bash
+      run: pnpm exec playwright install ffmpeg

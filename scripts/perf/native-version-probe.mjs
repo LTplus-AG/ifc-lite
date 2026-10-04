@@ -55,9 +55,17 @@ export function hashPinnedNativeExecutable(pin) {
   }
   return { ...after, sha256: hash.digest('hex') };
 }
-export function rustcVersionCandidate(record, expected) {
-  return Boolean(record && record.executableObserved === true && record.executable === expected.rustc
-    && isDeepStrictEqual(record.argv, [expected.rustc, '-vV']));
+// Pinned Cargo target_info::new emits exactly this read-only host query.
+// No alternate inputs, output paths, additional flags or generic --print allowlist.
+const targetInfoArgs = ['-', '--crate-name', '___', '--print=file-names',
+  '--crate-type', 'bin', '--crate-type', 'rlib', '--crate-type', 'dylib',
+  '--crate-type', 'cdylib', '--crate-type', 'staticlib', '--crate-type', 'proc-macro',
+  '--print=sysroot', '--print=split-debuginfo', '--print=crate-name', '--print=cfg', '-Wwarnings'];
+export function rustcReadOnlyQueryKind(record, expected) {
+  if (!record || record.executableObserved !== true || record.executable !== expected.rustc) return null;
+  if (isDeepStrictEqual(record.argv, [expected.rustc, '-vV'])) return 'version';
+  if (isDeepStrictEqual(record.argv, [expected.rustc, ...targetInfoArgs])) return 'cargo-target-info';
+  return null;
 }
 const sameProcess = (left, right) => Boolean(left && right && left.pid === right.pid
   && left.startTime === right.startTime && left.pgrp === right.pgrp && left.ppid === right.ppid);
@@ -72,8 +80,8 @@ export function versionPostOpenBindings(record, expected, proof) {
   return Boolean(proof.currentChild && proof.currentParent && proof.postOpenChild && proof.postOpenParent
     && sameObservedRecord(proof.currentChild, proof.postOpenChild)
     && sameObservedRecord(proof.currentParent, proof.postOpenParent)
-    && sameProcess(record, proof.postOpenChild)
-    && rustcVersionCandidate(proof.postOpenChild, expected)
+    && sameObservedRecord(record, proof.postOpenChild)
+    && rustcReadOnlyQueryKind(proof.postOpenChild, expected) !== null
     && freshnessException(proof.postOpenParent, proof.parentWitness, expected)
     && Number.isSafeInteger(proof.pinsOpenedAt) && Number.isSafeInteger(proof.postOpenObservedAt)
     && proof.snapshot?.at <= proof.pinsOpenedAt && proof.pinsOpenedAt <= proof.postOpenObservedAt);
@@ -93,7 +101,7 @@ const frozenPin = (pin, expected, name) => Boolean(pin && Number.isSafeInteger(e
   && sameNativeFile(pin.fileIdentity, expected[`${name}FileIdentity`])
   && frozenHash(pin.sha256, expected[`${name}Sha256`]));
 
-// A version query is the only admitted compiler child. A fresh common ancestry
+// Only the two exact read-only queries are admitted compiler children. A fresh common ancestry
 // census and current live parent/child observations are mandatory, even when a
 // previous scan already admitted the Cargo parent. No argv/permission fallback.
 export function versionProbePredicates(record, expected, proof = {}) {
@@ -110,9 +118,11 @@ export function versionProbePredicates(record, expected, proof = {}) {
       && Number.isSafeInteger(proof.captureCompletedAt) && proof.captureStartedAt <= snapshot.at
       && snapshot.at <= proof.captureCompletedAt
       && Number.isSafeInteger(proof.postOpenObservedAt) && proof.postOpenObservedAt <= proof.captureCompletedAt),
-    initialExactVersion: rustcVersionCandidate(record, expected),
+    initialExactQuery: rustcReadOnlyQueryKind(record, expected) !== null,
     initialCompilerFileIdentity: sameNativeFile(record.executableFileIdentity, expected.rustcFileIdentity),
-    currentExactVersion: rustcVersionCandidate(currentChild, expected),
+    currentExactQuery: Boolean(rustcReadOnlyQueryKind(record, expected)
+      && rustcReadOnlyQueryKind(currentChild, expected) === rustcReadOnlyQueryKind(record, expected)
+      && isDeepStrictEqual(record.argv, currentChild?.argv)),
     childSamePidStartGroupParent: sameProcess(record, currentChild),
     childSourceCwd: record.cwd === expected.directory && currentChild?.cwd === expected.directory,
     childOwnGroup: record.pgrp === expected.group && currentChild?.pgrp === expected.group,
@@ -138,7 +148,8 @@ export function versionProbePredicates(record, expected, proof = {}) {
 export function versionProbeAdmission(record, expected, proof) {
   const predicates = versionProbePredicates(record, expected, proof);
   if (!Object.values(predicates).every(Boolean)) return null;
-  return { ...proof.currentChild, admission: 'exact-frozen-rustc-version-child', predicates,
+  return { ...proof.currentChild, admission: 'exact-frozen-rustc-read-only-child', queryKind: rustcReadOnlyQueryKind(record, expected),
+    scope: 'exact frozen Cargo read-only query; no compiler-work exemption', predicates,
     parent: proof.currentParent, previouslyAdmittedParent: proof.admittedParent,
     parentWitness: proof.parentWitness, postOpenParent: proof.postOpenParent, postOpenChild: proof.postOpenChild,
     pinnedParent: proof.pinnedParent, pinnedChild: proof.pinnedChild, finalParent: proof.finalParent, finalChild: proof.finalChild,

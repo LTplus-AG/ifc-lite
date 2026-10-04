@@ -9,7 +9,7 @@ import { processIdentity, finishLog, stopWitnessedProcesses } from './interleave
 import { available, ownedSnapshot, processObservation } from './sdk-resources.mjs';
 import { cargoArgs, freshnessException, freshnessPredicates, refreshedCargoWitness, cargoWitnessRefreshPredicates, limits } from './native-hosted-plan.mjs';
 import { nativeFileIdentity, sameNativeFile } from './native-file-identity.mjs';
-import { withPinnedNativeExecutables, hashPinnedNativeExecutable, versionPostOpenBindings, rustcVersionCandidate, versionProbeAdmission, versionProbePredicates } from './native-version-probe.mjs';
+import { withPinnedNativeExecutables, hashPinnedNativeExecutable, versionPostOpenBindings, rustcReadOnlyQueryKind, versionProbeAdmission, versionProbePredicates } from './native-version-probe.mjs';
 export function compilerEnvironment(environment, tools) {
   if (!tools) return environment;
   if (![tools.cargo, tools.rustc, tools.rustdoc].every(path => typeof path === 'string' && isAbsolute(path))
@@ -42,7 +42,7 @@ function versionProof(record, witnesses, admittedCargo, expected, proof) {
   proof.currentParent = liveRecord(record.ppid); proof.currentChild = liveRecord(record.pid);
   const parent = proof.currentParent, child = proof.currentChild;
   const parentTool = parent?.executable === expected.cargo ? 'cargo' : parent?.executable === expected.rustup ? 'rustup' : null;
-  if (rustcVersionCandidate(child, expected) && sameNativeFile(child.executableFileIdentity, expected.rustcFileIdentity)
+  if (rustcReadOnlyQueryKind(child, expected) && sameNativeFile(child.executableFileIdentity, expected.rustcFileIdentity)
     && parentTool && freshnessException(parent, proof.parentWitness, expected)
     && sameNativeFile(parent.executableFileIdentity, expected[`${parentTool}FileIdentity`])) {
     withPinnedNativeExecutables([
@@ -78,8 +78,8 @@ function graphScan(witnesses, admittedCargo, expected) {
       const record = nativeRecord(name, identity, observed);
       // Defer only this exact candidate until Cargo parents in the same scan
       // have been admitted by the unchanged freshness ownership predicates.
-      if (rustcVersionCandidate(record, expected)) {
-        if (versionCandidates.length >= 4096) throw new Error('native version candidate evidence bound');
+      if (rustcReadOnlyQueryKind(record, expected)) {
+        if (versionCandidates.length >= 4096) throw new Error('native read-only query candidate evidence bound');
         versionCandidates.push(record); continue;
       }
       let refreshAttempt;
@@ -117,11 +117,11 @@ function graphScan(witnesses, admittedCargo, expected) {
     try {
       versionProof(record, witnesses, admittedCargo, expected, proof);
       const admitted = versionProbeAdmission(record, expected, proof);
-      if (!admitted) throw new Error('exact version-child ownership predicates refused');
+      if (!admitted) throw new Error('exact read-only compiler-query ownership predicates refused');
       witnesses.set(admitted.pid, proof.snapshot.members.find(item => item.pid === admitted.pid));
       versionProbeExceptions.push(admitted);
     } catch (cause) {
-      const details = { kind: 'rustc-version-child', actual: record, expected,
+      const details = { kind: 'rustc-read-only-query-child', actual: record, expected,
         proof: proof ?? null, predicates: versionProbePredicates(record, expected, proof), cause: String(cause) };
       const error = new Error(`non-exempt compiler/test graph: ${JSON.stringify(details)}`, { cause });
       error.freshnessRefusal = details; throw error;

@@ -2948,3 +2948,12 @@ control. Earlier missing-observation and final-liveness refusals are retained.
 The lesson is to certify contemporaneous provenance rather than prolonging the
 observed process. [The retained controls and inverse failures](evidence/native-version-query-6537/README.md)
 qualify local admission only; hosted model timing remains unqualified.
+
+Cargo also requests target information from the compiler. Treating that exact
+read-only query as unknown work refused the hosted controller before subject
+builds. The corrected local control requires the same pinned provenance checks
+for both query kinds, preserves the cached version response, and warms through
+the same canonical probe entrypoint as its sample. [The compiler-query packet](evidence/native-cargo-query-6537/README.md)
+retains semantic/inverse controls, observation refusals and the final successful
+target-query witness. This qualifies local guard correctness only; the corrected
+hosted model cohort and performance benefit remain unqualified.

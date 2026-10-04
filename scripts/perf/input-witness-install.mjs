@@ -36,7 +36,21 @@ export function installViewerInputWitness({ discoverySource, bounds, referenceAu
   }
   const deliveries = [], inputs = [], seenEntries = new WeakSet(), byBuffer = new Map(), restorations = [];
   let failure = null, revision = 0, frozen = false, disposed = false, retainedBytes = 0, calls = 0;
-  let modelId = null, model, dataStore, device;
+  let modelId = null, model, dataStore, device, firstEmptyCall;
+  function emptyEnvelope(buffer) {
+    return buffer.byteLength === 32 && new Uint32Array(buffer).every((word, i) => word === (i === 0 ? 0x49464e53 : i === 1 ? 1 : 0));
+  }
+  function emptyShape(shard) {
+    const fields = ['templates', 'instances', 'carriesItemIds', 'carriesFinishes'];
+    return Object.keys(shard).length === fields.length && fields.every(key => Object.hasOwn(shard, key))
+      && shard.templates.length === 0 && shard.instances.length === 0
+      && shard.carriesItemIds === false && shard.carriesFinishes === false;
+  }
+  function census() {
+    return [scene.instancedEntityMap, scene.instancedEntityMap.size, scene.instancedTemplateCpu,
+      scene.instancedTemplateCpu.length, scene.getInstancedEntityCount(), scene.getInstancedTemplates().length,
+      scene.meshDataMap, scene.meshDataMap.size];
+  }
   function fail(reason) { failure ??= reason; }
   function observe(next) {
     try {
@@ -64,7 +78,7 @@ export function installViewerInputWitness({ discoverySource, bounds, referenceAu
         if (byBuffer.has(entry.bytes)) { fail('same source shard delivered again'); continue; }
         retainedBytes += entry.bytes.byteLength;
         if (deliveries.length >= bounds.deliveries || retainedBytes > bounds.retainedBytes) { fail('retained input cap'); continue; }
-        const record = { modelId: entry.modelId, buffer: entry.bytes, byteLength: entry.bytes.byteLength, ingestions: 0 };
+        const record = { modelId: entry.modelId, buffer: entry.bytes, byteLength: entry.bytes.byteLength, ingestions: 0, empty: emptyEnvelope(entry.bytes) };
         deliveries.push(record); byBuffer.set(entry.bytes, record);
       }
     } catch (error) { fail(`subscription observation failed: ${String(error).slice(0, 512)}`); }
@@ -84,7 +98,7 @@ export function installViewerInputWitness({ discoverySource, bounds, referenceAu
     renderer = initial.renderer; scene = initial.scene;
     requireEmptyScene();
     wrap('addInstancedShard', original => function (...args) {
-      let record;
+      let record, before;
       try {
         revision++; calls++;
         if (frozen || disposed || calls > bounds.calls) fail('late/capped instance ingestion');
@@ -94,20 +108,40 @@ export function installViewerInputWitness({ discoverySource, bounds, referenceAu
         if (device && incomingDevice !== device) fail('GPU device replaced');
         device ??= incomingDevice;
         if (!failure) {
-          if (!shard.templates.length || !shard.instances.length) fail('empty decoded shard unsupported');
-          const buffer = shard.templates[0]?.positions?.buffer, delivery = byBuffer.get(buffer);
-          if (!delivery || shard.templates.some(t => t.positions?.buffer !== buffer || t.normals?.buffer !== buffer || t.indices?.buffer !== buffer)) fail('decoded shard not linked to original delivery');
-          else if (delivery.ingestions++) fail('source shard ingested twice');
-          else {
-            record = { shard, templates: shard.templates, instances: shard.instances, delivery, device: incomingDevice, modelIndex: index, accepted: false };
-            inputs.push(record);
+          const empty = !shard.templates.length || !shard.instances.length;
+          let delivery;
+          if (empty) {
+            firstEmptyCall ??= { templates: shard.templates.length, instances: shard.instances.length,
+              association: 'No template-buffer pointer; canonical no-output delivery/call multiplicity only' };
+            if (!emptyShape(shard)) fail('unsupported noncanonical empty decoded shard');
+            else if (modelId === null || incomingDevice !== renderer.getGPUDevice()) fail('empty ingress current ownership unavailable');
+            else {
+              delivery = deliveries.find(item => item.empty && item.ingestions === 0 && item.modelId === modelId);
+              if (!delivery || !emptyEnvelope(delivery.buffer)) fail('empty call without canonical undrained delivery');
+              else before = census();
+            }
+          } else {
+            const buffer = shard.templates[0]?.positions?.buffer;
+            delivery = byBuffer.get(buffer);
+            if (!delivery || shard.templates.some(t => t.positions?.buffer !== buffer || t.normals?.buffer !== buffer || t.indices?.buffer !== buffer)) fail('decoded shard not linked to original delivery');
+          }
+          if (!failure && delivery) {
+            if (delivery.ingestions++) fail('source shard ingested twice');
+            else {
+              record = { shard, templates: shard.templates, instances: shard.instances, delivery,
+                device: incomingDevice, modelIndex: index, empty, accepted: false };
+              inputs.push(record);
+            }
           }
         }
       } catch (error) { fail(`ingress observation failed: ${String(error).slice(0, 512)}`); }
       // Always delegate, including observer refusal, and preserve native throw.
       try {
         const result = Reflect.apply(original, this, args);
-        if (record) record.accepted = true;
+        if (record) {
+          if (record.empty && (result !== undefined || !census().every((value, i) => value === before[i]))) fail('empty native return/retained census changed');
+          record.accepted = true;
+        }
         return result;
       } catch (error) { fail('native instance ingestion threw'); throw error; }
     });
@@ -175,13 +209,21 @@ export function installViewerInputWitness({ discoverySource, bounds, referenceAu
     if (document.querySelector('canvas')) attach(true);
     const witness = {
       discover, store, get renderer() { return renderer; }, get scene() { return scene; }, referenceAudit, bounds,
+      diagnostic() {
+        return { failure, revision, calls, disposed, frozen, deliveryCount: deliveries.length,
+          inputCount: inputs.length, firstEmptyCall, retainedBytes,
+          // Bounded references for post-timer hashing only; never a success gate.
+          deliveries: [...new Set([0, 1, 2, 3, deliveries.findIndex(item => item.ingestions !== 1)])]
+            .filter(index => index >= 0 && index < deliveries.length).map(index => { const item = deliveries[index]; return { index, buffer: item.buffer,
+            modelId: item.modelId, byteLength: item.byteLength, ingestions: item.ingestions, empty: item.empty }; }) };
+      },
       freeze() {
         if (disposed || frozen) refuse('witness cannot freeze twice/disposed');
         observe(store.getState()); frozen = true;
         if (failure) refuse(failure);
         if (!attached) refuse('renderer was never attached before ingestion');
         verifyHook();
-        if (deliveries.some(item => item.ingestions !== 1) || inputs.some(item => !item.accepted)) refuse('undrained/unaccepted delivered instance input');
+        if (deliveries.some(item => item.ingestions !== 1 || (item.empty && !emptyEnvelope(item.buffer))) || inputs.some(item => !item.accepted || (item.empty && !emptyShape(item.shard)))) refuse('undrained/unaccepted delivered instance input');
         if (!model || !dataStore || modelId === null) refuse('loaded model/store not observed');
         return { deliveries, inputs, revision, modelId, model, dataStore, device, retainedBytes, calls };
       },

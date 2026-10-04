@@ -4,9 +4,14 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { webcrypto, createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { captureViewerInputDiagnostic } from './input-witness-diagnostic.mjs';
+import { canonicalEmptyBytes, produceCanonicalEmpty } from './input-witness-empty-fixture.mjs';
 import { tsImport } from 'tsx/esm/api';
 import { discoverViewerInput } from './input-witness-discovery.mjs';
 import { installViewerInputWitness } from './input-witness-install.mjs';
@@ -17,18 +22,20 @@ import { boundedGpuBytes, triangleCompatibilityBytes, GPU_USAGE, RUST_GOLDEN_HEX
 
 // Source imports use the existing viewer aliases. No copied or stale dist is
 // selected as a fallback. Root Turbo qualification remains authoritative.
-const options = { parentURL: import.meta.url,
-  tsconfig: fileURLToPath(new URL('../../apps/viewer/tsconfig.json', import.meta.url)) };
+const sourceDir = process.env.BASE_DIR ?? fileURLToPath(new URL('../../', import.meta.url));
+if (process.env.BASE_DIR && execFileSync('git', ['rev-parse', 'HEAD'], { cwd: sourceDir, encoding: 'utf8' }).trim()
+  !== '7dfc29870b0aa6a593c163592fcb84a92e5dfa19') throw new Error('REFUSE: canonical fixture subject mismatch');
+const options = { parentURL: import.meta.url, tsconfig: join(sourceDir, 'apps/viewer/tsconfig.json') };
 const [{ Scene }, { decodeInstancedShard }, { prepareInstancedRender, packInstanceFinish },
   { createDataSlice }, { geometryWithModelIndex }] = await Promise.all([
-  tsImport('../../packages/renderer/src/scene.ts', options),
-  tsImport('../../packages/geometry/src/packed-instanced-decoder.ts', options),
-  tsImport('../../packages/renderer/src/instanced-render.ts', options),
-  tsImport('../../apps/viewer/src/store/slices/dataSlice.ts', options),
-  tsImport('../../apps/viewer/src/lib/model-placement/model-indices.ts', options),
+  tsImport(join(sourceDir, 'packages/renderer/src/scene.ts'), options),
+  tsImport(join(sourceDir, 'packages/geometry/src/packed-instanced-decoder.ts'), options),
+  tsImport(join(sourceDir, 'packages/renderer/src/instanced-render.ts'), options),
+  tsImport(join(sourceDir, 'apps/viewer/src/store/slices/dataSlice.ts'), options),
+  tsImport(join(sourceDir, 'apps/viewer/src/lib/model-placement/model-indices.ts'), options),
 ]);
 // Zustand belongs to the consuming viewer package, not a new root dependency.
-const { createStore } = createRequire(new URL('../../apps/viewer/package.json', import.meta.url))('zustand/vanilla');
+const { createStore } = createRequire(join(sourceDir, 'apps/viewer/package.json'))('zustand/vanilla');
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 let nextModel = 0;
 
@@ -221,4 +228,113 @@ test('#6537 real Scene ingestion without the original producer delivery cannot q
     assert.equal(c.scene.getInstancedEntityCount(), 2, 'original native path still ingests geometry');
     assert.throws(() => globalThis.__ifc_lite_input_witness__.freeze(), /not linked to original delivery/);
   } finally { c.cleanup(); }
+});
+
+test('#6537 canonical Rust empty encoder, real decoder and Scene preserve no-output input', async t => {
+  if (!existsSync(join(sourceDir, 'packages/wasm/pkg/ifc-lite_bg.wasm'))) {
+    if (process.env.INPUT_WITNESS_EMPTY_REQUIRED === 'true') throw new Error('Required canonical empty producer WASM missing');
+    t.skip('run pnpm build:wasm for the no-model canonical empty producer'); return;
+  }
+  const result = await produceCanonicalEmpty(sourceDir);
+  assert.equal(result.flatMeshes, 0); assert.equal(result.occurrences, 0);
+  assert.deepEqual(result.bytes, new Uint8Array(canonicalEmptyBytes()));
+  const decoded = decodeInstancedShard(result.bytes);
+  assert.deepEqual(decoded, { templates: [], instances: [], carriesItemIds: false, carriesFinishes: false });
+  assert.deepEqual(prepareInstancedRender(decoded), []);
+  const c = control();
+  try {
+    c.begin();
+    const beforeFirst = { live: c.gpu.liveCount, allocations: [...c.gpu.all] };
+    c.ingest(canonicalEmptyBytes());
+    assert.equal(c.gpu.liveCount, beforeFirst.live, 'first empty native call allocates no GPU buffers');
+    assert.deepEqual(c.gpu.all, beforeFirst.allocations, 'first empty call preserves actual allocation list');
+    c.ingest(triangleCompatibilityBytes());
+    const beforeSecond = { live: c.gpu.liveCount, allocations: [...c.gpu.all] };
+    c.ingest(canonicalEmptyBytes());
+    assert.equal(c.gpu.liveCount, beforeSecond.live, 'empty call after live geometry allocates no GPU buffers');
+    assert.deepEqual(c.gpu.all, beforeSecond.allocations, 'empty call preserves existing allocation list');
+    assert.equal(c.scene.instancedTemplateCpu.length, 1); assert.equal(c.scene.getInstancedEntityCount(), 2);
+    const identity = await c.capture();
+    assert.equal(identity.occurrences, 2); assert.equal(identity.rawInstancedInputs.length, 3);
+    assert.equal(identity.decodedShardProvenance.filter(row => row.occurrences === 0).length, 2);
+    assert.equal(identity.producedSha256, (await captureIdentity(c.limits)).sha256);
+  } finally { c.cleanup(); }
+});
+
+test('#6537 missing or duplicate empty native calls refuse original delivery multiplicity', async () => {
+  for (const kind of ['drop', 'duplicate', 'without-delivery']) {
+    const c = control();
+    try {
+      c.begin(); const bytes = canonicalEmptyBytes();
+      if (kind === 'drop') c.api.getState().appendInstancedShards(c.api.getState().activeModelId, [bytes]);
+      else { c.ingest(bytes, kind !== 'without-delivery'); if (kind === 'duplicate') c.ingest(bytes, false); }
+      await assert.rejects(c.capture(), /undrained|without canonical undrained delivery/);
+      assert.equal(c.scene.getInstancedEntityCount(), 0);
+      const diagnostic = await captureViewerInputDiagnostic();
+      assert.equal(diagnostic.status, 'refusal-diagnostic-only');
+      if (kind !== 'without-delivery') assert.equal(diagnostic.deliveries[0].hash.sha256, sha(new Uint8Array(bytes)));
+    } finally { c.cleanup(); }
+  }
+});
+
+test('#6537 delivered empty buffer mutation remains a terminal immutability refusal', async () => {
+  const c = control();
+  try {
+    c.begin(); const bytes = canonicalEmptyBytes(); c.ingest(bytes);
+    new Uint32Array(bytes)[1] = 2;
+    await assert.rejects(c.capture(), /undrained/);
+    const diagnostic = await captureViewerInputDiagnostic();
+    assert.equal(diagnostic.deliveries[0].admittedClass, 'canonical-empty-v1');
+    assert.equal(diagnostic.deliveries[0].currentClass, 'nonempty-or-unsupported');
+    assert.equal(diagnostic.deliveries[0].headerWords[1], 2);
+    assert.equal(diagnostic.deliveries[0].hash.sha256, sha(new Uint8Array(bytes)));
+  } finally { c.cleanup(); }
+});
+
+test('#6537 malformed or noncanonical no-output packets cannot become accepted progress', async () => {
+  for (const kind of ['truncated', 'tail', 'unused-template', 'zero-version']) {
+    const c = control();
+    try {
+      c.begin(); let bytes = canonicalEmptyBytes();
+      if (kind === 'truncated') bytes = bytes.slice(0, 31);
+      if (kind === 'tail') { const extended = new Uint8Array(36); extended.set(new Uint8Array(bytes)); bytes = extended.buffer; }
+      if (kind === 'unused-template') bytes = triangleCompatibilityBytes(3, []);
+      if (kind === 'zero-version') new Uint32Array(bytes)[1] = 0;
+      if (kind === 'truncated' || kind === 'zero-version') assert.throws(() => c.ingest(bytes), /too small|Unsupported instanced shard version/);
+      else c.ingest(bytes);
+      await assert.rejects(c.capture(), /undrained|empty call|noncanonical empty/);
+      const diagnostic = await captureViewerInputDiagnostic();
+      assert.equal(diagnostic.deliveries[0].byteLength, bytes.byteLength);
+      assert.equal(diagnostic.deliveries[0].hash.sha256, sha(new Uint8Array(bytes)));
+      assert.equal(c.scene.getInstancedEntityCount(), 0);
+    } finally { c.cleanup(); }
+  }
+});
+
+test('#6537 empty native throw is preserved and cannot certify a delivery', async () => {
+  const c = control(), before = Object.getOwnPropertyDescriptor(c.scene, 'instancedDevice');
+  try {
+    c.begin(); Object.defineProperty(c.scene, 'instancedDevice', { configurable: true, writable: false, value: null });
+    assert.throws(() => c.ingest(canonicalEmptyBytes()), TypeError, 'actual Scene cached-device assignment fails');
+    await assert.rejects(c.capture(), /native instance ingestion threw/);
+    assert.equal((await captureViewerInputDiagnostic()).failure, 'native instance ingestion threw');
+  } finally {
+    if (before) Object.defineProperty(c.scene, 'instancedDevice', before); else delete c.scene.instancedDevice;
+    c.cleanup();
+  }
+});
+
+test('#6537 empty native call changing retained Scene census is refused', async () => {
+  const c = control(), before = Object.getOwnPropertyDescriptor(c.scene, 'instancedDevice');
+  try {
+    c.begin();
+    Object.defineProperty(c.scene, 'instancedDevice', { configurable: true,
+      get() { return c.gpu.device; }, set() { c.scene.addMeshData({ ...c.mesh, expressId: 11 }); } });
+    c.ingest(canonicalEmptyBytes());
+    assert.equal(c.scene.meshDataMap.has(11), true, 'actual canonical retention changed during native cached-device assignment');
+    await assert.rejects(c.capture(), /empty native return\/retained census changed/);
+  } finally {
+    if (before) Object.defineProperty(c.scene, 'instancedDevice', before); else delete c.scene.instancedDevice;
+    c.cleanup();
+  }
 });

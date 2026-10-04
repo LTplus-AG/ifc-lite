@@ -222,7 +222,8 @@ export async function captureViewerInputIdentity(limits) {
     }));
     decodedShardProvenance.push({ delivery: frozen.deliveries.indexOf(input.delivery),
       templates: shard.templates.length, occurrences: shard.instances.length,
-      carriesItemIds: shard.carriesItemIds, carriesFinishes: shard.carriesFinishes, wireEnvelope });
+      carriesItemIds: shard.carriesItemIds, carriesFinishes: shard.carriesFinishes, wireEnvelope,
+      association: input.empty ? 'Canonical no-output delivery/call multiplicity; no template-buffer pointer' : 'Original template-buffer pointer' });
   }
   const templates = new Map(), instances = [], actualInstanceCounts = new Map(), actualTemplateCounts = new Map();
   let occurrences = 0;
@@ -275,7 +276,7 @@ export async function captureViewerInputIdentity(limits) {
     totalTriangles: geometry.totalTriangles, totalVertices: geometry.totalVertices,
     instancedGeometryHashes: geometry.instancedGeometryHashes, instancedGeometryAabbs: geometry.instancedGeometryAabbs,
     instancedGeometryVolumes: geometry.instancedGeometryVolumes };
-  const result = { complete: true, protocol: 'independent-viewer-input-v2-late-attachment-instrumented',
+  const result = { complete: true, protocol: 'independent-viewer-input-v3-empty-accounting-instrumented',
     producedSha256: await hash(produced), rawInstancedInputSha256: await hash(rawInputs),
     viewportInputSha256: await hash({ flat: viewport.sort(), instances: decodedInputs.sort(), policy,
       coordinateInfo: props.coordinateInfo, sectionCoordinateInfo: props.sectionCoordinateInfo, primaryModelIndex: 0 }),

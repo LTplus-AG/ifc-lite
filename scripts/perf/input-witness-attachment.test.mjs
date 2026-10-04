@@ -4,6 +4,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import { webcrypto, createHash } from 'node:crypto';
+import { captureViewerInputDiagnostic } from './input-witness-diagnostic.mjs';
 import { inputWitnessFixture } from './input-witness-fixture.mjs';
 import { discoverViewerInput } from './input-witness-discovery.mjs';
 import { installViewerInputWitness } from './input-witness-install.mjs';
@@ -82,4 +84,21 @@ test('#6537 subscribe installation error preserves exact native error and absenc
   assert.throws(() => c.install(c.options), error => error === c.nativeError);
   assert.equal(c.go('Object.hasOwn(globalThis, "__ifc_lite_render_stats__")'), false);
   assert.equal(c.go('Object.hasOwn(globalThis, "__ifc_lite_input_witness__")'), false);
+});
+
+test('#6537 serialized refusal diagnostic retains first raw delivery bytes without granting eligibility', async () => {
+  const c = fixture(); c.crypto = webcrypto; c.install(c.options);
+  c.go(`document.querySelector = originalQuery; __ifc_lite_render_stats__ = () => 1;
+    bad = new ArrayBuffer(31); f.notify({ models: new Map([['primary', f.model]]),
+      pendingInstancedShards: [{ modelId: 'primary', bytes: bad }] });
+    f.scene.addInstancedShard(f.device, { templates: [], instances: [], carriesItemIds: false, carriesFinishes: false }, 0);`);
+  assert.throws(() => c.go('__ifc_lite_input_witness__.freeze()'), /without canonical undrained delivery/);
+  c.diagnostic = vm.runInContext(`(${captureViewerInputDiagnostic.toString()})`, c);
+  const diagnostic = await c.diagnostic();
+  assert.equal(diagnostic.status, 'refusal-diagnostic-only');
+  assert.equal(diagnostic.deliveries[0].byteLength, 31);
+  assert.equal(diagnostic.deliveries[0].currentClass, 'truncated-header');
+  assert.equal(diagnostic.deliveries[0].hash.sha256, createHash('sha256').update(new Uint8Array(31)).digest('hex'));
+  assert.equal(diagnostic.firstEmptyCall.templates, 0);
+  assert.equal(c.go('__ifc_lite_input_witness__.dispose().restored'), false);
 });

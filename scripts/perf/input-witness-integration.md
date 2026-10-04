@@ -150,3 +150,60 @@ The prior four-family protocol, old refusal records, full-produced digest,
 owner/piece/instance guards, strict authored channels and fixed two O-S1 loads
 remain intact. This new observer has nonzero unmeasured overhead in both arms;
 its future correctness result cannot be pooled with earlier timing receipts.
+
+### Prospective v3 canonical empty-delivery accounting
+
+`independent-viewer-input-v3-empty-accounting-instrumented` preserves v2 and
+run 37183505460 as their original refusals. That run did not export the failing
+packet, so this correction does not retrospectively identify or accept it.
+The pinned partitioned routing helper always calls the canonical encoder; an
+empty collated input produces a **32-byte v1 IFNS envelope**, with zero template,
+occurrence and pool counts and reserved word zero. The canonical worker forwards
+that nonzero-length packet, and the actual streaming effect decodes and invokes
+Scene once per pending entry. Empty Scene preparation creates no output templates.
+
+The observer supports only that exact envelope and exact empty decoded shape.
+Every original delivery and accepted native call remains recorded once. Empty
+calls have **no template-buffer pointer**: correspondence is explicitly the
+source-audited no-output delivery/native-call multiplicity within the current
+primary model and renderer/device, not an invented individual pointer association.
+Nonempty pointer linkage, complete logical decoded bags, independent retained flat
+pieces/instances and original produced digest stay mandatory. Each empty native
+call must preserve its return and retained census; mutation, dropped/extra calls,
+unknown tails/versions, unreferenced templates or corrupt packets remain refusals.
+Raw shard/no-output provenance is retained separately from partition-independent
+logical geometry identity.
+
+A bounded post-timer diagnostic now records the first four and first undrained
+raw delivery's admitted/current length, header, class and full SHA256 (up to a
+fixed 64 MiB cumulative diagnostic bound), even after sticky refusal. Cap/hash
+failures are explicit. Diagnostic records cannot grant eligibility or identify a
+specific failed native call without its actual source linkage. No original GPU
+receivers, return values, exceptions, shader/launch flags or model options change.
+
+Local qualification uses the unchanged source-built WASM after exact artifact,
+1,413 Rust/toolchain/build-input equality and freshness fences. The existing
+partitioned API with **zero model bytes and zero jobs** produced the actual empty
+packet, SHA256 `b4f6ca3b3509b77a9adc79a49a5f478b1f9449db87660d7f414d00f4119e7a07`.
+No Rust API, source or production behavior was changed. Real decoder/preparation/
+Scene and the mounted canonical delayed-init effect cover empty/nonempty mixing.
+GPU byte/bind-group adapters and seeded metadata remain explicitly limited;
+these controls are not a real model load, GPU frame or full-property proof.
+
+The initial selection had **50 controls: 49 pass, one assertion failure, zero
+skips**. That assertion incorrectly assumed a nonempty template allocated three
+GPU buffers (actual four). The approved test-only correction asserts actual live
+count and allocation-list equality before/after each empty ingestion instead.
+The affected canonical file then passed **13 controls, zero skips**; the other
+37 unchanged controls retain their original passes. Original failure and source
+freezes are preserved, not rewritten. New MJS behavior is not TypeScript checked;
+the named harness program and previously qualified canonical TS dependencies
+provide separate coverage. A fresh hosted v3 two-load verdict remains pending.
+
+Actual canonical metadata/geometry producer milestones, settled scene/queues,
+current ownership, fresh CPU-frame and fatal-error/resource/source/cleanup gates
+remain unchanged. The earlier raw optional lifecycle values `opening`, `idle` and
+`interactiveReady=false` remain recorded; source review found they are initialized
+but not advanced on the baseline path. This neither manufactures updated fields
+nor grants GPU/pixel/full-metadata eligibility. No speed, physical RSS, federation
+or Windows Edge 1.778 GB success claim follows from these controls.

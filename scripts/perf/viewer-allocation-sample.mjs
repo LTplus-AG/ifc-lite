@@ -13,7 +13,7 @@ import {GRAPHICS_PROFILE,LIMITS} from './interleaved-plan.mjs';
 import {SUBJECTS,FIXTURE} from './viewer-allocation-plan.mjs';
 import {installSourceSliceObserver,freezeResidentSource,classifySourceSlices} from './viewer-source-slice-observer.mjs';
 import {ownedChrome} from './viewer-allocation-chrome.mjs';
-import {INPUT_PROTOCOL,INPUT_SUBJECTS,registerInputWitness,captureInputWitness,disposeInputWitness} from './input-witness-integration.mjs';
+import {INPUT_PROTOCOL,INPUT_SUBJECTS,registerInputWitness,captureInputWitness,captureInputDiagnostic,disposeInputWitness} from './input-witness-integration.mjs';
 const [configPath,output]=process.argv.slice(2),config=JSON.parse(readFileSync(configPath,'utf8'));
 if(config.inputProtocol!==null&&config.inputProtocol!==undefined&&config.inputProtocol!==INPUT_PROTOCOL)throw new Error('Unknown independent input protocol');
 const subjects=config.inputProtocol?INPUT_SUBJECTS:SUBJECTS;
@@ -75,6 +75,7 @@ try {
 finally {
   try {
     if(page){
+      if(inputRegistered)row.inputWitnessDiagnostic=await boundedDiagnostic(captureInputDiagnostic(page),5000);
       if(!row.allocation){row.partialSliceWitness=await boundedDiagnostic(page.evaluate(()=>globalThis.__ifc_lite_source_slice_observer__?.freeze()),2000);}
       row.finalSnapshot=await boundedDiagnostic(page.evaluate(refusedRendererSnapshot),2000);
       row.screenshot=await boundedDiagnostic(page.screenshot({path:`${output}.png`,timeout:3000}),3000);

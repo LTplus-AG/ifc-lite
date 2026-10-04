@@ -1,5 +1,5 @@
 {
-  "protocol": "independent-viewer-input-v2-late-attachment-instrumented",
+  "protocol": "independent-viewer-input-v3-empty-accounting-instrumented",
   "subjects": {
     "base": "7dfc29870b0aa6a593c163592fcb84a92e5dfa19",
     "candidate": "9fc86cb8ead77486b0bcd29726b775c27085524b"
@@ -96,6 +96,11 @@
       "candidateSha256": "9e256e4a4daff87b7a3e1d8325929ffc83840fd2457c0806e5ac94bbf599199e"
     },
     {
+      "path": "packages/geometry/src/geometry.worker.ts",
+      "baseSha256": "8b5d3aae85ee3b6f9d37559546396d69247a194714c4e15de272c580bad7deaf",
+      "candidateSha256": "8b5d3aae85ee3b6f9d37559546396d69247a194714c4e15de272c580bad7deaf"
+    },
+    {
       "path": "packages/geometry/src/packed-geometry-decoder.ts",
       "baseSha256": "b7739d6ac9224edbabe36f23162cc31d2513b45b6ab52f7a4ffbba790361a467",
       "candidateSha256": "b7739d6ac9224edbabe36f23162cc31d2513b45b6ab52f7a4ffbba790361a467"
@@ -141,9 +146,24 @@
       "candidateSha256": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf"
     },
     {
+      "path": "rust/geometry/src/instancing/group.rs",
+      "baseSha256": "d7cde2b8bccf80748f785fd07d003539e5679078a422a18a3dbe8a690e1c3813",
+      "candidateSha256": "d7cde2b8bccf80748f785fd07d003539e5679078a422a18a3dbe8a690e1c3813"
+    },
+    {
       "path": "rust/geometry/src/instancing/wire.rs",
       "baseSha256": "2abe65475d775f7254c62ad5a1d87be6ebf2e96c3f09b7f2fde09807673e34f8",
       "candidateSha256": "2abe65475d775f7254c62ad5a1d87be6ebf2e96c3f09b7f2fde09807673e34f8"
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/batch.rs",
+      "baseSha256": "e8318b3cf82dce2f4c92cb4f163e0a64d8e635630b01b1159e6f5ddfe2c3323a",
+      "candidateSha256": "e8318b3cf82dce2f4c92cb4f163e0a64d8e635630b01b1159e6f5ddfe2c3323a"
+    },
+    {
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/batch_partition.rs",
+      "baseSha256": "4ac280a1abfafbcc012a68baca70a7a600f46fe3a84b75cc678c5b57d2081466",
+      "candidateSha256": "4ac280a1abfafbcc012a68baca70a7a600f46fe3a84b75cc678c5b57d2081466"
     },
     {
       "path": "scripts/build-wasm.sh",
@@ -490,6 +510,19 @@
         478,
         500
       ]
+    },
+    {
+      "topic": "canonical empty no-output IFNS",
+      "path": "rust/wasm-bindings/src/api/gpu_meshes/batch_partition.rs",
+      "baseLines": [
+        110,
+        121
+      ],
+      "candidateLines": [
+        110,
+        121
+      ],
+      "mechanism": "Routing always invokes canonical encoder after clearing rejected flat indices. Empty collation emits exact32B v1 header, including flat-only/zero-output partitioned batches. Worker forwards nonzero byteLength; canonical decode/drain invokes Scene synchronously per pending entry. No decoded template-buffer pointer exists for empty shape: complete no-output raw/native multiplicity accounting is explicit, not fabricated pointer association."
     }
   ],
   "dependencies": [

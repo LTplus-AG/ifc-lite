@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { tsImport } from 'tsx/esm/api';
 import { discoverViewerInput } from './input-witness-discovery.mjs';
 import { installViewerInputWitness } from './input-witness-install.mjs';
+import { canonicalEmptyBytes } from './input-witness-empty-fixture.mjs';
 import { boundedGpuBytes, triangleCompatibilityBytes, GPU_USAGE } from './input-witness-canonical-fixtures.mjs';
 
 // Real mounted ingestion hook, canonical store, decoder, Camera and Scene.
@@ -89,20 +90,23 @@ test('#6537 mounted canonical pending drain observes geometry and IFNS parsed be
     assert.equal(registration.awaitsRendererReady, true);
     const bytes = triangleCompatibilityBytes();
     api.setState({ models: new Map([['primary', { visible: true, idOffset: 0, ifcDataStore: metadata }]]) });
-    api.getState().appendInstancedShards('primary', [bytes]);
+    api.getState().appendInstancedShards('primary', [canonicalEmptyBytes(), bytes, canonicalEmptyBytes()]);
     await act(async () => { root.render(createElement(Mounted, { geometry, modelIdToIndex: new Map([['primary', 0]]) })); });
     assert.equal(scene.meshDataMap.size, 0); assert.equal(scene.getInstancedEntityCount(), 0);
-    assert.equal(api.getState().pendingInstancedShards.length, 1, 'real initialization gate retains undrained input');
+    assert.equal(api.getState().pendingInstancedShards.length, 3, 'real initialization gate retains undrained input');
     await act(async () => { completeInit(); await init; });
     assert.equal(scene.meshDataMap.get(10).length, 1, 'actual flat ingestion retains the produced triangle');
     assert.deepEqual(Array.from(scene.meshDataMap.get(10)[0].positions), Array.from(geometry[0].positions));
     assert.equal(scene.getInstancedEntityCount(), 2, 'actual decoder and Scene retain both opaque occurrences');
     assert.equal(api.getState().pendingInstancedShards, null, 'canonical effect drains and clears original pending input');
     const witness = globalThis.__ifc_lite_input_witness__, frozen = witness.freeze();
-    assert.strictEqual(frozen.deliveries[0].buffer, bytes);
-    assert.strictEqual(frozen.inputs[0].shard.templates[0].positions.buffer, bytes);
-    assert.strictEqual(scene.instancedTemplateCpu[0].positions, frozen.inputs[0].shard.templates[0].positions);
-    assert.equal(frozen.inputs[0].accepted, true); assert.ok(requests > 0);
+    assert.strictEqual(frozen.deliveries[1].buffer, bytes);
+    assert.strictEqual(frozen.inputs[1].shard.templates[0].positions.buffer, bytes);
+    assert.strictEqual(scene.instancedTemplateCpu[0].positions, frozen.inputs[1].shard.templates[0].positions);
+    assert.equal(frozen.inputs[1].accepted, true);
+    assert.equal(frozen.calls, 3);
+    assert.equal(frozen.inputs.filter(item => item.empty && item.accepted).length, 2);
+    assert.deepEqual(frozen.deliveries.map(item => item.ingestions), [1, 1, 1]); assert.ok(requests > 0);
     const nativeHook = globalThis.__ifc_lite_render_stats__;
     assert.equal(witness.dispose().restored, true);
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, '__ifc_lite_render_stats__');

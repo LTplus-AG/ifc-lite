@@ -107,9 +107,11 @@ jobs:
           set -o pipefail
           (cd "$BASE_DIR" && CARGO_TARGET_DIR="$RUNNER_TEMP/allocation-base-cargo" pnpm typecheck) 2>&1 | tee "$GITHUB_WORKSPACE/viewer-allocation-results/base-typecheck.log"
           (cd "$CANDIDATE_DIR" && CARGO_TARGET_DIR="$RUNNER_TEMP/allocation-candidate-cargo" pnpm typecheck) 2>&1 | tee "$GITHUB_WORKSPACE/viewer-allocation-results/candidate-typecheck.log"
-      - name: Qualify mounted lazy-init input attachment with canonical baseline Scene
+      - name: Qualify mounted lazy-init and canonical empty input with baseline Scene
         if: inputs.independent_input
-        run: node --test scripts/perf/input-witness-attachment-mounted.test.mjs
+        env:
+          INPUT_WITNESS_EMPTY_REQUIRED: 'true'
+        run: node --test scripts/perf/input-witness-attachment-mounted.test.mjs scripts/perf/input-witness-canonical.test.mjs
       - name: Build baseline from source through root Turbo
         working-directory: ${{ env.BASE_DIR }}
         env:

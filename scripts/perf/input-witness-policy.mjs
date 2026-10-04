@@ -10,7 +10,7 @@ export const INPUT_WITNESS_BOUNDS = Object.freeze({
 export function requireViewerInputIdentityPair(a, b) {
   const hex = value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
   for (const row of [a, b]) {
-    if (row?.protocol !== 'independent-viewer-input-v2-late-attachment-instrumented' || row.complete !== true
+    if (row?.protocol !== 'independent-viewer-input-v3-empty-accounting-instrumented' || row.complete !== true
       || !hex(row.producedSha256) || !hex(row.rawInstancedInputSha256) || !hex(row.viewportInputSha256)) {
       throw new Error('REFUSE: incomplete/unknown independent input identity');
     }

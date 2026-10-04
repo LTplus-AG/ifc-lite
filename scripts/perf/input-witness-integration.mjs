@@ -8,13 +8,14 @@ import { join } from 'node:path';
 import { fileHash } from './interleaved-assets.mjs';
 import { discoverViewerInput } from './input-witness-discovery.mjs';
 import { installViewerInputWitness } from './input-witness-install.mjs';
+import { captureViewerInputDiagnostic } from './input-witness-diagnostic.mjs';
 import { captureViewerInputIdentity } from './input-witness-capture.mjs';
 import { expectedZeroPlacedMesh } from './input-witness-zero-placement.mjs';
 import { INPUT_WITNESS_BOUNDS, requireViewerInputIdentityPair } from './input-witness-policy.mjs';
 
 const rawContract = readFileSync(new URL('./input-witness-source-contract.json', import.meta.url));
 const contract = JSON.parse(rawContract);
-export const INPUT_PROTOCOL = 'independent-viewer-input-v2-late-attachment-instrumented';
+export const INPUT_PROTOCOL = 'independent-viewer-input-v3-empty-accounting-instrumented';
 export const INPUT_SUBJECTS = Object.freeze({ ...contract.subjects });
 const manifestSha256 = createHash('sha256').update(rawContract).digest('hex');
 
@@ -71,6 +72,10 @@ export async function captureInputWitness(page, limits) {
     oneBufferBytes: limits.oneBufferBytes, digestBytes: limits.digestBytes, records: limits.records,
     zeroPlacementSource: expectedZeroPlacedMesh.toString(),
   });
+}
+
+export async function captureInputDiagnostic(page) {
+  return page.evaluate(captureViewerInputDiagnostic);
 }
 
 export async function disposeInputWitness(page) {

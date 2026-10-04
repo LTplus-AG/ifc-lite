@@ -1,0 +1,39 @@
+// Bounded actual-browser diagnostic; no production edits or timing claim.
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
+const {chromium}=require('/home/louistrue/wt/hidpi-baseline-session6503/node_modules/@playwright/test');
+const out='/tmp/6232-takeover/perf-reset-20261004/6882-native-compiled-qualification-1';
+if(fs.existsSync(out))throw Error('Preserve existing attempt');fs.mkdirSync(out);
+const transfer=JSON.parse(fs.readFileSync('/tmp/6232-takeover/6709-windows-fixture-transfer-v11.json')).haus;
+const rows=[];
+function admission(stage,row){const x=JSON.parse(cp.execFileSync('/tmp/6232-takeover/6709-admission-v12.py',[],{input:JSON.stringify({stage,sample:{index:row.index}}),encoding:'utf8',timeout:15000}));fs.writeFileSync(path.join(out,`admission-${row.index}-${stage}.json`),JSON.stringify(x,null,2));if(x.main.MemAvailableKiB<8388608||x.windows.samples.some(s=>s.freePhysicalKiB<8388608))throw Error('Functional-only 8GiB Linux/Windows floor');return x;}
+(async()=>{
+ for(const [index,variant,origin,modelCount] of [[0,'A','http://localhost:5427',1],[1,'B','http://localhost:5428',1],[2,'A','http://localhost:5427',2],[3,'B','http://localhost:5428',2]]){
+  const row={index,variant,origin,modelCount,scope:'One fixed point and unchanged-aspect intervention; not correctness certificate, not performance evidence'};let browser,context;
+  try{
+   admission('pick-epoch-pre',row);browser=await chromium.connectOverCDP('http://127.0.0.1:9343',{timeout:15000});row.chrome=browser.version();context=await browser.newContext({viewport:{width:2234,height:1203},deviceScaleFactor:2});const page=await context.newPage();page.setDefaultTimeout(15000);row.errors=[];page.on('pageerror',e=>row.errors.push(e.message));await page.goto(origin,{waitUntil:'domcontentloaded'});await page.bringToFront();
+   await page.waitForFunction(()=>globalThis.__6709_bench__?.store&&globalThis.__6709_bench__?.getRenderer);
+   const input=page.locator('input[type=file][accept^=".ifc"]').first();await input.evaluate(el=>el.setAttribute('data-owned-epoch-input','true'));const cdp=await context.newCDPSession(page);try{const d=await cdp.send('DOM.getDocument',{depth:0}),n=await cdp.send('DOM.querySelector',{nodeId:d.root.nodeId,selector:'input[data-owned-epoch-input=true]'});await cdp.send('DOM.setFileInputFiles',{nodeId:n.nodeId,files:[transfer.windowsPath]});}finally{await cdp.detach();}
+   await page.waitForFunction(()=>{const b=globalThis.__6709_bench__,s=b.store.getState(),r=b.getRenderer(),sc=r?.getScene();return s.models.size===1&&!s.loading&&!s.geometryStreamingActive&&[...s.models.values()].every(m=>m.loadState==='complete')&&r?.isReady()&&sc&&!sc.hasQueuedMeshes()&&!sc.hasStreamingFragments()&&!sc.isFinalizeInProgress()&&!sc.hasPendingBatches();},null,{timeout:90000});
+   if(modelCount===2){
+    const cdp=await context.newCDPSession(page);try{const d=await cdp.send('DOM.getDocument',{depth:0}),n=await cdp.send('DOM.querySelector',{nodeId:d.root.nodeId,selector:'#file-input-add'});if(!n.nodeId)throw Error('Canonical add-model input absent');await cdp.send('DOM.setFileInputFiles',{nodeId:n.nodeId,files:[transfer.windowsPath]});}finally{await cdp.detach();}
+    await page.waitForFunction(()=>{const b=globalThis.__6709_bench__,s=b.store.getState(),sc=b.getRenderer()?.getScene();return s.models.size===2&&!s.loading&&!s.geometryStreamingActive&&[...s.models.values()].every(m=>m.loadState==='complete')&&sc&&!sc.hasQueuedMeshes()&&!sc.hasStreamingFragments()&&!sc.isFinalizeInProgress()&&!sc.hasPendingBatches();},null,{timeout:90000});
+   }
+   await page.evaluate(()=>{const s=globalThis.__6709_bench__.store.getState();s.setActiveTool('select');s.setNavigationPreset('default');s.setProjectionMode('perspective');s.setInteractionMode('all');s.setEnvPreset('default');s.setSolarEnabled(false);s.setEnvSunTimeEnabled(false);s.setEnvSkyEnabled(false);s.setEnvExposure(1);s.setEnvShadowsEnabled(false);s.setVisualEnhancementsEnabled(true);s.setGhostExceptEntities(null);});
+   await page.waitForFunction(()=>typeof globalThis.__6709_bench__.store.getState().cameraCallbacks.home==='function');await page.evaluate(()=>globalThis.__6709_bench__.store.getState().cameraCallbacks.home());await page.waitForTimeout(650);await page.evaluate(()=>globalThis.__6709_bench__.store.getState().setCameraRotation({azimuth:45,elevation:30}));await page.waitForTimeout(500);
+   row.observation=await page.evaluate(async({variant})=>{
+    const r=globalThis.__6709_bench__.getRenderer(),c=r.getCamera(),canvas=r.getCanvas(),point={x:canvas.getBoundingClientRect().width/2,y:canvas.getBoundingClientRect().height/2};
+    const state=()=>{const rect=canvas.getBoundingClientRect();return {epoch:c.getRelativeToEyeFrame().snapshot().renderEpoch,projection:Array.from(c.getProjMatrix().m),position:c.getPosition(),target:c.getTarget(),aspect:c.getAspect(),css:[rect.width,rect.height],buffer:[canvas.width,canvas.height],frame:r.getFrameStats()?.timestamp};};
+    const pick=async(intervene=false)=>{const before=state(),pending=r.pick(point.x,point.y);if(intervene)c.setAspect(c.getAspect());const afterIntervention=state(),hit=await pending,after=state();return {before,afterIntervention,after,hit,intervene};};
+    const controls=[await pick(),await pick()];const intervention=await pick(true),afterControl=await pick();
+    const aspect=c.getAspect();const aspectPending=r.pick(point.x,point.y);c.setAspect(aspect*1.01);c.setAspect(aspect);const actualAspectChange=await aspectPending;
+    const rect=canvas.getBoundingClientRect(),oldWidth=canvas.style.width,oldHeight=canvas.style.height;
+    const resizePending=r.pick(point.x,point.y);canvas.style.width=(rect.width*.9)+'px';canvas.style.height=(rect.height*.9)+'px';const resizedRect=canvas.getBoundingClientRect();const proportionalResize=await resizePending;canvas.style.width=oldWidth;canvas.style.height=oldHeight;await new Promise(resolve=>setTimeout(resolve,150));
+    const finalControl=await pick();const same=(a,b)=>!!a&&!!b&&a.expressId===b.expressId&&a.modelIndex===b.modelIndex&&a.geometryItemId===b.geometryItemId&&!!a.worldXYZ&&Object.values(a.worldXYZ).every(Number.isFinite)&&JSON.stringify(a.worldXYZ)===JSON.stringify(b.worldXYZ);
+    const assertions={ordinaryPicksStable:same(controls[0].hit,controls[1].hit)&&same(controls[0].hit,afterControl.hit)&&same(controls[0].hit,finalControl.hit),redundantAspectExpected:variant==='A'?intervention.hit===null:same(controls[0].hit,intervention.hit),actualAspectRejected:actualAspectChange===null,viewportActuallyChanged:rect.width!==resizedRect.width&&rect.height!==resizedRect.height,proportionalResizeRejected:proportionalResize===null};
+    return {point,controls,intervention,afterControl,actualAspectChange,proportionalResize,originalCSS:[rect.width,rect.height],resizedCSS:[resizedRect.width,resizedRect.height],finalControl,assertions,model:[...globalThis.__6709_bench__.store.getState().models.values()].map(m=>({loadState:m.loadState,meshes:m.geometryResult?.meshes.length,triangles:m.geometryResult?.totalTriangles})),adapter:r.getAdapterInfo()};
+   },{variant});await page.screenshot({path:path.join(out,`${index}-${variant}-actual.png`)});row.completed=true;row.passed=Object.values(row.observation.assertions).every(Boolean)&&row.errors.length===0;
+  }catch(e){row.completed=false;row.failure={message:e.message,stack:e.stack};}
+  finally{if(context)await context.close();if(browser)await browser.close();try{admission('pick-epoch-post',row);}catch(e){row.postFailure=e.message;}rows.push(row);fs.writeFileSync(path.join(out,'results.json'),JSON.stringify(rows,null,2));}
+ }
+})().catch(e=>{fs.writeFileSync(path.join(out,'fatal.json'),JSON.stringify({message:e.message,stack:e.stack}));process.exitCode=1;});

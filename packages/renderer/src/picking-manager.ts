@@ -28,6 +28,13 @@ export type PointPickProvider = () =>
   | { nodes: ReadonlyArray<PointPickNode>; sizing: PointPickSizing }
   | null;
 
+interface PickViewport {
+    width: number;
+    height: number;
+    scaleX: number;
+    scaleY: number;
+}
+
 export class PickingManager {
     private camera: Camera;
     private scene: Scene;
@@ -57,11 +64,19 @@ export class PickingManager {
      * (4x the bytes at DPR 2), and splat pick sizes stay in the draw's space.
      * Clamped to 8192, the WebGPU-guaranteed `maxTextureDimension2D`.
      */
-    private pickViewport(): { width: number; height: number; scaleX: number; scaleY: number } | null {
+    private pickViewport(): PickViewport | null {
         const rect = this.canvas.getBoundingClientRect();
         const size = computeDrawingBufferSize(rect.width, rect.height, 1, 8192);
         if (!size) return null;
         return { width: size.width, height: size.height, scaleX: size.width / rect.width, scaleY: size.height / rect.height };
+    }
+
+    /** A queued readback belongs to its original CSS-to-texel mapping (#6882). */
+    private isPickViewportCurrent(viewport: PickViewport): boolean {
+        const current = this.pickViewport();
+        return current !== null
+            && current.width === viewport.width && current.height === viewport.height
+            && current.scaleX === viewport.scaleX && current.scaleY === viewport.scaleY;
     }
 
     /** Renderer wires this on init so the manager can fetch point nodes lazily. */
@@ -215,6 +230,7 @@ export class PickingManager {
             clip,
             pointRteSnapshot,
         );
+        if (!this.isPickViewportCurrent(viewport)) return null;
         if (pointRteSnapshot
             && !isPointRteSnapshotCurrent(this.camera, pointRteSnapshot)) {
             return null;
@@ -318,9 +334,10 @@ export class PickingManager {
                 // device-loss abort. The box hits are already computed and this
                 // branch could not throw at all before the point pass was added,
                 // so degrade to them instead of failing the whole rectangle select.
-                console.warn('[PickingManager] point-cloud rect pick failed; returning bounding-box hits only:', err);
-                return boxHits;
+                console.warn('[PickingManager] point-cloud rect pick failed; returning current-viewport bounding-box hits only:', err);
+                return this.isPickViewportCurrent(viewport) ? boxHits : new Set();
             }
+            if (!this.isPickViewportCurrent(viewport)) return new Set();
             if (pointRteSnapshot && !isPointRteSnapshotCurrent(this.camera, pointRteSnapshot)) {
                 return boxHits;
             }
@@ -344,7 +361,8 @@ export class PickingManager {
             clip,
             pointRteSnapshot,
         );
-        return pointRteSnapshot && !isPointRteSnapshotCurrent(this.camera, pointRteSnapshot)
+        return !this.isPickViewportCurrent(viewport)
+            || (pointRteSnapshot && !isPointRteSnapshotCurrent(this.camera, pointRteSnapshot))
             ? new Set()
             : hits;
     }

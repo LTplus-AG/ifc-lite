@@ -27,6 +27,24 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Pending picking survives redundant viewport synchronization (#6882)
+
+Native-GPU navigation qualification exposed a shared correctness defect before
+the resolution-cap candidate could receive a performance verdict. A queued pick
+was discarded when `Camera.setAspect` repeated its current ratio, although its
+projection, camera pose and CSS viewport were unchanged. Preserve that snapshot
+with an exact no-op in the aspect setter; do not suppress equal relative-to-eye
+frames globally, since scene republication intentionally invalidates picks.
+
+A proportional resize can preserve the aspect while changing pick coordinates.
+Check the original CSS-to-texel mapping after every asynchronous picking path,
+including rectangle selection and its readback-error fallback. Physical drawing
+buffer changes with unchanged CSS mapping remain valid. This is a correctness
+prerequisite, not a measured speed improvement or an explanation of the earlier
+spontaneous miss. Keep functional qualification separate from timing admission.
+[Original actual-GPU observations and compiled qualification](evidence/redundant-aspect-pick-6882/README.md)
+preserve the source identities and evidence boundaries.
+
 ## Historical CSG job observations (#6516)
 
 Use the existing ordered CSG census for a small feature-gated diagnostic before

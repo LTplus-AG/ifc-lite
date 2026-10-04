@@ -120,7 +120,7 @@ export function getMaxExpressId(
 type IfcxParse = Awaited<ReturnType<typeof parseIfcx>>;
 type IfcxStoreInput = Pick<
   IfcxParse,
-  'fileSize' | 'entityCount' | 'parseTime' | 'strings' | 'entities' | 'properties' | 'quantities' | 'relationships'
+  'fileSize' | 'entityCount' | 'parseTime' | 'strings' | 'entities' | 'properties' | 'quantities' | 'relationships' | 'georeferencing'
 > & { spatialHierarchy?: IfcxParse['spatialHierarchy'] };
 
 /**
@@ -161,6 +161,18 @@ export function buildIfcxDataStore(ifcxResult: IfcxStoreInput, buffer: ArrayBuff
     quantities: ifcxResult.quantities,
     relationships: ifcxResult.relationships,
     spatialHierarchy: ifcxResult.spatialHierarchy,
+    georeferencing: ifcxResult.georeferencing ? {
+      hasGeoreference: true, source: 'mapConversion',
+      projectedCRS: { id: 0, name: ifcxResult.georeferencing.IfcProjectedCRS.Name, mapUnit: 'METRE', mapUnitScale: 1 },
+      mapConversion: { id: 0, sourceCRS: 0, targetCRS: 0,
+        eastings: ifcxResult.georeferencing.IfcMapConversion.Eastings,
+        northings: ifcxResult.georeferencing.IfcMapConversion.Northings,
+        orthogonalHeight: ifcxResult.georeferencing.IfcMapConversion.OrthogonalHeight,
+        xAxisAbscissa: ifcxResult.georeferencing.IfcMapConversion.XAxisAbscissa,
+        xAxisOrdinate: ifcxResult.georeferencing.IfcMapConversion.XAxisOrdinate,
+        scale: ifcxResult.georeferencing.IfcMapConversion.Scale,
+      },
+    } : undefined,
   } as unknown as IfcStoreData);
 
   const entityTable = ifcxResult.entities;

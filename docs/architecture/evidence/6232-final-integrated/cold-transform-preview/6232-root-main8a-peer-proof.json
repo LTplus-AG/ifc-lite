@@ -1,0 +1,12 @@
+{
+  "source": "57cb2ed558ab9d4cbd6244063f2d796f9b71a64c",
+  "prior": "422a46bf7c824ddf68b8e22cd807ade4d4c8d800",
+  "tree": "168fc177db4f2a64efa8fc24c07b36eae7a4d41a",
+  "actualMain": "8a78fbf19910313d6ac9ac66da0a717accd6e71f",
+  "literalMainBlobs": 23,
+  "ownPlannerTestApiRustUnchanged": true,
+  "extraProducerPaths": [
+    "docs/architecture/evidence/6232-final-integrated/producers/registered-transform-preview.cjs"
+  ],
+  "qualification": "Read-only source/blob audit. No tests or browser executed."
+}

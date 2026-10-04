@@ -1,0 +1,18 @@
+{
+  "oldHead": "9ee490e17e466889359bd8496f056f749fd2d5a9",
+  "oldMain": "5c87f0af55107663805ce81d2a9d357bbe36205b",
+  "main": "8ab47142562a79862df6d14700a39723351f00df",
+  "preparedHead": "d0f59f7f2fdec9f130993863b52cf2e5078b4809",
+  "preparedTree": "b07ec55b2233d230d69439771cb95fec1805ea2d",
+  "changedPaths": [
+    "packages/mcp/src/tools/room-command.test.ts"
+  ],
+  "changedBlobExactMain": true,
+  "fullOwnBinaryPatchIdentical": true,
+  "ownLayerBinaryPatchSha256": "541bb9a81a47c07c010f41ef2f263afb86d3745165212e55a21d055b45cb21b6",
+  "apiUnchanged": true,
+  "rustTreeUnchanged": true,
+  "mainCompositionTree": "b07ec55b2233d230d69439771cb95fec1805ea2d",
+  "cleanWorktree": true,
+  "scope": "one inherited fixed-time export test; no production/runtime changes"
+}

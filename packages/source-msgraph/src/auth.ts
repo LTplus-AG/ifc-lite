@@ -38,7 +38,8 @@ const TOKEN_ENDPOINT = (tenant: string) => `https://login.microsoftonline.com/${
  * always renders the account picker, and this package implements no
  * `prompt=none` path.
  */
-const SCOPES = 'offline_access https://graph.microsoft.com/Files.Read';
+// /me identity requires User.Read independently of file access.
+const SCOPES = 'offline_access https://graph.microsoft.com/Files.Read https://graph.microsoft.com/User.Read';
 
 const STORAGE_KEY = 'msgraph:tokens';
 const DEFAULT_TENANT = 'common';

@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "csg-work-delivery-qualification-v1",
+  "status": "PUBLIC_COMPLETE_OUTPUT_IDENTITIES_MATCH_BOTH_PLATFORMS",
+  "scope": "Diagnostic delivery only; no timing, complete CSG census, all-model compatibility or private-model cause claim.",
+  "workflowRun": "https://github.com/LTplus-AG/ifc-lite/actions/runs/37217539227",
+  "deliveryCommit": "43352f7671c245a61bd0959aa3b6fe001e1b0fba",
+  "manifestSha256": "158173e96b0f1838bbec9ead370ba7410a8dc5d295b210f9a1bee19f7468351a",
+  "deliveredFilesVerified": 1850,
+  "sourceByteIdentity": "Delivered reader, builder and launcher match the production source in this PR.",
+  "fixture": {
+    "url": "https://raw.githubusercontent.com/IfcOpenShell/files/9fc2267d7f1ff35284c5b0fc28cc97bff7ace8e7/994--slab--segfault--augmented.ifc",
+    "bytes": 189918,
+    "sha256": "1d1cd11c57d80fe4f769a05db49cf1a96973b1af6cbee2d75ef541cfa3cb8fa0"
+  },
+  "platforms": [
+    "ubuntu-latest Node v24.21.0",
+    "windows-latest Node v24.21.0"
+  ],
+  "perPlatform": {
+    "completeCanonicalLoads": 6,
+    "individualReplays": 18,
+    "allChildExitCodes": 0,
+    "allChildClosesObserved": true,
+    "canonicalCompleteEventsPerLoad": 1,
+    "perReleaseRaw24AndConverted6Identities": "MATCH",
+    "ordinaryLogCountsPerRelease": "MATCH"
+  },
+  "outputs": [
+    {
+      "release": 6,
+      "meshes": 9,
+      "triangles": 5833,
+      "raw24Sha256": "7f7d4771132c374bdab6b1e33b48a1cb8c99d8cfcc35161359a334f227cd78e2",
+      "converted6Sha256": "981d74ad4aa4ee39ef08e56f1ed321fe06572270269050d586edddb5debfde16",
+      "stockWasmSha256": "d5c9c0a822b70b6eae213c996bb863b4346a91396b399b1bb1f64270b9b278a4",
+      "diagnosticWasmSha256": "dd235a188867bc06e75b2a351a903074b90e0de3edcb1f1c2df733efd048a9d2"
+    },
+    {
+      "release": 7,
+      "meshes": 9,
+      "triangles": 6732,
+      "raw24Sha256": "a583c737c76957cfcd6c814b6fc161a1792cfc8e159a25460843ef5cf6bc0329",
+      "converted6Sha256": "37bdaf83404efaa9ec90f2c8f9e60e882ac18b290ed33bc1b1609aa9cd994e38",
+      "stockWasmSha256": "28f248024ef95edf200b7ee3a3f4aabc879be70e5ac1b20d779ec1162492933e",
+      "diagnosticWasmSha256": "ec0ae64ff1c4bdd716cd81af732844b19d721804c3253e862f2f7fa83371aa27"
+    }
+  ],
+  "historicalSources": [
+    {
+      "release": "release6",
+      "commit": "e69750fb08e2cc5bbb62e63737d658a852f8a03f",
+      "patchSha256": "0706573c1add572b358b5f3307a334c346db21c082aea39227c6238d63b86d9b",
+      "cargoLockSha256": "b47c406684dda83eab2101c1d4e76cc7a3febefcc4102dd82c2a762d8ca2a145"
+    },
+    {
+      "release": "release7",
+      "commit": "d6e56c8cad8a673d97ab369e4373ce015d3f9c56",
+      "patchSha256": "df34489411dd98f5c22a8d6c9351b209c72cf3dfe6820dc41cd30938293f3662",
+      "cargoLockSha256": "551108941e3cb0764603cd94c6840fa2cbeccd7fffe6895a72e9a8b6a31bfec0"
+    }
+  ],
+  "npmAudit": "Both recorded signature/attestation audits exited 0, invalid and missing inventories empty; only available attestations are verified.",
+  "rebuildLimit": "These Actions-built WASM binaries differ from the earlier local builds and the published binaries. Output equality on this public fixture does not establish engine byte identity or compatibility on every model.",
+  "privateModel": "UNRUN; #6516 remains open",
+  "rustTupleTests": "Two prepared historical Rust controls remain UNRUN; actual tuple serialization is exercised by the complete public model loads."
+}

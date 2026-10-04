@@ -1,0 +1,66 @@
+{
+  "issue": 6232,
+  "qualifiedSourceHead": "07d9cc09eb46c64256c78458c78c9bdb4ce28ba6",
+  "copyRepair": "331cccf126d985609c67e58712c04ebc9e46764f",
+  "scope": "Normal feature-parent forwarding through Room9/10/11, physical, SDKRoom, MCPRoom, ordinary/quantity history and Align; no main or final16 ancestry imported.",
+  "heads": {
+    "6753": "331cccf126d985609c67e58712c04ebc9e46764f",
+    "6754": "7ad3a677f84814ed2f4e7db327afb45aac3ed07d",
+    "6755": "b5ddce604340db71ab079dadbe4c8c3bb6185dc9",
+    "6756": "9e23b638548ac62d4406e56af7bdbb140ebf0833",
+    "6757": "cd946e96f04dbb42b5881d25177e3e198f2447a5",
+    "6758": "2303e2a8384ae9f227f127b83c27ffc65c8ec975",
+    "6759": "c1a1a19f929caa744adbbac5e262aa2b7b8e7dcf",
+    "6760": "63a95a8d66df6a91c127499e7c7aa0822b65ce3f",
+    "6761": "07d9cc09eb46c64256c78458c78c9bdb4ce28ba6"
+  },
+  "checks": {
+    "rootTypecheckTasks": 111,
+    "testFiles": 3375,
+    "coreNative": {
+      "passed": 28,
+      "skipped": 0
+    },
+    "mcp": {
+      "passed": 603,
+      "existingOptionalSkips": 5
+    },
+    "viewer": {
+      "passed": 62,
+      "skipped": 0
+    },
+    "docsSnippets": 433,
+    "apiExports": 9334,
+    "moduleFiles": 4801,
+    "newOversize": 0,
+    "allowanceRaises": 0,
+    "licenseHeaders": true,
+    "lint": {
+      "files": 8450,
+      "errors": 0
+    }
+  },
+  "nativeRuntime": {
+    "wasmSha256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+    "jsSha256": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+    "beforeAfterMatched": true,
+    "execution": "Generated matching pair restored after root dependency qualification; all three test runs through root Turbo --only --force, no build/Cargo jobs during native execution."
+  },
+  "logs": {
+    "types": "/tmp/6232-copy-forward-align-types.log",
+    "core": "/tmp/6232-copy-forward-core.log",
+    "mcp": "/tmp/6232-copy-forward-mcp.log",
+    "viewer": "/tmp/6232-copy-forward-viewer.log",
+    "lint": "/tmp/6232-copy-forward-lint.log",
+    "api": "/tmp/6232-copy-forward-api.log",
+    "docs": "/tmp/6232-copy-forward-docs.log",
+    "module": "/tmp/6232-copy-forward-module.log",
+    "license": "/tmp/6232-copy-forward-license.log",
+    "runtimeBefore": "/tmp/6232-copy-forward-runtime-before.sha256",
+    "runtimeAfter": "/tmp/6232-copy-forward-runtime-after.log"
+  },
+  "limits": [
+    "Existing receipts retain original head qualification; this new receipt records the cumulative forward separately.",
+    "Feature forwarding does not establish fresh required main CI or authorization to merge."
+  ]
+}

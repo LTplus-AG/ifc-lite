@@ -1,0 +1,53 @@
+{
+  "head": "764725a901ef0f2b4ef76ae833defd232a5a83a1",
+  "base": "bb3cccbbed934bae9d6fb258d1ef0d77db7ab426",
+  "files": [
+    {
+      "path": ".changeset/room-detach-cleanup.md",
+      "sha256": "24093a85d815e2c087b6df5dde71c319e0475c5835c0f87258b9ee405aa5e4ef"
+    },
+    {
+      "path": "packages/mcp/src/server.ts",
+      "sha256": "4c7bf2682a28ce208ab9aa1a5e89449e6a3e336e66783e7771e2905afd4749f1"
+    },
+    {
+      "path": "packages/mcp/src/session-cleanup.ts",
+      "sha256": "bcdb315c17de60c8d1b6389c6822733f212d8c7e06f856d445d5d039071e8629"
+    },
+    {
+      "path": "packages/mcp/src/server-detach-native.test.ts",
+      "sha256": "acf8443e1a236cefebf93b28ad2e3c78ec1941d0271dc60a1034122000cb9f00"
+    }
+  ],
+  "before": {
+    "failed": 3,
+    "kind": "actual attributed assertions: downstream native backend disposal skipped"
+  },
+  "fixed": {
+    "passed": 17,
+    "skipped": 0,
+    "cached": 0,
+    "scope": "3 native two-model failure controls plus14 existing server protocol controls"
+  },
+  "runtime": {
+    "wasm": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+    "js": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d"
+  },
+  "typecheck": "pending root combined qualification; existing base-built dependencies used for no-build focused runs",
+  "logs": [
+    {
+      "path": "/tmp/6232-detach-native-before.log",
+      "sha256": "8456278e14b82759734e7f83722140a7b7fcb5575364772ee9487c3c3377a146"
+    },
+    {
+      "path": "/tmp/6232-detach-native-fixed.log",
+      "sha256": "fbd8a56e1cbff054421617262e6f05db3046e48e8c04324701467099c1ddc536"
+    },
+    {
+      "path": "/tmp/6232-detach-install.log",
+      "sha256": "82430e2683d7f1f4ca6c32c3277684b9e919054857f9e3a7900b57c9567fa8f8"
+    }
+  ],
+  "restoration": "exact fixed server bytes restored after intentional old-source run; git status clean",
+  "publicApi": "unchanged"
+}

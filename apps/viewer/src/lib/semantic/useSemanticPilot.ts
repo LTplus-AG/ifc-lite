@@ -16,7 +16,7 @@ import { queryForSelection } from './related-query';
 import { validateInWorker } from './validation-worker';
 import type { ValidationJob, ValidationOutput } from './validation-job';
 
-export interface SourceInput { mode: string; payload: string; endpoint: string; host: string; query: string; mapping: BindingMapping; bearer?: string; relayProvider?: string }
+export interface SourceInput { mode: string; payload: string; endpoint: string; host: string; query: string; mapping: BindingMapping; bearer?: string; relayProvider?: string; loopbackHttpOrigin?: string }
 export type ValidationExecutor = (job: ValidationJob, signal: AbortSignal) => Promise<ValidationOutput>;
 export function useSemanticPilot(execute: ValidationExecutor = validateInWorker) {
   const session = useSemanticSession();

@@ -101,9 +101,11 @@ for (const channel of ['broadcast', 'port'] as const) it.skipIf(!existsSync(wasm
       calls, cache: layouts.version(), records: editor.getNewEntities(),
       journal: mutationView.getMutations(), next: mutationView.peekNextExpressId(),
       attributes: mutationView.getAttributeMutationsByEntity(), types: mutationView.getTypeMutations(),
-      source: new Uint8Array(store.source),
+      source: store.source.slice(0, store.source.byteLength),
     });
     const before = snapshot();
+    expect(before.source.byteLength).toBeGreaterThan(0);
+    expect(before.source).toEqual(new Uint8Array(bytes));
     for (const expressIds of ['1', [1.5], [NaN], [-1], [0], [Number.MAX_SAFE_INTEGER + 1], [null], new Array(1), [1, 1], []]) {
       const refused = await connection.transport.send({ ...request, args: ['m', 42, { action: 'update', expressIds }] });
       expect(refused.error?.message).toMatch(/^Room update requires 1\.\.10000 unique positive safe-integer rooms$/);

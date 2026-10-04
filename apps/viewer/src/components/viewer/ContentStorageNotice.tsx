@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { assistantLibrary, useAssistantLibrary } from '@/lib/assistant/library';
 import { useRef, useState } from 'react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -21,10 +22,10 @@ const messages = {
 } as const satisfies Record<string, TranslationKey>;
 const visibleLibraries = () => {
   const state = useViewerStore.getState();
-  return { validation: state.savedValidationReports, comparison: state.savedComparisons, document: state.documents };
+  return { validation: state.savedValidationReports, comparison: state.savedComparisons, document: state.documents, assistant: useAssistantLibrary.getState().entries };
 };
 
-/** Per-library save status; backup includes all three libraries and unsaved drafts. */
+/** Per-library save status; backup includes all user-content libraries and unsaved drafts. */
 export function ContentStorageNotice({ status, retry, restore }: {
   status: ContentStatus; retry: () => Promise<boolean>; restore: () => Promise<boolean>;
 }) {
@@ -32,6 +33,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
   const { confirmDialog } = useDialogs();
   const librariesLoading = useViewerStore(state => [state.documentsStorage, state.validationReportsStorage, state.savedComparisonsStorage]
     .some(library => library.phase === 'loading'));
+  const assistantLoading = useAssistantLibrary(s => s.status.phase === 'loading');
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const states = Object.values(status.items);
@@ -51,7 +53,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     const state = useViewerStore.getState();
     const preserved = await readBackupDrafts();
     downloadFile(JSON.stringify(createContentBackup(visibleLibraries(), {
-      validation: state.validationReportsStorage, comparison: state.savedComparisonsStorage, document: state.documentsStorage,
+      validation: state.validationReportsStorage, comparison: state.savedComparisonsStorage, document: state.documentsStorage, assistant: useAssistantLibrary.getState().status,
     }, preserved.drafts), null, 2), 'ifc-lite-library-backup.json', 'application/json');
     if (!preserved.complete) toast.info(t('contentStorage.draftReadUnavailable'));
   };
@@ -60,7 +62,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     const drafts = parsed.drafts ?? [];
     stageContentDrafts(drafts);
     const state = useViewerStore.getState();
-    const initialized = await Promise.all([state.initializeValidationReports(), state.initializeSavedComparisons(), state.initializeDocuments()]);
+    const initialized = await Promise.all([assistantLibrary.initialize(), state.initializeValidationReports(), state.initializeSavedComparisons(), state.initializeDocuments()]);
     let count: number, committed: readonly ContentCommitReceipt[] = [];
     try {
       count = await importContentBackup(parsed, visibleLibraries, initialized.every(Boolean), rows => { committed = rows; });
@@ -70,6 +72,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
       console.warn('[User content] Import remains in memory', error);
       for (const entry of error.entries.validation) state.stageValidationReport(entry);
       for (const entry of error.entries.comparison) state.stageComparison(entry);
+      for (const entry of error.entries.assistant ?? []) assistantLibrary.stage(entry.id, entry);
       for (const entry of error.entries.document) state.stageDocument(entry);
       toast.error(t('contentStorage.importFailed'));
       if (drafts.length) toast.error(t('contentStorage.draftsUnsaved', { count: drafts.length }));
@@ -79,7 +82,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     if (drafts.length) toast.info(t('contentStorage.draftsPreserved', { count: drafts.length }));
     // A committed import is never restaged just because refreshing its UI failed.
     try {
-      const refreshed = await Promise.all([state.refreshValidationReports(committed), state.refreshSavedComparisons(committed), state.refreshDocuments(committed)]);
+      const refreshed = await Promise.all([assistantLibrary.refresh(committed), state.refreshValidationReports(committed), state.refreshSavedComparisons(committed), state.refreshDocuments(committed)]);
       if (!refreshed.every(Boolean)) toast.info(t('contentStorage.refreshFailed'));
     }
     catch (error) {
@@ -97,14 +100,14 @@ export function ContentStorageNotice({ status, retry, restore }: {
     <details>
       <summary className="cursor-pointer">{t('contentStorage.controls')}</summary>
       <div className="flex flex-wrap gap-1 py-1">
-        <Button size="sm" variant="outline" disabled={busy || librariesLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
+        <Button size="sm" variant="outline" disabled={busy || librariesLoading || assistantLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
         {problem && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           if (await confirmDialog({ description: t('contentStorage.restoreConfirm'), destructive: true })) await restore();
         })}>{t('contentStorage.restore')}</Button>}
         <Button size="sm" variant="outline" disabled={busy} onClick={() => input.current?.click()}>{t('contentStorage.import')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           const live = useViewerStore.getState();
-          const saved = await Promise.all([live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons(), retryContentDrafts()]);
+          const saved = await Promise.all([assistantLibrary.retry(), live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons(), retryContentDrafts()]);
           const identitiesSaved = await retryContentImports();
           if (saved.every(Boolean) && identitiesSaved) toast.success(t('contentStorage.saved'));
           else toast.error(t('contentStorage.someUnsaved'));

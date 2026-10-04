@@ -32,6 +32,7 @@ test('assistant sends frozen evidence once, bounds output and never changes scri
   assert.match(JSON.stringify(payload.system), /Frozen native evidence/);
   assert.equal(useAssistant.getState().messages.at(-1)?.content, 'Explain [E1]');
   assert.equal(useAssistant.getState().error, 'truncated-output');
+  assert.equal(useAssistant.getState().messages.at(-1)?.model, model, 'completed replies retain the actual request model');
   assert.equal(useViewerStore.getState().chatMessages, scripts);
 });
 

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { ConversationLibrary } from './ConversationLibrary';
 import { useState } from 'react';
 import { Key, RefreshCw, Send, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,7 @@ export function AssistantPanel() {
   const { t } = useTranslation();
   const panels = usePanelControls();
   const state = useAssistant();
+  const evidence = state.snapshot ?? state.archived?.evidence;
   const model = useViewerStore(s => s.chatActiveModel);
   const identity = useViewerStore(() => state.snapshot ? sourceIdentity(state.snapshot.source) : null);
   const contextStale = useAnalysisStaleness(state.snapshot?.contextStamp ?? null);
@@ -45,22 +47,23 @@ export function AssistantPanel() {
     </div>
     <div className="p-3 border-b border-border space-y-2">
       <ModelSelector />
-      {state.snapshot ? <>
-        <Button variant="outline" size="sm" onClick={() => panels.openInHome(state.snapshot!.source)}>{t('assistant.returnSource')}</Button>
-        <p className="text-xs text-muted-foreground">{t('assistant.scope', { included: state.snapshot.includedRows, total: state.snapshot.totalRows })}</p>
-        {state.snapshot.projectionTruncated && <p className="text-xs text-muted-foreground">{t('assistant.evidenceTruncated')}</p>}
-        <p className="text-2xs text-muted-foreground">{state.snapshot.capturedAt}</p>
-        <p className="text-xs text-muted-foreground">{t('assistant.sessionOnly')}</p>
-        {stale && <output className="block text-xs text-amber-600">{t('assistant.stale')}</output>}
-        <Button variant="outline" size="sm" onClick={() => replaceEvidence(captureEvidence(state.snapshot!.source))}>
+      {evidence ? <>
+        <Button variant="outline" size="sm" onClick={() => panels.openInHome(evidence.source)}>{t('assistant.returnSource')}</Button>
+        <p className="text-xs text-muted-foreground">{t('assistant.scope', { included: evidence.includedRows, total: evidence.totalRows })}</p>
+        {evidence.projectionTruncated && <p className="text-xs text-muted-foreground">{t('assistant.evidenceTruncated')}</p>}
+        <p className="text-2xs text-muted-foreground">{evidence.capturedAt}</p>
+        <p className="text-xs text-muted-foreground">{state.archived ? t('assistant.archived') : t('assistant.saveHint')}</p>
+        {stale && !state.archived && <output className="block text-xs text-amber-600">{t('assistant.stale')}</output>}
+        <Button variant="outline" size="sm" onClick={() => replaceEvidence(captureEvidence(evidence.source))}>
           <RefreshCw className="h-3 w-3 mr-1" />{t('assistant.refresh')}
         </Button>
-        <details className="text-xs"><summary>{t('assistant.evidence')}</summary><pre className="whitespace-pre-wrap break-words max-h-64 overflow-auto">{state.snapshot.payload}</pre></details>
+        <details className="text-xs"><summary>{t('assistant.evidence')}</summary><pre className="whitespace-pre-wrap break-words max-h-64 overflow-auto">{evidence.payload}</pre></details>
       </> : <p className="text-xs text-muted-foreground">{t('assistant.empty')}</p>}
     </div>
+    <ConversationLibrary />
     <div className="flex-1 min-h-0 overflow-auto p-3 space-y-3" aria-live="polite">
       {state.messages.map((message, i) => <div key={i} className="text-xs whitespace-pre-wrap break-words">
-        <p className="font-semibold mb-1">{message.role === 'user' ? t('assistant.you') : t('assistant.title')}</p>
+        <p className="font-semibold mb-1">{message.role === 'user' ? t('assistant.you') : `${t('assistant.title')} · ${message.model ?? ''}`}</p>
         {typeof message.content === 'string' ? message.content : null}
       </div>)}
       {state.pendingPrompt && <p className="text-xs whitespace-pre-wrap break-words">{state.pendingPrompt}</p>}

@@ -8,7 +8,7 @@ import { announceContentChange } from './content-events.js';
 import { contentImportIdentity } from './content-import-identity.js';
 
 const CONTENT_DATABASE = 'ifc-lite-user-content';
-export type ContentKind = 'validation' | 'comparison' | 'document';
+export type ContentKind = 'validation' | 'comparison' | 'document' | 'assistant';
 export type ContentFailure = 'quota' | 'unavailable' | 'conflict' | 'invalid';
 export type ContentResult = { ok: true; revision: number } | { ok: false; reason: ContentFailure };
 export interface ContentRow {
@@ -99,7 +99,7 @@ export async function writeContent(kind: ContentKind, id: string, payload: unkno
     request.onsuccess = () => {
       const current = request.result as ContentRow | undefined;
       if ((current?.revision ?? 0) !== expected || (current?.deleted && payload !== null)) return;
-      if (kind !== 'document' && current && payload !== null) {
+      if ((kind === 'validation' || kind === 'comparison') && current && payload !== null) {
         const withoutName = (value: unknown): unknown => {
           if (!value || typeof value !== 'object') return value;
           const { name: _name, ...evidence } = value as Record<string, unknown>;

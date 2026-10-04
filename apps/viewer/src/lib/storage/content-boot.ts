@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { assistantLibrary } from '../assistant/library.js';
 import { useViewerStore } from '../../store/index.js';
 import { subscribeContentChanges } from './content-events.js';
 import { preserveLegacyChange } from './content-backup.js';
@@ -14,14 +15,14 @@ export function initializeUserContent(): void {
   if (installed) return;
   installed = true;
   const state = useViewerStore.getState();
-  void Promise.all([state.initializeDocuments(), state.initializeValidationReports(), state.initializeSavedComparisons()]);
+  void Promise.all([assistantLibrary.initialize(), state.initializeDocuments(), state.initializeValidationReports(), state.initializeSavedComparisons()]);
   const refresh = () => {
     const live = useViewerStore.getState();
-    void Promise.all([live.refreshDocuments(), live.refreshValidationReports(), live.refreshSavedComparisons()]);
+    void Promise.all([assistantLibrary.refresh(), live.refreshDocuments(), live.refreshValidationReports(), live.refreshSavedComparisons()]);
   };
   subscribeContentChanges(kind => {
     const live = useViewerStore.getState();
-    void (kind === 'document' ? live.refreshDocuments()
+    void (kind === 'assistant' ? assistantLibrary.refresh() : kind === 'document' ? live.refreshDocuments()
       : kind === 'validation' ? live.refreshValidationReports() : live.refreshSavedComparisons());
   });
   window.addEventListener('focus', refresh);

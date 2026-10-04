@@ -18,7 +18,7 @@ export function parseContentDrafts(value: unknown): ContentDraftEvidence[] {
   return value.map((raw: unknown) => {
     if (!raw || typeof raw !== 'object') throw new Error('Invalid draft recovery entry');
     const draft = raw as Record<string, unknown>;
-    if (typeof draft.kind !== 'string' || !['validation', 'comparison', 'document'].includes(draft.kind)
+    if (typeof draft.kind !== 'string' || !['validation', 'comparison', 'document', 'assistant'].includes(draft.kind)
       || typeof draft.id !== 'string' || !draft.id || typeof draft.raw !== 'string') {
       throw new Error('Invalid draft recovery entry');
     }

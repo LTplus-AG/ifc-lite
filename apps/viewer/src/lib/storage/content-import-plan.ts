@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { assistantContent } from '../assistant/persistence.js';
 import type { ContentLibraries } from './content-backup.js';
 import { contentCreatedAt, type ContentRow } from './content-database.js';
 import { sameReportEvidence } from '../flow/report-provenance.js';
@@ -29,7 +30,7 @@ export function sameImportEvidence(left: unknown, right: unknown): boolean {
 /** Prepare identities before IDB; asynchronous hashing must never auto-commit a transaction. */
 export async function prepareContentImport(libraries: ContentLibraries): Promise<PreparedContentImport> {
   const fingerprints = new Map<object, string>();
-  await Promise.all((['validation', 'comparison', 'document'] as const).flatMap(kind => libraries[kind].map(async entry => {
+  await Promise.all((['validation', 'comparison', 'document', 'assistant'] as const).flatMap(kind => (libraries[kind] ?? []).map(async entry => {
     const canonical = JSON.stringify(entry, (_key, value: unknown) => value && typeof value === 'object' && !Array.isArray(value)
       ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : value);
     const hash = await computeFullSourceHash(new TextEncoder().encode(canonical));
@@ -43,7 +44,7 @@ export async function prepareContentImport(libraries: ContentLibraries): Promise
 export function planContentImport(prepared: PreparedContentImport, existing: ContentRow[], visible?: ContentLibraries,
   trustedExisting = true): ContentRow[] {
   const known = new Map(existing.map(row => [key(row.kind, row.id), row]));
-  if (visible) for (const kind of ['validation', 'comparison', 'document'] as const) for (const entry of visible[kind]) {
+  if (visible) for (const kind of ['validation', 'comparison', 'document', 'assistant'] as const) for (const entry of visible[kind] ?? []) {
     if (!known.has(key(kind, entry.id))) known.set(key(kind, entry.id), { kind, id: entry.id, version: 1, revision: 0,
       createdAt: 0, modifiedAt: 0, deleted: false, payload: entry });
   }
@@ -60,7 +61,7 @@ export function planContentImport(prepared: PreparedContentImport, existing: Con
         && sameImportEvidence(saved.payload, previous.payload))) return saved.id;
       if (saved && (saved.deleted || saved.revision > 0)) payload = copy();
       else {
-        const decode = kind === 'document' ? documentContent.decode : kind === 'comparison' ? comparisonContent.decode : validationContent.decode;
+        const decode = kind === 'assistant' ? assistantContent.decode : kind === 'document' ? documentContent.decode : kind === 'comparison' ? comparisonContent.decode : validationContent.decode;
         const currentDraft = saved && decode(JSON.parse(JSON.stringify(saved.payload)));
         payload = currentDraft ?? previous.payload as { id: string };
         if (rebindPending) payload = rebindPending(payload);
@@ -92,6 +93,7 @@ export function planContentImport(prepared: PreparedContentImport, existing: Con
     add('document', entry, () => parseDocumentFile(JSON.stringify(rebound)), rebound,
       previous => rebindContentDocument(previous as DocumentSpec, comparisonReferences, validationReferences));
   }
+  for (const entry of libraries.assistant ?? []) add('assistant', entry, () => ({ ...entry, id: crypto.randomUUID() }));
   return rows;
 }
 

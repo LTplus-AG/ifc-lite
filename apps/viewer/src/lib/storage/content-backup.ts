@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { assistantContent, type SavedConversation } from '../assistant/persistence.js';
 import type { SavedValidationReport } from '../validation/reports/history.js';
 import { validationContent } from '../validation/reports/persistence.js';
 import { comparisonContent } from '../compare/savedComparisonPersistence.js';
@@ -21,6 +22,8 @@ export interface ContentLibraries {
   validation: SavedValidationReport[];
   comparison: SavedComparison[];
   document: DocumentSpec[];
+  /** Optional for backups written before assistant conversations existed. */
+  assistant?: SavedConversation[];
 }
 export interface ContentBackup {
   version: 1;
@@ -47,6 +50,7 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
     validation: partition('validation', copied.validation, validationContent.decode),
     comparison: partition('comparison', copied.comparison, comparisonContent.decode),
     document: partition('document', copied.document, documentContent.decode),
+    ...(copied.assistant ? { assistant: partition('assistant', copied.assistant, assistantContent.decode) } : {}),
   }, drafts: mergeContentDrafts(parseContentDrafts(preservedDrafts), pendingContentDrafts(), drafts) };
 }
 
@@ -74,6 +78,7 @@ export function parseContentBackup(text: string): ContentBackup {
     validation: parse('validation', validationContent.decode),
     comparison: parse('comparison', comparisonContent.decode),
     document: parse('document', documentContent.decode),
+    ...(libraries.assistant !== undefined ? { assistant: parse('assistant', assistantContent.decode) } : {}),
   }, drafts: parseContentDrafts(backup.drafts) };
 }
 
@@ -106,7 +111,7 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
       const visible = readVisible?.();
       planned = planContentImport(prepared, read.result as ContentRow[], visible);
       receipts = planned.map(row => {
-        const staged = visible?.[row.kind].find(entry => entry.id === row.id);
+        const staged = visible?.[row.kind]?.find(entry => entry.id === row.id);
         return { ...row, ...(staged ? { stagedPayload: structuredClone(staged) } : {}) };
       });
       rememberContentImports(planned);
@@ -121,11 +126,13 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
     const visible = readVisible?.();
     planned = planContentImport(prepared, existing, visible, trusted);
     rememberContentImports(planned);
-    const entries: ContentLibraries = { validation: [], comparison: [], document: [] };
+    const entries: ContentLibraries = { validation: [], comparison: [], document: [],
+      ...(parsed.libraries.assistant ? { assistant: [] } : {}) };
     for (const row of planned) {
       // Keep newer edits to an already-staged identity. Reimport is not an undo.
-      const current = visible?.[row.kind].find(entry => entry.id === row.id);
-      if (current && (row.kind !== 'document' || sameReportEvidence(current, row.payload))) continue;
+      const current = visible?.[row.kind]?.find(entry => entry.id === row.id);
+      if (current && ((row.kind !== 'document' && row.kind !== 'assistant') || sameReportEvidence(current, row.payload))) continue;
+      if (row.kind === 'assistant') { const entry = assistantContent.decode(row.payload); if (entry) (entries.assistant ??= []).push(entry); }
       if (row.kind === 'document') { const entry = documentContent.decode(row.payload); if (entry) entries.document.push(entry); }
       if (row.kind === 'comparison') { const entry = comparisonContent.decode(row.payload); if (entry) entries.comparison.push(entry); }
       if (row.kind === 'validation') { const entry = validationContent.decode(row.payload); if (entry) entries.validation.push(entry); }
@@ -134,7 +141,7 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
   }
   forgetContentDrafts(drafts); forgetContentImports(planned);
   committed?.(receipts);
-  for (const kind of ['validation', 'comparison', 'document'] as const) announceContentChange(kind);
+  for (const kind of ['validation', 'comparison', 'document', 'assistant'] as const) announceContentChange(kind);
   return planned.length;
 }
 
@@ -191,7 +198,7 @@ export async function readContentRecovery(): Promise<RecoveryRow[]> {
     rows.push(...await readStoredRecovery());
   } catch (error) { console.warn('[User content] Reading preserved originals failed', error); failure = error; }
   // A failed migration must not prevent exporting its still-intact local original.
-  for (const definition of [validationContent, comparisonContent, documentContent]) {
+  for (const definition of [validationContent, comparisonContent, documentContent, assistantContent]) {
     try {
       for (const original of readLegacyOriginals(definition.legacyKey)) {
         if (!rows.some(row => row.key === original.key && row.raw === original.raw)) {

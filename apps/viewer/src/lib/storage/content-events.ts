@@ -12,7 +12,7 @@ function contentChannel(): BroadcastChannel | null {
     // Node's DOM harness supplies a channel that otherwise keeps test workers alive.
     (channel as BroadcastChannel & { unref?: () => void }).unref?.();
     channel.onmessage = event => {
-      if (event.data === 'document' || event.data === 'validation' || event.data === 'comparison') {
+      if (event.data === 'document' || event.data === 'validation' || event.data === 'comparison' || event.data === 'assistant') {
         for (const listener of listeners) listener(event.data);
       }
     };

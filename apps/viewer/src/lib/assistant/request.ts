@@ -24,7 +24,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     return false;
   }
   // Limit the complete conversation, rather than silently trimming away evidence.
-  const messages = [...state.messages, { role: 'user' as const, content: prompt.trim() }];
+  const messages = [...state.messages.map(({ role, content }) => ({ role, content })), { role: 'user' as const, content: prompt.trim() }];
   if (prompt.length > 8000 || messages.length > 20 || JSON.stringify(messages).length + state.snapshot.payload.length > 90_000) {
     useAssistant.setState({ error: 'context-limit', status: 'error' });
     return false;
@@ -55,7 +55,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
       if (!content.trim()) { options.onError(new Error('empty-output')); return; }
       if (ownsRequest()) {
         completed = true;
-        useAssistant.setState({ messages: [...messages, { role: 'assistant', content }], pendingPrompt: null, output: '', status: 'idle', controller: null });
+        useAssistant.setState({ messages: [...state.messages, { role: 'user', content: prompt.trim() }, { role: 'assistant', content, model: route.model }], pendingPrompt: null, output: '', status: 'idle', controller: null });
       }
     },
     onError: error => { if (ownsRequest()) useAssistant.setState({ error: error.message, pendingPrompt: null, output: '', status: 'error', controller: null }); },

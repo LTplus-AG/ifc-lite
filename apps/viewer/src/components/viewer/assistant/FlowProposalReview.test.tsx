@@ -25,7 +25,7 @@ test('mounted Flow review requires approval and enables guarded graph undo', () 
     content: JSON.stringify({ version: 1, kind: 'flow.patch', operations: [{ op: 'rename', name: 'Reviewed workflow' }] }) }] });
   const ui = render(<FlowProposalReview />);
   const button = (text: string) => [...ui.querySelectorAll('button')].find(b => b.textContent === text)!;
-  click(button('Review latest Flow answer'));
+  click(button('Review changes'));
   const evidence = ui.querySelector('section[aria-label="Captured evidence context"]');
   assert.ok(evidence);
   assert.match(evidence.textContent ?? '', /Captured workspace evidence/);

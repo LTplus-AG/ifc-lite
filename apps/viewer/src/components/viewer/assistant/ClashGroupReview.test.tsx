@@ -31,7 +31,9 @@ test('mounted group preview shows full accounting, escapes output and refuses st
   const ui = render(<ClashGroupReview />);
   const preview = ui.querySelector('button')!;
   click(preview);
-  assert.match(ui.textContent ?? '', /Native findings: 1\. Proposed: 1\. Unclassified: 0/);
+  const stats = ui.querySelector('dl')!;
+  assert.match(stats.getAttribute('aria-label') ?? '', /Native findings: 1\. Proposed: 1\. Unclassified: 0/);
+  assert.deepEqual([...stats.querySelectorAll('dd')].map(value => value.textContent), ['1', '1', '0', '0']);
   assert.match(ui.textContent ?? '', /Preview only/);
   assert.match(ui.textContent ?? '', /<script>bad/);
   assert.equal(ui.querySelector('script, img'), null);

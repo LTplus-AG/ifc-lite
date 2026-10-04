@@ -22,6 +22,10 @@ test('save keeps the inspected evidence and opening a saved conversation disable
   replaceEvidence(captureEvidence('clash'));
   const payload = useAssistant.getState().snapshot!.payload;
   const ui = render(<AssistantPanel />);
+  const library = ui.querySelector<HTMLButtonElement>('button[aria-label="Saved conversations"]')!;
+  assert.equal(ui.querySelector('#assistant-conversation-name'), null, 'library stays out of the way until requested');
+  click(library);
+  assert.equal(library.getAttribute('aria-pressed'), 'true');
   type(ui.querySelector<HTMLInputElement>('#assistant-conversation-name')!, 'Model coordination');
   await act(async () => {
     click([...ui.querySelectorAll('button')].find(b => b.textContent === 'Save conversation')!);

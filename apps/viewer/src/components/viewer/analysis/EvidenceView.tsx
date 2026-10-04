@@ -13,12 +13,12 @@ const ROW_MEANING: Record<AssistantSource, TranslationKey> = {
   clash: 'assistant.evidenceRowsClash', validation: 'assistant.evidenceRowsValidation',
   compare: 'assistant.evidenceRowsCompare', flow: 'assistant.evidenceRowsFlow', loadReport: 'assistant.evidenceRowsLoadReport',
 };
-const UNAVAILABLE: Record<AssistantSource, TranslationKey> = {
+export const UNAVAILABLE: Record<AssistantSource, TranslationKey> = {
   clash: 'assistant.evidenceUnavailableClash', validation: 'assistant.evidenceUnavailableValidation',
   compare: 'assistant.evidenceUnavailableCompare', flow: 'assistant.evidenceUnavailableFlow',
   loadReport: 'assistant.evidenceUnavailableLoadReport',
 };
-function sourceAvailability(payload: string): 'available' | 'unavailable' | 'unknown' {
+export function sourceAvailability(payload: string): 'available' | 'unavailable' | 'unknown' {
   if (payload.length > 48_000) return 'unknown';
   try {
     const parsed: unknown = JSON.parse(payload);

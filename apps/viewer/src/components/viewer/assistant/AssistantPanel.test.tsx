@@ -6,13 +6,14 @@ import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, click, type, cleanup } from '@/test/render';
+import { render, click, type, press, cleanup } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { AssistantSourceContext, AssistantAction } from './AssistantAction';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { AssistantPanel } from './AssistantPanel';
+import { UNCONFIGURED_MODEL_ID } from '@/lib/llm/models';
 import { useAssistant, cancelAssistant } from '@/lib/assistant/conversation';
 
 const initial = useViewerStore.getState();
@@ -68,4 +69,31 @@ test('fingerprint replacement renders stale evidence and disables sending throug
   assert.match(ui.textContent ?? '', /Stale workspace evidence/);
   const send = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Send')!;
   assert.equal(send.disabled, true);
+});
+
+// Conversation-first panel: guidance before the first turn, typed proposals as cards, keyboard send.
+test('suggestions fill the composer, Enter sends and typed proposals render as review cards instead of raw JSON', () => {
+  useViewerStore.setState(fixtureModels(fixtureModel('m')));
+  const source = render(<AssistantSourceContext panel="clash"><AssistantAction /></AssistantSourceContext>);
+  click(source.querySelector('button')!);
+  const ui = render(<AssistantPanel />);
+  const textarea = ui.querySelector('textarea')!;
+  const suggestion = ui.querySelector<HTMLButtonElement>('fieldset[aria-label="Suggested questions"] button')!;
+  click(suggestion);
+  assert.equal(textarea.value, suggestion.textContent);
+
+  act(() => useViewerStore.setState({ chatActiveModel: UNCONFIGURED_MODEL_ID }));
+  press(textarea, 'Enter', { shiftKey: true });
+  assert.equal(useAssistant.getState().error, null, 'Shift+Enter keeps editing');
+  press(textarea, 'Enter');
+  assert.equal(useAssistant.getState().error, 'missing-model', 'Enter submits through the real send path');
+  assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /No AI model is configured/);
+
+  const proposal = JSON.stringify({ version: 1, kind: 'clash.groups', groups: [{ name: 'Slab joins', explanation: 'Inference', citations: ['E1', 'E2'] }] });
+  act(() => useAssistant.setState({ status: 'idle', error: null, messages: [{ role: 'user', content: 'Group' }, { role: 'assistant', model: 'recorded', content: proposal }] }));
+  assert.match(ui.textContent ?? '', /Clash grouping proposal/);
+  assert.match(ui.textContent ?? '', /1 group · 2 findings cited/);
+  assert.equal(ui.querySelector('fieldset[aria-label="Suggested questions"]'), null, 'suggestions give way to the conversation');
+  const json = [...ui.querySelectorAll('pre')].find(pre => pre.textContent === proposal);
+  assert.ok(json?.closest('details'), 'raw JSON is only available behind Show JSON');
 });

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useState } from 'react';
+import { FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { usePanelControls } from '@/hooks/usePanelControls';
@@ -36,17 +37,22 @@ export function ReportDraftReview() {
     catch (error) { setError(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(false); }
   };
-  return <details className="border-b border-border text-xs">
-    <summary className="cursor-pointer p-3">{t('assistant.reportReview')}</summary>
-    <div className="px-3 pb-3 space-y-2">
-      <p>{t('assistant.reportHint')}</p>
-      <label className="block" htmlFor="assistant-report-name">{t('assistant.reportName')}</label>
-      <input id="assistant-report-name" className="w-full border border-input rounded bg-background p-1" value={name}
-        maxLength={200} disabled={busy} onChange={event => { setName(event.target.value); setApproved(false); }} />
-      <Button variant="outline" size="sm" disabled={!eligible || busy} onClick={() => {
+  if (!eligible && !draft) return null;
+  return <details className="mx-3 my-2 rounded border border-border text-xs">
+    <summary className="flex cursor-pointer items-center gap-1.5 px-2 py-1.5 font-semibold">
+      <FileText className="h-3.5 w-3.5 text-primary" aria-hidden="true" />{t('assistant.reportReview')}
+    </summary>
+    <div className="border-t border-border p-2 space-y-2">
+      <p className="text-muted-foreground">{t('assistant.reportHint')}</p>
+      <label className="sr-only" htmlFor="assistant-report-name">{t('assistant.reportName')}</label>
+      <div className="flex items-center gap-1">
+        <input id="assistant-report-name" className="min-w-0 flex-1 h-7 border border-input rounded bg-background px-2" value={name}
+          maxLength={200} disabled={busy} placeholder={t('assistant.reportName')} onChange={event => { setName(event.target.value); setApproved(false); }} />
+      <Button variant="outline" size="sm" className="h-7 shrink-0" disabled={!eligible || busy} onClick={() => {
         try { setDraft(prepareReportDraft(name)); setApproved(false); setSaved(false); setError(null); }
         catch (error) { setError(error instanceof Error ? error.message : String(error)); }
       }}>{t('assistant.prepareReport')}</Button>
+      </div>
       {draft && <>
         <p className="font-semibold">{draft.document.name}</p>
         <EvidenceView evidence={draft.source.evidence} state="historical" />

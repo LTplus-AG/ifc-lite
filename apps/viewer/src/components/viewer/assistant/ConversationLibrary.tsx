@@ -35,13 +35,16 @@ export function ConversationLibrary() {
     try { await assistantLibrary.put(entry.id, entry); }
     finally { setBusy(false); }
   };
-  return <details className="border-b border-border text-xs shrink-0">
-    <summary className="cursor-pointer p-3">{t('assistant.savedConversations')}</summary>
-    <div className="px-3 pb-2 space-y-2 max-h-48 overflow-auto">
-      <label className="block" htmlFor="assistant-conversation-name">{t('assistant.conversationName')}</label>
-      <input id="assistant-conversation-name" className="w-full border border-input rounded bg-background p-1" value={name}
-        maxLength={200} onChange={event => setName(event.target.value)} />
-      <Button size="sm" variant="outline" disabled={busy || state.status === 'streaming' || (!state.snapshot && !state.archived)} onClick={() => void save()}>{t('assistant.saveConversation')}</Button>
+  return <section aria-label={t('assistant.savedConversations')} className="border-b border-border bg-muted/20 text-xs shrink-0">
+    <div className="p-3 space-y-2">
+      <h3 className="font-semibold">{t('assistant.savedConversations')}</h3>
+      <p className="text-muted-foreground">{t('assistant.saveHint')}</p>
+      <label className="sr-only" htmlFor="assistant-conversation-name">{t('assistant.conversationName')}</label>
+      <div className="flex items-center gap-1">
+        <input id="assistant-conversation-name" className="min-w-0 flex-1 h-7 border border-input rounded bg-background px-2" value={name}
+          maxLength={200} placeholder={t('assistant.conversationName')} onChange={event => setName(event.target.value)} />
+        <Button size="sm" variant="outline" className="h-7 shrink-0" disabled={busy || state.status === 'streaming' || (!state.snapshot && !state.archived)} onClick={() => void save()}>{t('assistant.saveConversation')}</Button>
+      </div>
       {invalid && <p role="alert">{t('assistant.invalidConversation')}</p>}
       {entries.map(entry => <div key={entry.id} className="flex items-center gap-1">
         <Button size="sm" variant="ghost" className="min-w-0 flex-1 justify-start truncate" disabled={busy || state.status === 'streaming'} onClick={() => void (async () => {
@@ -52,5 +55,5 @@ export function ConversationLibrary() {
       </div>)}
     </div>
     <ContentStorageNotice status={status} retry={assistantLibrary.retry} restore={assistantLibrary.restore} />
-  </details>;
+  </section>;
 }

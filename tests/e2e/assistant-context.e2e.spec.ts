@@ -57,7 +57,7 @@ test('native clash evidence reaches the assistant without executing model output
   });
   await page.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
   const assistant = page.getByRole('region', { name: 'Assistant', exact: true });
-  await expect(assistant.getByText(/Frozen evidence:|The captured native source contains no result rows/)).toBeVisible();
+  await expect(assistant.getByText(/rows attached|The captured native source contains no result rows/).first()).toBeVisible();
   // #6860: the coordinator's default sidebar must fit the refresh action.
   const refresh = assistant.getByRole('button', { name: 'Refresh evidence and start a new conversation', exact: true });
   const panelBounds = await assistant.boundingBox();
@@ -66,11 +66,13 @@ test('native clash evidence reaches the assistant without executing model output
   expect(refreshBounds).not.toBeNull();
   expect(refreshBounds!.x + refreshBounds!.width).toBeLessThanOrEqual(panelBounds!.x + panelBounds!.width + 1);
 
+  // Caveats and the raw snapshot sit behind Evidence details so the conversation leads.
+  await assistant.getByText('Evidence details', { exact: true }).click();
   await assistant.getByText('Inspect evidence sent to the model', { exact: true }).click();
   await expect(assistant.locator('pre')).toContainText('AC20-FZK-Haus');
   await expect(assistant.locator('pre')).toContainText('"source":"clash"');
   await expect(assistant.locator('pre')).toContainText('"sourceAvailability":"available"');
-  await assistant.getByText('Inspect evidence sent to the model', { exact: true }).click();
+  await assistant.getByText('Evidence details', { exact: true }).click();
   await assistant.getByLabel('Ask about these results').fill('Explain the native duplicate scan and its limitations.');
   await assistant.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(assistant).toContainText('<script>globalThis.assistantExecuted = true</script>');
@@ -117,9 +119,10 @@ test('native clash evidence reaches the assistant without executing model output
   await page.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
   await assistant.getByLabel('Ask about these results').fill('Draft a Flow patch to select IfcWall elements.');
   await assistant.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(assistant).toContainText('wall-query');
-  await assistant.getByText('Review Flow changes', { exact: true }).click();
-  await assistant.getByRole('button', { name: 'Review latest Flow answer', exact: true }).click();
+  // A typed patch renders as a proposal card; its review opens beside it without another prompt.
+  await expect(assistant).toContainText('Flow patch proposal');
+  await expect(assistant.getByRole('region', { name: 'Review Flow changes', exact: true })).toBeVisible();
+  await assistant.getByRole('button', { name: 'Review changes', exact: true }).click();
   await expect(assistant).toContainText('Additional graph capabilities: model.read');
   const apply = assistant.getByRole('button', { name: 'Apply graph changes', exact: true });
   await expect(apply).toBeDisabled();
@@ -142,6 +145,7 @@ test('native clash evidence reaches the assistant without executing model output
   });
   await page.getByRole('region', { name: 'Load report', exact: true })
     .getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  await assistant.getByText('Evidence details', { exact: true }).click();
   await assistant.getByText('Inspect evidence sent to the model', { exact: true }).click();
   await expect(assistant.locator('pre')).toContainText('"source":"loadReport"');
   await expect(assistant.locator('pre')).toContainText('AC20-FZK-Haus');

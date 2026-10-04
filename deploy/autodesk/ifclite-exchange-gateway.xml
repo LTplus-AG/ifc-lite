@@ -1,0 +1,17 @@
+<service>
+  <id>IFCliteExchangeGateway</id>
+  <name>IFClite Exchange HTTPS Gateway</name>
+  <description>TLS gateway for the authenticated IFClite Data Exchange worker.</description>
+  <executable>C:\IFClite\tools\caddy.exe</executable>
+  <arguments>run --config C:\IFClite\config\Caddyfile.exchange-worker --adapter caddyfile</arguments>
+  <workingdirectory>C:\IFClite\config</workingdirectory>
+  <env name="IFCLITE_EXCHANGE_WORKER_HOST" value="replace-with-worker-hostname"/>
+  <env name="XDG_DATA_HOME" value="C:\IFClite\state"/>
+  <serviceaccount><domain>NT AUTHORITY</domain><user>LocalService</user></serviceaccount>
+  <startmode>Automatic</startmode>
+  <onfailure action="restart" delay="10 sec"/>
+  <resetfailure>1 day</resetfailure>
+  <stoptimeout>10 sec</stoptimeout>
+  <logpath>C:\IFClite\logs\gateway</logpath>
+  <log mode="roll"/>
+</service>

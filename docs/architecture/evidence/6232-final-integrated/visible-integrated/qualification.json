@@ -1,0 +1,92 @@
+{
+  "qualifiedSource": "acbc97c0be9ec495ecf6e57ce5e1b71885b85f74",
+  "actualMain": "5d3e14febefe47f9967efdbb130a6a236c64110f",
+  "scope": "All known qualified Copy/Split/Trim repairs and owning history/Align quantity repair normally integrated. Fresh browser captures use this clean source and fetched native runtime. Publication adds evidence only; lower main merges, current required CI and final readiness review remain pending.",
+  "typecheckTasks": 111,
+  "typecheckedTestFiles": 3386,
+  "createCoreNativePassed": 58,
+  "createSkipped": 0,
+  "mcpPassed": 615,
+  "mcpExistingOptionalSkipped": 5,
+  "viewerPassed": 22,
+  "viewerSkipped": 0,
+  "apiExports": 9334,
+  "newModuleAllowanceRaises": 0,
+  "newSourceTextAssertions": 0,
+  "mpl": "passed",
+  "runtimeHashesVerifiedBeforeAfterForcedTests": true,
+  "forcedTestsDependencyBuilds": false,
+  "archives": {
+    "types": {
+      "rawBytes": 45183,
+      "rawSha256": "232a718852b5ac1bf4472c70e0f803676ca992f7d6b739ce61952c8f08d3b92b",
+      "gzipSha256": "6c411093d08e0fb5ac8f49286167d1d27cf4c7930a1ac62458666d0f75a485a5"
+    },
+    "native": {
+      "rawBytes": 23131,
+      "rawSha256": "78fe3939d42e13de677600a1a6af18841f0073ec5bf5e54a8c21947d5f17d175",
+      "gzipSha256": "f27d0b75636f4f035438ac129e4d889702e5183ea25a4a59ea3591d7180335d4"
+    },
+    "mcp": {
+      "rawBytes": 91666,
+      "rawSha256": "2d8a6afd20a002c4f018f1098e5ca8a118a3aec5309e187745666373407ac5a2",
+      "gzipSha256": "e75a653b424344014f4885a8b8229b2786593dfa4efa6e5664d8b6e2d3e7c3c6"
+    },
+    "viewer": {
+      "rawBytes": 11807,
+      "rawSha256": "a1e15d9dbb333d44e2b937dfa586843718df62a0a2cd881b597e231217557530",
+      "gzipSha256": "65d485340d65b44a9f66cbdcb9cb9f8123e16d05834c9fa2aa2ff347eacba2be"
+    },
+    "api": {
+      "rawBytes": 82,
+      "rawSha256": "2a0b59f3972a08b2009e1c62553132c09d5f4357801f98242881aa59262e1f23",
+      "gzipSha256": "ca64536ddea3dc67c48c34198811936fe8599e4ca6f49be8532925099ce84cc7"
+    },
+    "module": {
+      "rawBytes": 12800,
+      "rawSha256": "d094d2fbc761d6d93bc568148c01ac14bd79a8c8a699bea3b9b18a907fad2889",
+      "gzipSha256": "bb887605a5e4e461195c029319d10def07dff8256fac95448c32b03b5569b621"
+    },
+    "source": {
+      "rawBytes": 30811,
+      "rawSha256": "2ea84b06a7efbdee2be8527582b9127df63330bbdf9e0b485539c3fbc3c2e117",
+      "gzipSha256": "52708c108fa36c4a2a83f5f097fb03a948e5957274706398166b85699f9fbc1c"
+    },
+    "license": {
+      "rawBytes": 171,
+      "rawSha256": "189100b7ab6b74dfdbd238749f75bee01167a04f47292b41345d5a56e0532140",
+      "gzipSha256": "4773dfe80a50dd3b3a4ef13552d71792e6a7f74bf0d01b4dcc375ed36f1b3b1d"
+    },
+    "lint": {
+      "rawBytes": 177152,
+      "rawSha256": "993aaf8757b9ac0989525c759cbf4e3673908f7f3905e46c6929d0a7f1b72842",
+      "gzipSha256": "2a0178a9a71a2e9a04b43e4c4e1406190add79f7d4a36fcbc1d31b3c0b1e838b"
+    }
+  },
+  "screenshots": {
+    "align-1-align-bottom.png": "b257d98520fb1b93f7fc80bfc369a740249b4445e950673a0eaf4f599fd0263d",
+    "align-1-align-right.png": "a0079fc3cf97d745da995f8b18ae6ff7c29b7588c1115f58e53dfede2e43c093",
+    "align-2-align-bottom.png": "44a7bc4489e03774c28ecdcff95d820f27a0a00ba38e83635267f44b19e3a4ab",
+    "align-2-align-right.png": "f50e13cdeccc11bf366ffec7d7ea1d949156f60f9a36233679490fe5081dd6d9",
+    "physical-1-array.png": "6be03e64c472b2da693c9d9b35c461262dca90e01b9749dd6c524a065afbcb5e",
+    "physical-1-split-undo.png": "3398440be1d1572975dcd045b83697691560dcdee36ead0c1291b38aab0d86c0",
+    "physical-1-split.png": "d6b179dbf1f89b543f75107182b80814e73b8ec6f3202c675abc9c46a99e4809",
+    "physical-2-array.png": "e61f84a9e468e2b7e279d24e64198627542e364c649686beb6a753078edb359d",
+    "physical-2-split-undo.png": "194d43175ab782558a288504c85318341cd379aefa4f14a969e9069d3db6efc2",
+    "physical-2-split.png": "d89cfe7bb2b2110a588bf2733053989f028e8a5e2e609eba84d8b03171a025f2",
+    "placement-1-hosted-slide.png": "6d4aac17cf574e58ebe7a827917686a124ed003af56738d3ae9f4515f71fa9b8",
+    "placement-1-stair.png": "3e39cf12ff2c3119f19dbd5d6b4322105ddcb477b2146f3b1c3755021d3d4f14",
+    "placement-1-window.png": "57b011cf771ddd8572d02840590c22d7410182c7859d786a26461f1b7e480a43",
+    "placement-2-hosted-slide.png": "41f39c419905c153fed9fb58e358bb8645139cfe960bc5350ab12b50c741ba5f",
+    "placement-2-stair.png": "89281a68262a5edad769252f9a1965aaae05b8d5cb880ce2df401ed44c014b1d",
+    "placement-2-window.png": "2295c6602fa16f33cdca33353d8805acdc54ab3f4aa49683aacb94d1139dd43b",
+    "room-1-room-cut-redo.png": "dad94a50c3d110f35e9ec7cd30dc64c49e9c8166f1cf036d6ee777c0e4e9a74d",
+    "room-1-room-cut-undo.png": "97c8de5ebedbe042c78a2b731c90084832ef4285bdcb92c5c4d2a2689a4495d3",
+    "room-1-room-pick.png": "1aef8cc67b32e83f86a154c5bfda2c88124c1f4b34e712ad9f2aab29672e787e",
+    "room-2-room-cut-redo.png": "70d230c7c63fa3c103d8eeccb8c7d026f857a1e4c58e9e9315ed6eea5ae7bf63",
+    "room-2-room-cut-undo.png": "cc989c15b05aec8b2da8119aeaf6988f796a6a86873498611c8fead169f9043e",
+    "room-2-room-pick.png": "05669e7b45995e808c88986e13314b493093b6baf4fa6ce9fea0c826df2ee30d"
+  },
+  "lintFiles": 8476,
+  "lintErrors": 0
+}

@@ -150,6 +150,13 @@ const handle = await startCollabServer({
 See `packages/collab-server/src/bin.ts` for the exact reference policy the CLI
 uses, and `packages/collab-server/src/server.ts` for every option.
 
+`FilePersistence.loadLogFile(file, requireComplete = false)` reads a log by its
+actual file path, without decoding or re-encoding its filename. Like `load(roomId)`,
+the default recovers complete frames before an incomplete tail. Pass `true` to
+require complete framing: an incomplete frame body or trailing partial header
+returns `null`. Blob garbage collection uses this strict mode and aborts on a
+nonempty incomplete log, since its unreadable suffix may contain blob references.
+
 ## Deploying to production
 
 Collaboration is **two deployables** with different shapes:

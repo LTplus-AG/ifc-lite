@@ -23,7 +23,7 @@ import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-f
 import { solveSnap } from '@/lib/snap/solve';
 import { AlignBar } from '@/components/viewer/tools/command/AlignBar';
 import { AlignPlan, AlignScene } from '@/components/viewer/tools/command/AlignLayers';
-import type { AlignGesture } from '../align-gesture.js';
+import { alignMoves, type AlignGesture } from '../align-gesture.js';
 import { modelMeshes, planBoxOf } from '../align-boxes.js';
 import { ELEMENT_ALIGN } from './element-align.js';
 import { MODELING_SNAP_PROFILE } from '@/lib/snap/rank';
@@ -298,6 +298,32 @@ describe('element.align with a wall and its window (#6232 C4)', () => {
     const asked = new Set(remeshes.flatMap((r) => r.expressIds));
     assert.ok(asked.has(wall) && asked.has(placed.expressId) && asked.has(placed.openingId), `the wall, its opening and its window re-mesh: ${[...asked]}`);
   });
+});
+
+it('selected hosted child uses its host preview delta and commit placement once (#6232)', async () => {
+  await start();
+  const wall = created(s().addWall(MODEL_ID, STOREY, { Start: [0,4,0], End: [4,4,0], Thickness: .2, Height: 3 }));
+  const window = s().addHostedFill(MODEL_ID, wall, { kind: 'window', params: { Offset: 2, Sill: .9, Width: 1, Height: 1.2 } });
+  assert.ok('expressId' in window);
+  const ref = column([6,1]);
+  // Deliberately different host/child left edges: independent previews would
+  // promise two incompatible shifts. Selection semantics keep the child hosted.
+  render3d({ [ref.id]: ref.box, [wall]: [[0,3.9,0],[4,4.1,3]], [window.expressId]: [[2,3.95,.9],[3,4.05,2.1]] });
+  act(() => {
+    s().setSelectedEntityIds([ref.id, wall, window.expressId].map(id => toGlobalIdFromModels(s().models, MODEL_ID, id)));
+    s().setSelectedEntityId(toGlobalIdFromModels(s().models, MODEL_ID, ref.id));
+  });
+  begin();
+  assert.ok(gesture().carried?.includes(window.expressId));
+  assert.deepEqual(alignMoves(gesture()).map(move => move.id), [wall], 'preview and atomic writer plan the same host root');
+  assert.equal(ELEMENT_ALIGN.ghost!(gesture(), getCommandRuntime().ctx!).length, 1);
+  const childLocal = position(window.expressId), undoBefore = undoStack().length;
+  commit();
+  assert.deepEqual(position(wall), [5.8,4,0]);
+  assert.deepEqual(position(window.expressId), childLocal, 'its relative placement is not written a second time');
+  act(() => s().undo(MODEL_ID));
+  assert.equal(undoStack().length, undoBefore);
+  assert.deepEqual(position(wall), [0,4,0]);
 });
 
 describe('element.align in a millimetre file on an offset storey (#6232 C4)', () => {

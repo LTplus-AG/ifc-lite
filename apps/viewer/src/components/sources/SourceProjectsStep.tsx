@@ -71,7 +71,7 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
             />
             <Input
               className="h-8 pl-7 text-sm"
-              placeholder={t('sources.sourceProjectsStep.searchPlaceholder')}
+              placeholder={t(provider.manifest.name === 'autodesk' ? 'sources.sourceProjectsStep.autodeskPlaceholder' : 'sources.sourceProjectsStep.searchPlaceholder')}
               aria-label={t('sources.sourceProjectsStep.searchAriaLabel')}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -81,7 +81,7 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
             />
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {t('sources.sourceProjectsStep.discoverableHint')}
+            {t(provider.manifest.name === 'autodesk' ? 'sources.sourceProjectsStep.autodeskHint' : 'sources.sourceProjectsStep.discoverableHint')}
           </p>
         </div>
       )}

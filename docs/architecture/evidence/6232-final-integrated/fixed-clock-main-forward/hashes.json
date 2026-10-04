@@ -1,0 +1,109 @@
+{
+  "qualification": {
+    "source": "2ede141ce45b6ccc7f61fd538ddb98013664b129",
+    "tree": "63635530146eae6151aa35912b9c3450921c9a96",
+    "actualMain": "8ab47142562a79862df6d14700a39723351f00df",
+    "ownPublishedHead": "d0f59f7f2fdec9f130993863b52cf2e5078b4809",
+    "scope": "One inherited existing fixed-clock helper substitution in MCP test only; full refusal/STEP-equality assertions intact. Production/API/Rust/runtime/capture labels unchanged.",
+    "typecheck": {
+      "tasks": 111,
+      "cached": 94,
+      "testFiles": 3405,
+      "exit": 0
+    },
+    "mcpFreshPinnedRuntime": {
+      "files": 70,
+      "passed": 637,
+      "skipped": 2,
+      "cache": 0,
+      "exit": 0,
+      "resourcePolicy": "--maxWorkers=2 only; deadlines/assertions/source unchanged",
+      "optionalSkips": "missing canonical structural fixture; delete-only-fields conditional invariant"
+    },
+    "runtime": {
+      "ifc-lite_bg.wasm": "a050aed5572273e63c8a08a243f5ebe6180da0ea202875e6cf97b7e6d726b23b",
+      "ifc-lite.js": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+      "ifc-lite.d.ts": "a34371c64be9a3deb0997261df9d9ce4ee92633ad9c94ae2b41d575c26bddca0"
+    },
+    "priorAttempts": {
+      "cachedRuntimeLane": "Original637/2skip0cache exit0 uses Turbo-restored beebe runtime; limited fresh-runtime scope, snapshot subsequently restored a050.",
+      "freshDefaultParallel": "Actualexit1:5WASM init10s hooktimeouts +9first test5s timeouts,14failedfiles/578passed52skipped. Not counted PASS; no completed asserted functional mismatch."
+    },
+    "noPerformanceClaim": true,
+    "time": "2026-10-04T10:05:35.306983+00:00"
+  },
+  "sourceComposition": {
+    "oldHead": "9ee490e17e466889359bd8496f056f749fd2d5a9",
+    "oldMain": "5c87f0af55107663805ce81d2a9d357bbe36205b",
+    "main": "8ab47142562a79862df6d14700a39723351f00df",
+    "preparedHead": "d0f59f7f2fdec9f130993863b52cf2e5078b4809",
+    "preparedTree": "b07ec55b2233d230d69439771cb95fec1805ea2d",
+    "changedPaths": [
+      "packages/mcp/src/tools/room-command.test.ts"
+    ],
+    "changedBlobExactMain": true,
+    "fullOwnBinaryPatchIdentical": true,
+    "ownLayerBinaryPatchSha256": "541bb9a81a47c07c010f41ef2f263afb86d3745165212e55a21d055b45cb21b6",
+    "apiUnchanged": true,
+    "rustTreeUnchanged": true,
+    "mainCompositionTree": "b07ec55b2233d230d69439771cb95fec1805ea2d",
+    "cleanWorktree": true,
+    "scope": "one inherited fixed-time export test; no production/runtime changes"
+  },
+  "originalArtifacts": [
+    {
+      "original": "/tmp/6232-final-main8ab-drift.json",
+      "archive": "6232-final-main8ab-drift.json",
+      "originalSHA256": "f2501511a3f7bed5db64c783649c56ec7baf2a16fb7054e98c5c0597dd1c42ab",
+      "archiveSHA256": "f2501511a3f7bed5db64c783649c56ec7baf2a16fb7054e98c5c0597dd1c42ab"
+    },
+    {
+      "original": "/tmp/6232-align-main8ab-source-preserving-composition-proof.json",
+      "archive": "6232-align-main8ab-source-preserving-composition-proof.json",
+      "originalSHA256": "b43cad0ed6590017e5128a217675a89a8384b2189646eb1315a5b8c64023b28e",
+      "archiveSHA256": "b43cad0ed6590017e5128a217675a89a8384b2189646eb1315a5b8c64023b28e"
+    },
+    {
+      "original": "/tmp/6232-final-main8ab-qualification-receipt.json",
+      "archive": "6232-final-main8ab-qualification-receipt.json",
+      "originalSHA256": "54f4dd944202d46f8b33dbb85db61b034466ab7ab398e663462fb6bf5d0d64c5",
+      "archiveSHA256": "54f4dd944202d46f8b33dbb85db61b034466ab7ab398e663462fb6bf5d0d64c5"
+    },
+    {
+      "original": "/tmp/6232-final-main8ab-final-runtime-guard.json",
+      "archive": "6232-final-main8ab-final-runtime-guard.json",
+      "originalSHA256": "4b1bf321852eef489f227b7997ebfb4a046fc4d4fce2f779c1bd2c5024050977",
+      "archiveSHA256": "4b1bf321852eef489f227b7997ebfb4a046fc4d4fce2f779c1bd2c5024050977"
+    },
+    {
+      "original": "/tmp/6232-final-main8ab-types.log",
+      "archive": "6232-final-main8ab-types.log.gz",
+      "originalSHA256": "c77bd0197ee032ce0630cad80abefc5597260fa43e9a8a324fdba688e7535e29",
+      "archiveSHA256": "18e378831909c77f938f73f52a5fd039e24ea98207b406fbf334bd61e53bcdd1"
+    },
+    {
+      "original": "/tmp/6232-final-main8ab-mcp.log",
+      "archive": "6232-final-main8ab-mcp.log.gz",
+      "originalSHA256": "c78b79afe474ca808c2252b8179394559807114874f04d7a240fa45899764951",
+      "archiveSHA256": "367428b6e4591da43b9c4a26c3823c0d8b30ce52f6eaae48906a332ef6882fa8"
+    },
+    {
+      "original": "/tmp/6232-final-main8ab-runtime-preservation.json",
+      "archive": "6232-final-main8ab-runtime-preservation.json",
+      "originalSHA256": "8febf123d8d62632ed1d82d9d33aaf1ad711f7d251c8c75bc53aca8c677d7c38",
+      "archiveSHA256": "8febf123d8d62632ed1d82d9d33aaf1ad711f7d251c8c75bc53aca8c677d7c38"
+    },
+    {
+      "original": "/tmp/6232-final-main8ab-mcp-fresh-runtime.log",
+      "archive": "6232-final-main8ab-mcp-fresh-runtime.log.gz",
+      "originalSHA256": "d8baf184c44aeafe6bcca82b47ef7dc39ff7296518ba2116e0641e316d45676e",
+      "archiveSHA256": "79bf6e7a140161d222d776cc3c80f4fd465a51b1e398b0882d075d9c4641c8ac"
+    },
+    {
+      "original": "/tmp/6232-final-main8ab-mcp-fresh-bounded.log",
+      "archive": "6232-final-main8ab-mcp-fresh-bounded.log.gz",
+      "originalSHA256": "4edc91e8e67c76e57c6628ad8572992045d9553e4f7787b399dcf72321544b88",
+      "archiveSHA256": "055c702e7c923b3de3804f71dcf87cc97e5cc2b667fa221e0661e0fc4ea041a5"
+    }
+  ]
+}

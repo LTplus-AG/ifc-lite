@@ -1,0 +1,276 @@
+{
+  "issue": 6232,
+  "charter": "Frozen original 24 modelling commands; source-only gap map c47, not the later main command registry",
+  "exclusions": [
+    "SpaceEnvelope #6686 is a separate landed feature",
+    "Duplicate is a copy-route follow-up, not a 25th frozen command",
+    "Inspector size/defaults/profile and ChangeSet/history are cross-cutting acceptance controls"
+  ],
+  "captureState": "Latest current-wasm-main-forward contains eight complete primary WSL Chrome receipts at actual1b49 source/a050 runtime (184stages/436native-displayed witnesses) and six registered preview/Escape contexts at helper-only730f source/same runtime (28stages). All original source/runtime labels and missing-view/native/commit scope distinctions remain literal. Subsequent actual-main fixed-clock and early-schedule qualification changes no modelling/Rust/runtime/capture bytes; source-bound types/MCP/viewer controls are archived separately. Historical capture and forward qualification text is retained under historicalCaptureState.",
+  "alignRegisteredNativeProof": "Registered-command native controls and six-mode SDK browser controls passed; fresh clean e98a99244ecc3f5a86968c485774a77f8845ae66 Align receipts preserve distinct target shifts and one/two model contexts.",
+  "lateRoomReviewQualification": {
+    "qualifiedSource": "6fcee10246506226f26fcb4381fecdb75a7869eb",
+    "sourceTree": "e54251248272271742afe25ee35d134dfb895b62",
+    "freshRoomCaptureSource": "902684264034c676f82fd951b3609b1db65a3e97",
+    "captureWholeTreeIdentical": true,
+    "archive": "../room-review-lifecycle/",
+    "repairs": [
+      "canonical history-free overlay revision for awaited preparation and geometry cache",
+      "attempt every session resource disposal before reporting failures",
+      "typed unexpected Room preparation failures preserve intentional refusals"
+    ],
+    "qualification": "Root types111/all3399, SDK341, mutations370, MCP637+2unrelatedskips, native viewer20, lint8492/API/module-size pass; original failures and corrected fixture preserved. Full official actual-main2e2 revert OBSERVED:327 baseline passes,36 attributed assertions in14 complete files, restoration verified;15 collection gaps remain explicit.",
+    "browserScope": "Only Room one/two-model captures are fresh at902684. Six Physical/Align/Placement receipts retain actual e98a992 labels. The unchanged archive auditor verifies8receipts/184stages/436native-displayed witnesses and peer state. Original source/runtime labels are preserved."
+  },
+  "nativePreparationBudgetQualification": {
+    "qualifiedSource": "dc04b1ef80961ee9d372170c1dd9e76ca08bf7f2",
+    "sourceTree": "8fb30482a12408aa5ce02b881f04345ab9140209",
+    "identicalTreeParentForward": "886ffb1790fd0689d1f75ac7f5ccf3e161b5accd",
+    "archive": "../native-preparation-budget/",
+    "scope": "Test-only finite 30-second per-case deadline for eight two-model native fault/recovery controls; two input-only controls retain default. Assertions, production, API and request/global deadlines unchanged.",
+    "qualification": "Root typecheck: 111 successful tasks, 106 cached, all 3399 test files; exact native controls: 10 passed, zero skips/cache. Original CI deadline failures and inconclusive stale prerequisite diagnosis are retained. Earlier full-suite, browser and oracle runs retain their literal source labels."
+  },
+  "transformPreviewQualification": {
+    "nativeMissingViewSource": "04337a98649415f8c1c65949be614d25cdddb4cf",
+    "combinedNativeSource": "422a46bf7c824ddf68b8e22cd807ade4d4c8d800",
+    "actualMainIntegratedSource": "57cb2ed558ab9d4cbd6244063f2d796f9b71a64c",
+    "finalBrowserSource": "57cb2ed558ab9d4cbd6244063f2d796f9b71a64c",
+    "archive": "../cold-transform-preview/",
+    "qualification": "Six genuine native old-planner assertion failures become six fixed passes; root422a types111/all3401,viewer33,lint8494; main57cb types111/all3403,document130. Native/document controls zero skips/cache. Source/API/Rust/runtime identities and original failed attempts retained.",
+    "browserScope": "Six real WSL Chrome first-authoring registered Align/Move/Rotate preview/Escape-cancel one/two-model contexts,28stages, initialized empty view retained. Native missing-view behavior and independent-reference commit controls are separate; no browser missing-view or same-host commit claim. Historical eight-receipt/184-stage/436-witness audit remains unchanged."
+  },
+  "scheduleMainForwardQualification": {
+    "qualifiedSource": "6c4b1c5ca5f2d5af5cac67dfb15dde42121e0011",
+    "sourceTree": "22e323839e223e9c4a5a4245ecfc1ff612ac21ff",
+    "actualMain": "1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9",
+    "archive": "../schedule-main-forward/",
+    "scope": "25 inherited actual-main scheduling paths; exact additive API/generated declaration union; modelling/Rust/runtime unchanged. Prior captures retain literal57cb/902/e98 source labels, no retake claimed.",
+    "qualification": "Root typecheck111/all3405/94cache; SDK341/parserSchedule59/sandboxSchedule12/viewerSchedule104 PASS0skip/cache; API9344/52pkgs/85surfaces and generatedBim14namespace freshness pass."
+  },
+  "mergeAcceptanceConditions": [
+    "All preceding stack layers must actually land on main",
+    "All four latest required current-head PR contexts must actually succeed and complete fresh feedback must be addressed",
+    "Actual-main merge trees must match reviewed qualified source immediately before each merge"
+  ],
+  "currentWasmMainForwardQualification": {
+    "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+    "sourceTree": "2fe8116b19575996856b4a85fb084f54366d4c24",
+    "rustTree": "f677d62a264b5b8d801aa270b9332ec69bb76917",
+    "wasmSHA256": "a050aed5572273e63c8a08a243f5ebe6180da0ea202875e6cf97b7e6d726b23b",
+    "registeredPreviewSource": "730f9e6da331c46febc31eded37d131a8f862b9a",
+    "archive": "../current-wasm-main-forward/",
+    "qualification": "Fallback-disabled fresh Rust build; SDK341/viewer31 zero skips/cache, WASM146/7optional skips all8owned contracts executed, Rust4438/39ignored, strict all-target Clippy. Root6c4 types111/all3405 remain literally source-bound; latest committed bindings unchanged. Fresh eight primary browser receipts pass unchanged strict audit8/184/436; six registered preview/Escape contexts pass28stages. Original failed/incomplete attempts preserved.",
+    "scope": "All8 primary contexts source1b49, all6 supplemental source730f helper-only serialization fix. Loaded empty view retained; canonical allocator1→9993 then unchanged. Missing-view native and independent-reference commit proofs separate. Inherited perf verdict neutral; no integrated gain claimed."
+  },
+  "fixedClockMainForwardQualification": {
+    "source": "2ede141ce45b6ccc7f61fd538ddb98013664b129",
+    "sourceTree": "63635530146eae6151aa35912b9c3450921c9a96",
+    "actualMain": "8ab47142562a79862df6d14700a39723351f00df",
+    "archive": "../fixed-clock-main-forward/",
+    "qualification": "Roottypes111/all3405/94cache actual0; fullMCP637/2unrelatedskips/70files/0cache actual0 pinnedA050 with maxWorkers2; assertions/deadlines/source unchanged. Limited initialcached-runtime run and failed fresh-default startup-deadline run preserved.",
+    "scope": "One inherited MCPtest fixed-clock helper substitution, full refusal/STEP equality assertions intact. Production/API/Rust/runtime/capture labels unchanged; no new browser/build/perfclaim."
+  },
+  "historicalCaptureState": "Latest source-bound WSL Chrome evidence is indexed under room-input-forward: two fresh Room one/two-model receipts at clean 977846c5b3aac7b70a397d0e166acdc3019a2c99 after the strict SDK Update ID boundary repair, plus six retained Physical/Align/Placement receipts at genuine clean e98a99244ecc3f5a86968c485774a77f8845ae66 after the quantity/Align repairs. The unchanged audit verifies all 8 receipts, 184 stages and 436 native/displayed witnesses. Verified matching runtime remains de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3; no new Rust build or other-suite browser run is claimed. Intervening semantic loopback main #6786 is separately qualified at clean ea1eac30b2c4b26eb356c739c42a2e23e2dfe09f under loopback-main-forward. Subsequent native-wire-deadline qualification changes one test scheduling deadline only; production source and actual capture labels remain unchanged. Later channel-profile-review fixes structured-clone error reporting through one canonical helper and strengthens the real profile refusal oracle; integrated SDK336/profile6/native MCP38 pass. Its real-channel proof is separate from the retained browser source labels. The later mcp-revert-witness strengthens one existing native state-conflict assertion, with full official actual-base OBSERVED proof and verified restoration; new-route collection gaps remain explicit. All original source/runtime labels and scope limitations remain preserved. Subsequent Room preparation and lifecycle fixes, corrected full-source qualification and two fresh Room captures at actual 902684264034c676f82fd951b3609b1db65a3e97 are archived under [room-review-lifecycle](../room-review-lifecycle/). Its reproducible mixed-source audit retains the six earlier Physical/Align/Placement capture labels; no other-suite recapture is claimed. The later test-only native-preparation-budget archive records eight scoped 30-second native integration deadlines and fresh combined typecheck/ten-control qualification; assertions, production, API and original browser/oracle source labels remain unchanged.",
+  "earlyScheduleMainForwardQualification": {
+    "source": "ed68e240572316addc867de9be11548434e82bd2",
+    "sourceTree": "68068e434c0f1a108306204137c4426863959407",
+    "actualMain": "a0f7cfa07fc7a220b93e316c1523536859a808c5",
+    "archive": "../early-schedule-main-forward/",
+    "qualification": "Roottypes111/all3407/110cache actual0; affected viewerSchedule/chart490 zero fail/skip/cancel/cache actual0. Exactly13 mainpaths, packages/Rust/API/Bim/planner unchanged2ede; publishedown db35 composition matches qualifiedtree.",
+    "scope": "Viewer-only scheduling playback/date editing presentation; original14browser/source2edeMCP/1b49native labels retained. Runtime restoredbeforeviewer afterTurbo cache replay; no new capture/build/fullMCP/perfclaim."
+  },
+  "rows": [
+    {
+      "command": "element.split",
+      "sdk": "splitElements",
+      "mcp": "edit_element_geometry: split",
+      "tests": "element-split.test.ts / physical-edit.test.ts",
+      "browser": "physical: split",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "wall.place",
+      "sdk": "addWall",
+      "mcp": "run_flow: wall",
+      "tests": "ordinary-element.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "browser": "physical: authored-wall",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "wall.moveEndpoint",
+      "sdk": "resizeWall",
+      "mcp": "edit_element_geometry: wall_endpoints",
+      "tests": "element-transform-size.e2e.test.ts / physical-edit.test.ts",
+      "browser": "physical: endpoints",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "slab.place",
+      "sdk": "addSlab",
+      "mcp": "run_flow: slab",
+      "tests": "ordinary-element.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "browser": "placement: slab",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "column.place",
+      "sdk": "addColumn",
+      "mcp": "run_flow: column",
+      "tests": "column.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "browser": "align: column-a/column-b",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "beam.place",
+      "sdk": "addBeam",
+      "mcp": "run_flow: beam",
+      "tests": "beam.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "browser": "placement: beam",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "room.place",
+      "sdk": "roomCommand",
+      "mcp": "room_command: query/auto/pick/footprint/update/edit",
+      "tests": "room-command.test.ts / room-place.test.tsx / room-layout.test.tsx",
+      "browser": "room: query/pick/cut; other modes native MCP",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "opening.place",
+      "sdk": "addOpening",
+      "mcp": "place_opening",
+      "tests": "hosted-place.test.ts / hosted-place.test.tsx",
+      "browser": "placement: opening",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "door.place",
+      "sdk": "addHostedDoor",
+      "mcp": "place_door",
+      "tests": "hosted-place.test.ts / hosted-place.test.tsx",
+      "browser": "placement: door",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "window.place",
+      "sdk": "addHostedWindow",
+      "mcp": "place_window",
+      "tests": "hosted-place.test.ts / hosted-place.test.tsx",
+      "browser": "placement: window",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "hosted.slide",
+      "sdk": "editHostedElement",
+      "mcp": "edit_hosted_element",
+      "tests": "hosted-place.test.ts / store-adapter-hosted.test.ts",
+      "browser": "placement: hosted-slide",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "plan.move",
+      "sdk": "transformElements",
+      "mcp": "edit_element_geometry: transform/move",
+      "tests": "store-adapter-native-physical-room.test.ts / element-move-rotate.test.ts",
+      "browser": "physical: move; registered command native regression",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "element.paste",
+      "sdk": "copyElements",
+      "mcp": "copy_elements",
+      "tests": "copy-elements.test.ts / copy-array.test.tsx",
+      "browser": "physical: paste",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "element.array",
+      "sdk": "arrayElements",
+      "mcp": "array_elements",
+      "tests": "copy-elements.test.ts / copy-array.test.tsx",
+      "browser": "physical: array",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "element.move",
+      "sdk": "transformElements",
+      "mcp": "edit_element_geometry: transform/move",
+      "tests": "physical-edit.test.ts / element-move-rotate.test.ts",
+      "browser": "physical: move",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "element.rotate",
+      "sdk": "transformElements",
+      "mcp": "edit_element_geometry: transform/rotate",
+      "tests": "physical-edit.test.ts / element-move-rotate.test.ts",
+      "browser": "physical: rotate",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "stair.place",
+      "sdk": "addStair",
+      "mcp": "run_flow: stair",
+      "tests": "stair-railing.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "browser": "placement: stair",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "railing.place",
+      "sdk": "addRailing",
+      "mcp": "run_flow: railing",
+      "tests": "stair-railing.test.ts / flow-creation-native.test.ts / store-adapter.ordinary-live-view.test.ts",
+      "browser": "placement: railing",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "split.multi",
+      "sdk": "splitElements",
+      "mcp": "edit_element_geometry: split (batched targets)",
+      "tests": "element-split.test.ts / multi-split.test.tsx / physical-edit.test.ts",
+      "browser": "physical: split; native batch invariants",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "element.pushPull",
+      "sdk": "setElementSize / transformElements",
+      "mcp": "edit_element_geometry: size / transform",
+      "tests": "element-transform-size.e2e.test.ts / element-push-pull.test.tsx",
+      "browser": "physical: size / move",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "element.align",
+      "sdk": "alignElements",
+      "mcp": "edit_element_geometry: align",
+      "tests": "align-native.test.ts / store-adapter-native-align.test.ts / element-align.test.tsx",
+      "browser": "align: all six modes, distinct shifts",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "curtainwall.place",
+      "sdk": "addCurtainWall",
+      "mcp": "place_curtain_wall",
+      "tests": "design-place.test.ts / curtain-wall-grid.e2e.test.ts",
+      "browser": "placement: curtain-wall",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "grid.place",
+      "sdk": "addGrid / addColumnOnGrid",
+      "mcp": "place_grid / place_grid_column",
+      "tests": "design-place.test.ts / grid-column.e2e.test.ts",
+      "browser": "placement: grid / grid-column",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    },
+    {
+      "command": "element.trimExtend",
+      "sdk": "trimExtendElement",
+      "mcp": "edit_element_geometry: trim_extend",
+      "tests": "element-trim-extend.test.ts / physical-edit.test.ts",
+      "browser": "physical: trim",
+      "finalAcceptance": "Source-bound behavioral evidence recorded; merge acceptance requires current-head gates, complete feedback and predecessor landings"
+    }
+  ]
+}

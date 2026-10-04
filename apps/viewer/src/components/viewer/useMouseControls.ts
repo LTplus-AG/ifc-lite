@@ -40,6 +40,7 @@ import { handleMeasureDoubleClick } from './measurementDoubleClick.js';
 import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
 import { createZoomSurfacePicker } from './zoomSurface.js';
 import { createFlyController } from './flyControls.js';
+import { flyLook } from './flyNavigation.js';
 
 export interface MouseState {
   isDragging: boolean;
@@ -618,8 +619,12 @@ export function useMouseControls(params: UseMouseControlsParams): void {
           fly.look(dx, dy, e.movementX, e.movementY); // pointer-locked: the cursor is pinned, so movement deltas lead
         } else if (mouseState.isPanning) {
           camera.pan(dx, dy, false);
+        } else if (activeToolRef.current === 'walk') {
+          // Walk mode looks around the eye; the walker owns where it stands.
+          const look = flyLook({ position: camera.getPosition(), target: camera.getTarget() }, dx, dy);
+          if (look) camera.setTarget(look.target.x, look.target.y, look.target.z);
         } else {
-          camera.orbit(dx, dy, false); // walk mode too: drag looks around (full orbit)
+          camera.orbit(dx, dy, false);
         }
 
         mouseState.lastX = e.clientX;

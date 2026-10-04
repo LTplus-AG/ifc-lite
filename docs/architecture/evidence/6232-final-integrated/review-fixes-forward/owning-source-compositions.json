@@ -1,0 +1,49 @@
+[
+  {
+    "number": 6760,
+    "publishedHead": "0aa3bfa2f06f10886cae9f140cf40d80d5c0cba9",
+    "preparedHead": "00fb87ea2e0956e0540199fdccf5ea1ed44a5bda",
+    "tree": "9440c9d0f49ce7fc56c77065dad22fa5339d53c0",
+    "actualMain": "7dfc29870b0aa6a593c163592fcb84a92e5dfa19",
+    "mergeTreeCleanEqualsPreparedTree": true,
+    "newQualifiedLeafScopeVsSemanticPreparation": [
+      ".changeset/typed-quantity-history.md",
+      "docs/architecture/evidence/6232-quantity-unit-dimension/README.md",
+      "docs/architecture/evidence/6232-quantity-unit-dimension/before.log.gz",
+      "docs/architecture/evidence/6232-quantity-unit-dimension/export-suite.log.gz",
+      "docs/architecture/evidence/6232-quantity-unit-dimension/fixed-export-controls.log.gz",
+      "docs/architecture/evidence/6232-quantity-unit-dimension/hashes.json",
+      "docs/architecture/evidence/6232-quantity-unit-dimension/history-controls.log.gz",
+      "packages/export/src/quantity-unit-generation.test.ts",
+      "packages/export/src/step-property-set-generators.ts"
+    ],
+    "ownLayerBase": "f0e580a98dd90ef265d305e2010ebe69b13d481f",
+    "newOwnLayerBinaryPatchSha256": "5ae726f0371f8897f0e2249f72fb0d21fceae0dd4e846b1e57a4effe80182ae9",
+    "stat": "45 files changed, 1331 insertions(+), 206 deletions(-)"
+  },
+  {
+    "number": 6761,
+    "publishedHead": "eb641cc8e31023009ef034d3a030649abd14f853",
+    "preparedHead": "c7ba9a93aa80dbc67572a59b6b09c5ed2640907d",
+    "tree": "c401bc667cff9613eef7684ee40a546bb64858ee",
+    "actualMain": "7dfc29870b0aa6a593c163592fcb84a92e5dfa19",
+    "mergeTreeCleanEqualsPreparedTree": true,
+    "newQualifiedLeafScopeVsSemanticPreparation": [
+      ".changeset/ten-sails-draw.md",
+      ".changeset/typed-quantity-history.md",
+      "docs/architecture/evidence/6232-quantity-unit-dimension/README.md",
+      "docs/architecture/evidence/6232-quantity-unit-dimension/before.log.gz",
+      "docs/architecture/evidence/6232-quantity-unit-dimension/export-suite.log.gz",
+      "docs/architecture/evidence/6232-quantity-unit-dimension/fixed-export-controls.log.gz",
+      "docs/architecture/evidence/6232-quantity-unit-dimension/hashes.json",
+      "docs/architecture/evidence/6232-quantity-unit-dimension/history-controls.log.gz",
+      "packages/create/src/in-store/element-align.ts",
+      "packages/export/src/quantity-unit-generation.test.ts",
+      "packages/export/src/step-property-set-generators.ts",
+      "packages/mcp/src/tools/align-native.test.ts"
+    ],
+    "ownLayerBase": "00fb87ea2e0956e0540199fdccf5ea1ed44a5bda",
+    "newOwnLayerBinaryPatchSha256": "7703b074eb796bb142c380df2aa1f3c3b1e6322001775cdfd9550a2b87bc7169",
+    "stat": "34 files changed, 1091 insertions(+), 145 deletions(-)"
+  }
+]

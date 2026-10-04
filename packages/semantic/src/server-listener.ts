@@ -22,7 +22,14 @@ export function createSemanticRelayServer(options: RelayOptions, tls: Pick<Serve
       if (!['GET', 'HEAD'].includes(incoming.method ?? 'GET')) {
         init.body = Readable.toWeb(incoming) as ReadableStream<Uint8Array>; init.duplex = 'half';
       }
-      const response = await handle(new Request(new URL(incoming.url ?? '/', 'https://relay.invalid'), init));
+      let target: URL;
+      try { target = new URL(incoming.url ?? '/', 'https://relay.invalid'); } catch {
+        // A request target `new URL` rejects (e.g. `//`) is this client's error, not a relay fault.
+        outgoing.writeHead(400, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        outgoing.end('{"error":"Malformed request target"}');
+        return;
+      }
+      const response = await handle(new Request(target, init));
       outgoing.writeHead(response.status, Object.fromEntries(response.headers.entries()));
       outgoing.end(Buffer.from(await response.arrayBuffer()));
     } catch {

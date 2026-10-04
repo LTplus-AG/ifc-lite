@@ -88,19 +88,21 @@ export function useSourceDownloadBatch({
           try {
             const buffer = await provider.download(
               ctx,
-              { projectId, containerId: f.containerId, fileId: f.id },
+              { projectId, containerId: f.containerId, fileId: f.id, revisionId: f.currentRevisionId },
               {
                 signal: controller.signal,
+                onPhase: (phase) => phase === 'preparing' && setFileState(f.id, { phase: 'preparing' }),
                 onProgress: (received, total) => setFileState(f.id, { phase: 'downloading', received, total }),
               },
             );
+            controller.signal.throwIfAborted();
             dispatchSourceDownload([
               {
                 // `f.name` is provider-supplied and reaches `new File(...)` and
                 // `addModel`, so it is untrusted input to a filename position.
                 // Sanitize at the boundary rather than trusting every provider
                 // to have done it — the same contract the export paths use.
-                name: sanitizeFilename(f.name, { fallback: 'model.ifc' }),
+                name: sanitizeFilename(f.artifactName ?? f.name, { fallback: 'model.ifc' }),
                 buffer,
                 sourceFile: f,
                 tag: sourceHost.createSourceTag(providerId, projectId, f.containerId, f.id, f.currentRevisionId),
@@ -120,7 +122,7 @@ export function useSourceDownloadBatch({
         }
         if (!controller.signal.aborted && failed === 0) onBatchSucceeded();
       } finally {
-        setDownloading(false);
+        if (abortRef.current === controller) setDownloading(false);
       }
     },
     [onBatchSucceeded, provider, providerId, sourceHost, t],
@@ -138,5 +140,10 @@ export function useSourceDownloadBatch({
     });
   }, []);
 
-  return { downloading, downloadStates, handleDownload, clearFinishedDownloadStates };
+  const cancelDownload = useCallback(() => {
+    abortRef.current?.abort();
+    setDownloading(false);
+    setDownloadStates(NO_DOWNLOADS);
+  }, []);
+  return { downloading, downloadStates, handleDownload, cancelDownload, clearFinishedDownloadStates };
 }

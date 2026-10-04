@@ -41,7 +41,7 @@ export function useSourceFileSearch({ provider, ctx, projectIdRef, setError }: U
           ctx,
           projectId,
           submitted,
-          { namePatterns: IFC_NAME_PATTERNS },
+          { namePatterns: provider.manifest.capabilities.sourceNamePatterns ?? IFC_NAME_PATTERNS },
           { cursor, limit: LIST_PAGE_LIMIT, signal },
         );
       },

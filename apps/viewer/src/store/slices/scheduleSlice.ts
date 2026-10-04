@@ -33,6 +33,7 @@ import {
   addTaskInputProducts,
   dropTaskProducts,
 } from './schedule-edit-helpers.js';
+import { taskStartEpoch, taskFinishEpoch, taskStartIso, plannedEditBase } from './schedule-task-dates.js';
 
 export type GanttTimeScale = 'hour' | 'day' | 'week' | 'month' | 'year';
 
@@ -279,39 +280,6 @@ export interface ScheduleSlice {
   abortScheduleTransaction: () => void;
 }
 
-/**
- * Derive a plausible finish time for a task when `ScheduleFinish` is absent.
- * Uses ScheduleDuration (ISO 8601 seconds) on top of ScheduleStart. Returns
- * undefined when no start time is available.
- */
-function taskFinishEpoch(task: ScheduleTaskInfo): number | undefined {
-  const start = parseIsoDate(task.taskTime?.scheduleStart ?? task.taskTime?.actualStart);
-  const finish = parseIsoDate(task.taskTime?.scheduleFinish ?? task.taskTime?.actualFinish);
-  if (finish !== undefined) return finish;
-  if (start === undefined) return undefined;
-  const duration = task.taskTime?.scheduleDuration ?? task.taskTime?.actualDuration;
-  if (!duration) return start;
-  const match = duration.match(
-    /^P(?:(\d+(?:\.\d+)?)Y)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/,
-  );
-  if (!match) return start;
-  const [, y, mo, w, d, h, mi, s] = match;
-  const yearMs = 365.2425 * 86400_000;
-  const monthMs = yearMs / 12;
-  const totalMs =
-    (y ? parseFloat(y) * yearMs : 0) +
-    (mo ? parseFloat(mo) * monthMs : 0) +
-    (w ? parseFloat(w) * 7 * 86400_000 : 0) +
-    (d ? parseFloat(d) * 86400_000 : 0) +
-    (h ? parseFloat(h) * 3_600_000 : 0) +
-    (mi ? parseFloat(mi) * 60_000 : 0) +
-    (s ? parseFloat(s) * 1000 : 0);
-  return start + totalMs;
-}
-
-function taskStartEpoch(task: ScheduleTaskInfo): number | undefined {
-  return parseIsoDate(task.taskTime?.scheduleStart ?? task.taskTime?.actualStart);
-}
 
 /**
  * Compute the schedule time range across all tasks. Prefers real dates from
@@ -617,7 +585,9 @@ export const createScheduleSlice: StateCreator<
         // PT0S explicitly so the serializer emits it verbatim on export.
         t.taskTime = {
           ...t.taskTime,
-          scheduleFinish: t.taskTime.scheduleStart ?? t.taskTime.scheduleFinish,
+          // Anchor on the resolved start (#6803) so an early-only task keeps its date.
+          scheduleStart: taskStartIso(t),
+          scheduleFinish: taskStartIso(t) ?? t.taskTime.scheduleFinish,
           scheduleDuration: 'PT0S',
         };
       }
@@ -637,7 +607,7 @@ export const createScheduleSlice: StateCreator<
     // re-render. With field-patch snapshots we only need the `taskTime`
     // field's prior state, so compute the validation check against a
     // dry-run merge first.
-    const prevTimeProbe = current.tasks[idx].taskTime ?? {};
+    const prevTimeProbe = plannedEditBase(current.tasks[idx].taskTime);
     const mergedProbe = { ...prevTimeProbe, ...patch };
     const reconciledProbe = reconcileTaskTime(mergedProbe);
     if (!reconciledProbe) return; // finish < start — silent reject
@@ -652,7 +622,7 @@ export const createScheduleSlice: StateCreator<
 
     const next = cloneExtraction(current);
     const t = next.tasks[idx];
-    const prevTime = t.taskTime ?? {};
+    const prevTime = plannedEditBase(t.taskTime);
     // Combine prior + patch; then reconcile start/finish/duration so
     // whichever pair the user supplied wins and the third is derived.
     const merged = { ...prevTime, ...patch };
@@ -798,10 +768,8 @@ export const createScheduleSlice: StateCreator<
     const predIdx = afterGid ? next.tasks.findIndex(t => t.globalId === afterGid) : -1;
     let startIso: string;
     if (predIdx >= 0) {
-      const predFinish = parseIsoDate(next.tasks[predIdx].taskTime?.scheduleFinish);
-      startIso = predFinish !== undefined
-        ? toIsoUtc(predFinish)
-        : (next.tasks[predIdx].taskTime?.scheduleStart ?? isoNowAt8());
+      const predFinish = taskFinishEpoch(next.tasks[predIdx]);
+      startIso = predFinish !== undefined ? toIsoUtc(predFinish) : isoNowAt8();
     } else {
       const rangeStart = computeScheduleRange(next)?.start;
       startIso = rangeStart !== undefined ? toIsoUtc(rangeStart) : isoNowAt8();

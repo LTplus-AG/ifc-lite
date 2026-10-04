@@ -1,4 +1,5 @@
 {
+  "apps/autodesk-service": 0,
   "apps/viewer": 190,
   "apps/viewer-embed": 192,
   "examples/babylonjs-viewer": 0,
@@ -51,6 +52,7 @@
   "packages/server-bin": 2,
   "packages/server-client": 1,
   "packages/solar": 1,
+  "packages/source-autodesk": 0,
   "packages/source-dalux": 0,
   "packages/source-dropbox": 0,
   "packages/source-fixture": 0,

@@ -101,8 +101,17 @@ describe('DocumentPanel preview labels (#6741)', () => {
     catalogue['document.print.pageCounter'] = 'Blatt {page} / {total}';
     // A stale active id renders the panel without a document for one pass; ensureActiveDocument
     // then reactivates it, so the preview unmounts and mounts again under the same panel.
+    let unmounted = false;
+    const seen = new MutationObserver((records) => {
+      for (const { removedNodes } of records) for (const node of removedNodes) {
+        if (node instanceof Element && (node.matches('[data-preview-block="ids"]') || node.querySelector('[data-preview-block="ids"]'))) unmounted = true;
+      }
+    });
+    seen.observe(ui, { childList: true, subtree: true });
     act(() => useViewerStore.setState({ activeDocumentId: 'missing' }));
     await settle();
+    seen.disconnect();
+    assert.ok(unmounted, 'the preview unmounted under the stale id');
     assert.ok(ui.querySelector('[data-preview-block="ids"]'), 'the preview is mounted again');
     const printed = await exported(ui, texts);
     assert.ok(printed.includes('Seite 1 / 1'), 'the export prints with the labels captured for the panel');

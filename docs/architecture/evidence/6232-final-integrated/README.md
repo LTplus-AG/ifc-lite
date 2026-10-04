@@ -132,3 +132,5 @@ Intervening explicit semantic loopback main integration: [`loopback-main-forward
 Latest Room input boundary fix and mixed source-labelled browser acceptance: [`room-input-forward/`](./room-input-forward/), two fresh Room captures at clean `977846c5` plus six retained `e98` captures, with the unchanged eight-receipt/184-stage/436-witness audit.
 
 Latest finite native wire test deadline qualification: [`native-wire-deadline/`](./native-wire-deadline/). Full integrated SDK 334 passes with no skips; original current-head CI timeouts are retained. Production and browser source identities remain unchanged.
+
+Latest channel clone-error and unmasked profile-validation controls: [`channel-profile-review/`](./channel-profile-review/). Full integrated SDK336, profile6 and native MCP38 pass; all historical browser receipts retain their actual sources.

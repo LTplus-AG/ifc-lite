@@ -66,6 +66,8 @@ export class Sessions {
           set: async (_key, value) => { raw = value; },
           delete: async () => { raw = undefined; },
         }, now: this.now,
+        // Native SDK work can hold this token for the entire 15-minute job.
+        refreshSkewMs: 16 * 60_000,
       }),
     };
     this.sessions.set(session.id, session);

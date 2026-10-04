@@ -83,8 +83,11 @@ describe('readers share the resolver (#6803)', () => {
   const data: ScheduleExtraction = {
     hasSchedule: true, workSchedules: [], sequences: [], workCalendars: [],
     tasks: [
-      { ...earlyOnly, globalId: 'a', productExpressIds: [7] },
-      task({ earlyStart: '2010-09-21T08:00:00', earlyFinish: '2010-09-21T16:00:00' }, { globalId: 'b', productExpressIds: [8] }),
+      // The bSI sample's shape end to end: early-only dates AND products bound
+      // as IfcRelAssignsToProduct outputs (#6749).
+      { ...earlyOnly, globalId: 'a', outputProductExpressIds: [7], outputProductGlobalIds: ['p7'] },
+      task({ earlyStart: '2010-09-21T08:00:00', earlyFinish: '2010-09-21T16:00:00' },
+        { globalId: 'b', outputProductExpressIds: [8], outputProductGlobalIds: ['p8'] }),
     ],
   };
 

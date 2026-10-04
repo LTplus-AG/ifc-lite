@@ -33,7 +33,12 @@ export class Sessions {
     this.fetcher = async (input, init) => {
       const headers = new Headers(init?.headers);
       headers.set('Authorization', `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString('base64')}`);
-      return original(input, { ...init, headers, redirect: 'error', signal: AbortSignal.timeout(30_000) });
+      if (typeof init?.body !== 'string' && !(init?.body instanceof URLSearchParams)) throw new Error('Expected an encoded Autodesk token request.');
+      const body = new URLSearchParams(init.body);
+      // APS rejects client_id in the form when confidential-client Basic auth is present.
+      // TokenManager emits public-client forms, so normalize refresh grants here too.
+      body.delete('client_id');
+      return original(input, { ...init, body, headers, redirect: 'error', signal: AbortSignal.timeout(30_000) });
     };
   }
   close(): void { for (const session of this.sessions.values()) this.discard(session); }
@@ -102,9 +107,12 @@ export class Sessions {
     const response = await this.fetcher(`${APS}/authentication/v2/token`, {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'authorization_code', code: callback.code,
-        client_id: this.config.clientId, redirect_uri: `${this.config.origin}/api/autodesk/callback`, code_verifier: transaction.verifier }),
+        redirect_uri: `${this.config.origin}/api/autodesk/callback`, code_verifier: transaction.verifier }),
     });
-    if (!response.ok) throw new ServiceError(401, 'exchange-failed', 'Autodesk sign-in could not be completed.');
+    if (!response.ok) {
+      console.warn('Autodesk token exchange rejected', response.status);
+      throw new ServiceError(401, 'exchange-failed', 'Autodesk sign-in could not be completed.');
+    }
     const payload: unknown = await response.json();
     if (!payload || typeof payload !== 'object') throw new ServiceError(502, 'invalid-token', 'Invalid Autodesk token response.');
     const value = payload as Record<string, unknown>;

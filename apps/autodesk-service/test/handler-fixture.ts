@@ -5,9 +5,9 @@ import { createAutodeskHandler } from '../src/handler.js';
 import type { AutodeskServiceConfig } from '../src/config.js';
 export const origin = 'https://viewer.example';
 export function harness(options: Pick<AutodeskServiceConfig, 'now' | 'adapters' | 'maxConcurrentImports'> = {}) {
-  const calls: { url: string; auth: string | null }[] = [];
+  const calls: { url: string; auth: string | null; form: URLSearchParams }[] = [];
   const handler = createAutodeskHandler({ ...options, origin, clientId: 'app', clientSecret: 'secret', fetch: async (input, init) => {
-    const url = String(input); calls.push({ url, auth: new Headers(init?.headers).get('authorization') });
+    const url = String(input); calls.push({ url, auth: new Headers(init?.headers).get('authorization'), form: new URLSearchParams(typeof init?.body === 'string' || init?.body instanceof URLSearchParams ? init.body : undefined) });
     if (url.endsWith('/token')) return Response.json({ access_token: 'PRIVATE_ACCESS_TOKEN', refresh_token: 'PRIVATE_REFRESH_TOKEN', expires_in: 3600 });
     if (url === 'https://api.userprofile.autodesk.com/userinfo') return Response.json({ sub: 'autodesk-user', name: 'Test user' });
     if (url.includes('signeds3download')) return Response.json({ url: 'https://bucket.s3.eu-west-1.amazonaws.com/file?sig=private' });

@@ -13,10 +13,31 @@ describe('Autodesk session gateway', () => {
     expect(signed.callback.headers.get('set-cookie')).toContain('HttpOnly'); expect(signed.callback.headers.get('set-cookie')).toContain('Secure');
     // #6827: the real OIDC profile lives outside the APS authentication path.
     expect(h.calls.find((call) => call.url === 'https://api.userprofile.autodesk.com/userinfo')?.auth).toBe('Bearer PRIVATE_ACCESS_TOKEN');
-    expect(h.calls.find((call) => call.url.endsWith('/token'))?.auth).toBe(`Basic ${Buffer.from('app:secret').toString('base64')}`);
+    const tokenCall = h.calls.find((call) => call.url.endsWith('/token'))!;
+    expect(tokenCall.auth).toBe(`Basic ${Buffer.from('app:secret').toString('base64')}`);
+    expect(tokenCall.form.has('client_id')).toBe(false);
+    expect(tokenCall.form.get('grant_type')).toBe('authorization_code');
+    expect(tokenCall.form.get('code_verifier')).toMatch(/^[A-Za-z0-9_-]{43,128}$/);
     const replay = await h.handler(new Request(`${origin}/api/autodesk/callback?code=code&state=${signed.transaction.state}`, { headers: { cookie: signed.cookie } }));
     expect(replay.headers.get('location')).toContain('error=');
     expect(h.calls.filter((call) => call.url.endsWith('/token'))).toHaveLength(1);
+  });
+  // #6827: confidential-client auth must normalize shared public-client refresh forms too.
+  it('refreshes with Basic authentication without duplicate client credentials in the form', async () => {
+    let now = Date.now();
+    const h = harness({ now: () => now }); const signed = await login(h.handler);
+    // Keep the session active while moving past the access token's lifetime.
+    for (let step = 0; step < 4; step++) {
+      now += 16 * 60_000;
+      const response = await h.handler(new Request(`${origin}/api/autodesk/session`, { headers: { cookie: signed.cookie } }));
+      expect(response.status).toBe(200);
+      expect((await response.json() as { identity: { id: string } }).identity.id).toBe('autodesk-user');
+    }
+    const refresh = h.calls.find((call) => call.form.get('grant_type') === 'refresh_token')!;
+    expect(refresh).toBeDefined();
+    expect(refresh.auth).toBe(`Basic ${Buffer.from('app:secret').toString('base64')}`);
+    expect(refresh.form.has('client_id')).toBe(false);
+    expect(refresh.form.get('refresh_token')).toBe('PRIVATE_REFRESH_TOKEN');
   });
   it('rejects mutations from another origin or without CSRF proof', async () => {
     const h = harness(); const session = await bootstrap(h.handler);

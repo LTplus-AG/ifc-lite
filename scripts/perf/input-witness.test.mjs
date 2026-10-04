@@ -17,7 +17,7 @@ import { expectedZeroPlacedMesh } from './input-witness-zero-placement.mjs';
 // Each browser callback actually executes its serialized function in a VM with
 // no module closures, __name helper, or Node globals. Fixtures interpret buffers.
 function fixture(options = {}) {
-  const context = vm.createContext({ TextEncoder, crypto: webcrypto });
+  const context = vm.createContext({ TextEncoder, crypto: webcrypto, performance: globalThis.performance });
   for (const [key, fn] of Object.entries({ fixture: inputWitnessFixture, discovery: discoverViewerInput,
     install: installViewerInputWitness, capture: captureViewerInputIdentity, legacy: captureIdentity })) {
     context[key] = vm.runInContext(`(${fn.toString()})`, context);

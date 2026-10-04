@@ -15,7 +15,7 @@ import { INPUT_WITNESS_BOUNDS, requireViewerInputIdentityPair } from './input-wi
 
 const rawContract = readFileSync(new URL('./input-witness-source-contract.json', import.meta.url));
 const contract = JSON.parse(rawContract);
-export const INPUT_PROTOCOL = 'independent-viewer-input-v3-empty-accounting-instrumented';
+export const INPUT_PROTOCOL = 'independent-viewer-input-v4-metadata-lineage-instrumented';
 export const INPUT_SUBJECTS = Object.freeze({ ...contract.subjects });
 const manifestSha256 = createHash('sha256').update(rawContract).digest('hex');
 

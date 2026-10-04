@@ -207,3 +207,63 @@ remain unchanged. The earlier raw optional lifecycle values `opening`, `idle` an
 but not advanced on the baseline path. This neither manufactures updated fields
 nor grants GPU/pixel/full-metadata eligibility. No speed, physical RSS, federation
 or Windows Edge 1.778 GB success claim follows from these controls.
+
+
+### Prospective v4 canonical metadata-store lineage (local QA qualified)
+
+Hosted run 37188415130 at immutable controller `5076e0f` reached the baseline
+producer completion and renderer drain, then refused `model/store replaced`.
+It serialized no offending old/new store comparison, so neither a specific raw
+delivery nor this source mechanism is asserted as that run's exact cause. The
+candidate never ran; baseline-only allocation evidence is not a comparison.
+
+`independent-viewer-input-v4-metadata-lineage-instrumented` permits only one
+source-proven partial-to-full publication before the metadata-complete marker.
+The actual parser hydrates two different stores from the same source accessor
+and the same four primary numeric views. The observer checks those view objects,
+backing buffers, offsets, lengths and type-string values, file size/schema,
+first-upload and exact spatial/metadata producer stages and source file name.
+Model id, active owner, source-file object, visibility and zero placement remain
+fixed. The full pointer is then locked: reset, a second replacement, changed
+source/index, absent completion or even a same-anchor replacement after metadata
+completion refuse. Bounded first-failure scalars retain the comparison if it
+fails. No observer digest or whole-index copy is added to the load hot path.
+
+These pointer checks do **not** detect in-place mutation of numeric contents.
+Canonical immutability is a separate no-write source audit pinned for both
+literal subjects, not a dynamically authenticated caller contract. Unknown or
+modified producer behavior is unsupported. The source contract now also pins
+the parser publication, hydration, column transport and source-accessor modules.
+All prior full-produced hashes, raw deliveries, empty/native-call multiplicity,
+retained Scene checks, readiness/fault/resource/cleanup guards and authored
+channel refusals are unchanged. No old refusal is reaccepted or rewritten.
+
+The prospective controls use actual bounded STEP parsing, real publisher
+serialization and WorkerParser hydration, then real dataSlice and Scene. A
+Worker event adapter only transports these real payloads; GPU byte adapters
+remain explicit. This is local canonical behavior qualification, not real
+hosted UI, GPU pixels, complete model metadata or federation evidence. The finite local selection passed **71 controls with zero failures, cancellations
+or skips**. Replacing only the installer with its immutable `5076e0f` version
+kept the canonical parser-publication test and imports intact and produced one
+real `ERR_ASSERTION` on `model/store replaced`; byte-exact restoration passed
+the same collected case. The named root harness typecheck and six other scoped
+gates passed. Lint actually checked 14 files against 136 rules, with zero
+warnings or errors. MJS remains behavior-tested, not strictly typechecked.
+
+This separately approved correctness allocation used a 12 GiB initial-memory
+floor, 8 GiB live reserve and 2 GiB owned-RSS cap, plus the unchanged 10 GiB
+initial/2 GiB live disk floors and 180-second internal deadline. It does not
+replace the hosted browser or benchmark resource admission. Every finite
+correctness guardian ended with no owned survivors; all source/runtime pins
+were restored and verified. Recorded peaks are sampled process RSS only.
+
+Original disk/memory admission refusals and the earlier 17-pass/15-fail/4-cancel
+fixture run with its owned-RSS abort are retained. That run exposed test-adapter
+namespace, active-model and VM-performance premises, which were corrected
+without weakening assertions. The local final handoff SHA256 is
+`c1842fd24123dbe784999e4a8c8cb92af1d365ca15f4a8fd481f8def69f9bdb6`;
+its 100-record raw manifest SHA256 is
+`10b9c3cdc8944a119f0bb51b615fc62f2416157e4883c43638cde745f5af1ec1`.
+Independent root review separately checked those records and both literal
+subjects' 41 source-contract rows. A new fixed two-arm O-S1 hosted verdict is
+still pending; the old baseline-only failure remains unchanged.

@@ -13,7 +13,7 @@ export function inputWitnessFixture() {
     entityIndex: { byType: new Map([['IfcWall', [10, 42, 43]]]) } };
   const model = { visible: true, idOffset: 0, loadState: 'complete', geometryResult: geometry, ifcDataStore: data };
   const listeners = new Set();
-  let state = { models: new Map(), loading: false, geometryStreamingActive: false, pendingInstancedShards: null,
+  let state = { activeModelId: 'primary', models: new Map(), loading: false, geometryStreamingActive: false, pendingInstancedShards: null,
     appliedEntityLevelOffsets: new Map(), hiddenEntities: new Set(), isolatedEntities: null, ghostExceptEntities: null,
     typeViewMode: 'model', hasTypeGeometry: true, typeVisibility: { spaces: false, spatialZones: false, openings: false,
       virtualElements: false, site: true, ifcAnnotations: true, ifcGrid: true } };

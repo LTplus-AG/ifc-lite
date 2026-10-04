@@ -276,7 +276,7 @@ export async function captureViewerInputIdentity(limits) {
     totalTriangles: geometry.totalTriangles, totalVertices: geometry.totalVertices,
     instancedGeometryHashes: geometry.instancedGeometryHashes, instancedGeometryAabbs: geometry.instancedGeometryAabbs,
     instancedGeometryVolumes: geometry.instancedGeometryVolumes };
-  const result = { complete: true, protocol: 'independent-viewer-input-v3-empty-accounting-instrumented',
+  const result = { complete: true, protocol: 'independent-viewer-input-v4-metadata-lineage-instrumented',
     producedSha256: await hash(produced), rawInstancedInputSha256: await hash(rawInputs),
     viewportInputSha256: await hash({ flat: viewport.sort(), instances: decodedInputs.sort(), policy,
       coordinateInfo: props.coordinateInfo, sectionCoordinateInfo: props.sectionCoordinateInfo, primaryModelIndex: 0 }),

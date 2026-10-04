@@ -89,7 +89,7 @@ test('#6537 reference proof rejects wrong role, subject and contract without tru
 });
 
 test('#6537 serialized controller installs before producer delivery, captures actual native arguments then restores wrappers', async () => {
-  const context = createContext({ crypto: webcrypto, TextEncoder });
+  const context = createContext({ crypto: webcrypto, TextEncoder, performance: globalThis.performance });
   const fixture = runInContext(`(${inputWitnessFixture.toString()})()`, context);
   const original = fixture.scene.addInstancedShard;
   const page = { evaluate(callback, argument) {
@@ -110,7 +110,7 @@ test('#6537 serialized controller installs before producer delivery, captures ac
 });
 
 test('#6537 serialized controller refuses genuinely dropped retained piece and still restores owned wrappers', async () => {
-  const context = createContext({ crypto: webcrypto, TextEncoder });
+  const context = createContext({ crypto: webcrypto, TextEncoder, performance: globalThis.performance });
   const fixture = runInContext(`(${inputWitnessFixture.toString()})()`, context);
   const original = fixture.scene.addInstancedShard;
   const page = { evaluate(callback, argument) {

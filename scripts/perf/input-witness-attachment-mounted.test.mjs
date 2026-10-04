@@ -89,7 +89,7 @@ test('#6537 mounted canonical pending drain observes geometry and IFNS parsed be
       referenceAudit: { subjectHead: 'c'.repeat(40), manifestSha256: 'a'.repeat(64), immutableArguments: true } });
     assert.equal(registration.awaitsRendererReady, true);
     const bytes = triangleCompatibilityBytes();
-    api.setState({ models: new Map([['primary', { visible: true, idOffset: 0, ifcDataStore: metadata }]]) });
+    api.setState({ activeModelId: 'primary', models: new Map([['primary', { visible: true, idOffset: 0, ifcDataStore: metadata }]]) });
     api.getState().appendInstancedShards('primary', [canonicalEmptyBytes(), bytes, canonicalEmptyBytes()]);
     await act(async () => { root.render(createElement(Mounted, { geometry, modelIdToIndex: new Map([['primary', 0]]) })); });
     assert.equal(scene.meshDataMap.size, 0); assert.equal(scene.getInstancedEntityCount(), 0);

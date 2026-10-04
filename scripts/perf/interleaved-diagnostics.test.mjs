@@ -206,9 +206,12 @@ test('#6537 passive producer milestones preserve console delegation and survive 
   runInContext(`(${installReadinessMilestones.toString()})()`, realm);
   runInContext(`listeners[0]({ target: input }); now = 20;
     console.log('[useIfc] Geometry streaming complete: 1 batch', { unchanged: true });
-    now = 50; console.log('[useIfc] Data model parsing complete for x.ifc');`, realm);
+    now = 30; console.log('[useIfc] Spatial tree ready for x.ifc at 12ms');
+    now = 50; console.log('[useIfc] Data model parsing complete for x.ifc: 32ms');`, realm);
   const record = JSON.parse(runInContext('JSON.stringify(__ifc_lite_comparison_milestones__)', realm));
   assert.equal(record.uploadMs, 10); assert.equal(record.geometryMs, 20); assert.equal(record.metadataMs, 50);
+  assert.equal(record.spatialMs, 30); assert.equal(record.spatialCount, 1);
+  assert.equal(record.spatialFileName, 'x.ifc'); assert.equal(record.metadataFileName, 'x.ifc');
   assert.equal(record.error, null);
   assert.equal(runInContext('delegated[0].receiver', realm), true);
   assert.equal(runInContext('delegated[0].args[1].unchanged', realm), true);

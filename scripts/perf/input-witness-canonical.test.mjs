@@ -12,6 +12,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { captureViewerInputDiagnostic } from './input-witness-diagnostic.mjs';
 import { canonicalEmptyBytes, produceCanonicalEmpty } from './input-witness-empty-fixture.mjs';
+import { canonicalStorePublication } from './input-witness-lineage-fixtures.mjs';
 import { tsImport } from 'tsx/esm/api';
 import { discoverViewerInput } from './input-witness-discovery.mjs';
 import { installViewerInputWitness } from './input-witness-install.mjs';
@@ -84,13 +85,13 @@ function control() {
   }
   const limits = { oneBufferBytes: 1024 ** 2, digestBytes: 16 * 1024 ** 2, records: 100000,
     zeroPlacementSource: expectedZeroPlacedMesh.toString() };
-  function begin(meshes = [mesh]) {
+  function begin(meshes = [mesh], dataStore = metadata, sourceFile) {
     geometry.meshes = meshes;
     geometry.totalVertices = meshes.reduce((n, part) => n + part.positions.length / 3, 0);
     geometry.totalTriangles = meshes.reduce((n, part) => n + part.indices.length / 3, 0);
     api.setState({ activeModelId: modelId, models: new Map([[modelId,
-      { id: modelId, visible: true, idOffset: 0, loadState: 'complete', geometryResult: geometry, ifcDataStore: metadata }]]),
-    geometryResult: geometry, ifcDataStore: metadata });
+      { id: modelId, sourceFile, visible: true, idOffset: 0, loadState: 'complete', geometryResult: geometry, ifcDataStore: dataStore }]]),
+    geometryResult: geometry, ifcDataStore: dataStore });
     props.geometry = geometryWithModelIndex(geometry, 0).meshes;
     for (const part of props.geometry) scene.addMeshData(part);
   }
@@ -338,3 +339,100 @@ test('#6537 empty native call changing retained Scene census is refused', async 
     c.cleanup();
   }
 });
+
+// #6537: real publication yields distinct metadata-store objects. Its shared
+// source/index lineage, not object lifetime, owns this cold-load observation.
+test('#6537 parser publication adapter rolls back actual global descriptors on installation refusal', async () => {
+  const publication = await canonicalStorePublication(sourceDir, options), c = control();
+  const prior = Object.getOwnPropertyDescriptor(globalThis, '__ifc_lite_comparison_milestones__');
+  const sentinel = { alreadyInstalled: true };
+  Object.defineProperty(globalThis, '__ifc_lite_comparison_milestones__', { configurable: true, value: sentinel });
+  const globals = ['Worker', 'HTMLInputElement', '__ifc_lite_comparison_milestones__'];
+  const before = globals.map(name => Object.getOwnPropertyDescriptor(globalThis, name));
+  const documentBefore = ['querySelector', 'addEventListener'].map(name => Object.getOwnPropertyDescriptor(document, name));
+  const logBefore = console.log;
+  try {
+    assert.throws(() => publication.install(() => assert.fail('no parser callback after installation refusal')), /already installed/);
+    assert.deepEqual(globals.map(name => Object.getOwnPropertyDescriptor(globalThis, name)), before);
+    assert.deepEqual(['querySelector', 'addEventListener'].map(name => Object.getOwnPropertyDescriptor(document, name)), documentBefore);
+    assert.strictEqual(console.log, logBefore);
+  } finally {
+    if (prior) Object.defineProperty(globalThis, '__ifc_lite_comparison_milestones__', prior);
+    else delete globalThis.__ifc_lite_comparison_milestones__;
+    c.cleanup();
+  }
+});
+test('#6537 real canonical partial-to-full parser publication keeps Scene input eligible', async () => {
+  const publication = await canonicalStorePublication(sourceDir, options), c = control();
+  let partial;
+  const lifecycle = publication.install(value => { partial = value; c.api.getState().setIfcDataStore(value); });
+  try {
+    c.begin(undefined, null, publication.file);
+    lifecycle.partial(); c.ingest(triangleCompatibilityBytes());
+    const full = await lifecycle.complete();
+    assert.notStrictEqual(full, partial);
+    assert.strictEqual(full.source, partial.source);
+    const before = partial.entityIndex.byId.getColumns(), after = full.entityIndex.byId.getColumns();
+    for (const field of ['expressIds', 'byteOffsets', 'byteLengths', 'typeIndices']) assert.strictEqual(after[field], before[field]);
+    c.api.getState().setIfcDataStore(full); lifecycle.metadataComplete();
+    c.ingest(canonicalEmptyBytes());
+    let frozen;
+    assert.doesNotThrow(() => { frozen = globalThis.__ifc_lite_input_witness__.freeze(); });
+    assert.strictEqual(frozen.dataStore, full);
+    assert.equal(frozen.inputs.length, 2); assert.equal(frozen.deliveries.length, 2);
+    assert.equal(frozen.inputs[1].empty, true); assert.equal(frozen.inputs[1].accepted, true);
+    assert.equal(c.scene.getInstancedEntityCount(), 2); assert.equal(c.scene.meshDataMap.size, 1);
+    assert.deepEqual(full.getProperties(10), publication.expectedProperties);
+    assert.ok(publication.expectedProperties.length > 0);
+    const diagnostic = globalThis.__ifc_lite_input_witness__.diagnostic();
+    assert.equal(diagnostic.transitions, 1); assert.equal(diagnostic.finalLocked, true); assert.equal(diagnostic.failure, null);
+  } finally { lifecycle.cleanup(); c.cleanup(); }
+});
+
+for (const scenario of ['different-source', 'different-primary-index', 'active-model-swap', 'source-file-swap',
+  'store-reset', 'second-replacement', 'same-anchors-after-metadata', 'missing-completion', 'model-removal']) {
+  test(`#6537 canonical parser lifecycle refuses ${scenario} without losing native Scene output`, async () => {
+    const publication = await canonicalStorePublication(sourceDir, options), c = control();
+    const lifecycle = publication.install(value => c.api.getState().setIfcDataStore(value));
+    try {
+      c.begin(undefined, null, publication.file); lifecycle.partial(); c.ingest(triangleCompatibilityBytes());
+      const full = await lifecycle.complete();
+      if (scenario === 'different-source') c.api.getState().setIfcDataStore({ ...full, source: { unrelated: true } });
+      else if (scenario === 'different-primary-index') {
+        const columns = full.entityIndex.byId.getColumns();
+        const index = new full.entityIndex.byId.constructor(new Uint32Array(columns.expressIds),
+          new Uint32Array(columns.byteOffsets), new Uint32Array(columns.byteLengths), new Uint16Array(columns.typeIndices), [...columns.typeStrings]);
+        c.api.getState().setIfcDataStore({ ...full, entityIndex: { ...full.entityIndex, byId: index } });
+      } else {
+        c.api.getState().setIfcDataStore(full);
+        if (scenario === 'active-model-swap') c.api.setState({ activeModelId: 'foreign' });
+        if (scenario === 'source-file-swap') {
+          const state = c.api.getState(), [id, model] = state.models.entries().next().value;
+          c.api.setState({ models: new Map([[id, { ...model, sourceFile: { ...publication.file } }]]) });
+        }
+        if (scenario === 'store-reset') c.api.getState().setIfcDataStore(null);
+        if (scenario === 'second-replacement') c.api.getState().setIfcDataStore({ ...full });
+        if (scenario === 'model-removal') c.api.setState({ models: new Map(), activeModelId: null });
+        if (scenario === 'same-anchors-after-metadata') {
+          lifecycle.metadataComplete(); c.api.getState().setIfcDataStore({ ...full });
+        }
+      }
+      if (!['missing-completion', 'same-anchors-after-metadata'].includes(scenario)) lifecycle.metadataComplete();
+      assert.throws(() => globalThis.__ifc_lite_input_witness__.freeze(),
+        /model\/store replaced|metadata store reset|final store unconfirmed|model removed/);
+      const diagnostic = globalThis.__ifc_lite_input_witness__.diagnostic();
+      assert.ok(diagnostic.firstFailure?.reason);
+      if (scenario === 'same-anchors-after-metadata') {
+        assert.equal(diagnostic.firstFailure.primaryAnchorEqual, true);
+        assert.equal(diagnostic.firstFailure.sourceEqual, true);
+        assert.equal(diagnostic.firstFailure.finalLocked, true);
+        const { producer, pagePerformanceMs } = diagnostic.firstFailure;
+        assert.equal(producer.uploadCount, 1); assert.equal(producer.spatialCount, 1); assert.equal(producer.metadataCount, 1);
+        assert.ok(producer.spatialMs >= producer.uploadMs);
+        assert.ok(producer.metadataMs >= producer.spatialMs);
+        assert.ok(pagePerformanceMs >= producer.metadataMs);
+      }
+      assert.equal(c.scene.getInstancedEntityCount(), 2, 'observation refuses; canonical retained output is not dropped');
+    } finally { lifecycle.cleanup(); c.cleanup(); }
+  });
+}

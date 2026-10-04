@@ -29,7 +29,8 @@ export async function captureViewerInputDiagnostic() {
     } catch (error) { row.observationError = String(error); }
     deliveries.push(row);
   }
-  return { status: 'refusal-diagnostic-only', failure: raw.failure, revision: raw.revision,
+  return { status: 'refusal-diagnostic-only', failure: raw.failure, firstFailure: raw.firstFailure,
+    transitions: raw.transitions, finalLocked: raw.finalLocked, revision: raw.revision,
     calls: raw.calls, deliveryCount: raw.deliveryCount, inputCount: raw.inputCount,
     firstEmptyCall: raw.firstEmptyCall, retainedBytes: raw.retainedBytes, deliveries,
     omittedDeliveries: raw.deliveryCount - deliveries.length, frozen: raw.frozen,

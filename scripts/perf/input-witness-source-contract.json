@@ -1,5 +1,5 @@
 {
-  "protocol": "independent-viewer-input-v3-empty-accounting-instrumented",
+  "protocol": "independent-viewer-input-v4-metadata-lineage-instrumented",
   "subjects": {
     "base": "7dfc29870b0aa6a593c163592fcb84a92e5dfa19",
     "candidate": "9fc86cb8ead77486b0bcd29726b775c27085524b"
@@ -169,6 +169,46 @@
       "path": "scripts/build-wasm.sh",
       "baseSha256": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
       "candidateSha256": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b"
+    },
+    {
+      "path": "packages/parser/src/worker-parser.ts",
+      "baseSha256": "2d6d65b8dfe51f3d118023f6805f3c1623ddaf7830bcacb5e58881812d55ad4c",
+      "candidateSha256": "2d6d65b8dfe51f3d118023f6805f3c1623ddaf7830bcacb5e58881812d55ad4c"
+    },
+    {
+      "path": "packages/parser/src/parser.worker.ts",
+      "baseSha256": "14ebcb2f23c36e7520bd8623caedf29a03f975bb1463d2cb0030c963e6bce4e1",
+      "candidateSha256": "14ebcb2f23c36e7520bd8623caedf29a03f975bb1463d2cb0030c963e6bce4e1"
+    },
+    {
+      "path": "packages/parser/src/worker-index-publication.ts",
+      "baseSha256": "2bce80f3f4f9312315d459a9189b7fb047a3a9b28836f1c840fe340b109f4aa3",
+      "candidateSha256": "2bce80f3f4f9312315d459a9189b7fb047a3a9b28836f1c840fe340b109f4aa3"
+    },
+    {
+      "path": "packages/parser/src/data-store-transport.ts",
+      "baseSha256": "e1116adc3365188e65f56e1b75b3420bb98b7dd3ce59ad7f686117ad5b439621",
+      "candidateSha256": "e1116adc3365188e65f56e1b75b3420bb98b7dd3ce59ad7f686117ad5b439621"
+    },
+    {
+      "path": "packages/parser/src/compact-entity-index.ts",
+      "baseSha256": "0a15e480868d93d34d25a0b794a7cad2766ee2f43ae5455276a1b31e13502cb3",
+      "candidateSha256": "0a15e480868d93d34d25a0b794a7cad2766ee2f43ae5455276a1b31e13502cb3"
+    },
+    {
+      "path": "packages/parser/src/compact-entity-index-transport.ts",
+      "baseSha256": "ae9f5eaa33ea837458b74fe4addf6ac2216e730da76db7ed50df421d23f3f0cb",
+      "candidateSha256": "ae9f5eaa33ea837458b74fe4addf6ac2216e730da76db7ed50df421d23f3f0cb"
+    },
+    {
+      "path": "packages/parser/src/compact-entity-index-columns.ts",
+      "baseSha256": "5afce073594e0786034b9328fed31b7b08a1b1cc2425fb30e611ae29e6a51471",
+      "candidateSha256": "5afce073594e0786034b9328fed31b7b08a1b1cc2425fb30e611ae29e6a51471"
+    },
+    {
+      "path": "packages/parser/src/source-bytes.ts",
+      "baseSha256": "3cb55073d9c309511cd667c52fe4363f0189a8b4713127df39f13223c4044e40",
+      "candidateSha256": "3cb55073d9c309511cd667c52fe4363f0189a8b4713127df39f13223c4044e40"
     }
   ],
   "referenceArgumentContract": "Actual frozen canonical delivery/decoder/preparation/cache/placement paths read retained nested input without mutation for single-primary/zero-offset/no-level-load; unsupported mutation paths remain native-delegating sticky refusals. Posttimer revision checks do not replace this source condition.",

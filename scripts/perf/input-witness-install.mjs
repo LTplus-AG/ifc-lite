@@ -36,7 +36,74 @@ export function installViewerInputWitness({ discoverySource, bounds, referenceAu
   }
   const deliveries = [], inputs = [], seenEntries = new WeakSet(), byBuffer = new Map(), restorations = [];
   let failure = null, revision = 0, frozen = false, disposed = false, retainedBytes = 0, calls = 0;
-  let modelId = null, model, dataStore, device, firstEmptyCall;
+  let modelId = null, model, dataStore, device, firstEmptyCall, sourceFile, lineage, pendingFinal;
+  let transitions = 0, finalLocked = false, firstFailure;
+  const objectIds = new WeakMap(); let nextObjectId = 1;
+  function objectId(value) {
+    if (!value || (typeof value !== 'object' && typeof value !== 'function')) return null;
+    if (!objectIds.has(value)) objectIds.set(value, nextObjectId++);
+    return objectIds.get(value);
+  }
+  function primaryAnchor(value) {
+    const index = value?.entityIndex?.byId;
+    if (!value?.source || typeof index?.getColumns !== 'function') return null;
+    const columns = index.getColumns(), fields = ['expressIds', 'byteOffsets', 'byteLengths', 'typeIndices'];
+    if (Object.keys(columns).length !== 5 || !fields.every(key => Object.hasOwn(columns, key))
+      || !Array.isArray(columns.typeStrings) || columns.typeStrings.length > 1024
+      || columns.typeStrings.some(name => typeof name !== 'string')
+      || new Set(columns.typeStrings).size !== columns.typeStrings.length
+      || !fields.every((key, i) => columns[key] instanceof (i === 3 ? Uint16Array : Uint32Array)
+        && columns[key].length === index.size)
+      || !Number.isSafeInteger(value.fileSize) || value.fileSize <= 0 || typeof value.schemaVersion !== 'string') return null;
+    return { source: value.source, fileSize: value.fileSize, schemaVersion: value.schemaVersion,
+      fields: fields.map(key => ({ view: columns[key], buffer: columns[key].buffer,
+        byteOffset: columns[key].byteOffset, byteLength: columns[key].byteLength, length: columns[key].length })),
+      typeStrings: columns.typeStrings.slice() };
+  }
+  function sameAnchor(a, b) {
+    return !!a && !!b && a.source === b.source && a.fileSize === b.fileSize && a.schemaVersion === b.schemaVersion
+      && a.fields.every((field, i) => Object.keys(field).every(key => field[key] === b.fields[i][key]))
+      && a.typeStrings.length === b.typeStrings.length && a.typeStrings.every((name, i) => name === b.typeStrings[i]);
+  }
+  function publication() {
+    return globalThis.__ifc_lite_comparison_milestones__;
+  }
+  function confirmFinal() {
+    const phase = publication();
+    if (phase?.metadataCount > 0) {
+      if (pendingFinal && (phase.error || phase.metadataCount !== 1 || phase.spatialCount !== 1
+        || phase.metadataFileName !== sourceFile?.name || phase.spatialFileName !== sourceFile?.name
+        || !Number.isFinite(phase.metadataMs) || !(phase.metadataMs >= phase.spatialMs))) fail('metadata lineage confirmation unavailable');
+      finalLocked = true;
+    }
+  }
+  function observeStore(id, item, next) {
+    confirmFinal();
+    if (modelId !== null && (id !== modelId || next.activeModelId !== modelId || item.sourceFile !== sourceFile)) {
+      fail('model/store replaced', { ownerReason: 'model/active/source-file owner replaced',
+        activeModelId: next.activeModelId, observedModelId: id, sourceFileEqual: item.sourceFile === sourceFile }); return;
+    }
+    if (dataStore && !item.ifcDataStore) { fail('metadata store reset'); return; }
+    if (dataStore && item.ifcDataStore !== dataStore) {
+      const phase = publication(), candidate = primaryAnchor(item.ifcDataStore), oldId = objectId(dataStore);
+      const valid = !finalLocked && transitions === 0 && phase?.uploadCount === 1 && phase.spatialCount === 1
+        && phase.metadataCount === 0 && !phase.error && phase.spatialFileName === sourceFile?.name
+        && Number.isFinite(phase.spatialMs) && Number.isFinite(phase.uploadMs)
+        && phase.spatialMs >= phase.uploadMs && sameAnchor(lineage, candidate);
+      if (!valid) {
+        fail('model/store replaced', { oldStoreId: oldId, newStoreId: objectId(item.ifcDataStore),
+          oldSourceId: objectId(lineage?.source), newSourceId: objectId(candidate?.source),
+          sourceEqual: lineage?.source === candidate?.source, primaryAnchorEqual: sameAnchor(lineage, candidate),
+          activeModelId: next.activeModelId, modelId: id, transitions, finalLocked,
+          spatialCount: phase?.spatialCount ?? null, metadataCount: phase?.metadataCount ?? null });
+        return;
+      }
+      transitions++; pendingFinal = item.ifcDataStore; dataStore = item.ifcDataStore;
+    }
+    if (modelId === null) sourceFile = item.sourceFile;
+    modelId = id; model = item;
+    if (item.ifcDataStore && !dataStore) { dataStore = item.ifcDataStore; lineage = primaryAnchor(dataStore); }
+  }
   function emptyEnvelope(buffer) {
     return buffer.byteLength === 32 && new Uint32Array(buffer).every((word, i) => word === (i === 0 ? 0x49464e53 : i === 1 ? 1 : 0));
   }
@@ -51,7 +118,17 @@ export function installViewerInputWitness({ discoverySource, bounds, referenceAu
       scene.instancedTemplateCpu.length, scene.getInstancedEntityCount(), scene.getInstancedTemplates().length,
       scene.meshDataMap, scene.meshDataMap.size];
   }
-  function fail(reason) { failure ??= reason; }
+  function fail(reason, details) {
+    if (failure === null) {
+      failure = reason;
+      const phase = publication(), scalar = value => Number.isFinite(value) ? value : null;
+      firstFailure = { reason, revision, calls, modelId, pagePerformanceMs: performance.now(),
+        stage: phase?.metadataCount ? 'metadata-complete' : 'metadata-pending',
+        producer: { uploadMs: scalar(phase?.uploadMs), spatialMs: scalar(phase?.spatialMs),
+          metadataMs: scalar(phase?.metadataMs), uploadCount: scalar(phase?.uploadCount),
+          spatialCount: scalar(phase?.spatialCount), metadataCount: scalar(phase?.metadataCount) }, ...details };
+    }
+  }
   function observe(next) {
     try {
       if (disposed) return;
@@ -61,9 +138,7 @@ export function installViewerInputWitness({ discoverySource, bounds, referenceAu
       if (next.models.size) {
         const [id, item] = next.models.entries().next().value;
         if ((item.idOffset ?? 0) !== 0 || item.visible !== true) fail('nonprimary/hidden model scope');
-        if (modelId !== null && (id !== modelId || (dataStore && item.ifcDataStore && item.ifcDataStore !== dataStore))) fail('model/store replaced');
-        modelId = id; model = item;
-        if (item.ifcDataStore) dataStore ??= item.ifcDataStore;
+        observeStore(id, item, next);
       } else if (modelId !== null) fail('model removed');
       const pending = next.pendingInstancedShards;
       if (pending === null || pending === undefined) return;
@@ -210,7 +285,7 @@ export function installViewerInputWitness({ discoverySource, bounds, referenceAu
     const witness = {
       discover, store, get renderer() { return renderer; }, get scene() { return scene; }, referenceAudit, bounds,
       diagnostic() {
-        return { failure, revision, calls, disposed, frozen, deliveryCount: deliveries.length,
+        return { failure, firstFailure, transitions, finalLocked, revision, calls, disposed, frozen, deliveryCount: deliveries.length,
           inputCount: inputs.length, firstEmptyCall, retainedBytes,
           // Bounded references for post-timer hashing only; never a success gate.
           deliveries: [...new Set([0, 1, 2, 3, deliveries.findIndex(item => item.ingestions !== 1)])]
@@ -220,6 +295,8 @@ export function installViewerInputWitness({ discoverySource, bounds, referenceAu
       freeze() {
         if (disposed || frozen) refuse('witness cannot freeze twice/disposed');
         observe(store.getState()); frozen = true;
+        if (pendingFinal && (!finalLocked || pendingFinal !== dataStore)) fail('metadata lineage final store unconfirmed',
+          { finalStoreId: objectId(dataStore), transitions, finalLocked });
         if (failure) refuse(failure);
         if (!attached) refuse('renderer was never attached before ingestion');
         verifyHook();

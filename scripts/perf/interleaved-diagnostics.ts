@@ -71,14 +71,16 @@ export function passiveRendererWitness() {
     streaming: state && typeof state === 'object' ? Reflect.get(state, 'geometryStreamingActive') : null };
 }
 
-/** Install once on a fresh page before upload; records four fixed scalar milestones.
+/** Install once on a fresh page before upload; records fixed scalar milestones.
  * Console arguments/receiver are delegated unchanged. This instrumentation is
  * prospective observer overhead in both arms, not an uninstrumented timing claim. */
 export function installReadinessMilestones() {
   const host = globalThis as Record<string, unknown>;
   if (host.__ifc_lite_comparison_milestones__) throw new Error('REFUSE: observer already installed');
   const record = { uploadMs: null as number | null, geometryMs: null as number | null,
-    metadataMs: null as number | null, uploadCount: 0, geometryCount: 0, metadataCount: 0,
+    metadataMs: null as number | null, spatialMs: null as number | null,
+    spatialFileName: null as string | null, metadataFileName: null as string | null,
+    spatialCount: 0, uploadCount: 0, geometryCount: 0, metadataCount: 0,
     error: null as string | null };
   host.__ifc_lite_comparison_milestones__ = record;
   const original = console.log;
@@ -92,6 +94,8 @@ export function installReadinessMilestones() {
     },
     log(...args: unknown[]) {
       if (record.uploadMs !== null && typeof args[0] === 'string') {
+        const spatial = /^\[useIfc\] Spatial tree ready for (.+) at [\d.]+ms$/.exec(args[0]);
+        if (spatial) { record.spatialCount++; record.spatialMs = performance.now(); record.spatialFileName = spatial[1]; }
         if (/^\[useIfc\] (?:Native )?(?:Stream complete|Geometry streaming complete)/.test(args[0])) {
           record.geometryCount++;
           record.geometryMs = performance.now();
@@ -99,8 +103,10 @@ export function installReadinessMilestones() {
         if (/^\[useIfc\] (?:Native )?(?:metadata|Data model) (?:parse|parsing) complete/i.test(args[0])) {
           record.metadataCount++;
           record.metadataMs = performance.now();
+          const metadata = /^\[useIfc\] Data model parsing complete for (.+): [\d.]+ms$/.exec(args[0]);
+          record.metadataFileName = metadata?.[1] ?? null;
         }
-        if (record.geometryCount > 8 || record.metadataCount > 8) record.error = 'milestone record budget exceeded';
+        if (record.geometryCount > 8 || record.metadataCount > 8 || record.spatialCount > 8) record.error = 'milestone record budget exceeded';
       }
       Reflect.apply(original, this, args);
     },

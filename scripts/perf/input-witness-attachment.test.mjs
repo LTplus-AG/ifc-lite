@@ -12,7 +12,7 @@ import { installViewerInputWitness } from './input-witness-install.mjs';
 
 // Serialization and lifecycle controls, not real React/GPU qualification.
 function fixture() {
-  const c = vm.createContext({});
+  const c = vm.createContext({ performance: globalThis.performance });
   for (const [key, fn] of Object.entries({ fixture: inputWitnessFixture, install: installViewerInputWitness })) {
     c[key] = vm.runInContext(`(${fn.toString()})`, c);
   }

@@ -11,8 +11,8 @@ See the [architecture docs](https://ifclite.dev/docs/) for the full design.
 
 ## Registering your own provider in a viewer build
 
-The viewer registers its built-in providers (Autodesk, Dalux, Dropbox, Microsoft 365)
-itself. A host application that builds the viewer from source can add its own
+The viewer registers its built-in providers itself. A host application that
+builds the viewer from source can add its own
 `FileSourceProvider` implementations at build time, without patching viewer
 source: point the build's entry at a file of your own that calls the viewer's
 `mountViewer` (in `apps/viewer/src/bootstrap.tsx`, which is all the stock

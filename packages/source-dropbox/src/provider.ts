@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { matchesGlob } from '@ifc-lite/plugin-api';
 import type {
   ConnectionTestResult,
   DownloadOptions,
@@ -14,6 +13,8 @@ import type {
   PluginContext,
   RevisionEvent,
   RevisionWatchResult,
+  SourceAuth,
+  PluginManifest,
   SourceContainer,
   SourceFile,
   SourceFileRef,
@@ -22,8 +23,9 @@ import type {
 } from '@ifc-lite/plugin-api';
 
 import { createTokenManager, dropboxAuth, requireClientId } from './auth.js';
+import type { DropboxApiClient } from './http-client.js';
 import { BrowserDropboxApiClient, DropboxHttpError } from './http-client.js';
-import { decodeCurrentAccount, decodeListFolderResult, decodeListRevisionsResult, decodeMetadataEntry, decodeSearchResult } from './dropbox-types.js';
+import { decodeCurrentAccount, decodeListFolderResult, decodeListRevisionsResult, decodeSearchResult } from './dropbox-types.js';
 import {
   clampPageSize,
   clampRevisionsPageSize,
@@ -38,6 +40,7 @@ import {
   toSourceRevision,
 } from './mapping.js';
 import { DROPBOX_MANIFEST } from './manifest.js';
+import { applyFileFilter, decodeCursorOnly, resolveContainerIdsByParentPath } from './provider-helpers.js';
 
 /** The single project this provider exposes. Dropbox's consumer API has no
  *  "list every team/shared space I can see" for a personal account scope —
@@ -48,9 +51,22 @@ import { DROPBOX_MANIFEST } from './manifest.js';
  *  `ME_PROJECT_ID`. */
 const MY_DROPBOX_PROJECT_ID = 'me';
 
+/** Supply both auth and API transport to use server-hosted vendor sign-in. */
+export interface DropboxProviderOptions {
+  readonly auth: SourceAuth;
+  createClient(ctx: PluginContext): DropboxApiClient | Promise<DropboxApiClient>;
+}
+
 export class DropboxProvider implements FileSourceProvider {
-  readonly manifest = DROPBOX_MANIFEST;
-  readonly auth = dropboxAuth;
+  readonly manifest: PluginManifest;
+  readonly auth: SourceAuth;
+
+  constructor(private readonly options?: DropboxProviderOptions) {
+    this.auth = options?.auth ?? dropboxAuth;
+    this.manifest = options
+      ? { ...DROPBOX_MANIFEST, title: 'Dropbox', preferences: [], permissions: { network: [] } }
+      : DROPBOX_MANIFEST;
+  }
 
   async listProjects(ctx: PluginContext, options?: ListProjectsOptions): Promise<Page<SourceProject>> {
     const client = await this.createClient(ctx);
@@ -191,7 +207,7 @@ export class DropboxProvider implements FileSourceProvider {
         .map((match) => searchResultParentPath(match.metadata.path_lower))
         .filter((path): path is string => path !== undefined),
     );
-    const containerIdByParentPath = await this.resolveContainerIdsByParentPath(client, ctx, parentPaths, options?.signal);
+    const containerIdByParentPath = await resolveContainerIdsByParentPath(client, ctx, parentPaths, options?.signal);
 
     let files = fileMatches.map((match) => {
       const parentPath = searchResultParentPath(match.metadata.path_lower);
@@ -201,44 +217,6 @@ export class DropboxProvider implements FileSourceProvider {
     files = applyFileFilter(files, filter);
 
     return { items: files, cursor: result.has_more ? result.cursor : undefined };
-  }
-
-  /**
-   * Resolves each distinct search-result parent *path* to the real Dropbox
-   * folder `id` `listContainers`/`listFiles` would hand out for it, via
-   * `files/get_metadata` — one round trip per distinct path, run in
-   * parallel, never one per search match. A path that fails to resolve (a
-   * transient error, or — defensively — a `path` that turns out not to name
-   * a folder) is logged and simply left out of the returned map; the caller
-   * falls back to the raw path string for that one file rather than failing
-   * the whole search over one bad lookup.
-   */
-  private async resolveContainerIdsByParentPath(
-    client: BrowserDropboxApiClient,
-    ctx: PluginContext,
-    parentPaths: ReadonlySet<string>,
-    signal?: AbortSignal,
-  ): Promise<Map<string, string>> {
-    const resolved = new Map<string, string>();
-    await Promise.all(
-      [...parentPaths].map(async (parentPath) => {
-        try {
-          const raw = await client.rpc('/files/get_metadata', { path: parentPath }, signal);
-          const entry = decodeMetadataEntry(raw);
-          if (entry['.tag'] !== 'folder') {
-            ctx.log.warn('Dropbox: search result parent path did not resolve to a folder', { parentPath, tag: entry['.tag'] });
-            return;
-          }
-          resolved.set(parentPath, entry.id);
-        } catch (err) {
-          ctx.log.warn('Dropbox: failed to resolve search result parent folder id; falling back to its path', {
-            parentPath,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }),
-    );
-    return resolved;
   }
 
   /**
@@ -387,7 +365,7 @@ export class DropboxProvider implements FileSourceProvider {
   }
 
   private async listFolderPage(
-    client: BrowserDropboxApiClient,
+    client: DropboxApiClient,
     containerId: string | undefined,
     options?: ListOptions,
   ) {
@@ -401,32 +379,11 @@ export class DropboxProvider implements FileSourceProvider {
     return decodeListFolderResult(raw);
   }
 
-  private async createClient(ctx: PluginContext): Promise<BrowserDropboxApiClient> {
+  private async createClient(ctx: PluginContext): Promise<DropboxApiClient> {
+    if (this.options) return this.options.createClient(ctx);
     const clientId = await requireClientId(ctx);
     const manager = createTokenManager(ctx, clientId);
     const accessToken = await manager.getValidAccessToken();
     return new BrowserDropboxApiClient(accessToken, ctx);
   }
-}
-
-function applyFileFilter(files: SourceFile[], filter?: FileFilter): SourceFile[] {
-  let result = files;
-  if (filter?.namePatterns?.length) {
-    const patterns = filter.namePatterns;
-    result = result.filter((file) => patterns.some((pattern) => matchesGlob(file.name, pattern)));
-  }
-  if (filter?.mimeTypes?.length) {
-    const mimeTypes = filter.mimeTypes;
-    result = result.filter((file) => file.mimeType && mimeTypes.includes(file.mimeType));
-  }
-  return result;
-}
-
-/** `files/list_folder/get_latest_cursor` responds with just `{ cursor }` —
- *  no `entries`/`has_more` the way a full listing page has. */
-function decodeCursorOnly(raw: unknown): string {
-  if (typeof raw !== 'object' || raw === null || typeof (raw as { cursor?: unknown }).cursor !== 'string') {
-    throw new Error('Dropbox list_folder/get_latest_cursor response is missing "cursor"');
-  }
-  return (raw as { cursor: string }).cursor;
 }

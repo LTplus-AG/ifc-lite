@@ -1,0 +1,95 @@
+{
+  "source": "6c4b1c5ca5f2d5af5cac67dfb15dde42121e0011",
+  "tree": "22e323839e223e9c4a5a4245ecfc1ff612ac21ff",
+  "actualMain": "1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9",
+  "owningPrepared": "ea6e354b165fb43fc84b5b6de35f0a107a741540",
+  "owningTree": "52ec8c4834caaadb1840929243b49a30c03414a2",
+  "deltaPaths": [
+    ".changeset/task-output-products-6749.md",
+    "apps/viewer/src/components/viewer/PropertiesPanel.tsx",
+    "apps/viewer/src/components/viewer/properties/ScheduleCard.tsx",
+    "apps/viewer/src/components/viewer/properties/TaskEditCard.tsx",
+    "apps/viewer/src/components/viewer/schedule/schedule-animator.test.ts",
+    "apps/viewer/src/components/viewer/schedule/schedule-animator.ts",
+    "apps/viewer/src/components/viewer/schedule/schedule-selection.test.ts",
+    "apps/viewer/src/components/viewer/schedule/schedule-selection.ts",
+    "apps/viewer/src/lib/charts/datasets/schedule.ts",
+    "apps/viewer/src/lib/scripts/templates/bim-globals.d.ts",
+    "apps/viewer/src/sdk/adapters/export-schedule-outputs-6749.test.ts",
+    "apps/viewer/src/sdk/adapters/export-schedule-strip.ts",
+    "apps/viewer/src/store/slices/schedule-edit-helpers.ts",
+    "apps/viewer/src/store/slices/scheduleSlice.test.ts",
+    "apps/viewer/src/store/slices/scheduleSlice.ts",
+    "packages/parser/src/index.ts",
+    "packages/parser/src/schedule-extractor.ts",
+    "packages/parser/src/schedule-serializer-builders.ts",
+    "packages/parser/src/schedule-serializer.ts",
+    "packages/parser/src/schedule-task-products.ts",
+    "packages/parser/src/schedule-types.ts",
+    "packages/parser/test/schedule-task-outputs-6749.test.ts",
+    "packages/sandbox/src/bridge-schedule.ts",
+    "packages/sdk/src/schedule-types.ts",
+    "scripts/api-surface.json"
+  ],
+  "exact23MainBlobs": true,
+  "apiAndGeneratedUnionReviewed": true,
+  "owningAll25BlobsEqualRoot": true,
+  "modelingPlannerAndColdTestsUnchanged": true,
+  "runtime": {
+    "wasm": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+    "js": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d"
+  },
+  "types": {
+    "successful": 111,
+    "cached": 94,
+    "testFiles": 3405,
+    "packages": 57
+  },
+  "tests": {
+    "fullSDK": 341,
+    "parserSchedule": 59,
+    "sandboxSchedule": 12,
+    "viewerSchedule": 104,
+    "skipped": 0,
+    "cache": 0,
+    "allExit": 0
+  },
+  "api": {
+    "exports": 9344,
+    "packages": 52,
+    "surfaces": 85,
+    "verdict": "actual snapshot matches; inherits only two new parser helper exports"
+  },
+  "bim": "in sync with14namespaces; inherited two optional schedule output fields; higher Align/Room retained",
+  "scope": "Exact normal actual-main scheduling integration. No modeling/Rust/runtime changes. Previous native/doc/browser/oracle source labels retained; no new capture claim.",
+  "logs": [
+    {
+      "path": "/tmp/6232-final-main1bb-types.log",
+      "sha256": "a2ef745904fd7bf8fa3a4475fc168ad3f164e5080f07f9f377ac4573a600bc77"
+    },
+    {
+      "path": "/tmp/6232-final-main1bb-parser.log",
+      "sha256": "b7abd96a6955d4b1ffadc4829cc179ab75a6f38321f159d258287b7281d357e6"
+    },
+    {
+      "path": "/tmp/6232-final-main1bb-sdk.log",
+      "sha256": "e15ba330d215eef1dcc5ed3d3d448b39e99fe0592d993f5db4fb93589511de90"
+    },
+    {
+      "path": "/tmp/6232-final-main1bb-sandbox.log",
+      "sha256": "4e1c7b2494ed2996efadec7a8110bf4497cc5818a198f53ae14d9af4995cef8f"
+    },
+    {
+      "path": "/tmp/6232-final-main1bb-viewer.log",
+      "sha256": "880a7f0f0517b63b5bcf2f8a0d12f233303989e6856e4ea5b8d166c573d6214d"
+    },
+    {
+      "path": "/tmp/6232-final-main1bb-api.log",
+      "sha256": "bdb950acf27a80b0d67bdc7e795af3d84c04e55580c97be0535578ae1a0842e8"
+    },
+    {
+      "path": "/tmp/6232-final-main1bb-bim.log",
+      "sha256": "e102df566c4f1dbe6b82a3de1ffc5f539edb0212798792ac6df017e0549138c3"
+    }
+  ]
+}

@@ -1,0 +1,452 @@
+{
+  "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/compare/5c87f0af55107663805ce81d2a9d357bbe36205b...8ab47142562a79862df6d14700a39723351f00df",
+  "html_url": "https://github.com/LTplus-AG/ifc-lite/compare/5c87f0af55107663805ce81d2a9d357bbe36205b...8ab47142562a79862df6d14700a39723351f00df",
+  "permalink_url": "https://github.com/LTplus-AG/ifc-lite/compare/LTplus-AG:5c87f0a...LTplus-AG:8ab4714",
+  "diff_url": "https://github.com/LTplus-AG/ifc-lite/compare/5c87f0af55107663805ce81d2a9d357bbe36205b...8ab47142562a79862df6d14700a39723351f00df.diff",
+  "patch_url": "https://github.com/LTplus-AG/ifc-lite/compare/5c87f0af55107663805ce81d2a9d357bbe36205b...8ab47142562a79862df6d14700a39723351f00df.patch",
+  "base_commit": {
+    "sha": "5c87f0af55107663805ce81d2a9d357bbe36205b",
+    "node_id": "C_kwDOQ3UF-9oAKDVjODdmMGFmNTUxMDc2NjM4MDVjZTgxZDJhOWQzNTdiYmUzNjIwNWI",
+    "commit": {
+      "author": {
+        "name": "Louis Tr\u00fcmpler",
+        "email": "78563314+louistrue@users.noreply.github.com",
+        "date": "2026-10-04T08:50:19Z"
+      },
+      "committer": {
+        "name": "GitHub",
+        "email": "noreply@github.com",
+        "date": "2026-10-04T08:50:19Z"
+      },
+      "message": "Merge pull request #6743 from LTplus-AG/perf/6537-prepass-owned-columns-session6503\n\nperf(wasm): adopt owned columns in the sharded prepass",
+      "tree": {
+        "sha": "161d2fc59fea2e94cd3ccf6a16d5e38f8cedcd13",
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/trees/161d2fc59fea2e94cd3ccf6a16d5e38f8cedcd13"
+      },
+      "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/commits/5c87f0af55107663805ce81d2a9d357bbe36205b",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJqwhNLCRC1aQ7uu5UhlAAALAYQACgcMXwL17F5m6Sdw7qh6Bq1\nq3mCjy1XOB405gZ9hp82VXPE6Ze1P1JFx1ifKwW4GaxZQPL3722S85T2aSoQZIdS\nrTVqxZFqLgnGYDzTYYJpHt1Hhvl9R5jsVyz5TgaFqR+CZ76bkYWA+n4/TEbic4Jt\nc8/bdGYpKPpFByaRPMUFv7tRmDyicVqFvBWH3dzz9KNXpi+19RZxk7yeT3PF4iFX\nWgNjne5qRBzH6yTKLjO1t7a/imsv+/E8tlMLzCQlx8rpxDKcflU3cKTfi9My5Vth\nRmc5MdXst7o7tu0B06C3qqVjsiqFXAoRCTEhCn1cZdF1n9IE0+r8KtCCjQZrPeZM\n3qCdwTfodUGgYFLQi0JnL0e/GqXOZg3DdBN/qeRs7gbTYTQuHGREFI1IikKk9LlR\n17rwZXm+LNOQj2Cf/Lzis4V5oHhiixzkXDXXOaZImCfSsxJz9QfikwbQ0tl6R6qH\nKG/simtzrBTTDdheXoZk3i6fE74DIvX+G/L5HEs5gfQK8dGuCRpEf1cPhfCQf26Y\n56OTVTTcoKFX+beA9MTcnTIfOudskoKbpybB6vP/uVhKB7UDOJzX9rkX1c/fYY9a\nJWjJlXWV/0EBa1RAHb7MMZ7wM8KMko6YBq6cWy+5anL65iwqFltxSEUdhNlQIgAO\nczqIvnmVgR+pAwvaK7o7\n=SLVJ\n-----END PGP SIGNATURE-----\n",
+        "payload": "tree 161d2fc59fea2e94cd3ccf6a16d5e38f8cedcd13\nparent 1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9\nparent 7db9c359111c1e1d5c165f78a37778ee4ee395dd\nauthor Louis Tr\u00fcmpler <78563314+louistrue@users.noreply.github.com> 1791103819 +0200\ncommitter GitHub <noreply@github.com> 1791103819 +0200\n\nMerge pull request #6743 from LTplus-AG/perf/6537-prepass-owned-columns-session6503\n\nperf(wasm): adopt owned columns in the sharded prepass",
+        "verified_at": "2026-10-04T08:50:19Z"
+      }
+    },
+    "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/5c87f0af55107663805ce81d2a9d357bbe36205b",
+    "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/5c87f0af55107663805ce81d2a9d357bbe36205b",
+    "comments_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/5c87f0af55107663805ce81d2a9d357bbe36205b/comments",
+    "author": {
+      "login": "louistrue",
+      "id": 78563314,
+      "node_id": "MDQ6VXNlcjc4NTYzMzE0",
+      "avatar_url": "https://avatars.githubusercontent.com/u/78563314?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/louistrue",
+      "html_url": "https://github.com/louistrue",
+      "followers_url": "https://api.github.com/users/louistrue/followers",
+      "following_url": "https://api.github.com/users/louistrue/following{/other_user}",
+      "gists_url": "https://api.github.com/users/louistrue/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/louistrue/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/louistrue/subscriptions",
+      "organizations_url": "https://api.github.com/users/louistrue/orgs",
+      "repos_url": "https://api.github.com/users/louistrue/repos",
+      "events_url": "https://api.github.com/users/louistrue/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/louistrue/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "web-flow",
+      "id": 19864447,
+      "node_id": "MDQ6VXNlcjE5ODY0NDQ3",
+      "avatar_url": "https://avatars.githubusercontent.com/u/19864447?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/web-flow",
+      "html_url": "https://github.com/web-flow",
+      "followers_url": "https://api.github.com/users/web-flow/followers",
+      "following_url": "https://api.github.com/users/web-flow/following{/other_user}",
+      "gists_url": "https://api.github.com/users/web-flow/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/web-flow/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/web-flow/subscriptions",
+      "organizations_url": "https://api.github.com/users/web-flow/orgs",
+      "repos_url": "https://api.github.com/users/web-flow/repos",
+      "events_url": "https://api.github.com/users/web-flow/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/web-flow/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9",
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9",
+        "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9"
+      },
+      {
+        "sha": "7db9c359111c1e1d5c165f78a37778ee4ee395dd",
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/7db9c359111c1e1d5c165f78a37778ee4ee395dd",
+        "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/7db9c359111c1e1d5c165f78a37778ee4ee395dd"
+      }
+    ]
+  },
+  "merge_base_commit": {
+    "sha": "5c87f0af55107663805ce81d2a9d357bbe36205b",
+    "node_id": "C_kwDOQ3UF-9oAKDVjODdmMGFmNTUxMDc2NjM4MDVjZTgxZDJhOWQzNTdiYmUzNjIwNWI",
+    "commit": {
+      "author": {
+        "name": "Louis Tr\u00fcmpler",
+        "email": "78563314+louistrue@users.noreply.github.com",
+        "date": "2026-10-04T08:50:19Z"
+      },
+      "committer": {
+        "name": "GitHub",
+        "email": "noreply@github.com",
+        "date": "2026-10-04T08:50:19Z"
+      },
+      "message": "Merge pull request #6743 from LTplus-AG/perf/6537-prepass-owned-columns-session6503\n\nperf(wasm): adopt owned columns in the sharded prepass",
+      "tree": {
+        "sha": "161d2fc59fea2e94cd3ccf6a16d5e38f8cedcd13",
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/trees/161d2fc59fea2e94cd3ccf6a16d5e38f8cedcd13"
+      },
+      "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/commits/5c87f0af55107663805ce81d2a9d357bbe36205b",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJqwhNLCRC1aQ7uu5UhlAAALAYQACgcMXwL17F5m6Sdw7qh6Bq1\nq3mCjy1XOB405gZ9hp82VXPE6Ze1P1JFx1ifKwW4GaxZQPL3722S85T2aSoQZIdS\nrTVqxZFqLgnGYDzTYYJpHt1Hhvl9R5jsVyz5TgaFqR+CZ76bkYWA+n4/TEbic4Jt\nc8/bdGYpKPpFByaRPMUFv7tRmDyicVqFvBWH3dzz9KNXpi+19RZxk7yeT3PF4iFX\nWgNjne5qRBzH6yTKLjO1t7a/imsv+/E8tlMLzCQlx8rpxDKcflU3cKTfi9My5Vth\nRmc5MdXst7o7tu0B06C3qqVjsiqFXAoRCTEhCn1cZdF1n9IE0+r8KtCCjQZrPeZM\n3qCdwTfodUGgYFLQi0JnL0e/GqXOZg3DdBN/qeRs7gbTYTQuHGREFI1IikKk9LlR\n17rwZXm+LNOQj2Cf/Lzis4V5oHhiixzkXDXXOaZImCfSsxJz9QfikwbQ0tl6R6qH\nKG/simtzrBTTDdheXoZk3i6fE74DIvX+G/L5HEs5gfQK8dGuCRpEf1cPhfCQf26Y\n56OTVTTcoKFX+beA9MTcnTIfOudskoKbpybB6vP/uVhKB7UDOJzX9rkX1c/fYY9a\nJWjJlXWV/0EBa1RAHb7MMZ7wM8KMko6YBq6cWy+5anL65iwqFltxSEUdhNlQIgAO\nczqIvnmVgR+pAwvaK7o7\n=SLVJ\n-----END PGP SIGNATURE-----\n",
+        "payload": "tree 161d2fc59fea2e94cd3ccf6a16d5e38f8cedcd13\nparent 1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9\nparent 7db9c359111c1e1d5c165f78a37778ee4ee395dd\nauthor Louis Tr\u00fcmpler <78563314+louistrue@users.noreply.github.com> 1791103819 +0200\ncommitter GitHub <noreply@github.com> 1791103819 +0200\n\nMerge pull request #6743 from LTplus-AG/perf/6537-prepass-owned-columns-session6503\n\nperf(wasm): adopt owned columns in the sharded prepass",
+        "verified_at": "2026-10-04T08:50:19Z"
+      }
+    },
+    "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/5c87f0af55107663805ce81d2a9d357bbe36205b",
+    "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/5c87f0af55107663805ce81d2a9d357bbe36205b",
+    "comments_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/5c87f0af55107663805ce81d2a9d357bbe36205b/comments",
+    "author": {
+      "login": "louistrue",
+      "id": 78563314,
+      "node_id": "MDQ6VXNlcjc4NTYzMzE0",
+      "avatar_url": "https://avatars.githubusercontent.com/u/78563314?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/louistrue",
+      "html_url": "https://github.com/louistrue",
+      "followers_url": "https://api.github.com/users/louistrue/followers",
+      "following_url": "https://api.github.com/users/louistrue/following{/other_user}",
+      "gists_url": "https://api.github.com/users/louistrue/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/louistrue/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/louistrue/subscriptions",
+      "organizations_url": "https://api.github.com/users/louistrue/orgs",
+      "repos_url": "https://api.github.com/users/louistrue/repos",
+      "events_url": "https://api.github.com/users/louistrue/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/louistrue/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "web-flow",
+      "id": 19864447,
+      "node_id": "MDQ6VXNlcjE5ODY0NDQ3",
+      "avatar_url": "https://avatars.githubusercontent.com/u/19864447?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/web-flow",
+      "html_url": "https://github.com/web-flow",
+      "followers_url": "https://api.github.com/users/web-flow/followers",
+      "following_url": "https://api.github.com/users/web-flow/following{/other_user}",
+      "gists_url": "https://api.github.com/users/web-flow/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/web-flow/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/web-flow/subscriptions",
+      "organizations_url": "https://api.github.com/users/web-flow/orgs",
+      "repos_url": "https://api.github.com/users/web-flow/repos",
+      "events_url": "https://api.github.com/users/web-flow/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/web-flow/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9",
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9",
+        "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9"
+      },
+      {
+        "sha": "7db9c359111c1e1d5c165f78a37778ee4ee395dd",
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/7db9c359111c1e1d5c165f78a37778ee4ee395dd",
+        "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/7db9c359111c1e1d5c165f78a37778ee4ee395dd"
+      }
+    ]
+  },
+  "status": "ahead",
+  "ahead_by": 3,
+  "behind_by": 0,
+  "total_commits": 3,
+  "commits": [
+    {
+      "sha": "9f2e1bc3e1f2d0cd72b8c76d29ce8153ceeb02b1",
+      "node_id": "C_kwDOQ3UF-9oAKDlmMmUxYmMzZTFmMmQwY2Q3MmI4Yzc2ZDI5Y2U4MTUzY2VlYjAyYjE",
+      "commit": {
+        "author": {
+          "name": "Louis True",
+          "email": "louistrue@users.noreply.github.com",
+          "date": "2026-10-04T08:35:23Z"
+        },
+        "committer": {
+          "name": "Louis True",
+          "email": "louistrue@users.noreply.github.com",
+          "date": "2026-10-04T08:35:23Z"
+        },
+        "message": "test(mcp): pin Room refusal export timestamps (#6804)",
+        "tree": {
+          "sha": "86899d88cae867dc122a8ae8f98675c031e02091",
+          "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/trees/86899d88cae867dc122a8ae8f98675c031e02091"
+        },
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/commits/9f2e1bc3e1f2d0cd72b8c76d29ce8153ceeb02b1",
+        "comment_count": 0,
+        "verification": {
+          "verified": false,
+          "reason": "unsigned",
+          "signature": null,
+          "payload": null,
+          "verified_at": null
+        }
+      },
+      "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/9f2e1bc3e1f2d0cd72b8c76d29ce8153ceeb02b1",
+      "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/9f2e1bc3e1f2d0cd72b8c76d29ce8153ceeb02b1",
+      "comments_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/9f2e1bc3e1f2d0cd72b8c76d29ce8153ceeb02b1/comments",
+      "author": {
+        "login": "louistrue",
+        "id": 78563314,
+        "node_id": "MDQ6VXNlcjc4NTYzMzE0",
+        "avatar_url": "https://avatars.githubusercontent.com/u/78563314?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/louistrue",
+        "html_url": "https://github.com/louistrue",
+        "followers_url": "https://api.github.com/users/louistrue/followers",
+        "following_url": "https://api.github.com/users/louistrue/following{/other_user}",
+        "gists_url": "https://api.github.com/users/louistrue/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/louistrue/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/louistrue/subscriptions",
+        "organizations_url": "https://api.github.com/users/louistrue/orgs",
+        "repos_url": "https://api.github.com/users/louistrue/repos",
+        "events_url": "https://api.github.com/users/louistrue/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/louistrue/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "committer": {
+        "login": "louistrue",
+        "id": 78563314,
+        "node_id": "MDQ6VXNlcjc4NTYzMzE0",
+        "avatar_url": "https://avatars.githubusercontent.com/u/78563314?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/louistrue",
+        "html_url": "https://github.com/louistrue",
+        "followers_url": "https://api.github.com/users/louistrue/followers",
+        "following_url": "https://api.github.com/users/louistrue/following{/other_user}",
+        "gists_url": "https://api.github.com/users/louistrue/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/louistrue/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/louistrue/subscriptions",
+        "organizations_url": "https://api.github.com/users/louistrue/orgs",
+        "repos_url": "https://api.github.com/users/louistrue/repos",
+        "events_url": "https://api.github.com/users/louistrue/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/louistrue/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "parents": [
+        {
+          "sha": "8a78fbf19910313d6ac9ac66da0a717accd6e71f",
+          "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/8a78fbf19910313d6ac9ac66da0a717accd6e71f",
+          "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/8a78fbf19910313d6ac9ac66da0a717accd6e71f"
+        }
+      ]
+    },
+    {
+      "sha": "269abf7e497bdbef1d21533c8cd35883b38a7d9e",
+      "node_id": "C_kwDOQ3UF-9oAKDI2OWFiZjdlNDk3YmRiZWYxZDIxNTMzYzhjZDM1ODgzYjM4YTdkOWU",
+      "commit": {
+        "author": {
+          "name": "Louis True",
+          "email": "louistrue@users.noreply.github.com",
+          "date": "2026-10-04T09:00:19Z"
+        },
+        "committer": {
+          "name": "Louis True",
+          "email": "louistrue@users.noreply.github.com",
+          "date": "2026-10-04T09:00:19Z"
+        },
+        "message": "test(mcp): reuse fixed-clock Room export oracle (#6804)",
+        "tree": {
+          "sha": "29359375fed3fc18cb579b29f02cce5fe6601333",
+          "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/trees/29359375fed3fc18cb579b29f02cce5fe6601333"
+        },
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/commits/269abf7e497bdbef1d21533c8cd35883b38a7d9e",
+        "comment_count": 0,
+        "verification": {
+          "verified": false,
+          "reason": "unsigned",
+          "signature": null,
+          "payload": null,
+          "verified_at": null
+        }
+      },
+      "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/269abf7e497bdbef1d21533c8cd35883b38a7d9e",
+      "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/269abf7e497bdbef1d21533c8cd35883b38a7d9e",
+      "comments_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/269abf7e497bdbef1d21533c8cd35883b38a7d9e/comments",
+      "author": {
+        "login": "louistrue",
+        "id": 78563314,
+        "node_id": "MDQ6VXNlcjc4NTYzMzE0",
+        "avatar_url": "https://avatars.githubusercontent.com/u/78563314?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/louistrue",
+        "html_url": "https://github.com/louistrue",
+        "followers_url": "https://api.github.com/users/louistrue/followers",
+        "following_url": "https://api.github.com/users/louistrue/following{/other_user}",
+        "gists_url": "https://api.github.com/users/louistrue/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/louistrue/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/louistrue/subscriptions",
+        "organizations_url": "https://api.github.com/users/louistrue/orgs",
+        "repos_url": "https://api.github.com/users/louistrue/repos",
+        "events_url": "https://api.github.com/users/louistrue/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/louistrue/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "committer": {
+        "login": "louistrue",
+        "id": 78563314,
+        "node_id": "MDQ6VXNlcjc4NTYzMzE0",
+        "avatar_url": "https://avatars.githubusercontent.com/u/78563314?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/louistrue",
+        "html_url": "https://github.com/louistrue",
+        "followers_url": "https://api.github.com/users/louistrue/followers",
+        "following_url": "https://api.github.com/users/louistrue/following{/other_user}",
+        "gists_url": "https://api.github.com/users/louistrue/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/louistrue/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/louistrue/subscriptions",
+        "organizations_url": "https://api.github.com/users/louistrue/orgs",
+        "repos_url": "https://api.github.com/users/louistrue/repos",
+        "events_url": "https://api.github.com/users/louistrue/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/louistrue/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "parents": [
+        {
+          "sha": "9f2e1bc3e1f2d0cd72b8c76d29ce8153ceeb02b1",
+          "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/9f2e1bc3e1f2d0cd72b8c76d29ce8153ceeb02b1",
+          "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/9f2e1bc3e1f2d0cd72b8c76d29ce8153ceeb02b1"
+        }
+      ]
+    },
+    {
+      "sha": "8ab47142562a79862df6d14700a39723351f00df",
+      "node_id": "C_kwDOQ3UF-9oAKDhhYjQ3MTQyNTYyYTc5ODYyZGY2ZDE0NzAwYTM5NzIzMzUxZjAwZGY",
+      "commit": {
+        "author": {
+          "name": "Louis Tr\u00fcmpler",
+          "email": "78563314+louistrue@users.noreply.github.com",
+          "date": "2026-10-04T09:51:18Z"
+        },
+        "committer": {
+          "name": "GitHub",
+          "email": "noreply@github.com",
+          "date": "2026-10-04T09:51:18Z"
+        },
+        "message": "Merge pull request #6806 from LTplus-AG/fix/6804-room-export-clock-session6503\n\ntest(mcp): pin Room refusal export timestamps",
+        "tree": {
+          "sha": "828e290302c72e5edc86b8aa73275d8fea20c376",
+          "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/trees/828e290302c72e5edc86b8aa73275d8fea20c376"
+        },
+        "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/git/commits/8ab47142562a79862df6d14700a39723351f00df",
+        "comment_count": 0,
+        "verification": {
+          "verified": true,
+          "reason": "valid",
+          "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJqwiGWCRC1aQ7uu5UhlAAAY40QAE451SEOretpI9DnPiKR4hBG\neBWsnBG/QlZXY/5YCQS5EOpdCwuW779ep8i0tYrjky04JkqK8MGs+V4VWFWheEEX\ni3J2LhRvbnO+Vu7QEFlKJr8M2+NOxbY1vbUhRsWtS4D9GpIGVu6dW2EEZ+2kpIJB\nfAv1amBuJ0ooJ/lto75gU60BZaZwAWgOfJOXE27NFlOgPuL+VPE1DfNV7d1tvfCr\nBkIRbW+MUaLWXdPLbVAkoqb5mXPEpzRrfNAJLAQ1iaWgl7ltK5RzBQUlZ6Sq+q3u\nKpFPLOjxhO9Rp3kN6wphN9eC5bUobrFMryqnqzcFZd5HyHd+QHopip7LyVo6WApL\nytEl2l8Ls3g/LM7QDqpZ0ka84cFr6rpoAg5lWEILwebXELPrTRkCX+ewlGBvm1a7\nK0x7wNDZO/tMuIAwsJKNRD8yyU5YK2/XHoCo/akU8Qdb9YTMlPqsZNIhR6QMi0qO\nRZq75um2hFm14qufDhZG8n0NLZiEckS4ccz1E8kn4vPjVt0zeJ3PynLeIRKQBcfw\naXIl/rKBeJ6yraGbmsdNpPmYH1W0HZk/NkLYsAQFRkIqvxtBuKdT+xc4/OILaXpo\n+ZDDTNyVls6vwatnVgPefWLnkk6pE03fIx7+nX+1taKMh5j/4qjrilsSxOabDYBU\nD1uPyd+Ec7/gTsP0SKWp\n=7T8V\n-----END PGP SIGNATURE-----\n",
+          "payload": "tree 828e290302c72e5edc86b8aa73275d8fea20c376\nparent 5c87f0af55107663805ce81d2a9d357bbe36205b\nparent 269abf7e497bdbef1d21533c8cd35883b38a7d9e\nauthor Louis Tr\u00fcmpler <78563314+louistrue@users.noreply.github.com> 1791107478 +0200\ncommitter GitHub <noreply@github.com> 1791107478 +0200\n\nMerge pull request #6806 from LTplus-AG/fix/6804-room-export-clock-session6503\n\ntest(mcp): pin Room refusal export timestamps",
+          "verified_at": "2026-10-04T09:51:19Z"
+        }
+      },
+      "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/8ab47142562a79862df6d14700a39723351f00df",
+      "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/8ab47142562a79862df6d14700a39723351f00df",
+      "comments_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/8ab47142562a79862df6d14700a39723351f00df/comments",
+      "author": {
+        "login": "louistrue",
+        "id": 78563314,
+        "node_id": "MDQ6VXNlcjc4NTYzMzE0",
+        "avatar_url": "https://avatars.githubusercontent.com/u/78563314?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/louistrue",
+        "html_url": "https://github.com/louistrue",
+        "followers_url": "https://api.github.com/users/louistrue/followers",
+        "following_url": "https://api.github.com/users/louistrue/following{/other_user}",
+        "gists_url": "https://api.github.com/users/louistrue/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/louistrue/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/louistrue/subscriptions",
+        "organizations_url": "https://api.github.com/users/louistrue/orgs",
+        "repos_url": "https://api.github.com/users/louistrue/repos",
+        "events_url": "https://api.github.com/users/louistrue/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/louistrue/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "committer": {
+        "login": "web-flow",
+        "id": 19864447,
+        "node_id": "MDQ6VXNlcjE5ODY0NDQ3",
+        "avatar_url": "https://avatars.githubusercontent.com/u/19864447?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/web-flow",
+        "html_url": "https://github.com/web-flow",
+        "followers_url": "https://api.github.com/users/web-flow/followers",
+        "following_url": "https://api.github.com/users/web-flow/following{/other_user}",
+        "gists_url": "https://api.github.com/users/web-flow/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/web-flow/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/web-flow/subscriptions",
+        "organizations_url": "https://api.github.com/users/web-flow/orgs",
+        "repos_url": "https://api.github.com/users/web-flow/repos",
+        "events_url": "https://api.github.com/users/web-flow/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/web-flow/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "parents": [
+        {
+          "sha": "5c87f0af55107663805ce81d2a9d357bbe36205b",
+          "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/5c87f0af55107663805ce81d2a9d357bbe36205b",
+          "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/5c87f0af55107663805ce81d2a9d357bbe36205b"
+        },
+        {
+          "sha": "269abf7e497bdbef1d21533c8cd35883b38a7d9e",
+          "url": "https://api.github.com/repos/LTplus-AG/ifc-lite/commits/269abf7e497bdbef1d21533c8cd35883b38a7d9e",
+          "html_url": "https://github.com/LTplus-AG/ifc-lite/commit/269abf7e497bdbef1d21533c8cd35883b38a7d9e"
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "sha": "6bc421cb586c1f46f928ad6199e310a4c6767c34",
+      "filename": "packages/mcp/src/tools/room-command.test.ts",
+      "status": "modified",
+      "additions": 5,
+      "deletions": 4,
+      "changes": 9,
+      "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/8ab47142562a79862df6d14700a39723351f00df/packages%2Fmcp%2Fsrc%2Ftools%2Froom-command.test.ts",
+      "raw_url": "https://github.com/LTplus-AG/ifc-lite/raw/8ab47142562a79862df6d14700a39723351f00df/packages%2Fmcp%2Fsrc%2Ftools%2Froom-command.test.ts",
+      "contents_url": "https://api.github.com/repos/LTplus-AG/ifc-lite/contents/packages%2Fmcp%2Fsrc%2Ftools%2Froom-command.test.ts?ref=8ab47142562a79862df6d14700a39723351f00df",
+      "patch": "@@ -119,13 +119,14 @@ for (const count of [1, 2]) it.skipIf(!available)(`public Room query/Auto/edit/U\n \n it.skipIf(!available)('public Room command refuses ambiguous routing and read-only writes before geometry/overlay changes', async () => {\n   const multi = await liveToolSession(2), readonly = await liveToolSession(1, true);\n+  // #6804: Reuse the real exporter helper's fixed clock for strict IFC equality.\n   try {\n-    const before = multi.registry.get('beta')!.bim.export.ifc();\n+    const before = exported(multi.registry.get('beta')!);\n     expect((await multi.call('room_command', { storey_express_id: 42, command: { action: 'auto' } })).isError).toBe(true);\n-    expect(multi.registry.get('beta')!.bim.export.ifc()).toEqual(before);\n-    const readonlyBefore = readonly.registry.get('alpha')!.bim.export.ifc();\n+    expect(exported(multi.registry.get('beta')!)).toEqual(before);\n+    const readonlyBefore = exported(readonly.registry.get('alpha')!);\n     expect((await readonly.call('room_command', { storey_express_id: 42, command: { action: 'auto' } })).isError).toBe(true);\n-    expect(readonly.registry.get('alpha')!.bim.export.ifc()).toEqual(readonlyBefore);\n+    expect(exported(readonly.registry.get('alpha')!)).toEqual(readonlyBefore);\n   } finally {\n     for (const loaded of multi.registry.list()) loaded.backend.dispose();\n     for (const loaded of readonly.registry.list()) loaded.backend.dispose();"
+    }
+  ]
+}

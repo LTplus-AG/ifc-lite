@@ -77,6 +77,18 @@ function updateReferencingSidecar(hash: string): Uint8Array {
   return update;
 }
 
+/**
+ * One length-prefixed room-log frame for `update`, built from a SINGLE update.
+ * `updateReferencing` embeds a random Yjs client id, so two calls differ in
+ * byte length (72, 74 or 76): a prefix taken from one call and a body from
+ * another truncates or drops the frame on some runs.
+ */
+function logFrame(update: Uint8Array): Buffer {
+  const header = Buffer.alloc(4);
+  header.writeUInt32LE(update.byteLength, 0);
+  return Buffer.concat([header, Buffer.from(update)]);
+}
+
 async function writeRoom(roomId: string, hashes: string[]) {
   await new FilePersistence({ dataDir }).append(roomId, updateReferencing(hashes));
 }
@@ -160,6 +172,35 @@ describe('blob gc', () => {
     writeBlob(A, 3 * DAY);
 
     await expect(collectPersistedBlobRefs(dataDir)).rejects.toThrow(/parsed to nothing/);
+    expect(fs.existsSync(path.join(blobsDir, A))).toBe(true);
+  });
+
+  it('reads a room log whose file name is not a valid percent-encoding', async () => {
+    // A foreign or hand-copied `*.log` can carry a malformed escape. The scan
+    // must read it by NAME (its references still protect blobs) instead of
+    // decoding the name into a room id, which throws `URIError`.
+    fs.writeFileSync(path.join(dataDir, '%E0%A4%A.log'), logFrame(updateReferencing([A])));
+    await writeRoom('ordinary-room', [B]);
+
+    const scan = await collectPersistedBlobRefs(dataDir);
+    expect(scan.roomLogs).toBe(2);
+    expect([...scan.refs].sort()).toEqual([A, B]);
+  });
+
+  it('reads a log whose name is a non-canonical but decodable encoding', async () => {
+    // `a%41` decodes to `aA`, which re-encodes to a DIFFERENT file name; a
+    // decode-then-load scan would read `aA.log` (absent) and see nothing.
+    fs.writeFileSync(path.join(dataDir, 'a%41.log'), logFrame(updateReferencing([C])));
+
+    const scan = await collectPersistedBlobRefs(dataDir);
+    expect([...scan.refs]).toEqual([C]);
+  });
+
+  it('names an unreadable log with a malformed file name instead of throwing URIError', async () => {
+    fs.writeFileSync(path.join(dataDir, '%ZZ.log'), Buffer.from([0xff, 0xff, 0xff, 0x7f]));
+    writeBlob(A, 3 * DAY);
+
+    await expect(collectPersistedBlobRefs(dataDir)).rejects.toThrow(/%ZZ\.log.*parsed to nothing/);
     expect(fs.existsSync(path.join(blobsDir, A))).toBe(true);
   });
 
@@ -293,4 +334,49 @@ describe('blob gc', () => {
     );
     docWithB.destroy();
   });
+
+  it.each(['%ZZ.log', 'a%41.log', 'canonical.log'])(
+    '#6704 refuses an incomplete frame body in %s before GC',
+    async name => {
+      const first = logFrame(updateReferencing([A]));
+      const second = logFrame(updateReferencing([B]));
+      fs.writeFileSync(path.join(dataDir, name), Buffer.concat([
+        first, second.subarray(0, second.length - 1),
+      ]));
+      writeBlob(A, 3 * DAY);
+      writeBlob(B, 3 * DAY);
+      await expect(plan()).rejects.toThrow(/parsed to nothing/);
+    },
+  );
+
+  it.each([1, 2, 3])('#6704 refuses %i trailing frame-header bytes before GC', async count => {
+    fs.writeFileSync(path.join(dataDir, '%ZZ.log'), Buffer.concat([
+      logFrame(updateReferencing([A])), Buffer.alloc(count, 1),
+    ]));
+    writeBlob(B, 3 * DAY);
+    await expect(plan()).rejects.toThrow(/parsed to nothing/);
+  });
+
+  it.each(['body', 'header-1', 'header-2', 'header-3'])(
+    '#6704 ordinary room recovery retains the complete prefix with an incomplete %s',
+    async tail => {
+      const second = logFrame(updateReferencing([B]));
+      const suffix = tail === 'body'
+        ? second.subarray(0, second.length - 1)
+        : second.subarray(0, Number(tail.slice(-1)));
+      fs.writeFileSync(path.join(dataDir, 'recovery.log'), Buffer.concat([
+        logFrame(updateReferencing([A])), suffix,
+      ]));
+      const update = await new FilePersistence({ dataDir }).load('recovery');
+      expect(update).not.toBeNull();
+      const doc = new Y.Doc();
+      try {
+        Y.applyUpdate(doc, update!);
+        expect([...geometryMap(doc).values()].map(value => value.get('blobHash'))).toEqual([A]);
+      } finally {
+        doc.destroy();
+      }
+    },
+  );
+
 });

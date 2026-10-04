@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { readWithProgress } from '@ifc-lite/plugin-api';
-import type { DownloadOptions, PluginContext } from '@ifc-lite/plugin-api';
+import type { DownloadOptions, PluginContext, SourceFileRef } from '@ifc-lite/plugin-api';
 
 import { decodeCollectionPage } from './msgraph-types.js';
 
@@ -61,7 +61,16 @@ export class GraphHttpError extends Error {
   }
 }
 
-export class BrowserGraphApiClient {
+/** Read-only client boundary for the signed-in user's own OneDrive. */
+export interface GraphApiClient {
+  get(path: string, params?: Record<string, string>, signal?: AbortSignal): Promise<unknown>;
+  /** Direct SDK clients download the vendor's signed URL anonymously. */
+  getPublicBinary?(url: string, options?: DownloadOptions, sizeBytes?: number): Promise<ArrayBuffer>;
+  /** Hosted clients download by item reference without exposing vendor credentials. */
+  downloadItem?(ref: SourceFileRef, options?: DownloadOptions): Promise<ArrayBuffer>;
+}
+
+export class BrowserGraphApiClient implements GraphApiClient {
   constructor(
     private readonly accessToken: string,
     private readonly ctx: PluginContext,
@@ -150,7 +159,7 @@ export interface GraphPageResult {
  * first row.
  */
 export async function fetchPage(
-  client: BrowserGraphApiClient,
+  client: GraphApiClient,
   endpointOrCursor: string,
   params: Record<string, string>,
   signal?: AbortSignal,

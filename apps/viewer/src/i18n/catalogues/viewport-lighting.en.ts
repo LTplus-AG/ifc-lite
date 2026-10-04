@@ -106,6 +106,10 @@ export const viewportLightingEn = {
 
   // ── FlySpeedIndicator.tsx — fly-mode speed HUD ───────────────────────
   'viewportLighting.flySpeed.label': 'Fly speed {level}/{total}',
+  'viewportLighting.walk.walking': 'Walking',
+  'viewportLighting.walk.crouching': 'Crouching',
+  'viewportLighting.walk.floating': 'Floating · collision off',
+  'viewportLighting.walk.hint': 'Space jump · Z crouch · G collision',
 
   // ── ShadowControls.tsx — Environment panel's shadow sub-panel ──────────
   'viewportLighting.shadowControls.title': 'Cast shadows',

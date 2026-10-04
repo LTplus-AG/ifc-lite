@@ -1,0 +1,35 @@
+{
+  "leaf": "9797bb18b4768c0ab68eb43b618a5e240aa2c968",
+  "base": "bb3cccbbed934bae9d6fb258d1ef0d77db7ab426",
+  "scope": "Room-only provider error classification; cache unchanged; higher forward must retain withHeadlessGeometry",
+  "before": "same10 final public controls:8 genuine error-code assertionFAIL/2 intentionalinputPASS",
+  "fixed": "10 new+6 existing readonly/state/cancel/runtime controls16PASS/0SKIP/0testcache",
+  "types": "Root pnpm typecheck111tasks/all3388 audited testfiles PASS; final production classifier unchanged from typed source; final warning only adds missing-WASM instruction",
+  "lint": "Root pnpm lint8471 files/noerrors; no touched-file warnings",
+  "runtime": {
+    "ifc-lite_bg.wasm": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+    "ifc-lite.js": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d"
+  },
+  "logs": [
+    {
+      "path": "/tmp/6232-room-preparation-exact-before.log",
+      "sha256": "b23194e60bce6ca6f81c09b741281593da5dabea33fab9ffb7bf211ccf65b067"
+    },
+    {
+      "path": "/tmp/6232-room-preparation-exact-restored.log",
+      "sha256": "296a24ae6bee7257f191c6aaddbf72495dc697e5b7f711ab84b5d7967cdef78e"
+    },
+    {
+      "path": "/tmp/6232-room-preparation-final-types.log",
+      "sha256": "46bf3c1cae54fa44f5a2a1e56f3c5fc4dce5d375be4e776ee27e207ab7187767"
+    },
+    {
+      "path": "/tmp/6232-room-preparation-exact-final-types.log",
+      "sha256": "b7be52b64c0a5ff1bd0092b579a3c77542c2d8c0c71afc03b488cec6ec6f423e"
+    },
+    {
+      "path": "/tmp/6232-room-preparation-lint.log",
+      "sha256": "37307de25a76990c43824f9c62260d40574e9ac6afc8b0f9d237f6f1969ec38c"
+    }
+  ]
+}

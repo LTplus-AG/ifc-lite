@@ -46,7 +46,7 @@ export async function fetchFilePage(
     ctx,
     projectId,
     containerId,
-    { namePatterns: IFC_NAME_PATTERNS },
+    { namePatterns: provider.manifest.capabilities.sourceNamePatterns ?? IFC_NAME_PATTERNS },
     { cursor, limit: LIST_PAGE_LIMIT, signal },
   );
   return { items: [...page.items], cursor: page.cursor } satisfies PagedItems<SourceFile>;

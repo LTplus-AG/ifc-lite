@@ -9550,6 +9550,10 @@
     "ProfileCollection: class",
     "ProfileEntryJs: class",
     "RtcFrame: interface",
+    "ScanOutlineDiagnosticsJs: interface",
+    "ScanOutlineJs: class",
+    "ScanOutlineOptionsJs: interface",
+    "ScanOutlinePlaneFrameJs: interface",
     "SimplifiedMeshes: class",
     "SpacePlateHandle: class",
     "SymbolicCircle: class",
@@ -9571,6 +9575,7 @@
     "resolve2d: function",
     "setGeometryProgressCallback: function",
     "splitMeshByZones: function",
+    "traceScanOutline: function",
     "union2d: function",
     "version: function"
   ],

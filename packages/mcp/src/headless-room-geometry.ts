@@ -19,16 +19,16 @@ function nativeRoomFactory(runtime: typeof import('@ifc-lite/wasm')): RoomPlateF
 }
 
 /** Mesh the current export, including authored edits, through the canonical native geometry path. */
-export const provideHeadlessRoomGeometry: RoomGeometryProvider = async (model, storeyId) => {
+const prepareHeadlessRoomGeometry: RoomGeometryProvider = async (model, storeyId) => {
   const schema = model.store.schemaVersion ?? 'IFC4';
-  if (schema !== 'IFC4' && schema !== 'IFC2X3' && schema !== 'IFC4X3') throw new Error(`Room does not support schema ${schema}`);
+  if (schema !== 'IFC4' && schema !== 'IFC2X3' && schema !== 'IFC4X3') throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: `Room does not support schema ${schema}` });
   const exported = new StepExporter(model.store, model.mutationView).export({ schema, applyMutations: true }).content;
   const source = await new IfcParser().parseColumnar(exported.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
   const plan = storeyPlanFrame(source, storeyId);
-  if (!plan) throw new Error('Room storey placement is not a supported upright plane');
+  if (!plan) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Room storey placement is not a supported upright plane' });
   const storeys = effectiveStoreyIds(source, null).map(id => ({ id, elev: effectiveStoreyElevation(source, null, id) })).sort((a, b) => a.elev - b.elev || a.id - b.id);
   const floor = storeys.find(storey => storey.id === storeyId);
-  if (!floor) throw new Error('Room requires a live IfcBuildingStorey');
+  if (!floor) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Room requires a live IfcBuildingStorey' });
   const processor = new GeometryProcessor({ enableInstancing: false });
   try {
     try { await processor.init(); } catch (error) {
@@ -48,6 +48,16 @@ export const provideHeadlessRoomGeometry: RoomGeometryProvider = async (model, s
     const runtime = await import('@ifc-lite/wasm');
     return { walls, spaces, occupied: occupancyTest(spaces.map(space => space.footprint), triangles), factory: nativeRoomFactory(runtime) };
   } finally { processor.dispose(); }
+};
+
+/** Preserve intentional refusals; infrastructure failures are not caller input. */
+export const provideHeadlessRoomGeometry: RoomGeometryProvider = async (model, storeyId) => {
+  try { return await prepareHeadlessRoomGeometry(model, storeyId); }
+  catch (error) {
+    if (error instanceof ToolExecutionError || (error instanceof Error && error.name === 'AbortError')) throw error;
+    throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR,
+      message: `Native Room preparation failed: ${error instanceof Error ? error.message : String(error)}` });
+  }
 };
 
 /** One prepared storey per loaded model; cached values hold no native handles. */

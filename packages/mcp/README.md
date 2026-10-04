@@ -281,4 +281,8 @@ for parameter contracts.
 runs Auto/Pick/Footprint/Update or layout Drag/Split/Remove/Prune through the
 shared Room core. It requires the WASM runtime. Query does not write; writes
 record one complete Undo batch. Model removal and session termination free
-retained native layout handles.
+retained native layout handles. Unsupported schema/storey planes return
+`INVALID_INPUT`; unavailable native initialization returns
+`UNSUPPORTED_OPERATION`. Unexpected export, parse, processing or runtime
+import failures return `INTERNAL_ERROR`; cancellation and state conflicts
+retain their distinct retryable codes.

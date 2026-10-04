@@ -24,7 +24,7 @@ test('context action opens the registered assistant with frozen evidence and ref
   click(source.querySelector('button')!);
   assert.equal(useViewerStore.getState().sidebarActivePanel, 'assistant');
   const ui = render(<AssistantPanel />);
-  assert.match(ui.textContent ?? '', /Frozen evidence: 0 of 0/);
+  assert.match(ui.textContent ?? '', /No native clash result was available at capture/);
   const textarea = ui.querySelector('textarea')!;
   type(textarea, 'Explain');
   const send = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Send')!;

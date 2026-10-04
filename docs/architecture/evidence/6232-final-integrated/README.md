@@ -126,3 +126,5 @@ Latest current-main arithmetic/runtime qualification is recorded in [`current-ar
 Latest current-main semantic composition proof: [`semantic-main-forward/`](./semantic-main-forward/). This focused qualification preserves the actual source/runtime labels of the eight modelling captures; it does not relabel them as semantic-head runs.
 
 Latest final review repairs and all eight fresh WSL Chrome captures: [`review-fixes-forward/`](./review-fixes-forward/), clean source `e98a99244ecc3f5a86968c485774a77f8845ae66`. This supersedes the latest capture index while retaining all historical source labels.
+
+Intervening explicit semantic loopback main integration: [`loopback-main-forward/`](./loopback-main-forward/). Its bounded source qualification preserves all actual modelling browser source labels and requires new published-head CI.

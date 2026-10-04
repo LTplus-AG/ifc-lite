@@ -255,5 +255,13 @@
     "archive": "../current-wasm-main-forward/",
     "qualification": "Fallback-disabled fresh Rust build; SDK341/viewer31 zero skips/cache, WASM146/7optional skips all8owned contracts executed, Rust4438/39ignored, strict all-target Clippy. Root6c4 types111/all3405 remain literally source-bound; latest committed bindings unchanged. Fresh eight primary browser receipts pass unchanged strict audit8/184/436; six registered preview/Escape contexts pass28stages. Original failed/incomplete attempts preserved.",
     "scope": "All8 primary contexts source1b49, all6 supplemental source730f helper-only serialization fix. Loaded empty view retained; canonical allocator1\u21929993 then unchanged. Missing-view native and independent-reference commit proofs separate. Inherited perf verdict neutral; no integrated gain claimed."
+  },
+  "fixedClockMainForwardQualification": {
+    "source": "2ede141ce45b6ccc7f61fd538ddb98013664b129",
+    "sourceTree": "63635530146eae6151aa35912b9c3450921c9a96",
+    "actualMain": "8ab47142562a79862df6d14700a39723351f00df",
+    "archive": "../fixed-clock-main-forward/",
+    "qualification": "Roottypes111/all3405/94cache actual0; fullMCP637/2unrelatedskips/70files/0cache actual0 pinnedA050 with maxWorkers2; assertions/deadlines/source unchanged. Limited initialcached-runtime run and failed fresh-default startup-deadline run preserved.",
+    "scope": "One inherited MCPtest fixed-clock helper substitution, full refusal/STEP equality assertions intact. Production/API/Rust/runtime/capture labels unchanged; no new browser/build/perfclaim."
   }
 }

@@ -56,7 +56,7 @@
   ],
   "headers": [
     {
-      "source": "/oauth/autodesk/(.*)",
+      "source": "/oauth/(.*)",
       "headers": [
         {
           "key": "Cache-Control",

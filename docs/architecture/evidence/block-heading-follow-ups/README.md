@@ -12,14 +12,20 @@ so the preview screenshots now show the composer's heading, and the earlier prev
 `BlockHeading.tsx` (one line, point size; old F1 preview and F2) were dropped as superseded; their screenshots
 were removed with them.
 
-Commands:
+Commands, each run from the repository root, with the dev server from the first line left running in
+another shell. Run the two `EVIDENCE_TAG` lines once on the branch and once on "main" (the three files
+above restored from `origin/main`), giving `EVIDENCE_TAG=main` or `EVIDENCE_TAG=branch` to match:
 
 ```
-cd apps/viewer && pnpm exec vite --port 5178 --host 127.0.0.1 --strictPort
-EVIDENCE_TAG=main|branch EVIDENCE_OUT=docs/architecture/evidence/block-heading-follow-ups node docs/architecture/evidence/block-heading-follow-ups/generate-pdfs.mjs
-EVIDENCE_TAG=main|branch EVIDENCE_OUT=docs/architecture/evidence/block-heading-follow-ups node docs/architecture/evidence/block-heading-follow-ups/preview-shots.mjs
+pnpm --dir apps/viewer exec vite --port 5178 --host 127.0.0.1 --strictPort
+EVIDENCE_TAG=branch EVIDENCE_OUT=docs/architecture/evidence/block-heading-follow-ups node docs/architecture/evidence/block-heading-follow-ups/generate-pdfs.mjs
+EVIDENCE_TAG=branch EVIDENCE_OUT=docs/architecture/evidence/block-heading-follow-ups node docs/architecture/evidence/block-heading-follow-ups/preview-shots.mjs
 node docs/architecture/evidence/block-heading-follow-ups/readback.mjs docs/architecture/evidence/block-heading-follow-ups > docs/architecture/evidence/block-heading-follow-ups/readback.txt
 ```
+
+A topic that is not loaded is headed `BCF topic <guid>` and prints its full not-loaded notice as a wrapped
+line below (added after review). No file here shows that case; `document.test.ts` asserts it through the
+PDF producer at heading size 24.
 
 Tools: `pdfinfo` (page size), `pdftotext -bbox` (word boxes), pdf.js 6.3.289 `getTextContent` (item position
 and width), `pdftoppm -r 72` (the yellow strip is the run of `#ffff00` pixels, one pixel per point). `mutool`

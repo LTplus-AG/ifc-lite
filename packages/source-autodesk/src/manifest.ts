@@ -6,7 +6,7 @@ export function manifest(clientId?: string, hosted = false): PluginManifest {
   return {
     name: 'autodesk', title: 'Autodesk Forma / Data Exchange', api: '^2.0.0', auth: 'interactive',
     permissions: {
-      network: ['developer.api.autodesk.com'],
+      network: ['developer.api.autodesk.com', 'api.userprofile.autodesk.com'],
       publicNetwork: ['*.s3.amazonaws.com', '*.s3.us-west-2.amazonaws.com', '*.s3.us-east-1.amazonaws.com', '*.s3.eu-west-1.amazonaws.com', '*.s3.eu-central-1.amazonaws.com'],
     },
     preferences: hosted ? [] : [{

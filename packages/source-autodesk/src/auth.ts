@@ -50,8 +50,8 @@ export class AutodeskAuth implements SourceAuth {
         const identity = await this.service.identity();
         return generation === this.generation ? identity : null;
       }
-      // APS Authentication v2 user information, not claims decoded from a token.
-      const response = await ctx.fetch(`${APS_ORIGIN}/authentication/v2/userinfo`, {
+      // Read the Autodesk OIDC profile, rather than decoding token claims.
+      const response = await ctx.fetch('https://api.userprofile.autodesk.com/userinfo', {
         headers: { Authorization: `Bearer ${await this.accessToken(ctx)}` },
       });
       checkResponse(response);

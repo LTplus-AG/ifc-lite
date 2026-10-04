@@ -22,6 +22,17 @@ function callbackMessage(state: string, code = 'code-1'): unknown {
 }
 
 describe('waitForOAuthCallback', () => {
+  it('rejects a cancelled wait and does not accept a later callback', async () => {
+    const controller = new AbortController();
+    const pending = waitForOAuthCallback({ expectedState: 'cancelled', timeoutMs: 2000, timeoutMessage: 'timeout', signal: controller.signal });
+    controller.abort(new DOMException('Cancelled', 'AbortError'));
+    broadcast(callbackMessage('cancelled'));
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  });
+  it('rejects an already aborted signal immediately', async () => {
+    const controller = new AbortController(); controller.abort();
+    await expect(waitForOAuthCallback({ expectedState: 'cancelled', timeoutMs: 2000, timeoutMessage: 'timeout', signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
+  });
   it('resolves with the callback URL the page broadcast', async () => {
     const pending = waitForOAuthCallback({
       expectedState: 'state-a',

@@ -26,6 +26,8 @@ import { taskProductExpressIds, taskProductGlobalIds } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { PersistentCollapsible } from './PersistentCollapsible';
+import { taskStartIso, taskFinishIso, taskDurationIso } from '@/store/slices/schedule-task-dates';
+import { parseIsoDate } from '@/store/slices/schedule-edit-helpers';
 
 interface ScheduleCardProps {
   /** Schedule data from the viewer's slice (parsed or generated). */
@@ -114,9 +116,9 @@ interface TaskRowProps {
 
 function TaskRow({ task, scheduleNames, locale }: TaskRowProps) {
   const { t } = useTranslation();
-  const start = formatDate(task.taskTime?.scheduleStart, locale);
-  const finish = formatDate(task.taskTime?.scheduleFinish, locale);
-  const duration = task.taskTime?.scheduleDuration;
+  const start = formatDate(taskStartIso(task), locale);
+  const finish = formatDate(taskFinishIso(task), locale);
+  const duration = taskDurationIso(task);
   const completion = task.taskTime?.completion;
   const isCritical = task.taskTime?.isCritical === true;
   const scheduleLabels = task.controllingScheduleGlobalIds
@@ -226,10 +228,11 @@ function buildScheduleNameLookup(data: ScheduleExtraction | null): Map<string, s
   return map;
 }
 
+/** Parsed like the Gantt (TZ-less IfcDateTime is UTC, `parseIsoDate`), displayed in local time like its bars. */
 function formatDate(iso: string | undefined, locale: string): string | undefined {
   if (!iso) return undefined;
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso;
+  const t = parseIsoDate(iso);
+  if (t === undefined) return iso;
   return new Date(t).toLocaleDateString(locale, {
     year: 'numeric', month: 'short', day: 'numeric',
   });

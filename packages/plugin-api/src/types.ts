@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { SourceAuth } from './source-auth.js';
+export type { SourceAuth, SourceIdentity } from './source-auth.js';
+
 // ============================================================================
 // File-source plugin API — the stable contract between host and provider.
 //
@@ -99,6 +102,9 @@ export interface PluginContributions {
 // ---------------------------------------------------------------------------
 
 export interface ProviderCapabilities {
+  /** Filename filters the host should use. An empty array lists all resource
+   * kinds; generated proposals/exchanges need not have a file extension. */
+  readonly sourceNamePatterns?: readonly string[];
   /**
    * `direct-children` — `listContainers` returns only the direct children of
    * `parentId`. The host browses one level at a time. Correct for any API with
@@ -291,6 +297,12 @@ export interface SourceContainer {
 }
 
 export interface SourceFile {
+  /** Native resource kind, when the resource is not an ordinary file. */
+  readonly kind?: 'file' | 'exchange' | 'proposal';
+  /** Filename of the import artifact, distinct from the displayed resource name. */
+  readonly artifactName?: string;
+  /** A visible reason why this resource cannot currently be loaded. */
+  readonly unavailableReason?: string;
   readonly id: string;
   readonly name: string;
   /** The container this file actually lives in, not necessarily the one queried. */
@@ -361,6 +373,8 @@ export interface DownloadOptions {
   readonly signal?: AbortSignal;
   /** Called with bytes received and, when the provider knows it, the total. */
   readonly onProgress?: (received: number, total?: number) => void;
+  /** Preparation/conversion has no fabricated byte percentage. */
+  readonly onPhase?: (phase: 'preparing' | 'downloading') => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -372,36 +386,6 @@ export interface FileFilter {
   readonly namePatterns?: readonly string[];
   /** MIME types to include. Advisory: many stores report IFC as octet-stream. */
   readonly mimeTypes?: readonly string[];
-}
-
-// ---------------------------------------------------------------------------
-// Interactive authentication
-// ---------------------------------------------------------------------------
-
-export interface SourceIdentity {
-  /** Stable account id, provider-scoped. */
-  readonly id: string;
-  readonly displayName?: string;
-  readonly email?: string;
-  /** Tenant or organisation label, when the provider has one. */
-  readonly organization?: string;
-}
-
-/**
- * Implemented by providers declaring `auth: 'interactive'`.
- *
- * `restore` runs at registration and must be silent and non-blocking: no
- * popups, no navigation. `signIn` may open a popup and must therefore only be
- * called from a user gesture — the host guarantees this.
- */
-export interface SourceAuth {
-  /** Re-establish a session from cache, silently. Returns null if not signed in. */
-  restore(ctx: PluginContext): Promise<SourceIdentity | null>;
-  /** Interactive sign-in. Called only from a user gesture. */
-  signIn(ctx: PluginContext): Promise<SourceIdentity>;
-  signOut(ctx: PluginContext): Promise<void>;
-  /** Current identity, or null. Must not perform interactive work. */
-  getIdentity(ctx: PluginContext): Promise<SourceIdentity | null>;
 }
 
 // ---------------------------------------------------------------------------

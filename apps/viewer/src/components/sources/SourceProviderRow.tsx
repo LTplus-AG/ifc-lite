@@ -186,6 +186,11 @@ export function SourceProviderRow({
           </Button>
         )}
 
+        {auth.cancelSignIn && (
+          <Button variant="ghost" size="sm" onClick={auth.cancelSignIn}>
+            {t('sources.sourceProviderRow.cancelSignIn')}
+          </Button>
+        )}
         <IconButton
           label={t('sources.sourceProviderRow.settingsAria', { title: manifest.title })}
           className="h-7 w-7"

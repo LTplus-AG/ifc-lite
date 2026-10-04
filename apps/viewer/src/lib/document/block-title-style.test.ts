@@ -54,7 +54,7 @@ const blocksOfEveryHeadedKind = (style: object = STYLE, scale?: number): Resolve
     { kind: 'text', id: 'text', style: 'body', text: 'One short line', title: 'H:text', ...s },
     { kind: 'image', id: 'image', height: 100, align: 'center', aspect: 2, title: 'H:image', ...s },
     { kind: 'chart', id: 'chart', title: 'H:chart', subtitle: '3 buckets', hasData: true, snapshot: false, height: 200, ...s },
-    { kind: 'topic', id: 'topic', title: 'H:topic', authoredTitle: true, lines: ['Open'], snapshotAspect: 2, ...s },
+    { kind: 'topic', id: 'topic', title: 'H:topic', lines: ['Open'], snapshotAspect: 2, ...s },
     { kind: 'table', id: 'table', title: 'H:table', columns: [{ label: 'Name', numeric: false }], rows: rows(3), ...s },
     { ...IDS, title: 'H:ids', ...s },
     { ...MANUAL, title: 'H:manual', ...s },

@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { drainSseBuffer, streamChat } from './stream-client.js';
+import { drainSseBuffer, readSseStream, streamChat } from './stream-client.js';
 
 test('drainSseBuffer flushes a final unterminated SSE event', () => {
   const drained = drainSseBuffer('data: {"choices":[{"delta":{"content":"tail"}}]}', true);
@@ -159,4 +159,16 @@ test('proxy transport sends caller output ceiling and rejects invalid budgets be
       }
     }
   } finally { globalThis.fetch = original; }
+});
+
+// #6813: provider SSE framing may use CRLF and omit the optional field space.
+test('SSE supports CRLF split across chunks and multiline data fields', async () => {
+  const chunks = ['data:{"a":\r', '\ndata:1}\r\n\r', '\ndata: {"b":2}\r\n\r\n'];
+  const events: unknown[] = [];
+  const body = new ReadableStream<Uint8Array>({ start(controller) {
+    for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk));
+    controller.close();
+  } });
+  assert.equal(await readSseStream(body, undefined, data => { events.push(JSON.parse(data)); }, error => { throw error; }), true);
+  assert.deepEqual(events, [{ a: 1 }, { b: 2 }]);
 });

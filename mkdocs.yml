@@ -146,6 +146,7 @@ nav:
     - Installation: guide/installation.md
     - Quick Start: guide/quickstart.md
     - Web Viewer Controls: guide/web-viewer-controls.md
+    - Viewer Assistant: guide/viewer-assistant.md
     - CLI Toolkit: guide/cli.md
     - MCP for AI Agents: guide/mcp.md
     - 3D Viewer & Analysis: guide/viewer-api.md

@@ -59,7 +59,8 @@ export type WorkspacePanelId =
   | 'changes'
   | 'model'
   | 'changeSets'
-  | 'semantic';
+  | 'semantic'
+  | 'assistant';
 
 /** Shared task grouping for the rail, ribbon panel browser, and palette commands (#5873). */
 export type PanelGroup = 'coordinate' | 'check' | 'quantify' | 'automate' | 'site' | 'author';
@@ -201,6 +202,7 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Named change sets (#6232 D4): the active set collects new edits; export /
   // import as files. Flag-free like 'changes' / 'model'. APPENDED (no Alt shortcut).
   { id: 'changeSets', titleKey: 'changeSets.panel.title', Icon: GitBranch, group: 'author', region: 'side' },
+  { id: 'assistant', titleKey: 'assistant.title', Icon: MessageSquare, group: 'coordinate', region: 'side', prefersWide: true },
   { id: 'semantic', titleKey: 'semantic.title', Icon: Link2, group: 'coordinate', region: 'side', prefersWide: true },
 ];
 

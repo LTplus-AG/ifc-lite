@@ -12,6 +12,27 @@ import type { TranslationValue } from '../types';
  * `chat-byok.en.ts`, under the `chatByok.*` namespace.
  */
 export const chatEn = {
+  'assistant.title': 'Assistant',
+  'assistant.explain': 'Discuss with AI',
+  'assistant.keys': 'API keys',
+  'assistant.returnSource': 'Return to source',
+  'assistant.scope': 'Frozen evidence: {included} of {total} rows included',
+  'assistant.sessionOnly': 'Conversation stays in this browser session. AI explanations do not change native results.',
+  'assistant.stale': 'The source or model has changed, or this result predates an edit. Refresh the evidence before sending.',
+  'assistant.refresh': 'Refresh evidence and start a new conversation',
+  'assistant.evidence': 'Inspect evidence sent to the model',
+  'assistant.empty': 'Open Clash, Data validation, Compare or Flow and choose Discuss with AI to attach evidence.',
+  'assistant.you': 'You',
+  'assistant.missingKey': 'Add an API key for the selected model, then send again.',
+  'assistant.contextLimit': 'Conversation limit reached. Refresh evidence to start a new conversation.',
+  'assistant.prompt': 'Ask about these results',
+  'assistant.send': 'Send',
+  'assistant.truncated': 'Response reached its output budget. The text may be incomplete.',
+  'assistant.emptyOutput': 'The model returned no visible answer within its budget. Choose another model and send again.',
+  'assistant.timeout': 'The request reached its time limit. Send again when ready.',
+  'assistant.evidenceTruncated': 'Some evidence values were omitted or shortened to fit the context budget. Inspect the snapshot for details.',
+  'assistant.cancel': 'Cancel',
+
   // ── ChatMessage.tsx ──
   'chat.message.attachmentRows': {
     one: '({count} row)',

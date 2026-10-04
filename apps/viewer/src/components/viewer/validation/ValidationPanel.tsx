@@ -26,6 +26,7 @@
  * neither replaces nor is replaced by an IDS or information run.
  */
 
+import { AssistantAction } from '../assistant/AssistantAction';
 import { SavedValidationReports } from './SavedValidationReports';
 import { DefinitionLibraryToolbar } from './DefinitionLibraryToolbar';
 import { X } from 'lucide-react';
@@ -214,11 +215,13 @@ function PanelHeader({ title, onClose }: { title: string; onClose?: () => void }
   return (
     <div className="flex items-center justify-between p-3 border-b">
       <span className="font-medium text-sm">{title}</span>
+      <div className="ml-auto flex items-center gap-1"><AssistantAction />
       {onClose && (
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={title} onClick={onClose}>
           <X className="h-4 w-4" />
         </Button>
       )}
+      </div>
     </div>
   );
 }

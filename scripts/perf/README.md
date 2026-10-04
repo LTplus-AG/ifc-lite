@@ -110,6 +110,25 @@ canonical parser; defer mechanisms whose correctness or end-to-end verdict
 remains incomplete. [Raw dispositions and prerequisites](evidence/deferred-worker-mechanisms-6537/README.md)
 retain source attribution and the excluded attempts.
 
+## Checked-magnitude products: native benefit, SDK mixed (#6537 / #6764)
+
+Bounding provably-fitting checked products by their actual magnitude widths
+reduces arithmetic work while preserving the full overflow/fallback paths.
+The qualified canonical warm/prepared native comparison improves on the
+void-heavy CSG model; Holter remains neutral and the house result is noisy.
+Counts and ordered mesh fingerprints agree within the fingerprint's declared
+coverage. The separate default-worker SDK cohort remains mixed, and full-viewer
+performance is unqualified. This is no universal worker-pool speedup claim.
+
+Lesson: real arithmetic opportunity and native instruction reductions do not
+establish browser throughput. Preserve exact overflow, sign and row-carry
+oracles, then measure the actual consumer and disclose identity exclusions.
+The [lossless native evidence and audit history](
+evidence/checked-magnitude-native-6537/README.md) retain all original pairs,
+the corrected checker-status refusal, prior instruction/correctness evidence,
+and scope limits. Available-memory guards exist in the frozen producer, but
+missing numeric readings prevent reconstruction of the admission floor.
+
 ## Initial index reservation: no attributable default-pool benefit (#6537)
 
 The PR #6730 source inspection found no changed reservation request in its

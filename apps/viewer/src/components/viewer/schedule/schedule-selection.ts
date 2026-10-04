@@ -9,7 +9,7 @@
  *
  *  1. `collectProductLocalIdsForTasks` — given a set of Gantt-selected task
  *     globalIds, walk the task tree and return the *union* of every
- *     descendant task's `productExpressIds`. Selecting a parent row in the
+ *     descendant task's products (`taskProductExpressIds`: inputs + outputs). Selecting a parent row in the
  *     Gantt therefore isolates every leaf below it — matching the mental
  *     model that a WBS row represents "all the work under this heading".
  *
@@ -24,6 +24,7 @@
  */
 
 import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
+import { taskProductExpressIds, taskProductGlobalIds } from '@ifc-lite/parser';
 
 /**
  * Walk the task graph starting at `rootGlobalIds`, collecting every
@@ -59,7 +60,7 @@ export function collectProductLocalIdsForTasks(
     const gid = queue.shift()!;
     const task = byGlobalId.get(gid);
     if (!task) continue;
-    for (const local of task.productExpressIds) {
+    for (const local of taskProductExpressIds(task)) {
       productIds.add(local);
     }
     for (const childGid of task.childGlobalIds) {
@@ -101,7 +102,7 @@ export function findTaskForProductGlobalId(
   // to a per-model local-id scan (not implemented here; the caller is
   // expected to have pre-translated productGlobalIds for extracted data).
   const productIdStr = String(productGlobalId);
-  const hit = data.tasks.find(t => t.productGlobalIds.includes(productIdStr));
+  const hit = data.tasks.find(t => taskProductGlobalIds(t).includes(productIdStr));
   if (!hit) return null;
 
   // Walk parent pointers to build the ancestor chain. `parentGlobalId` may
@@ -143,7 +144,7 @@ export function findTaskForProductGlobalIdWithLocal(
   const local = localFromGlobal(productGlobalId);
   if (local === undefined) return null;
 
-  const hit = data.tasks.find(t => t.productExpressIds.includes(local));
+  const hit = data.tasks.find(t => taskProductExpressIds(t).includes(local));
   if (!hit) return null;
 
   const byGlobalId = new Map<string, ScheduleTaskInfo>();

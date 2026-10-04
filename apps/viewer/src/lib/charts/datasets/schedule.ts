@@ -14,6 +14,7 @@
  */
 import type { ChartDataset, ChartDatasetColumn, ChartDatasetRow } from '@ifc-lite/charts';
 import type { ScheduleTaskInfo } from '@ifc-lite/parser';
+import { taskProductExpressIds } from '@ifc-lite/parser';
 import type { ViewerState } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 
@@ -72,8 +73,10 @@ export function buildScheduleDataset(state: ScheduleDatasetState): ChartDataset 
   for (const task of tasks) {
     const start = epoch(task.taskTime?.scheduleStart ?? task.taskTime?.actualStart);
     const finish = epoch(task.taskTime?.scheduleFinish ?? task.taskTime?.actualFinish);
+    // A product can be both an input and an output of one task; count it once.
+    const productIds = [...new Set(taskProductExpressIds(task))];
     rows.push({
-      ids: task.productExpressIds.map((id) => toGlobalIdFromModels(state.models, modelId, id)),
+      ids: productIds.map((id) => toGlobalIdFromModels(state.models, modelId, id)),
       values: [
         task.name,
         task.status ?? '',
@@ -84,7 +87,7 @@ export function buildScheduleDataset(state: ScheduleDatasetState): ChartDataset 
         task.taskTime?.scheduleStart ?? task.taskTime?.actualStart ?? null,
         task.taskTime?.scheduleFinish ?? task.taskTime?.actualFinish ?? null,
         start !== null && finish !== null ? Math.max(0, (finish - start) / MS_PER_DAY) : null,
-        task.productExpressIds.length,
+        productIds.length,
       ],
     });
   }

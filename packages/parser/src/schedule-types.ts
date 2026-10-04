@@ -173,10 +173,20 @@ export interface ScheduleTaskInfo {
   parentGlobalId?: string;
   /** Child task globalIds (from IfcRelNests where this task is RelatingObject). */
   childGlobalIds: string[];
-  /** expressIds of products assigned to this task via IfcRelAssignsToProcess. */
+  /** expressIds of products assigned via IfcRelAssignsToProcess: the task's INPUTS. */
   productExpressIds: number[];
   /** globalIds of the same products (aligned with productExpressIds by index). */
   productGlobalIds: string[];
+  /**
+   * expressIds of products this task OUTPUTS via IfcRelAssignsToProduct (the
+   * task in RelatedObjects): the buildingSMART "task builds this product"
+   * convention (#6749). Separate from the inputs so a round trip writes each
+   * back as the relationship it came from. Absent ≡ `[]`. Read both lists
+   * through `taskProductExpressIds` (schedule-task-products.ts).
+   */
+  outputProductExpressIds?: number[];
+  /** globalIds of the same products (aligned with outputProductExpressIds by index). */
+  outputProductGlobalIds?: string[];
   /** WorkSchedule globalIds that control this task via IfcRelAssignsToControl. */
   controllingScheduleGlobalIds: string[];
   /**

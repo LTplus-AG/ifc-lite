@@ -82,6 +82,8 @@ const TASK_FIELDS: FieldSpec[] = [
   mk('ChildTaskGlobalIds',          'childGlobalIds',               'string[]', false),
   mk('AssignedProductExpressIds',   'productExpressIds',            'number[]', false),
   mk('AssignedProductGlobalIds',    'productGlobalIds',             'string[]', false),
+  mk('OutputProductExpressIds',     'outputProductExpressIds',      'number[]'),
+  mk('OutputProductGlobalIds',      'outputProductGlobalIds',       'string[]'),
   mk('ControllingScheduleGlobalIds','controllingScheduleGlobalIds', 'string[]', false),
   mk('CalendarGlobalIds',           'calendarGlobalIds',            'string[]'),
   // TaskTime is a nested struct — handled by the schema-to-type helper below.

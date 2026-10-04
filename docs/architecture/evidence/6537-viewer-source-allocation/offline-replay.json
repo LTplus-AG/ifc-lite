@@ -1,0 +1,22 @@
+{
+  "status": "REPLAYED_NARROW_ALLOCATION_ONLY",
+  "records": 40,
+  "originalBytes": 27051069,
+  "archiveSHA256": "e5ef2a50816685240f657abdf3153faec2dbf4bc8136be1628ce6787c6dd3206",
+  "immutableGitSourceSHAs": 40265,
+  "derivedCopies": {
+    "base": {
+      "sourcePreparationCopies": 1,
+      "postGeometryCacheCopies": 0,
+      "bytes": 342657851
+    },
+    "candidate": {
+      "sourcePreparationCopies": 0,
+      "postGeometryCacheCopies": 1,
+      "bytes": 342657851
+    }
+  },
+  "strictRefusalsPreserved": true,
+  "WASMengineByteIdentity": false,
+  "scope": "No normal timing, speed, physical-memory, full scene/interactive/fidelity, federation or Edge fix verdict."
+}

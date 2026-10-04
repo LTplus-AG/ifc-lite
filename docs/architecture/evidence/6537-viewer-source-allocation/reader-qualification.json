@@ -1,0 +1,94 @@
+{
+  "status": "DATA_ONLY_READER_CONTROLS_PASS",
+  "controls": 8,
+  "readerControlReceipt": {
+    "argv": [
+      "python3",
+      "docs/architecture/evidence/6537-viewer-source-allocation/replay_tests.py"
+    ],
+    "exit": 0,
+    "startedUTC": "2026-10-04T00:43:50.854261+00:00",
+    "endedUTC": "2026-10-04T00:43:50.896265+00:00",
+    "logSHA256": "637ad693971420b70a01476cd5d51065ecc3c7af270c41cfe91899ec8c2db4bd"
+  },
+  "sourceGates": [
+    {
+      "argv": [
+        "node",
+        "scripts/add-license-headers.mjs",
+        "--check"
+      ],
+      "exit": 0,
+      "startedUTC": "2026-10-04T00:42:11.035584+00:00",
+      "endedUTC": "2026-10-04T00:42:11.366488+00:00",
+      "logSHA256": "a69e0f79f4ede69e06ec59c0b8be13f7650c831973cb6e8feb7304e6a4b522db"
+    },
+    {
+      "argv": [
+        "node",
+        "scripts/check-module-size.mjs"
+      ],
+      "exit": 0,
+      "startedUTC": "2026-10-04T00:42:11.366567+00:00",
+      "endedUTC": "2026-10-04T00:42:12.371532+00:00",
+      "logSHA256": "8753957a9323292e3ad6960f7012f0538affc4e2892b615afb465f91fcb1a6f8"
+    },
+    {
+      "argv": [
+        "node",
+        "scripts/check-test-wiring.mjs"
+      ],
+      "exit": 0,
+      "startedUTC": "2026-10-04T00:42:12.371629+00:00",
+      "endedUTC": "2026-10-04T00:42:12.625585+00:00",
+      "logSHA256": "d10fc07f1cc98709a3d0fc349d78321ddbe2eea2a7a90bff6bcc609c91bf9595"
+    },
+    {
+      "argv": [
+        "node",
+        "scripts/check-source-text-assertions.mjs"
+      ],
+      "exit": 0,
+      "startedUTC": "2026-10-04T00:42:12.625668+00:00",
+      "endedUTC": "2026-10-04T00:42:18.262629+00:00",
+      "logSHA256": "034f46cb78c15de8a73b558763f868066c647df71492a33e0c4732975e4d457f"
+    },
+    {
+      "argv": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit": 0,
+      "startedUTC": "2026-10-04T00:42:18.262733+00:00",
+      "endedUTC": "2026-10-04T00:42:18.426107+00:00",
+      "logSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "finalReaderAndDiffGates": [
+    {
+      "argv": [
+        "python3",
+        "docs/architecture/evidence/6537-viewer-source-allocation/replay.py",
+        "--repository",
+        "."
+      ],
+      "exit": 0,
+      "startedUTC": "2026-10-04T00:43:50.896344+00:00",
+      "endedUTC": "2026-10-04T00:44:05.296950+00:00",
+      "logSHA256": "ecb90c9cbff1979240810457d9bef572bdd2fbeccb6ca4548c8283444f51e892"
+    },
+    {
+      "argv": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit": 0,
+      "startedUTC": "2026-10-04T00:44:05.297028+00:00",
+      "endedUTC": "2026-10-04T00:44:05.353692+00:00",
+      "logSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "scope": "No app/model/build/browser/measurement rerun; historical archived producer bytes unchanged"
+}

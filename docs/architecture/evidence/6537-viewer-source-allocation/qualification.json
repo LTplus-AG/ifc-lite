@@ -1,0 +1,55 @@
+{
+  "status": "HOSTED_NARROW_ALLOCATION_ONLY_WITH_STRICT_REFUSALS",
+  "runId": 37162551281,
+  "controller": "32f8b91e0de20faa73a9f77f21b810f81d3646cf",
+  "BASE": "c61932d4a9d85efe1b0f817a5274a115f0571ee3",
+  "CAND": "2feb6545b588e02d55d4d6b4d9afbe8be261452e",
+  "publicFixture": {
+    "bytes": 342657851,
+    "sha256": "e91ddbbd672bbde946af14631de4c732f0cf8a7cfae5dbbf06fbeab03b5c46df"
+  },
+  "sourcePreparationCopies": {
+    "base": 1,
+    "candidate": 0
+  },
+  "postGeometryAdmittedCacheCopies": {
+    "base": 0,
+    "candidate": 1
+  },
+  "copiesTotal": {
+    "base": 1,
+    "candidate": 1
+  },
+  "canonicalMetadataSource": "original resident SharedArrayBuffer; one-byte borrowed view; exact observed native-copy ancestry",
+  "metadataEntityCount": 4411807,
+  "geometryMeshes": 53769,
+  "finalConsolidatedBatches": 237,
+  "actualChromeVersion": "154.0.8037.57",
+  "actualChromeSHA256": "4d2512ae84986bf987e6ea8ef14ca1af555ae574fbaff5b5a8c78a8dd73fa36f",
+  "hardwareConcurrency": 4,
+  "defaultWorkers": 2,
+  "independentChecks": 40585,
+  "rootReplayChecks": 40585,
+  "fullAppearanceIdentity": "REFUSED in both: flat/instance scene owner census mismatch",
+  "modelLifecycle": {
+    "loadState": "complete",
+    "geometryLoadState": "opening",
+    "metadataLoadState": "idle",
+    "interactiveReady": false
+  },
+  "setup404": "one console error in each; unknown URL, explicitly retained",
+  "modelPhaseFaults": "no console error/pageerror/crash/backend error recorded",
+  "WASMengineSHA256": {
+    "base": "f9afb5a44a751c0e3ee780056da714f29c362c6f4cb57f08e8ad837c267a4d43",
+    "candidate": "c8f9b1a0249b710e75915925f34396f3a477c4f8c2871f397a418c73dc0a61cd"
+  },
+  "WASMengineByteIdentity": false,
+  "sampledAggregateOwnedRssBytes": {
+    "base": 4937043968,
+    "candidate": 4516474880
+  },
+  "RSSscope": "250ms sampled aggregate, shared pages double-counted, below fixed5GiB guard; not physical peak or memory-win evidence",
+  "cleanup": "both browser/process/server closures complete; no remaining owned processes or sockets",
+  "archiveSHA256": "e5ef2a50816685240f657abdf3153faec2dbf4bc8136be1628ce6787c6dd3206",
+  "scope": "No normal timing, speed, physical-memory win, full scene/interactive/fidelity, federation, all-model or1778MB Edge fix claim."
+}

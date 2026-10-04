@@ -21,7 +21,11 @@ CLOUD_MICROSOFT_TENANT=common
 ```
 
 Secrets go directly into Railway's protected variable settings, never chat,
-Git or viewer build variables. Startup rejects partial app configurations.
+Git or viewer build variables. Startup rejects partial app configurations. Stage the public client ID and
+secret as a complete pair before deploying: use Railway `--skip-deploys` for
+CLI changes, save the secret privately in Railway, verify both variables are
+present without printing their values, then redeploy. A secret-only deployment
+exits before its health check; restarting that old configuration does not fix it.
 Use one replica, disable sleeping, health check `/healthz`, and no persistent
 artifact volume. Allocate at least 1.5 GiB temporary disk; file spooling avoids
 full-model memory buffering. Sessions are process-local; a deploy signs users
@@ -75,7 +79,16 @@ host-only cookies, no-store responses, correct-origin unconfigured authorize
 (503), and foreign-origin rejection (403). Local Docker qualification also
 passed under the non-root image user. These probes made no vendor calls.
 
-Both vendor app credential pairs remain absent. The viewer flag remains off.
-The fixed Vercel rewrite is prepared in the viewer layer but is not live on the
-public viewer. This is an unmerged qualification deployment; activate only after
-review/CI/merge, vendor registration and real sign-in/import acceptance.
+Both vendor app credential pairs are now configured. Microsoft uses the common
+tenant and delegated User.Read, Files.Read and offline_access. Replacement
+deployment `055736c2-c470-42f4-9a41-6925d2bcf150` passes HTTPS health and both
+configured-session checks. Both authorization routes return the expected vendor
+host, production callback and S256 PKCE; cancellation cleans up each transaction.
+These checks do not exchange a vendor code or prove a real file import.
+
+The viewer flag and fixed Vercel rewrite are prepared but are not yet live on
+the public viewer. After required checks, review and merge, activate the
+production viewer and run real sign-in/import acceptance with consenting users
+who have the relevant subscriptions and project access. The deployment operator
+does not need their own Autodesk subscription. Keep this qualification status
+separate from real vendor import acceptance.

@@ -28,9 +28,11 @@ describe('LodPacer read-rate estimate (#6869)', () => {
     const pacer = new LodPacer({ initialPointsPerMs: 1_000, clipRatio: 4 });
     pacer.observe(1e12, 1); // a cache hit reported as a read
     expect(pacer.pointsPerMs).toBeLessThanOrEqual(1_000 * (1 + 0.1 * 3) + 1e-9);
-    const stall = new LodPacer({ initialPointsPerMs: 1_000, clipRatio: 4 });
+    // fallAlpha 1 makes the estimate the clipped sample itself, so dropping
+    // the lower clip (rate ~0) cannot hide behind the moving average.
+    const stall = new LodPacer({ initialPointsPerMs: 1_000, clipRatio: 4, fallAlpha: 1 });
     stall.observe(1, 60_000); // a tab in the background
-    expect(stall.pointsPerMs).toBeGreaterThanOrEqual(1_000 / 4);
+    expect(stall.pointsPerMs).toBeCloseTo(1_000 / 4, 6);
   });
 
   it('ignores samples that carry no information', () => {

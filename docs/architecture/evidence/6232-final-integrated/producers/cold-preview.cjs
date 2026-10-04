@@ -8,13 +8,13 @@ const { runSuite, assert } = require(path.join(root, 'docs/architecture/evidence
 async function run(command) {
   await runSuite(`cold-${command}`, async ({ page, modelId, count, capture, sameGraphGeometry }) => {
     const before = await capture('before-preview', [1222, 1262, 1407]);
-    const started = await page.evaluate(async ({ root, modelId, command }) => {
-      const url = file => '/@fs' + root + '/' + file;
+    const started = await page.evaluate(async ({ modelId, command }) => {
+      const url = file => '/' + file;
       const [runtime, ids, align, planner] = await Promise.all([
-        import(url('apps/viewer/src/lib/commands/modeling/runtime.ts')),
-        import(url('apps/viewer/src/store/globalId.ts')),
-        import(url('apps/viewer/src/lib/commands/modeling/align-gesture.ts')),
-        import(url('apps/viewer/src/lib/element-transform/commit.ts')),
+        import(url('src/lib/commands/modeling/runtime.ts')),
+        import(url('src/store/globalId.ts')),
+        import(url('src/lib/commands/modeling/align-gesture.ts')),
+        import(url('src/lib/element-transform/commit.ts')),
       ]);
       globalThis.coldPreviewRuntime = runtime;
       const store = globalThis.__ifc_lite_viewer_store__, s = store.getState();
@@ -48,7 +48,7 @@ async function run(command) {
         movedLocalIds: command === 'align' ? null : g.selection.movedGlobalIds.map(id => current.resolveGlobalIdFromModels(id).expressId),
         ghostCount: ghosts.length, ghostsFinite: ghosts.every(m => Array.from(m.positions).every(Number.isFinite)),
         journal: view.getMutations(), records: view.getNewEntities(), allocator: view.peekNextExpressId() };
-    }, { root, modelId, command });
+    }, { modelId, command });
     assert.deepEqual(started.roots, [1222]);
     assert.ok(started.carried.includes(1407), 'real loaded filling is governed by its selected host');
     assert.ok(started.ghostCount > 0 && started.ghostsFinite, 'registered command emits actual finite previews');

@@ -16,3 +16,5 @@ export * from './profile-index.js';
 export { resourcesFromResults, DEFAULT_MAPPING } from './projection.js';
 export type { BindingMapping } from './projection.js';
 export { recordsFromGraph } from './graph.js';
+export { DEFAULT_RESOURCE_URI_CONFIG, assertResourceUriIdentityConfig, resourceUriForGlobalId, createResourceUriStrategy } from './uri-resolver.js';
+export type { ResourceUriIdentityConfig } from './uri-resolver.js';

@@ -31,6 +31,7 @@ export function SemanticResults({ results, mapping, revisions, scope, onError }:
   useSemanticSession(state => state.strategy);
   useSemanticSession(state => state.links);
   useSemanticSession(state => state.identityFields);
+  useSemanticSession(state => state.uriConfig);
   const start = Math.min(page * PAGE_SIZE, Math.max(0, Math.floor((results.rows.length - 1) / PAGE_SIZE) * PAGE_SIZE));
   const end = Math.min(start + PAGE_SIZE, results.rows.length);
   const renderedEntities = liveEntities();

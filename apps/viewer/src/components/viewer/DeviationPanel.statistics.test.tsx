@@ -262,3 +262,33 @@ it('DeviationPanel #6872 keeps a valid heatmap when only the statistics readback
   assert.equal(container.querySelector('[data-testid="deviation-summary"]'), null);
   assert.equal(button(container, 'Export CSV'), undefined);
 });
+
+it('DeviationPanel #6872 re-reads its statistics when COPC LOD streaming re-runs deviation (#6880)', async () => {
+  const stub = stubRenderer();
+  const container = render(<DeviationPanel triangleCount={1} />);
+  await computeWith(container, stub, ladder(1000, 0.04));
+  assert.equal(stat(container, 'maxAbs'), '40.0 mm');
+
+  // A settled LOD pass re-ran deviation on a new chunk set: the old readback
+  // describes chunks no longer drawn, so it is dropped and read again.
+  act(() => { useViewerStore.getState().bumpPointCloudDeviationRevision(); });
+  await waitFor(() => stub.readbacks.length === 2, 'refresh readback started');
+  assert.equal(container.querySelector('[data-testid="deviation-summary"]'), null);
+  assert.equal(button(container, 'Export CSV'), undefined);
+  await act(async () => { stub.readbacks[1](ladder(400, 0.004)); });
+  await waitFor(() => stat(container, 'maxAbs') === '4.0 mm', 'refreshed statistics rendered');
+  assert.equal(stub.computeCalls(), 1, 'the refresh reads back; it does not recompute');
+});
+
+it('DeviationPanel #6872 a re-run that lands during the panel readback is read again afterwards', async () => {
+  const stub = stubRenderer();
+  const container = render(<DeviationPanel triangleCount={1} />);
+  click(container.querySelector('button') as HTMLButtonElement);
+  await waitFor(() => stub.readbacks.length === 1, 'distance readback started');
+  act(() => { useViewerStore.getState().bumpPointCloudDeviationRevision(); });
+  await act(async () => { stub.readbacks[0](ladder(1000, 0.04)); });
+  // That readback may predate the re-run, so a second one follows.
+  await waitFor(() => stub.readbacks.length === 2, 'follow-up readback started');
+  await act(async () => { stub.readbacks[1](ladder(400, 0.004)); });
+  await waitFor(() => stat(container, 'maxAbs') === '4.0 mm', 'latest run shown');
+});

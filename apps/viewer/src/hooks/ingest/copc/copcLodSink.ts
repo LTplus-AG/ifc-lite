@@ -16,7 +16,9 @@
  *   decoding every point).
  * - Deviation: a run only colours the chunks that existed at the time, so
  *   when one is live, each settled pass re-runs it (the BVH is cached by
- *   the renderer, so this is the per-chunk dispatch only).
+ *   the renderer, so this is the per-chunk dispatch only). A completed
+ *   refresh bumps `pointCloudDeviationRevision`, so the Deviation panel's
+ *   statistics re-read the new run instead of describing the old chunks.
  */
 
 import type { CopcLodNode, DecodedPointChunk } from '@ifc-lite/pointcloud';
@@ -43,6 +45,7 @@ export function createCopcLodSink(ctx: CopcIngestContext): CopcLodSink & { passS
       return;
     }
     deviationRun = ctx.renderer.computeDeviations({ maxRange: 1.0 })
+      .then(() => useViewerStore.getState().bumpPointCloudDeviationRevision())
       .catch((err: unknown) => console.warn('[copc-lod] deviation refresh failed:', err))
       .finally(() => {
         deviationRun = null;

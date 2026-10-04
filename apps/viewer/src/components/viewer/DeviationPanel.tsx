@@ -49,6 +49,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   const centerOffset = useViewerStore((s) => s.pointCloudDeviationCenterOffset);
   const setHalfRange = useViewerStore((s) => s.setPointCloudDeviationHalfRange);
   const computed = useViewerStore((s) => s.pointCloudDeviationComputed);
+  const revision = useViewerStore((s) => s.pointCloudDeviationRevision);
   const setComputed = useViewerStore((s) => s.setPointCloudDeviationComputed);
   const colorMode = useViewerStore((s) => s.pointCloudColorMode);
   const setColorMode = useViewerStore((s) => s.setPointCloudColorMode);
@@ -80,6 +81,26 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     const pending = exportRef.current;
     if (pending && pending.distances !== distances) pending.controller.abort();
   }, [distances]);
+
+  // COPC LOD streaming re-runs deviation on the chunks of each settled view
+  // (#6880) and bumps the revision. The held readback then describes chunks
+  // that are no longer drawn, so drop it and read the new run back.
+  const readRevisionRef = useRef<number | null>(null);
+  useEffect(() => {
+    const readAt = readRevisionRef.current;
+    if (!computed || running || readAt === null || readAt === revision) return;
+    const renderer = getGlobalRenderer();
+    if (!renderer) return;
+    readRevisionRef.current = revision;
+    setDistances(null);
+    let current = true;
+    renderer.readDeviationDistances().then(
+      (read) => { if (current) setDistances(read); },
+      // A newer refresh is already queued behind the run that raced this read.
+      (err: unknown) => { if (current) console.warn('[DeviationPanel] statistics refresh failed', err); },
+    );
+    return () => { current = false; };
+  }, [computed, running, revision]);
 
   const handleExport = useCallback(async () => {
     if (!computed || !distances || running || exportRef.current) return;
@@ -172,6 +193,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       // the result immediately.
       setColorMode('deviation');
       // The heatmap is already on screen; the statistics follow the readback.
+      readRevisionRef.current = useViewerStore.getState().pointCloudDeviationRevision;
       const read = await renderer.readDeviationDistances();
       const after = useViewerStore.getState();
       // `computed` falls whenever the run is invalidated (placement, model

@@ -1168,9 +1168,7 @@ export class Renderer {
         return this.deviationComputer.readDistances(this.deviationContext());
     }
 
-    private deviationContext(): DeviationComputeContext {
-        return { device: this.device, scene: this.scene, pointCloudRenderer: this.pointCloudRenderer, requestRender: () => this.requestRender() };
-    }
+    private readonly deviationContext = (): DeviationComputeContext => ({ device: this.device, scene: this.scene, pointCloudRenderer: this.pointCloudRenderer, requestRender: () => this.requestRender() });
 
     /**
      * Toggle Eye-Dome Lighting and tune its strength.

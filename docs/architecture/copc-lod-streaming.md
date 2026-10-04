@@ -63,7 +63,10 @@ LAS/LAZ behaviour, because COPC is LAZ.
 - **Class histogram**: each node counted once, scaled by its stride: an
   estimate of the whole file's classes.
 - **Deviation**: when a deviation run is live, each settled pass re-runs it
-  (the triangle BVH is cached, so this is the per-chunk dispatch).
+  (the triangle BVH is cached, so this is the per-chunk dispatch). A completed
+  re-run bumps `pointCloudDeviationRevision`, and the Deviation panel then
+  drops its held readback and reads the new run back, so its statistics and
+  CSV describe the chunks on screen.
 
 ## Snapping cost
 

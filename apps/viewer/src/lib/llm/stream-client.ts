@@ -9,8 +9,8 @@
  * back as SSE. Extracts usage headers from the response for UI display.
  */
 
+import { outputTokenLimit, PROXY_OUTPUT_TOKEN_CEILING } from '../../../../../shared/ai/output-budget.js';
 import { buildCacheableSystem, logCacheHit } from './prompt-cache.js';
-
 /** A text content part in a multimodal message */
 export interface TextContentPart {
   type: 'text';
@@ -55,6 +55,8 @@ export interface StreamOptions {
   messages: StreamMessage[];
   /** System prompt */
   system?: string;
+  /** Positive output token budget; clamped to the transport ceiling. */
+  maxOutputTokens?: number;
   /** AbortSignal for cancellation */
   signal?: AbortSignal;
   /** Called for each text chunk as it arrives */
@@ -228,9 +230,13 @@ export async function streamChat(options: StreamOptions): Promise<void> {
   // Authoring turns (which ship the ~5 KiB manifest/widget/capability
   // contract) hit this path; one-shot turns fall under the threshold
   // and pass through as plain string.
+  let maxOutputTokens: number;
+  try { maxOutputTokens = outputTokenLimit(options.maxOutputTokens, PROXY_OUTPUT_TOKEN_CEILING); }
+  catch (error) { onError(error instanceof Error ? error : new Error(String(error))); return; }
   const requestBody = JSON.stringify({
     messages,
     model,
+    maxOutputTokens,
     system: buildCacheableSystem(system),
   });
   const fetchChat = async (url: string) => {

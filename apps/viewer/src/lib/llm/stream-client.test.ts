@@ -133,3 +133,30 @@ test('a retired model still tells the user what they can actually do (#2886)', a
     globalThis.fetch = originalFetch;
   }
 });
+
+// #6809: assert the request sent to the provider, not a budget setter.
+test('proxy transport sends caller output ceiling and rejects invalid budgets before fetch', async () => {
+  const original = globalThis.fetch;
+  const sent: Array<{ maxOutputTokens: number }> = [];
+  globalThis.fetch = async (_url, init) => {
+    sent.push(JSON.parse(String(init?.body)) as { maxOutputTokens: number });
+    return new Response('data: [DONE]\n\n');
+  };
+  try {
+    for (const requested of [undefined, 256, 50_000, 0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      let error: Error | undefined;
+      const previous = sent.length;
+      await streamChat({
+        proxyUrl: '/api/chat', model: 'openai/gpt-free', messages: [{ role: 'user', content: 'hi' }],
+        maxOutputTokens: requested, onChunk: () => {}, onComplete: () => {}, onError: e => { error = e; },
+      });
+      if (requested === undefined || requested === 256 || requested === 50_000) {
+        assert.equal(error, undefined);
+        assert.equal(sent.at(-1)?.maxOutputTokens, requested === 256 ? 256 : 8192);
+      } else {
+        assert.match(error?.message ?? '', /positive safe integer/);
+        assert.equal(sent.length, previous);
+      }
+    }
+  } finally { globalThis.fetch = original; }
+});

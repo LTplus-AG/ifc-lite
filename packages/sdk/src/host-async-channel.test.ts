@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
-import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor, recordCompoundMutation } from '@ifc-lite/mutations';
 import { RoomLayoutCache, type RoomWallRect } from '@ifc-lite/create';
 import { BimHost } from './host.js';
 import { createRoomCommandBackend } from './store-room-command.js';
@@ -77,9 +77,11 @@ for (const channel of ['broadcast', 'port'] as const) it.skipIf(!existsSync(wasm
     [[20,19.9],[24,19.9],[24,20.1],[20,20.1]], [[23.9,20],[24.1,20],[24.1,23],[23.9,23]],
     [[20,22.9],[24,22.9],[24,23.1],[20,23.1]], [[19.9,20],[20.1,20],[20.1,23],[19.9,23]],
   ].map(corners => ({ corners: corners as [number, number][], centreline: [corners[0] as [number, number], corners[1] as [number, number]], thickness: .2 }));
-  const wait = gate(), entered = gate();
-  const service = createRoomCommandBackend(() => model, async () => { entered.release(); await wait.pending; return { walls, factory: runtime.SpacePlateHandle }; }, {
-    layouts: new RoomLayoutCache(), historyHead: () => 'source', record: (_id, write) => write(model),
+  const wait = gate(), entered = gate(), layouts = new RoomLayoutCache();
+  const calls = { resolve: 0, prepare: 0, history: 0, record: 0 };
+  const service = createRoomCommandBackend(() => { calls.resolve++; return model; }, async () => { calls.prepare++; entered.release(); await wait.pending; return { walls, factory: runtime.SpacePlateHandle }; }, {
+    layouts, historyHead: () => { calls.history++; return mutationView.getMutations().map(m => m.id).join('|'); },
+    record: (_id, write) => { calls.record++; return recordCompoundMutation(mutationView, draft => write({ ...model, mutationView: draft, editor: new StoreEditor(store, draft) })); },
   });
   const connection = connect({ store: service, subscribe: () => () => {} } as unknown as BimBackend, channel);
   try {
@@ -93,5 +95,34 @@ for (const channel of ['broadcast', 'port'] as const) it.skipIf(!existsSync(wasm
     expect(result.candidates[0].grossArea).toBeCloseTo(12);
     expect(result.created).toEqual([]);
     expect(mutationView.getNewEntities()).toEqual([]);
+    // #6232 / #6758 review 4175802258: actual wire data must be refused
+    // before resolver, history, cache, native preparation or IFC recording.
+    const snapshot = () => structuredClone({
+      calls, cache: layouts.version(), records: editor.getNewEntities(),
+      journal: mutationView.getMutations(), next: mutationView.peekNextExpressId(),
+      attributes: mutationView.getAttributeMutationsByEntity(), types: mutationView.getTypeMutations(),
+      source: store.source.slice(0, store.source.byteLength),
+    });
+    const before = snapshot();
+    expect(before.source.byteLength).toBeGreaterThan(0);
+    expect(before.source).toEqual(new Uint8Array(bytes));
+    for (const expressIds of ['1', [1.5], [NaN], [-1], [0], [Number.MAX_SAFE_INTEGER + 1], [null], new Array(1), [1, 1], []]) {
+      const refused = await connection.transport.send({ ...request, args: ['m', 42, { action: 'update', expressIds }] });
+      expect(refused.error?.message).toMatch(/^Room update requires 1\.\.10000 unique positive safe-integer rooms$/);
+      expect(refused.result).toBeUndefined();
+      expect(snapshot()).toEqual(before);
+    }
+    // A real native author/update following malformed requests proves that
+    // validation does not poison the per-model running lock.
+    const authored = await connection.transport.send({ ...request, args: ['m', 42, { action: 'auto' }] });
+    expect(authored.error).toBeUndefined();
+    const authoredResult = authored.result as Awaited<ReturnType<typeof service.roomCommand>>;
+    expect(authoredResult.created).toHaveLength(1);
+    const roomId = authoredResult.created[0].expressId;
+    const updated = await connection.transport.send({ ...request, args: ['m', 42, { action: 'update', expressIds: [roomId] }] });
+    expect(updated.error).toBeUndefined();
+    expect(updated.result).toMatchObject({ updated: [{ modelId: 'm', expressId: roomId }] });
+    const unsupported = await connection.transport.send({ ...request, args: ['m', 42, { action: 'update', expressIds: [1222] }] });
+    expect(unsupported.error?.message).toMatch(/No selected room has a supported current face/);
   } finally { wait.release(); connection.close(); service.disposeRooms(); }
 });

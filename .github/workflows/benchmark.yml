@@ -79,6 +79,10 @@ on:
     - cron: '53 4 * * 4'
   workflow_dispatch:
     inputs:
+      diagnostic_6516:
+        description: 'Build and qualify the isolated #6516 CSG census diagnostic bundle'
+        type: boolean
+        default: false
       record_baseline:
         description: 'Upload a refreshed baseline.json (CI-recorded numbers) as the benchmark-baseline artifact'
         type: boolean
@@ -98,8 +102,8 @@ env:
 jobs:
   benchmark:
     name: Viewer benchmark (advisory)
-    # On a PR only when asked for by label; every other trigger runs it.
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:benchmark')
+    # PRs opt in by label; diagnostic dispatches use the dedicated jobs below.
+    if: (github.event_name != 'workflow_dispatch' || inputs.diagnostic_6516 != true) && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:benchmark'))
     # Free GitHub-hosted runner (public repo). The benchmark measures a noisy
     # shared VM anyway; the +50% thresholds in benchmark:check absorb the
     # jitter, and the job is advisory. When Rust changed we compile wasm32
@@ -287,3 +291,120 @@ jobs:
           path: tests/benchmark/baseline.json
           retention-days: 30
           if-no-files-found: error
+
+  csg-work-diagnostic-build:
+    name: 'Build isolated #6516 diagnostic bundle'
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_6516 == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Checkout release 6 source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: e69750fb08e2cc5bbb62e63737d658a852f8a03f
+          path: diag-source6
+          lfs: false
+          persist-credentials: false
+
+      - name: Checkout release 7 source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: d6e56c8cad8a673d97ab369e4373ce015d3f9c56
+          path: diag-source7
+          lfs: false
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+
+      - name: Setup WASM build toolchain
+        uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: benchmark
+
+      - name: Build diagnostic bundle
+        run: node scripts/perf/build-csg-work-bundle.mjs --out "$RUNNER_TEMP/csg-work-bundle" --source6 diag-source6 --source7 diag-source7
+
+      - name: Qualify actual bundle on Linux
+        run: |
+          curl --fail --location --connect-timeout 15 --max-time 60 --output "$RUNNER_TEMP/994-slab.ifc" 'https://raw.githubusercontent.com/IfcOpenShell/files/9fc2267d7f1ff35284c5b0fc28cc97bff7ace8e7/994--slab--segfault--augmented.ifc'
+          node "$RUNNER_TEMP/csg-work-bundle/run-csg-work-bundle.mjs" "$RUNNER_TEMP/994-slab.ifc" "$RUNNER_TEMP/csg-work-linux-qualification" --public-self-check
+
+      - name: Upload Linux qualification receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: csg-work-linux-qualification
+          path: ${{ runner.temp }}/csg-work-linux-qualification/*.json
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload diagnostic bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: csg-work-bundle
+          path: ${{ runner.temp }}/csg-work-bundle
+          retention-days: 7
+          if-no-files-found: error
+          # npm's hidden lock inventory is part of the verified file census.
+          include-hidden-files: true
+
+  csg-work-diagnostic-windows:
+    name: 'Qualify #6516 bundle on Windows'
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_6516 == true
+    needs: csg-work-diagnostic-build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Download diagnostic bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: csg-work-bundle
+          path: ${{ runner.temp }}/csg-work-bundle
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+
+      - name: Fetch and verify public 994 fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $uri = 'https://raw.githubusercontent.com/IfcOpenShell/files/9fc2267d7f1ff35284c5b0fc28cc97bff7ace8e7/994--slab--segfault--augmented.ifc'
+          $model = Join-Path $env:RUNNER_TEMP '994--slab--segfault--augmented.ifc'
+          Invoke-WebRequest -Uri $uri -OutFile $model
+          $actual = (Get-FileHash -Algorithm SHA256 $model).Hash.ToLowerInvariant()
+          if ($actual -ne '1d1cd11c57d80fe4f769a05db49cf1a96973b1af6cbee2d75ef541cfa3cb8fa0') {
+            throw "Public 994 fixture SHA256 mismatch: $actual"
+          }
+
+      - name: Run bundle qualification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = Join-Path $env:RUNNER_TEMP 'csg-work-bundle'
+          $model = Join-Path $env:RUNNER_TEMP '994--slab--segfault--augmented.ifc'
+          $output = Join-Path $env:RUNNER_TEMP 'csg-work-qualification'
+          if (Test-Path $output) { throw 'Qualification output must be fresh' }
+          node (Join-Path $bundle 'run-csg-work-bundle.mjs') $model $output --public-self-check
+
+      - name: Upload local qualification receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: csg-work-qualification
+          path: ${{ runner.temp }}/csg-work-qualification/*.json
+          retention-days: 7
+          if-no-files-found: warn

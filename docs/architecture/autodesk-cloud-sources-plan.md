@@ -1,6 +1,6 @@
 # Autodesk cloud sources: research and delivery plan
 
-Status: cloud-source workflows and native import implementations delivered locally on 2026-10-04. The Railway backend is live; account qualification, public viewer activation and Windows hosting remain open. No authenticated Autodesk API requests were made during implementation.
+Status: cloud-source workflows and native import implementations delivered locally on 2026-10-04. The Railway gateway and Windows worker are running qualification builds, and the maintainer confirmed real preview sign-in. The merged production rollout, public viewer activation and account-backed source-import acceptance remain pending.
 
 ## Current implementation
 

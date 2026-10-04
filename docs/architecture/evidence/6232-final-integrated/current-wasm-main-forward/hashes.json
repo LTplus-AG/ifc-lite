@@ -1436,6 +1436,24 @@
       "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
       "status": "derived-proof",
       "scope": "Derived original receipt audit, not new browser execution. Eight charter contexts and six separate first-authoring initialized-empty-view preview/Escape contexts completed. Native missing-view proof retains separate historical source. Allocator initialization1\u2192source watermark9993 is intentional; no entity allocation afterward. Original core receipt browser-pending wording retained unchanged. Root performs separate supplemental assertions audit."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/1-room-cut.png",
+      "archive": "room-1-room-cut.png",
+      "originalSHA256": "5db710ad385f17d3b266fb1abcf807a0d4795d0d08051c4cc1e7cc968998be14",
+      "archiveSHA256": "5db710ad385f17d3b266fb1abcf807a0d4795d0d08051c4cc1e7cc968998be14",
+      "status": "screenshot",
+      "scope": "Original successful Room cut screenshot, visually inspected; full receipt binds graph/native/peer assertions.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/2-room-cut.png",
+      "archive": "room-2-room-cut.png",
+      "originalSHA256": "67dedf11f018a96c6f3f158c5196c5412af31a1d1dd0ce1de8abfe9cff36a6c2",
+      "archiveSHA256": "67dedf11f018a96c6f3f158c5196c5412af31a1d1dd0ce1de8abfe9cff36a6c2",
+      "status": "screenshot",
+      "scope": "Original successful Room cut screenshot, visually inspected; full receipt binds graph/native/peer assertions.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
     }
   ],
   "supplementalPreview": "COMPLETE at literal730f9 source:6 separate preview/Escape contexts/28 stages; original core receipt pending wording preserved. See derived completion.",

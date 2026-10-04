@@ -11,6 +11,8 @@ describe('Autodesk session gateway', () => {
     const response = await h.handler(new Request(`${origin}/api/autodesk/session`, { headers: { cookie: signed.cookie } }));
     const body = await response.text(); expect(body).toContain('autodesk-user'); expect(body).not.toContain('PRIVATE_');
     expect(signed.callback.headers.get('set-cookie')).toContain('HttpOnly'); expect(signed.callback.headers.get('set-cookie')).toContain('Secure');
+    // #6827: the real OIDC profile lives outside the APS authentication path.
+    expect(h.calls.find((call) => call.url === 'https://api.userprofile.autodesk.com/userinfo')?.auth).toBe('Bearer PRIVATE_ACCESS_TOKEN');
     expect(h.calls.find((call) => call.url.endsWith('/token'))?.auth).toBe(`Basic ${Buffer.from('app:secret').toString('base64')}`);
     const replay = await h.handler(new Request(`${origin}/api/autodesk/callback?code=code&state=${signed.transaction.state}`, { headers: { cookie: signed.cookie } }));
     expect(replay.headers.get('location')).toContain('error=');
@@ -60,6 +62,9 @@ describe('Autodesk session gateway', () => {
   it('never follows an arbitrary upstream URL with user credentials', () => {
     expect(() => apsUrl('https://evil.example/data/v1/projects/p/items/i')).toThrow();
     expect(() => apsUrl('/authentication/v2/token')).toThrow();
+    expect(() => apsUrl('https://api.userprofile.autodesk.com/userinfo?other=1')).toThrow();
+    expect(() => apsUrl('https://api.userprofile.autodesk.com.evil.example/userinfo')).toThrow();
+    expect(() => apsUrl('/authentication/v2/userinfo')).toThrow();
     expect(() => apsUrl('/data/v1/projects/p/storage')).toThrow();
     expect(() => signedUrl('http://127.0.0.1/private')).toThrow();
     expect(() => signedUrl('https://bucket.s3.amazonaws.com.evil.example/private')).toThrow();

@@ -125,6 +125,8 @@ export function createAutodeskHandler(config: AutodeskServiceConfig) {
         ? new ServiceError(401, 'sign-in-required', 'Sign in with Autodesk again.')
         : new ServiceError(502, 'service-failed', 'The Autodesk operation failed. Try again.');
       if (url.pathname === '/api/autodesk/callback') {
+        // Log only our bounded failure category: never codes, state, cookies, tokens or upstream bodies.
+        console.warn('Autodesk sign-in callback failed', known.code);
         const target = new URL('/oauth/autodesk/callback', config.origin);
         target.searchParams.set('state', url.searchParams.get('state') ?? ''); target.searchParams.set('error', known.code);
         return new Response(null, { status: 303, headers: { Location: target.href, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' } });

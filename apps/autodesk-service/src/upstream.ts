@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 const ORIGIN = 'https://developer.api.autodesk.com';
 const PATHS = [
-  /^\/authentication\/v2\/userinfo$/,
   /^\/project\/v1\/hubs(?:\/[^/]+\/projects(?:\/[^/]+\/topFolders)?)?$/,
   /^\/data\/v1\/projects\/[^/]+\/(?:folders\/[^/]+\/contents|items\/[^/]+(?:\/versions)?|versions\/[^/]+)$/,
   /^\/oss\/v2\/buckets\/[^/]+\/objects\/[^/]+\/signeds3download$/,
@@ -12,6 +11,8 @@ const PATHS = [
   /^\/forma\/element-service\/v1alpha\/(?:elements|blobs)\/[^/]+$/,
 ];
 export function apsUrl(path: string): string {
+  // The OIDC profile API has a separate fixed origin; never accept arbitrary profile URLs.
+  if (path === 'https://api.userprofile.autodesk.com/userinfo') return path;
   const url = new URL(path, ORIGIN);
   if (url.origin !== ORIGIN || url.username || url.password || url.hash || path.length > 32_768 ||
       !PATHS.some((pattern) => pattern.test(url.pathname))) throw new ServiceError(400, 'invalid-path', 'Unsupported Autodesk API operation.');

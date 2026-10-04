@@ -125,7 +125,7 @@ export class Sessions {
     }
   }
   async identity(session: Session): Promise<SourceIdentity> {
-    const response = await apsResponse(this.config.fetch ?? fetch, '/authentication/v2/userinfo', await session.tokens.getValidAccessToken(), 'US');
+    const response = await apsResponse(this.config.fetch ?? fetch, 'https://api.userprofile.autodesk.com/userinfo', await session.tokens.getValidAccessToken(), 'US');
     const value: unknown = await response.json();
     if (!value || typeof value !== 'object' || !('sub' in value) || typeof value.sub !== 'string') throw new ServiceError(502, 'invalid-identity', 'Autodesk returned no user identity.');
     return { id: value.sub, displayName: 'name' in value && typeof value.name === 'string' ? value.name : undefined,

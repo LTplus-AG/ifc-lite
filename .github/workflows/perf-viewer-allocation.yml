@@ -102,6 +102,7 @@ jobs:
         env:
           TURBO_FORCE: 'true'
           TURBO_CONCURRENCY: '2'
+          TURBO_ENV_MODE: 'loose'
         run: |
           set -o pipefail
           (cd "$BASE_DIR" && CARGO_TARGET_DIR="$RUNNER_TEMP/allocation-base-cargo" pnpm typecheck) 2>&1 | tee "$GITHUB_WORKSPACE/viewer-allocation-results/base-typecheck.log"

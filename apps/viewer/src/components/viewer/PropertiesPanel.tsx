@@ -24,7 +24,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
@@ -769,12 +769,12 @@ export function PropertiesPanel() {
     const expressId = selectedEntity.expressId;
     const gid = selectedEntityGlobalId;
     for (const task of scheduleData.tasks) {
-      const taskHasGlobalIds = task.productGlobalIds.some(Boolean);
-      if (gid && taskHasGlobalIds) {
-        if (task.productGlobalIds.includes(gid)) return true;
+      const productGlobalIds = taskProductGlobalIds(task);
+      if (gid && productGlobalIds.some(Boolean)) {
+        if (productGlobalIds.includes(gid)) return true;
         continue;
       }
-      if (expressId > 0 && task.productExpressIds.includes(expressId)) return true;
+      if (expressId > 0 && taskProductExpressIds(task).includes(expressId)) return true;
     }
     return false;
   }, [selectedEntity, scheduleData, selectedEntityGlobalId]);

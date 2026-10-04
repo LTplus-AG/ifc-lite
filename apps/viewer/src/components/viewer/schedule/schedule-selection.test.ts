@@ -146,3 +146,24 @@ describe('findTaskForProductGlobalIdWithLocal', () => {
     assert.equal(result, null);
   });
 });
+
+// #6749: IfcRelAssignsToProduct outputs take part in Gantt ↔ 3D sync.
+describe('schedule selection — IfcRelAssignsToProduct outputs (#6749)', () => {
+  const data = schedule([
+    task({ globalId: 'parent', childGlobalIds: ['leaf'] }),
+    task({
+      globalId: 'leaf', parentGlobalId: 'parent',
+      productExpressIds: [1], productGlobalIds: ['in-1'],
+      outputProductExpressIds: [5], outputProductGlobalIds: ['out-5'],
+    }),
+  ]);
+
+  it('selecting a row isolates its output products', () => {
+    assert.deepEqual([...collectProductLocalIdsForTasks(data, ['parent'])].sort(), [1, 5]);
+  });
+
+  it('clicking an output product finds the task that builds it', () => {
+    const hit = findTaskForProductGlobalIdWithLocal(data, 1_000_005, g => g - 1_000_000);
+    assert.deepEqual(hit, { taskGlobalId: 'leaf', ancestorGlobalIds: ['parent'] });
+  });
+});

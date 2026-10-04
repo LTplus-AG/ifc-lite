@@ -1,0 +1,16 @@
+.git
+**/node_modules
+**/.env
+**/.env.*
+**/dist
+**/.turbo
+**/target
+**/bin
+**/obj
+**/coverage
+**/*.log
+**/tsconfig.tests.json
+**/tsconfig.tsbuildinfo
+tests/models
+packages/wasm/pkg/*.wasm
+packages/wasm/pkg/*.js

@@ -1,4 +1,5 @@
 {
+  "apps/autodesk-service": 0,
   "apps/viewer": 190,
   "apps/viewer-embed": 192,
   "examples/babylonjs-viewer": 0,

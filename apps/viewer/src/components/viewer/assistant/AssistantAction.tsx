@@ -10,12 +10,13 @@ import { usePanelControls } from '@/hooks/usePanelControls';
 import { useViewerStore } from '@/store';
 import { useValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { captureEvidence, type AssistantSource } from '@/lib/assistant/evidence';
+import { isAssistantSource } from '@/lib/assistant/sources';
 import { replaceEvidence } from '@/lib/assistant/conversation';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
 
 const SourceContext = createContext<AssistantSource | null>(null);
 export function AssistantSourceContext({ panel, children }: { panel: WorkspacePanelId; children: ReactNode }) {
-  const source = panel === 'clash' || panel === 'validation' || panel === 'compare' || panel === 'flow' ? panel : null;
+  const source = isAssistantSource(panel) ? panel : null;
   return <SourceContext.Provider value={source}>{children}</SourceContext.Provider>;
 }
 export function AssistantAction() {

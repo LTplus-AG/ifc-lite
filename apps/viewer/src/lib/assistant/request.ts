@@ -6,6 +6,7 @@ import { resolveStreamRoute } from '@/lib/llm/byok-guard';
 import { streamChat, type StreamOptions } from '@/lib/llm/stream-client';
 import { streamAnthropicChat, streamOpenAiChat } from '@/lib/llm/stream-direct';
 import { getApiKeys } from '@/services/api-keys';
+import { UNCONFIGURED_MODEL_ID } from '@/lib/llm/models';
 import { evidenceIsCurrent } from './evidence';
 import { useViewerStore } from '@/store';
 import { useAssistant } from './conversation';
@@ -14,6 +15,10 @@ import { useAssistant } from './conversation';
 export async function sendAssistant(prompt: string, model: string, proxyUrl: string): Promise<boolean> {
   const state = useAssistant.getState();
   if (!state.snapshot || state.status === 'streaming' || !prompt.trim()) return false;
+  if (model === UNCONFIGURED_MODEL_ID) {
+    useAssistant.setState({ error: 'missing-model', status: 'error' });
+    return false;
+  }
   if (!evidenceIsCurrent(state.snapshot)) {
     useAssistant.setState({ error: 'stale-evidence', status: 'error' });
     return false;

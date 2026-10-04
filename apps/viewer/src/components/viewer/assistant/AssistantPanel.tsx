@@ -34,7 +34,7 @@ export function AssistantPanel() {
   const [prompt, setPrompt] = useState('');
   const [keysOpen, setKeysOpen] = useState(false);
   const busy = state.status === 'streaming';
-  const errors = { 'missing-key': t('assistant.missingKey'), 'context-limit': t('assistant.contextLimit'),
+  const errors = { 'missing-model': t('assistant.missingModel'), 'missing-key': t('assistant.missingKey'), 'context-limit': t('assistant.contextLimit'),
     'stale-evidence': t('assistant.stale'), 'truncated-output': t('assistant.truncated'), 'empty-output': t('assistant.emptyOutput'), 'request-timeout': t('assistant.timeout') };
   const errorText = state.error && (errors[state.error as keyof typeof errors] ?? state.error);
   const submit = () => {

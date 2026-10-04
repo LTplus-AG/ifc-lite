@@ -4,8 +4,10 @@
 
 import { useViewerStore } from '@/store';
 import { analysisStampOf, captureAnalysisStamp, isAnalysisStale, type AnalysisStamp } from '@/hooks/useAnalysisStaleness';
+import { buildLoadReports } from '../loadReport';
+import type { AssistantSource } from './sources';
 
-export type AssistantSource = 'clash' | 'validation' | 'compare' | 'flow';
+export type { AssistantSource } from './sources';
 export interface EvidenceSnapshot {
   id: string;
   source: AssistantSource;
@@ -63,6 +65,7 @@ export function sourceIdentity(source: AssistantSource): object | null {
   if (source === 'clash') return s.clashResult;
   if (source === 'validation') return s.idsValidationReport;
   if (source === 'compare') return s.compareResult;
+  if (source === 'loadReport') return s.models;
   return s.flowDoc;
 }
 
@@ -106,6 +109,15 @@ export function captureEvidence(source: AssistantSource): EvidenceSnapshot {
       rows.push({ citation: `E${rows.length + 1}`, data: { key: e.key, state: e.state, changeKinds: e.changeKinds,
         base: e.base?.ref, head: e.head?.ref } });
     }
+  } else if (source === 'loadReport') {
+    const reports = buildLoadReports(s.models);
+    summary = { kind: 'model-load-reports', modelCount: reports.length,
+      diagnosticsAvailable: reports.filter(report => report.diagnosticsAvailable).length,
+      diagnosticsUnavailable: reports.filter(report => !report.diagnosticsAvailable).length,
+      cleanLoads: reports.filter(report => report.isClean).length,
+      limitations: 'Load diagnostics describe the original load, not validation of later edits. Affected entities are only those supplied by native diagnostics; missing diagnostics never mean clean.' };
+    totalRows = reports.length;
+    for (const report of reports.slice(0, ROW_LIMIT)) rows.push({ citation: `E${rows.length + 1}`, data: report });
   } else if (source === 'flow' && s.flowDoc) {
     summary = { kind: 'graph-only', executionStatus: 'not included' };
     const graph = evidenceJson({ id: s.flowDoc.id, name: s.flowDoc.name, description: s.flowDoc.description,

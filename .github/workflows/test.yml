@@ -106,6 +106,9 @@ permissions:
 # haven't shipped a Node-24-native release yet.
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Recorded-provider browser journeys (including the revert oracle) need a
+  # selectable model. Their requests are intercepted; this grants no API key.
+  VITE_LLM_FREE_MODELS: openai/gpt-4o-mini
 
 jobs:
   # Path filter — emits booleans the downstream jobs use as `if:` gates.

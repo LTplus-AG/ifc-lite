@@ -239,8 +239,9 @@ const OPENAI_BYOK_MODELS: LLMModel[] = [
 export const BYOK_MODELS: LLMModel[] = [...ANTHROPIC_BYOK_MODELS, ...OPENAI_BYOK_MODELS];
 export const ALL_MODELS = [...FREE_MODELS, ...BYOK_MODELS];
 
+export const UNCONFIGURED_MODEL_ID = 'llm-model-missing';
 const FALLBACK_MODEL: LLMModel = {
-  id: 'llm-model-missing',
+  id: UNCONFIGURED_MODEL_ID,
   name: 'No model configured',
   provider: 'Unknown',
   tier: 'free',

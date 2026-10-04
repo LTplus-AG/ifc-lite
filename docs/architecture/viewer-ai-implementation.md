@@ -9,7 +9,7 @@ The [full program](viewer-ai-plan.md) remains the completion contract. Every pac
 | [#6811](https://github.com/LTplus-AG/ifc-lite/pull/6811) | Provider-independent output budgets | API and transport refusal tests; existing defaults retained. Full root usage accounting remains open. |
 | [#6818](https://github.com/LTplus-AG/ifc-lite/pull/6818) | Stack CI and branch-pattern diagnostics | 57 workflow/classification regressions. No review gate disabled. |
 | [#6816](https://github.com/LTplus-AG/ifc-lite/pull/6816) | Full architecture/UI charter | Bounded Astra architecture review incorporated. No implementation acceptance implied. |
-| [#6819](https://github.com/LTplus-AG/ifc-lite/pull/6819) | Contextual analysis assistant | Real ArchiCAD IDS oracle; bounded frozen evidence; cancellation/staleness; mounted source actions. Browser fixture journey is wired into CI; screenshots require a successful run. |
+| [#6819](https://github.com/LTplus-AG/ifc-lite/pull/6819) | Contextual analysis assistant | Real ArchiCAD IDS oracle; bounded frozen evidence; cancellation/staleness; mounted source actions. The real-model discussion test passed in CI run 37197674333 on dcddfa61e; screenshot inspected. Hosted software-WebGPU loss limits that artifact to data/assistant evidence, not 3D correctness. Completion-visible captures are being hardened. |
 | [#6821](https://github.com/LTplus-AG/ifc-lite/pull/6821) | Durable completed conversations | Actual IndexedDB reload, CAS conflicts, refused writes, backup/import and mounted Save/Open. Archived evidence does not become current. |
 | [#6828](https://github.com/LTplus-AG/ifc-lite/pull/6828) | Reviewed native Flow graph patches | Native registry validation; approval-gated apply/undo; standard-registry math execution oracle; no automatic graph execution. Receipts are session-only; graph durability uses native Save. |
 | [#6832](https://github.com/LTplus-AG/ifc-lite/pull/6832) | Reviewed native document drafts | Initial analysis answer/evidence conversion, citation existence, native document storage/PDF. Broader narrative schema and adapter coverage remain open. |
@@ -20,9 +20,9 @@ CI results are live measurements on each PR, not a permanent green claim in this
 
 | Package | Status | Remaining completion work |
 |---|---|---|
-| P01 | Partial inventory in charter | Implement feature descriptors and adapter inventory covering all analysis surfaces, native commands and host availability; record gaps. |
+| P01 | Partial inventory in charter and [adapter register](viewer-ai-adapters.md) | Implement feature descriptors and adapter inventory covering all analysis surfaces, native commands and host availability; record gaps. |
 | P02 | Partial | Shared script/assistant/headless request service, capabilities and structured output; root usage receipts/budgets across continuations and retries; actual-provider measurements. |
-| P03 | Partial | Four discussion projections exist. Complete immutable facts/identity contracts, historical adapters, overlays and duplicate/missing GlobalId coverage for every source. |
+| P03 | Partial | Five discussion projections exist, including native load diagnostics. Complete immutable facts/identity contracts, historical adapters, overlays and duplicate/missing GlobalId coverage for every source. |
 | P04 | Partial | Native Flow patch review exists. Complete typed action families, grants, revision checks and durable effect accounting for all proposed operations. |
 | P05 | Partial | Contextual shell and conversation controls exist. Complete task contexts, common artifact/proposal renderers, accessibility/locale coverage and script migration. |
 | P06 | Partial | Conversations reuse native content libraries. Add proposals, receipts, grouping policies, review workspaces and outbox; full import/corruption/concurrency acceptance. |

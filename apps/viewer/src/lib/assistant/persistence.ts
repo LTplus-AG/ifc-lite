@@ -4,6 +4,7 @@
 
 import type { ContentDefinition } from '../storage/content-migration';
 import type { AssistantSource } from './evidence';
+import { isAssistantSource } from './sources';
 
 export interface AssistantMessage { role: 'user' | 'assistant'; content: string; model?: string }
 export interface SavedConversation {
@@ -27,7 +28,7 @@ export function decodeConversation(value: unknown): SavedConversation | null {
     || !item.evidence || typeof item.evidence !== 'object' || !Array.isArray(item.messages)
     || item.messages.length > 20 || item.messages.length % 2 !== 0) return null;
   const e = item.evidence as Record<string, unknown>;
-  if (!['clash', 'validation', 'compare', 'flow'].includes(String(e.source))
+  if (!isAssistantSource(e.source)
     || !string(e.capturedAt, 50) || !Number.isFinite(Date.parse(e.capturedAt)) || !string(e.payload, 48_000)
     || !count(e.totalRows) || !count(e.includedRows) || e.includedRows > e.totalRows
     || typeof e.projectionTruncated !== 'boolean') return null;

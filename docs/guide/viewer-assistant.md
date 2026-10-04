@@ -23,3 +23,9 @@ After a completed Clash, Data validation or Compare answer, expand **Review repo
 The document includes the provider model, capture time, actual included/native row counts, omission notices and the full evidence sent with that discussion. Citation existence is checked; human review establishes whether a claim is supported. AI prose does not change native verdicts or certify compliance. Values that resemble model bindings remain literal captured text.
 
 **Save reviewed document** uses the existing Documents library. If storage refuses the write, its native recovery/export controls retain the draft. Open the saved document to edit it, export document JSON or generate PDF using the normal Documents controls. Every preparation creates a new document and preserves earlier human edits. Broader structured narrative generation and refresh reconciliation remain required work in the [implementation ledger](../architecture/viewer-ai-implementation.md).
+
+## Load diagnostics
+
+Open **Load report** and choose **Discuss with AI** to attach the native per-model load reports. Rows represent model reports, not a list of every affected element. Native counters, approximation settings, load path and supplied affected-entity identities are retained; the original load time remains in each report. A source without captured diagnostics is explicitly unavailable and never counted as clean. Diagnostics describe the original load and do not validate later edits.
+
+The same conversation Save/Open and reviewed document controls apply. Model replacement or edits invalidate an active discussion; saved evidence remains historical. Large federations and long diagnostics use the common bounded evidence projection with explicit omission notices.

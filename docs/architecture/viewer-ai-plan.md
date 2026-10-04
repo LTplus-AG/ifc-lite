@@ -4,7 +4,7 @@ This plan covers AI throughout the web viewer: contextual assistance, Flow autho
 
 The intended product outcome is that a user can ask about model evidence, inspect it, prepare a native action, and reuse the resulting workflow on the next delivery. The program includes a complete rethink of shared interaction patterns, implemented incrementally within a recognizable viewer layout and the current visual style. AI produces editable IFClite artifacts. Existing domain engines remain authoritative for geometry, quantities, validation, matching, and export.
 
-Status: proposed implementation design. Existing foundations below were inspected in this checkout. New contracts, names, limits, and release criteria are proposed decisions, not implemented behavior or measured performance. “Batch creation” covers both BCF topics and reviewed model corrections.
+Status: accepted full-program charter; implementation and outstanding acceptance are tracked in the implementation ledger. Existing foundations below were inspected in this checkout. Contracts, limits and release criteria are targets until demonstrated by their implementation evidence. “Batch creation” covers both BCF topics and reviewed model corrections.
 
 ## Existing foundations and implementation boundaries
 

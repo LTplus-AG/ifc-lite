@@ -61,6 +61,10 @@ test('native clash evidence reaches the assistant without executing model output
   await assistant.getByLabel('Ask about these results').fill('Explain the native duplicate scan and its limitations.');
   await assistant.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(assistant).toContainText('<script>globalThis.assistantExecuted = true</script>');
+  await expect(assistant.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
+  const completedReply = assistant.locator('[aria-live="polite"] > div').filter({ hasText: '<script>globalThis.assistantExecuted = true</script>' });
+  await expect(completedReply).toHaveCount(1);
+  await completedReply.scrollIntoViewIfNeeded();
   expect(outbound?.maxOutputTokens).toBe(4096);
   const system = typeof outbound?.system === 'string' ? outbound.system : outbound?.system.map(block => block.text).join('\n');
   expect(system).toContain('AC20-FZK-Haus');
@@ -117,4 +121,29 @@ test('native clash evidence reaches the assistant without executing model output
   })).toEqual({ nodes: [{ id: 'byType-1', type: 'model.byType', pos: [0, 0], params: { type: 'IfcWall' } }], lastRun: null });
   await page.screenshot({ path: testInfo.outputPath('assistant-flow.png') });
   await assistant.getByRole('button', { name: 'Undo graph changes', exact: true }).click();
+
+  // #6833: discuss actual load diagnostics from the same loaded ArchiCAD file.
+  await page.evaluate(() => {
+    (globalThis as unknown as { __ifc_lite_viewer_store__: { getState(): { openPanelInHome(panel: 'loadReport'): void } } })
+      .__ifc_lite_viewer_store__.getState().openPanelInHome('loadReport');
+  });
+  await page.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  await assistant.getByText('Inspect evidence sent to the model', { exact: true }).click();
+  await expect(assistant.locator('pre')).toContainText('"source":"loadReport"');
+  await expect(assistant.locator('pre')).toContainText('AC20-FZK-Haus');
+  await expect(assistant.locator('pre')).toContainText('missing diagnostics never mean clean');
+  expect(await page.evaluate(() => {
+    const pre = document.querySelector('section[aria-label="Assistant"] pre');
+    const snapshot = JSON.parse(pre?.textContent ?? '{}') as { evidence: { rows: Array<{ data: {
+      diagnosticsAvailable: boolean; diagnostics: { totalCsgFailures: number } | null;
+    } }> } };
+    const state = (globalThis as unknown as { __ifc_lite_viewer_store__: { getState(): {
+      models: Map<string, { diagnostics?: { totalCsgFailures: number } | null }>;
+    } } }).__ifc_lite_viewer_store__.getState();
+    const native = [...state.models.values()][0].diagnostics ?? null;
+    const captured = snapshot.evidence.rows[0].data;
+    return captured.diagnosticsAvailable === (native !== null)
+      && captured.diagnostics?.totalCsgFailures === native?.totalCsgFailures;
+  })).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('assistant-load-report.png') });
 });

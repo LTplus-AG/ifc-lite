@@ -9,11 +9,24 @@ import { useViewerStore } from '@/store';
 import { captureEvidence } from './evidence';
 import { useAssistant, replaceEvidence, cancelAssistant } from './conversation';
 import { sendAssistant } from './request';
+import { UNCONFIGURED_MODEL_ID } from '@/lib/llm/models';
 
 const originalFetch = globalThis.fetch;
 const initial = useViewerStore.getState();
 afterEach(() => { cancelAssistant(); globalThis.fetch = originalFetch; useViewerStore.setState(initial, true); });
 const model = 'openai/gpt-free';
+
+test('an unconfigured native model cannot initiate a request or add conversation history (#6833)', () => {
+  replaceEvidence(captureEvidence('loadReport'));
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error('Missing configuration must refuse before fetch'); };
+  return sendAssistant('Explain', UNCONFIGURED_MODEL_ID, '/api/chat').then(completed => {
+    assert.equal(completed, false);
+    assert.equal(calls, 0);
+    assert.equal(useAssistant.getState().messages.length, 0);
+    assert.equal(useAssistant.getState().error, 'missing-model');
+  });
+});
 
 // #6813: exercise real SSE consumption and provider payloads through the shared client.
 test('assistant sends frozen evidence once, bounds output and never changes script conversation', async () => {

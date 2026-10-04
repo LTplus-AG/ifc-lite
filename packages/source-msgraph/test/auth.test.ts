@@ -126,6 +126,7 @@ describe('msGraphAuth', () => {
       };
 
       let locationReads = 0;
+      let requestedScopes: string[] = [];
       const severedPopup = {
         // What COOP actually reports for a live cross-origin popup.
         closed: true,
@@ -139,7 +140,9 @@ describe('msGraphAuth', () => {
       const fakeWindow = {
         location: { origin: 'https://app.example.com' },
         open: (authorizeUrl: string) => {
-          const state = new URL(authorizeUrl).searchParams.get('state');
+          const authorize = new URL(authorizeUrl);
+          requestedScopes = (authorize.searchParams.get('scope') ?? '').split(' ');
+          const state = authorize.searchParams.get('state');
           // Stands in for the user consenting and the identity provider
           // redirecting the popup to REDIRECT_PATH, where the static callback
           // page posts.
@@ -175,6 +178,8 @@ describe('msGraphAuth', () => {
       expect(await ctx.storage.get('msgraph:tokens')).toBeDefined();
       // Nothing read the inoperable API on the way through.
       expect(locationReads).toBe(0);
+      // #6840: /me cannot supply identity under Files.Read alone.
+      expect(requestedScopes).toContain('https://graph.microsoft.com/User.Read');
     });
 
     // Cross-attempt routing (a broadcast carrying someone else's `state` must

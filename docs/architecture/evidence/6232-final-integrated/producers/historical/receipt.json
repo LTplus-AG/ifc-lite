@@ -1,0 +1,15 @@
+{
+  "scope": "Exact earlier producer files retained for provenance of bfc6d467 and 435e8842 browser receipts. Current producers add public camera framing and normal Spaces visibility for next final captures; unchanged shared suites are retained once. New final captures are still pending.",
+  "archives": {
+    "common.cjs": {
+      "rawBytes": 19310,
+      "rawSha256": "373096fe312f13adac652b891a09d63c9e1602ac4c15e3579546061ed29848aa",
+      "gzipSha256": "0401a3288b1f1d3c774bd9b3473d18b026b4942e5e7c0cee73f48b1874106757"
+    },
+    "room.cjs": {
+      "rawBytes": 2427,
+      "rawSha256": "41c1583f16834574c45e1f78f5f169b4733c1ebb49213b6c514eabe57d7fa690",
+      "gzipSha256": "185b51a33bfd026763f55c29d56697ca0defdddd1b037344742c48bbe1f3a564"
+    }
+  }
+}

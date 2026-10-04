@@ -104,3 +104,18 @@ describe('ifc-lite://model/{id}/materials', () => {
     expect(names.some((n) => n === 'Steel' || n === 'Concrete')).toBe(true);
   }, 30_000);
 });
+
+describe('ifc-lite://model/{id}/entity/{global_id}', () => {
+  it('answers a malformed percent-escape in the GlobalId as "no such entity", not a thrown URIError', async () => {
+    const provider = buildDefaultResourceRegistry().matchProvider('ifc-lite://model/m/entity/x');
+    if (!provider) throw new Error('entity resource not registered');
+    // `%` / `%E0%A4%A` are not decodable; they can match no GlobalId.
+    for (const bad of ['%', '%E0%A4%A', '%ZZ']) {
+      expect(await provider.read(`ifc-lite://model/m/entity/${bad}`, ctx)).toEqual([]);
+    }
+    // Control: a well-formed percent-encoded GlobalId still resolves.
+    const ok = await provider.read(`ifc-lite://model/m/entity/${encodeURIComponent(guid('WALL'))}`, ctx);
+    expect(ok.length).toBe(1);
+  });
+});
+

@@ -1,11 +1,31 @@
 # @ifc-lite/source-msgraph
 
-Microsoft Graph (OneDrive / SharePoint) file-source provider for ifc-lite.
+Microsoft Graph file-source provider for the signed-in user's own OneDrive.
 
 Implements `FileSourceProvider` from `@ifc-lite/plugin-api` to browse the
 signed-in user's OneDrive, and download IFC files directly into the viewer.
 Authentication is delegated OAuth 2.0 Authorization Code + PKCE, built on
-`@ifc-lite/oauth-pkce` — never a client secret.
+`@ifc-lite/oauth-pkce` for direct SDK consumers. Hosted authentication is server-side.
+
+## Hosted sign-in
+
+The IFClite viewer uses a server-hosted OAuth application: users click **Sign in**
+and consent with their vendor account. They do not supply an application ID,
+app secret, or access token. The same-origin gateway holds vendor tokens in a
+server session and streams downloads; browser metadata carries no signed URLs.
+
+SDK consumers can inject a `SourceAuth` and read-only API client with
+`new MsGraphProvider({ auth, createClient })`. The exported GraphApiClient interface
+is the transport boundary. Providing these options removes application settings
+from the provider manifest. The host supplies its own same-origin transport;
+the provider never requests browser token storage through this injected path.
+Microsoft hosted transports implement `downloadItem(ref, options)` and must validate
+the requested current revision on the server. Shared SharePoint-site discovery
+and historical Microsoft downloads are not supported.
+
+Constructing `new MsGraphProvider()` retains direct PKCE for hosts that operate
+without the gateway. The registration and token-storage notes below describe
+that direct mode.
 
 ## Scope (v1)
 
@@ -54,9 +74,9 @@ The same 302-redirect shape applies to a *historical* version's content
 ## Auth
 
 Delegated OAuth 2.0 Authorization Code + PKCE (`@ifc-lite/oauth-pkce`), scope
-`offline_access https://graph.microsoft.com/Files.Read`. `Files.Read` is the
-least-privileged permission for reading file content and needs no admin
-consent; `offline_access` is required separately for a refresh token to be
+`offline_access https://graph.microsoft.com/Files.Read https://graph.microsoft.com/User.Read`. `Files.Read` is the
+least-privileged permission for reading file content; `User.Read` is required
+for the `/me` identity displayed after sign-in. These need no admin consent; `offline_access` is required separately for a refresh token to be
 issued at all (the Microsoft identity platform's own docs: `refresh_token`
 is "[o]nly provided if offline_access scope was requested").
 
@@ -117,7 +137,7 @@ Registering an Azure AD application needs:
   `REDIRECT_PATH` in `src/auth.ts`), registered with type `spa` — the
   `spa` type is what enables CORS on the token endpoint; a `web`-type
   redirect URI will fail with a CORS error on token exchange.
-- **API permissions (delegated)**: `Files.Read`, `offline_access`. Neither
+- **API permissions (delegated)**: `Files.Read`, `User.Read`, `offline_access`. These
   needs admin consent for a standard tenant. No `Sites.Read.All` — not used
   by this provider (see "Scope" above).
 - **Supported account types**: whichever matches the `tenant` preference the

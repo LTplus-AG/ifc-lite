@@ -1,0 +1,19 @@
+{$IFCLITE_PUBLIC_HOST} {
+    header Cross-Origin-Opener-Policy same-origin
+    header Cross-Origin-Embedder-Policy credentialless
+    @autodeskCallback path /oauth/autodesk/*
+    header @autodeskCallback Cache-Control no-store
+    header @autodeskCallback Referrer-Policy no-referrer
+    handle /api/autodesk/* {
+        reverse_proxy autodesk:3002 {
+            transport http {
+                response_header_timeout 15m
+            }
+        }
+    }
+    handle {
+        root * /srv
+        try_files {path} {path}.html /index.html
+        file_server
+    }
+}

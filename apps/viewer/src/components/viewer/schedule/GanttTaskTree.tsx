@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import type { FlattenedTask } from './schedule-utils';
 import { formatDurationShort } from './schedule-utils';
+import { taskDurationIso } from '@/store/slices/schedule-task-dates';
 
 export const GANTT_ROW_HEIGHT = 28;
 /** Keep the focusable clear control visible without desynchronizing the panes. */
@@ -263,7 +264,7 @@ export const GanttTaskTree = memo(function GanttTaskTree({
                       deliberately out of scope (#4830) — calendars currently
                       round-trip and surface, nothing more.
                     */}
-                    {formatDurationShort(task.taskTime?.scheduleDuration)}
+                    {formatDurationShort(taskDurationIso(task))}
                   </td>
                 </tr>
               );

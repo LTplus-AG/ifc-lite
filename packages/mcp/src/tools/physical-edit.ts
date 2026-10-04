@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { ElementSplitRequest, ElementTransformInput, ElementTrimExtendParams } from '@ifc-lite/create';
+import type { AlignMode, ElementSplitRequest, ElementTransformInput, ElementTrimExtendParams } from '@ifc-lite/create';
 import type { PhysicalSizePatch } from '@ifc-lite/sdk';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
@@ -18,11 +18,12 @@ const variant = (properties: Record<string, JsonSchema>, required: string[]): Js
 /** #6232 D5: commands plan and write through the viewer's canonical physical cores. */
 export const physicalEditTool: Tool = {
   name: 'edit_element_geometry', scope: 'mutate',
-  description: 'Move/rotate a selection, change extrusion/profile dimensions, move wall endpoints, split a selection or trim/extend an axis. Coordinates are IFC storey-local metres; rotation is radians. Supported-source predicates, hosted cuts, wall joins, identity policy and atomic refusals match the viewer. One mutation_undo restores the whole operation. Shared writable source geometry is refused when editing it would alter an unrelated occurrence.',
+  description: 'Align native mesh edges or centres, move/rotate a selection, change extrusion/profile dimensions, move wall endpoints, split a selection or trim/extend an axis. Coordinates are IFC storey-local metres; rotation is radians. Supported-source predicates, hosted cuts, wall joins, identity policy and atomic refusals match the viewer. One mutation_undo restores the whole operation. Shared writable source geometry is refused when editing it would alter an unrelated occurrence.',
   inputSchema: {
     type: 'object', properties: {
       model_id: { type: 'string', description: 'Required when multiple models are loaded.' },
       operation: { anyOf: [
+        variant({ kind: { enum: ['align'] }, reference_id: id, express_ids: { type: 'array', items: id, minItems: 1, maxItems: 10000 }, mode: { enum: ['left', 'centre', 'right', 'top', 'middle', 'bottom'] } }, ['kind', 'reference_id', 'express_ids', 'mode']),
         variant({ kind: { enum: ['transform'] }, express_ids: { type: 'array', items: id, minItems: 1, maxItems: 10000 }, transform: { anyOf: [
           variant({ kind: { enum: ['move'] }, delta: xy }, ['kind', 'delta']),
           variant({ kind: { enum: ['rotate'] }, pivot: xy, angle: { type: 'number' } }, ['kind', 'pivot', 'angle']),
@@ -44,13 +45,14 @@ export const physicalEditTool: Tool = {
       ] },
     }, required: ['operation'], additionalProperties: false,
   },
-  handler(input, ctx) {
+  async handler(input, ctx) {
     const model = resolveModel(ctx, input.model_id as string | undefined);
     const op = input.operation as Record<string, unknown>;
     const ref = { modelId: model.id, expressId: op.express_id as number };
     try {
       let result: unknown;
       switch (op.kind) {
+        case 'align': result = await model.bim.store.alignElements(model.id, op.reference_id as number, op.express_ids as number[], op.mode as AlignMode); break;
         case 'transform': result = model.bim.store.transformElements(model.id, op.express_ids as number[], op.transform as ElementTransformInput['op']); break;
         case 'size': result = model.bim.store.setElementSize(ref, op.patch as PhysicalSizePatch); break;
         case 'wall_endpoints': result = model.bim.store.resizeWall(ref, op.start as [number, number, number], op.end as [number, number, number], { moveJoinedEnds: op.moveJoinedEnds !== false }); break;
@@ -60,6 +62,7 @@ export const physicalEditTool: Tool = {
       }
       return okResult(`Completed ${String(op.kind)}.`, { modelId: model.id, entities: result });
     } catch (error) {
+      if (error instanceof ToolExecutionError) throw error;
       throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: error instanceof Error ? error.message : String(error) });
     }
   },

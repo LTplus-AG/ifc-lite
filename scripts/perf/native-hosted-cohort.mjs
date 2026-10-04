@@ -9,9 +9,10 @@ import { prebuiltCommand, prebuiltWitness } from './native-prebuilt.mjs';
 import { execute } from './native-hosted-process.mjs';
 import { schedule, limits, probeResult, requirePair, phases, median, requireCompletion } from './native-hosted-plan.mjs';
 import { available, quiet } from './sdk-resources.mjs';
+import { probeSummary, requireSummaryDiagnostics } from './native-probe-summary.mjs';
 const provenance = JSON.parse(readFileSync(join(output, 'provenance.json'), 'utf8'));
 const report = { status: 'pending', scope: 'native phase attribution; not browser worker-pool or full-output identity', pairs: [] };
-let refusal; const started = Date.now(), controls = new Map();
+let refusal; const started = Date.now(), controls = new Map(), diagnosticControls = new Map();
 const handlers = new Map(['SIGINT', 'SIGTERM'].map(signal => [signal, () => { refusal ??= `received ${signal}`; }]));
 for (const [signal, handler] of handlers) process.on(signal, handler);
 try {
@@ -31,8 +32,10 @@ try {
             tools: { ...provenance.tools, nativeBinary: provenance.builds[arm].binary } });
         pair.runs.push({ arm, ...row });
         if (row.status !== 'complete') throw new Error(row.reason);
-        if (readFileSync(row.paths.stderr, 'utf8') !== '') throw new Error('FD probe diagnostics refused');
         row.result = probeResult(readFileSync(row.paths.stdout, 'utf8'), fixture.file);
+        Object.assign(pair.runs.at(-1), { result: row.result });
+        row.summary = probeSummary(readFileSync(row.paths.stderr, 'utf8'), row.result, fixture);
+        Object.assign(pair.runs.at(-1), { summary: row.summary });
         row.fdIntent = await prebuiltWitness(root, provenance, arm, fixture.file, witness, row);
         provenance.files[witness] = row.fdIntent.sha256;
         row.fdIntent.path = witness;
@@ -42,14 +45,21 @@ try {
       await pause(limits.drainMs); pair.after = await quiet();
       const [left, right] = pair.runs.map(row => row.result);
       pair.comparison = requirePair(left, right, item.kind, controls.get(item.family));
+      requireSummaryDiagnostics(pair.runs[0].summary, pair.runs[1].summary, diagnosticControls.get(item.family));
       if (item.kind === 'AB') {
         const base = pair.runs.find(row => row.arm === 'base').result, candidate = pair.runs.find(row => row.arm === 'candidate').result;
         pair.deltasPercent = Object.fromEntries([...phases.map(key => [key, base[key] > 0 ? 100 * (candidate[key] / base[key] - 1) : null]),
           ...['allTotalsMs', 'allWallMs'].map(key => [key, 100 * (median(candidate[key]) / median(base[key]) - 1)])]);
       }
       if (!controls.has(item.family)) controls.set(item.family, left);
+      if (!diagnosticControls.has(item.family)) diagnosticControls.set(item.family, pair.runs[0].summary);
       await verify(provenance); if (refusal) throw new Error(refusal); pair.status = 'complete';
-    } catch (error) { pair.status = 'refused'; pair.reason = String(error); if (error.receipt) pair.cpuRefusal = error.receipt; throw error; }
+    } catch (error) {
+      pair.status = 'refused'; pair.reason = String(error);
+      if (error.receipt) pair.cpuRefusal = error.receipt;
+      if (error.summaryReceipt) pair.runs.at(-1).summary = error.summaryReceipt;
+      throw error;
+    }
     finally {
       writeFileSync(join(output, `pair-${index}.json`), JSON.stringify(pair, null, 2));
       appendFileSync(join(output, 'pairs.jsonl'), JSON.stringify(pair) + '\n');

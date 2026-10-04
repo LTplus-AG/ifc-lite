@@ -1,0 +1,3 @@
+[
+  {"path":"/home/runner/work/ifc-lite/ifc-lite/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc","fileMb":11.473,"entities":202661,"meshes":1402,"vertices":219999,"triangles":136807,"indexBuildMs":16.35,"parseMs":38,"entityScanMs":33,"lookupMs":0,"preprocessMs":0,"geometryMs":2539,"facetedBrepMs":0,"totalMs":2577,"allTotalsMs":[2609, 2600, 2601, 2737, 2577],"allWallMs":[2623.210598, 2614.3476969999997, 2615.518293, 2751.094276, 2592.37529],"pointCacheHits":223092,"pointCacheMisses":27872,"csgFailures":41,"degenerateDropped":6,"meshFingerprintsFnv1a64":["ff42e1a3f7fcf540", "ff42e1a3f7fcf540", "ff42e1a3f7fcf540", "ff42e1a3f7fcf540", "ff42e1a3f7fcf540"]}
+]

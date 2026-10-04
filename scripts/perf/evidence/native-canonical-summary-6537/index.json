@@ -1,0 +1,54 @@
+{
+  "status": "FINITE_SUMMARY_PARSER_CORRECTNESS_QUALIFIED_HOSTED_CORRECTION_UNRUN",
+  "ancestor": "105f4abb0a9a4b32e540abeaa3c76c7ab50d282f",
+  "priorHosted": {
+    "run": 37180013485,
+    "conclusion": "REFUSED",
+    "completePairs": 0,
+    "initiatingCause": "canonical human summary rejected by empty-stderr assumption",
+    "functional": {
+      "registered": 49,
+      "pass": 49,
+      "fail": 0,
+      "skip": 0
+    },
+    "FDstartup": "qualified-real-FD-startup-only",
+    "bothFreshBuilds": "qualified-native-builds-not-timing",
+    "bothOriginalArmQualifications": "complete",
+    "firstProcessExit": 0,
+    "firstProcessCleanup": "complete",
+    "bothLogsDrained": true,
+    "finalFrozenVerification": "complete"
+  },
+  "currentFunctional": {
+    "registered": 19,
+    "pass": 19,
+    "fail": 0,
+    "skip": 0,
+    "newSummary": 9,
+    "directAffectedNative": 10
+  },
+  "sourceGates": "all requested PASS; missing-TypeScript prerequisite refusal and AST-only resolution retained",
+  "rawDataFixtures": {
+    "families": [
+      "house",
+      "csg",
+      "heavy-csg"
+    ],
+    "files": 6,
+    "byteExactOriginals": true,
+    "constructedCases": "optional/quantization invariants explicitly not model outputs"
+  },
+  "quantization": "half-quantum intervals plus4scaledf64ULPs; index original truncation inferred only within intersecting printedprecision",
+  "inverses": "prospective NOT EXECUTED in this layer",
+  "noModelCompilerStartupInCurrentQA": true,
+  "readerReuseSHA256": "7a97a8ea20c873416e5d9553afe3119c22b87c053fd5b0cb155063a934530ce2",
+  "manifest": "manifest.json",
+  "limits": [
+    "original failed run not requalified",
+    "no timing/speed or worker-pool/full-appearance result",
+    "FDprovenance/floors/cadence/rawlogs/cleanup remain mandatory",
+    "historical priorbase0a/cand07 fixturedata not relabeled orientation-subject evidence",
+    "no execution of archivepayloads"
+  ]
+}

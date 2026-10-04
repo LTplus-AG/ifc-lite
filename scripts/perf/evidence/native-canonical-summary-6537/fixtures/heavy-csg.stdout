@@ -1,0 +1,3 @@
+[
+  {"path":"/home/runner/work/ifc-lite/ifc-lite/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc","fileMb":169.244,"entities":2807815,"meshes":109514,"vertices":4515161,"triangles":2895362,"indexBuildMs":344.50,"parseMs":626,"entityScanMs":487,"lookupMs":121,"preprocessMs":5,"geometryMs":1649,"facetedBrepMs":0,"totalMs":2276,"allTotalsMs":[2378, 2276, 2288, 2282, 2292],"allWallMs":[2670.759586, 2561.044659, 2564.585505, 2560.2024509999997, 2566.564937],"pointCacheHits":203040,"pointCacheMisses":36834,"csgFailures":0,"degenerateDropped":0,"meshFingerprintsFnv1a64":["52d69b2909024f56", "52d69b2909024f56", "52d69b2909024f56", "52d69b2909024f56", "52d69b2909024f56"]}
+]

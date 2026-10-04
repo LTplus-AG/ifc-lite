@@ -2973,3 +2973,16 @@ startup qualify the local FD/control seam. [The retained packet](evidence/native
 does not qualify canonical model commands, hosted timings, complete appearance,
 or a worker-pool benefit. The lesson is to bind the selected execution object
 without making timed execution depend on catching a fleeting compiler query.
+
+
+### Canonical native stderr summary controller correction (#6537)
+
+The first held-FD hosted cohort correctly retained its failed run, but the cause
+was the controller's empty-stderr premise: the canonical probe always prints a
+human summary before JSON. Fresh source builds and original-arm qualification
+passed; no complete pair or performance verdict was accepted. A narrow ordered
+summary validator binds emitted values to canonical JSON and fixture bytes while
+retaining every raw diagnostic and refusing unknown output. Finite correctness
+controls qualify that validator; corrected-source hosted attribution remains
+unrun. Commands, FD provenance, resource/noise floors and production Rust are
+unchanged. See [the retained failure and parser controls](./evidence/native-canonical-summary-6537/README.md).

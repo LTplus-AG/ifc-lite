@@ -1,0 +1,15 @@
+perf_probe: 1 fixture(s), best-of-5
+
+=== /home/runner/work/ifc-lite/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc ===
+  2.4 MB | 44249 entities | 285 meshes | 35940 verts | 20322 tris | 2.03 Mtris/s (geom)
+  best total 16 ms  (runs: [21, 18, 18, 16, 16] ms)
+  ordered mesh FNV-1a64 (per run): ["c4d504b83ff698ea", "c4d504b83ff698ea", "c4d504b83ff698ea", "c4d504b83ff698ea", "c4d504b83ff698ea"]
+  phase                    ms        % total
+  full pipeline wall: [22.621497, 19.536681, 19.885997, 17.88596, 17.69969] ms (includes final metadata)
+  parse (pre-geometry)         6    37.5%
+    - index-scan alone       1.8     6.2%
+    - entity_scan              3    18.8%
+    - lookup/styles            1     6.2%
+    - preprocess               1     6.2%
+  geometry                    10    62.5%
+  brep point-cache      51788 hits / 9092 misses (85.1% memoized)

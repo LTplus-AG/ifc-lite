@@ -1,0 +1,18 @@
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 0.09s
+perf_probe: 1 fixture(s), best-of-5
+
+=== /home/runner/work/ifc-lite/ifc-lite/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc ===
+  11.5 MB | 202661 entities | 1402 meshes | 219999 verts | 136807 tris | 0.05 Mtris/s (geom)
+  best total 2577 ms  (runs: [2609, 2600, 2601, 2737, 2577] ms)
+  ordered mesh FNV-1a64 (per run): ["ff42e1a3f7fcf540", "ff42e1a3f7fcf540", "ff42e1a3f7fcf540", "ff42e1a3f7fcf540", "ff42e1a3f7fcf540"]
+  phase                    ms        % total
+  full pipeline wall: [2623.210598, 2614.3476969999997, 2615.518293, 2751.094276, 2592.37529] ms (includes final metadata)
+  parse (pre-geometry)        38     1.5%
+    - index-scan alone      16.4     0.6%
+    - entity_scan             33     1.3%
+    - lookup/styles            0     0.0%
+    - preprocess               0     0.0%
+  geometry                  2539    98.5%
+  brep point-cache      223092 hits / 27872 misses (88.9% memoized)
+  csg failures          41 across 6 products
+  degenerate dropped    6

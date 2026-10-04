@@ -1,0 +1,16 @@
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 0.09s
+perf_probe: 1 fixture(s), best-of-5
+
+=== /home/runner/work/ifc-lite/ifc-lite/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc ===
+  169.2 MB | 2807815 entities | 109514 meshes | 4515161 verts | 2895362 tris | 1.76 Mtris/s (geom)
+  best total 2276 ms  (runs: [2378, 2276, 2288, 2282, 2292] ms)
+  ordered mesh FNV-1a64 (per run): ["52d69b2909024f56", "52d69b2909024f56", "52d69b2909024f56", "52d69b2909024f56", "52d69b2909024f56"]
+  phase                    ms        % total
+  full pipeline wall: [2670.759586, 2561.044659, 2564.585505, 2560.2024509999997, 2566.564937] ms (includes final metadata)
+  parse (pre-geometry)       626    27.5%
+    - index-scan alone     344.5    15.1%
+    - entity_scan            487    21.4%
+    - lookup/styles          121     5.3%
+    - preprocess               5     0.2%
+  geometry                  1649    72.5%
+  brep point-cache      203040 hits / 36834 misses (84.6% memoized)

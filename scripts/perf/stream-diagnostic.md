@@ -79,6 +79,11 @@ From the extracted directory, run:
 node run-csg-work-bundle.mjs "path/to/private.ifc" "path/to/new-report-directory"
 ```
 
+Keep the IFC and report directory outside the extracted bundle. Adding or
+modifying bundle files, including `.DS_Store`, `Thumbs.db` or `desktop.ini`
+created by a file browser, causes `BUNDLE_FILE_HASH`. If that refusal occurs,
+extract the artifact into a fresh directory and run it from a terminal.
+
 The launcher verifies the bundle's file hashes, then starts six fresh Node
 processes: published ordinary, instrumented ordinary, and instrumented diagnostic
 for each release. It stops at the first failure. Within each release, both the

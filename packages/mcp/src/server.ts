@@ -69,7 +69,7 @@ import {
 import { ToolExecutionError, ToolErrorCode, toolError } from './errors.js';
 import { PromptRegistry } from './prompts/types.js';
 import { ResourceRegistry } from './resources/types.js';
-import { disposeLayerWorkspace } from './tools/layer-store.js';
+import { disposeSessionResources } from './session-cleanup.js';
 import { ToolRegistry } from './tools/types.js';
 import { advertisedInputSchema, validateInput } from './validate.js';
 import { ViewerManager } from './viewer-manager.js';
@@ -162,16 +162,9 @@ export class MCPServer {
     this.sink = null;
     this.active.forEach((c) => c.abort());
     this.active.clear();
-    try {
-      // The viewer holds an HTTP server + SSE listener; closing it stops
-      // dangling sockets when the transport disconnects.
-      if (this.viewer.isOpen()) this.viewer.close();
-    } finally {
-      // Release layer Y.Docs and native Room plates on true session termination.
-      // SSE reconnects keep the session workspace until detach is called.
-      if (this.sessionId !== undefined) disposeLayerWorkspace(this.sessionId);
-      for (const model of this.registry.list()) model.backend.dispose();
-    }
+    // Close the viewer sockets, layer Y.Docs and native Room plates even if
+    // an earlier resource fails. SSE reconnects do not call detach.
+    disposeSessionResources(this.viewer, this.registry, this.sessionId, this.logger);
   }
 
   /** Update the auth scope mid-session (e.g. token refresh). */

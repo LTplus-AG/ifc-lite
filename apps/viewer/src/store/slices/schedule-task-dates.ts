@@ -91,6 +91,19 @@ export function taskFinishEpoch(task: TaskLike): number | undefined {
   return start + totalMs;
 }
 
+/**
+ * The base an edit to ScheduleStart/ScheduleFinish/ScheduleDuration merges
+ * onto. An early-only task gets its CPM window copied into the planned
+ * fields first: the first planned date written flips resolution to the
+ * planned window, so without this, editing only the finish would leave a
+ * task with no start and the bar would vanish.
+ */
+export function plannedEditBase(tt: ScheduleTaskTimeInfo | undefined): ScheduleTaskTimeInfo {
+  if (!tt) return {};
+  if (hasPlannedOrActual(tt) || !tt.earlyStart) return tt;
+  return { ...tt, scheduleStart: tt.earlyStart, scheduleFinish: tt.earlyFinish };
+}
+
 /** The finish as an ISO string: as written when explicit, else derived (UTC). */
 export function taskFinishIso(task: TaskLike): string | undefined {
   const explicit = taskExplicitFinishIso(task);

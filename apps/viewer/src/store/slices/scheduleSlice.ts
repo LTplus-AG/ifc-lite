@@ -33,7 +33,7 @@ import {
   addTaskInputProducts,
   dropTaskProducts,
 } from './schedule-edit-helpers.js';
-import { taskStartEpoch, taskFinishEpoch, taskStartIso } from './schedule-task-dates.js';
+import { taskStartEpoch, taskFinishEpoch, taskStartIso, plannedEditBase } from './schedule-task-dates.js';
 
 export type GanttTimeScale = 'hour' | 'day' | 'week' | 'month' | 'year';
 
@@ -607,7 +607,7 @@ export const createScheduleSlice: StateCreator<
     // re-render. With field-patch snapshots we only need the `taskTime`
     // field's prior state, so compute the validation check against a
     // dry-run merge first.
-    const prevTimeProbe = current.tasks[idx].taskTime ?? {};
+    const prevTimeProbe = plannedEditBase(current.tasks[idx].taskTime);
     const mergedProbe = { ...prevTimeProbe, ...patch };
     const reconciledProbe = reconcileTaskTime(mergedProbe);
     if (!reconciledProbe) return; // finish < start — silent reject
@@ -622,7 +622,7 @@ export const createScheduleSlice: StateCreator<
 
     const next = cloneExtraction(current);
     const t = next.tasks[idx];
-    const prevTime = t.taskTime ?? {};
+    const prevTime = plannedEditBase(t.taskTime);
     // Combine prior + patch; then reconcile start/finish/duration so
     // whichever pair the user supplied wins and the third is derived.
     const merged = { ...prevTime, ...patch };

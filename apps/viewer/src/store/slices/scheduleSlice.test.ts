@@ -506,6 +506,20 @@ describe('scheduleSlice editing — IfcRelAssignsToProduct outputs (#6749)', () 
   });
 });
 
+describe('scheduleSlice editing — early-only task windows (#6803)', () => {
+  it('editing only the finish keeps the early start as the planned start', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([mkTask({
+      globalId: 'a',
+      taskTime: { earlyStart: '2010-09-20T08:00:00', earlyFinish: '2010-09-20T16:00:00' },
+    })]));
+    store.getState().updateTaskTime('a', { scheduleFinish: '2010-09-21T16:00:00' });
+    const tt = store.getState().scheduleData!.tasks[0].taskTime!;
+    assert.equal(tt.scheduleStart, '2010-09-20T08:00:00');
+    assert.equal(tt.scheduleFinish, '2010-09-21T16:00:00');
+  });
+});
+
 describe('scheduleSlice editing — deleteTask', () => {
   it('removes the task and cascades sequences referring to it', () => {
     const store = bootScheduleStore();

@@ -1,0 +1,24 @@
+{
+  "name": "@ifc-lite/cloud-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Session-bound hosted Dropbox and Microsoft read gateway",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "start": "node dist/bin.js",
+    "dev": "tsx src/bin.ts"
+  },
+  "dependencies": {
+    "@ifc-lite/oauth-pkce": "workspace:^",
+    "@ifc-lite/plugin-api": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.2",
+    "tsx": "^4.23.15"
+  }
+}

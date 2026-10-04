@@ -518,6 +518,32 @@ describe('scheduleSlice editing — early-only task windows (#6803)', () => {
     assert.equal(tt.scheduleStart, '2010-09-20T08:00:00');
     assert.equal(tt.scheduleFinish, '2010-09-21T16:00:00');
   });
+
+  const earlyTask = () => mkTask({
+    globalId: 'a',
+    taskTime: { earlyStart: '2010-09-20T08:00:00', earlyFinish: '2010-09-20T16:00:00' },
+  });
+
+  it('a task added after an early-only predecessor starts at its early finish', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([earlyTask()]));
+    const gid = store.getState().addTask({ afterGlobalId: 'a' });
+    const added = store.getState().scheduleData!.tasks.find(t => t.globalId === gid)!;
+    assert.equal(added.taskTime?.scheduleStart, '2010-09-20T16:00:00');
+  });
+
+  it('the milestone toggle collapses an early-only task onto its early start, and undo restores it', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([earlyTask()]));
+    store.getState().updateTask('a', { isMilestone: true });
+    const tt = store.getState().scheduleData!.tasks[0].taskTime!;
+    assert.equal(tt.scheduleStart, '2010-09-20T08:00:00');
+    assert.equal(tt.scheduleFinish, '2010-09-20T08:00:00');
+    assert.equal(tt.scheduleDuration, 'PT0S');
+    store.getState().undoScheduleEdit();
+    assert.deepStrictEqual(store.getState().scheduleData!.tasks[0].taskTime,
+      { earlyStart: '2010-09-20T08:00:00', earlyFinish: '2010-09-20T16:00:00' });
+  });
 });
 
 describe('scheduleSlice editing — deleteTask', () => {

@@ -72,6 +72,14 @@ describe('task window resolution (#6803)', () => {
     assert.equal(taskFinishEpoch(t), utc('2024-05-02T08:00:00'));
   });
 
+  it('adds whole months and years as calendar arithmetic, clamped to month end', () => {
+    const finish = (earlyStart: string, scheduleDuration: string) => taskFinishEpoch(task({ earlyStart, scheduleDuration }));
+    assert.equal(finish('2024-01-01T00:00:00', 'P1M'), utc('2024-02-01T00:00:00'));
+    assert.equal(finish('2024-01-31T08:00:00', 'P1M'), utc('2024-02-29T08:00:00'));
+    assert.equal(finish('2024-02-29T00:00:00', 'P1Y'), utc('2025-02-28T00:00:00'));
+    assert.equal(finish('2024-01-01T00:00:00', 'P1Y2M3DT4H'), utc('2025-03-04T04:00:00'));
+  });
+
   it('a task with no dates at all stays unscheduled', () => {
     const t = task({ scheduleDuration: 'P1D' });
     assert.equal(taskStartEpoch(t), undefined);

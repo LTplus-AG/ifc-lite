@@ -27,7 +27,7 @@
  */
 
 import type { ScheduleTaskInfo, ScheduleTaskTimeInfo } from '@ifc-lite/parser';
-import { parseIsoDate, toIsoUtc } from './schedule-edit-helpers.js';
+import { addIsoDurationToEpoch, parseIsoDate, toIsoUtc } from './schedule-edit-helpers.js';
 
 type TaskLike = Pick<ScheduleTaskInfo, 'taskTime'>;
 
@@ -73,22 +73,7 @@ export function taskFinishEpoch(task: TaskLike): number | undefined {
   if (start === undefined) return undefined;
   const duration = taskDurationIso(task);
   if (!duration) return start;
-  const match = duration.match(
-    /^P(?:(\d+(?:\.\d+)?)Y)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/,
-  );
-  if (!match) return start;
-  const [, y, mo, w, d, h, mi, s] = match;
-  const yearMs = 365.2425 * 86400_000;
-  const monthMs = yearMs / 12;
-  const totalMs =
-    (y ? parseFloat(y) * yearMs : 0) +
-    (mo ? parseFloat(mo) * monthMs : 0) +
-    (w ? parseFloat(w) * 7 * 86400_000 : 0) +
-    (d ? parseFloat(d) * 86400_000 : 0) +
-    (h ? parseFloat(h) * 3_600_000 : 0) +
-    (mi ? parseFloat(mi) * 60_000 : 0) +
-    (s ? parseFloat(s) * 1000 : 0);
-  return start + totalMs;
+  return addIsoDurationToEpoch(start, duration) ?? start;
 }
 
 /**

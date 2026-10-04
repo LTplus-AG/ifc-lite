@@ -27,6 +27,7 @@ import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { PersistentCollapsible } from './PersistentCollapsible';
 import { taskStartIso, taskFinishIso, taskDurationIso } from '@/store/slices/schedule-task-dates';
+import { parseIsoDate } from '@/store/slices/schedule-edit-helpers';
 
 interface ScheduleCardProps {
   /** Schedule data from the viewer's slice (parsed or generated). */
@@ -227,10 +228,11 @@ function buildScheduleNameLookup(data: ScheduleExtraction | null): Map<string, s
   return map;
 }
 
+/** Parsed like the Gantt (TZ-less IfcDateTime is UTC, `parseIsoDate`), displayed in local time like its bars. */
 function formatDate(iso: string | undefined, locale: string): string | undefined {
   if (!iso) return undefined;
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso;
+  const t = parseIsoDate(iso);
+  if (t === undefined) return iso;
   return new Date(t).toLocaleDateString(locale, {
     year: 'numeric', month: 'short', day: 'numeric',
   });

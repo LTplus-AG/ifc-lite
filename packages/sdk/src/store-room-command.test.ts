@@ -76,7 +76,8 @@ it.skipIf(!available)('awaited native preparation refuses intervening live sourc
     editor.setAttribute(1222, 'Name', 'Concurrent source edit');
     const before = structuredClone({ records: editor.getNewEntities().sort((a, b) => a.expressId - b.expressId), journal: view.getMutations() }), next = view.peekNextExpressId();
     release?.();
-    await expect(pending).rejects.toThrow(/changed while native/);
+    // #6232 / #6759: retryable state conflicts retain their typed identity through the existing SDK command.
+    await expect(pending).rejects.toMatchObject({ name: 'RoomCommandConflictError', message: expect.stringMatching(/changed while native/) });
     expect({ records: editor.getNewEntities().sort((a, b) => a.expressId - b.expressId), journal: view.getMutations() }).toEqual(before);
     expect(view.peekNextExpressId()).toBe(next);
   } finally { release?.(); backend.disposeRooms(); }

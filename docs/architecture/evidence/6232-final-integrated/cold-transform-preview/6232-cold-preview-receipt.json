@@ -1,0 +1,73 @@
+{
+  "issue": 6232,
+  "pr": 6761,
+  "head": "1491d2edf9014e9ff5f59feaa981dc91aa7df7a3",
+  "base": "168ef50c1dd627e7499422cd091c16f733a4a9d6",
+  "tree": "ed9d0a7761ce5a0d61a4fb181b156389b697eb18",
+  "source": {
+    "apps/viewer/src/lib/element-transform/commit.ts": "9e420df4760f03cb7e54a4626f9970beb1d3e89086ba6030f11ff4cefb34dd1d",
+    "apps/viewer/src/lib/commands/modeling/commands/element-transform-cold-native.test.ts": "6d377de5b5f7294b4413c6353c5e0b026ba1d8a285d7d64b30ca5d8f1560c2f2"
+  },
+  "runtime": {
+    "wasm": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+    "js": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d"
+  },
+  "before": {
+    "sameFinalFixture": true,
+    "assertionFailures": 6,
+    "signature": "Align missing carried filling (2); Move/Rotate null cold selection (4)"
+  },
+  "after": {
+    "passed": 6,
+    "skipped": 0,
+    "testCache": 0
+  },
+  "typecheck": {
+    "rootTasks": 111,
+    "cachedTasks": 77,
+    "testFiles": 3399,
+    "packages": 57
+  },
+  "limitations": [
+    "Align uses same-host source window as reference; this is preview/cancellation proof, not successful Align commit agreement. Existing native independent-reference controls prove commit separately.",
+    "Additional setup attempts retained honestly: initial Cargo dependency build was aborted; prerequisite-restored wrong runtime led to exit137; initial N fixture missed parse range and was corrected; one fixed run was cancelled before collection by pending-resolution hook condition. None count as behavioral verdict."
+  ],
+  "commands": [
+    "PATH=/tmp/6232-no-wasm-bin:/usr/bin:/bin TEST_PATTERN=element-transform-cold-native pnpm test --env-mode=loose --filter=@ifc-lite/viewer --only --force",
+    "PATH=/tmp/6232-no-wasm-bin:/usr/bin:/bin pnpm typecheck"
+  ],
+  "logs": {
+    "6232-cold-preview-exact-before.log": {
+      "path": "/tmp/6232-cold-preview-exact-before.log",
+      "sha256": "e0ddc3bc9ce515a0961ebbf8020f258dff9e7de83cd6e9a6112cbd5b427efc6d"
+    },
+    "6232-cold-preview-exact-after-repeat.log": {
+      "path": "/tmp/6232-cold-preview-exact-after-repeat.log",
+      "sha256": "e755af799501053a48ae2611025028ab4f4bdac3902bf23a772c1b6251cdfa80"
+    },
+    "6232-cold-preview-types.log": {
+      "path": "/tmp/6232-cold-preview-types.log",
+      "sha256": "85a384e5b30892eacd1b591a2894b2c53dde6ddc4371d96dbcb25189da1f33b6"
+    },
+    "6232-cold-preview-before.log": {
+      "path": "/tmp/6232-cold-preview-before.log",
+      "sha256": "1eb2a36cd94eaa7ab191b3ee97cf7bfd12539ce498fb23b0f2baac1022ed0746"
+    },
+    "6232-cold-preview-before-corrected.log": {
+      "path": "/tmp/6232-cold-preview-before-corrected.log",
+      "sha256": "ef2fdb9fe3c851fec0685fb64e4c65343acbcc74ef88adda99ccc52c135f8695"
+    },
+    "6232-cold-preview-before-pinned.log": {
+      "path": "/tmp/6232-cold-preview-before-pinned.log",
+      "sha256": "10a734f0ff17af2f62d1159bf3c41c0bc2d994e41cbcbbc56e6d3feea2d4ddc6"
+    },
+    "6232-cold-preview-first-after.log": {
+      "path": "/tmp/6232-cold-preview-first-after.log",
+      "sha256": "bbd7865b6f4c558144c60501b00285b97e0994921216176e41e3bcce98ae1a1e"
+    },
+    "6232-cold-preview-exact-after.log": {
+      "path": "/tmp/6232-cold-preview-exact-after.log",
+      "sha256": "4a55e5a85a3f16c2b697fc8fbbdce0c9a8b2e9e25c35280e4a5700caf4d69033"
+    }
+  }
+}

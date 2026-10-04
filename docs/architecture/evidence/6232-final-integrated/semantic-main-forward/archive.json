@@ -1,0 +1,59 @@
+{
+  "executionSource": "ae5150e5817845e3a183c195b5d466750a4a7470",
+  "actualMain": "7dfc29870b0aa6a593c163592fcb84a92e5dfa19",
+  "captureSource": "7f97b57aa98022ff478cdb302ab6b6ac0ee00452",
+  "rustTree": "49138ee42f1e8f6d7f398c8b75dc1e3d61ccd541",
+  "wasmSHA256": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+  "jsSHA256": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+  "scopes": {
+    "typecheckTasks": 111,
+    "typecheckedTestFiles": 3394,
+    "semantic": 78,
+    "mountedSemanticViewer": 52,
+    "nativeMCP": 34,
+    "cohortSkips": 0,
+    "apiPackages": 52,
+    "apiSurfaces": 85,
+    "apiExports": 9339
+  },
+  "entries": [
+    {
+      "file": "types.log.gz",
+      "rawPath": "/tmp/6232-main7df-integrated-types.log",
+      "rawSHA256": "f4c2a2aabc4e6105898fb1561773ccfba3a92a34f27b2204bba7e88053223a5e",
+      "compressedSHA256": "dd4c24cbb90aea634c8384903d014829b4c9dccffd53ff2201671d12b6e3064c"
+    },
+    {
+      "file": "semantic.log.gz",
+      "rawPath": "/tmp/6232-main7df-semantic.log",
+      "rawSHA256": "cf153f8234903c7dc49c4dbce3574915ced2efd7d7e27786d66a40b850001726",
+      "compressedSHA256": "47340e39f2929b5447095956a082a0f7295f6e4b4ec60c57277f010d8277493e"
+    },
+    {
+      "file": "semantic-viewer.log.gz",
+      "rawPath": "/tmp/6232-main7df-semantic-viewer.log",
+      "rawSHA256": "3fcafd3f72994885e4efaac86ff55b8ef5e4c4960eefe65fbcc1007f5e614530",
+      "compressedSHA256": "ca9aeb7ca3d8d24973ca2355b20467990c8e4fd45c89f7742c1d268d42ce1e35"
+    },
+    {
+      "file": "native-mcp.log.gz",
+      "rawPath": "/tmp/6232-main7df-native-mcp-full.log",
+      "rawSHA256": "22468ffc002b318ac1d990a13207135e598dca1be7f8c093462d2de093e423e6",
+      "compressedSHA256": "30e1547f316a1ec90ab059816452141625953a89c211f2ef7498505529105edb"
+    },
+    {
+      "file": "api.log.gz",
+      "rawPath": "/tmp/6232-main7df-api-pass.log",
+      "rawSHA256": "df321e8e003464173794fec73e4d687e16f535c4ab457b2f8c8025392e582cf5",
+      "compressedSHA256": "e334b1b6b15ee2fd42e284fc3b6862acc08ef35517012d64808bc9be070c9c2c"
+    },
+    {
+      "file": "merge-compositions.json",
+      "SHA256": "f9e49c368fcb6b6c67fc8cf8a966bca0cdad198d815e730d9279c7bc25bdea25"
+    },
+    {
+      "file": "composition-proof.json",
+      "SHA256": "9b739a7dde29fdf5888a2cfbcb2868dfdf4ffb34a73effe082db7f83502f8a64"
+    }
+  ]
+}

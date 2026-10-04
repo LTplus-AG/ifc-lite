@@ -114,7 +114,7 @@ async function doSyncSourceModel({
       ctx,
       tag.projectId,
       tag.containerId,
-      { namePatterns: IFC_NAME_PATTERNS },
+      { namePatterns: provider.manifest.capabilities.sourceNamePatterns ?? IFC_NAME_PATTERNS },
       { cursor, limit: LIST_PAGE_LIMIT, signal },
     );
     latestFile = page.items.find((file) => file.id === tag.fileId);
@@ -139,6 +139,7 @@ async function doSyncSourceModel({
       projectId: tag.projectId,
       containerId: latestFile.containerId,
       fileId: latestFile.id,
+      revisionId: latestFile.currentRevisionId,
     }, {
       signal,
       onProgress: (received, total) => setSourceSyncProgress(modelId, { phase: 'downloading', received, total }),
@@ -155,7 +156,7 @@ async function doSyncSourceModel({
     throw new Error(`Sync cancelled: ${model.name} was removed while its update was downloading.`);
   }
 
-  const safeFileName = sanitizeFilename(latestFile.name, { fallback: 'model' });
+  const safeFileName = sanitizeFilename(latestFile.artifactName ?? latestFile.name, { fallback: 'model' });
   const replacement = new File([buffer], safeFileName);
 
   const preState = useViewerStore.getState();

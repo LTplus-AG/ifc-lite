@@ -157,3 +157,7 @@ apps/*/tsconfig.tests.json
 # for the shape.
 scripts/perf/.browser-cold-ab-results/
 scripts/perf/browser-corpus.local.json
+
+# Autodesk SDK worker build outputs (proprietary SDK/native dependencies).
+apps/autodesk-exchange-worker/bin/
+apps/autodesk-exchange-worker/obj/

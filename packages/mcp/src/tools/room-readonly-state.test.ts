@@ -83,11 +83,15 @@ for (const fault of ['cancel','changed'] as const) it.skipIf(!available)(`#6232 
   } finally { release(); model.backend.dispose(); }
 });
 
-it.skipIf(!available)('#6232 unavailable native Room runtime is a capability failure rather than invalid input', async () => {
+for (const command of ['room', 'align'] as const) it.skipIf(!available)(`#6232 unavailable native ${command} runtime remains a capability failure`, async () => {
   const { registry, call } = await liveToolSession(1), model = registry.get('alpha')!;
   vi.spyOn(GeometryProcessor.prototype,'init').mockRejectedValue(new Error('Native runtime unavailable (injected initialization fault)'));
   try {
-    const before = snapshot(model), result = await call('room_command',{storey_express_id:42,command:{action:'query'}});
+    const column = command === 'align' ? model.bim.store.addColumn('alpha', 42, { Position:[20,20,0], Width:.2, Depth:.2, Height:3 }) : null;
+    const before = snapshot(model);
+    const result = column
+      ? await call('edit_element_geometry', { operation:{kind:'align',reference_id:1222,express_ids:[column.expressId],mode:'left'} })
+      : await call('room_command',{storey_express_id:42,command:{action:'query'}});
     expect(result.structuredContent?.code).toBe('UNSUPPORTED_OPERATION');
     expect(result.structuredContent?.details).toEqual({reason:'NATIVE_RUNTIME_UNAVAILABLE'});
     expect(snapshot(model)).toEqual(before);

@@ -25,6 +25,10 @@ independent receipt audit passes 1,508 checks, and literal Git/retained-closure
 verification passes 59,982 checks. Every paired value, including outliers, remains
 in the original report and qualification JSON; no cohorts are pooled.
 
+Freshly source-built BASE and CAND WASM artifacts differ. The comparison rejects
+the candidate combination; it does not isolate orientation dispatch as the cause
+of the Holter slowdown.
+
 Later candidate integration head `4361d08d92c03ea53aaaa940ae6fde8533f7f2f1` is
 retained as history, not relabelled as measured `89d`. Source restoration and
 archived patch reproduction prove removal of the candidate, not a new performance

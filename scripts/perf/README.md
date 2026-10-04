@@ -118,7 +118,9 @@ showed a scoped ISSUE129 benefit; the separate native comparison remained mixed.
 The fresh integrated default-worker SDK comparison retained CPU output identity
 and complete diagnostics, but every observed Holter pair was slower. Haus and
 O-S1 were mixed. The heavy-family regression blocks shipment under the project's
-no-regressions requirement; the orientation implementation is removed.
+no-regressions requirement; the orientation implementation is removed. Freshly
+built WASM artifacts differ between arms, so this rejects the candidate
+combination without isolating dispatch as the cause of the Holter slowdown.
 
 Lesson: a scoped CSG signal cannot justify a regression on a heavy public model.
 Instruction attribution and avoided dispatch do not establish consumer benefit.

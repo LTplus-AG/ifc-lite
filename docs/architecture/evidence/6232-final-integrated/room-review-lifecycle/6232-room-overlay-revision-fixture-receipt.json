@@ -1,0 +1,17 @@
+{
+  "leaf": "a3fac5a61cfca27fb10bdc4250b6fce2d601f695",
+  "base": "c2714457e75461d433e4651cab6ccb680e8e1f93",
+  "scope": "one test resolution field ownerHistoryId:null; production unchanged",
+  "beforeTypes": "root combined first typecheck fails five missing required ownerHistoryId fixture arguments; no source workaround",
+  "fixed": "corrected native cache8PASS0skip0cache; mandatory root combinedtypes rerunpending",
+  "logs": [
+    {
+      "path": "/tmp/6232-room-revision-cache-corrected-after.log",
+      "sha256": "9bd3bc8cb751658e89f26225c7260319b008bbe2189a7ea1b072db2607e36993"
+    },
+    {
+      "path": "/tmp/6232-late-room-integrated-types.log",
+      "sha256": "df5ec76e07ae448811ab12c7f9ce4da5b9bb38f51afa39dcf07b318b07de903d"
+    }
+  ]
+}

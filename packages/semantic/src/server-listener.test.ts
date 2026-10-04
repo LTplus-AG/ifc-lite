@@ -49,3 +49,26 @@ it('HTTPS listener preserves POST auth/body and rejects unauthorized callers #66
     await rm(directory, { recursive: true, force: true });
   }
 }, 10000);
+
+it('answers a request target `new URL` rejects with 400, not 500', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'ifc-lite-relay-target-'));
+  let server: ReturnType<typeof createSemanticRelayServer> | undefined;
+  try {
+    const certFile = join(directory, 'cert.pem'); const keyFile = join(directory, 'key.pem');
+    await promisify(execFile)('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', keyFile, '-out', certFile,
+      '-days', '1', '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1']);
+    const cert = await readFile(certFile); const key = await readFile(keyFile);
+    server = createSemanticRelayServer({ clientToken: 'tls-client-test-token-with-32-characters-minimum', allowedOrigins: [], providers: {} }, { cert, key }).listen(0, '127.0.0.1');
+    await once(server, 'listening'); const port = (server.address() as AddressInfo).port;
+    // `//` is the shortest request-target that `new URL('//', base)` rejects.
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = request({ host: '127.0.0.1', port, method: 'GET', path: '//', ca: cert }, res => { res.resume(); resolve(res.statusCode ?? 0); });
+      req.on('error', reject); req.end();
+    });
+    expect(status).toBe(400);
+  } finally {
+    if (server) { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server!.close(error => error ? reject(error) : resolve())); }
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 10000);
+

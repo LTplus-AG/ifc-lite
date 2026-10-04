@@ -181,6 +181,25 @@ describe('SourcesPanel per-file download progress (#6375)', () => {
     assert.ok(row('Podium.ifc').textContent?.includes('Downloading Podium.ifc'), 'the spinner announces the download');
   });
 
+  it('cancels a batch and ignores bytes that arrive after cancellation', async () => {
+    const { provider, pending } = heldProvider();
+    const dispatched: unknown[] = [];
+    const onDispatch = (event: Event) => dispatched.push((event as CustomEvent).detail);
+    window.addEventListener(SOURCE_DOWNLOAD_EVENT, onDispatch);
+    try {
+      render(<SourceHostProvider additionalProviders={[() => provider]}><SourcesPanel onClose={() => {}} /></SourceHostProvider>);
+      await startBatch();
+      click(buttonWithText('Cancel download'));
+      await pump();
+      assert.equal(pending[0].options?.signal?.aborted, true);
+      await settle(() => pending[0].resolve(new ArrayBuffer(100)));
+      assert.equal(dispatched.length, 0, 'late bytes cannot enter the canonical loader');
+      assert.equal(pending.length, 1, 'queued file never starts');
+      assert.equal(document.querySelector('[role="progressbar"]'), null);
+      assert.equal(buttonWithText('Load 2 files as federated model').disabled, false);
+    } finally { window.removeEventListener(SOURCE_DOWNLOAD_EVENT, onDispatch); }
+  });
+
   it('keeps the browser open with the failed file marked when one download fails', async () => {
     const { provider, pending } = heldProvider();
     const dispatched: unknown[] = [];

@@ -2995,3 +2995,20 @@ GPU loss, validation and contained-upload failures share one fatal-log classifie
 in the waiter and the pre-complete/pre-close receipt guards. Faults delivered
 during identity capture refuse the sample; teardown-only device destruction is
 outside those guards, and raw observer-delivery phases remain recorded.
+
+### Deferred complete-viewer source ownership qualification (#6537, #6780)
+
+The final bounded source-pinned O-S1 attempt completed baseline geometry and
+metadata but refused its independent retained-appearance identity at the
+observer's cumulative record limit. The candidate never loaded. Separating the
+depth and record refusal messages established the failing category while leaving
+both bounds and traversal unchanged; earlier ambiguous refusals stay ambiguous.
+
+The runtime candidate is deferred and unmerged. This is neither a production
+regression nor a completed performance or full-behavior comparison. Fresh source
+typechecks/builds and observed browser/server cleanup passed, but they cannot
+replace missing appearance, property/cache/federation and native-GPU proof. Stop
+expanding this observer speculatively. A future proposal must first demonstrate
+a bounded complete identity method on the retained model data. The exact run,
+lossless originals and qualification limits are retained in the
+[refusal archive](evidence/viewer-record-bound-refusal-6537/README.md).

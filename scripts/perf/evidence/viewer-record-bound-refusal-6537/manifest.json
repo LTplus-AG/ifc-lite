@@ -1,0 +1,337 @@
+{
+  "run": 37227551707,
+  "url": "https://github.com/LTplus-AG/ifc-lite/actions/runs/37227551707",
+  "controller": "e6de6d704e3a398f5376eff537cfa426247bac20",
+  "subjects": {
+    "base": "7dfc29870b0aa6a593c163592fcb84a92e5dfa19",
+    "candidate": "9fc86cb8ead77486b0bcd29726b775c27085524b"
+  },
+  "fixture": {
+    "path": "various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc",
+    "size": 342657851,
+    "sha256": "e91ddbbd672bbde946af14631de4c732f0cf8a7cfae5dbbf06fbeab03b5c46df",
+    "file": "/home/runner/work/ifc-lite/ifc-lite/tests/models/various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc",
+    "release": "fixtures-v1",
+    "baseUrl": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1"
+  },
+  "verdict": "DEFERRED_UNQUALIFIED",
+  "reason": "Error: page.evaluate: Error: REFUSE input identity: canonical record bound (records=8000001, limit=8000000)\n    at refuse (eval at evaluate (:311:30), <anonymous>:2:36)\n    at canonical (eval at evaluate (:311:30), <anonymous>:63:37)\n    at canonical (eval at evaluate (:311:30), <anonymous>:88:91)\n    at async hash (eval at evaluate (:311:30), <anonymous>:90:68)\n    at async captureViewerInputIdentity (eval at evaluate (:311:30), <anonymous>:126:65)\n    at async <anonymous>:337:30",
+  "candidateLoaded": false,
+  "canonicalRecordLimit": 8000000,
+  "refusedRecord": 8000001,
+  "depthLimitChanged": false,
+  "recordLimitChanged": false,
+  "retries": 0,
+  "initialFrozenInputs": "complete",
+  "finalFrozenInputs": "complete",
+  "readiness": {
+    "capturedUTC": "2026-10-04T19:42:50.871Z",
+    "pagePerformanceMs": 150026.30999999982,
+    "visibility": "visible",
+    "rendererFound": true,
+    "rendererReady": true,
+    "traversal": {
+      "fiberCapExhausted": false,
+      "hookCapExhausted": false,
+      "visitedFibers": 41,
+      "complete": true,
+      "totalHooks": 1614,
+      "hookWalks": [
+        {
+          "tag": 0,
+          "hooks": 954
+        },
+        {
+          "tag": 0,
+          "hooks": 329
+        },
+        {
+          "tag": 0,
+          "hooks": 17
+        },
+        {
+          "tag": 0,
+          "hooks": 31
+        },
+        {
+          "tag": 0,
+          "hooks": 15
+        },
+        {
+          "tag": 0,
+          "hooks": 17
+        },
+        {
+          "tag": 0,
+          "hooks": 31
+        },
+        {
+          "tag": 0,
+          "hooks": 1
+        },
+        {
+          "tag": 0,
+          "hooks": 7
+        },
+        {
+          "tag": 0,
+          "hooks": 0
+        },
+        {
+          "tag": 0,
+          "hooks": 201
+        },
+        {
+          "tag": 0,
+          "hooks": 1
+        },
+        {
+          "tag": 0,
+          "hooks": 4
+        },
+        {
+          "tag": 0,
+          "hooks": 4
+        },
+        {
+          "tag": 0,
+          "hooks": 2
+        }
+      ]
+    },
+    "canvas": {
+      "width": 715,
+      "height": 743,
+      "cssWidth": 715,
+      "cssHeight": 743
+    },
+    "load": {
+      "loading": false,
+      "streaming": false,
+      "error": null,
+      "activeModelId": "d26522ec-74f8-474b-9308-e97568188d89",
+      "pendingInstanceShards": 0,
+      "modelCount": 1,
+      "geometryMeshes": 53769
+    },
+    "model": {
+      "id": "d26522ec-74f8-474b-9308-e97568188d89",
+      "loadError": null,
+      "dataStorePresent": true,
+      "loadState": "complete",
+      "geometryLoadState": "opening",
+      "metadataLoadState": "idle",
+      "interactiveReady": false,
+      "geometryMeshes": 53769
+    },
+    "scene": {
+      "pendingBatches": false,
+      "geometryReleased": false,
+      "queued": false,
+      "fragments": false,
+      "finalizing": false,
+      "batchCount": 237,
+      "flatOwners": 15447,
+      "instanceOwners": 983,
+      "instancedCount": 983,
+      "gpuInstanceOccurrences": 1808
+    },
+    "milestones": {
+      "uploadMs": 1732.934999999823,
+      "geometryMs": 20521.184999999823,
+      "metadataMs": 11126.299999999814,
+      "spatialMs": 9513.814999999944,
+      "spatialFileName": "O-S1-BWK-BIM architectural - BIM bouwkundig.ifc",
+      "metadataFileName": "O-S1-BWK-BIM architectural - BIM bouwkundig.ifc",
+      "spatialCount": 1,
+      "uploadCount": 1,
+      "geometryCount": 2,
+      "metadataCount": 1,
+      "error": null
+    },
+    "frame": {
+      "drawCalls": 414,
+      "batchesDrawn": 237,
+      "batchesFrustumCulled": 0,
+      "batchesContributionCulled": 0,
+      "batchesNotResident": 0,
+      "batchesAtLod1": 4,
+      "instancedDrawn": 177,
+      "instancedFrustumCulled": 0,
+      "instancedContributionCulled": 0,
+      "timestamp": 149970.65999999992
+    },
+    "debugFrameMatches": true,
+    "limitations": "Passive private-shape census only; null means unavailable, not zero. Frame stats witness CPU submission, not GPU completion or pixel fidelity."
+  },
+  "observerCleanup": {
+    "restored": true,
+    "failure": null
+  },
+  "ownedCleanup": {
+    "status": "complete",
+    "witnessed": 14,
+    "zombies": 0,
+    "remaining": []
+  },
+  "serverCleanup": {
+    "base": {
+      "status": "complete",
+      "reason": null,
+      "remainingSockets": 0
+    },
+    "candidate": {
+      "status": "complete",
+      "reason": null,
+      "remainingSockets": 0
+    }
+  },
+  "sampledRSS": {
+    "samples": 665,
+    "peak": 4819345408,
+    "scope": "250ms aggregate owned RSS; shared pages double-counted; not physical peak"
+  },
+  "physicalMemoryVerdict": false,
+  "sameReleaseOrCrossArmOutputIdentityQualified": false,
+  "wasmSHA256": {
+    "base": "1923fa33be6e4c45524ac73dca8c4be24cf85922d7a9935720c8c362f25bc44d",
+    "candidate": "f44b58a505156b855bb3c79bd66bd2f091e1320a613455b6b3d879a0dc948915"
+  },
+  "artifact": {
+    "id": 11313052166,
+    "name": "viewer-source-allocation-37227551707-1",
+    "expiresAt": "2026-10-11T19:15:09Z",
+    "actualRetentionDays": 7
+  },
+  "sourceMaterialOnMain": false,
+  "archives": [
+    {
+      "original": "artifacts.json",
+      "archived": "artifacts.json.gz",
+      "bytes": 781,
+      "sha256": "6c316441fb6dc0df9f0b24bdfb17c30ab950c1ab33d8f0845b075fa275986753",
+      "archiveBytes": 470,
+      "archiveSha256": "04b93966a9364a0c12cfe66d926acdab8a48e2a42dcdda366b308a3641ebb658"
+    },
+    {
+      "original": "base-build.log",
+      "archived": "base-build.log.gz",
+      "bytes": 46381,
+      "sha256": "fdeacf5b4d1362683a81d131e9c8285b17dab0202d2d428536e4e70d59c1c031",
+      "archiveBytes": 11509,
+      "archiveSha256": "341206c379cd3f7909e36934c9c0f22a795507f08bd8ca147ca2467ad9d64d2f"
+    },
+    {
+      "original": "base-typecheck.log",
+      "archived": "base-typecheck.log.gz",
+      "bytes": 41053,
+      "sha256": "87db9c50c5790c58965a2fe1dbb3379b456582a4f30e3fc33fc1ee633353f542",
+      "archiveBytes": 7539,
+      "archiveSha256": "7a82b7fe664d29e2659e42541ca0803aa5971b280f5a6b31b93ed14c8f2110ba"
+    },
+    {
+      "original": "base.json",
+      "archived": "base.json.gz",
+      "bytes": 78346,
+      "sha256": "071edb97ede2bddcd42583b8ba40d663ee3ab7fd5f6cf9025740bb02e545310d",
+      "archiveBytes": 11977,
+      "archiveSha256": "2c879765089399f4a10b42d1c77283fd740becaabade3b3b7d1012c99c3fe12d"
+    },
+    {
+      "original": "base.json.input.json",
+      "archived": "base.json.input.json.gz",
+      "bytes": 1296,
+      "sha256": "3f50a53b39df4cd1fd7e8f8942085fb3c14497d3c9369f4ac0ec16f1271995cf",
+      "archiveBytes": 709,
+      "archiveSha256": "d1919e4ab1375d230d909c037f0d104ebfe5f470cd1e4f6d4bdd79fe89dbba4a"
+    },
+    {
+      "original": "base.json.png",
+      "archived": "base.json.png.gz",
+      "bytes": 387903,
+      "sha256": "1403537cbfa3378504f8da6890bcda1d912e3d941c82f6b81e9f069fe7df34a6",
+      "archiveBytes": 385118,
+      "archiveSha256": "3facb2d8caf234da3a6ae13558e0f611c16aaafe7d57eaf8c94366a2c6f344ae"
+    },
+    {
+      "original": "base.json.rss.json",
+      "archived": "base.json.rss.json.gz",
+      "bytes": 37234,
+      "sha256": "ee0db34c870601713e417f295a6d1d3983f084772ed4a9c656ce229c8a4a3641",
+      "archiveBytes": 5783,
+      "archiveSha256": "598f0a82d46f7bbac348ac55de68035c08afc228b901f819893986d17e8c0455"
+    },
+    {
+      "original": "base.json.runner.log",
+      "archived": "base.json.runner.log.gz",
+      "bytes": 8277,
+      "sha256": "0aabe54e0fd119133b0bb71495138d9d98d7266806fb0707ec059c440423c0e7",
+      "archiveBytes": 1855,
+      "archiveSha256": "23a2b028908366cd4a85f85831984483022e790aea342dd3fbbf740805ee78ac"
+    },
+    {
+      "original": "build-start.json",
+      "archived": "build-start.json.gz",
+      "bytes": 3592613,
+      "sha256": "2a7097d3e57760b7f415939be299a05f23338b7efaae1332e118b6971f12fa5e",
+      "archiveBytes": 1309347,
+      "archiveSha256": "d57c5f1763039777e884e12c053baa3044b84260c35dad0aed6ba96cc1e67a3e"
+    },
+    {
+      "original": "candidate-build.log",
+      "archived": "candidate-build.log.gz",
+      "bytes": 48080,
+      "sha256": "c006c5ca78cba732db4e2937343422ec36bec415a5b3dc641c60d0e732598812",
+      "archiveBytes": 11622,
+      "archiveSha256": "4e66574fa14f6af8ff65b9bb6cca1197304d13e6639a6a20ef1e84c9085594c9"
+    },
+    {
+      "original": "candidate-typecheck.log",
+      "archived": "candidate-typecheck.log.gz",
+      "bytes": 40956,
+      "sha256": "bf840f055b443533e663d8fb5f3102dd526fb897fd745d6ce682e1955bbaa68f",
+      "archiveBytes": 7257,
+      "archiveSha256": "deb83c9c4bdd1a5c5497d31e79b3caeaab42154a29b601017ac4aa8aa8d33861"
+    },
+    {
+      "original": "failed.log",
+      "archived": "failed.log.gz",
+      "bytes": 998601,
+      "sha256": "a6c984414fd4f8a9a7191fc7798627dc67922e70a68ad4442ffb7d90a8d91e76",
+      "archiveBytes": 91361,
+      "archiveSha256": "664cfc6587a082f79a1c7468b13f0d40c55206ef8e55b910bf9af1e16e51b3ea"
+    },
+    {
+      "original": "protocol.json",
+      "archived": "protocol.json.gz",
+      "bytes": 585,
+      "sha256": "f4d1b8fe2c3f06b225d0cc70293617553c71599ad5286bc85959c9b4dd717ff0",
+      "archiveBytes": 400,
+      "archiveSha256": "dbca2200fb31cdbc971e7c8fa08ef30eb067d9191cb7e84b31b7471f9ffba25e"
+    },
+    {
+      "original": "provenance.json",
+      "archived": "provenance.json.gz",
+      "bytes": 5684448,
+      "sha256": "52834e8bcd68e2af14c570665421e6c7870aa993efd4905c3ef8d813c24559aa",
+      "archiveBytes": 2034582,
+      "archiveSha256": "e69f571cda9f2285c15d00c1506e9a5fbc417771d0a63fed556106699f351c1c"
+    },
+    {
+      "original": "report.json",
+      "archived": "report.json.gz",
+      "bytes": 114936,
+      "sha256": "354976abbca3ccdc31c91b05a00426ee00b20c5ea4426fc6372b96715926943d",
+      "archiveBytes": 20342,
+      "archiveSha256": "98c8543fc0a1787c05651fa6712503930fb4485b4ac4f3e33880e56484f2178c"
+    },
+    {
+      "original": "run.json",
+      "archived": "run.json.gz",
+      "bytes": 6788,
+      "sha256": "2604c345953198da91e4de3a7bc2cf397725f9379db904fb20920ee357848419",
+      "archiveBytes": 1313,
+      "archiveSha256": "f5a183d6b017547a0ee49551bc35e2ca1fd3a8f3044649afee1d65daf747dc76"
+    }
+  ]
+}

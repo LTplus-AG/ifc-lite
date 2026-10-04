@@ -1,7 +1,6 @@
 # Hosted Dropbox and Microsoft deployment
 
-Create a separate Linux Railway service `cloud` in the existing project; keep
-Autodesk and Windows worker configuration unchanged. Reverse proxy the exact
+Use the separate Linux Railway service `cloud` in the existing project. Reverse proxy the exact
 `/api/cloud/*` path from the viewer's origin to this service. Register exact
 callback URLs for each deployed viewer origin; no wildcard callback or credential
 in a frontend environment variable.
@@ -59,3 +58,24 @@ safe logs, and container restart. Local/mock tests are not these acceptance runs
 
 Dalux has a company-admin API-identity/key flow. Do not display an ordinary-user
 OAuth sign-in claim or share a company identity across unauthenticated viewers.
+
+## Qualification deployment (2026-10-04)
+
+Service `cloud` (`53cab0a6-dacd-4457-86ea-a11a737e1a61`) is provisioned in
+`ifc-lite-server` production with one replica, sleeping disabled, Dockerfile
+`apps/cloud-service/Dockerfile`, `/healthz` and port 3004. Its public endpoint is
+https://cloud-production-6b9b.up.railway.app. Settings were applied through
+Railway's public API and read back; the build log confirms the Dockerfile
+multi-stage image, even though the service builder field reports RAILPACK.
+
+Uploaded revision `e3ab51b4a` passed deployment
+`4beadaf5-4bcb-4d48-9a0d-5a2101e265f0` and the platform health check. Live HTTPS
+checks passed health, both unsigned/unconfigured sessions, Secure/HttpOnly/Lax
+host-only cookies, no-store responses, correct-origin unconfigured authorize
+(503), and foreign-origin rejection (403). Local Docker qualification also
+passed under the non-root image user. These probes made no vendor calls.
+
+Both vendor app credential pairs remain absent. The viewer flag remains off.
+The fixed Vercel rewrite is prepared in the viewer layer but is not live on the
+public viewer. This is an unmerged qualification deployment; activate only after
+review/CI/merge, vendor registration and real sign-in/import acceptance.

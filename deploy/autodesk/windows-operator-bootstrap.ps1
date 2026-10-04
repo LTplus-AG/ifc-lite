@@ -27,6 +27,8 @@ $config=Join-Path $sshDir 'sshd_config'
 if(-not(Test-Path $config)){Copy-Item "$env:WINDIR\System32\OpenSSH\sshd_config_default" $config}
 if(-not(Test-Path "$config.ifclite-before")){Copy-Item $config "$config.ifclite-before"}
 Set-Content -Path $config -Value ("PasswordAuthentication no`nPubkeyAuthentication yes`n"+[IO.File]::ReadAllText($config)) -Encoding ascii
+& "$env:WINDIR\System32\OpenSSH\ssh-keygen.exe" -A
+if($LASTEXITCODE -ne 0){throw 'SSH host key generation failed'}
 & "$env:WINDIR\System32\OpenSSH\sshd.exe" -t
 if($LASTEXITCODE -ne 0){throw 'SSH configuration validation failed'}
 Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue | Disable-NetFirewallRule

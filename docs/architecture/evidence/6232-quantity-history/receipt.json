@@ -1,0 +1,90 @@
+{
+  "issue": 6232,
+  "base": "bfc6d467c3e10387cf1e4dfe9da43066f139cb0e",
+  "before": {
+    "viewer": {
+      "passed": 2,
+      "failed": 4,
+      "skipped": 0,
+      "log": "viewer-before.log.gz"
+    },
+    "quantityUnitExport": {
+      "failed": 1,
+      "actualUnit": null,
+      "expectedSourceMetreId": 2,
+      "log": "quantity-unit-before.log.gz"
+    }
+  },
+  "after": {
+    "rootTypecheck": {
+      "tasks": 111,
+      "testFiles": 3381,
+      "passed": true
+    },
+    "viewer": {
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0
+    },
+    "mutations": {
+      "passed": 360,
+      "failed": 0,
+      "existingSkipped": 10
+    },
+    "export": {
+      "passed": 1686,
+      "failed": 0,
+      "existingSkipped": 54
+    },
+    "lint": {
+      "files": 8469,
+      "errors": 0
+    },
+    "docsSnippets": 433,
+    "apiExports": 9334,
+    "newApiExports": [
+      "replayQuantityMutation"
+    ],
+    "moduleSize": {
+      "files": 4811,
+      "newOversize": 0,
+      "budgetRaises": 0,
+      "mutablePropertyViewLines": 1872,
+      "mutablePropertyViewBudget": 1879
+    },
+    "licenseHeaders": true,
+    "sourceTextAssertionsNew": 0
+  },
+  "limits": [
+    "Unit export reuses the existing supported length-unit resolver; no new unit discovery.",
+    "Old history lacks prior metadata and cannot reconstruct historical type changes.",
+    "Write-only legacy forward targets without recorded/current type retain Count fallback.",
+    "Export-generated Pset/Qto identity differences are handled separately; persistent identities and quantity classes are not normalized."
+  ],
+  "logs": {
+    "typecheck": "/tmp/6232-quantity-final-typecheck.log",
+    "viewer": "/tmp/6232-quantity-final-viewer4.log",
+    "packages": "/tmp/6232-quantity-final-packages4.log",
+    "lint": "/tmp/6232-quantity-lint.log",
+    "docs": "/tmp/6232-quantity-docs.log",
+    "api": "/tmp/6232-quantity-api-check.log",
+    "module": "/tmp/6232-quantity-module.log",
+    "license": "/tmp/6232-quantity-license2.log"
+  },
+  "archives": {
+    "viewer-before.log.gz": {
+      "sourceCommit": "db5b29fa59412e242f0a37bba0f2e4e5e4a11604",
+      "rawSha256": "4578613edfd63f5b1f55bbf2ae11f04952acd10811dc4f5730e2f6f6680ffd12",
+      "rawBytes": 14235,
+      "gzipSha256": "e8d8e5e2ac73bb3faee7b65bcff280a11a6b34aaea5bce3e63d177c4ff3fd15d",
+      "gzipMtime": 0
+    },
+    "quantity-unit-before.log.gz": {
+      "sourceCommit": "db5b29fa59412e242f0a37bba0f2e4e5e4a11604",
+      "rawSha256": "9e552e9b06845ff9ef3034f61ff947b0851c4e269429ef602a3550dbaa860824",
+      "rawBytes": 2730,
+      "gzipSha256": "567dc507341ad4a0ced5a26899c960156f631c820575df8ad273ae5074e76b83",
+      "gzipMtime": 0
+    }
+  }
+}

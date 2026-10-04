@@ -1,0 +1,248 @@
+{
+  "base": "8a78fbf19910313d6ac9ac66da0a717accd6e71f",
+  "main": "1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9",
+  "mainPaths": [
+    ".changeset/task-output-products-6749.md",
+    "apps/viewer/src/components/viewer/PropertiesPanel.tsx",
+    "apps/viewer/src/components/viewer/properties/ScheduleCard.tsx",
+    "apps/viewer/src/components/viewer/properties/TaskEditCard.tsx",
+    "apps/viewer/src/components/viewer/schedule/schedule-animator.test.ts",
+    "apps/viewer/src/components/viewer/schedule/schedule-animator.ts",
+    "apps/viewer/src/components/viewer/schedule/schedule-selection.test.ts",
+    "apps/viewer/src/components/viewer/schedule/schedule-selection.ts",
+    "apps/viewer/src/lib/charts/datasets/schedule.ts",
+    "apps/viewer/src/lib/scripts/templates/bim-globals.d.ts",
+    "apps/viewer/src/sdk/adapters/export-schedule-outputs-6749.test.ts",
+    "apps/viewer/src/sdk/adapters/export-schedule-strip.ts",
+    "apps/viewer/src/store/slices/schedule-edit-helpers.ts",
+    "apps/viewer/src/store/slices/scheduleSlice.test.ts",
+    "apps/viewer/src/store/slices/scheduleSlice.ts",
+    "packages/parser/src/index.ts",
+    "packages/parser/src/schedule-extractor.ts",
+    "packages/parser/src/schedule-serializer-builders.ts",
+    "packages/parser/src/schedule-serializer.ts",
+    "packages/parser/src/schedule-task-products.ts",
+    "packages/parser/src/schedule-types.ts",
+    "packages/parser/test/schedule-task-outputs-6749.test.ts",
+    "packages/sandbox/src/bridge-schedule.ts",
+    "packages/sdk/src/schedule-types.ts",
+    "scripts/api-surface.json"
+  ],
+  "rows": [
+    {
+      "label": "own",
+      "head": "05ca86645dfa07345dc51f658398326dec97400b",
+      "tree": "52ec8c4834caaadb1840929243b49a30c03414a2",
+      "changedPaths": [
+        ".changeset/task-output-products-6749.md",
+        "apps/viewer/src/components/viewer/PropertiesPanel.tsx",
+        "apps/viewer/src/components/viewer/properties/ScheduleCard.tsx",
+        "apps/viewer/src/components/viewer/properties/TaskEditCard.tsx",
+        "apps/viewer/src/components/viewer/schedule/schedule-animator.test.ts",
+        "apps/viewer/src/components/viewer/schedule/schedule-animator.ts",
+        "apps/viewer/src/components/viewer/schedule/schedule-selection.test.ts",
+        "apps/viewer/src/components/viewer/schedule/schedule-selection.ts",
+        "apps/viewer/src/lib/charts/datasets/schedule.ts",
+        "apps/viewer/src/lib/scripts/templates/bim-globals.d.ts",
+        "apps/viewer/src/sdk/adapters/export-schedule-outputs-6749.test.ts",
+        "apps/viewer/src/sdk/adapters/export-schedule-strip.ts",
+        "apps/viewer/src/store/slices/schedule-edit-helpers.ts",
+        "apps/viewer/src/store/slices/scheduleSlice.test.ts",
+        "apps/viewer/src/store/slices/scheduleSlice.ts",
+        "packages/parser/src/index.ts",
+        "packages/parser/src/schedule-extractor.ts",
+        "packages/parser/src/schedule-serializer-builders.ts",
+        "packages/parser/src/schedule-serializer.ts",
+        "packages/parser/src/schedule-task-products.ts",
+        "packages/parser/src/schedule-types.ts",
+        "packages/parser/test/schedule-task-outputs-6749.test.ts",
+        "packages/sandbox/src/bridge-schedule.ts",
+        "packages/sdk/src/schedule-types.ts",
+        "scripts/api-surface.json"
+      ],
+      "equalsMainBlob": {
+        ".changeset/task-output-products-6749.md": true,
+        "apps/viewer/src/components/viewer/PropertiesPanel.tsx": true,
+        "apps/viewer/src/components/viewer/properties/ScheduleCard.tsx": true,
+        "apps/viewer/src/components/viewer/properties/TaskEditCard.tsx": true,
+        "apps/viewer/src/components/viewer/schedule/schedule-animator.test.ts": true,
+        "apps/viewer/src/components/viewer/schedule/schedule-animator.ts": true,
+        "apps/viewer/src/components/viewer/schedule/schedule-selection.test.ts": true,
+        "apps/viewer/src/components/viewer/schedule/schedule-selection.ts": true,
+        "apps/viewer/src/lib/charts/datasets/schedule.ts": true,
+        "apps/viewer/src/lib/scripts/templates/bim-globals.d.ts": false,
+        "apps/viewer/src/sdk/adapters/export-schedule-outputs-6749.test.ts": true,
+        "apps/viewer/src/sdk/adapters/export-schedule-strip.ts": true,
+        "apps/viewer/src/store/slices/schedule-edit-helpers.ts": true,
+        "apps/viewer/src/store/slices/scheduleSlice.test.ts": true,
+        "apps/viewer/src/store/slices/scheduleSlice.ts": true,
+        "packages/parser/src/index.ts": true,
+        "packages/parser/src/schedule-extractor.ts": true,
+        "packages/parser/src/schedule-serializer-builders.ts": true,
+        "packages/parser/src/schedule-serializer.ts": true,
+        "packages/parser/src/schedule-task-products.ts": true,
+        "packages/parser/src/schedule-types.ts": true,
+        "packages/parser/test/schedule-task-outputs-6749.test.ts": true,
+        "packages/sandbox/src/bridge-schedule.ts": true,
+        "packages/sdk/src/schedule-types.ts": true,
+        "scripts/api-surface.json": false
+      },
+      "apiAddedRemovedFromMain": {
+        "@ifc-lite/parser": {
+          "added": [
+            "taskProductExpressIds: function",
+            "taskProductGlobalIds: function"
+          ],
+          "removed": []
+        }
+      },
+      "apiUnion": {
+        "@ifc-lite/parser": true
+      },
+      "otherApiArraysUnchanged": true
+    },
+    {
+      "label": "final",
+      "head": "4371e2c29c4721eef33cead4822ec5fc75beca81",
+      "tree": "22e323839e223e9c4a5a4245ecfc1ff612ac21ff",
+      "changedPaths": [
+        ".changeset/task-output-products-6749.md",
+        "apps/viewer/src/components/viewer/PropertiesPanel.tsx",
+        "apps/viewer/src/components/viewer/properties/ScheduleCard.tsx",
+        "apps/viewer/src/components/viewer/properties/TaskEditCard.tsx",
+        "apps/viewer/src/components/viewer/schedule/schedule-animator.test.ts",
+        "apps/viewer/src/components/viewer/schedule/schedule-animator.ts",
+        "apps/viewer/src/components/viewer/schedule/schedule-selection.test.ts",
+        "apps/viewer/src/components/viewer/schedule/schedule-selection.ts",
+        "apps/viewer/src/lib/charts/datasets/schedule.ts",
+        "apps/viewer/src/lib/scripts/templates/bim-globals.d.ts",
+        "apps/viewer/src/sdk/adapters/export-schedule-outputs-6749.test.ts",
+        "apps/viewer/src/sdk/adapters/export-schedule-strip.ts",
+        "apps/viewer/src/store/slices/schedule-edit-helpers.ts",
+        "apps/viewer/src/store/slices/scheduleSlice.test.ts",
+        "apps/viewer/src/store/slices/scheduleSlice.ts",
+        "packages/parser/src/index.ts",
+        "packages/parser/src/schedule-extractor.ts",
+        "packages/parser/src/schedule-serializer-builders.ts",
+        "packages/parser/src/schedule-serializer.ts",
+        "packages/parser/src/schedule-task-products.ts",
+        "packages/parser/src/schedule-types.ts",
+        "packages/parser/test/schedule-task-outputs-6749.test.ts",
+        "packages/sandbox/src/bridge-schedule.ts",
+        "packages/sdk/src/schedule-types.ts",
+        "scripts/api-surface.json"
+      ],
+      "equalsMainBlob": {
+        ".changeset/task-output-products-6749.md": true,
+        "apps/viewer/src/components/viewer/PropertiesPanel.tsx": true,
+        "apps/viewer/src/components/viewer/properties/ScheduleCard.tsx": true,
+        "apps/viewer/src/components/viewer/properties/TaskEditCard.tsx": true,
+        "apps/viewer/src/components/viewer/schedule/schedule-animator.test.ts": true,
+        "apps/viewer/src/components/viewer/schedule/schedule-animator.ts": true,
+        "apps/viewer/src/components/viewer/schedule/schedule-selection.test.ts": true,
+        "apps/viewer/src/components/viewer/schedule/schedule-selection.ts": true,
+        "apps/viewer/src/lib/charts/datasets/schedule.ts": true,
+        "apps/viewer/src/lib/scripts/templates/bim-globals.d.ts": false,
+        "apps/viewer/src/sdk/adapters/export-schedule-outputs-6749.test.ts": true,
+        "apps/viewer/src/sdk/adapters/export-schedule-strip.ts": true,
+        "apps/viewer/src/store/slices/schedule-edit-helpers.ts": true,
+        "apps/viewer/src/store/slices/scheduleSlice.test.ts": true,
+        "apps/viewer/src/store/slices/scheduleSlice.ts": true,
+        "packages/parser/src/index.ts": true,
+        "packages/parser/src/schedule-extractor.ts": true,
+        "packages/parser/src/schedule-serializer-builders.ts": true,
+        "packages/parser/src/schedule-serializer.ts": true,
+        "packages/parser/src/schedule-task-products.ts": true,
+        "packages/parser/src/schedule-types.ts": true,
+        "packages/parser/test/schedule-task-outputs-6749.test.ts": true,
+        "packages/sandbox/src/bridge-schedule.ts": true,
+        "packages/sdk/src/schedule-types.ts": true,
+        "scripts/api-surface.json": false
+      },
+      "apiAddedRemovedFromMain": {
+        "@ifc-lite/parser": {
+          "added": [
+            "taskProductExpressIds: function",
+            "taskProductGlobalIds: function"
+          ],
+          "removed": []
+        }
+      },
+      "apiUnion": {
+        "@ifc-lite/parser": true
+      },
+      "otherApiArraysUnchanged": true
+    }
+  ],
+  "scope": "read-only merge-tree; no refs/worktree/source mutation; no execution qualification",
+  "preparedHead": "ea6e354b165fb43fc84b5b6de35f0a107a741540",
+  "preparedTree": "52ec8c4834caaadb1840929243b49a30c03414a2",
+  "worktreeClean": true,
+  "normalMainAncestor": true,
+  "nonApiNonGeneratedOwnPatchIdentical": true,
+  "nonApiNonGeneratedOwnPatchSHA256": "c9d83ac778b824f4a2ee08e5447ca06e8ddcc15fc4e728366d2a81f78589e985",
+  "bimUnionDelta": "diff --git a/apps/viewer/src/lib/scripts/templates/bim-globals.d.ts b/apps/viewer/src/lib/scripts/templates/bim-globals.d.ts\nindex 8685b093a..f51b2827f 100644\n--- a/apps/viewer/src/lib/scripts/templates/bim-globals.d.ts\n+++ b/apps/viewer/src/lib/scripts/templates/bim-globals.d.ts\n@@ -1209 +1209 @@ declare const bim: {\n-    data(modelId?: string): { HasSchedule: boolean; WorkSchedules: Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; Identification?: string; CreationDate?: string; StartTime?: string; FinishTime?: string; Purpose?: string; Duration?: string; PredefinedType?: string; Kind: 'WorkSchedule' | 'WorkPlan'; TaskGlobalIds: string[]; CalendarGlobalIds?: string[] }>; Tasks: Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; ObjectType?: string; Identification?: string; LongDescription?: string; Status?: string; WorkMethod?: string; IsMilestone: boolean; Priority?: number; PredefinedType?: string; ParentTaskGlobalId?: string; ChildTaskGlobalIds: string[]; AssignedProductExpressIds: number[]; AssignedProductGlobalIds: string[]; ControllingScheduleGlobalIds: string[]; CalendarGlobalIds?: string[]; TaskTime?: { ScheduleStart?: string; ScheduleFinish?: string; ScheduleDuration?: string; ActualStart?: string; ActualFinish?: string; ActualDuration?: string; EarlyStart?: string; EarlyFinish?: string; LateStart?: string; LateFinish?: string; FreeFloat?: string; TotalFloat?: string; RemainingTime?: string; StatusTime?: string; IsCritical?: boolean; Completion?: number; DurationType?: 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED' } }>; Sequences: Array<{ RelatingProcessGlobalId: string; RelatedProcessGlobalId: string; SequenceType: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; UserDefinedSequenceType?: string; TimeLagSeconds?: number; TimeLagDuration?: string }>; WorkCalendars: Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; ObjectType?: string; Identification?: string; PredefinedType?: string; WorkingTimes: Array<{ Name?: string; DataOrigin?: string; UserDefinedDataOrigin?: string; Start?: string; Finish?: string; RecurrencePattern?: { RecurrenceType?: string; DayComponent: number[]; WeekdayComponent: number[]; MonthComponent: number[]; Position?: number; Interval?: number; Occurrences?: number; TimePeriods: { Start: string; End: string }[] } }>; ExceptionTimes: Array<{ Name?: string; DataOrigin?: string; UserDefinedDataOrigin?: string; Start?: string; Finish?: string; RecurrencePattern?: { RecurrenceType?: string; DayComponent: number[]; WeekdayComponent: number[]; MonthComponent: number[]; Position?: number; Interval?: number; Occurrences?: number; TimePeriods: { Start: string; End: string }[] } }> }> };\n+    data(modelId?: string): { HasSchedule: boolean; WorkSchedules: Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; Identification?: string; CreationDate?: string; StartTime?: string; FinishTime?: string; Purpose?: string; Duration?: string; PredefinedType?: string; Kind: 'WorkSchedule' | 'WorkPlan'; TaskGlobalIds: string[]; CalendarGlobalIds?: string[] }>; Tasks: Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; ObjectType?: string; Identification?: string; LongDescription?: string; Status?: string; WorkMethod?: string; IsMilestone: boolean; Priority?: number; PredefinedType?: string; ParentTaskGlobalId?: string; ChildTaskGlobalIds: string[]; AssignedProductExpressIds: number[]; AssignedProductGlobalIds: string[]; OutputProductExpressIds?: number[]; OutputProductGlobalIds?: string[]; ControllingScheduleGlobalIds: string[]; CalendarGlobalIds?: string[]; TaskTime?: { ScheduleStart?: string; ScheduleFinish?: string; ScheduleDuration?: string; ActualStart?: string; ActualFinish?: string; ActualDuration?: string; EarlyStart?: string; EarlyFinish?: string; LateStart?: string; LateFinish?: string; FreeFloat?: string; TotalFloat?: string; RemainingTime?: string; StatusTime?: string; IsCritical?: boolean; Completion?: number; DurationType?: 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED' } }>; Sequences: Array<{ RelatingProcessGlobalId: string; RelatedProcessGlobalId: string; SequenceType: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; UserDefinedSequenceType?: string; TimeLagSeconds?: number; TimeLagDuration?: string }>; WorkCalendars: Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; ObjectType?: string; Identification?: string; PredefinedType?: string; WorkingTimes: Array<{ Name?: string; DataOrigin?: string; UserDefinedDataOrigin?: string; Start?: string; Finish?: string; RecurrencePattern?: { RecurrenceType?: string; DayComponent: number[]; WeekdayComponent: number[]; MonthComponent: number[]; Position?: number; Interval?: number; Occurrences?: number; TimePeriods: { Start: string; End: string }[] } }>; ExceptionTimes: Array<{ Name?: string; DataOrigin?: string; UserDefinedDataOrigin?: string; Start?: string; Finish?: string; RecurrencePattern?: { RecurrenceType?: string; DayComponent: number[]; WeekdayComponent: number[]; MonthComponent: number[]; Position?: number; Interval?: number; Occurrences?: number; TimePeriods: { Start: string; End: string }[] } }> }> };\n@@ -1211 +1211 @@ declare const bim: {\n-    tasks(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; ObjectType?: string; Identification?: string; LongDescription?: string; Status?: string; WorkMethod?: string; IsMilestone: boolean; Priority?: number; PredefinedType?: string; ParentTaskGlobalId?: string; ChildTaskGlobalIds: string[]; AssignedProductExpressIds: number[]; AssignedProductGlobalIds: string[]; ControllingScheduleGlobalIds: string[]; CalendarGlobalIds?: string[]; TaskTime?: { ScheduleStart?: string; ScheduleFinish?: string; ScheduleDuration?: string; ActualStart?: string; ActualFinish?: string; ActualDuration?: string; EarlyStart?: string; EarlyFinish?: string; LateStart?: string; LateFinish?: string; FreeFloat?: string; TotalFloat?: string; RemainingTime?: string; StatusTime?: string; IsCritical?: boolean; Completion?: number; DurationType?: 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED' } }>;\n+    tasks(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; ObjectType?: string; Identification?: string; LongDescription?: string; Status?: string; WorkMethod?: string; IsMilestone: boolean; Priority?: number; PredefinedType?: string; ParentTaskGlobalId?: string; ChildTaskGlobalIds: string[]; AssignedProductExpressIds: number[]; AssignedProductGlobalIds: string[]; OutputProductExpressIds?: number[]; OutputProductGlobalIds?: string[]; ControllingScheduleGlobalIds: string[]; CalendarGlobalIds?: string[]; TaskTime?: { ScheduleStart?: string; ScheduleFinish?: string; ScheduleDuration?: string; ActualStart?: string; ActualFinish?: string; ActualDuration?: string; EarlyStart?: string; EarlyFinish?: string; LateStart?: string; LateFinish?: string; FreeFloat?: string; TotalFloat?: string; RemainingTime?: string; StatusTime?: string; IsCritical?: boolean; Completion?: number; DurationType?: 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED' } }>;\n",
+  "coldBlobsUnchanged": {
+    "apps/viewer/src/lib/element-transform/commit.ts": true,
+    "apps/viewer/src/lib/commands/modeling/commands/element-transform-cold-native.test.ts": true
+  },
+  "bimOnlyActualMainOptionalOutputs": true,
+  "ownApiExportDeltaBefore": {
+    "@ifc-lite/create": {
+      "added": [
+        "ALIGN_MODES: const",
+        "AlignMode: type",
+        "ElementAlignParams: interface",
+        "PlanBox: interface",
+        "alignElementsInStore: function",
+        "alignMoves: function",
+        "alignShift: function",
+        "alignmentStoreyInStore: function",
+        "alignsAlongU: const",
+        "edgeOf: function",
+        "pickBox: function",
+        "planBoxOf: function",
+        "shiftBox: function"
+      ],
+      "removed": []
+    },
+    "@ifc-lite/sdk": {
+      "added": [
+        "AlignGeometryProvider: type",
+        "createAlignCommandBackend: function"
+      ],
+      "removed": []
+    }
+  },
+  "ownApiExportDeltaAfter": {
+    "@ifc-lite/create": {
+      "added": [
+        "ALIGN_MODES: const",
+        "AlignMode: type",
+        "ElementAlignParams: interface",
+        "PlanBox: interface",
+        "alignElementsInStore: function",
+        "alignMoves: function",
+        "alignShift: function",
+        "alignmentStoreyInStore: function",
+        "alignsAlongU: const",
+        "edgeOf: function",
+        "pickBox: function",
+        "planBoxOf: function",
+        "shiftBox: function"
+      ],
+      "removed": []
+    },
+    "@ifc-lite/sdk": {
+      "added": [
+        "AlignGeometryProvider: type",
+        "createAlignCommandBackend: function"
+      ],
+      "removed": []
+    }
+  },
+  "ownApiExportDeltaIdentical": true,
+  "fullOldPatchSHA256": "48ede5b9b79ee3987f67d4bdaeb79987fdfd1bb1d6249d9e098d998e81905693",
+  "fullNewPatchSHA256": "541bb9a81a47c07c010f41ef2f263afb86d3745165212e55a21d055b45cb21b6",
+  "fullPatchIdentityClaim": "No full-patch byte identity claim: main API/generated signature context changes; non-API/non-generated patch and own export delta are exact."
+}

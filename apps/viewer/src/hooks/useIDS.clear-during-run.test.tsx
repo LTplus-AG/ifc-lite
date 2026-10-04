@@ -31,6 +31,7 @@
  */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -138,8 +139,6 @@ async function seed(modelCount: 1 | 2 = 1): Promise<void> {
     idsValidationReport: null,
     currentValidationReport: null,
     savedValidationReports: [],
-    validationReportsSaveFailed: false,
-    validationReportsLoadIssue: null,
     idsError: null,
     idsLoading: false,
     idsProgress: null,
@@ -184,7 +183,7 @@ describe('useIDS — clearing during an in-flight runValidation (PR #2837 review
       assert.equal(useViewerStore.getState().idsValidationReport, null, 'late completion must not publish');
       // #6568: a cancelled check supplies neither saved nor saveable evidence.
       assert.equal(useViewerStore.getState().currentValidationReport, null);
-      assert.equal(loadValidationReports().length, 0);
+      assert.equal((await loadValidationReports()).length, 0);
       assert.equal([...document.querySelectorAll('button')].some((button) => button.textContent === 'Save report'), false);
     });
   }

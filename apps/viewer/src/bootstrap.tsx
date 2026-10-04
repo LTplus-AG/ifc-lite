@@ -38,6 +38,7 @@ import './i18n/locales.boot';
 import { installWasmVersionSkewRecovery } from './lib/wasm-version-skew';
 import { installChunkVersionSkewRecovery } from './lib/chunk-version-skew';
 import { scheduleWasmPrewarm } from './lib/wasm-prewarm';
+import { initializeUserContent } from './lib/storage/content-boot';
 import type { FileSourceProviderFactory } from './services/sources/source-host';
 
 export type { FileSourceProviderFactory } from './services/sources/source-host';
@@ -59,6 +60,7 @@ export interface ViewerBootstrapOptions {
 
 /** Mounts the viewer into `container`. Call once, from the app entry. */
 export function mountViewer(container: HTMLElement, options: ViewerBootstrapOptions = {}): void {
+  initializeUserContent();
   // WASM engine-binary recovery — the sibling of the chunk recovery below for the
   // `ifc-lite_bg.wasm` binary, which wasm-bindgen fetches inside a worker and so
   // is invisible to Vite's `vite:preloadError`. When a deploy rotates the hashed

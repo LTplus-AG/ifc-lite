@@ -1,0 +1,42 @@
+@ifc-lite/sdk:test: cache bypass, force executing 4904f741e9abf367
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: > @ifc-lite/sdk@9.0.0 test /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/sdk
+@ifc-lite/sdk:test: > vitest run store-design.test.ts
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  RUN  v4.1.11 /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/sdk
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  ❯ src/store-design.test.ts (3 tests | 1 failed) 77ms
+@ifc-lite/sdk:test:      ✓ exports the curtain aggregate and all owned parts and rolls back a late invalid profile 55ms
+@ifc-lite/sdk:test:      ✓ binds to persisted source axes and refuses a stale position without spending IDs or journal entries 15ms
+@ifc-lite/sdk:test:    × #6232 SDK hosted edits preserve imported identity/shared geometry and refuse out-of-host changes atomically 6ms
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  FAIL  src/store-design.test.ts > #6232 SDK hosted edits preserve imported identity/shared geometry and refuse out-of-host changes atomically
+@ifc-lite/sdk:test: AssertionError: expected undefined to be type of 'function'
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: Expected: "function"
+@ifc-lite/sdk:test: Received: "undefined"
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  ❯ src/store-design.test.ts:93:37
+@ifc-lite/sdk:test:      91| it('#6232 SDK hosted edits preserve imported identity/shared geometry …
+@ifc-lite/sdk:test:      92|   const { store, view, methods } = await setup();
+@ifc-lite/sdk:test:      93|   expect(methods.editHostedElement).toBeTypeOf('function');
+@ifc-lite/sdk:test:        |                                     ^
+@ifc-lite/sdk:test:      94|   if (!methods.editHostedElement) throw new Error('Missing hosted edit…
+@ifc-lite/sdk:test:      95|   const before = new AnchorEntityReader(store, view).entity(1262)!;
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  Test Files  1 failed (1)
+@ifc-lite/sdk:test:       Tests  1 failed | 2 passed (3)
+@ifc-lite/sdk:test:    Start at  08:16:00
+@ifc-lite/sdk:test:    Duration  559ms (transform 47ms, setup 0ms, import 391ms, tests 77ms, environment 0ms)
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  ELIFECYCLE  Test failed. See above for more details.
+ Tasks:    25 successful, 26 total
+Cached:    24 cached, 26 total
+  Time:    3.034s 
+ ERROR  run failed: command  exited (1)

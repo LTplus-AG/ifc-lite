@@ -72,6 +72,10 @@
  * below runs over an empty set, so "0 violations" would mean "0 chunks
  * examined". Its own behaviour is pinned by check-tla-chunk-await.test.mjs.
  *
+ * It also fails if the plugin re-printed any chunk it rewrote (every chunk
+ * that mentions `__tla`, entry and worker chunks included) unminified (see
+ * `unminified` below).
+ *
  * Run via `pnpm check:tla-chunk-await` (wired into the viewer-e2e CI job,
  * right after the viewer build it inspects). Requires a built viewer
  * (`pnpm turbo build --filter=@ifc-lite/viewer`).
@@ -79,6 +83,7 @@
 
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { deploymentAssetsDir } from './lib/deployment-assets-dir.mjs';
+import { chunkFormatting, MIN_PUNCTUATION, rewrittenByPlugin } from './lib/tla-chunk-prologue.mjs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -197,6 +202,55 @@ if (tlaExporters.size === 0) {
   process.exit(1);
 }
 
+// Every chunk the plugin rewrote must have been re-printed minified. Why, and
+// how its formatting is read without a tokenizer: scripts/lib/tla-chunk-prologue.mjs.
+// Chunks the plugin rewrote are picked by structure (rewrittenByPlugin), not by
+// a `__tla` substring, which an untouched chunk can carry inside a string.
+// tlaChunks includes every exporter by construction, and tlaExporters was
+// asserted non-empty above. The
+// guard below is that same invariant stated where it is relied on: if it ever
+// broke, the scan would run over nothing and "all 0 minified" would be a pass.
+const tlaChunks = [...sources.keys()].filter(
+  (file) => tlaExporters.has(file) || rewrittenByPlugin(sources.get(file)),
+);
+if (tlaChunks.length === 0 || tlaChunks.length < tlaExporters.size) {
+  console.error(
+    `❌ Only ${tlaChunks.length} chunk(s) mention \`__tla\` but ${tlaExporters.size} export it, so the\n` +
+      `minification check below would inspect nothing (or less than the plugin\n` +
+      `rewrote). This gate's chunk discovery is broken; fix it before trusting a pass.\n`,
+  );
+  process.exit(1);
+}
+const formatting = new Map(tlaChunks.map((file) => [file, chunkFormatting(sources.get(file))]));
+// A chunk whose prologue is too short to judge is not a pass: say so.
+const unrecognised = tlaChunks.filter((file) => formatting.get(file) === 'unknown');
+if (unrecognised.length > 0) {
+  console.error(
+    `❌ ${unrecognised.length} chunk(s) rewritten by the plugin have too little leading code\n` +
+      `(under ${MIN_PUNCTUATION} punctuation marks before the first literal) for this gate to tell\n` +
+      `whether they were minified (first: ${unrecognised[0]}). See\n` +
+      `scripts/lib/tla-chunk-prologue.mjs.\n`,
+  );
+  process.exit(1);
+}
+const unminified = tlaChunks.filter((file) => formatting.get(file) === 'pretty');
+if (unminified.length > 0) {
+  console.error(
+    `❌ ${unminified.length} of ${tlaChunks.length} chunk(s) rewritten by the plugin were re-printed ` +
+      `UNMINIFIED by vite-plugin-top-level-await:\n`,
+  );
+  for (const file of unminified.slice(0, 10)) console.error(`   ${file}`);
+  if (unminified.length > 10) console.error(`   ... and ${unminified.length - 10} more`);
+  console.error(
+    `\nThe plugin re-prints every chunk it rewrites, and prints it pretty unless it\n` +
+      `sees a truthy \`build.minify\`. patches/vite-plugin-top-level-await@1.6.0.patch\n` +
+      `makes it read the RESOLVED config (configResolved), where Vite's default\n` +
+      `minifier is filled in. Check that the patch is still applied (pnpm install)\n` +
+      `and that apps/viewer/vite.config.ts does not set \`build.minify: false\`.\n`,
+  );
+  process.exit(1);
+}
+
 const violations = [];
 const sideEffectViolations = [];
 let staticTlaImports = 0;
@@ -294,7 +348,8 @@ console.log(
   `✅ 0 chunks importing a __tla chunk without awaiting it, ` +
     `${staticTlaImports} static import(s) of a __tla-wrapped chunk checked ` +
     `(${tlaExporters.size} __tla-wrapped chunk(s) among ${files.length} emitted chunk(s)); ` +
-    `${sideEffectImports} bare side-effect import(s) checked.`,
+    `${sideEffectImports} bare side-effect import(s) checked; ` +
+    `all ${tlaChunks.length} plugin-rewritten chunk(s) minified.`,
 );
 
 function fixHint() {

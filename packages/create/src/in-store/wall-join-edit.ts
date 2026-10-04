@@ -20,6 +20,7 @@
  * in and out is metres, storey-local.
  */
 
+import { editOwnershipRefusal, expandAffectedSet } from '@ifc-lite/export';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { toNativeLength } from './anchor.js';
@@ -187,6 +188,18 @@ export function reshapeWallsInStore(
   // walls), retaining supported cuts at unchanged ends on the same direction.
   const rels = readWallJoinRels(store, view(), new Set([...axes.keys(), ...(options.refresh ?? [])]));
   const touched = new Set<number>(axes.keys());
+  // A refresh can rewrite either joined wall, including neighbours that did
+  // not move. Their solid/shape records must not belong to unrelated products.
+  for (const rel of rels) {
+    readOrNull(store, editor, targets, rel.relatingId, scale);
+    readOrNull(store, editor, targets, rel.relatedId, scale);
+  }
+  const bodyIds = [...targets.values()].flatMap(read => [read.solidId, read.productShapeId]);
+  const ownership = editOwnershipRefusal(store, view(), bodyIds, new Set(targets.keys()));
+  if (ownership) throw new Error(`${op}: ${ownership}`);
+  const placementIds = [...axes].flatMap(([id, ends]) => holdsPlacement(load(id).wall, ends.start, ends.end) ? [] : [load(id).axisPlacementId]);
+  const placementOwnership = editOwnershipRefusal(store, view(), placementIds, expandAffectedSet(store, view(), targets.keys(), 'hostsChanged'));
+  if (placementOwnership) throw new Error(`${op}: ${placementOwnership}`);
   for (const [id, { start, end, thickness }] of axes) targets.set(id, writeAxis(editor, anchor, load(id), start, end, thickness));
 
   // Recompute every join that touches a moved wall: the joined end snaps to the
@@ -247,19 +260,23 @@ function joinOptionsOf(rel: WallJoinRel, tolerance: number | undefined): WallJoi
  * gets a fresh point and direction at the new start (the old ones may be
  * shared with other walls).
  */
+/** The existing axis writer retains placement when start and direction stay. */
+function holdsPlacement(old: WallJoinWall, start: PlanPoint, end: PlanPoint): boolean {
+  const oldLength = Math.hypot(old.end[0] - old.start[0], old.end[1] - old.start[1]);
+  const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
+  return Math.hypot(start[0] - old.start[0], start[1] - old.start[1]) <= MOVE_EPS
+    && (((end[0] - start[0]) / length) * ((old.end[0] - old.start[0]) / oldLength)
+      + ((end[1] - start[1]) / length) * ((old.end[1] - old.start[1]) / oldLength)) > 1 - 1e-12;
+}
+
 function writeAxis(editor: StoreEditor, anchor: JoinAnchor, read: WallJoinRead, start: PlanPoint, end: PlanPoint, thickness = read.wall.thickness): WallJoinRead {
   const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
   const native = (v: number) => toNativeLength(anchor, v);
   const reshaped = reshapeWallAxis({ ...read.wall, thickness }, start, end);
-  const old = read.wall;
-  const oldLength = Math.hypot(old.end[0] - old.start[0], old.end[1] - old.start[1]);
+
   const ux = (end[0] - start[0]) / length;
   const uy = (end[1] - start[1]) / length;
-  const ox = (old.end[0] - old.start[0]) / oldLength;
-  const oy = (old.end[1] - old.start[1]) / oldLength;
-  const startHeld = Math.hypot(start[0] - old.start[0], start[1] - old.start[1]) <= MOVE_EPS;
-  const directionHeld = ux * ox + uy * oy > 1 - 1e-12;
-  if (startHeld && directionHeld) {
+  if (holdsPlacement(read.wall, start, end)) {
     return { ...read, ...rewriteWall(editor, anchor, { ...read, wall: reshaped }, reshaped), wall: reshaped, plain: false };
   }
   const point = editor.addEntity('IfcCartesianPoint', [[native(start[0]), native(start[1]), read.location[2]]]).expressId;

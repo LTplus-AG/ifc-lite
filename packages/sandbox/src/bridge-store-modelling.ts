@@ -92,6 +92,16 @@ const LAYER = '{ Material?: number; LayerThickness: number; IsVentilated?: boole
 export function buildStoreModellingMethods(): MethodSchema[] {
   return [
     {
+      name: 'alignElements',
+      doc: 'Align real native mesh edges or centres in one storey workplane. Fresh geometry and an atomic transaction preserve hosted cuts, joined neighbours and one Undo.',
+      args: ['string', 'number', 'dump', 'string'],
+      paramNames: ['modelId', 'reference', 'targets', 'mode'],
+      tsParamTypes: ['string', 'number', 'readonly number[]', 'BimCreate.AlignMode'],
+      tsReturn: `Promise<${ENTITY_REF}[]>`,
+      returns: 'value',
+      call: (sdk, args) => sdk.store.alignElements(args[0] as string, requireId('alignElements', 'reference', args[1]), args[2] as number[], args[3] as Parameters<typeof sdk.store.alignElements>[3]),
+    },
+    {
       name: 'joinWalls',
       doc: 'Join two straight walls in the same placement frame through IfcRelConnectsPathElements. Uses the Model workspace core, preserving readable hosted openings and refusing a cut stranded by a joined end face.',
       args: ['string', 'number', 'number', 'dump'],

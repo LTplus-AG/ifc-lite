@@ -176,3 +176,31 @@ export type {
   CostValueParams,
   SIUnitParams,
 } from './types-cost.js';
+
+export { copyBatchInStore, copySourcesInStore, copiedProductsInStore } from './in-store/copy-batch.js';
+export { arrayCopyTransforms, type CopyArrayParams } from './in-store/copy-array.js';
+export type { CopyTransform } from './in-store/copy-product.js';
+
+export { setElementSizeInStore } from './in-store/element-size-edit.js';
+export { resizeWallInStore } from './in-store/wall-size-edit.js';
+
+export { transformElementsInStore, type ElementTransformInput, type StoreyTransformOp } from './in-store/element-transform-edit.js';
+export { splitElementsInStore, type ElementSplitRequest, type ElementSplitOptions } from './in-store/element-split.js';
+
+export { trimExtendElementInStore, type ElementTrimExtendParams } from './in-store/element-trim-extend.js';
+
+export { RoomLayoutCache } from './in-store/room-layout-cache.js';
+export { readFaces, applyLayoutOp, filterRoomFaces, type LayoutOp, type RoomPlateFactory } from './in-store/room-layout-core.js';
+export { roomOutline, roomCandidatesFromFaces, occupancyTest, type RoomCandidate, type RoomBoundary } from './in-store/room-candidates.js';
+export { createRoomsInStore, updateRoomOutlineInStore, syncRoomLayoutInStore } from './in-store/room-store.js';
+export { storeyFootprintFaceInStore, type RoomWallRect } from './in-store/room-footprint-native.js';
+export { planRoomCreation } from './in-store/room-creation-plan.js';
+
+export { wallRectsFromMeshes, roomFrameToModelWorld, roomFramePlanOffsets } from './in-store/room-wall-rects.js';
+export { floorToFloorHeight } from './in-store/room-floor-height.js';
+export { effectiveStoreyElevation } from './in-store/room-storey-elevation.js';
+export { effectiveStoreyIds } from './in-store/edit/effective-storeys.js';
+export { spaceMeshTriangles } from './in-store/room-space-meshes.js';
+
+export { ALIGN_MODES, alignsAlongU, planBoxOf, pickBox, edgeOf, alignShift, shiftBox, alignMoves, type AlignMode, type PlanBox } from './in-store/align-boxes.js';
+export { alignmentStoreyInStore, alignElementsInStore, type ElementAlignParams } from './in-store/element-align.js';

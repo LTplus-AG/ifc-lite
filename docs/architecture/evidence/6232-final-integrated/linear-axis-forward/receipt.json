@@ -1,0 +1,24 @@
+{
+  "source": "76306e613e44ce5e7f3a9b29d2b4dbee7c5e2098",
+  "main": "5d3e14febefe47f9967efdbb130a6a236c64110f",
+  "repair": "2015de57015a3a198bb9eb2c0e04610d6f99c2a6",
+  "scope": "Normal integration of the qualified linear direction magnitude refusal. Root typecheck passes 111 tasks / 3387 test files; both overlay and persisted STEP refusal regressions pass through root forced viewer tests. The following normal Align ancestry reconciliation changes documentation only. Existing complete cumulative and browser receipts remain bound to their original exact sources.",
+  "runtime": {
+    "wasmSha256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+    "jsSha256": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+    "beforeAfterMatched": true,
+    "dependencyBuildsDuringForcedTests": false
+  },
+  "archives": {
+    "types": {
+      "rawBytes": 45184,
+      "rawSha256": "754d118235cddfc03945824a0108468f82afb8a7ebbb504795d6908fad91f313",
+      "gzipSha256": "cd90fb5ed4119f3612fd11738aae10f6c810f97a3e3c682870c79eaa09f4f20c"
+    },
+    "viewer": {
+      "rawBytes": 1610,
+      "rawSha256": "f501d5cc0f4879690876903837c17da53909543f8379a9b4057cd6a6ffa68c22",
+      "gzipSha256": "2dd35ca383e8e3ef7bf12e682ef60ae9930fed25f07c153857e27b751c4fa17f"
+    }
+  }
+}

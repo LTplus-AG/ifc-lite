@@ -37,7 +37,7 @@ function choose(destination: ValidationReportSnapshot, source: ValidationReportS
   const replacements: ValidationReportSnapshot[] = [];
   const ui = render(<SavedReportSource block={destination} onChange={(block) => replacements.push(block)} />);
   const picker = ui.querySelector<HTMLSelectElement>('select'); assert.ok(picker, 'the saved-source picker is mounted');
-  act(() => { picker.value = saved.id; picker.dispatchEvent(new window.Event('change', { bubbles: true })); });
+  act(() => { picker.value = `saved:${saved.id}`; picker.dispatchEvent(new window.Event('change', { bubbles: true })); });
   assert.equal(replacements.length, 1);
   cleanup();
   return replacements[0];

@@ -15,6 +15,8 @@ categories = ["parsing", "algorithms"]
 readme = "../../README.md"
 
 [features]
+# Fixed-size work counters for the diagnostic example, never enabled by default.
+opening-perf-trace = ["ifc-lite-geometry/opening-perf-trace"]
 # Measurement-only: enable the geometry crate's CSG corpus capture so the
 # `csg_scaling_bench` example can replay real void-cut jobs. See
 # rust/processing/examples/csg_scaling_bench.rs.

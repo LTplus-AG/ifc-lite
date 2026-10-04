@@ -91,6 +91,7 @@ tests/models/local
 tests/models/ara3d
 tests/models/issues
 tests/models/various
+tests/models/georeferencer
 tests/models/**/*.ifc
 tests/models/**/*.IFC
 tests/models/**/*.ifcx

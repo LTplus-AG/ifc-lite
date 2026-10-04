@@ -521,6 +521,41 @@ describe('StepExporter', () => {
     expect(mcLine).toBe('#41=IFCMAPCONVERSION(#20,#40,1.,2.,12345.,1.,0.,1.);');
   });
 
+  it('writes an authored non-unit XAxisAbscissa/XAxisOrdinate ratio exactly as authored (#6700)', () => {
+    // The pair is a DIRECTION and the viewer's projection arithmetic
+    // normalises it when it USES it, but the exporter must keep the vector the
+    // author wrote (here ratio 2, and 3:4) rather than a normalised (1, 0) or
+    // (0.6, 0.8). An edit to an unrelated field must not touch the axis either.
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20),#30);"],
+      [2, 'IFCSIUNIT', '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [20, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+      [21, 'IFCAXIS2PLACEMENT3D', '#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);'],
+      [22, 'IFCCARTESIANPOINT', '#22=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [23, 'IFCDIRECTION', '#23=IFCDIRECTION((0.,0.,1.));'],
+      [24, 'IFCDIRECTION', '#24=IFCDIRECTION((1.,0.,0.));'],
+      [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT((#2));'],
+      [40, 'IFCPROJECTEDCRS', "#40=IFCPROJECTEDCRS('EPSG:2056',$,'CH1903+',$,$,$,#2);"],
+      [41, 'IFCMAPCONVERSION', '#41=IFCMAPCONVERSION(#20,#40,1.,2.,3.,2.,0.,1.);'],
+    ]);
+
+    const untouched = new StepExporter(dataStore).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      georefMutations: { mapConversion: { eastings: 10 } },
+    });
+    expect(decode(untouched.content).match(/#41=IFCMAPCONVERSION\([^;]*\);/)?.[0])
+      .toBe('#41=IFCMAPCONVERSION(#20,#40,10.,2.,3.,2.,0.,1.);');
+
+    const edited = new StepExporter(dataStore).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      georefMutations: { mapConversion: { xAxisAbscissa: 3, xAxisOrdinate: 4 } },
+    });
+    expect(decode(edited.content).match(/#41=IFCMAPCONVERSION\([^;]*\);/)?.[0])
+      .toBe('#41=IFCMAPCONVERSION(#20,#40,1.,2.,3.,3.,4.,1.);');
+  });
+
   it('never points new georeferencing at a deleted context or length unit', () => {
     const dataStore = buildMockDataStore([
       [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20,#25),#30);"],

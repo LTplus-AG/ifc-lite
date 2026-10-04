@@ -1,0 +1,117 @@
+[revert-oracle] does this branch's test actually observe this branch's change?
+  repo:  /tmp/ifc-6679-layer2-oracle
+  base:  t3code/6679-storage-foundation
+  head:  HEAD
+  --only narrowed the revert set from 23 to 1 production file(s)
+  files: 23 production, 32 test, 2 ignored, 0 inert
+  observer: tests (runtime change in apps/viewer/src/lib/flow/report-retention.ts)
+  runner: apps/viewer -> tsx --import ./src/test/vite-module-hooks.mjs --test-timeout=120000 --test-concurrency=1 --test src/lib/flow/report-retention.test.ts
+  mutation: /tmp/ifc-6679-retention-mutation.patch (12 lines, reverse-applied)
+
+[1/3] baseline: running the branch's own tests, unmodified
+  [baseline] apps/viewer (node-test) -> pass (pass 4, fail 0, total 4, exit 0, 20123ms)
+
+[2/3] reverting the production change
+  reverted: apps/viewer/src/lib/flow/report-retention.ts
+
+[3/3] re-running the same tests with production reverted
+  [reverted] apps/viewer (node-test) -> assertion-failure (pass 3, fail 1, total 4, exit 1, 14777ms)
+  restored: forward re-applied the patch; `git status --porcelain` is empty
+
+==============================================================================
+  ✔ OBSERVED
+==============================================================================
+  observer:  tests
+  reverted:  apps/viewer/src/lib/flow/report-retention.ts
+  tests run: apps/viewer/src/lib/flow/report-retention.test.ts
+  baseline:  pass — 4 passed / 4 collected
+  reverted:  assertion-failure — 3 passed, 1 failed / 4 collected
+
+  reverting production turned an assertion RED in apps/viewer/src/lib/flow/report-retention.test.ts; that file has a green, attributable baseline.
+
+{
+  "observer": "tests",
+  "baseline": {
+    "kind": "pass",
+    "passed": 4,
+    "total": 4
+  },
+  "reverted": {
+    "kind": "assertion-failure",
+    "passed": 3,
+    "failed": 1,
+    "total": 4,
+    "evidence": []
+  },
+  "ledger": [
+    {
+      "file": "apps/viewer/src/lib/flow/report-retention.test.ts",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/lib/flow/report-retention.test.ts",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/lib/flow/report-retention.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/lib/flow/report-retention.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 3,
+        "failed": 1,
+        "total": 4,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/lib/flow/report-retention.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    }
+  ],
+  "schemaVersion": 2,
+  "channel": "pull-request",
+  "verdict": "OBSERVED",
+  "exitCode": 0,
+  "reason": "reverting production turned an assertion RED in apps/viewer/src/lib/flow/report-retention.test.ts; that file has a green, attributable baseline.",
+  "base": "7e1bfc76dd5a153054291e70997a878f42e8d49b",
+  "head": "56366859515b2b9258f528f834293a88c7d35219",
+  "production": [
+    "apps/viewer/src/lib/flow/report-retention.ts"
+  ],
+  "tests": [
+    "apps/viewer/src/lib/flow/report-retention.test.ts"
+  ],
+  "invocationId": "637e85ae-a216-4b45-8aa6-9098b5718fab",
+  "timing": {
+    "startedAt": "2026-10-02T11:33:40.906Z",
+    "finishedAt": "2026-10-02T11:34:17.849Z"
+  },
+  "restoration": "verified"
+}

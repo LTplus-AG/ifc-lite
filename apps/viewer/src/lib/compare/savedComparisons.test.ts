@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { clearContentDatabase } from '@/test/content-fixture.js';
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { diffModels } from '@ifc-lite/diff';
@@ -60,15 +61,16 @@ describe('Saved comparison invariants (#6506)', () => {
     assert.equal(named.report.baseModel, '  exact authored name  ', 'nonblank authored names retain their exact evidence');
   });
 
-  it('preserves explicitly empty authored keys and counterpart IDs through saved import and table projection', () => {
+  it('preserves explicitly empty authored keys and counterpart IDs through saved import and table projection', async () => {
     const saved = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Imported authored keys');
     const ordinary = resolveComparisonTableState(saved);
     assert.ok(ordinary.status === 'ok' && ordinary.kind === 'comparison');
     assert.equal(ordinary.model.columns.some((column) => column.label === 'Authored key'), false, 'absent metadata stays absent');
     saved.keyProperty = 'Tag';
     saved.report.rows = saved.report.rows.map((row) => ({ ...row, key: '', matchedGlobalId: '' }));
+    await clearContentDatabase();
     localStorage.setItem(SAVED_COMPARISONS_KEY, JSON.stringify([saved]));
-    const [imported] = loadSavedComparisons();
+    const [imported] = (await loadSavedComparisons());
     assert.ok(imported && isSavedComparison(imported));
     const state = resolveComparisonTableState(imported);
     assert.ok(state.status === 'ok' && state.kind === 'comparison');
@@ -90,12 +92,13 @@ describe('Saved comparison invariants (#6506)', () => {
     assert.ok(comparisonSummary(saved).includes('Products: Added 0; deleted 0; modified 0'));
   });
 
-  it('rejects malformed stored/embedded reports while retaining other valid pairs and migrates v1–8 documents', () => {
+  it('rejects malformed stored/embedded reports while retaining other valid pairs and migrates v1–8 documents', async () => {
     const valid = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'pair');
     const corrupt = { ...valid, id: 'corrupt', report: { ...valid.report, rows: [{ ...valid.report.rows[0], movedDistance: 'far' }] } };
     const invalidMatch = { ...valid, id: 'bad-match', report: { ...valid.report, rows: [{ ...valid.report.rows[0], match: { toString: null } }] } };
+    await clearContentDatabase();
     localStorage.setItem(SAVED_COMPARISONS_KEY, JSON.stringify([valid, corrupt, invalidMatch, valid]));
-    assert.equal(loadSavedComparisons().length, 1, 'invalid entries and duplicate ids never shadow valid history');
+    assert.equal((await loadSavedComparisons()).length, 1, 'invalid entries and duplicate ids never shadow valid history');
     const doc = { version: DOCUMENT_VERSION, id: 'doc', name: 'Report', page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'table', id: 't', source: { kind: 'comparison', comparison: valid } }] };
     assert.deepEqual(validateDocumentSpec(doc), []);
     for (let version = 1; version <= 8; version++) assert.deepEqual(validateDocumentSpec(migrateDocumentSpec({ ...doc, version, blocks: [] })), []);

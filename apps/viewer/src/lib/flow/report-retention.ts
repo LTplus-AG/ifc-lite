@@ -21,20 +21,20 @@ const outcome = (id: string, persisted: boolean, duplicate: boolean): ReportRete
 });
 
 /** Supplied result IDs make saving within one run idempotent; a new run supplies new IDs. */
-export function retainValidationReport(entry: SavedValidationReport, host: ReportRetentionHost): ReportRetentionResult {
+export async function retainValidationReport(entry: SavedValidationReport, host: ReportRetentionHost): Promise<ReportRetentionResult> {
   if (!validateSavedReport(entry)) throw new Error('Invalid validation evidence');
   entry = savedReportWithProvenance(entry);
   const state = host.getState();
   const existing = state.savedValidationReports.find((saved) => saved.id === entry.id);
   if (existing && !sameReportEvidence(savedReportWithProvenance(existing), entry)) throw new Error(`Validation evidence ID collision: ${entry.id}`);
-  if (state.saveValidationReportEntry(entry) === null) throw new Error('Validation evidence was refused');
-  return outcome(entry.id, !host.getState().validationReportsSaveFailed, !!existing);
+  if (await state.saveValidationReportEntry(entry) === null) throw new Error('Validation evidence was refused');
+  return outcome(entry.id, host.getState().validationReportsStorage.items[entry.id] === 'saved', !!existing);
 }
 
-export function retainComparisonReport(entry: SavedComparison, host: ReportRetentionHost): ReportRetentionResult {
+export async function retainComparisonReport(entry: SavedComparison, host: ReportRetentionHost): Promise<ReportRetentionResult> {
   if (!isSavedComparison(entry)) throw new Error('Invalid comparison evidence');
   const state = host.getState();
   const existing = state.savedComparisons.find((saved) => saved.id === entry.id);
   if (existing && !sameReportEvidence(existing, entry)) throw new Error(`Comparison evidence ID collision: ${entry.id}`);
-  return outcome(entry.id, state.saveComparison(entry), !!existing);
+  return outcome(entry.id, await state.saveComparison(entry), !!existing);
 }

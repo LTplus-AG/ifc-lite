@@ -82,6 +82,8 @@ view.clear();
 
 > **Note:** Undo/redo is handled by the viewer's store (mutationSlice), not directly on MutablePropertyView. In the viewer, use Ctrl+Z / Ctrl+Shift+Z.
 
+Single-quantity edits record `oldQuantityType` and `oldUnit` alongside the old value, so Undo restores the previous quantity class and unit and Redo uses the recorded new metadata. `oldUnit: null` records a previously absent unit. Passing `null` as the unit to `setQuantity` explicitly clears a source unit; omitting it retains the existing source inheritance behavior. Quantity overlays and history use `unitRemoved: true` to distinguish an explicitly removed unit from an older overlay that inherits its source unit. Hosts can replay single-quantity edits through `replayQuantityMutation(view, mutation, 'undo' | 'redo', skipHistory)`; forward `view.applyMutations` uses the same metadata rules. Older history entries did not capture prior metadata: Undo restores their old value while retaining the currently effective class and unit, because a historical type change cannot be reconstructed. Write-only replay targets can omit the optional quantity reader; legacy forward records without a recorded type keep the existing Count fallback. Generated quantity export resolves supported unit names through the same existing unit resolver as properties; unresolved units remain `$`.
+
 Whole-set edits (`createPropertySet`, `deletePropertySet`, `createQuantitySet`, `deleteQuantitySet`, `deleteQuantity`) record the set's overlay rows before and after the edit on the returned mutation's `setOverlay`. A host with its own undo history reverts or re-applies one of them with `view.restoreSetOverlay(mutation.setOverlay.before)` / `(...after)`, which is what the viewer does.
 
 ### Enumerating the live entity set
@@ -660,6 +662,39 @@ The detector also picks up overlay walls (placed via `addWallToStore` since the 
 
 In the viewer, **Room → More** keeps the minimum area, name pattern, and schema-specific space classification alongside read-only candidate totals. `addSpaceToStore` validates the classification before writing: IFC2X3 uses `InteriorOrExteriorSpace`, IFC4 and IFC4X3 use `PredefinedType`, and `USERDEFINED` needs an `ObjectType`. An `EXTERNAL` space sets `Pset_SpaceCommon.IsExternal` to true.
 
+The TypeScript SDK also exposes `bim.store.addStair(modelId, storeyId, params)`
+and `addRailing(modelId, storeyId, params)` using the existing `StairInStoreParams`
+and `RailingInStoreParams`. Dimensions are storey-local metres; the canonical
+builders emit each target schema's attributes and native units. CLI and loaded
+MCP backends require a readable live storey placement. The viewer preserves its
+existing placement preparation and records/remeshes the same graph as its
+Stair and Railing tools.
+
+`bim.store.removeStair(ref)` delegates to `removeStairInStore(dataStore, editor,
+stairId)`. It removes only a uniquely aggregated parent and single flight in
+one atomic edit. Ambiguous/shared flights, incoming references from another
+product, or unreadable live candidate records refuse before writing. Shared
+shape, style, material and placement leaves remain; generic `removeEntity`
+still removes one record. The viewer stashes/prunes the flight mesh and tree
+row, then restores them with one Undo; Redo removes the pair again. Loaded MCP
+records the pair as one public `mutation_undo` operation. These backend
+capabilities are optional, so third-party backends can omit them and receive an
+explicit unsupported-capability error. This slice does not register new QuickJS
+bridge methods or a public MCP Redo tool.
+
+`bim.store.replaceElement(ref, storeyId, element)` is another optional backend
+capability. It accepts the existing eight ordinary builder kinds plus `stair`
+and `railing`, with their canonical params. The existing product must belong to
+one of those supported classes or their schema subtypes. Curtain walls, grids,
+spatial structure and ordinary aggregate roots refuse before placement
+preparation or graph changes; only uniquely owned single-flight stairs have
+an assembly removal contract. Removal and creation share one
+atomic draft; a late builder, placement or ownership refusal leaves the old
+products, prior overlay, journal and allocator intact. The viewer completes
+mesh/tree changes after commit and records one Undo/Redo batch; loaded MCP
+records one public Undo operation. `model.addElement` uses this capability for
+tracked updates and preserves the previous tracking entry on failure.
+
 ### `bim.store.*` — Scripting & SDK
 
 The viewer's QuickJS sandbox and the TypeScript SDK expose the core mutation surface as `bim.store`:
@@ -767,3 +802,143 @@ const wall: WallJoinWall = {
 const extended = reshapeWallAxis(wall, [0, 0], [6, 0]);
 const body = wallBodyOutline(extended); // The original start face is retained.
 ```
+
+### Curtain walls and design grids in a loaded model
+
+`bim.store.addCurtainWall(modelId, storeyExpressId, params)` creates the
+`IfcCurtainWall`, its aggregated `IfcMember` mullions/transoms and `IfcPlate`
+panels. It accepts the same `CurtainWallInStoreParams` as the Model workspace.
+`bim.store.addGrid(modelId, storeyExpressId, params)` creates an `IfcGrid` with
+straight tagged axes and a `FootPrint` representation. Both write the complete
+graph in one atomic operation; the viewer and headless hosts record one Undo.
+
+```typescript
+function addDesignGrid(modelId: string, storeyExpressId: number) {
+  return bim.store.addGrid(modelId, storeyExpressId, {
+    Name: 'Design grid',
+    UAxes: [{ Tag: '1', Start: [0, 0], End: [4, 0] }],
+    VAxes: [{ Tag: 'A', Start: [2, -2], End: [2, 2] }],
+  });
+}
+```
+
+Lengths are metres. Curtain-wall endpoints and grid `Position` are
+storey-local; axis endpoints are grid-local; `Direction` is radians.
+`bim.store.addColumnOnGrid(modelId, storeyExpressId, params, binding)` accepts
+rectangular or profiled column parameters and a `GridColumnBinding` containing
+`GridId` and the two actual `IntersectingAxes` express ids. `Position` must
+match their current crossing in the storey frame. A stale crossing, foreign
+axis owner or unsupported placement refuses the entire operation without
+allocating partial geometry. The emitted column retains a real
+`IfcGridPlacement` binding when exported. These optional backend capabilities
+throw a clear error on a host that does not implement them.
+
+`bim.store.editHostedElement(ref, patch)` exposes the same physical edit used by
+hosted sliding and the Model inspector. `Offset` and `Sill` are metres in the
+host frame; `OverallWidth` and `OverallHeight` resize the occurrence and its
+opening together. The edit preserves identity, metadata, relationships and
+other instances of shared source geometry. It refuses overlapping cuts,
+out-of-host dimensions and unsupported geometry atomically. Viewer and MCP
+hosts record one Undo batch and the viewer remeshes the host, cut and filling.
+
+```typescript
+bim.store.editHostedElement({ modelId: 'building', expressId: 1262 }, {
+  OverallWidth: 1.2, OverallHeight: 1.4,
+});
+```
+
+Shared geometry edit planning uses `expandAffectedSet(store, view, ids, cause)`
+from `@ifc-lite/export` to include live hosted products when placements or host
+bodies change. `editOwnershipRefusal(store, view, writtenIds, allowedProducts)`
+checks effective source and overlay references before an in-place write and
+refuses leaves shared with unrelated products. Callers keep planning and writes
+inside one atomic mutation transaction. The viewer's move, rotate and align
+commands use this common plan and preserve the IFC storey frame and model units.
+
+The shared `copyBatchInStore(dataStore, editor, expressIds, transforms, options?)`
+operation prunes selected hosted/assembly dependants and copies the resulting
+roots atomically. `copySourcesInStore(context, expressIds, copyCount?)` reports
+refusals before planning and checks fan-out after pruning carried children; the
+optional count defaults to one. `copiedProductsInStore` supplies the viewer
+preview's products.
+`arrayCopyTransforms(params)` is the same linear/polar planner used for the
+viewer preview and commit; its count includes the original selection, and a
+full polar turn omits the coincident final copy. Each batch is bounded to
+10,000 new root copies before allocation. A separate work budget permits at
+most 50,000 actual product writes per batch, including carried assembly parts,
+openings and fillings. Deep acyclic assembly traversal is iterative; excessive
+reference fan-out refuses before emission. Parent placement frames between an
+occurrence and its storey must be upright; tilted or negative-Z parents refuse
+rather than projecting the requested movement. Tilted occurrence leaves remain
+supported under upright parents. Unknown array modes and overflowing
+derived directions/extents refuse before preview or writes. Native-unit
+conversion and placement composition also refuse nonfinite output atomically. The host records
+its compound Undo
+batch and re-meshes returned products after success.
+
+### Physical command edits on loaded models
+
+The SDK's `bim.store` methods use the same atomic geometry edit cores as the
+viewer commands. References carry a model ID and model-local EXPRESS ID.
+Coordinates and offsets are in IFC storey-local metres; planar rotations use
+radians about an explicit pivot. The viewer adapter handles rendering and
+history after the shared IFC operation commits.
+
+- `copyElements(modelId, expressIds, transforms)` copies selected products for
+  each transform, including their hosted openings/fillings and assembly parts.
+  Selecting a host and its filling copies that filling once.
+- `duplicateElement(ref, { offset, Name? })` uses the same copy graph with the
+  Duplicate naming policy. Supply the IFC offset explicitly; the viewer's
+  directional bounds gesture calculates its own offset.
+- `arrayElements(modelId, expressIds, params)` uses the viewer's linear/polar
+  array planner. `count` includes the original selection; the returned references
+  identify only the new copies.
+- `transformElements(modelId, expressIds, operation)` accepts a planar `move`
+  with `delta` or `rotate` with `pivot` and `angle`. Align and plan movement use
+  the same writer after their gesture computes the delta.
+- `setElementSize(ref, patch)` edits supported wall `Height`/`Thickness`, slab
+  `Thickness`, or linear extrusion/profile `Depth`/`XDim`/`YDim`. Unsupported
+  imported profile shapes refuse instead of being replaced with primitives.
+- `resizeWall(ref, start, end, options?)` changes wall endpoints and carries
+  joined ends by default. Set `moveJoinedEnds: false` explicitly to disable that
+  endpoint policy.
+- `splitElements(modelId, requests)` commits the entire selection atomically.
+  Wall/linear cuts use a distance; slab cuts use two planar points. The larger
+  piece retains source identity and the added piece receives a fresh GlobalId.
+- `trimExtendElement(ref, params)` uses `mode`, `click`, and a live wall boundary
+  or explicit finite boundary segment, with the same shape and host refusals as
+  the viewer.
+
+Each operation records one logical Undo batch. A refusal preserves the graph,
+mutation journal and allocation state. Edits resolve current overlay entities;
+geometry shared with unrelated occurrences is refused when writing it would
+change those occurrences. Backend capabilities are optional: a custom backend
+must implement a method before its namespace can execute it.
+
+### Native Room commands
+
+`await bim.store.roomCommand(modelId, storeyExpressId, command)` derives rooms
+from current native wall meshes. It shares the viewer's native layout cache,
+occupancy checks, supported space footprint reader and IFC writer. Actions are
+`query`, `auto`, `pick` (with `point`), `footprint`, `update` (with `expressIds`),
+and `edit` (with a `drag`, `split`, `remove` or `prune` layout operation).
+`query` returns candidates without writing. Writes return `created`, `updated`,
+`deleted` and `skipped` references and form one logical Undo batch. Supplied
+footprint placement remains available through `addSpace`.
+
+Settings use metres: `weld`, `minArea`, `height`, `z` and optional edit
+`tolerance`; `boundary` is `inner`, `center` or `outer`. `namePattern`,
+`PredefinedType` and `ObjectType` control created room metadata. The runtime
+requires the WASM geometry package. The command refuses if its model changes
+while native geometry is preparing. In-process callers can supply an
+`AbortSignal`; cancellation before commit leaves IFC history unchanged.
+
+Native Room layout edits also enter ordinary Undo/Redo history when no IFC rooms exist yet. The `recordSessionMutation` helper records a `SESSION_EDIT` marker for local domain state; it does not modify IFC attributes, allocate entities or emit collaboration operations. Hosts retain the native layout under the actual history head, so Undo/Redo restores the corresponding plate.
+
+For append-only authoring, `view.getMutationCount()` captures the current journal cursor and `view.getMutations(cursor)` reads its appended suffix. This bounds recording overhead by the current call; atomic graph preparation remains a separate cost. Viewer ordinary creation publishes its collaboration graph before adding local Undo history and restores its prepared overlay if publication refuses.
+
+Native Room SDK preparation raises `RoomCommandConflictError` when another Room command owns preparation or the model changes before commit. Callers may retry against current state. Abort signals retain their cancellation reason; no Room commit is published after cancellation.
+
+### Detecting concurrent overlay edits
+
+`MutablePropertyView.getMutationRevision()` returns an O(1) invalidation token for the live overlay. Capture it before asynchronous preparation and compare it afterward together with the model and view identities. Canonical edits, history-free edits, Undo/Redo and atomic publications advance the token; a rejected detached draft does not change the live token. Conservative increments may invalidate unchanged geometry. The token is local to one view, is not serialized, and must not replace the recorded Undo head.

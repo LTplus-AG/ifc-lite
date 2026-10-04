@@ -40,6 +40,8 @@ export interface CostStoreModelResolution {
   editor: StoreEditor;
   mutationView: MutablePropertyView;
   ownerHistoryId: number | null;
+  /** Peer scopes used when deriving collision-free authored product GUIDs. */
+  globalIdScopes?: import('@ifc-lite/create').ElementSplitOptions['globalIdScopes'];
 }
 
 export type CostStoreModelResolver = (modelId?: string) => CostStoreModelResolution;

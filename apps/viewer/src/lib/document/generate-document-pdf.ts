@@ -15,14 +15,17 @@ import { tableHeaderStyle } from '../table-header-style';
 import { comparisonSummary } from '../compare/savedComparisonSchema';
 import type { Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
-import { REPORT_MARGIN } from '../export/report/compose.js';
 import type { ReportDoc, ReportPdfSeams } from '../export/report/generate-report-pdf.js';
 import { dataUrlToBytes } from '../export/download.js';
-import { renderTemplate, type BindingContext } from './bindings.js';
-import { composeDocument, estimateTextWidth, type DocumentLayout, type ResolvedBlock } from './compose.js';
-import { flattenExportModel, flattenRawModel, tableMessageKind, type TableLabels, type TableMessageKind, type TableState } from './resolve-table.js';
-import { TABLE_ROWS_DEFAULT, type DocumentSpec, type TableBlock } from './types.js';
+import { localIsoDate, renderTemplate, type BindingContext } from './bindings.js';
+import type { DocumentLayout, ResolvedBlock } from './compose.js';
+import { composeResolvedDocument, documentTextMeasure, pageBandImageAspects } from './document-layout.js';
+import { flattenExportModel, flattenRawModel, type TableState } from './resolve-table.js';
+import { TABLE_ROWS_DEFAULT, type DocumentSpec } from './types.js';
 import { ringSvg } from '../validation/manual/ring.js';
+import type { DocumentLabelFormatter } from './document-labels.js';
+import { documentTableColumns, documentTableLabels, tableMessage, tableTitle } from './document-table-labels.js';
+export { TABLE_PDF_LABELS, tableMessage, tableTitle } from './document-table-labels.js';
 
 export interface DocumentPdfSeams extends ReportPdfSeams {
   /** Natural size of an image (data URL); the layout keeps its aspect ratio. */
@@ -31,6 +34,8 @@ export interface DocumentPdfSeams extends ReportPdfSeams {
 
 export interface DocumentPdfInput {
   document: DocumentSpec;
+  /** Captured UI label context; absent preserves English for existing/headless callers. */
+  labels?: DocumentLabelFormatter;
   bindings: BindingContext;
   /** Chart block id → its aggregation over the loaded model (`null`: cannot aggregate). */
   aggregations: Map<string, Aggregation | null>;
@@ -64,33 +69,6 @@ export interface DocumentPdfResult {
   /** Missing sources, refused filters and aggregation errors printed in the chart's place. */
   chartFailures?: string[];
 }
-
-/** The English the PDF prints for a table block's rows, like every other string this module prints. */
-export const TABLE_PDF_LABELS: TableLabels = {
-  more: (n) => `… ${n.toLocaleString()} more row${n === 1 ? '' : 's'}`,
-  total: (count) => `Total (${count.toLocaleString()})`,
-};
-
-const TABLE_MESSAGES: Record<Exclude<TableMessageKind, 'error' | 'no-rows'>, string> = {
-  resolving: 'Table not ready: the list is still running.',
-  'no-model': 'Load a model to fill this table.',
-  'no-report': 'No validation report yet — run validation, then export again.',
-  'rule-not-found': 'The rule this table refers to is not in the current validation report.',
-};
-
-/** What a table block prints in place of its rows, by state; `null` when it has rows to print. */
-export function tableMessage(state: TableState | undefined): string | null {
-  const kind = tableMessageKind(state);
-  if (kind === null) return null;
-  // An engine error with an empty message (review finding) still has to read as an error, not as an empty grid.
-  if (kind === 'error') return (state?.status === 'error' && state.message.trim()) || 'The list could not be run.';
-  // "No rows" reads differently per source: a list matched nothing, a validation table's rule/rows filter did.
-  if (kind === 'no-rows') return state?.status === 'ok' && state.kind === 'comparison' ? 'No changes in this saved comparison.' : state?.status === 'ok' && state.kind === 'validation' ? 'No rows match this rule.' : 'No rows match this list.';
-  return TABLE_MESSAGES[kind];
-}
-
-/** The title a table block prints: its own, the list's name, or "Validation results". */
-export const tableTitle = (block: TableBlock): string => blockTitle(block, (block.source.kind === 'list' ? block.source.list.name : block.source.kind === 'comparison' ? block.source.comparison.name : 'Validation results'), false);
 
 /** The browser's image measure: decode the data URL. */
 export function browserImageSize(dataUrl: string): Promise<{ w: number; h: number }> {
@@ -136,7 +114,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
       case 'text': {
         const rendered = renderTemplate(block.text, input.bindings);
         for (const b of rendered.bindings) if (!b.ok) result.unresolved.push(b.path);
-        blocks.push({ ...block, text: rendered.text });
+        blocks.push({ ...block, text: rendered.text, bindingSpans: rendered.spans });
         break;
       }
       case 'image': {
@@ -171,17 +149,17 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         const state = input.tables.get(block.id);
         const headerStyle = block.headerBackground || block.headerTextColor
           ? tableHeaderStyle(block.headerBackground, block.headerTextColor) : undefined;
-        const message = tableMessage(state);
+        const message = tableMessage(state, input.labels);
         if (state?.status === 'ok' && message === null) {
           const flat = state.kind === 'validation' || state.kind === 'comparison'
-            ? flattenRawModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS)
-            : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS, block.groupOrder);
-          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, headerStyle, scale: block.scale, ...blockHeaderStyleFields(block), summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, columns: flat.columns, rows: flat.rows });
+            ? flattenRawModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, documentTableLabels(input.labels))
+            : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, documentTableLabels(input.labels), block.groupOrder);
+          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block, input.labels), caption: block.caption, headerStyle, scale: block.scale, ...blockHeaderStyleFields(block), summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, columns: documentTableColumns(flat.columns, state.kind === 'validation' ? input.labels : undefined), rows: flat.rows });
           break;
         }
         if (state?.status !== 'ok') result.tableFailures.push(block.id);
         // `tableMessage` is non-null for every non-ok state; the fallback only satisfies the types.
-        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, headerStyle, scale: block.scale, ...blockHeaderStyleFields(block), summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, message: message ?? 'No rows to print.', columns: [], rows: [] });
+        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block, input.labels), caption: block.caption, headerStyle, scale: block.scale, ...blockHeaderStyleFields(block), summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, message: message ?? 'No rows to print.', columns: [], rows: [] });
         break;
       }
       case 'ids-report': {
@@ -198,7 +176,8 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         const topic = input.topics.get(block.guid);
         if (!topic) {
           result.missingTopics.push(block.guid);
-          blocks.push({ kind: 'topic', id: block.id, authoredTitle: !!blockTitle(block), title: blockTitle(block, `[BCF topic ${block.guid}: not among the loaded topics]`), lines: blockTitle(block) ? [`[BCF topic ${block.guid}: not among the loaded topics]`] : [], snapshotAspect: null, scale: block.scale, ...blockHeaderStyleFields(block) });
+          // The notice is a wrapped line, so a large heading cut to its strip never cuts the notice away.
+          blocks.push({ kind: 'topic', id: block.id, title: blockTitle(block, `BCF topic ${block.guid}`), lines: [`[BCF topic ${block.guid}: not among the loaded topics]`], snapshotAspect: null, scale: block.scale, ...blockHeaderStyleFields(block) });
           break;
         }
         let snapshotAspect: number | null = null;
@@ -212,7 +191,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
             snapshotAspect = 4 / 3;
           }
         }
-        blocks.push({ kind: 'topic', id: block.id, authoredTitle: !!blockTitle(block), title: blockTitle(block, topic.title), lines: topicLines(topic), snapshotAspect, scale: block.scale, ...blockHeaderStyleFields(block) });
+        blocks.push({ kind: 'topic', id: block.id, title: blockTitle(block, topic.title), lines: topicLines(topic), snapshotAspect, scale: block.scale, ...blockHeaderStyleFields(block) });
         break;
       }
     }
@@ -220,18 +199,12 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
   return blocks;
 }
 
-function drawHeaderFooter(doc: ReportDoc, layout: DocumentLayout, pageIndex: number): void {
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(150);
-  if (layout.pageHeading) {
-    const heading = layout.pageHeading;
-    doc.setFont(heading.font, 'normal'); doc.setFontSize(heading.fontSize); doc.setTextColor(heading.textColor);
-    doc.text(heading.text, REPORT_MARGIN, heading.y);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(150);
-  } else doc.text(layout.header, REPORT_MARGIN, REPORT_MARGIN - 8);
-  doc.text(layout.footer, REPORT_MARGIN, layout.size.h - REPORT_MARGIN + 12);
-  doc.text(`Page ${pageIndex + 1} / ${layout.pages.length}`, layout.size.w - REPORT_MARGIN - 60, layout.size.h - REPORT_MARGIN + 12);
+function drawHeaderFooter(doc: ReportDoc, layout: DocumentLayout, pageIndex: number, result: DocumentPdfResult): void {
+  for (const item of layout.pageFrames[pageIndex]) {
+    if (item.kind === 'image') { placeImage(doc, item.dataUrl, `page ${item.band} logo`, item, result); continue; }
+    doc.setFont(item.font, 'normal'); doc.setFontSize(item.size); doc.setTextColor(item.color ?? item.gray);
+    doc.text(item.text, item.x, item.y);
+  }
   doc.setTextColor(0);
 }
 
@@ -265,20 +238,15 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
   const doc = await seams.createDoc(format, input.document.page.orientation);
   const blocks = await resolveBlocks(input, seams.imageSize, result);
 
-  // jsPDF measures in the font that is current, so the measure sets it first.
-  const measure = (text: string, size: number, bold: boolean, font: 'helvetica' | 'times' | 'courier' = 'helvetica'): number => {
-    if (!doc.textWidth) return estimateTextWidth(text, size, bold);
-    doc.setFont(font, bold ? 'bold' : 'normal');
-    doc.setFontSize(size);
-    return doc.textWidth(text);
-  };
-  const layout = composeDocument({ name: input.document.name, pageHeading: input.document.pageHeading, page: input.document.page, blocks, generatedAt: seams.now().toLocaleString(), measure });
+  const logoAspects = await pageBandImageAspects(input.document, seams.imageSize);
+  const layout = composeResolvedDocument(input.document, blocks, seams.now().toLocaleString(), documentTextMeasure(doc), input.labels,
+    logoAspects, localIsoDate(input.bindings.today));
   const byId = new Map(input.document.blocks.map((b) => [b.id, b]));
   const topicsByBlock = new Map(input.document.blocks.filter((b) => b.kind === 'topic').map((b) => [b.id, input.topics.get((b as { guid: string }).guid)]));
 
   for (const page of layout.pages) {
     if (page.index > 0) doc.addPage(format, input.document.page.orientation);
-    drawHeaderFooter(doc, layout, page.index);
+    drawHeaderFooter(doc, layout, page.index, result);
     for (const item of page.items) {
       switch (item.kind) {
         case 'text':

@@ -1,0 +1,21 @@
+
+Running 4 tests using 1 worker
+
+(node:42459) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [viewer-e2e-ci] › tests/e2e/ortho-depth-nudge.e2e.spec.ts:288:1 › orthographic: rods 30 mm inside beams stay hidden on a 1 km site, adverse hashes, five poses (#6729) (7.9s)
+  ✓  2 [viewer-e2e-ci] › tests/e2e/ortho-depth-nudge.e2e.spec.ts:345:3 › orthographic: coplanar plates, annotations, selection and an override on a 40 m site (#6729) (5.2s)
+  ✓  3 [viewer-e2e-ci] › tests/e2e/ortho-depth-nudge.e2e.spec.ts:345:3 › orthographic: coplanar plates, annotations, selection and an override on a 1 km site (#6729) (5.4s)
+8:49:18 AM [vite] (client) [console.error] [vite] SyntaxError: The requested module '/@fs/home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/create/src/index.ts' does not provide an export named 'createRoomsInStore'
+8:49:18 AM [vite] (client) [console.error] [vite] Failed to reload /src/components/viewer/tools/command/RoomPlaceBar.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+8:49:19 AM [vite] (client) [console.error] [vite] SyntaxError: The requested module '/@fs/home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/create/src/index.ts' does not provide an export named 'createRoomsInStore'
+8:49:19 AM [vite] (client) [console.error] [vite] Failed to reload /src/components/viewer/ToolOverlays.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+8:49:19 AM [vite] (client) [console.error] [vite] SyntaxError: The requested module '/@fs/home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/create/src/index.ts' does not provide an export named 'createRoomsInStore'
+8:49:19 AM [vite] (client) [console.error] [vite] Failed to reload /src/components/viewer/ToolOverlays.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+8:49:19 AM [vite] (client) [console.error] [vite] SyntaxError: The requested module '/@fs/home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/create/src/index.ts' does not provide an export named 'createRoomsInStore'
+8:49:19 AM [vite] (client) [console.error] [vite] Failed to reload /src/components/viewer/ToolOverlays.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+8:49:19 AM [vite] (client) [console.error] [vite] SyntaxError: The requested module '/@fs/home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/create/src/index.ts' does not provide an export named 'createRoomsInStore'
+8:49:19 AM [vite] (client) [console.error] [vite] Failed to reload /src/components/viewer/ToolOverlays.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+  ✓  4 [viewer-e2e-ci] › tests/e2e/ortho-depth-nudge.e2e.spec.ts:442:3 › clip planes › orthographic: the nudge never moves a vertex across the near or far plane (#6729) (27.4s)
+
+  4 passed (47.6s)

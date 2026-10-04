@@ -8,6 +8,7 @@ import { useViewerStore } from '@/store';
 import { mutationPermission, mutationDenialKey } from '@/store/mutation-permission';
 import { createSelectionAdapter } from '@/sdk/adapters/selection-adapter';
 import { DEFAULT_MAPPING } from '@ifc-lite/semantic';
+import { loopbackHttpOrigin } from '@ifc-lite/sandbox/network';
 import { SemanticIdentityControls } from './SemanticIdentityControls';
 import { SemanticProfileControls } from './SemanticProfileControls';
 import { SemanticResults } from './SemanticResults';
@@ -41,11 +42,17 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
   const [message, setMessage] = useState('');
   const [bearer, setBearer] = useState('');
   const [relayProvider, setRelayProvider] = useState('');
+  const [loopbackGrant, setLoopbackGrant] = useState<string>();
   const [plan, setPlan] = useState<ProjectionPlan>();
   const [mappingId, setMappingId] = useState(PROJECTION_MAPPINGS[0].id);
   const [policy, setPolicy] = useState<ConflictPolicy>('error');
-  const sourceInput = { mode, payload, endpoint, host, query, mapping, bearer: bearer || undefined, relayProvider: relayProvider || undefined };
-  useEffect(() => { setPlan(undefined); setRecordPage(0); }, [pilot.document, pilot.profile, pilot.revisions, scope]);
+  const eligibleLoopbackOrigin = loopbackHttpOrigin(endpoint);
+  const sourceInput = { mode, payload, endpoint, host, query, mapping, bearer: bearer || undefined, relayProvider: relayProvider || undefined,
+    loopbackHttpOrigin: loopbackGrant === eligibleLoopbackOrigin ? loopbackGrant : undefined };
+  // Authority is ephemeral and exact to this source. Abort before replacing it
+  // so a response from a revoked endpoint cannot publish into the workspace.
+  function revokeSource() { pilot.cancel(); setLoopbackGrant(undefined); }
+  useEffect(() => { setPlan(undefined); setRecordPage(0); }, [pilot.document, pilot.profile, pilot.revisions, pilot.strategy, pilot.uriConfig, scope]);
   const models = useViewerStore(s => s.models);
   const mutationVersion = useViewerStore(s => s.mutationVersion);
   const selectedIds = useViewerStore(s => s.selectedEntityIds);
@@ -75,12 +82,16 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
       <button className={button} disabled={pilot.busy} onClick={() => void pilot.demo(true)}>{t('semantic.demo')}</button>
       <button className={button} disabled={pilot.busy} onClick={() => void pilot.demo(false)}>{t('semantic.recordsOnly')}</button>
     </div>
-    <label className="block text-sm">{t('semantic.mode')}<select className={control} value={mode} onChange={e => setMode(e.target.value)}>
+    <label className="block text-sm">{t('semantic.mode')}<select className={control} value={mode} onChange={e => { revokeSource(); setMode(e.target.value); }}>
       {(['local', 'turtle', 'nquads', 'jsonld', 'json', 'sparql', 'construct'] as const).map(value => <option key={value} value={value}>{t(`semantic.${value}`)}</option>)}
     </select></label>
     {['local', 'turtle', 'nquads', 'jsonld'].includes(mode) ? <label className="block text-sm">{t('semantic.payload')}<textarea className={control} rows={7} value={payload} onChange={e => setPayload(e.target.value)} /></label>
-      : <><label className="block text-sm">{t('semantic.endpoint')}<input className={control} type="url" value={endpoint} onChange={e => setEndpoint(e.target.value)} /></label>
-        <label className="block text-sm">{t('semantic.host')}<input className={control} value={host} onChange={e => setHost(e.target.value)} /></label></>}
+      : <><label className="block text-sm">{t('semantic.endpoint')}<input className={control} type="url" value={endpoint} onChange={e => { revokeSource(); setEndpoint(e.target.value); }} /></label>
+        <label className="block text-sm">{t('semantic.host')}<input className={control} value={host} onChange={e => { revokeSource(); setHost(e.target.value); }} /></label>
+        {eligibleLoopbackOrigin && <><label className="flex gap-2 text-sm"><input type="checkbox" checked={loopbackGrant === eligibleLoopbackOrigin}
+          onChange={e => { pilot.cancel(); setLoopbackGrant(e.target.checked ? eligibleLoopbackOrigin : undefined); }} />{t('semantic.loopbackGrant', { origin: eligibleLoopbackOrigin })}</label>
+          <p className="text-sm text-muted-foreground">{t('semantic.loopbackHelp')}</p></>}
+      </>}
     {(mode === 'sparql' || mode === 'construct') && <><label className="block text-sm">{t('semantic.query')}<textarea className={control} rows={7} value={query} onChange={e => setQuery(e.target.value)} /></label>
       <details><summary>{t('semantic.mapping')}</summary>{Object.entries(mapping).map(([key, value]) => <label key={key} className="block text-sm">{key}
         <input className={control} value={value} onChange={e => setMapping({ ...mapping, [key]: e.target.value })} /></label>)}</details></>}
@@ -88,16 +99,16 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
       {pilot.busy && <button className={button} onClick={pilot.cancel}>{t('semantic.cancel')}</button>}</div>
     {['json', 'sparql', 'construct'].includes(mode) && <details><summary>{t('semantic.authentication')}</summary>
       <label className="block text-sm">{t('semantic.bearer')}<input type="password" autoComplete="off" className={control} value={bearer} onChange={e => setBearer(e.target.value)} /></label>
-      <label className="block text-sm">{t('semantic.relay')}<input className={control} value={relayProvider} onChange={e => setRelayProvider(e.target.value)} /></label>
+      <label className="block text-sm">{t('semantic.relay')}<input className={control} value={relayProvider} onChange={e => { revokeSource(); setRelayProvider(e.target.value); }} /></label>
     </details>}
     {['json', 'sparql', 'construct'].includes(mode) && <button className={button} disabled={pilot.busy || !host || !endpoint} onClick={() => void pilot.related(sourceInput)}>{t('semantic.querySelected')}</button>}
-    <SemanticIdentityControls strategy={pilot.strategy} onStrategy={pilot.setStrategy} links={pilot.links} onLinks={pilot.setLinks} profile={pilot.profile} identityFields={pilot.identityFields} onIdentityFields={pilot.setIdentityFields} onError={pilot.setError} />
+    <SemanticIdentityControls uriConfig={pilot.uriConfig} onUriConfig={pilot.setUriConfig} strategy={pilot.strategy} onStrategy={pilot.setStrategy} links={pilot.links} onLinks={pilot.setLinks} profile={pilot.profile} identityFields={pilot.identityFields} onIdentityFields={pilot.setIdentityFields} onError={pilot.setError} />
     <SemanticProfileControls profile={pilot.profile} onProfile={pilot.setProfile} onError={pilot.setError} />
     <details><summary>{t('semantic.workspace')}</summary>
       <button className={button} onClick={pilot.saveWorkspace}>{t('semantic.saveWorkspace')}</button>
-      <button className={button} onClick={() => { setBearer(''); setHost(''); pilot.restoreWorkspace(); }}>{t('semantic.restoreWorkspace')}</button>
-      <button className={button} onClick={() => { setBearer(''); setHost(''); pilot.restoreWorkspace(payload); }}>{t('semantic.importWorkspace')}</button>
-      {pilot.queries.map(preset => <button className={button} key={preset.id} onClick={() => { setEndpoint(preset.endpoint); setQuery(preset.query ?? ''); setMode(preset.kind === 'select' ? 'sparql' : preset.kind); setMapping(preset.mapping ?? DEFAULT_MAPPING); setHost(''); setBearer(''); }}>{preset.id}: {preset.endpoint}</button>)}
+      <button className={button} onClick={() => { revokeSource(); setBearer(''); setHost(''); pilot.restoreWorkspace(); }}>{t('semantic.restoreWorkspace')}</button>
+      <button className={button} onClick={() => { revokeSource(); setBearer(''); setHost(''); pilot.restoreWorkspace(payload); }}>{t('semantic.importWorkspace')}</button>
+      {pilot.queries.map(preset => <button className={button} key={preset.id} onClick={() => { revokeSource(); setEndpoint(preset.endpoint); setQuery(preset.query ?? ''); setMode(preset.kind === 'select' ? 'sparql' : preset.kind); setMapping(preset.mapping ?? DEFAULT_MAPPING); setHost(''); setBearer(''); }}>{preset.id}: {preset.endpoint}</button>)}
     </details>
     {pilot.results && <SemanticResults results={pilot.results} mapping={pilot.resultMapping ?? mapping} revisions={pilot.revisions} scope={scope || undefined} onError={error => pilot.setError(String(error))} />}
     {pilot.diagnostic && <output className="block text-sm">{pilot.diagnostic}</output>}

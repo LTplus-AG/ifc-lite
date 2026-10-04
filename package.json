@@ -175,6 +175,13 @@
       "browserslist": "^4.28.9",
       "baseline-browser-mapping": "^2.11.22"
     },
+    "packageExtensions": {
+      "vite-plugin-top-level-await@1.6.0": {
+        "dependencies": {
+          "@jridgewell/remapping": "^2.3.5"
+        }
+      }
+    },
     "patchedDependencies": {
       "vite-plugin-top-level-await@1.6.0": "patches/vite-plugin-top-level-await@1.6.0.patch",
       "@swc/core@1.15.8": "patches/@swc__core@1.15.8.patch",

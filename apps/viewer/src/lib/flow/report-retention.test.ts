@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
+import { refuseContentWrites } from '@/test/content-fixture.js';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
@@ -21,55 +22,47 @@ const validation = () => ({ ...newSavedReport({ kind: 'ids-report', id: 'snapsho
   generatedAt: '2026-01-01T00:00:00.000Z', summary: { checked: 3, passed: 2, failed: 1, passRate: 66 }, checks: [] }), automation: automation() });
 beforeEach(() => {
   localStorage.removeItem(VALIDATION_REPORTS_STORAGE_KEY); localStorage.removeItem(SAVED_COMPARISONS_KEY);
-  useViewerStore.setState({ savedValidationReports: [], validationReportsSaveFailed: false, savedComparisons: [] });
+  useViewerStore.setState({ savedValidationReports: [], savedComparisons: [] });
 });
 afterEach(() => {
   localStorage.removeItem(VALIDATION_REPORTS_STORAGE_KEY); localStorage.removeItem(SAVED_COMPARISONS_KEY);
 });
 
 describe('workflow evidence retention (#6612)', () => {
-  it('retains one supplied validation ID per result, preserves original dates and distinguishes new runs', () => {
+  it('retains one supplied validation ID per result, preserves original dates and distinguishes new runs', async () => {
     const entry = validation();
-    assert.equal(retainValidationReport(entry, useViewerStore).status, 'saved');
-    assert.equal(retainValidationReport(structuredClone(entry), useViewerStore).status, 'duplicate');
-    assert.equal(loadValidationReports().length, 1);
-    assert.deepEqual(loadValidationReports()[0].automation, entry.automation);
-    assert.deepEqual(loadValidationReports()[0].snapshot.automation, entry.automation);
-    assert.equal(loadValidationReports()[0].snapshot.generatedAt, entry.snapshot.generatedAt);
+    assert.equal((await retainValidationReport(entry, useViewerStore)).status, 'saved');
+    assert.equal((await retainValidationReport(structuredClone(entry), useViewerStore)).status, 'duplicate');
+    assert.equal((await loadValidationReports()).length, 1);
+    assert.deepEqual((await loadValidationReports())[0].automation, entry.automation);
+    assert.deepEqual((await loadValidationReports())[0].snapshot.automation, entry.automation);
+    assert.equal((await loadValidationReports())[0].snapshot.generatedAt, entry.snapshot.generatedAt);
     const next = { ...structuredClone(entry), id: 'next-result', automation: { ...automation(), runId: 'next-run', resultId: 'next-result' } };
-    assert.equal(retainValidationReport(next, useViewerStore).status, 'saved');
-    assert.equal(loadValidationReports().length, 2);
-    assert.throws(() => retainValidationReport({ ...entry, name: 'Different evidence' }, useViewerStore), /collision/);
-    assert.equal(loadValidationReports()[0].name, entry.name);
+    assert.equal((await retainValidationReport(next, useViewerStore)).status, 'saved');
+    assert.equal((await loadValidationReports()).length, 2);
+    await assert.rejects(async () => (await retainValidationReport({ ...entry, name: 'Different evidence' }, useViewerStore)), /collision/);
+    assert.equal((await loadValidationReports())[0].name, entry.name);
   });
-  it('saves completed native comparison evidence idempotently without changing its canonical diff', () => {
+  it('saves completed native comparison evidence idempotently without changing its canonical diff', async () => {
     const entry = { ...snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'A/B'), automation: automation() };
-    assert.equal(retainComparisonReport(entry, useViewerStore).status, 'saved');
-    assert.equal(retainComparisonReport(structuredClone(entry), useViewerStore).status, 'duplicate');
-    const [saved] = loadSavedComparisons();
+    assert.equal((await retainComparisonReport(entry, useViewerStore)).status, 'saved');
+    assert.equal((await retainComparisonReport(structuredClone(entry), useViewerStore)).status, 'duplicate');
+    const [saved] = (await loadSavedComparisons());
     assert.deepEqual(saved.report.rows.map((row) => [row.globalId, row.state]), [['new', 'added'], ['wall', 'modified'], ['removed', 'deleted']]);
     assert.deepEqual(saved.automation, entry.automation);
-    assert.throws(() => retainComparisonReport({ ...entry, name: 'Overwritten' }, useViewerStore), /collision/);
-    assert.equal(loadSavedComparisons().length, 1);
+    await assert.rejects(async () => (await retainComparisonReport({ ...entry, name: 'Overwritten' }, useViewerStore)), /collision/);
+    assert.equal((await loadSavedComparisons()).length, 1);
   });
-  it('keeps evidence in memory after quota refusal and persists the same result on retry', () => {
-    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
-    const storage = localStorage;
+  it('keeps evidence in memory after quota refusal and persists the same result on retry', async () => {
+    const refused = refuseContentWrites();
     const entry = validation();
-    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
-      getItem: storage.getItem.bind(storage), removeItem: storage.removeItem.bind(storage),
-      setItem: () => { throw new Error('quota exceeded'); },
-    } });
     try {
-      const result = retainValidationReport(entry, useViewerStore);
+      const result = await retainValidationReport(entry, useViewerStore);
       assert.equal(result.status, 'memory-only'); assert.equal(result.warnings.length, 1);
       assert.equal(useViewerStore.getState().savedValidationReports[0].id, entry.id);
-    } finally {
-      if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor);
-      else Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage });
-    }
-    assert.equal(retainValidationReport(entry, useViewerStore).status, 'duplicate');
-    assert.equal(loadValidationReports().length, 1);
+    } finally { refused.mock.restore(); }
+    assert.equal((await retainValidationReport(entry, useViewerStore)).status, 'duplicate');
+    assert.equal((await loadValidationReports()).length, 1);
   });
   it('rejects malformed provenance without rejecting older native report envelopes', () => {
     const entry = validation();

@@ -6,7 +6,7 @@
  * Tiny JSON-Schema input validator (Draft 2020-12 subset).
  *
  * We only support the keywords our hand-authored tool schemas use:
- *   type, properties, required, items, enum, minimum, maximum,
+ *   type, properties, required, items, enum, minimum, exclusiveMinimum, maximum,
  *   minLength, maxLength, minItems, maxItems, default, anyOf,
  *   additionalProperties.
  *
@@ -144,6 +144,9 @@ function walk(schema: JsonSchema, input: unknown, path: string, errors: Validati
   if (typeof input === 'number') {
     if (schema.minimum !== undefined && input < schema.minimum) {
       errors.push({ path, message: `Must be >= ${schema.minimum}` });
+    }
+    if (schema.exclusiveMinimum !== undefined && input <= schema.exclusiveMinimum) {
+      errors.push({ path, message: `Must be > ${schema.exclusiveMinimum}` });
     }
     if (schema.maximum !== undefined && input > schema.maximum) {
       errors.push({ path, message: `Must be <= ${schema.maximum}` });

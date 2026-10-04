@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { automationEditorEn } from './catalogues/automation-editor.en';
+import { spaceEnvelopeEn } from './catalogues/space-envelope.en';
 import { semanticIdentityEn } from './catalogues/semantic-identity.en';
 import { semanticResultsEn } from './catalogues/semantic-results.en';
 import { semanticEn } from './catalogues/semantic.en';
@@ -10,6 +11,7 @@ import { flowStartupEn } from './catalogues/flow-startup.en';
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { analysisPanelEn } from './catalogues/analysis-panel.en';
+import { panelNoModelEn } from './catalogues/panel-no-model.en';
 import { annotationsEn } from './catalogues/annotations.en';
 import { anonymizedExportEn } from './catalogues/anonymized-export.en';
 import { chartsEn } from './catalogues/charts.en';
@@ -118,6 +120,7 @@ export const en = {
   ...semanticResultsEn,
   ...semanticIdentityEn,
   ...analysisPanelEn,
+  ...panelNoModelEn,
   ...annotationsEn,
   ...anonymizedExportEn,
   ...exportDialogEn,
@@ -223,6 +226,7 @@ export const en = {
   ...viewportLightingEn,
   ...miscPanelsAEn,
   ...sheetsPdfEn,
+  ...spaceEnvelopeEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

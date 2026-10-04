@@ -147,9 +147,13 @@ export function generateQuantitySetEntities(
       count++;
 
       const ifcType = quantityTypeToIfcType(q.type);
-      // #ID=IFCQUANTITYLENGTH('Name',$,$,Value,$);
+      // This resolver only supplies LENGTHUNIT references; other quantity
+      // classes inherit project units rather than receive an invalid dimension.
+      const unitId = q.unit && ifcType === 'IFCQUANTITYLENGTH' ? findUnitId(ctx, q.unit, effective) : null;
+      const unit = unitId !== null ? serializeValue(ref(unitId)) : '$';
+      // #ID=IFCQUANTITYLENGTH('Name',$,Unit,Value,$);
       const val = toStepReal(q.value);
-      const line = `#${qId}=${ifcType}('${escapeStepString(q.name)}',$,$,${val},$);`;
+      const line = `#${qId}=${ifcType}('${escapeStepString(q.name)}',$,${unit},${val},$);`;
       lines.push(line);
       quantityIds.push(qId);
     }

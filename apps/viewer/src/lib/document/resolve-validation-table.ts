@@ -6,7 +6,7 @@
  * A validation-results table block's rows (#5138), resolved from the
  * store's `ValidationReport` into the same `RawTableModel` shape
  * `resolve-table.ts` flattens for any non-list source — so `compose-table.ts`,
- * `TablePreview.tsx` and `generate-document-pdf.ts` draw a validation table
+ * `ComposedPageItems.tsx` and `generate-document-pdf.ts` draw a validation table
  * with no changes of their own: they already only know `TableColumnOut`/
  * `TableRowOut`. Pure: no store, no i18n, never throws — a null report or a
  * `ruleId` no longer in it returns a `TableState` placeholder instead.

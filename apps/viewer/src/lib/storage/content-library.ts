@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { contentFailure, readContentRows, writeContent, type ContentFailure } from './content-database.js';
+import { contentFailure, readContentRows, writeContent, type ContentFailure, type ContentRow } from './content-database.js';
+import { sameReportEvidence } from '../flow/report-provenance.js';
 import { migrateContent, LegacyMigrationFailure, type ContentDefinition } from './content-migration.js';
 
 type ContentSaveState = 'saving' | 'saved' | ContentFailure;
@@ -11,6 +12,8 @@ export interface ContentStatus {
   recovered: boolean;
   items: Record<string, ContentSaveState>;
 }
+/** A transient own-import receipt; stagedPayload is never written to IndexedDB. */
+export interface ContentCommitReceipt extends ContentRow { stagedPayload?: unknown }
 // IDs come from imported files; own properties must also handle __proto__ safely.
 const copyItemStatus = (items?: ContentStatus['items']): ContentStatus['items'] => Object.assign(Object.create(null), items);
 export const initialContentStatus = (): ContentStatus => ({ phase: 'loading', recovered: false, items: copyItemStatus() });
@@ -88,16 +91,18 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
     dirty.set(id, entry === null ? null : structuredClone(entry));
     status.items[id] = reason; change(id, entry);
   };
-  const put = (id: string, value: T | null): Promise<boolean> => {
-    let entry: T | null;
+  const portableEntry = (value: T | null): T | null => {
     try {
       // Capture the portable JSON contract once per item, not the entire library.
       // Undefined optional fields remain omitted exactly as in existing exports.
-      entry = value === null ? null : definition.decode(JSON.parse(JSON.stringify(value)));
+      return value === null ? null : definition.decode(JSON.parse(JSON.stringify(value)));
     } catch (error) {
       console.warn('[User content] Invalid draft remains in memory', error);
-      entry = null;
+      return null;
     }
+  };
+  const put = (id: string, value: T | null): Promise<boolean> => {
+    const entry = portableEntry(value);
     if (value !== null && !entry) { stage(id, value, 'invalid'); return Promise.resolve(false); }
     editGeneration++;
     if (!revisions.has(id)) revisions.set(id, 0);
@@ -112,7 +117,21 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
         }
         return false;
       }
-      const result = await writeContent(definition.kind, id, entry, revisions.get(id) ?? 0);
+      const expected = revisions.get(id) ?? 0;
+      let result = await writeContent(definition.kind, id, entry, expected);
+      // Only an own commit receipt can advance a dirty row's expected revision.
+      // Retry once with its latest reference-merged draft, never the stale snapshot.
+      const acknowledged = revisions.get(id) ?? 0;
+      if (!result.ok && result.reason === 'conflict' && acknowledged > expected && generations.get(id) === generation) {
+        if (!dirty.has(id)) result = { ok: true, revision: acknowledged };
+        else {
+          const draft = dirty.get(id);
+          if (draft === undefined) return false;
+          const latest = portableEntry(draft);
+          if (draft !== null && !latest) { stage(id, draft, 'invalid'); return false; }
+          result = await writeContent(definition.kind, id, latest, acknowledged);
+        }
+      }
       if (result.ok) revisions.set(id, result.revision);
       if (generations.get(id) === generation) {
         status.items[id] = result.ok ? 'saved' : result.reason;
@@ -131,9 +150,23 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
     const results = await Promise.all([...dirty].map(([id, entry]) => put(id, entry)));
     return results.every(Boolean);
   };
-  const refresh = async () => {
+  const refresh = async (committed: readonly ContentCommitReceipt[] = []): Promise<boolean> => {
+    // Only receipts from this tab's completed import may acknowledge its drafts.
+    // Newer edits stay dirty, but can save against this tab's acknowledged commit.
+    for (const row of committed) {
+      if (row.kind !== definition.kind || !dirty.has(row.id) || row.revision < (revisions.get(row.id) ?? 0)) continue;
+      revisions.set(row.id, row.revision);
+      const current = dirty.get(row.id), committedEntry = definition.decode(row.payload);
+      if (current && row.stagedPayload !== undefined && committedEntry && definition.mergeCommitted) {
+        const merged = definition.mergeCommitted(current, row.stagedPayload, committedEntry);
+        dirty.set(row.id, merged); change(row.id, merged);
+      }
+      if (!sameReportEvidence(dirty.get(row.id), row.deleted ? null : row.payload)) continue;
+      dirty.delete(row.id); status.items[row.id] = 'saved';
+    }
+    if (committed.length) emit();
     // Never let another tab replace dirty drafts or their expected revisions.
-    if (status.phase === 'ready') await load();
+    return status.phase === 'ready' ? load() : false;
   };
   const restore = async (): Promise<boolean> => {
     const requestedAt = editGeneration;

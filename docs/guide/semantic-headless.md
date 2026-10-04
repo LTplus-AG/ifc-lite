@@ -94,3 +94,15 @@ The canonical ArchiCAD 20 FZK IFC fixture is independently authored ground truth
 ## Measure the headless resource budget
 
 After the root build, run `node scripts/perf/semantic-budget.mjs --iters 5 > /tmp/semantic-budget.json`. The standalone report records Node/OS/CPU, configured limits, input bytes, median parsing/projection/workspace/roundtrip durations, heap deltas, and cancellation latency. It uses actual loopback HTTP byte transport behind the production HTTPS/host grant checks; TLS and remote network latency are outside this measurement. It verifies preservation of all values, lossless raw row roundtrip, empty imported grants/associations, rejection above the row bound, host denial, and caller cancellation. This is a repeatable budget probe rather than an end-to-end viewer or geometry performance claim.
+
+## Explicit local HTTP endpoints
+
+HTTPS remains the default. For a service on this machine, `--allow-loopback-http` authorizes the endpoint's exact HTTP origin, including its port, for that command only. The separate `--host` grant is still required. This switch takes no value.
+
+```bash
+ifc-lite semantic query --endpoint http://127.0.0.1:7878/sparql --host 127.0.0.1 --allow-loopback-http --query query.rq --json
+```
+
+Only the literal hosts `localhost`, `127.0.0.1`, and `[::1]` qualify. Suffixes, DNS aliases, alternate IP spellings, and a different port do not share the authorization. Redirects remain denied, and cancellation, timeouts, response limits, and credential checks apply. A portable workspace can retain the endpoint as inert configuration; importing it never authorizes HTTP access.
+
+A relay can use a fixed local HTTP upstream by configuring `loopbackHttpOrigin` alongside its endpoint and exact `grantedHost`. For example, an endpoint `http://127.0.0.1:7878/sparql` requires `loopbackHttpOrigin: "http://127.0.0.1:7878"` and `grantedHost: "127.0.0.1"`. Relay clients continue to use authenticated HTTPS. The client request cannot supply or override the upstream authorization.

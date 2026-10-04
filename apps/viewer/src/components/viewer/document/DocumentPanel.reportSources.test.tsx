@@ -9,6 +9,7 @@
  * must load with the same source selected and untouched.
  */
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -18,13 +19,12 @@ import { useViewerStore } from '@/store/index.js';
 import { blankDocument } from '@/lib/document/presets';
 import { parseDocumentFile } from '@/lib/document/persistence';
 import { CHECKLIST_VERSION } from '@/lib/validation/manual/checklist';
+import { emptyManualLibrary } from '@/lib/validation/manual/library';
 import { emptyManualReportBlock } from '@/lib/document/manual-report';
 import { newSavedReport, type SavedValidationReport } from '@/lib/validation/reports/history';
 import type { DocumentBlock, IdsReportBlock } from '@/lib/document/types';
 import type { ManualReportBlock } from '@/lib/document/manual-report-types';
 import { DocumentPanel } from './DocumentPanel.js';
-
-const initial = useViewerStore.getState();
 
 const idsBlock: IdsReportBlock = {
   kind: 'ids-report', id: 'snap-ids', sourceKind: 'ids', sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z',
@@ -73,9 +73,9 @@ function pick(select: HTMLSelectElement, value: string): void {
 const blocks = (): DocumentBlock[] => useViewerStore.getState().documents[0].blocks;
 const refreshLabels = (ui: HTMLElement): string[] => [...ui.querySelectorAll('button')].map((b) => b.textContent ?? '').filter((text) => text.startsWith('Refresh'));
 
-function seedDocument(seed: DocumentBlock[]): void {
+async function seedDocument(seed: DocumentBlock[]): Promise<void> {
   const doc = { ...blankDocument(), blocks: seed };
-  useViewerStore.getState().upsertDocument(doc);
+  assert.equal(await useViewerStore.getState().upsertDocument(doc), true, 'the source document must be committed');
   useViewerStore.getState().setActiveDocumentId(doc.id);
 }
 
@@ -83,15 +83,37 @@ beforeEach(() => {
   localStorage.clear();
   useViewerStore.setState({
     models: new Map(), activeModelId: null, documents: [], activeDocumentId: null, dashboards: [], bcfProject: null,
-    savedValidationReports: [], idsValidationReport: null, validationSource: null, manualChecklist: null,
+    savedValidationReports: [], idsValidationReport: null, validationSource: null, manualChecklist: null, manualLibrary: emptyManualLibrary(),
   });
 });
 afterEach(() => {
   cleanup();
-  useViewerStore.setState(initial);
 });
 
 describe('Add block menu has one validation report entry (#6553)', () => {
+  for (const reservedId of ['live:ids', 'live:manual']) {
+    it(`selects saved evidence whose preserved ID is ${reservedId} instead of a live source (#6679/#6553)`, async () => {
+      const entry = { ...savedRules(), id: reservedId };
+      assert.equal(await useViewerStore.getState().saveValidationReportEntry(entry), reservedId);
+      useViewerStore.getState().setIdsValidationReport(liveReport('ids'));
+      useViewerStore.getState().setManualChecklist({ version: CHECKLIST_VERSION, name: 'Live checklist', groups: [] });
+      await seedDocument([{ ...idsBlock, id: 'reserved-source' }]);
+      const ui = render(<DocumentPanel />);
+      await settle();
+      const savedChoice = [...sourcePicker(ui).options].find(option => option.textContent?.includes(entry.name));
+      assert.ok(savedChoice, 'the saved evidence is offered by name');
+      pick(sourcePicker(ui), savedChoice.value);
+      await settle();
+      const chosen = blocks()[0];
+      assert.ok(chosen.kind === 'ids-report');
+      assert.equal(chosen.savedReportId, reservedId);
+      assert.equal(chosen.sourceName, rulesBlock.sourceName);
+      assert.equal(chosen.sourceKind, 'rules');
+      assert.ok(sourcePicker(ui).querySelector(`option[value="${reservedId}"]`), 'the independent live source is still selectable');
+    });
+  }
+
+
   it('replaces the separate IDS, information validation, saved and manual entries', async () => {
     useViewerStore.setState({ savedValidationReports: [savedIds(), savedRules(), savedManual()], idsValidationReport: liveReport('ids') });
     useViewerStore.getState().setManualChecklist({ version: CHECKLIST_VERSION, name: 'Site review', groups: [] });
@@ -118,7 +140,7 @@ describe('Add block menu has one validation report entry (#6553)', () => {
       assert.equal(added.kind, expectedKind);
       if (added.kind === 'ids-report') assert.equal(added.sourceKind, expectedSource);
       assert.equal((added as IdsReportBlock | ManualReportBlock).savedReportId, entries[0].id, 'the block points at the saved report it was built from');
-      assert.equal(sourcePicker(ui).value, entries[0].id, 'the picker shows that saved report');
+      assert.equal(sourcePicker(ui).value, `saved:${entries[0].id}`, 'the picker shows that saved report');
     });
   }
 
@@ -157,7 +179,7 @@ describe('the block source picker covers every kind and both live sources (#6553
   it('lists every saved report whatever its kind, plus the live sources that exist', async () => {
     useViewerStore.setState({ savedValidationReports: [savedIds(), savedRules(), savedManual()], idsValidationReport: liveReport('rules') });
     useViewerStore.getState().setManualChecklist({ version: CHECKLIST_VERSION, name: 'Site review', groups: [] });
-    seedDocument([{ ...idsBlock, id: 'b1' }]);
+    await seedDocument([{ ...idsBlock, id: 'b1' }]);
     const ui = render(<DocumentPanel />);
     await settle();
     const labels = pickerLabels(ui);
@@ -168,7 +190,7 @@ describe('the block source picker covers every kind and both live sources (#6553
 
   it('offers no live option for a source that does not exist', async () => {
     useViewerStore.setState({ savedValidationReports: [savedIds()] });
-    seedDocument([{ ...idsBlock, id: 'b1' }]);
+    await seedDocument([{ ...idsBlock, id: 'b1' }]);
     const ui = render(<DocumentPanel />);
     await settle();
     assert.deepEqual(pickerLabels(ui).filter((l) => l.includes('(live)')), []);
@@ -178,12 +200,12 @@ describe('the block source picker covers every kind and both live sources (#6553
     const entries = [savedIds(), savedManual()];
     useViewerStore.setState({ savedValidationReports: entries, idsValidationReport: liveReport('ids') });
     useViewerStore.getState().setManualChecklist({ version: CHECKLIST_VERSION, name: 'Live checklist', groups: [] });
-    seedDocument([{ ...idsBlock, id: 'b1', savedReportId: entries[0].id, title: 'Authored', scale: 1.5, showStamp: false, titleFontSize: 20, titleTextColor: '#112233', titleBackgroundColor: '#ddeeff' }]);
+    await seedDocument([{ ...idsBlock, id: 'b1', savedReportId: entries[0].id, title: 'Authored', scale: 1.5, showStamp: false, titleFontSize: 20, titleTextColor: '#112233', titleBackgroundColor: '#ddeeff' }]);
     const ui = render(<DocumentPanel />);
     await settle();
     assert.deepEqual(refreshLabels(ui), [], 'saved evidence has no refresh');
 
-    pick(sourcePicker(ui), entries[1].id);
+    pick(sourcePicker(ui), `saved:${entries[1].id}`);
     await settle();
     const manual = blocks()[0] as ManualReportBlock;
     assert.equal(manual.kind, 'manual-report');
@@ -208,18 +230,18 @@ describe('the block source picker covers every kind and both live sources (#6553
     const entries = [savedIds(), savedRules(), savedManual()];
     useViewerStore.setState({ savedValidationReports: entries, idsValidationReport: liveReport('ids') });
     useViewerStore.getState().setManualChecklist({ version: CHECKLIST_VERSION, name: 'Site review', groups: [] });
-    seedDocument([{ ...idsBlock, id: 'b1', savedReportId: entries[0].id, variant: 'compact', specificationsOnly: true, title: 'Heading', titleFontSize: 14, titleTextColor: '#112233', titleBackgroundColor: '#ddeeff', scale: 1.25, showStamp: false }]);
+    await seedDocument([{ ...idsBlock, id: 'b1', savedReportId: entries[0].id, variant: 'compact', specificationsOnly: true, title: 'Heading', titleFontSize: 14, titleTextColor: '#112233', titleBackgroundColor: '#ddeeff', scale: 1.25, showStamp: false }]);
     const ui = render(<DocumentPanel />);
     await settle();
     const steps: Array<[string, string, string]> = [
-      ['saved IDS to saved information validation', entries[1].id, 'ids-report'],
-      ['saved IDS to saved manual (cross kind)', entries[2].id, 'manual-report'],
+      ['saved IDS to saved information validation', `saved:${entries[1].id}`, 'ids-report'],
+      ['saved IDS to saved manual (cross kind)', `saved:${entries[2].id}`, 'manual-report'],
       ['saved manual to live IDS (cross kind)', 'live:ids', 'ids-report'],
       ['live IDS to live IDS', 'live:ids', 'ids-report'],
-      ['live IDS to saved IDS', entries[0].id, 'ids-report'],
+      ['live IDS to saved IDS', `saved:${entries[0].id}`, 'ids-report'],
       ['saved IDS to live manual (cross kind)', 'live:manual', 'manual-report'],
       ['live manual to live manual', 'live:manual', 'manual-report'],
-      ['live manual to saved manual', entries[2].id, 'manual-report'],
+      ['live manual to saved manual', `saved:${entries[2].id}`, 'manual-report'],
     ];
     for (const [name, value, kind] of steps) {
       pick(sourcePicker(ui), value);
@@ -233,10 +255,10 @@ describe('the block source picker covers every kind and both live sources (#6553
   it('keeps the compact specifications-only choice when the source changes between IDS reports', async () => {
     const entries = [savedIds(), savedRules()];
     useViewerStore.setState({ savedValidationReports: entries, idsValidationReport: liveReport('ids') });
-    seedDocument([{ ...idsBlock, id: 'b1', savedReportId: entries[0].id, variant: 'compact', specificationsOnly: true }]);
+    await seedDocument([{ ...idsBlock, id: 'b1', savedReportId: entries[0].id, variant: 'compact', specificationsOnly: true }]);
     const ui = render(<DocumentPanel />);
     await settle();
-    pick(sourcePicker(ui), entries[1].id);
+    pick(sourcePicker(ui), `saved:${entries[1].id}`);
     await settle();
     assert.equal((blocks()[0] as IdsReportBlock).specificationsOnly, true, 'a saved report keeps it');
     pick(sourcePicker(ui), 'live:ids');
@@ -248,7 +270,7 @@ describe('the block source picker covers every kind and both live sources (#6553
     const entries = [savedIds()];
     useViewerStore.setState({ savedValidationReports: entries });
     useViewerStore.getState().setManualChecklist({ version: CHECKLIST_VERSION, name: 'Site review', groups: [] });
-    seedDocument([{ ...idsBlock, id: 'b1', savedReportId: entries[0].id, title: 'Authored' }]);
+    await seedDocument([{ ...idsBlock, id: 'b1', savedReportId: entries[0].id, title: 'Authored' }]);
     const ui = render(<DocumentPanel />);
     await settle();
     pick(sourcePicker(ui), 'live:manual');
@@ -272,7 +294,7 @@ describe('documents saved before the change keep their source (#6553)', () => {
       { ...manualBlock, id: 'saved-manual', savedReportId: entries[2].id },
     ];
     const reopened = parseDocumentFile(JSON.stringify({ ...blankDocument(), blocks: before }));
-    useViewerStore.getState().upsertDocument(reopened);
+    assert.equal(await useViewerStore.getState().upsertDocument(reopened), true, 'the reopened document must be committed');
     useViewerStore.getState().setActiveDocumentId(reopened.id);
     const ui = render(<DocumentPanel />);
     await settle();
@@ -280,7 +302,7 @@ describe('documents saved before the change keep their source (#6553)', () => {
     const editors = [...ui.querySelectorAll('[data-block-editor]')];
     assert.equal(editors.length, 5);
     const pickerValue = (editor: Element): string | undefined => editor.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]')?.value;
-    assert.deepEqual(editors.map(pickerValue), ['', '', entries[0].id, entries[1].id, entries[2].id], 'live blocks keep no saved selection, saved blocks keep theirs');
+    assert.deepEqual(editors.map(pickerValue), ['', '', ...entries.map(entry => `saved:${entry.id}`)], 'live blocks keep no saved selection, saved blocks keep theirs');
     assert.deepEqual(editors.map((e) => [...e.querySelectorAll('button')].some((b) => b.textContent?.startsWith('Refresh'))), [true, true, false, false, false], 'live blocks keep Refresh; saved evidence has none');
     assert.deepEqual(useViewerStore.getState().documents[0].blocks, reopened.blocks, 'mounting the panel rewrites nothing');
     const withoutId = (list: DocumentBlock[]) => list.map(({ id: _id, ...rest }) => rest);

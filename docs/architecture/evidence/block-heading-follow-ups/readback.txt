@@ -1,0 +1,22 @@
+
+== f1-topic-fallback-title-main.pdf: page 595.28 x 841.89 pt, right margin edge 555.3
+  strip rows 70..105 (height 35 pt), runs on the strip's first full row: x 40..555
+  pdf.js heading item "Fire door in corridor 2.14 is missing its closer an" size 24.0 x 43.0..597.9 => PAST the right margin by 42.6 pt; PAST the strip's end 555 by 42.9 pt
+  pdftotext -bbox heading words on the page: "Fire" 43.0..87.0, "door" 93.7..147.0, "in" 153.7..175.0, "corridor" 181.7..273.7, "2.14" 280.4..327.1, "is" 333.8..353.8, "missing" 360.4..451.1, "its" 457.8..485.8, "closer" 492.5..563.2, "an" 569.9..597.9
+
+== f1-topic-fallback-title-branch.pdf: page 595.28 x 841.89 pt, right margin edge 555.3
+  strip rows 70..105 (height 35 pt), runs on the strip's first full row: x 40..555
+  pdf.js heading item "Fire door in corridor 2.14 is missing its clo…" size 24.0 x 43.0..551.2 => inside the margin; inside the strip
+  pdftotext -bbox heading words on the page: "Fire" 43.0..87.0, "door" 93.7..147.0, "in" 153.7..175.0, "corridor" 181.7..273.7, "2.14" 280.4..327.1, "is" 333.8..353.8, "missing" 360.4..451.1, "its" 457.8..485.8, "clo…" 492.5..551.2
+
+== f3-chart-beside-text-main.pdf: page 595.28 x 841.89 pt, right margin edge 555.3
+  strip rows 70..96 (height 26 pt), runs on the strip's first full row: x 40..289 | x 303..555
+  pdf.js heading item "Findings by specification" size 18.0 x 43.0..259.1
+  pdf.js heading item "Notes on the findings" size 18.0 x 305.6..489.7
+  chart strip x 40..289, text strip x 303..555: the two columns' strips are 249 and 252 pt wide
+
+== f3-chart-beside-text-branch.pdf: page 595.28 x 841.89 pt, right margin edge 555.3
+  strip rows 70..96 (height 26 pt), runs on the strip's first full row: x 40..293 | x 303..555
+  pdf.js heading item "Findings by specification" size 18.0 x 43.0..259.1
+  pdf.js heading item "Notes on the findings" size 18.0 x 305.6..489.7
+  chart strip x 40..293, text strip x 303..555: the two columns' strips are 253 and 252 pt wide

@@ -37,6 +37,14 @@ record each call as one complete public `mutation_undo` operation. Late schema
 refusals leave no partial helpers. These embedded methods are distinct from
 the JSON-RPC tool names; see the [programmatic embedding guide](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/guide/mcp.md#programmatic-embedding).
 
+`addStair`, `addRailing` and `removeStair` use the same canonical SDK factory.
+`removeStair` removes a uniquely owned parent/flight pair atomically, retaining
+shared shape/style leaves and refusing ambiguous ownership or foreign product
+references. Public `run_flow` routes `element.stair` / `element.railing` through
+`model.addElement`; each successful graph creation has one `mutation_undo`.
+Tracking is fresh per RPC call, so cross-call update/remove needs a persistent
+caller-owned tracking store. No separate creation or Redo RPC is added.
+
 ## 3D viewer integration
 
 The server bundles the same WebGL viewer used by `ifc-lite view`. Once it is
@@ -105,6 +113,9 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
+| Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
+| Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
+| Native Room | `query_rooms`, `room_command` |
 | Wall joins | `join_walls` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
@@ -255,3 +266,23 @@ See the [ifc-lite docs](https://ifclite.dev/docs/) for the full
 platform documentation.
 
 Licensed under MPL-2.0.
+
+Loaded-model physical edits use the same command cores as the viewer and typed
+SDK. `edit_element_geometry` handles Move/Rotate, Size, Wall Endpoints, Split and
+Trim/Extend. `copy_elements`, `duplicate_element` and `array_elements` carry
+hosted graph records and share the viewer placement and naming policies.
+References are model-local EXPRESS IDs; offsets use IFC storey-local metres
+and planar rotations use radians. Every write is one `mutation_undo` batch;
+unsupported sources and unsafe shared geometry refuse before committing.
+See the [MCP guide](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/guide/mcp.md)
+for parameter contracts.
+
+`room_command` derives Room candidates from the current native geometry and
+runs Auto/Pick/Footprint/Update or layout Drag/Split/Remove/Prune through the
+shared Room core. It requires the WASM runtime. Query does not write; writes
+record one complete Undo batch. Model removal and session termination free
+retained native layout handles. Unsupported schema/storey planes return
+`INVALID_INPUT`; unavailable native initialization returns
+`UNSUPPORTED_OPERATION`. Unexpected export, parse, processing or runtime
+import failures return `INTERNAL_ERROR`; cancellation and state conflicts
+retain their distinct retryable codes.

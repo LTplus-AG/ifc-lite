@@ -56,9 +56,10 @@ export function createAutomationHost(run: WorkflowRun, doc: FlowDocument, addMod
         const imported = await readHistorical(run, file);
         run.check();
         const old = useViewerStore.getState().savedComparisons.find((c) => sameReportEvidence({ ...c, id: '' }, { ...imported, id: '' }));
-        const collision = useViewerStore.getState().savedComparisons.some((c) => c.id === imported.id);
-        const entry = old ?? { ...imported, id: collision ? crypto.randomUUID() : imported.id };
-        const retained = retainComparisonReport(entry, useViewerStore);
+        // External IDs may belong to deleted or unreadable library rows. A new
+        // import gets local identity; identical live evidence remains idempotent.
+        const entry = old ?? { ...imported, id: crypto.randomUUID() };
+        const retained = await retainComparisonReport(entry, useViewerStore);
         for (const warning of retained.warnings) run.warn(warning);
         results.push({ jobId: historicalJobId(slotId, index, file.name), resultId: imported.id, kind: 'comparison', comparison: entry });
       }
@@ -82,7 +83,7 @@ export function createAutomationHost(run: WorkflowRun, doc: FlowDocument, addMod
           }).filter((m, index, all) => all.findIndex((other) => other.name === m.name && other.sourceFingerprint === m.sourceFingerprint) === index),
           summary: run.warnings.join('\n') } });
       run.check(); checkWorkflowModelPins(run);
-      if (!state.upsertDocument(document)) run.warn('Document is available in memory but browser storage refused the save');
+      if (!(await state.upsertDocument(document))) run.warn('Document is available in memory but browser storage refused the save');
       return run.put('document', document);
     },
     exportPdf: (token) => run.withModelRead(async () => {

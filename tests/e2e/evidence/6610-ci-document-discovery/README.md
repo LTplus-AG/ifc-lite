@@ -1,0 +1,9 @@
+# #6610 document version import boundary
+
+D main CI at `7c967474e` failed before running any browser tests: job [111197613309](https://github.com/LTplus-AG/ifc-lite/actions/runs/37120835234/job/111197613309) reported `SyntaxError: The requested module @ifc-lite/wasm does not provide an export named default`. The new runtime `DOCUMENT_VERSION` import from document `types.ts` pulled browser dependencies into Node test discovery. This is a real failed gate, not a GPU skip.
+
+A local full `pnpm test:e2e:ci --list` reproduced the exact error and discovered zero tests on that source. After moving the single version constant into `document-version.ts`, preserving the existing `types.ts` re-export, and importing that leaf in the storage witness, the identical command exited zero and discovered **91 tests in 43 files**. Version 12 and saved-file behavior are unchanged. Both raw outputs are archived here; discovery is not a browser execution claim.
+
+On the frozen repair working tree based on `7c967474e`, root Turbo selected header/band/default/migration/type controls passed **108 tests, 11 suites, zero skips** (`TEST_PATTERN='page-band|page-heading|types|document-scale-frame|headingStamp|pageBands' pnpm test --env-mode=loose --filter=@ifc-lite/viewer`). Full root `pnpm typecheck` passed **111 tasks**, including all **3,337 test files across 57 packages**. Root license and module-size gates passed. The existing real-model/eleven-page/PyMuPDF proof remains scoped to its original recorded production source; this repair changes only the location of the unchanged constant and the E2E import boundary. Fresh exact-head CI remains a merge requirement.
+
+Full root `pnpm lint` checks **8,348 files across four targets, zero errors**; unchanged example warnings remain visible in the archived log.

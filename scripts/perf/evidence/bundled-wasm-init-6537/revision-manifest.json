@@ -1,0 +1,1626 @@
+{
+  "schemaVersion": 2,
+  "archive": "historical-9d-sdk-and-warm-glue-revision.tar.gz",
+  "archiveBytes": 18230332,
+  "archiveSha256": "1edd195d212da29ebe72ab75b50585b3472d8eae85e0ecb23453c6afffd4a87a",
+  "originalArchive": {
+    "file": "original-sdk-and-revised-functional-proof.tar.gz",
+    "bytes": 15886796,
+    "sha256": "a98cb6f0aef25109636460c15f353be5124016955c1b21847edf5d6cd9fdce37",
+    "manifestFile": "manifest.json",
+    "manifestSha256": "5dd311d9df4deff0299c8c2607dd2685fe4e8ffd42a1c8d83321ff0d0742b2e7"
+  },
+  "scope": "Historical 9d SDK and corrected 021 warm-glue functional proof; no corrected-source performance verdict. Exact identical original members are explicit lossless references.",
+  "members": {
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-0-0-base.input.json": {
+      "bytes": 1422,
+      "sha256": "fd74fae44bfacc6e5342c6284605f8763813b6f73652538d21300be814c9c260",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-0-0-base.json": {
+      "bytes": 86765,
+      "sha256": "db057e1e355d866836046ce6a737faa50be2e7bc9188d47ba5ae479de2e7194e",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-0-0-base.json.pre-teardown.json": {
+      "bytes": 66955,
+      "sha256": "30396dbdb839079af629d55eeb385bd5c84b65e2f58462b4331d756e466dbe1b",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-0-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-0-1-base.input.json": {
+      "bytes": 1422,
+      "sha256": "15b11c5a30102077b84a36bbbcdc92b1da3e45671f8eca5eebdcf0daf7dc6c09",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-0-1-base.json": {
+      "bytes": 86768,
+      "sha256": "f08ae989164e01f9778d785b03d81d86ea50577c86ddd78a4697d77306804e55",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-0-1-base.json.pre-teardown.json": {
+      "bytes": 66958,
+      "sha256": "571e5693c9db11e40f1b48b180b9942e422f112ed87c833a907b699f0b5b665a",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-0-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-1-0-base.input.json": {
+      "bytes": 1422,
+      "sha256": "9a63a5227dba9322b89e9ee52c27fc3e87c8d00d8dd98e4f9f6d253878c33ab3",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-1-0-base.json": {
+      "bytes": 86767,
+      "sha256": "ceb48d4d9a1b9deefc7dd5fe967d92ce8962244f0674c3d2aea11ebe78c7dea2",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-1-0-base.json.pre-teardown.json": {
+      "bytes": 66958,
+      "sha256": "b528f5afbb92c90e45ab693224a03860824a64a0e16c6c2c09fd25a9344112d0",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-1-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-1-1-base.input.json": {
+      "bytes": 1422,
+      "sha256": "5da0d7d4a348f6179b1f95caa9b5cc6e93bf84ed1ad5646f457570b96b1785a6",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-1-1-base.json": {
+      "bytes": 86764,
+      "sha256": "001b90a247e6922e4711f7e6f97e1c7ab071e4c20559527edb5f56bee77211fb",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-1-1-base.json.pre-teardown.json": {
+      "bytes": 66954,
+      "sha256": "f02349c495100e941e5e95e826e8771c868615b518787560af3d18cfa27bb326",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-1-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-2-0-base.input.json": {
+      "bytes": 1422,
+      "sha256": "cafcfc405fe6ceba7c763e622f0d3d1c0a5750ac19ecd128ae6b737102c1147f",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-2-0-base.json": {
+      "bytes": 86765,
+      "sha256": "cf17277b9e1f6f1977fea5e1e60ba36af6509f0293efce3b0ac89090fb7c1744",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-2-0-base.json.pre-teardown.json": {
+      "bytes": 66955,
+      "sha256": "bb482f1beaefbf5f0d9aab2af52074ba7a330137ce3bf0722b401c67d98cec5e",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-2-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-2-1-candidate.input.json": {
+      "bytes": 1432,
+      "sha256": "2998ffbf2e91f379e4af4bc4acadd5e0e3731b5d8b94b536af3ed8bac8539ae5",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-2-1-candidate.json": {
+      "bytes": 86282,
+      "sha256": "20e0772bb92f4b0208d148e44503a7c59e4fd935420ce6d1d89efc24c30c8e0a",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-2-1-candidate.json.pre-teardown.json": {
+      "bytes": 66783,
+      "sha256": "b8716a0a0f0152324db24880bf9ca95c5721cd3cdbbc0d5d89f513456df1988b",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-2-1-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-3-0-candidate.input.json": {
+      "bytes": 1432,
+      "sha256": "4457ae2b16be36ffee51297cd9781efa1e087915295e97c2e49e6a2e4a63a827",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-3-0-candidate.json": {
+      "bytes": 86283,
+      "sha256": "313742790d6f1ef135f92e379a2e56439ab2844ad61dbb2e8f249b0549f67321",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-3-0-candidate.json.pre-teardown.json": {
+      "bytes": 66783,
+      "sha256": "43961303b298ea390f6ed7ac6420f34366925bbb474e175b17f376fc594d20e2",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-3-0-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-3-1-base.input.json": {
+      "bytes": 1422,
+      "sha256": "34a47a827687fb6d82c5150eb7928fadf5f56b0cb00adf62eabfc0ae121c5f99",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-3-1-base.json": {
+      "bytes": 86768,
+      "sha256": "8de92114bff6db10cd29eed8eb5f902cf17d4b453b47b3fef92e740dd993f612",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-3-1-base.json.pre-teardown.json": {
+      "bytes": 66958,
+      "sha256": "b40209505d79a06337d836058becb2dd90c984c38c6e650ce4818ca796e96c5b",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-3-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-4-0-base.input.json": {
+      "bytes": 1422,
+      "sha256": "d3340c486ef2580d8a53c56edc278c73b6206b668f23f752957e42ccb1698bbd",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-4-0-base.json": {
+      "bytes": 86764,
+      "sha256": "1135e70fbbbe14fd31f4c4a9a9ca315fb7afc4d427c99003a537747dca9e3918",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-4-0-base.json.pre-teardown.json": {
+      "bytes": 66955,
+      "sha256": "e2257f17347e615fcd12dbfd7a575e368a4c027275d87d556c8c445b2f98283b",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-4-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-4-1-candidate.input.json": {
+      "bytes": 1432,
+      "sha256": "8dec88a12a6a1402f23662e94f5c7baa133d1ecec8f80570bcb0791d04def934",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-4-1-candidate.json": {
+      "bytes": 86282,
+      "sha256": "9328e3ce477b975553f2aa9deef09b65075f7f8e48532fe98f04391417ebc3e6",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-4-1-candidate.json.pre-teardown.json": {
+      "bytes": 66783,
+      "sha256": "2d5a6d8542e982450415902f2623d651e31f4a5c50b1981309e60dedc4e92c5b",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-4-1-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-5-0-candidate.input.json": {
+      "bytes": 1432,
+      "sha256": "8b6f345be76dff534761c31e19ade19aafc42decccd6da2ca0dfb52d2f5c458c",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-5-0-candidate.json": {
+      "bytes": 86285,
+      "sha256": "06fc8b3a5cb821903950d452443a024815b24c5471ec851ad602c5d518fe474a",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-5-0-candidate.json.pre-teardown.json": {
+      "bytes": 66786,
+      "sha256": "f44abfb3cca2b2d095c74c74b53e12ec63b67fa3691282a8a58bd33d5c07b4b3",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-5-0-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-5-1-base.input.json": {
+      "bytes": 1422,
+      "sha256": "d3f3fbf372ccd12fbb45a6d05927aa660642e28a7429588fd9bfe60c17a6ab6f",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-5-1-base.json": {
+      "bytes": 86764,
+      "sha256": "3c61e12bd717adfcc1af69bfdf3b4ae3b34a2529811a03e1173983721a9d7749",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-5-1-base.json.pre-teardown.json": {
+      "bytes": 66955,
+      "sha256": "49aeeb041017fff04c40de251240e891560b705ef9d33488f58eb60d99b5232b",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-5-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-6-0-base.input.json": {
+      "bytes": 1422,
+      "sha256": "e444bed541f1d66a52f695d0f27ca60c32db7712394edf6f1368a08e08a0624f",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-6-0-base.json": {
+      "bytes": 86766,
+      "sha256": "1e17c91a8407de07b4e9a0b9120ee1b7e5cdee6b75f7fc039e09af5bbe9bc5b0",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-6-0-base.json.pre-teardown.json": {
+      "bytes": 66955,
+      "sha256": "01673ad896a062c78126d739361c6de0009fe19d9c9685725af7dd94e4ff8ff6",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-6-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-6-1-candidate.input.json": {
+      "bytes": 1432,
+      "sha256": "8f9490ba8ab0624604943135616f2494879798b101ecb5f779d0bb3665c6d63e",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-6-1-candidate.json": {
+      "bytes": 86281,
+      "sha256": "99dacadb24a78c8c1c08e09d54c3980cd0a9ee75cf196469de7472c3aa6372d3",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-6-1-candidate.json.pre-teardown.json": {
+      "bytes": 66782,
+      "sha256": "74a8d3caa6912e57ae8eee5534c51c54edf88976db998f2a0ae729b121bd123f",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/architecture-6-1-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/base-endpoint/assets/geometry.worker-D3caT3Ii.js": {
+      "bytes": 105342,
+      "sha256": "4c696ca6f305426acee9e277ac60885b3420bf3208641b5e6f975b9e060dba6f",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/base-endpoint/assets/geometry.worker-D3caT3Ii.js"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/base-endpoint/assets/ifc-lite_bg-Dkm7uW4K.wasm": {
+      "bytes": 9510285,
+      "sha256": "8bece54c2d089bbec7ff0ce6fc00aee96edc7bdefd70eea60b5ccb7f8b1046c9",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/base-endpoint/assets/ifc-lite_bg-Dkm7uW4K.wasm"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/base-endpoint/assets/index-Bm6p5-z_.js": {
+      "bytes": 414591,
+      "sha256": "262147c38fe3f8cac86091e29b787c26c4dab4d662a2da070163dd1228d388b1",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/base-endpoint/assets/index-Bm6p5-z_.js"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/base-endpoint/assets/native-bridge-dvL57xYF.js": {
+      "bytes": 9889,
+      "sha256": "8ca134dfe206cdb7ce6b05f57315299736ec2cedf067afbdea0f47a04883d4e3",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/base-endpoint/assets/native-bridge-dvL57xYF.js"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/base-endpoint/index.html": {
+      "bytes": 489,
+      "sha256": "72dec60d8ce46f8674109462f2b3b3cbe588808be18a20f97dc34de74d95f0ea",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/base-endpoint/index.html"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/base-source-build.json": {
+      "bytes": 1661,
+      "sha256": "91cab27a566116989c932fdda898792434baaa8eb81c9146e37ff276243a191e",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/base-source-build.log": {
+      "bytes": 9061,
+      "sha256": "a9e6c9827844374a991e2c42f53b398dd93461005f013403e34c7ad961bff0f3",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/base.served-assets.json": {
+      "bytes": 64442,
+      "sha256": "ed006c6466ac18ba795674d5795d7de71aa79210bfb873ab5829b11c06a68573",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/bindgen-prefetch.json": {
+      "bytes": 1855,
+      "sha256": "f81daed59a24f73c07e995537384ed8255a5a97170d7b189641fe7290e9727d5",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/bindgen-prefetch.json"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/build-start.json": {
+      "bytes": 9836405,
+      "sha256": "8ffb216c9878e4327a08cc591db775cdb24aa8c247f8dd38ecde8dc9142cd18d",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/candidate-endpoint/assets/geometry.worker-DNTkbBUJ.js": {
+      "bytes": 105342,
+      "sha256": "ab69d4fe112f74020119da2512f5cc1ee80ac5f34e890d9dc455e15eefe41150",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/candidate-endpoint/assets/geometry.worker-DNTkbBUJ.js"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/candidate-endpoint/assets/ifc-lite_bg-DeIFKOZF.wasm": {
+      "bytes": 9510285,
+      "sha256": "0830c2d293f1d215138d0553e3d00718ffba75c860daab27ba72dc080ed25c73",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/candidate-endpoint/assets/ifc-lite_bg-DeIFKOZF.wasm"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/candidate-endpoint/assets/index-CB5Xz1PY.js": {
+      "bytes": 415235,
+      "sha256": "742bf76ff1e6f24bd331ec3a499ea9749e104dc9b4805bc665bac9bdf96551d4",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/candidate-endpoint/assets/native-bridge-uGp09_Fo.js": {
+      "bytes": 9889,
+      "sha256": "9aca40e6d3a07b771d132e4875820fdac7ac0a3587385c6caaf5137ba8734cf5",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/candidate-endpoint/index.html": {
+      "bytes": 489,
+      "sha256": "21a6ece48df098ce54003e69569831e7ca17d5ff2c65d3df192975f50c681942",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/candidate-source-build.json": {
+      "bytes": 1681,
+      "sha256": "509304f84bd162b285e59990c549ab5a11b15a4dd82a16b717eb811557e71c5e",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/candidate-source-build.log": {
+      "bytes": 8431,
+      "sha256": "e13e61c5a06f3a7293867e925c4520d26f75cf4750d0401bc3b900e509e8670d",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/candidate.served-assets.json": {
+      "bytes": 32162,
+      "sha256": "eb373f1c8b4e2a6a4837b0c647e2552953906db9353a93c1f2e11298ef277c38",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-0-0-base.input.json": {
+      "bytes": 1419,
+      "sha256": "931cc03499e7950d1020963bef87d1e90cd3af3c6bf856a6b7986efe7dc76d6d",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-0-0-base.json": {
+      "bytes": 35430,
+      "sha256": "9e585e2027a886e16c229a32d4a272fefceef5e7cd4556bffcf4e98841466cfb",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-0-0-base.json.pre-teardown.json": {
+      "bytes": 19082,
+      "sha256": "c74e8d2aa55bb27b27b80f0f935f23528e9a32d7ae2bf2955e580dbfea3f4636",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-0-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-0-1-base.input.json": {
+      "bytes": 1419,
+      "sha256": "9a1bd81e987ed29d0e9813cfcf4879004d45b281632101c87f342bbe33753571",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-0-1-base.json": {
+      "bytes": 35427,
+      "sha256": "8562b7861959ac41433e77b4988b86fa2d27069e4a36403f91abee2d2972d5bd",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-0-1-base.json.pre-teardown.json": {
+      "bytes": 19082,
+      "sha256": "b32b8633ef5576a3d2f12e194e69b1d10e398d0648c040027b42cacf2632b809",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-0-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-1-0-base.input.json": {
+      "bytes": 1419,
+      "sha256": "e3909e4527efa17f942238a14c2e2434eaa4e0598eb07cc1b288d9a1081f5e17",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-1-0-base.json": {
+      "bytes": 35429,
+      "sha256": "3b959913a868f9f53427128ccd76568f361f910bc76e9d10a0096c43bd8589a6",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-1-0-base.json.pre-teardown.json": {
+      "bytes": 19082,
+      "sha256": "2aa7599be055c43f60c338cb09dd1d3bae2bef1802c62a61d292e4ca5f5c7e1f",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-1-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-1-1-base.input.json": {
+      "bytes": 1419,
+      "sha256": "7935e1ca99284f7a4a3c871b574cbf62fe281c8a64931ce46fa1ab7e26c8501f",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-1-1-base.json": {
+      "bytes": 35429,
+      "sha256": "5a9e8d1f31b204715249774481d5fb41c751c2cdc1a973fd62f3a852136eaac4",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-1-1-base.json.pre-teardown.json": {
+      "bytes": 19082,
+      "sha256": "8669ee7b929f1e207d0916e71a4cc63d4afa980d3581b12af5b18101fd48b117",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-1-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-2-0-base.input.json": {
+      "bytes": 1419,
+      "sha256": "0e358a72dc16a1fda83a835bf0c0bbffa3693c77734f5eaa235e325dcb080150",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-2-0-base.json": {
+      "bytes": 35427,
+      "sha256": "1dbfb7a71b135e23da570e0539a6641bf010bd52ec8d9173a3d0b620e642f89e",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-2-0-base.json.pre-teardown.json": {
+      "bytes": 19082,
+      "sha256": "ea6fb0c306cb8b6e1584b6a76eec21518f148457bea4b63bfd81979ee124f938",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-2-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-2-1-candidate.input.json": {
+      "bytes": 1429,
+      "sha256": "5a76e8fe1c05ebc2d42a5ba10c573e4bc6c0bee51a284899330d29bad42784ff",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-2-1-candidate.json": {
+      "bytes": 34946,
+      "sha256": "607cf8e41252c767b36c041503ccee60c751bb0725b3ed7baaf9d9354da3eadf",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-2-1-candidate.json.pre-teardown.json": {
+      "bytes": 18910,
+      "sha256": "5890316315eb365a7dc51d802c359f314e6f74a92c866278c19e9aecaf9ad6a1",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-2-1-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-3-0-candidate.input.json": {
+      "bytes": 1429,
+      "sha256": "449ff23dac3d3846620108764cda9cd2a4523936def2c2a0fc31ea0e1fd21cfd",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-3-0-candidate.json": {
+      "bytes": 34946,
+      "sha256": "da24f4b382847885cd617258463f514dcaf36926238a6f12e8df7f200b314a04",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-3-0-candidate.json.pre-teardown.json": {
+      "bytes": 18910,
+      "sha256": "0eed9089a2d9ff248dc18d662450ce9621c471bf2c0f89962c11eb6eb8cc4eae",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-3-0-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-3-1-base.input.json": {
+      "bytes": 1419,
+      "sha256": "debfa3b6eacdb1346a77c0e1a07d5d98c2e8fdd4f526329d77d6be72fd7bd0c6",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-3-1-base.json": {
+      "bytes": 35426,
+      "sha256": "2f07921ddc01f52bac5e6b1d1490989a12f931ae845f37a060e1c7c74b88ba5d",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-3-1-base.json.pre-teardown.json": {
+      "bytes": 19082,
+      "sha256": "cba0c486bd5b313426833bd80d0110859e165d951d04caf1301c2508b60617d9",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-3-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-4-0-base.input.json": {
+      "bytes": 1419,
+      "sha256": "30490ffc6bd9ae32c1f433079e78f1c079514feb358c834bda1015a6d3a667c7",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-4-0-base.json": {
+      "bytes": 35428,
+      "sha256": "bf5cc7934de1b3a60bceeb5eaa5186fcc522ea5ef6c23675f3707d8ddb662a43",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-4-0-base.json.pre-teardown.json": {
+      "bytes": 19082,
+      "sha256": "08371ec58e59b9239b3123f00782c965094842ae38f5ea3f548ff4d0dbb07381",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-4-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-4-1-candidate.input.json": {
+      "bytes": 1429,
+      "sha256": "e2c1c4b5a93a8e0d708125ddf6d6f4b91a59f366044b997aeb398c63adada088",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-4-1-candidate.json": {
+      "bytes": 34947,
+      "sha256": "9d9a3f9eb2ff3e2218a47d1d9d240426bf9c6b1d3c548a9712f2058fe616a3fe",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-4-1-candidate.json.pre-teardown.json": {
+      "bytes": 18910,
+      "sha256": "0c556d662fbaabfe10c0a898b0abf8bbe7502c7af663b187a20259ae935533a9",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-4-1-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-5-0-candidate.input.json": {
+      "bytes": 1429,
+      "sha256": "fd003f0d27380ef9cb6fd74ad3f4264abbca5bc495f81b142a0481e8fe0e37b4",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-5-0-candidate.json": {
+      "bytes": 34938,
+      "sha256": "314cf16aa6b2d721f0033781f5f863c8cdaa50da3b2e0df7d4e2e3767b45b712",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-5-0-candidate.json.pre-teardown.json": {
+      "bytes": 18910,
+      "sha256": "a67be013409d87206db0992adce5c9de1b41dbfbb94561d7053319c8dbba97fa",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-5-0-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-5-1-base.input.json": {
+      "bytes": 1419,
+      "sha256": "6dc9e899c80fc254707e2c28dfa2c1e91405bcaaed404dc85f9007084274e964",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-5-1-base.json": {
+      "bytes": 35427,
+      "sha256": "ffb088a196d399f28827d82e133436e87fb9d9cdd482ebfb553075ea0a0a7c5e",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-5-1-base.json.pre-teardown.json": {
+      "bytes": 19082,
+      "sha256": "2f5a042a263b9434066323313e72f7e1a2efbd2ef1047a31881447c901f0321b",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-5-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-6-0-base.input.json": {
+      "bytes": 1419,
+      "sha256": "3bab2242187f0f4a961ba66b2b5c1c1ce95100807e3e171522d76d5fc55c7aa7",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-6-0-base.json": {
+      "bytes": 35428,
+      "sha256": "c22cd2c3753177d2c73f27bbe4c2e3634dd5e0d1ee1e2d6c42a960a1be11ff49",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-6-0-base.json.pre-teardown.json": {
+      "bytes": 19082,
+      "sha256": "c78dbcb65588fe42a9713876030a7962a22b8737001f0178d3383d0aa9ed8928",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-6-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-6-1-candidate.input.json": {
+      "bytes": 1429,
+      "sha256": "42b8500ca4fbc997e33f4981fe022441a0b4fef696a81e4423ca6430453179a1",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-6-1-candidate.json": {
+      "bytes": 34944,
+      "sha256": "97244b3a80ebe3586f3640537968715f1fee17dd30552fe52621ba00c851b991",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-6-1-candidate.json.pre-teardown.json": {
+      "bytes": 18910,
+      "sha256": "c7c0a42ac2c8623b3427ff876762cd5e7f63f6af17be814356c48324654dd66c",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/csg-6-1-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-0-0-base.input.json": {
+      "bytes": 1392,
+      "sha256": "784bc4be56e4a3d2ccfc007388000ca344879feb874621c521ca95951ab99ca0",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-0-0-base.json": {
+      "bytes": 116733,
+      "sha256": "9a745cd8f55701b493e2dc9d5aa6da60313b7c67807c4277ac64657fe771fa3f",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-0-0-base.json.pre-teardown.json": {
+      "bytes": 109053,
+      "sha256": "63a18a36f30d6adedd44ba700932015f26bb052b5eb599f66888bb8cead106f8",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-0-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-0-1-base.input.json": {
+      "bytes": 1392,
+      "sha256": "788f281e5d0796ab2c953a663a27970fbc7ff1980bee5a0b820f806a59b2e4d7",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-0-1-base.json": {
+      "bytes": 116733,
+      "sha256": "360e2dc798eba0373c939ef0cd5e4a4ba9c446c4eda079917028a3a13244285d",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-0-1-base.json.pre-teardown.json": {
+      "bytes": 109053,
+      "sha256": "15beb5d19d4d588de4d80f4b33bdc3b01eb8d9ab0556d4128578a8f09fd62e95",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-0-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-1-0-base.input.json": {
+      "bytes": 1392,
+      "sha256": "95d26479cf4a4085cbf25ec42e37f7cd7c3da3a417b7a759cfc22b040c15bf9a",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-1-0-base.json": {
+      "bytes": 116725,
+      "sha256": "caf11fde43643281728fc660587dc7573cd34650abd0e0e7560874dbfcb2bef1",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-1-0-base.json.pre-teardown.json": {
+      "bytes": 109053,
+      "sha256": "bc37beb42557ec692c11c7fd0eddb7ed1e89390b11c92a7456b7fe9b132153b4",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-1-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-1-1-base.input.json": {
+      "bytes": 1392,
+      "sha256": "c6f897c620255d29e2b3973e4d26469179ceb5c13b1ef79ed00adafabfd14dd5",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-1-1-base.json": {
+      "bytes": 116734,
+      "sha256": "1668dd5c749122b96f72cec5464de8eb0ee5cc14146060ff75d4d518d61dde89",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-1-1-base.json.pre-teardown.json": {
+      "bytes": 109053,
+      "sha256": "1eba0310dafa26f400856a4022b3c07a64e3edeb62c2cb2a16816ea0272066aa",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-1-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-2-0-base.input.json": {
+      "bytes": 1392,
+      "sha256": "8f5731c125379a6d42f88b453d4e0b5d32411e3c57b4898536505629dc93a652",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-2-0-base.json": {
+      "bytes": 116733,
+      "sha256": "3b3ff1cad0bc489cf9b2cff11afb75cf1f4462a3b4588c9c4b2b673827f05c4d",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-2-0-base.json.pre-teardown.json": {
+      "bytes": 109053,
+      "sha256": "3b422784ca7e54180584f7d5cbfb9abb3b594ae2f53ec16ce2a271e4ed1e964e",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-2-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-2-1-candidate.input.json": {
+      "bytes": 1402,
+      "sha256": "a71f1577c65c658dba35b411ed94c097075c195337291e34278d1274345a7fd5",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-2-1-candidate.json": {
+      "bytes": 116250,
+      "sha256": "8c25dd29f25f14b42156525913d2948dc353ada068768715d248a5143fbdb264",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-2-1-candidate.json.pre-teardown.json": {
+      "bytes": 108881,
+      "sha256": "53623e9780a89874847be956c21320e9ce1db76594ed5833e52e25142ed701ee",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-2-1-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-3-0-candidate.input.json": {
+      "bytes": 1402,
+      "sha256": "f01d91725807d9f614e5e67ea95de71b5a9aa325d819b19642a0424fc68f8896",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-3-0-candidate.json": {
+      "bytes": 116251,
+      "sha256": "d35590130e472b0abc73c2f0082f328917a08ea2382b27feafa52848e2122743",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-3-0-candidate.json.pre-teardown.json": {
+      "bytes": 108881,
+      "sha256": "3daa7e3cfebff826e79dc2ed14232191cb8675ed15ebcd3557870d54184547d5",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-3-0-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-3-1-base.input.json": {
+      "bytes": 1392,
+      "sha256": "f9676c8799b38e3e03c71d57117ed6c931b5d10e011cc6a96d659edc91a667e4",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-3-1-base.json": {
+      "bytes": 116732,
+      "sha256": "ef18e4105d4668d1033407473dcccd8e2caf7419335239cca6de39525ab4e59c",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-3-1-base.json.pre-teardown.json": {
+      "bytes": 109053,
+      "sha256": "13e923739cf9b18d7b24a8831adf348713b750e61a39393b322a6dbc15dffd0b",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-3-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-4-0-base.input.json": {
+      "bytes": 1392,
+      "sha256": "b565431e2f2b782c3e340687ab1389eb2d773b354dc139cdc236a6b3466929d8",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-4-0-base.json": {
+      "bytes": 116733,
+      "sha256": "0785f4fd5b275391d5176bf113a485c25ae59eed26497d5a1a6b4aab3e16b3bf",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-4-0-base.json.pre-teardown.json": {
+      "bytes": 109053,
+      "sha256": "fec41152fd3e33f0156e4014adc59473c62f4b0dada4ba26d366bd8fe8a68b9a",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-4-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-4-1-candidate.input.json": {
+      "bytes": 1402,
+      "sha256": "2aaf7a31f10c516b37f38449524b345fd0f89de809d38290f677ba3a7e8c58bd",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-4-1-candidate.json": {
+      "bytes": 116252,
+      "sha256": "91d02d0d398a030633bf394785e0bd500b315d58b10b536fa0168403a44f06d5",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-4-1-candidate.json.pre-teardown.json": {
+      "bytes": 108881,
+      "sha256": "e84acdbbbc378df0ade5335453f9189ab4d43415a59a75932f409b1b54760e9a",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-4-1-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-5-0-candidate.input.json": {
+      "bytes": 1402,
+      "sha256": "d6caf35fe149e341bd841db2130c6881187891c21f1466bd1d76a453e8ae7a0c",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-5-0-candidate.json": {
+      "bytes": 116252,
+      "sha256": "3549b2cadd8e7a2025dd6e13ec2d636b850e37888aae5211c43dc35c6d5ce580",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-5-0-candidate.json.pre-teardown.json": {
+      "bytes": 108881,
+      "sha256": "8b4b8ac3fbe12b48769eb12d0e455a79bd3eb98435423b6a3d627c2e4989c9dc",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-5-0-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-5-1-base.input.json": {
+      "bytes": 1392,
+      "sha256": "9b4322cd4a3bf57bdd4f33af9896cfb9a859533962514c1a2ddd73e05239a360",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-5-1-base.json": {
+      "bytes": 116734,
+      "sha256": "9b98e3faa40c8b6ee6a16469748c56ea6f55bfaa06185938b897f74f1a3265c9",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-5-1-base.json.pre-teardown.json": {
+      "bytes": 109053,
+      "sha256": "0f03c38ec07b44ce2a27d0d8e288d6ade036ca1af90d820a933fcffb5f136ee7",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-5-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-6-0-base.input.json": {
+      "bytes": 1392,
+      "sha256": "2e5844cf6c156acf69f30524b2ea51bf0cf22a8e91049a38fdea0ef67aeed7b3",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-6-0-base.json": {
+      "bytes": 116734,
+      "sha256": "825b1028658b0fd023360af75a7fc3ad5684bc0fdd9be455d43cd86bc447c4b9",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-6-0-base.json.pre-teardown.json": {
+      "bytes": 109053,
+      "sha256": "7dd9238649f1537123b7b164c3b48a5dc735d95daeff87332031dd958d566295",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-6-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-6-1-candidate.input.json": {
+      "bytes": 1402,
+      "sha256": "f045a02309b65c6c274bc2ea5f2bcab23818d55e3b4df5304169c6632c4f9ed5",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-6-1-candidate.json": {
+      "bytes": 116251,
+      "sha256": "6126169576acaa497ed55a2865cb2a7a84fe268967799ee10f48b7510643efdc",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-6-1-candidate.json.pre-teardown.json": {
+      "bytes": 108881,
+      "sha256": "3b70a5f99af3da963656bc4f52e3304a35a292719df3713f44eb7948cc830717",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/heavy-csg-6-1-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-0-0-base.input.json": {
+      "bytes": 1342,
+      "sha256": "12d5fea13bff12cc953cc1207f26de58d6d5e1f6dbd6dd27589e1dffdaf9423f",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-0-0-base.json": {
+      "bytes": 15436,
+      "sha256": "2dbae554f06b7cdc1c39fb6746018c22cefd106be6f978e2b27d596cbd218dda",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-0-0-base.json.pre-teardown.json": {
+      "bytes": 8640,
+      "sha256": "8bb98483adac4dbd6dd3f030aca85835c0afd4241f578cbf1f2ed07019838495",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-0-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-0-1-base.input.json": {
+      "bytes": 1342,
+      "sha256": "d29984dd68a70b1871ffe128c1578943175f565b9e235420f5ebd31f7908280c",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-0-1-base.json": {
+      "bytes": 15435,
+      "sha256": "47e454d7bc5adfeacf904c22a0b40b9477ee7d9cec76bc19f09b1d46e2510c03",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-0-1-base.json.pre-teardown.json": {
+      "bytes": 8639,
+      "sha256": "01071e0d78f51d832399157bd80d65a35a5f254ee885312ea13ff7fc476efdaa",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-0-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-1-0-base.input.json": {
+      "bytes": 1342,
+      "sha256": "92985d11d6812c034899c9c1edef280ce6ba092ccc48be76db081260e97823f0",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-1-0-base.json": {
+      "bytes": 15436,
+      "sha256": "17482b7c32780bf24ff88056a5ae152a25720ba19f6c58c72775103c59fe548f",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-1-0-base.json.pre-teardown.json": {
+      "bytes": 8640,
+      "sha256": "29cfe988f8f7ab2d09b2f5a86f7f906a41d2cdc89bd4205d30bc7d1923702b36",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-1-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-1-1-base.input.json": {
+      "bytes": 1342,
+      "sha256": "a586bec13795ded76154a2ce3b78636e43adfd4317b9c4260b57c8077fff517a",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-1-1-base.json": {
+      "bytes": 15438,
+      "sha256": "b511bc01e8466a513f342a6a24a9a8420dd9f9048b6ba8a751650b5da5c43402",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-1-1-base.json.pre-teardown.json": {
+      "bytes": 8640,
+      "sha256": "7f56601bdc29b207f9f54e7ed48f54a34e7ef007fc460ca7b4c5dbafffd79288",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-1-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-2-0-base.input.json": {
+      "bytes": 1342,
+      "sha256": "af3cbc41da8d175c29c916f15269f9e940c39aeeaecb2e2abb4414cab590ad1d",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-2-0-base.json": {
+      "bytes": 15437,
+      "sha256": "fb259fd2ff2cda34391a11741ffa3fc9cdf008f1ab6ccccb45aef7eb4e64e453",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-2-0-base.json.pre-teardown.json": {
+      "bytes": 8640,
+      "sha256": "95421208f5bc2f9cc9975e0ababa1148d632852292e875535d4a583f610c8b9c",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-2-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-2-1-candidate.input.json": {
+      "bytes": 1352,
+      "sha256": "bb484afb369bf978674b9d266f437a85d7ea68ea1acb99c192f1cc8b5dc36836",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-2-1-candidate.json": {
+      "bytes": 14956,
+      "sha256": "6e48951a5322aa6da5bea0978541b1e40dc2acc630c8ed77a9dda0fc2f8e46f5",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-2-1-candidate.json.pre-teardown.json": {
+      "bytes": 8468,
+      "sha256": "976db7b72a3ecaabcd257b876a8c894d927047cdd547769f7fe2b2f31c49f303",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-2-1-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-3-0-candidate.input.json": {
+      "bytes": 1352,
+      "sha256": "98a3ed451a1936c44e24f51e31bb0cd4533568c6f7392403ba9e54cb899f8719",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-3-0-candidate.json": {
+      "bytes": 14955,
+      "sha256": "6743533de2cb22cb5dde29d42c6919af75e19e233f176d586b869b98baf8df76",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-3-0-candidate.json.pre-teardown.json": {
+      "bytes": 8468,
+      "sha256": "667fae6fa57fab144a4f11ad826a3a9b2d950c729816e71f155256754ec8e570",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-3-0-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-3-1-base.input.json": {
+      "bytes": 1342,
+      "sha256": "ba3da9153f1680c41a613ac499b3cb96c06182c923a681dbdd44403a74d8ad1d",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-3-1-base.json": {
+      "bytes": 15439,
+      "sha256": "97c8437756a62a35d158e3364936a724f33a8cf590aad38bd7337d9d16c33860",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-3-1-base.json.pre-teardown.json": {
+      "bytes": 8640,
+      "sha256": "2b951304842703403a891621b1f42ad91fc964c942fc2cdd35576c9435870a8e",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-3-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-4-0-base.input.json": {
+      "bytes": 1342,
+      "sha256": "e4ee422089c96e4e8477a612e3861b54ada4072107113a2e71c48affd784503e",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-4-0-base.json": {
+      "bytes": 15437,
+      "sha256": "137132783fc2b79f14fd090606ac16fa828e97502379820602abf7c9460e4311",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-4-0-base.json.pre-teardown.json": {
+      "bytes": 8639,
+      "sha256": "d81c1af1fe19ea331503ca25c3f11e69fa70efc048965987bafb308f5b990a62",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-4-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-4-1-candidate.input.json": {
+      "bytes": 1352,
+      "sha256": "39f6beadebca319f5a965b18edf74ad0589f91729dbdda28c3e0bbfdfab67c87",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-4-1-candidate.json": {
+      "bytes": 14958,
+      "sha256": "05f240210eff43d56f6d1f9e7610e5cb649298693839feab1197cafe6b337347",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-4-1-candidate.json.pre-teardown.json": {
+      "bytes": 8467,
+      "sha256": "f79cf6c795ce622da2137cb9b923a1c10a84bb0a6baba2ff9e39dcf03c297496",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-4-1-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-5-0-candidate.input.json": {
+      "bytes": 1352,
+      "sha256": "56b76139d62468bb0a4c018f8d4cdb32d88788e61515c7a11d35fc080195dabf",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-5-0-candidate.json": {
+      "bytes": 14957,
+      "sha256": "4e9c2350fd35344eb373f7e5f018379fa0f6ecfbd32f72886ebf3dd14cf80690",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-5-0-candidate.json.pre-teardown.json": {
+      "bytes": 8468,
+      "sha256": "bb27a9598a23342486aa0373bcf713ee9a3361bf5f7852202eab297ed5f78699",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-5-0-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-5-1-base.input.json": {
+      "bytes": 1342,
+      "sha256": "54466a49fa40a7f9c5ff7bf52b9db758f5b6f9d8c018c9af63cdb9725031f6c4",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-5-1-base.json": {
+      "bytes": 15438,
+      "sha256": "bfccb9a84d329ecc520dd64faa8730c79fe7239fe64a9da91209046bf438078f",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-5-1-base.json.pre-teardown.json": {
+      "bytes": 8639,
+      "sha256": "ec03603081ccd9f6862b99cffefa8f248bf856f1a22719ee7d6b3a7f431f86bc",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-5-1-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-6-0-base.input.json": {
+      "bytes": 1342,
+      "sha256": "ca128265a5cfbcba8495969df0ca7af60c2d48a6504af82cf88ca3c2a159ba9e",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-6-0-base.json": {
+      "bytes": 15428,
+      "sha256": "8d28448de4a1aaf69af54784ba803389570939dc5cda884feb6dc27f8aba9310",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-6-0-base.json.pre-teardown.json": {
+      "bytes": 8640,
+      "sha256": "d3d4fb0d5285fc19d7c183d3c7020e21bc356c5172929cbf6dd1769e2cdcd394",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-6-0-base.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-6-1-candidate.input.json": {
+      "bytes": 1352,
+      "sha256": "9d062b76b502cbd0f8dc42fce553a0ef05de25682de4883a3ab19730450afc68",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-6-1-candidate.json": {
+      "bytes": 14958,
+      "sha256": "fe858787249337e2bf5cd0091b8ff55821dc389f7fc8b0c5974caf8f72889551",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-6-1-candidate.json.pre-teardown.json": {
+      "bytes": 8468,
+      "sha256": "560a623840967bce0e8756f49d0e8797eb754e4cfdf541a3d6844e0a287a899f",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/house-6-1-candidate.json.runner.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/pnpm-install.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/pnpm-install.stdout.log": {
+      "bytes": 23,
+      "sha256": "a941066d38162d18c88ea4b096d8cf11d19b0d46b973f6d916e2f9b8794e1f36",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/pnpm-selection.json": {
+      "bytes": 2595,
+      "sha256": "c07ee4284d84737b5a70e09e823f606467a701199fe2fa3e4be57384c4dd2f67",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/protocol.json": {
+      "bytes": 19094,
+      "sha256": "482d6e90766aae95063b357e2e100c5c1aaca28f833aa810e6f3c34dc0e3d84f",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/provenance.json": {
+      "bytes": 9846478,
+      "sha256": "68feda8403f1a5d45ac473c1d3e2deddbe080103fb230f279629056cfe8e6ed5",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/report.json": {
+      "bytes": 4844225,
+      "sha256": "2e5b9e453c90e457be776cee487d239cc1e75799a1cbcb896082aa90bd7ffc0a",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/report.md": {
+      "bytes": 1234,
+      "sha256": "b98b114ec451808c49e04691616f60cfeb0f2b6124d50b25fed32a9b4dbb9425",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/artifacts/sdk-worker-37152442255-1/wasm-bindgen.tar.gz": {
+      "bytes": 11484249,
+      "sha256": "064948d58e2d6c0a745216477a639ba696216d6309aaa902939d1b865b1d869d",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/job.log": {
+      "bytes": 230154,
+      "sha256": "788a7ca5c84c81c663b2fbe6bf7235308031fdd887e62a70e4756903c32673ee",
+      "storage": "revision-archive"
+    },
+    "historical-9d-sdk/run.json": {
+      "bytes": 7173,
+      "sha256": "98860076e18f5a6d0eb9bcd4c4100ae523a4d8dcd908cc3d0ff8752e547a677b",
+      "storage": "revision-archive"
+    },
+    "independent-9d-qualification/README.md": {
+      "bytes": 3827,
+      "sha256": "121dcb8598f13b1ec493a6ef754ce7c65e58407ab729291310a069baa3f54217",
+      "storage": "revision-archive"
+    },
+    "independent-9d-qualification/artifact-hashes.json": {
+      "bytes": 36099,
+      "sha256": "ad9df0ef86dcfc064a2d95ec82df96218c4c09928e3f6dc311bbdef8f4bdfeba",
+      "storage": "revision-archive"
+    },
+    "independent-9d-qualification/audit.py": {
+      "bytes": 17780,
+      "sha256": "6ced9f4a8c755737bdf2cb90ed2b2dd31705d7c25b86f26de2a04d7be94b815a",
+      "storage": "revision-archive"
+    },
+    "independent-9d-qualification/audit.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "independent-9d-qualification/audit.stdout": {
+      "bytes": 7465,
+      "sha256": "ac290b6c272b56acd4f0ed74240471536c04dc44f0b5d524a27754f805d95251",
+      "storage": "revision-archive"
+    },
+    "independent-9d-qualification/git-and-closure-attachment.json": {
+      "bytes": 5157,
+      "sha256": "d21389c2a026f3c820d0555fa2c56c195c62042f468eb6ba1b56ac41e3566cb8",
+      "storage": "revision-archive"
+    },
+    "independent-9d-qualification/manifest.json": {
+      "bytes": 1835,
+      "sha256": "fffabd65e12c0f0841c5d3d2758595fc5ffb6c417f37f63d296ed76d1bc83ca2",
+      "storage": "revision-archive"
+    },
+    "independent-9d-qualification/qualification.json": {
+      "bytes": 244787,
+      "sha256": "4ab873e70925133a73ec4ef73fcbf771910f699686f1f050310e5bfacc8d8c49",
+      "storage": "revision-archive"
+    },
+    "independent-9d-qualification/rust-source-and-wasm-scope.json": {
+      "bytes": 722,
+      "sha256": "f6fcc46cd3dda2f4fe883cd89c8b182b98c39086b24aaefca69a6f4e240affa7",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk-qualification/rust-source-and-wasm-scope.json"
+    },
+    "independent-9d-qualification/wasm-fetches.json": {
+      "bytes": 73610,
+      "sha256": "90e499dfaac58a795ab71dd960d852e63a53ec74d1fae90b4005dd683167b8d4",
+      "storage": "revision-archive"
+    },
+    "independent-9d-qualification/wasm-section-comparison.json": {
+      "bytes": 1206311,
+      "sha256": "5ae6d6b56bd37b264b389264ce82091f8f1bdf3b23d941b282fbb6aae9e78bad",
+      "storage": "revision-archive"
+    },
+    "predecessor-9d-assets/assets/bridge-BXWUkWDf.js": {
+      "bytes": 259821,
+      "sha256": "acd9095f5359e3baf9a9dc2b5d034fabb0bc15abc9dacf1f0ec55007b74b5e76",
+      "storage": "original-archive-reference",
+      "originalMember": "vm-v4/dist/assets/bridge-BXWUkWDf.js"
+    },
+    "predecessor-9d-assets/assets/glue-CujFJEpK.js": {
+      "bytes": 75,
+      "sha256": "6b5ba52d2408eaed6d0041ab276c09e307f00b9dbaa6927aad12c66b89f0e16e",
+      "storage": "original-archive-reference",
+      "originalMember": "vm-v4/dist/assets/glue-CujFJEpK.js"
+    },
+    "predecessor-9d-assets/assets/ifc-lite-CXBpQePa.js": {
+      "bytes": 80538,
+      "sha256": "8aa93547d0c0c0e1fa29712a3e40c708463afe0eb2d196dc8265f7bbf0b1cba1",
+      "storage": "original-archive-reference",
+      "originalMember": "vm-v4/dist/assets/ifc-lite-CXBpQePa.js"
+    },
+    "predecessor-9d-assets/assets/ifc-lite_bg-FO-eZ0xl.wasm": {
+      "bytes": 9510669,
+      "sha256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+      "storage": "original-archive-reference",
+      "originalMember": "vm-v4/dist/assets/ifc-lite_bg-FO-eZ0xl.wasm"
+    },
+    "tools/functional-budget-guardian-v3-disk-session6503.py": {
+      "bytes": 4000,
+      "sha256": "9ca9b764e0586380b8db5b8a6f61ec01d7431012d284a51a87dc3e910c93bf7f",
+      "storage": "revision-archive"
+    },
+    "warm-fastpath-validation/6537-browser-init-warm-fastpath-module-size-v1.log": {
+      "bytes": 12598,
+      "sha256": "d080a6a144311f23498d98722af34d1de96fa4c155a43c9c82dc3b38a066fe8e",
+      "storage": "revision-archive"
+    },
+    "warm-fastpath-validation/6537-browser-init-warm-fastpath-root-test-v1.json": {
+      "bytes": 731,
+      "sha256": "6e67997dad0206641a19997282d79473f4c55d66141423851c406bdb8e7f830e",
+      "storage": "revision-archive"
+    },
+    "warm-fastpath-validation/6537-browser-init-warm-fastpath-root-test-v1.log": {
+      "bytes": 129226,
+      "sha256": "2269f6b7fd53145914e39fc479d8d9967e97b57a14589eed2262a783ac9d55a5",
+      "storage": "revision-archive"
+    },
+    "warm-fastpath-validation/6537-browser-init-warm-fastpath-root-typecheck-v1.json": {
+      "bytes": 701,
+      "sha256": "e6dbc38bbfd3aac84b5e7d6912c414738dd19a3370c65ccac90f8145516ce278",
+      "storage": "revision-archive"
+    },
+    "warm-fastpath-validation/6537-browser-init-warm-fastpath-root-typecheck-v1.log": {
+      "bytes": 46236,
+      "sha256": "e0f2e1c8409ec0642249dc5304df692f8da9a6d59b9b614dfc7cbbebce201903",
+      "storage": "revision-archive"
+    },
+    "warm-fastpath-validation/6537-browser-init-warm-fastpath-scoped-lint-v1.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storage": "original-archive-reference",
+      "originalMember": "sdk/architecture-0-0-base.json.runner.log"
+    },
+    "warm-fastpath-validation/6537-browser-init-warm-fastpath-sdk-dispatch-v1.json": {
+      "bytes": 6844,
+      "sha256": "d9d694ac6872c2bfb5d1ee15ea20dc9eec407714af169534fa4b402e621e9b21",
+      "storage": "revision-archive"
+    },
+    "warm-fastpath-validation/6537-browser-init-warm-fastpath-source-text-v1.log": {
+      "bytes": 30811,
+      "sha256": "c907d1adae01db586feb1426a545552f10cc8354b677b334f5be88e702eed095",
+      "storage": "revision-archive"
+    },
+    "warm-fastpath-validation/6537-browser-init-warm-fastpath-test-wiring-v1.log": {
+      "bytes": 859,
+      "sha256": "69a36296afef8b8191674e3f6642b9a230dfb8647dafee1a48d482198f11fccd",
+      "storage": "revision-archive"
+    },
+    "warm-fastpath-validation/6537-browser-init-warm-fastpath-whole-revert-oracle-v1.log": {
+      "bytes": 4235,
+      "sha256": "6dc1d8afbfa0f42f9d92e7c72a71ba2e021e416ff78673a069fc2a34d133993c",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v5-refused/bridge-entry.mjs": {
+      "bytes": 387,
+      "sha256": "8d1ac2bd1049c90891de5fdef4e4558d8f6b9cb7375d439c8f91fc874228a7c6",
+      "storage": "original-archive-reference",
+      "originalMember": "vm-v4/bridge-entry.mjs"
+    },
+    "warm-proof-v5-refused/dist/assets/bridge-BleB98P_.js": {
+      "bytes": 259861,
+      "sha256": "7389c5576f2e33591b23abbe3ad29e775a97b585a0775e27a782fdf8dc837e4d",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v5-refused/dist/assets/glue-BzQkMrM-.js": {
+      "bytes": 101,
+      "sha256": "f84ef2f4129602f6b85ead243b6b268772cc42e899698db8840b679d4ca0ce6e",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v5-refused/dist/assets/ifc-lite-Bnl_qkIY.js": {
+      "bytes": 80862,
+      "sha256": "b876fc561ec556c881c137d4f793b3f672bcb66c567fcb984eb0e22b411b5c82",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v5-refused/dist/assets/ifc-lite_bg-FO-eZ0xl.wasm": {
+      "bytes": 9510669,
+      "sha256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+      "storage": "original-archive-reference",
+      "originalMember": "vm-v4/dist/assets/ifc-lite_bg-FO-eZ0xl.wasm"
+    },
+    "warm-proof-v5-refused/glue-entry.mjs": {
+      "bytes": 68,
+      "sha256": "b7e45126c07b6a63a6bfbf79271ff87a394530b5d66095311c443809efb0bc7c",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v5-refused/guardian-actual-v1.json": {
+      "bytes": 866,
+      "sha256": "261d6351f9ad40f26c8db74c16a4459f4e5dd8bd7a6598518717ffce00ded48f",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v5-refused/guardian-actual-v1.log": {
+      "bytes": 2486,
+      "sha256": "8ef5dac4de6e63f098e59659d60481fdfd37076de57aa99a270af1ea39b88b40",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v5-refused/input-freeze.json": {
+      "bytes": 45463,
+      "sha256": "021fd8f5160ce8cbe35d74162187cfd20a3c7d41d13ad4771f37839160157ef0",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v5-refused/proof.mjs": {
+      "bytes": 16450,
+      "sha256": "ac5272bdbfc3eda804b766eb53e382902125d6203a1d55f11ccc40b67221b595",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v5-refused/receipt.json": {
+      "bytes": 48123,
+      "sha256": "9834d80bdbeebc7f9fabd46cdd7245f745a49c8a0edd9926cb8774a46b0e1b14",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v5-refused/warm-predecessor-oracle.json": {
+      "bytes": 1989,
+      "sha256": "ed840501060b36aa9c06edcf83850b42a1695a6a6c33b70684cb9f0473e6dba6",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v5-refused/warm-predecessor-oracle.log": {
+      "bytes": 1031,
+      "sha256": "b26b7d81c46a45503cc061a2291203c51bb49bc31387d1956c4881e48f112408",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v5-refused/warm-predecessor-oracle.mjs": {
+      "bytes": 8156,
+      "sha256": "bf0cdc2d2ace729fddf502e04d39c893a0242885e97b9d64f01247a90b1fc802",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v6-complete/PREDECESSOR.md": {
+      "bytes": 394,
+      "sha256": "0f4ff3f2287259f1a41197702e84cb7f14a8f52f21e7afc3cf7d43dc6e4e05bf",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v6-complete/bridge-entry.mjs": {
+      "bytes": 387,
+      "sha256": "8d1ac2bd1049c90891de5fdef4e4558d8f6b9cb7375d439c8f91fc874228a7c6",
+      "storage": "original-archive-reference",
+      "originalMember": "vm-v4/bridge-entry.mjs"
+    },
+    "warm-proof-v6-complete/dist/assets/bridge-BleB98P_.js": {
+      "bytes": 259861,
+      "sha256": "7389c5576f2e33591b23abbe3ad29e775a97b585a0775e27a782fdf8dc837e4d",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v6-complete/dist/assets/glue-DG11aqVk.js": {
+      "bytes": 142,
+      "sha256": "290083c1aa862db34559b3567c3d416d300f591733f9a8b29defc7df32455ffe",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v6-complete/dist/assets/ifc-lite-Bnl_qkIY.js": {
+      "bytes": 80862,
+      "sha256": "b876fc561ec556c881c137d4f793b3f672bcb66c567fcb984eb0e22b411b5c82",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v6-complete/dist/assets/ifc-lite_bg-FO-eZ0xl.wasm": {
+      "bytes": 9510669,
+      "sha256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+      "storage": "original-archive-reference",
+      "originalMember": "vm-v4/dist/assets/ifc-lite_bg-FO-eZ0xl.wasm"
+    },
+    "warm-proof-v6-complete/glue-entry.mjs": {
+      "bytes": 154,
+      "sha256": "233f4c29fef94ea8d47ee7082b6fa94a7683f842943d31e6dbcc681939444ae0",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v6-complete/guardian-actual-v1.json": {
+      "bytes": 866,
+      "sha256": "5eee653963eb0bcd7dabeaf0cf0aa6274f87b38b95a78f1396aa50ad0e6b721b",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v6-complete/guardian-actual-v1.log": {
+      "bytes": 8649,
+      "sha256": "be064994e15258fc7e7a63f0371dd3ffc8a207310906e761cc0d6a142da3fa68",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v6-complete/input-freeze.json": {
+      "bytes": 45463,
+      "sha256": "0033a8565c6fce73c1d067cef47f22542f5b554fcf0575c49e9994d12df5932b",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v6-complete/proof.mjs": {
+      "bytes": 16444,
+      "sha256": "5c8026d01888c52e6862bddb6c138d126ac67d022e5f2311fb16a313956b9088",
+      "storage": "revision-archive"
+    },
+    "warm-proof-v6-complete/receipt.json": {
+      "bytes": 54243,
+      "sha256": "ea19798f81a932786b7822901dd01b95aa7229cf9afe2d41079d75d5ff247483",
+      "storage": "revision-archive"
+    }
+  },
+  "supportFiles": {
+    "extract-revision.py": {
+      "bytes": 4534,
+      "sha256": "ef088ffc6559fd6b978c2ffbd75a7ffdc951671303a3e94f385b04cc027296d9"
+    },
+    "revision-verification.json": {
+      "bytes": 751,
+      "sha256": "26a27e5dcd8398c9dd08d053da3de6c1d1d5c0dc09580cfa0b9f91dcbabac11f"
+    },
+    "README.md": {
+      "bytes": 9783,
+      "sha256": "4430602dfeffbdaee4352175aa02da5fda5a6cfca8f3d364270db343b1c70f4e"
+    }
+  }
+}

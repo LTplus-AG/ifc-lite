@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
+import '@/test/content-fixture.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -26,7 +28,7 @@ const spec: DocumentSpec = { version: DOCUMENT_VERSION, id: 'heading', name: 'Li
     { kind: 'page-break', id: 'next' },
     { kind: 'text', id: 'body2', style: 'body', text: 'Second section' },
   ] };
-const settle = async () => { for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); }); };
+const settle = async () => { for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); }); await documentPreviewReady(); };
 
 it('edits and resets each printed page heading without renaming the library document (#6554)', async () => {
   localStorage.clear();
@@ -54,7 +56,8 @@ it('edits and resets each printed page heading without renaming the library docu
     assert.ok(['#6b21a8', 'rgb(107, 33, 168)'].includes(heading.style.color));
     assert.ok(Math.abs(parseFloat(heading.style.fontSize) - 32 * 560 / pageBox(spec.page).w) < 0.01);
   }
-  assert.deepEqual(loadDocuments()[0].pageHeading, stored.pageHeading);
+  await act(async () => { await useViewerStore.getState().retryDocumentsSave(); });
+  assert.deepEqual((await loadDocuments())[0].pageHeading, stored.pageHeading);
   assert.deepEqual(parseDocumentFile(JSON.stringify(stored)).pageHeading, stored.pageHeading);
   const reset = ui.querySelector<HTMLButtonElement>('button[aria-label="Reset page heading"]');
   assert.ok(reset); click(reset); await settle();

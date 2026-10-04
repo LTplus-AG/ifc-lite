@@ -1,0 +1,22 @@
+{
+  "archive": "retained-native.tar.gz",
+  "archiveBytes": 12164169,
+  "archiveSha256": "819cd29630d174dc1c8525a49bca0bc70d38e3bbbaea30ca30cd7afdd9af4fc3",
+  "originalArtifactCount": 182,
+  "archiveMemberCount": 183,
+  "originalInputBytes": 30083482,
+  "storedArtifactMemberBytes": 30083482,
+  "memberManifestSha256": "674b7c53953340ecd032e5919173a9019338773707dc8f5dd3554b97a0064416",
+  "gzipMtime": 0,
+  "safeRegularPaths": true,
+  "roundtripAllBytesAndHashes": true,
+  "nestedDependencyMembersVerified": true,
+  "modelBinaryAndNodeModulesExcluded": true,
+  "highConfidenceSecretScanPassed": true,
+  "run": 37149940166,
+  "controller": "c32830300ebbfe919a9d69df94197dc2ae8cceb0",
+  "base": "0a16f532ceb8f177d02ee29f4645e6f048fbace5",
+  "candidate": "07bdf45b5d470413d3796b3189d588a91a09a0d6",
+  "independentAuditChecks": 687,
+  "scope": "Evidence retention only; no execution of production, tests or measurements."
+}

@@ -10,7 +10,7 @@
  * and commits the stacks in one store update per batch (#5861).
  */
 
-import type { MutablePropertyView, IfcAttributeValue, Mutation } from '@ifc-lite/mutations';
+import { replayQuantityMutation, type MutablePropertyView, type IfcAttributeValue, type Mutation } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
 import { syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { mirrorCreateEntityRedo, mirrorSourceEntityRestore } from './mutation-cost-undo.js';
@@ -61,6 +61,7 @@ function reportUnreplayable(
 
 /** Apply the inverse of `mutation` to `view` (one undo step, stacks untouched). */
 export function applyUndoToView(get: Get, set: Set, modelId: string, view: MutablePropertyView, mutation: Mutation): void {
+  if (mutation.type === 'SESSION_EDIT') return; // Its retained domain state follows the Undo head.
   // Apply inverse mutation (skipHistory=true); skip onto a peer-deleted entity (#5223, see mutation-redo-remote-guard.ts)
   if (isTargetTombstoned(view, mutation)) {
     set({ collabGeometryNotice: 'An element was removed by a collaborator. Its local history was skipped.' });
@@ -101,17 +102,7 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
     // Undo creation: remove the quantity mutation
     view.removeQuantityMutation(mutation.entityId, mutation.psetName!, mutation.propName);
   } else if (mutation.type === 'UPDATE_QUANTITY') {
-    if (mutation.psetName && mutation.propName && mutation.oldValue !== undefined && mutation.oldValue !== null) {
-      view.setQuantity(
-        mutation.entityId,
-        mutation.psetName,
-        mutation.propName,
-        Number(mutation.oldValue),
-        undefined,
-        undefined,
-        true // skipHistory
-      );
-    }
+    replayQuantityMutation(view, mutation, 'undo', true);
   } else if (mutation.type === 'UPDATE_ATTRIBUTE') {
     if (mutation.attributeName) {
       if (mutation.oldValue !== undefined && mutation.oldValue !== null) {
@@ -202,6 +193,7 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
 
 /** Re-apply `mutation` to `view` (one redo step, stacks untouched). */
 export function applyRedoToView(get: Get, set: Set, modelId: string, view: MutablePropertyView, mutation: Mutation): void {
+  if (mutation.type === 'SESSION_EDIT') return; // Revisit the retained domain state at the Redo head.
   // Re-apply mutation (skipHistory=true); same tombstone guard as undo() (#5223)
   if (isTargetTombstoned(view, mutation)) {
     set({ collabGeometryNotice: 'An element was removed by a collaborator. Its local history was skipped.' });
@@ -225,17 +217,7 @@ export function applyRedoToView(get: Get, set: Set, modelId: string, view: Mutab
       view.deleteProperty(mutation.entityId, mutation.psetName, mutation.propName, true);
     }
   } else if (mutation.type === 'CREATE_QUANTITY' || mutation.type === 'UPDATE_QUANTITY') {
-    if (mutation.psetName && mutation.propName && mutation.newValue !== undefined) {
-      view.setQuantity(
-        mutation.entityId,
-        mutation.psetName,
-        mutation.propName,
-        Number(mutation.newValue),
-        undefined,
-        undefined,
-        true // skipHistory
-      );
-    }
+    replayQuantityMutation(view, mutation, 'redo', true);
   } else if (mutation.type === 'UPDATE_ATTRIBUTE') {
     if (mutation.attributeName && mutation.newValue !== undefined) {
       view.setAttribute(mutation.entityId, mutation.attributeName, String(mutation.newValue), undefined, true);

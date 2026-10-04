@@ -13,14 +13,14 @@ import { Button } from '@/components/ui/button';
 import { useDialogs } from '@/components/ui/confirm-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from '@/components/ui/toast';
-import { DOCUMENT_FILE_SUFFIX, exportDocument, freshBlockId, freshDocumentId, importDocument } from '@/lib/document/persistence';
+import { DOCUMENT_FILE_SUFFIX, exportDocument, copyDocumentBlock, freshDocumentId, importDocument } from '@/lib/document/persistence';
 import { useTranslation } from '@/i18n';
 import type { DocumentSpec } from '@/lib/document/types';
 
 export interface DocumentMenuProps {
   document: DocumentSpec | null;
-  onUpsert: (document: DocumentSpec) => void;
-  onDelete: (id: string) => void;
+  onUpsert: (document: DocumentSpec) => Promise<void> | void;
+  onDelete: (id: string) => Promise<void> | void;
   onActivate: (id: string) => void;
 }
 
@@ -32,19 +32,19 @@ export function DocumentMenu({ document, onUpsert, onDelete, onActivate }: Docum
   const rename = async (): Promise<void> => {
     if (!document) return;
     const name = (await promptDialog({ description: t('documentMenu.namePrompt'), defaultValue: document.name }))?.trim();
-    if (name && name !== document.name) onUpsert({ ...document, name });
+    if (name && name !== document.name) await onUpsert({ ...document, name });
   };
-  const duplicate = (): void => {
+  const duplicate = async (): Promise<void> => {
     if (!document) return;
-    const copy: DocumentSpec = { ...document, id: freshDocumentId(), name: t('documentMenu.copySuffix', { name: document.name }), blocks: document.blocks.map((b) => ({ ...b, id: freshBlockId() })) };
-    onUpsert(copy);
+    const copy: DocumentSpec = { ...document, id: freshDocumentId(), name: t('documentMenu.copySuffix', { name: document.name }), blocks: document.blocks.map(copyDocumentBlock) };
+    await onUpsert(copy);
     onActivate(copy.id);
   };
   const onImportFile = async (file: File | undefined): Promise<void> => {
     if (!file) return;
     try {
       const imported = await importDocument(file);
-      onUpsert(imported);
+      await onUpsert(imported);
       onActivate(imported.id);
       toast.success(t('documentMenu.imported', { name: imported.name }));
     } catch (err) {

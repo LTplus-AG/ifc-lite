@@ -38,6 +38,7 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 
 import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
+import { resolveMapAxisDirection } from './map-axis-direction';
 import {
   authoredNonUnitFactors,
   getEffectiveAxisScales,
@@ -154,13 +155,16 @@ export function detectDoubleGeoreference(
   // above does not inspect either, so a malformed file is still corrected on
   // screen; bailing here would move it silently and say nothing. Quote "an
   // unknown distance" instead of suppressing the whole message. (#2526.)
-  const abscissa = conversion.xAxisAbscissa ?? 1;
-  const ordinate = conversion.xAxisOrdinate ?? 0;
+  // The axis is a direction, so the same unit vector `computeProjectedCenter`
+  // uses (#6700); an authored vector with no direction (zero length or
+  // non-finite) has no placement to quote, which the wording below already
+  // renders as "an unknown distance".
+  const axis = resolveMapAxisDirection(conversion.xAxisAbscissa, conversion.xAxisOrdinate);
   const { x: scaleX, y: scaleY } = getEffectiveAxisScales(conversion, mapScale, lengthUnitScale);
-  const appliedE = easting + abscissa * scaleX * ifcX - ordinate * scaleY * ifcY;
-  const appliedN = northing + ordinate * scaleX * ifcX + abscissa * scaleY * ifcY;
+  const appliedE = axis ? easting + axis.a * scaleX * ifcX - axis.b * scaleY * ifcY : Number.NaN;
+  const appliedN = axis ? northing + axis.b * scaleX * ifcX + axis.a * scaleY * ifcY : Number.NaN;
 
-  const rotationIsIdentity = Math.abs(abscissa - 1) < 1e-9 && Math.abs(ordinate) < 1e-9;
+  const rotationIsIdentity = axis !== null && Math.abs(axis.a - 1) < 1e-9 && Math.abs(axis.b) < 1e-9;
   // The tolerance is expressed as INDUCED POSITION ERROR, not as a fraction:
   // this scale multiplies a map-sized coordinate, so 0.4% of a 6 000 km
   // easting is 24 km of drift and a fraction-based band would wave it through.

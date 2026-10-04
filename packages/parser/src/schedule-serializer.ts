@@ -19,7 +19,7 @@
  *     IfcTask + IfcTaskTime, IfcWorkCalendar + IfcWorkTime +
  *     IfcRecurrencePattern + IfcTimePeriod, IfcRelSequence + IfcLagTime,
  *     and the IfcRelAssignsToControl / IfcRelAssignsToProcess /
- *     IfcRelNests edges.
+ *     IfcRelAssignsToProduct / IfcRelNests edges.
  *
  * The function is pure — it doesn't mutate the input and never touches the
  * STEP source buffer. Re-running it with the same inputs produces the same
@@ -50,6 +50,7 @@ import {
   buildTaskTime,
   buildTask,
   resolveProductIds,
+  resolveProductId,
 } from './schedule-serializer-builders.js';
 import { buildWorkCalendar } from './schedule-serializer-calendar-builders.js';
 
@@ -63,8 +64,11 @@ export interface SerializeScheduleOptions {
   ownerHistoryId?: number;
   /**
    * Look up an existing express ID for a product GlobalId (for binding
-   * `IfcRelAssignsToProcess.RelatedObjects`). When omitted, the relationship
-   * is skipped — the schedule is still valid IFC, just without product links.
+   * `IfcRelAssignsToProcess.RelatedObjects` and
+   * `IfcRelAssignsToProduct.RelatingProduct`). When omitted, or when it
+   * returns `undefined`, the product's own positive expressId is used; a
+   * product with neither is skipped — the schedule is still valid IFC, just
+   * without that product link.
    */
   resolveProductExpressId?: (productGlobalId: string) => number | undefined;
 }
@@ -83,6 +87,8 @@ export interface SerializeScheduleResult {
     lagTimes: number;
     assignsToControl: number;
     assignsToProcess: number;
+    /** IfcRelAssignsToProduct edges (task outputs), one per output product. */
+    assignsToProduct: number;
     relNests: number;
     /** IfcWorkCalendar entities emitted. */
     workCalendars: number;
@@ -120,6 +126,7 @@ export function serializeScheduleToStep(
     lagTimes: 0,
     assignsToControl: 0,
     assignsToProcess: 0,
+    assignsToProduct: 0,
     relNests: 0,
     workCalendars: 0,
     workTimes: 0,
@@ -276,6 +283,39 @@ export function serializeScheduleToStep(
       `#${relId}=IFCRELASSIGNSTOPROCESS('${relGid}',${owner},$,$,${refList(productIds)},$,#${taskId},$);`,
     );
     stats.assignsToProcess += 1;
+  }
+
+  // ── 5b. Tasks → output products (IfcRelAssignsToProduct) ─────────
+  // One relation per product, its RelatedObjects every task that outputs
+  // it — the shape the buildingSMART construction-scheduling examples use,
+  // and what the extractor reads back (#6749). Keyed by the resolved
+  // express ID so two tasks naming the same product share one relation.
+  const outputTasksByProduct = new Map<number, { taskIds: number[]; key: string }>();
+  for (const task of data.tasks) {
+    const outputIds = task.outputProductExpressIds ?? [];
+    const outputGids = task.outputProductGlobalIds ?? [];
+    const count = Math.max(outputIds.length, outputGids.length);
+    if (count === 0) continue;
+    const taskId = taskExpressIdByGlobalId.get(task.globalId);
+    if (taskId === undefined) continue;
+    for (let i = 0; i < count; i++) {
+      const productId = resolveProductId(outputIds[i], outputGids[i], options.resolveProductExpressId);
+      if (productId === undefined) continue;
+      let entry = outputTasksByProduct.get(productId);
+      if (!entry) {
+        entry = { taskIds: [], key: outputGids[i] || `#${productId}` };
+        outputTasksByProduct.set(productId, entry);
+      }
+      if (!entry.taskIds.includes(taskId)) entry.taskIds.push(taskId);
+    }
+  }
+  for (const [productId, { taskIds, key }] of outputTasksByProduct) {
+    const relId = nextId++;
+    const relGid = deterministicGlobalId(`rel-product|${key}`);
+    lines.push(
+      `#${relId}=IFCRELASSIGNSTOPRODUCT('${relGid}',${owner},$,$,${refList(taskIds)},$,#${productId});`,
+    );
+    stats.assignsToProduct += 1;
   }
 
   // ── 6. Sequences (IfcLagTime + IfcRelSequence) ───────────────────

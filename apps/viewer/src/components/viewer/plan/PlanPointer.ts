@@ -47,7 +47,7 @@ function planProfile(profile: SnapProfile): SnapProfile {
 export function resolvePlanSnap(input: PlanPointerInput): SnapResult | null {
   const runtime = getCommandRuntime();
   const { command, ctx } = runtime;
-  if (!command || !ctx?.workplane) return null;
+  if (!command || !ctx?.workplane || ctx.workplane.spec.kind === 'section') return null;
   const snapping = input.snapping && !input.mods.altKey;
   const sources = snapping ? [...modelSnapSources(ctx.modelId), ...input.planSources] : [];
   return solveCommandSnap(runtime, ctx.workplane, {
@@ -61,6 +61,9 @@ export function resolvePlanSnap(input: PlanPointerInput): SnapResult | null {
 
 /** Feed a plan pointer event to the running command. False when no command took it. */
 export function routePlanPointer(kind: 'move' | 'down' | 'up', input: PlanPointerInput): boolean {
+  // A plan cursor describes XY, whereas a section command expects horizontal
+  // distance and height. Consume these events without changing its gesture.
+  if (getCommandRuntime().ctx?.workplane?.spec.kind === 'section') return true;
   const snap = resolvePlanSnap(input);
   if (!snap) return false;
   // The second click of a double-click (detail 2) closes a polygon, as in 3D.

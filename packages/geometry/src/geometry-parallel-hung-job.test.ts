@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { processParallel } from './geometry-parallel.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import type { StreamingGeometryEvent } from './index.js';
+import { MAX_GEOMETRY_CALL_MS } from './hung-job-recovery.js';
 
 /**
  * Issue #4884: production loads failed with "Geometry stream stalled" at the
@@ -223,6 +224,38 @@ describe('processParallel hung geometry call recovery (#4884)', () => {
     );
     await expect(drainWithDeadline(gen, 300)).rejects.toThrow(/TIMED_OUT/);
     expect(created).toHaveLength(2);
+  });
+
+  it('stops forwarding in-call heartbeats past the absolute call bound, so the consumer watchdog still fires with recovery off', async () => {
+    installFakeWorkers();
+    const controller = new AbortController();
+    const gen = processParallel(
+      new TextEncoder().encode(SOURCE),
+      new CoordinateHandler(),
+      undefined,
+      undefined,
+      { workerCountOverride: 1, signal: controller.signal },
+    );
+    const events: StreamingGeometryEvent[] = [];
+    const drained = (async () => { for await (const e of gen) events.push(e); })();
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+    await settle(); // parked inside the call that holds HUNG_ID
+    const progress = () => events.filter((e) => e.type === 'progress').length;
+
+    const base = performance.now();
+    const heartbeat = () => created[0].reply({ type: 'progress', processedJobs: 0, totalJobs: 0 });
+    const before = progress();
+    heartbeat();
+    await settle();
+    expect(progress()).toBe(before + 1); // a slow call reporting progress is alive
+
+    vi.spyOn(performance, 'now').mockReturnValue(base + MAX_GEOMETRY_CALL_MS);
+    heartbeat();
+    await settle();
+    expect(progress()).toBe(before + 1); // past the bound: no longer liveness
+
+    controller.abort();
+    await drained;
   });
 
   it('terminates the whole pool and ends the stream when aborted while parked on a silent worker', async () => {

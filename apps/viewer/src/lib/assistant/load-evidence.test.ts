@@ -68,7 +68,9 @@ test('large load populations advertise exact native model-report counts and boun
 test('native load panel action produces portable conversation and native report evidence', () => {
   useViewerStore.setState(fixtureModels(model('cache-model', { diagnostics: null, loadPath: 'cache' })));
   const ui = render(renderPanelBody('loadReport', () => undefined));
-  const button = ui.querySelector('button[aria-label="Discuss with AI"]');
+  const region = ui.querySelector('section[aria-label="Load report"]');
+  assert.ok(region);
+  const button = region.querySelector('button[aria-label="Discuss with AI"]');
   assert.ok(button);
   click(button);
   assert.equal(useViewerStore.getState().sidebarActivePanel, 'assistant');

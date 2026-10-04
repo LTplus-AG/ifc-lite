@@ -37,9 +37,18 @@ export function evidenceJson(value: unknown): { text: string; truncated: boolean
       if (item.length > 1200) truncated = true;
       return item.slice(0, 1200);
     }
-    if (item === null || typeof item === 'number' || typeof item === 'boolean') return item;
+    if (typeof item === 'number') {
+      if (Number.isFinite(item)) return item;
+      truncated = true;
+      return '[omitted: non-finite number]';
+    }
+    if (item === null || typeof item === 'boolean') return item;
     if (typeof item === 'bigint') return String(item);
-    if (item instanceof Date) return item.toISOString();
+    if (item instanceof Date) {
+      if (Number.isFinite(item.getTime())) return item.toISOString();
+      truncated = true;
+      return '[omitted: invalid date]';
+    }
     if (ArrayBuffer.isView(item) || item instanceof ArrayBuffer) { truncated = true; return undefined; }
     if (typeof item !== 'object') return undefined;
     if (seen.has(item)) { truncated = true; return '[omitted: repeated reference]'; }

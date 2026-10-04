@@ -65,6 +65,16 @@ test('projection bounds cycles, strings, breadth and binary payloads while repor
   assert.equal(value.rows.length, 100);
 });
 
+test('invalid numeric/date facts become explicit omissions rather than null values or throws (#6833)', () => {
+  const result = evidenceJson({ distance: Number.NaN, amount: Number.POSITIVE_INFINITY, timestamp: new Date(Number.NaN), valid: 0 });
+  const projected = JSON.parse(result.text);
+  assert.equal(result.truncated, true);
+  assert.equal(projected.distance, '[omitted: non-finite number]');
+  assert.equal(projected.amount, '[omitted: non-finite number]');
+  assert.equal(projected.timestamp, '[omitted: invalid date]');
+  assert.equal(projected.valid, 0);
+});
+
 // Real ArchiCAD-authored fixture and native IDS engine provide independent counts (#6813).
 test('IDS evidence preserves the native failure verdict on AC20-FZK-Haus', async context => {
   const { readFile } = await import('node:fs/promises');

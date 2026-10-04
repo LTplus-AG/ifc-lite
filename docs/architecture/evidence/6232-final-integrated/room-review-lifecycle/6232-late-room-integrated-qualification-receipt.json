@@ -1,0 +1,82 @@
+{
+  "executedSource": "6fcee10246506226f26fcb4381fecdb75a7869eb",
+  "tree": "e54251248272271742afe25ee35d134dfb895b62",
+  "ancestryOnlyCaptureSource": "902684264034c676f82fd951b3609b1db65a3e97",
+  "ancestryOnlyWholeTreeIdentical": true,
+  "qualification": {
+    "types": "initial FAIL new read-only fixture missing ownerHistoryId; narrowfixturefieldcorrected then111/111PASS/all3399 testfiles (106cache)",
+    "sdk": "341PASS/32files0skips0cache",
+    "mutations": "370PASS/23files0skips0cache",
+    "mcp": "637PASS/70files2existing unrelatedskips0cache: structuralfixture absent; conditional entity_delete other-required-fields case has no other fields",
+    "viewer": "20PASS0skip0cache native Room/physical/positionalbatch/remoteRedoinvalidation/costUndo",
+    "lint": "8492files0errors/no touchedwarnings;2existingexamplewarnings",
+    "api": "9342exports/52packages/85surfaces snapshotunchanged"
+  },
+  "runtime": {
+    "wasm": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+    "js": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d"
+  },
+  "logs": [
+    {
+      "path": "/tmp/6232-late-room-integrated-types.log",
+      "sha256": "df5ec76e07ae448811ab12c7f9ce4da5b9bb38f51afa39dcf07b318b07de903d"
+    },
+    {
+      "path": "/tmp/6232-late-room-integrated-types-corrected.log",
+      "sha256": "e628dd3ca29518d40128a386e1e5850d7bafa618cc1cf64c794ab13c403e87c5"
+    },
+    {
+      "path": "/tmp/6232-late-room-integrated-sdk.log",
+      "sha256": "ec2fecd411018c668d0edbbbdb62d5f64b1944dd5ac6c1ce25a18b2c20cf861d"
+    },
+    {
+      "path": "/tmp/6232-late-room-integrated-mutations.log",
+      "sha256": "a8b7b7d5e0b6c363f7f45874dc3614ef437ed7ce102df6c35e05c39ebf3a4f0a"
+    },
+    {
+      "path": "/tmp/6232-late-room-integrated-mcp.log",
+      "sha256": "cdcccf407776dfa6de486542344f7036f5cfb1bbd384d5a27a88a2f04778353d"
+    },
+    {
+      "path": "/tmp/6232-late-room-integrated-viewer.log",
+      "sha256": "c9dc59c2355d58b8a717d31990e866b14ba979cbd6da40ecc47b37b5ad3993cc"
+    },
+    {
+      "path": "/tmp/6232-late-room-integrated-lint.log",
+      "sha256": "34aeb61b79a2406c39481a6c1036b9fe59b1d83d309c289cd9740e437dcf431c"
+    }
+  ],
+  "oracle": {
+    "base": "2e2f65a66e1375ef6cc52b8a310526de1a36e1a0",
+    "head": "902684264034c676f82fd951b3609b1db65a3e97",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "restoration": "verified",
+    "baseline": {
+      "kind": "pass",
+      "passed": 327,
+      "total": 327
+    },
+    "assertionWitnessFiles": 14,
+    "genuineAttributedAssertions": 36,
+    "firstWitness": "reverting production turned an assertion RED in apps/viewer/src/lib/commands/modeling/commands/element-align.test.tsx; that file has a green, attributable baseline.",
+    "collectionGaps": [
+      "packages/export/src/quantity-unit-generation.test.ts",
+      "packages/mcp/src/export-overlay.test.ts",
+      "packages/mcp/src/read-after-write.test.ts",
+      "packages/mcp/src/tools/align-native.test.ts",
+      "packages/mcp/src/tools/entity-create.test.ts",
+      "packages/mcp/src/tools/flow-creation-native.test.ts",
+      "packages/mcp/src/tools/model-scope.test.ts",
+      "packages/mcp/src/tools/query-select.test.ts",
+      "packages/mcp/src/tools/query.test.ts",
+      "packages/mcp/src/tools/room-command.test.ts",
+      "packages/mcp/src/tools/room-factory-gc.test.ts",
+      "packages/mcp/src/tools/room-input.test.ts",
+      "packages/mcp/src/tools/room-preparation-errors.test.ts",
+      "packages/mcp/src/tools/room-readonly-state.test.ts",
+      "packages/mutations/src/quantity-history.test.ts"
+    ],
+    "scope": "Whole production revert has surviving complete assertion witnesses; new-route collection gaps retained, not claimed as whole-route revert coverage."
+  }
+}

@@ -23,6 +23,8 @@ export interface ElementTransformInput extends EditTarget {
   readonly op: StoreyTransformOp;
   /** Viewer folds a render-space gesture through each owning storey's workplane. */
   operationForStorey?(storeyId: number): StoreyTransformOp;
+  /** Different Align targets translate by different storey-local metre deltas. */
+  translationForElement?(expressId: number, storeyId: number, delta: Vec2): Vec2;
   storeyOf?(expressId: number): number | null;
   /** Host hooks preserve its live mesh preview and undo bookkeeping. Deltas are parent-local metres. */
   translate?(expressId: number, delta: [number, number, number]): void;
@@ -50,8 +52,9 @@ export function transformElementsInStore(input: ElementTransformInput): ElementT
   const steps = plan.roots.map(root => {
     const op = opFor(root.storeyId);
     if (op.kind === 'move') {
-      if (!op.delta.every(Number.isFinite)) throw new Error('Move delta must be finite');
-      return { root, delta: op.delta, turn: 0 };
+      const delta = input.translationForElement?.(root.expressId, root.storeyId, op.delta) ?? op.delta;
+      if (!delta.every(Number.isFinite)) throw new Error('Move delta must be finite');
+      return { root, delta, turn: 0 };
     }
     if (!op.pivot.every(Number.isFinite) || !Number.isFinite(op.angle)) throw new Error('Rotation pivot and angle must be finite');
     if (!root.upright) throw new Error(`#${root.expressId} is tilted; only upright elements turn about the vertical.`);

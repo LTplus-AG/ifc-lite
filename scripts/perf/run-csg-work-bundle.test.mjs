@@ -4,11 +4,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm, readFile, readdir } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { verifyBundle, runChild, validateReport, persistAttempt } from './run-csg-work-bundle.mjs';
+const launcherUrl = new URL('./run-csg-work-bundle.mjs', import.meta.url);
+const consumer = spawnSync(process.execPath, ['--input-type=module', '--eval', `
+  import assert from 'node:assert/strict';
+  import { createHash } from 'node:crypto';
+  const { runChild } = await import(${JSON.stringify(launcherUrl.href)});
+  const result = await runChild(['-e', "process.stdout.write('owned-consumer-output')"]);
+  assert.equal(result.observedClose, true);
+  assert.equal(result.code, 0);
+  assert.equal(result.stdout.toString(), 'owned-consumer-output');
+  assert.equal(result.stdoutSha256, createHash('sha256').update('owned-consumer-output').digest('hex'));
+`], { encoding: 'utf8', timeout: 10_000, maxBuffer: 1024 * 1024 });
+function launcherTest(name, options, body) {
+  if (typeof options === 'function') { body = options; options = {}; }
+  test(name, options, async () => {
+    // #6516: keep every original control registered if production is removed;
+    // missing imports fail this actual owned-child output/close invariant.
+    assert.equal(consumer.status, 0, 'the real Node consumer could not capture and close its owned child');
+    assert.equal(consumer.signal, null);
+    return body();
+  });
+}
+// No substitute implementation or skipped controls on a missing production file.
+const { verifyBundle, runChild, validateReport, persistAttempt } = existsSync(launcherUrl)
+  ? await import(launcherUrl.href) : {};
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const pins = { geometryEntrySha256: 'a'.repeat(64), wasmGlueSha256: 'b'.repeat(64), wasmSha256: 'c'.repeat(64) };
@@ -43,7 +67,7 @@ function diagnostic() {
   return report;
 }
 
-test('#6516 changed same-release output refuses while warning counts are retained', () => {
+launcherTest('#6516 changed same-release output refuses while warning counts are retained', () => {
   const baseline = ordinary(), report = ordinary();
   assert.doesNotThrow(() => validateReport(report, { mode: 'ordinary', input, pins, baseline }));
   report.raw24MeshMultisetSha256 = '0'.repeat(64);
@@ -52,7 +76,7 @@ test('#6516 changed same-release output refuses while warning counts are retaine
   assert.throws(() => validateReport(changedLogs, { mode: 'ordinary', input, pins, baseline }), /ORDINARY_LOGS/);
 });
 
-test('#6516 incomplete stream/runtime mismatch and wrong public output refuse', () => {
+launcherTest('#6516 incomplete stream/runtime mismatch and wrong public output refuse', () => {
   const missing = ordinary(); missing.canonicalCompleteEvents = 0;
   assert.throws(() => validateReport(missing, { mode: 'ordinary', input, pins }), /INPUT_COMPLETE/);
   const stale = ordinary(); stale.wasmSha256 = '0'.repeat(64);
@@ -60,7 +84,7 @@ test('#6516 incomplete stream/runtime mismatch and wrong public output refuse', 
   assert.throws(() => validateReport(ordinary(), { mode: 'ordinary', input, pins, publicRelease: 6 }), /PUBLIC_GROUND_TRUTH/);
 });
 
-test('#6516 replay identity/span/duplicates/tuple schema and complete-census overclaim refuse', () => {
+launcherTest('#6516 replay identity/span/duplicates/tuple schema and complete-census overclaim refuse', () => {
   const options = { mode: 'diagnostic', input, pins, baseline: ordinary() };
   assert.doesNotThrow(() => validateReport(diagnostic(), options));
   for (const [mutate, reason] of [
@@ -77,7 +101,7 @@ test('#6516 replay identity/span/duplicates/tuple schema and complete-census ove
   assert.doesNotThrow(() => validateReport(emptyEntries, options)); // Empty is retained, never certified as zero work.
 });
 
-test('#6516 owned real Node timeout closes and retains pre-timeout stdout', async () => {
+launcherTest('#6516 owned real Node timeout closes and retains pre-timeout stdout', async () => {
   await assert.rejects(runChild(['-e', "process.stdout.write('ready'); setInterval(() => {}, 1000)"],
     { timeoutMs: 2000 }), error => {
     assert.match(error.message, /CHILD_TIMEOUT/);
@@ -88,7 +112,7 @@ test('#6516 owned real Node timeout closes and retains pre-timeout stdout', asyn
   });
 });
 
-test('#6516 owned real Node output cap terminates instead of truncating to success', async () => {
+launcherTest('#6516 owned real Node output cap terminates instead of truncating to success', async () => {
   await assert.rejects(runChild(['-e', "process.stdout.write('x'.repeat(65536)); setInterval(() => {}, 1000)"],
     { timeoutMs: 5000, maxBytes: 1024 }), error => {
     assert.match(error.message, /CHILD_OUTPUT_CAP/);
@@ -99,7 +123,7 @@ test('#6516 owned real Node output cap terminates instead of truncating to succe
   });
 });
 
-test('#6516 bundle verifies actual bytes and rejects omitted/modified inventory', async () => {
+launcherTest('#6516 bundle verifies actual bytes and rejects omitted/modified inventory', async () => {
   const root = await mkdtemp(join(tmpdir(), 'csg-work-bundle-'));
   try {
     const files = [], projects = {};
@@ -126,7 +150,7 @@ test('#6516 bundle verifies actual bytes and rejects omitted/modified inventory'
 });
 
 
-test('#6516 actual parent SIGTERM terminates its own child and records observed close',
+launcherTest('#6516 actual parent SIGTERM terminates its own child and records observed close',
   { skip: process.platform === 'win32' ? 'Windows kill(SIGTERM) forcibly terminates the parent; console SIGINT delivery needs native qualification' : false },
   async () => {
     const moduleUrl = new URL('./run-csg-work-bundle.mjs', import.meta.url).href;
@@ -156,7 +180,7 @@ test('#6516 actual parent SIGTERM terminates its own child and records observed 
     } finally { clearTimeout(deadline); if (parent.exitCode === null && parent.signalCode === null) parent.kill('SIGKILL'); }
   });
 
-test('#6516 invalid/refused child output persists hashes only, never raw private text', async () => {
+launcherTest('#6516 invalid/refused child output persists hashes only, never raw private text', async () => {
   const root = await mkdtemp(join(tmpdir(), 'csg-work-log-'));
   try {
     const secret = 'PRIVATE_INPUT_PATH_OR_ERROR';

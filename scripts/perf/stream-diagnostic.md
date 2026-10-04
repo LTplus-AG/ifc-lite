@@ -105,5 +105,6 @@ The workflow separately qualifies its actual bundle on Linux and Windows using
 the pinned public slab fixture and known converted outputs. Inspect both jobs'
 results before using an artifact. A public self-check does not prove compatibility
 with the private file; the same-release checks above are required on that file.
-The local preparation evidence is in `csg-work-qualification.json`. Neither this
-diagnostic nor the public slab observation resolves #6516.
+The local preparation evidence is in `csg-work-qualification.json`; the actual
+Linux and Windows delivery verdict is in `csg-work-delivery-qualification.json`.
+Neither this diagnostic nor the public slab observation resolves #6516.

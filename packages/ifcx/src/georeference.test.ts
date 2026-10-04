@@ -43,6 +43,33 @@ describe('IFCX projected coordinate transport', () => {
       { buffer: file([geo]), name: 'base.ifcx' }, { buffer: file([updated]), name: 'placement.ifcx' },
     ])).georeferencing, updated);
   });
+  it('leaves the previous stage usable after rejecting an overlay (#6824)', async () => {
+    const base = await parseFederatedIfcx([{ buffer: file([geo]), name: 'base.ifcx' }]);
+    const originalLayers = [...base.layerStack.getLayers()];
+    const originalStrengths = originalLayers.map(layer => layer.strength);
+    const bad = file([{ ...geo, IfcMapConversion: { ...geo.IfcMapConversion, Scale: 0 } }]);
+    await assert.rejects(addIfcxOverlay(base, bad, 'bad.ifcx'), /map conversion/);
+    assert.deepEqual(base.layerStack.getLayers(), originalLayers);
+    assert.deepEqual(base.layerStack.getLayers().map(layer => layer.strength), originalStrengths);
+    assert.deepEqual(base.georeferencing, geo);
+    const next = await addIfcxOverlay(base, file([]), 'valid.ifcx');
+    assert.deepEqual(next.georeferencing, geo);
+    assert.deepEqual(next.layerStack.getLayers().map(layer => layer.name), ['valid.ifcx', 'base.ifcx']);
+  });
+  it('rolls back overlays when composition or extraction progress throws (#6824)', async () => {
+    for (const failurePhase of ['compose', 'entities']) {
+      const base = await parseFederatedIfcx([{ buffer: file([geo]), name: 'base.ifcx' }]);
+      const originalLayers = [...base.layerStack.getLayers()];
+      const originalStrengths = originalLayers.map(layer => layer.strength);
+      const failure = new Error(`Stopped during ${failurePhase}`);
+      await assert.rejects(addIfcxOverlay(base, file([]), 'failed.ifcx', {
+        onProgress: event => { if (event.phase === failurePhase) throw failure; },
+      }), error => error === failure);
+      assert.deepEqual(base.layerStack.getLayers(), originalLayers);
+      assert.deepEqual(base.layerStack.getLayers().map(layer => layer.strength), originalStrengths);
+      assert.deepEqual((await addIfcxOverlay(base, file([]), 'valid.ifcx')).georeferencing, geo);
+    }
+  });
   it('rejects invalid placement before reporting extraction complete (#6824)', async () => {
     for (const layered of [false, true]) {
       const phases: string[] = [];

@@ -635,37 +635,44 @@ export async function addIfcxOverlay(
 
   // Add to layer stack (at top = strongest)
   const layerStack = baseResult.layerStack;
-  layerStack.addLayer(file, overlayBuffer, overlayName, {
+  const addedLayerId = layerStack.addLayer(file, overlayBuffer, overlayName, {
     type: 'file',
     filename: overlayName,
     size: overlayBuffer.byteLength,
   });
 
-  // Re-compose with the new layer directly from the already-parsed stack.
-  // Avoid round-tripping every layer buffer back through parseFederatedIfcx
-  // (re-JSON.parsing all prior layers), which would make the k-th overlay
-  // cost O(total bytes of all layers).
-  const startTime = performance.now();
-  options.onProgress?.({ phase: 'compose', percent: 0 });
-  const compositionResult = composeFederated(layerStack, {
-    onProgress: (phase, percent) => {
-      options.onProgress?.({ phase: `compose-${phase}`, percent });
-    },
-    maxInheritDepth: options.maxInheritDepth,
-  });
-  options.onProgress?.({ phase: 'compose', percent: 100 });
+  // Failed composition or extraction must leave the previous result usable
+  // (#6824). Successful overlays keep the existing shared-stack semantics.
+  try {
+    // Re-compose with the new layer directly from the already-parsed stack.
+    // Avoid round-tripping every layer buffer back through parseFederatedIfcx
+    // (re-JSON.parsing all prior layers), which would make the k-th overlay
+    // cost O(total bytes of all layers).
+    const startTime = performance.now();
+    options.onProgress?.({ phase: 'compose', percent: 0 });
+    const compositionResult = composeFederated(layerStack, {
+      onProgress: (phase, percent) => {
+        options.onProgress?.({ phase: `compose-${phase}`, percent });
+      },
+      maxInheritDepth: options.maxInheritDepth,
+    });
+    options.onProgress?.({ phase: 'compose', percent: 100 });
 
-  // fileSize reflects the total bytes of every layer (matching parseFederatedIfcx).
-  let totalSize = 0;
-  for (const layer of layerStack.getLayers()) {
-    totalSize += layer.buffer.byteLength;
+    // fileSize reflects the total bytes of every layer (matching parseFederatedIfcx).
+    let totalSize = 0;
+    for (const layer of layerStack.getLayers()) {
+      totalSize += layer.buffer.byteLength;
+    }
+
+    return finalizeFederatedResult(
+      layerStack,
+      compositionResult,
+      totalSize,
+      startTime,
+      options
+    );
+  } catch (error) {
+    layerStack.removeLayer(addedLayerId);
+    throw error;
   }
-
-  return finalizeFederatedResult(
-    layerStack,
-    compositionResult,
-    totalSize,
-    startTime,
-    options
-  );
 }

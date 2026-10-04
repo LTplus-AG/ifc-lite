@@ -14,6 +14,8 @@ Set `VITE_AUTODESK_CLIENT_ID` at viewer build time, or enter the public applicat
 
 For hosted sessions, set `VITE_AUTODESK_HOSTED=true`, deploy [the Autodesk service](../../apps/autodesk-service/README.md) and reverse-proxy `/api/autodesk/*` on the viewer's origin. Register the service callback rather than the static callback. No end-user application ID entry is needed. The browser never receives Autodesk tokens.
 
+The deployment uses one operator-managed APS application. Each user signs in with their own Autodesk account and retains that account's product entitlements and project permissions; the operator's personal account does not need access to their models. A successful sign-in does not grant product or project access. Real import verification can use consenting production users with existing subscriptions and accessible projects.
+
 Both modes use one connection, verified account identity, PKCE, cryptographic state, explicit cancellation, a BroadcastChannel callback compatible with COOP, and a same-tab fallback when popups are blocked. Disconnect preserves models already loaded in memory.
 
 ## Browse and load

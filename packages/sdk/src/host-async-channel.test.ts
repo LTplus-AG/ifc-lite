@@ -64,6 +64,9 @@ for (const channel of ['broadcast', 'port'] as const) {
 }
 
 const wasm = new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+// Cold WASM initialization, real IFC parsing and compound wire query/Auto/Update
+// exceed the default 5s under full CI contention. Keep a finite native-test
+// budget; each actual channel request still has its unchanged 3s deadline.
 for (const channel of ['broadcast', 'port'] as const) it.skipIf(!existsSync(wasm))(`${channel} channel carries actual Bonsai/native Room candidates after awaited preparation (#6232)`, async () => {
   const runtime = await import('@ifc-lite/wasm');
   runtime.initSync({ module: readFileSync(wasm) });
@@ -125,4 +128,4 @@ for (const channel of ['broadcast', 'port'] as const) it.skipIf(!existsSync(wasm
     const unsupported = await connection.transport.send({ ...request, args: ['m', 42, { action: 'update', expressIds: [1222] }] });
     expect(unsupported.error?.message).toMatch(/No selected room has a supported current face/);
   } finally { wait.release(); connection.close(); service.disposeRooms(); }
-});
+}, 30_000);

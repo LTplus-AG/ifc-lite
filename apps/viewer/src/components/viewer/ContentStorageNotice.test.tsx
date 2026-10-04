@@ -228,11 +228,13 @@ it('#6695 library downloads and preserved originals recover an imported unfinish
   });
   try {
     const find = (text: string) => { const button = [...ui.querySelectorAll('button')].find(value => value.textContent === text); assert.ok(button); return button; };
+    await waitFor(() => !find('Download library backup').disabled, 'import completes and enables library backup');
     click(find('Download library backup'));
     await waitFor(() => downloads.length === 1, 'a further library backup downloads');
     const exported = parseContentBackup(await downloads[0].text());
     assert.deepEqual(exported.libraries.document, [entry]);
     assert.deepEqual(exported.drafts, backup.drafts);
+    await waitFor(() => !find('Download preserved originals').disabled, 'backup completes and enables preserved originals');
     click(find('Download preserved originals'));
     await waitFor(() => downloads.length === 2, 'raw draft originals download');
     const rows = JSON.parse(await downloads[1].text()) as Array<{ raw: string }>;

@@ -38,7 +38,7 @@ The user selected native clash type/severity plus discipline pairs as the defaul
 | P07 | Partial explanation only | Conversational IDS/rule/document authoring with native validation, unsupported requirement retention and real check runs. |
 | P08 | Initial integration | Complete all registered analysis adapters, structured claims/evidence, native narrative blocks, edited-document refresh reconciliation and multilingual preview/PDF verification. |
 | P09 | Partial graph editing | Complete graph creation/debugging with actual run diagnostics, tracking branches and real-fixture authoring/rerun acceptance. |
-| P10 | Initial native taxonomy evidence | Native detection type/severity and ambiguous discipline candidates are projected without rewriting verdicts. Complete full finding partition, reviewed taxonomy/classification/group proposals and durable manual review continuity. |
+| P10 | Typed inert group preview | Native detection type/severity and ambiguous discipline candidates stay authoritative; strict captured-citation proposals account for every native report finding as proposed or unclassified. Complete reviewed taxonomy edits, durable group apply/undo, full-run classification beyond samples and manual review continuity. |
 | P11 | Pending | BCF local drafts, identity mappings and split/merge/revision reconciliation; archive roundtrips. |
 | P12 | Native HTTP acceptance started | Controlled loopback server exercises native create/update/comments/viewpoints/pull/archive and committed-but-lost responses. Durable outbox, actual connected publication UI, uncertain-outcome blocking and conflict/idempotency recovery remain. |
 | P13 | Pending | Native query/filter/list/lens/chart proposals, exact population/units/denominators and ambiguity handling. |

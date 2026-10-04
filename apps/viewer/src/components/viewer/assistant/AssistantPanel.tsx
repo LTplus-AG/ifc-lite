@@ -20,6 +20,7 @@ import { EvidenceView } from '../analysis/EvidenceView';
 
 const FlowProposalReview = lazy(() => import('./FlowProposalReview').then(m => ({ default: m.FlowProposalReview })));
 const ReportDraftReview = lazy(() => import('./ReportDraftReview').then(m => ({ default: m.ReportDraftReview })));
+const ClashGroupReview = lazy(() => import('./ClashGroupReview').then(m => ({ default: m.ClashGroupReview })));
 
 export function AssistantPanel() {
   const { t } = useTranslation();
@@ -60,6 +61,7 @@ export function AssistantPanel() {
       </> : <p className="text-xs text-muted-foreground">{t('assistant.empty')}</p>}
     </div>
     <ConversationLibrary />
+    {evidence?.source === 'clash' && <Suspense fallback={null}><ClashGroupReview /></Suspense>}
     {evidence?.source === 'flow' && <Suspense fallback={null}><FlowProposalReview /></Suspense>}
     {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><ReportDraftReview /></Suspense>}
     <div className="p-3 space-y-3" aria-live="polite">

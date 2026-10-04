@@ -20,3 +20,10 @@ export const CLASH_TAXONOMY_LIMITATIONS =
   'Multiple candidates are ambiguous; an empty list is unknown. Preserve all alternatives and side/model identities. ' +
   'Detection status is not human review status. Never change native severity or infer resolved/accepted from grouping. ' +
   'Omitted findings remain unclassified. BCF assignees stay empty until a verified project mapping is chosen.';
+
+export const CLASH_GROUP_OUTPUT_GUIDANCE =
+  'When asked for a grouping proposal, return only JSON {"version":1,"kind":"clash.groups",' +
+  '"groups":[{"name":"Group name","explanation":"Inference and rationale","citations":["E1"]}]}. ' +
+  'Use only supplied complete finding citations, each once, at most 30 groups and 100 findings. ' +
+  'Group by native type/severity and discipline pair candidates, preserving ambiguity. ' +
+  'Never output status changes, severity changes, assignees or executable actions. Unmentioned findings remain unclassified.';

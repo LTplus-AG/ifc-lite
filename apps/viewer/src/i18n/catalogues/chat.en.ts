@@ -153,4 +153,10 @@ export const chatEn = {
   'chat.panel.shiftEnterHint': 'Shift+Enter new line',
   'chat.panel.closeLabel': 'Close AI chat',
   'chat.panel.scrollToBottomLabel': 'Scroll to the latest message',
+  'assistant.clashGroupReview': 'Review clash group suggestions',
+  'assistant.clashGroupHint': 'Ask for a grouping proposal using native type, severity and discipline pairs. Preview the complete JSON answer here.',
+  'assistant.previewClashGroups': 'Preview latest clash groups',
+  'assistant.clashGroupCounts': 'Native findings: {total}. Proposed: {proposed}. Unclassified: {unclassified}. Omitted from evidence: {omitted}.',
+  'assistant.clashGroupInert': 'Preview only. Native groups, review decisions and BCF topics are unchanged. Save the conversation to retain the answer; this preview stays in this panel session.',
+  'assistant.clashGroupInference': 'AI grouping inference — verify against native facts.',
 } as const satisfies Record<string, TranslationValue>;

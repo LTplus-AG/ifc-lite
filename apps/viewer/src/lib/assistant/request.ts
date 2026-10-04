@@ -8,6 +8,7 @@ import { streamAnthropicChat, streamOpenAiChat } from '@/lib/llm/stream-direct';
 import { getApiKeys } from '@/services/api-keys';
 import { UNCONFIGURED_MODEL_ID } from '@/lib/llm/models';
 import { evidenceIsCurrent } from './evidence';
+import { CLASH_GROUP_OUTPUT_GUIDANCE } from './clash-taxonomy';
 import { useViewerStore } from '@/store';
 import { useAssistant } from './conversation';
 
@@ -72,6 +73,13 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
       const system = `${options.system ?? ''}\n${flowPatchGuidance()}`;
       options.system = system;
       if (JSON.stringify(messages).length + system.length > 90_000) {
+        options.onError(new Error('context-limit')); return false;
+      }
+    }
+    if (state.snapshot.source === 'clash') {
+      if (!ownsRequest()) return false;
+      options.system = `${options.system ?? ''}\n${CLASH_GROUP_OUTPUT_GUIDANCE}`;
+      if (JSON.stringify(messages).length + options.system.length > 90_000) {
         options.onError(new Error('context-limit')); return false;
       }
     }

@@ -18,7 +18,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
-import { deterministicGlobalId } from '@ifc-lite/parser';
+import { deterministicGlobalId, taskProductExpressIds } from '@ifc-lite/parser';
 import {
   parseIsoDate,
   msToIsoDuration,
@@ -30,6 +30,8 @@ import {
   resolveWorkScheduleFilter,
   resolveSingleModelId,
   resolveIdOffset,
+  addTaskInputProducts,
+  dropTaskProducts,
 } from './schedule-edit-helpers.js';
 
 export type GanttTimeScale = 'hour' | 'day' | 'week' | 'month' | 'year';
@@ -687,21 +689,7 @@ export const createScheduleSlice: StateCreator<
 
     pushScheduleSnapshot(get, set, `Assign ${globalProductIds.length} product(s)`);
     const next = cloneExtraction(current);
-    const t = next.tasks[idx];
-    const existingLocal = new Set(t.productExpressIds);
-    const existingGlobal = new Set(t.productGlobalIds);
-    for (const g of globalProductIds) {
-      const local = toLocal(g);
-      if (!existingLocal.has(local)) {
-        t.productExpressIds.push(local);
-        existingLocal.add(local);
-      }
-      const gs = String(g);
-      if (!existingGlobal.has(gs)) {
-        t.productGlobalIds.push(gs);
-        existingGlobal.add(gs);
-      }
-    }
+    addTaskInputProducts(next.tasks[idx], globalProductIds.map(g => ({ local: toLocal(g), global: String(g) })));
     commitEdit(get, set, next);
   },
 
@@ -720,9 +708,7 @@ export const createScheduleSlice: StateCreator<
 
     pushScheduleSnapshot(get, set, `Remove ${globalProductIds.length} product(s)`);
     const next = cloneExtraction(current);
-    const t = next.tasks[idx];
-    t.productExpressIds = t.productExpressIds.filter(id => !localsToDrop.has(id));
-    t.productGlobalIds = t.productGlobalIds.filter(gid => !globalsToDrop.has(gid));
+    dropTaskProducts(next.tasks[idx], localsToDrop, globalsToDrop);
     commitEdit(get, set, next);
   },
 
@@ -1267,10 +1253,11 @@ export function computeHiddenProductIds(
   for (const task of data.tasks) {
     if (!taskMatchesScheduleFilter(task, scheduleGlobalId)) continue;
     const start = taskStartEpoch(task);
-    if (task.productExpressIds.length === 0) continue;
+    const productIds = taskProductExpressIds(task);
+    if (productIds.length === 0) continue;
     // If no scheduled start, treat the task as always-active (don't hide its products).
     const isRevealed = start === undefined ? true : start <= playbackTime;
-    for (const id of task.productExpressIds) {
+    for (const id of productIds) {
       if (isRevealed) {
         revealed.set(id, true);
       } else if (!revealed.has(id)) {
@@ -1303,7 +1290,7 @@ export function computeActiveProductIds(
     const finish = taskFinishEpoch(task);
     if (start === undefined || finish === undefined) continue;
     if (playbackTime >= start && playbackTime <= finish) {
-      for (const id of task.productExpressIds) active.add(id);
+      for (const id of taskProductExpressIds(task)) active.add(id);
     }
   }
   return active;

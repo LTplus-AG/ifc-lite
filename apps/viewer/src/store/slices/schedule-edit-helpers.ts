@@ -12,7 +12,7 @@
  * to accept raw inputs).
  */
 
-import type { ScheduleExtraction } from '@ifc-lite/parser';
+import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
 
 // ═════════════════════════════════════════════════════════════════════
 // ISO-8601 date/time helpers
@@ -119,6 +119,64 @@ export function reconcileTaskTime(
     if (finishMs !== undefined) merged.scheduleFinish = toIsoUtc(finishMs);
   }
   return merged;
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// Product assignment edits
+// ═════════════════════════════════════════════════════════════════════
+
+/**
+ * Append products to a task's IfcRelAssignsToProcess inputs, deduped on the
+ * local id and appended as index-aligned pairs. A product the task already
+ * OUTPUTS (IfcRelAssignsToProduct, #6749) is already assigned; restating it
+ * as an input would double-state it.
+ */
+export function addTaskInputProducts(
+  task: ScheduleTaskInfo,
+  products: ReadonlyArray<{ local: number; global: string }>,
+): void {
+  const assigned = new Set([...task.productExpressIds, ...(task.outputProductExpressIds ?? [])]);
+  for (const { local, global } of products) {
+    if (assigned.has(local)) continue;
+    task.productExpressIds.push(local);
+    task.productGlobalIds.push(global);
+    assigned.add(local);
+  }
+}
+
+/**
+ * Remove products from a task's inputs AND its IfcRelAssignsToProduct
+ * outputs (#6749), filtering each expressId/globalId list as index-aligned
+ * pairs so a dropped product never leaves its partner behind. A pair goes
+ * when either side matches: parsed globalIds are IFC GlobalIds, which the
+ * renderer-space `globalsToDrop` never matches, while viewer-assigned ones
+ * are renderer ids.
+ */
+export function dropTaskProducts(
+  task: ScheduleTaskInfo,
+  localsToDrop: ReadonlySet<number>,
+  globalsToDrop: ReadonlySet<string>,
+): void {
+  const inputs = dropPairs(task.productExpressIds, task.productGlobalIds, localsToDrop, globalsToDrop);
+  task.productExpressIds = inputs.expressIds;
+  task.productGlobalIds = inputs.globalIds;
+  if (!task.outputProductExpressIds?.length) return;
+  const outputs = dropPairs(task.outputProductExpressIds, task.outputProductGlobalIds ?? [], localsToDrop, globalsToDrop);
+  task.outputProductExpressIds = outputs.expressIds;
+  task.outputProductGlobalIds = outputs.globalIds;
+}
+
+function dropPairs(
+  expressIds: readonly number[],
+  globalIds: readonly string[],
+  localsToDrop: ReadonlySet<number>,
+  globalsToDrop: ReadonlySet<string>,
+): { expressIds: number[]; globalIds: string[] } {
+  const drop = (i: number) => localsToDrop.has(expressIds[i]) || globalsToDrop.has(globalIds[i]);
+  return {
+    expressIds: expressIds.filter((_, i) => !drop(i)),
+    globalIds: globalIds.filter((_, i) => !drop(i)),
+  };
 }
 
 // ═════════════════════════════════════════════════════════════════════

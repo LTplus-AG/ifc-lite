@@ -27,6 +27,25 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Historical CSG job observations (#6516)
+
+Use the existing ordered CSG census for a small feature-gated diagnostic before
+adding geometry hooks or porting newer algorithms into historical releases.
+Complete public-model loads preserve the ordinary output within each release,
+and individual job replays reproduce their canonical batches. Matching original
+source tuples localizes the public slab's changed output and larger later host
+operands, consistent with the source's retained-hole correction. This does not
+establish the private reported regression's cause or a performance improvement.
+
+Interpret these as positive wrapper observations only. Existing recording can
+precede empty checks, silently return empty on a poisoned lock, and retain an
+unbounded vector within a call. Do not infer zero work, complete invocation
+counts or causal workload ratios. Preserve the earlier validator refusal: the
+old streaming helper performs a separate verification load, so its aggregate
+log counts cannot be compared directly with a single-load diagnostic. Compare
+ordinary logs within the same load boundary. Delivery and private-file output
+checks are documented in [stream-diagnostic.md](stream-diagnostic.md).
+
 ## Bundled main-first module sharing: scoped SDK result (#6537)
 
 Bundled initialization removes the second observed WASM request before the

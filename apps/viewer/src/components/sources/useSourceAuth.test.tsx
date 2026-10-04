@@ -256,3 +256,44 @@ describe('useSourceAuth -- catalog cache is scoped to the signed-in identity (#1
     assert.equal(cachedCatalog(), null);
   });
 });
+
+
+describe('useSourceAuth cancelled sign-in', () => {
+  it('keeps the cancelled identity unpublished even if the provider resolves later', async () => {
+    const base = new AuthProvider();
+    let resolveSignIn: (identity: SourceIdentity) => void = () => { throw new Error('Sign-in did not start'); };
+    let cancelled = 0;
+    const provider: FileSourceProvider = {
+      ...base, manifest: base.manifest,
+      listProjects: () => base.listProjects(), listContainers: () => base.listContainers(),
+      listFiles: () => base.listFiles(), download: () => base.download(),
+      auth: { ...base.auth, cancelSignIn: () => { cancelled++; },
+        signIn: () => new Promise<SourceIdentity>((resolve) => { resolveSignIn = resolve; }) },
+    };
+    const harness = renderAuth(provider);
+    await act(async () => { await Promise.resolve(); });
+    act(() => harness.get().signIn());
+    assert.equal(harness.get().status, 'busy');
+    act(() => harness.get().cancelSignIn?.());
+    await act(async () => { resolveSignIn(ALICE); await Promise.resolve(); });
+    assert.equal(cancelled, 1);
+    assert.equal(harness.get().status, 'signed-out');
+    assert.equal(harness.get().identity, null);
+  });
+});
+
+it('retains the confirmed account when server sign-out fails, so the user can retry', async () => {
+  const base = new AuthProvider(); base.restoreResult = ALICE;
+  const provider: FileSourceProvider = {
+    ...base, manifest: base.manifest,
+    listProjects: () => base.listProjects(), listContainers: () => base.listContainers(),
+    listFiles: () => base.listFiles(), download: () => base.download(),
+    auth: { ...base.auth, signOut: async () => { throw new Error('Sign-out request failed'); } },
+  };
+  const harness = renderAuth(provider);
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { harness.get().signOut(); await Promise.resolve(); });
+  assert.equal(harness.get().status, 'signed-in');
+  assert.equal(harness.get().identity?.id, ALICE.id);
+  assert.deepEqual(harness.get().notice, { text: 'Sign-out request failed' });
+});

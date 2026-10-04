@@ -1,0 +1,54 @@
+{
+  "source": "745dd3dece8eaee378a00d267fc5178754383442",
+  "main": "5d3e14febefe47f9967efdbb130a6a236c64110f",
+  "scope": "Normal main integration preserves current canonical reader/conversion guards and restores main valid-payload read-only design controls. Superseded private reader tests are replaced by existing stable viewer-entrypoint tests. Following commits add evidence/checklist documentation only. Final Copy/Split forwarding and fresh final browser/CI acceptance remain pending.",
+  "results": {
+    "typecheckTasks": 111,
+    "typecheckedTestFiles": 3381,
+    "viewerPassed": 8,
+    "mcpPassed": 18,
+    "skipped": 0,
+    "lintFiles": 8469,
+    "lintErrors": 0,
+    "moduleSizeAllowanceRaises": 0,
+    "newSourceTextAssertions": 0
+  },
+  "runtime": {
+    "wasmSha256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+    "jsSha256": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+    "forcedTestsBeforeAfterVerified": true,
+    "dependencyBuildsDuringForcedTests": false
+  },
+  "archives": {
+    "types": {
+      "rawBytes": 45184,
+      "rawSha256": "735bd7184767cfa5ea9c76b321d94a2ab8295f52b523695ba31afac681e593ce",
+      "gzipSha256": "fa67f0fc95b09a668753f9497cabdcfbaae032239f8d75872138cd64920b5498"
+    },
+    "viewer": {
+      "rawBytes": 5709,
+      "rawSha256": "8803e1ea172f122ef059c358ccdd00e0cbbc21214253245c7b45caf270491714",
+      "gzipSha256": "4d2deacd3d72eab8c3106ce9df9941f2379b41cee4dc37b9bb861e0e6f8193cb"
+    },
+    "mcp": {
+      "rawBytes": 28903,
+      "rawSha256": "bf1fc4466c32ac91145fe8368a491f8241623209b2d7f352fbdd36e2d12a924a",
+      "gzipSha256": "9a68ffe158107cc49c2e5f12e304e4ac409500b71e1d07f74965716ccbec0ae2"
+    },
+    "lint": {
+      "rawBytes": 177152,
+      "rawSha256": "433a361ec8783490ded5b17fa01f91ff3dcc2ada569bcfea1207c6b970f03cfe",
+      "gzipSha256": "a226540e09ea9d350fa5c43cdeb6a61b9d186ed0f8703ef309b84e77ee365f48"
+    },
+    "module": {
+      "rawBytes": 12800,
+      "rawSha256": "39157ea45d190b3da9bb0d65f720a3984dfeaace617f0915bab6f6fc38e5ec08",
+      "gzipSha256": "76846bd18935f9a050be519b64226b7be2986936b28a75ccae2828e6a406823c"
+    },
+    "source": {
+      "rawBytes": 30811,
+      "rawSha256": "2ea84b06a7efbdee2be8527582b9127df63330bbdf9e0b485539c3fbc3c2e117",
+      "gzipSha256": "52708c108fa36c4a2a83f5f097fb03a948e5957274706398166b85699f9fbc1c"
+    }
+  }
+}

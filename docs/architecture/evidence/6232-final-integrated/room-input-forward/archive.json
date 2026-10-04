@@ -1,0 +1,180 @@
+{
+  "executionSource": "977846c5b3aac7b70a397d0e166acdc3019a2c99",
+  "owningSDKSource": "d86e9e313feb75f48b92cc91195828428e17824e",
+  "actualMain": "f04a97289d3130a1d7dc9df056c8b9c5b6d25791",
+  "freshSuites": [
+    "room"
+  ],
+  "retainedCaptureSource": "e98a99244ecc3f5a86968c485774a77f8845ae66",
+  "retainedSuites": [
+    "physical",
+    "align",
+    "placement"
+  ],
+  "wasmSHA256": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+  "jsSHA256": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+  "scopes": {
+    "typecheckTasks": 111,
+    "typecheckedTestFiles": 3397,
+    "sdkRoomAndWireFiles": 2,
+    "sdkRoomAndWireTests": 16,
+    "nativeMCP": 38,
+    "cohortSkips": 0,
+    "lintFiles": 8489,
+    "touchedWarnings": [],
+    "auditedReceipts": 8,
+    "auditedStages": 184,
+    "auditedNativeWitnesses": 436
+  },
+  "entries": [
+    {
+      "file": "room-1-browser.json.gz",
+      "rawPath": "/tmp/6232-room-input-browser-evidence/room/1-browser.json",
+      "rawBytes": 4633848,
+      "rawSHA256": "0c24c5ce3cc03734601e9b21d8a6bd9479f51c9c85db9b22ac68cf7e55dc730b",
+      "compressedSHA256": "1a92499c90e42910c1e86888aa62acbcdd1a8490937bc370cfc2fc6a8b7acf9b"
+    },
+    {
+      "file": "room-1-console.log.gz",
+      "rawPath": "/tmp/6232-room-input-browser-evidence/room/1-console.log",
+      "rawBytes": 11016,
+      "rawSHA256": "0107238c3c5f30b14ce838c80e77e0124c4b0d89c22ec5498a105305ebcb25ca",
+      "compressedSHA256": "b0b54a769895d58e9e2305f782f3f0b211324f14957b063df351dd2b890b0844"
+    },
+    {
+      "file": "room-1-remesh.json.gz",
+      "rawPath": "/tmp/6232-room-input-browser-evidence/room/1-remesh.json",
+      "rawBytes": 52,
+      "rawSHA256": "b3a930f7dd704098310ee126dce53e513a4d61508140605d439b0bfc874d6f73",
+      "compressedSHA256": "4c591c5cf8a6e1566e0a1cb206024998f5b1b70c8c928a96b0f4384be73ea48c"
+    },
+    {
+      "file": "room-1-wasm.json.gz",
+      "rawPath": "/tmp/6232-room-input-browser-evidence/room/1-wasm.json",
+      "rawBytes": 829,
+      "rawSHA256": "22541c18be22f5b771e8375be144d5f5831e10d3f341d0cfd014d5ae8c94d8b4",
+      "compressedSHA256": "ae5b257727a442d442dd232ff05837afd7dfbac3f07328f4cfe2e71935d8cea5"
+    },
+    {
+      "file": "room-2-browser.json.gz",
+      "rawPath": "/tmp/6232-room-input-browser-evidence/room/2-browser.json",
+      "rawBytes": 8556851,
+      "rawSHA256": "80641a6adb4d4177b3f5ee53c30eec1e597a8780d303eed1c41dd2ec014b0272",
+      "compressedSHA256": "6ead7e46d0eb4f88b3670b587142b157f8f796a3568f249a0899ca40e0c5f538"
+    },
+    {
+      "file": "room-2-console.log.gz",
+      "rawPath": "/tmp/6232-room-input-browser-evidence/room/2-console.log",
+      "rawBytes": 12953,
+      "rawSHA256": "cdc79b69dd9fa26c90d0a2b96bb1812a56f27e2a8717e4bd3870e02b773fd8f0",
+      "compressedSHA256": "d2667c39329d2519d5b0f49dc86ec269210f49b6ea3d7426dd8488f6e15171a2"
+    },
+    {
+      "file": "room-2-remesh.json.gz",
+      "rawPath": "/tmp/6232-room-input-browser-evidence/room/2-remesh.json",
+      "rawBytes": 52,
+      "rawSHA256": "b3a930f7dd704098310ee126dce53e513a4d61508140605d439b0bfc874d6f73",
+      "compressedSHA256": "4c591c5cf8a6e1566e0a1cb206024998f5b1b70c8c928a96b0f4384be73ea48c"
+    },
+    {
+      "file": "room-2-wasm.json.gz",
+      "rawPath": "/tmp/6232-room-input-browser-evidence/room/2-wasm.json",
+      "rawBytes": 1036,
+      "rawSHA256": "034298fd418c1c2572b2eea081bf9def5a79a76f6fe28044f9f13fb214307ee9",
+      "compressedSHA256": "c38eba7a0fc4ebc551329e2f7018cdcf7f92af013ee5f31ff833d1e3e2f43665"
+    },
+    {
+      "file": "room-1-room-cut.png",
+      "rawPath": "/tmp/6232-room-input-browser-evidence/room/1-room-cut.png",
+      "rawBytes": 162226,
+      "rawSHA256": "fe000686b3dde297210104071124fd426edea551bf2211b3d45fcae1cb07ee4c"
+    },
+    {
+      "file": "room-2-room-cut-redo.png",
+      "rawPath": "/tmp/6232-room-input-browser-evidence/room/2-room-cut-redo.png",
+      "rawBytes": 163612,
+      "rawSHA256": "f007d7fdcff45e46c89d0c08fe6a77b4ee82fa961be6b1629421a26723af7b2c"
+    },
+    {
+      "file": "room-2-room-cut-undo.png",
+      "rawPath": "/tmp/6232-room-input-browser-evidence/room/2-room-cut-undo.png",
+      "rawBytes": 162169,
+      "rawSHA256": "dd75c6cb97dc35cdab1d04886094cb319f1e4500d526cded15922c3e7b05bdea"
+    },
+    {
+      "file": "initial-types-failed.log.gz",
+      "rawPath": "/tmp/6232-room-input-forward-types.log",
+      "rawBytes": 40392,
+      "rawSHA256": "f16221ecd5256da44a9fcd57ae45bac22b19edd95379128f44f1b788a3b33b07",
+      "compressedSHA256": "38cf15c8a79e2d2423b48bcecb141ea3f711b3f2e2c0e907a58b37d8b35a555c"
+    },
+    {
+      "file": "types.log.gz",
+      "rawPath": "/tmp/6232-room-input-forward-types-fixed.log",
+      "rawBytes": 45388,
+      "rawSHA256": "4ecef0f2be59a4b57a817cc9e3436ff49168f570235cfa43fee2a462a114ff0d",
+      "compressedSHA256": "547e956d7a8bef31f29340e78413089776a7f8072761182f3a2e2a80b93b13ee"
+    },
+    {
+      "file": "sdk.log.gz",
+      "rawPath": "/tmp/6232-room-input-forward-sdk.log",
+      "rawBytes": 1138,
+      "rawSHA256": "b597113f6a608b086f12a45e7f45d6a9c5cbfaa865a31207cda37dcd71797b90",
+      "compressedSHA256": "1b6224f2133e55d3a4aa225907606c73e6bc649b1d06ed2cfe1bc368e2f8e131"
+    },
+    {
+      "file": "native-mcp.log.gz",
+      "rawPath": "/tmp/6232-room-input-forward-mcp.log",
+      "rawBytes": 100076,
+      "rawSHA256": "99ec01500c917154cf4e73131a8779eecfffc6d393638ada83094a7469220dbe",
+      "compressedSHA256": "1a661c996e7ae329bf7ab455e973c4f4e6cfe93b81dc26d51aa2c26744afdc3c"
+    },
+    {
+      "file": "room-browser.log.gz",
+      "rawPath": "/tmp/6232-room-input-browser.log",
+      "rawBytes": 38,
+      "rawSHA256": "7e7b49c8aedebab5dbe03b599c39eb1c3a446af6d8d1539d360b3a7360e0d181",
+      "compressedSHA256": "eef75aaea931519e1748f55f111c5ddabc99a51b68d030893c6e92c5d1918220"
+    },
+    {
+      "file": "old-source-strengthened-wire.log.gz",
+      "rawPath": "/tmp/6232-room-update-wire-final-fixture-before-de89.log",
+      "rawBytes": 3369,
+      "rawSHA256": "3e008a47f7f806506d2eee007ab37e033fc493f38aeb61e1aa085e3f1e40866a",
+      "compressedSHA256": "d2c336d1daea04698e732cbd75bee6e3f2bce5d4046e2fc5026fe4b57bad01cb"
+    },
+    {
+      "file": "fixed-strengthened-wire.log.gz",
+      "rawPath": "/tmp/6232-room-update-wire-final-fixture-fixed-de89.log",
+      "rawBytes": 1105,
+      "rawSHA256": "a6099e6930d3318aff53f593d0e00192d106202997228de9f72c40cfa4d30033",
+      "compressedSHA256": "179404bf5b526472ba6bf17c6c52584643c6b432798f9905f1625ae264adebbd"
+    },
+    {
+      "file": "owning-composition.json",
+      "rawPath": "/tmp/6232-room-update-wire-local-forward.json",
+      "rawBytes": 3029,
+      "rawSHA256": "c18a042325872468d28fca50632fb4b141410b49280b2cef12881838dace55d1"
+    },
+    {
+      "file": "lint.log.gz",
+      "rawPath": "/tmp/6232-room-input-forward-lint.log",
+      "rawBytes": 172392,
+      "rawSHA256": "e7a99ffa9c115c7c706a4383b906df113ab2c3d8e479a8020d8050c7709183df",
+      "compressedSHA256": "ac601e290a0d9536769b7e212bd0275ff91ae807a492b2389895217fc17be4a5"
+    },
+    {
+      "file": "browser-audit.log.gz",
+      "rawPath": "/tmp/6232-room-input-browser-audit.log",
+      "rawBytes": 179,
+      "rawSHA256": "8f4f232221e0eed298a18ec076c8757030dd5ad59e398b9eae9a69210bf61517",
+      "compressedSHA256": "384c327eecae4ad3a796dcafbfd4f534a830bb6b603c417673c8d53ea93cf4a3"
+    },
+    {
+      "file": "touched-warnings.json",
+      "rawPath": "/tmp/6232-room-input-touched-warnings.json",
+      "rawBytes": 60,
+      "rawSHA256": "17cfbfedc8f106d906a295d3c546305de7c222f5b355dc640b1c466dc47693e8"
+    }
+  ]
+}

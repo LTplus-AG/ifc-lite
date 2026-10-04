@@ -1,0 +1,38 @@
+{
+  "failedCiSource": "784bee5cb042cb7707ec93c9de0aee7773bac6ea",
+  "missingDepthRepair": "c7de2db016f82a86ee77a30fc7b0e8be4afdb066",
+  "integratedMissingDepthSource": "a9a1703b2eeba5a3c8beb6b4efc8ef341968c9de",
+  "integratedSplitExpectationSource": "ba33bb8a3c96d6c380e515677dad78e90f99fd69",
+  "receipts": [
+    {
+      "path": "ci-shard2-before.log.gz",
+      "sha256": "dc15360c732e4d340c4d2b8e8fd87890ddd8803d972ceb39ce9dbfd6d90e53fe",
+      "uncompressedSha256": "f332e2eaf8dccf819c9a4ad3463a10aac875acfe6e9511eae3f33108d5dc636e"
+    },
+    {
+      "path": "ci-shard6-before.log.gz",
+      "sha256": "9743b878f43e873421191d67071c89eee2cee5535dc9876d547c08a061cb5c4d",
+      "uncompressedSha256": "08a9a38f39d7b88c858686c18d7da6fa7a909c2decf1d721430c93e0fa96d748"
+    },
+    {
+      "path": "missing-depth-before.log.gz",
+      "sha256": "28e02b9567d014bc1ef349e0d6ae7f8f7c65f40d392c6aa12539cefbbb8de5cb",
+      "uncompressedSha256": "100d54dcb8d8d7fb79d8e02f4f2b3adb4752e442005c970d09c2b30219395ad0"
+    },
+    {
+      "path": "missing-depth-restored.log.gz",
+      "sha256": "6cc4f2af0c915354829faf73f18a0436467409652210dc7cca3a76ee1562595e",
+      "uncompressedSha256": "39ef7b0f202549e143320716d781bf5edaaad8e00c187836e3b15105d152da44"
+    },
+    {
+      "path": "integrated-missing-depth.log.gz",
+      "sha256": "ba38aa1b8bbe1a0b2491dc77194054247d519fb8299eafe93e9483c9f5cfc940",
+      "uncompressedSha256": "534bceeb239d640316e98d4b5a903d7b71b179ea1f503b7576e779ddc76f6493"
+    },
+    {
+      "path": "integrated-split-expectation.log.gz",
+      "sha256": "2afa903dc4dfcca3f7c7f584d6eaffa2d6ed709eb0377391a154ca1f9fe89bfa",
+      "uncompressedSha256": "45339529168754f09b3dddf89227711a16a339ad1710333d77213682400cf269"
+    }
+  ]
+}

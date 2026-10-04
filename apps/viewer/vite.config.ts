@@ -268,6 +268,7 @@ export default defineConfig({
       allow: ['../..'],
     },
     proxy: {
+      '/api/autodesk': { target: 'http://127.0.0.1:3002', changeOrigin: false },
       '/api/chat': {
         // Single API source of truth lives at repo-root `api/chat.ts`.
         // For local dev, run `pnpm dev:api` from repo root.

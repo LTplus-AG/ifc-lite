@@ -6,9 +6,11 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { PLUGIN_API_VERSION, satisfiesCaretRange } from '@ifc-lite/plugin-api';
 
 import { DropboxProvider } from '../src/provider.js';
+import { BrowserDropboxApiClient } from '../src/http-client.js';
+import type { SourceAuth } from '@ifc-lite/plugin-api';
 import { decodeSearchResult } from '../src/dropbox-types.js';
 import { clampPageSize, clampRevisionsPageSize, clampSearchPageSize } from '../src/mapping.js';
-import { createDropboxMockContext } from './dropbox-api-mock.js';
+import { DROPBOX_MOCK_ACCESS_TOKEN, createDropboxMockContext } from './dropbox-api-mock.js';
 import type { DropboxMockWorld } from './dropbox-api-mock.js';
 
 const WORLD: DropboxMockWorld = {
@@ -76,6 +78,39 @@ describe('DropboxProvider', () => {
     const prefs = provider.manifest.preferences;
     const clientId = prefs.find((p) => p.name === 'clientId');
     expect(clientId?.required).toBe(true);
+  });
+
+  // #6840: hosted transport must not read deployment settings or browser tokens.
+  it('browses and maps files through injected transport without browser credentials', async () => {
+    const base = createDropboxMockContext(WORLD);
+    const ctx = {
+      ...base,
+      getPreference: () => { throw new Error('Hosted browsing must not read app settings'); },
+      storage: {
+        get: () => { throw new Error('Hosted browsing must not read browser tokens'); },
+        set: () => { throw new Error('Hosted browsing must not write browser tokens'); },
+        delete: () => { throw new Error('Hosted browsing must not delete browser tokens'); },
+        keys: () => { throw new Error('Hosted browsing must not enumerate browser tokens'); },
+      },
+    };
+    const auth: SourceAuth = {
+      restore: async () => null,
+      getIdentity: async () => null,
+      signIn: async () => { throw new Error('Browsing must not prompt for sign-in'); },
+      signOut: async () => { throw new Error('Browsing must not sign out'); },
+    };
+    const hosted = new DropboxProvider({ auth, createClient: () => new BrowserDropboxApiClient(DROPBOX_MOCK_ACCESS_TOKEN, base) });
+    const files = await hosted.listFiles(ctx, 'me', 'id:f-alpha', { namePatterns: ['*.ifc'] });
+    expect(files.items.map((file) => file.name)).toEqual(['model.ifc']);
+    expect(files.items[0]?.containerId).toBe('id:f-alpha');
+    const progress: number[] = [];
+    const old = await hosted.download(ctx, { projectId: 'me', containerId: 'id:f-alpha', fileId: 'id:file-1', revisionId: 'rev-v1' }, {
+      onProgress: (received) => progress.push(received),
+    });
+    expect(new TextDecoder().decode(old)).toBe('MODEL-BYTES-1-OLD');
+    expect(progress.at(-1)).toBe(old.byteLength);
+    expect(hosted.manifest.preferences).toEqual([]);
+    expect(hosted.manifest.permissions).toEqual({ network: [] });
   });
 
   describe('listProjects', () => {

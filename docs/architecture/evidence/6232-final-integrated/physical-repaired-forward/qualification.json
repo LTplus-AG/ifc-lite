@@ -1,0 +1,96 @@
+{
+  "captureSource": "77246bddd0f5e0b42b3440e9017fee3ab9aa9e92",
+  "rootTypesTasks": 111,
+  "rootTypesTestFiles": 3389,
+  "lintFiles": 8479,
+  "touchedFileWarnings": [],
+  "unionTestsSource": "22d27ce854b9be00efcc2feae07ec489bddfe30a",
+  "unionCorePassed": 62,
+  "unionViewerPassed": 92,
+  "unionMcpPassed": 615,
+  "unionMcpExistingOptionalSkips": 5,
+  "cleanupControlsSource": "6e997a834c95a37d1df8e0cc8faa11e4520f6489",
+  "cleanupMcpPassed": 30,
+  "cleanupMapperPassed": 16,
+  "collabWarningSource": "5e60477afde92a09c4c59e4d6054b91838349ca9",
+  "collabPassed": 37,
+  "scope": "Two fresh Physical captures at captureSource; composed manifest retains six earlier independently labelled acbc receipts. No older receipt is relabelled as the new source. Earlier union tests and each bounded cleanup control retain their own exact source scopes; production files match final prepared Align except the final Flow proof test/comment. Required current-head CI and remaining main landings are still pending.",
+  "archives": [
+    {
+      "path": "union-types.log.gz",
+      "rawSHA256": "f479fd64c257a84b23a9750c231f0fc12a73c44929ed0f0a4bf7f00bbcca71d0",
+      "gzipSHA256": "d8205621093092af8ac694e61a33370396e327c77884a92073edecf579a17a28"
+    },
+    {
+      "path": "union-core.log.gz",
+      "rawSHA256": "1434361be5734507eae9063b1f3287a8a7be251d93d448d773907903690477c3",
+      "gzipSHA256": "6da363f4b1ace2a4b1aece83937ac061c2ebb24beee195a57a99ad5430e2b956"
+    },
+    {
+      "path": "union-viewer.log.gz",
+      "rawSHA256": "8e593a7516897418d393c3d97ac006837d6ea029df2157618bad86c2572c36c4",
+      "gzipSHA256": "c990942383d7293318a5b110959703604064b2a957b274f773658ac50b7f0f54"
+    },
+    {
+      "path": "union-mcp.log.gz",
+      "rawSHA256": "704589bc0073044da6e06d964dcd329f69ddcf59a278b83e769c981c868f0851",
+      "gzipSHA256": "c7fec9942d146853220d160d09fc18a06377ea774f870db7ebc3a2a88fc8f568"
+    },
+    {
+      "path": "post-cleanup-types.log.gz",
+      "rawSHA256": "c7685520152971d860374cc4088bff2dd5344827b17bd3c0c7cf285da3991c38",
+      "gzipSHA256": "efb65eb3108608247da0649333cf56994e40b161fad1551f5850577d18a811e6"
+    },
+    {
+      "path": "post-cleanup-lint.log.gz",
+      "rawSHA256": "198eb3bccf552406be8fee6c4ddde8d9bece6b403836a84a87979d7302369c26",
+      "gzipSHA256": "2177410811a446ef2a0ee832077984b17d0796cc04f5060483e48d18efe51b41"
+    },
+    {
+      "path": "cleanup-mcp.log.gz",
+      "rawSHA256": "3482ce150258edf1748628e98839e7e2a45878f3f1a60799eec57281eb161916",
+      "gzipSHA256": "3a1acdc0a8574923fe61da537bf5d50d5bb9d8fbf9f43a24d0e01564a044d74f"
+    },
+    {
+      "path": "cleanup-mutations.log.gz",
+      "rawSHA256": "fcaff532bcfe8095065118869eead7c3eda6e19bcf3870641454b4e0b2a7fa32",
+      "gzipSHA256": "fc65de535541fe77b882a4f16297b9a26d993efdd051cf422768a14411f97ff4"
+    },
+    {
+      "path": "collab-fixture.log.gz",
+      "rawSHA256": "eb914d595ec2c9ca584923cfcb410877922041093beb5916a938c12aff58befc",
+      "gzipSHA256": "edc0309eb12af464a3350034e9ab0818153c035d83b22d3a051f4d2ced255bcb"
+    },
+    {
+      "path": "collab-warning.log.gz",
+      "rawSHA256": "d3a1018b96d99dfb5b2c1aad5382b1beeae91a67048c63499de9106177df494d",
+      "gzipSHA256": "82220c0322691ea3276d75b759479b6bd61556cf50c7cbc3ad337272a8aaf616"
+    },
+    {
+      "path": "ci-node-before.log.gz",
+      "rawSHA256": "e2b232a5d7a7a306e3faafc6a805b1cefed11e3dbd83bc15f6ad2f295ba67b4d",
+      "gzipSHA256": "2c7913fe0e15b1d8fb6140f9e3526b03ac37d8f096ce5885469b6c890db29410"
+    },
+    {
+      "path": "ci-collab-before.log.gz",
+      "rawSHA256": "95c02e6191e70b69b368a353f6577cb8f2efd28c3a72a41af0c134c935c7231e",
+      "gzipSHA256": "972d021e71e2878ac67745104af7bb8d1fba2d7929aae538ab3c21bb2a88d140"
+    },
+    {
+      "path": "ci-shared-split-before.log.gz",
+      "rawSHA256": "1d4ea2895e713fd5cba191e9c73729ff8071d4e497eb6632c0f078dca265ccf9",
+      "gzipSHA256": "64e2b4a298b7a3c3a76b281013f8f85651ce816389be908578550a60214b25fc"
+    },
+    {
+      "path": "split-before.log.gz",
+      "rawSHA256": "cb26353b82563344c7cb33183d574e5c3662aa98436c4e71619b597ffc745297",
+      "gzipSHA256": "e0247f8863100716b58e8ed518fcdb9ccaae059c5b67f763cc35281ab093f68e"
+    },
+    {
+      "path": "split-restored.log.gz",
+      "rawSHA256": "67dffcee37e9cf42957f44c602d404198d63a11399fd5906495b57283a39a421",
+      "gzipSHA256": "045a2f2abe53d9d302ef4758b7665bc9e4f648bc1aa9709fbc00c9ffec169960"
+    }
+  ],
+  "collabWarningExecution": "Executed the exact committed file content before the leaf commit; this is source-content qualification, not a clean-head browser receipt."
+}

@@ -68,6 +68,27 @@ test('native clash evidence reaches the assistant without executing model output
   expect(await page.evaluate(() => 'assistantExecuted' in globalThis)).toBe(false);
   await page.screenshot({ path: testInfo.outputPath('assistant-context.png') });
 
+  // #6830: reviewed report commits through the native library and keeps the real source.
+  await assistant.getByText('Review report draft', { exact: true }).click();
+  await assistant.getByLabel('Report name', { exact: true }).fill('ArchiCAD coordination draft');
+  await assistant.getByRole('button', { name: 'Prepare report draft', exact: true }).click();
+  const saveReport = assistant.getByRole('button', { name: 'Save reviewed document', exact: true });
+  await expect(saveReport).toBeDisabled();
+  await assistant.getByRole('checkbox', { name: 'I reviewed the narrative, coverage limits and evidence supporting its claims.', exact: true }).check();
+  await saveReport.click();
+  await expect(assistant).toContainText('Document saved with captured historical evidence');
+  expect(await page.evaluate(() => {
+    const state = (globalThis as unknown as { __ifc_lite_viewer_store__: { getState(): {
+      documents: Array<{ name: string; blocks: Array<{ kind: string; text?: string }> }>;
+    } } }).__ifc_lite_viewer_store__.getState();
+    const doc = state.documents.find(candidate => candidate.name === 'ArchiCAD coordination draft');
+    return { source: doc?.blocks.some(block => block.text?.includes('AC20-FZK-Haus')),
+      historical: doc?.blocks.some(block => block.text?.includes('Captured evidence is historical')),
+      literal: doc?.blocks.some(block => block.text?.includes('<script>globalThis.assistantExecuted = true</script>')) };
+  })).toEqual({ source: true, historical: true, literal: true });
+  expect(await page.evaluate(() => 'assistantExecuted' in globalThis)).toBe(false);
+  await page.screenshot({ path: testInfo.outputPath('assistant-report.png') });
+
   // #6822: real native Flow toolbar -> draft -> reviewed graph effect, still no Run.
   await page.evaluate(() => {
     const store = (globalThis as unknown as { __ifc_lite_viewer_store__: {

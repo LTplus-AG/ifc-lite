@@ -12,6 +12,17 @@ import type { TranslationValue } from '../types';
  * `chat-byok.en.ts`, under the `chatByok.*` namespace.
  */
 export const chatEn = {
+  'assistant.reportReview': 'Review report draft',
+  'assistant.reportHint': 'Prepare the latest completed answer as an editable document with captured evidence. Verify claims and citations before saving or sharing.',
+  'assistant.reportName': 'Report name',
+  'assistant.prepareReport': 'Prepare report draft',
+  'assistant.reportContents': 'Inspect complete document and evidence',
+  'assistant.reportStale': 'The discussion or evidence changed. Prepare and review a new draft.',
+  'assistant.reportApproved': 'I reviewed the narrative, coverage limits and evidence supporting its claims.',
+  'assistant.saveReport': 'Save reviewed document',
+  'assistant.exportReport': 'Export reviewed document JSON',
+  'assistant.reportSaved': 'Document saved with captured historical evidence. Edit and export PDF in Documents.',
+  'assistant.openReport': 'Open document',
   'assistant.flowReview': 'Review Flow changes',
   'assistant.flowDraftHint': 'Ask for a Flow patch, then review the complete answer. Applying edits the graph only; run it separately in Flow.',
   'assistant.reviewFlowAnswer': 'Review latest Flow answer',

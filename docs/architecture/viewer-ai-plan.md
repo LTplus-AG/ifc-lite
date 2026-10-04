@@ -424,6 +424,8 @@ Document format changes go through its migration and validator. Keep original re
 
 ## Delivery work packages
 
+Track partial implementation and outstanding acceptance in the [implementation ledger](viewer-ai-implementation.md). No package is complete merely because its first stack layer exists.
+
 Each row becomes a scoped feature issue with a completion charter. Dependency IDs below are planning IDs, not GitHub issue numbers. Stack PRs against one issue where necessary to keep reviewable diffs; do not put the whole program in one PR. Planning is authorized here; this document does not create or label external issues.
 
 | ID | Deliverable and implementation homes | Depends on | Required completion evidence |

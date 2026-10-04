@@ -81,6 +81,38 @@ Notes:
 - Strict CSPs need `script-src 'self' blob:` to allow the `Blob`-URL
   worker.
 
+## COPC: range-read octree point clouds
+
+A [COPC](https://copc.io) file is a LAZ 1.4 file organised as an octree, so a
+viewer can read only the nodes it needs, from a local `File` or over HTTP
+Range requests. `openCopcWorkerReader` opens one in the decode worker, loads
+the root hierarchy page, and decodes nodes on demand. Detection is by the
+`copc`/`info` VLR (`isCopcHeader` on the first `COPC_PROBE_BYTES` bytes), not
+by the `.copc.laz` file name.
+
+```ts
+import { openCopcWorkerReader } from '@ifc-lite/pointcloud';
+
+declare const file: File;
+const reader = await openCopcWorkerReader({ source: { kind: 'blob', blob: file } });
+const root = reader.hierarchy.nodes.get('0-0-0-0');
+if (root) {
+  const chunk = await reader.readNode(root, { stride: 1 });
+  console.log(`${chunk.pointCount} points in the root node`);
+}
+// Deeper hierarchy pages load on demand: reader.loadPage(ref) for any
+// ref in reader.hierarchy.pendingPages.
+reader.close();
+```
+
+For a remote file, pass `{ kind: 'http', url }`. The server must answer
+Range requests with `206 Partial Content`; a server that ignores `Range` is
+refused rather than downloading the whole file. When CORS hides
+`Content-Range`, the size comes from a `HEAD` request and each response is
+checked by its exact length. Hierarchy pages come from the file, so the
+page walk is iterative with a visited set and page, node and byte budgets;
+exceeding a budget is an error, never a silently truncated octree.
+
 ## API
 
 See the [docs site](https://ifclite.dev/docs/) for guides and the full API reference.

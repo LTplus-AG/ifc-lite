@@ -11,6 +11,13 @@
 
 import type { DecodedPointChunk, PointCloudBBox, PointNormalState } from '../types.js';
 import type { PointSourceInfo } from './types.js';
+import type { CopcFileInfo } from '../copc/copc-info.js';
+import type { CopcHierarchyPage, CopcNodeEntry, CopcPageRef } from '../copc/copc-hierarchy.js';
+
+/** Where a COPC file's bytes come from; the worker builds the range source. */
+export type CopcSourceDescriptor =
+  | { kind: 'blob'; blob: Blob }
+  | { kind: 'http'; url: string; headers?: Record<string, string> };
 
 export type WorkerSourceFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
 
@@ -40,6 +47,30 @@ export type WorkerRequest =
   | {
       kind: 'abort';
       sourceId: number;
+    }
+  | {
+      kind: 'copc-open';
+      requestId: number;
+      source: CopcSourceDescriptor;
+      originOffset?: readonly [number, number, number];
+    }
+  | {
+      kind: 'copc-page';
+      requestId: number;
+      sourceId: number;
+      page: CopcPageRef;
+    }
+  | {
+      kind: 'copc-node';
+      requestId: number;
+      sourceId: number;
+      node: CopcNodeEntry;
+      stride: number;
+    }
+  | {
+      /** Abort one in-flight COPC page/node request (the camera moved on). */
+      kind: 'copc-cancel';
+      targetRequestId: number;
     };
 
 /** worker → main */
@@ -55,6 +86,18 @@ export type WorkerResponse =
       requestId: number;
       sourceId: number;
       chunk: SerializedChunk | null;
+    }
+  | {
+      kind: 'copc-opened';
+      requestId: number;
+      sourceId: number;
+      file: CopcFileInfo;
+      rootPage: CopcHierarchyPage;
+    }
+  | {
+      kind: 'copc-page';
+      requestId: number;
+      page: CopcHierarchyPage;
     }
   | {
       kind: 'error';

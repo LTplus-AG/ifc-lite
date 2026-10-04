@@ -51,7 +51,8 @@ export interface DecodeWorkerOptions {
   spawn?: () => Worker | Promise<Worker>;
 }
 
-async function defaultSpawn(): Promise<Worker> {
+/** @internal Shared with the COPC client. */
+export async function defaultSpawn(): Promise<Worker> {
   // Prefer the published inline bundle. The dynamic import resolves to a
   // non-null `INLINE_WORKER_CODE` only in the published dist; in the
   // workspace src tree (and in unit tests) it resolves to `null` and we
@@ -87,7 +88,8 @@ interface PendingRequest {
 /** Variants that need a response (open / next). */
 type RequestWithReply = Extract<WorkerRequest, { requestId: number }>;
 
-class WorkerSession {
+/** @internal Shared with the COPC client. */
+export class WorkerSession {
   private requests = new Map<number, PendingRequest>();
   private nextRequestId = 1;
   private listener: (event: MessageEvent<WorkerResponse>) => void;
@@ -108,12 +110,17 @@ class WorkerSession {
     worker.addEventListener('message', this.listener);
   }
 
-  /** Send a request that expects a single response by `requestId`. */
+  /**
+   * Send a request that expects a single response by `requestId`.
+   * `onRequestId` exposes the id so a caller can cancel it later.
+   */
   send<T extends WorkerResponse>(
     build: (requestId: number) => RequestWithReply,
     transfer: Transferable[] = [],
+    onRequestId?: (requestId: number) => void,
   ): Promise<T> {
     const requestId = this.nextRequestId++;
+    onRequestId?.(requestId);
     const req = build(requestId);
     return new Promise<T>((resolve, reject) => {
       this.requests.set(requestId, {
@@ -143,7 +150,8 @@ export function __resetSharedSessionForTests(): void {
   sharedSessionPromise = null;
 }
 
-function getSharedSession(spawn: () => Worker | Promise<Worker>): Promise<WorkerSession> {
+/** @internal Shared with the COPC client: one decode worker per page. */
+export function getSharedSession(spawn: () => Worker | Promise<Worker>): Promise<WorkerSession> {
   if (sharedSessionPromise) return sharedSessionPromise;
   // Wrap in an async IIFE so sync throws from a custom `spawn` callback
   // route through the same catch path as async rejections — without this,

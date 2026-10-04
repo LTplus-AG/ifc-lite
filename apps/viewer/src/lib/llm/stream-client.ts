@@ -55,7 +55,7 @@ export interface StreamOptions {
   messages: StreamMessage[];
   /** System prompt */
   system?: string;
-  /** Positive output token budget; clamped to the transport ceiling. */
+  /** Positive output token ceiling, including reasoning; does not guarantee visible text. */
   maxOutputTokens?: number;
   /** AbortSignal for cancellation */
   signal?: AbortSignal;

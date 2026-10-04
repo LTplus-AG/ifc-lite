@@ -55,6 +55,16 @@ document enterprise administrator approval where tenant policy requires it.
 The gateway exposes OneDrive only; SharePoint discovery needs separately scoped
 work and delegated site permissions.
 
+For the registered IFClite app, the viewer serves
+`/.well-known/microsoft-identity-association.json` with its public client ID.
+After production deployment, confirm the canonical URL returns JSON, then use
+Entra App registrations → Branding & properties → Publisher domain → Verify a
+new domain to verify `www.ifclite.com`. This is domain verification, not a
+verified-publisher badge. Complete Microsoft's separate publisher verification
+or obtain customer administrator consent where tenant policy requires it;
+do not ask customers to disable consent protections.
+[Microsoft publisher-domain instructions](https://learn.microsoft.com/en-us/entra/identity-platform/howto-configure-publisher-domain).
+
 Downloads use immediate preparation replies, short status polls and single-use,
 session-owned artifact claims. Vercel external rewrites wait at most 120 seconds
 for an upstream response, so do not wait for full vendor downloads inside the

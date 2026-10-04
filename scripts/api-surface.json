@@ -8842,9 +8842,12 @@
     "NetworkMethod: type",
     "NetworkRequestInit: interface",
     "NetworkResponse: interface",
+    "assertNetworkEndpoint: function",
     "coreNetworkRequest: function",
+    "createLoopbackHostGrant: function",
     "executeUngatedRequest: function",
-    "isHostGranted: function"
+    "isHostGranted: function",
+    "loopbackHttpOrigin: function"
   ],
   "@ifc-lite/sandbox/schema": [
     "BridgeCallContext: interface",

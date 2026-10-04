@@ -1,6 +1,7 @@
 <service>
   <id>IFCliteExchangeGateway</id>
   <name>IFClite Exchange HTTPS Gateway</name>
+  <description>TLS gateway for the authenticated IFClite Data Exchange worker.</description>
   <executable>C:\IFClite\tools\caddy.exe</executable>
   <arguments>run --config C:\IFClite\config\Caddyfile.exchange-worker --adapter caddyfile</arguments>
   <workingdirectory>C:\IFClite\config</workingdirectory>

@@ -1,6 +1,7 @@
 <service>
   <id>IFCliteExchangeWorker</id>
   <name>IFClite Data Exchange Worker</name>
+  <description>Authenticated Autodesk Data Exchange exports for IFClite.</description>
   <executable>C:\Program Files\nodejs\node.exe</executable>
   <arguments>--env-file=C:\IFClite\config\exchange-worker.env.local C:\IFClite\current\service\dist\exchange-worker-bin.js</arguments>
   <workingdirectory>C:\IFClite\current\service</workingdirectory>

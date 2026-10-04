@@ -266,7 +266,7 @@ async function runSuite(name, exercise) {
       } finally {
         fs.writeFileSync(path.join(dir, `${count}-console.log`), logs.join('\n'));
         fs.writeFileSync(path.join(dir, `${count}-wasm.json`), JSON.stringify(wasmResponses));
-        if (!page.isClosed()) fs.writeFileSync(path.join(dir, `${count}-remesh.json`), JSON.stringify(await page.evaluate(() => globalThis.parityRemesh)));
+        if (!page.isClosed()) fs.writeFileSync(path.join(dir, `${count}-remesh.json`), JSON.stringify(await page.evaluate(() => globalThis.parityRemesh ?? { initialized: false })));
         if (!page.isClosed()) await page.evaluate(() => {
           globalThis.parityNativeProcessor?.dispose();
           globalThis.parityTransport?.close();

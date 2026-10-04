@@ -6,7 +6,7 @@ Coverage belongs to [#6833](https://github.com/LTplus-AG/ifc-lite/issues/6833), 
 
 | Context | Native owner / source | Included row meaning | Coverage, freshness and boundaries |
 |---|---|---|---|
-| Clash | `clashSlice.clashResult` / `clashRawResult`; `@ifc-lite/clash` | A native finding with both model-qualified references, rule, native status/severity and measured or estimated distance kind | Native summary/settings/truncation retained; report and model stamps govern freshness. AI cannot change human review or native verdicts. |
+| Clash | `clashSlice.clashResult` / `clashRawResult`; `@ifc-lite/clash` | A native finding with both model-qualified references, rule, native status/severity, measured or estimated distance kind and native selector discipline candidates for each side | Native summary/settings/truncation retained; report and model stamps govern freshness. Overlapping candidates stay ambiguous; unmatched types stay unknown. Human reviews are not projected or changed. Candidates do not establish responsibility; BCF assignees require verified mapping. |
 | IDS / information rules | `idsValidationReport`; native validators | A specification/cardinality summary, entity result or set result | Native counts, errors, applicability and source kind retained. Manual checklist is a distinct required adapter. |
 | Compare | `compareResult`; native comparison service | A native diff entry and canonical base/head references | Native counts/scope/exclusions and geometry limitations retained. No AI promotion of ambiguous matches. |
 | Flow | `flowDoc`; native registry/editor | Graph structure, with node/edge counts | Parameters, execution inputs/outputs and run state excluded. Typed graph patches have separate native validation and review. |

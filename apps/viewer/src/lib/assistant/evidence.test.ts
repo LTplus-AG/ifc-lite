@@ -35,6 +35,9 @@ test('frozen clash evidence keeps full counts, federation keys and explicit samp
   assert.deepEqual(payload.models.map((m: { id: string }) => m.id), ['a', 'b']);
   assert.equal(payload.evidence.rows[0].data.b.model, 'b');
   assert.equal(payload.evidence.rows[0].data.distanceKind, 'estimate');
+  assert.deepEqual(payload.evidence.rows[0].data.disciplineCandidates, { a: ['ARCH', 'STR'], b: ['MEP', 'FIRE'] });
+  assert.match(payload.evidence.summary.taxonomyLimitations, /Omitted findings remain unclassified/);
+  assert.match(payload.evidence.summary.taxonomyLimitations, /assignees stay empty/);
   const longNames = clashes.map(c => ({ ...c, a: { ...c.a, name: 'x'.repeat(20_000) }, b: { ...c.b, name: 'y'.repeat(20_000) } }));
   useViewerStore.setState({ clashResult: { ...result, clashes: longNames } });
   const limited = captureEvidence('clash');

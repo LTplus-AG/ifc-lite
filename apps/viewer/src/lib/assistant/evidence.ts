@@ -6,6 +6,7 @@ import { useViewerStore } from '@/store';
 import { analysisStampOf, captureAnalysisStamp, isAnalysisStale, type AnalysisStamp } from '@/hooks/useAnalysisStaleness';
 import { buildLoadReports } from '../loadReport';
 import type { AssistantSource } from './sources';
+import { clashDisciplineCandidates, CLASH_TAXONOMY_LIMITATIONS } from './clash-taxonomy';
 
 export type { AssistantSource } from './sources';
 export interface EvidenceSnapshot {
@@ -89,11 +90,13 @@ export function captureEvidence(source: AssistantSource): EvidenceSnapshot {
     if (rows.length < ROW_LIMIT) rows.push({ citation: `E${rows.length + 1}`, data });
   }
   if (source === 'clash' && s.clashResult) {
-    summary = { ...s.clashResult.summary, truncated: s.clashResult.truncated, settings: s.clashResult.settings };
+    summary = { ...s.clashResult.summary, truncated: s.clashResult.truncated, settings: s.clashResult.settings,
+      taxonomyLimitations: CLASH_TAXONOMY_LIMITATIONS };
     totalRows = s.clashResult.clashes.length;
     for (const c of s.clashResult.clashes.slice(0, ROW_LIMIT)) {
       rows.push({ citation: `E${rows.length + 1}`, data: { id: c.id, a: c.a, b: c.b, rule: c.rule,
-        status: c.status, severity: c.severity, distance: c.distance, distanceKind: c.distanceKind } });
+        status: c.status, severity: c.severity, distance: c.distance, distanceKind: c.distanceKind,
+        disciplineCandidates: clashDisciplineCandidates(c) } });
     }
   } else if (source === 'validation' && s.idsValidationReport) {
     const report = s.idsValidationReport;

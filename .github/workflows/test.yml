@@ -50,8 +50,7 @@ on:
   # a full 16-lane run for every label the risk/review bots apply to a PR.
   pull_request:
     types: [opened, synchronize, reopened, edited]
-    # Exercise the authorized viewer AI stack while its layers target feature branches.
-    branches: [main, 't3code/explore-ai-viewer-ux', 't3code/viewer-ai-*']
+    branches: [main]
   # Post-merge guard. Two PRs can each be green against their own base and be
   # broken as a pair on main: #2551 removed a helper from
   # measure-parity.test.tsx at 01:41 on 2026-08-12, #2538 added a caller of it

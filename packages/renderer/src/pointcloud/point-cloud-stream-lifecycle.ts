@@ -56,11 +56,27 @@ function currentPointCloudStreamRenderer(host: PointCloudStreamHost, handle: Poi
   return host.pointCloudRenderer;
 }
 
-export function appendPointCloudChunk(host: PointCloudStreamHost, handle: PointCloudAssetHandle, chunk: PointCloudChunkInput): void {
-  currentPointCloudStreamRenderer(host, handle).appendChunk(handle, chunk);
+/** `key` makes the chunk individually removable via `removePointCloudChunk` (#6869). */
+export function appendPointCloudChunk(
+  host: PointCloudStreamHost, handle: PointCloudAssetHandle, chunk: PointCloudChunkInput, key?: string,
+): void {
+  currentPointCloudStreamRenderer(host, handle).appendChunk(handle, chunk, key);
   host.modelBoundsTracker.expandForPointClouds();
   host.camera.setSceneBounds(host.modelBounds);
   host.requestRender();
+}
+
+/**
+ * Drop the chunks appended under `key`. A handle from a torn-down stream
+ * (device loss) owns nothing any more, so this is a no-op returning 0
+ * rather than a throw: removal is cleanup, and cleanup must not fail.
+ */
+export function removePointCloudChunk(host: PointCloudStreamHost, handle: PointCloudAssetHandle, key: string): number {
+  if (host.deviceLost || !host.pointCloudRenderer
+    || host.pointCloudStreamEpochs.get(handle.id) !== host.pointCloudStreamEpoch) return 0;
+  const removed = host.pointCloudRenderer.removeChunk(handle, key);
+  if (removed > 0) host.requestRender();
+  return removed;
 }
 
 export function endPointCloudStream(host: PointCloudStreamHost, handle: PointCloudAssetHandle): void {

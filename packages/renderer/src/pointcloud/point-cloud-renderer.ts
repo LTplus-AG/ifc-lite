@@ -31,10 +31,12 @@ import {
   type PointCloudNodeMeta,
 } from './point-cloud-node.js';
 import type { PointCloudSpatialIndex } from './point-cloud-spatial-index.js';
+import { removeKeyedChunks } from './point-cloud-keyed-chunks.js';
 import { buildPickNodeSources, resolvePickedAsset } from './point-cloud-pick-sources.js';
 import { buildRayQuerySources } from './point-cloud-ray-transform.js';
 import {
   normalizeClassMask,
+  resolveSectionPlaneUniform,
   writePointCloudUniforms,
   type PointColorMode,
   type PointSizeMode,
@@ -240,13 +242,20 @@ export class PointCloudRenderer {
     return { id };
   }
 
-  appendChunk(handle: PointCloudAssetHandle, chunk: PointCloudChunkInput): void {
+  /** `key` makes the chunk removable on its own (`removeChunk`), e.g. one COPC octree node (#6869). */
+  appendChunk(handle: PointCloudAssetHandle, chunk: PointCloudChunkInput, key?: string): void {
     const node = this.nodes.get(handle.id);
     if (!node) {
       console.warn(`[PointCloudRenderer] appendChunk: no node for handle ${handle.id}`);
       return;
     }
-    appendChunkToNode(this.device, node, chunk);
+    appendChunkToNode(this.device, node, chunk, key);
+  }
+
+  /** Free every GPU buffer and the snap index appended under `key`; returns the points removed. */
+  removeChunk(handle: PointCloudAssetHandle, key: string): number {
+    const node = this.nodes.get(handle.id);
+    return node ? removeKeyedChunks(node, key) : 0;
   }
 
   /** Mark streaming complete. No-op for now — kept for symmetry. */
@@ -369,24 +378,7 @@ export class PointCloudRenderer {
 
     pass.setPipeline(this.pipeline.getPipeline());
 
-    const sp = state.sectionPlane ?? null;
-    let normal: [number, number, number];
-    let distance: number;
-    let enabled: boolean;
-    if (sp && sp.enabled) {
-      enabled = true;
-      if (sp.flipped) {
-        normal = [-sp.normal[0], -sp.normal[1], -sp.normal[2]];
-        distance = -sp.distance;
-      } else {
-        normal = sp.normal;
-        distance = sp.distance;
-      }
-    } else {
-      enabled = false;
-      normal = [0, 1, 0];
-      distance = 0;
-    }
+    const { normal, distance, enabled } = resolveSectionPlaneUniform(state.sectionPlane);
 
     const bounds = this.getBounds();
     const heightMin = bounds ? bounds.min[1] : 0;

@@ -207,7 +207,7 @@ import {
     appendPointCloudChunk as appendPointCloudChunkImpl,
     beginPointCloudStream as beginPointCloudStreamImpl,
     endPointCloudStream as endPointCloudStreamImpl,
-    removePointCloudAsset as removePointCloudAssetImpl,
+    removePointCloudAsset as removePointCloudAssetImpl, removePointCloudChunk as removePointCloudChunkImpl,
     type PointCloudStreamHost,
 } from './pointcloud/point-cloud-stream-lifecycle.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
@@ -1041,11 +1041,14 @@ export class Renderer {
         return beginPointCloudStreamImpl(this as unknown as PointCloudStreamHost, meta);
     }
 
-    appendPointCloudChunk(
-        handle: PointCloudAssetHandle,
-        chunk: import('./pointcloud/point-cloud-node.js').PointCloudChunkInput,
-    ): void {
-        appendPointCloudChunkImpl(this as unknown as PointCloudStreamHost, handle, chunk);
+    /** `key` makes the chunk removable on its own via `removePointCloudChunk` (one COPC node, #6869). */
+    appendPointCloudChunk(handle: PointCloudAssetHandle, chunk: import('./pointcloud/point-cloud-node.js').PointCloudChunkInput, key?: string): void {
+        appendPointCloudChunkImpl(this as unknown as PointCloudStreamHost, handle, chunk, key);
+    }
+
+    /** Free the chunks appended under `key`; returns the points removed (0 for a stale handle). */
+    removePointCloudChunk(handle: PointCloudAssetHandle, key: string): number {
+        return removePointCloudChunkImpl(this as unknown as PointCloudStreamHost, handle, key);
     }
 
     endPointCloudStream(handle: PointCloudAssetHandle): void {

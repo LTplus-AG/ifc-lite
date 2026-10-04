@@ -77,6 +77,7 @@ import {
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
 import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } from './ingest/pointCloudSpatialLoad.js';
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
+import { stopCopcLodStream } from './ingest/copc/copcLodStream.js';
 import { getGlobalRenderer } from './useBCF.js';
 import type { FederatedLandXmlStreamingFinalization } from './ingest/federatedLandXmlStreaming.js';
 import { openFederatedLandXmlStreamingPlan, openPrimaryLandXmlProvisional } from './ingest/landXmlGpuTransactions.js';
@@ -904,7 +905,7 @@ export function useIfcLoader() {
             setClassCounts(ingest.rendererHandle.id, null);
             unregisterPointCloudAlignment(ingest.rendererHandle.id);
             setAlignmentAvailable(hasRegisteredPointCloudAlignment());
-            removePointCloudScanCache(ingest.rendererHandle.id);
+            removePointCloudScanCache(ingest.rendererHandle.id); stopCopcLodStream(ingest.rendererHandle.id);
             clearOwnedCanceller();
             return;
           }
@@ -942,7 +943,7 @@ export function useIfcLoader() {
           setClassCounts(ingest.rendererHandle.id, null);
           unregisterPointCloudAlignment(ingest.rendererHandle.id);
           setAlignmentAvailable(hasRegisteredPointCloudAlignment());
-          removePointCloudScanCache(ingest.rendererHandle.id);
+          removePointCloudScanCache(ingest.rendererHandle.id); stopCopcLodStream(ingest.rendererHandle.id);
           return;
         }
         // Primary owns the active-model slots; a federated add must not touch

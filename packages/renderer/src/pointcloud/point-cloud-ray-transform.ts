@@ -80,18 +80,20 @@ import type { Vec3 } from '../raycaster.js';
 import { isUsableModelMatrix } from './point-cloud-node.js';
 
 /** The subset of a `PointCloudNode` the snap-source snapshot reads. */
-export interface RayQueryNodeLike {
+export interface RayQueryNodeLike<I extends { pointCount: number } = { pointCount: number }> {
   meta: { expressId: number; modelIndex?: number };
-  spatialIndex: { pointCount: number };
+  spatialIndex: I;
+  /** Per-key indexes of removable chunks (COPC LOD nodes, #6869). */
+  keyedIndexes?: ReadonlyMap<string, I>;
   model?: Float32Array;
   placement?: Float64Array;
 }
 
 /** One entry of the snapshot handed to `queryPointClouds`. */
-export interface RayQuerySource<TNode extends RayQueryNodeLike> {
+export interface RayQuerySource<I extends { pointCount: number }> {
   expressId: number;
   modelIndex?: number;
-  index: TNode['spatialIndex'];
+  index: I;
   classMask: Uint32Array;
   model?: Float32Array | Float64Array;
 }
@@ -103,25 +105,29 @@ export interface RayQuerySource<TNode extends RayQueryNodeLike> {
  * testable without a `GPUDevice`. That matters here specifically: the
  * renderer-to-query wiring is exactly where the aligned-scan gap lived, and
  * it went unnoticed because nothing could exercise it without a GPU. Empty
- * nodes are skipped, mirroring `getPickNodes`.
+ * indexes are skipped, mirroring `getPickNodes`. A node with keyed chunks
+ * contributes one source per key index, all sharing the node's placement.
  */
-export function buildRayQuerySources<TNode extends RayQueryNodeLike>(
-  nodes: Iterable<TNode>,
+export function buildRayQuerySources<I extends { pointCount: number }>(
+  nodes: Iterable<RayQueryNodeLike<I>>,
   classMask: Uint32Array,
-): Array<RayQuerySource<TNode>> {
-  const out: Array<RayQuerySource<TNode>> = [];
+): Array<RayQuerySource<I>> {
+  const out: Array<RayQuerySource<I>> = [];
   for (const node of nodes) {
-    if (node.spatialIndex.pointCount === 0) continue;
-    out.push({
-      expressId: node.meta.expressId,
-      modelIndex: node.meta.modelIndex,
-      index: node.spatialIndex,
-      // The index stores RAW decoder positions while the shader draws
-      // through `model` (#1804) — the query needs the matrix to reconcile
-      // the two, or an aligned scan snaps to pre-alignment coordinates.
-      model: node.placement ?? node.model,
-      classMask,
-    });
+    const indexes = node.keyedIndexes ? [node.spatialIndex, ...node.keyedIndexes.values()] : [node.spatialIndex];
+    for (const index of indexes) {
+      if (index.pointCount === 0) continue;
+      out.push({
+        expressId: node.meta.expressId,
+        modelIndex: node.meta.modelIndex,
+        index,
+        // The index stores RAW decoder positions while the shader draws
+        // through `model` (#1804) — the query needs the matrix to reconcile
+        // the two, or an aligned scan snaps to pre-alignment coordinates.
+        model: node.placement ?? node.model,
+        classMask,
+      });
+    }
   }
   return out;
 }

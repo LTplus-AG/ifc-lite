@@ -266,7 +266,7 @@
   3699 packages/renderer/src/index.ts
    741 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts
-   475 packages/renderer/src/pointcloud/point-cloud-renderer.ts
+   465 packages/renderer/src/pointcloud/point-cloud-renderer.ts
    758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
    467 packages/renderer/src/raycast-engine.ts
    401 packages/renderer/src/render-section-plane.ts

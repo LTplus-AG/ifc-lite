@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * LAS / LAZ ingest path for the viewer.
+ * LAS / LAZ (and COPC, via `copc/copcLodStream.ts`) ingest path for the viewer.
  *
  * Streams a Blob through `@ifc-lite/pointcloud`'s decode worker and
  * pushes chunks directly into the renderer via the streaming API. The
@@ -17,7 +17,6 @@ import {
   accumulateClassificationCounts,
   classificationCountEntries,
   createClassificationCounts,
-  streamPointCloud,
   type DecodedPointChunk,
   type StreamPointCloudOptions,
   type StreamHandle,
@@ -38,6 +37,7 @@ import {
   removePointCloudScanCache, setPointCloudScanCacheOrigin,
 } from './pointCloudScanCache.js';
 import { swapZupChunkToYup } from './pointCloudFrame.js';
+import { streamPointCloudOrCopc } from './copc/copcLodStream.js';
 
 export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
 
@@ -386,7 +386,8 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   // permanently inflated.
   let stream: StreamHandle;
   try {
-    stream = streamPointCloud({
+    // A COPC file (detected by its VLR) streams view-dependent LOD nodes instead (#6869).
+    stream = streamPointCloudOrCopc({
       format: opts.format,
       blob: opts.blob,
       label: opts.fileName,
@@ -457,7 +458,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
         removePointCloudScanCache(handle.id);
         onCountChange(-1);
       },
-    });
+    }, { renderer: opts.renderer, handle, onClassCounts: (counts) => opts.onClassCounts?.(handle.id, counts) });
   } catch (err) {
     opts.renderer.removePointCloudAsset(handle);
     opts.onClassCounts?.(handle.id, null);

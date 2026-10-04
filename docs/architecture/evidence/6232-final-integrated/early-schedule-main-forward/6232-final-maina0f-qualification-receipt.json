@@ -1,0 +1,41 @@
+{
+  "source": "ed68e240572316addc867de9be11548434e82bd2",
+  "tree": "68068e434c0f1a108306204137c4426863959407",
+  "actualMain": "a0f7cfa07fc7a220b93e316c1523536859a808c5",
+  "ownPublishedHead": "db35b74ac1e94046da26ccae4f56bd92c7450979",
+  "literalInheritedPaths": [
+    ".changeset/schedule-early-dates-6803.md",
+    "apps/viewer/src/components/viewer/properties/ScheduleCard.tsx",
+    "apps/viewer/src/components/viewer/properties/TaskEditCard.tsx",
+    "apps/viewer/src/components/viewer/schedule/GanttTaskTree.tsx",
+    "apps/viewer/src/components/viewer/schedule/schedule-animator.ts",
+    "apps/viewer/src/components/viewer/schedule/useGanttBarDrag.early-dates.test.tsx",
+    "apps/viewer/src/components/viewer/schedule/useGanttBarDrag.ts",
+    "apps/viewer/src/lib/charts/datasets/schedule.ts",
+    "apps/viewer/src/store/slices/schedule-edit-helpers.ts",
+    "apps/viewer/src/store/slices/schedule-task-dates.test.ts",
+    "apps/viewer/src/store/slices/schedule-task-dates.ts",
+    "apps/viewer/src/store/slices/scheduleSlice.test.ts",
+    "apps/viewer/src/store/slices/scheduleSlice.ts"
+  ],
+  "all13InheritedBlobsExactMain": true,
+  "packagesRustApiBimPlannerUnchanged": true,
+  "typecheck": {
+    "tasks": 111,
+    "cached": 110,
+    "testFiles": 3407,
+    "exit": 0
+  },
+  "viewerScheduleChart": {
+    "passed": 490,
+    "failed": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "cache": 0,
+    "exit": 0,
+    "pattern": "schedule|Schedule|Gantt|TaskEdit|lib/charts/datasets"
+  },
+  "runtime": "a050aed5572273e63c8a08a243f5ebe6180da0ea202875e6cf97b7e6d726b23b",
+  "scope": "13 inherited viewer-only scheduling paths; playback/date presentation/editor behavior qualified by affected schedule/chart controls. Modelling/Rust/packages/API unchanged. Earlier14browser/2edeMCP labels remain literal; no new capture/build/perfclaim.",
+  "time": "2026-10-04T10:17:33.219992+00:00"
+}

@@ -1,0 +1,68 @@
+[
+  {
+    "number": 6759,
+    "worktree": "/tmp/6232-stack-mcp-room",
+    "oldHead": "032ff051fd53ff9e8a8495a31e2ad46fcd29982c",
+    "newHead": "90ae64e266486a19f8a65ac01e99af32eda70f46",
+    "oldTree": "c20f9bf5698417926a3fa85db7f39e094e6a6334",
+    "newTree": "792b3303d4e97ee1635a76b0970eed73af64a244",
+    "changedPaths": [
+      "packages/mcp/src/tools/room-preparation-errors.test.ts"
+    ],
+    "testBlob": "e2b317b1974cff7dd50d8c48654d6d6fb42a3e2e",
+    "apiBlob": "97f05c744d9f8037561d171e4bfa6cf05ee38572",
+    "apiUnchanged": true,
+    "main": "2e2f65a66e1375ef6cc52b8a310526de1a36e1a0",
+    "cleanActualMainMergeTree": "792b3303d4e97ee1635a76b0970eed73af64a244",
+    "ownLayerOldBase": "2e2f65a66e1375ef6cc52b8a310526de1a36e1a0",
+    "ownLayerNewBase": "2e2f65a66e1375ef6cc52b8a310526de1a36e1a0",
+    "oldOwnBinaryPatchSha256": "a0793bce4fbb116bfa16d0b113cb6cf0a2b7496a905fdde6d820ee870a007bd9",
+    "newOwnBinaryPatchSha256": "0ac6f5e2c3e1b2cb70279221242ed9e7d53089816a27abb6625f65252df91e94",
+    "ownBinaryPatchIdentical": false,
+    "status": ""
+  },
+  {
+    "number": 6760,
+    "worktree": "/tmp/6232-stack-transport-history",
+    "oldHead": "bffa52216d0ebf274ef1e3121c23f4f256a02b8c",
+    "newHead": "b14357eaa66f35fd00b2c2d0ac9c385633575c3b",
+    "oldTree": "3a054c63631f5dd61d10135d59bce694e106fec8",
+    "newTree": "a0a749f15b26a1e16a0c864ed0a59cbccc9f75f6",
+    "changedPaths": [
+      "packages/mcp/src/tools/room-preparation-errors.test.ts"
+    ],
+    "testBlob": "e2b317b1974cff7dd50d8c48654d6d6fb42a3e2e",
+    "apiBlob": "070236fd7451ea999524c50863def57c91a143c3",
+    "apiUnchanged": true,
+    "main": "2e2f65a66e1375ef6cc52b8a310526de1a36e1a0",
+    "cleanActualMainMergeTree": "a0a749f15b26a1e16a0c864ed0a59cbccc9f75f6",
+    "ownLayerOldBase": "032ff051fd53ff9e8a8495a31e2ad46fcd29982c",
+    "ownLayerNewBase": "90ae64e266486a19f8a65ac01e99af32eda70f46",
+    "oldOwnBinaryPatchSha256": "024900ce8c861058e12655ae36be9f51a801984733ebed92fc63a0541bef38b8",
+    "newOwnBinaryPatchSha256": "024900ce8c861058e12655ae36be9f51a801984733ebed92fc63a0541bef38b8",
+    "ownBinaryPatchIdentical": true,
+    "status": ""
+  },
+  {
+    "number": 6761,
+    "worktree": "/tmp/6232-stack-align",
+    "oldHead": "59f42c7b81dfa1833daa6be055c6dea4e0c038ee",
+    "newHead": "a8d9cd6df916f3abb49d9ce71766cb60b365b391",
+    "oldTree": "7d103068416d5ddc6694b5eae85c95e06aa853e6",
+    "newTree": "3f9b429127f5bd071d91970902a87980244c4e58",
+    "changedPaths": [
+      "packages/mcp/src/tools/room-preparation-errors.test.ts"
+    ],
+    "testBlob": "e2b317b1974cff7dd50d8c48654d6d6fb42a3e2e",
+    "apiBlob": "ed7c5d43b9bd9f39c7f40bdc88aea9cbe3bdb5fe",
+    "apiUnchanged": true,
+    "main": "2e2f65a66e1375ef6cc52b8a310526de1a36e1a0",
+    "cleanActualMainMergeTree": "3f9b429127f5bd071d91970902a87980244c4e58",
+    "ownLayerOldBase": "bffa52216d0ebf274ef1e3121c23f4f256a02b8c",
+    "ownLayerNewBase": "b14357eaa66f35fd00b2c2d0ac9c385633575c3b",
+    "oldOwnBinaryPatchSha256": "8b5a1f1bb3d6ee7a590ea7cb7b6a1ae49bcf511b524a2b3fc96700a1e027a484",
+    "newOwnBinaryPatchSha256": "8b5a1f1bb3d6ee7a590ea7cb7b6a1ae49bcf511b524a2b3fc96700a1e027a484",
+    "ownBinaryPatchIdentical": true,
+    "status": ""
+  }
+]

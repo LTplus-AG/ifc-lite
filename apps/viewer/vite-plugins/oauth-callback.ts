@@ -18,6 +18,7 @@ import { loadEnv, type Plugin } from 'vite';
  * the two lists in lockstep.
  */
 const CALLBACK_PAGES: Record<string, string> = {
+  '/oauth/autodesk/callback': '/oauth/autodesk/callback.html',
   // @ifc-lite/source-dropbox, REDIRECT_PATH in its src/auth.ts.
   '/oauth/dropbox/callback': '/oauth/dropbox/callback.html',
   // @ifc-lite/source-msgraph, REDIRECT_PATH in its src/auth.ts.

@@ -78,6 +78,7 @@ export interface OAuthCallbackMessage {
 }
 
 export interface WaitForOAuthCallbackOptions {
+  readonly signal?: AbortSignal;
   /** The `state` this sign-in attempt generated. Messages carrying any other
    *  `state` are ignored rather than consumed, which is what keeps two
    *  concurrent sign-ins (two providers, or two tabs) from completing each
@@ -101,6 +102,7 @@ export interface WaitForOAuthCallbackOptions {
  * the caller runs on the returned URL.
  */
 export function waitForOAuthCallback(options: WaitForOAuthCallbackOptions): Promise<string> {
+  if (options.signal?.aborted) return Promise.reject(options.signal.reason);
   if (typeof BroadcastChannel === 'undefined') {
     return Promise.reject(
       new Error('OAuth sign-in requires BroadcastChannel, which this environment does not provide'),
@@ -113,8 +115,14 @@ export function waitForOAuthCallback(options: WaitForOAuthCallbackOptions): Prom
 
     const teardown = (): void => {
       if (timer !== undefined) clearTimeout(timer);
+      options.signal?.removeEventListener('abort', abort);
       channel.close();
     };
+    const abort = (): void => {
+      teardown();
+      reject(options.signal?.reason ?? new DOMException('Sign-in cancelled', 'AbortError'));
+    };
+    options.signal?.addEventListener('abort', abort, { once: true });
 
     timer = setTimeout(() => {
       teardown();

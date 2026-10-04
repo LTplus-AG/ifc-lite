@@ -1,0 +1,33 @@
+{
+  "source": "2ede141ce45b6ccc7f61fd538ddb98013664b129",
+  "tree": "63635530146eae6151aa35912b9c3450921c9a96",
+  "actualMain": "8ab47142562a79862df6d14700a39723351f00df",
+  "ownPublishedHead": "d0f59f7f2fdec9f130993863b52cf2e5078b4809",
+  "scope": "One inherited existing fixed-clock helper substitution in MCP test only; full refusal/STEP-equality assertions intact. Production/API/Rust/runtime/capture labels unchanged.",
+  "typecheck": {
+    "tasks": 111,
+    "cached": 94,
+    "testFiles": 3405,
+    "exit": 0
+  },
+  "mcpFreshPinnedRuntime": {
+    "files": 70,
+    "passed": 637,
+    "skipped": 2,
+    "cache": 0,
+    "exit": 0,
+    "resourcePolicy": "--maxWorkers=2 only; deadlines/assertions/source unchanged",
+    "optionalSkips": "missing canonical structural fixture; delete-only-fields conditional invariant"
+  },
+  "runtime": {
+    "ifc-lite_bg.wasm": "a050aed5572273e63c8a08a243f5ebe6180da0ea202875e6cf97b7e6d726b23b",
+    "ifc-lite.js": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+    "ifc-lite.d.ts": "a34371c64be9a3deb0997261df9d9ce4ee92633ad9c94ae2b41d575c26bddca0"
+  },
+  "priorAttempts": {
+    "cachedRuntimeLane": "Original637/2skip0cache exit0 uses Turbo-restored beebe runtime; limited fresh-runtime scope, snapshot subsequently restored a050.",
+    "freshDefaultParallel": "Actualexit1:5WASM init10s hooktimeouts +9first test5s timeouts,14failedfiles/578passed52skipped. Not counted PASS; no completed asserted functional mismatch."
+  },
+  "noPerformanceClaim": true,
+  "time": "2026-10-04T10:05:35.306983+00:00"
+}

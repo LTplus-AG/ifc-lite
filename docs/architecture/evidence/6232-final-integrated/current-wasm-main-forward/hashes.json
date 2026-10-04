@@ -1,0 +1,1467 @@
+{
+  "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+  "runtime": {
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "a050aed5572273e63c8a08a243f5ebe6180da0ea202875e6cf97b7e6d726b23b",
+    "packages/wasm/pkg/ifc-lite.js": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+    "packages/wasm/pkg/ifc-lite.d.ts": "a34371c64be9a3deb0997261df9d9ce4ee92633ad9c94ae2b41d575c26bddca0"
+  },
+  "originalArtifacts": [
+    {
+      "original": "/tmp/6232-final-main5c-core-qualification-receipt.json",
+      "archive": "6232-final-main5c-core-qualification-receipt.json.gz",
+      "originalSHA256": "a8731d8de499b5ce6b90dca91925632997fc19852481f2bb8d1cd01b98b4e3e0",
+      "archiveSHA256": "681a6e8e2faa9d915835422d623adb6a6f90d84268768b951a4459e78e33a54f",
+      "status": "proof",
+      "scope": "Literal source/runtime qualification; initial browser-pending wording retained.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-runtime-build-receipt.json",
+      "archive": "6232-final-main5c-runtime-build-receipt.json.gz",
+      "originalSHA256": "39ab10ecbe36b3bedc38e7636c6bdd31439059efec8ba7496d7ea6939f208b75",
+      "archiveSHA256": "54e82850f21a3b6f19330a5e329fa436a99ecfefd53ea37efcd741dce93f4fb8",
+      "status": "proof",
+      "scope": "Literal source/runtime qualification; initial browser-pending wording retained.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-wasm-build.log",
+      "archive": "6232-final-main5c-wasm-build.log.gz",
+      "originalSHA256": "fc9b31f25dbe4e50359b9947f7c7108824a20565b0e5c0b078bacfdabd0f4bbd",
+      "archiveSHA256": "55f874b93ecfb3431e613c29f5201218a909a418402cf03fd3610e4e35ec0726",
+      "status": "qualification",
+      "scope": "Source-labelled completed build/fixture/native/Rust/clippy run; literal counts in core receipt.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-wasm-contract.log",
+      "archive": "6232-final-main5c-wasm-contract.log.gz",
+      "originalSHA256": "5e76ebff79c89a42555100dfd51af2970a9e8abd49680f268bc480315785a000",
+      "archiveSHA256": "ab0777414dd3b4a6c6ac47a6f9b7987d9a4123b24946fe8957bc97a875ea8120",
+      "status": "incomplete-or-limited",
+      "scope": "Original incomplete Rust/disk logs or initial optional-fixture contract run: no full verdict.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-wasm-contract-with-fixtures.log",
+      "archive": "6232-final-main5c-wasm-contract-with-fixtures.log.gz",
+      "originalSHA256": "d19777193296da8951eb79dd1b53fde8ec1e73e8d77dbc9b9d6b84b59aab9deb",
+      "archiveSHA256": "e581a1cbe5d0426c0debeeac29c719c9587abef43583aee2192b74670d8fcba3",
+      "status": "qualification",
+      "scope": "Source-labelled completed build/fixture/native/Rust/clippy run; literal counts in core receipt.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-fixtures.log",
+      "archive": "6232-final-main5c-fixtures.log.gz",
+      "originalSHA256": "129d11c11b088330cdbdd76e34f8d7783b6940afbbe999abba2bf516577149d5",
+      "archiveSHA256": "9768956f43b21524d2696f5f1d83b6b1d9e15c74fad7573c38120870f64468b8",
+      "status": "qualification",
+      "scope": "Source-labelled completed build/fixture/native/Rust/clippy run; literal counts in core receipt.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-sdk.log",
+      "archive": "6232-final-main5c-sdk.log.gz",
+      "originalSHA256": "91f12b40794e9a494640e4bd76af0fc438353e0e18decf085ea1510639408dc7",
+      "archiveSHA256": "41a5090bac7f15685eed58f1ae62fb9371930c43d255c36d89d9cbd8242dd72b",
+      "status": "qualification",
+      "scope": "Source-labelled completed build/fixture/native/Rust/clippy run; literal counts in core receipt.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-viewer.log",
+      "archive": "6232-final-main5c-viewer.log.gz",
+      "originalSHA256": "ebb86ba920eaf740fdfbfcfa51316b2b413ba96dc2f621cf7fb391eace3b9d52",
+      "archiveSHA256": "59a605bf9de3218726d7056c6c47c5bd1bdbcb4e49203646889cff4b18344007",
+      "status": "qualification",
+      "scope": "Source-labelled completed build/fixture/native/Rust/clippy run; literal counts in core receipt.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-rust.log",
+      "archive": "6232-final-main5c-rust.log.gz",
+      "originalSHA256": "1ca5bd0e86126444fc5a2bea125440194c62339f0f8c8eeb89e7b9aa4d804651",
+      "archiveSHA256": "bfb8f19d14f954d19bb8d4c9c3e3204ca63753d659820a2a65526d7c3c68a1ea",
+      "status": "incomplete-or-limited",
+      "scope": "Original incomplete Rust/disk logs or initial optional-fixture contract run: no full verdict.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-rust-corrected.log",
+      "archive": "6232-final-main5c-rust-corrected.log.gz",
+      "originalSHA256": "6bce85c104ed38f6fa1a8dd4d9ed36f35d5d1602eabb5bc317d539682d1ce19e",
+      "archiveSHA256": "afef93242dd781e4441777435454150864c923c76812ca05279f06d66652f6a7",
+      "status": "incomplete-or-limited",
+      "scope": "Original incomplete Rust/disk logs or initial optional-fixture contract run: no full verdict.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-rust-bounded.log",
+      "archive": "6232-final-main5c-rust-bounded.log.gz",
+      "originalSHA256": "f1672813ee48f05a422c19761fdb85e11eec1ae3ad5c6606b90c80dcd0845223",
+      "archiveSHA256": "ed05f07813e08ae3ef4d9589047be2e691fe000b2316ad8623e3f7fc0ef3c4c6",
+      "status": "qualification",
+      "scope": "Source-labelled completed build/fixture/native/Rust/clippy run; literal counts in core receipt.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-clippy-bounded.log",
+      "archive": "6232-final-main5c-clippy-bounded.log.gz",
+      "originalSHA256": "6b3e696626d6b87c0ee4223e0bcf7cc8ef05a6431c59d61bd77838ef6536c5ab",
+      "archiveSHA256": "54f920f4d11d415747d8727ec5cf7f3aee310a9d271ddc5ab80e2b7c2143d386",
+      "status": "qualification",
+      "scope": "Source-labelled completed build/fixture/native/Rust/clippy run; literal counts in core receipt.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser.log",
+      "archive": "6232-final-main5c-browser.log.gz",
+      "originalSHA256": "4e69a8d4c13915de06b24a55f329dac175e769557c3e207dff3454513495b199",
+      "archiveSHA256": "0709da4b1a2bb63acc22492b333a0c79997ed68d1d18dab5de671445592e8d33",
+      "status": "original-attempt",
+      "scope": "Original browser attempt/setup log retained; only selected complete receipts below qualify the eight charter contexts.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder.log",
+      "archive": "6232-final-main5c-browser-stable-remainder.log.gz",
+      "originalSHA256": "09bc4edd1ea35abc3a6c12af0b0b0f3a4741cda805838558bae8d4db43cc9e29",
+      "archiveSHA256": "899de366e59ac432f5ecf80adca177929fe77e6d9976ef6641cf1b7e241734e6",
+      "status": "original-attempt",
+      "scope": "Original browser attempt/setup log retained; only selected complete receipts below qualify the eight charter contexts.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-drift.json",
+      "archive": "6232-final-main5c-drift.json.gz",
+      "originalSHA256": "80c38c8f7a72beb10ee1da668dd5c1cee4b5adaf8d3fda44d0e7188ce7dae403",
+      "archiveSHA256": "34eb3222df40ac028013c97a8ea15196b7c59513a2a44a474ad0824c3537bd41",
+      "status": "original-attempt",
+      "scope": "Original browser attempt/setup log retained; only selected complete receipts below qualify the eight charter contexts.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/physical/1-browser.json",
+      "archive": "physical-1-browser.json.gz",
+      "originalSHA256": "30266d48488e03ace7bc37db8ea24751d583d4d26a02fa736ab108f0dc9086eb",
+      "archiveSHA256": "035a0dfc4df2a49d5f8341b9c0a31d916d469a50f76e4cecd450b44092e80800",
+      "status": "final",
+      "scope": "Successful current-WASM charter browser receipt; not a supplemental preview receipt.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/physical/1-wasm.json",
+      "archive": "physical-1-wasm.json.gz",
+      "originalSHA256": "6765d1a4cc3f3a2f455db33434b08ef086657feb65d60c0a97bd351b6f5cfced",
+      "archiveSHA256": "f4c0b0425d497fb037c52307dedd3e9170e7ce4f42e98dacb3e955d92ea0a8c3",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/physical/1-remesh.json",
+      "archive": "physical-1-remesh.json.gz",
+      "originalSHA256": "423bd5f7fa59efbad9a6b46d4c0df670c6ea9fded2e0fc2ef18c741e9e7345a4",
+      "archiveSHA256": "b89a4a1180060abccec162a8876b173788e6cb374ce5a33ac42bc3c41ade2ea9",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/physical/1-progress.json",
+      "archive": "physical-1-progress.json.gz",
+      "originalSHA256": "2eae15a2707ae58349960b8c525810530f9c1856bc3b3e7f996b6d6fbb4895d0",
+      "archiveSHA256": "2ec8b6a5ca8b570da64864c94162007ff715c2bd9bb2e1acc004682acb795390",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/physical/1-console.log",
+      "archive": "physical-1-console.log.gz",
+      "originalSHA256": "da68faf15a536ff48514a3a4ac6c611f1fabe255c18ebc13f6f4b0f70b3d8c0f",
+      "archiveSHA256": "333bf85a99bbcfc9f3aed9f497a630eb40cfc9b6af8df2b0129049dd9983b3e0",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/physical/1-split.png",
+      "archive": "physical-1-split.png",
+      "originalSHA256": "50c8b513b9830050f8e78aafefbfb633853fd4b05c1dd0665b174d4a9cee1414",
+      "archiveSHA256": "50c8b513b9830050f8e78aafefbfb633853fd4b05c1dd0665b174d4a9cee1414",
+      "status": "screenshot",
+      "scope": "Original successful current-WASM screenshot; receipt supplies graph/native/peer assertions.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/physical/1-size.png",
+      "archive": "physical-1-size.png",
+      "originalSHA256": "caa14786a4bfe36def84e9452f180d9d1351fcf5d2efe7b780a7b3427ada93cf",
+      "archiveSHA256": "caa14786a4bfe36def84e9452f180d9d1351fcf5d2efe7b780a7b3427ada93cf",
+      "status": "screenshot",
+      "scope": "Original successful current-WASM screenshot; receipt supplies graph/native/peer assertions.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/physical/2-browser.json",
+      "archive": "physical-2-browser.json.gz",
+      "originalSHA256": "73dd70c6ae6432aa8865389148ec78afae9d8f66c4dc29d1ee00d790e2770442",
+      "archiveSHA256": "5cccd0fe6a0d14e12da2efc0ea6822e4125b9fdfa00244286317f23651c98184",
+      "status": "final",
+      "scope": "Successful current-WASM charter browser receipt; not a supplemental preview receipt.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/physical/2-wasm.json",
+      "archive": "physical-2-wasm.json.gz",
+      "originalSHA256": "10f00bfcdfe3fd2e814ee4ddb9bd4e53b55a4bcbc6f421c90a3dd55bcfcc0e36",
+      "archiveSHA256": "a583d682c70d8c78ac4f48f3c3d846881f391edcf042f34f6530dba1bb257ea0",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/physical/2-remesh.json",
+      "archive": "physical-2-remesh.json.gz",
+      "originalSHA256": "423bd5f7fa59efbad9a6b46d4c0df670c6ea9fded2e0fc2ef18c741e9e7345a4",
+      "archiveSHA256": "b89a4a1180060abccec162a8876b173788e6cb374ce5a33ac42bc3c41ade2ea9",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/physical/2-progress.json",
+      "archive": "physical-2-progress.json.gz",
+      "originalSHA256": "dc9f9167b80d56803bc41dd235839914d53f342bfcace94f506dd5ed0a16d86c",
+      "archiveSHA256": "86e00749381304b82d002ab5b7993a249f51edefff79333b67de38f692c0e48f",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/physical/2-console.log",
+      "archive": "physical-2-console.log.gz",
+      "originalSHA256": "bdb8a36776522d81e6864d4d405ceb9a0c0a53baa754446f80f6d6b591455cf2",
+      "archiveSHA256": "a8970b782be29449f30d853b6a003f20d1c22e133404e706d6f177e36ad2f748",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/physical/2-split.png",
+      "archive": "physical-2-split.png",
+      "originalSHA256": "1f4df6b8389f22d70ca46bf606939887fe8eb9d3a82e7c9bf5c671e921384a7e",
+      "archiveSHA256": "1f4df6b8389f22d70ca46bf606939887fe8eb9d3a82e7c9bf5c671e921384a7e",
+      "status": "screenshot",
+      "scope": "Original successful current-WASM screenshot; receipt supplies graph/native/peer assertions.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/physical/2-size.png",
+      "archive": "physical-2-size.png",
+      "originalSHA256": "9aca9b28376afb37b74848785fdd8dea0d92c41c53b4ec80f3c393a4b2109549",
+      "archiveSHA256": "9aca9b28376afb37b74848785fdd8dea0d92c41c53b4ec80f3c393a4b2109549",
+      "status": "screenshot",
+      "scope": "Original successful current-WASM screenshot; receipt supplies graph/native/peer assertions.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/align/1-browser.json",
+      "archive": "align-1-browser.json.gz",
+      "originalSHA256": "1539fd08e669474eb784b484ea599d2f39df10eb86eed341dff18ff7f7eb1903",
+      "archiveSHA256": "a22230ba1fdb9d12c0d9468e40fe81a9a03e2cc8400cd92609924d583510f5c8",
+      "status": "final",
+      "scope": "Successful current-WASM charter browser receipt; not a supplemental preview receipt.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/align/1-wasm.json",
+      "archive": "align-1-wasm.json.gz",
+      "originalSHA256": "6765d1a4cc3f3a2f455db33434b08ef086657feb65d60c0a97bd351b6f5cfced",
+      "archiveSHA256": "f4c0b0425d497fb037c52307dedd3e9170e7ce4f42e98dacb3e955d92ea0a8c3",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/align/1-remesh.json",
+      "archive": "align-1-remesh.json.gz",
+      "originalSHA256": "824d1489c89effe19055cae1742a9e60a0fb90d8581ef9e3fb81e5d96a57f26f",
+      "archiveSHA256": "5c34c3c2ce492896218d2c8f55fdf95456026efbb808cd61c85f8d591cc4d47f",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/align/1-progress.json",
+      "archive": "align-1-progress.json.gz",
+      "originalSHA256": "be11d30393d6efd1dc1e70c26a80adaf3aad637e1c37fb65f3e653b2c49f424e",
+      "archiveSHA256": "84a49e498bb6471cd34e51fca3af9e828a47f403e1c17d66dd7ed5fed2954189",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/align/1-console.log",
+      "archive": "align-1-console.log.gz",
+      "originalSHA256": "5ffa190fbad0432be851974caa2e402a7b3eef3005872b0dfd7b55ae2fc4a0f3",
+      "archiveSHA256": "3a0873af1dca4a9eb97a8b9416def8b130ce8ead3b35fdeced6fa4b1831d0296",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/align/1-align-centre.png",
+      "archive": "align-1-align-centre.png",
+      "originalSHA256": "ab7793c51148b8ce27d51c041d12afb3e40c85f3ca636fba2ffa39db35893ed9",
+      "archiveSHA256": "ab7793c51148b8ce27d51c041d12afb3e40c85f3ca636fba2ffa39db35893ed9",
+      "status": "screenshot",
+      "scope": "Original successful current-WASM screenshot; receipt supplies graph/native/peer assertions.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/align/2-browser.json",
+      "archive": "align-2-browser.json.gz",
+      "originalSHA256": "2c5dcfdeaf1893d963d4c0ec375afc3751c5d993d136f69abf76999a98259d2c",
+      "archiveSHA256": "40a51e6c55ba19c053eb6230b584f197bb8e073db1f42fd65f3b831f08b7bfec",
+      "status": "final",
+      "scope": "Successful current-WASM charter browser receipt; not a supplemental preview receipt.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/align/2-wasm.json",
+      "archive": "align-2-wasm.json.gz",
+      "originalSHA256": "10f00bfcdfe3fd2e814ee4ddb9bd4e53b55a4bcbc6f421c90a3dd55bcfcc0e36",
+      "archiveSHA256": "a583d682c70d8c78ac4f48f3c3d846881f391edcf042f34f6530dba1bb257ea0",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/align/2-remesh.json",
+      "archive": "align-2-remesh.json.gz",
+      "originalSHA256": "824d1489c89effe19055cae1742a9e60a0fb90d8581ef9e3fb81e5d96a57f26f",
+      "archiveSHA256": "5c34c3c2ce492896218d2c8f55fdf95456026efbb808cd61c85f8d591cc4d47f",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/align/2-progress.json",
+      "archive": "align-2-progress.json.gz",
+      "originalSHA256": "74f588e8c41742c206b4fb7b5c253aa8bb2e6bd73bbfe2aabf35996993f34932",
+      "archiveSHA256": "d4f78eb18e19038cfa3b8cfe7e919e7305e2c9210a3078db680d45f0f5c81b04",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/align/2-console.log",
+      "archive": "align-2-console.log.gz",
+      "originalSHA256": "3319e045c86906570599f6ee3c346962a5086faf571262f51008c9cef6931eeb",
+      "archiveSHA256": "66cd45da77c529f21e00f321d66120580bc9dbee26fe362be69c24cdc6d4f1ff",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/align/2-align-centre.png",
+      "archive": "align-2-align-centre.png",
+      "originalSHA256": "709ff796adad34008ec978b4fa3d41c53e2c71b2d20818d16b0c7c311d5253c7",
+      "archiveSHA256": "709ff796adad34008ec978b4fa3d41c53e2c71b2d20818d16b0c7c311d5253c7",
+      "status": "screenshot",
+      "scope": "Original successful current-WASM screenshot; receipt supplies graph/native/peer assertions.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/placement/1-browser.json",
+      "archive": "placement-1-browser.json.gz",
+      "originalSHA256": "376411d1a8cc77a9430ae5c8b46fd7de30faed797155118b8e48c6a4175c40e9",
+      "archiveSHA256": "ffafae81b934941ef16e170e47fd37ac19528ef8560815c30d1e3d01c5f4f6bc",
+      "status": "final",
+      "scope": "Successful current-WASM charter browser receipt; not a supplemental preview receipt.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/placement/1-wasm.json",
+      "archive": "placement-1-wasm.json.gz",
+      "originalSHA256": "6765d1a4cc3f3a2f455db33434b08ef086657feb65d60c0a97bd351b6f5cfced",
+      "archiveSHA256": "f4c0b0425d497fb037c52307dedd3e9170e7ce4f42e98dacb3e955d92ea0a8c3",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/placement/1-remesh.json",
+      "archive": "placement-1-remesh.json.gz",
+      "originalSHA256": "031002ef088a6c6886b3169f513b70385935bfb72a3496ed1710d3c5bc88eb7b",
+      "archiveSHA256": "8f955b7e590cb9799be248192c5cea42245cc1d3e32b6ab2970b4369d622052d",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/placement/1-progress.json",
+      "archive": "placement-1-progress.json.gz",
+      "originalSHA256": "1bc8512b7b4b3ec1a2a5a6e75ecb581b423bd3045339bf1f8408ee24683fbe35",
+      "archiveSHA256": "0f7380c93d4b2c9afd266c55bc810f172b4de642d35ba53542346e6f87bf965c",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/placement/1-console.log",
+      "archive": "placement-1-console.log.gz",
+      "originalSHA256": "e3cabb9619daa0eb70d6571539890eca9b1107eac739cf90f236c8a4f75acb20",
+      "archiveSHA256": "d156330ef5563dcc5698ff04d19386b1fe9996979c553b2ef40522d3c42f9a0c",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/placement/1-beam.png",
+      "archive": "placement-1-beam.png",
+      "originalSHA256": "34066005db3c9f6449279fb28ae305ce81220fb6259e7cc0a00493dcd37785c7",
+      "archiveSHA256": "34066005db3c9f6449279fb28ae305ce81220fb6259e7cc0a00493dcd37785c7",
+      "status": "screenshot",
+      "scope": "Original successful current-WASM screenshot; receipt supplies graph/native/peer assertions.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/placement/2-browser.json",
+      "archive": "placement-2-browser.json.gz",
+      "originalSHA256": "4bfb4e8fabd0303cef769ed8a36eeab204e64225dd8ceaed9d52e4706da0d25a",
+      "archiveSHA256": "dc8991281f79f66d36d8af3f7ce08f149820bb941684a391a9f258a68c813ae0",
+      "status": "final",
+      "scope": "Successful current-WASM charter browser receipt; not a supplemental preview receipt.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/placement/2-wasm.json",
+      "archive": "placement-2-wasm.json.gz",
+      "originalSHA256": "10f00bfcdfe3fd2e814ee4ddb9bd4e53b55a4bcbc6f421c90a3dd55bcfcc0e36",
+      "archiveSHA256": "a583d682c70d8c78ac4f48f3c3d846881f391edcf042f34f6530dba1bb257ea0",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/placement/2-remesh.json",
+      "archive": "placement-2-remesh.json.gz",
+      "originalSHA256": "031002ef088a6c6886b3169f513b70385935bfb72a3496ed1710d3c5bc88eb7b",
+      "archiveSHA256": "8f955b7e590cb9799be248192c5cea42245cc1d3e32b6ab2970b4369d622052d",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/placement/2-progress.json",
+      "archive": "placement-2-progress.json.gz",
+      "originalSHA256": "2ab2cdb4e8fa87ad7897676e239b3c2f692ee4c5adaf128cddf5a5324147a2cf",
+      "archiveSHA256": "71a61bf1c362c455d7874a37a99621f6ccb943bc1c82dd567f835f3d1882049d",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/placement/2-console.log",
+      "archive": "placement-2-console.log.gz",
+      "originalSHA256": "6901d77d45899cc1b05388654f3c273b742d35f78a78b1f33269e918f83c0465",
+      "archiveSHA256": "266bbe0a52e0013241b2813be4db1f11bfe933f4ecafad7ab6ddb9efb599b11f",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/placement/2-beam.png",
+      "archive": "placement-2-beam.png",
+      "originalSHA256": "2e02d6e9089d7abbb41a96d36539f7d472148bf409f34c37cd9d14820afb309a",
+      "archiveSHA256": "2e02d6e9089d7abbb41a96d36539f7d472148bf409f34c37cd9d14820afb309a",
+      "status": "screenshot",
+      "scope": "Original successful current-WASM screenshot; receipt supplies graph/native/peer assertions.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/1-browser.json",
+      "archive": "room-1-browser.json.gz",
+      "originalSHA256": "f5a390f03795ea72c7e3d03e2039293fca8b763776a72bae00c7bfe873b49fe7",
+      "archiveSHA256": "bb52ccab380d6c562f73dd41a5feb848d1a77944f17b1d49a0b7d6cd96bea088",
+      "status": "final",
+      "scope": "Successful current-WASM charter browser receipt; not a supplemental preview receipt.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/1-wasm.json",
+      "archive": "room-1-wasm.json.gz",
+      "originalSHA256": "6765d1a4cc3f3a2f455db33434b08ef086657feb65d60c0a97bd351b6f5cfced",
+      "archiveSHA256": "f4c0b0425d497fb037c52307dedd3e9170e7ce4f42e98dacb3e955d92ea0a8c3",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/1-remesh.json",
+      "archive": "room-1-remesh.json.gz",
+      "originalSHA256": "b3a930f7dd704098310ee126dce53e513a4d61508140605d439b0bfc874d6f73",
+      "archiveSHA256": "4c591c5cf8a6e1566e0a1cb206024998f5b1b70c8c928a96b0f4384be73ea48c",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/1-progress.json",
+      "archive": "room-1-progress.json.gz",
+      "originalSHA256": "0267f00d6b0042c40e29d383ad7a12e6d1d4ee665b7e4abbbead320c0b62a00f",
+      "archiveSHA256": "c31dffa9ec57ea120c99c31772f0e425db8493f123ee12b90eee03ffd3bb0361",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/1-console.log",
+      "archive": "room-1-console.log.gz",
+      "originalSHA256": "47fa608765fb314c031bf869833314a625c6afef6c0844d97e1883a11a95f309",
+      "archiveSHA256": "3b610deefb3fdb37bcd2beb31691e810c8cd1a413a32af55693fd6f8b9f2986e",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/1-room-cut-undo.png",
+      "archive": "room-1-room-cut-undo.png",
+      "originalSHA256": "34853401724d1c1ef5f1a0dccb78d6afe64043133082a27d3e5b1f82e4751f00",
+      "archiveSHA256": "34853401724d1c1ef5f1a0dccb78d6afe64043133082a27d3e5b1f82e4751f00",
+      "status": "screenshot",
+      "scope": "Original successful current-WASM screenshot; receipt supplies graph/native/peer assertions.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/2-browser.json",
+      "archive": "room-2-browser.json.gz",
+      "originalSHA256": "9dac57bb193da21638a6f58923df6bef29a8edc6b15d4935c054dae135d13756",
+      "archiveSHA256": "fd6d1e8309e4f73edeeacfeb71cae90c770434051086640f4e55058926aec4c8",
+      "status": "final",
+      "scope": "Successful current-WASM charter browser receipt; not a supplemental preview receipt.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/2-wasm.json",
+      "archive": "room-2-wasm.json.gz",
+      "originalSHA256": "10f00bfcdfe3fd2e814ee4ddb9bd4e53b55a4bcbc6f421c90a3dd55bcfcc0e36",
+      "archiveSHA256": "a583d682c70d8c78ac4f48f3c3d846881f391edcf042f34f6530dba1bb257ea0",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/2-remesh.json",
+      "archive": "room-2-remesh.json.gz",
+      "originalSHA256": "b3a930f7dd704098310ee126dce53e513a4d61508140605d439b0bfc874d6f73",
+      "archiveSHA256": "4c591c5cf8a6e1566e0a1cb206024998f5b1b70c8c928a96b0f4384be73ea48c",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/2-progress.json",
+      "archive": "room-2-progress.json.gz",
+      "originalSHA256": "51cd77555e37420bb1471231783ad65523b251435368b3bbc6e7d05ac713b361",
+      "archiveSHA256": "06acfdf205f6b7f87dd3e10a370b63667592cb3963b6d2d29b8d14f4dd3d0cef",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/2-console.log",
+      "archive": "room-2-console.log.gz",
+      "originalSHA256": "7c72889bf9926152426bd025412a6275b2da5316af97dbac1ad0842971deea4b",
+      "archiveSHA256": "64fb0eb3acc3186fdb779e85a2dabda17ce13f6a5398cf53bb4ef9720febf03f",
+      "status": "capture-support",
+      "scope": "Original successful receipt support artifact.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/2-room-cut-undo.png",
+      "archive": "room-2-room-cut-undo.png",
+      "originalSHA256": "1bf2b3632ebaafcacbe182c1a31077dbc089f98fa9b1e5ea45f6a13e83b18bd3",
+      "archiveSHA256": "1bf2b3632ebaafcacbe182c1a31077dbc089f98fa9b1e5ea45f6a13e83b18bd3",
+      "status": "screenshot",
+      "scope": "Original successful current-WASM screenshot; receipt supplies graph/native/peer assertions.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/placement/2-progress.json",
+      "archive": "failed-placement-2-progress.json.gz",
+      "originalSHA256": "a077bc854bff0944eaf1bdb4edeea4a439008b8c15052f11271315100cf88bfc",
+      "archiveSHA256": "4481f64de457e7914958a90738cf1a23555572f51a6fa39137100075f1fb8237",
+      "status": "failed-attempt",
+      "scope": "Interrupted initial Placement2 attempt; no completed receipt and no PASS claim.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/placement/2-wasm.json",
+      "archive": "failed-placement-2-wasm.json.gz",
+      "originalSHA256": "10f00bfcdfe3fd2e814ee4ddb9bd4e53b55a4bcbc6f421c90a3dd55bcfcc0e36",
+      "archiveSHA256": "a583d682c70d8c78ac4f48f3c3d846881f391edcf042f34f6530dba1bb257ea0",
+      "status": "failed-attempt",
+      "scope": "Interrupted initial Placement2 attempt; no completed receipt and no PASS claim.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-evidence/placement/2-console.log",
+      "archive": "failed-placement-2-console.log.gz",
+      "originalSHA256": "5e202f0e2e7078a3184fad0aea7dca75b865bf71575436afef21509e20687b18",
+      "archiveSHA256": "dc25c24bc31920e790945f20b32eef3fbb1c53fb39bcb3f53e31f97e80b3d569",
+      "status": "failed-attempt",
+      "scope": "Interrupted initial Placement2 attempt; no completed receipt and no PASS claim.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/1-baseline.png",
+      "archive": "registered-align-preview-1-baseline.png",
+      "originalSHA256": "9a8d74ea2e468c8ff76be0fa546a016bea4e59a77cf1ec56aa8fb6bb40095fb0",
+      "archiveSHA256": "9a8d74ea2e468c8ff76be0fa546a016bea4e59a77cf1ec56aa8fb6bb40095fb0",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/1-before-preview.png",
+      "archive": "registered-align-preview-1-before-preview.png",
+      "originalSHA256": "206add3d4ee74ba1b653de0848cc8b99ad2d3bc560d6a774e31f3dbfa53b3ae9",
+      "archiveSHA256": "206add3d4ee74ba1b653de0848cc8b99ad2d3bc560d6a774e31f3dbfa53b3ae9",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/1-browser.json",
+      "archive": "registered-align-preview-1-browser.json.gz",
+      "originalSHA256": "c9f550081202b7603da78ebe4566b8fb66271f65bea05cca3ab411b998a30d19",
+      "archiveSHA256": "5bba168b15abade49e4b2b2c6162cfd99719cc70c8961362e6c4da5c74768155",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/1-cancelled-preview.png",
+      "archive": "registered-align-preview-1-cancelled-preview.png",
+      "originalSHA256": "0ecacc5cf5c7d135f7df4dcb440b27d4f389ca99273aa10061d884a1e5da199a",
+      "archiveSHA256": "0ecacc5cf5c7d135f7df4dcb440b27d4f389ca99273aa10061d884a1e5da199a",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/1-console.log",
+      "archive": "registered-align-preview-1-console.log.gz",
+      "originalSHA256": "e612f3e5523217fe360ed7d377c166d5b2226f209db5d5d4a7264f1736761e03",
+      "archiveSHA256": "282808965e4e3df5601419a786b7972660d166f38a49189cc803599a54e4bdec",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/1-progress.json",
+      "archive": "registered-align-preview-1-progress.json.gz",
+      "originalSHA256": "9441fcc1a3e08be14572cd920c5271beebf40585c5c5c900c7e5cc141bd1b052",
+      "archiveSHA256": "d3b9aa7b8a6935d288320cf1b529e0097140d90cbe68c848d07329bf79a2bb14",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/1-registered-preview.png",
+      "archive": "registered-align-preview-1-registered-preview.png",
+      "originalSHA256": "4bbfaa7173ac3f2ea92620fbceca26548bcf56e7651c7163d4cef33ac5218ca7",
+      "archiveSHA256": "4bbfaa7173ac3f2ea92620fbceca26548bcf56e7651c7163d4cef33ac5218ca7",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/1-remesh.json",
+      "archive": "registered-align-preview-1-remesh.json.gz",
+      "originalSHA256": "e7c7826a4a4c9ee88b615e75abf5d93805c5ed98a6e2b3db2997eda85d929ce5",
+      "archiveSHA256": "2b263461a4013398bfc28728cd5390fbc3fae45935259120da0b8a6c7e183efb",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/1-runtime.json",
+      "archive": "registered-align-preview-1-runtime.json.gz",
+      "originalSHA256": "ecdadb7e4544c9a67bdb11efd48c962641f408890bc43f7a4f6511525c67726f",
+      "archiveSHA256": "3c9f57f8edfe7e7fe9c74820e7fe2b70faec279376fc6b37e1b1ea553b366c51",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/1-wasm.json",
+      "archive": "registered-align-preview-1-wasm.json.gz",
+      "originalSHA256": "7c8fc3c3700c14f46a1e14a2f03676acaacb23fecacd74dc59b1e1849fd258b7",
+      "archiveSHA256": "4a57e4a7e21581d7669df6c6c21f87af71f8f27783c6e8664e6a6d9380ea9013",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/2-baseline.png",
+      "archive": "registered-align-preview-2-baseline.png",
+      "originalSHA256": "d5f7dd58a29c22cfa11c412be86b91025b940421b7aa950afc32961533be3e7d",
+      "archiveSHA256": "d5f7dd58a29c22cfa11c412be86b91025b940421b7aa950afc32961533be3e7d",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/2-before-preview.png",
+      "archive": "registered-align-preview-2-before-preview.png",
+      "originalSHA256": "7baa395b04593b3f2cef92fd76b92de07c9ab86c1b18aa924724374e80483e07",
+      "archiveSHA256": "7baa395b04593b3f2cef92fd76b92de07c9ab86c1b18aa924724374e80483e07",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/2-browser.json",
+      "archive": "registered-align-preview-2-browser.json.gz",
+      "originalSHA256": "b348371e38c26444ce881605c4689e958c53b9483bb9afa458ea69dc574e0d5b",
+      "archiveSHA256": "970dad0a50e5c85b760eaa30a10cb4206ebc4b7603585d18917412212ea40c50",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/2-cancelled-preview.png",
+      "archive": "registered-align-preview-2-cancelled-preview.png",
+      "originalSHA256": "7ba6ccb572deb34a2f61ffec3ecfc1f5063fa8c5a9c4980ca88a974a13008e4c",
+      "archiveSHA256": "7ba6ccb572deb34a2f61ffec3ecfc1f5063fa8c5a9c4980ca88a974a13008e4c",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/2-console.log",
+      "archive": "registered-align-preview-2-console.log.gz",
+      "originalSHA256": "12247e0324e42882138ae780d408839ed1280b6c87cdf4b71a3d811ce40a7ad1",
+      "archiveSHA256": "4dcb08c01ee64653dbc4a4494ff90919218ff7862dd19c437c68a1ae55c8da4d",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/2-progress.json",
+      "archive": "registered-align-preview-2-progress.json.gz",
+      "originalSHA256": "b5b39165e0b59128bdcc780f2b478892a6c512d1a949132f20e921ab4ff23d05",
+      "archiveSHA256": "53ba06d43c194b7a7a8d08f8b6bb83463afb05dcf0b5d782f0806085f02a98a7",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/2-registered-preview.png",
+      "archive": "registered-align-preview-2-registered-preview.png",
+      "originalSHA256": "c3c2a6235de30f219a48f794914a63c2dff77a0aeeec617d85c8a05ccaa8cbcd",
+      "archiveSHA256": "c3c2a6235de30f219a48f794914a63c2dff77a0aeeec617d85c8a05ccaa8cbcd",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/2-remesh.json",
+      "archive": "registered-align-preview-2-remesh.json.gz",
+      "originalSHA256": "e7c7826a4a4c9ee88b615e75abf5d93805c5ed98a6e2b3db2997eda85d929ce5",
+      "archiveSHA256": "2b263461a4013398bfc28728cd5390fbc3fae45935259120da0b8a6c7e183efb",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/2-runtime.json",
+      "archive": "registered-align-preview-2-runtime.json.gz",
+      "originalSHA256": "9ee15f316027b4267070f701bedef08b4c7c2702244d61e0b9ba5a23a77a66dc",
+      "archiveSHA256": "0cdce14bd69a8c236d7d6c6f5fdced243a31610715bc78d3e45fff3eba5dfe6b",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-align-preview/2-wasm.json",
+      "archive": "registered-align-preview-2-wasm.json.gz",
+      "originalSHA256": "6765d1a4cc3f3a2f455db33434b08ef086657feb65d60c0a97bd351b6f5cfced",
+      "archiveSHA256": "f4c0b0425d497fb037c52307dedd3e9170e7ce4f42e98dacb3e955d92ea0a8c3",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/1-baseline.png",
+      "archive": "registered-move-preview-1-baseline.png",
+      "originalSHA256": "c43aebaa88ab0a9abf93fb33a1256abf3ffccc4251eb505655b51ce85d6b73a4",
+      "archiveSHA256": "c43aebaa88ab0a9abf93fb33a1256abf3ffccc4251eb505655b51ce85d6b73a4",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/1-before-preview.png",
+      "archive": "registered-move-preview-1-before-preview.png",
+      "originalSHA256": "871e62010ed448320f45d492ae6713af3d2ab013c7a8a484a6f619e69658dc22",
+      "archiveSHA256": "871e62010ed448320f45d492ae6713af3d2ab013c7a8a484a6f619e69658dc22",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/1-browser.json",
+      "archive": "registered-move-preview-1-browser.json.gz",
+      "originalSHA256": "4c7ac4d8edfdd8a4822d7513ff08c95c4b60b00dca9bc0ef40f85bdf682a24c5",
+      "archiveSHA256": "c81ef344c49d016364b8befd4071cac70b29b9c907edea3b5ac352e88e247b6f",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/1-cancelled-preview.png",
+      "archive": "registered-move-preview-1-cancelled-preview.png",
+      "originalSHA256": "d1815632ff4ad643abba3535bf21b4cf501f32cd74236ae1bed698c2b7f34721",
+      "archiveSHA256": "d1815632ff4ad643abba3535bf21b4cf501f32cd74236ae1bed698c2b7f34721",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/1-console.log",
+      "archive": "registered-move-preview-1-console.log.gz",
+      "originalSHA256": "03aea8c91e23da829746da989e59672bae973c9444de773b2fcdc53e708206c9",
+      "archiveSHA256": "3b4381215a043e571dfd9a4398cd710243760c3aead782916745e9d1194192ab",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/1-preview-native-source.png",
+      "archive": "registered-move-preview-1-preview-native-source.png",
+      "originalSHA256": "86205b5f46e966412145b824145f0ff40f8025094439ac56ff16ce00f0862d4b",
+      "archiveSHA256": "86205b5f46e966412145b824145f0ff40f8025094439ac56ff16ce00f0862d4b",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/1-progress.json",
+      "archive": "registered-move-preview-1-progress.json.gz",
+      "originalSHA256": "9ec00f82bf81077345922639986d5b41dcb2166ab9dc55a20f6aaa6f8dfb9108",
+      "archiveSHA256": "573948215253d411ae2e4c1744a993a5222f368a50e52ade9f130440813502bd",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/1-registered-preview.png",
+      "archive": "registered-move-preview-1-registered-preview.png",
+      "originalSHA256": "cf877fe909a06e3d58df0a7eefecc3326c2439518712dd427f00d11db55de8c0",
+      "archiveSHA256": "cf877fe909a06e3d58df0a7eefecc3326c2439518712dd427f00d11db55de8c0",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/1-remesh.json",
+      "archive": "registered-move-preview-1-remesh.json.gz",
+      "originalSHA256": "e7c7826a4a4c9ee88b615e75abf5d93805c5ed98a6e2b3db2997eda85d929ce5",
+      "archiveSHA256": "2b263461a4013398bfc28728cd5390fbc3fae45935259120da0b8a6c7e183efb",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/1-runtime.json",
+      "archive": "registered-move-preview-1-runtime.json.gz",
+      "originalSHA256": "edb4edfd7b3c866cfbe4158c6328d9d2e1c081e4fd78a3829804d30b38347342",
+      "archiveSHA256": "4b4f79ee80f981b5f7c7eb9926c4dfab86d93ad8f72d5bf46d72f65215461578",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/1-wasm.json",
+      "archive": "registered-move-preview-1-wasm.json.gz",
+      "originalSHA256": "7c8fc3c3700c14f46a1e14a2f03676acaacb23fecacd74dc59b1e1849fd258b7",
+      "archiveSHA256": "4a57e4a7e21581d7669df6c6c21f87af71f8f27783c6e8664e6a6d9380ea9013",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/2-baseline.png",
+      "archive": "registered-move-preview-2-baseline.png",
+      "originalSHA256": "da3234857e4c8b8b4790c9293208a674abb164a6a2fd66f150e1d2af1a48de6e",
+      "archiveSHA256": "da3234857e4c8b8b4790c9293208a674abb164a6a2fd66f150e1d2af1a48de6e",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/2-before-preview.png",
+      "archive": "registered-move-preview-2-before-preview.png",
+      "originalSHA256": "4891cae354619eb682a3b091922626b27f7314eb9ef9974b7a297bb6fbcac0ea",
+      "archiveSHA256": "4891cae354619eb682a3b091922626b27f7314eb9ef9974b7a297bb6fbcac0ea",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/2-browser.json",
+      "archive": "registered-move-preview-2-browser.json.gz",
+      "originalSHA256": "19d74ad13d86d057541c805faf324e91c7ad0e2fbbdf4ca2a26c27fbb9936cb2",
+      "archiveSHA256": "f03ca5c744b5b83ecadc90b32187d4dfb833173daa42aad750f3d61672c9cf44",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/2-cancelled-preview.png",
+      "archive": "registered-move-preview-2-cancelled-preview.png",
+      "originalSHA256": "f74eab90e9669a153019bc68fc20755e3d6082d93b83d96fd703606f8868ea79",
+      "archiveSHA256": "f74eab90e9669a153019bc68fc20755e3d6082d93b83d96fd703606f8868ea79",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/2-console.log",
+      "archive": "registered-move-preview-2-console.log.gz",
+      "originalSHA256": "6e8afc0ecabdc733ada72109a2907a861bfb27546539fd6ac373be72f74185fb",
+      "archiveSHA256": "48c593a93d687328b5e213a8848c924a1a18e8df6ab440d1e7bd68725ef55ecc",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/2-preview-native-source.png",
+      "archive": "registered-move-preview-2-preview-native-source.png",
+      "originalSHA256": "503a193e21aaa9839e2bc66b173a22a01d4e0e57117adc62598db870b3f638b2",
+      "archiveSHA256": "503a193e21aaa9839e2bc66b173a22a01d4e0e57117adc62598db870b3f638b2",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/2-progress.json",
+      "archive": "registered-move-preview-2-progress.json.gz",
+      "originalSHA256": "acd01941373a2101b01f43727a110a059f03762bdab182f2f41b3265ceb24bc4",
+      "archiveSHA256": "2a06fe93bc5974e697c9dc4b2dfb8287add10e8da6ec05fbcba5db0e92545bbf",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/2-registered-preview.png",
+      "archive": "registered-move-preview-2-registered-preview.png",
+      "originalSHA256": "f97cf096ec70044573eb8c56a9069e673714877ffe8f41adfa61cd3e5861e6da",
+      "archiveSHA256": "f97cf096ec70044573eb8c56a9069e673714877ffe8f41adfa61cd3e5861e6da",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/2-remesh.json",
+      "archive": "registered-move-preview-2-remesh.json.gz",
+      "originalSHA256": "e7c7826a4a4c9ee88b615e75abf5d93805c5ed98a6e2b3db2997eda85d929ce5",
+      "archiveSHA256": "2b263461a4013398bfc28728cd5390fbc3fae45935259120da0b8a6c7e183efb",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/2-runtime.json",
+      "archive": "registered-move-preview-2-runtime.json.gz",
+      "originalSHA256": "afd2e8056f92bbcdf7204b90aa6f4dd2dccc784d055b42a2364acf2fbfe517eb",
+      "archiveSHA256": "8eda88f04bfb73505e7b117ef90d3569ea8000150bb32948a692b12fd57e5525",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-move-preview/2-wasm.json",
+      "archive": "registered-move-preview-2-wasm.json.gz",
+      "originalSHA256": "7c8fc3c3700c14f46a1e14a2f03676acaacb23fecacd74dc59b1e1849fd258b7",
+      "archiveSHA256": "4a57e4a7e21581d7669df6c6c21f87af71f8f27783c6e8664e6a6d9380ea9013",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/1-baseline.png",
+      "archive": "registered-rotate-preview-1-baseline.png",
+      "originalSHA256": "1070028249d4deadb02ec05e53dd271ec14f6dbc61ad421e8decc7912058794d",
+      "archiveSHA256": "1070028249d4deadb02ec05e53dd271ec14f6dbc61ad421e8decc7912058794d",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/1-before-preview.png",
+      "archive": "registered-rotate-preview-1-before-preview.png",
+      "originalSHA256": "fafadde8559d23cf85e121f91274e1a51bff45596dc99748de78707c22b5465f",
+      "archiveSHA256": "fafadde8559d23cf85e121f91274e1a51bff45596dc99748de78707c22b5465f",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/1-browser.json",
+      "archive": "registered-rotate-preview-1-browser.json.gz",
+      "originalSHA256": "54c20bea20a974b35c08782dd9dc6fca7700c8485d9b8f73f1e32197eebbf8d5",
+      "archiveSHA256": "e238e9974d45f79729aacd3f1064a183071573ec33f45b839c8ad15a1fbbdd87",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/1-cancelled-preview.png",
+      "archive": "registered-rotate-preview-1-cancelled-preview.png",
+      "originalSHA256": "306bebe1fad6a24033e650ef71a14ce50a3b81ea99a0ba3bb80a0a3cb025f6c2",
+      "archiveSHA256": "306bebe1fad6a24033e650ef71a14ce50a3b81ea99a0ba3bb80a0a3cb025f6c2",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/1-console.log",
+      "archive": "registered-rotate-preview-1-console.log.gz",
+      "originalSHA256": "832def4924795ae35b53d837ee678c9934d7c58b21d06afe14170ea0bf065974",
+      "archiveSHA256": "055902c3f434915cc9c5ddd04c75ccb69564c2c7da66cb767e399d8dbdad9b56",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/1-preview-native-source.png",
+      "archive": "registered-rotate-preview-1-preview-native-source.png",
+      "originalSHA256": "e4e6d0ce25c29c4c5798b2e955ac56ad3449d22ed9235ba9735b9bedc2e73c36",
+      "archiveSHA256": "e4e6d0ce25c29c4c5798b2e955ac56ad3449d22ed9235ba9735b9bedc2e73c36",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/1-progress.json",
+      "archive": "registered-rotate-preview-1-progress.json.gz",
+      "originalSHA256": "d97bb8626f50d63d19cb16e893a3160a893c24897f2652616e7f558bfd8855c1",
+      "archiveSHA256": "204a3ea1b87ae2a9de2872569c07240d41f4cbaaa1500fec51fe45f694bbdab4",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/1-registered-preview.png",
+      "archive": "registered-rotate-preview-1-registered-preview.png",
+      "originalSHA256": "0c126c77aeb7f8703535d5e5f2e5b80d6c1fdf896222bd67e13a1ebd5a121630",
+      "archiveSHA256": "0c126c77aeb7f8703535d5e5f2e5b80d6c1fdf896222bd67e13a1ebd5a121630",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/1-remesh.json",
+      "archive": "registered-rotate-preview-1-remesh.json.gz",
+      "originalSHA256": "e7c7826a4a4c9ee88b615e75abf5d93805c5ed98a6e2b3db2997eda85d929ce5",
+      "archiveSHA256": "2b263461a4013398bfc28728cd5390fbc3fae45935259120da0b8a6c7e183efb",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/1-runtime.json",
+      "archive": "registered-rotate-preview-1-runtime.json.gz",
+      "originalSHA256": "2132b890243c8984fc5469f4f9bf8ad001330cb1dda8f8487f45c580c5ee0188",
+      "archiveSHA256": "b9b5fdf3462d2b2f69ddc01c403d51a821c42c055897f338f3a5056dfb6e8d88",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/1-wasm.json",
+      "archive": "registered-rotate-preview-1-wasm.json.gz",
+      "originalSHA256": "7c8fc3c3700c14f46a1e14a2f03676acaacb23fecacd74dc59b1e1849fd258b7",
+      "archiveSHA256": "4a57e4a7e21581d7669df6c6c21f87af71f8f27783c6e8664e6a6d9380ea9013",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/2-baseline.png",
+      "archive": "registered-rotate-preview-2-baseline.png",
+      "originalSHA256": "8446334ca0d38a309dd466c0b1b85dda3592b388a3fa36953adade285721f9ea",
+      "archiveSHA256": "8446334ca0d38a309dd466c0b1b85dda3592b388a3fa36953adade285721f9ea",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/2-before-preview.png",
+      "archive": "registered-rotate-preview-2-before-preview.png",
+      "originalSHA256": "a2a93f562fed8c6160430a24480e2edd79c494ae2829d33b03a67eb0ede6c8c6",
+      "archiveSHA256": "a2a93f562fed8c6160430a24480e2edd79c494ae2829d33b03a67eb0ede6c8c6",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/2-browser.json",
+      "archive": "registered-rotate-preview-2-browser.json.gz",
+      "originalSHA256": "83f832563576b7638e41bd33a876433d7d018558192685849abcd383ae46c0d8",
+      "archiveSHA256": "b399fa02bd5e48d295b7eb82299ac6c7d675ea4f08b0dc5c03327b4d1d2d50ef",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/2-cancelled-preview.png",
+      "archive": "registered-rotate-preview-2-cancelled-preview.png",
+      "originalSHA256": "f55d5eed6e9a3c17e53077c4d0b2eeaa7219024c0efc2a566383fab8d55d011e",
+      "archiveSHA256": "f55d5eed6e9a3c17e53077c4d0b2eeaa7219024c0efc2a566383fab8d55d011e",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/2-console.log",
+      "archive": "registered-rotate-preview-2-console.log.gz",
+      "originalSHA256": "87ac72cabcb789413d54e6bcf2b709d69e5e78d6f814cdab99da0c9467b138fa",
+      "archiveSHA256": "49888a523a6f8d92ed1da82643cfb910c58295127c3c66cea6a9663ae7807352",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/2-preview-native-source.png",
+      "archive": "registered-rotate-preview-2-preview-native-source.png",
+      "originalSHA256": "db1f9e1b40f1621e2a0a02280d902553d5359435c2fd20b4ee294a90aad44077",
+      "archiveSHA256": "db1f9e1b40f1621e2a0a02280d902553d5359435c2fd20b4ee294a90aad44077",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/2-progress.json",
+      "archive": "registered-rotate-preview-2-progress.json.gz",
+      "originalSHA256": "a3c27fd467c7450663fb0283c015b41dcab7a5cdd24c208fb22cc9e31b956e84",
+      "archiveSHA256": "80a0c513ff8c843f489c7130aa536395d9c908ef60a5887de0f60a18b0dd4044",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/2-registered-preview.png",
+      "archive": "registered-rotate-preview-2-registered-preview.png",
+      "originalSHA256": "db37df163137506aaeebc1b21887c8ace9ed069eb1cbc242feff036c76a2b8e9",
+      "archiveSHA256": "db37df163137506aaeebc1b21887c8ace9ed069eb1cbc242feff036c76a2b8e9",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/2-remesh.json",
+      "archive": "registered-rotate-preview-2-remesh.json.gz",
+      "originalSHA256": "e7c7826a4a4c9ee88b615e75abf5d93805c5ed98a6e2b3db2997eda85d929ce5",
+      "archiveSHA256": "2b263461a4013398bfc28728cd5390fbc3fae45935259120da0b8a6c7e183efb",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/2-runtime.json",
+      "archive": "registered-rotate-preview-2-runtime.json.gz",
+      "originalSHA256": "fa24aa3bcd72e92309b809d9df793d17521500f8c0098619d6331ff44a4ddbb8",
+      "archiveSHA256": "13f0cc3aa341989a8b4d137b2f4009c465048f69ad6990602cefe78a94522064",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic/registered-rotate-preview/2-wasm.json",
+      "archive": "registered-rotate-preview-2-wasm.json.gz",
+      "originalSHA256": "6765d1a4cc3f3a2f455db33434b08ef086657feb65d60c0a97bd351b6f5cfced",
+      "archiveSHA256": "f4c0b0425d497fb037c52307dedd3e9170e7ce4f42e98dacb3e955d92ea0a8c3",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Actual successful current-runtime registered first-authoring preview/real Escape cancellation; no missing-view browser or commit claim."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-diagnostic.log",
+      "archive": "6232-final-main5c-preview-diagnostic.log.gz",
+      "originalSHA256": "fe418f2ed9d26531d9e462c48ead6b9cf9690bd9d4ac15ce3b06c4ac297d2b3f",
+      "archiveSHA256": "d5c976517a001d920fcbeeddcca465d4444ce2bb76770cc7851a44e22e288f7a",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "supplemental-final",
+      "scope": "Original six-context complete exit-zero execution log; diagnostic filename is literal."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/1-baseline.png",
+      "archive": "earlier-incomplete-registered-align-preview-1-baseline.png",
+      "originalSHA256": "c6ded1828324d0195d375d73d831a6b580a5fb793f5fd171e4bef5f4679c9b06",
+      "archiveSHA256": "c6ded1828324d0195d375d73d831a6b580a5fb793f5fd171e4bef5f4679c9b06",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/1-before-preview.png",
+      "archive": "earlier-incomplete-registered-align-preview-1-before-preview.png",
+      "originalSHA256": "1f6bde6a98826c2ab4445fe2c616ea1b6c22d771cb7316f080cbd9cdcee1c571",
+      "archiveSHA256": "1f6bde6a98826c2ab4445fe2c616ea1b6c22d771cb7316f080cbd9cdcee1c571",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/1-browser.json",
+      "archive": "earlier-incomplete-registered-align-preview-1-browser.json.gz",
+      "originalSHA256": "7d7d8e47b8d9fe6ebbe8f635cb3616cfadb793115e702a1f86e473264e58e6b3",
+      "archiveSHA256": "ceb323f98dc6c2bf248c979183a3d0be97c50ef41456d4259681e8511301f33f",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/1-cancelled-preview.png",
+      "archive": "earlier-incomplete-registered-align-preview-1-cancelled-preview.png",
+      "originalSHA256": "9d37772cfe820835370315d5a9bd276211f969e038e4ee6e9673e4e43e08323e",
+      "archiveSHA256": "9d37772cfe820835370315d5a9bd276211f969e038e4ee6e9673e4e43e08323e",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/1-console.log",
+      "archive": "earlier-incomplete-registered-align-preview-1-console.log.gz",
+      "originalSHA256": "19514f1efc8d7c09ed2764e7a428eb2e9193b5555691e98062a6214e07a883ef",
+      "archiveSHA256": "d8fb03cf7ce9b4dcd920b1c321700e85d509c765a0e4615e5deca0109d9b7ad5",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/1-progress.json",
+      "archive": "earlier-incomplete-registered-align-preview-1-progress.json.gz",
+      "originalSHA256": "ea790f51359322ea55135f990976785d318eea4464a172974371a4da28c6ef5e",
+      "archiveSHA256": "3418da34490d1ccae257d2f5857222468a669d948c2137f8a2f2b09bbab1b2da",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/1-registered-preview.png",
+      "archive": "earlier-incomplete-registered-align-preview-1-registered-preview.png",
+      "originalSHA256": "e20452068529f1699de4d0d260d9d0e9f3a35dfd3b3978f65dcdb0d88a2f8ac7",
+      "archiveSHA256": "e20452068529f1699de4d0d260d9d0e9f3a35dfd3b3978f65dcdb0d88a2f8ac7",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/1-remesh.json",
+      "archive": "earlier-incomplete-registered-align-preview-1-remesh.json.gz",
+      "originalSHA256": "e7c7826a4a4c9ee88b615e75abf5d93805c5ed98a6e2b3db2997eda85d929ce5",
+      "archiveSHA256": "2b263461a4013398bfc28728cd5390fbc3fae45935259120da0b8a6c7e183efb",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/1-runtime.json",
+      "archive": "earlier-incomplete-registered-align-preview-1-runtime.json.gz",
+      "originalSHA256": "53be7f94f1fa08c55ce997e4721b90838b65c976cd7e27d0e77102b996fb01bf",
+      "archiveSHA256": "05d4ddf525222bb5c910b7cb1842430785bdbf223fa2c5348c6a6b89e1fa4c17",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/1-wasm.json",
+      "archive": "earlier-incomplete-registered-align-preview-1-wasm.json.gz",
+      "originalSHA256": "7c8fc3c3700c14f46a1e14a2f03676acaacb23fecacd74dc59b1e1849fd258b7",
+      "archiveSHA256": "4a57e4a7e21581d7669df6c6c21f87af71f8f27783c6e8664e6a6d9380ea9013",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/2-baseline.png",
+      "archive": "earlier-incomplete-registered-align-preview-2-baseline.png",
+      "originalSHA256": "0aa38a10ad7a5eadbeff956220abc49a4c6486dbf956390962049e8c3f5f17b9",
+      "archiveSHA256": "0aa38a10ad7a5eadbeff956220abc49a4c6486dbf956390962049e8c3f5f17b9",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/2-before-preview.png",
+      "archive": "earlier-incomplete-registered-align-preview-2-before-preview.png",
+      "originalSHA256": "6a898b18575b7daecaffb2e9b6039b02625e96b3cddb9e15adce689baf7e87c3",
+      "archiveSHA256": "6a898b18575b7daecaffb2e9b6039b02625e96b3cddb9e15adce689baf7e87c3",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/2-browser.json",
+      "archive": "earlier-incomplete-registered-align-preview-2-browser.json.gz",
+      "originalSHA256": "02e0edd5a5241753b9953983acc8fc992b0cb2a53d61d6ab3fe2060a002f6a75",
+      "archiveSHA256": "33427a89ce7e680b9455ecab77bca3016f88415b23b71e9c26581aa2ab7e274b",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/2-cancelled-preview.png",
+      "archive": "earlier-incomplete-registered-align-preview-2-cancelled-preview.png",
+      "originalSHA256": "30d0577300ace18c6b19726e9b52e574b4cf743c91700da688c8075fe0de9e9d",
+      "archiveSHA256": "30d0577300ace18c6b19726e9b52e574b4cf743c91700da688c8075fe0de9e9d",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/2-console.log",
+      "archive": "earlier-incomplete-registered-align-preview-2-console.log.gz",
+      "originalSHA256": "86e49d2378702cb18dfab3ec3d670d5eebc09b32d0c0bab3044f2ac6139a6e02",
+      "archiveSHA256": "db71a93b04ef8e16482699ffe38e3f8992211e94f8ab3d94ac9a53664c0bdc5d",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/2-progress.json",
+      "archive": "earlier-incomplete-registered-align-preview-2-progress.json.gz",
+      "originalSHA256": "37c4d6b8fe1f0a60b718863ad92a317a9e6689e752e24e556c6b5e6e372d25a7",
+      "archiveSHA256": "05eb7d861f86767e799b08555fc5f0da800aa16da77bdf72bae6fc5d4cee9074",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/2-registered-preview.png",
+      "archive": "earlier-incomplete-registered-align-preview-2-registered-preview.png",
+      "originalSHA256": "82b7f0d36c74a7797fb3ddc0e210dccae902adf0e59b855062b562039549e433",
+      "archiveSHA256": "82b7f0d36c74a7797fb3ddc0e210dccae902adf0e59b855062b562039549e433",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/2-remesh.json",
+      "archive": "earlier-incomplete-registered-align-preview-2-remesh.json.gz",
+      "originalSHA256": "e7c7826a4a4c9ee88b615e75abf5d93805c5ed98a6e2b3db2997eda85d929ce5",
+      "archiveSHA256": "2b263461a4013398bfc28728cd5390fbc3fae45935259120da0b8a6c7e183efb",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/2-runtime.json",
+      "archive": "earlier-incomplete-registered-align-preview-2-runtime.json.gz",
+      "originalSHA256": "262939c51a764f81733e1a9b0bf654c0815cdbff154e2de75e03ab83430fa74b",
+      "archiveSHA256": "60eed87ba53970e8f23a33a52351b00c82923ac7a07f842502f8305685d725cd",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-align-preview/2-wasm.json",
+      "archive": "earlier-incomplete-registered-align-preview-2-wasm.json.gz",
+      "originalSHA256": "6765d1a4cc3f3a2f455db33434b08ef086657feb65d60c0a97bd351b6f5cfced",
+      "archiveSHA256": "f4c0b0425d497fb037c52307dedd3e9170e7ce4f42e98dacb3e955d92ea0a8c3",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-move-preview/1-console.log",
+      "archive": "earlier-incomplete-registered-move-preview-1-console.log.gz",
+      "originalSHA256": "de15cf19a2d09187603adaee4eac91c7263e793c546113ceb1312ca69014ce7b",
+      "archiveSHA256": "067577b8ed80bae35449ea976b4bc3d026b80dfe8726d93a7631a40eddc7d0f3",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/registered-move-preview/1-wasm.json",
+      "archive": "earlier-incomplete-registered-move-preview-1-wasm.json.gz",
+      "originalSHA256": "6765d1a4cc3f3a2f455db33434b08ef086657feb65d60c0a97bd351b6f5cfced",
+      "archiveSHA256": "f4c0b0425d497fb037c52307dedd3e9170e7ce4f42e98dacb3e955d92ea0a8c3",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "partial-attempt",
+      "scope": "Earlier source1b49 partial preview group: Align receipt success does not qualify complete six-context group; Move failure/cleanup masking retained."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-preview-audit.json",
+      "archive": "6232-final-main5c-preview-audit.json.gz",
+      "originalSHA256": "2af0edbed9031b68309befcee401e5c8f6a8221128afdaed97bb439784817c1e",
+      "archiveSHA256": "c7c833aa96e3e8e342970562fb41a9af6b11047863cc8cc11866db1c0390269f",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "derived-proof",
+      "scope": "Root independent6-context strengthened preview/realEscape guard audit; original source labels. "
+    },
+    {
+      "original": "/tmp/6232-main5c-preview-audit.cjs",
+      "archive": "6232-main5c-preview-audit.cjs.gz",
+      "originalSHA256": "12e2c11e603a48870cfa17b7ce46055910beb7affee799b7114d27ee89023f45",
+      "archiveSHA256": "937e6325670ce8ba1f9733546ff97267409a857f31b2f76357ee740b88238244",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "proof",
+      "scope": "Rerunnable external supplemental evidence auditor; no new browser execution."
+    },
+    {
+      "original": "/tmp/6232-current-wasm-main-strict-audit.json",
+      "archive": "6232-current-wasm-main-strict-audit.json.gz",
+      "originalSHA256": "8f4f232221e0eed298a18ec076c8757030dd5ad59e398b9eae9a69210bf61517",
+      "archiveSHA256": "384c327eecae4ad3a796dcafbfd4f534a830bb6b603c417673c8d53ea93cf4a3",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5",
+      "status": "derived-proof",
+      "scope": "Unchanged strict auditor against eight selected successful charter originals."
+    },
+    {
+      "original": "/tmp/6232-current-wasm-main-derived-completion.json",
+      "archive": "6232-current-wasm-main-derived-completion.json.gz",
+      "originalSHA256": "d80d3812526e1d551a4cf38cb540a788868dd791a8a3ecbbc370b9c3aeff97ab",
+      "archiveSHA256": "07119038b7bc0c52184e19e8a6f312b57d6f470fc7ed0c80357058f3725b0705",
+      "source": "730f9e6da331c46febc31eded37d131a8f862b9a",
+      "status": "derived-proof",
+      "scope": "Derived original receipt audit, not new browser execution. Eight charter contexts and six separate first-authoring initialized-empty-view preview/Escape contexts completed. Native missing-view proof retains separate historical source. Allocator initialization1\u2192source watermark9993 is intentional; no entity allocation afterward. Original core receipt browser-pending wording retained unchanged. Root performs separate supplemental assertions audit."
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/1-room-cut.png",
+      "archive": "room-1-room-cut.png",
+      "originalSHA256": "5db710ad385f17d3b266fb1abcf807a0d4795d0d08051c4cc1e7cc968998be14",
+      "archiveSHA256": "5db710ad385f17d3b266fb1abcf807a0d4795d0d08051c4cc1e7cc968998be14",
+      "status": "screenshot",
+      "scope": "Original successful Room cut screenshot, visually inspected; full receipt binds graph/native/peer assertions.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    },
+    {
+      "original": "/tmp/6232-final-main5c-browser-stable-remainder/room/2-room-cut.png",
+      "archive": "room-2-room-cut.png",
+      "originalSHA256": "67dedf11f018a96c6f3f158c5196c5412af31a1d1dd0ce1de8abfe9cff36a6c2",
+      "archiveSHA256": "67dedf11f018a96c6f3f158c5196c5412af31a1d1dd0ce1de8abfe9cff36a6c2",
+      "status": "screenshot",
+      "scope": "Original successful Room cut screenshot, visually inspected; full receipt binds graph/native/peer assertions.",
+      "source": "1b49d7864c1debef03c9e3473452261169c611d5"
+    }
+  ],
+  "supplementalPreview": "COMPLETE at literal730f9 source:6 separate preview/Escape contexts/28 stages; original core receipt pending wording preserved. See derived completion.",
+  "supplementalSource": "730f9e6da331c46febc31eded37d131a8f862b9a",
+  "licensedAuditHelper": {
+    "path": "6232-main5c-preview-audit.cjs",
+    "sha256": "cf85849feb417e7a4165e3c6f270a1991dbfc6ce3f83a996aef046b0d00c1523",
+    "originalArchive": "6232-main5c-preview-audit.cjs.gz",
+    "scope": "Derived runnable copy adds only the MPL notice; the original executed proof code bytes remain losslessly preserved and hash-bound. All assertions unchanged."
+  }
+}

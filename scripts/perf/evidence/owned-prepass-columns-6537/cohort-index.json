@@ -1,0 +1,129 @@
+{
+  "status": "SOURCE_PREPARED_DATA_ARCHIVE_REPLAY_UNRUN",
+  "archive": "hosted-and-historical-refusals.tar.gz",
+  "archiveBytes": 32047580,
+  "archiveSha256": "586508cfcf5928d84acdec9476072c2830a3b71e0aa572b26ea22117642d3ebc",
+  "manifestSha256": "6ce248ef5d3369cb2fbd31dc909657498c15695cafd28cb0fa20ffa41a5b16d8",
+  "logicalMemberCount": 546,
+  "storedTarMemberCount": 296,
+  "zipReferencedArtifactMembers": 250,
+  "expandedLogicalBytes": 124799163,
+  "run": 37172343966,
+  "attempt": 1,
+  "sourceSubjects": {
+    "base": "29bdcc174e862645193381d7aaef01e54db2fbe7",
+    "candidate": "d5ff79746aa420dd7712ba8c7ff127eae5a65593"
+  },
+  "sdkController": "4d47506a23e304ed4b772f7890e27e37843e8914",
+  "codecSHA256": "5357b7847faa5ca065ec21fda48c86e1d6513878d67f6201dd152a9d160d2fb1",
+  "historicalNamespaces": [
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-architecture-cohort-actual-v1",
+      "files": 3,
+      "bytes": 17586,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-architecture-cohort-actual-v10",
+      "files": 7,
+      "bytes": 383014,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-architecture-cohort-actual-v2",
+      "files": 7,
+      "bytes": 395413,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-architecture-cohort-actual-v9",
+      "files": 19,
+      "bytes": 1099925,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-candidate-architecture-inspection-actual-v1",
+      "files": 2,
+      "bytes": 175651,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-candidate-d5-endpoint-dist-v1",
+      "files": 6,
+      "bytes": 10043310,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-cohort-actual-v2",
+      "files": 13,
+      "bytes": 242037,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-csg-correctness-actual-v7",
+      "files": 2,
+      "bytes": 112390,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-endpoint-producer-source-v1",
+      "files": 18,
+      "bytes": 11823148,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-heavy-csg-correctness-actual-v7",
+      "files": 2,
+      "bytes": 204853,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-house-correctness-actual-v7",
+      "files": 2,
+      "bytes": 41712,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-lease-source-v1",
+      "files": 4,
+      "bytes": 17977,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-timing-prospective-v1",
+      "files": 14,
+      "bytes": 85662,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-timing-prospective-v2",
+      "files": 15,
+      "bytes": 95528,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-timing-prospective-v3",
+      "files": 20,
+      "bytes": 111648,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-timing-prospective-v4",
+      "files": 25,
+      "bytes": 132646,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-timing-prospective-v5-boundary-checks",
+      "files": 14,
+      "bytes": 74221,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    },
+    {
+      "directory": "/tmp/6232-takeover/6537-owned-columns-timing-prospective-v6-fresh-cpu-intervals",
+      "files": 16,
+      "bytes": 78116,
+      "scope": "Historical local source/correctness/refusal namespace; not pooled with hosted timing"
+    }
+  ]
+}

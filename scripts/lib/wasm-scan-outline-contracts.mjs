@@ -128,7 +128,7 @@ export function runScanOutlineContracts({ test }) {
         'inputPoints', 'usedPoints', 'nonFinitePoints', 'outlierPoints', 'cellSize', 'gridWidth', 'gridHeight',
         'countThreshold', 'occupiedCells', 'solidCells', 'componentsDropped', 'holesFilled', 'ringCount',
         'outerRingCount', 'holeRingCount', 'vertexCount', 'simplifyReinsertions', 'snappedEdges', 'squaredEdges',
-        'revertedMoves', 'dominantAngleDeg',
+        'revertedMoves', 'dominantAngleDeg', 'coordinateSpacingMetres',
       ]) {
         assert.equal(typeof d[key], 'number', key);
       }
@@ -175,5 +175,47 @@ export function runScanOutlineContracts({ test }) {
       /plane frame/,
     );
     assert.throws(() => traceScanOutline(slab, undefined, { origin: [0, 0, 0], uAxis: [1, 0, 0] }), /plane frame/);
+  });
+
+  // Review of #6883: the old conversion turned NaN into null (= silently the
+  // default) and refused `undefined` although the .d.ts marks it optional.
+  test('non-finite options throw and undefined options mean the default', () => {
+    const slab = roomSlab(50);
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      assert.throws(() => traceScanOutline(slab, { maxGap: bad }), /maxGap must be a finite number/);
+    }
+    assert.throws(() => traceScanOutline(slab, { cellSize: NaN }), /cellSize must be a finite number/);
+    const withUndefined = traceScanOutline(slab, { maxGap: undefined, cellSize: undefined });
+    const plain = traceScanOutline(slab);
+    try {
+      assert.deepEqual([...withUndefined.coords()], [...plain.coords()]);
+    } finally {
+      withUndefined.free();
+      plain.free();
+    }
+  });
+
+  test('a cell budget below the padding floor is refused, never a trap', () => {
+    const few = Float32Array.from([0, 0, 0.01, 0, 0, 0.01, 50, 50]);
+    for (let maxCells = 64; maxCells <= 80; maxCells++) {
+      assert.throws(() => traceScanOutline(few, { maxCells }), /maxCells must be in 81\.\./);
+    }
+    const outline = traceScanOutline(few, { maxCells: 81 });
+    outline.free();
+    assert.throws(() => traceScanOutline(few, { maxVertexMoveCells: 1e4 }), /maxVertexMoveCells/);
+    assert.throws(() => traceScanOutline(few, { snapDistanceCells: 600 }), /snapDistanceCells/);
+  });
+
+  test('far-from-origin input reports degraded coordinate precision', () => {
+    const near = traceScanOutline(roomSlab());
+    const far = traceScanOutline(roomSlab().map((v, i) => v + (i % 2 === 0 ? 2_600_000 : 1_200_000)));
+    try {
+      assert.equal(near.diagnostics().coordinatePrecisionDegraded, false);
+      assert.equal(far.diagnostics().coordinatePrecisionDegraded, true);
+      assert.ok(far.diagnostics().coordinateSpacingMetres >= 0.25);
+    } finally {
+      near.free();
+      far.free();
+    }
   });
 }

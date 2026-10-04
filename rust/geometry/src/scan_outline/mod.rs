@@ -57,7 +57,10 @@ mod synth_tests;
 mod tests;
 
 use crate::geom2d::polygon_area;
-pub use options::{ScanOutlineDiagnostics, ScanOutlineOptions, MAX_CELLS_LIMIT};
+pub use options::{
+    ScanOutlineDiagnostics, ScanOutlineOptions, MAX_CELLS_LIMIT, MAX_SNAP_DISTANCE_CELLS, MAX_VERTEX_MOVE_CELLS,
+    MIN_CELL_SIZE_LIMIT,
+};
 
 /// Hard upper bound on [`ScanOutlineOptions::max_gap`]: a closing radius that
 /// bridges more than half a metre starts to fuse rooms and erase corridors.
@@ -177,10 +180,11 @@ pub fn trace_scan_outline(xy: &[f32], opts: &ScanOutlineOptions) -> Result<ScanO
         let before = rings.clone();
         let squared = square::square_rings(&rings, geo.cell, opts);
         diag.dominant_angle_deg = squared.dominant_angle_deg;
-        diag.squared_edges = squared.squared_edges;
-        let mut moved = squared.rings;
-        cap_moves(&mut moved, &before, max_move);
+        let mut moved = squared.rings.clone();
+        diag.reverted_moves += cap_moves(&mut moved, &before, max_move);
         diag.reverted_moves += topology::repair_moves(&mut moved, &before, &parents, Some(&support));
+        // A squaring counts only if neither end was moved back.
+        diag.squared_edges = surviving_squared_edges(&moved, &squared.rings, &squared.squared);
         rings = moved;
     }
     topology::drop_collinear_vertices(&mut rings, &parents);
@@ -197,20 +201,38 @@ fn area_cells(area: f64, cell_area: f64) -> usize {
     (area / cell_area).ceil() as usize
 }
 
-/// Undo any single vertex move longer than `max_move`. Rings whose vertex
-/// count changed (snapping merged edges) bound their own moves.
-fn cap_moves(moved: &mut [Vec<[f64; 2]>], before: &[Vec<[f64; 2]>], max_move: f64) {
+/// Undo any single vertex move longer than `max_move`; returns how many.
+/// Rings whose vertex count changed (snapping merged edges) bound their own
+/// moves.
+fn cap_moves(moved: &mut [Vec<[f64; 2]>], before: &[Vec<[f64; 2]>], max_move: f64) -> usize {
+    let mut undone = 0;
     for (ring, old) in moved.iter_mut().zip(before) {
         if ring.len() != old.len() {
             continue;
         }
         for (p, q) in ring.iter_mut().zip(old) {
             let d = ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2)).sqrt();
-            if !d.is_finite() || d > max_move {
+            if *p != *q && (!d.is_finite() || d > max_move) {
                 *p = *q;
+                undone += 1;
             }
         }
     }
+    undone
+}
+
+/// Squared edges whose two ends are still where squaring put them.
+fn surviving_squared_edges(rings: &[Vec<[f64; 2]>], squared: &[Vec<[f64; 2]>], flags: &[Vec<bool>]) -> usize {
+    let mut count = 0;
+    for ((ring, target), flags) in rings.iter().zip(squared).zip(flags) {
+        let n = ring.len();
+        for (k, &flag) in flags.iter().enumerate() {
+            if flag && ring[k] == target[k] && ring[(k + 1) % n] == target[(k + 1) % n] {
+                count += 1;
+            }
+        }
+    }
+    count
 }
 
 /// Order rings shape by shape (outer, then its holes) and remap `parents`.

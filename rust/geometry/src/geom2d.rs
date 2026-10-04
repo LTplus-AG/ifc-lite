@@ -11,6 +11,9 @@
 //! tracer (#6871) needs the same set, so they moved here verbatim instead of
 //! being copied a third time; both original callers import them from here.
 //!
+//! The exact `orientation` is also the one `cdt` and `contour_grid_guard`
+//! use.
+//!
 //! Distinct from `bool2d`'s `compute_signed_area` / `point_in_contour`, which
 //! take nalgebra `Point2` contours on the IFC profile path.
 
@@ -78,6 +81,7 @@ pub(crate) fn perp_distance(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
 
 /// Exact orientation of `c` against the directed line `a→b` (Shewchuk's
 /// adaptive predicate): `1` left, `-1` right, `0` exactly collinear.
+#[inline]
 pub(crate) fn orientation(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> i32 {
     let value = geometry_predicates::orient2d(a, b, c);
     if value > 0.0 {

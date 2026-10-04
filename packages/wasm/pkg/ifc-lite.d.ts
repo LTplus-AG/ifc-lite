@@ -1,15 +1,15 @@
 /* tslint:disable */
 /* eslint-disable */
 
-/** Every field is optional; absent means the default. Unknown fields are refused. Lengths in metres. */
+/** Every field is optional; absent or `undefined` means the default. Unknown fields and non-finite numbers are refused. Lengths in metres; pass plane coordinates local to the slab (f32 input). */
 export interface ScanOutlineOptionsJs {
     /** Fixed cell edge; omit to pick it from the point density between minCellSize and maxCellSize. */
     cellSize?: number;
-    /** Default 0.02. */ minCellSize?: number;
+    /** Default 0.02, at least 0.001. */ minCellSize?: number;
     /** Default 0.05. */ maxCellSize?: number;
     /** Adaptive cells grow until the median occupied cell holds this many points. Default 6. */
     targetPointsPerCell?: number;
-    /** Cell budget for the padded grid (64 ..= 67108864). Default 16777216; hitting it sets diagnostics.cellCapHit. */
+    /** Cell budget for the padded grid, from (2·pad + 1)² (81 with the defaults) up to 67108864. Default 16777216; hitting it sets diagnostics.cellCapHit. */
     maxCells?: number;
     /** Default 1. */ minPointsPerCell?: number;
     /** A cell is occupied from this fraction of the median occupied-cell count. Default 0.25. */
@@ -21,9 +21,9 @@ export interface ScanOutlineOptionsJs {
     /** Enclosed holes below this area (m²) are filled. Default 0.5. */ minHoleArea?: number;
     /** Douglas-Peucker tolerance in cells. Default 1.5. */ simplifyToleranceCells?: number;
     /** Refit edges to the points. Default true. */ snap?: boolean;
-    /** Evidence band beside an edge, in cells. Default 3. */ snapDistanceCells?: number;
+    /** Evidence band beside an edge, in cells (at most 16). Default 3. */ snapDistanceCells?: number;
     /** Fewest points to refit an edge. Default 8. */ minSnapPoints?: number;
-    /** Largest squaring move, in cells. Default 4. */ maxVertexMoveCells?: number;
+    /** Largest squaring move, in cells (at most 32). Default 4. */ maxVertexMoveCells?: number;
     /** Square edges to the dominant direction. Default true. */ square?: boolean;
     /** Default 3. */ squareAngleToleranceDeg?: number;
     /** Squares edges whose ends move at most this far. Default 0.03. */ squareOffsetTolerance?: number;
@@ -38,6 +38,8 @@ export interface ScanOutlineDiagnosticsJs {
     inputPoints: number; usedPoints: number; nonFinitePoints: number; outlierPoints: number;
     cellSize: number; gridWidth: number; gridHeight: number;
     cellCapHit: boolean; maxGapClamped: boolean; countThreshold: number;
+    /** f32 step at the largest input coordinate; `coordinatePrecisionDegraded` when above a tenth of a cell. Pass coordinates local to the slab. */
+    coordinateSpacingMetres: number; coordinatePrecisionDegraded: boolean;
     occupiedCells: number; solidCells: number; componentsDropped: number; holesFilled: number;
     ringCount: number; outerRingCount: number; holeRingCount: number; vertexCount: number;
     simplifyReinsertions: number; snappedEdges: number;

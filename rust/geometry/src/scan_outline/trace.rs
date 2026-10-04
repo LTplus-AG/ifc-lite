@@ -56,7 +56,8 @@ pub(super) fn trace_rings(mask: &[u8], labels: &Labels, geo: &GridGeometry) -> T
                 continue;
             }
             let fg = fg_labels[c];
-            let bg = bg_labels[(y as usize - 1) * w + x as usize];
+            // Padding keeps solid cells off row 0; guard it anyway.
+            let bg = if y > 0 { bg_labels[(y as usize - 1) * w + x as usize] } else { outside };
             let lattice = follow(x, y, &solid, &mut visited, w);
             let ring: Vec<[f64; 2]> = lattice
                 .iter()

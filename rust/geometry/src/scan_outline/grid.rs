@@ -97,7 +97,10 @@ pub(super) fn bin_points(
     }
     let geometry = geometry?;
     diag.used_points = counts.iter().map(|&c| c as usize).sum();
+    let largest = [min[0], min[1], max[0], max[1]].iter().fold(0f64, |m, v| m.max(v.abs())) as f32;
+    diag.coordinate_spacing_metres = (largest.next_up() - largest) as f64;
     diag.cell_size = geometry.cell;
+    diag.coordinate_precision_degraded = diag.coordinate_spacing_metres > geometry.cell / 10.0;
     diag.grid_width = geometry.width;
     diag.grid_height = geometry.height;
 
@@ -143,9 +146,13 @@ fn fit_geometry(
         capped = true;
         cell *= ((cells as f64 / opts.max_cells as f64).sqrt() * 1.02).max(1.02);
     }
-    // Unreachable for finite extents: 64 growths of >= 2 % exceed any span.
+    // Not reached for a finite extent and a validated budget: 64 growths
+    // reach a cell larger than the extent, where the grid is just its padding
+    // (`ScanOutlineOptions::min_cells`). Lay exactly that grid if it happens.
     let cell = (span[0].max(span[1]) + 1.0).max(cell);
-    let geo = GridGeometry { x0: min[0] - cell, y0: min[1] - cell, cell, width: 4, height: 4, pad: 1, min, max };
+    let pad = close_radius_cells(max_gap, cell) + opts.open_radius_cells as usize + 2;
+    let side = 2 * pad + 1;
+    let geo = GridGeometry { x0: min[0] - pad as f64 * cell, y0: min[1] - pad as f64 * cell, cell, width: side, height: side, pad, min, max };
     (geo, true)
 }
 

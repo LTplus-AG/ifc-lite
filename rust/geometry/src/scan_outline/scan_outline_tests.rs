@@ -294,3 +294,124 @@ fn a_move_that_crosses_another_ring_is_reverted() {
     assert_eq!(moved[0][1], [4.0, 0.0]);
     assert_eq!(moved[1][2], [9.1, 4.0], "the harmless move survives");
 }
+
+/// Review of #6883: a cell budget below what the padding needs fell into a
+/// 4×4 fallback grid with too little padding, and the trace then underflowed
+/// a row index (a wasm trap). Every budget is either refused up front or
+/// traced validly, for a few points and for a spread-out slab.
+#[test]
+fn every_accepted_cell_budget_traces_without_panicking() {
+    let scene = Scene::new(room_walls(0.0, 0.0, 6.0, 4.0, 0.2));
+    let slab = scene.sample(&SampleSpec { per_metre: 40.0, ..Default::default() });
+    let few = [0.0f32, 0.0, 0.01, 0.0, 0.0, 0.01, 50.0, 50.0];
+    let mut accepted = 0;
+    for max_cells in 1..=200usize {
+        let opts = ScanOutlineOptions { max_cells, ..Default::default() };
+        if opts.validate().is_err() {
+            continue;
+        }
+        accepted += 1;
+        for pts in [&few[..], &slab[..]] {
+            let o = trace_scan_outline(pts, &opts).expect("accepted options trace");
+            assert_valid(&o);
+            let d = &o.diagnostics;
+            assert!(d.grid_width * d.grid_height <= max_cells, "budget {max_cells} exceeded");
+        }
+    }
+    assert!(accepted > 0, "some budget under 200 cells must be accepted");
+    // The documented floor follows the padding: refused right below it.
+    let floor = ScanOutlineOptions::default().min_cells();
+    assert!(ScanOutlineOptions { max_cells: floor, ..Default::default() }.validate().is_ok());
+    assert!(ScanOutlineOptions { max_cells: floor - 1, ..Default::default() }.validate().is_err());
+}
+
+/// Review of #6883: options that size work or memory by a cell count are
+/// bounded, so a typo cannot allocate gigabytes or run for seconds.
+#[test]
+fn work_sizing_options_are_bounded() {
+    for opts in [
+        ScanOutlineOptions { max_vertex_move_cells: 1e4, ..Default::default() },
+        ScanOutlineOptions { snap_distance_cells: 600.0, ..Default::default() },
+        ScanOutlineOptions { min_cell_size: 1e-6, max_cell_size: 1e-6, ..Default::default() },
+    ] {
+        assert!(trace_scan_outline(&[0.0, 0.0], &opts).is_err(), "{opts:?}");
+    }
+}
+
+/// Review of #6883: a small column at 20° inside a 0° room is 20° off the
+/// dominant direction, far beyond the 3° (or 12° with a short offset)
+/// tolerance, so it must keep its own direction. Squaring every edge, or a
+/// tolerance ten times too wide, turns it to 0°.
+#[test]
+fn a_column_well_off_the_building_direction_is_not_squared() {
+    let scene = Scene::new(room_walls(0.0, 0.0, 6.0, 4.0, 0.2));
+    let mut pts = scene.sample(&SampleSpec::default());
+    let mut rng = Rng::new(20);
+    let (s, c) = 20f64.to_radians().sin_cos();
+    let (hw, hd) = (0.225, 0.15);
+    let perimeter = 2.0 * (2.0 * hw + 2.0 * hd);
+    for _ in 0..(perimeter * 300.0) as usize {
+        let u = rng.unit() * perimeter;
+        let (w, d) = (2.0 * hw, 2.0 * hd);
+        let local = if u < w {
+            [-hw + u, -hd]
+        } else if u < w + d {
+            [hw, -hd + (u - w)]
+        } else if u < 2.0 * w + d {
+            [hw - (u - w - d), hd]
+        } else {
+            [-hw, hd - (u - 2.0 * w - d)]
+        };
+        let (x, y) = (3.0 + c * local[0] - s * local[1] + 0.003 * rng.gauss(), 2.0 + s * local[0] + c * local[1] + 0.003 * rng.gauss());
+        pts.extend_from_slice(&[x as f32, y as f32]);
+    }
+    // A generous move budget, so the move cap and the support check cannot
+    // hide a wrong squaring decision: only the tolerance may keep it at 20°.
+    let opts = ScanOutlineOptions { max_vertex_move_cells: 32.0, ..Default::default() };
+    let o = trace_scan_outline(&pts, &opts).unwrap();
+    assert_valid(&o);
+    let column = o.shape_offsets.iter().copied().find(|&r| polygon_area(&o.rings[r]) < 1.0).expect("the column is its own shape");
+    let ring = &o.rings[column];
+    let n = ring.len();
+    let long: Vec<f64> = (0..n)
+        .filter(|&k| (ring[(k + 1) % n][0] - ring[k][0]).hypot(ring[(k + 1) % n][1] - ring[k][1]) > 0.2)
+        .map(|k| {
+            let (a, b) = (ring[k], ring[(k + 1) % n]);
+            let ang = (b[1] - a[1]).atan2(b[0] - a[0]).to_degrees();
+            (ang - 20.0 + 45.0).rem_euclid(90.0) - 45.0
+        })
+        .collect();
+    assert!(!long.is_empty());
+    for dev in long {
+        assert!(dev.abs() < 2.0, "column edge turned {dev}° away from its 20°");
+    }
+}
+
+/// Review of #6883: `squaredEdges` counts only squarings that survive, and
+/// every move undone (by the move cap or the repair loop) is in `revertedMoves`.
+#[test]
+fn squared_edges_count_only_surviving_squarings() {
+    let scene = Scene::new(room_walls(0.0, 0.0, 6.0, 4.0, 0.2)).placed(1.0, [0.0, 0.0]);
+    let pts = scene.sample(&SampleSpec::default());
+    // A move cap of zero undoes every squaring move.
+    let opts = ScanOutlineOptions { max_vertex_move_cells: 0.0, snap: false, ..Default::default() };
+    let o = trace_scan_outline(&pts, &opts).unwrap();
+    assert_valid(&o);
+    assert_eq!(o.diagnostics.squared_edges, 0, "{:?}", o.diagnostics);
+    assert!(o.diagnostics.reverted_moves > 0, "the undone moves are reported");
+}
+
+/// Review of #6883: f32 input far from the origin cannot resolve the cells;
+/// the run says so instead of silently returning a staircase or nothing.
+#[test]
+fn far_from_origin_input_reports_degraded_precision() {
+    let near = Scene::new(room_walls(0.0, 0.0, 6.0, 4.0, 0.2));
+    let far = Scene::new(room_walls(0.0, 0.0, 6.0, 4.0, 0.2)).placed(0.0, [2_600_000.0, 1_200_000.0]);
+    let opts = ScanOutlineOptions::default();
+    let n = trace_scan_outline(&near.sample(&SampleSpec::default()), &opts).unwrap();
+    let f = trace_scan_outline(&far.sample(&SampleSpec::default()), &opts).unwrap();
+    assert!(!n.diagnostics.coordinate_precision_degraded);
+    assert!(n.diagnostics.coordinate_spacing_metres < 1e-5);
+    assert!(f.diagnostics.coordinate_precision_degraded, "{:?}", f.diagnostics);
+    assert!(f.diagnostics.coordinate_spacing_metres >= 0.25);
+}

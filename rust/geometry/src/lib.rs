@@ -276,7 +276,7 @@ pub use ifc_lite_core::limits::{coord_is_large, LARGE_COORD_THRESHOLD_METERS};
 pub use simplify::{simplify_mesh, SimplifyOptions, SimplifyStats};
 pub use scan_outline::{
     trace_scan_outline, PlaneFrame, ScanOutline, ScanOutlineDiagnostics, ScanOutlineOptions, MAX_CELLS_LIMIT,
-    MAX_GAP_LIMIT,
+    MAX_GAP_LIMIT, MAX_SNAP_DISTANCE_CELLS, MAX_VERTEX_MOVE_CELLS, MIN_CELL_SIZE_LIMIT,
 };
 pub use tessellation::{scale_segments, TessellationQuality};
 pub use transform::{

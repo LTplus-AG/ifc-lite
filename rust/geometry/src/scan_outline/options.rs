@@ -10,6 +10,13 @@ use serde::{Deserialize, Serialize};
 /// Largest cell budget accepted: about 64 M cells, a few hundred MB of
 /// working grids, which is what a 32-bit wasm heap can still afford.
 pub const MAX_CELLS_LIMIT: usize = 1 << 26;
+/// Finest cell accepted (metres). Finer cells only grow the radii (in cells)
+/// that the closing and the support check work in.
+pub const MIN_CELL_SIZE_LIMIT: f64 = 0.001;
+/// The snap band gathers `(2r + 3)²` cells per step along an edge.
+pub const MAX_SNAP_DISTANCE_CELLS: f64 = 16.0;
+/// The support check searches a disk of about this radius per edge sample.
+pub const MAX_VERTEX_MOVE_CELLS: f64 = 32.0;
 
 /// Every tunable of the tracer, with defaults sized for building scans in
 /// metres. Deserialises from camelCase with every field optional (absent
@@ -95,6 +102,14 @@ impl Default for ScanOutlineOptions {
 }
 
 impl ScanOutlineOptions {
+    /// Smallest `max_cells` these options accept: even at the coarsest cell
+    /// (one cell over the whole extent, closing radius one cell) the grid
+    /// keeps its padding on every side, so it needs `(2 * pad + 1)²` cells.
+    pub fn min_cells(&self) -> usize {
+        let pad = usize::from(self.max_gap > 0.0) + self.open_radius_cells as usize + 2;
+        (2 * pad + 1).pow(2).max(64)
+    }
+
     /// Reject options no run could honour (non-finite, non-positive sizes,
     /// inverted ranges). `max_gap` above [`MAX_GAP_LIMIT`](super::MAX_GAP_LIMIT) is not an error; it
     /// is clamped and reported.
@@ -117,6 +132,12 @@ impl ScanOutlineOptions {
             positive("cellSize", c)?;
         }
         positive("minCellSize", self.min_cell_size)?;
+        if self.min_cell_size < MIN_CELL_SIZE_LIMIT {
+            return Err(format!("minCellSize must be >= {MIN_CELL_SIZE_LIMIT}, got {}", self.min_cell_size));
+        }
+        if let Some(c) = self.cell_size.filter(|c| *c < MIN_CELL_SIZE_LIMIT) {
+            return Err(format!("cellSize must be >= {MIN_CELL_SIZE_LIMIT}, got {c}"));
+        }
         positive("maxCellSize", self.max_cell_size)?;
         if self.max_cell_size < self.min_cell_size {
             return Err(format!(
@@ -125,8 +146,12 @@ impl ScanOutlineOptions {
             ));
         }
         positive("targetPointsPerCell", self.target_points_per_cell)?;
-        if !(64..=MAX_CELLS_LIMIT).contains(&self.max_cells) {
-            return Err(format!("maxCells must be in 64..={MAX_CELLS_LIMIT}, got {}", self.max_cells));
+        if self.open_radius_cells > 64 {
+            return Err(format!("openRadiusCells must be <= 64, got {}", self.open_radius_cells));
+        }
+        let min_cells = self.min_cells();
+        if !(min_cells..=MAX_CELLS_LIMIT).contains(&self.max_cells) {
+            return Err(format!("maxCells must be in {min_cells}..={MAX_CELLS_LIMIT}, got {}", self.max_cells));
         }
         non_negative("noiseFraction", self.noise_fraction)?;
         non_negative("maxGap", self.max_gap)?;
@@ -134,7 +159,13 @@ impl ScanOutlineOptions {
         non_negative("minHoleArea", self.min_hole_area)?;
         non_negative("simplifyToleranceCells", self.simplify_tolerance_cells)?;
         positive("snapDistanceCells", self.snap_distance_cells)?;
+        if self.snap_distance_cells > MAX_SNAP_DISTANCE_CELLS {
+            return Err(format!("snapDistanceCells must be <= {MAX_SNAP_DISTANCE_CELLS}, got {}", self.snap_distance_cells));
+        }
         non_negative("maxVertexMoveCells", self.max_vertex_move_cells)?;
+        if self.max_vertex_move_cells > MAX_VERTEX_MOVE_CELLS {
+            return Err(format!("maxVertexMoveCells must be <= {MAX_VERTEX_MOVE_CELLS}, got {}", self.max_vertex_move_cells));
+        }
         non_negative("squareAngleToleranceDeg", self.square_angle_tolerance_deg)?;
         if self.square_angle_tolerance_deg >= 45.0 {
             return Err(format!(
@@ -143,9 +174,6 @@ impl ScanOutlineOptions {
             ));
         }
         non_negative("squareOffsetTolerance", self.square_offset_tolerance)?;
-        if self.open_radius_cells > 64 {
-            return Err(format!("openRadiusCells must be <= 64, got {}", self.open_radius_cells));
-        }
         Ok(())
     }
 }
@@ -170,6 +198,13 @@ pub struct ScanOutlineDiagnostics {
     pub grid_height: usize,
     /// The cell budget forced a coarser cell than asked for.
     pub cell_cap_hit: bool,
+    /// Spacing of adjacent f32 values at the largest input coordinate: the
+    /// input cannot resolve anything finer (same idea and name as the scan
+    /// segmentation report, #6876).
+    pub coordinate_spacing_metres: f64,
+    /// That spacing exceeds a tenth of a cell: the outline follows f32 steps,
+    /// not the scan. Pass coordinates local to the slab.
+    pub coordinate_precision_degraded: bool,
     /// `max_gap` was above [`MAX_GAP_LIMIT`](super::MAX_GAP_LIMIT) and was clamped.
     pub max_gap_clamped: bool,
     /// Points a cell needed to count as occupied.

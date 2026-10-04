@@ -29,15 +29,16 @@ const OFFSET_ANGLE_FACTOR: f64 = 4.0;
 pub(super) struct Squared {
     pub rings: Vec<Vec<[f64; 2]>>,
     pub dominant_angle_deg: Option<f64>,
-    pub squared_edges: usize,
+    /// Per ring, per edge: turned onto the dominant direction.
+    pub squared: Vec<Vec<bool>>,
 }
 
 pub(super) fn square_rings(rings: &[Vec<[f64; 2]>], cell: f64, opts: &ScanOutlineOptions) -> Squared {
     let Some(dominant) = dominant_direction(rings, 2.0 * cell) else {
-        return Squared { rings: rings.to_vec(), dominant_angle_deg: None, squared_edges: 0 };
+        return Squared { rings: rings.to_vec(), dominant_angle_deg: None, squared: rings.iter().map(|r| vec![false; r.len()]).collect() };
     };
     let tol = opts.square_angle_tolerance_deg.to_radians();
-    let mut squared_edges = 0usize;
+    let mut squared_flags = Vec::with_capacity(rings.len());
     let mut out = Vec::with_capacity(rings.len());
     for ring in rings {
         let n = ring.len();
@@ -87,11 +88,11 @@ pub(super) fn square_rings(rings: &[Vec<[f64; 2]>], cell: f64, opts: &ScanOutlin
                 break;
             }
         }
-        squared_edges += squared.iter().filter(|&&s| s).count();
         out.push((0..n).map(|k| intersect(lines[(k + n - 1) % n], lines[k], ring[k])).collect());
+        squared_flags.push(squared);
     }
     let deg = dominant.to_degrees().rem_euclid(90.0);
-    Squared { rings: out, dominant_angle_deg: Some(deg), squared_edges }
+    Squared { rings: out, dominant_angle_deg: Some(deg), squared: squared_flags }
 }
 
 /// Signed difference folded into `[-45°, 45°)`.

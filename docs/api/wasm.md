@@ -429,6 +429,8 @@ The pipeline: a count grid (cell size adaptive to the point density between `min
 
 **Guarantees.** Outer rings wind counter-clockwise and holes clockwise, in plane coordinates. No ring touches or crosses itself or another, and every ring stays inside the ring `ringParents()` names. Any simplification, snap or squaring move that would break that is undone, and `diagnostics().revertedMoves` counts those undo steps. Gaps narrower than `maxGap` are closed, which is what turns the two faces of a wall into one solid band. Wider gaps, such as door openings, stay open.
 
+**Inputs.** Points are `f32`, so pass plane coordinates local to the slab (for example, the viewer's render frame), not map coordinates. `diagnostics().coordinatePrecisionDegraded` is set when the f32 step at the largest coordinate exceeds a tenth of a cell. Options that size work are bounded: `maxCells` from the padded-grid floor (81 with the defaults), `minCellSize` ≥ 1 mm, `snapDistanceCells` ≤ 16, `maxVertexMoveCells` ≤ 32. `undefined` fields mean the default. Unknown fields and non-finite numbers throw.
+
 **Cost.** Linear in the points and the grid cells. A 2 M point slab at the default 2 cm cells traces in about 0.2 s through the wasm build in Node, and in about 0.3 s natively. Run it off the main thread for large slabs.
 
 ## Data Types

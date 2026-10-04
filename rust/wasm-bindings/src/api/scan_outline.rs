@@ -40,15 +40,15 @@ extern "C" {
 
 #[wasm_bindgen(typescript_custom_section)]
 const SCAN_OUTLINE_TYPES: &str = r#"
-/** Every field is optional; absent means the default. Unknown fields are refused. Lengths in metres. */
+/** Every field is optional; absent or `undefined` means the default. Unknown fields and non-finite numbers are refused. Lengths in metres; pass plane coordinates local to the slab (f32 input). */
 export interface ScanOutlineOptionsJs {
   /** Fixed cell edge; omit to pick it from the point density between minCellSize and maxCellSize. */
   cellSize?: number;
-  /** Default 0.02. */ minCellSize?: number;
+  /** Default 0.02, at least 0.001. */ minCellSize?: number;
   /** Default 0.05. */ maxCellSize?: number;
   /** Adaptive cells grow until the median occupied cell holds this many points. Default 6. */
   targetPointsPerCell?: number;
-  /** Cell budget for the padded grid (64 ..= 67108864). Default 16777216; hitting it sets diagnostics.cellCapHit. */
+  /** Cell budget for the padded grid, from (2·pad + 1)² (81 with the defaults) up to 67108864. Default 16777216; hitting it sets diagnostics.cellCapHit. */
   maxCells?: number;
   /** Default 1. */ minPointsPerCell?: number;
   /** A cell is occupied from this fraction of the median occupied-cell count. Default 0.25. */
@@ -60,9 +60,9 @@ export interface ScanOutlineOptionsJs {
   /** Enclosed holes below this area (m²) are filled. Default 0.5. */ minHoleArea?: number;
   /** Douglas-Peucker tolerance in cells. Default 1.5. */ simplifyToleranceCells?: number;
   /** Refit edges to the points. Default true. */ snap?: boolean;
-  /** Evidence band beside an edge, in cells. Default 3. */ snapDistanceCells?: number;
+  /** Evidence band beside an edge, in cells (at most 16). Default 3. */ snapDistanceCells?: number;
   /** Fewest points to refit an edge. Default 8. */ minSnapPoints?: number;
-  /** Largest squaring move, in cells. Default 4. */ maxVertexMoveCells?: number;
+  /** Largest squaring move, in cells (at most 32). Default 4. */ maxVertexMoveCells?: number;
   /** Square edges to the dominant direction. Default true. */ square?: boolean;
   /** Default 3. */ squareAngleToleranceDeg?: number;
   /** Squares edges whose ends move at most this far. Default 0.03. */ squareOffsetTolerance?: number;
@@ -77,6 +77,8 @@ export interface ScanOutlineDiagnosticsJs {
   inputPoints: number; usedPoints: number; nonFinitePoints: number; outlierPoints: number;
   cellSize: number; gridWidth: number; gridHeight: number;
   cellCapHit: boolean; maxGapClamped: boolean; countThreshold: number;
+  /** f32 step at the largest input coordinate; `coordinatePrecisionDegraded` when above a tenth of a cell. Pass coordinates local to the slab. */
+  coordinateSpacingMetres: number; coordinatePrecisionDegraded: boolean;
   occupiedCells: number; solidCells: number; componentsDropped: number; holesFilled: number;
   ringCount: number; outerRingCount: number; holeRingCount: number; vertexCount: number;
   simplifyReinsertions: number; snappedEdges: number;
@@ -187,14 +189,71 @@ pub fn trace_scan_outline_js(
     Ok(ScanOutlineJs { outline, frame })
 }
 
-/// Deserialise a JS object so that `deny_unknown_fields` holds.
-/// `serde_wasm_bindgen` looks up only the field names a struct declares, so a
-/// misspelt option (`maxgap`) would otherwise be ignored silently and the run
-/// would use the default. Reading the whole object into a JSON value first
-/// enumerates every key.
+/// Deserialise a JS object so that `deny_unknown_fields` holds and the
+/// documented contract is what actually happens: a field set to `undefined`
+/// counts as absent (the `.d.ts` marks every option optional), and a
+/// non-finite number is refused. `serde_wasm_bindgen` looks up only declared
+/// field names (a misspelt `maxgap` would be ignored), and a detour through
+/// `serde_json` alone turns NaN into `null`, which then reads as "use the
+/// default", so the value is converted here first.
 fn strict_from_js<T: serde::de::DeserializeOwned>(value: JsValue) -> Result<T, String> {
-    let json: serde_json::Value = serde_wasm_bindgen::from_value(value).map_err(|e| e.to_string())?;
+    let json = js_to_json(&value, "value", 0)?.unwrap_or(serde_json::Value::Null);
     serde_json::from_value(json).map_err(|e| e.to_string())
+}
+
+/// Plain-data conversion, depth-bounded; `None` for `undefined`.
+fn js_to_json(value: &JsValue, path: &str, depth: usize) -> Result<Option<serde_json::Value>, String> {
+    use serde_json::Value;
+    if depth > 8 {
+        return Err(format!("{path} is nested too deeply"));
+    }
+    if value.is_undefined() {
+        return Ok(None);
+    }
+    if value.is_null() {
+        return Ok(Some(Value::Null));
+    }
+    if let Some(b) = value.as_bool() {
+        return Ok(Some(Value::Bool(b)));
+    }
+    if let Some(n) = value.as_f64() {
+        return number_json(n, path).map(Some);
+    }
+    if let Some(s) = value.as_string() {
+        return Ok(Some(Value::String(s)));
+    }
+    if js_sys::Array::is_array(value) {
+        let items = js_sys::Array::from(value);
+        let mut out = Vec::with_capacity(items.length() as usize);
+        for (i, item) in items.iter().enumerate() {
+            out.push(js_to_json(&item, &format!("{path}[{i}]"), depth + 1)?.unwrap_or(Value::Null));
+        }
+        return Ok(Some(Value::Array(out)));
+    }
+    if value.is_object() {
+        let mut map = serde_json::Map::new();
+        for entry in js_sys::Object::entries(value.unchecked_ref()).iter() {
+            let pair = js_sys::Array::from(&entry);
+            let key = pair.get(0).as_string().unwrap_or_default();
+            if let Some(v) = js_to_json(&pair.get(1), &key, depth + 1)? {
+                map.insert(key, v);
+            }
+        }
+        return Ok(Some(Value::Object(map)));
+    }
+    Err(format!("{path} has an unsupported type"))
+}
+
+/// A JS number as JSON: integral values as integers (so `usize` fields
+/// accept `16777216`), non-finite values refused.
+fn number_json(n: f64, path: &str) -> Result<serde_json::Value, String> {
+    if !n.is_finite() {
+        return Err(format!("{path} must be a finite number, got {n}"));
+    }
+    if n.fract() == 0.0 && n.abs() < 9_007_199_254_740_992.0 {
+        return Ok(serde_json::Value::from(n as i64));
+    }
+    serde_json::Number::from_f64(n).map(serde_json::Value::Number).ok_or_else(|| format!("{path} is not a number"))
 }
 
 fn checked_frame(f: FrameInput) -> Result<PlaneFrame, String> {
@@ -208,6 +267,14 @@ fn checked_frame(f: FrameInput) -> Result<PlaneFrame, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn numbers_are_refused_when_non_finite_and_kept_integral_when_whole() {
+        assert!(number_json(f64::NAN, "maxGap").unwrap_err().contains("maxGap must be a finite"));
+        assert!(number_json(f64::INFINITY, "maxGap").is_err());
+        assert_eq!(number_json(16777216.0, "maxCells").unwrap(), serde_json::json!(16777216));
+        assert_eq!(number_json(0.3, "maxGap").unwrap(), serde_json::json!(0.3));
+    }
 
     #[test]
     fn a_non_finite_frame_is_refused() {

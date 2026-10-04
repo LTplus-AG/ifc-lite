@@ -35,11 +35,11 @@ test('device health replaces earlier loss, failure and recovery while retaining 
   assert.doesNotMatch(ui.textContent ?? '', /Automatic recovery is starting/);
   reportDeviceRecovery({ ok: true, omissions: [] }, () => resetDeviceLossReportForTests());
   await settle();
-  assert.match(ui.textContent ?? '', /3D view recovered/);
+  assert.match(ui.textContent ?? '', /Graphics device restored/);
   assert.doesNotMatch(ui.textContent ?? '', /could not recover/);
   reportDeviceLost({ reason: 'unknown', message: 'replacement lost' }, undefined, true);
   await settle();
-  assert.doesNotMatch(ui.textContent ?? '', /3D view recovered/);
+  assert.doesNotMatch(ui.textContent ?? '', /Graphics device restored/);
   assert.match(ui.textContent ?? '', /Automatic recovery is starting/);
   assert.match(ui.textContent ?? '', /Unrelated export failure/);
   assert.equal(ui.querySelectorAll('button[aria-label="Dismiss notification"]').length, 2);

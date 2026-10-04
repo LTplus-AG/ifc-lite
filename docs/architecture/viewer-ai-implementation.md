@@ -14,6 +14,7 @@ The [full program](viewer-ai-plan.md) remains the completion contract. Every pac
 | [#6828](https://github.com/LTplus-AG/ifc-lite/pull/6828) | Reviewed native Flow graph patches | Native registry validation; approval-gated apply/undo; standard-registry math execution oracle; no automatic graph execution. Receipts are session-only; graph durability uses native Save. |
 | [#6832](https://github.com/LTplus-AG/ifc-lite/pull/6832) | Reviewed native document drafts | Initial analysis answer/evidence conversion, citation existence, native document storage/PDF. Broader narrative schema and adapter coverage remain open. |
 | [#6835](https://github.com/LTplus-AG/ifc-lite/pull/6835) | Native load diagnostics and adapter register | Unavailable/failure/federation/sample/replacement invariants; native panel action and portable reports. Missing provider refusal and completion-visible CI capture; full adapter charter #6833 remains open. |
+| [#6837](https://github.com/LTplus-AG/ifc-lite/pull/6837) | Local HTTP BCF publication evidence | 50 connector/publication tests; parsed SketchUp identity and native archive roundtrip; permission/vocabulary rejection and committed-but-lost effects. Controlled peer is not vendor conformance or a durable outbox. |
 
 CI results are live measurements on each PR, not a permanent green claim in this document. Exhausted provider budgets are infrastructure failures, remain visible and do not replace evidence-based self-review. A successful “Review posted” job does not establish that a provider actually reviewed the code.
 

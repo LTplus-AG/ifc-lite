@@ -12,6 +12,8 @@ export const semanticEn = {
   'semantic.sparql': 'SPARQL endpoint',
   'semantic.endpoint': 'Endpoint URL',
   'semantic.host': 'Allow requests to hostname',
+  'semantic.loopbackGrant': 'Allow local HTTP requests to {origin} for this session',
+  'semantic.loopbackHelp': 'This grant applies only to this origin and port. Browser CORS and local network permissions still apply.',
   'semantic.query': 'Read query',
   'semantic.payload': 'JSON records',
   'semantic.run': 'Load records',

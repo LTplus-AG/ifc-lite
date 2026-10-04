@@ -7,8 +7,9 @@ import type { Capability } from '@ifc-lite/extensions';
 const HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 /** Recognize literal loopback HTTP before URL canonicalization can hide alternate IP spellings. */
 export function loopbackHttpOrigin(endpoint: string): string | undefined {
-  if (typeof endpoint !== 'string' || /[\u0000-\u0020\\]/u.test(endpoint)
-    || !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::[1-9][0-9]{0,4})?(?=[/?#]|$)/u.test(endpoint)) return undefined;
+  if (typeof endpoint !== 'string') return undefined;
+  for (const character of endpoint) if (character.charCodeAt(0) <= 32 || character === '\\') return undefined;
+  if (!/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::[1-9][0-9]{0,4})?(?=[/?#]|$)/u.test(endpoint)) return undefined;
   try {
     const url = new URL(endpoint);
     return url.protocol === 'http:' && HOSTS.has(url.hostname) && !url.username && !url.password ? url.origin : undefined;

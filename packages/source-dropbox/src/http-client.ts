@@ -32,7 +32,13 @@ export class DropboxHttpError extends Error {
   }
 }
 
-export class BrowserDropboxApiClient {
+/** Read-only client boundary; hosted clients keep vendor credentials on the server. */
+export interface DropboxApiClient {
+  rpc(path: string, args: unknown, signal?: AbortSignal): Promise<unknown>;
+  downloadContent(path: string, options?: DownloadOptions): Promise<ArrayBuffer>;
+}
+
+export class BrowserDropboxApiClient implements DropboxApiClient {
   constructor(
     private readonly accessToken: string,
     private readonly ctx: PluginContext,

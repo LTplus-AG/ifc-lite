@@ -29,7 +29,21 @@ import type { TranslationValue } from '../types';
  * folder row differently from a top-level file row.
  */
 export const sourcesEn = {
+  'sources.sourceProviderRow.signOutFailed': 'Sign-out failed. Retry to end your Autodesk session.',
+  'sources.resourceDetails.title': 'Details and versions',
+  'sources.resourceDetails.proposal': 'Forma proposal → native IFCX model',
+  'sources.resourceDetails.exchange': 'Data Exchange → native IFC model',
+  'sources.resourceDetails.file': 'Load the original source file at the selected version.',
+  'sources.resourceDetails.exchangeVersions': 'Autodesk supports whole-exchange export of the current version. Older versions are listed for reference.',
+  'sources.resourceDetails.proposalFidelity': 'Includes volume meshes, instances and source properties. Textures, vertex colors and 2D terrain overlays may differ; georeferencing is preserved.',
+  'sources.resourceDetails.loading': 'Loading versions…',
+  'sources.resourceDetails.versions': 'Source versions',
+  'sources.resourceDetails.current': 'Version {version} (current)',
+  'sources.resourceDetails.selected': 'Selected',
+  'sources.resourceDetails.more': 'Load more versions',
+  'sources.resourceDetails.retry': 'Retry',
   // ── SourceBrowserHeader ──
+  'sources.sourceBrowserHeader.cancelDownload': 'Cancel download',
   'sources.sourceBrowserHeader.backAria': 'Back',
   'sources.sourceBrowserHeader.syncedAt': 'Synced {time}',
   'sources.sourceBrowserHeader.sync': 'Sync',
@@ -58,6 +72,10 @@ export const sourcesEn = {
   'sources.sourceFileRow.syncAria': 'Sync {name} from source',
 
   // ── SourceDownloadStatus: per-file download and Sync progress (#6375) ──
+  'sources.downloadStatus.preparingAria': 'Preparing {name} for import',
+  'sources.sourceProviderRow.cancelSignIn': 'Cancel sign-in',
+  'sources.sourceProjectsStep.autodeskPlaceholder': 'Paste a Forma Site Design or Docs project link…',
+  'sources.sourceProjectsStep.autodeskHint': 'Browse Data Management projects below, or paste a Site Design link. Missing projects may require your account administrator to authorize the app.',
   'sources.downloadStatus.queued': 'Queued',
   'sources.downloadStatus.failed': 'Download failed',
   'sources.downloadStatus.downloadingAria': 'Downloading {name}',

@@ -118,6 +118,18 @@ export class FilePersistence implements Persistence {
       if (legacy === file || !fs.existsSync(legacy)) return null;
       file = legacy;
     }
+    return this.loadLogFile(file);
+  }
+
+  /**
+   * Read one log by its FILE path, without mapping a room id to a name. For
+   * callers that enumerate the data dir (the blob-GC scan) and must read a
+   * file whose name is not a well-formed `encodeURIComponent` output.
+   * Same result contract as `load`: `null` for an empty or unparseable log.
+   * Set `requireComplete` for GC: an incomplete suffix may hide blob references.
+   * The default retains complete-prefix recovery for ordinary room loads.
+   */
+  async loadLogFile(file: string, requireComplete = false): Promise<Uint8Array | null> {
     const buf = await fs.promises.readFile(file);
     if (buf.byteLength === 0) return null;
     const frames: Uint8Array[] = [];
@@ -125,10 +137,14 @@ export class FilePersistence implements Persistence {
     while (offset + 4 <= buf.byteLength) {
       const len = buf.readUInt32LE(offset);
       offset += 4;
-      if (offset + len > buf.byteLength) break;
+      if (offset + len > buf.byteLength) {
+        if (requireComplete) return null;
+        break;
+      }
       frames.push(new Uint8Array(buf.buffer, buf.byteOffset + offset, len));
       offset += len;
     }
+    if (requireComplete && offset !== buf.byteLength) return null;
     if (frames.length === 0) return null;
     return mergeUpdateFrames(frames);
   }

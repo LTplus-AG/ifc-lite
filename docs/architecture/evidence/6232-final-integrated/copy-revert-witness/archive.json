@@ -1,0 +1,38 @@
+[
+  {
+    "file": "types.gz",
+    "source": "95390b2bf004513f6a197c507abe188d55cfec2c",
+    "rawSha256": "d0feeb329071ef99d082c7670d4f2729b10cb6bead7d21647b4e623205742995",
+    "gzipSha256": "3e200a030b461bb5bf36614c210d5a4a7473b62eaf5780fd59706024fe2a9e9b"
+  },
+  {
+    "file": "focused-tests.gz",
+    "source": "95390b2bf004513f6a197c507abe188d55cfec2c",
+    "rawSha256": "b83d9091c0237d261c06634cfde3a9396d199c12b8c015f0320b3b586081bbc4",
+    "gzipSha256": "19eef62dc926e3f9c97bb2ea81f92cee1c3e306e0f9b5379c8c80da8588f1d84"
+  },
+  {
+    "file": "full-revert-oracle.gz",
+    "source": "95390b2bf004513f6a197c507abe188d55cfec2c",
+    "rawSha256": "c7b9b1b026cf64ee0be3e0c6b4c417347e8be3f475b609f87bf03594ff578d94",
+    "gzipSha256": "3f2bbb7da046cb162ca0b9736752f9d8bd3f7634013778296150297515e1fd25"
+  },
+  {
+    "file": "full-revert-oracle-json.gz",
+    "source": "95390b2bf004513f6a197c507abe188d55cfec2c",
+    "rawSha256": "dc930bfbc17c4d3a26b94c55d9d9ea4e61bdfc83c56a7c869cfb6dbab444cd08",
+    "gzipSha256": "6ea559f30117891a940a15dbc5cdc4989606ba11303fd87658179da5dcce39bb"
+  },
+  {
+    "file": "old-writer-stack.gz",
+    "source": "95390b2bf004513f6a197c507abe188d55cfec2c",
+    "rawSha256": "470b346a01890f1a774d50543c1975263d12642387f9ee3f021a68d8db6a0e8d",
+    "gzipSha256": "a77e4e1ca99e6355872b0614d3901c1bb25c6b52f2c985bc5ed405a30363b73e"
+  },
+  {
+    "file": "original-receipt.gz",
+    "source": "95390b2bf004513f6a197c507abe188d55cfec2c",
+    "rawSha256": "51f2bd391761d8f0d1860b9e1b356e8a913272e39c8e6f6956c915d55a6292ec",
+    "gzipSha256": "36f4c1073eb76edc94d7c7bdb07c3cb6c9a0cbc7ad1bff6ae43728c929a8a3b8"
+  }
+]

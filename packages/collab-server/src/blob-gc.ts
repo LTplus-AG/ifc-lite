@@ -38,9 +38,9 @@
  * aborts the whole sweep rather than deleting:
  *
  *  - an unreadable log directory or a doc that throws on `applyUpdate`
- *  - **a non-empty log file that `FilePersistence.load` returns `null` for.**
- *    `load` does not throw on a corrupt log: an empty file, a truncated length
- *    prefix, or any garbage yielding zero complete frames all return `null`
+ *  - **a non-empty log file that `FilePersistence.loadLogFile` returns `null` for.**
+ *    GC requires complete framing: truncated headers or bodies return `null`
+ *    even after a valid prefix, since the unreadable suffix may hold references
  *    (`persistence.ts`). Treating that as "this room references nothing" would
  *    delete every blob belonging to a damaged room. A genuinely 0-byte log is
  *    the one safe case, since it cannot hide a reference.
@@ -111,10 +111,10 @@ export async function collectPersistedBlobRefs(dataDir: string): Promise<BlobRef
     // Read by file name: decoding the name into a room id and re-encoding it
     // throws `URIError` on a malformed escape and is not an inverse for a
     // non-canonical one (`a%41` -> `aA` -> `aA.log`, a different file).
-    const update = await persistence.loadLogFile(path.join(dataDir, entry.name));
+    const update = await persistence.loadLogFile(path.join(dataDir, entry.name), true);
 
     if (update === null) {
-      // `load` returns null for corrupt logs as well as empty ones. A 0-byte
+      // The strict read returns null for incomplete logs as well as empty ones. A 0-byte
       // file cannot hide a reference; anything larger might, so refuse to
       // treat it as an empty room.
       const stat = await fs.promises.stat(path.join(dataDir, entry.name));

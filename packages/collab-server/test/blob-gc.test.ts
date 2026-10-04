@@ -334,4 +334,49 @@ describe('blob gc', () => {
     );
     docWithB.destroy();
   });
+
+  it.each(['%ZZ.log', 'a%41.log', 'canonical.log'])(
+    '#6704 refuses an incomplete frame body in %s before GC',
+    async name => {
+      const first = logFrame(updateReferencing([A]));
+      const second = logFrame(updateReferencing([B]));
+      fs.writeFileSync(path.join(dataDir, name), Buffer.concat([
+        first, second.subarray(0, second.length - 1),
+      ]));
+      writeBlob(A, 3 * DAY);
+      writeBlob(B, 3 * DAY);
+      await expect(plan()).rejects.toThrow(/parsed to nothing/);
+    },
+  );
+
+  it.each([1, 2, 3])('#6704 refuses %i trailing frame-header bytes before GC', async count => {
+    fs.writeFileSync(path.join(dataDir, '%ZZ.log'), Buffer.concat([
+      logFrame(updateReferencing([A])), Buffer.alloc(count, 1),
+    ]));
+    writeBlob(B, 3 * DAY);
+    await expect(plan()).rejects.toThrow(/parsed to nothing/);
+  });
+
+  it.each(['body', 'header-1', 'header-2', 'header-3'])(
+    '#6704 ordinary room recovery retains the complete prefix with an incomplete %s',
+    async tail => {
+      const second = logFrame(updateReferencing([B]));
+      const suffix = tail === 'body'
+        ? second.subarray(0, second.length - 1)
+        : second.subarray(0, Number(tail.slice(-1)));
+      fs.writeFileSync(path.join(dataDir, 'recovery.log'), Buffer.concat([
+        logFrame(updateReferencing([A])), suffix,
+      ]));
+      const update = await new FilePersistence({ dataDir }).load('recovery');
+      expect(update).not.toBeNull();
+      const doc = new Y.Doc();
+      try {
+        Y.applyUpdate(doc, update!);
+        expect([...geometryMap(doc).values()].map(value => value.get('blobHash'))).toEqual([A]);
+      } finally {
+        doc.destroy();
+      }
+    },
+  );
+
 });

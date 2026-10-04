@@ -212,7 +212,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       draw: (y) => {
         // Give each line the column width. The old 80pt subtitle slot cut ordinary totals
         // such as "13 buckets · 12,623 elements" even on a full-width A4 chart (#4940).
-        const subtitle = truncateToWidth(block.subtitle, boxW - 4, 8 * textScale, false, input.measure);
+        const subtitle = truncateToWidth(block.subtitle, boxW - CHART_TITLE_RESERVE, 8 * textScale, false, input.measure);
         const items: DrawnItem[] = [
           ...blockTitleItems(block, block.title, boxX, y, boxW, (text, width, size, bold) => truncateToWidth(text, width, size, bold, input.measure), textScale, CHART_TITLE_RESERVE),
           { kind: 'text', x: boxX, y: y + 24 * textScale + heading.extra, size: 8 * textScale, bold: false, gray: 130, text: subtitle },

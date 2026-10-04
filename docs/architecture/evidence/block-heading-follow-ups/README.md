@@ -18,7 +18,7 @@ Commands:
 cd apps/viewer && pnpm exec vite --port 5178 --host 127.0.0.1 --strictPort
 EVIDENCE_TAG=main|branch EVIDENCE_OUT=docs/architecture/evidence/block-heading-follow-ups node docs/architecture/evidence/block-heading-follow-ups/generate-pdfs.mjs
 EVIDENCE_TAG=main|branch EVIDENCE_OUT=docs/architecture/evidence/block-heading-follow-ups node docs/architecture/evidence/block-heading-follow-ups/preview-shots.mjs
-node docs/architecture/evidence/block-heading-follow-ups/readback.mjs docs/architecture/evidence/block-heading-follow-ups > readback.txt
+node docs/architecture/evidence/block-heading-follow-ups/readback.mjs docs/architecture/evidence/block-heading-follow-ups > docs/architecture/evidence/block-heading-follow-ups/readback.txt
 ```
 
 Tools: `pdfinfo` (page size), `pdftotext -bbox` (word boxes), pdf.js 6.3.289 `getTextContent` (item position

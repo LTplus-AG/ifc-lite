@@ -176,7 +176,8 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         const topic = input.topics.get(block.guid);
         if (!topic) {
           result.missingTopics.push(block.guid);
-          blocks.push({ kind: 'topic', id: block.id, title: blockTitle(block, `[BCF topic ${block.guid}: not among the loaded topics]`), lines: blockTitle(block) ? [`[BCF topic ${block.guid}: not among the loaded topics]`] : [], snapshotAspect: null, scale: block.scale, ...blockHeaderStyleFields(block) });
+          // The notice is a wrapped line, so a large heading cut to its strip never cuts the notice away.
+          blocks.push({ kind: 'topic', id: block.id, title: blockTitle(block, `BCF topic ${block.guid}`), lines: [`[BCF topic ${block.guid}: not among the loaded topics]`], snapshotAspect: null, scale: block.scale, ...blockHeaderStyleFields(block) });
           break;
         }
         let snapshotAspect: number | null = null;

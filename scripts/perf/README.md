@@ -110,25 +110,30 @@ canonical parser; defer mechanisms whose correctness or end-to-end verdict
 remains incomplete. [Raw dispositions and prerequisites](evidence/deferred-worker-mechanisms-6537/README.md)
 retain source attribution and the excluded attempts.
 
-## Known-explicit orientation entrypoint: unqualified prototype (#6537)
+## Known-explicit orientation: scoped CSG improvement, SDK mixed (#6537 / #6788)
 
-Callers already holding explicit coordinates can avoid constructing implicit-point
-variants and using the general dispatcher. The prototype routes those calls and
-the dispatcher's explicit arm through one private helper, preserving the same
+Callers already holding explicit coordinates avoid constructing implicit-point
+variants and using the general dispatcher. One private helper preserves the same
 adaptive predicate, argument order, sign conversion and degeneracy policy.
 Independent rational permutation controls and the full existing predicate tests
 remain intact; the latter move into a sibling test module to satisfy the size
 ratchet. Final workspace and strict all-target Clippy checks pass, with the earlier
 disk refusal and test-import compile failure retained.
 
-The performance verdict is unqualified. Historical instruction attribution
-includes adaptive arithmetic and does not quantify removable dispatch work; its
-older subject differs from the current baseline's source/configuration closure.
-Require fresh, source-fenced native and default-worker SDK comparisons before
-deciding whether this entrypoint pays back. No native instruction, elapsed, RSS
-or full-viewer benefit is claimed. [Correctness receipts, source hashes, earlier
-refusals and prospective qualification](evidence/explicit-orientation-6537/README.md)
-preserve this prototype without relabelling prior measurements.
+The fresh default-worker SDK comparison qualifies its produced CPU boundary.
+ISSUE129 shows a modest consistent elapsed improvement across the observed pairs;
+Haus, Holter and O-S1 remain mixed. Produced flat/instanced CPU identities and the
+complete unnormalized diagnostic census agree. The separate native comparison
+refuses its first baseline startup on an observed compiler-version query outside
+the unchanged Cargo-only exception, before producing output. It supplies no
+native performance verdict. No universal, RSS or full-viewer benefit is claimed.
+
+Lesson: historical instruction attribution includes adaptive arithmetic and does
+not quantify removable dispatch work; its older source/configuration closure is
+not this baseline. Measure the fresh consumer, retain every pair and refusal,
+and distinguish a scoped model signal from a universal throughput claim. The
+[lossless correctness, SDK and native-refusal evidence](evidence/explicit-orientation-6537/README.md)
+preserves immutable subjects, all observations and identity/closure limits.
 
 ## Checked-magnitude products: native benefit, SDK mixed (#6537 / #6764)
 

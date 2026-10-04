@@ -1,0 +1,412 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS_BOUNDED_DATA_ONLY_EXTRACTION_REPLAY_READER_CONTROLS",
+  "archiveProgramsExecuted": false,
+  "buildModelBrowserExecuted": false,
+  "inputFreeze": {
+    "status": "FROZEN_FOR_ONE_ROOT_APPROVED_DATA_ONLY_VALIDATION",
+    "helperHashes": {
+      "cohort_archive.py": "5357b7847faa5ca065ec21fda48c86e1d6513878d67f6201dd152a9d160d2fb1",
+      "replay-cohort.py": "147137fced3b80e16033db6c24fe0318853eb30dddb42922253097a541617342"
+    },
+    "indexSha256": "c6e59e609463d6f442cbf5ab9a04c1688dd1be11f3e162edf1a8a8aca001a608",
+    "archiveSha256": "41a4ec768570e129c743de6be15665ebfdb24868f32ae9b9c4eff8fa01a5ce36",
+    "manifestSha256": "6748ad4ddfc4be4363e3e0eaf12e1cb08e929e2ec75288d9ae7c1df14aab21de",
+    "semanticDelta": "Only exact observed2workers0/1 and literal runtime4cores16GiBChrome154SAB/COI/no overrides; no source/producer/measurement change",
+    "approvedGuardian": {
+      "path": "/tmp/6232-takeover/functional-budget-guardian-v3-disk-session6503.py",
+      "sha256": "9ca9b764e0586380b8db5b8a6f61ec01d7431012d284a51a87dc3e910c93bf7f"
+    },
+    "archiveAndManifestUnchanged": true
+  },
+  "actualGuardian": {
+    "startedUTC": "2026-10-04T02:22:17.201612+00:00",
+    "cwd": "/home/louistrue/wt/6537-explicit-orientation-dispatch-session6503",
+    "command": [
+      "timeout",
+      "--signal=TERM",
+      "--kill-after=5s",
+      "300s",
+      "python3",
+      "/tmp/6232-takeover/6537-explicit-orientation-cohort-validation-v1/validate.py"
+    ],
+    "minimumStartKiB": 25165824,
+    "minimumLiveKiB": 8388608,
+    "maximumTreeRssKiB": 12582912,
+    "initialAvailableKiB": 45570412,
+    "scope": "Correctness-only run under host load; no timing/performance verdict.",
+    "peakTreeRssKiB": 1327816,
+    "minimumObservedAvailableKiB": 44442748,
+    "initialDiskFreeBytes": 11029741568,
+    "minimumStartDiskFreeBytes": 10737418240,
+    "minimumLiveDiskFreeBytes": 2147483648,
+    "ownedProcessGroup": 24402,
+    "childExit": 0,
+    "exit": 0,
+    "endedUTC": "2026-10-04T02:23:30.049018+00:00"
+  },
+  "executionReceipts": [
+    {
+      "phase": "extract",
+      "command": [
+        "python3",
+        "/home/louistrue/wt/6537-explicit-orientation-dispatch-session6503/scripts/perf/evidence/explicit-orientation-6537/cohort_archive.py",
+        "/tmp/6232-takeover/6537-explicit-orientation-cohort-validation-v1/extracted"
+      ],
+      "exit": 0,
+      "stdoutSha256": "7108a4cf063f87876e50035871d1ef441640087d572f851bd18ebbd9157b436a",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "phase": "replay",
+      "command": [
+        "python3",
+        "/home/louistrue/wt/6537-explicit-orientation-dispatch-session6503/scripts/perf/evidence/explicit-orientation-6537/replay-cohort.py",
+        "--repo",
+        "/home/louistrue/wt/6537-explicit-orientation-dispatch-session6503"
+      ],
+      "exit": 0,
+      "stdoutSha256": "8ab78f374d56964d2b3592f0bd319af06d90de0e452aa476bc853741c82d3bbc",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "readerControls": {
+    "controls": [
+      {
+        "case": "valid",
+        "status": "PASS_REAL_BYTES",
+        "failure": null,
+        "archiveSha256": "d5761d1b4510f9e39be5f1b507bd8bd59825b66d1081b99852ca2f1c2d0fdfd9",
+        "manifestSha256": "b212e5f1e2f85fc2d2f062d48b92344b73db01c6d2d8df8893832c18918eea53"
+      },
+      {
+        "case": "unsafe-tar-path",
+        "status": "PASS_EXPECTED_REJECTION",
+        "failure": {
+          "type": "ValueError",
+          "message": "unsafe member path: ../escape.zip"
+        },
+        "archiveSha256": "ed59726c27ce19c075e8345206c31c2e58f9bb75b46589c8e81b6ad1692adbbf",
+        "manifestSha256": "8bd210b42270286bf6b6f6ff29f89d0baf97659434baa0f3af5b2755baf86203"
+      },
+      {
+        "case": "unsafe-zip-path",
+        "status": "PASS_EXPECTED_REJECTION",
+        "failure": {
+          "type": "ValueError",
+          "message": "unsafe member path: ../escape.json"
+        },
+        "archiveSha256": "8334bd7a712e04e69629d11389f6fc29c5a8a60dcf7cee48a00b6aefadcfbc6a",
+        "manifestSha256": "3cf25260f5b59fe8ea17d5a01746011ad67e8c311b5e61072647617e7b88749c"
+      },
+      {
+        "case": "tar-symlink",
+        "status": "PASS_EXPECTED_REJECTION",
+        "failure": {
+          "type": "ValueError",
+          "message": "unsafe/unknown/duplicate TAR member"
+        },
+        "archiveSha256": "0e3cb514bc0ad1471ff8442a22dc12677e1a162e21878ef30aca57be706b3114",
+        "manifestSha256": "b212e5f1e2f85fc2d2f062d48b92344b73db01c6d2d8df8893832c18918eea53"
+      },
+      {
+        "case": "duplicate-tar",
+        "status": "PASS_EXPECTED_REJECTION",
+        "failure": {
+          "type": "ValueError",
+          "message": "unsafe/unknown/duplicate TAR member"
+        },
+        "archiveSha256": "8a53300d16e3825cb480e362999d007b3019acd2f317722cb1dfa3239829486d",
+        "manifestSha256": "b212e5f1e2f85fc2d2f062d48b92344b73db01c6d2d8df8893832c18918eea53"
+      },
+      {
+        "case": "member-checksum",
+        "status": "PASS_EXPECTED_REJECTION",
+        "failure": {
+          "type": "ValueError",
+          "message": "member identity differs: decoded/item.json"
+        },
+        "archiveSha256": "d5761d1b4510f9e39be5f1b507bd8bd59825b66d1081b99852ca2f1c2d0fdfd9",
+        "manifestSha256": "95b3d1e419d6467110398aca7de8bf18c57e9ea8e73469a38bda2d434c695bf4"
+      },
+      {
+        "case": "zip-encrypted",
+        "status": "PASS_EXPECTED_REJECTION",
+        "failure": {
+          "type": "ValueError",
+          "message": "unsafe/duplicate/oversized ZIP member"
+        },
+        "archiveSha256": "a999130ecc4bdc565ec2654ce5ffebd64685c035e331510f12b823af3b9c227c",
+        "manifestSha256": "fd84acb524d5d1d819098e7a65baead62088ace77439dd44e02c2f825a733c71"
+      },
+      {
+        "case": "zip-oversized",
+        "status": "PASS_EXPECTED_REJECTION",
+        "failure": {
+          "type": "ValueError",
+          "message": "unsafe/duplicate/oversized ZIP member"
+        },
+        "archiveSha256": "550cb0c756413f621ea5bd1d1a2a5767f388acea6b054ac88a32f90e0110ffb9",
+        "manifestSha256": "c5b9a653d77cdbe6b45ad5c6beb3001985ab9b38c596b68ad0d1710260a76f9a"
+      },
+      {
+        "case": "zip-census",
+        "status": "PASS_EXPECTED_REJECTION",
+        "failure": {
+          "type": "ValueError",
+          "message": "unsafe/duplicate/oversized ZIP member"
+        },
+        "archiveSha256": "9597fe883280a9850261a45b960d47e39b0990486b1169a72a1b49f1bb2b40d1",
+        "manifestSha256": "b880bd05e80dcc4651e584a9d9449a60999bec1b0aa335e39fa54a7ff126da35"
+      }
+    ],
+    "passed": 9,
+    "failed": 0,
+    "scope": "Real TAR/ZIP reader boundary controls; only exact owned reviewed source executes, never archive code"
+  },
+  "finalInputVerification": {
+    "status": "COMPLETE",
+    "originalSourceArchive4ByteExact": {
+      "correctness.tar.gz": "190d6dbbe0a2e33efec225be21b174b51b65dc9f3d913118f211dd01a38c3d6e",
+      "artifact-index.json": "856f9229a7ef4b29a3195e090181cacb5aaad58a72f7c26105950db4755c7720",
+      "member-manifest.json": "0eeda390e6278259d0c76a68a3c6122ec039691b284f2dda6bbbd2b691514d54",
+      "extract.py": "5753a25c32fb81c9f60951aae5ff9c94c8519a533a8bbf3bd8e6ef34726bfb7f"
+    },
+    "source8ByteExact": {
+      "rust/geometry/src/kernel/arrangement/classify.rs": "5f417557fef55fae7bf2256b6fdcf26fad1f8297194ca025c3934f2628895db7",
+      "rust/geometry/src/kernel/arrangement/ray_parity.rs": "903e132211a7394eb0e9c3b5c4bcb4fe0616a5813330ce9c860a88eae504dc14",
+      "rust/geometry/src/kernel/predicates.rs": "6b76fff7814f72cd8e23c44c4f8bda854aa4a660194af619a31ffca62a05a796",
+      "rust/geometry/src/kernel/predicates_tests.rs": "f5073979f5cc628088cc24dff71ebed1975bd258d04651068e1d5c10011f7d1d",
+      "rust/geometry/src/kernel/tritri.rs": "0415b0051c4d3800d0a0706faa210fad58ebc6357578f924a662c022ce679a6a",
+      "rust/geometry/src/kernel/tritri_tests.rs": "a60070077d8727e7d6e310efec2fbb96f9d2688a8a19a4a1f8e57632c7bbcc16",
+      "rust/processing/tests/module_size_allowlist.txt": "56df5ba7afc2826789e51bf7037d74f193d355e47c70ca706740734d1bd0eaa9",
+      "rust/processing/tests/module_size_ratchet.rs": "9f978433ab9af5611f9bb086562d7929e7352fb15ee2902f41c7bac071afbaff"
+    },
+    "helperHashes": {
+      "cohort_archive.py": "5357b7847faa5ca065ec21fda48c86e1d6513878d67f6201dd152a9d160d2fb1",
+      "replay-cohort.py": "147137fced3b80e16033db6c24fe0318853eb30dddb42922253097a541617342"
+    },
+    "archiveSha256": "41a4ec768570e129c743de6be15665ebfdb24868f32ae9b9c4eff8fa01a5ce36",
+    "manifestSha256": "6748ad4ddfc4be4363e3e0eaf12e1cb08e929e2ec75288d9ae7c1df14aab21de"
+  },
+  "raw": {
+    "validate.py": {
+      "originalPath": "/tmp/6232-takeover/6537-explicit-orientation-cohort-validation-v1/validate.py",
+      "bytes": 6064,
+      "sha256": "85bff7a98d2cfc4539e85732e07fba9819c0a0091a709efa80644b66f9344360",
+      "text": "import gzip,hashlib,importlib.util,io,json,pathlib,stat,struct,subprocess,sys,tarfile,zipfile\nsys.dont_write_bytecode=True\nOUT=pathlib.Path(__file__).resolve().parent\nWT=pathlib.Path('/home/louistrue/wt/6537-explicit-orientation-dispatch-session6503')\nE=WT/'scripts/perf/evidence/explicit-orientation-6537'\nsha=lambda b:hashlib.sha256(b).hexdigest()\nfreeze=json.loads((OUT/'helper-input-freeze.json').read_text())\nfor name,h in freeze['helperHashes'].items():assert sha((E/name).read_bytes())==h\nresults=[]\nfor name,argv in [('extract',['python3',str(E/'cohort_archive.py'),str(OUT/'extracted')]),('replay',['python3',str(E/'replay-cohort.py'),'--repo',str(WT)])]:\n with (OUT/(name+'.stdout')).open('wb') as out,(OUT/(name+'.stderr')).open('wb') as err:\n  p=subprocess.run(argv,stdout=out,stderr=err,timeout=120)\n result={'phase':name,'command':argv,'exit':p.returncode,'stdoutSha256':sha((OUT/(name+'.stdout')).read_bytes()),'stderrSha256':sha((OUT/(name+'.stderr')).read_bytes())};results.append(result)\n (OUT/'execution-receipts.json').write_text(json.dumps(results,indent=2)+'\\n')\n if p.returncode:raise RuntimeError('Data-only phase failed: '+name)\n# Real archives, never source-text assertions or mocked parser returns.\ncontrols=[]\nfor mode in ['valid','unsafe-tar-path','unsafe-zip-path','tar-symlink','duplicate-tar','member-checksum','zip-encrypted','zip-oversized','zip-census']:\n case=OUT/'reader-controls'/mode;case.mkdir(parents=True)\n payload=b'{\"supported\":true}\\n';zipname='../escape.json' if mode=='unsafe-zip-path' else 'item.json'\n buf=io.BytesIO()\n with zipfile.ZipFile(buf,'w') as z:\n  z.writestr(zipname,payload)\n  if mode=='zip-census':z.writestr('unlisted.json',b'not listed')\n rawzip=bytearray(buf.getvalue())\n if mode in ['zip-encrypted','zip-oversized']:\n  central=rawzip.index(b'PK\\x01\\x02')\n  if mode=='zip-encrypted':\n   for offset in [6,central+8]:struct.pack_into('<H',rawzip,offset,struct.unpack_from('<H',rawzip,offset)[0]|1)\n  else:\n   for offset in [22,central+24]:struct.pack_into('<I',rawzip,offset,128*1024**2+1)\n rawzip=bytes(rawzip);name='../escape.zip' if mode=='unsafe-tar-path' else 'payload.zip'\n rows=[{'path':name,'bytes':len(rawzip),'sha256':sha(rawzip),'storage':'tar'},\n       {'path':'decoded/item.json','bytes':len(payload),'sha256':sha(payload),'storage':'zip-reference','container':name,'member':zipname}]\n if mode=='member-checksum':rows[1]['sha256']='0'*64\n archive=case/'sdk-and-native-refusal.tar.gz'\n with archive.open('wb') as f:\n  with gzip.GzipFile(filename='',fileobj=f,mode='wb',mtime=0) as gz:\n   with tarfile.open(fileobj=gz,mode='w|') as tar:\n    info=tarfile.TarInfo(name);info.size=len(rawzip)\n    if mode=='tar-symlink':info.type=tarfile.SYMTYPE;info.linkname='outside';info.size=0\n    tar.addfile(info,None if mode=='tar-symlink' else io.BytesIO(rawzip))\n    if mode=='duplicate-tar':tar.addfile(info,io.BytesIO(rawzip))\n mb=json.dumps({'members':rows}).encode();(case/'cohort-manifest.json').write_bytes(mb)\n index={'archive':archive.name,'archiveBytes':archive.stat().st_size,'archiveSha256':sha(archive.read_bytes()),'manifestSha256':sha(mb),'logicalMemberCount':len(rows)}\n (case/'cohort-index.json').write_text(json.dumps(index))\n # Only the exact repository-reviewed reader source executes; never a TAR/ZIP member.\n helper=case/'cohort_archive.py';helper.write_bytes((E/'cohort_archive.py').read_bytes());assert sha(helper.read_bytes())==freeze['helperHashes']['cohort_archive.py']\n spec=importlib.util.spec_from_file_location('owned_reader_'+mode.replace('-','_'),helper);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)\n failure=None\n try:actual=module.verified_members()\n except (ValueError,tarfile.TarError,zipfile.BadZipFile) as error:failure={'type':type(error).__name__,'message':str(error)}\n if mode=='valid':\n  assert failure is None and actual['decoded/item.json']==payload and actual['payload.zip']==rawzip\n else:assert failure is not None,mode\n controls.append({'case':mode,'status':'PASS_EXPECTED_REJECTION' if failure else 'PASS_REAL_BYTES','failure':failure,'archiveSha256':sha(archive.read_bytes()),'manifestSha256':sha(mb)})\n(OUT/'reader-controls.json').write_text(json.dumps({'controls':controls,'passed':len(controls),'failed':0,'scope':'Real TAR/ZIP reader boundary controls; only exact owned reviewed source executes, never archive code'},indent=2)+'\\n')\n# Input/source/archive invariance after the complete data-only operation.\nfor name,h in freeze['helperHashes'].items():assert sha((E/name).read_bytes())==h\nassert sha((E/'sdk-and-native-refusal.tar.gz').read_bytes())==freeze['archiveSha256']\nassert sha((E/'cohort-manifest.json').read_bytes())==freeze['manifestSha256']\noriginal={}\nfor name in ['correctness.tar.gz','artifact-index.json','member-manifest.json','extract.py']:\n b=(E/name).read_bytes();assert b==subprocess.check_output(['git','-C',str(WT),'show','672f1e09c06ce777507244d2f2c4403d7b38c098:scripts/perf/evidence/explicit-orientation-6537/'+name]);original[name]=sha(b)\nsource={}\nfor name in ['rust/geometry/src/kernel/arrangement/classify.rs','rust/geometry/src/kernel/arrangement/ray_parity.rs','rust/geometry/src/kernel/predicates.rs','rust/geometry/src/kernel/predicates_tests.rs','rust/geometry/src/kernel/tritri.rs','rust/geometry/src/kernel/tritri_tests.rs','rust/processing/tests/module_size_allowlist.txt','rust/processing/tests/module_size_ratchet.rs']:\n b=(WT/name).read_bytes();assert b==subprocess.check_output(['git','-C',str(WT),'show','672f1e09c06ce777507244d2f2c4403d7b38c098:'+name]);source[name]=sha(b)\n(OUT/'final-input-verification.json').write_text(json.dumps({'status':'COMPLETE','originalSourceArchive4ByteExact':original,'source8ByteExact':source,'helperHashes':freeze['helperHashes'],'archiveSha256':freeze['archiveSha256'],'manifestSha256':freeze['manifestSha256']},indent=2)+'\\n')\nprint(json.dumps({'status':'PASS_DATA_ONLY_EXTRACTION_REPLAY_AND_READER_CONTROLS','controls':len(controls),'archiveProgramsExecuted':False,'buildModelBrowserExecuted':False,'source8AndArchive4ByteExact':True}))\n"
+    },
+    "extract.stdout": {
+      "originalPath": "/tmp/6232-takeover/6537-explicit-orientation-cohort-validation-v1/extract.stdout",
+      "bytes": 60,
+      "sha256": "7108a4cf063f87876e50035871d1ef441640087d572f851bd18ebbd9157b436a",
+      "text": "{\"status\": \"verified-data-only-extraction\", \"members\": 525}\n"
+    },
+    "extract.stderr": {
+      "originalPath": "/tmp/6232-takeover/6537-explicit-orientation-cohort-validation-v1/extract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": ""
+    },
+    "replay.stdout": {
+      "originalPath": "/tmp/6232-takeover/6537-explicit-orientation-cohort-validation-v1/replay.stdout",
+      "bytes": 2131,
+      "sha256": "8ab78f374d56964d2b3592f0bd319af06d90de0e452aa476bc853741c82d3bbc",
+      "text": "{\n  \"status\": \"PASS_DATA_AND_GIT_REPLAY\",\n  \"checks\": 243468,\n  \"families\": {\n    \"house\": {\n      \"deltasPercent\": [\n        2.352480271645585,\n        -0.6698959084731393,\n        2.4616987824206182,\n        -2.076255190637799,\n        -4.093107452031052\n      ],\n      \"median\": -0.6698959084731393,\n      \"range\": [\n        -4.093107452031052,\n        2.4616987824206182\n      ]\n    },\n    \"csg\": {\n      \"deltasPercent\": [\n        -3.110872028479428,\n        -1.3240704213665744,\n        -2.0190501743985623,\n        -3.304932755892309,\n        -1.859835928498943\n      ],\n      \"median\": -2.0190501743985623,\n      \"range\": [\n        -3.304932755892309,\n        -1.3240704213665744\n      ]\n    },\n    \"heavy-csg\": {\n      \"deltasPercent\": [\n        0.3059879711191593,\n        0.3601625348863102,\n        -1.6493747590550223,\n        -2.0543183001759724,\n        0.059356154775858094\n      ],\n      \"median\": 0.059356154775858094,\n      \"range\": [\n        -2.0543183001759724,\n        0.3601625348863102\n      ]\n    },\n    \"architecture\": {\n      \"deltasPercent\": [\n        -1.1630819672946768,\n        -1.2511700801166592,\n        1.8184286013771311,\n        -0.590114510321893,\n        2.1521687489426844\n      ],\n      \"median\": -0.590114510321893,\n      \"range\": [\n        -1.2511700801166592,\n        2.1521687489426844\n      ]\n    }\n  },\n  \"sourceCounts\": [\n    {\n      \"head\": \"4d47506a23e304ed4b772f7890e27e37843e8914\",\n      \"files\": 13271\n    },\n    {\n      \"head\": \"187a72e3302447fc49f2264111501223238a24a7\",\n      \"files\": 13564\n    },\n    {\n      \"head\": \"672f1e09c06ce777507244d2f2c4403d7b38c098\",\n      \"files\": 13570\n    },\n    {\n      \"head\": \"9baab5249df8dbce2ae3f461ef9a95ba5d726f7e\",\n      \"files\": 13283\n    },\n    {\n      \"head\": \"187a72e3302447fc49f2264111501223238a24a7\",\n      \"files\": 13564\n    },\n    {\n      \"head\": \"672f1e09c06ce777507244d2f2c4403d7b38c098\",\n      \"files\": 13570\n    }\n  ],\n  \"native\": \"REFUSED_NO_OUTPUT_NO_TIMING_VERDICT\",\n  \"limits\": \"Observed CPU digests, not regenerated meshes; remote tool/binary final pins remain producing receipts; no full-viewer or universal claim.\"\n}\n"
+    },
+    "replay.stderr": {
+      "originalPath": "/tmp/6232-takeover/6537-explicit-orientation-cohort-validation-v1/replay.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": ""
+    },
+    "guarded-actual-v1.log": {
+      "originalPath": "/tmp/6232-takeover/6537-explicit-orientation-cohort-validation-v1/guarded-actual-v1.log",
+      "bytes": 189,
+      "sha256": "e14ec310773151eea0227dc7b72906b0d0e31f4f6e3ed1a6e321e39745c85d93",
+      "text": "{\"status\": \"PASS_DATA_ONLY_EXTRACTION_REPLAY_AND_READER_CONTROLS\", \"controls\": 9, \"archiveProgramsExecuted\": false, \"buildModelBrowserExecuted\": false, \"source8AndArchive4ByteExact\": true}\n"
+    },
+    "runtime-only-semantic-delta.patch": {
+      "originalPath": "/tmp/6232-takeover/6537-explicit-orientation-cohort-validation-v1/runtime-only-semantic-delta.patch",
+      "bytes": 2156,
+      "sha256": "9c68f6adc18b662df4e6ad2dc8ab7cc4ea0cce08138d0104d718e9e03a56f739",
+      "text": "diff --git a/tmp/6232-takeover/6537-explicit-orientation-cohort-durable-source-v1/replay-cohort.py b/home/louistrue/wt/6537-explicit-orientation-dispatch-session6503/scripts/perf/evidence/explicit-orientation-6537/replay-cohort.py\nindex 658a65820..44bea7dee 100644\n--- a/tmp/6232-takeover/6537-explicit-orientation-cohort-durable-source-v1/replay-cohort.py\n+++ b/home/louistrue/wt/6537-explicit-orientation-dispatch-session6503/scripts/perf/evidence/explicit-orientation-6537/replay-cohort.py\n@@ -19,6 +19,8 @@ BASE = '187a72e3302447fc49f2264111501223238a24a7'\n CANDIDATE = '672f1e09c06ce777507244d2f2c4403d7b38c098'\n SDK_CONTROLLER = '4d47506a23e304ed4b772f7890e27e37843e8914'\n NATIVE_CONTROLLER = '9baab5249df8dbce2ae3f461ef9a95ba5d726f7e'\n+RUNTIME = {'hardwareConcurrency': 4, 'deviceMemory': 16, 'sab': True,\n+           'crossOriginIsolated': True, 'overrides': [], 'browserVersion': '154.0.8037.57'}\n SDK = 'sdk-raw/artifacts/sdk-worker-37167109427-1/'\n NATIVE = 'native-raw/artifacts/native-phase-37167463547-1/'\n \n@@ -83,9 +85,8 @@ def main():\n                   and receipt['generatorDone'] and receipt['processorDisposed'], 'full drain ' + s['id'])\n             check(receipt['identity'] == witness['receipt']['identity']\n                   and receipt['complete'] == witness['receipt']['complete'], 'untouched output/complete/diagnostics ' + s['id'])\n-            check(s['runtime'] == witness['runtime'] and s['workerCount'] == witness['workerCount']\n-                  and s['workerIds'] == list(range(s['workerCount'])) and s['workerCount'] >= 2\n-                  and not s['runtime']['overrides'] and s['runtime']['sab'], 'unmodified default pool ' + s['id'])\n+            check(s['runtime'] == RUNTIME and s['workerCount'] == 2\n+                  and s['workerIds'] == [0, 1], 'exact observed default pool/runtime ' + s['id'])\n             check(not s['errors'] and s['teardown'] == 'complete' and s['exit']['code'] == 0\n                   and s['cleanup']['status'] == 'complete' and not s['cleanup']['remaining']\n                   and s['cleanup']['zombies'] == 0 and s['logFlush']['status'] == 'complete', 'sample cleanup ' + s['id'])\n"
+    }
+  },
+  "readerFixtureArchives": {
+    "duplicate-tar": {
+      "sdk-and-native-refusal.tar.gz": {
+        "sha256": "8a53300d16e3825cb480e362999d007b3019acd2f317722cb1dfa3239829486d",
+        "bytes": 200,
+        "base64": "H4sIAAAAAAAC/+3TTwqCQBTH8bF/UNs8QHgAGSUKWrcI3HiBFoIujMpBx0VJ0BU6TNfqDI1CEUHLiuj7GR6/x4OZWT0V7dZZFLv7VIl3kcZkPG7SeE7py+m9b+ae9HxPjKT4gLLQUW6+F/8pDNodu+kuznx5Xpyqoenr6ptKdbJxV0W2rZyiVCrLdRI7M52XyWEQBlbLbr++e3O0xONLYdDt1QPLnKnJmcAXKfaf/Wf/AQAAAAAAAAAAAAAAftYVti0ZIgAoAAA="
+      },
+      "cohort-index.json": {
+        "sha256": "d2a2d3f9a5fd4f97293dbec58797a4239a6ce68c49e451ab283cf09d83f567c2",
+        "bytes": 261,
+        "base64": "eyJhcmNoaXZlIjogInNkay1hbmQtbmF0aXZlLXJlZnVzYWwudGFyLmd6IiwgImFyY2hpdmVCeXRlcyI6IDIwMCwgImFyY2hpdmVTaGEyNTYiOiAiOGE1MzMwMGQxNmUzODI1Y2I0ODBlMzYyOTk5ZDAwN2IzMDE5YWNkMmYzMTc3MjJjYjFkZmEzMjM5ODI5NDg2ZCIsICJtYW5pZmVzdFNoYTI1NiI6ICJiMjEyZTVmMWUyZjg1ZmMyZDJmMDYyZDQ4YjkyMzQ0YjczZGIwMWM2ZDJkOGRmODg5MzgzMmMxODkxOGVlYTUzIiwgImxvZ2ljYWxNZW1iZXJDb3VudCI6IDJ9"
+      },
+      "cohort-manifest.json": {
+        "sha256": "b212e5f1e2f85fc2d2f062d48b92344b73db01c6d2d8df8893832c18918eea53",
+        "bytes": 349,
+        "base64": "eyJtZW1iZXJzIjogW3sicGF0aCI6ICJwYXlsb2FkLnppcCIsICJieXRlcyI6IDEzNSwgInNoYTI1NiI6ICJjZGQ1NWVjOGEyNWE4Mzk2NzY5ZTNmY2EyOGFjZjBjNzgxZjMxN2ZmYmY3MWE2NmM0NWM5N2M3ZTBiMzRiMjJiIiwgInN0b3JhZ2UiOiAidGFyIn0sIHsicGF0aCI6ICJkZWNvZGVkL2l0ZW0uanNvbiIsICJieXRlcyI6IDE5LCAic2hhMjU2IjogImUwNDFkYjhkMDlmNGZmNWFiMDVhNDM1YjUxYzE5OGNmYmNmMDViNGNmZmRjYTEwNTM5OGRjYzJmYzYzNDQwNjgiLCAic3RvcmFnZSI6ICJ6aXAtcmVmZXJlbmNlIiwgImNvbnRhaW5lciI6ICJwYXlsb2FkLnppcCIsICJtZW1iZXIiOiAiaXRlbS5qc29uIn1dfQ=="
+      }
+    },
+    "member-checksum": {
+      "sdk-and-native-refusal.tar.gz": {
+        "sha256": "d5761d1b4510f9e39be5f1b507bd8bd59825b66d1081b99852ca2f1c2d0fdfd9",
+        "bytes": 192,
+        "base64": "H4sIAAAAAAAC/+3NQQqCQBiG4TErqG0eIDyAjCIJrlsEbrxAC0EXRaXouCgJukKH6VqdoVEoImgT1Kb3GX6+jx9mpkj2mzxJncOqEN8itZnvd6m9pvRk8Ojd3pWu54qpFD9QVyop9ffiP8WR2be6drXny8vi3Ex0b2ekZ6WyrbOu8l1jV3VR5KXKUjtUZZ0dx3Fk9Czz/d27kyGeX4qjwbBdGPoEOkMBAAAAAAAAAAAAAAAAAPjADevIgHkAKAAA"
+      },
+      "cohort-index.json": {
+        "sha256": "cd332b2da4d7b73a7021cbb3b19d22d3bd3b7274bbca3ef46ccab1101adb91d2",
+        "bytes": 261,
+        "base64": "eyJhcmNoaXZlIjogInNkay1hbmQtbmF0aXZlLXJlZnVzYWwudGFyLmd6IiwgImFyY2hpdmVCeXRlcyI6IDE5MiwgImFyY2hpdmVTaGEyNTYiOiAiZDU3NjFkMWI0NTEwZjllMzliZTVmMWI1MDdiZDhiZDU5ODI1YjY2ZDEwODFiOTk4NTJjYTJmMWMyZDBmZGZkOSIsICJtYW5pZmVzdFNoYTI1NiI6ICI5NWIzZDFlNDE5ZDY0NjcxMTAzOThhY2E3ZGU4YmYxOGM1N2U5ZWE4ZTczNDY5YTM4YmRhMmQ0MzRjNjk1YmY0IiwgImxvZ2ljYWxNZW1iZXJDb3VudCI6IDJ9"
+      },
+      "cohort-manifest.json": {
+        "sha256": "95b3d1e419d6467110398aca7de8bf18c57e9ea8e73469a38bda2d434c695bf4",
+        "bytes": 349,
+        "base64": "eyJtZW1iZXJzIjogW3sicGF0aCI6ICJwYXlsb2FkLnppcCIsICJieXRlcyI6IDEzNSwgInNoYTI1NiI6ICJjZGQ1NWVjOGEyNWE4Mzk2NzY5ZTNmY2EyOGFjZjBjNzgxZjMxN2ZmYmY3MWE2NmM0NWM5N2M3ZTBiMzRiMjJiIiwgInN0b3JhZ2UiOiAidGFyIn0sIHsicGF0aCI6ICJkZWNvZGVkL2l0ZW0uanNvbiIsICJieXRlcyI6IDE5LCAic2hhMjU2IjogIjAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAiLCAic3RvcmFnZSI6ICJ6aXAtcmVmZXJlbmNlIiwgImNvbnRhaW5lciI6ICJwYXlsb2FkLnppcCIsICJtZW1iZXIiOiAiaXRlbS5qc29uIn1dfQ=="
+      }
+    },
+    "tar-symlink": {
+      "sdk-and-native-refusal.tar.gz": {
+        "sha256": "0e3cb514bc0ad1471ff8442a22dc12677e1a162e21878ef30aca57be706b3114",
+        "bytes": 104,
+        "base64": "H4sIAAAAAAAC/+3NOQrDMABEUR0lJwiy8XIegV0YAhJeCvv0ESmT2kXgveZPNyWdr5ym57WUcJdYDV33afXd3900fRzDo83Hvi3THO50bHta630AAAAAAAAAAACA//EGEnS8ZgAoAAA="
+      },
+      "cohort-index.json": {
+        "sha256": "0b09d05e9100f418220a2cc05265bdb6addfe17159e6dcb315744d4f94515bf5",
+        "bytes": 261,
+        "base64": "eyJhcmNoaXZlIjogInNkay1hbmQtbmF0aXZlLXJlZnVzYWwudGFyLmd6IiwgImFyY2hpdmVCeXRlcyI6IDEwNCwgImFyY2hpdmVTaGEyNTYiOiAiMGUzY2I1MTRiYzBhZDE0NzFmZjg0NDJhMjJkYzEyNjc3ZTFhMTYyZTIxODc4ZWYzMGFjYTU3YmU3MDZiMzExNCIsICJtYW5pZmVzdFNoYTI1NiI6ICJiMjEyZTVmMWUyZjg1ZmMyZDJmMDYyZDQ4YjkyMzQ0YjczZGIwMWM2ZDJkOGRmODg5MzgzMmMxODkxOGVlYTUzIiwgImxvZ2ljYWxNZW1iZXJDb3VudCI6IDJ9"
+      },
+      "cohort-manifest.json": {
+        "sha256": "b212e5f1e2f85fc2d2f062d48b92344b73db01c6d2d8df8893832c18918eea53",
+        "bytes": 349,
+        "base64": "eyJtZW1iZXJzIjogW3sicGF0aCI6ICJwYXlsb2FkLnppcCIsICJieXRlcyI6IDEzNSwgInNoYTI1NiI6ICJjZGQ1NWVjOGEyNWE4Mzk2NzY5ZTNmY2EyOGFjZjBjNzgxZjMxN2ZmYmY3MWE2NmM0NWM5N2M3ZTBiMzRiMjJiIiwgInN0b3JhZ2UiOiAidGFyIn0sIHsicGF0aCI6ICJkZWNvZGVkL2l0ZW0uanNvbiIsICJieXRlcyI6IDE5LCAic2hhMjU2IjogImUwNDFkYjhkMDlmNGZmNWFiMDVhNDM1YjUxYzE5OGNmYmNmMDViNGNmZmRjYTEwNTM5OGRjYzJmYzYzNDQwNjgiLCAic3RvcmFnZSI6ICJ6aXAtcmVmZXJlbmNlIiwgImNvbnRhaW5lciI6ICJwYXlsb2FkLnppcCIsICJtZW1iZXIiOiAiaXRlbS5qc29uIn1dfQ=="
+      }
+    },
+    "unsafe-tar-path": {
+      "sdk-and-native-refusal.tar.gz": {
+        "sha256": "ed59726c27ce19c075e8345206c31c2e58f9bb75b46589c8e81b6ad1692adbbf",
+        "bytes": 194,
+        "base64": "H4sIAAAAAAAC/+3NTQqCQBjG8TErqG0eIDyAjSUJrlsEbrxAC6lZGJTixyYJukKH6VqdoVEoImgT1Kb/b3h5Hl6YGceZqGIdZ8o5JJn4DqnNPa9N7TXlVPqP3u5d6XozMZbiB6qijHP9vfhPUWh2rbZd7cXqsjzXI92bGehJSrVztkW6r+2iyrI0L9XGDsq8UsdhFBody3x/9+5kiOeXorDXbxaGPr7OQAAAAAAAAAAAAAAAAAAAPnADqacstwAoAAA="
+      },
+      "cohort-index.json": {
+        "sha256": "18581722038f588b02f67aa166c7327cf0d8dfad2660f571154fb9523e6ca6ac",
+        "bytes": 261,
+        "base64": "eyJhcmNoaXZlIjogInNkay1hbmQtbmF0aXZlLXJlZnVzYWwudGFyLmd6IiwgImFyY2hpdmVCeXRlcyI6IDE5NCwgImFyY2hpdmVTaGEyNTYiOiAiZWQ1OTcyNmMyN2NlMTljMDc1ZTgzNDUyMDZjMzFjMmU1OGY5YmI3NWI0NjU4OWM4ZTgxYjZhZDE2OTJhZGJiZiIsICJtYW5pZmVzdFNoYTI1NiI6ICI4YmQyMTBiNDIyNzAyODZiZjZiNmY2ZmYyOWY4OWQwYmFmOTc2NTk0MzRiYWEwZjNhZjViMjc1NWJhZjg2MjAzIiwgImxvZ2ljYWxNZW1iZXJDb3VudCI6IDJ9"
+      },
+      "cohort-manifest.json": {
+        "sha256": "8bd210b42270286bf6b6f6ff29f89d0baf97659434baa0f3af5b2755baf86203",
+        "bytes": 353,
+        "base64": "eyJtZW1iZXJzIjogW3sicGF0aCI6ICIuLi9lc2NhcGUuemlwIiwgImJ5dGVzIjogMTM1LCAic2hhMjU2IjogImNkZDU1ZWM4YTI1YTgzOTY3NjllM2ZjYTI4YWNmMGM3ODFmMzE3ZmZiZjcxYTY2YzQ1Yzk3YzdlMGIzNGIyMmIiLCAic3RvcmFnZSI6ICJ0YXIifSwgeyJwYXRoIjogImRlY29kZWQvaXRlbS5qc29uIiwgImJ5dGVzIjogMTksICJzaGEyNTYiOiAiZTA0MWRiOGQwOWY0ZmY1YWIwNWE0MzViNTFjMTk4Y2ZiY2YwNWI0Y2ZmZGNhMTA1Mzk4ZGNjMmZjNjM0NDA2OCIsICJzdG9yYWdlIjogInppcC1yZWZlcmVuY2UiLCAiY29udGFpbmVyIjogIi4uL2VzY2FwZS56aXAiLCAibWVtYmVyIjogIml0ZW0uanNvbiJ9XX0="
+      }
+    },
+    "unsafe-zip-path": {
+      "sdk-and-native-refusal.tar.gz": {
+        "sha256": "8334bd7a712e04e69629d11389f6fc29c5a8a60dcf7cee48a00b6aefadcfbc6a",
+        "bytes": 199,
+        "base64": "H4sIAAAAAAAC/+3NOwrCQBSF4YlRCwsbswDJAmImRAsRbCyENNmARTApFDFDHoUGwS24GLflGhwDWiiCjTb+33A5h1vcUdFuk0axs18p8S2uNvL9OrXndD1PPnq9l66UQ9F3xQ+UeRFl+nvxn8LAbFp1u9izxXl+qnq636arx3EGSb6MVOKs83Rb2XmpVJoVSWyPi6xMDp0wMBqW+f7A3dEQL+fCoNW+bQ39JjqnAgAAAAAAAAAAAAAAAADwsSsyHPhZACgAAA=="
+      },
+      "cohort-index.json": {
+        "sha256": "a56cea5181ab290d68cf69c8951f5717def6a465943044278d9f9411aa1867a2",
+        "bytes": 261,
+        "base64": "eyJhcmNoaXZlIjogInNkay1hbmQtbmF0aXZlLXJlZnVzYWwudGFyLmd6IiwgImFyY2hpdmVCeXRlcyI6IDE5OSwgImFyY2hpdmVTaGEyNTYiOiAiODMzNGJkN2E3MTJlMDRlNjk2MjlkMTEzODlmNmZjMjljNWE4YTYwZGNmN2NlZTQ4YTAwYjZhZWZhZGNmYmM2YSIsICJtYW5pZmVzdFNoYTI1NiI6ICIzY2YyNTI2MGY1YjU5ZmU4ZWExN2Q1YTAxNzQ2MDExYWQ2N2U4YzMxMWI1ZTYxMDcyNjQ3NjE3ZTdiODg3NDljIiwgImxvZ2ljYWxNZW1iZXJDb3VudCI6IDJ9"
+      },
+      "cohort-manifest.json": {
+        "sha256": "3cf25260f5b59fe8ea17d5a01746011ad67e8c311b5e61072647617e7b88749c",
+        "bytes": 354,
+        "base64": "eyJtZW1iZXJzIjogW3sicGF0aCI6ICJwYXlsb2FkLnppcCIsICJieXRlcyI6IDE0NSwgInNoYTI1NiI6ICIyOWQxNjE1NjNlMDY2YzQwYzZlZDVhMDRlZjEwOTg0NTYwNjY0ZWNjOGQ3YzY4M2FlN2Q5ZTkwYjI5YWJiM2FhIiwgInN0b3JhZ2UiOiAidGFyIn0sIHsicGF0aCI6ICJkZWNvZGVkL2l0ZW0uanNvbiIsICJieXRlcyI6IDE5LCAic2hhMjU2IjogImUwNDFkYjhkMDlmNGZmNWFiMDVhNDM1YjUxYzE5OGNmYmNmMDViNGNmZmRjYTEwNTM5OGRjYzJmYzYzNDQwNjgiLCAic3RvcmFnZSI6ICJ6aXAtcmVmZXJlbmNlIiwgImNvbnRhaW5lciI6ICJwYXlsb2FkLnppcCIsICJtZW1iZXIiOiAiLi4vZXNjYXBlLmpzb24ifV19"
+      }
+    },
+    "valid": {
+      "sdk-and-native-refusal.tar.gz": {
+        "sha256": "d5761d1b4510f9e39be5f1b507bd8bd59825b66d1081b99852ca2f1c2d0fdfd9",
+        "bytes": 192,
+        "base64": "H4sIAAAAAAAC/+3NQQqCQBiG4TErqG0eIDyAjCIJrlsEbrxAC0EXRaXouCgJukKH6VqdoVEoImgT1Kb3GX6+jx9mpkj2mzxJncOqEN8itZnvd6m9pvRk8Ojd3pWu54qpFD9QVyop9ffiP8WR2be6drXny8vi3Ex0b2ekZ6WyrbOu8l1jV3VR5KXKUjtUZZ0dx3Fk9Czz/d27kyGeX4qjwbBdGPoEOkMBAAAAAAAAAAAAAAAAAPjADevIgHkAKAAA"
+      },
+      "cohort-index.json": {
+        "sha256": "81b18ab3a86b1f637118a7b768d6330ec4ddf7fed2505fd6829177c34e08675e",
+        "bytes": 261,
+        "base64": "eyJhcmNoaXZlIjogInNkay1hbmQtbmF0aXZlLXJlZnVzYWwudGFyLmd6IiwgImFyY2hpdmVCeXRlcyI6IDE5MiwgImFyY2hpdmVTaGEyNTYiOiAiZDU3NjFkMWI0NTEwZjllMzliZTVmMWI1MDdiZDhiZDU5ODI1YjY2ZDEwODFiOTk4NTJjYTJmMWMyZDBmZGZkOSIsICJtYW5pZmVzdFNoYTI1NiI6ICJiMjEyZTVmMWUyZjg1ZmMyZDJmMDYyZDQ4YjkyMzQ0YjczZGIwMWM2ZDJkOGRmODg5MzgzMmMxODkxOGVlYTUzIiwgImxvZ2ljYWxNZW1iZXJDb3VudCI6IDJ9"
+      },
+      "cohort-manifest.json": {
+        "sha256": "b212e5f1e2f85fc2d2f062d48b92344b73db01c6d2d8df8893832c18918eea53",
+        "bytes": 349,
+        "base64": "eyJtZW1iZXJzIjogW3sicGF0aCI6ICJwYXlsb2FkLnppcCIsICJieXRlcyI6IDEzNSwgInNoYTI1NiI6ICJjZGQ1NWVjOGEyNWE4Mzk2NzY5ZTNmY2EyOGFjZjBjNzgxZjMxN2ZmYmY3MWE2NmM0NWM5N2M3ZTBiMzRiMjJiIiwgInN0b3JhZ2UiOiAidGFyIn0sIHsicGF0aCI6ICJkZWNvZGVkL2l0ZW0uanNvbiIsICJieXRlcyI6IDE5LCAic2hhMjU2IjogImUwNDFkYjhkMDlmNGZmNWFiMDVhNDM1YjUxYzE5OGNmYmNmMDViNGNmZmRjYTEwNTM5OGRjYzJmYzYzNDQwNjgiLCAic3RvcmFnZSI6ICJ6aXAtcmVmZXJlbmNlIiwgImNvbnRhaW5lciI6ICJwYXlsb2FkLnppcCIsICJtZW1iZXIiOiAiaXRlbS5qc29uIn1dfQ=="
+      }
+    },
+    "zip-census": {
+      "sdk-and-native-refusal.tar.gz": {
+        "sha256": "9597fe883280a9850261a45b960d47e39b0990486b1169a72a1b49f1bb2b40d1",
+        "bytes": 236,
+        "base64": "H4sIAAAAAAAC/+3QT2rCQBTH8fFPCwpd6QEkB5ARxYJrF4VscoEuAmYR0UxIJoKK4BVce46exhu48Ax9SWm1AZe60O9neLyXP48fTOwvZ8afdFdhrG5Fi+FgUHRR7ro/fP+bi/c93etr1dHqDrLU+onEq+fkubV6u5hOzvjz62O3bsmcV0MqtMG8O01NtHbSLI5NYoOJM7JJFmya/zcX++OhKXNeb/m1RrMwlb+L7cjYzs+j51aq7dr1wF/birqML6+V085ro3K257685p+qchLpRgEAAAAAAAAAAAAAAADAQ/gGSU7x/QAoAAA="
+      },
+      "cohort-index.json": {
+        "sha256": "dcdf013ba5b538947614b78166e9ccbaa056218bf27f0a088085ddbd288dfe12",
+        "bytes": 261,
+        "base64": "eyJhcmNoaXZlIjogInNkay1hbmQtbmF0aXZlLXJlZnVzYWwudGFyLmd6IiwgImFyY2hpdmVCeXRlcyI6IDIzNiwgImFyY2hpdmVTaGEyNTYiOiAiOTU5N2ZlODgzMjgwYTk4NTAyNjFhNDViOTYwZDQ3ZTM5YjA5OTA0ODZiMTE2OWE3MmExYjQ5ZjFiYjJiNDBkMSIsICJtYW5pZmVzdFNoYTI1NiI6ICJiODgwYmQwNWU4MGRjYzQ2NTFlNTg0YTlkOTQ0OWE2MDk5OWJlYzFiMGFhMzM1ZTM5ZmE1NGE3ZmYxMjZkYTM1IiwgImxvZ2ljYWxNZW1iZXJDb3VudCI6IDJ9"
+      },
+      "cohort-manifest.json": {
+        "sha256": "b880bd05e80dcc4651e584a9d9449a60999bec1b0aa335e39fa54a7ff126da35",
+        "bytes": 349,
+        "base64": "eyJtZW1iZXJzIjogW3sicGF0aCI6ICJwYXlsb2FkLnppcCIsICJieXRlcyI6IDI0NywgInNoYTI1NiI6ICI3ZjU1M2Q0NjA2Mjc4YWFmODhiNmVhYmUyOTAxOTNhYTdlYWM2ZGMxNGZjMzIzOTg3ZWU1M2MxYzU4ZGJiOTYyIiwgInN0b3JhZ2UiOiAidGFyIn0sIHsicGF0aCI6ICJkZWNvZGVkL2l0ZW0uanNvbiIsICJieXRlcyI6IDE5LCAic2hhMjU2IjogImUwNDFkYjhkMDlmNGZmNWFiMDVhNDM1YjUxYzE5OGNmYmNmMDViNGNmZmRjYTEwNTM5OGRjYzJmYzYzNDQwNjgiLCAic3RvcmFnZSI6ICJ6aXAtcmVmZXJlbmNlIiwgImNvbnRhaW5lciI6ICJwYXlsb2FkLnppcCIsICJtZW1iZXIiOiAiaXRlbS5qc29uIn1dfQ=="
+      }
+    },
+    "zip-encrypted": {
+      "sdk-and-native-refusal.tar.gz": {
+        "sha256": "a999130ecc4bdc565ec2654ce5ffebd64685c035e331510f12b823af3b9c227c",
+        "bytes": 194,
+        "base64": "H4sIAAAAAAAC/+3NQQqCQBTG8TErqG0eIDyAjCIJrlsEbrxAC0EXRaXouCgJukKH6VqdoVGoIGgT1Kb/b3i8j8e8mSLZb/IkdQ6rQnyL1Ga+33XttUtPBo/czV3peq6YSvEDdaWSUn8v/lMcmX1LGDpd7fnysjg3E53bGulaqWzrrKt819hVXRR5qbLUDlVZZ8dxHBk9y3y/e3dqLzxfiqPBsB0Y+gS6hwIAAAAAAAAAAAAAAAAA8IEbPCAHwAAoAAA="
+      },
+      "cohort-index.json": {
+        "sha256": "bf8330c8334c60be3012fd359606790714840dbd566369b57043d642dd628360",
+        "bytes": 261,
+        "base64": "eyJhcmNoaXZlIjogInNkay1hbmQtbmF0aXZlLXJlZnVzYWwudGFyLmd6IiwgImFyY2hpdmVCeXRlcyI6IDE5NCwgImFyY2hpdmVTaGEyNTYiOiAiYTk5OTEzMGVjYzRiZGM1NjVlYzI2NTRjZTVmZmViZDY0Njg1YzAzNWUzMzE1MTBmMTJiODIzYWYzYjljMjI3YyIsICJtYW5pZmVzdFNoYTI1NiI6ICJmZDg0YWNiNTI0ZDVkMWQ4MTkwOThlN2E2NWJhZWFkNjIwODhhY2U3NzQzOWRkNDRlMDJjMmY4MjVhNzMzYzcxIiwgImxvZ2ljYWxNZW1iZXJDb3VudCI6IDJ9"
+      },
+      "cohort-manifest.json": {
+        "sha256": "fd84acb524d5d1d819098e7a65baead62088ace77439dd44e02c2f825a733c71",
+        "bytes": 349,
+        "base64": "eyJtZW1iZXJzIjogW3sicGF0aCI6ICJwYXlsb2FkLnppcCIsICJieXRlcyI6IDEzNSwgInNoYTI1NiI6ICI1NzVmYTViOWI4YjU0NzA5ZWMwNWZjZDZkNWZmMGVjZDY5OGI3MzQxMjExMGQ4OGJhMGM2YmQ4OTkxZjZhN2JkIiwgInN0b3JhZ2UiOiAidGFyIn0sIHsicGF0aCI6ICJkZWNvZGVkL2l0ZW0uanNvbiIsICJieXRlcyI6IDE5LCAic2hhMjU2IjogImUwNDFkYjhkMDlmNGZmNWFiMDVhNDM1YjUxYzE5OGNmYmNmMDViNGNmZmRjYTEwNTM5OGRjYzJmYzYzNDQwNjgiLCAic3RvcmFnZSI6ICJ6aXAtcmVmZXJlbmNlIiwgImNvbnRhaW5lciI6ICJwYXlsb2FkLnppcCIsICJtZW1iZXIiOiAiaXRlbS5qc29uIn1dfQ=="
+      }
+    },
+    "zip-oversized": {
+      "sdk-and-native-refusal.tar.gz": {
+        "sha256": "550cb0c756413f621ea5bd1d1a2a5767f388acea6b054ac88a32f90e0110ffb9",
+        "bytes": 193,
+        "base64": "H4sIAAAAAAAC/+3NPQrCQBCG4Yl/qK05gOQAshFRSG0hpMkFLAJJoahZkk2hQfAKHsZreQaXgCKCjaCN79N8H8PMro73myxORoeVlm9R1nQyqdN6TTVWs0ev577yx74MlfxAWZg4t9/Lf4rCZsut29WbLy+LczWw3RHp9myuTLodrYtsV3lFqXWWmzTxApOX6bEfhU7Dbb6/vTs58vxSFLY7Uq85MrMZCAAAAAAAAAAAAAAAAADgAzdSC/uFACgAAA=="
+      },
+      "cohort-index.json": {
+        "sha256": "0eab0ed97648781e7b890d0630d367a502faeacf1a4177302bf7e3486b2a93bb",
+        "bytes": 261,
+        "base64": "eyJhcmNoaXZlIjogInNkay1hbmQtbmF0aXZlLXJlZnVzYWwudGFyLmd6IiwgImFyY2hpdmVCeXRlcyI6IDE5MywgImFyY2hpdmVTaGEyNTYiOiAiNTUwY2IwYzc1NjQxM2Y2MjFlYTViZDFkMWEyYTU3NjdmMzg4YWNlYTZiMDU0YWM4OGEzMmY5MGUwMTEwZmZiOSIsICJtYW5pZmVzdFNoYTI1NiI6ICJjNWI5YTY1M2Q3N2NkYmU2YjQ1YWQ1YzZiZWIzMDAxOTg1YWI5YjM4YzU5NmI2OGFkMGQxNzEwMjYwYTc2ZjlhIiwgImxvZ2ljYWxNZW1iZXJDb3VudCI6IDJ9"
+      },
+      "cohort-manifest.json": {
+        "sha256": "c5b9a653d77cdbe6b45ad5c6beb3001985ab9b38c596b68ad0d1710260a76f9a",
+        "bytes": 349,
+        "base64": "eyJtZW1iZXJzIjogW3sicGF0aCI6ICJwYXlsb2FkLnppcCIsICJieXRlcyI6IDEzNSwgInNoYTI1NiI6ICIxOGJhMTU4ODkyODI3M2QxZGU3OTI4ZTQ1NWM1NmMwNDhjMDlkNGJlMjE1OWQ5ZTkwZGEyNzFiMzk2OWM3ZTlmIiwgInN0b3JhZ2UiOiAidGFyIn0sIHsicGF0aCI6ICJkZWNvZGVkL2l0ZW0uanNvbiIsICJieXRlcyI6IDE5LCAic2hhMjU2IjogImUwNDFkYjhkMDlmNGZmNWFiMDVhNDM1YjUxYzE5OGNmYmNmMDViNGNmZmRjYTEwNTM5OGRjYzJmYzYzNDQwNjgiLCAic3RvcmFnZSI6ICJ6aXAtcmVmZXJlbmNlIiwgImNvbnRhaW5lciI6ICJwYXlsb2FkLnppcCIsICJtZW1iZXIiOiAiaXRlbS5qc29uIn1dfQ=="
+      }
+    }
+  },
+  "sourceScope": "Exact repository-reviewed reader source executes; archived/control payloads stay inert. Temporary controls are not a new permanent gate. Data/Git checks are not geometry test cases or performance measurements.",
+  "rootFirstCheckerRefusal": {
+    "scope": "Root comparison misread git: origins as filesystem paths; original failure retained, not a runtime/cohort refusal",
+    "raw": {
+      "guardian.json": {
+        "originalPath": "/tmp/6232-takeover/6537-explicit-orientation-root-cohort-data-v1/guardian.json",
+        "sha256": "f72ef9295f00773e59acad8752d2fc67397667c1e6f0e198a384cefaff664fd6",
+        "text": "{\n  \"startedUTC\": \"2026-10-04T02:22:12.702236+00:00\",\n  \"cwd\": \"/home/louistrue/wt/6537-explicit-orientation-dispatch-session6503\",\n  \"command\": [\n    \"python3\",\n    \"/tmp/6232-takeover/6537-explicit-orientation-root-cohort-data-v1/review.py\"\n  ],\n  \"minimumStartKiB\": 25165824,\n  \"minimumLiveKiB\": 8388608,\n  \"maximumTreeRssKiB\": 12582912,\n  \"initialAvailableKiB\": 45610080,\n  \"scope\": \"Correctness-only run under host load; no timing/performance verdict.\",\n  \"peakTreeRssKiB\": 240700,\n  \"minimumObservedAvailableKiB\": 45380868,\n  \"initialDiskFreeBytes\": 11030110208,\n  \"minimumStartDiskFreeBytes\": 10737418240,\n  \"minimumLiveDiskFreeBytes\": 2147483648,\n  \"ownedProcessGroup\": 24114,\n  \"childExit\": 1,\n  \"exit\": 1,\n  \"endedUTC\": \"2026-10-04T02:22:13.205246+00:00\"\n}\n"
+      },
+      "guardian.log": {
+        "originalPath": "/tmp/6232-takeover/6537-explicit-orientation-root-cohort-data-v1/guardian.log",
+        "sha256": "30b29ad05e12526bfe9602b2d687dc5ac6ceb0743284dd1416c440d20ab9512f",
+        "text": "Traceback (most recent call last):\n  File \"/tmp/6232-takeover/6537-explicit-orientation-root-cohort-data-v1/review.py\", line 6, in <module>\n    original=pathlib.Path(row['originalPath']);b=original.read_bytes();assert b==data[row['path']],row['path'];checks.append({'path':row['path'],'origin':str(original),'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest(),'byteEqual':True})\n                                                 ~~~~~~~~~~~~~~~~~~~^^\n  File \"/usr/lib/python3.14/pathlib/__init__.py\", line 778, in read_bytes\n    with self.open(mode='rb', buffering=0) as f:\n         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.14/pathlib/__init__.py\", line 772, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [Errno 2] No such file or directory: 'git:9baab5249df8dbce2ae3f461ef9a95ba5d726f7e:.github/actions/setup-wasm-build/action.yml'\n"
+      },
+      "review.py": {
+        "originalPath": "/tmp/6232-takeover/6537-explicit-orientation-root-cohort-data-v1/review.py",
+        "sha256": "b99475fa09ada39372ffd6617691eae11cbeb5d38ed3261e6fb17034b0645191",
+        "text": "import importlib.util,json,pathlib,hashlib,subprocess\nwt=pathlib.Path('/home/louistrue/wt/6537-explicit-orientation-dispatch-session6503');e=wt/'scripts/perf/evidence/explicit-orientation-6537';p=pathlib.Path('/tmp/6232-takeover/6537-explicit-orientation-root-cohort-data-v1')\nspec=importlib.util.spec_from_file_location('reviewed_cohort_reader',e/'cohort_archive.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);data=m.verified_members();manifest=json.loads((e/'cohort-manifest.json').read_text());checks=[]\nassert len(data)==525 and len(manifest['members'])==525\nfor row in manifest['members']:\n original=pathlib.Path(row['originalPath']);b=original.read_bytes();assert b==data[row['path']],row['path'];checks.append({'path':row['path'],'origin':str(original),'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest(),'byteEqual':True})\nfrozen=json.loads(pathlib.Path('/tmp/6232-takeover/6537-explicit-orientation-cohort-durable-source-v1/freeze.json').read_text())\nfor path,sha in frozen['eightSourceBytesUnchanged'].items():\n b=(wt/path).read_bytes();assert hashlib.sha256(b).hexdigest()==sha and subprocess.check_output(['git','-C',str(wt),'show','672f1e09c06ce777507244d2f2c4403d7b38c098:'+path],timeout=30)==b\nfor path,sha in frozen['originalSourceEvidenceUnchanged'].items():assert hashlib.sha256((e/path).read_bytes()).hexdigest()==sha\nout={'status':'PASS_ROOT525_DIRECT_ORIGINAL_BYTE_COMPARISONS','members':checks,'source8Exact672':True,'sourceEvidence4ByteExact':True,'archiveCodeExecuted':False,'limits':'Reviewed repository reader only; archived Python/JS/WASM inert; all raw bytes compared independently to current retained originals. No builds/models/timing.'};(p/'review.json').write_text(json.dumps(out,indent=2)+'\\n');print(json.dumps({'status':out['status'],'checks':len(checks),'path':str(p/'review.json')}))\n"
+      }
+    }
+  }
+}

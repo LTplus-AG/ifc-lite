@@ -1,0 +1,23 @@
+{
+  "source": "1ce9605e2febe22a40f34200ac056f3bc79299d2",
+  "files": [
+    {
+      "file": "native-controls.gz",
+      "original": "/tmp/6232-room-native-payload-fixed.log",
+      "rawSha256": "9636e5757abff363d3c4933de8068642239e6f86a8b11a493c0f9afe9e06bf06",
+      "gzipSha256": "44e6f747eb7117c6bbcca0670bba590b2f0db6dbb041ef6eb6144b2ea2d2beb5"
+    },
+    {
+      "file": "old-assertion-counterexample.gz",
+      "original": "/tmp/6232-room-native-payload-old-assertion-mutant.log",
+      "rawSha256": "428b55b1ec2b2593a14d826d0e0685a2132cd5dc393eab7ff4d62b5731c4a3ce",
+      "gzipSha256": "f86b4d3e70b045ba5312b680546a4eeaa5fb4cfe50f98abca45cbca0056a2498"
+    },
+    {
+      "file": "native-assertion-counterexample.gz",
+      "original": "/tmp/6232-room-native-payload-strong-assertion-mutant.log",
+      "rawSha256": "2329284def23123f294e04227bd8b633722a4da0c7207d9ddc8cb7f7eb85c399",
+      "gzipSha256": "ccbaab49ba8c359beab80a9f386feeb68a01fe3a9fb195c2349a29014de109ab"
+    }
+  ]
+}

@@ -6,6 +6,8 @@
 /// <reference types="unplugin-icons/types/react" />
 
 interface ImportMetaEnv {
+  readonly VITE_AUTODESK_CLIENT_ID?: string;
+  readonly VITE_AUTODESK_HOSTED?: string;
   /** Server URL for IFC processing (also used by superset integration) */
   readonly VITE_IFC_SERVER_URL?: string;
   /** Alternative server URL env var */

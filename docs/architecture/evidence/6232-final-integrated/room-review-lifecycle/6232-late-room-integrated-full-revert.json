@@ -1,0 +1,1620 @@
+{
+  "observer": "tests",
+  "baseline": {
+    "kind": "pass",
+    "passed": 327,
+    "total": 327
+  },
+  "reverted": {
+    "kind": "load-failure",
+    "passed": 103,
+    "failed": 68,
+    "total": 171,
+    "evidence": [
+      "TypeError: replayQuantityMutation is not a function",
+      "Cannot find module",
+      "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)",
+      "Cannot find module",
+      "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)",
+      "Cannot find module",
+      "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)",
+      "Cannot find module",
+      "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)",
+      "TypeError: loaded.backend.dispose is not a function",
+      "Cannot find module",
+      "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)",
+      "Cannot find module",
+      "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)",
+      "Cannot find module",
+      "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)",
+      "TypeError: loaded.backend.dispose is not a function",
+      "ERR_MODULE_NOT_FOUND",
+      "Cannot find module",
+      "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)",
+      "TypeError: loaded.backend.dispose is not a function",
+      "Cannot find module",
+      "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)",
+      "Cannot find module",
+      "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)"
+    ]
+  },
+  "ledger": [
+    {
+      "file": "apps/viewer/src/lib/commands/modeling/commands/element-align.test.tsx",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/lib/commands/modeling/commands/element-align.test.tsx",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/lib/commands/modeling/commands/element-align.test.tsx"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 13,
+        "failed": 0,
+        "total": 13,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/lib/commands/modeling/commands/element-align.test.tsx"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 12,
+        "failed": 1,
+        "total": 13,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/lib/commands/modeling/commands/element-align.test.tsx"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "apps/viewer/src/lib/commands/modeling/commands/room-layout.test.tsx",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/lib/commands/modeling/commands/room-layout.test.tsx",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/lib/commands/modeling/commands/room-layout.test.tsx"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 21,
+        "failed": 0,
+        "total": 21,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/lib/commands/modeling/commands/room-layout.test.tsx"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 20,
+        "failed": 1,
+        "total": 21,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/lib/commands/modeling/commands/room-layout.test.tsx"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "apps/viewer/src/sdk/adapters/store-adapter-native-align.test.ts",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/sdk/adapters/store-adapter-native-align.test.ts",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/sdk/adapters/store-adapter-native-align.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 2,
+        "failed": 0,
+        "total": 2,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/sdk/adapters/store-adapter-native-align.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 1,
+        "failed": 1,
+        "total": 2,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/sdk/adapters/store-adapter-native-align.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "apps/viewer/src/sdk/adapters/store-adapter-native-physical-room.test.ts",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/sdk/adapters/store-adapter-native-physical-room.test.ts",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/sdk/adapters/store-adapter-native-physical-room.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 3,
+        "failed": 0,
+        "total": 3,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/sdk/adapters/store-adapter-native-physical-room.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 1,
+        "failed": 2,
+        "total": 3,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/sdk/adapters/store-adapter-native-physical-room.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "apps/viewer/src/sdk/adapters/store-adapter-publication.test.ts",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/sdk/adapters/store-adapter-publication.test.ts",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/sdk/adapters/store-adapter-publication.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/sdk/adapters/store-adapter-publication.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 0,
+        "failed": 4,
+        "total": 4,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/sdk/adapters/store-adapter-publication.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "apps/viewer/src/sdk/adapters/store-adapter-room-native.test.ts",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/sdk/adapters/store-adapter-room-native.test.ts",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/sdk/adapters/store-adapter-room-native.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 3,
+        "failed": 0,
+        "total": 3,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/sdk/adapters/store-adapter-room-native.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 2,
+        "failed": 1,
+        "total": 3,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/sdk/adapters/store-adapter-room-native.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "apps/viewer/src/sdk/adapters/store-adapter.collab.test.ts",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/sdk/adapters/store-adapter.collab.test.ts",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/sdk/adapters/store-adapter.collab.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 37,
+        "failed": 0,
+        "total": 37,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/sdk/adapters/store-adapter.collab.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 35,
+        "failed": 2,
+        "total": 37,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/sdk/adapters/store-adapter.collab.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "apps/viewer/src/sdk/adapters/store-adapter.ordinary-live-view.test.ts",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/sdk/adapters/store-adapter.ordinary-live-view.test.ts",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/sdk/adapters/store-adapter.ordinary-live-view.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 2,
+        "failed": 0,
+        "total": 2,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/sdk/adapters/store-adapter.ordinary-live-view.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 0,
+        "failed": 2,
+        "total": 2,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/sdk/adapters/store-adapter.ordinary-live-view.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "apps/viewer/src/sdk/adapters/store-adapter.record-authored.test.ts",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/sdk/adapters/store-adapter.record-authored.test.ts",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/sdk/adapters/store-adapter.record-authored.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/sdk/adapters/store-adapter.record-authored.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 2,
+        "failed": 3,
+        "total": 5,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/sdk/adapters/store-adapter.record-authored.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "apps/viewer/src/store/slices/mutation-quantity-history.test.ts",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/store/slices/mutation-quantity-history.test.ts",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/store/slices/mutation-quantity-history.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 3,
+        "failed": 0,
+        "total": 3,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/store/slices/mutation-quantity-history.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 0,
+        "failed": 3,
+        "total": 3,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/store/slices/mutation-quantity-history.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "packages/export/src/quantity-unit-generation.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/export/src/quantity-unit-generation.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/quantity-unit-generation.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/export/src/quantity-unit-generation.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "load-failure",
+        "passed": 5,
+        "failed": 2,
+        "total": 7,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/export/src/quantity-unit-generation.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": [
+          "TypeError: replayQuantityMutation is not a function"
+        ]
+      }
+    },
+    {
+      "file": "packages/mcp/src/export-overlay.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/export-overlay.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/export-overlay.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/export-overlay.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "load-failure",
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": false,
+        "files": [],
+        "testIdentities": [],
+        "evidence": [
+          "Cannot find module",
+          "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)"
+        ]
+      }
+    },
+    {
+      "file": "packages/mcp/src/read-after-write.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/read-after-write.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/read-after-write.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 68,
+        "failed": 0,
+        "total": 68,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/read-after-write.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "load-failure",
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": false,
+        "files": [],
+        "testIdentities": [],
+        "evidence": [
+          "Cannot find module",
+          "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)"
+        ]
+      }
+    },
+    {
+      "file": "packages/mcp/src/server-detach-native.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/server-detach-native.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/server-detach-native.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 3,
+        "failed": 0,
+        "total": 3,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/server-detach-native.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 0,
+        "failed": 3,
+        "total": 3,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/server-detach-native.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "packages/mcp/src/tools/align-input.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/tools/align-input.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/tools/align-input.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 2,
+        "failed": 0,
+        "total": 2,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/align-input.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 0,
+        "failed": 2,
+        "total": 2,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/align-input.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "packages/mcp/src/tools/align-native.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/tools/align-native.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/tools/align-native.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 12,
+        "failed": 0,
+        "total": 12,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/align-native.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "load-failure",
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": false,
+        "files": [],
+        "testIdentities": [],
+        "evidence": [
+          "Cannot find module",
+          "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)"
+        ]
+      }
+    },
+    {
+      "file": "packages/mcp/src/tools/entity-create.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/tools/entity-create.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/tools/entity-create.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 10,
+        "failed": 0,
+        "total": 10,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/entity-create.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "load-failure",
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": false,
+        "files": [],
+        "testIdentities": [],
+        "evidence": [
+          "Cannot find module",
+          "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)"
+        ]
+      }
+    },
+    {
+      "file": "packages/mcp/src/tools/flow-creation-native.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/tools/flow-creation-native.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/tools/flow-creation-native.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 12,
+        "failed": 0,
+        "total": 12,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/flow-creation-native.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "load-failure",
+        "passed": 0,
+        "failed": 12,
+        "total": 12,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/flow-creation-native.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": [
+          "TypeError: loaded.backend.dispose is not a function"
+        ]
+      }
+    },
+    {
+      "file": "packages/mcp/src/tools/flow.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/tools/flow.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/tools/flow.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 15,
+        "failed": 0,
+        "total": 15,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/flow.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "pass",
+        "passed": 15,
+        "failed": 0,
+        "total": 15,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/flow.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "packages/mcp/src/tools/model-scope.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/tools/model-scope.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/tools/model-scope.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 11,
+        "failed": 0,
+        "total": 11,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/model-scope.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "load-failure",
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": false,
+        "files": [],
+        "testIdentities": [],
+        "evidence": [
+          "Cannot find module",
+          "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)"
+        ]
+      }
+    },
+    {
+      "file": "packages/mcp/src/tools/query-select.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/tools/query-select.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/tools/query-select.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/query-select.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "load-failure",
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": false,
+        "files": [],
+        "testIdentities": [],
+        "evidence": [
+          "Cannot find module",
+          "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)"
+        ]
+      }
+    },
+    {
+      "file": "packages/mcp/src/tools/query.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/tools/query.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/tools/query.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 24,
+        "failed": 0,
+        "total": 24,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/query.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "load-failure",
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": false,
+        "files": [],
+        "testIdentities": [],
+        "evidence": [
+          "Cannot find module",
+          "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)"
+        ]
+      }
+    },
+    {
+      "file": "packages/mcp/src/tools/room-command.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/tools/room-command.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/tools/room-command.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/room-command.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "load-failure",
+        "passed": 0,
+        "failed": 7,
+        "total": 7,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/room-command.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": [
+          "TypeError: loaded.backend.dispose is not a function"
+        ]
+      }
+    },
+    {
+      "file": "packages/mcp/src/tools/room-factory-gc.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/tools/room-factory-gc.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/tools/room-factory-gc.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/room-factory-gc.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "load-failure",
+        "passed": 0,
+        "failed": 1,
+        "total": 1,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/room-factory-gc.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": [
+          "ERR_MODULE_NOT_FOUND"
+        ]
+      }
+    },
+    {
+      "file": "packages/mcp/src/tools/room-input.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/tools/room-input.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/tools/room-input.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/room-input.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "load-failure",
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": false,
+        "files": [],
+        "testIdentities": [],
+        "evidence": [
+          "Cannot find module",
+          "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)"
+        ]
+      }
+    },
+    {
+      "file": "packages/mcp/src/tools/room-preparation-errors.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/tools/room-preparation-errors.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/tools/room-preparation-errors.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 10,
+        "failed": 0,
+        "total": 10,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/room-preparation-errors.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "load-failure",
+        "passed": 0,
+        "failed": 10,
+        "total": 10,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/room-preparation-errors.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": [
+          "TypeError: loaded.backend.dispose is not a function"
+        ]
+      }
+    },
+    {
+      "file": "packages/mcp/src/tools/room-readonly-state.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mcp/src/tools/room-readonly-state.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/tools/room-readonly-state.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 9,
+        "failed": 0,
+        "total": 9,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mcp/src/tools/room-readonly-state.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "load-failure",
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": false,
+        "files": [],
+        "testIdentities": [],
+        "evidence": [
+          "Cannot find module",
+          "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)"
+        ]
+      }
+    },
+    {
+      "file": "packages/mutations/src/quantity-history.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/mutations/src/quantity-history.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/quantity-history.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/mutations/src/quantity-history.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "load-failure",
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": false,
+        "files": [],
+        "testIdentities": [],
+        "evidence": [
+          "Cannot find module",
+          "vitest reported 1 Failed Suite(s) (collection error, no assertion ran)"
+        ]
+      }
+    },
+    {
+      "file": "packages/sandbox/src/bridge-store-profile.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/sandbox/src/bridge-store-profile.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/bridge-store-profile.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/sandbox/src/bridge-store-profile.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 0,
+        "failed": 6,
+        "total": 6,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/sandbox/src/bridge-store-profile.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "packages/sdk/src/store-room-command.test.ts",
+      "role": "executable",
+      "runKey": "test:packages/sdk/src/store-room-command.test.ts",
+      "adapter": "vitest",
+      "runner": {
+        "family": "vitest",
+        "command": [
+          "vitest",
+          "run",
+          "--reporter=default",
+          "src/store-room-command.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 15,
+        "failed": 0,
+        "total": 15,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/sdk/src/store-room-command.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 10,
+        "failed": 5,
+        "total": 15,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "v24.21.0",
+        "attributed": true,
+        "files": [
+          "packages/sdk/src/store-room-command.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "apps/viewer/src/test/native-sdk-model.ts",
+      "role": "support",
+      "reason": "test support/fixture; executed through an entrypoint, not independently attributable"
+    },
+    {
+      "file": "packages/mcp/src/test/live-tool-session.ts",
+      "role": "support",
+      "reason": "test support/fixture; executed through an entrypoint, not independently attributable"
+    },
+    {
+      "file": "packages/mcp/src/test/room-factory-gc-probe.mjs",
+      "role": "support",
+      "reason": "test support/fixture; executed through an entrypoint, not independently attributable"
+    }
+  ],
+  "schemaVersion": 2,
+  "channel": "pull-request",
+  "verdict": "OBSERVED",
+  "exitCode": 0,
+  "reason": "reverting production turned an assertion RED in apps/viewer/src/lib/commands/modeling/commands/element-align.test.tsx; that file has a green, attributable baseline.",
+  "base": "2e2f65a66e1375ef6cc52b8a310526de1a36e1a0",
+  "head": "902684264034c676f82fd951b3609b1db65a3e97",
+  "production": [
+    "apps/viewer/src/lib/commands/modeling/align-boxes.ts",
+    "apps/viewer/src/lib/commands/modeling/align-gesture.ts",
+    "apps/viewer/src/lib/commands/modeling/commands/element-align.ts",
+    "apps/viewer/src/lib/commands/modeling/commands/plan-move.ts",
+    "apps/viewer/src/lib/element-transform/commit.ts",
+    "apps/viewer/src/lib/scripts/templates/bim-globals.d.ts",
+    "apps/viewer/src/sdk/adapters/store-adapter-align.ts",
+    "apps/viewer/src/sdk/adapters/store-adapter-collab.ts",
+    "apps/viewer/src/sdk/adapters/store-adapter-modelling.ts",
+    "apps/viewer/src/sdk/adapters/store-adapter.ts",
+    "apps/viewer/src/store/slices/mutation-history-apply.ts",
+    "apps/viewer/src/store/slices/mutation-modelling-records.ts",
+    "packages/create/src/in-store/align-boxes.ts",
+    "packages/create/src/in-store/element-align.ts",
+    "packages/create/src/in-store/element-transform-edit.ts",
+    "packages/create/src/index.ts",
+    "packages/export/src/step-property-set-generators.ts",
+    "packages/mcp/package.json",
+    "packages/mcp/src/context.ts",
+    "packages/mcp/src/errors.ts",
+    "packages/mcp/src/headless-backend-align.ts",
+    "packages/mcp/src/headless-backend-room.ts",
+    "packages/mcp/src/headless-backend-store.ts",
+    "packages/mcp/src/headless-backend.ts",
+    "packages/mcp/src/headless-native-geometry.ts",
+    "packages/mcp/src/headless-room-geometry.ts",
+    "packages/mcp/src/server.ts",
+    "packages/mcp/src/session-cleanup.ts",
+    "packages/mcp/src/tools/index.ts",
+    "packages/mcp/src/tools/mutate.ts",
+    "packages/mcp/src/tools/mutation-undo.ts",
+    "packages/mcp/src/tools/physical-edit.ts",
+    "packages/mcp/src/tools/query-tools.ts",
+    "packages/mcp/src/tools/query.ts",
+    "packages/mcp/src/tools/room-command.ts",
+    "packages/mutations/src/apply-mutations.ts",
+    "packages/mutations/src/change-set-to-ops.ts",
+    "packages/mutations/src/index.ts",
+    "packages/mutations/src/mutable-overlay-state.ts",
+    "packages/mutations/src/mutable-property-view.ts",
+    "packages/mutations/src/quantity-history-before.ts",
+    "packages/mutations/src/quantity-replay.ts",
+    "packages/mutations/src/types.ts",
+    "packages/sandbox/src/bridge-store-modelling.ts",
+    "packages/sandbox/src/bridge-store.ts",
+    "packages/sdk/src/index.ts",
+    "packages/sdk/src/namespaces/store-modelling.ts",
+    "packages/sdk/src/store-align-command.ts",
+    "packages/sdk/src/store-physical-types.ts",
+    "packages/sdk/src/store-room-command.ts",
+    "scripts/api-surface.json",
+    "scripts/lib/bim-derived-type-groups.mjs"
+  ],
+  "tests": [
+    "apps/viewer/src/lib/commands/modeling/commands/element-align.test.tsx",
+    "apps/viewer/src/lib/commands/modeling/commands/room-layout.test.tsx",
+    "apps/viewer/src/sdk/adapters/store-adapter-native-align.test.ts",
+    "apps/viewer/src/sdk/adapters/store-adapter-native-physical-room.test.ts",
+    "apps/viewer/src/sdk/adapters/store-adapter-publication.test.ts",
+    "apps/viewer/src/sdk/adapters/store-adapter-room-native.test.ts",
+    "apps/viewer/src/sdk/adapters/store-adapter.collab.test.ts",
+    "apps/viewer/src/sdk/adapters/store-adapter.ordinary-live-view.test.ts",
+    "apps/viewer/src/sdk/adapters/store-adapter.record-authored.test.ts",
+    "apps/viewer/src/store/slices/mutation-quantity-history.test.ts",
+    "apps/viewer/src/test/native-sdk-model.ts",
+    "packages/export/src/quantity-unit-generation.test.ts",
+    "packages/mcp/src/export-overlay.test.ts",
+    "packages/mcp/src/read-after-write.test.ts",
+    "packages/mcp/src/server-detach-native.test.ts",
+    "packages/mcp/src/test/live-tool-session.ts",
+    "packages/mcp/src/test/room-factory-gc-probe.mjs",
+    "packages/mcp/src/tools/align-input.test.ts",
+    "packages/mcp/src/tools/align-native.test.ts",
+    "packages/mcp/src/tools/entity-create.test.ts",
+    "packages/mcp/src/tools/flow-creation-native.test.ts",
+    "packages/mcp/src/tools/flow.test.ts",
+    "packages/mcp/src/tools/model-scope.test.ts",
+    "packages/mcp/src/tools/query-select.test.ts",
+    "packages/mcp/src/tools/query.test.ts",
+    "packages/mcp/src/tools/room-command.test.ts",
+    "packages/mcp/src/tools/room-factory-gc.test.ts",
+    "packages/mcp/src/tools/room-input.test.ts",
+    "packages/mcp/src/tools/room-preparation-errors.test.ts",
+    "packages/mcp/src/tools/room-readonly-state.test.ts",
+    "packages/mutations/src/quantity-history.test.ts",
+    "packages/sandbox/src/bridge-store-profile.test.ts",
+    "packages/sdk/src/store-room-command.test.ts"
+  ],
+  "invocationId": "ba29ed64-101d-41e3-9090-7d30099ec809",
+  "timing": {
+    "startedAt": "2026-10-04T05:30:22.090Z",
+    "finishedAt": "2026-10-04T05:35:15.948Z"
+  },
+  "restoration": "verified"
+}

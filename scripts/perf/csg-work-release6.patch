@@ -1,0 +1,89 @@
+diff --git a/rust/wasm-bindings/Cargo.toml b/rust/wasm-bindings/Cargo.toml
+index d338b6aa7..945c6993b 100644
+--- a/rust/wasm-bindings/Cargo.toml
++++ b/rust/wasm-bindings/Cargo.toml
+@@ -18,6 +18,8 @@ crate-type = ["cdylib", "rlib"]
+ 
+ [features]
+ default = ["console_error_panic_hook"]
++# #6516 diagnostic bridge only; geometry algorithms/storage remain unchanged.
++csg-work-census = []
+ debug_geometry = ["ifc-lite-geometry/debug_geometry"]
+ # Threaded WASM bundle: in-instance rayon pool via wasm-bindgen-rayon. Built
+ # separately with atomics/shared-memory flags (build-wasm.sh BUILD_THREADED=1).
+diff --git a/rust/wasm-bindings/src/lib.rs b/rust/wasm-bindings/src/lib.rs
+index 847d1284d..1faad864c 100644
+--- a/rust/wasm-bindings/src/lib.rs
++++ b/rust/wasm-bindings/src/lib.rs
+@@ -67,6 +67,8 @@ pub use utils::stash_location_parts;
+ pub use wasm_bindgen_rayon::init_thread_pool;
+ 
+ mod api;
++#[cfg(feature = "csg-work-census")]
++mod csg_work_census;
+ #[cfg(feature = "console-tracing")]
+ mod tracing_console;
+ mod utils;
+--- /dev/null
++++ b/rust/wasm-bindings/src/csg_work_census.rs
+@@ -0,0 +1,60 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++
++//! #6516 positive observations of existing CSG wrapper entries, not complete work.
++//! The existing vector/usize-to-u32 casts/poison behavior are unchanged. A drain
++//! cannot certify absence, exact work deltas, truncation freedom or lock health.
++
++use ifc_lite_geometry::csg::CsgOpRecord;
++use wasm_bindgen::prelude::*;
++
++const MAX_SERIALIZED_RECORDS: usize = 16_384;
++
++fn ordered_tuples(rows: Vec<CsgOpRecord>) -> Result<Vec<(u8, u32, u32)>, &'static str> {
++    if rows.len() > MAX_SERIALIZED_RECORDS {
++        return Err("CSG_CENSUS_SERIALIZATION_BOUND_EXCEEDED");
++    }
++    if rows.iter().any(|row| row.op > 3) {
++        return Err("CSG_CENSUS_UNKNOWN_OPERATION");
++    }
++    Ok(rows.into_iter().map(|row| (row.op, row.a_tris, row.b_tris)).collect())
++}
++
++/// Ordered observedWrapperEntries [op, a_tris, b_tris]. Diagnostic-only feature.
++/// Empty is not proof of no CSG work. The underlying vector is unbounded during
++/// the call; this cap bounds only subsequent conversion/serialization.
++#[wasm_bindgen(js_name = takeCsgWorkCensus)]
++pub fn take_csg_work_census() -> Result<JsValue, JsValue> {
++    let rows = ordered_tuples(ifc_lite_geometry::csg::take_csg_census())
++        .map_err(JsValue::from_str)?;
++    serde_wasm_bindgen::to_value(&rows)
++        .map_err(|error| JsValue::from_str(&error.to_string()))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    // #6516 tuple layout/order/multiplicity is the diagnostic compatibility seam.
++    #[test]
++    fn preserves_order_multiplicity_and_u32_boundary_without_inference_6516() {
++        let rows = vec![
++            CsgOpRecord { op: 0, a_tris: u32::MAX, b_tris: 0 },
++            CsgOpRecord { op: 2, a_tris: 3, b_tris: 4 },
++            CsgOpRecord { op: 2, a_tris: 3, b_tris: 4 },
++        ];
++        assert_eq!(ordered_tuples(rows).unwrap(), vec![(0, u32::MAX, 0), (2, 3, 4), (2, 3, 4)]);
++        assert!(ordered_tuples(Vec::new()).unwrap().is_empty());
++    }
++
++    #[test]
++    fn refuses_over_bound_and_unknown_operation_6516() {
++        let row = CsgOpRecord { op: 0, a_tris: 1, b_tris: 1 };
++        assert_eq!(ordered_tuples(vec![row; MAX_SERIALIZED_RECORDS]).unwrap().len(), MAX_SERIALIZED_RECORDS);
++        assert_eq!(ordered_tuples(vec![row; MAX_SERIALIZED_RECORDS + 1]).unwrap_err(),
++            "CSG_CENSUS_SERIALIZATION_BOUND_EXCEEDED");
++        assert_eq!(ordered_tuples(vec![CsgOpRecord { op: 4, ..row }]).unwrap_err(),
++            "CSG_CENSUS_UNKNOWN_OPERATION");
++    }
++}

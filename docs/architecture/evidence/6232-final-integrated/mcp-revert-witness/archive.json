@@ -1,0 +1,111 @@
+{
+  "executionSource": "c96621af6cf1e671098e8927ac79698fd38a3f32",
+  "owningSource": "bb3cccbbed934bae9d6fb258d1ef0d77db7ab426",
+  "productionSourceIdenticalTo": "0d79b605b8b4d54853f699f842d9cd56045ca12c",
+  "scopes": {
+    "typecheckTasks": 111,
+    "typecheckedTestFiles": 3397,
+    "fullSDKTests": 336,
+    "testSkips": 0,
+    "testCacheHits": 0,
+    "officialOracleBaselinePasses": 170,
+    "attributedSDKFileBaselinePasses": 10,
+    "attributedSDKFileRevertedAssertionFailures": 1,
+    "attributedSDKFileRevertedPasses": 9
+  },
+  "oracleScope": "OBSERVED for surviving typed native state-conflict behavior; new-route collection gaps remain in unaltered official JSON, not whole-route revert coverage",
+  "browserScope": "Retained original Room977/e98 source identities; no new capture claimed",
+  "entries": [
+    {
+      "file": "original-ci-oracle-failure.log.gz",
+      "originalPath": "/tmp/6232-6759-d571-oracle-failure.log",
+      "originalBytes": 329989,
+      "originalSHA256": "28c24a81c4ff26faadbed90f477d8ccf8ce05c8d5a86b1a4c96e39e9dbef30ec",
+      "compressedSHA256": "31cc950cc131f4c7a14b2786a2c6d06cfe15aa23b02279a10cc536c11ab7f581"
+    },
+    {
+      "file": "own-preliminary-sdk.log.gz",
+      "originalPath": "/tmp/6232-mcp-room-stable-sdk-conflict-full-sdk.log",
+      "originalBytes": 1018,
+      "originalSHA256": "485e6c99dfdd2a2df2a993deb08bb02a5d213de905caff3028800e4b54c4a86d",
+      "compressedSHA256": "aa26b09f8c12d3773097de3ff9707ec3f553b412ec399d456d982f75d94810bf"
+    },
+    {
+      "file": "own-pinned-full-sdk.log.gz",
+      "originalPath": "/tmp/6232-mcp-room-stable-sdk-conflict-full-sdk-de89.log",
+      "originalBytes": 995,
+      "originalSHA256": "39e2e6c09ff8de4525d53d14ee232597c16ca523a98a8ac8a812838e86bd786d",
+      "compressedSHA256": "0abee5f8d820a44ed502e74a857d9de4fcc550f25aa3855b82f314b4acb4314b"
+    },
+    {
+      "file": "official-full-revert.log.gz",
+      "originalPath": "/tmp/6232-mcp-room-stable-sdk-conflict-official-full-revert.log",
+      "originalBytes": 26501,
+      "originalSHA256": "2fb522b678f7fcf78b0773da08de9803f805d0e9e195d1ff11ac0c7222714af9",
+      "compressedSHA256": "6f158a09c27a4d7cd8b703ccf6625af606feaaa2eb9e82f1204421dd404bfafc"
+    },
+    {
+      "file": "official-full-revert.json.gz",
+      "originalPath": "/tmp/6232-mcp-room-stable-sdk-conflict-official-full-revert.json",
+      "originalBytes": 18413,
+      "originalSHA256": "47de0989a439e45badf14e653032a71c4ca5be63ac4fb9085d22a3e3adc0ccaa",
+      "compressedSHA256": "4b4bc8c93878eefaf8c103b74ecc85d24d1395603d0deb6fbbcc20303ed9c847"
+    },
+    {
+      "file": "causal-old-service.log.gz",
+      "originalPath": "/tmp/6232-mcp-room-stable-sdk-conflict-explicit-old.log",
+      "originalBytes": 3207,
+      "originalSHA256": "086cf93985e2ae39d947cd5dfc01101ad58f080aa50ce34f411f725dffa7a1d8",
+      "compressedSHA256": "0caae0e149314e2a8dead1067aa4819b067bed63e4b3652949b246857bb6d2a2"
+    },
+    {
+      "file": "owning-receipt.json.gz",
+      "originalPath": "/tmp/6232-mcp-room-stable-sdk-conflict-receipt.json",
+      "originalBytes": 2416,
+      "originalSHA256": "3e7c2bf7f5601d5d04f2fb67c2df3db0b7c3a65ea915198d9b519c121f4b11f4",
+      "compressedSHA256": "af9a954dfeffb96700408d16a853fe42d6828a4d72dec16de477362d8fd79d55"
+    },
+    {
+      "file": "local-forward-proof.json.gz",
+      "originalPath": "/tmp/6232-mcp-room-stable-sdk-conflict-local-forward.json",
+      "originalBytes": 1953,
+      "originalSHA256": "20df2c43b00dfb818e164fbd60eeaf410e4811f14a256139b9d4c1f82795c4ac",
+      "compressedSHA256": "55597cebdf67120f592e2f36ba29f5419e5e3a374aa95e6406623bb0433a428e"
+    },
+    {
+      "file": "root-independent-proof.json.gz",
+      "originalPath": "/tmp/6232-mcp-witness-root-independent-proof.json",
+      "originalBytes": 2213,
+      "originalSHA256": "88df6a770ab67a142e6330571b6a25ad8b4edc01bda4f5c5f011ec2e77f0bc32",
+      "compressedSHA256": "e8c1abce4b6ab313847a2f17ac5dd8d0f529c74897abddfc4c0ed4315eaa3893"
+    },
+    {
+      "file": "integrated-types.log.gz",
+      "originalPath": "/tmp/6232-mcp-witness-integrated-types.log",
+      "originalBytes": 45388,
+      "originalSHA256": "3b0269cbb2e5762c08201fd619fe02522a324cf1c9ddf5de4f22ba79eb432f76",
+      "compressedSHA256": "396228d58c449d47deaba53c726ac01f32fd5e31674ef5cce34d3de46a882b1d"
+    },
+    {
+      "file": "integrated-full-sdk.log.gz",
+      "originalPath": "/tmp/6232-mcp-witness-integrated-sdk.log",
+      "originalBytes": 82968,
+      "originalSHA256": "41df946cfe8718eb525a2a98dd6776128104a705f2fb9688879a3d39950c9ae1",
+      "compressedSHA256": "2ef174ee72fc915fc65ac59bc09eb1c68e169129b77ba622fdb29efb719bfe69"
+    },
+    {
+      "file": "actual-sdk-squash-ancestry-proof.json.gz",
+      "originalPath": "/tmp/6232-after-sdk-squash-ancestry-repair.json",
+      "originalBytes": 4097,
+      "originalSHA256": "38673a006f78f680bb7d97c36b43ac7522bc086c24729dc7a807716af890d606",
+      "compressedSHA256": "a11d6dfeeb2b8c8699bdbfad4c72f536919609b2fc812f59444899c924350597"
+    },
+    {
+      "file": "actual-sdk-squash-independent-proof.json.gz",
+      "originalPath": "/tmp/6232-after-sdk-squash-root-independent-proof.json",
+      "originalBytes": 4350,
+      "originalSHA256": "1a3d9ff030cfc450e5222a347bf2ceeb5427fa57e9584acaaad69512ea8a25f6",
+      "compressedSHA256": "6e6a579cc3ecb8efd32629992f347a3742168950e641e62d1b7f64491edc7556"
+    }
+  ]
+}

@@ -9,10 +9,11 @@ export const BIM_DERIVED_TYPE_GROUPS = [
     sources: [
       'packages/create/src/in-store/wall-join.ts', 'packages/create/src/in-store/wall-join-apply.ts',
       'packages/create/src/in-store/column.ts', 'packages/create/src/in-store/beam.ts',
+      'packages/create/src/in-store/align-boxes.ts',
       'packages/create/src/in-store/member.ts', 'packages/create/src/in-store/profile.ts',
     ],
     roots: [
-      'WallJoinApplyOptions', 'WallJoinOptions',
+      'AlignMode', 'WallJoinApplyOptions', 'WallJoinOptions',
       'ColumnInStoreParams', 'ProfiledColumnInStoreParams',
       'BeamInStoreParams', 'ProfiledBeamInStoreParams',
       'MemberInStoreParams', 'ProfiledMemberInStoreParams',

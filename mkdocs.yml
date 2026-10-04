@@ -31,6 +31,7 @@ not_in_nav: |
   architecture/viewer-ai-plan.md
   architecture/viewer-ai-implementation.md
   architecture/viewer-ai-adapters.md
+  architecture/viewer-ai-bcf-publication.md
   architecture/section-6614-6615-spec.md
   architecture/evidence/**
   research/**

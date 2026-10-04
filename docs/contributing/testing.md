@@ -60,6 +60,18 @@ cd packages/parser && pnpm exec vitest --watch
 cd packages/parser && pnpm exec vitest run --coverage
 ```
 
+### Local BCF publication peer
+
+Run `pnpm dev:bcf-test-server` from the repository root for a controlled local BCF API peer. It prints its loopback URL, synthetic token and project ID. In the viewer's BCF server connection form, choose a custom URL and the access-token sign-in method, then load the printed project. Use a local viewer origin (`localhost` or `127.0.0.1`); the peer does not allow other browser origins. It holds only in-memory test data and discards that data on shutdown.
+
+Run its integration acceptance through root Turbo:
+
+```bash
+TEST_PATTERN='bcf-server.publication' pnpm test --filter=@ifc-lite/viewer --only --env-mode=loose
+```
+
+The suite uses actual HTTP requests through the native viewer connector and BCF client. It covers creation/update, human comments, viewpoints referencing a parsed committed SketchUp IFC model, project pull and BCF archive roundtrip, vocabulary rejection, permission loss, and a connection closed after a committed write. This is controlled-peer evidence, not vendor conformance. The command does not implement the pending AI batch publication/outbox UI. Snapshot upload, OAuth grants, remote version conflicts and vendor-specific idempotency are outside this peer's initial contract.
+
 ### Rust Tests
 
 The Cargo workspace root is the repo root:

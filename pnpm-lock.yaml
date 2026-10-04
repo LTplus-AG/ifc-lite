@@ -606,6 +606,9 @@ importers:
       '@ifc-lite/solar':
         specifier: workspace:^
         version: link:../../packages/solar
+      '@ifc-lite/source-autodesk':
+        specifier: workspace:^
+        version: link:../../packages/source-autodesk
       '@ifc-lite/source-dalux':
         specifier: workspace:^
         version: link:../../packages/source-dalux

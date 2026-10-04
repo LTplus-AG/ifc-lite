@@ -27,7 +27,7 @@
       "name": "Room preparation errors",
       "before": "same10 final public controls:8 genuine error-code assertionFAIL/2 intentionalinputPASS",
       "after": "10 new+6 existing readonly/state/cancel/runtime controls16PASS/0SKIP/0testcache",
-      "scope": "public 1/N schema/upright refusals and export/parser/native processing failures; current real error classification and unchanged model invariants"
+      "scope": "two public routes with real-model export/parser/native-process/WASM-import failure injection; one-model invalid-storey refusal; disposal, unchanged owning/peer graph and successful retry"
     },
     {
       "name": "History-free overlay revision",

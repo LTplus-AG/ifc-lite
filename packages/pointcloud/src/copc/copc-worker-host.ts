@@ -42,7 +42,7 @@ export async function handleCopcRequest(msg: CopcRequest, post: Post, allocateId
     if (msg.kind === 'copc-open') {
       const source = await openSource(msg.source, abort.signal);
       const reader = await CopcReader.open(source, { originOffset: msg.originOffset, signal: abort.signal });
-      const rootPage = await reader.readPage(reader.rootPageRef, abort.signal);
+      const rootPage = await reader.readPage(reader.rootPageRef, abort.signal, msg.maxPageBytes);
       const sourceId = allocateId();
       // Same ordering as the stream sources: report first, register after,
       // so a failed post cannot leave an unreachable reader behind.
@@ -54,7 +54,7 @@ export async function handleCopcRequest(msg: CopcRequest, post: Post, allocateId
     if (!entry) throw new Error(`Unknown COPC sourceId ${msg.sourceId}`);
     const signal = AbortSignal.any([abort.signal, entry.closed.signal]);
     if (msg.kind === 'copc-page') {
-      const page = await entry.reader.readPage(msg.page, signal);
+      const page = await entry.reader.readPage(msg.page, signal, msg.maxBytes);
       post({ kind: 'copc-page', requestId: msg.requestId, page });
       return;
     }

@@ -23,6 +23,7 @@ import type { RangeByteSource } from '../streaming/types.js';
 import type { DecodedPointChunk, PointCloudBBox } from '../types.js';
 import { readCopcFileInfo, voxelKeyId, type CopcFileInfo } from './copc-info.js';
 import {
+  DEFAULT_COPC_HIERARCHY_LIMITS,
   MAX_COPC_NODE_POINTS,
   parseCopcHierarchyPage,
   type CopcHierarchyPage,
@@ -73,9 +74,21 @@ export class CopcReader {
     return bboxInDecodedFrame(this.file.header.bbox, this.originOffset);
   }
 
-  async readPage(ref: CopcPageRef, signal?: AbortSignal): Promise<CopcHierarchyPage> {
+  /**
+   * Read and parse one page. `maxBytes` (the caller's remaining hierarchy
+   * budget) is enforced BEFORE any byte is read, so a hostile page size
+   * costs nothing.
+   */
+  async readPage(
+    ref: CopcPageRef,
+    signal?: AbortSignal,
+    maxBytes: number = DEFAULT_COPC_HIERARCHY_LIMITS.maxPageBytes,
+  ): Promise<CopcHierarchyPage> {
     if (ref.offset + ref.byteSize > this.file.fileSize || ref.byteSize <= 0) {
       throw new Error(`COPC: page ${voxelKeyId(ref.key)} lies outside the file`);
+    }
+    if (ref.byteSize > maxBytes) {
+      throw new Error(`COPC: page ${voxelKeyId(ref.key)} of ${ref.byteSize} bytes exceeds the ${maxBytes}-byte hierarchy budget`);
     }
     const bytes = await this.source.read(ref.offset, ref.offset + ref.byteSize, signal);
     if (bytes.length !== ref.byteSize) throw new Error(`COPC: page ${voxelKeyId(ref.key)} truncated`);

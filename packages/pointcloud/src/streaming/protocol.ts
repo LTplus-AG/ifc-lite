@@ -53,12 +53,16 @@ export type WorkerRequest =
       requestId: number;
       source: CopcSourceDescriptor;
       originOffset?: readonly [number, number, number];
+      /** Hierarchy byte budget; the root page is refused before reading when larger. */
+      maxPageBytes: number;
     }
   | {
       kind: 'copc-page';
       requestId: number;
       sourceId: number;
       page: CopcPageRef;
+      /** The caller's remaining hierarchy byte budget, checked before reading. */
+      maxBytes: number;
     }
   | {
       kind: 'copc-node';

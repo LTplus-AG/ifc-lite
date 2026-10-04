@@ -139,6 +139,25 @@ export class CopcHierarchy {
     return this.pageCount;
   }
 
+  /** Page bytes still allowed by `limits.maxPageBytes`. */
+  get remainingPageBytes(): number {
+    return Math.max(0, this.limits.maxPageBytes - this.pageBytes);
+  }
+
+  /**
+   * Throw unless `ref` fits the page and byte budgets. Call BEFORE reading a
+   * page: a hostile pointer can name a page as large as the file, and a
+   * budget checked only after parsing has already paid for it.
+   */
+  assertCanLoad(ref: { byteSize: number }): void {
+    if (this.pageCount + 1 > this.limits.maxPages) {
+      throw new Error(`COPC: hierarchy exceeds ${this.limits.maxPages} pages`);
+    }
+    if (ref.byteSize > this.remainingPageBytes) {
+      throw new Error(`COPC: hierarchy exceeds ${this.limits.maxPageBytes} page bytes`);
+    }
+  }
+
   /**
    * Admit the page read from `ref`: the root page first, then only pages
    * that are pending. Throws when a budget is exceeded or a node key
@@ -170,8 +189,12 @@ export class CopcHierarchy {
       // The visited set is the cycle guard: a pointer back to any page we
       // have read or queued is dropped, never followed.
       if (this.seenPageOffsets.has(child.offset)) continue;
+      const id = voxelKeyId(child.key);
+      // Two pointers for one subtree root: overwriting would silently drop
+      // the first page's subtree, so treat it like a repeated node.
+      if (this.pendingPages.has(id)) throw new Error(`COPC: hierarchy lists child page ${id} twice`);
       this.seenPageOffsets.add(child.offset);
-      this.pendingPages.set(voxelKeyId(child.key), child);
+      this.pendingPages.set(id, child);
     }
   }
 
@@ -209,6 +232,11 @@ export async function loadPendingCopcPages(
     options.signal?.throwIfAborted();
     const batch = [...hierarchy.pendingPages.values()].filter((ref) => ref.key.d <= maxLevel).slice(0, concurrency);
     if (batch.length === 0) return;
+    // Budget the whole batch before any read starts.
+    batch.reduce((bytes, ref) => {
+      hierarchy.assertCanLoad({ byteSize: bytes + ref.byteSize });
+      return bytes + ref.byteSize;
+    }, 0);
     const pages = await Promise.all(batch.map((ref) => fetchPage(ref, options.signal)));
     batch.forEach((ref, i) => hierarchy.addPage(ref, pages[i]));
   }

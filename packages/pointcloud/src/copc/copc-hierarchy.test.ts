@@ -46,7 +46,7 @@ function page(entries: RawEntry[]): Uint8Array {
 }
 
 const K = (d: number, x = 0, y = 0, z = 0): VoxelKey => ({ d, x, y, z });
-const FILE = 1 << 30;
+const FILE = 2 ** 31;
 
 /** An in-memory "file" of pages keyed by offset, read by a counting fetcher. */
 function pageStore(pages: Map<number, Uint8Array>) {
@@ -159,6 +159,26 @@ describe('loadPendingCopcPages bounds (#6869)', () => {
     expect(h.stateOf(K(1))).toBe('node');
     expect(h.stateOf(K(2))).toBe('page');
     expect(h.stateOf(K(3))).toBe('absent');
+  });
+
+  it('a duplicate child-page key is an error, not a silent overwrite (#6874 review)', () => {
+    const h = new CopcHierarchy();
+    expect(() => h.addPage({ offset: 0, byteSize: 64 }, {
+      nodes: [],
+      pages: [{ key: K(1), offset: 64, byteSize: 32 }, { key: K(1), offset: 128, byteSize: 32 }],
+    })).toThrow(/child page 1-0-0-0 twice/);
+  });
+
+  it('checks the page-byte budget BEFORE a page is fetched (#6874 review)', async () => {
+    const huge = 1 << 30;
+    const pages = new Map<number, Uint8Array>([[0, page([{ key: K(1), offset: 4096, byteSize: huge, pointCount: -1 }])]]);
+    const store = pageStore(pages);
+    const h = new CopcHierarchy({ maxPages: 100, maxNodes: 100, maxPageBytes: 1 << 20 });
+    h.addPage({ offset: 0, byteSize: 32 }, await store.fetchPage({ key: K(0), offset: 0, byteSize: 32 }));
+    const before = store.reads();
+    await expect(loadPendingCopcPages(h, store.fetchPage)).rejects.toThrow(/page bytes/);
+    expect(store.reads()).toBe(before);
+    expect(h.remainingPageBytes).toBe((1 << 20) - 32);
   });
 
   it('refuses a page that was never pointed at', async () => {

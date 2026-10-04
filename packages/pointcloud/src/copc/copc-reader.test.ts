@@ -160,6 +160,23 @@ describe('CopcReader on tiny.copc.laz (#6869)', () => {
     expect(served).toBeLessThan(bytes.length / 4);
   });
 
+  it('refuses a page larger than the caller\'s byte limit without reading it (#6874 review)', async () => {
+    let reads = 0;
+    const counting = {
+      size: bytes.length,
+      read: async (start: number, end: number) => {
+        reads++;
+        return bytes.slice(start, end);
+      },
+    };
+    const reader = await CopcReader.open(counting);
+    const before = reads;
+    const ref = reader.rootPageRef;
+    await expect(reader.readPage(ref, undefined, ref.byteSize - 32)).rejects.toThrow(/exceeds/);
+    expect(reads).toBe(before);
+    await expect(reader.readPage(ref, undefined, ref.byteSize)).resolves.toBeTruthy();
+  });
+
   it('refuses a node entry whose span leaves the point block', async () => {
     const reader = await CopcReader.open(new BlobByteSource(blob));
     const key = { d: 0, x: 0, y: 0, z: 0 };

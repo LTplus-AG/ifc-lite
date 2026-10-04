@@ -1,0 +1,28 @@
+{
+  "source": "57cb2ed558ab9d4cbd6244063f2d796f9b71a64c",
+  "tree": "168fc177db4f2a64efa8fc24c07b36eae7a4d41a",
+  "actualMain": "8a78fbf19910313d6ac9ac66da0a717accd6e71f",
+  "types": {
+    "tasks": 111,
+    "cached": 110,
+    "files": 3403,
+    "packages": 57
+  },
+  "document": {
+    "passed": 130,
+    "failed": 0,
+    "skipped": 0,
+    "cache": 0
+  },
+  "scope": "Normal literal23path actual-main document integration; modelling/API/Rust/runtime unchanged. Previous native and broader-suite source labels retained. Supplemental browser pending final stable run.",
+  "logs": [
+    {
+      "path": "/tmp/6232-cold-preview-main8a-types.log",
+      "sha256": "c4b6f5fce992507a21ac9a84fa838320c622da3c6f03c8bf85e3423a2b89f751"
+    },
+    {
+      "path": "/tmp/6232-cold-preview-main8a-document.log",
+      "sha256": "c82bf342cb920b183b6477dc2445f1d171c8b21b7a9c6f84a67aa7fc1c258d7e"
+    }
+  ]
+}

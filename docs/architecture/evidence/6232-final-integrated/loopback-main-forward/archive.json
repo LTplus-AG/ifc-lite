@@ -1,0 +1,81 @@
+{
+  "executionSource": "ea1eac30b2c4b26eb356c739c42a2e23e2dfe09f",
+  "actualMain": "f04a97289d3130a1d7dc9df056c8b9c5b6d25791",
+  "retainedCaptureSource": "e98a99244ecc3f5a86968c485774a77f8845ae66",
+  "wasmSHA256": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+  "jsSHA256": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+  "scopes": {
+    "typecheckTasks": 111,
+    "typecheckedTestFiles": 3397,
+    "semantic": 82,
+    "sandboxNetwork": 34,
+    "semanticCLI": 8,
+    "mountedSemanticViewer": 63,
+    "nativeMCP": 38,
+    "cohortSkips": 0,
+    "apiExports": 9342
+  },
+  "entries": [
+    {
+      "file": "types.log.gz",
+      "rawPath": "/tmp/6232-loopback-forward-types.log",
+      "rawBytes": 45406,
+      "rawSHA256": "768f0c94a344e5a96f8f420308a61981c469f59347a5079aa692d0d9f7e788b5",
+      "compressedSHA256": "4abfd2b23b303a32b294e20859fb2c1f54e8caaa735f89414c07ab9ac0108c29"
+    },
+    {
+      "file": "semantic.log.gz",
+      "rawPath": "/tmp/6232-loopback-forward-semantic.log",
+      "rawBytes": 1800,
+      "rawSHA256": "8ce966d19553449aae60a05549a5e7cbef4af3804febb34733b3f3a1b22720d1",
+      "compressedSHA256": "1d73b83de4d7eb612c49f834fec7b3f553f30960ce410c2fb41536146a258476"
+    },
+    {
+      "file": "sandbox.log.gz",
+      "rawPath": "/tmp/6232-loopback-forward-sandbox.log",
+      "rawBytes": 1573,
+      "rawSHA256": "1bb68d84257f08bda7e929710bc63c2a4146cbb53f69682a7f63504bd14c57fe",
+      "compressedSHA256": "ef117497d7bc04926aff09859c442d9df3b0b6699e522a2e2fe47dc56a394779"
+    },
+    {
+      "file": "cli.log.gz",
+      "rawPath": "/tmp/6232-loopback-forward-cli.log",
+      "rawBytes": 1201,
+      "rawSHA256": "354f84b0e7fa30d86334a08f265e33671a08629943fbce3b260f7e65e805d656",
+      "compressedSHA256": "ad55311045e032806d57ed85d42d9e15d5b1408ef9659c1af25f7beb07d68794"
+    },
+    {
+      "file": "viewer.log.gz",
+      "rawPath": "/tmp/6232-loopback-forward-viewer.log",
+      "rawBytes": 12903,
+      "rawSHA256": "35dde62f2f13ea02c7d96f83965d515b8b5d0cae19899058970be3aaf072d290",
+      "compressedSHA256": "aa5f30db12c8d6dfc5c1e12c7ef353ad7a68a61977d1fc5c74aaca23757740f9"
+    },
+    {
+      "file": "mcp.log.gz",
+      "rawPath": "/tmp/6232-loopback-forward-mcp.log",
+      "rawBytes": 100191,
+      "rawSHA256": "35db0906a1fda02dc6c018ece18841609430cfa981bc75c7c0b596b46a326dd2",
+      "compressedSHA256": "1707f235ea8051f657767cbc8d3dd96d348c1d98d0911ef1162561da923f2741"
+    },
+    {
+      "file": "api.log.gz",
+      "rawPath": "/tmp/6232-loopback-forward-api.log",
+      "rawBytes": 82,
+      "rawSHA256": "039b3c2ba33bb71971e78e9e143f01fb80f3379965712f9133365cb9a137a095",
+      "compressedSHA256": "d5a4c6ab3db5da2e909aceb26817a67dff76fbfbac1abb57c7b87c25ea5ee4ff"
+    },
+    {
+      "file": "composition-proof.json",
+      "rawPath": "/tmp/6232-loopback-main-composition-proof.json",
+      "rawBytes": 8719,
+      "rawSHA256": "7511d3147c56c5c0c806691b475402b44828d0d7bdca1706d8799a6c5ead32fb"
+    },
+    {
+      "file": "local-forward.json",
+      "rawPath": "/tmp/6232-loopback-main-local-forward.json",
+      "rawBytes": 6747,
+      "rawSHA256": "6764945ccca3e8b695db4132431b94c1029f51157fb969daae6ea9a00c67be5f"
+    }
+  ]
+}

@@ -21,7 +21,7 @@
 
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import type { SnapProfile } from '@/lib/snap/types';
-import { commitElementTransform } from '@/lib/element-transform/commit';
+import { commitElementAlignment, planSelectionTransform } from '@/lib/element-transform/commit';
 import { AlignBar } from '@/components/viewer/tools/command/AlignBar';
 import { AlignPlan, AlignScene } from '@/components/viewer/tools/command/AlignLayers';
 import { pickBox, shiftBox, storeyBoxes, type PlanBox } from '../align-boxes.js';
@@ -39,13 +39,18 @@ function init(ctx: CommandContext): AlignGesture {
     .map((ref) => ref.expressId);
   const primary = s.selectedEntityId === null ? null : resolveEntityRef(s.selectedEntityId);
   const reference = primary && primary.modelId === ctx.modelId && boxes.has(primary.expressId) ? primary.expressId : null;
-  return {
+  return withSelection({
     boxes,
     reference,
     targets: selected.filter((id) => id !== reference),
     mode: 'left',
     hover: null,
-  };
+  }, ctx);
+}
+
+function withSelection(g: AlignGesture, ctx: CommandContext): AlignGesture {
+  const plan = planSelectionTransform(ctx.get(), ctx.modelId, g.targets);
+  return { ...g, carried: plan?.carried ?? [] };
 }
 
 /**
@@ -70,13 +75,13 @@ export const ELEMENT_ALIGN: ModelingCommand<AlignGesture> = {
     const hover = pickBox(g.boxes, s.local);
     return hover === g.hover ? g : { ...g, hover };
   },
-  pointerDown(g, s) {
+  pointerDown(g, s, ctx) {
     const id = pickBox(g.boxes, s.local);
     if (id === null) return g;
-    if (g.reference === null) return { ...g, reference: id, targets: g.targets.filter((t) => t !== id) };
+    if (g.reference === null) return withSelection({ ...g, reference: id, targets: g.targets.filter((t) => t !== id) }, ctx);
     // The reference again lets go of it, and of the targets that were chosen against it.
-    if (id === g.reference) return { ...g, reference: null, targets: [] };
-    return { ...g, targets: g.targets.includes(id) ? g.targets.filter((t) => t !== id) : [...g.targets, id] };
+    if (id === g.reference) return withSelection({ ...g, reference: null, targets: [] }, ctx);
+    return withSelection({ ...g, targets: g.targets.includes(id) ? g.targets.filter((t) => t !== id) : [...g.targets, id] }, ctx);
   },
   doubleClick: (g) => (alignMoves(g).length > 0 ? { commit: true } : g),
   validate(g, ctx) {
@@ -89,15 +94,7 @@ export const ELEMENT_ALIGN: ModelingCommand<AlignGesture> = {
     const plane = tx.workplane;
     const moves = alignMoves(g);
     if (!plane || g.reference === null || moves.length === 0) throw new Error('Nothing to align');
-    // Each target moves by its own shift: C2's move, one target at a time, in the session plane.
-    const origin = plane.localToRender([0, 0, 0]);
-    const remesh = new Set<number>();
-    for (const { id, shift } of moves) {
-      const moved = commitElementTransform(tx, tx.modelId, [id], { kind: 'move', from: origin, to: plane.localToRender([shift[0], shift[1], 0]) });
-      // What an element hosts moves and re-meshes with it (the transform's plan carries it).
-      for (const affected of moved.remesh) remesh.add(affected);
-    }
-    return { created: [], deleted: [], remesh: [...remesh], select: [g.reference, ...moves.map((m) => m.id)] };
+    return commitElementAlignment(tx, tx.modelId, { reference: g.reference, targets: g.targets, mode: g.mode }, g.boxes, plane);
   },
   afterCommit: () => ({ exit: true }),
   ghost(g, ctx) {

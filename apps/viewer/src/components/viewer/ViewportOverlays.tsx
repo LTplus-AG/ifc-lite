@@ -21,6 +21,7 @@ import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { VIEW_CUBE_INSET_PX } from './viewcube-box';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { FlySpeedIndicator } from './FlySpeedIndicator';
+import { WalkIndicator } from './walk/WalkIndicator';
 import { OrbitPivotMarker } from './OrbitPivotMarker';
 import { Crosshair } from 'lucide-react';
 import { useTranslation } from '@/i18n';
@@ -185,6 +186,7 @@ export function ViewportOverlays({
       <SectionParkedChip />
       <MeasurementsVisibilityChip />
       <FlySpeedIndicator />
+      <WalkIndicator />
       <OrbitPivotMarker />
       {/* Touch navigation stays available on mobile. The desktop ribbon
           carries zoom and Home from the camera command list

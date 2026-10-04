@@ -1906,12 +1906,12 @@ jobs:
         # The list reporter also names completed tests while the job runs.
         run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=${{ matrix.shard }}/2 --reporter=list
       - name: Upload assistant browser evidence
-        if: always()
+        if: always() && hashFiles('test-results/**/assistant-context.png') != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: assistant-browser-evidence-${{ matrix.shard }}
           path: test-results/**/assistant-context.png
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 3
       - name: Upload E2E failure context
         # Playwright's error-context.md / traces for the failed tests only.

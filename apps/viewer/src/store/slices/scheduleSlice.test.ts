@@ -447,6 +447,45 @@ describe('scheduleSlice editing — assign / unassign products', () => {
   });
 });
 
+describe('scheduleSlice editing — IfcRelAssignsToProduct outputs (#6749)', () => {
+  const withOutputs = () => mkExtraction([
+    mkTask({
+      globalId: 'a',
+      productExpressIds: [1], productGlobalIds: ['1'],
+      outputProductExpressIds: [2, 3], outputProductGlobalIds: ['gid-2', 'gid-3'],
+    }),
+  ]);
+
+  it('unassign removes an output product, keeping the pair aligned', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(withOutputs());
+    store.getState().unassignProductsFromTask('a', [2]);
+    const t = store.getState().scheduleData!.tasks[0];
+    assert.deepStrictEqual(t.outputProductExpressIds, [3]);
+    assert.deepStrictEqual(t.outputProductGlobalIds, ['gid-3']);
+    assert.deepStrictEqual(t.productExpressIds, [1]);
+  });
+
+  it('assign does not restate an output as an input', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(withOutputs());
+    store.getState().assignProductsToTask('a', [3, 4]);
+    const t = store.getState().scheduleData!.tasks[0];
+    assert.deepStrictEqual(t.productExpressIds, [1, 4]);
+    assert.deepStrictEqual(t.outputProductExpressIds, [2, 3]);
+  });
+
+  it('computeHiddenProductIds hides an output before its task starts', () => {
+    const data = mkExtraction([mkTask({
+      globalId: 'a',
+      outputProductExpressIds: [9], outputProductGlobalIds: ['gid-9'],
+      taskTime: { scheduleStart: '2024-05-10T08:00:00Z', scheduleFinish: '2024-05-20T17:00:00Z' },
+    })]);
+    assert.ok(computeHiddenProductIds(data, Date.parse('2024-05-01T00:00:00Z')).has(9));
+    assert.ok(!computeHiddenProductIds(data, Date.parse('2024-05-11T00:00:00Z')).has(9));
+  });
+});
+
 describe('scheduleSlice editing — deleteTask', () => {
   it('removes the task and cascades sequences referring to it', () => {
     const store = bootScheduleStore();

@@ -20,11 +20,15 @@
  *      `IfcTaskTime`, `IfcLagTime`, `IfcWorkCalendar` + its own entities).
  *   2. Drop lines whose ID is in that set OR whose entity type is one of
  *      the sometimes-schedule types (`IfcRelSequence`, `IfcRelAssignsTo-
- *      Process`, `IfcRelAssignsToControl`) OR `IfcRelNests` lines that
- *      reference any ID from step 1.
+ *      Process`, `IfcRelAssignsToControl`) and references any ID from
+ *      step 1. `IfcRelNests` and `IfcRelAssignsToProduct` are pruned
+ *      instead: schedule ids leave their RelatedObjects, and the record is
+ *      dropped only when nothing else remains.
  *
- * The IfcRelNests check prevents us from stripping cost-item/resource
- * nests, which share the entity but aren't schedule-owned.
+ * The pruning keeps cost-item/resource nests and cost items pricing a
+ * product, which share those entities but aren't schedule-owned. The
+ * serializer re-emits the task side of IfcRelAssignsToProduct (task
+ * outputs, #6749), so leaving it would point at a deleted IfcTask.
  */
 const ALWAYS_SCHEDULE_TYPES: ReadonlySet<string> = new Set([
   'IFCTASK',
@@ -123,30 +127,47 @@ function classifyScheduleStatement(
     // Relationship entity; strip only if it references a schedule id.
     return referencesAnyId(stmt.attributesText, scheduleIds) ? 'drop' : 'keep';
   }
-  if (stmt.typeUpper === 'IFCRELNESTS') {
-    return classifyRelNests(stmt.attributesText, scheduleIds);
-  }
+  const layout = PRUNED_RELATION_LAYOUTS.get(stmt.typeUpper);
+  if (layout) return classifyPrunedRelation(stmt.attributesText, scheduleIds, layout);
   return 'keep';
 }
 
-function classifyRelNests(attributesText: string, scheduleIds: ReadonlySet<number>): StripAction {
-  const attributes = splitTopLevelAttributes(attributesText);
+/** Attribute positions of a relation whose RelatedObjects may mix schedule and non-schedule ids. */
+interface PrunedRelationLayout {
+  arity: number;
+  relating: number;
+  related: number;
+}
+
+const PRUNED_RELATION_LAYOUTS: ReadonlyMap<string, PrunedRelationLayout> = new Map([
   // IfcRelNests: GlobalId, OwnerHistory, Name, Description,
   // RelatingObject, RelatedObjects.
-  if (attributes.length !== 6) {
+  ['IFCRELNESTS', { arity: 6, relating: 4, related: 5 }],
+  // IfcRelAssignsToProduct: GlobalId, OwnerHistory, Name, Description,
+  // RelatedObjects, RelatedObjectsType, RelatingProduct.
+  ['IFCRELASSIGNSTOPRODUCT', { arity: 7, relating: 6, related: 4 }],
+]);
+
+function classifyPrunedRelation(
+  attributesText: string,
+  scheduleIds: ReadonlySet<number>,
+  layout: PrunedRelationLayout,
+): StripAction {
+  const attributes = splitTopLevelAttributes(attributesText);
+  if (attributes.length !== layout.arity) {
     return referencesAnyId(attributesText, scheduleIds) ? 'drop' : 'keep';
   }
-  const relatingId = parseStepRef(attributes[4]);
+  const relatingId = parseStepRef(attributes[layout.relating]);
   if (relatingId !== undefined && scheduleIds.has(relatingId)) return 'drop';
 
-  const related = splitReferenceAggregate(attributes[5]);
+  const related = splitReferenceAggregate(attributes[layout.related]);
   if (related === undefined) {
-    return referencesAnyId(attributes[5], scheduleIds) ? 'drop' : 'keep';
+    return referencesAnyId(attributes[layout.related], scheduleIds) ? 'drop' : 'keep';
   }
   const remaining = related.filter(ref => !scheduleIds.has(ref.id));
   if (remaining.length === related.length) return 'keep';
   if (remaining.length === 0) return 'drop';
-  attributes[5] = `(${remaining.map(ref => ref.text).join(',')})`;
+  attributes[layout.related] = `(${remaining.map(ref => ref.text).join(',')})`;
   return { attributesText: `(${attributes.join(',')})` };
 }
 

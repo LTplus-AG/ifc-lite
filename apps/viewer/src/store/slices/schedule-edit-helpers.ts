@@ -12,7 +12,7 @@
  * to accept raw inputs).
  */
 
-import type { ScheduleExtraction } from '@ifc-lite/parser';
+import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
 
 // ═════════════════════════════════════════════════════════════════════
 // ISO-8601 date/time helpers
@@ -119,6 +119,55 @@ export function reconcileTaskTime(
     if (finishMs !== undefined) merged.scheduleFinish = toIsoUtc(finishMs);
   }
   return merged;
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// Product assignment edits
+// ═════════════════════════════════════════════════════════════════════
+
+/**
+ * Append products to a task's IfcRelAssignsToProcess inputs, deduped. A
+ * product the task already OUTPUTS (IfcRelAssignsToProduct, #6749) is
+ * already assigned; restating it as an input would double-state it.
+ */
+export function addTaskInputProducts(
+  task: ScheduleTaskInfo,
+  products: ReadonlyArray<{ local: number; global: string }>,
+): void {
+  const existingLocal = new Set(task.productExpressIds);
+  const existingGlobal = new Set(task.productGlobalIds);
+  const outputLocal = new Set(task.outputProductExpressIds ?? []);
+  for (const { local, global } of products) {
+    if (outputLocal.has(local)) continue;
+    if (!existingLocal.has(local)) {
+      task.productExpressIds.push(local);
+      existingLocal.add(local);
+    }
+    if (!existingGlobal.has(global)) {
+      task.productGlobalIds.push(global);
+      existingGlobal.add(global);
+    }
+  }
+}
+
+/**
+ * Remove products from a task's inputs AND its IfcRelAssignsToProduct
+ * outputs (#6749). Outputs are filtered as index-aligned pairs keyed on the
+ * local id: their globalIds are IFC GlobalIds, which the renderer-space
+ * `globalsToDrop` never matches.
+ */
+export function dropTaskProducts(
+  task: ScheduleTaskInfo,
+  localsToDrop: ReadonlySet<number>,
+  globalsToDrop: ReadonlySet<string>,
+): void {
+  task.productExpressIds = task.productExpressIds.filter(id => !localsToDrop.has(id));
+  task.productGlobalIds = task.productGlobalIds.filter(gid => !globalsToDrop.has(gid));
+  if (!task.outputProductExpressIds?.length) return;
+  const outputGlobalIds = task.outputProductGlobalIds ?? [];
+  const keep = task.outputProductExpressIds.map(id => !localsToDrop.has(id));
+  task.outputProductExpressIds = task.outputProductExpressIds.filter((_, i) => keep[i]);
+  task.outputProductGlobalIds = outputGlobalIds.filter((_, i) => keep[i]);
 }
 
 // ═════════════════════════════════════════════════════════════════════

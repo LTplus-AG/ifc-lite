@@ -31,6 +31,7 @@ import { ClipboardList, ChevronDown, Diamond, Plus, Minus, Trash2, Info } from '
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import type { ScheduleTaskInfo } from '@ifc-lite/parser';
+import { taskProductExpressIds } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_IDENTIFICATION_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE, EXPRESS_PREDEFINED_TYPE_ATTRIBUTE } from './express-labels';
@@ -291,7 +292,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
           <div className="grid gap-2 rounded border border-border/60 p-2">
             <div className="flex items-center justify-between">
               <Label className="text-2xs">{t('properties.taskEdit.productsLabel')}</Label>
-              <span className="text-2xs font-mono text-muted-foreground">{t('properties.taskEdit.productsAssignedCount', { countDisplay: formatLocaleNumber(locale, task.productExpressIds.length) })}</span>
+              <span className="text-2xs font-mono text-muted-foreground">{t('properties.taskEdit.productsAssignedCount', { countDisplay: formatLocaleNumber(locale, taskProductExpressIds(task).length) })}</span>
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               <Tooltip>

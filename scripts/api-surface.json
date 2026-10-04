@@ -8302,6 +8302,8 @@
     "sourceBlockStats: function",
     "sourceBytesFromTransferable: function",
     "spatialContainerPath: function",
+    "taskProductExpressIds: function",
+    "taskProductGlobalIds: function",
     "toStepLine: function",
     "transformToLocal: function",
     "transformToWorld: function",

@@ -62,3 +62,7 @@ The user selected native clash type/severity plus discipline pairs as the defaul
 ## Completion rule
 
 Do not close the program issue [#6812](https://github.com/LTplus-AG/ifc-lite/issues/6812) until every row is complete and all ten acceptance journeys in the charter have recorded independent evidence. Each next layer gets a scoped issue, claimed ownership, native implementation, tests, a self-review record and a linked unmerged PR. No package is deferred as “later.”
+
+### Coordinator screenshot follow-up
+
+The initial coordinator recording exposed contradictory device-loss and recovery notifications. Issue #6855 replaces these messages within one notification lifecycle, retaining unrelated errors and suppressing delayed updates from older notification states. This is notification correctness, not proof of GPU recovery or geometry visibility. A successful rendered-model recording is still required for viewport acceptance. The complete program and remaining acceptance journeys remain open.

@@ -46,6 +46,15 @@ log counts cannot be compared directly with a single-load diagnostic. Compare
 ordinary logs within the same load boundary. Delivery and private-file output
 checks are documented in [stream-diagnostic.md](stream-diagnostic.md).
 
+The isolated Actions bundle also passed complete public-model checks on Linux
+and Windows, including the uploaded and downloaded file inventory. Both
+platforms preserve the same per-release output and original-job replay results.
+Fresh source builds still differ from the published engines and earlier local
+builds; the qualified delivery does not establish byte-equivalent engines,
+timings or private-model compatibility. Keep those identities separate and
+require the same-release output checks on the reporter's model. The committed
+[delivery summary](csg-work-delivery-qualification.json) pins the actual run.
+
 ## Bundled main-first module sharing: scoped SDK result (#6537)
 
 Bundled initialization removes the second observed WASM request before the

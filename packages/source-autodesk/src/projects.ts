@@ -56,9 +56,12 @@ export async function listProjects(api: Api, options?: ListProjectsOptions): Pro
       const page = record(await api.get(path, 'US', options?.signal));
       for (const hub of rows(page.data)) {
         const attrs = attributes(hub);
-        const extension = attrs.extension ? record(attrs.extension) : {};
-        const data = extension.data ? record(extension.data) : {};
-        hubs.push({ id: text(hub.id), name: text(attrs.name), region: data.region === 'EMEA' ? 'EMEA' : 'US' });
+        // APS HubData stores its authoritative region on attributes (#6823).
+        const region = attrs.region ?? 'US';
+        if (region !== 'US' && region !== 'EMEA') {
+          throw new AutodeskError('unsupported-region', `This Autodesk hub uses an unsupported region: ${text(region, 'hub region')}.`);
+        }
+        hubs.push({ id: text(hub.id), name: text(attrs.name), region });
       }
       path = nextLink(page, '/project/v1/hubs');
     }

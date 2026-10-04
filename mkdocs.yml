@@ -27,6 +27,8 @@ validation:
 # The issue-scoped section implementation/acceptance record is linked from its
 # evidence README; keep it searchable without adding a temporary plan to site nav.
 not_in_nav: |
+  # Issue-scoped viewer AI charter; linked from its user guide as layers ship.
+  architecture/viewer-ai-plan.md
   architecture/section-6614-6615-spec.md
   architecture/evidence/**
   research/**

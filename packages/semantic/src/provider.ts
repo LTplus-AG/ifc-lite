@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { coreNetworkRequest, type FetchTransport } from '@ifc-lite/sandbox/network';
+import { coreNetworkRequest, createLoopbackHostGrant, type FetchTransport } from '@ifc-lite/sandbox/network';
 import { parseCapability } from '@ifc-lite/extensions';
 import { Parser as RdfParser } from 'n3';
 import { assertReadOnlyQuery } from './query.js';
@@ -10,6 +10,7 @@ import { parseResults } from './results.js';
 import { LIMITS, type SparqlResults } from './types.js';
 export interface ProviderReadOptions {
   endpoint: string; host: string; kind: 'json' | 'select' | 'construct'; query?: string;
+  loopbackHttpOrigin?: string;
   bearer?: string; authorizedGraphs?: readonly string[]; relayProvider?: string; timeoutMs?: number; maxBytes?: number;
 }
 export type ProviderResult = { source: string; retrievedAt: string } & (
@@ -32,7 +33,8 @@ export function createSemanticProvider(transport?: FetchTransport): SemanticProv
     const timeoutMs = options.timeoutMs ?? LIMITS.timeoutMs; const maxBytes = options.maxBytes ?? LIMITS.bytes;
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000 || !Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > LIMITS.bytes) throw new Error('Invalid semantic provider limits');
     if (options.relayProvider !== undefined && !/^[A-Za-z0-9_-]{1,80}$/.test(options.relayProvider)) throw new Error('Invalid relay provider id');
-    const capability = parseCapability(`network.fetch:${options.host}`);
+    const capability = options.loopbackHttpOrigin !== undefined
+      ? { ok: true as const, value: createLoopbackHostGrant(options.host) } : parseCapability(`network.fetch:${options.host}`);
     if (!capability.ok) throw new Error('Enter a valid explicitly granted hostname');
     const endpoint = new URL(options.endpoint);
     if (endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw new Error('Endpoint credentials must be supplied separately; query parameters and fragments are disabled');
@@ -42,7 +44,7 @@ export function createSemanticProvider(transport?: FetchTransport): SemanticProv
     if (options.bearer) headers.Authorization = `Bearer ${options.bearer}`;
     if (options.relayProvider) headers['Content-Type'] = 'application/json';
     else if (options.kind !== 'json') headers['Content-Type'] = 'application/x-www-form-urlencoded';
-    const response = await coreNetworkRequest({ url: endpoint.href, method: options.relayProvider || options.kind !== 'json' ? 'POST' : 'GET', headers,
+    const response = await coreNetworkRequest({ url: options.endpoint, loopbackHttpOrigin: options.loopbackHttpOrigin, method: options.relayProvider || options.kind !== 'json' ? 'POST' : 'GET', headers,
       body: options.relayProvider ? JSON.stringify({ providerId: options.relayProvider, kind: options.kind, query: options.query })
         : options.kind === 'json' ? undefined : new URLSearchParams({ query: options.query! }).toString(),
       signal, maxBytes, timeoutMs }, [capability.value], transport);
@@ -69,7 +71,7 @@ export function createSemanticProvider(transport?: FetchTransport): SemanticProv
 }
 /** Compatibility helper for existing JSON/SELECT integrations. Credentials are never persisted. */
 export async function request(endpoint: string, host: string, signal?: AbortSignal, query?: string, transport?: FetchTransport,
-  options: Pick<ProviderReadOptions, 'bearer' | 'authorizedGraphs' | 'relayProvider'> = {}): Promise<unknown> {
+  options: Pick<ProviderReadOptions, 'bearer' | 'authorizedGraphs' | 'relayProvider' | 'loopbackHttpOrigin'> = {}): Promise<unknown> {
   const kind = query === undefined ? 'json' : assertReadOnlyQuery(query, options.authorizedGraphs);
   const result = await createSemanticProvider(transport).read({ endpoint, host, kind, query, ...options }, signal);
   if (result.kind === 'select') return { head: { vars: result.value.columns }, results: { bindings: result.value.rows } };

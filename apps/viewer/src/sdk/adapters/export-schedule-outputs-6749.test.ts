@@ -46,11 +46,14 @@ test('stripScheduleEntities drops task outputs and keeps cost items on the produ
     "#30=IFCRELASSIGNSTOPRODUCT('task-only',#10,$,$,(#21),$,#11);",
     "#31=IFCRELASSIGNSTOPRODUCT('mixed',#10,$,$,(#21,#22),$,#12);",
     "#32=IFCRELASSIGNSTOPRODUCT('cost-only',#10,$,$,(#22),$,#11);",
+    // STEP permits comments between tokens.
+    "#33=IFCRELASSIGNSTOPRODUCT('commented',#10,$,$,(#21 /* task */,#22),$,#11);",
   ]));
 
   assert.ok(!out.includes("'task-only'"), 'a relation naming only the task goes with it');
   assert.ok(out.includes("#31=IFCRELASSIGNSTOPRODUCT('mixed',#10,$,$,(#22),$,#12);"), 'the cost item stays on the product');
   assert.ok(out.includes("#32=IFCRELASSIGNSTOPRODUCT('cost-only',#10,$,$,(#22),$,#11);"));
+  assert.ok(out.includes("#33=IFCRELASSIGNSTOPRODUCT('commented',#10,$,$,(#22),$,#11);"), 'a comment does not drop the cost item');
 });
 
 test('edited export re-emits a task output once, bound to the new task (#6749)', () => {

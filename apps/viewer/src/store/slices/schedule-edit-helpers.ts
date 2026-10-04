@@ -126,48 +126,57 @@ export function reconcileTaskTime(
 // ═════════════════════════════════════════════════════════════════════
 
 /**
- * Append products to a task's IfcRelAssignsToProcess inputs, deduped. A
- * product the task already OUTPUTS (IfcRelAssignsToProduct, #6749) is
- * already assigned; restating it as an input would double-state it.
+ * Append products to a task's IfcRelAssignsToProcess inputs, deduped on the
+ * local id and appended as index-aligned pairs. A product the task already
+ * OUTPUTS (IfcRelAssignsToProduct, #6749) is already assigned; restating it
+ * as an input would double-state it.
  */
 export function addTaskInputProducts(
   task: ScheduleTaskInfo,
   products: ReadonlyArray<{ local: number; global: string }>,
 ): void {
-  const existingLocal = new Set(task.productExpressIds);
-  const existingGlobal = new Set(task.productGlobalIds);
-  const outputLocal = new Set(task.outputProductExpressIds ?? []);
+  const assigned = new Set([...task.productExpressIds, ...(task.outputProductExpressIds ?? [])]);
   for (const { local, global } of products) {
-    if (outputLocal.has(local)) continue;
-    if (!existingLocal.has(local)) {
-      task.productExpressIds.push(local);
-      existingLocal.add(local);
-    }
-    if (!existingGlobal.has(global)) {
-      task.productGlobalIds.push(global);
-      existingGlobal.add(global);
-    }
+    if (assigned.has(local)) continue;
+    task.productExpressIds.push(local);
+    task.productGlobalIds.push(global);
+    assigned.add(local);
   }
 }
 
 /**
  * Remove products from a task's inputs AND its IfcRelAssignsToProduct
- * outputs (#6749). Outputs are filtered as index-aligned pairs keyed on the
- * local id: their globalIds are IFC GlobalIds, which the renderer-space
- * `globalsToDrop` never matches.
+ * outputs (#6749), filtering each expressId/globalId list as index-aligned
+ * pairs so a dropped product never leaves its partner behind. A pair goes
+ * when either side matches: parsed globalIds are IFC GlobalIds, which the
+ * renderer-space `globalsToDrop` never matches, while viewer-assigned ones
+ * are renderer ids.
  */
 export function dropTaskProducts(
   task: ScheduleTaskInfo,
   localsToDrop: ReadonlySet<number>,
   globalsToDrop: ReadonlySet<string>,
 ): void {
-  task.productExpressIds = task.productExpressIds.filter(id => !localsToDrop.has(id));
-  task.productGlobalIds = task.productGlobalIds.filter(gid => !globalsToDrop.has(gid));
+  const inputs = dropPairs(task.productExpressIds, task.productGlobalIds, localsToDrop, globalsToDrop);
+  task.productExpressIds = inputs.expressIds;
+  task.productGlobalIds = inputs.globalIds;
   if (!task.outputProductExpressIds?.length) return;
-  const outputGlobalIds = task.outputProductGlobalIds ?? [];
-  const keep = task.outputProductExpressIds.map(id => !localsToDrop.has(id));
-  task.outputProductExpressIds = task.outputProductExpressIds.filter((_, i) => keep[i]);
-  task.outputProductGlobalIds = outputGlobalIds.filter((_, i) => keep[i]);
+  const outputs = dropPairs(task.outputProductExpressIds, task.outputProductGlobalIds ?? [], localsToDrop, globalsToDrop);
+  task.outputProductExpressIds = outputs.expressIds;
+  task.outputProductGlobalIds = outputs.globalIds;
+}
+
+function dropPairs(
+  expressIds: readonly number[],
+  globalIds: readonly string[],
+  localsToDrop: ReadonlySet<number>,
+  globalsToDrop: ReadonlySet<string>,
+): { expressIds: number[]; globalIds: string[] } {
+  const drop = (i: number) => localsToDrop.has(expressIds[i]) || globalsToDrop.has(globalIds[i]);
+  return {
+    expressIds: expressIds.filter((_, i) => !drop(i)),
+    globalIds: globalIds.filter((_, i) => !drop(i)),
+  };
 }
 
 // ═════════════════════════════════════════════════════════════════════

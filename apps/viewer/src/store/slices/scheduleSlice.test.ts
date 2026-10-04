@@ -466,6 +466,26 @@ describe('scheduleSlice editing — IfcRelAssignsToProduct outputs (#6749)', () 
     assert.deepStrictEqual(t.productExpressIds, [1]);
   });
 
+  it('unassign drops a parsed input together with its IFC GlobalId', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(withOutputs());
+    store.getState().unassignProductsFromTask('a', [1]);
+    const t = store.getState().scheduleData!.tasks[0];
+    assert.deepStrictEqual(t.productExpressIds, []);
+    assert.deepStrictEqual(t.productGlobalIds, []);
+  });
+
+  it('assign keeps input ids paired when the product is already an input', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({ globalId: 'a', productExpressIds: [1], productGlobalIds: ['gid-1'] }),
+    ]));
+    store.getState().assignProductsToTask('a', [1, 5]);
+    const t = store.getState().scheduleData!.tasks[0];
+    assert.deepStrictEqual(t.productExpressIds, [1, 5]);
+    assert.deepStrictEqual(t.productGlobalIds, ['gid-1', '5']);
+  });
+
   it('assign does not restate an output as an input', () => {
     const store = bootScheduleStore();
     store.getState().setScheduleData(withOutputs());

@@ -58,6 +58,8 @@ const BODY = [
   // A cost item pricing a product is NOT a task output.
   "#60=IFCCOSTITEM('cost',#10,'Cost',$,$,$,$,$,$);",
   "#61=IFCRELASSIGNSTOPRODUCT('cost-on-wall',#10,$,$,(#60),$,#21);",
+  // A relation to a product absent from the file adds no output.
+  "#62=IFCRELASSIGNSTOPRODUCT('dangling',#10,$,$,(#41),$,#999);",
 ];
 
 async function parseStep(stepText: string) {

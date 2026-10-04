@@ -206,7 +206,9 @@ function parseStepRef(value: string): number | undefined {
 }
 
 function splitReferenceAggregate(value: string): Array<{ id: number; text: string }> | undefined {
-  const trimmed = value.trim();
+  // STEP allows `/* … */` comments between tokens; a reference aggregate
+  // holds no string literals, so stripping them here is safe.
+  const trimmed = value.replace(/\/\*[\s\S]*?\*\//g, '').trim();
   if (!trimmed.startsWith('(') || !trimmed.endsWith(')')) return undefined;
   const members = trimmed.slice(1, -1).split(',');
   const refs: Array<{ id: number; text: string }> = [];

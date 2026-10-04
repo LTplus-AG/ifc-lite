@@ -52,9 +52,11 @@ export function assignTaskOutputProducts(
       const task = taskByExpressId.get(relatedId);
       if (!task) continue;
       if (!resolved) {
-        // Resolve the effective product GlobalId; a tombstoned product keeps
-        // its expressId with an empty GlobalId, as in the inputs pass.
-        gid = reader.get(productId) ? reader.globalId(productId) : undefined;
+        // A product deleted (overlay tombstone) or absent from the file is
+        // no output at all: keeping its id would let an edited export write
+        // a reference to a record that no longer exists.
+        if (!reader.get(productId)) break;
+        gid = reader.globalId(productId);
         if (gid) globalIdByExpressId.set(productId, gid);
         resolved = true;
       }

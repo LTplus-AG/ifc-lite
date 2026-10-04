@@ -147,7 +147,7 @@ export function LoadReportPanel({ onClose }: LoadReportPanelProps) {
   const handleExport = useCallback(() => downloadLoadReportJSON(reports), [reports]);
 
   return (
-    <div className="flex h-full flex-col">
+    <section aria-label={t('loadReportPanel.title')} className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b p-3">
         <FileWarning className="h-4 w-4 text-amber-600" />
         <span className="flex-1 text-sm font-medium">{t('loadReportPanel.title')}</span>
@@ -175,6 +175,6 @@ export function LoadReportPanel({ onClose }: LoadReportPanelProps) {
           ))
         )}
       </div>
-    </div>
+    </section>
   );
 }

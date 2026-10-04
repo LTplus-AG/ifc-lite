@@ -131,7 +131,8 @@ test('native clash evidence reaches the assistant without executing model output
     (globalThis as unknown as { __ifc_lite_viewer_store__: { getState(): { openPanelInHome(panel: 'loadReport'): void } } })
       .__ifc_lite_viewer_store__.getState().openPanelInHome('loadReport');
   });
-  await page.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  await page.getByRole('region', { name: 'Load report', exact: true })
+    .getByRole('button', { name: 'Discuss with AI', exact: true }).click();
   await assistant.getByText('Inspect evidence sent to the model', { exact: true }).click();
   await expect(assistant.locator('pre')).toContainText('"source":"loadReport"');
   await expect(assistant.locator('pre')).toContainText('AC20-FZK-Haus');

@@ -1,0 +1,67 @@
+{
+  "status": "SOURCE_CORRECTNESS_QUALIFIED_UNCOMMITTED_NOT_BROWSER_PERF_LEASE",
+  "utc": "2026-10-03T22:40:39.001604+00:00",
+  "sourceFreezeSHA256": "4dc606beb7744163ec4da9ae4f160763dba66a94308ce471ec8f424983bf07a0",
+  "sourcePatchSHA256": "dccaf95d0baf5a3c1c564c9905dfa0d922113656e9cd9de0bc407d1e6e57896e",
+  "sourceUnchangedAfterFinalControls": true,
+  "entries": {
+    "viewer_restored": {
+      "log": "/tmp/6232-takeover/6537-lazy-source-qualification-v2/loader-inverse-restored.log",
+      "counts": {
+        "tests": 30,
+        "pass": 30,
+        "fail": 0,
+        "skipped": 0
+      }
+    },
+    "server_parquet": {
+      "log": "/tmp/6232-takeover/6537-lazy-source-qualification-v2/server-parquet-restored.log",
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "skipped": 0
+      }
+    },
+    "inverse": {
+      "log": "/tmp/6232-takeover/6537-lazy-source-qualification-v2/loader-inverse-mutated.log",
+      "counts": {
+        "tests": 8,
+        "pass": 1,
+        "fail": 7,
+        "skipped": 0
+      }
+    },
+    "ifcx": {
+      "log": "/tmp/6232-takeover/6537-lazy-source-ifcx-controls-v1.log",
+      "counts": {
+        "tests": 202,
+        "pass": 202,
+        "fail": 0,
+        "skipped": 0
+      }
+    }
+  },
+  "parserZIPControls": {
+    "tests": 34,
+    "pass": 34,
+    "fail": 0,
+    "skipped": 0,
+    "source": "actual guarded root parser selection v1; production package source unchanged since then"
+  },
+  "plainRootTypecheck": "111/111 tasks PASS; actual audit 3354/3354 test files across 57 packages",
+  "productionBuild": "62/62 tasks PASS; intended production source unchanged, later edits were tests only",
+  "sourceGates": "9 PASS including scoped deny-warnings lint and 433 compiled doc snippets (12 intentionally skipped)",
+  "pending": [
+    "Real default-worker browser transport and viewer functional evidence",
+    "Fresh immutable source/artifact-qualified whole-viewer A/B and physical-memory evidence",
+    "Parent source review/commit/publication; no remote actions performed"
+  ],
+  "limitations": [
+    "Real WASM fixture is bounded creator-produced STEP with declared-large file size selecting acquisition; no real 256 MiB fixture allocation",
+    "WorkerParser call records source then deliberately rejects Node worker startup, so real main-thread parser fallback is proved; browser worker transport is not",
+    "No rendered geometry, GPU frame, performance speed, memory peak reduction, federation rendering or Edge 1778 MiB success claimed",
+    "Allocation removal is specific to canonical viewer source preparation; standalone SDK path and per-WASM source copies are unaffected",
+    "Admitted ArrayBuffer-only cache or IFCX/GLB consumer may still allocate a memoized owned copy"
+  ]
+}

@@ -236,6 +236,27 @@ describe('loadFromServer — a superseded stream must not paint into the active 
     );
   });
 
+  it('shared source sizing chooses streaming without replacing uploaded File bytes (#6537)', async () => {
+    const file = new File(['ISO-10303-21;'], 'shared-server.ifc');
+    // The server hook reads only byteLength. Model the large-source size on a
+    // real tiny SAB, avoiding a quarter-gigabyte test allocation.
+    const source = new SharedArrayBuffer(16);
+    Object.defineProperty(source, 'byteLength', { value: 200 * 1024 * 1024 });
+    const stream = IfcServerClient.prototype.parseParquetStream;
+    let uploaded: File | undefined;
+    IfcServerClient.prototype.parseParquetStream = async function(input, ...args) {
+      assert.ok(input instanceof File);
+      uploaded = input;
+      return stream.call(this, input, ...args);
+    };
+    releaseBatch2();
+    const result = await loadFromServer!(file, source, () => false);
+    assert.equal(result, true);
+    assert.equal(uploaded, file, 'source sizing must never replace the original archive/File upload');
+    assert.deepEqual(snapshot().geometryMeshIds.sort((a, b) => a - b), [1, 2]);
+    assert.equal(await uploaded!.text(), 'ISO-10303-21;');
+  });
+
   it('control: a NON-stale load still paints both batches', async () => {
     // No staleness to wait on here — release batch 2 immediately so the
     // mocked stream completes like an ordinary uninterrupted load.

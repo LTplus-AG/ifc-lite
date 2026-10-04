@@ -1,0 +1,307 @@
+{
+  "format": "ifc-lite-raw-evidence-v1",
+  "archiveSHA256": "270618b5f5e852cc373c26f7d65bffe7b7d50e3928b5ce4960db5286a636f8ca",
+  "decodedJSONSHA256": "978d8bd14260049d543904b87f104193e808d2fccfcc1de1b185b641c01129cb",
+  "records": [
+    {
+      "path": "6537-lazy-source-api-update-v1.log",
+      "bytes": 224,
+      "sha256": "10a11a730c8c1b5a1516009fb6a429c0b9129da7ef5377b6b51fe4e440695238"
+    },
+    {
+      "path": "6537-lazy-source-final-gates-v2/api-surface.log",
+      "bytes": 82,
+      "sha256": "1ef02aae97c23f283480f1c9f55566098aa1addc210bd519c60265e4854a2dbf"
+    },
+    {
+      "path": "6537-lazy-source-final-gates-v2/diff.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "6537-lazy-source-final-gates-v2/docs-generated.log",
+      "bytes": 199,
+      "sha256": "686dbd541fabd93ac39a1a127f4c2704592c021c45aa03d56786b8019d53694d"
+    },
+    {
+      "path": "6537-lazy-source-final-gates-v2/docs-samples.log",
+      "bytes": 226,
+      "sha256": "1c6db93846c3c1b02f4d3b81f6c41c08fd074da98c40e1431975c8a1c4e8519e"
+    },
+    {
+      "path": "6537-lazy-source-final-gates-v2/gates.json",
+      "bytes": 3469,
+      "sha256": "0a7e71da58347d3256e3c0a662add3a3b1ab186658bbdd0e1bf3ab5986691615"
+    },
+    {
+      "path": "6537-lazy-source-final-gates-v2/module-size.log",
+      "bytes": 12539,
+      "sha256": "49db563c8ab1df90cc35ff17fdb178061a386dfb3c09f115218fb6b4cf68bcad"
+    },
+    {
+      "path": "6537-lazy-source-final-gates-v2/readmes.log",
+      "bytes": 188,
+      "sha256": "41278713de9bfb91f69be98ad0d2764cdab3e5804f8635428cf3653ee3c4da84"
+    },
+    {
+      "path": "6537-lazy-source-final-gates-v2/scoped-lint.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "6537-lazy-source-final-gates-v2/source-assertions.log",
+      "bytes": 30811,
+      "sha256": "c907d1adae01db586feb1426a545552f10cc8354b677b334f5be88e702eed095"
+    },
+    {
+      "path": "6537-lazy-source-final-gates-v2/typecheck-coverage-audit.log",
+      "bytes": 2736,
+      "sha256": "8a1f01b47666253d3354262fbe3059bc45b080a3e4f28110bfa78d246b32d798"
+    },
+    {
+      "path": "6537-lazy-source-final-gates-v2/wiring.log",
+      "bytes": 859,
+      "sha256": "69a36296afef8b8191674e3f6642b9a230dfb8647dafee1a48d482198f11fccd"
+    },
+    {
+      "path": "6537-lazy-source-ifcx-controls-v1.json",
+      "bytes": 776,
+      "sha256": "4d230473651eed21270df093a95322b9feb57dd8a331e5dee000a20c3b96afc8"
+    },
+    {
+      "path": "6537-lazy-source-ifcx-controls-v1.log",
+      "bytes": 28898,
+      "sha256": "34eb69ab0a6c05e6fa1c59da707239a9aee4d170f6a3665627fdda865c9e4f31"
+    },
+    {
+      "path": "6537-lazy-source-install-v1.json",
+      "bytes": 712,
+      "sha256": "3c501c8f02159003a4498d3f8d2613b83310f377d61f2020f666dd4731d6ba33"
+    },
+    {
+      "path": "6537-lazy-source-install-v1.log",
+      "bytes": 3757,
+      "sha256": "6b99fe800663849cf5843eaf61aaaa7483a25a2f1e2f8360b53d351b60fea83b"
+    },
+    {
+      "path": "6537-lazy-source-observer-corrections-v3.json",
+      "bytes": 778,
+      "sha256": "501f6dd0c828be46db23e37d3bd79ae8bca273b2a3814ce63275ee4abe58fc2a"
+    },
+    {
+      "path": "6537-lazy-source-observer-corrections-v3.log",
+      "bytes": 39855,
+      "sha256": "8cf0897a5ed84b1363dda037582608e1338869bebca559c40516e789e3dec35a"
+    },
+    {
+      "path": "6537-lazy-source-parser-controls-v1.json",
+      "bytes": 788,
+      "sha256": "467a9d46008da912b42d57a6a331300331be6c8d23994223d00ba37199d53406"
+    },
+    {
+      "path": "6537-lazy-source-parser-controls-v1.log",
+      "bytes": 15367,
+      "sha256": "1e697375b13b33f1d8da9fafc33b28c9172e63c19e6bb5eb754e29202dfec7f8"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/api-surface.log",
+      "bytes": 82,
+      "sha256": "1ef02aae97c23f283480f1c9f55566098aa1addc210bd519c60265e4854a2dbf"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/docs-generated.log",
+      "bytes": 199,
+      "sha256": "686dbd541fabd93ac39a1a127f4c2704592c021c45aa03d56786b8019d53694d"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/gates.json",
+      "bytes": 2125,
+      "sha256": "dc1e94ce10c3f69fa9907f766ca8fce6db0c845511d1866553b3bb83fdc7434b"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/loader-inverse-mutated-wrapper.log",
+      "bytes": 714,
+      "sha256": "b3c97dedac2a24409a2c44d512434ef187de966665b2211a6ab084e74bcb84d8"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/loader-inverse-mutated.json",
+      "bytes": 778,
+      "sha256": "f652504864426be5971aca7386e549091824f0a49621bbdfd856c84072555e62"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/loader-inverse-mutated.log",
+      "bytes": 39411,
+      "sha256": "644ca8bd50f8bf0e27bfe976465366f192de70d31501c776b91362cb5f799a6b"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/loader-inverse-restored.json",
+      "bytes": 778,
+      "sha256": "3979ce56bc6aa714527fc6b017377a1987d7d4dcf71bc939953a352cf225df8d"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/loader-inverse-restored.log",
+      "bytes": 30949,
+      "sha256": "984ce6f9379d36f137e84ab4856deeae43760896c2fc83f63bb5dede61781e99"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/loader-inverse.json",
+      "bytes": 1198,
+      "sha256": "495b8db3afdbecedf19d36423978e87474fc2caa8ff463d48109d087baf3d678"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/loader-inverse.py",
+      "bytes": 2058,
+      "sha256": "fd59d59d6fbb20e3232e39d397ef3e437d350dc672fb1e2cf5b50e6de3a3fdd2"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/module-size.log",
+      "bytes": 12539,
+      "sha256": "49db563c8ab1df90cc35ff17fdb178061a386dfb3c09f115218fb6b4cf68bcad"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/readmes.log",
+      "bytes": 188,
+      "sha256": "41278713de9bfb91f69be98ad0d2764cdab3e5804f8635428cf3653ee3c4da84"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/scoped-lint-corrected-v2.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/scoped-lint.log",
+      "bytes": 572,
+      "sha256": "77ad69f2ab825d3b7c3e7b819a02f1f3d239109f6463acb443698939f78054c0"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/source-assertions.log",
+      "bytes": 30811,
+      "sha256": "c907d1adae01db586feb1426a545552f10cc8354b677b334f5be88e702eed095"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v1/wiring.log",
+      "bytes": 859,
+      "sha256": "69a36296afef8b8191674e3f6642b9a230dfb8647dafee1a48d482198f11fccd"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v2/loader-inverse-mutated-wrapper.log",
+      "bytes": 714,
+      "sha256": "a197d6540d77b7c6cb8940cdf317bdbe35f091975272a0edc222439a391acc9a"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v2/loader-inverse-mutated.json",
+      "bytes": 778,
+      "sha256": "082ccd6c870fcf59997de60cfabf0a57fba1d67e472768ea5020c2d719609ea5"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v2/loader-inverse-mutated.log",
+      "bytes": 39203,
+      "sha256": "79806765d5a4e77633fbf74b4f9c8bbdfadd8572988af5062cf1349c7931ee24"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v2/loader-inverse-restored.json",
+      "bytes": 778,
+      "sha256": "0a25c23e552b2b07261ae6e1ef2e399b18045eef6e3fd27db4ff612adc5cfde1"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v2/loader-inverse-restored.log",
+      "bytes": 47130,
+      "sha256": "826b158caada0d66afdb30b8d165619dd66aba3222aae0256b41bb8715ccd7d6"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v2/loader-inverse-wrapper.log",
+      "bytes": 1152,
+      "sha256": "f8c6a58b4eb6e139cab717f01c3aa5a3828309863b19bbd3ee43d1e499d9f4c8"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v2/loader-inverse.json",
+      "bytes": 1198,
+      "sha256": "87810826df81bcb3986baa932d803fc1bc3a623d2d3414a397766f24145aa8a1"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v2/loader-inverse.py",
+      "bytes": 2058,
+      "sha256": "fd59d59d6fbb20e3232e39d397ef3e437d350dc672fb1e2cf5b50e6de3a3fdd2"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v2/runtime-tooling-receipt.json",
+      "bytes": 4199,
+      "sha256": "0d27aa1602f7ad840453a718db0272235b9340274a93f1a5408c782719e0fda8"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v2/server-parquet-restored.json",
+      "bytes": 776,
+      "sha256": "b24fa6712bf67138b7b96dc32e271e5df62dea9bf233b6c494730b4f252a0f28"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v2/server-parquet-restored.log",
+      "bytes": 1849,
+      "sha256": "45961359491120e0824408376dda7aa4bac7a42e0817b0f6efd7d3f15c4cf9d3"
+    },
+    {
+      "path": "6537-lazy-source-qualification-v2/source-freeze.json",
+      "bytes": 3477,
+      "sha256": "4dc606beb7744163ec4da9ae4f160763dba66a94308ce471ec8f424983bf07a0"
+    },
+    {
+      "path": "6537-lazy-source-real-handoff-v1.json",
+      "bytes": 764,
+      "sha256": "67d73757889487d157e1c74711e9a44df4f8976189381b5ccf3843a805f91aa1"
+    },
+    {
+      "path": "6537-lazy-source-real-handoff-v1.log",
+      "bytes": 70629,
+      "sha256": "a674930dadd3d0b0fcdd97975fe88c07f79832ce2d05fee2d660b32e9b65980f"
+    },
+    {
+      "path": "6537-lazy-source-root-build-v1.json",
+      "bytes": 732,
+      "sha256": "925257bfc748a0e9e99d63563a413763f60e3930c5272a95653f60a865044e3d"
+    },
+    {
+      "path": "6537-lazy-source-root-build-v1.log",
+      "bytes": 100566,
+      "sha256": "96345f79068107b0d2a07197ea48dd2a6c75edf96819cd05a024cb473872614c"
+    },
+    {
+      "path": "6537-lazy-source-typecheck-v1.json",
+      "bytes": 689,
+      "sha256": "bd20c757f634b6b8e30f8bd70845ddc42633d7931a5df8adcd66b9105ad0b6b4"
+    },
+    {
+      "path": "6537-lazy-source-typecheck-v1.log",
+      "bytes": 45650,
+      "sha256": "9c423665641aa29ac994fe0294e1e8885284f3dc03ce3f62a11f5a78895c21af"
+    },
+    {
+      "path": "6537-lazy-source-typecheck-v2.json",
+      "bytes": 689,
+      "sha256": "1bde340d7fa661922447dffbfd882a789d803e5ac4bd325d5b6146a45c6ab4e4"
+    },
+    {
+      "path": "6537-lazy-source-typecheck-v2.log",
+      "bytes": 46308,
+      "sha256": "a973baea2f7a09562b413d155cb370caeff576195e5a7c867de33b0e4f619145"
+    },
+    {
+      "path": "6537-lazy-source-viewer-controls-v1.json",
+      "bytes": 764,
+      "sha256": "5f281629d5c48bc843d97722a126d7ee0858ccd7f6cfd68e583026fe7f077178"
+    },
+    {
+      "path": "6537-lazy-source-viewer-controls-v1.log",
+      "bytes": 96116,
+      "sha256": "764cecc7910d0d388566125dee997ac68ca2b812de41f16a4e77b03c63b43059"
+    },
+    {
+      "path": "6537-lazy-source-viewer-controls-v2.json",
+      "bytes": 778,
+      "sha256": "1e25e5234c55f6e2c9d6a89b0c9b167b63fd2db370f904ba69c8dda36b4bfd94"
+    },
+    {
+      "path": "6537-lazy-source-viewer-controls-v2.log",
+      "bytes": 47666,
+      "sha256": "3c82ed895b1ea99ec8f38390de3449a4d504488ac12f78c213c13784abb90031"
+    }
+  ]
+}

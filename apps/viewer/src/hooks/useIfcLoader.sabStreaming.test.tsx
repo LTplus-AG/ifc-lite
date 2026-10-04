@@ -45,6 +45,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
 import { useIfcLoader } from './useIfcLoader.js';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 
 /**
  * `STREAM_SAB_THRESHOLD` (apps/viewer/src/utils/ifcConfig.ts) is 256 MiB.
@@ -114,10 +115,13 @@ function probedStepFile(probe: FileProbe): File {
 function withRecordedSharedArrayBuffer<T>(sizes: number[], body: () => Promise<T>): Promise<T> {
   const holder = globalThis as { SharedArrayBuffer?: unknown };
   const real = holder.SharedArrayBuffer as SharedArrayBufferConstructor;
-  holder.SharedArrayBuffer = function RecordingSharedArrayBuffer(byteLength: number): SharedArrayBuffer {
+  const recording = function RecordingSharedArrayBuffer(byteLength: number): SharedArrayBuffer {
     sizes.push(byteLength);
     return new real(Math.min(byteLength, STEP_BYTES.byteLength));
   } as unknown as SharedArrayBufferConstructor;
+  // Preserve the native brand checks used by the real loader and observer.
+  Object.defineProperty(recording, 'prototype', { value: real.prototype });
+  holder.SharedArrayBuffer = recording;
   return body().finally(() => {
     holder.SharedArrayBuffer = real;
   });
@@ -198,4 +202,82 @@ describe('useIfcLoader - the IFC/STEP path keeps SAB streaming (#600)', () => {
       'exactly one SharedArrayBuffer must be allocated at the file size, i.e. the destination the file streamed into',
     );
   });
+});
+
+/** Count real whole-source slice operations, not code text. Bounded UTF-8
+ * prefix copies remain permitted; this fixture exceeds that prefix. */
+async function observeSourceCopies(body: () => Promise<void>): Promise<number> {
+  let copies = 0;
+  const original = Uint8Array.prototype.slice;
+  Uint8Array.prototype.slice = function(start?: number, end?: number) {
+    if (this.buffer instanceof SharedArrayBuffer && this.byteLength === STEP_BYTES.byteLength) copies++;
+    return original.call(this, start, end);
+  };
+  try {
+    await body();
+    return copies;
+  } finally {
+    Uint8Array.prototype.slice = original;
+  }
+}
+
+it('ordinary large IFC reaches engine admission without a second full source allocation (#6537)', async () => {
+  const reads = { arrayBuffer: 0, stream: 0 };
+  const requested: number[] = [];
+  const copies = await observeSourceCopies(() => withRecordedSharedArrayBuffer(requested, async () => {
+    await act(async () => { await hookApi!.loadFile(probedStepFile(reads)); });
+  }));
+  assert.equal(reads.stream, 1, 'the real canonical loader reached source acquisition');
+  assert.equal(useViewerStore.getState().models.size, 1);
+  assert.equal(copies, 0, 'ordinary STEP must not materialize a second source before its owned consumers');
+});
+
+for (const residents of [1, 2]) {
+  it(`federated admission with ${residents} resident model(s) keeps shared source and existing owners (#6537)`, async () => {
+    const existing = Array.from({ length: residents }, (_, i) => fixtureModel(`resident-${i}`));
+    useViewerStore.setState(fixtureModels(...existing));
+    const reads = { arrayBuffer: 0, stream: 0 };
+    const requested: number[] = [];
+    const copies = await observeSourceCopies(() => withRecordedSharedArrayBuffer(requested, async () => {
+      await act(async () => { await hookApi!.loadFile(probedStepFile(reads), { kind: 'federated', modelId: 'incoming' }); });
+    }));
+    assert.equal(reads.stream, 1, 'federated load reached the same canonical source acquisition');
+    assert.equal(copies, 0);
+    assert.equal(useViewerStore.getState().models.size, residents, 'engine refusal must preserve loaded owners');
+    for (const model of existing) assert.equal(useViewerStore.getState().models.get(model.id), model);
+  });
+}
+
+it('cancel during shared acquisition never materializes the superseded source (#6537)', async () => {
+  const reads = { arrayBuffer: 0, stream: 0 };
+  const file = probedStepFile(reads);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let entered!: () => void;
+  const reading = new Promise<void>(resolve => { entered = resolve; });
+  Object.defineProperty(file, 'stream', { value: () => {
+    reads.stream++;
+    return new ReadableStream<Uint8Array>({ async start(controller) {
+      entered();
+      await gate;
+      controller.enqueue(STEP_BYTES);
+      controller.close();
+    } });
+  } });
+  const requested: number[] = [];
+  const copies = await observeSourceCopies(() => withRecordedSharedArrayBuffer(requested, async () => {
+    const load = hookApi!.loadFile(file);
+    try {
+      await reading;
+      const cancel = useViewerStore.getState().activeLoadCanceller;
+      assert.ok(cancel, 'a real in-flight acquisition owns the cancel action');
+      cancel();
+    } finally {
+      release();
+      await load;
+    }
+  }));
+  assert.equal(reads.stream, 1);
+  assert.equal(copies, 0);
+  assert.equal(useViewerStore.getState().ifcDataStore, null, 'cancelled source cannot publish parser output');
 });

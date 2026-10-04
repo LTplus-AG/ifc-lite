@@ -296,6 +296,9 @@ if (result.format === 'ifcx') {
 const format = detectFormat(buffer);  // 'ifc', 'ifcx', 'glb', or 'unknown'
 ```
 
+`detectFormat` accepts `ArrayBuffer` and `SharedArrayBuffer`; it reads only a
+bounded prefix and uses shared-buffer-safe UTF-8 decoding.
+
 ### `.ifcZIP` Containers
 
 `parseAuto` (and every built-in loader — CLI, MCP, the viewer) transparently
@@ -776,3 +779,18 @@ worker transport preserves these fields when reconstructing a store.
 
 `computeTransformMatrix(MapConversion)` derives the canonical 4×4 matrix
 from the current conversion, including its optional axis scale factors.
+
+### Shared source ownership
+
+`unwrapIfcZipWithResources` accepts an `ArrayBuffer` or `SharedArrayBuffer`.
+Ordinary non-ZIP input keeps its original buffer; ZIP input produces an owned
+`ArrayBuffer` containing the extracted model and retains the archive's image
+resources separately. Existing `ArrayBuffer` callers keep an `ArrayBuffer`
+result, and the default `IfcZipContents` type retains that contract. For shared
+input, `model` may be shared ordinary bytes or owned extracted bytes.
+
+The viewer keeps ordinary IFC source shared through format detection, geometry
+and parser fallback. An owned copy is deferred until an ArrayBuffer-only
+consumer, such as an admitted cache write, requires it. This removes an eager
+allocation; it does not remove per-instance WASM source storage or establish a
+load-time or peak-memory improvement.

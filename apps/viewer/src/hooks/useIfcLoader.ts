@@ -10,6 +10,7 @@
  * Extracted from useIfc.ts for better separation of concerns
  */
 import { useCallback, useEffect, useRef } from 'react';
+import { arrayBufferForConsumer } from '../utils/arrayBufferForConsumer.js';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
@@ -732,7 +733,7 @@ export function useIfcLoader() {
       const acquired: AcquiredBuffer = pointCloudFormat
         ? { buffer: headBuf, view: new Uint8Array(headBuf), isShared: false }
         : await acquireFileBuffer(file);
-      // Legacy APIs below require ArrayBuffer.
+      // Keep the acquired source shared until an owned-buffer consumer needs it.
       let buffer: ArrayBuffer | SharedArrayBuffer = acquired.buffer;
       const fileReadMs = performance.now() - fileReadStart;
       console.log(
@@ -745,9 +746,7 @@ export function useIfcLoader() {
       // Transparent .ifcZIP unwrap; point clouds retain Blob streaming.
       let textureBitmaps: TextureBitmapStore | null = null;
       if (!pointCloudFormat) {
-        // Preserve ArrayBuffer zero-copy; copy SAB at this legacy API boundary.
-        const zipInput = buffer instanceof ArrayBuffer ? buffer : new Uint8Array(buffer).slice().buffer;
-        const zipContents = await unwrapIfcZipWithResources(zipInput);
+        const zipContents = await unwrapIfcZipWithResources(buffer);
         buffer = zipContents.model;
         // Retain original archive paths/encoded bytes alongside shared bitmaps.
         appearanceLoad = modelAppearanceAssets.begin(modelId);
@@ -760,9 +759,9 @@ export function useIfcLoader() {
       placementIdentity = pointCloudFormat ? undefined : await placementSourceIdentity(file, () => isStale(), acquired.view); // raw pre-unwrap bytes: no Blob re-read (#6431)
       if (isStale()) return;
       if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity, sourceContentHash: placementIdentity });
-      format = pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : new Uint8Array(buffer).slice().buffer);
+      format = pointCloudFormat ?? detectFormat(buffer);
 
-      const arrayBuffer = buffer instanceof ArrayBuffer ? buffer : new Uint8Array(buffer).slice().buffer; buffer = arrayBuffer;
+      const getArrayBuffer = arrayBufferForConsumer(buffer);
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
       // No on-disk cache, no server upload — the data goes worker → GPU.
@@ -975,7 +974,7 @@ export function useIfcLoader() {
         setGeometryStreamingActive(false);
 
         try {
-          const result = await parseIfcxViewerModel(arrayBuffer, setProgress);
+          const result = await parseIfcxViewerModel(getArrayBuffer(), setProgress);
           // Stale-guard-after-await sweep: `parseIfcxViewerModel` is a real
           // (client-side) parse — the only await in this branch — and a
           // newer load (or model removal) may have superseded this one while
@@ -1030,7 +1029,7 @@ export function useIfcLoader() {
         setGeometryStreamingActive(false);
 
         try {
-          const result = await prepareGlbViewerModel(arrayBuffer, appearanceLoad!.decode, () => isStale());
+          const result = await prepareGlbViewerModel(getArrayBuffer(), appearanceLoad!.decode, () => isStale());
           if (!result) return;
           if (target.kind === 'primary') {
             setGeometryResult(result.geometryResult);
@@ -1255,7 +1254,7 @@ export function useIfcLoader() {
       if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         loadStage = 'server-fetch';
-        const serverSuccess = await loadFromServer(file, arrayBuffer, () => isStale());
+        const serverSuccess = await loadFromServer(file, buffer, () => isStale());
         if (serverSuccess) {
           const state = useViewerStore.getState();
           await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
@@ -1349,9 +1348,9 @@ export function useIfcLoader() {
       const useParserWorker = WorkerParser.isSupported();
       let sharedSource: SharedArrayBuffer | null = null;
       if (useParserWorker) {
-        if (acquired.isShared && acquired.buffer instanceof SharedArrayBuffer) {
-          // acquireFileBuffer already streamed bytes into a SAB. Reuse it.
-          sharedSource = acquired.buffer;
+        if (buffer instanceof SharedArrayBuffer) {
+          // Reuse the model source, never an original ZIP archive.
+          sharedSource = buffer;
         } else {
           // Smaller files (or non-COI) took the `await file.arrayBuffer()`
           // branch — make a SAB copy so the parser worker can read it.
@@ -1988,7 +1987,7 @@ export function useIfcLoader() {
                     // restore the flat meshes only and drop all instanced occurrences.
                     ...(allInstancedShards.length > 0 ? { instancedShards: allInstancedShards } : {}),
                   };
-                  await saveToCache(cacheKey, dataStore, geometryData, arrayBuffer, file.name, {
+                  await saveToCache(cacheKey, dataStore, geometryData, getArrayBuffer(), file.name, {
                     persistSource: cachePlan.persistSource,
                     // mtime guard for a source-decoupled hit (the full-file
                     // validation hash is computed off-thread inside saveToCache).

@@ -27,6 +27,23 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Ordinary source ownership through viewer ZIP preparation (#6537)
+
+The canonical viewer acquisition can stream large files directly into shared
+source memory, but unconditional resource-aware ZIP preparation copied those
+ordinary STEP bytes into an owned buffer before detecting that no archive
+extraction was needed. Geometry separately reused the original shared source.
+Preserving non-ZIP ownership through preparation and format detection removes
+that eager allocation. Extracted archives must instead select the extracted
+model as the parser and geometry source, never the original archive buffer.
+
+The prospective change defers owned copies to admitted ArrayBuffer-only
+consumers. Functional controls cover source identity and consumer boundaries;
+whole-viewer timing and physical-memory qualification remain pending. It does
+not eliminate per-instance WASM storage or establish a fix for the reported
+large-file Edge prepass failure. The standalone SDK pool does not execute this
+viewer preparation path.
+
 ## Bundled main-first module sharing: scoped SDK result (#6537)
 
 Bundled initialization removes the second observed WASM request before the

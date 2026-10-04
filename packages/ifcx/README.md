@@ -30,6 +30,9 @@ renderer.loadGeometry(result.meshes);
 
 ## Auto-detect format
 
+`detectFormat` accepts ordinary and shared array buffers. It inspects a bounded
+prefix using SAB-safe UTF-8 decoding rather than copying the entire source.
+
 ```typescript
 import { detectFormat, parseIfcx } from '@ifc-lite/ifcx';
 import { IfcParser } from '@ifc-lite/parser';

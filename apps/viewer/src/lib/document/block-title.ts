@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { contrastRatio, isRgbColor } from '../color-contrast';
+import { contrastRatio, isRgbColor, rgbChannels } from '../color-contrast';
 import { readableInkOn } from '../table-header-style';
 import type { DocumentValidationError } from './types.js';
 
@@ -77,16 +77,15 @@ const TITLE_CONTRAST_AA = 4.5;
 const TITLE_CONTRAST_AA_LARGE = 3;
 const LARGE_BOLD_TITLE_SIZE = 14;
 
-const rgbChannels = (hex: string): number[] => [1, 3, 5].map((start) => Number.parseInt(hex.slice(start, start + 2), 16) / 255);
-
 /**
  * The contrast of a heading's ink on what it is printed on (its strip, or white paper without one),
- * and the WCAG AA minimum for its size. Authored colours are never changed, so the editor warns instead.
+ * and the WCAG AA minimum for the size it prints at: `scale` is the block's `blockScale`, which a
+ * heading follows. Authored colours are never changed, so the editor warns instead.
  */
-export function blockTitleContrast(block: BlockHeaderStyleFields): { ratio: number; minimum: number } {
+export function blockTitleContrast(block: BlockHeaderStyleFields, scale = 1): { ratio: number; minimum: number } {
   const style = blockTitleStyle(block);
   const ratio = contrastRatio(rgbChannels(style.textColor ?? '#000000'), rgbChannels(style.backgroundColor ?? '#ffffff'));
-  return { ratio, minimum: style.size >= LARGE_BOLD_TITLE_SIZE ? TITLE_CONTRAST_AA_LARGE : TITLE_CONTRAST_AA };
+  return { ratio, minimum: style.size * scale >= LARGE_BOLD_TITLE_SIZE ? TITLE_CONTRAST_AA_LARGE : TITLE_CONTRAST_AA };
 }
 
 /** Headings occupy one line; preserve the authored value and normalize only its display. */

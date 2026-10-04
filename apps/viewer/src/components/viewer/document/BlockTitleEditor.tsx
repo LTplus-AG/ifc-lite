@@ -4,6 +4,7 @@
 
 import { useTranslation } from '@/i18n';
 import { BLOCK_TITLE_SIZE_DEFAULT, BLOCK_TITLE_SIZE_MAX, BLOCK_TITLE_SIZE_MIN, blockTitleContrast, blockTitleStyle, type BlockTitle } from '@/lib/document/block-title';
+import { blockScale } from '@/lib/document/types';
 import { ClampedNumberInput, field } from './BlockEditor.parts';
 import { OptionalColorPicker } from './OptionalColorPicker';
 
@@ -16,7 +17,8 @@ export function BlockTitleEditor<T extends BlockTitle>({ block, onChange, placeh
 }) {
   const { t } = useTranslation();
   const style = blockTitleStyle(block);
-  const contrast = blockTitleContrast(block);
+  // The heading prints at the block's size, so a title shrunk below 14pt needs the stricter minimum.
+  const contrast = blockTitleContrast(block, 'kind' in block && typeof block.kind === 'string' ? blockScale(block as { kind: string; scale?: number }) : 1);
   return <div className="flex min-w-0 flex-1 flex-col gap-1" data-block-title-editor>
     <input className={`${field} min-w-0 flex-1`} value={block.title ?? ''}
       placeholder={placeholder ?? t('document.block.titlePlaceholder')}
@@ -36,6 +38,6 @@ export function BlockTitleEditor<T extends BlockTitle>({ block, onChange, placeh
         onChange={(titleBackgroundColor) => onChange({ ...block, titleBackgroundColor })} />
     </div>
     {contrast.ratio < contrast.minimum && <output className="block text-xs text-amber-700 dark:text-amber-400" data-block-title-contrast>
-      {t('document.block.titleLowContrast', { ratio: contrast.ratio.toFixed(1), minimum: contrast.minimum })}</output>}
+      {t('document.block.titleLowContrast', { ratio: (Math.floor(contrast.ratio * 10) / 10).toFixed(1), minimum: contrast.minimum })}</output>}
   </div>;
 }

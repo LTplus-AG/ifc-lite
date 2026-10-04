@@ -58,6 +58,11 @@ describe('a heading that cannot be read is reported (#6705 F5)', () => {
       assert.ok(ratio >= minimum, `${JSON.stringify(block)}: ${ratio}`);
     }
   });
+  it('the minimum follows the size the heading prints at, block size included', () => {
+    assert.equal(blockTitleContrast({ titleFontSize: 14 }, 0.5).minimum, 4.5, 'a 14pt title at 50% prints at 7pt');
+    assert.equal(blockTitleContrast({ titleFontSize: 11 }, 1.5).minimum, 3, 'an 11pt title at 150% prints at 16.5pt');
+    assert.equal(blockTitleContrast({ titleFontSize: 14 }).minimum, 3);
+  });
   it('large bold headings need 3:1, smaller ones 4.5:1 (WCAG AA)', () => {
     // #767676 on white is 4.54:1 and #949494 is 3.03:1.
     assert.equal(blockTitleContrast({ titleTextColor: '#949494' }).minimum, 4.5);

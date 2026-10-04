@@ -21,6 +21,19 @@ describe('BlockTitleEditor contrast warning (#6705 F5)', () => {
     assert.match(shown.textContent ?? '', /1\.0:1/);
     assert.match(shown.textContent ?? '', /4\.5:1/);
   });
+  it('never shows a failing ratio rounded up to the minimum it fails', () => {
+    // #777777 on white is 4.48:1: below 4.5, so it must not read "4.5:1".
+    const shown = warning({ title: 'Doors', titleTextColor: '#777777' });
+    assert.ok(shown, 'the warning is shown');
+    assert.match(shown.textContent ?? '', /\(4\.4:1/);
+  });
+  it('uses the stricter minimum for a large title on a block shrunk below 14pt', () => {
+    // #949494 on white is 3.03:1: enough for a 14pt bold title, not for the 7pt it prints at in a 50% block.
+    const block = { kind: 'text', id: 't', style: 'body', text: 'x', title: 'Doors', titleTextColor: '#949494', titleFontSize: 14 } as BlockTitle;
+    assert.equal(warning(block), null);
+    cleanup();
+    assert.ok(warning({ ...block, scale: 0.5 } as BlockTitle), 'the 50% block warns');
+  });
   it('stays silent for the default heading and for a background with automatic ink', () => {
     assert.equal(warning({ title: 'Doors' }), null);
     assert.equal(warning({ title: 'Doors', titleBackgroundColor: '#ffff00' }), null);

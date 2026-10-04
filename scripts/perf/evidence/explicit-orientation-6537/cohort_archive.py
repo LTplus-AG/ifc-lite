@@ -30,17 +30,39 @@ def safe(name):
     return path
 
 
-def verified_members():
-    here = Path(__file__).resolve().parent
+def verified_members(packet_directory=None):
+    here = Path(packet_directory).resolve() if packet_directory is not None else Path(__file__).resolve().parent
     index = json.loads((here / 'cohort-index.json').read_text())
-    manifest_bytes = (here / 'cohort-manifest.json').read_bytes()
     archive_path = here.joinpath(*safe(index['archive']).parts)
     if archive_path.stat().st_size > MAX_MEMBER:
         raise ValueError('compressed archive bound')
     archive = archive_path.read_bytes()
-    if (len(archive) != index['archiveBytes'] or digest(archive) != index['archiveSha256']
-            or digest(manifest_bytes) != index['manifestSha256']):
-        raise ValueError('container/manifest differs')
+    if len(archive) != index['archiveBytes'] or digest(archive) != index['archiveSha256']:
+        raise ValueError('container differs')
+    manifest_storage = index.get('manifestStorage', 'external')
+    if manifest_storage not in ('external', 'tar'):
+        raise ValueError('unknown manifest storage')
+    stored = {}; total = 0
+    with gzip.GzipFile(fileobj=io.BytesIO(archive)) as stream:
+        uncompressed = stream.read(MAX_TOTAL + 4 * 1024**2 + 1)
+    if len(uncompressed) > MAX_TOTAL + 4 * 1024**2:
+        raise ValueError('uncompressed TAR/header bound')
+    with tarfile.open(fileobj=io.BytesIO(uncompressed), mode='r:') as tar:
+        for item in tar:
+            safe(item.name); total += item.size
+            if (not item.isfile() or item.name in stored or item.size > MAX_MEMBER
+                    or total > MAX_TOTAL or len(stored) >= MAX_MEMBERS):
+                raise ValueError('unsafe/unknown/duplicate TAR member')
+            stored[item.name] = tar.extractfile(item).read()
+    if manifest_storage == 'tar':
+        manifest_name = str(safe(index['manifest']))
+        if manifest_name not in stored or len(stored[manifest_name]) > 4 * 1024**2:
+            raise ValueError('missing/oversized internal manifest')
+        manifest_bytes = stored.pop(manifest_name)
+    else:
+        manifest_bytes = (here / 'cohort-manifest.json').read_bytes()
+    if digest(manifest_bytes) != index['manifestSha256']:
+        raise ValueError('manifest differs')
     rows = json.loads(manifest_bytes)['members']
     expected = {r['path']: r for r in rows}
     if len(expected) != len(rows) or len(rows) != index['logicalMemberCount'] or len(rows) > MAX_MEMBERS:
@@ -51,21 +73,6 @@ def verified_members():
         safe(row['path'])
         if not 0 <= row['bytes'] <= MAX_MEMBER:
             raise ValueError('member size bound')
-    stored = {}; total = 0
-    with gzip.GzipFile(fileobj=io.BytesIO(archive)) as stream:
-        uncompressed = stream.read(MAX_TOTAL + 4 * 1024**2 + 1)
-    if len(uncompressed) > MAX_TOTAL + 4 * 1024**2:
-        raise ValueError('uncompressed TAR/header bound')
-    with tarfile.open(fileobj=io.BytesIO(uncompressed), mode='r:') as tar:
-        for item in tar:
-            safe(item.name); total += item.size
-            if (not item.isfile() or item.name in stored or item.name not in expected
-                    or expected[item.name]['storage'] != 'tar' or item.size > MAX_MEMBER
-                    or total > MAX_TOTAL or len(stored) >= MAX_MEMBERS):
-                raise ValueError('unsafe/unknown/duplicate TAR member')
-            if item.size != expected[item.name]['bytes']:
-                raise ValueError('TAR length differs')
-            stored[item.name] = tar.extractfile(item).read()
     if set(stored) != {r['path'] for r in rows if r['storage'] == 'tar'}:
         raise ValueError('stored member census differs')
     decoded = {}
@@ -108,8 +115,9 @@ def verified_members():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('destination', type=Path, help='new directory, must not exist')
+    parser.add_argument('--packet-directory', type=Path, help='alternate packet using the same bounded codec')
     args = parser.parse_args()
-    members = verified_members()
+    members = verified_members(args.packet_directory)
     args.destination.mkdir(parents=True, exist_ok=False)
     for name, data in members.items():
         output = args.destination.joinpath(*safe(name).parts)

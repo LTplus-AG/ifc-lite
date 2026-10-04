@@ -110,30 +110,27 @@ canonical parser; defer mechanisms whose correctness or end-to-end verdict
 remains incomplete. [Raw dispositions and prerequisites](evidence/deferred-worker-mechanisms-6537/README.md)
 retain source attribution and the excluded attempts.
 
-## Known-explicit orientation: scoped CSG improvement, SDK mixed (#6537 / #6788)
+## Known-explicit orientation: scoped SDK benefit, native mixed (#6537 / #6788)
 
-Callers already holding explicit coordinates avoid constructing implicit-point
-variants and using the general dispatcher. One private helper preserves the same
-adaptive predicate, argument order, sign conversion and degeneracy policy.
-Independent rational permutation controls and the full existing predicate tests
-remain intact; the latter move into a sibling test module to satisfy the size
-ratchet. Final workspace and strict all-target Clippy checks pass, with the earlier
-disk refusal and test-import compile failure retained.
+Known-explicit coordinates reach one private helper shared with the general
+dispatcher's explicit arm. Adaptive arithmetic, argument order, sign conversion,
+degeneracy and mixed-point fallbacks remain unchanged. Rational permutation and
+existing predicate controls, workspace tests and strict Clippy pass; earlier
+correctness failures remain retained.
 
-The fresh default-worker SDK comparison qualifies its produced CPU boundary.
-ISSUE129 shows a modest consistent elapsed improvement across the observed pairs;
-Haus, Holter and O-S1 remain mixed. Produced flat/instanced CPU identities and the
-complete unnormalized diagnostic census agree. The separate native comparison
-refuses its first baseline startup on an observed compiler-version query outside
-the unchanged Cargo-only exception, before producing output. It supplies no
-native performance verdict. No universal, RSS or full-viewer benefit is claimed.
+The fresh default-worker SDK produced-CPU comparison improves on ISSUE129 in all
+observed pairs; Haus, Holter and O-S1 are mixed. The separate source-built native
+phase comparison qualifies with mixed small changes, rather than a consistent
+speed win. Counts and fingerprints agree within each protocol's declared coverage;
+complete SDK diagnostics and selected native diagnostics remain distinct. Earlier
+compiler-query and controller-summary refusals remain failures. No universal,
+full-viewer, physical-memory or isolated-dispatch/instruction benefit is claimed.
 
-Lesson: historical instruction attribution includes adaptive arithmetic and does
-not quantify removable dispatch work; its older source/configuration closure is
-not this baseline. Measure the fresh consumer, retain every pair and refusal,
-and distinguish a scoped model signal from a universal throughput claim. The
-[lossless correctness, SDK and native-refusal evidence](evidence/explicit-orientation-6537/README.md)
-preserves immutable subjects, all observations and identity/closure limits.
+Lesson: source equivalence and historical adaptive-arithmetic attribution do not
+quantify removable dispatch cost. Measure the consumer, retain every pair and
+refusal, and separate a scoped model signal from a general throughput claim.
+[Source, correctness and cohort scope](evidence/explicit-orientation-6537/README.md)
+links immutable subjects and the existing durable evidence child.
 
 ## Checked-magnitude products: native benefit, SDK mixed (#6537 / #6764)
 

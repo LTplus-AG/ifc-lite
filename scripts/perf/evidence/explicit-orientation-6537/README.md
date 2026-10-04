@@ -1,7 +1,7 @@
 # Known-explicit orientation prototype (#6537)
 
 **Performance verdict: qualified SDK comparison, scoped ISSUE129 improvement;
-other three families mixed; native unqualified.** Known-explicit coordinates reach
+other three families and native phases mixed.** Known-explicit coordinates reach
 the same adaptive predicate; determinant, sign conversion, degeneracy policy and
 geometry contract are unchanged. No universal, isolated-dispatch, instruction,
 memory or full-viewer benefit is claimed. Original source-only correctness evidence
@@ -189,5 +189,13 @@ The replay uses the repository-reviewed helper, JSON, bytes and bounded Git-obje
 reads. Archived scripts/JS/WASM remain inert. It does not recreate the terminated
 runner, rehash unavailable tools, regenerate meshes, install, compile or benchmark.
 Exact four controller/subject Git commits must be available locally. Prior raw
-packets and the original source archive remain unmodified. Required CI/review and
-any further native qualification remain separate; this packet asserts no readiness.
+packets and the original source archive remain unmodified. Required CI/review remain separate; this packet asserts no readiness.
+
+
+## Subsequent native qualification
+
+[Native qualified packet](native-qualified/README.md) retains run37182263516 and
+its strict held-FD/canonical-summary protocol against the same187a/672f subjects.
+All17pairs/34processes qualify; native changes are small and mixed. The earlier
+compiler-query refusals stay unchanged in their original archives. No source,
+SDK hash coverage, physical-memory or full-viewer claim is expanded.

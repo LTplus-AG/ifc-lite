@@ -55,6 +55,12 @@ document enterprise administrator approval where tenant policy requires it.
 The gateway exposes OneDrive only; SharePoint discovery needs separately scoped
 work and delegated site permissions.
 
+Downloads use immediate preparation replies, short status polls and single-use,
+session-owned artifact claims. Vercel external rewrites wait at most 120 seconds
+for an upstream response, so do not wait for full vendor downloads inside the
+preparation request. Keep the backend and hosted viewer client protocol at the
+same merged revision. See [Vercel proxy limits](https://vercel.com/docs/limits#proxied-request-timeout).
+
 Acceptance checklist: real sign-in and identity, empty-account guidance, list
 folders and root files, download/load a known IFC, refresh expiration, denied
 consent, cancelled popup, signout during transfer, wrong CSRF/Origin rejection,

@@ -55,6 +55,13 @@ export interface CopcLodControllerOptions {
   /** Parallel node reads. Default 4. */
   concurrency?: number;
   now?: () => number;
+  /**
+   * Run `retry` after `delayMs` (an incomplete pass retrying). Defaults to
+   * `setTimeout`; tests inject a manual scheduler.
+   */
+  schedule?: (retry: () => Promise<void>, delayMs: number) => void;
+  /** A retry failed for a reason other than being superseded. */
+  onError?: (err: unknown) => void;
   /** A pass finished loading (`added` nodes arrived); called before a `replaced` pass retires the old view. */
   onPassComplete?: (pass: { viewEpoch: number; budget: number; points: number; added: number; replaced: boolean }) => void;
 }
@@ -68,6 +75,9 @@ interface Resident {
 }
 
 const MAX_PAGE_ROUNDS = 8;
+/** Retries of an incomplete view (failed or unfitted nodes) before waiting for the camera. */
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1_000;
 
 /** Smallest power of two >= `stride`: small budget shifts then keep the same stride. */
 export function quantizeStride(stride: number): number {
@@ -84,6 +94,9 @@ export class CopcLodController {
   private keep = new Map<string, number>();
   private residentPoints = 0;
   private disposed = false;
+  private retries = 0;
+  /** Requeues a keep-set node evicted mid-pass; set while a pass is loading. */
+  private requeue: ((node: CopcLodNode) => void) | null = null;
   /** The last full-budget selection, for diagnostics. */
   lastSelection: { nodes: number; points: number; capped: boolean; needsChildren: number; pageRounds: number } | null = null;
 
@@ -110,28 +123,54 @@ export class CopcLodController {
     return [...this.resident.values()].map((r) => ({ id: r.node.id, points: r.points, stride: r.stride }));
   }
 
-  /** Bring residency in line with `camera`. Resolves when every pass finished or a newer update took over. */
-  async update(camera: LodCamera): Promise<void> {
+  /**
+   * Bring residency in line with `camera`. Resolves when every pass finished
+   * or a newer update took over: being superseded is not an error. Rejects
+   * only on a real failure (a hierarchy page that cannot be read, a sink
+   * that refuses a chunk).
+   */
+  async update(camera: LodCamera, isRetry = false): Promise<void> {
     if (this.disposed) return;
+    if (!isRetry) this.retries = 0;
     this.abort?.abort();
     const abort = new AbortController();
     this.abort = abort;
     const epoch = ++this.epoch;
-    const { signal } = abort;
+    let complete: boolean;
+    try {
+      complete = await this.run(camera, epoch, abort.signal);
+    } catch (err) {
+      if (abort.signal.aborted) return;
+      throw err;
+    }
+    if (complete || abort.signal.aborted || this.disposed || this.retries >= MAX_RETRIES) return;
+    // Failed or unfitted nodes: try again without waiting for the camera.
+    this.retries++;
+    const retry = () => (this.epoch === epoch ? this.update(camera, true) : Promise.resolve());
+    const schedule = this.options.schedule ?? ((run, ms) => {
+      setTimeout(() => { run().catch((err: unknown) => this.options.onError?.(err)); }, ms);
+    });
+    schedule(retry, RETRY_DELAY_MS);
+  }
+
+  /** The passes for one view; returns whether the last pass left every selected node resident. */
+  private async run(camera: LodCamera, epoch: number, signal: AbortSignal): Promise<boolean> {
     const full = await this.select(camera, this.options.pointBudget, signal);
-    if (!full || signal.aborted) return;
+    if (!full || signal.aborted) return true;
     this.keep = new Map(full.map(([node, stride]) => [node.id, stride]));
     for (const id of this.keep.keys()) {
       const r = this.resident.get(id);
       if (r) r.wanted = epoch;
     }
+    let complete = true;
     for (const budget of this.pacer.passBudgets(this.options.pointBudget)) {
       const pass = budget >= this.options.pointBudget ? full : await this.select(camera, budget, signal);
-      if (!pass || signal.aborted) return;
+      if (!pass || signal.aborted) return true;
       const added = await this.load(pass, epoch, signal);
-      if (signal.aborted) return;
+      if (signal.aborted) return true;
       const points = pass.reduce((sum, [node]) => sum + (this.resident.get(node.id)?.points ?? 0), 0);
-      const candidate: LodPassQuality = { viewEpoch: epoch, points, complete: true };
+      complete = pass.every(([node, stride]) => (this.resident.get(node.id)?.stride ?? Infinity) <= stride);
+      const candidate: LodPassQuality = { viewEpoch: epoch, points, complete };
       const replaced = shouldReplacePass(this.displayed, candidate);
       this.options.onPassComplete?.({ viewEpoch: epoch, budget, points, added, replaced });
       if (replaced) {
@@ -139,6 +178,7 @@ export class CopcLodController {
         for (const r of this.resident.values()) if (!this.keep.has(r.node.id)) this.evict(r);
       }
     }
+    return complete;
   }
 
   /** Stop all work and drop every resident node from the sink. */
@@ -171,7 +211,13 @@ export class CopcLodController {
         }
         return selection.nodes.map((s) => [s.node as CopcLodNode, quantizeStride(s.stride)]);
       }
-      await Promise.all([...pages.values()].map((ref) => this.reader.loadPage(ref, signal)));
+      try {
+        await Promise.all([...pages.values()].map((ref) => this.reader.loadPage(ref, signal)));
+      } catch (err) {
+        // A page load cancelled by a newer view is not a failure.
+        if (signal.aborted) return null;
+        throw err;
+      }
       if (signal.aborted) return null;
     }
   }
@@ -183,6 +229,10 @@ export class CopcLodController {
       return !r || r.stride > stride;
     });
     let added = 0;
+    this.requeue = (node) => {
+      const stride = this.keep.get(node.id);
+      if (stride !== undefined && !queue.some(([queued]) => queued.id === node.id)) queue.push([node, stride]);
+    };
     const worker = async () => {
       while (queue.length > 0 && !signal.aborted) {
         const [node, stride] = queue.shift() as [CopcLodNode, number];
@@ -201,7 +251,11 @@ export class CopcLodController {
       }
     };
     const lanes = Math.max(1, Math.floor(this.options.concurrency ?? 4));
-    await Promise.all(Array.from({ length: lanes }, worker));
+    try {
+      await Promise.all(Array.from({ length: lanes }, worker));
+    } finally {
+      this.requeue = null;
+    }
     return added;
   }
 
@@ -228,14 +282,16 @@ export class CopcLodController {
       if (this.residentPoints + points <= budget) return true;
       this.evict(r);
     }
-    // Last resort: keep-set nodes holding more than their current share
-    // (they reload at the right stride when their turn comes).
+    // Last resort: keep-set nodes holding more than their current share.
+    // Each is requeued into the running pass at its share's stride, so it
+    // comes back thinner instead of staying missing until the camera moves.
     const fat = [...this.resident.values()]
       .filter((r) => r.node.id !== incomingId && r.stride < (this.keep.get(r.node.id) ?? Infinity))
       .sort((a, b) => b.points - a.points);
     for (const r of fat) {
       if (this.residentPoints + points <= budget) return true;
       this.evict(r);
+      this.requeue?.(r.node);
     }
     return this.residentPoints + points <= budget;
   }

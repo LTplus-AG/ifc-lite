@@ -15,6 +15,7 @@ import assert from 'node:assert';
 import { appendChunkToNode, createNode, destroyNode } from './pointcloud/point-cloud-node.js';
 import { removeKeyedChunks } from './pointcloud/point-cloud-keyed-chunks.js';
 import { buildRayQuerySources } from './pointcloud/point-cloud-ray-transform.js';
+import { queryPointClouds } from './raycast-point-cloud-query.js';
 import type { PointRenderPipeline } from './pointcloud/point-pipeline.js';
 
 (globalThis as Record<string, unknown>).GPUBufferUsage = {
@@ -112,5 +113,27 @@ describe('keyed point-cloud chunks (#6869)', () => {
     destroyNode(node);
     assert.strictEqual(node.keyedIndexes?.size ?? 0, 0);
     assert.deepStrictEqual(buildRayQuerySources([node], ALL), []);
+  });
+});
+
+describe('snapping across keyed sources with different placements (#6880 review)', () => {
+  it('the per-matrix ray rewrite is reused within an asset but never across assets', () => {
+    const a = harness();
+    const b = harness();
+    appendChunkToNode(a.device, a.node, line(0, 3), 'n1');
+    appendChunkToNode(a.device, a.node, line(10, 3), 'n2');
+    appendChunkToNode(b.device, b.node, line(0, 1), 'm1');
+    // Asset A is shifted +100 in x; asset B is not placed at all.
+    a.node.model = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 100, 0, 0, 1]);
+    const provider = () => buildRayQuerySources([a.node, b.node], ALL);
+    assert.strictEqual(provider().length, 3);
+    const cam = { fov: Math.PI / 4, canvasHeightPx: 900 };
+    const down = { x: 0, y: 0, z: -1 };
+    // A's second node, rendered at x = 111: found through the shared rewrite.
+    const hitA = queryPointClouds(provider, { origin: { x: 111, y: 0, z: 5 }, direction: down }, cam, 100);
+    assert.ok(hitA && Math.abs(hitA.position.x - 111) < 1e-4, `A hit at ${hitA?.position.x}`);
+    // B's point at x = 0: B must not inherit A's matrix.
+    const hitB = queryPointClouds(provider, { origin: { x: 0, y: 0, z: 5 }, direction: down }, cam, 100);
+    assert.ok(hitB && Math.abs(hitB.position.x) < 1e-4, `B hit at ${hitB?.position.x}`);
   });
 });

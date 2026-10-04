@@ -105,6 +105,7 @@ function startCopcLod(options: StreamPointCloudOptions, ctx: CopcIngestContext, 
   let frame = 0;
   let loaded = false;
   let trackCamera: (camera: unknown) => void = () => {};
+  let failAfterLoad: (err: unknown) => void = () => {};
   const stop = () => {
     abort.abort();
     cancelAnimationFrame(frame);
@@ -129,9 +130,20 @@ function startCopcLod(options: StreamPointCloudOptions, ctx: CopcIngestContext, 
       label: options.label, spatialMetadata: reader.file.spatialMetadata, stride: 1, originOffset,
     });
     const sink = createCopcLodSink(ctx);
+    // After load, only a REAL failure (unreadable hierarchy page, a renderer
+    // that refuses a chunk) ends the stream. It is reported through the
+    // ingest's onError, which owns cleanup. Superseded work never gets here:
+    // the controller resolves aborted updates.
+    failAfterLoad = (err: unknown) => {
+      if (signal.aborted) return;
+      console.error('[copc-lod] stopping the LOD stream:', err);
+      stop();
+      options.onError?.(err instanceof Error ? err : new Error(String(err)));
+    };
     const activeReader = reader;
     controller = new CopcLodController(createCopcLodTree(reader.hierarchy, info, originOffset), activeReader, sink, {
       pointBudget: budget,
+      onError: failAfterLoad,
       onPassComplete: (pass) => {
         // Progress belongs to the load; later camera passes must not
         // rewrite the global status line.
@@ -193,11 +205,7 @@ function startCopcLod(options: StreamPointCloudOptions, ctx: CopcIngestContext, 
         });
         if (lodCamera) {
           trackCamera(lodCamera);
-          controller.update(lodCamera).catch((err: unknown) => {
-            // The asset is gone (removed, or the device was lost): stop for good.
-            console.warn('[copc-lod] stopping the LOD stream:', err);
-            stop();
-          });
+          controller.update(lodCamera).catch(failAfterLoad);
         }
       }
       frame = requestAnimationFrame(tick);

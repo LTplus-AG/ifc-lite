@@ -40,12 +40,20 @@ LAS/LAZ behaviour, because COPC is LAZ.
 - **Budget.** Resident points never exceed the budget (default 10 M,
   `DEFAULT_COPC_POINT_BUDGET`). Room is made by evicting the least recently
   wanted node outside the current full-budget selection, then keep-set nodes
-  holding more than their share; a node that still does not fit is skipped.
+  holding more than their share. An evicted keep-set node is requeued into
+  the running pass at its share's stride, so it returns thinner rather than
+  staying missing; a node that still does not fit is skipped.
 - **No holes.** Nothing leaves the screen for a camera move until a pass for
   the new view is complete (`shouldReplacePass`). A denser copy of a node
   replaces a thinner one in one synchronous step.
 - **Superseded views stay quiet.** A newer camera aborts the older update; its
   in-flight reads are cancelled in the worker and never reach the renderer.
+  Being superseded is not an error: an aborted update resolves. Only a real
+  failure (an unreadable hierarchy page, a renderer that refuses a chunk)
+  stops the stream, through the ingest's `onError`.
+- **Incomplete passes retry.** A pass with a failed or unfitted node is
+  incomplete: it does not retire the previous view, and it is retried up to
+  3 times, 1 s apart, without waiting for the camera.
 - **Strides are powers of two**, so small budget shifts do not refetch nodes.
 
 ## Side channels
@@ -56,6 +64,15 @@ LAS/LAZ behaviour, because COPC is LAZ.
   estimate of the whole file's classes.
 - **Deviation**: when a deviation run is live, each settled pass re-runs it
   (the triangle BVH is cached, so this is the per-chunk dispatch).
+
+## Snapping cost
+
+Each resident node is its own snap source. `queryRay` culls a source by a
+ray/bounds test first, and `queryPointClouds` rewrites the ray into an
+asset's frame once per placement matrix, not once per node. Measured on a
+synthetic terrain octree (scratch benchmark, 400 rays, mean per query): 448
+keyed node indexes 2.00 ms vs one index of the same 1.36 M points 1.99 ms;
+1,840 indexes (past the 1,024-node cap) 2.1 ms vs 1.7-1.9 ms.
 
 ## Known limits
 

@@ -67,17 +67,33 @@ function syntheticCopc(depth: number, seed = 1) {
 
 type Deferred = { run: () => void };
 
-function fakeReader(hierarchy: CopcHierarchy, childPages: Map<number, CopcHierarchyPage>, opts: { hold?: Deferred[] } = {}) {
+interface FakeReaderOptions {
+  hold?: Deferred[];
+  /** Hold page loads; like the real client, an abort rejects the waiter. */
+  holdPages?: Deferred[];
+  /** Return true to make this read of node `id` fail. */
+  failNode?: (id: string, attempt: number) => boolean;
+}
+
+function fakeReader(hierarchy: CopcHierarchy, childPages: Map<number, CopcHierarchyPage>, opts: FakeReaderOptions = {}) {
   const pagesRead: number[] = [];
   const reads: string[] = [];
   const reader: CopcLodReader = {
-    async loadPage(ref: CopcPageRef) {
+    async loadPage(ref: CopcPageRef, signal?: AbortSignal) {
+      if (opts.holdPages) {
+        await new Promise<void>((resolve, reject) => {
+          opts.holdPages?.push({ run: resolve });
+          signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+        });
+      }
       if (!hierarchy.pendingPages.has(voxelKeyId(ref.key))) return;
       pagesRead.push(ref.offset);
       hierarchy.addPage(ref, childPages.get(ref.offset) as CopcHierarchyPage);
     },
     async readNode(entry: CopcNodeEntry, { stride, signal }) {
-      reads.push(voxelKeyId(entry.key));
+      const id = voxelKeyId(entry.key);
+      reads.push(id);
+      if (opts.failNode?.(id, reads.filter((r) => r === id).length)) throw new Error(`read of ${id} failed`);
       if (opts.hold) await new Promise<void>((resolve) => opts.hold?.push({ run: resolve }));
       signal?.throwIfAborted();
       const n = Math.ceil(entry.pointCount / stride);
@@ -129,10 +145,11 @@ function camera(eye: V3, target: V3, fovY = 1.0): LodCamera {
   return { viewProj: vp, position: eye, viewportHeight: 1_000, projScaleY: k };
 }
 
-function setup(budget: number, opts: { hold?: Deferred[]; seed?: number; depth?: number } = {}) {
+function setup(budget: number, opts: FakeReaderOptions & { seed?: number; depth?: number } = {}) {
   const { hierarchy, childPages } = syntheticCopc(opts.depth ?? 4, opts.seed);
   const tree = createCopcLodTree(hierarchy, INFO);
-  const reader = fakeReader(hierarchy, childPages, { hold: opts.hold });
+  const reader = fakeReader(hierarchy, childPages, opts);
+  const scheduled: Array<() => void> = [];
   const sink = budgetSink(budget);
   const passes: Array<{ viewEpoch: number; added: number; replaced: boolean; at: number }> = [];
   const controller = new CopcLodController(tree, reader.reader, sink.sink, {
@@ -140,8 +157,9 @@ function setup(budget: number, opts: { hold?: Deferred[]; seed?: number; depth?:
     pacer: new LodPacer({ initialPointsPerMs: 500, minFirstPassPoints: 20_000 }),
     now: () => 0,
     onPassComplete: (p) => passes.push({ ...p, at: sink.log.length }),
+    schedule: (run) => { scheduled.push(run); },
   });
-  return { controller, reader, sink, passes, hierarchy, tree };
+  return { controller, reader, sink, passes, hierarchy, tree, scheduled };
 }
 
 describe('CopcLodController (#6869)', () => {
@@ -223,6 +241,87 @@ describe('CopcLodController (#6869)', () => {
     controller.dispose();
     assert.equal(sink.resident.size, 0);
     assert.equal(controller.points, 0);
+  });
+});
+
+describe('CopcLodController review fixes (#6880)', () => {
+  it('a camera move during a hierarchy page load neither rejects nor wipes the cloud', async () => {
+    const holdPages: Deferred[] = [];
+    const { controller, sink } = setup(400_000, { holdPages });
+    // Settle a far view first: nodes resident, no pages needed.
+    holdPages.length = 0;
+    const far = controller.update(camera([-4_000, 128, 600], [128, 128, 60]));
+    while (holdPages.length > 0) holdPages.splice(0).forEach((d) => d.run());
+    await far;
+    const resident = sink.resident.size;
+    assert.ok(resident > 0);
+    // A close view needs pages; move again while those loads are in flight.
+    const close = controller.update(camera([10, 10, 30], [60, 60, 10], 0.8));
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(holdPages.length > 0, 'page loads are in flight');
+    const next = controller.update(camera([-4_000, 128, 600], [128, 128, 60]));
+    await assert.doesNotReject(close, 'a superseded update resolves, it does not throw');
+    while (holdPages.length > 0) holdPages.splice(0).forEach((d) => d.run());
+    await next;
+    assert.ok(sink.resident.size >= resident, 'the cloud is still on screen');
+  });
+
+  it('a fat keep-set node evicted to make room is reloaded at its share (root + 8 children)', async () => {
+    const rootPage: CopcHierarchyPage = { nodes: [{ key: { d: 0, x: 0, y: 0, z: 0 }, offset: 10, byteSize: 10, pointCount: 1_000 }], pages: [] };
+    for (const key of copcChildKeys({ d: 0, x: 0, y: 0, z: 0 })) rootPage.nodes.push({ key, offset: 10, byteSize: 10, pointCount: 1_000 });
+    const hierarchy = new CopcHierarchy();
+    hierarchy.addPage({ offset: 0, byteSize: 32 }, rootPage);
+    const tree = createCopcLodTree(hierarchy, INFO);
+    const { reader } = fakeReader(hierarchy, new Map());
+    const sink = budgetSink(1_200);
+    const controller = new CopcLodController(tree, reader, sink.sink, {
+      pointBudget: 1_200,
+      // First pass of 1,000 points: the root alone, at stride 1.
+      pacer: new LodPacer({ initialPointsPerMs: 5, firstPassMs: 200, minFirstPassPoints: 1 }),
+      now: () => 0,
+      schedule: () => {},
+    });
+    await controller.update(camera([-300, 128, 128], [128, 128, 128], 1.0));
+    const ids = [...sink.resident.keys()].sort();
+    assert.ok(ids.includes('0-0-0-0'), `root must be resident, have ${ids.join(',')}`);
+    assert.equal(ids.length, 9);
+    assert.ok(sink.total() <= 1_200);
+  });
+
+  it('a pass with a failed node does not retire the old view and retries, bounded', async () => {
+    // Fails on both passes of the first update (one read per pass), then works.
+    const { controller, sink, scheduled, passes } = setup(400_000, {
+      failNode: (id, attempt) => id === '1-0-0-0' && attempt <= 2,
+    });
+    await controller.update(camera([-300, 128, 100], [128, 128, 60]));
+    assert.ok(!sink.resident.has('1-0-0-0'), 'the failed node is missing after the first try');
+    assert.equal(scheduled.length, 1, 'an incomplete pass schedules one retry');
+    await scheduled.shift()?.();
+    assert.ok(sink.resident.has('1-0-0-0'), 'the retry loaded it');
+    assert.ok(passes.length >= 3);
+    assert.equal(scheduled.length, 0, 'a complete pass schedules nothing');
+  });
+
+  it('an incomplete pass for a new view keeps the old view on screen', async () => {
+    const { controller, sink, tree } = setup(20_000_000, { depth: 3, failNode: (id) => id.startsWith('3-') });
+    await controller.update(camera([-4_000, 128, 600], [128, 128, 60]));
+    const oldView = new Set(sink.resident.keys());
+    const near = camera([20, 20, 40], [80, 80, 20], 0.7);
+    await controller.update(near);
+    const want = new Set(selectLod(tree.root as CopcLodNode, near, { pointBudget: 20_000_000 }).nodes.map((n) => n.node.id));
+    assert.ok([...want].some((id) => id.startsWith('3-')), 'the near view wants failing nodes');
+    for (const id of oldView) assert.ok(sink.resident.has(id), `${id} stayed while the new view is incomplete`);
+  });
+
+  it('a node that never loads stops retrying after a bounded number of attempts', async () => {
+    const { controller, scheduled } = setup(400_000, { failNode: (id) => id === '1-0-0-0' });
+    await controller.update(camera([-300, 128, 100], [128, 128, 60]));
+    let retries = 0;
+    while (scheduled.length > 0 && retries < 20) {
+      retries++;
+      await scheduled.shift()?.();
+    }
+    assert.ok(retries > 0 && retries <= 3, `retried ${retries} times`);
   });
 });
 

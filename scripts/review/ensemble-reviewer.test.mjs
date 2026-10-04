@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -55,11 +55,6 @@ test('all models succeed: every result is captured, no failures', async () => {
 });
 
 test('one model fails: the other still returns, and the failure is recorded', async () => {
-  const fetchImpl = async (_url, init) => {
-    const model = JSON.parse(init.body).model;
-    if (model === 'bad/model') return reply({ error: { message: 'no credits' } });
-    return { ok: false, status: 429, text: async () => JSON.stringify({ error: { message: 'no credits' } }) };
-  };
   // Make one succeed and one fail explicitly.
   const fetchImpl2 = async (_url, init) => {
     const model = JSON.parse(init.body).model;
@@ -504,4 +499,87 @@ test('maybeRunEnsemble returns false and writes nothing when disabled', async ()
   const handled = await maybeRunEnsemble({ env: {}, input: { files: [] }, prompt: 'p', outPath });
   assert.equal(handled, false);
   assert.equal(wrote, false);
+});
+
+
+test('provider billed cost overrides stale token estimates, including cached zero-cost calls', () => {
+  assert.equal(estimateCostUsd('unknown/model', { cost: 0.031, prompt_tokens: 1_000_000 }), 0.031);
+  assert.equal(estimateCostUsd('openai/gpt-6-luna', { cost: 0, prompt_tokens: 1_000_000 }), 0);
+  assert.equal(estimateCostUsd('unknown/model', { cost: -1 }), null);
+  assert.equal(estimateCostUsd('unknown/model', { cost: '0.02' }), null);
+});
+
+test('telemetry records rejected paid answers and HTTP failures before falling through', async () => {
+  let calls;
+  const fetchImpl = async (_url, init) => {
+    if (JSON.parse(init.body).model === 'bad/json') return reply({ choices: [{ message: { content: '{}' } }], usage: { cost: 0.012 } });
+    return { ok: false, status: 402, text: async () => 'no credits' };
+  };
+  const outcome = await runEnsembleReview({ prompt: 'p', apiKey: 'k', models: ['bad/json', 'bad/http'], fetchImpl, onTelemetry: (value) => { calls = value; } });
+  assert.equal(outcome, null);
+  assert.equal(calls[0].costUsd, 0.012);
+  assert.equal(calls[0].costSource, 'billed');
+  assert.equal(calls[0].poolValidation.reason, 'RESPONSE_TRUNCATED');
+  assert.equal(calls[1].answered, false);
+  assert.equal(typeof calls[1].elapsedMs, 'number');
+  assert.equal(calls[1].costUsd, null);
+});
+
+test('pooled model roster excludes a paid answer rejected by schema validation', async () => {
+  const fetchImpl = async (_url, init) => reply({ choices: [{ message: { content: JSON.stringify(JSON.parse(init.body).model === 'good' ? clean() : { end: SENTINEL }) } }] });
+  const outcome = await runEnsembleReview({ prompt: 'p', apiKey: 'k', models: ['good', 'bad'], fetchImpl });
+  assert.deepEqual(outcome.models, ['good']);
+});
+
+
+test('strong-seat override changes only the risk-added model and avoids duplicates', () => {
+  const env = { OPENROUTER_API_KEY: 'k', REVIEW_ENSEMBLE_MODELS: 'cheap', REVIEW_ENSEMBLE_STRONG_ON_RISK: 'true', REVIEW_ENSEMBLE_STRONG_MODEL: 'openai/gpt-6.1-sol' };
+  const input = { files: [{ path: 'scripts/review/run-reviewer.mjs' }] };
+  assert.deepEqual(resolveEnsemblePlan(env, input).models, ['cheap', 'openai/gpt-6.1-sol']);
+  assert.deepEqual(resolveEnsemblePlan({ ...env, REVIEW_ENSEMBLE_MODELS: 'openai/gpt-6.1-sol' }, input).models, ['openai/gpt-6.1-sol']);
+  assert.deepEqual(resolveEnsemblePlan(env, { files: [{ path: 'docs/guide/foo.md' }] }).models, ['cheap']);
+});
+
+test('missing and malformed token accounting is unknown rather than free', () => {
+  for (const usage of [{}, { prompt_tokens: 'garbage' }, { completion_tokens: -1 }]) {
+    assert.equal(estimateCostUsd('openai/gpt-6-luna', usage), null);
+  }
+});
+
+
+test('a paid empty response retains billed cost and finish reason when the ensemble falls through', async () => {
+  let calls;
+  const outcome = await runEnsembleReview({ prompt: 'p', apiKey: 'k', models: ['openai/gpt-6-luna'],
+    fetchImpl: async () => reply({ choices: [{ message: { content: '' }, finish_reason: 'length' }], usage: { cost: 0.02, completion_tokens: 32768 } }),
+    onTelemetry: (value) => { calls = value; },
+  });
+  assert.equal(outcome, null);
+  assert.equal(calls[0].answered, false);
+  assert.equal(calls[0].costUsd, 0.02);
+  assert.equal(calls[0].costSource, 'billed');
+  assert.equal(calls[0].finishReason, 'length');
+});
+
+
+test('production default applies tested cheap settings, retains strong reasoning, and appends attempts', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'review-profile-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  // This exercises the real request path and filesystem artifact, not a preset
+  // table alone: omitting the profile in maybeRunEnsemble would fail this test.
+  const outPath = join(dir, 'raw-review.txt');
+  const sent = [];
+  const fetchImpl = async (_url, init) => {
+    sent.push(JSON.parse(init.body));
+    return reply({ choices: [{ message: { content: JSON.stringify(clean()) }, finish_reason: 'stop' }], usage: { cost: 0.01 } });
+  };
+  const env = { OPENROUTER_API_KEY: 'k', REVIEW_ENSEMBLE_MODELS: 'openai/gpt-6-luna,anthropic/claude-opus-5.5' };
+  const input = { files: [{ path: 'a.ts' }], headSha: 'a'.repeat(40) };
+  await maybeRunEnsemble({ env, input, prompt: 'p', outPath, fetchImpl });
+  await maybeRunEnsemble({ env: { ...env, REVIEW_ENSEMBLE_REASONING_PROFILE: 'high' }, input, prompt: 'retry', outPath, fetchImpl });
+  assert.deepEqual(sent.map((r) => r.reasoning), [{ effort: 'medium' }, { effort: 'high' }, { effort: 'high' }, { effort: 'high' }]);
+  const records = readFileSync(`${outPath}.telemetry.jsonl`, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+  assert.equal(records.length, 2);
+  assert.equal(records[0].calls[0].reasoning.effort, 'medium');
+  assert.equal(records[1].calls[0].reasoning.effort, 'high');
+  assert.equal(records[0].calls[1].costSource, 'billed');
 });

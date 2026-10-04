@@ -27,6 +27,40 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Bundled main-first module sharing: scoped SDK result (#6537)
+
+Bundled initialization removes the second observed WASM request before the
+default SDK worker pool. Both completed historical candidates retain equal
+CPU-channel output and full unnormalized diagnostics across the fixed public
+families, but elapsed observations remain small or mixed with all outliers kept.
+They do not establish an all-model win. Separately fresh engines differ in code
+and data despite equal captured Rust/build inputs, including absolute checkout
+paths; their elapsed differences do not isolate the JavaScript mechanism.
+
+Starting shared acquisition exposes failure semantics that merely joining an
+optional promise did not exercise. Preserve original rejection inside canonical
+retry, optional callers' null fallback, and the same response for permitted MIME
+fallback. Fatal bytes must not cause refetches; successful streaming must not
+leave a cloned body. Public glue also returns its initialized engine before
+reading options: eager acquisition broke warm-engine offline compatibility.
+Prepare lazy public-init options so that only a cold engine acquires a module.
+Actual generated-loader controls preserve the predecessor assertion failure,
+the intermediate cross-realm harness refusal, and the corrected warm-engine proof.
+
+The corrected lazy source now has its own qualified fresh default-worker SDK
+comparison, with equal produced CPU-channel identity and untouched diagnostics,
+passing preceding noise controls, resource gates, final freeze and cleanup.
+The house and heavy CSG observations consistently improve; the CSG and large
+architecture pairs are mixed. Every observation remains, including high baseline
+values. The second observed request is removed, but independently fresh engine
+bytes still differ, so elapsed results do not isolate JavaScript's contribution.
+This is a scoped SDK result, not a universal speed, RSS or full-viewer verdict.
+The lesson is to share cold acquisition without breaking public glue's warm
+fast path, preserve failure contracts, and qualify actual worker-pool completion
+separately from cached-artifact functional proofs. [All raw cohorts, compatibility
+failures, corrected proofs and limits](evidence/bundled-wasm-init-6537/README.md)
+remain available without replacing or pooling earlier evidence.
+
 ## Direct vertex packing: do not ship the current candidate (#6537)
 
 The candidate removes an intermediate vertex buffer for eligible quantized
@@ -75,6 +109,60 @@ representation from the final load metric. Preserve true sticky keys and the
 canonical parser; defer mechanisms whose correctness or end-to-end verdict
 remains incomplete. [Raw dispositions and prerequisites](evidence/deferred-worker-mechanisms-6537/README.md)
 retain source attribution and the excluded attempts.
+
+## Checked-magnitude products: native benefit, SDK mixed (#6537 / #6764)
+
+Bounding provably-fitting checked products by their actual magnitude widths
+reduces arithmetic work while preserving the full overflow/fallback paths.
+The qualified canonical warm/prepared native comparison improves on the
+void-heavy CSG model; Holter remains neutral and the house result is noisy.
+Counts and ordered mesh fingerprints agree within the fingerprint's declared
+coverage. The separate default-worker SDK cohort remains mixed, and full-viewer
+performance is unqualified. This is no universal worker-pool speedup claim.
+
+Lesson: real arithmetic opportunity and native instruction reductions do not
+establish browser throughput. Preserve exact overflow, sign and row-carry
+oracles, then measure the actual consumer and disclose identity exclusions.
+The [lossless native evidence and audit history](
+evidence/checked-magnitude-native-6537/README.md) retain all original pairs,
+the corrected checker-status refusal, prior instruction/correctness evidence,
+and scope limits. Available-memory guards exist in the frozen producer, but
+missing numeric readings prevent reconstruction of the admission floor.
+
+## Initial index reservation: no attributable default-pool benefit (#6537)
+
+The PR #6730 source inspection found no changed reservation request in its
+four default SDK fixture routes. The house remains below activation; the three
+larger models use sharded, prebuilt indexes that bypass the changed constructors.
+Their unused prepass staging map already reserves zero on the base revision.
+The bounded captures retain equal produced CPU output and complete diagnostics,
+including known kernel failures. They establish neither faithful IFC output nor
+an affected-path speed or physical-memory verdict. The earlier resource refusal
+remains preserved separately from the larger-budget inspection.
+
+Lesson: verify that the default load actually executes the changed allocation
+before assigning it an end-to-end benefit. This finite corpus does not rule out
+an affected input between cap activation and default sharding, and does not
+qualify the candidate for merge. [Source eligibility and complete raw evidence](
+evidence/default-pool-reservation-6537/README.md) retain the unshipped attribution.
+
+## Ring neighbour searches: do not infer a general hotspot (#6537)
+
+Opt-in canonical work counts and feature-off output controls do not support
+linked-neighbour indices as a broad performance fix. The public slab has little
+searching beyond adjacent live vertices; Holter has none. House and Revit CSG
+contain additional probes, but no profile establishes time dominance or that
+constructing neighbour arrays would pay back. A synthetic collinear ring proves
+the quadratic worst case, not its relevance to these models. The diagnostic
+preserves the algorithm and its output; it is not an optimization or speed claim.
+
+Lesson: count actual post-weld searches before replacing their representation.
+Saved raw-ring lengths cannot reconstruct cleaned-ring work. Preserve exact
+sweep order, predicates, coordinates and topology if profiling later warrants
+a prototype, then qualify the ordinary end-to-end worker pool.
+[Complete native work census, source identities and output controls](
+evidence/ring-search-opportunity-6537/README.md) retain the bounded public screen
+and its exclusions.
 
 ## Opt-in map geometry compatibility export (#6587)
 
@@ -127,6 +215,46 @@ Lesson: RefDirection gives the local X direction, while Axis determines the
 handedness of local Y. Reuse the canonical placement frame rather than adding
 another direction decoder, and test both forward conic sampling and Cartesian
 trim inversion; either half alone leaves a mirrored or incorrectly trimmed arc.
+
+## In-call geometry heartbeat replaces wall-clock element skips (#4884 follow-up)
+
+Field signature: one mid-size model opened by about ten people stalled for most
+of them; when it loaded, the median `total_elapsed_ms` was about 145 s while
+first geometry appeared within seconds, and loads with the same mesh roster
+reported flat triangle totals varying almost fourfold. 145 s is the hung-call recovery budget:
+45 s until a silent multi-job call is replaced, a one-job-per-call replay, then
+90 s more until the slow element is skipped. A synthetic file with one wall
+carrying 200 tilted circular openings reproduced it exactly in the browser
+(143 s, wall skipped, identical on every run), and adding CPU load changed which
+calls were replayed and therefore the reported mesh and triangle counts.
+
+The worker could not speak while inside one WASM call, so a slow element and a
+hung call looked identical. The kernel now calls `ifc_lite_geometry::progress::tick`
+at coarse points of every long path (each boolean, analytic prism cut,
+consolidation bucket and region, conform loop, strided CDT and exact-predicate
+work). The binding rate-limits that to one JS callback a second, and the worker
+forwards it as its existing liveness message only while a batch call runs. A
+call that stops reporting is still recovered exactly as before, and every call
+keeps an absolute 10-minute bound (`MAX_GEOMETRY_CALL_MS`) however often it
+reports: past it the pool recovers the call like a silent one, and with
+recovery off it stops counting heartbeats as liveness so the stream watchdog
+still fires. With no hook
+installed (every native target) a tick is one atomic load; ordered native mesh
+fingerprints are unchanged on AC20, ISSUE_129 and Holter.
+
+Coverage was measured, not assumed: a native hook recording the longest gap
+between ticks found 7-8 s single-call stretches on the synthetic walls (a
+quadratic conform candidate scan and one large constrained triangulation)
+before those loops were covered; after, the longest gap is about 1.3 s natively
+on the synthetic walls and under 0.5 s on the heavy corpus models. Result on the
+synthetic file: 88 s with the wall present instead of 143 s with it skipped, the
+same 483 meshes and 548,428 triangles idle and under load, and no recovery.
+
+Lesson: never let a wall-clock budget decide WHAT geometry is produced. A
+recovery timer is legitimate for a call that has stopped making progress, but
+it needs a progress signal to tell that apart from a slow call. Open follow-ups:
+the analytic prism route spends most of such a wall's time before deferring to
+the exact kernel, and the flat/instanced split still follows call composition.
 
 ## Shared-buffer retries after a WASM trap (#6542)
 
@@ -1661,6 +1789,19 @@ The existing prepass can publish the exact full-byte source key through a fresh 
   probe on `?geomWorkers=N`: `useIfcLoader.ts` documents that worker count cannot
   affect output (disjoint deterministic element slices), so that probe is
   predicted clean by the codebase itself.
+- **`mesh_count` and `total_triangles` count FLAT meshes only, and the flat /
+  instanced split is decided per WASM batch call.** An occurrence is instanced
+  when its representation repeats often enough *within one call*, so anything
+  that changes call composition moves geometry between the flat list and the
+  instancing shards without changing what renders: the wall-clock adaptive batch
+  sizer, the device-dependent worker count, and a hung-call replay at one job per
+  call. Measured on a synthetic heavy model: identical rendered geometry came out
+  as 549 meshes / 242,052 flat triangles on an idle host and 683 / 243,660 under
+  CPU load. So "the geomWorkers probe is predicted clean" holds for rendered
+  geometry, not for these two telemetry fields. A small `mesh_count` delta with a
+  LARGE `total_triangles` delta is the other signature: a skipped element (see
+  the "In-call geometry heartbeat replaces wall-clock element skips" section near
+  the top of this file); read `hung_elements_skipped` first.
 - **`total_elapsed_ms` is not pure compute — it contained an unbounded hidden-tab
   stall** (#2385, fixed). `useIfcLoader` awaited a bare `requestAnimationFrame`
   at stream-complete; rAF is never serviced while the document is hidden, so a

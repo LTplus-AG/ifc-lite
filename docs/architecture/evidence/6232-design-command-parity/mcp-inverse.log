@@ -1,0 +1,65 @@
+@ifc-lite/mcp:test: cache bypass, force executing 107bd914fbe9ff03
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test: > @ifc-lite/mcp@0.23.0 test /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/mcp
+@ifc-lite/mcp:test: > vitest run design-place.test.ts
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test:  RUN  v4.1.11 /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/mcp
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test:  ❯ src/tools/design-place.test.ts (5 tests | 4 failed) 61ms
+@ifc-lite/mcp:test:      × curtain_wall exports its complete graph and one Undo retains preceding work 24ms
+@ifc-lite/mcp:test:      × grid exports its complete graph and one Undo retains preceding work 9ms
+@ifc-lite/mcp:test:      × persists a profiled column binding to actual axes and undoes column and grid independently 7ms
+@ifc-lite/mcp:test:      × routes equal local IDs to the chosen model and refuses ambiguity, stale bindings and late failures atomically 10ms
+@ifc-lite/mcp:test:      ✓ requires canonical fields and omits every design mutation for read-only tokens 11ms
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test:  FAIL  src/tools/design-place.test.ts > #6232 public design placement > curtain_wall exports its complete graph and one Undo retains preceding work
+@ifc-lite/mcp:test:  FAIL  src/tools/design-place.test.ts > #6232 public design placement > grid exports its complete graph and one Undo retains preceding work
+@ifc-lite/mcp:test: AssertionError: expected true not to be true // Object.is equality
+@ifc-lite/mcp:test:  ❯ src/tools/design-place.test.ts:46:34
+@ifc-lite/mcp:test:      44|       const before = structuredClone({ records: view.getNewEntities(),…
+@ifc-lite/mcp:test:      45|       const result = await call(`place_${kind}`, { storey_express_id: …
+@ifc-lite/mcp:test:      46|       expect(result.isError).not.toBe(true);
+@ifc-lite/mcp:test:        |                                  ^
+@ifc-lite/mcp:test:      47|       const id = result.structuredContent?.expressId;
+@ifc-lite/mcp:test:      48|       expect(typeof id).toBe('number');
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test:  FAIL  src/tools/design-place.test.ts > #6232 public design placement > persists a profiled column binding to actual axes and undoes column and grid independently
+@ifc-lite/mcp:test: AssertionError: expected true not to be true // Object.is equality
+@ifc-lite/mcp:test:  ❯ src/tools/design-place.test.ts:67:30
+@ifc-lite/mcp:test:      65|     const { registry, call } = await session();
+@ifc-lite/mcp:test:      66|     const grid = await call('place_grid', { storey_express_id: 42, par…
+@ifc-lite/mcp:test:      67|     expect(grid.isError).not.toBe(true);
+@ifc-lite/mcp:test:        |                              ^
+@ifc-lite/mcp:test:      68|     const model = registry.get('alpha')!, view = model.backend.getMuta…
+@ifc-lite/mcp:test:      69|     const gridId = grid.structuredContent?.expressId as number;
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test:  FAIL  src/tools/design-place.test.ts > #6232 public design placement > routes equal local IDs to the chosen model and refuses ambiguity, stale bindings and late failures atomically
+@ifc-lite/mcp:test: AssertionError: expected true not to be true // Object.is equality
+@ifc-lite/mcp:test:  ❯ src/tools/design-place.test.ts:91:111
+@ifc-lite/mcp:test:      89|     const { registry, call } = await session(2);
+@ifc-lite/mcp:test:      90|     expect((await call('place_grid', { storey_express_id: 42, params: …
+@ifc-lite/mcp:test:      91|     expect((await call('place_grid', { model_id: 'beta', storey_expres…
+@ifc-lite/mcp:test:        |                                                                                                               ^
+@ifc-lite/mcp:test:      92|     expect(registry.get('alpha')!.backend.getMutationView()).toBeNull(…
+@ifc-lite/mcp:test:      93|     const view = registry.get('beta')!.backend.getMutationView()!;
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test:  Test Files  1 failed (1)
+@ifc-lite/mcp:test:       Tests  4 failed | 1 passed (5)
+@ifc-lite/mcp:test:    Start at  07:55:47
+@ifc-lite/mcp:test:    Duration  985ms (transform 321ms, setup 0ms, import 845ms, tests 61ms, environment 0ms)
+@ifc-lite/mcp:test: 
+@ifc-lite/mcp:test:  ELIFECYCLE  Test failed. See above for more details.
+ Tasks:    38 successful, 39 total
+Cached:    33 cached, 39 total
+  Time:    7.776s 
+ ERROR  run failed: command  exited (1)

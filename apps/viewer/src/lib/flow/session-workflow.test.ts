@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { MutablePropertyView } from '@ifc-lite/mutations';
@@ -19,6 +20,9 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { buildReportDocument, type DocumentReportResult } from '@/lib/document/build-report-document';
 import { loadValidationReports, VALIDATION_REPORTS_STORAGE_KEY } from '@/lib/validation/reports/persistence';
 import { validateChecks, compareChecks } from './check-host';
+import { snapshotComparison } from '@/lib/compare/savedComparisons';
+import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixture';
+import { readContentRows } from '@/lib/storage/content-database';
 import { loadSavedComparisons } from '@/lib/compare/savedComparisonPersistence';
 import { preflightWorkflow } from './preflight';
 import { createAutomationHost } from './automation-host';
@@ -77,7 +81,7 @@ function inputGraph(jobs: readonly CheckJob[]): FlowDocument {
 let run: WorkflowRun | undefined;
 beforeEach(async () => {
   localStorage.removeItem(VALIDATION_REPORTS_STORAGE_KEY);
-  useViewerStore.setState({ savedValidationReports: [], validationReportsSaveFailed: false, modelTags: new Map(), modelTagAssignments: new Map() });
+  useViewerStore.setState({ savedValidationReports: [], modelTags: new Map(), modelTagAssignments: new Map() });
   await seed();
 });
 afterEach(() => {
@@ -87,6 +91,29 @@ afterEach(() => {
 });
 
 describe('session validation pipeline through native engines (#6612)', () => {
+  it('imports deleted historical comparison evidence under independent local identity and reuses its next import (#6694)', async () => {
+    const external = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Historical evidence');
+    assert.equal(await useViewerStore.getState().saveComparison(external), true);
+    assert.equal(await useViewerStore.getState().deleteSavedComparison(external.id), true);
+    run = startWorkflowRun();
+    const host = createAutomationHost(run, { ...inputGraph([]), capabilities: ['storage.write:savedComparisons'] },
+      async () => assert.fail('historical evidence import must not load a model'), () => assert.fail('import must not export an artifact'));
+    const files = run.put('files', { history: [new File([JSON.stringify(external)], 'historical-comparison.json')] });
+    const first = run.get<DocumentReportResult[]>(await host.importComparisons(files), 'reports');
+    assert.ok(first[0]?.kind === 'comparison');
+    const copy = first[0].comparison;
+    assert.notEqual(copy.id, external.id);
+    assert.deepEqual(copy.report, external.report);
+    assert.deepEqual(run.warnings, [], 'the imported evidence must commit, not remain in permanent conflict');
+    assert.deepEqual((await loadSavedComparisons()).map(entry => entry.id), [copy.id]);
+    const repeated = run.get<DocumentReportResult[]>(await host.importComparisons(files), 'reports');
+    assert.ok(repeated[0]?.kind === 'comparison');
+    assert.equal(repeated[0].comparison.id, copy.id);
+    assert.deepEqual((await loadSavedComparisons()).map(entry => entry.id), [copy.id]);
+    assert.equal((await readContentRows('comparison')).find(row => row.id === external.id)?.deleted, true,
+      'an explicit import must not resurrect the deleted library identity');
+  });
+
   it('retains failed quality evidence and builds an ordinary document without recoloring or publishing live results', async () => {
     run = startWorkflowRun();
     const previousLiveReport = useViewerStore.getState().idsValidationReport;
@@ -99,7 +126,7 @@ describe('session validation pipeline through native engines (#6612)', () => {
       assert.equal(results[0].snapshot.summary.failed, 2, 'both real walls fail the fire rating requirement');
       assert.equal(results[0].snapshot.reportModels?.length, 2);
     }
-    const saved = loadValidationReports();
+    const saved = (await loadValidationReports());
     assert.equal(saved.length, 1);
     assert.equal(saved[0].automation?.workflowId, 'workflow');
     assert.equal(saved[0].automation?.jobId, 'check');
@@ -135,7 +162,7 @@ describe('session validation pipeline through native engines (#6612)', () => {
     const token = await compareChecks(run, 'workflow', modelSet(run), [{ id: 'comparison', enabled: true, source: { kind: 'embedded', value: recipe } }], undefined);
     const results = run.get<DocumentReportResult[]>(token, 'reports');
     assert.equal(results.length, 1);
-    const evidence = loadSavedComparisons().find((saved) => saved.automation?.runId === run?.id);
+    const evidence = (await loadSavedComparisons()).find((saved) => saved.automation?.runId === run?.id);
     assert.ok(evidence);
     assert.deepEqual(evidence.automation?.effectiveOptions, { ...options, acceptedIdentity: [] });
     assert.match(evidence.automation?.resource?.fingerprint ?? '', /^[a-f0-9]{64}$/);
@@ -172,7 +199,7 @@ describe('session validation pipeline through native engines (#6612)', () => {
       assert.deepEqual(results[0].snapshot.reportModels?.map((m) => m.name), ['structure.ifc']);
     }
     assert.deepEqual(file, original);
-    assert.deepEqual(loadValidationReports()[0].automation?.models.map((m) => m.id), ['A']);
+    assert.deepEqual((await loadValidationReports())[0].automation?.models.map((m) => m.id), ['A']);
   });
 
   it('retains evaluator diagnostics but blocks the reports output and document generation', async () => {
@@ -187,7 +214,7 @@ describe('session validation pipeline through native engines (#6612)', () => {
     ] } };
     assert.equal(parseRuleSetFile(file).ok, true, 'the execution-error fixture must pass native boundary validation');
     await assert.rejects(validateChecks(run, 'workflow', modelSet(run), [job(file)], undefined), /evaluator error/);
-    const evidence = loadValidationReports();
+    const evidence = (await loadValidationReports());
     assert.equal(evidence.length, 1);
     const snapshot = evidence[0].snapshot;
     assert.equal(snapshot.kind, 'ids-report');
@@ -205,8 +232,8 @@ describe('session validation pipeline through native engines (#6612)', () => {
     await assert.rejects(validateChecks(run, 'workflow', modelSet(run), [
       job(file, { id: 'completed' }), job(file, { id: 'disabled', enabled: false }), job(unknown, { id: 'broken' }),
     ], undefined), /no model matches/);
-    assert.equal(loadValidationReports().length, 1);
-    assert.equal(loadValidationReports()[0].automation?.jobId, 'completed');
+    assert.equal((await loadValidationReports()).length, 1);
+    assert.equal((await loadValidationReports())[0].automation?.jobId, 'completed');
   });
 
   it('retains each completed IDS model before cancellation of the next target', async () => {
@@ -242,7 +269,7 @@ describe('session validation pipeline through native engines (#6612)', () => {
         { id: 'ids', enabled: true, source: { kind: 'embedded', value: xml, name: 'Wall names' } },
       ], undefined), { name: 'AbortError' });
       assert.equal(workers, 2);
-      const saved = loadValidationReports();
+      const saved = (await loadValidationReports());
       assert.equal(saved.length, 1, 'the first model was complete before the second was cancelled');
       assert.deepEqual(saved[0].automation?.models.map((m) => m.id), ['A']);
     } finally {
@@ -260,7 +287,7 @@ describe('session validation pipeline through native engines (#6612)', () => {
     assertWorkflowOwner(run.id);
     run.cancel();
     await assert.rejects(validateChecks(run, 'workflow', oldSet, [job(ruleSet())], undefined), { name: 'AbortError' });
-    assert.equal(loadValidationReports().length, 0);
+    assert.equal((await loadValidationReports()).length, 0);
     assert.equal(isNativeWorkflowBusy(), true);
     assert.throws(() => startWorkflowRun(), /already running/);
     run.release();
@@ -297,7 +324,7 @@ describe('session validation pipeline through native engines (#6612)', () => {
     assert.equal(useViewerStore.getState().retryModelTagsSave(), true);
   });
 
-  it('pins source stores and edit revisions before native evidence can publish', () => {
+  it('pins source stores and edit revisions before native evidence can publish', async () => {
     run = startWorkflowRun();
     const session = modelSet(run);
     checkedModelSet(run, session);
@@ -311,7 +338,7 @@ describe('session validation pipeline through native engines (#6612)', () => {
     assert.ok(original);
     useViewerStore.setState({ models: new Map(state.models).set('A', { ...original, ifcDataStore: fixtureModel('replacement').ifcDataStore }) });
     assert.throws(() => checkWorkflowModelPins(run!), { name: 'AbortError' });
-    assert.equal(loadValidationReports().length, 0);
+    assert.equal((await loadValidationReports()).length, 0);
   });
 
   it('rejects incomplete explicitly bound models before considering them successful loads', async () => {
@@ -400,7 +427,7 @@ describe('session validation pipeline through native engines (#6612)', () => {
     }, features), /version/);
     assert.equal(useViewerStore.getState().models, modelsBefore);
     assert.equal(useViewerStore.getState().modelTagAssignments, tagsBefore);
-    assert.equal(loadValidationReports().length, 0);
+    assert.equal((await loadValidationReports()).length, 0);
   });
 
   it('reuses full source bytes across runs with placement-hash identities and retains overlays (#6612)', async () => {
@@ -434,7 +461,7 @@ describe('session validation pipeline through native engines (#6612)', () => {
     assert.equal(useViewerStore.getState().getMutationView(modelId), overlay);
     assert.equal(overlay.getPropertyValue(100, 'Pset_WallCommon', 'FireRating'), 'F90');
     await validateChecks(run, graphId, second, [job(ruleSet())], undefined);
-    assert.equal(loadValidationReports()[0].automation?.models[0].sourceFingerprint, hash,
+    assert.equal((await loadValidationReports())[0].automation?.models[0].sourceFingerprint, hash,
       'native report provenance uses full source bytes rather than placement cache identity');
     run.release();
     const replacement = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer as ArrayBuffer, { disableWorkerScan: true });

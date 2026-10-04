@@ -6,6 +6,7 @@ import type { MutableOverlayState } from './mutable-overlay-state.js';
 
 export type OverlaySnapshot = ReturnType<MutableOverlayState['copyOverlayState']>;
 interface OverlayAccess {
+  readonly modelId: string;
   capture(): OverlaySnapshot;
   matches(snapshot: OverlaySnapshot): boolean;
   draft(snapshot: OverlaySnapshot): MutablePropertyView;

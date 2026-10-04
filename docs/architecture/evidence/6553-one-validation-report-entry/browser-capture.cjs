@@ -23,10 +23,13 @@ fs.mkdirSync(out, { recursive: true });
     const ids = { kind: 'ids-report', id: 's-ids', sourceKind: 'ids', sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z', summary: { checked: 4, passed: 1, failed: 3, passRate: 25 }, checks: [{ id: 'a', shortDescription: 'Walls', checked: 4, passed: 1, failed: 3, passRate: 25, rules: [] }] };
     const rules = { kind: 'ids-report', id: 's-rules', sourceKind: 'rules', sourceName: 'Delivery rules', generatedAt: '2026-01-16T10:00:00.000Z', summary: { checked: 2, passed: 2, failed: 0, passRate: 100 }, checks: [{ id: 'b', shortDescription: 'Unique names', checked: 2, passed: 2, failed: 0, passRate: 100, rules: [] }] };
     const manual = { kind: 'manual-report', id: 's-manual', checklistName: 'Site review', generatedAt: '2026-01-17T10:00:00.000Z', summary: { total: 1, pass: 1, fail: 0, warning: 0, unanswered: 0 }, groups: [{ id: 'g', name: 'Delivery', counts: { total: 1, pass: 1, fail: 0, warning: 0, unanswered: 0 }, items: [{ id: 'i', text: 'Uploaded on time', status: 'pass' }] }] };
-    for (const [snapshot, name] of [[ids, 'Saved IDS'], [rules, 'Saved information validation'], [manual, 'Saved manual']]) s.saveValidationReport(snapshot, name);
+    for (const [snapshot, name] of [[ids, 'Saved IDS'], [rules, 'Saved information validation'], [manual, 'Saved manual']]) {
+      const id = await s.saveValidationReport(snapshot, name);
+      if (!id || __ifc_lite_viewer_store__.getState().validationReportsStorage.items[id] !== 'saved') throw Error('Evidence report was not committed');
+    }
     s.setManualChecklist({ version: 1, name: 'Site review', groups: [{ id: 'g', name: 'Delivery', items: [{ id: 'i', text: 'Uploaded on time' }] }] });
     __ifc_lite_viewer_store__.setState({ idsValidationReport: { source: { kind: 'ids', document: { info: { title: 'Current IDS run' }, specifications: [] } }, modelInfo: [], timestamp: new Date(), summary: { totalSpecifications: 0, passedSpecifications: 0, failedSpecifications: 0, totalEntitiesChecked: 0, totalEntitiesPassed: 0, totalEntitiesFailed: 0, overallPassRate: 0 }, specificationResults: [] } });
-    s.upsertDocument({ version: DOCUMENT_VERSION, id: 'evidence', name: 'Evidence', page: { size: 'A4', orientation: 'portrait' }, blocks: [] });
+    if (!(await s.upsertDocument({ version: DOCUMENT_VERSION, id: 'evidence', name: 'Evidence', page: { size: 'A4', orientation: 'portrait' }, blocks: [] }))) throw Error('Evidence document was not committed');
     s.setActiveDocumentId('evidence');
     s.floatPanel('document');
     s.setFloatingPanelRect('document', { x: 20, y: 65, w: 1470, h: 950 });

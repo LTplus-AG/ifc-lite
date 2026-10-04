@@ -87,9 +87,9 @@ test('#6488 a popped-out document remains usable after rename, cancel and Escape
   });
   await page.goto(`${viewerUrl}?model=/samples/building-architecture.ifc`);
   await loaded;
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
-    state.upsertDocument({ version: 1, id: 'popout-6488', name: 'Report', page: { size: 'A4', orientation: 'portrait' }, blocks: [] });
+    if (!(await state.upsertDocument({ version: 1, id: 'popout-6488', name: 'Report', page: { size: 'A4', orientation: 'portrait' }, blocks: [] }))) throw new Error('Canonical document setup was not committed');
     state.setActiveDocumentId('popout-6488');
     state.showWorkspacePanel('document');
     state.setSidebarActivePanel('document');
@@ -144,9 +144,9 @@ test('#6485 named model fields retain their source and authored page breaks expo
   const bridgeLoaded = page.waitForEvent('console', { predicate: (message) => message.text().includes('[ifc-lite] Added model infra-bridge.ifc'), timeout: 120000 });
   await page.locator('#file-input-add').setInputFiles(join(ROOT, 'apps/viewer/public/samples/infra-bridge.ifc'));
   await bridgeLoaded;
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
-    state.upsertDocument({ version: 8, id: 'sources-6485', name: 'Model sources and page breaks', page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'text', id: 'bridge', style: 'heading', text: '' }] });
+    if (!(await state.upsertDocument({ version: 8, id: 'sources-6485', name: 'Model sources and page breaks', page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'text', id: 'bridge', style: 'heading', text: '' }] }))) throw new Error('Canonical document setup was not committed');
     state.setActiveDocumentId('sources-6485');
     state.showWorkspacePanel('document');
     state.setSidebarActivePanel('document');
@@ -283,7 +283,7 @@ test('#6500/#6568 explicitly saved real IFC checks survive reload and remain ind
     if (!model) throw new Error('Real validated model missing');
     state.setModelName(model.id, 'Renamed after evaluation.ifc');
     const document = { ...blankDocument(), name: 'Live evaluated scope', blocks: [] };
-    state.upsertDocument(document);
+    if (!(await state.upsertDocument(document))) throw new Error('Canonical document setup was not committed');
     state.setActiveDocumentId(document.id);
     state.openPanelInHome('document');
   });
@@ -301,9 +301,9 @@ test('#6500/#6568 explicitly saved real IFC checks survive reload and remain ind
   await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setManualChecklist(null));
   await page.goto(viewerUrl);
   await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__ !== undefined);
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
-    state.upsertDocument({ version: 8, id: 'history-6500', name: 'Saved checks', page: { size: 'A4', orientation: 'portrait' }, blocks: [] });
+    if (!(await state.upsertDocument({ version: 8, id: 'history-6500', name: 'Saved checks', page: { size: 'A4', orientation: 'portrait' }, blocks: [] }))) throw new Error('Canonical document setup was not committed');
     state.setActiveDocumentId('history-6500');
     state.openPanelInHome('document');
   });
@@ -312,16 +312,16 @@ test('#6500/#6568 explicitly saved real IFC checks survive reload and remain ind
   for (const report of reports) {
     await panel.getByRole('button', { name: 'Add block', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Validation report', exact: true }).click();
-    await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).last().selectOption(report.id);
+    await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).last().selectOption(`saved:${report.id}`);
   }
   const layouts = panel.getByRole('combobox', { name: 'IDS report layout', exact: true });
   await expect(layouts).toHaveCount(2);
   await expect(layouts.first()).toHaveValue('');
   await layouts.first().selectOption('compact');
   await layouts.last().selectOption('long');
-  await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).first().selectOption(reports[1].id);
+  await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).first().selectOption(`saved:${reports[1].id}`);
   await expect(layouts.first()).toHaveValue('compact');
-  await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).first().selectOption(reports[0].id);
+  await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).first().selectOption(`saved:${reports[0].id}`);
   await expect(panel.locator('[data-ids-report-variant="compact"]')).toHaveCount(1);
   await expect(panel.getByRole('button', { name: 'Refresh from current validation report', exact: true })).toHaveCount(0);
   const embedded = await page.evaluate(() => {
@@ -353,7 +353,7 @@ test('#6500/#6568 explicitly saved real IFC checks survive reload and remain ind
   expect(text).toContain('Confirm survey origin');
 });
 
-test('#6506 three real model pairs survive reload and export the selected saved comparison', async ({ page }, testInfo) => {
+test('#6506 three real model pairs survive reload and export the selected saved comparison', async ({ page, browser }, testInfo) => {
   test.setTimeout(180000);
   await page.setViewportSize({ width: 1680, height: 1050 });
   const settle = async (count: number) => page.waitForFunction((n) => {
@@ -451,26 +451,57 @@ test('#6506 three real model pairs survive reload and export the selected saved 
     expect(text).toContain(row.name.slice(0, 10));
   }
   expect(text).not.toContain('Architecture B / Bridge C');
-  // Real persisted reports plus damaged/duplicate neighbours must remain
-  // visible after the production store's next initial read, with an explicit
-  // recovery notice and the complete original bytes safely archived.
+  // Initial migration imports valid real reports once and preserves the complete
+  // damaged legacy source. A separate context cannot reuse the migration marker
+  // committed earlier by this test's original browser session (#6679).
   const damagedHistory = JSON.stringify([...history, null, history[0]]);
-  await page.evaluate((raw) => localStorage.setItem('ifc-lite-saved-comparisons', raw), damagedHistory);
-  await page.reload(); await settle(1); await openCompare();
-  const library = page.locator('[data-saved-comparisons]');
-  await expect(library.getByRole('alert')).toContainText('The original data was preserved');
-  const noticeColors = await opaqueTextColors(library.getByRole('alert'));
-  const noticeContrast = contrastOfTextOnSurface(noticeColors.foreground, noticeColors.background);
-  expect(noticeContrast).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
-  const contrastPath = testInfo.outputPath('saved-model-comparison-recovery-contrast.json');
-  await writeFile(contrastPath, JSON.stringify({ ...noticeColors, contrast: noticeContrast }, null, 2));
-  await testInfo.attach('recovered-history-contrast', {
-    path: contrastPath, contentType: 'application/json',
-  });
-  expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().savedComparisons)).toEqual(history);
-  expect(await page.evaluate(() => localStorage.getItem('ifc-lite-saved-comparisons:unreadable'))).toBe(damagedHistory);
-  await page.getByRole('combobox', { name: 'Saved comparison', exact: true }).selectOption(history[0].id);
-  await library.screenshot({ path: testInfo.outputPath('saved-model-comparison-recovery.png') });
+  const recoveryContext = await browser.newContext({ viewport: { width: 1680, height: 1050 } });
+  try {
+    await recoveryContext.addInitScript((raw) => localStorage.setItem('ifc-lite-saved-comparisons', raw), damagedHistory);
+    const recoveryPage = await recoveryContext.newPage();
+    await recoveryPage.goto(`${viewerUrl}?model=/samples/building-architecture.ifc`);
+    await recoveryPage.waitForFunction(() => {
+      const state = globalThis.__ifc_lite_viewer_store__?.getState();
+      return state && state.models.size === 1 && !state.loading && !state.geometryStreamingActive
+        && state.savedComparisonsStorage.phase === 'ready';
+    }, undefined, { timeout: 120000 });
+    await recoveryPage.getByRole('tab', { name: 'Analyze', exact: true }).click();
+    await recoveryPage.getByRole('button', { name: /^Compare/ }).first().click();
+    const library = recoveryPage.locator('[data-saved-comparisons]');
+    await expect(library).toBeVisible();
+    const notice = library.getByRole('alert');
+    await expect(notice).toContainText('Some older entries could not be imported. Their original data is preserved');
+    const noticeColors = await opaqueTextColors(notice);
+    const noticeContrast = contrastOfTextOnSurface(noticeColors.foreground, noticeColors.background);
+    expect(noticeContrast).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
+    const contrastPath = testInfo.outputPath('saved-model-comparison-recovery-contrast.json');
+    await writeFile(contrastPath, JSON.stringify({ ...noticeColors, contrast: noticeContrast }, null, 2));
+    await testInfo.attach('recovered-history-contrast', { path: contrastPath, contentType: 'application/json' });
+    expect(await recoveryPage.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().savedComparisons)).toEqual(history);
+    expect(await recoveryPage.evaluate(() => localStorage.getItem('ifc-lite-saved-comparisons'))).toBe(damagedHistory);
+    const archivedRaw = await recoveryPage.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const open = indexedDB.open('ifc-lite-user-content', 1);
+        open.onsuccess = () => resolve(open.result);
+        open.onerror = () => reject(open.error);
+      });
+      try {
+        return await new Promise<string | null>((resolve, reject) => {
+          const tx = db.transaction('recovery', 'readonly');
+          const request: IDBRequest<{ raw: string } | undefined> = tx.objectStore('recovery').get('ifc-lite-saved-comparisons');
+          let raw: string | null = null;
+          request.onsuccess = () => { raw = request.result?.raw ?? null; };
+          tx.oncomplete = () => resolve(raw);
+          tx.onabort = () => reject(tx.error ?? new Error('Recovery read aborted'));
+          tx.onerror = () => reject(tx.error ?? new Error('Recovery read failed'));
+        });
+      } finally { db.close(); }
+    });
+    expect(archivedRaw).toBe(damagedHistory);
+    await recoveryPage.getByRole('combobox', { name: 'Saved comparison', exact: true }).selectOption(history[0].id);
+    await library.screenshot({ path: testInfo.outputPath('saved-model-comparison-recovery.png') });
+  } finally { await recoveryContext.close(); }
+
 });
 
 test('#6489 real IFC document tables retain independent ordering and coloured repeated PDF headers', async ({ page }, testInfo) => {
@@ -490,19 +521,22 @@ test('#6489 real IFC document tables retain independent ordering and coloured re
     }));
   });
   await settle(2);
-  await page.evaluate((entityTypes) => {
+  await page.evaluate(async (entityTypes) => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     const list = { id: 'ifc-products-6489', name: 'IFC products', createdAt: 1, updatedAt: 1, entityTypes, groups: [],
       columns: [{ id: 'class', source: 'attribute' as const, propertyName: 'Class' }, { id: 'name', source: 'attribute' as const, propertyName: 'Name' }],
       grouping: { columnId: 'class', sumColumnIds: [] } };
-    state.upsertDocument({ version: 9, id: 'table-options-6489', name: 'IFC table options', page: { size: 'A4', orientation: 'portrait' },
+    if (!(await state.upsertDocument({ version: 9, id: 'table-options-6489', name: 'IFC table options', page: { size: 'A4', orientation: 'portrait' },
       blocks: [{ kind: 'table', id: 'largest', source: { kind: 'list', list }, title: 'Largest first', maxRows: 500 },
-        { kind: 'table', id: 'labels', source: { kind: 'list', list: { ...list, id: 'copy-6489' } }, title: 'By label', maxRows: 500 }] });
+        { kind: 'table', id: 'labels', source: { kind: 'list', list: { ...list, id: 'copy-6489' } }, title: 'By label', maxRows: 500 }] }))) throw new Error('Canonical document setup was not committed');
     state.setActiveDocumentId('table-options-6489'); state.showWorkspacePanel('document');
   }, [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcBuildingElementProxy, IfcTypeEnum.IfcFurniture, IfcTypeEnum.IfcBeam]);
   const panel = page.locator('[data-document-panel]:visible');
   await expect(panel).toHaveCount(1);
-  await expect(panel.locator('[data-block-table] table')).toHaveCount(2);
+  // Each authored table can continue across real composed pages (#6610).
+  await expect(panel.locator('[data-preview-block="largest"] table').first()).toBeVisible();
+  await expect(panel.locator('[data-preview-block="labels"] table').first()).toBeVisible();
+  await expect(panel.locator('[data-block-table] tbody tr[data-role="row"]')).toHaveCount(62);
   await page.getByRole('button', { name: 'Maximize', exact: true }).click();
   const editor = panel.locator('[data-block-editor="labels"]');
   const preview = panel.locator('[data-preview-block="labels"]');
@@ -525,7 +559,7 @@ test('#6489 real IFC document tables retain independent ordering and coloured re
   await expect(firstPreview.locator('th').first()).toHaveCSS('color', 'rgb(255, 255, 255)');
   const dismiss = page.getByRole('button', { name: 'Dismiss notification', exact: true });
   while (await dismiss.count()) await dismiss.first().click();
-  await preview.scrollIntoViewIfNeeded();
+  await preview.first().scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath('document-table-options.png') });
   const downloadPromise = page.waitForEvent('download'); await panel.locator('[data-document-export]').click();
   const pdfPath = testInfo.outputPath('document-table-options.pdf');
@@ -614,7 +648,7 @@ test('#6507 real IFC discipline checklists remain independent and print their ch
     const moduleUrl = '/src/lib/document/types.ts';
     const { DOCUMENT_VERSION }: typeof import('../../apps/viewer/src/lib/document/types') = await import(moduleUrl);
     const state = globalThis.__ifc_lite_viewer_store__.getState();
-    state.upsertDocument({ version: DOCUMENT_VERSION, id: 'reviews-6507', name: 'Independent discipline reviews', page: { size: 'A4', orientation: 'portrait' }, blocks: [] });
+    if (!(await state.upsertDocument({ version: DOCUMENT_VERSION, id: 'reviews-6507', name: 'Independent discipline reviews', page: { size: 'A4', orientation: 'portrait' }, blocks: [] }))) throw new Error('Canonical document setup was not committed');
     state.setActiveDocumentId('reviews-6507');
     state.openPanelInHome('document');
   });
@@ -633,7 +667,7 @@ test('#6507 real IFC discipline checklists remain independent and print their ch
   await expect(previews).toHaveCount(2);
   await expect(previews.first()).toContainText('Architecture survey approved');
   await expect(previews.last()).not.toContainText('Structure survey pending');
-  await expect(previews.last()).toContainText('Warning');
+  await expect(previews.last()).toContainText('WARNING');
   await expect(previews.locator('[data-manual-report-benchmarks]')).toHaveCount(1);
   // Remove the selected live Structure review. Its embedded report still
   // prints, while explicit source availability disables its Refresh.

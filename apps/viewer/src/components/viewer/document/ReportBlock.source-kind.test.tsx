@@ -9,6 +9,8 @@
  * the kind — and refresh must refuse a report of the other kind.
  */
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -118,7 +120,7 @@ describe('report block preview (#6372)', () => {
 
 describe('report block editor refresh (#6372)', () => {
   function editor(block: IdsReportBlock, report: ValidationReport | null, onChange: (b: DocumentBlock) => void = noop) {
-    return render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={report} onChange={onChange} onMove={noop} onRemove={noop} />);
+    return render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={report} onChange={onChange} onMove={noop} onCopy={noop} onRemove={noop} />);
   }
 
   it('labels an information validation block by its kind', () => {
@@ -161,6 +163,7 @@ describe('report block editor refresh (#6372)', () => {
 describe('report block add menu (#6372)', () => {
   async function settle(): Promise<void> {
     for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+    await documentPreviewReady();
   }
   function openMenu(ui: HTMLElement): void {
     const trigger = [...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!;

@@ -19,6 +19,7 @@ function prepass(bytes: Uint8Array): void {
 vi.mock('@ifc-lite/wasm', () => ({
   default: async () => undefined,
   initSync: () => undefined,
+  setGeometryProgressCallback: () => undefined,
   IfcAPI: class {
     buildPrePassStreaming(bytes: Uint8Array) { prepass(bytes); }
     buildPrePassStreamingSharded(bytes: Uint8Array) { prepass(bytes); }

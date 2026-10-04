@@ -1,0 +1,69 @@
+debug: [vite] connecting...
+debug: [vite] connected.
+info: %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+log: %c[Vercel Web Analytics]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit
+log: %c[Vercel Web Analytics]%c [view] http://localhost:5183/ color: rgb(120, 120, 120) color: inherit {o: http://localhost:5183/, sv: 0.1.3, sdkn: @vercel/analytics/react, sdkv: 2.0.1, ts: 1791008077510} /_vercel/insights/view
+log: [useIfc] File: hello-wall.ifc, size: 0.08MB, read in 13ms
+log: [useIfc] loadFile "hello-wall.ifc" session=1 mergeLayers=false geomMode=fast tier=medium cacheKey=ifc-79592-e6951f9d44cd83e0-v23-g5-sc
+log: [Viewport] spatial chunk bucketing on (cellSize=32m)
+log: [Viewport] GPU residency budget on (2048MB)
+log: [Viewport] host residency budget on (3072MB)
+log: [Viewport] LOD1 on (below 48px projected)
+warning: [ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+info: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+info: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+log: [useIfc] First appendGeometryBatch for hello-wall.ifc: 285ms
+log: [GeomSync] new file currentLength=5 lastLength=0 releaseAfterFinalize=false
+log: [mem-summary] peakJs=312.0MB peakWasm=0.0MB geom=0.0MB source=0.1MB transport=0.0MB overlap=0ms total=301ms
+log: [useIfc] First visible geometry for hello-wall.ifc: 329ms
+log: [useIfc] Geometry streaming complete: 1 batches, 8 meshes
+log: [useIfc] Stream complete for hello-wall.ifc: 307ms
+log: [GeomSync] stream transition complete geometryLength=5 queued=false batches=3
+log: [useIfc] Data model parsing start for hello-wall.ifc: 337ms (worker)
+log: [GeomStream] Streaming ended — starting finalize
+log: [GeomSync] finalize start geometryLength=5 releaseAfterFinalize=false
+log: [GeomStream] computeBounds: 0ms
+log: [GeomStream] finalizeStreamingAsync complete: 1ms → 3 consolidated batches, 0.0M triangles
+log: [GeomSync] finalize complete elapsed=1ms batches=3 queued=false
+log: [useIfc] Spatial tree ready for hello-wall.ifc at 805ms
+log: [useIfc] Data model parsing complete for hello-wall.ifc: 928ms
+log: [useIfc] finalizing: session=1 meshes=8 dataStore=true
+log: [ifc-lite] hello-wall.ifc (0.1MB) → 8 meshes, 0k verts in 1.0s
+log: [ifc-lite] render stats: 3 draw calls, 0.0 MB GPU resident (3 batches drawn, 0 frustum-culled, 0 contribution-culled; 0 instanced drawn, 0 frustum-culled, 0 contribution-culled)
+log: [useIfc] File: hello-wall.ifc, size: 0.08MB, read in 7ms
+log: [useIfc] loadFile "hello-wall.ifc" session=1 mergeLayers=false geomMode=fast tier=medium cacheKey=ifc-79592-e6951f9d44cd83e0-v23-g5-sc
+warning: [ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)
+info: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+info: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+log: [mem-summary] peakJs=342.0MB peakWasm=0.0MB geom=0.0MB source=0.1MB transport=0.0MB overlap=0ms total=74ms
+log: [useIfc] Geometry streaming complete: 1 batches, 8 meshes
+log: [useIfc] Stream complete for hello-wall.ifc: 73ms
+log: [useIfc] Data model parsing start for hello-wall.ifc: 90ms (worker)
+log: [Viewport] quantized vertices on (12B lattice)
+log: [useIfc] Spatial tree ready for hello-wall.ifc at 564ms
+log: [useIfc] Data model parsing complete for hello-wall.ifc: 564ms
+log: [useIfc] finalizing: session=1 meshes=8 dataStore=true
+log: [GeomSync] model added (1→2) — refitting camera to combined bounds
+log: [ifc-lite] hello-wall.ifc (0.1MB) → 8 meshes, 0k verts in 0.6s
+log: [ifc-lite] Added model hello-wall.ifc (0.1MB) in 634ms
+log: [ifc-lite] render stats: 6 draw calls, 0.0 MB GPU resident (6 batches drawn, 0 frustum-culled, 0 contribution-culled; 0 instanced drawn, 0 frustum-culled, 0 contribution-culled)
+log: [GeomSync] geometry rebuilt after shrink currentLength=10 lastLength=23
+warning: [Renderer] expressId exceeds 24-bit seam-ID encoding range; seam lines may collide.
+log: [GeomSync] geometry rebuilt after shrink currentLength=10 lastLength=11
+info: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+info: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+info: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+info: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+info: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+info: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+info: [IFC-LITE] Opening classifier: rect=2 diag=0 non_rect=0 (total=2)
+info: [IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWall: hosts=1 openings=2 (rect=2 diag=0 non_rect=0)
+log: [GeomSync] geometry rebuilt after shrink currentLength=10 lastLength=11
+log: [GeomSync] geometry rebuilt after shrink currentLength=10 lastLength=11
+log: [GeomSync] geometry rebuilt after shrink currentLength=10 lastLength=16

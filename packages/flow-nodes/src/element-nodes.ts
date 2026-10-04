@@ -18,14 +18,16 @@
  */
 
 import type { EntityRef, Point } from '@ifc-lite/flow';
-import type { AddBeamInStoreParams, AddColumnInStoreParams, AddSlabRectangleParams, AddWallInStoreParams, EntityRef as SdkEntityRef } from '@ifc-lite/sdk';
+import type { AddBeamInStoreParams, AddColumnInStoreParams, AddSlabRectangleParams, AddWallInStoreParams, EntityRef as SdkEntityRef, StoreNamespace } from '@ifc-lite/sdk';
 import { ENTITY_ITEM, SCALAR_ITEM, forgetGlobalId, rememberGlobalId, requireCapability, resolveByGlobalId, toSdkRef, type Ctx, type FlowNodeDef } from './host.js';
 
 export type ElementSpec =
   | { readonly kind: 'wall'; readonly storey: EntityRef; readonly params: AddWallInStoreParams }
   | { readonly kind: 'column'; readonly storey: EntityRef; readonly params: AddColumnInStoreParams }
   | { readonly kind: 'beam'; readonly storey: EntityRef; readonly params: AddBeamInStoreParams }
-  | { readonly kind: 'slab'; readonly storey: EntityRef; readonly params: AddSlabRectangleParams };
+  | { readonly kind: 'slab'; readonly storey: EntityRef; readonly params: AddSlabRectangleParams }
+  | { readonly kind: 'stair'; readonly storey: EntityRef; readonly params: Parameters<StoreNamespace['addStair']>[2] }
+  | { readonly kind: 'railing'; readonly storey: EntityRef; readonly params: Parameters<StoreNamespace['addRailing']>[2] };
 
 const POINT_ITEM = { kind: 'point', access: 'item' } as const;
 const SPEC_ITEM = { kind: 'elementSpec', access: 'item' } as const;
@@ -40,6 +42,7 @@ const point = (v: unknown, name: string): [number, number, number] => {
   return [v[0], v[1], v[2]];
 };
 const optName = (v: unknown): string | undefined => (typeof v === 'string' && v.length > 0 ? v : undefined);
+const optNum = (v: unknown, name: string): number | undefined => v === undefined ? undefined : num(v, name);
 
 function specOf(v: unknown): ElementSpec {
   const s = v as Partial<ElementSpec>;
@@ -159,6 +162,55 @@ export const elementNodes: FlowNodeDef[] = [
     }),
   },
   {
+    type: 'element.stair',
+    title: 'Stair spec',
+    category: 'element',
+    inputs: [{ name: 'storey', type: ENTITY_ITEM }, { name: 'Position', type: POINT_ITEM }],
+    outputs: [{ name: 'spec', type: SPEC_ITEM }],
+    params: [
+      { name: 'NumberOfRisers', kind: 'number', default: 17 },
+      { name: 'RiserHeight', kind: 'number', default: .175 },
+      { name: 'TreadLength', kind: 'number', default: .3 },
+      { name: 'Width', kind: 'number', default: 1 },
+      { name: 'Direction', kind: 'number', default: 0, doc: 'Run direction in radians, in the storey frame.' },
+      { name: 'WaistThickness', kind: 'number' },
+      { name: 'Name', kind: 'string' },
+    ],
+    capabilities: [],
+    run: (_c, i, p) => ({ spec: {
+      kind: 'stair', storey: i.storey as EntityRef,
+      params: { Position: point(i.Position, 'Position'), NumberOfRisers: num(p.NumberOfRisers, 'NumberOfRisers'),
+        RiserHeight: num(p.RiserHeight, 'RiserHeight'), TreadLength: num(p.TreadLength, 'TreadLength'),
+        Width: num(p.Width, 'Width'), Direction: optNum(p.Direction, 'Direction'),
+        WaistThickness: optNum(p.WaistThickness, 'WaistThickness'), Name: optName(p.Name) },
+    } satisfies ElementSpec }),
+  },
+  {
+    type: 'element.railing',
+    title: 'Railing spec',
+    category: 'element',
+    inputs: [{ name: 'storey', type: ENTITY_ITEM }],
+    outputs: [{ name: 'spec', type: SPEC_ITEM }],
+    params: [
+      { name: 'Path', kind: 'json', doc: 'Base polyline [[x, y, z], ...], in storey-local metres.' },
+      { name: 'Height', kind: 'number', default: 1.1 },
+      { name: 'RailDiameter', kind: 'number' },
+      { name: 'PostDiameter', kind: 'number' },
+      { name: 'PostSpacing', kind: 'number' },
+      { name: 'Name', kind: 'string' },
+    ],
+    capabilities: [],
+    run: (_c, i, p) => {
+      if (!Array.isArray(p.Path)) throw new Error('"Path" must be a polyline [[x, y, z], ...]');
+      return { spec: {
+        kind: 'railing', storey: i.storey as EntityRef,
+        params: { Path: p.Path.map((v, index) => point(v, `Path[${index}]`)), Height: num(p.Height, 'Height'),
+          RailDiameter: optNum(p.RailDiameter, 'RailDiameter'), PostDiameter: optNum(p.PostDiameter, 'PostDiameter'),
+          PostSpacing: optNum(p.PostSpacing, 'PostSpacing'), Name: optName(p.Name) },
+      } satisfies ElementSpec };
+    },
+  },
+  {
     type: 'model.addElement',
     title: 'Add element',
     category: 'model',
@@ -188,22 +240,23 @@ export const elementNodes: FlowNodeDef[] = [
       // model was rebuilt from an older file) both end in a fresh element under
       // the same GlobalId; a keep that returned a handle to nothing would read
       // as success downstream.
+      let ref: SdkEntityRef;
       if (t.action === 'update' && existing) {
-        // A removal the store refused leaves a live element under this
-        // GlobalId; creating a second one would make the key ambiguous.
-        if (!ctx.host.bim.store.removeEntity(existing)) throw new Error(`element ${t.globalId} (#${existing.expressId}) could not be removed for update`);
-        forgetGlobalId(ctx.host.bim, t.globalId);
-      } else if (t.action !== 'create') {
-        ctx.log('warn', `element ${t.globalId} was tracked but is no longer in the model; re-creating it`);
+        if (existing.modelId !== storey.modelId) throw new Error('Tracked replacement must remain in the same model');
+        // The shared capability stages old removal + builder writes together.
+        // Failed creation must not forget the live GlobalId or tracking entry.
+        ref = ctx.host.bim.store.replaceElement(existing, storey.expressId, replacementSpec(spec, t.globalId));
+      } else {
+        if (t.action !== 'create') ctx.log('warn', `element ${t.globalId} was tracked but is no longer in the model; re-creating it`);
+        ref = addSpec(ctx, storey, spec, t.globalId);
       }
-      const ref = addSpec(ctx, storey, spec, t.globalId);
       rememberGlobalId(ctx.host.bim, t.globalId, ref);
       return { entity: { globalId: t.globalId, modelId: ref.modelId, expressId: ref.expressId } satisfies EntityRef };
     },
     remove: (ctx, globalId) => {
       const existing = resolveByGlobalId(ctx.host.bim, globalId);
       if (existing) {
-        if (!ctx.host.bim.store.removeEntity(existing)) throw new Error(`element ${globalId} (#${existing.expressId}) could not be removed`);
+        if (!removeTrackedElement(ctx, existing)) throw new Error(`element ${globalId} (#${existing.expressId}) could not be removed`);
         forgetGlobalId(ctx.host.bim, globalId);
       } else ctx.log('warn', `tracked element ${globalId} was already gone`);
     },
@@ -230,6 +283,14 @@ export const elementNodes: FlowNodeDef[] = [
   },
 ];
 
+/** A stair's flight is a live product, unlike detached representation helpers. */
+function removeTrackedElement(ctx: Ctx, ref: SdkEntityRef): boolean {
+  const entity = ctx.host.bim.entity(ref);
+  return entity?.type.toUpperCase() === 'IFCSTAIR'
+    ? ctx.host.bim.store.removeStair(ref)
+    : ctx.host.bim.store.removeEntity(ref);
+}
+
 function addSpec(ctx: Ctx, storey: SdkEntityRef, spec: ElementSpec, GlobalId: string): SdkEntityRef {
   const store = ctx.host.bim.store;
   switch (spec.kind) {
@@ -237,6 +298,20 @@ function addSpec(ctx: Ctx, storey: SdkEntityRef, spec: ElementSpec, GlobalId: st
     case 'column': return store.addColumn(storey.modelId, storey.expressId, { ...spec.params, GlobalId });
     case 'beam': return store.addBeam(storey.modelId, storey.expressId, { ...spec.params, GlobalId });
     case 'slab': return store.addSlab(storey.modelId, storey.expressId, { ...spec.params, GlobalId });
+    case 'stair': return store.addStair(storey.modelId, storey.expressId, { ...spec.params, GlobalId });
+    case 'railing': return store.addRailing(storey.modelId, storey.expressId, { ...spec.params, GlobalId });
     default: throw new Error(`unknown element kind "${String((spec as { kind: unknown }).kind)}"`);
+  }
+}
+
+/** Discriminated canonical params, including a cross-kind tracked replacement. */
+function replacementSpec(spec: ElementSpec, GlobalId: string): Parameters<StoreNamespace['replaceElement']>[2] {
+  switch (spec.kind) {
+    case 'wall': return { kind: spec.kind, params: { ...spec.params, GlobalId } };
+    case 'column': return { kind: spec.kind, params: { ...spec.params, GlobalId } };
+    case 'beam': return { kind: spec.kind, params: { ...spec.params, GlobalId } };
+    case 'slab': return { kind: spec.kind, params: { ...spec.params, GlobalId } };
+    case 'stair': return { kind: spec.kind, params: { ...spec.params, GlobalId } };
+    case 'railing': return { kind: spec.kind, params: { ...spec.params, GlobalId } };
   }
 }

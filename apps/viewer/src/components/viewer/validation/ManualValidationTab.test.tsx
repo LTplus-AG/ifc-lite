@@ -10,6 +10,7 @@
  */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -69,7 +70,8 @@ beforeEach(() => {
   localStorage.clear();
   clearDownloads();
   setValidationSourceChoice(null);
-  useViewerStore.setState({ ...initial, manualChecklist: null, manualAnswers: {}, manualSaveError: null });
+  // The content fixture owns initialized storage controllers (#6679).
+  useViewerStore.setState({ manualChecklist: null, manualAnswers: {}, manualSaveError: null });
 });
 
 afterEach(() => {

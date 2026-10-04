@@ -21,9 +21,19 @@ import type { ViewerState } from '../index.js';
 import { toGlobalIdFromModels } from '../globalId.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { correctPreAlignmentTail, type PreAlignmentMeshBaseline } from './data-mesh-prealign.js';
+import { syncAuthoredTreeEntry } from './authoredTreeEntry.js';
+import type { NewEntity } from '@ifc-lite/mutations';
 
 type Get = () => ViewerState;
 type Set = (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void;
+
+/** Complete a committed deletion without recording a second history entry. */
+export function completeEntityRemoval(get: Get, set: Set, modelId: string, expressId: number, record: NewEntity | null | undefined): void {
+  syncAuthoredTreeEntry(get(), modelId, expressId, record, false);
+  if (!stashAndPruneEntityMesh(get, set, modelId, expressId)) {
+    get().hideEntities([toGlobalIdFromModels(get().models, modelId, expressId)]);
+  }
+}
 
 /** What `removedMeshes` holds per stashed entity: the pristine (unrotated)
  *  mesh bytes to re-append, plus — when the model was federation-aligned at

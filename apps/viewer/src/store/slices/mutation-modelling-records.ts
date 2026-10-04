@@ -71,9 +71,40 @@ export function recordModellingEdit<T>(
   edit: (methods: ModellingMethods, draft: StoreEditor) => T,
   batchId?: string,
 ): T {
+  return recordModellingCommit(store, modelId, (editor, dataStore) =>
+    editor.runAtomic((draft) => edit(createModellingStoreBackend(() => ({
+      modelId,
+      store: dataStore,
+      editor: draft,
+      mutationView: draft.getMutationView(),
+      ownerHistoryId: resolveLiveOwnerHistoryId(dataStore, draft, draft.getMutationView()),
+      globalIdScopes: [...store.getState().models].filter(([id]) => id !== modelId).flatMap(([id, model]) => model.ifcDataStore ? [{ dataStore: model.ifcDataStore, view: store.getState().mutationViews.get(id) ?? null }] : []),
+    })), draft)), batchId);
+}
+
+/** Record an edit that owns its atomic transaction, with the same history and
+ * room delta bookkeeping. Post-commit renderer effects remain with the caller. */
+export function recordModellingCommit<T>(
+  store: ModellingStore,
+  modelId: string,
+  commit: (editor: StoreEditor, dataStore: IfcDataStore) => T,
+  batchId?: string,
+): T {
   const state = store.getState();
   const target = modelEditTarget(state, modelId);
   if (!target) throw new Error(`No model loaded for id "${modelId}"`);
+  return recordResolvedModellingCommit(store, target, commit, batchId);
+}
+
+/** The same compound history for adapters that also resolve legacy models. */
+export function recordResolvedModellingCommit<T>(
+  store: ModellingStore,
+  target: ModelEditTarget,
+  commit: (editor: StoreEditor, dataStore: IfcDataStore) => T,
+  batchId?: string,
+): T {
+  const state = store.getState();
+  const { modelId } = target;
   const { dataStore, view, editor } = target;
   const room = roomSlotFor(state, modelId) ? snapshotOverlay(view) : null;
   // By id, not by length: forgetting an overlay record also drops its own
@@ -81,13 +112,7 @@ export function recordModellingEdit<T>(
   const seen = new Set(view.getMutations().map((m) => m.id));
   const overlayBefore = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
 
-  const result = editor.runAtomic((draft) => edit(createModellingStoreBackend(() => ({
-    modelId,
-    store: dataStore,
-    editor: draft,
-    mutationView: draft.getMutationView(),
-    ownerHistoryId: resolveLiveOwnerHistoryId(dataStore, draft, draft.getMutationView()),
-  })), draft));
+  const result = commit(editor, dataStore);
 
   const written = view.getMutations().filter((m) => !seen.has(m.id));
   stashForgottenRecords(store, modelId, written, overlayBefore);

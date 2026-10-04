@@ -3,45 +3,31 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Saved documents (#4594), the way dashboards are saved: localStorage,
+ * Saved documents (#4594, #6679), stored individually in IndexedDB,
  * validated on the way in, and the `.ifclite-document.json` file a document
  * is shared as — the template you re-open on the next revision of the model.
  */
+import type { ContentDefinition } from '../storage/content-migration.js';
+import { readContentEntries } from '../storage/content-reader.js';
+import { rebindCommittedDocument } from '../storage/content-backup-references.js';
 import { trackExportCompleted } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
-import { migrateDocumentSpec, validateDocumentSpec, type DocumentSpec } from './types.js';
+import { migrateDocumentSpec, validateDocumentSpec, type DocumentBlock, type DocumentSpec } from './types.js';
 
-const STORAGE_KEY = 'ifc-lite-documents';
-
-export function loadDocuments(): DocumentSpec[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    const kept: DocumentSpec[] = [];
-    for (const rawEntry of parsed) {
-      const entry = migrateDocumentSpec(rawEntry);
-      const errors = validateDocumentSpec(entry);
-      if (errors.length === 0) kept.push(entry as DocumentSpec);
-      else console.warn('[Documents] Dropping an invalid saved document', errors);
-    }
-    return kept;
-  } catch (err) {
-    console.warn('[Documents] Failed to load saved documents', err);
-    return [];
-  }
-}
-
-/** `false` when the browser refused the write (storage blocked or full — a few 1 MB logos reach the quota); the caller says so. */
-export function saveDocuments(documents: readonly DocumentSpec[]): boolean {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(documents));
-    return true;
-  } catch (err) {
-    console.warn('[Documents] Failed to save documents to localStorage', err);
-    return false;
-  }
+const DOCUMENTS_STORAGE_KEY = 'ifc-lite-documents';
+export const documentContent: ContentDefinition<DocumentSpec> = {
+  kind: 'document', legacyKey: DOCUMENTS_STORAGE_KEY,
+  mergeCommitted: rebindCommittedDocument,
+  decode: value => {
+    // Existing valid blocks retain their references during cosmetic edits. Re-migrating
+    // them would rerun embedded IFC lists on every keystroke (#6679).
+    if (validateDocumentSpec(value).length === 0) return value as DocumentSpec;
+    const migrated = migrateDocumentSpec(value);
+    return validateDocumentSpec(migrated).length === 0 ? migrated as DocumentSpec : null;
+  },
+};
+export function loadDocuments(): Promise<DocumentSpec[]> {
+  return readContentEntries(documentContent);
 }
 
 /** The file a document is shared as. */
@@ -56,6 +42,15 @@ export const freshDocumentId = (): string => `document-${crypto.randomUUID()}`;
 export const freshBlockId = (): string => `block-${crypto.randomUUID()}`;
 /** The id of the list copy a table block embeds (#5142) — never a library list's id. */
 export const freshListCopyId = (): string => `document-list-${crypto.randomUUID()}`;
+
+/** An independent block copy (#6689): authored content and source bindings survive; owned ids do not. */
+export function copyDocumentBlock(block: DocumentBlock): DocumentBlock {
+  const copy = structuredClone(block);
+  copy.id = freshBlockId();
+  if (copy.kind === 'chart') copy.chart.id = freshBlockId();
+  if (copy.kind === 'table' && copy.source.kind === 'list') copy.source.list.id = freshListCopyId();
+  return copy;
+}
 
 /**
  * Parse a document file: validated, and re-identified so the imported copy
@@ -72,12 +67,8 @@ export function parseDocumentFile(text: string): DocumentSpec {
   return {
     ...spec,
     id: freshDocumentId(),
-    // A table block over a list embeds a copy of it (#5142), re-identified too: it must never
-    // share an id with a list already in this browser's library. A validation-results table
-    // (#5138) has no embedded list — only its own block id changes.
-    blocks: spec.blocks.map((b) => (b.kind === 'table' && b.source.kind === 'list'
-      ? { ...b, id: freshBlockId(), source: { ...b.source, list: { ...b.source.list, id: freshListCopyId() } } }
-      : { ...b, id: freshBlockId() })),
+    // Import and in-page duplication share the same owned-id and independence contract.
+    blocks: spec.blocks.map(copyDocumentBlock),
   };
 }
 

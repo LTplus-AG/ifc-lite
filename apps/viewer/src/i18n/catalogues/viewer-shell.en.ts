@@ -17,6 +17,8 @@ export const viewerShellEn = {
   'viewerShell.chunkError.crashedDetail': 'An unexpected error stopped it from rendering.',
   'viewerShell.chunkError.reload': 'Reload',
   'viewerShell.staleDeployment.notice': 'A new version of the viewer is available — reload to continue.',
+  'viewerShell.staleDeployment.reopenPrompt': 'The viewer updated to a new version and reloaded. Open {files} again to continue.',
+  'viewerShell.staleDeployment.reopenAction': 'Open file…',
   'viewerShell.chunkLabel.appearancePanel': 'Appearance panel',
   'viewerShell.chunkLabel.chartsPanel': 'Charts panel',
   'viewerShell.chunkLabel.flowPanel': 'Flow panel',

@@ -68,6 +68,7 @@
  * {@link shouldSuppressChunkSkewNoise} below rather than by lying to the module
  * graph.
  */
+import { reloadKeepingOpenModels } from './reload-resume.js';
 
 /**
  * sessionStorage key holding the epoch-ms of the last chunk-skew reload.
@@ -164,7 +165,8 @@ export interface ChunkSkewDeps {
 
 const defaultDeps: ChunkSkewDeps = {
   now: () => Date.now(),
-  reload: () => window.location.reload(),
+  // Keep the open models: the boot reopens them (./reload-resume.ts).
+  reload: () => reloadKeepingOpenModels('automatic'),
   hasRecentReload: (now) => {
     try {
       const raw = sessionStorage.getItem(RELOAD_TS_KEY);

@@ -100,6 +100,12 @@ export const TOOL_SURFACE_COMMANDS = [
     run: () => { launchModelCommand('room.place'); },
   },
   {
+    id: 'tool:space-envelope', labelKey: 'spaceEnvelope.label',
+    searchLabel: 'Edit space envelope', keywords: 'room space ceiling floor height slope pitched roof ridge section snap',
+    category: 'Tools', icon: RoomIcon, surfaces: paletteOnly, enabled: editable,
+    run: () => { launchModelCommand('space.envelope', { drawsOnWorkplane: false }); },
+  },
+  {
     id: 'tool:curtain-wall', labelKey: 'curtainWall.palette',
     searchLabel: 'Place curtain walls', keywords: 'curtain wall glazing facade mullion transom panel storefront model author build create',
     category: 'Tools', icon: CurtainWallIcon, surfaces: paletteOnly, enabled: editable,

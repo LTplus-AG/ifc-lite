@@ -153,17 +153,28 @@ describe('AnalysisPanel scaffold, through the IDS panel (#5834)', () => {
     assert.equal(alert?.textContent?.trim(), resolve('idsPanel.error.noModelLoaded'));
   });
 
-  it('dims only the result region while the result is stale, and not before', () => {
-    seedModels(1);
-    useViewerStore.setState({ idsDocument: documentFixture, mutationVersion: 1, geometryContentVersion: 1 });
-    useViewerStore.setState({ idsValidationReport: stampAnalysisReport(reportFor('model-a'), captureAnalysisStamp()) });
-    const ui = render(<IDSPanel />);
-    assert.equal(ui.querySelector('.opacity-60'), null);
-    act(() => useViewerStore.setState({ geometryContentVersion: 2 }));
-    const dimmed = ui.querySelector('.opacity-60');
-    assert.ok(dimmed?.textContent?.includes('Wall requirements'), 'the report is what dims');
-    assert.ok(!dimmed?.contains(byLabel(ui, 'Re-run validation') ?? null), 'the header stays live');
-  });
+  for (const embedded of [false, true]) for (const modelCount of [1, 2] as const) {
+    it(`dims stale results without dimming shared actions (${embedded ? 'embedded' : 'standalone'}, ${modelCount} models) (#6690)`, () => {
+      seedModels(modelCount);
+      useViewerStore.setState({ idsDocument: documentFixture, mutationVersion: 1, geometryContentVersion: 1 });
+      useViewerStore.setState({ idsValidationReport: stampAnalysisReport(reportFor('model-a'), captureAnalysisStamp()) });
+      const ui = render(<IDSPanel embedded={embedded} />);
+      assert.ok(ui.querySelector('.opacity-60') === null);
+      act(() => useViewerStore.setState({ geometryContentVersion: 2 }));
+      const dimmed = [...ui.querySelectorAll('.opacity-60')];
+      assert.ok(dimmed.some(region => region.textContent?.includes('Wall requirements')), 'old result cards dim');
+      assert.ok(dimmed.some(region => region.textContent?.includes('Specifications Passed')), 'old summary dims');
+      for (const label of ['Re-run validation', 'Clear results', 'Load New IDS', 'Unload IDS']) {
+        const control = byLabel(ui, label);
+        assert.ok(control, `${label} remains available`);
+        assert.ok(control.closest('.opacity-60') === null, `${label} is outside stale result regions`);
+      }
+      const banner = ui.querySelector('output');
+      assert.ok(banner, 'the stale notification is shown');
+      assert.ok(banner.textContent?.includes(resolve('analysisStale.message')), 'the stale notification explains outdated results');
+      assert.ok(banner.closest('.opacity-60') === null, 'the stale notification itself stays undimmed');
+    });
+  }
 
   it('exports in the chosen format and remembers it as the split button\'s default', async () => {
     seedModels(1);

@@ -1,0 +1,57 @@
+@ifc-lite/sdk:test: cache bypass, force executing dbab066f9f426927
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: > @ifc-lite/sdk@9.0.0 test /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/sdk
+@ifc-lite/sdk:test: > vitest run store-design.test.ts design-place.test.ts
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  RUN  v4.1.11 /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/sdk
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  ❯ src/store-design.test.ts (2 tests | 2 failed) 36ms
+@ifc-lite/sdk:test:      × exports the curtain aggregate and all owned parts and rolls back a late invalid profile 29ms
+@ifc-lite/sdk:test:      × binds to persisted source axes and refuses a stale position without spending IDs or journal entries 6ms
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  FAIL  src/store-design.test.ts > #6232 loaded-model design builders > exports the curtain aggregate and all owned parts and rolls back a late invalid profile
+@ifc-lite/sdk:test: AssertionError: expected undefined to be type of 'function'
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: Expected: "function"
+@ifc-lite/sdk:test: Received: "undefined"
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  ❯ src/store-design.test.ts:29:17
+@ifc-lite/sdk:test:      27|     const { store, view, editor, methods } = await setup();
+@ifc-lite/sdk:test:      28|     const add = methods.addCurtainWall;
+@ifc-lite/sdk:test:      29|     expect(add).toBeTypeOf('function');
+@ifc-lite/sdk:test:        |                 ^
+@ifc-lite/sdk:test:      30|     if (!add) throw new Error('Missing curtain wall capability');
+@ifc-lite/sdk:test:      31|     const prior = editor.addEntity('IfcCartesianPoint', [[7, 8, 9]]).e…
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  FAIL  src/store-design.test.ts > #6232 loaded-model design builders > binds to persisted source axes and refuses a stale position without spending IDs or journal entries
+@ifc-lite/sdk:test: AssertionError: expected undefined to be type of 'function'
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: Expected: "function"
+@ifc-lite/sdk:test: Received: "undefined"
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  ❯ src/store-design.test.ts:59:29
+@ifc-lite/sdk:test:      57|   it('binds to persisted source axes and refuses a stale position with…
+@ifc-lite/sdk:test:      58|     const { store, view, methods } = await setup();
+@ifc-lite/sdk:test:      59|     expect(methods.addGrid).toBeTypeOf('function');
+@ifc-lite/sdk:test:        |                             ^
+@ifc-lite/sdk:test:      60|     if (!methods.addGrid) throw new Error('Missing grid capability');
+@ifc-lite/sdk:test:      61|     const grid = methods.addGrid('m', 42, { UAxes: [{ Tag: 'U', Start:…
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  Test Files  1 failed (1)
+@ifc-lite/sdk:test:       Tests  2 failed (2)
+@ifc-lite/sdk:test:    Start at  07:55:18
+@ifc-lite/sdk:test:    Duration  545ms (transform 34ms, setup 0ms, import 404ms, tests 36ms, environment 0ms)
+@ifc-lite/sdk:test: 
+@ifc-lite/sdk:test:  ELIFECYCLE  Test failed. See above for more details.
+ Tasks:    34 successful, 37 total
+Cached:    0 cached, 37 total
+  Time:    29.731s 
+ ERROR  run failed: command  exited (1)

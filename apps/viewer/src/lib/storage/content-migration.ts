@@ -8,6 +8,8 @@ export interface ContentDefinition<T extends { id: string }> {
   kind: ContentKind;
   legacyKey: string;
   decode(value: unknown): T | null;
+  /** Apply only source-reference changes from an acknowledged own import. */
+  mergeCommitted?(current: T, before: unknown, committed: T): T;
 }
 
 /** Read originals without invoking legacy loaders, which can mutate damaged history. */

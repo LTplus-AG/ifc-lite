@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { beforeEach, afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -37,6 +38,7 @@ import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { render, cleanup, click } from '@/test/render';
 import { ChartEditor } from './ChartEditor';
+import { installSvgCdataEnvironmentConversion } from '@/test/svg-cdata';
 
 const original = useViewerStore.getState();
 const catalog = { attributes: [], properties: new Map(), quantities: new Map(), relations: [] };
@@ -74,10 +76,10 @@ beforeEach(async () => {
   assert.ok(saved[0].report.rows.some((row) => row.state === 'deleted'));
   assert.ok(saved[1].report.rows.some((row) => row.name === 'Explicit chart test revision C wall'));
   assert.notDeepEqual(saved[0].report.rows, saved[1].report.rows);
-  useViewerStore.setState({ ...federation, savedComparisons: [], savedComparisonsLoadIssue: null,
+  useViewerStore.setState({ ...federation, savedComparisons: [],
     dashboards: [], activeDashboardId: null, compareResult: live, compareRunSeq: 2,
     mutationViews: new Map(), mutationVersion: 0, chartSlice: null, chartSliceSource: null, chartSliceBuckets: null });
-  for (const snapshot of saved) assert.equal(useViewerStore.getState().saveComparison(snapshot), true);
+  for (const snapshot of saved) assert.equal((await useViewerStore.getState().saveComparison(snapshot)), true);
 });
 afterEach(() => { cleanup(); setLocale('en'); useViewerStore.setState(original); localStorage.clear(); });
 
@@ -116,27 +118,6 @@ async function pdfText(blob: Blob): Promise<string> {
     }
     return text.join(' ');
   } finally { await task.destroy(); }
-}
-
-function installSvgCdataEnvironmentConversion(): () => void {
-  const originalParser = globalThis.DOMParser;
-  // HappyDOM 20's XML parser rejects CDATA in ECharts' valid SVG stylesheet.
-  // Only the test parser encodes that same text as XML entities; the actual
-  // renderer output, CSS content, elements and geometry remain unchanged.
-  globalThis.DOMParser = class extends originalParser {
-    override parseFromString(...[source, type]: Parameters<DOMParser['parseFromString']>): Document {
-      const encoded = type === 'image/svg+xml' && typeof source === 'string'
-        ? source.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_whole, text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))
-        : source;
-      const parsed = super.parseFromString(encoded, type);
-      if (type === 'image/svg+xml' && typeof source === 'string') {
-        const stylesheet = /<style[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/style>/.exec(source);
-        if (stylesheet) assert.equal(parsed.querySelector('style')?.textContent, stylesheet[1], 'test XML conversion retains actual renderer CSS text');
-      }
-      return parsed;
-    }
-  };
-  return () => { globalThis.DOMParser = originalParser; };
 }
 
 describe('Saved comparison chart source (#6549)', () => {
@@ -187,7 +168,7 @@ describe('Saved comparison chart source (#6549)', () => {
 
   it('reports a deleted history dependency explicitly instead of falling back to the nonempty current comparison', async () => {
     const spec = { ...chart(), comparisonId: saved[0].id };
-    assert.equal(useViewerStore.getState().deleteSavedComparison(saved[0].id), true);
+    assert.equal((await useViewerStore.getState().deleteSavedComparison(saved[0].id)), true);
     let data: DocumentData | undefined;
     render(<DocumentProbe document={documentFor(spec)} observe={(value) => { data = value; }} />); await settle();
     assert.equal(data?.aggregations.get('recorded-block')?.total, 0);
@@ -199,19 +180,27 @@ describe('Saved comparison chart source (#6549)', () => {
     const save = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart'); assert.ok(save?.disabled);
   });
 
-  it('preserves immutable saved evidence and invalidates the dataset after explicit deletion and same-ID replacement, while rename preserves data', async () => {
+  it('preserves immutable evidence and deleted dependencies, while rename preserves data and a new copy can be selected (#6679)', async () => {
     const spec = { ...chart(), comparisonId: saved[0].id };
     let data: DocumentData | undefined;
     const ui = render(<DocumentProbe document={documentFor(spec)} observe={(value) => { data = value; }} />); await settle();
     const first = data?.aggregations.get('recorded-block'); assert.ok(first);
-    act(() => { assert.equal(useViewerStore.getState().renameSavedComparison(saved[0].id, 'Renamed saved source'), true); }); await settle();
+    (await act(async () => { assert.equal((await useViewerStore.getState().renameSavedComparison(saved[0].id, 'Renamed saved source')), true); })); await settle();
     assert.equal(data?.aggregations.get('recorded-block')?.dataFingerprint, first.dataFingerprint); assert.match(ui.textContent ?? '', /Renamed saved source/);
-    act(() => { assert.equal(useViewerStore.getState().saveComparison({ ...saved[1], id: saved[0].id }), false, 'existing immutable evidence cannot be silently replaced'); }); await settle();
+    (await act(async () => { assert.equal((await useViewerStore.getState().saveComparison({ ...saved[1], id: saved[0].id })), false, 'existing immutable evidence cannot be silently replaced'); })); await settle();
     assert.equal(data?.aggregations.get('recorded-block')?.dataFingerprint, first.dataFingerprint);
-    act(() => { assert.equal(useViewerStore.getState().deleteSavedComparison(saved[0].id), true); }); await settle();
+    (await act(async () => { assert.equal((await useViewerStore.getState().deleteSavedComparison(saved[0].id)), true); })); await settle();
     assert.equal(data?.aggregations.get('recorded-block')?.total, 0);
     assert.match(ui.textContent ?? '', /Saved comparison unavailable/);
-    act(() => { assert.equal(useViewerStore.getState().saveComparison({ ...saved[1], id: saved[0].id }), true); }); await settle();
+    await act(async () => {
+      assert.equal(await useViewerStore.getState().saveComparison({ ...saved[1], id: saved[0].id }), false, 'deletion tombstones forbid same-ID resurrection');
+      assert.equal(await useViewerStore.getState().restoreSavedComparisons(), true);
+    }); await settle();
+    assert.equal(data?.aggregations.get('recorded-block')?.total, 0, 'reloading saved versions retains the deleted dependency');
+    const copy = { ...saved[1], id: 'independent-replacement-6679' };
+    await act(async () => { assert.equal(await useViewerStore.getState().saveComparison(copy), true); });
+    cleanup();
+    render(<DocumentProbe document={documentFor({ ...spec, comparisonId: copy.id })} observe={(value) => { data = value; }} />); await settle();
     const replaced = data?.aggregations.get('recorded-block'); assert.ok(replaced);
     assert.notEqual(replaced.dataFingerprint, first.dataFingerprint); assert.equal(replaced.total, saved[1].report.rows.length);
   });
@@ -281,7 +270,7 @@ describe('Saved comparison chart source (#6549)', () => {
         charts: [{ id: spec.id, title: spec.title, aggregation: agg }], snapshotIds: () => [] }, seams);
       assert.equal(report.charts, 1); assert.equal(report.snapshots, 0); assert.equal(captures, 0);
       assert.match(await pdfText(report.blob), /added/);
-      act(() => { assert.equal(useViewerStore.getState().deleteSavedComparison(saved[0].id), true); }); await settle();
+      (await act(async () => { assert.equal((await useViewerStore.getState().deleteSavedComparison(saved[0].id)), true); })); await settle();
       assert.ok(data); assert.equal(data.aggregations.get('recorded-block')?.total, 0);
       assert.match(ui.textContent ?? '', /Saved comparison unavailable/);
       const missing = await generateDocumentPdf({ document, ...data, snapshotIds: () => [] }, seams);
@@ -328,10 +317,10 @@ describe('Saved comparison chart source (#6549)', () => {
           await act(async () => { await new Promise<void>((resolve) => setTimeout(resolve, 10)); }); await settle();
         }
         assert.equal(outputs.length, count + 1, 'mounted Export creates one actual jsPDF output');
-        return pdfText(outputs[count]);
+        return (await pdfText(outputs[count]));
       };
       const first = await exportFromDialog(); assert.match(first, /added/); assert.match(first, /deleted/);
-      act(() => { assert.equal(useViewerStore.getState().deleteSavedComparison(saved[0].id), true); }); await settle();
+      (await act(async () => { assert.equal((await useViewerStore.getState().deleteSavedComparison(saved[0].id)), true); })); await settle();
       assert.match(ui.querySelector('[data-chart-empty]')?.textContent ?? '', /Saved comparison unavailable/);
       const missing = await exportFromDialog(); assert.match(missing, /Choose another saved comparison/); assert.doesNotMatch(missing, /\badded\b|\bdeleted\b/);
       assert.equal(missing.split('Saved comparison unavailable in this browser.').length - 1, 1, 'mounted dashboard export prints one missing-source notice');

@@ -9,6 +9,7 @@
  * the report's jsPDF path; the document itself is a template saved as
  * `.ifclite-document.json` and re-opened on the next model revision.
  */
+import { ContentStorageNotice } from '../ContentStorageNotice';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileText, Plus } from 'lucide-react';
 import type { ReportPageSetup } from '@ifc-lite/charts';
@@ -21,7 +22,7 @@ import { trackExportCompleted } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { blankDocument, DOCUMENT_PRESETS } from '@/lib/document/presets';
-import { freshBlockId, freshListCopyId } from '@/lib/document/persistence';
+import { copyDocumentBlock, freshBlockId, freshListCopyId } from '@/lib/document/persistence';
 import { LIST_PRESETS } from '@/lib/lists';
 import { newChartSpec } from '@/lib/charts/presets';
 import { largestBucketIds } from '@/lib/charts/buckets';
@@ -43,9 +44,11 @@ export interface DocumentPanelProps {
 /** Seeds a blank document when there is none and makes sure one is active; idempotent (StrictMode runs it twice). */
 export function ensureActiveDocument(): void {
   const live = useViewerStore.getState();
+  // Wait for hydration, then keep editing usable even when storage is refused.
+  if (live.documentsStorage.phase === 'loading') return;
   if (live.documents.length === 0) {
     const seeded = blankDocument();
-    live.upsertDocument(seeded);
+    void live.upsertDocument(seeded);
     live.setActiveDocumentId(seeded.id);
   } else if (!live.activeDocumentId || !live.documents.some((d) => d.id === live.activeDocumentId)) {
     live.setActiveDocumentId(live.documents[0].id);
@@ -55,6 +58,8 @@ export function ensureActiveDocument(): void {
 export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const { t, locale } = useTranslation();
   const documents = useViewerStore((s) => s.documents);
+  const storage = useViewerStore((s) => s.documentsStorage);
+  useEffect(() => { void useViewerStore.getState().initializeDocuments(); }, []);
   const activeDocumentId = useViewerStore((s) => s.activeDocumentId);
   const upsertDocument = useViewerStore((s) => s.upsertDocument);
   const deleteDocument = useViewerStore((s) => s.deleteDocument);
@@ -65,9 +70,9 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const reportSources = useReportSources();
   const savedComparisons = useViewerStore((s) => s.savedComparisons);
 
-  useEffect(() => { ensureActiveDocument(); }, [documents, activeDocumentId]);
+  useEffect(() => { ensureActiveDocument(); }, [documents, activeDocumentId, storage.phase]);
 
-  const document = useMemo(() => documents.find((d) => d.id === activeDocumentId) ?? null, [documents, activeDocumentId]);
+  const document = useMemo(() => documents.find((d) => d.id === activeDocumentId) ?? null, [documents, activeDocumentId, storage.phase]);
   const data = useDocumentData(document);
   const charts = useMemo(() => dashboards.flatMap((d) => d.charts.map((chart) => ({ dashboard: d.name, chart }))), [dashboards]);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
@@ -81,10 +86,21 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     persistWarned.current = true;
     toast.error(t('document.panel.unsavedWarning'));
   }, [t]);
-  const upsert = useCallback((next: DocumentSpec) => warnUnsaved(upsertDocument(next)), [upsertDocument, warnUnsaved]);
-  const remove = useCallback((id: string) => warnUnsaved(deleteDocument(id)), [deleteDocument, warnUnsaved]);
+  const upsert = useCallback((next: DocumentSpec) => upsertDocument(next).then(warnUnsaved), [upsertDocument, warnUnsaved]);
+  const remove = useCallback((id: string) => deleteDocument(id).then(warnUnsaved), [deleteDocument, warnUnsaved]);
   const update = upsert;
   const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update({ ...document, blocks }); }, [document, update]);
+
+  const copyBlock = (id: string): void => {
+    const live = useViewerStore.getState();
+    const current = live.documents.find((entry) => entry.id === live.activeDocumentId);
+    const index = current?.blocks.findIndex((block) => block.id === id) ?? -1;
+    if (!current || index < 0) return;
+    const copy = copyDocumentBlock(current.blocks[index]);
+    // Read current content so consecutive copies keep each other's staged durable writes.
+    void update({ ...current, blocks: [...current.blocks.slice(0, index + 1), copy, ...current.blocks.slice(index + 1)] });
+    setSelectedBlockId(copy.id);
+  };
 
   const addBlock = (kind: Exclude<DocumentBlock['kind'], 'ids-report' | 'manual-report'>): void => {
     if (!document) return;
@@ -126,6 +142,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
       const seams = pdfSeams ? await pdfSeams() : undefined;
       const result = await exportPreparedDocument({
         document,
+        labels: data.labels,
         bindings: data.bindings,
         aggregations: data.aggregations,
         chartMessages: data.chartMessages,
@@ -164,6 +181,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col text-xs" data-document-panel>
+      <ContentStorageNotice status={storage} restore={() => useViewerStore.getState().restoreDocuments()} retry={() => useViewerStore.getState().retryDocumentsSave()} />
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-3 py-1.5">
         <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <select
@@ -242,6 +260,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
                     [blocks[index], blocks[target]] = [blocks[target], blocks[index]];
                     setBlocks(blocks);
                   }}
+                  onCopy={() => copyBlock(block.id)}
                   onRemove={() => setBlocks(document.blocks.filter((b) => b.id !== block.id))}
                 />
               </div>
@@ -249,7 +268,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             {document.blocks.length === 0 && <div className="p-2 text-muted-foreground">{t('document.panel.emptyBlocks')}</div>}
           </div>
           <div className="min-w-0 flex-1 overflow-auto bg-muted/40">
-            <DocumentPreview document={document} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} tables={data.tables} selectedBlockId={selectedBlockId} onSelectBlock={setSelectedBlockId} />
+            <DocumentPreview document={document} labels={data.labels} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} tables={data.tables} selectedBlockId={selectedBlockId} onSelectBlock={setSelectedBlockId} />
           </div>
         </div>
       )}

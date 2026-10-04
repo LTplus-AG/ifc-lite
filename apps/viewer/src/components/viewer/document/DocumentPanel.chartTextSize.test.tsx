@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -36,7 +38,7 @@ ENDSEC;END-ISO-10303-21;`;
 const chart: ChartSpec = { id: 'by-type', title: 'Products by class', source: 'elements', type: 'bar', dimension: 'IfcType', measure: { agg: 'count' } };
 const doc: DocumentSpec = { version: DOCUMENT_VERSION, id: 'typography', name: 'Chart typography', page: { size: 'A4', orientation: 'portrait' },
   blocks: [{ kind: 'chart', id: 'c1', chart, snapshot: false, height: 150 }, { kind: 'chart', id: 'c2', chart, snapshot: false, height: 150 }] };
-const settle = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); };
+const settle = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); await documentPreviewReady(); };
 const fontSizes = (svg: Element) => [...svg.querySelectorAll<SVGTextElement>('text')].map((text) => Number.parseFloat(text.style.fontSize));
 
 describe('Document chart text sizing (#6546)', () => {
@@ -63,14 +65,14 @@ describe('Document chart text sizing (#6546)', () => {
     const after = fontSizes(preview()!);
     assert.ok(after.length > 0 && Math.max(...after) < Math.max(...before), 'rendered SVG axes actually use smaller text');
     assert.ok(fontSizes(ui.querySelector('[data-preview-block="c1"] svg')!).includes(12), 'the other block retains its default');
-    const persisted = loadDocuments().find((d) => d.id === doc.id); assert.ok(persisted);
+    const persisted = (await loadDocuments()).find((d) => d.id === doc.id); assert.ok(persisted);
     const imported = parseDocumentFile(JSON.stringify(persisted));
     assert.equal(imported.blocks[1].kind === 'chart' && imported.blocks[1].fontSize, 8);
     assert.equal(imported.blocks[0].kind === 'chart' && imported.blocks[0].fontSize, undefined);
     click([...editor.querySelectorAll('button')].find((button) => button.textContent === 'Reset chart text size')!);
     await settle();
     assert.deepEqual(fontSizes(preview()!), before, 'reset restores the original rendered typography');
-    const reset = loadDocuments().find((d) => d.id === doc.id)?.blocks[1];
+    const reset = (await loadDocuments()).find((d) => d.id === doc.id)?.blocks[1];
     assert.equal(reset?.kind === 'chart' && reset.fontSize, undefined);
   });
 

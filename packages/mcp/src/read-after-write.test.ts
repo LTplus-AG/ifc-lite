@@ -26,7 +26,7 @@ import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } f
 import { fullScope } from './auth/scope.js';
 import { loadIfcModel } from './loader.js';
 import { discoveryTools } from './tools/discovery.js';
-import { queryTools } from './tools/query.js';
+import { queryTools } from './tools/query-tools.js';
 import { mutationTools } from './tools/mutate.js';
 import { validationTools } from './tools/validation.js';
 import { findByGlobalId, resolveGlobalIds } from './tools/util.js';

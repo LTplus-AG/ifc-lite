@@ -41,6 +41,7 @@ export {
 } from './profile.js';
 export { addStairToStore, stairFlightOutline, type StairInStoreParams, type StairBuildResult } from './stair.js';
 export { readStairDimensions, editStairDimensionsInStore, type StairDimensions, type StairDimensionEdit } from './stair-edit.js';
+export { removeStairInStore } from './stair-removal.js';
 export { addRailingToStore, railingPostPoints, type RailingInStoreParams, type RailingBuildResult } from './railing.js';
 export { addCurtainWallToStore, curtainWallLayout, type CurtainWallInStoreParams, type CurtainWallGridSpec, type CurtainWallLayout, type CurtainWallBuildResult } from './curtain-wall.js';
 export {
@@ -235,3 +236,5 @@ export {
 
 export { reanchorHostedOpeningsInStore } from './hosted-placement-edit.js';
 export { reassignHostedOpeningsInStore, type HostedOpeningReassignment } from './hosted-placement-edit.js';
+
+export { replaceElementInStore, type InStoreReplacementElement } from './element-replacement.js';

@@ -41,6 +41,7 @@ import { viewerToEnuRotation, type ViewerToEnuRotation } from './viewer-enu-rota
 import { ecefCameraFrame } from './ecef-camera-frame';
 import { viewBasis } from '@ifc-lite/renderer';
 import { ifcToViewerAxes } from './coordinate-frame';
+import { resolveMapAxisDirection } from './map-axis-direction';
 
 // Re-exported so existing importers keep resolving it from the bridge; the
 // definitions now live in the dependency-free `viewer-enu-rotation` and
@@ -136,14 +137,14 @@ export async function computeCesiumModelOrigin(
   // Map-absolute geometry (#2526): neutralise a conversion the geometry
   // already carries, or the offsets/rotation get applied twice.
   mapConversion = effectiveMapConversionForGeometry(mapConversion, mapScale, coordinateInfo);
-  const absc = mapConversion.xAxisAbscissa ?? 1.0;
-  const ordi = mapConversion.xAxisOrdinate ?? 0.0;
+  const axis = resolveMapAxisDirection(mapConversion.xAxisAbscissa, mapConversion.xAxisOrdinate);
+  if (!axis) return null;
   const center = computeModelCenterInIfcMeters(coordinateInfo);
   const { x: scaleX, y: scaleY, z: scaleZ } = getEffectiveAxisScales(mapConversion, mapScale, lengthUnitScale);
   const easting = mapConversion.eastings * mapScale
-    + absc * scaleX * center.ifcX - ordi * scaleY * center.ifcY;
+    + axis.a * scaleX * center.ifcX - axis.b * scaleY * center.ifcY;
   const northing = mapConversion.northings * mapScale
-    + ordi * scaleX * center.ifcX + absc * scaleY * center.ifcY;
+    + axis.b * scaleX * center.ifcX + axis.a * scaleY * center.ifcY;
   const ifcOriginHeight = mapConversion.orthogonalHeight * mapScale + scaleZ * center.ifcZ;
   const height = placementHeightOverride ?? ifcOriginHeight;
 
@@ -266,8 +267,9 @@ export async function createCesiumBridge(
     resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale),
     coordinateInfo,
   );
-  const absc = mapConversion.xAxisAbscissa ?? 1.0;
-  const ordi = mapConversion.xAxisOrdinate ?? 0.0;
+  const axis = resolveMapAxisDirection(mapConversion.xAxisAbscissa, mapConversion.xAxisOrdinate);
+  if (!axis) return null;
+  const { a: absc, b: ordi } = axis; // scalars: narrowing is lost inside `viewerToGeodetic`
   const rotAngle = Math.atan2(ordi, absc);
 
   const bounds = coordinateInfo?.originalBounds;

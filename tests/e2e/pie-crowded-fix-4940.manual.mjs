@@ -39,7 +39,7 @@ await page.waitForTimeout(3000);
 // a half-width pie by Name (many categories — this is the crowded chart),
 // a spacer, then a full-width bar. Driven through the store directly, the
 // way the original 04-pie-zoom.png evidence was produced.
-await page.evaluate(({ k }) => {
+await page.evaluate(async ({ k }) => {
   const s = globalThis[k].getState();
   const freshBlockId = () => `block-${crypto.randomUUID()}`;
   const doc = {
@@ -60,7 +60,7 @@ await page.evaluate(({ k }) => {
       { kind: 'spacer', id: freshBlockId(), height: 40 },
     ],
   };
-  s.upsertDocument(doc);
+  if (!(await s.upsertDocument(doc))) throw new Error('Canonical document setup was not committed');
   s.setActiveDocumentId(doc.id);
 }, { k: STORE });
 

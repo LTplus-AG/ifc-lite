@@ -9,6 +9,7 @@
  * to draw, so neither is asserted by its source text.
  */
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -16,7 +17,8 @@ import type { SpecificationResult, ValidationReport } from '@ifc-lite/ids';
 import { DEFAULT_THEME } from '@ifc-lite/charts';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import { useViewerStore } from '@/store/index.js';
-import { blur, click, cleanup, render, type } from '@/test/render.js';
+import { blur, click, cleanup, render, type, waitFor } from '@/test/render.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import type { BindingContext } from '@/lib/document/bindings';
 import type { DocumentPdfSeams } from '@/lib/document/generate-document-pdf.js';
@@ -52,10 +54,11 @@ const spec = (): DocumentSpec => ({ version: DOCUMENT_VERSION, id: 'doc-6632', n
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); });
+  await documentPreviewReady();
 }
 /** The element a preview block renders its heading in: the smallest element whose own text is exactly the heading. */
 function headingOf(ui: HTMLElement, blockId: string, text: string): HTMLElement {
-  const found = [...ui.querySelectorAll<HTMLElement>(`[data-preview-block="${blockId}"] *`)].find((el) => el.children.length === 0 && el.textContent === text);
+  const found = [...ui.querySelectorAll<HTMLElement>(`[data-preview-block="${blockId}"] *`)].find((el) => el.children.length === 0 && el.textContent?.trim() === text);
   assert.ok(found, `${blockId}: the preview renders the heading "${text}"`);
   return found;
 }
@@ -73,7 +76,7 @@ beforeEach(() => {
   localStorage.clear();
   const document = spec();
   useViewerStore.setState({ models: new Map(), activeModelId: null, documents: [document], activeDocumentId: document.id, dashboards: [], selectedEntityIds: new Set(),
-    mutationViews: new Map(), mutationVersion: 0, idsValidationReport: null, validationSource: null, savedValidationReports: [], validationReportsLoadIssue: null,
+    mutationViews: new Map(), mutationVersion: 0, idsValidationReport: null, validationSource: null, savedValidationReports: [],
     bcfProject: { version: '3.0', topics: new Map([['topic-guid', { guid: 'topic-guid', title: 'Topic source', description: 'Coordinate', viewpoints: [], comments: [] }]]) } });
 });
 afterEach(() => { cleanup(); localStorage.clear(); });
@@ -110,10 +113,17 @@ describe('shared block heading controls (#6632)', () => {
       const style = window.getComputedStyle(heading);
       assert.ok(Math.abs(Number.parseFloat(style.fontSize) - SIZE * (PREVIEW_WIDTH / A4_WIDTH)) < 1e-3, `${kind}: preview size ${style.fontSize} is the authored points at the sheet scale`);
       assert.equal(style.color, INK, `${kind}: preview ink`);
-      assert.equal(style.backgroundColor, FILL, `${kind}: preview background`);
+      // The shared composer draws the strip as its own backing rectangle.
+      const strip = Array.from(ui.querySelectorAll<HTMLElement>(`[data-preview-block="${block}"] [aria-hidden="true"]`))
+        .find(node => window.getComputedStyle(node).backgroundColor === FILL);
+      assert.ok(strip, `${kind}: preview background`);
+      const inside = (axis: 'left' | 'top') => parseFloat(heading.style[axis]) >= parseFloat(strip.style[axis]) - 0.01;
+      assert.ok(inside('left') && inside('top'), `${kind}: the strip backs the heading`);
+      assert.ok(parseFloat(strip.style.height) >= parseFloat(heading.style.fontSize), `${kind}: the strip contains its type`);
     }
 
-    const saved = loadDocuments().find((d) => d.id === 'doc-6632');
+    await waitFor(() => useViewerStore.getState().documentsStorage.items['doc-6632'] === 'saved', 'all heading edits must commit before reloading');
+    const saved = (await loadDocuments()).find((d) => d.id === 'doc-6632');
     assert.ok(saved);
     for (const block of parseDocumentFile(JSON.stringify(saved)).blocks) {
       assert.deepEqual(blockTitleFields(block as IdsReportBlock), { title: `H:${block.kind}`, titleFontSize: SIZE, titleTextColor: INK, titleBackgroundColor: FILL }, `${block.kind} persists and reloads its heading style`);
@@ -155,7 +165,8 @@ describe('shared block heading controls (#6632)', () => {
       commitSize(input('Title text size'), '');
       await settle();
     }
-    for (const block of loadDocuments()[0].blocks) {
+    await waitFor(() => useViewerStore.getState().documentsStorage.items['doc-6632'] === 'saved', 'all heading resets must commit before reloading');
+    for (const block of (await loadDocuments())[0].blocks) {
       assert.deepEqual(blockTitleFields(block as IdsReportBlock), { title: `H:${block.kind}`, titleFontSize: undefined, titleTextColor: undefined, titleBackgroundColor: undefined }, `${block.kind} keeps only its text`);
     }
   });
@@ -171,10 +182,12 @@ describe('shared block heading controls (#6632)', () => {
     assert.ok(editor && input);
     commitSize(input, '99');
     await settle();
-    assert.equal((loadDocuments()[0].blocks[0] as { titleFontSize?: number }).titleFontSize, 24, 'above the maximum clamps to it');
+    await waitFor(() => useViewerStore.getState().documentsStorage.items['doc-6632'] === 'saved', 'clamped heading size must commit before reloading');
+    assert.equal(((await loadDocuments())[0].blocks[0] as { titleFontSize?: number }).titleFontSize, 24, 'above the maximum clamps to it');
     commitSize(input, '1');
     await settle();
-    assert.equal((loadDocuments()[0].blocks[0] as { titleFontSize?: number }).titleFontSize, 6, 'below the minimum clamps to it');
+    await waitFor(() => useViewerStore.getState().documentsStorage.items['doc-6632'] === 'saved', 'clamped heading size must commit before reloading');
+    assert.equal(((await loadDocuments())[0].blocks[0] as { titleFontSize?: number }).titleFontSize, 6, 'below the minimum clamps to it');
     for (const kind of ['spacer', 'page-break']) {
       assert.equal(ui.querySelector(`[data-block-kind="${kind}"] input[aria-label="Title text size"]`), null, `${kind} has no heading to size`);
     }
@@ -192,7 +205,7 @@ describe('heading style survives replacing a report block source (#6632)', () =>
     specificationResults: [result('r1')],
   };
   const editor = (block: DocumentBlock, onChange: (b: DocumentBlock) => void) =>
-    render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={live} onChange={onChange} onMove={noop} onRemove={noop} />);
+    render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={live} onChange={onChange} onMove={noop} onCopy={noop} onRemove={noop} />);
 
   it('refreshing from the live report keeps the heading text, size, ink and background', () => {
     const changes: DocumentBlock[] = [];
@@ -214,7 +227,7 @@ describe('heading style survives replacing a report block source (#6632)', () =>
     cleanup();
     const chosen: DocumentBlock[] = [];
     const second = editor(block, (b) => chosen.push(b));
-    selectOption([...second.querySelectorAll<HTMLSelectElement>('select')].find((el) => [...el.options].some((o) => o.value === 'saved-2'))!, 'saved-2');
+    selectOption([...second.querySelectorAll<HTMLSelectElement>('select')].find((el) => [...el.options].some((o) => o.value === 'saved:saved-2'))!, 'saved:saved-2');
     for (const result of [refreshed[0], chosen[0]] as IdsReportBlock[]) {
       assert.deepEqual(blockTitleFields(result), blockTitleFields(block));
       assert.equal(result.specificationsOnly, true, 'the compact layout option survives with the heading style');
@@ -237,9 +250,9 @@ describe('heading style survives replacing a report block source (#6632)', () =>
     useViewerStore.setState({ savedValidationReports: [entry] });
     const changes: DocumentBlock[] = [];
     const ui = editor(styled, (b) => changes.push(b));
-    const source = [...ui.querySelectorAll<HTMLSelectElement>('select')].find((el) => [...el.options].some((o) => o.value === 'saved-1'));
+    const source = [...ui.querySelectorAll<HTMLSelectElement>('select')].find((el) => [...el.options].some((o) => o.value === 'saved:saved-1'));
     assert.ok(source, 'the saved report picker is present');
-    selectOption(source, 'saved-1');
+    selectOption(source, 'saved:saved-1');
     assert.equal(changes.length, 1);
     const chosen = changes[0] as IdsReportBlock;
     assert.equal(chosen.savedReportId, 'saved-1');

@@ -22,7 +22,7 @@ import { fullScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
 import { ToolExecutionError } from '../errors.js';
 import { mutationTools } from './mutate.js';
-import { queryTools } from './query.js';
+import { queryTools } from './query-tools.js';
 
 const PARSED_WALL = '0WALL00000000000000000';
 const NEW_WALL = '1NewWa11GuidAbCdEf$_09';

@@ -36,6 +36,7 @@ pub(in crate::router::voids) fn finish_cut_verdict(
     hygienic = dedup_cut_vertices(&hygienic, host);
 
     loop {
+        crate::progress::tick();
         let before = hygienic.indices.len();
         hygienic.clean_degenerate();
         let after = hygienic.indices.len();

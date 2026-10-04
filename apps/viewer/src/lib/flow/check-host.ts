@@ -44,11 +44,11 @@ export async function validateChecks(run: WorkflowRun, workflowId: string, model
     const state = useViewerStore.getState();
     const ids = targets(job, session);
     if (!ids.size) throw new Error(`No validation models for ${job.id}`);
-    const retain = ({ report, snapshot }: Awaited<ReturnType<typeof runInformationCheck>>) => {
+    const retain = async ({ report, snapshot }: Awaited<ReturnType<typeof runInformationCheck>>) => {
       checkedModelSet(run, session);
       const metadata = provenance(run, workflowId, job, input, report.modelInfo.map((m) => m.modelId), session);
       const entry = newSavedReport(snapshot, input.name, metadata);
-      const retained = retainValidationReport(entry, useViewerStore);
+      const retained = await retainValidationReport(entry, useViewerStore);
       for (const warning of retained.warnings) run.warn(warning);
       results.push({ jobId: job.id, resultId: metadata.resultId, kind: 'validation', snapshot: entry.snapshot as typeof snapshot });
       if (report.specificationResults.some((s) => s.error)) throw new Error(`${job.id}: evaluator error; completed diagnostic evidence was retained`);
@@ -59,14 +59,14 @@ export async function validateChecks(run: WorkflowRun, workflowId: string, model
       const ruleSet = remapRuleTags(input.value, job.tagBindings ?? {}, state.modelTags);
       const models = evaluatorModelsFromState(state).filter((m) => ids.has(m.id));
       if (!resolveTargetModels(models, ruleSet.targets).length) throw new Error(`${job.id}: no model matches the native rule set targets`);
-      retain(await runInformationCheck({ ruleSet, models, definedModelTagIds: definedModelTagIdsOf(state),
+      await retain(await runInformationCheck({ ruleSet, models, definedModelTagIds: definedModelTagIdsOf(state),
         reportModels: state.models, signal: run.controller.signal }));
     } else if (input.kind === 'ids') {
       for (const id of ids) {
         checkedModelSet(run, session);
         const model = state.models.get(id);
         if (!model?.ifcDataStore) throw new Error(`Missing IDS model ${id}`);
-        retain(await runIdsCheck({ document: input.value, modelId: id, dataStore: model.ifcDataStore,
+        await retain(await runIdsCheck({ document: input.value, modelId: id, dataStore: model.ifcDataStore,
           mutationView: state.getMutationView(id), models: state.models, locale: 'en', signal: run.controller.signal }));
       }
     } else throw new Error('Expected a validation resource');
@@ -98,7 +98,7 @@ export async function compareChecks(run: WorkflowRun, workflowId: string, modelV
     if (recipe.options.scope !== 'data' && (result.geometryUnavailable || result.placementOnlyGeometry)) throw new Error(`${job.id}: full geometry is unavailable; select data scope explicitly`);
     const metadata = provenance(run, workflowId, job, input, [base, head], session, JSON.parse(JSON.stringify({ ...recipe.options, acceptedIdentity: [] })) as Record<string, AutomationJsonValue>);
     const saved = { ...snapshotComparison(result, state.models, recipe.name), automation: metadata };
-    const retained = retainComparisonReport(saved, useViewerStore);
+    const retained = await retainComparisonReport(saved, useViewerStore);
     for (const warning of retained.warnings) run.warn(warning);
     results.push({ jobId: job.id, resultId: metadata.resultId, kind: 'comparison', comparison: saved });
   }

@@ -5,14 +5,9 @@
 import type { TextFont, DocumentValidationError } from './types.js';
 import { truncateToWidth } from './compose-text.js';
 import { REPORT_MARGIN } from '../export/report/compose.js';
-import { validateTextTypography } from './text-typography.js';
+import { validatePageBand, type PageBand } from './page-band.js';
 
-export interface PageHeading {
-  text?: string;
-  font?: TextFont;
-  fontSize?: number;
-  textColor?: string;
-}
+export type PageHeading = PageBand;
 
 export interface ResolvedPageHeading {
   text: string; font: TextFont; fontSize: number; textColor: string; y: number; extraHeight: number;
@@ -38,10 +33,5 @@ export function resolvePageHeading(name: string, heading: PageHeading, width: nu
 }
 
 export function validatePageHeading(value: unknown): DocumentValidationError[] {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return [{ path: 'pageHeading', message: 'expected an object' }];
-  const heading = value as Record<string, unknown>;
-  const errors: DocumentValidationError[] = [];
-  if (heading.text !== undefined && typeof heading.text !== 'string') errors.push({ path: 'pageHeading.text', message: 'expected a string' });
-  errors.push(...validateTextTypography(heading, 'pageHeading'));
-  return errors;
+  return validatePageBand(value, 'pageHeading');
 }

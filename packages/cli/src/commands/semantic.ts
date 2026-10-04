@@ -1,5 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. */
 /** Headless entry for the same semantic provider and validators used by the viewer. */
+import { loopbackHttpOrigin } from '@ifc-lite/sandbox/network';
 import { readSemanticFile as readBounded } from './semantic-file.js';
 import { writeOutput } from '../output.js';
 import {
@@ -9,7 +10,7 @@ import {
 } from '@ifc-lite/semantic';
 
 const VALUE_FLAGS = new Set(['--profile', '--endpoint', '--host', '--query', '--kind', '--bearer-env', '--artifact', '--out', '--shapes', '--relay-provider', '--config', '--cert', '--key', '--port', '--graph-format']);
-const SWITCH_FLAGS = new Set(['--json', '--rdf', '--graph-format']);
+const SWITCH_FLAGS = new Set(['--json', '--rdf', '--graph-format', '--allow-loopback-http']);
 interface ParsedArgs { action: string; input?: string; options: Map<string, string>; json: boolean; rdf: boolean }
 function parseArgs(args: string[]): ParsedArgs {
   const [action, ...rest] = args; const options = new Map<string, string>(); const positional: string[] = [];
@@ -20,14 +21,14 @@ function parseArgs(args: string[]): ParsedArgs {
     if (VALUE_FLAGS.has(arg)) {
       if (options.has(arg) || !rest[i + 1] || rest[i + 1].startsWith('--')) throw new Error(`Supply exactly one value for ${arg}`);
       options.set(arg, rest[++i]);
-    } else if (SWITCH_FLAGS.has(arg)) { if (switches.has(arg)) throw new Error(`Duplicate option: ${arg}`); switches.add(arg); }
+    } else if (SWITCH_FLAGS.has(arg)) { if (switches.has(arg)) throw new Error(`Duplicate option: ${arg}`); switches.add(arg); if (arg === '--allow-loopback-http') options.set(arg, 'true'); }
     else if (arg.startsWith('-')) throw new Error(`Unknown semantic option: ${arg}`);
     else positional.push(arg);
   }
   if (positional.length > 1 || (action === 'validate' ? !positional.length : positional.length)) throw new Error('Only validate accepts one input filename');
   const allowed = action === 'serve' ? ['--config', '--cert', '--key', '--port'] : action === 'validate' ? ['--profile', '--shapes', '--out', '--json', '--rdf', '--graph-format']
     : action === 'assets' ? ['--profile', '--artifact', '--out', '--json']
-      : ['--endpoint', '--host', '--query', '--kind', '--bearer-env', '--relay-provider', '--out', '--json'];
+      : ['--endpoint', '--host', '--query', '--kind', '--bearer-env', '--relay-provider', '--out', '--json', '--allow-loopback-http'];
   for (const key of [...options.keys(), ...switches]) if (!allowed.includes(key)) throw new Error(`Option ${key} does not apply to ${action}`);
   return { action, input: positional[0], options, json: switches.has('--json'), rdf: switches.has('--rdf') };
 }
@@ -74,7 +75,9 @@ export async function semanticCommand(args: string[]): Promise<void> {
     return;
   }
   const endpoint = option('--endpoint'); const host = option('--host');
-  if (!endpoint || !host) throw new Error('Query requires --endpoint <https-url> --host <explicit-hostname>');
+  if (!endpoint || !host) throw new Error('Query requires --endpoint <url> --host <explicit-hostname>');
+  const loopbackOrigin = option('--allow-loopback-http') ? loopbackHttpOrigin(endpoint) : undefined;
+  if (option('--allow-loopback-http') && !loopbackOrigin) throw new Error('--allow-loopback-http requires a literal loopback HTTP endpoint');
   const query = option('--query') ? await readBounded(option('--query')!, 256000) : undefined;
   const inferred = query === undefined ? 'json' : assertReadOnlyQuery(query);
   const kind = option('--kind') ?? inferred;
@@ -85,7 +88,7 @@ export async function semanticCommand(args: string[]): Promise<void> {
   if (envName && !bearer) throw new Error('Credential environment variable is not set');
   try {
     const result = await createSemanticProvider().read({ endpoint, host, kind: kind as 'json' | 'select' | 'construct', query,
-      bearer, relayProvider: option('--relay-provider') });
+      bearer, loopbackHttpOrigin: loopbackOrigin, relayProvider: option('--relay-provider') });
     const value = result.kind === 'select' ? { head: { vars: result.value.columns }, results: { bindings: result.value.rows } } : result.value;
     const content = typeof value === 'string' && !parsed.json ? value : JSON.stringify(value, null, 2);
     await writeOutput(bearer ? content.replaceAll(bearer, '[REDACTED]') : content, option('--out'));

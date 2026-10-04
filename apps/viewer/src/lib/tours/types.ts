@@ -91,6 +91,12 @@ export interface TourStep {
    * while the step is active.
    */
   expectsModelLoad?: boolean;
+  /**
+   * Skipping this step with nothing loaded makes the next steps load the
+   * demo project (`ensureTourModel`), so the card says so on its Skip
+   * button instead of loading it unannounced.
+   */
+  skipLoadsDemo?: boolean;
 }
 
 export interface TourPrerequisites {

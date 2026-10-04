@@ -2,14 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { ResolverRegistry, IFC_GLOBAL_ID_STRATEGY, createResourceLinkStrategy, createProfileMappingStrategy,
-  type IdentityRecord, type ResolverContext, type Resolution, type ResourceIdentityLink } from '@ifc-lite/semantic';
+import { ResolverRegistry, IFC_GLOBAL_ID_STRATEGY, createResourceLinkStrategy, createProfileMappingStrategy, createResourceUriStrategy, DEFAULT_RESOURCE_URI_CONFIG,
+  type ResourceUriIdentityConfig, type IdentityRecord, type ResolverContext, type Resolution, type ResourceIdentityLink } from '@ifc-lite/semantic';
 export interface IdentityFields { GlobalId: string; modelRevision?: string }
-export interface ResolverSettings { strategy: string; links: readonly ResourceIdentityLink[]; identityFields?: IdentityFields }
+export interface ResolverSettings { strategy: string; links: readonly ResourceIdentityLink[]; identityFields?: IdentityFields; uriConfig?: ResourceUriIdentityConfig }
 export function resolveWithStrategy(resource: IdentityRecord, context: ResolverContext, settings?: ResolverSettings): Resolution {
   if (!settings || settings.strategy === 'ifc-global-id') return IFC_GLOBAL_ID_STRATEGY.resolve(resource, context);
   const strategy = settings.strategy === 'resource-links' ? createResourceLinkStrategy(settings.links)
     : settings.strategy === 'profile-fields' ? createProfileMappingStrategy('profile-fields', settings.identityFields ?? { GlobalId: 'GlobalId', modelRevision: 'modelRevision' })
+      : settings.strategy === 'resource-uri' ? createResourceUriStrategy(settings.uriConfig ?? DEFAULT_RESOURCE_URI_CONFIG)
       : undefined;
   if (!strategy) return { status: 'invalid' };
   return new ResolverRegistry([strategy]).resolve(strategy.id, resource, context);
@@ -21,6 +22,7 @@ export function identityFromRow(row: Record<string, import('@ifc-lite/semantic')
   for (const [field, column] of Object.entries(mapping)) if (row[column]) identity[field] = row[column].value;
   const id = row[mapping.id ?? 'id'];
   if (settings?.strategy === 'resource-links') return id?.type === 'uri' ? { ...identity, id: id.value } : undefined;
+  if (settings?.strategy === 'resource-uri' && id?.type !== 'uri') return undefined;
   const fields = settings?.strategy === 'profile-fields' ? settings.identityFields ?? { GlobalId: 'GlobalId', modelRevision: 'modelRevision' } : { GlobalId: 'GlobalId', modelRevision: 'modelRevision' };
   const guid = row[mapping[fields.GlobalId] ?? fields.GlobalId];
   const revision = fields.modelRevision ? row[mapping[fields.modelRevision] ?? fields.modelRevision] : undefined;

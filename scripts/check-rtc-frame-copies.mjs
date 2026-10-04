@@ -42,7 +42,7 @@ export const DISTINCT_FRAME_EXPRESSIONS = [
     text: 'const rtc = coordinateInfo?.wasmRtcOffset;',
   },
   {
-    file: 'apps/viewer/src/lib/wall-rects-from-meshes.ts',
+    file: 'packages/create/src/in-store/room-wall-rects.ts',
     text: 'const rtc = coord?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 };',
   },
   {

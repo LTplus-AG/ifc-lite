@@ -10,6 +10,8 @@
  */
 
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -24,6 +26,7 @@ import { DocumentPanel } from './DocumentPanel.js';
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+  await documentPreviewReady();
 }
 
 function openMenu(trigger: Element): void {
@@ -52,7 +55,7 @@ async function parsedModel(id: string, name: string, sourceFingerprint: string):
   const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
   return { ...fixtureModel(id), name, sourceFingerprint, ifcDataStore: store, maxExpressId: 2 } as FederatedModel;
 }
-const towerModel = (): Promise<FederatedModel> => parsedModel('m1', 'tower.ifc', 'fp-tower');
+const towerModel = async (): Promise<Promise<FederatedModel>> => (await parsedModel('m1', 'tower.ifc', 'fp-tower'));
 const initial = useViewerStore.getState();
 
 beforeEach(async () => {
@@ -99,16 +102,18 @@ describe('Document panel manual validation report (#6401)', () => {
     const stampControl = (): HTMLInputElement | undefined => [...ui.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find((input) => input.closest('label')?.textContent?.trim() === 'Show stamp information');
     const frozen = structuredClone(stored());
     assert.match(preview().textContent ?? '', /Model:.*Recorded:/);
-    assert.ok(preview().querySelector('[data-report-model-scope]'));
+    assert.match(preview().textContent ?? '', /Models:/, 'the composed glyphs include recorded model scope');
     const checkbox = stampControl();
     assert.ok(checkbox, 'manual report offers its own stamp visibility control');
     assert.equal(checkbox.checked, true, 'existing blocks display their original stamp');
     click(checkbox);
     await settle();
     assert.ok(!/Model:|Models:|Recorded:/.test(preview().textContent ?? ''), 'both stamp rows disappear from the page');
-    assert.equal(preview().querySelector('[data-report-model-scope]'), null);
+    assert.ok(!preview().textContent?.includes('Models:'), 'the composer omits the hidden scope row');
     assert.match(preview().textContent ?? '', /Manual validation: Coordination round 3/);
-    assert.deepEqual([...preview().querySelectorAll('li[data-status]')].map((item) => item.getAttribute('data-status')), frozen.groups[0].items.map((item) => item.status));
+    for (const item of frozen.groups[0].items) {
+      assert.ok(preview().textContent?.includes(`${item.status?.toUpperCase()}\n${item.text}`), 'hidden stamp retains each actual composed verdict and check');
+    }
     const { showStamp: _stamp, ...hiddenEvidence } = Object.assign({}, stored(), { showStamp: 'showStamp' in stored() ? stored().showStamp : undefined });
     assert.deepEqual(hiddenEvidence, frozen, 'the control changes presentation only');
     const imported = parseDocumentFile(JSON.stringify(useViewerStore.getState().documents[0]));
@@ -125,11 +130,11 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.equal(stored().groups[0].items[1].status, 'pass');
     assert.ok(!/Model:|Models:|Recorded:/.test(preview().textContent ?? ''));
     let savedId: string | null = null;
-    act(() => { savedId = useViewerStore.getState().saveValidationReport(Object.assign({}, stored(), { checklistName: 'Later review', showStamp: true }), 'Later review'); });
+    (await act(async () => { savedId = (await useViewerStore.getState().saveValidationReport(Object.assign({}, stored(), { checklistName: 'Later review', showStamp: true }), 'Later review')); }));
     assert.ok(savedId);
     const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]');
     assert.ok(source);
-    act(() => { source.value = savedId!; source.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    act(() => { source.value = `saved:${savedId!}`; source.dispatchEvent(new window.Event('change', { bubbles: true })); });
     await settle();
     assert.equal(stored().checklistName, 'Later review');
     assert.equal(stampControl()!.checked, false, 'choosing frozen evidence retains the stamp choice');
@@ -137,7 +142,7 @@ describe('Document panel manual validation report (#6401)', () => {
     click(stampControl()!);
     await settle();
     assert.match(preview().textContent ?? '', /Model:.*Recorded:/);
-    assert.ok(preview().querySelector('[data-report-model-scope]'));
+    assert.match(preview().textContent ?? '', /Models:/, 'the composed glyphs include recorded model scope');
     assert.deepEqual(stored().groups, selectedGroups, 'showing the stamp never modifies the selected answers');
   });
 
@@ -154,10 +159,11 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.equal(stored().modelName, 'tower.ifc');
     assert.deepEqual(stored().summary, { total: 2, pass: 1, fail: 0, warning: 1, unanswered: 0 });
 
-    const preview = ui.querySelector('[data-block-manual-report]')!;
+    let preview = ui.querySelector('[data-block-manual-report]')!;
     assert.match(preview.textContent ?? '', /Manual validation: Coordination round 3/);
-    assert.deepEqual([...preview.querySelectorAll('li[data-status]')].map((li) => li.getAttribute('data-status')), ['pass', 'warning']);
-    assert.ok(preview.querySelector('svg[aria-label="Overall: 1 passed, 1 with warnings, 0 failed, 0 not checked"]'));
+    assert.match(preview.textContent ?? '', /PASS\nUploaded on time/);
+    assert.match(preview.textContent ?? '', /WARNING\nNaming convention/);
+    assert.ok(preview.querySelector('img[alt*="1 passed, 1 with warnings, 0 failed, 0 not checked"]'));
     assert.match(preview.textContent ?? '', /Old prefix/);
 
     // Authored headings survive a real checklist refresh (#6547 review).
@@ -174,6 +180,7 @@ describe('Document panel manual validation report (#6401)', () => {
     click([...ui.querySelectorAll('button')].find((b) => b.textContent === 'Refresh from current checklist')!);
     await settle();
     assert.equal(stored().title, 'Authored manual heading', 'refresh preserves the heading while replacing checklist evidence');
+    preview = ui.querySelector('[data-block-manual-report]')!;
     assert.match(preview.textContent ?? '', /Authored manual heading/);
     assert.equal(stored().groups[0].items[1].status, 'fail');
     assert.deepEqual(stored().summary, { total: 2, pass: 1, fail: 1, warning: 0, unanswered: 0 });
@@ -296,11 +303,12 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.ok(checkbox);
     click(checkbox);
     await settle();
-    const preview = ui.querySelector('[data-block-manual-report]')!;
+    let preview = ui.querySelector('[data-block-manual-report]')!;
     assert.equal(stored().benchmarks, false);
     assert.equal(preview.querySelector('[data-manual-report-benchmarks]'), null);
     assert.ok(!preview.textContent?.includes('Structure-only observation'), 'short layout keeps verdicts while omitting review detail');
-    assert.deepEqual([...preview.querySelectorAll('li[data-status]')].map((item) => item.getAttribute('data-status')), ['fail', 'warning']);
+    assert.match(preview.textContent ?? '', /FAIL\nUploaded on time/);
+    assert.match(preview.textContent ?? '', /WARNING\nNaming convention/);
     act(() => {
       useViewerStore.getState().selectManualChecklist(structureId);
       useViewerStore.getState().setManualAnswer(fingerprint, 'b', { status: 'pass' });
@@ -329,13 +337,13 @@ describe('Document panel manual validation report (#6401)', () => {
     // live Refresh, even after the originating checklist was deleted (#6507).
     let firstSaved: string | null = null;
     let secondSaved: string | null = null;
-    act(() => {
-      firstSaved = useViewerStore.getState().saveValidationReport(frozen, 'Structure evidence');
-      secondSaved = useViewerStore.getState().saveValidationReport({ ...frozen, checklistName: 'Later structure evidence', title: 'Source review heading', variant: 'long', benchmarks: true, showStamp: true }, 'Later evidence');
-    });
+    (await act(async () => {
+      firstSaved = (await useViewerStore.getState().saveValidationReport(frozen, 'Structure evidence'));
+      secondSaved = (await useViewerStore.getState().saveValidationReport({ ...frozen, checklistName: 'Later structure evidence', title: 'Source review heading', variant: 'long', benchmarks: true, showStamp: true }, 'Later evidence'));
+    }));
     assert.ok(firstSaved && secondSaved);
-    await choose('Saved report source', firstSaved);
-    await choose('Saved report source', secondSaved);
+    await choose('Saved report source', `saved:${firstSaved}`);
+    await choose('Saved report source', `saved:${secondSaved}`);
     assert.equal(stored().id, blockId);
     assert.equal(stored().variant, 'compact');
     assert.equal(stored().benchmarks, false);
@@ -345,7 +353,7 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.equal(ui.querySelector('[data-manual-report-benchmarks]'), null);
     assert.ok(!/Model:|Models:|Recorded:/.test(ui.querySelector('[data-block-manual-report]')?.textContent ?? ''));
     assert.equal(refresh(), undefined, 'frozen history has no live Refresh action');
-    act(() => useViewerStore.getState().removeValidationReport(secondSaved!));
+    (await act(async () => (await useViewerStore.getState().removeValidationReport(secondSaved!))));
     await settle();
     assert.equal(stored().checklistName, 'Later structure evidence', 'removing history retains the selected embedded evidence');
   });

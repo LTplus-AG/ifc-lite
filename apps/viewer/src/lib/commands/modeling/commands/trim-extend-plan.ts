@@ -18,20 +18,22 @@
  * it against the live model.
  */
 
-import { computeWallJoin, reshapeWallAxis, wallBodyOutline, type WallJoinWall } from '@ifc-lite/create';
+import { wallBodyOutline, type WallJoinWall } from '@ifc-lite/create';
 import type { MeshData } from '@ifc-lite/geometry';
 import { resolve as translate } from '@/i18n/registry';
 import type { TranslationKey } from '@/i18n';
 import type { ViewerState } from '@/store';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
-import { cutsOutside, readHostedCuts, type HostedCut, type HostedCuts } from '@/lib/wall-hosted-cuts';
+import { readHostedCuts, type HostedCuts } from '@/lib/wall-hosted-cuts';
 import type { Vec2 } from '@/lib/snap/types';
 import { prismGhostMesh, segmentOutline } from '../ghost-shapes.js';
 import type { Vec3, Workplane } from '../types.js';
 import { planeZ } from './placement-shared.js';
-import { clickAlong, planReach, type ReachMode, type ReachRefusal } from './trim-extend-geometry.js';
-import { minLengthOf, type Boundary, type TrimTarget } from './trim-extend-model.js';
+import { type ReachMode, type ReachRefusal } from './trim-extend-geometry.js';
+import { type Boundary, type TrimTarget } from './trim-extend-model.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
+
+import { planTrimAxis } from '../../../../../../../packages/create/src/in-store/trim-extend-plan.js';
 
 export type JoinKind = 'L' | 'T' | 'butt';
 
@@ -107,86 +109,25 @@ export function hostedCutsOf(s: ViewerState, modelId: string, wallId: number): H
   return cuts;
 }
 
-/** The body's safe longitudinal span in the original placement frame, including join cuts. */
-function bodySpan(target: TrimTarget, wall: WallJoinWall): [number, number] | null {
-  const read = target.wall, axis = target.axis;
-  if (!read || !axis) return null;
-  const [dx, dy] = axis.dir;
-  const first = (wall.start[0] - read.origin[0]) * dx + (wall.start[1] - read.origin[1]) * dy;
-  const { corners } = wallBodyOutline(wall);
-  // Every opening traverses the wall thickness: it must fit both cut faces,
-  // including an oblique butt join, not merely the uncut axis endpoints.
-  return [first + Math.max(corners[0][0], corners[3][0]), first + Math.min(corners[1][0], corners[2][0])];
-}
-
-/**
- * The openings a change of the wall's ends would strand or shift, as a refusal.
- * A trim strands what stands beyond the new end; moving the start moves the
- * placement, so every opening must be known to be put back. Openings whose
- * place cannot be read refuse both: they are never guessed at.
- */
-function hostedRefusal(s: ViewerState, target: TrimTarget, wall: WallJoinWall, requireReadable: boolean): string | null {
-  const hosted = hostedCutsOf(s, target.modelId, target.expressId);
-  const span = bodySpan(target, wall);
-  if (!hosted || !span) return translate('trimExtend.refused.hostedUnreadable', { count: 1, countDisplay: '1' });
-  if (requireReadable && hosted.unreadable.length > 0) return translate('trimExtend.refused.hostedUnreadable', { count: hosted.unreadable.length, countDisplay: String(hosted.unreadable.length) });
-  const outside: HostedCut[] = cutsOutside(hosted.cuts, span[0], span[1]);
-  return outside.length > 0 ? translate('trimExtend.refused.hosted', { count: outside.length, countDisplay: String(outside.length) }) : null;
-}
-
-/**
- * What clicking `target` at `click` (storey-local) does with `boundary`, in
- * `mode`, or why it is refused.
- */
+/** Live policy shared with the headless writer; UI owns translated notices and ghosts. */
 export function previewFor(s: ViewerState, target: TrimTarget, boundary: Boundary, mode: ReachMode, click: Vec2): TrimExtendPreview {
-  const { axis } = target;
-  if (target.refusal || !axis) return refuse(target, target.refusal ?? translate('trimExtend.refused.wallBody'));
-  const boundaryWall = boundary.kind === 'wall' && boundary.wall !== null && target.kind === 'wall';
-  const plan = planReach(axis, boundary, mode, clickAlong(axis, click), minLengthOf(target.kind), boundaryWall);
-  if (!plan.ok) return refuse(target, translate(REFUSAL_KEYS[plan.reason]));
-  const start: Vec2 = [plan.start[0], plan.start[1]];
-  const stop: Vec2 = [plan.stop[0], plan.stop[1]];
-
-  if (target.kind === 'beam') {
-    const outline = segmentOutline(start, stop, target.width);
-    if (!outline) return refuse(target, translate(REFUSAL_KEYS.tooShort));
-    const removed = removedBand(target, plan.end, plan.end === 'start' ? start : stop, plan.moved);
-    return { ok: true, target, op: plan.op, end: plan.end, start: plan.start, stop: plan.stop, length: plan.length, moved: plan.moved, point: plan.point, joinKind: null, outline, removed };
+  if (target.refusal || !target.axis) return refuse(target, target.refusal ?? translate('trimExtend.refused.wallBody'));
+  const plan = planTrimAxis({ kind: target.kind, axis: target.axis, wall: target.wall }, boundary, mode, click,
+    boundary.kind === 'wall' && target.kind === 'wall' ? boundary.wall : null,
+    target.kind === 'wall' ? hostedCutsOf(s, target.modelId, target.expressId) : null);
+  if (!plan.ok) {
+    const reason = plan.reason === 'hostedUnreadable' || plan.reason === 'hosted'
+      ? translate(`trimExtend.refused.${plan.reason}`, { count: plan.count ?? 1, countDisplay: String(plan.count ?? 1) })
+      : plan.reason === 'join' ? translate('trimExtend.refused.join', { reason: plan.detail ?? '' })
+      : plan.reason === 'wallBody' ? translate('trimExtend.refused.wallBody')
+      : translate(REFUSAL_KEYS[plan.reason]);
+    return refuse(target, reason);
   }
-
-  const read = target.wall!;
-  let wall = reshapeWallAxis(read.wall, start, stop);
-  let joinKind: JoinKind | null = null;
-  if (boundaryWall) {
-    const other = boundary.wall;
-    if (!other) return refuse(target, translate('trimExtend.refused.wallBody'));
-    try {
-      // The boundary is the `a` side, so a tie runs it through, as `wall.place` runs the earlier wall through.
-      const join = computeWallJoin(other, wall);
-      joinKind = join.kind;
-      wall = join.b.wall;
-    } catch (error) {
-      return refuse(target, translate('trimExtend.refused.join', { reason: error instanceof Error ? error.message : String(error) }));
-    }
-  }
-  let outline: Vec2[];
-  try {
-    const previous = bodySpan(target, read.wall);
-    const next = bodySpan(target, wall);
-    // An end extension is safe without guessing only when its resulting
-    // body contains the previous body. A join can shorten that body even
-    // when its axis grows; a moved start always needs every opening known.
-    // Unknown openings cannot justify a millimetre of clipping tolerance.
-    // One nanometre only absorbs roundoff from these metre-space projections.
-    const contracts = !previous || !next || next[0] > previous[0] + 1e-9 || next[1] < previous[1] - 1e-9;
-    const stranded = hostedRefusal(s, target, wall, plan.moved < 0 || contracts || (plan.end === 'start' && plan.moved !== 0));
-    if (stranded) return refuse(target, stranded);
-    outline = bodyPolygon(wall);
-  } catch (error) {
-    return refuse(target, translate('trimExtend.refused.join', { reason: error instanceof Error ? error.message : String(error) }));
-  }
+  const start: Vec2 = [plan.start[0], plan.start[1]], stop: Vec2 = [plan.stop[0], plan.stop[1]];
+  const outline = plan.wall ? bodyPolygon(plan.wall) : segmentOutline(start, stop, target.width);
+  if (!outline) return refuse(target, translate(REFUSAL_KEYS.tooShort));
   const removed = removedBand(target, plan.end, plan.end === 'start' ? start : stop, plan.moved);
-  return { ok: true, target, op: plan.op, end: plan.end, start: plan.start, stop: plan.stop, length: plan.length, moved: plan.moved, point: plan.point, joinKind, outline, removed };
+  return { ...plan, target, outline, removed };
 }
 
 /** The result as a ghost mesh, or null for a refusal. */

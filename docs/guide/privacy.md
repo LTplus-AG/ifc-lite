@@ -1,6 +1,6 @@
 # Privacy
 
-Everything the customisation system stores stays on your device: the action log, audit log, flavor library, and prompt overlay never leave your browser. Your models are processed entirely client-side too — parsing and geometry run in your browser, and model content is never uploaded. This page covers exactly what's stored, where, and how to inspect or clear it, plus an honest account of what the hosted viewer sends over the network.
+Everything the customisation system stores stays on your device: the action log, audit log, flavor library, and prompt overlay never leave your browser. The default local-file loader runs parsing and geometry in your browser. Hosted cloud imports also send source data through IFClite services for downloading or native conversion. This page covers what's stored, where, and how to inspect or clear it, plus what the hosted viewer sends over the network.
 
 ## TL;DR
 
@@ -95,7 +95,7 @@ A caveat banner sits above the proposal list: "Rule-based scan — review each l
 
 ## What flows over the network
 
-The customisation system itself does not make network calls, and the model-loading path keeps your IFC models on your device: parsing and geometry run entirely in your browser, and there is no upload endpoint in the load path. That guarantee covers loading, parsing, and geometry only — if you explicitly attach model content to an AI chat message (see below), that content is sent to your chosen provider. Three adjacent surfaces send data over the network.
+The customisation system itself does not make network calls. The default local-file loader parses and renders files in your browser without uploading them. Opening a hosted cloud source downloads source data through IFClite services, and native Autodesk conversion runs on a server. Attaching model content to an AI chat message sends that content to your chosen provider. The following surfaces send data over the network.
 
 1. **Hosted viewer product analytics.** The hosted viewer at ifclite.com emits anonymous, coarse product-usage events via PostHog. This is the only telemetry in the project, and it lives only in the viewer app (`apps/viewer`). The published npm packages (`@ifc-lite/*`) contain no analytics code at all, and a viewer you build yourself with no PostHog key configured (`VITE_POSTHOG_KEY` / `VITE_POSTHOG_HOST`) sends nothing.
 
@@ -108,6 +108,10 @@ The customisation system itself does not make network calls, and the model-loadi
 2. **Chat with the AI assistant.** When you send a chat message, your prompt + the (cached) system prompt + any attachments + recent conversation goes to your chosen provider (Anthropic / OpenAI), either through the BYOK direct flow or the proxy. Attachments can include model content (GlobalIds, property values, selected entities), so attaching model context to a chat message deliberately sends that content off-device to the provider. The chat panel's existing privacy notes apply.
 
 3. **Extension code with `network.fetch:<host>` capability.** An extension can ONLY make fetches you explicitly grant during install. The capability is host-scoped — `network.fetch:api.example.com` cannot reach any other host. Network egress is red-tier in the Capability Review screen; you have to type `approve` to grant it.
+
+4. **Hosted cloud sources.** Signing into Autodesk, Dropbox or OneDrive authorizes the configured IFClite gateway to read data from your vendor account. The gateway handles account identity, project/file references and downloaded model bytes. Native Forma resources are converted on the Autodesk gateway; Data Exchange conversion also sends the initiating user's delegated token and source reference to the authenticated Windows worker. The resulting IFC or IFCX then loads through the viewer's browser loader.
+
+   Vendor passwords are entered on the vendor's sign-in page. IFClite keeps delegated access and refresh tokens in backend memory; the browser receives a secure HttpOnly session cookie. Gateways use temporary artifact files while preparing and delivering imports, with deletion on completed, cancelled or expired jobs. Unclaimed prepared results expire after two minutes and active jobs are bounded to fifteen minutes. Sign-out or gateway restart ends the IFClite session. See [Cloud sources](cloud-sources.md) for consent, source access and deployment details.
 
 ## What you can do
 

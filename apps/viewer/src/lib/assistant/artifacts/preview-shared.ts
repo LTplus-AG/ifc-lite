@@ -23,7 +23,7 @@ export type ArtifactPreviewKind = 'filter.proposal' | 'list.proposal' | 'lens.pr
 
 export interface ModelPopulation { modelId: string; name: string; count: number }
 export interface SampleRow { model: string; ifcClass: string; name: string; globalId: string; values: string[] }
-/** A summed or measured value and its denominator. */
+/** A summed value and its denominator: `measured` of `rows` carried it (a chart's `rows` are its charted rows). */
 export interface MeasureSummary { label: string; unit: string | null; total: number; measured: number; rows: number }
 export interface PreviewBucket { label: string; count: number; value?: number; color?: string; absence?: boolean }
 

@@ -85,6 +85,18 @@ test('a chart review reports Charts aggregate totals and the measured denominato
   assert.equal(spec.dimension, ELEMENT_COLUMNS.ifcType);
 });
 
+test('a chart row without a dimension value is reported once, as uncharted, never again as unmeasured (#6914 review)', async () => {
+  // Only the `floor` slab carries Pset_SlabCommon.FireRating (REI30); the other 19 elements are not charted.
+  const result = await preview({ kind: 'chart.proposal', chart: { type: 'bar', elementField: { kind: 'property', psetName: 'Pset_SlabCommon', propertyName: 'FireRating' },
+    measure: { agg: 'sum' }, measureField: { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'NetArea' } } });
+  assert.equal(result.matched, 20);
+  assert.equal(result.unassigned, 19);
+  const [measure] = result.measures;
+  assert.deepEqual([measure.measured, measure.rows], [1, 1], 'the sum covers the charted rows only');
+  close(measure.total, 25.75);
+  assert.equal(measure.rows + (result.unassigned ?? 0), result.matched, 'every row is either charted or reported uncharted, never both');
+});
+
 test('a chart source filter narrows the population before aggregation', async () => {
   const result = await preview({ kind: 'chart.proposal', chart: { type: 'pie', dimension: 'Model', measure: { agg: 'count' }, filter: { groups: [walls] } } });
   assert.equal(result.matched, 5);

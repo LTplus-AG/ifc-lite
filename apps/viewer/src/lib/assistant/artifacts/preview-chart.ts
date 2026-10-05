@@ -8,7 +8,8 @@
  * source filter resolved by the shared evaluator (`resolveChartFilter`) and
  * applied (`applyChartFilter`), and the result aggregated by Charts
  * `aggregate`. The aggregation's own `total`, `unbucketed` and `unmeasured`
- * become the denominators: a sum states how many rows carried the measure.
+ * become the denominators: rows without a dimension value are `unassigned`,
+ * and a sum states how many of the charted rows carried the measure.
  */
 
 import { aggregate, elementFieldLabel, type ElementFieldBinding } from '@ifc-lite/charts';
@@ -40,9 +41,11 @@ export async function previewChart(proposal: ChartProposal, state: ViewerState, 
   if (ids) dataset = applyChartFilter(dataset, ids);
   const aggregation = aggregate(spec, dataset);
   const rows = dataset.rows.length;
+  // A row with no dimension value is reported once, as `unassigned`; the sum's denominator is the charted rows.
+  const charted = rows - aggregation.unbucketed;
   const measures: MeasureSummary[] = spec.measure.agg === 'sum' && spec.measureField
     ? [{ label: elementFieldLabel(spec.measureField), unit: aggregation.unit ?? null, total: aggregation.total,
-      measured: rows - aggregation.unbucketed - (aggregation.unmeasured ?? 0), rows }]
+      measured: charted - (aggregation.unmeasured ?? 0), rows: charted }]
     : [];
   const refs = dataset.rows.flatMap((row) => {
     const ref = row.ids.length > 0 ? state.resolveGlobalIdFromModels(row.ids[0]) : null;

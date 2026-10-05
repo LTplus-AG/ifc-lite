@@ -23,6 +23,9 @@ scripts/perf/probe.sh tests/models/ara3d/schependomlaan.ifc --iters 5 --json > /
 
 # symbolized flamegraph (opens Firefox profiler) to see WHICH function:
 scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
+
+# deterministic per-phase instruction counts (callgrind, single thread):
+scripts/perf/instructions.sh tests/models/ara3d/AC20-FZK-Haus.ifc --json
 ```
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
@@ -979,6 +982,8 @@ timings the pipeline already publishes (`ProcessingStats`) plus an isolated
 Flags: `--suite` (all catalogued heavy fixtures on disk), `--iters N`,
 `--census` (CSG op distribution), `--json` (stdout; table stays on stderr),
 `--fingerprint` (ordered mesh fingerprint, computed outside the timed interval),
+`--single-thread` (one rayon worker on the calling thread; for instruction
+counting, its times are not comparable with multi-threaded runs),
 `OBS=1` env (build with `observability` to fill `faceted_brep_time_ms`).
 
 JSON `allWallMs` measures each complete `process_geometry` call, including final
@@ -1008,6 +1013,41 @@ Why `--profile profiling`: release-grade opt but keeps symbols and
   dead-end ledger below before touching the kernel.
 - `index-scan alone` vs `entity_scan`: the gap is job-list + quick-metadata
   building layered on the raw scan.
+
+## Instruction counts (`instructions.sh`, #6958)
+
+`scripts/perf/instructions.sh <fixture> [--json] [--keep <dir>]` builds
+`perf_probe` with `--features phase-markers` (into `target/phase-markers`, so it
+never swaps the binary under `probe.sh`) and runs it once under
+`valgrind --tool=callgrind` with `--single-thread --iters 1`. The feature puts a
+never-inlined empty marker call on every `ProcessingStats` timer edge
+(`rust/processing/src/processor/phase_marks.rs`); callgrind's
+`--dump-before=...::phase_marks::*` writes one dump per edge, and
+`instructions-report.mjs` folds them into
+`{fixture, commit, phases:{parseIr, entityScanIr, lookupIr, preprocessIr,
+geometryIr, totalIr}, outside, processIr, meshes, vertices, triangles}`. Each
+phase covers exactly the window its millisecond timer covers; `parseIr`
+includes the untimed code between the sub-phases, as `parse_time_ms` does.
+Without the feature the markers compile to nothing (mesh fingerprints are
+identical with the feature off, on, and with `--single-thread`).
+
+- **Determinism.** Entity scan and lookup are exactly reproducible. Across
+  independent runs of one binary (some concurrent, on a loaded machine),
+  geometry varied by at most 254 Ir of 367M on FZK-Haus (7e-7) and 8,912 Ir of
+  28.7G on ISSUE_129 (3e-7); preprocess varied by at most 31 Ir. The residue
+  comes from `std::collections::HashMap` per-process hash seeds (probe lengths
+  in `clip_mesh_with_half_space`, `promote_cutter_verts_onto_host_faces`,
+  `remove_internal_membrane`, `union_all`, and in preprocess); output is
+  unaffected. `--single-thread` runs the one rayon worker on the calling thread
+  (`use_current_thread`): with a separate worker thread, idle spinning and
+  hand-off added noise of up to ~1e-5. Raw runs:
+  `evidence/instruction-replay-6958/determinism.json`.
+- **Not wall time.** Counts are immune to machine load and need no quiet
+  machine, but they ignore memory stalls, cache misses and parallel
+  scheduling. Read them as work, not latency.
+- **Cost.** ~60-100x a native run: FZK-Haus ~6 s, ISSUE_129 ~2.5 min.
+- `perf stat -e instructions:u` is not wired in: it is unavailable under WSL and
+  counts from different tools are not comparable with each other.
 
 ## Flamegraph (`flame.sh`)
 

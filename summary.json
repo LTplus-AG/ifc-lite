@@ -1,0 +1,59 @@
+{
+  "file": {
+    "name": "Apartment.e57",
+    "points": 23151066
+  },
+  "detect": {
+    "status": "done",
+    "points": 2000000,
+    "planes": 69,
+    "cylinders": 0,
+    "proposals": 38,
+    "by": {
+      "IfcWall/pairedFaces": 9,
+      "IfcWall/singleFace": 22,
+      "IfcSlab/floor": 2,
+      "IfcSlab/ceiling": 5
+    },
+    "stats": {
+      "verticalPlanes": 54,
+      "horizontalPlanes": 13,
+      "slopedPlanes": 2,
+      "pairedWalls": 9,
+      "singleFaceWalls": 22,
+      "facesTooSmall": 14,
+      "pairedSlabs": 0,
+      "singleSlabs": 7,
+      "slabsTooSmall": 6,
+      "columns": 0,
+      "pipes": 0
+    },
+    "column": null,
+    "cylinder": null
+  },
+  "accepted": 22,
+  "created": {
+    "modelId": "c38586cb-db6b-4c71-92d4-6537b0aef680",
+    "created": 22,
+    "byProposal": {
+      "IfcWall": 15,
+      "IfcSlab": 7
+    },
+    "meshes": 22,
+    "undo": 44,
+    "message": "22 accepted, 0 rejected, 16 to review | 22 elements created in Scan_to_BIM.ifc, one undo step."
+  },
+  "undoRedo": {
+    "before": 22,
+    "afterUndo": 0,
+    "afterRedo": 22
+  },
+  "exported": "/home/louistrue/scratch/6894/evidence2/Scan_to_BIM-export.ifc",
+  "reopened": {
+    "schema": "IFC4",
+    "walls": 15,
+    "slabs": 7,
+    "columns": 0,
+    "meshes": 22
+  }
+}

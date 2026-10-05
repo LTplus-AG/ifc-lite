@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { defineConfig, devices } from '@playwright/test';
+import { BEGIN_FRAME_CHROME_ARGS } from './tests/benchmark/frames/begin-frame-driver';
 
 // One preview server per run. Every project shares it; `reuseExistingServer`
 // means a server another checkout already runs on the port would be tested
@@ -185,6 +186,23 @@ export default defineConfig({
             '--ignore-gpu-blocklist',
           ],
         },
+      },
+    },
+    {
+      // Deterministic 120 Hz frame-cost rig (#6960): chrome-headless-shell
+      // driven frame by frame over CDP HeadlessExperimental.beginFrame, which
+      // new-headless Chrome does not implement. WebGPU runs on SwiftShader,
+      // so the rig reports main-thread cost and encoded GPU work, never GPU
+      // time. Flags live with the driver (tests/benchmark/frames/begin-frame-driver.ts).
+      name: 'viewer-frames-ci',
+      testMatch: /frames\/frame-rig\.spec\.ts/,
+      timeout: 600000,
+      use: {
+        baseURL: BASE_URL,
+        actionTimeout: 120000,
+        headless: true,
+        channel: 'chromium-headless-shell',
+        launchOptions: { args: BEGIN_FRAME_CHROME_ARGS },
       },
     },
     {

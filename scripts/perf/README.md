@@ -86,9 +86,38 @@ with changed output.
   inside that spread. Always run several times per side and take the band from
   the measured spread.
 - **Verdict for #6958.** Counts track kernel and parse work, so per-phase
-  FZK-Haus and ISSUE_129 counts go to M4 as ceilings once the ratchet framework
+  FZK-Haus and ISSUE_129 counts go to M4 as ceilings (seeding moved to #6982) once the ratchet framework
   (#6959) is on main; it was not when this landed. Scheduling-only and
   browser-only levers still need the end-to-end harnesses.
+
+### Frame-time rigs (#6960)
+
+Two rigs measure viewer frames; neither is a PR gate. Both inject the same
+in-page probe (`tests/benchmark/frames/frame-probe.ts`): rAF callback time,
+rendered vs idle frames (a frame that called `getCurrentTexture`), and
+`GPUQueue.submit` / `draw*` / `writeBuffer` per frame.
+
+- **Deterministic, CI-capable**: `pnpm test:benchmark:frames` (needs a built
+  viewer and `pnpm exec playwright install chromium-headless-shell`).
+  chrome-headless-shell is driven frame by frame over CDP
+  `HeadlessExperimental.beginFrame` on an exact 8.333 ms grid (new-headless
+  Chrome lacks that command). Scenarios on FZK and Snowdon: streaming load,
+  Home plus scripted orbit, hover sweep. Records main-thread task time per
+  frame, frames over budget, missed vsyncs (load only) and rendered vs idle
+  frames as `browser-frames` rows in `test-results/browser-frames.json`. GPU
+  time is excluded by construction (SwiftShader). Runs nightly in
+  `.github/workflows/browser-frames.yml`. Count metrics (frames, draws,
+  submits) repeat; millisecond metrics move with machine load, so compare
+  spreads, not single runs.
+- **Real GPU, local only**: `scripts/perf/frame-gpu-rig.mts` drives Windows
+  Chrome from WSL (random CDP port, throwaway profile killed by path and
+  deleted), serves a production build same-origin, loads `?model=`, presses
+  Home and replays the same orbit and hover at 120 Hz of wall time. Reports
+  rAF delta p50/p95/max, submits and draws per rendered frame and
+  `onSubmittedWorkDone` latency. Absolute frame time drifts between sessions,
+  so pass `--dist-base <base build>` for counterbalanced base/branch pairs and
+  read the paired ratio. Serialise timed runs:
+  `flock /tmp/ifclite-perf.lock npx tsx scripts/perf/frame-gpu-rig.mts tests/models/ara3d/AC20-FZK-Haus.ifc --pairs 3`.
 
 ## Pending picking survives redundant viewport synchronization (#6882)
 

@@ -17,15 +17,25 @@ export type FieldKind = 'property' | 'quantity';
 
 export interface FieldName { kind: FieldKind; set: string; name: string }
 
+/**
+ * Where a reference sits, for review text the card translates: a filter rule
+ * (1-based group and rule, inside a lens rule when `lensRule` names one), a
+ * list column by label, a lens's colour-by field, or a chart's dimension or
+ * measure.
+ */
+export type FieldWhere =
+  | { kind: 'rule'; group: number; rule: number; lensRule?: string }
+  | { kind: 'column'; column: string }
+  | { kind: 'colourBy' } | { kind: 'dimension' } | { kind: 'measure' };
+
 export interface FieldSite extends FieldName {
-  /** Where the reference sits, for review text (e.g. "Group 1 rule 2", "Column area"). */
-  where: string;
+  where: FieldWhere;
   replace: (proposal: ArtifactProposal, set: string, name: string) => ArtifactProposal;
 }
 
 export const fieldKey = (field: FieldName): string => `${field.kind}:${JSON.stringify([field.set, field.name])}`;
 
-function groupSites(groups: readonly FilterGroup[], prefix: string, write: (proposal: ArtifactProposal, groups: FilterGroup[]) => ArtifactProposal,
+function groupSites(groups: readonly FilterGroup[], lensRule: string | undefined, write: (proposal: ArtifactProposal, groups: FilterGroup[]) => ArtifactProposal,
   read: (proposal: ArtifactProposal) => readonly FilterGroup[]): FieldSite[] {
   const sites: FieldSite[] = [];
   groups.forEach((group, g) => group.rules.forEach((rule, r) => {
@@ -40,12 +50,12 @@ function groupSites(groups: readonly FilterGroup[], prefix: string, write: (prop
       return write(proposal, next);
     };
     sites.push({ kind: rule.kind, set: rule.setName, name: rule.kind === 'property' ? rule.propertyName : rule.quantityName,
-      where: `${prefix}group ${g + 1} rule ${r + 1}`, replace: swap });
+      where: { kind: 'rule', group: g + 1, rule: r + 1, ...(lensRule !== undefined ? { lensRule } : {}) }, replace: swap });
   }));
   return sites;
 }
 
-function chartFieldSite(field: FieldIdentity | undefined, where: string, key: 'elementField' | 'measureField'): FieldSite[] {
+function chartFieldSite(field: FieldIdentity | undefined, where: FieldWhere, key: 'elementField' | 'measureField'): FieldSite[] {
   if (!field || (field.kind !== 'property' && field.kind !== 'quantity')) return [];
   const set = field.kind === 'property' ? field.psetName : field.qsetName;
   const name = field.kind === 'property' ? field.propertyName : field.quantityName;
@@ -62,36 +72,36 @@ function chartFieldSite(field: FieldIdentity | undefined, where: string, key: 'e
 export function fieldSites(proposal: ArtifactProposal): FieldSite[] {
   switch (proposal.kind) {
     case 'filter.proposal':
-      return groupSites(proposal.groups, '',
+      return groupSites(proposal.groups, undefined,
         (p, groups) => p.kind === 'filter.proposal' ? { ...p, groups } : p, (p) => p.kind === 'filter.proposal' ? p.groups : []);
     case 'list.proposal': {
-      const sites = groupSites(proposal.list.groups, 'Filter ',
+      const sites = groupSites(proposal.list.groups, undefined,
         (p, groups) => p.kind === 'list.proposal' ? { ...p, list: { ...p.list, groups } } : p, (p) => p.kind === 'list.proposal' ? p.list.groups : []);
       proposal.list.columns.forEach((column, index) => {
         if (column.source !== 'property' && column.source !== 'quantity') return;
-        sites.push({ kind: column.source, set: column.psetName ?? '', name: column.propertyName, where: `Column ${column.label ?? column.id}`,
+        sites.push({ kind: column.source, set: column.psetName ?? '', name: column.propertyName, where: { kind: 'column', column: column.label ?? column.id },
           replace: (p, set, name) => p.kind !== 'list.proposal' ? p : { ...p, list: { ...p.list,
             columns: p.list.columns.map((each, i) => i === index ? { ...each, psetName: set, propertyName: name } : each) } } });
       });
       return sites;
     }
     case 'lens.proposal': {
-      const sites = proposal.lens.rules.flatMap((rule, index) => groupSites(rule.groups, `Rule "${rule.name}" `,
+      const sites = proposal.lens.rules.flatMap((rule, index) => groupSites(rule.groups, rule.name,
         (p, groups) => p.kind !== 'lens.proposal' ? p : { ...p, lens: { ...p.lens, rules: p.lens.rules.map((each, i) => i === index ? { ...each, groups } : each) } },
         (p) => p.kind === 'lens.proposal' ? p.lens.rules[index]?.groups ?? [] : []));
       const auto = proposal.lens.autoColor;
       if (auto && (auto.source === 'property' || auto.source === 'quantity')) {
         const kind = auto.source;
-        sites.push({ kind, set: auto.psetName ?? '', name: auto.propertyName ?? '', where: 'Colour by',
+        sites.push({ kind, set: auto.psetName ?? '', name: auto.propertyName ?? '', where: { kind: 'colourBy' },
           replace: (p, set, name) => p.kind !== 'lens.proposal' ? p : { ...p, lens: { ...p.lens, autoColor: { source: kind, psetName: set, propertyName: name } } } });
       }
       return sites;
     }
     case 'chart.proposal':
       return [
-        ...chartFieldSite(proposal.chart.elementField, 'Dimension', 'elementField'),
-        ...chartFieldSite(proposal.chart.measureField, 'Measure', 'measureField'),
-        ...groupSites(proposal.chart.filter?.groups ?? [], 'Filter ',
+        ...chartFieldSite(proposal.chart.elementField, { kind: 'dimension' }, 'elementField'),
+        ...chartFieldSite(proposal.chart.measureField, { kind: 'measure' }, 'measureField'),
+        ...groupSites(proposal.chart.filter?.groups ?? [], undefined,
           (p, groups) => p.kind === 'chart.proposal' ? { ...p, chart: { ...p.chart, filter: { groups } } } : p,
           (p) => p.kind === 'chart.proposal' ? p.chart.filter?.groups ?? [] : []),
       ];

@@ -73,7 +73,8 @@ test('picking a candidate rewrites exactly that reference in the native shape', 
   const proposal = listWith([{ id: 'rating', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'Fire Rating' }],
     [{ combinator: 'AND', rules: [{ kind: 'property', setName: 'Pset_WallCommon', propertyName: 'Fire Rating', op: 'isSet' }] }]);
   const sites = fieldSites(proposal);
-  assert.deepEqual(sites.map((site) => site.where), ['Filter group 1 rule 1', 'Column rating']);
+  // Structured, so the review card words it in the user's language (#6914 review).
+  assert.deepEqual(sites.map((site) => site.where), [{ kind: 'rule', group: 1, rule: 1 }, { kind: 'column', column: 'rating' }]);
   const next = sites.reduce((current, site) => site.replace(current, 'Pset_SlabCommon', 'FireRating'), proposal);
   assert.ok(next.kind === 'list.proposal');
   assert.deepEqual(next.list.columns[0], { id: 'rating', source: 'property', psetName: 'Pset_SlabCommon', propertyName: 'FireRating' });

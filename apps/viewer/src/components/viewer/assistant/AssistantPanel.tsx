@@ -61,12 +61,13 @@ export function AssistantPanel() {
   const submit = () => {
     if (!prompt.trim() || !canAsk) return;
     const text = prompt;
-    // Attachments go with this one message only, and only because the user attached them.
+    // Attachments go with this one message only, and only because the user attached them. A capture still
+    // running now belongs to no message: counting the send here drops it even if it lands while this streams.
+    setSent(count => count + 1);
     void sendAssistant(text, model, proxyUrl, attachmentsForSend(attachments)).then(success => {
       if (!success) return;
       setPrompt(current => current === text ? '' : current);
       setAttachments(NO_ATTACHMENTS);
-      setSent(count => count + 1);
     });
   };
   const refresh = () => { if (evidence) replaceEvidence(captureEvidence(evidence.source)); };

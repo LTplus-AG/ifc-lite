@@ -47,7 +47,7 @@ function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
 
 export function ComposerAttachments({ model, value, onChange, disabled, sent }: {
   model: string;
-  /** Messages sent so far: a capture still running when a message is sent belongs to no message and is dropped. */
+  /** Messages submitted so far: a capture still running when a message is submitted belongs to no message and is dropped. */
   sent: number;
   value: ComposerAttachmentValue;
   /** A state setter: the screenshot lands after an await, so it updates the current value, not the one it started from. */

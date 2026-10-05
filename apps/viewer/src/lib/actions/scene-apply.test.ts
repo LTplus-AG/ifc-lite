@@ -153,3 +153,15 @@ test('a second apply restores the first before capturing, and a changed federati
   assert.deepEqual(restore(), { hide: 'models-changed' });
   assert.ok(store().hiddenEntities.has(102), 'ids of a different federation are not written back');
 });
+
+// #6907: a section box rides the same sectionPlane object as a plane, so restore removes the assistant's box too.
+test('a section box applies through setSectionBox and restore puts back the prior section, box removed', () => {
+  useViewerStore.setState({ ...sceneModels(), cameraCallbacks: cameraStub().callbacks });
+  const before = store().sectionPlane;
+  assert.equal(before.box, undefined);
+  const result = applySceneActions(set([{ type: 'section', units: 'm', box: { min: [1002, 2002, 0.5], max: [1010, 2008, 3] } }]), null);
+  assert.deepEqual(result?.applied.map(a => a.type), ['section']);
+  assert.ok(store().sectionPlane.box && store().sectionPlane.enabled, 'the box is installed');
+  assert.deepEqual(restore(), { section: 'restored' });
+  assert.equal(store().sectionPlane, before, 'the prior section object is back, without the box');
+});

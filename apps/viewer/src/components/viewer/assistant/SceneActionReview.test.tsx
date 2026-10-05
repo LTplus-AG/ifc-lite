@@ -126,9 +126,15 @@ test('a viewport capture that finishes after the send is dropped, not attached t
     const ui = render(<AssistantPanel />);
     click(button(ui, 'Attach view')!);
     type(ui.querySelector('textarea')!, 'What is selected?');
+    let finish: () => void = () => {};
+    const streaming = new Promise<void>(resolve => { finish = resolve; });
+    globalThis.fetch = async () => { await streaming; return new Response('data: {"choices":[{"delta":{"content":"Ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'); };
     click(button(ui, 'Send')!);
-    await waitFor(() => useAssistant.getState().status === 'idle' && useAssistant.getState().messages.length === 2, 'send completes');
+    // The capture lands while the answer is still streaming, then the answer completes.
     await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 600)); });
+    assert.doesNotMatch(ui.textContent ?? '', /Viewport screenshot/, 'not attached while the sent message streams');
+    finish();
+    await waitFor(() => useAssistant.getState().status === 'idle' && useAssistant.getState().messages.length === 2, 'send completes');
     assert.doesNotMatch(ui.textContent ?? '', /could not be captured/i, 'the capture itself succeeded, so only the guard can drop it');
     assert.doesNotMatch(ui.textContent ?? '', /Viewport screenshot/, 'the late capture belongs to the message already sent');
   } finally {

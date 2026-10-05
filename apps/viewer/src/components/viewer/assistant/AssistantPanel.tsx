@@ -31,6 +31,7 @@ const ModelChangeProposal = lazy(() => import('./ModelChangeProposal').then(m =>
 const SceneActionReview = lazy(() => import('./SceneActionReview').then(m => ({ default: m.SceneActionReview })));
 const SceneRestoreBar = lazy(() => import('./SceneActionReview').then(m => ({ default: m.SceneRestoreBar })));
 const ClashGroupReview = lazy(() => import('./ClashGroupReview').then(m => ({ default: m.ClashGroupReview })));
+const CheckAuthoringProposal = lazy(() => import('./CheckAuthoringProposal').then(m => ({ default: m.CheckAuthoringProposal })));
 
 export function AssistantPanel() {
   const { t } = useTranslation();
@@ -114,6 +115,7 @@ export function AssistantPanel() {
       {evidence?.source === 'clash' && <Suspense fallback={null}><ClashGroupReview /></Suspense>}
       {evidence?.source === 'flow' && <Suspense fallback={null}><FlowProposalReview /></Suspense>}
       {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><ModelChangeProposal /></Suspense>}
+      {(evidence?.source === 'validation' || evidence?.source === 'loadReport') && <Suspense fallback={null}><CheckAuthoringProposal /></Suspense>}
       {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><ReportDraftReview /></Suspense>}
       {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><SceneActionReview /></Suspense>}
       </>}

@@ -34,6 +34,7 @@ not_in_nav: |
   architecture/viewer-ai-implementation.md
   architecture/viewer-ai-adapters.md
   architecture/viewer-ai-bcf-publication.md
+  architecture/viewer-ai-authoring-matrix.md
   architecture/section-6614-6615-spec.md
   architecture/autodesk-cloud-sources-plan.md
   architecture/evidence/**

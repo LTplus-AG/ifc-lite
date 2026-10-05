@@ -10,6 +10,8 @@
  * validation corrections) only create this description; nothing here writes.
  */
 
+import { MODEL_AUTHORING_OUTPUT_GUIDANCE } from './model-authoring-guidance';
+
 export type ChangeScalar = string | number | boolean | null;
 
 /** IfcRoot string attributes a reviewed batch may set. Identity (GlobalId) is never editable here. */
@@ -121,11 +123,12 @@ export function changeKey(item: ModelChange): string {
   }
 }
 
-/** Guidance for providers: the exact contract, kept short so it fits beside evidence. */
+/** Guidance for providers: the exact contract, kept short so it fits beside evidence. Carries the authoring contract too (P15A). */
 export const MODEL_CHANGE_OUTPUT_GUIDANCE =
   'When asked to prepare corrections, return only JSON {"version":1,"kind":"model.changes","title":"Short title",'
   + '"rationale":"Why","changes":[{"op":"property.set","target":{"globalId":"<22-char GlobalId>"},"pset":"Pset_WallCommon",'
   + '"name":"FireRating","expected":null,"value":"EI60"}]}. Ops: property.set, property.delete (expected = current value), '
   + 'quantity.set (qset, name, numeric expected/value), attribute.set (Name, Description, ObjectType or Tag). '
   + '"expected" must be the value shown in the evidence (null when absent). Use only GlobalIds from the evidence; '
-  + 'never invent values the user did not ask for. The user reviews every change before anything is applied.';
+  + 'never invent values the user did not ask for. The user reviews every change before anything is applied. '
+  + MODEL_AUTHORING_OUTPUT_GUIDANCE;

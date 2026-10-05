@@ -13,11 +13,12 @@ import { create } from 'zustand';
 import { createContentLibrary, initialContentStatus, type ContentStatus } from '../storage/content-library';
 import type { ContentDefinition } from '../storage/content-migration';
 import type { AppliedChange, ModelChangeReceipt } from './model-change-commit';
+import { AUTHORING_OPS } from './model-authoring';
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 const scalar = (value: unknown) => value === null || ['string', 'number', 'boolean'].includes(typeof value);
-const OPS = new Set(['property.set', 'property.delete', 'quantity.set', 'attribute.set']);
+const OPS = new Set<string>(['property.set', 'property.delete', 'quantity.set', 'attribute.set', ...AUTHORING_OPS]);
 
 function applied(value: unknown): value is AppliedChange {
   return record(value) && Number.isInteger(value.index) && OPS.has(String(value.op)) && typeof value.globalId === 'string'
@@ -34,6 +35,7 @@ export function decodeModelChangeReceipt(value: unknown): ModelChangeReceipt | n
   if (!value.applied.every(applied)) return null;
   if (!value.skipped.every((skip) => record(skip) && Number.isInteger(skip.index) && typeof skip.status === 'string')) return null;
   if (value.undoneAt !== undefined && typeof value.undoneAt !== 'string') return null;
+  if (value.kind !== undefined && value.kind !== 'model.authoring') return null;
   return structuredClone(value) as unknown as ModelChangeReceipt;
 }
 

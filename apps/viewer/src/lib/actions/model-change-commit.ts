@@ -20,11 +20,12 @@ import { revertChangeOperation, type RevertRefusal } from '@/lib/changes/revert-
 import { inverseMutationTargets } from '@/store/slices/mutation-inverse-registry';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import type { ChangeScalar, ModelChange } from './model-change';
+import type { AuthoringOpName } from './model-authoring';
 import { previewModelChanges, type ModelChangePreview, type PreviewRow } from './model-change-preview';
 
 export interface AppliedChange {
   index: number;
-  op: ModelChange['op'];
+  op: ModelChange['op'] | AuthoringOpName;
   globalId: string;
   modelId: string;
   /** Human-readable address of the value, e.g. `Pset_WallCommon.FireRating`. */
@@ -35,6 +36,8 @@ export interface AppliedChange {
 
 export interface ModelChangeReceipt {
   version: 1;
+  /** Absent on a `model.changes` receipt (P04); `model.authoring` for reviewed native authoring (P15A). */
+  kind?: 'model.authoring';
   id: string;
   title: string;
   digest: string;
@@ -43,7 +46,7 @@ export interface ModelChangeReceipt {
   origin: string;
   batches: Array<{ modelId: string; batchId: string }>;
   applied: AppliedChange[];
-  skipped: Array<{ index: number; status: PreviewRow['status'] | 'not-approved' }>;
+  skipped: Array<{ index: number; status: PreviewRow['status'] | 'invalid' | 'blocked' | 'not-approved' }>;
   status: 'applied' | 'undone';
   undoneAt?: string;
 }
@@ -139,7 +142,8 @@ export function commitModelChanges(
 
 export type UndoOutcome = { ok: true } | { ok: false; reason: RevertRefusal | 'not-in-history' | 'already-undone' };
 
-function undoBatch(store: StoreApi<ViewerState>, batchId: string): UndoOutcome {
+/** Revert one native batch through the Changes panel's revert (refuses when newer edits touched the same values). */
+export function undoBatch(store: StoreApi<ViewerState>, batchId: string): UndoOutcome {
   const state = store.getState();
   const operation = changeOperations(state.undoStacks, state.mutationBatchTags, inverseMutationTargets(store))
     .find((candidate) => candidate.id === `batch:${batchId}`);

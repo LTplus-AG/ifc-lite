@@ -60,3 +60,22 @@ Changes are applied with the normal edit tools, so Edit mode must be on; the car
 
 Each applied batch leaves a receipt with the before and after values. Receipts are kept in the native library (and in backups), listed under **Changes → Reviewed changes**, and label their row in the Changes history. **Undo these changes** reverts the batch, or Ctrl+Z does. Undo refuses rather than overwrite newer edits to the same values. After a reload the receipt remains, but the edit history it refers to does not, so undo reports that.
 
+
+## Reviewed model authoring
+
+Ask the assistant to create, delete, move, turn, type, join or place elements, for example with **Prepare a model authoring proposal for review:** on Load diagnostics. A valid answer appears as a **Model authoring proposal** with **Review model authoring** beneath it. The proposal declares its length unit (`m` or `mm`). All coordinates are storey-local, with Z up, and angles are degrees counter-clockwise from above. The card repeats this, and a missing unit, another frame or an implausible length (such as a 200 m wall thickness) is refused before review. Existing elements are named by GlobalId with the class and name the proposal expects them to have; elements created earlier in the same proposal are named by a short reference.
+
+Supported operations:
+
+- create walls, slabs, roofs, plates, columns, beams, members and spaces on a storey;
+- place a door, window or opening in a wall;
+- join two walls;
+- assign an existing or new type;
+- assign an existing or new material;
+- move an element horizontally;
+- turn an element about its own origin;
+- delete a single element.
+
+The review resolves every element, storey, type and material against the loaded models, including unsaved edits. It then runs the viewer's own builders on a draft that is never saved, so the model itself decides what it would refuse. Each row shows what the element is now and what it becomes. Its status is **Ready**, **Value changed** (the element's class, name, type, material, position or angle is not what the proposal expected), **Element not found**, **Element in several models**, **Not editable**, **Unsupported value**, **Refused by the model** (with the builder's reason), **Already set** or **Needs another row**. Excluding a new wall also excludes the door placed in it. **Preview in 3D** draws the new, moved, turned and deleted elements as ghosts; nothing is written until you apply.
+
+Edit mode must be on. **Apply** writes the approved rows with the Model workspace's own tools as one undo step per model and re-meshes what changed; if any model refuses, the whole batch is reverted. The receipt joins the reviewed changes under **Changes → Reviewed changes**, and **Undo these changes** or Ctrl+Z reverts it. Deleting a wall that hosts openings, deleting assemblies, vertical moves, storey changes, curtain walls, stairs, splits and other operations are refused; use the Model workspace for them. The assistant is told to ask for missing dimensions instead of inventing them. Current evidence sources do not list storeys, so a creation needs the storey GlobalId from you. The [operation matrix](../architecture/viewer-ai-authoring-matrix.md) lists each operation's native path, preview, undo and export evidence.

@@ -21,7 +21,7 @@ import { previewCounts, previewModelChanges, type PreviewRow, type RowStatus } f
 import { changeField, commitModelChanges, undoModelChanges, type ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import { modelChangeLibrary, useModelChangeReceipts } from '@/lib/actions/receipts';
 
-const STATUS: Record<RowStatus, { key: TranslationKey; tone: string }> = {
+export const STATUS: Record<RowStatus, { key: TranslationKey; tone: string }> = {
   ready: { key: 'modelChanges.status.ready', tone: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' },
   unchanged: { key: 'modelChanges.status.unchanged', tone: 'bg-muted text-muted-foreground' },
   conflict: { key: 'modelChanges.status.conflict', tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-400' },

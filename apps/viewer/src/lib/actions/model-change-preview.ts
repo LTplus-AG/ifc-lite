@@ -11,6 +11,7 @@
 import type { ViewerState } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
 import type { ChangeScalar, ModelChange, ModelChangeBatch } from './model-change';
+import { resolveGlobalId } from './resolve-global-id';
 import { currentValue, modelReader, sameValue, UNSUPPORTED_VALUE, type CurrentValue } from './model-change-values';
 
 export type RowStatus = 'ready' | 'unchanged' | 'conflict' | 'missing-target' | 'ambiguous-target' | 'denied' | 'unsupported';
@@ -36,8 +37,8 @@ export interface ModelChangePreview {
   digest: string;
 }
 
-/** FNV-1a over the canonical batch JSON: identity, not security. */
-export function batchDigest(batch: ModelChangeBatch): string {
+/** FNV-1a over the canonical batch JSON (changes or authoring): identity, not security. */
+export function batchDigest(batch: object): string {
   const json = JSON.stringify(batch);
   let hash = 0x811c9dc5;
   for (let i = 0; i < json.length; i++) {
@@ -45,17 +46,6 @@ export function batchDigest(batch: ModelChangeBatch): string {
     hash = Math.imul(hash, 0x01000193);
   }
   return `mc1-${(hash >>> 0).toString(16).padStart(8, '0')}-${json.length}`;
-}
-
-function resolveTarget(state: ViewerState, change: ModelChange): { modelId: string; expressId: number } | 'missing' | 'ambiguous' {
-  const hits: Array<{ modelId: string; expressId: number }> = [];
-  for (const [modelId, model] of state.models) {
-    if (change.target.modelId && change.target.modelId !== modelId) continue;
-    const expressId = model.ifcDataStore?.entities?.getExpressIdByGlobalId(change.target.globalId);
-    if (expressId !== undefined && expressId > 0 && !state.mutationViews.get(modelId)?.isDeleted(expressId)) hits.push({ modelId, expressId });
-  }
-  if (hits.length === 0) return 'missing';
-  return hits.length > 1 ? 'ambiguous' : hits[0];
 }
 
 function status(change: ModelChange, current: CurrentValue): RowStatus {
@@ -69,7 +59,7 @@ function status(change: ModelChange, current: CurrentValue): RowStatus {
 export function previewModelChanges(state: ViewerState, batch: ModelChangeBatch): ModelChangePreview {
   const readers = new Map<string, ReturnType<typeof modelReader>>();
   const rows = batch.changes.map((change, index): PreviewRow => {
-    const target = resolveTarget(state, change);
+    const target = resolveGlobalId(state, change.target);
     if (target === 'missing' || target === 'ambiguous') {
       return { index, change, status: target === 'missing' ? 'missing-target' : 'ambiguous-target', modelId: null, expressId: null };
     }

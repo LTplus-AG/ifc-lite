@@ -34,3 +34,33 @@ test('a model change answer becomes a proposal card and a native review, never a
   assert.match(review.textContent ?? '', /Element not found/, 'targets are resolved against the loaded model, not trusted');
   assert.equal(useViewerStore.getState().undoStacks.size, initial.undoStacks.size, 'nothing is applied without review');
 });
+
+test('a model authoring answer becomes an authoring proposal card and a native review with the refusal reasons', async () => {
+  useViewerStore.setState(fixtureModels(fixtureModel('m')));
+  replaceEvidence(captureEvidence('loadReport'));
+  const answer = JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Add a wall', units: 'mm', frame: 'storey-local', operations: [
+    { op: 'element.create', ref: 'w', ifcClass: 'IfcWall', storey: { globalId: '1Ano2ZUxnEIvVQ_beukl8b' }, name: 'New',
+      params: { start: [0, 0, 0], end: [4000, 0, 0], thickness: 200, height: 3000 } }] });
+  act(() => useAssistant.setState({ messages: [{ role: 'user', content: 'Add a wall' }, { role: 'assistant', model: 'recorded', content: answer }] }));
+  const ui = render(<AssistantPanel />);
+  for (let i = 0; i < 50 && !ui.querySelector('section[aria-label="Review model authoring"]'); i++) {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+  }
+  assert.match(ui.textContent ?? '', /Model authoring proposal/);
+  assert.match(ui.textContent ?? '', /1 proposed operation/);
+  const review = ui.querySelector('section[aria-label="Review model authoring"]');
+  assert.ok(review, 'the native authoring review is shown below the conversation');
+  assert.match(review.textContent ?? '', /Element not found/, 'the storey is resolved against the loaded model, not trusted');
+  assert.equal(useViewerStore.getState().undoStacks.size, initial.undoStacks.size, 'nothing is applied without review');
+});
+
+test('a malformed authoring answer is a refused proposal card with its reason, never a review', async () => {
+  useViewerStore.setState(fixtureModels(fixtureModel('m')));
+  replaceEvidence(captureEvidence('loadReport'));
+  const answer = JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Add a wall', frame: 'storey-local', operations: [] });
+  act(() => useAssistant.setState({ messages: [{ role: 'user', content: 'Add a wall' }, { role: 'assistant', model: 'recorded', content: answer }] }));
+  const ui = render(<AssistantPanel />);
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+  assert.match(ui.textContent ?? '', /must declare "units"/);
+  assert.equal(ui.querySelector('section[aria-label="Review model authoring"]'), null);
+});

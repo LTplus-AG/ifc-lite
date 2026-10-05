@@ -147,6 +147,7 @@ export const miscPanelsAEn = {
   'scanSectionPanel.outlineMaxGapTitle':
     'Gaps in the scan narrower than this are closed, about one wall thickness; wider openings such as doors stay open',
   'scanSectionPanel.outlineTracingMessage': 'Tracing the outline…',
+  'scanSectionPanel.outlineFailedMessage': 'The outline could not be traced. Details are in the browser console.',
   'scanSectionPanel.outlineSummary': {
     one: '{count} outline ring, traced on {cell} cells.',
     other: '{count} outline rings, traced on {cell} cells.',

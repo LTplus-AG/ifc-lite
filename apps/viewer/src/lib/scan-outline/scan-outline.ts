@@ -14,7 +14,7 @@
  * needs 3D coordinates for these rings.
  */
 
-import init, { traceScanOutline, type ScanOutlineDiagnosticsJs } from '@ifc-lite/wasm';
+import { traceScanOutline, type ScanOutlineDiagnosticsJs } from '@ifc-lite/wasm';
 import type { DXFPolylineLayer, Point2D } from '@ifc-lite/drawing-2d';
 
 /** Default widest gap the outline bridges (metres): about a wall thickness. */
@@ -42,16 +42,9 @@ export function scanOutlineDxfLayers(outline: ScanOutlineLayer | null | undefine
   return [{ name: SCAN_OUTLINE_DXF_LAYER, color: SCAN_OUTLINE_COLOR, polylines: outline.rings, closed: true }];
 }
 
-let wasmReady: Promise<void> | null = null;
-/** Initialise the wasm module once (idempotent). */
-export function ensureScanOutlineWasm(): Promise<void> {
-  if (!wasmReady) wasmReady = init().then(() => undefined);
-  return wasmReady;
-}
-
 /**
  * Trace the outline of `planeXY` (flat drawing-space `[x0, y0, …]`). The wasm
- * module must be initialised (`ensureScanOutlineWasm`). Throws on invalid
+ * module must be initialised (`ensureWasm` from `@/lib/wasm/ensure-wasm`). Throws on invalid
  * options, never on degenerate input (that gives zero rings).
  */
 export function traceScanOutlineLayer(planeXY: Float32Array, maxGap: number): ScanOutlineLayer {

@@ -31,8 +31,10 @@ interface ScanSectionPanelProps {
   hasPointCloud: boolean;
   totalInBand: number;
   renderedCount: number;
-  /** Traced outline (#6871); `null` while disabled or tracing. */
+  /** Traced outline (#6871); `null` while disabled, tracing or failed. */
   outline?: ScanOutlineLayer | null;
+  /** The last trace failed; shown instead of "tracing". */
+  outlineFailed?: boolean;
 }
 
 const formatLength = (metres: number): string =>
@@ -43,6 +45,7 @@ export function ScanSectionPanel({
   totalInBand,
   renderedCount,
   outline = null,
+  outlineFailed = false,
 }: ScanSectionPanelProps): React.ReactElement {
   const { t } = useTranslation();
   const displayOptions = useViewerStore((s) => s.drawing2DDisplayOptions);
@@ -153,7 +156,9 @@ export function ScanSectionPanel({
 
         {hasPointCloud && showScanSection && scanSectionOutline && (
           <output className="block text-2xs text-muted-foreground">
-            {outline === null
+            {outlineFailed
+              ? <span className="text-destructive">{t('scanSectionPanel.outlineFailedMessage')}</span>
+              : outline === null
               ? t('scanSectionPanel.outlineTracingMessage')
               : t('scanSectionPanel.outlineSummary', {
                   count: outline.rings.length,

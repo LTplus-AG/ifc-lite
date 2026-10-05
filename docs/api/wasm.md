@@ -431,7 +431,7 @@ The pipeline: a count grid (cell size adaptive to the point density between `min
 
 **Inputs.** Points are `f32`, so pass plane coordinates local to the slab (for example, the viewer's render frame), not map coordinates. `diagnostics().coordinatePrecisionDegraded` is set when the f32 step at the largest coordinate exceeds a tenth of a cell. Options that size work are bounded: `maxCells` from the padded-grid floor (81 with the defaults), `minCellSize` ≥ 1 mm, `snapDistanceCells` ≤ 16, `maxVertexMoveCells` ≤ 32. `undefined` fields mean the default. Unknown fields and non-finite numbers throw.
 
-**Cost.** Linear in the points and the grid cells. A 2 M point slab at the default 2 cm cells traces in about 0.2 s through the wasm build in Node, and in about 0.3 s natively. Run it off the main thread for large slabs.
+**Cost.** Linear in the points and the grid cells. In Node, a synthetic 2 M point slab at the default 2 cm cells traces in about 0.2 s through the wasm build; natively it takes about 0.3 s. In the browser, a 914 k point band from a 9.3 M point scan took about 0.18 s to trace, after about 0.13 s to collect the band. That is too long for the main thread, so the viewer runs both in a worker (`workers/scanOutline.worker.ts`). Do the same for large slabs.
 
 ## Data Types
 

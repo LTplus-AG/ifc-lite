@@ -71,4 +71,14 @@ describe('ScanSectionPanel vector outline (#6871)', () => {
     const container = render(<ScanSectionPanel hasPointCloud totalInBand={100} renderedCount={100} outline={capped} />);
     assert.match(container.querySelector('output')?.textContent ?? '', /too large for the cell budget/);
   });
+
+  // Review of #6884: a failed trace also leaves `outline` null, which used to
+  // read as "Tracing…" forever.
+  it('shows a failure, not "tracing", when the last trace failed', () => {
+    useViewerStore.getState().updateDrawing2DDisplayOptions({ showScanSection: true, scanSectionOutline: true });
+    const container = render(<ScanSectionPanel hasPointCloud totalInBand={100} renderedCount={100} outline={null} outlineFailed />);
+    const status = container.querySelector('output')?.textContent ?? '';
+    assert.match(status, /could not be traced/);
+    assert.doesNotMatch(status, /Tracing/);
+  });
 });

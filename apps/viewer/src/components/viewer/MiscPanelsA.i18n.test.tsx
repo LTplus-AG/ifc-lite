@@ -326,6 +326,17 @@ describe('ScanSectionPanel vector outline localization (#6871)', () => {
     );
     useViewerStore.getState().updateDrawing2DDisplayOptions({ scanSectionOutline: false });
   });
+
+  it('translates the trace failure message', () => {
+    useViewerStore.getState().updateDrawing2DDisplayOptions({ showScanSection: true, scanSectionOutline: true });
+    const container = render(
+      <ScanSectionPanel hasPointCloud totalInBand={10} renderedCount={10} outline={null} outlineFailed />,
+    );
+    const englishDom = readableStrings(container);
+    const afterDom = domAfterPseudo(container);
+    assertAllTranslate([{ key: 'scanSectionPanel.outlineFailedMessage' }], englishDom, afterDom);
+    useViewerStore.getState().updateDrawing2DDisplayOptions({ scanSectionOutline: false });
+  });
 });
 
 describe('SpaceMousePanel localization (#4918, #5509)', () => {

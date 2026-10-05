@@ -92,6 +92,14 @@ test('untrusted envelope bounds and prototype keys cannot become native patch op
   assert.throws(() => parseFlowPatch('{"version":1,"kind":"flow.patch","operations":[{"op":"setParam","node":"n","param":"__proto__","value":{"__proto__":{"pwned":true}}}]}'));
   assert.throws(() => parseFlowPatch(patch([{ op: 'rename', name: 'okay', execute: true }])));
   assert.throws(() => parseFlowPatch('{"version":1,"kind":"flow.patch","operations":[{"op":"setParam","node":"n","param":"value","value":1e9999}]}'));
+  // #6919: a debug diagnosis is a bounded citation of node ids and prose, nothing else.
+  const debug = (diagnosis: unknown) => JSON.stringify({ version: 1, kind: 'flow.patch', operations: [{ op: 'rename', name: 'x' }], diagnosis });
+  assert.deepEqual(parseFlowPatch(debug({ nodes: ['pt'], explanation: 'strings' })).diagnosis, { nodes: ['pt'], explanation: 'strings' });
+  for (const invalid of [{ nodes: [], explanation: 'x' }, { nodes: ['pt'], explanation: ' ' }, { nodes: ['pt'] },
+    { nodes: ['pt'], explanation: 'x', run: 'code' }, { nodes: Array.from({ length: 21 }, (_, i) => `n${i}`), explanation: 'x' },
+    { nodes: ['pt'], explanation: 'x'.repeat(2001) }, 'pt failed']) {
+    assert.throws(() => parseFlowPatch(debug(invalid)), /diagnosis/, JSON.stringify(invalid));
+  }
   assert.equal('pwned' in {}, false);
 });
 

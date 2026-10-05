@@ -9,12 +9,18 @@
  * `flowRunWarnings` and `flowArtifacts`. Editing or switching the graph
  * clears all of them (`setFlowDoc`, `openFlow`, …), so a present run always
  * belongs to the graph it names. Artifact bytes are never evidence.
+ *
+ * Debugging (#6919): node rows add the native error log lines, incoming
+ * edges and, for nodes that failed and the nodes feeding them, parameters,
+ * so a `flow.patch` with a diagnosis can be reviewed against this run.
  */
 
-import { countItems, type FlowData, type FlowDocument, type GraphOutputValue, type NodeReport, type RunLogEntry } from '@ifc-lite/flow';
+import { countItems, type FlowData, type FlowDocument, type GraphOutputValue, type NodeReport, type RunLogEntry, type RunResult } from '@ifc-lite/flow';
 import { analysisStampOf } from '@/hooks/useAnalysisStaleness';
 import type { ViewerState } from '@/store';
 import type { WorkflowArtifact } from '@/lib/flow/artifact';
+import type { EvidenceSnapshot } from '../evidence';
+import { branchParams, failingBranch, flowRunVerdict, isFailingNode, nodeErrorMessages, type FlowRunPin } from '../flow-run-evidence';
 import { evidenceRow, take, unavailableCapture, type EvidenceAdapter } from './types';
 
 const TEXT = 500;
@@ -36,15 +42,20 @@ function previewItems(data: FlowData): unknown[] {
   return out;
 }
 
-function nodeRow(report: NodeReport, doc: FlowDocument | null) {
+function nodeRow(report: NodeReport, run: RunResult, doc: FlowDocument | null, branch: ReadonlySet<string>) {
   const node = doc?.nodes.find(candidate => candidate.id === report.nodeId);
+  const params = branchParams(node, branch);
   return evidenceRow({ kind: 'nodeResult', status: report.status, unit: 'ms' }, {
     nodeId: report.nodeId, nodeType: node?.type ?? null, nodeLabel: node?.label ?? null,
     durationMs: report.durationMs, lanes: report.lanes, laneErrors: report.laneErrors,
     missingInputs: Object.keys(report.missing),
     warningCount: report.warnings.length, warnings: report.warnings.slice(0, 5).map(warning => bounded(warning)),
     error: report.error === undefined ? null : bounded(report.error),
+    errorMessages: nodeErrorMessages(run, report.nodeId).map(message => bounded(message)),
+    failing: isFailingNode(report),
+    inputs: (doc?.edges ?? []).filter(edge => edge.to[0] === report.nodeId).map(edge => ({ port: edge.to[1], from: edge.from })),
     tracking: report.tracking ?? null,
+    ...(params ? { params } : {}),
   });
 }
 
@@ -71,11 +82,22 @@ function logRow(entry: RunLogEntry) {
 
 function* runRows(s: ViewerState, doc: FlowDocument | null) {
   const run = s.flowLastRun;
-  for (const report of run?.reports ?? []) yield nodeRow(report, doc);
+  const branch = doc ? failingBranch(doc, run) : new Set<string>();
+  if (run) for (const report of run.reports) yield nodeRow(report, run, doc, branch);
   for (const message of s.flowRunWarnings) yield evidenceRow({ kind: 'warning', status: 'warning' }, { source: 'run', message: bounded(message) });
   for (const artifact of s.flowArtifacts) yield artifactRow(artifact);
   for (const output of run?.graphOutputs ?? []) yield outputRow(output);
   for (const entry of run?.log ?? []) yield logRow(entry);
+}
+
+/** Identity of the captured run; a rerun, refusal, window or graph change replaces it. */
+const identityOf = (s: ViewerState) => [s.flowLastRun, s.flowLastError, s.flowLastRunWindow, s.flowRunWarnings, s.flowArtifacts, s.flowDoc] as const;
+
+/** The run a `flowRun` snapshot pinned, or null for any other source. */
+export function pinnedFlowRun(snapshot: Pick<EvidenceSnapshot, 'source' | 'sourceIdentity'>): FlowRunPin | null {
+  if (snapshot.source !== 'flowRun' || !Array.isArray(snapshot.sourceIdentity)) return null;
+  const [run, error, window] = snapshot.sourceIdentity as unknown as ReturnType<typeof identityOf>;
+  return { run, error, window };
 }
 
 const iso = (time: number | undefined): string | null => time === undefined ? null : new Date(time).toISOString();
@@ -96,7 +118,7 @@ export const flowRunAdapter: EvidenceAdapter = {
     if (s.flowLastError !== null) return { status: { labelKey: 'assistantSources.flowRun.statusError' }, ready: true };
     return { status: { labelKey: 'assistantSources.flowRun.statusNone' }, ready: false };
   },
-  identity: s => [s.flowLastRun, s.flowLastError, s.flowLastRunWindow, s.flowRunWarnings, s.flowArtifacts, s.flowDoc],
+  identity: identityOf,
   reportStamp: s => analysisStampOf(s.flowLastRunWindow),
   capture: (s, limit) => {
     const run = s.flowLastRun;
@@ -116,6 +138,8 @@ export const flowRunAdapter: EvidenceAdapter = {
         graph: doc ? { id: doc.id, name: doc.name, nodeCount: doc.nodes.length, edgeCount: doc.edges.length,
           identity: runWindow ? 'document as run' : 'open working copy (the run window was not recorded)' } : null,
         status: run ? (run.ok ? 'ok' : 'failed') : 'error',
+        verdict: flowRunVerdict(run, s.flowLastError),
+        failingNodeIds: reports.filter(isFailingNode).slice(0, 100).map(report => report.nodeId),
         error: s.flowLastError === null ? null : bounded(s.flowLastError, 2000),
         startedAt: iso(runWindow?.start), finishedAt: iso(runWindow?.end),
         durationMs: runWindow ? runWindow.end - runWindow.start : null,
@@ -133,7 +157,8 @@ export const flowRunAdapter: EvidenceAdapter = {
         rowOrder: 'nodeResult, warning, artifact, graphOutput, log',
         limitations: 'Describes the last run of the open graph only. Editing or switching the graph clears the run, so it belongs to the graph named here. '
           + 'executedNodes counts every node report that was not skipped; memo means cached outputs were reused. '
-          + 'Node parameters, full output values and artifact contents (PDF bytes) are excluded; graph outputs carry at most a short preview. '
+          + 'Node parameters are excluded except on rows of failing nodes (error, skipped or laneErrors > 0) and the nodes feeding them. '
+          + 'Full output values and artifact contents (PDF bytes) are excluded; graph outputs carry at most a short preview. '
           + (run ? '' : 'The run failed before a result existed, so no node reports are available; absence of node rows is not success. ')
           + 'A run says nothing about model edits made after it finished.',
       },

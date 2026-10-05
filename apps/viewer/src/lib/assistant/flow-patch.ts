@@ -14,7 +14,9 @@ export type FlowPatchOperation =
   | { op: 'connect'; from: [string, string]; to: [string, string] }
   | { op: 'disconnect'; to: [string, string] }
   | { op: 'rename'; name: string };
-export interface FlowPatch { version: 1; kind: 'flow.patch'; operations: FlowPatchOperation[] }
+/** Debug proposals cite the failing nodes of the captured run; review checks them against native diagnostics. */
+export interface FlowPatchDiagnosis { nodes: string[]; explanation: string }
+export interface FlowPatch { version: 1; kind: 'flow.patch'; operations: FlowPatchOperation[]; diagnosis?: FlowPatchDiagnosis }
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const string = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= 200;
 const pair = (value: unknown): value is [string, string] => Array.isArray(value) && value.length === 2 && value.every(string);
@@ -45,15 +47,23 @@ export function isBoundedFlowJson(value: unknown): boolean {
   return true;
 }
 
+function isDiagnosis(value: unknown): value is FlowPatchDiagnosis {
+  return record(value) && fields(value, ['nodes', 'explanation']) && Array.isArray(value.nodes)
+    && value.nodes.length > 0 && value.nodes.length <= 20 && value.nodes.every(string)
+    && typeof value.explanation === 'string' && value.explanation.trim().length > 0 && value.explanation.length <= 2000;
+}
+
 /** A complete envelope only: never promote a partial response or executable code. */
 export function parseFlowPatch(text: string): FlowPatch {
   if (text.length > 48_000) throw new Error('Flow patch exceeds the text limit');
   const trimmed = text.trim();
   const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```$/.exec(trimmed);
   const raw: unknown = JSON.parse(fenced ? fenced[1] : trimmed);
-  if (!isBoundedFlowJson(raw) || !record(raw) || !fields(raw, ['version', 'kind', 'operations'])
+  if (!isBoundedFlowJson(raw) || !record(raw)
+    || !(fields(raw, ['version', 'kind', 'operations']) || fields(raw, ['version', 'kind', 'operations', 'diagnosis']))
     || raw.version !== 1 || raw.kind !== 'flow.patch' || !Array.isArray(raw.operations)
     || !raw.operations.length || raw.operations.length > 50) throw new Error('Invalid bounded Flow patch envelope');
+  if (raw.diagnosis !== undefined && !isDiagnosis(raw.diagnosis)) throw new Error('Invalid Flow patch diagnosis');
   for (const value of raw.operations) {
     if (!record(value)) throw new Error('Invalid Flow operation');
     const valid = value.op === 'addNode' ? fields(value, ['op', 'alias', 'type', 'pos']) && string(value.alias) && string(value.type) && position(value.pos)

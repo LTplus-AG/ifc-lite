@@ -70,10 +70,10 @@
  * `check-ci-path-coverage.test.mjs` proves it fires.
  */
 
-import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
+import { createExistsExactCase } from './lib/exists-exact-case.mjs';
 import {
   parseFilterBlock,
   splitJobs,
@@ -120,7 +120,7 @@ function fail(reason) {
 }
 
 const abs = (p) => join(ROOT, p);
-const exists = (p) => existsSync(abs(p));
+const exists = createExistsExactCase(ROOT); // case-exact: `existsSync('Deploy')` is true on macOS for `deploy/`
 
 /**
  * Everything `.gitignore` excludes, as globs.

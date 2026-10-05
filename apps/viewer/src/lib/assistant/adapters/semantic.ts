@@ -10,9 +10,9 @@
  * state and the document source is deliberately omitted.
  *
  * Readiness reads the Linked records session, a separate store; `subscribe`
- * lets an open source picker follow it. An in-flight question is guarded by
- * the viewer-store freshness check only, so a session change during a request
- * is caught at the next viewer-store change or send.
+ * lets an open source picker follow it, and an in-flight question is
+ * cancelled as stale when the session changes (`sendAssistant` attaches the
+ * same freshness check to it as to the viewer store).
  */
 
 import type { LiveEntity, Resolution, SemanticDocument, ValidationFinding } from '@ifc-lite/semantic';

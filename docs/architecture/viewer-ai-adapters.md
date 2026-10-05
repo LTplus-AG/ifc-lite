@@ -64,6 +64,6 @@ The common capture path (`evidence.ts`) adds the envelope every source shares: `
 
 ## Remaining limits
 
-- Freshness during an in-flight request is checked on viewer-store changes; the Linked records session and the Data validation side choice are separate stores.
+- Freshness during an in-flight request is checked on viewer-store changes and on changes of sources that expose `subscribe` (the Linked records session). The Data validation side choice is a separate store without one, so a change there is caught at the next viewer-store change or send.
 - Population-wide AI classification beyond the 100-row sample, durable cross-analysis review, and per-source reviewed actions remain P04/P10/P18 work.
 - Acceptance tests use committed real models (`apps/viewer/public/samples/*`, the committed BCF archive) and real native engines; tests that need `tests/models/*` fixtures skip when they are absent. Rendered-browser screenshots for each new source have not been recorded.

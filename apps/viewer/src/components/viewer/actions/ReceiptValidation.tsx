@@ -15,7 +15,6 @@ import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
-import { modelChangeLibrary } from '@/lib/actions/receipts';
 import { verdictDelta, type VerdictCount } from '@/lib/actions/validation-verdicts';
 
 const totals = (counts: readonly VerdictCount[]) => counts.reduce((sum, count) =>
@@ -31,10 +30,10 @@ export function ReceiptValidation({ receipt }: { receipt: ModelChangeReceipt }) 
     setRunning(true);
     setError(null);
     try {
-      const { rerunReceiptValidation } = await import('@/lib/actions/validation-rerun');
+      const { recordReceiptRerun, rerunReceiptValidation } = await import('@/lib/actions/validation-rerun');
       const outcome = await rerunReceiptValidation(useViewerStore, receipt);
       if (!outcome.ok) { setError(t(`receiptValidation.refused.${outcome.reason}`, { detail: outcome.detail ?? '' })); return; }
-      await modelChangeLibrary.put(receipt.id, outcome.receipt);
+      if (outcome.receipt.validation) await recordReceiptRerun(receipt.id, outcome.receipt.validation);
     } catch (failure) {
       // A storage refusal keeps the report; the receipt just does not record the counts.
       console.error('[model-changes] recording the validation rerun failed', failure);

@@ -17,7 +17,7 @@ import type { ModelChange } from './model-change';
 import { currentValue, modelReader, sameValue, UNSUPPORTED_VALUE, type ModelReader } from './model-change-values';
 import { existingQuantity, propertyCell, quantityCell, type CellOutcome } from './table-cells';
 import { resolveTableIdentity } from './table-identity';
-import { targetField, type TableColumnTarget, type TableMapping } from './table-mapping';
+import { targetField, validateTableMapping, type TableColumnTarget, type TableMapping } from './table-mapping';
 
 export interface TableConversionInput {
   modelId: string;
@@ -56,6 +56,10 @@ export function tableToModelChanges(state: ViewerState, input: TableConversionIn
   const rows = input.limit === undefined ? input.rows : input.rows.slice(0, input.limit);
   const empty = (refusal: TableConversion['refusal'], issues: ConversionIssue[] = []): TableConversion =>
     ({ ...toConversion(mapping.title, mapping.rationale, [], issues, 0), rows: rows.length, refusal });
+  // Structural problems only (a column mapped twice, two columns writing one value, an empty name);
+  // a column the rows lack just reads as empty cells.
+  const declared = [mapping.identity.column, ...mapping.columns.map(target => target.column)];
+  if (validateTableMapping(mapping, declared).length > 0) return empty('invalid-mapping');
   const reader = modelReader(state, modelId);
   if (!reader) return empty('model-unavailable');
   const identity = resolveTableIdentity(reader, rows, mapping.identity);

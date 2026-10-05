@@ -19,11 +19,12 @@ import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags
 import { runIdsCheck } from '@/lib/validation/run-ids-check';
 import { runInformationCheck } from '@/lib/validation/run-information-check';
 import type { ModelChangeReceipt } from './model-change-commit';
-import { reportTitle, verdictCounts } from './validation-verdicts';
+import { modelChangeLibrary, useModelChangeReceipts } from './receipts';
+import { reportTitle, verdictCounts, type ReceiptValidation } from './validation-verdicts';
 
 export type RerunOutcome =
   | { ok: true; receipt: ModelChangeReceipt }
-  | { ok: false; reason: 'no-baseline' | 'no-report' | 'source-changed' | 'rule-set-unavailable' | 'model-unavailable' | 'busy' | 'failed'; detail?: string };
+  | { ok: false; reason: 'no-baseline' | 'no-report' | 'source-changed' | 'other-model' | 'rule-set-unavailable' | 'model-unavailable' | 'busy' | 'failed'; detail?: string };
 
 /** Run the receipt's check again on the current model and record its counts on a copy of the receipt. */
 export async function rerunReceiptValidation(store: StoreApi<ViewerState>, receipt: ModelChangeReceipt): Promise<RerunOutcome> {
@@ -41,6 +42,8 @@ export async function rerunReceiptValidation(store: StoreApi<ViewerState>, recei
       const modelId = report.modelInfo[0]?.modelId;
       const dataStore = modelId ? state.models.get(modelId)?.ifcDataStore : undefined;
       if (!modelId || !dataStore) return { ok: false, reason: 'model-unavailable' };
+      // A report on another model would show "no change" for edits it never saw.
+      if (!receipt.batches.some(batch => batch.modelId === modelId)) return { ok: false, reason: 'other-model' };
       result = await runIdsCheck({ document: report.source.document, modelId, dataStore, mutationView: state.mutationViews.get(modelId),
         locale: state.idsLocale, models: state.models });
     } else {
@@ -57,3 +60,14 @@ export async function rerunReceiptValidation(store: StoreApi<ViewerState>, recei
   }
 }
 
+
+/**
+ * Record rerun counts on the receipt as it is now: an undo that landed while
+ * the check ran keeps its status, and an undone receipt gets no counts (they
+ * describe the applied state). Returns whether the counts were recorded.
+ */
+export async function recordReceiptRerun(receiptId: string, validation: ReceiptValidation): Promise<boolean> {
+  const latest = useModelChangeReceipts.getState().entries.find(entry => entry.id === receiptId);
+  if (!latest || latest.status !== 'applied') return false;
+  return modelChangeLibrary.put(receiptId, { ...latest, validation });
+}

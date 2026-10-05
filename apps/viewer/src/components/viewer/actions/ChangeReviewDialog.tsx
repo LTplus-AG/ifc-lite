@@ -15,6 +15,8 @@ import { MODEL_CHANGE_SET_LIMIT, type ChangeConversion, type ConversionIssue } f
 import { ModelChangeReview } from './ModelChangeReview';
 
 const SHOWN_ISSUES = 100;
+const REFUSAL = { 'model-unavailable': 'tableChanges.refusedModel', 'tag-scan-limit': 'tableChanges.refusedTagScan',
+  'invalid-mapping': 'tableChanges.refusedMapping' } as const satisfies Record<NonNullable<ChangeConversion['refusal']>, string>;
 
 function Issue({ issue }: { issue: ConversionIssue }) {
   const { t } = useTranslation();
@@ -35,7 +37,7 @@ export function ConversionSummary({ conversion }: { conversion: ChangeConversion
     {conversion.refused && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">
       {t('tableChanges.refused', { total: conversion.total, limit: MODEL_CHANGE_SET_LIMIT })}</p>}
     {conversion.refusal && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">
-      {t(conversion.refusal === 'tag-scan-limit' ? 'tableChanges.refusedTagScan' : 'tableChanges.refusedModel')}</p>}
+      {t(REFUSAL[conversion.refusal])}</p>}
     {!conversion.refused && !conversion.refusal && conversion.total === 0 && <p className="text-muted-foreground">{t('tableChanges.nothing')}</p>}
     {issues.length > 0 && <details>
       <summary className="cursor-pointer font-medium">{t('tableChanges.issuesTitle', { count: issues.length })}</summary>

@@ -117,3 +117,18 @@ test('a value changed after the table was read is a conflict in review and is no
     'one Ctrl+Z reverts the applied table rows');
   assert.equal(view.getPropertyValue(back, 'Pset_WallCommon', 'FireRating'), 'REI120');
 });
+
+// #6912: the Data Connector builds its mapping from manual rows; a column mapped twice onto one value
+// or an empty set name is refused as a mapping, never thrown from the click handler or written as `pset: ''`.
+test('a mapping with two columns writing one value or an empty set name is refused, not thrown', async () => {
+  await installSampleModel();
+  const twice = mapping({ columns: [
+    { column: 'Fire', target: 'property', pset: 'Pset_WallCommon', name: 'FireRating', valueType: 'text' },
+    { column: 'Mark', target: 'property', pset: 'Pset_WallCommon', name: 'FireRating', valueType: 'text' },
+  ] });
+  const conversion = tableToModelChanges(useViewerStore.getState(), { modelId: 'sample', rows: rows.slice(0, 2), mapping: twice });
+  assert.equal(conversion.refusal, 'invalid-mapping');
+  assert.deepEqual(conversion.batches, []);
+  const unnamed = mapping({ columns: [{ column: 'Fire', target: 'property', pset: ' ', name: 'FireRating', valueType: 'text' }] });
+  assert.equal(tableToModelChanges(useViewerStore.getState(), { modelId: 'sample', rows: rows.slice(0, 2), mapping: unnamed }).refusal, 'invalid-mapping');
+});

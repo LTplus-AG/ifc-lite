@@ -46,7 +46,7 @@ export interface ChangeConversion {
   /** True when the set exceeded MODEL_CHANGE_SET_LIMIT and was not split. */
   refused: boolean;
   /** Why no row could be converted at all. */
-  refusal?: 'model-unavailable' | 'tag-scan-limit';
+  refusal?: 'model-unavailable' | 'tag-scan-limit' | 'invalid-mapping';
 }
 
 const TITLE_MAX = 160;

@@ -28,6 +28,13 @@ function sectionsOf(result: ClashResult, s: ViewerState): DuplicateSetSection[] 
     ?? groupDuplicateSets(result).map(group => ({ key: group.id, label: group.title, severity: group.severity, items: group.members }));
 }
 
+/** The picker's set count is the capture's: readiness runs on every store change, so it is memoised per result and grouping. */
+let counted: { result: ClashResult; groups: ViewerState['clashGroups']; count: number } | null = null;
+function setCount(result: ClashResult, s: ViewerState): number {
+  if (counted?.result !== result || counted.groups !== s.clashGroups) counted = { result, groups: s.clashGroups, count: sectionsOf(result, s).length };
+  return counted.count;
+}
+
 function membersOf(items: readonly Clash[]): ClashElementRef[] {
   const members = new Map<string, ClashElementRef>();
   for (const clash of items) for (const ref of [clash.a, clash.b]) members.set(elementKey(ref), ref);
@@ -42,8 +49,8 @@ export const duplicatesAdapter: EvidenceAdapter = {
   rowMeaningKey: 'assistantSources.duplicates.rows', unavailableKey: 'assistantSources.duplicates.unavailable',
   suggestionKeys: ['assistantSources.duplicates.suggestSummary', 'assistantSources.duplicates.suggestCleanup'],
   readiness: s => s.clashRunning ? { status: { labelKey: 'assistant.pickRunning' }, ready: false, running: true }
-    : isDuplicateScan(s.clashResult)
-      ? { status: { labelKey: 'assistantSources.duplicates.pickSets', params: { count: s.clashGroups?.length ?? 0 } }, ready: true }
+    : s.clashResult && isDuplicateScan(s.clashResult)
+      ? { status: { labelKey: 'assistantSources.duplicates.pickSets', params: { count: setCount(s.clashResult, s) } }, ready: true }
       : { status: { labelKey: 'assistant.pickNotRun' }, ready: false },
   identity: s => [s.clashResult, s.clashGroups],
   reportStamp: s => analysisStampOf(s.clashRawResult ?? s.clashResult),

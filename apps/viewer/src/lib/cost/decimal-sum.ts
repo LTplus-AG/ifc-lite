@@ -10,10 +10,14 @@
 
 interface Scaled { units: bigint; scale: number }
 
-function parse(text: string): Scaled {
+/** Exponents beyond this are not money; refusing them also bounds the digit string. */
+const MAX_EXPONENT = 1000;
+
+function scaled(text: string): Scaled | null {
   const match = /^([+-]?)(\d*)(?:\.(\d*))?(?:e([+-]?\d+))?$/i.exec(text.trim());
-  if (!match || (match[2] === '' && (match[3] ?? '') === '')) throw new Error(`Not a decimal amount: ${text}`);
+  if (!match || (match[2] === '' && (match[3] ?? '') === '')) return null;
   const [, sign, whole, fraction = '', exponent = '0'] = match;
+  if (Math.abs(Number(exponent)) > MAX_EXPONENT) return null;
   let scale = fraction.length - Number(exponent);
   let digits = `${whole}${fraction}` || '0';
   if (scale < 0) {
@@ -30,6 +34,17 @@ function format({ units, scale }: Scaled): string {
   const whole = digits.slice(0, digits.length - scale);
   const fraction = scale > 0 ? digits.slice(digits.length - scale).replace(/0+$/, '') : '';
   return `${negative ? '-' : ''}${whole}${fraction ? `.${fraction}` : ''}`;
+}
+
+function parse(text: string): Scaled {
+  const value = scaled(text);
+  if (!value) throw new Error(`Not a decimal amount: ${text}`);
+  return value;
+}
+
+/** False for evaluator outputs such as `NaN` or `Infinity` (a division by zero), which have no exact sum. */
+export function isDecimalAmount(text: string): boolean {
+  return scaled(text) !== null;
 }
 
 export function addDecimalStrings(a: string, b: string): string {

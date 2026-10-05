@@ -18,7 +18,7 @@ import { render, click, cleanup } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { addDecimalStrings } from '@/lib/cost/decimal-sum';
+import { addDecimalStrings, isDecimalAmount } from '@/lib/cost/decimal-sum';
 import { captureEvidence, evidenceIsCurrent } from '../evidence';
 import { cancelAssistant, useAssistant } from '../conversation';
 
@@ -67,6 +67,9 @@ test('#6833 cost: exact decimal totals are not binary floats', () => {
   assert.equal(addDecimalStrings('100.1', '0.2'), '100.3');
   assert.equal(addDecimalStrings('-600', '1e3'), '400');
   assert.equal(addDecimalStrings('0.1', '-0.15'), '-0.05');
+  // Evaluator outputs with no exact sum are recognised up front, so the adapter withholds a total instead of throwing.
+  for (const amount of ['NaN', 'Infinity', '-Infinity', '', '1e100000']) assert.equal(isDecimalAmount(amount), false, amount);
+  for (const amount of ['0', '-12.50', '1e3', '.5']) assert.equal(isDecimalAmount(amount), true, amount);
 });
 
 test('#6833 cost: no IFC source is unavailable, never an empty cost model', () => {

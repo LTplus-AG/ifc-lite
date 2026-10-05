@@ -365,4 +365,19 @@ it('DeviationPanel #6880 Export CSV with no measured points says why instead of 
   // A later run with points clears the notice.
   await computeWith(container, stub, ladder(10, 0.01));
   await waitFor(() => container.querySelector('[data-testid="deviation-export-notice"]')?.textContent === '', 'notice cleared');
+
+it('DeviationPanel #6833 reads the statistics back on mount when a re-run dropped them while it was closed', async () => {
+  const stub = stubRenderer();
+  const first = render(<DeviationPanel triangleCount={1} />);
+  await computeWith(first, stub, ladder(1000, 0.04));
+  cleanup();
+  // COPC streaming settles while the panel is closed: the stored statistics describe chunks no longer drawn.
+  act(() => { useViewerStore.getState().bumpPointCloudDeviationRevision(); });
+  assert.equal(useViewerStore.getState().pointCloudDeviationStatistics, null);
+  const container = render(<DeviationPanel triangleCount={1} />);
+  await waitFor(() => stub.readbacks.length === 2, 'readback started on mount');
+  await act(async () => { stub.readbacks[1](ladder(400, 0.004)); });
+  await waitFor(() => stat(container, 'maxAbs') === '4.0 mm', 'statistics rendered after remount');
+  assert.equal(useViewerStore.getState().pointCloudDeviationStatistics?.overall.maxAbs, ladder(400, 0.004).values.reduce((m, v) => Math.max(m, Math.abs(v)), 0));
+  assert.equal(stub.computeCalls(), 1, 'remount reads back; it does not recompute');
 });

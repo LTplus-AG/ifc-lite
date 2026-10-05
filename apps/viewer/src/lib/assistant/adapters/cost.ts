@@ -8,7 +8,7 @@ import { createCostAdapter } from '@/sdk/adapters/cost-adapter';
 import { getAllModelEntries } from '@/sdk/adapters/model-compat';
 import { readCostModels } from '@/lib/cost/cost-models';
 import { buildCostTree, classifyCostModel, refKey } from '@/lib/cost/cost-tree';
-import { addDecimalStrings } from '@/lib/cost/decimal-sum';
+import { addDecimalStrings, isDecimalAmount } from '@/lib/cost/decimal-sum';
 import { evidenceRow, unavailableCapture, type EvidenceAdapter } from './types';
 
 const MESSAGE = 240;
@@ -25,17 +25,25 @@ function rootKeys(graph: CostGraphData): Set<string> {
   return new Set([...tree.schedules.flatMap(schedule => schedule.items), ...tree.unassignedItems].map(node => refKey(node.ref)));
 }
 
-interface Total { currency: string | null; dimension: string | null; rootTotal: string | null; rootItemsWithAmount: number; itemsWithAmount: number }
+interface Total {
+  currency: string | null; dimension: string | null; rootTotal: string | null; rootItemsWithAmount: number; itemsWithAmount: number;
+  /** Root amounts that are not decimals (e.g. `NaN` from a division by zero): the bucket's rootTotal is withheld (null). */
+  rootItemsNotDecimal: number;
+}
 
 /** Per (currency, dimension) bucket; amounts in different currencies or dimensions are never added. */
 function addTotal(totals: Map<string, Total>, evaluation: CostEvaluationData, root: boolean): void {
   if (evaluation.Amount === undefined) return;
   const key = `${evaluation.Currency ?? ''}\u0000${evaluation.Dimension ?? ''}`;
-  const total = totals.get(key) ?? { currency: evaluation.Currency ?? null, dimension: evaluation.Dimension ?? null, rootTotal: null, rootItemsWithAmount: 0, itemsWithAmount: 0 };
+  const total = totals.get(key) ?? { currency: evaluation.Currency ?? null, dimension: evaluation.Dimension ?? null, rootTotal: null,
+    rootItemsWithAmount: 0, itemsWithAmount: 0, rootItemsNotDecimal: 0 };
   total.itemsWithAmount += 1;
   if (root) {
     total.rootItemsWithAmount += 1;
-    total.rootTotal = total.rootTotal === null ? evaluation.Amount : addDecimalStrings(total.rootTotal, evaluation.Amount);
+    if (!isDecimalAmount(evaluation.Amount)) { total.rootItemsNotDecimal += 1; total.rootTotal = null; }
+    else if (total.rootItemsNotDecimal === 0) {
+      total.rootTotal = total.rootTotal === null ? evaluation.Amount : addDecimalStrings(total.rootTotal, evaluation.Amount);
+    }
   }
   totals.set(key, total);
 }
@@ -99,7 +107,7 @@ export const costAdapter: EvidenceAdapter = {
     return {
       summary: {
         kind: 'cost-items', models,
-        limitations: 'Totals are per model and per (currency, dimension), never across them. rootTotal adds only items not nested under another item, because a parent IfcCostItem can already include its children through category references; items without an amount are excluded from totals and counted in itemsWithoutAmount. "no-cost-source" means no IFC source could be read; "no-cost-data" means the source was read and declares no cost items. Amounts are as evaluated at capture including pending edits.',
+        limitations: 'Totals are per model and per (currency, dimension), never across them. rootTotal adds only items not nested under another item, because a parent IfcCostItem can already include its children through category references; items without an amount are excluded from totals and counted in itemsWithoutAmount; a bucket with a non-decimal root amount (rootItemsNotDecimal > 0, e.g. NaN) has no rootTotal. "no-cost-source" means no IFC source could be read; "no-cost-data" means the source was read and declares no cost items. Amounts are as evaluated at capture including pending edits.',
       },
       totalRows,
       availability: 'available',

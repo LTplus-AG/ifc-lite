@@ -99,7 +99,10 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   // COPC LOD streaming re-runs deviation on the chunks of each settled view
   // (#6880) and bumps the revision. The held readback then describes chunks
   // that are no longer drawn, so drop it and read the new run back.
-  const readRevisionRef = useRef<number | null>(null);
+  // A run whose statistics were dropped while the panel was closed (a COPC
+  // re-run bumps the revision whether or not the panel is mounted) is read
+  // back on mount, so the stored statistics never stay missing (#6833).
+  const readRevisionRef = useRef<number | null>(computed && !statistics ? -1 : null);
   useEffect(() => {
     const readAt = readRevisionRef.current;
     if (!computed || running || readAt === null || readAt === revision) return;
@@ -130,7 +133,8 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   // meanwhile is never adopted.
   const summarizedRef = useRef<{ distances: DeviationDistances; summary: Pick<PointCloudDeviationStatistics, 'overall' | 'assets'> } | null>(null);
   useEffect(() => {
-    if (!distances) return;
+    // Dropping the readback also drops the summary cache that pins it (4 B/point).
+    if (!distances) { summarizedRef.current = null; return; }
     const controller = new AbortController();
     const { signal } = controller;
     const revisionAt = readRevisionRef.current ?? useViewerStore.getState().pointCloudDeviationRevision;

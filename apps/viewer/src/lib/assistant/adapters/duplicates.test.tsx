@@ -11,13 +11,14 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { findDuplicates, groupDuplicateSets, type ClashElement } from '@ifc-lite/clash';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { render, cleanup } from '@/test/render';
-import { fixtureModel } from '@/test/store-fixture';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { useAssistant, cancelAssistant } from '@/lib/assistant/conversation';
 import { captureEvidence, evidenceIsCurrent } from '../evidence';
+import { adapterFor } from './registry';
 
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { get: () => 800, configurable: true });
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { get: () => 600, configurable: true });
@@ -172,4 +173,14 @@ test('duplicate evidence keeps native set totals beyond the row sample and repor
   assert.equal(JSON.parse(empty.payload).sourceAvailability, 'available');
   assert.equal(empty.totalRows, 0);
   assert.equal(evidenceIsCurrent(empty), true);
+});
+
+test('the picker counts the sets capture will attach, even without a stored grouping', () => {
+  const elements: ClashElement[] = Array.from({ length: 6 }, (_, i) => ({ key: `G${i}`, ref: i + 1, model: 'a.ifc', tag: 'IfcWall', ...box(Math.floor(i / 2) * 10) }));
+  useViewerStore.setState(fixtureModels(fixtureModel('a.ifc')));
+  useViewerStore.getState().setClashResult(stampAnalysisReport(findDuplicates(elements), captureAnalysisStamp(true)));
+  useViewerStore.getState().setClashGroups([]);
+  const state = useViewerStore.getState();
+  assert.equal(captureEvidence('duplicates').totalRows, 3, 'capture falls back to the canonical set partition');
+  assert.deepEqual(adapterFor('duplicates').readiness(state).status, { labelKey: 'assistantSources.duplicates.pickSets', params: { count: 3 } });
 });

@@ -240,6 +240,17 @@ function compactState(value: unknown): string {
 }
 
 /**
+ * Boolean flags accept `1`/`0` (and their URL spellings) as on/off, so compare
+ * those as the boolean they mean: `?perf.quantized=1` is the default, not an arm.
+ */
+function effectiveState(value: unknown, fallback: PerfFlagDefault): unknown {
+  if (typeof fallback !== 'boolean') return value;
+  if (value === 1 || value === '1' || value === true) return true;
+  if (value === 0 || value === '0' || value === false) return false;
+  return value;
+}
+
+/**
  * Every flag whose current state differs from its default, as a compact
  * `{ id: value }` record (values stringified, capped at 64 chars). Meant to be
  * attached to field telemetry (#6961) so verdicts can be split by arm; an
@@ -250,7 +261,7 @@ export function activePerfFlags(): Record<string, string> {
   for (const flag of PERF_FLAGS) {
     const value = readPerfFlag(flag.id);
     if (value === undefined || value === null) continue;
-    const state = compactState(value);
+    const state = compactState(effectiveState(value, flag.default));
     if (state !== compactState(flag.default)) active[flag.id] = state;
   }
   return active;

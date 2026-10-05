@@ -130,6 +130,13 @@ describe('activePerfFlags', () => {
     assert.deepEqual(activePerfFlags(), {});
   });
 
+  it('treats a numeric 1 on a default-on boolean flag as the default', () => {
+    setSearch('?perf.quantized=1&perf.shardScan=1');
+    assert.deepEqual(activePerfFlags(), {});
+    g.__IFC_LITE_SHARD_SCAN = 0;
+    assert.deepEqual(activePerfFlags(), { shardScan: 'false' });
+  });
+
   it('reports only non-default states, compactly', () => {
     g.__IFC_LITE_CHUNKS = 0;
     g.__IFC_LITE_LOD_PX = 48; // explicitly the default: not an arm
@@ -138,7 +145,7 @@ describe('activePerfFlags', () => {
     setSearch('?perf.quantized=0&meshCache=1');
     const active = activePerfFlags();
     assert.equal(active.chunks, '0');
-    assert.equal(active.quantized, '0');
+    assert.equal(active.quantized, 'false');
     assert.equal(active.visibilityFilter, '{"disabledTypes":["IFCSPACE"],"skipTypeGeometry":true}');
     assert.equal(active.batchSizing.length, 64);
     assert.ok(!('lodPx' in active));

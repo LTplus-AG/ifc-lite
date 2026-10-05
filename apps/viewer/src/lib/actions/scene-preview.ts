@@ -84,15 +84,17 @@ function previewAction(state: PreviewState, action: SceneAction, index: number, 
     }
     case 'colour': {
       const claimed = new Set<number>();
-      let overlapping = 0;
+      // Distinct elements named by more than one group (an element in three groups is one overlap).
+      const overlaps = new Set<number>();
       const groups = action.groups.map((group): ColourGroupPreview => {
         const ids = resolveAll(state, group.targets, evidence, counts).filter(id => {
           if (!claimed.has(id)) { claimed.add(id); return true; }
-          overlapping++;
+          overlaps.add(id);
           return false;
         });
         return { label: group.label, colour: group.colour, rgba: SCENE_PALETTE[group.colour], ids };
       });
+      const overlapping = overlaps.size;
       if (claimed.size === 0) return refuse('no-targets', { groups, overlapping });
       return { index, action, status: 'ready', ids: [...claimed], counts, groups, overlapping };
     }

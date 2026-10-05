@@ -80,9 +80,9 @@ test('clash citations resolve both elements of the live clash only', () => {
   useViewerStore.setState({ ...sceneModels(), clashResult: result, clashRawResult: result });
   const evidence = captureEvidence('clash');
   const [colour] = preview([{ type: 'colour', groups: [{ label: 'Hard', colour: 'red', targets: [{ citation: 'E1' }] },
-    { label: 'Again', colour: 'blue', targets: [{ citation: 'E1' }] }] }], evidence).actions;
-  assert.deepEqual(colour.groups?.map(group => group.ids), [[101, B_OFFSET + 103], []], 'an element named twice keeps its first colour');
-  assert.equal(colour.overlapping, 2);
+    { label: 'Again', colour: 'blue', targets: [{ citation: 'E1' }] }, { label: 'Third', colour: 'green', targets: [{ citation: 'E1' }] }] }], evidence).actions;
+  assert.deepEqual(colour.groups?.map(group => group.ids), [[101, B_OFFSET + 103], [], []], 'an element named twice keeps its first colour');
+  assert.equal(colour.overlapping, 2, 'two distinct elements overlap, however many later groups name them');
 });
 
 test('coordinates convert from IFC world in stated units through the RTC frame, and implausible ones are refused', () => {

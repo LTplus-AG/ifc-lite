@@ -96,7 +96,14 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     setDistances(null);
     let current = true;
     renderer.readDeviationDistances().then(
-      (read) => { if (current) setDistances(read); },
+      (read) => {
+        if (!current) return;
+        // The run these statistics describe replaced the one an earlier
+        // readback failed on: that failure (the renderer refuses a read the
+        // moment a re-run starts, before the revision is announced) is stale.
+        setError(null);
+        setDistances(read);
+      },
       // A newer refresh is already queued behind the run that raced this read.
       (err: unknown) => { if (current) console.warn('[DeviationPanel] statistics refresh failed', err); },
     );
@@ -282,9 +289,8 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
         </div>
       )}
 
-      {exportNotice && (
-        <output data-testid="deviation-export-notice" className="text-2xs text-muted-foreground">{exportNotice}</output>
-      )}
+      {/* Always mounted: some screen readers only announce changes inside a live region that already exists. */}
+      <output data-testid="deviation-export-notice" className="text-2xs text-muted-foreground">{exportNotice}</output>
       {computed && distances && (
         <button type="button" onClick={handleExport}
           disabled={running || exporting}

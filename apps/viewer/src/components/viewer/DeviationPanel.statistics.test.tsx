@@ -321,6 +321,33 @@ it('DeviationPanel #6880 a readback a COPC re-run superseded is replaced by the 
   assert.ok(button(container, 'Export CSV'), 'the refreshed run can be exported');
 });
 
+it('DeviationPanel #6880 a superseded readback that rejects BEFORE the re-run announces itself is cleared by the refresh', async () => {
+  const reads: Array<{ resolve: (d: DeviationDistances) => void; reject: (e: Error) => void }> = [];
+  setGlobalRendererRef({
+    current: {
+      async computeDeviations() {
+        return { bvhTriangles: 1, bvhNodes: 1, chunksProcessed: 1, pointsProcessed: 1000, bounds: null, suggestedHalfRange: 0.05 };
+      },
+      readDeviationDistances() {
+        return new Promise<DeviationDistances>((resolve, reject) => { reads.push({ resolve, reject }); });
+      },
+    } as unknown as Renderer,
+  });
+  const container = render(<DeviationPanel triangleCount={1} />);
+  click(container.querySelector('button') as HTMLButtonElement);
+  await waitFor(() => reads.length === 1, 'panel readback started');
+  // The renderer drops its buffers the moment the sink's re-run STARTS; the
+  // sink only announces the run (revision bump) once it has finished.
+  await act(async () => {
+    reads[0].reject(new Error('Deviation results changed during readback. Recompute and try again.'));
+  });
+  await act(async () => { useViewerStore.getState().bumpPointCloudDeviationRevision(); });
+  await waitFor(() => reads.length === 2, 'refresh readback started');
+  await act(async () => { reads[1].resolve(ladder(400, 0.004)); });
+  await waitFor(() => stat(container, 'maxAbs') === '4.0 mm', 'refreshed statistics rendered');
+  assert.ok(!(container.textContent ?? '').includes('changed during readback'), 'fresh statistics do not sit next to the stale error');
+});
+
 it('DeviationPanel #6880 Export CSV with no measured points says why instead of silently downloading nothing', async () => {
   const stub = stubRenderer();
   const container = render(<DeviationPanel triangleCount={1} />);
@@ -328,7 +355,7 @@ it('DeviationPanel #6880 Export CSV with no measured points says why instead of 
   await computeWith(container, stub, { values: new Float32Array(0), assets: [] });
   const downloads = await captureDownloads(async () => {
     click(button(container, 'Export CSV')!);
-    await waitFor(() => container.querySelector('output[data-testid="deviation-export-notice"]') !== null, 'notice shown');
+    await waitFor(() => (container.querySelector('output[data-testid="deviation-export-notice"]')?.textContent ?? '') !== '', 'notice shown');
   });
   assert.equal(downloads.length, 0);
   assert.equal(
@@ -337,5 +364,5 @@ it('DeviationPanel #6880 Export CSV with no measured points says why instead of 
   );
   // A later run with points clears the notice.
   await computeWith(container, stub, ladder(10, 0.01));
-  await waitFor(() => container.querySelector('[data-testid="deviation-export-notice"]') === null, 'notice cleared');
+  await waitFor(() => container.querySelector('[data-testid="deviation-export-notice"]')?.textContent === '', 'notice cleared');
 });

@@ -92,3 +92,21 @@ it('#6880 a settled pass that only removed nodes re-runs deviation; one that cha
   assert.equal(runs, 1);
   assert.equal(useViewerStore.getState().pointCloudDeviationRevision, before + 1);
 });
+
+it('#6880 a settled pass that only appended nodes re-runs deviation', async () => {
+  let runs = 0;
+  const sink = createCopcLodSink({
+    renderer: { computeDeviations: async () => { runs++; }, appendPointCloudChunk: () => {} } as unknown as Renderer,
+    handle: { id: 1 },
+  });
+  useViewerStore.getState().setPointCloudDeviationComputed(true);
+  sink.append(node('3-0-0-0'), {
+    positions: new Float32Array(3), normalState: 'absent', pointCount: 1, bbox: { min: [0, 0, 0], max: [0, 0, 0] },
+  });
+  sink.passSettled();
+  await settle();
+  assert.equal(runs, 1, 'a new chunk is measured');
+  sink.passSettled();
+  await settle();
+  assert.equal(runs, 1, 'a second settle with nothing new does not re-run');
+});

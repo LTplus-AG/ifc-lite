@@ -209,3 +209,18 @@ describe('BcfApiClient bodies and binary responses', () => {
     expect(blob.size).toBe(4);
   });
 });
+
+describe('write request controls (#6896)', () => {
+  it('passes the caller signal and headers to the write request without dropping the body', async () => {
+    const { fetchFn, requests } = mockFetch(() => jsonResponse({ guid: 'server-guid', title: 'T' }, 201));
+    const client = new BcfApiClient({ baseUrl: 'https://host/bcf', fetchFn });
+    const controller = new AbortController();
+    await client.createTopic('p1', { title: 'T' }, { signal: controller.signal, headers: { 'X-Correlation': 'c1' } });
+    const init = requests[0].init;
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({ title: 'T' });
+    expect(new Headers(init?.headers).get('X-Correlation')).toBe('c1');
+    controller.abort();
+    expect(init?.signal?.aborted).toBe(true);
+  });
+});

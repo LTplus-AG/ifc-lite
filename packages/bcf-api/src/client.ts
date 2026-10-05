@@ -5,6 +5,7 @@
 import {
   FoundationApiClient,
   type FoundationApiClientOptions,
+  type FoundationRequestOptions,
 } from '@ifc-lite/opencde-foundation';
 import type {
   BcfApiVersion,
@@ -33,6 +34,13 @@ export interface BcfApiClientOptions extends FoundationApiClientOptions {
   /** BCF API version segment; defaults to '2.1'. */
   version?: string;
 }
+
+/**
+ * Per-request transport controls. A write rejected after dispatch (abort,
+ * timeout, lost connection) has an unknown server outcome; callers must
+ * reconcile before sending it again.
+ */
+export type BcfRequestOptions = Pick<FoundationRequestOptions, 'signal' | 'timeoutMs' | 'headers'>;
 
 /** OData-style query options of the BCF API topics collection. */
 export interface TopicQueryOptions {
@@ -70,20 +78,26 @@ export class BcfApiClient extends FoundationApiClient {
     return this.requestJsonAt<BcfProjectDto[]>('/projects');
   }
 
-  getProject(projectId: string): Promise<BcfProjectDto> {
-    return this.requestJsonAt<BcfProjectDto>(`/projects/${encodeURIComponent(projectId)}`);
+  getProject(projectId: string, request: BcfRequestOptions = {}): Promise<BcfProjectDto> {
+    return this.requestJsonAt<BcfProjectDto>(`/projects/${encodeURIComponent(projectId)}`, request);
   }
 
-  getExtensions(projectId: string): Promise<BcfExtensionsDto> {
+  getExtensions(projectId: string, request: BcfRequestOptions = {}): Promise<BcfExtensionsDto> {
     return this.requestJsonAt<BcfExtensionsDto>(
       `/projects/${encodeURIComponent(projectId)}/extensions`,
+      request,
     );
   }
 
   // -- Topics ----------------------------------------------------------------
 
-  getTopics(projectId: string, options: TopicQueryOptions = {}): Promise<BcfTopicDto[]> {
+  getTopics(
+    projectId: string,
+    options: TopicQueryOptions = {},
+    request: BcfRequestOptions = {},
+  ): Promise<BcfTopicDto[]> {
     return this.requestJsonAt<BcfTopicDto[]>(`/projects/${encodeURIComponent(projectId)}/topics`, {
+      ...request,
       query: {
         $filter: options.filter,
         $orderby: options.orderby,
@@ -93,12 +107,17 @@ export class BcfApiClient extends FoundationApiClient {
     });
   }
 
-  getTopic(projectId: string, topicGuid: string): Promise<BcfTopicDto> {
-    return this.requestJsonAt<BcfTopicDto>(this.topicPath(projectId, topicGuid));
+  getTopic(projectId: string, topicGuid: string, request: BcfRequestOptions = {}): Promise<BcfTopicDto> {
+    return this.requestJsonAt<BcfTopicDto>(this.topicPath(projectId, topicGuid), request);
   }
 
-  createTopic(projectId: string, topic: BcfTopicWriteDto): Promise<BcfTopicDto> {
+  createTopic(
+    projectId: string,
+    topic: BcfTopicWriteDto,
+    request: BcfRequestOptions = {},
+  ): Promise<BcfTopicDto> {
     return this.requestJsonAt<BcfTopicDto>(`/projects/${encodeURIComponent(projectId)}/topics`, {
+      ...request,
       method: 'POST',
       body: topic,
     });
@@ -108,8 +127,10 @@ export class BcfApiClient extends FoundationApiClient {
     projectId: string,
     topicGuid: string,
     topic: BcfTopicWriteDto,
+    request: BcfRequestOptions = {},
   ): Promise<BcfTopicDto> {
     return this.requestJsonAt<BcfTopicDto>(this.topicPath(projectId, topicGuid), {
+      ...request,
       method: 'PUT',
       body: topic,
     });
@@ -117,16 +138,22 @@ export class BcfApiClient extends FoundationApiClient {
 
   // -- Comments --------------------------------------------------------------
 
-  getComments(projectId: string, topicGuid: string): Promise<BcfCommentDto[]> {
-    return this.requestJsonAt<BcfCommentDto[]>(`${this.topicPath(projectId, topicGuid)}/comments`);
+  getComments(
+    projectId: string,
+    topicGuid: string,
+    request: BcfRequestOptions = {},
+  ): Promise<BcfCommentDto[]> {
+    return this.requestJsonAt<BcfCommentDto[]>(`${this.topicPath(projectId, topicGuid)}/comments`, request);
   }
 
   createComment(
     projectId: string,
     topicGuid: string,
     comment: BcfCommentWriteDto,
+    request: BcfRequestOptions = {},
   ): Promise<BcfCommentDto> {
     return this.requestJsonAt<BcfCommentDto>(`${this.topicPath(projectId, topicGuid)}/comments`, {
+      ...request,
       method: 'POST',
       body: comment,
     });
@@ -144,9 +171,11 @@ export class BcfApiClient extends FoundationApiClient {
     projectId: string,
     topicGuid: string,
     viewpointGuid: string,
+    request: BcfRequestOptions = {},
   ): Promise<BcfViewpointDto> {
     return this.requestJsonAt<BcfViewpointDto>(
       this.viewpointPath(projectId, topicGuid, viewpointGuid),
+      request,
     );
   }
 
@@ -154,10 +183,11 @@ export class BcfApiClient extends FoundationApiClient {
     projectId: string,
     topicGuid: string,
     viewpoint: BcfViewpointDto,
+    request: BcfRequestOptions = {},
   ): Promise<BcfViewpointDto> {
     return this.requestJsonAt<BcfViewpointDto>(
       `${this.topicPath(projectId, topicGuid)}/viewpoints`,
-      { method: 'POST', body: viewpoint },
+      { ...request, method: 'POST', body: viewpoint },
     );
   }
 

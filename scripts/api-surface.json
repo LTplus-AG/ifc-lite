@@ -89,6 +89,7 @@
     "BcfPointDto: interface",
     "BcfProjectDto: interface",
     "BcfProjectFetchResult: interface",
+    "BcfRequestOptions: type",
     "BcfSelectionResponse: interface",
     "BcfServiceDiscovery: interface",
     "BcfSyncProgress: interface",
@@ -117,7 +118,9 @@
     "registerBcfClient: function",
     "requestClientCredentialsToken: function",
     "requestPasswordToken: function",
-    "resolveBcfServiceBaseUrl: function"
+    "resolveBcfServiceBaseUrl: function",
+    "topicToApiWrite: function",
+    "viewpointToApi: function"
   ],
   "@ifc-lite/cache": [
     "BinaryCacheReader: class",
@@ -6232,6 +6235,8 @@
   "@ifc-lite/flow-nodes": [
     "AUTOMATION_FEATURES: const",
     "BROWSER_FEATURES: const",
+    "BcfWriteGateway: interface",
+    "BcfWriteIntent: interface",
     "CheckJob: interface",
     "DocumentMapping: interface",
     "ElementSpec: type",

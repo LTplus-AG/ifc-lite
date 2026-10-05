@@ -21,6 +21,7 @@ import type { EntityRef } from '@ifc-lite/flow';
 import type { EntityTable } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { SessionAutomationHost } from './session-contracts.js';
+import type { BcfWriteGateway } from './bcf-write-gateway.js';
 
 /** A string-interning lookup, the shape `csv-match.ts`'s match-context builder
  *  needs for `globalId`/`name` strategies (an entity table's `name`/`globalId`
@@ -71,6 +72,13 @@ export interface FlowHost {
    * move — the grant check against `networkGrants` always runs first.
    */
   readonly networkTransport?: FetchTransport;
+  /**
+   * Durable path for `bcf.*` writes (see `bcf-write-gateway.ts`). A host
+   * that supplies it records each write's intent and receipt and refuses to
+   * resend one with an unknown outcome; without it, writes go straight to
+   * the server and an unknown outcome is reported, never retried.
+   */
+  readonly bcfWrites?: BcfWriteGateway;
   /** Model to query when a node does not name one. */
   readonly defaultModelId?: string;
   /** See {@link TableAccess}. `modelId` defaults to `defaultModelId`. */

@@ -50,6 +50,22 @@ export interface FoundationRequestOptions {
   method?: string;
   query?: Record<string, string | number | undefined>;
   body?: unknown;
+  /** Extra request headers; `Authorization` is always supplied by the token provider. */
+  headers?: Record<string, string>;
+  /** See `HttpRequestOptions.signal`: a rejection after dispatch is an unknown outcome. */
+  signal?: AbortSignal;
+  /** Wall-clock limit in milliseconds. */
+  timeoutMs?: number;
+}
+
+function transportOptions(options: FoundationRequestOptions) {
+  return {
+    method: options.method,
+    body: options.body,
+    headers: options.headers,
+    signal: options.signal,
+    timeoutMs: options.timeoutMs,
+  };
 }
 
 /**
@@ -83,17 +99,11 @@ export class FoundationApiClient extends FoundationHttpClient {
   }
 
   protected send(path: string, options: FoundationRequestOptions): Promise<Response> {
-    return this.sendRequest(this.buildUrl(path, options.query), {
-      method: options.method,
-      body: options.body,
-    });
+    return this.sendRequest(this.buildUrl(path, options.query), transportOptions(options));
   }
 
   protected requestJsonAt<T>(path: string, options: FoundationRequestOptions = {}): Promise<T> {
-    return this.requestJson<T>(this.buildUrl(path, options.query), {
-      method: options.method,
-      body: options.body,
-    });
+    return this.requestJson<T>(this.buildUrl(path, options.query), transportOptions(options));
   }
 
   // -- Discovery & identity (Foundation API §2, §3) --------------------------

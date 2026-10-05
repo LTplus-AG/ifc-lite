@@ -108,22 +108,31 @@ function source(captured: CapturedEvidence, citation: string): { found: boolean;
   return { found: captured.rows.has(citation), data: captured.rows.get(citation) };
 }
 
+/**
+ * Re-check options. `partial`: the capture is a sample of the native rows, so a row that cannot be
+ * found may simply be outside it; its facts are then unverifiable, not contradicted.
+ */
+export interface CheckOptions { resolve?: (citation: string) => string | null; partial?: boolean }
+
 /** One fact against one capture. `resolve` maps a claim citation to the citation it now has (refresh). */
-export function checkFact(fact: AiClaimFact, captured: CapturedEvidence, resolve: (citation: string) => string | null = c => c): FactResult {
+export function checkFact(fact: AiClaimFact, captured: CapturedEvidence, { resolve = c => c, partial = false }: CheckOptions = {}): FactResult {
   const current = resolve(fact.citation);
   const row = current === null ? { found: false, data: undefined } : source(captured, current);
+  if (!row.found && partial) return { fact, check: { kind: 'unverifiable', captured: undefined, reason: `${fact.citation} is outside the captured sample` } };
   if (!row.found) return { fact, check: { kind: 'unknown-citation', reason: `${fact.citation} is not in the captured evidence` } };
   const captured_ = valueAt(row.data, fact.field);
   return { fact, check: compareFact(fact.value, fact.unit, captured_, declaredUnit(row.data, captured.summary, fact.field)) };
 }
 
-export function checkClaim(claim: Omit<AiReportClaim, 'status'>, captured: CapturedEvidence, resolve?: (citation: string) => string | null): CheckedClaim {
-  const results = claim.facts.map(fact => checkFact(fact, captured, resolve));
-  const unknownCitations = claim.citations.filter(citation => {
-    const current = resolve ? resolve(citation) : citation;
+export function checkClaim(claim: Omit<AiReportClaim, 'status'>, captured: CapturedEvidence, options: CheckOptions = {}): CheckedClaim {
+  const results = claim.facts.map(fact => checkFact(fact, captured, options));
+  const absent = claim.citations.filter(citation => {
+    const current = options.resolve ? options.resolve(citation) : citation;
     return current === null || !source(captured, current).found;
   });
-  return { ...claim, status: claimStatus(results, unknownCitations), results, unknownCitations };
+  const unknownCitations = options.partial ? [] : absent;
+  const status = claimStatus(results, unknownCitations);
+  return { ...claim, status: absent.length && status === 'supported' ? 'unverifiable' : status, results, unknownCitations };
 }
 
 export function checkProposedClaims(claims: ProposedClaim[], captured: CapturedEvidence): CheckedClaim[] {

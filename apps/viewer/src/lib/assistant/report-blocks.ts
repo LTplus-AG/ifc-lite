@@ -21,8 +21,11 @@ import { appendixBlocks, narrativeBlocks } from './report-narrative';
 
 export interface SlotBlock { slot: string | null; block: DocumentBlock }
 
-/** What a refresh found for one cited fact, relative to the previous capture. */
-export type FactChange = { kind: 'unchanged' } | { kind: 'changed' | 'missing'; previous: unknown; previousUnit?: string };
+/**
+ * What a refresh found for one cited fact, relative to the previous capture. `unsampled`: the row
+ * was not found, but the capture is a sample, so it may still exist outside it.
+ */
+export type FactChange = { kind: 'unchanged' } | { kind: 'changed' | 'missing' | 'unsampled'; previous: unknown; previousUnit?: string };
 
 export interface ClaimPresentation {
   claim: CheckedClaim;
@@ -51,18 +54,24 @@ const STATUS_LABEL = {
   contradicted: 'Contradicted by captured data',
 } as const;
 
-/** A citation as it reads against the current capture: renumbered rows name both numbers, gone rows say so. */
-function relabel(citation: string, current: (citation: string) => string | null): string {
+type Current = (citation: string) => string | null;
+
+/**
+ * A citation as it reads against the current capture: renumbered rows name both numbers; a row not
+ * found is gone, unless the capture is a sample (`partial`) that may simply not include it.
+ */
+function relabel(citation: string, current: Current, partial: boolean): string {
   const now = current(citation);
-  return now === null ? `${citation} (no longer in the evidence)` : now === citation ? citation : `${now} (cited as ${citation})`;
+  if (now === null) return `${citation} (${partial ? 'outside the captured sample' : 'no longer in the evidence'})`;
+  return now === citation ? citation : `${now} (cited as ${citation})`;
 }
 
 /** Rewrites every row citation in generated text against the current capture. */
-const relabelText = (value: string, current: (citation: string) => string | null) =>
-  value.replace(/\bE\d+\b/g, citation => relabel(citation, current));
+const relabelText = (value: string, current: Current, partial: boolean) =>
+  value.replace(/\bE\d+\b/g, citation => relabel(citation, current, partial));
 
-function claimCaption({ claim, current, changes }: ClaimPresentation, rows: ReturnType<typeof parseCapturedEvidence>): string {
-  const sources = claim.citations.map(citation => relabel(citation, current));
+function claimCaption({ claim, current, changes }: ClaimPresentation, rows: ReturnType<typeof parseCapturedEvidence>, partial: boolean): string {
+  const sources = claim.citations.map(citation => relabel(citation, current, partial));
   const lines = [`${STATUS_LABEL[claim.status]} · Sources: ${sources.length ? sources.join(', ') : 'none'}`];
   claim.results.forEach((result, index) => {
     const { fact, check } = result;
@@ -84,7 +93,8 @@ function claimCaption({ claim, current, changes }: ClaimPresentation, rows: Retu
 /** Blocks in document order. Throws when the text is mostly unprintable in the standard PDF fonts. */
 export function buildReportBlocks(input: ReportBuild): SlotBlock[] {
   const { record } = input;
-  const current = input.current ?? ((citation: string) => citation);
+  const current: Current = input.current ?? (citation => citation);
+  const partial = record.evidence.includedRows < record.evidence.totalRows;
   // Judged on the provider's own text: native values in other scripts are reported, the narrative must print.
   if (unprintableShare([record.narrative, ...record.claims.map(claim => claim.text)].join('\n')) > 0.1) {
     throw new Error('Most of this text cannot be printed with the standard PDF fonts. Choose a Latin-script report language.');
@@ -114,7 +124,7 @@ export function buildReportBlocks(input: ReportBuild): SlotBlock[] {
   if (record.narrative.trim() || !input.claims.length) {
     const narrative = counter('narrative');
     body.push(text('narrative-heading', 'heading', 'Narrative for review'),
-      ...narrativeBlocks(record.narrative, (style, value) => narrative(style, relabelText(value, current)).block as TextBlock)
+      ...narrativeBlocks(record.narrative, (style, value) => narrative(style, relabelText(value, current, partial)).block as TextBlock)
         .map(block => ({ slot: block.aiProvenance!.slot, block })));
   }
   if (input.claims.length) {
@@ -122,17 +132,19 @@ export function buildReportBlocks(input: ReportBuild): SlotBlock[] {
       text('claims-intro', 'small', 'Each claim was checked against the native values it cites. Supported means every cited value matches the captured row; it does not certify the conclusion.'));
     for (const presentation of input.claims) {
       const { claim, changes } = presentation;
-      body.push(text(`claim:${claim.id}`, 'body', relabelText(claim.text, presentation.current),
-        relabelText(claim.generatedText ?? claim.text, presentation.current)), text(`claim-facts:${claim.id}`, 'caption', claimCaption(presentation, rows)));
+      body.push(text(`claim:${claim.id}`, 'body', relabelText(claim.text, presentation.current, partial),
+        relabelText(claim.generatedText ?? claim.text, presentation.current, partial)), text(`claim-facts:${claim.id}`, 'caption', claimCaption(presentation, rows, partial)));
       const flagged = changes?.filter(change => change.kind !== 'unchanged') ?? [];
       if (flagged.length) {
+        const unsampled = flagged.filter(c => c.kind === 'unsampled').length;
         body.push(text(`claim-refresh:${claim.id}`, 'small', `Evidence refreshed (revision ${record.revision}): ${flagged.filter(c => c.kind === 'changed').length} cited value(s) changed`
-          + ` and ${flagged.filter(c => c.kind === 'missing').length} are missing since this claim was written. Review the statement above.`));
+          + ` and ${flagged.filter(c => c.kind === 'missing').length} are missing since this claim was written.`
+          + (unsampled ? ` ${unsampled} could not be re-checked because their rows are outside the captured sample.` : '') + ' Review the statement above.'));
       }
     }
   }
   body.push(text('citations-note', 'small', input.proseCitations.length
-    ? `Referenced evidence: ${input.proseCitations.map(citation => relabel(citation, current)).join(', ')}. Citation existence does not prove that a claim is supported.`
+    ? `Referenced evidence: ${input.proseCitations.map(citation => relabel(citation, current, partial)).join(', ')}. Citation existence does not prove that a claim is supported.`
     : input.claims.length ? 'The narrative prose has no row citations; only the claims above were checked against the evidence.'
       : 'The narrative has no row citations. Verify each factual claim against the captured evidence.'));
   if (input.tables.length) body.push(text('native-heading', 'heading', 'Native results'), ...input.tables.map(block => ({ slot: null, block })));

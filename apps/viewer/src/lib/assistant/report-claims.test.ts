@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { typedReport } from '@/test/ai-report-fixture';
 import type { CapturedEvidence } from './captured-rows';
-import { checkProposedClaims, editClaim, splitReportAnswer } from './report-claims';
+import { checkClaim, checkProposedClaims, editClaim, splitReportAnswer } from './report-claims';
 
 const captured: CapturedEvidence = {
   summary: { totalCount: 3, units: { distance: 'm' } },
@@ -75,4 +75,17 @@ test('E-numbers written in the claim text are citations; unknown ones contradict
   assert.deepEqual(edited.unknownCitations, ['E7']);
   assert.equal(edited.status, 'contradicted');
   assert.throws(() => splitReportAnswer(typedReport('', [{ text: 'E0 is the first row.' }])), /not a captured row citation/);
+});
+
+// Review of #6973: a row a sampled capture does not include may still exist, so it cannot contradict.
+test('a cited row outside a sampled capture leaves the claim unverifiable, a gone row contradicts it', () => {
+  const claim = { id: 'C1', text: 'E1 is hard.', citations: ['E1'], facts: [{ citation: 'E1', field: 'status', value: 'hard' }], edited: false };
+  const gone = () => null;
+  assert.equal(checkClaim(claim, captured, { resolve: gone }).status, 'contradicted');
+  const sampled = checkClaim(claim, captured, { resolve: gone, partial: true });
+  assert.equal(sampled.status, 'unverifiable');
+  assert.deepEqual(sampled.unknownCitations, []);
+  assert.match(sampled.results[0].check.kind === 'unverifiable' ? sampled.results[0].check.reason : '', /outside the captured sample/);
+  const listedOnly = checkClaim({ ...claim, citations: ['E1', 'E2'] }, captured, { resolve: c => c === 'E2' ? null : c, partial: true });
+  assert.equal(listedOnly.status, 'unverifiable', 'an unsampled listed row withholds support');
 });

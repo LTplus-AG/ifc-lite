@@ -77,6 +77,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'pointCloudAssetCount', 'pointCloudClassCounts', 'pointCloudClassMask',
   'pointCloudColorMode', 'pointCloudDeviationCenterOffset', 'pointCloudDeviationComputed',
   'pointCloudDeviationHalfRange', 'pointCloudDeviationRevision', 'pointCloudEdlEnabled', 'pointCloudEdlStrength',
+  'pointCloudDeviationStatistics', // #6833 stored deviation statistics describe the outgoing scene's run
   'pointCloudFixedColor', 'pointCloudPointSize', 'pointCloudPreviewStride',
   'pointCloudRoundShape', 'pointCloudSizeMode', 'pointCloudWorldRadius', 'polygonArea2DPoints',
   'polygonArea2DResults', 'progress', 'projectionMode', 'redoStacks', 'scheduleData',
@@ -161,6 +162,7 @@ const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
   'hierarchyBasketSelection', 'hoverState', 'ifcDataStore', 'isolatedEntities',
   'layerDiffBusy', 'layerStack', 'layerStackDiff', 'layerStackPathToId',
   'measure2DCurrent', 'measure2DResults', 'measure2DSnapPoint', 'measure2DStart', 'meshColorBackup', 'models', 'pinboardEntities',
+  'pointCloudDeviationStatistics', // #6833 the run measured scan points against the removed model's meshes
   'polygonArea2DPoints', 'polygonArea2DResults',
   'selectedAnnotation2D', 'selectedEntities', 'selectedEntitiesSet',
   'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedModelId', 'selectedStoreys', 'selectionRevision',
@@ -208,6 +210,8 @@ function modelRemovedFixture() {
     layerDiffBusy: true,
     // #4215: model 'A' carries a tag, so its assignment is what the removal drops.
     modelTagAssignments: new Map([['A', new Set(['tag-1'])]]),
+    // #6833: a stored deviation run, measured against A's meshes among others.
+    pointCloudDeviationStatistics: { revision: 0, clipRange: 1, overall: {}, assets: [], withinTolerance: null },
   } as unknown as Parameters<typeof modelRemovedScope>[0];
 }
 
@@ -270,6 +274,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'pointCloudAssetCount', 'pointCloudClassCounts', 'pointCloudClassMask',
   'pointCloudColorMode', 'pointCloudDeviationCenterOffset', 'pointCloudDeviationComputed',
   'pointCloudDeviationHalfRange', 'pointCloudDeviationRevision', 'pointCloudEdlEnabled', 'pointCloudEdlStrength',
+  'pointCloudDeviationStatistics', // #6833 stored deviation statistics describe the outgoing scene's run
   'pointCloudFixedColor', 'pointCloudPointSize', 'pointCloudPreviewStride',
   'pointCloudRoundShape', 'pointCloudSizeMode', 'pointCloudWorldRadius', 'polygonArea2DPoints',
   'polygonArea2DResults', 'progress', 'projectionMode', 'redoStacks', 'scheduleData',

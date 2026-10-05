@@ -5,11 +5,10 @@
 /**
  * Summary statistics for a completed BIM ↔ scan deviation run (#6872).
  *
- * Both blocks read the signed distances the panel read back once after the
- * compute pass. The |d| percentiles and moments are computed once per
- * readback; the tolerance share and the histogram are single O(n) passes, so
- * editing the tolerance or dragging the range slider never re-runs the
- * percentile selection.
+ * The summary renders the stored run statistics (`pointCloudDeviationStatistics`,
+ * derived once per readback by `DeviationPanel`, #6833); the histogram is a
+ * single O(n) pass over the panel's held readback, so dragging the range
+ * slider never re-runs the percentile selection.
  *
  * Every pass runs through the renderer's `…Async` variants: time-boxed
  * slices that yield to the event loop, so 25M points never freeze the
@@ -18,12 +17,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import {
-  computeDeviationStatisticsAsync,
-  countWithinToleranceAsync,
-  deviationHistogramAsync,
-  type DeviationDistances,
-} from '@ifc-lite/renderer';
+import { deviationHistogramAsync, type DeviationDistances } from '@ifc-lite/renderer';
+import type { PointCloudDeviationStatistics } from '@/lib/point-cloud/deviation-run-statistics';
 import { formatLocaleNumber, useTranslation, type TranslationKey } from '@/i18n';
 import { deviationRampColor } from '@/lib/point-cloud/deviation-ramp';
 
@@ -112,24 +107,20 @@ const SUMMARY_ROWS: ReadonlyArray<readonly [TranslationKey, DistanceKey]> = [
 ];
 
 export interface DeviationSummaryProps {
-  distances: DeviationDistances;
+  /** The stored run statistics; null while the readback is being summarised. */
+  statistics: PointCloudDeviationStatistics | null;
   /** Metres; the panel owns it because the CSV export reports it too. */
   tolerance: number;
   onToleranceChange: (metres: number) => void;
-  /** The `maxRange` the compute pass clamped to, metres. */
-  clipRange: number;
+  /** False when the readback is no longer held (panel remounted), so the band cannot be recounted. */
+  toleranceEditable: boolean;
 }
 
-export function DeviationSummary({ distances, tolerance, onToleranceChange, clipRange }: DeviationSummaryProps) {
+export function DeviationSummary({ statistics, tolerance, onToleranceChange, toleranceEditable }: DeviationSummaryProps) {
   const { t, locale } = useTranslation();
-  const summary = useSlicedPass(
-    (signal) => computeDeviationStatisticsAsync(distances.values, { clipRange, signal }),
-    [distances, clipRange],
-  );
-  const within = useSlicedPass(
-    async (signal) => ({ tolerance, count: await countWithinToleranceAsync(distances.values, tolerance, { signal }) }),
-    [distances, tolerance],
-  );
+  const summary = statistics?.overall ?? null;
+  const within = statistics?.withinTolerance ? { tolerance: statistics.withinTolerance.tolerance, count: statistics.withinTolerance.overall } : null;
+  const clipRange = statistics?.clipRange ?? 0;
   const [draft, setDraft] = useState(() => String(tolerance * 1000));
   const mm = (m: number | null) => (m !== null
     ? t('deviationStats.valueMm', {
@@ -168,6 +159,7 @@ export function DeviationSummary({ distances, tolerance, onToleranceChange, clip
           min={0}
           step={0.5}
           value={draft}
+          disabled={!toleranceEditable}
           onChange={(e) => {
             setDraft(e.target.value);
             const value = Number(e.target.value);

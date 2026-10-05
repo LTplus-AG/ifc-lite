@@ -148,10 +148,3 @@ export function ActivityTrayDialog({ open, onOpenChange }: { open: boolean; onOp
     </Dialog>
   );
 }
-
-/** "Activity (2 running)" for the phone overflow menu. */
-export function useActivityMenuLabel(): string {
-  const { t } = useTranslation();
-  const running = useActivityRows().filter((row) => row.status === 'running').length;
-  return running > 0 ? t('activityTray.buttonRunning', { count: running }) : t('activityTray.button');
-}

@@ -138,9 +138,9 @@ describe('activity tray on phones (U02, #6925)', () => {
     render(<BimReactContext.Provider value={{} as BimContext}><MobileToolbar /></BimReactContext.Provider>);
     press(document.querySelector<HTMLElement>('[aria-label="More actions"]')!, 'ArrowDown');
     await advance(10);
-    const item = document.querySelector<HTMLElement>('[data-mobile-activity]');
+    const item = document.querySelector<HTMLElement>('[data-command-id="ui:activity"]');
     assert.ok(item);
-    assert.equal(text(item).trim(), 'Activity: 1 job running');
+    assert.equal(text(item).trim(), 'Activity');
     click(item);
     await advance(20);
     const dialog = document.querySelector('[role="dialog"]');

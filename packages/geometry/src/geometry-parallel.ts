@@ -40,6 +40,7 @@ import { mergeShardStyleSlices, type MergedShardStyles, type StylesSlice } from 
 // (and vice versa) instead of fetching the same binary a second time.
 import { compileSharedWasmModule } from './wasm-shared-module.js';
 import { stitchShards, type ShardColumns } from './shard-stitch.js';
+import { NOOP_LOAD_TRACE, enableWorkerTrace, isTraceSpansMessage } from '@ifc-lite/load-trace';
 import { resolveRtcFrame } from './rtc-frame.js';
 import {
   emptyStylesPrepassEvent,
@@ -259,6 +260,8 @@ export async function* processParallel(
   options?: ProcessParallelOptions,
 ): AsyncGenerator<StreamingGeometryEvent> {
   const sourceSessionId = `geometry-source-${++nextSourceSessionId}`;
+  // #6956: spans for this pool; worker spans hang under `geometry.pool`.
+  const trace = options?.trace ?? NOOP_LOAD_TRACE; let poolSpan = -1, tracedWorkers = 0;
   coordinator.reset();
   yield { type: 'start', totalEstimate: buffer.length / 1000 };
   yield { type: 'model-open', modelID: 0 };
@@ -289,15 +292,15 @@ export async function* processParallel(
 
   // N independent WASM-instance workers, each running
   // `geometry.worker.ts` (one `@ifc-lite/wasm` instance per worker).
-  const makeGeometryWorker = () =>
+  const makeGeometryWorker = () => enableWorkerTrace(
     new Worker(
       new URL('./geometry.worker.ts', import.meta.url),
       { type: 'module' },
-    );
-  const makePrepassWorker = () => new Worker(
+    ), trace, `geom-${tracedWorkers++}`);
+  const makePrepassWorker = () => enableWorkerTrace(new Worker(
     new URL('./geometry.worker.ts', import.meta.url),
     { type: 'module' },
-  );
+  ), trace, 'prepass');
 
   // Shared aggregator state used by every worker callback below.
   const eventQueue: StreamingGeometryEvent[] = [];
@@ -360,7 +363,7 @@ export async function* processParallel(
   let entityIndexDeliveredEarly = false;
   const shardResults: (ShardColumns | null)[] = [];
   let shardResultsRemaining = 0;
-  let shardScanDispatchedAt = -1;
+  let shardScanDispatchedAt = -1, shardScanSpan = -1;
   // #4902: settles once, normally or via the bounded-wait timeout below.
   let shardScanSettled = false;
   let stylesSlicesSettled = false;
@@ -410,6 +413,7 @@ export async function* processParallel(
       workerSpoke = true;
       ledger.onHeard(workerIndex, performance.now());
       const msg = e.data;
+      if (isTraceSpansMessage(msg)) { trace.merge(msg.payload, poolSpan); return; }
       if (msg.type === 'ready') {
         console.log(`[stream] worker[${workerIndex}] WASM ready @ ${elapsed()}ms`);
         return;
@@ -501,6 +505,7 @@ export async function* processParallel(
       if (msg.type === 'batch') {
         if (firstBatchByWorker[workerIndex] === undefined) {
           firstBatchByWorker[workerIndex] = elapsed();
+          trace.milestone('geometry.firstBatch');
           console.log(`[stream] worker[${workerIndex}] first batch @ ${elapsed()}ms (${msg.meshes?.length ?? 0} meshes)`);
         }
         // The worker already emits `MeshData`-shaped objects (see the worker's
@@ -908,6 +913,7 @@ export async function* processParallel(
   // Step-by-step timing so we can tell exactly where time goes.
   const t0 = performance.now();
   const elapsed = () => Math.round(performance.now() - t0);
+  trace.setAttrs({ workerCount }); poolSpan = trace.begin('geometry.pool', { workerCount });
   const overrideNote = options?.workerCountOverride != null
     ? ` (override=${options.workerCountOverride}, bound=${workerCountResult.reason})`
     : ` (cores=${cores}, bound=${workerCountResult.reason})`;
@@ -933,6 +939,7 @@ export async function* processParallel(
     malformedRecordCount: number | undefined,
   ) => {
     console.log(`[stream] entity-index (${source}) @ ${elapsed()}ms (${ids.length} entries)`);
+    trace.milestone('geometry.entityIndex');
     if (typeof SharedArrayBuffer !== 'undefined') {
       // Sharded-stitch columns arrive already SAB-backed (stitchShards writes
       // its exact-size output into SABs) — share them as-is. The serial
@@ -1006,8 +1013,9 @@ export async function* processParallel(
     if (shardScanSettled) return;
     shardScanSettled = true;
     gateTracker.markShardScanDone();
+    trace.end(shardScanSpan);
     const shards = shardResults as ShardColumns[];
-    const stitched = stitchShards(shards);
+    const stitched = trace.span('shard.stitch', () => stitchShards(shards), undefined, poolSpan);
     if (!stitched) {
       console.warn('[stream][shard] stitch fallback triggered (handoff not found) — serial pre-pass');
       startPrepass(false);
@@ -1159,6 +1167,7 @@ export async function* processParallel(
     shardResults.length = n;
     shardResultsRemaining = n;
     shardScanDispatchedAt = elapsed();
+    shardScanSpan = trace.begin('geometry.shardScan', { shards: n }, poolSpan);
     gateTracker.markShardScanStarted();
     console.log(`[stream][shard] dispatching ${n} shard scans over ${(len / (1024 * 1024)).toFixed(1)}MB @ ${shardScanDispatchedAt}ms`);
     for (let i = 0; i < n; i++) {
@@ -1178,6 +1187,7 @@ export async function* processParallel(
       shardScanSettled = true;
       gateTracker.markShardScanDone();
       console.warn(`[stream][shard] ${shardResultsRemaining}/${n} shard scan(s) silent — falling back to the serial pre-pass (#4902)`);
+      trace.end(shardScanSpan, { fallback: true });
       diagnostics = mergeGeometryDiagnostics(diagnostics, preWorkerPhaseFailureDiagnostics('shard-scan-timeout'));
       // Replace every worker still silent on scan-shard BEFORE continuing:
       // `scan-shard` is a synchronous WASM call, so a missing reply means
@@ -1247,6 +1257,7 @@ export async function* processParallel(
   prepassWorker.onmessage = (e: MessageEvent) => {
     prepassSpoke = true;
     const data = e.data;
+    if (isTraceSpansMessage(data)) { trace.merge(data.payload, poolSpan); return; }
     if (data.type === 'prepass-progress') {
       eventQueue.push({ type: 'progress', phase: 'prepass' });
       wake();
@@ -1298,6 +1309,7 @@ export async function* processParallel(
         const materialColorCounts = (evt.materialColorCounts as Uint32Array | undefined) ?? new Uint32Array(0);
         const materialColors = (evt.materialColors as Uint8Array | undefined) ?? new Uint8Array(0);
         console.log(`[stream] styles @ ${elapsed()}ms (${styleIds.length} styled, ${voidKeys.length} void hosts), draining ${queuedChunks.length} queued chunks`);
+        trace.milestone('prepass.styles');
 
         broadcastSetup((w) => {
           // Slice each typed array per-worker so each can be in its own
@@ -1430,6 +1442,7 @@ export async function* processParallel(
       } else if (evt.type === 'complete') {
         prepassJobsTotal = evt.totalJobs as number;
         console.log(`[stream] prepass complete @ ${elapsed()}ms totalJobs=${prepassJobsTotal} chunks=${chunkArrivals}`);
+        trace.milestone('prepass.complete');
         // Unconditionally drive the prepass-complete handler here.
         // The outer loop's `prepassJobsTotal > 0` gate would skip
         // zero-geometry files (no IFC geometry entities), causing
@@ -1652,6 +1665,7 @@ export async function* processParallel(
     ...(skippedReport ? { skippedHungElements: skippedReport } : {}),
   };
   } finally {
+    trace.end(poolSpan);
     phaseBoundTimers.clearAll();
     // Re-seat the caller's handle to a frozen snapshot (#4979 review): the
     // live reader closes over `gateTracker`, and transitively this whole

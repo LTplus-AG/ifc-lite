@@ -30,6 +30,7 @@ import { makeColdGeometryProvider } from '../utils/coldGeometryProvider.js';
 import { getGlobalRenderer } from './useBCF.js';
 import { computeFullSourceHash } from '../utils/sourceContentHash.js';
 import type { MeshData } from '@ifc-lite/geometry';
+import { NOOP_LOAD_TRACE, type LoadTrace } from '@ifc-lite/load-trace';
 
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '../store/index.js';
@@ -202,6 +203,7 @@ export function useIfcCache() {
      * keeps the old behaviour.
      */
     isStale?: () => boolean,
+    trace: LoadTrace = NOOP_LOAD_TRACE, // #6956: the J2 (warm open) spans land on the caller's load trace
   ): Promise<CacheLoadResult> => {
     try {
       const cacheLoadStart = performance.now();
@@ -237,7 +239,7 @@ export function useIfcCache() {
       const rawCacheBuffer = cacheResult.buffer;
       const cacheBlob = rawCacheBuffer instanceof Blob ? rawCacheBuffer : null;
       const cacheBuffer: ArrayBuffer = rawCacheBuffer instanceof Blob
-        ? await rawCacheBuffer.arrayBuffer()
+        ? await trace.span('cache.read', () => rawCacheBuffer.arrayBuffer())
         : rawCacheBuffer;
 
       // Geometry streams chunk-by-chunk below (first paint after the FIRST
@@ -252,7 +254,7 @@ export function useIfcCache() {
         throw new Error(`unexpected pre-v13 cache entry (v${headerInfo.version})`);
       }
       const geometrySection = headerInfo.sections.find((s) => s.type === SectionType.Geometry);
-      const result = await reader.read(cacheBuffer, { skipGeometry: true });
+      const result = await trace.span('cache.decode', () => reader.read(cacheBuffer, { skipGeometry: true }));
 
       // Restore the source buffer — required for on-demand property extraction
       // AND the lazy entity accessors (getEntity/getProperties/...). The web
@@ -311,14 +313,14 @@ export function useIfcCache() {
       // Typed cache→runtime hydration (#952): builds the parser-shaped
       // IfcDataStore with compiler-checked field mapping (no `as unknown` cast)
       // and wires the lazy accessors via attachDataStoreAccessors.
-      const dataStore = hydrateCacheStore(cacheStore, {
+      const dataStore = trace.span('cache.hydrate', () => hydrateCacheStore(cacheStore, {
         source,
         fileSize: sourceBuffer?.byteLength ?? 0,
         entityIndex,
         onDemandPropertyMap,
         onDemandQuantityMap,
         onDemandMaterialMap,
-      });
+      }));
 
       // Rebuild spatial hierarchy from cache data (cache doesn't serialize it)
       // Use SpatialHierarchyBuilder to extract elevations from source buffer
@@ -344,12 +346,7 @@ export function useIfcCache() {
             }
           }
         } else {
-          console.warn('[useIfcCache] Missing data for elevation extraction:', {
-            hasSource: !!dataStore.source,
-            sourceLength: dataStore.source?.length ?? 0,
-            hasEntityIndex: !!dataStore.entityIndex,
-            hasStrings: !!dataStore.strings,
-          });
+          console.warn('[useIfcCache] Missing data for elevation extraction:', { hasSource: !!dataStore.source, sourceLength: dataStore.source?.length ?? 0, hasEntityIndex: !!dataStore.entityIndex, hasStrings: !!dataStore.strings });
           // Fallback: use simplified rebuild if source data not available
           dataStore.spatialHierarchy = rebuildSpatialHierarchy(
             dataStore.entities,
@@ -400,6 +397,7 @@ export function useIfcCache() {
             }
             allMeshes.push(...chunkMeshes);
             appendGeometryBatch(modelId, chunkMeshes, open.coordinateInfo);
+            if (i === 0 && trace.enabled) { trace.milestone('geometry.firstAppend'); globalThis.requestAnimationFrame?.(() => trace.milestone('geometry.firstVisible')); }
             if ((i & 3) === 3 || i === open.chunks.length - 1) {
               setProgress({
                 phase: 'Loading geometry from cache',
@@ -437,6 +435,7 @@ export function useIfcCache() {
         }
 
         meshCount = allMeshes.length;
+        trace.milestone('geometry.streamComplete');
 
         // Restore the GPU-instancing shards (opaque repeated occurrences that
         // were partitioned off the flat meshes).

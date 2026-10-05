@@ -34,6 +34,7 @@
   "packages/ifcx": 5,
   "packages/lens": 0,
   "packages/lists": 0,
+  "packages/load-trace": 0,
   "packages/mcp": 2,
   "packages/merge": 0,
   "packages/mutations": 1,

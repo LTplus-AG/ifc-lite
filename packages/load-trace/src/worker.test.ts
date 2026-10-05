@@ -1,0 +1,79 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { describe, expect, it } from 'vitest';
+import {
+  createLoadTracer,
+  createWorkerTraceHost,
+  enableWorkerTrace,
+  isTraceSpansMessage,
+  type TraceSpansMessage,
+} from './index.js';
+
+describe('worker trace alignment (#6956)', () => {
+  it('shifts worker spans onto the main clock by the timeOrigin difference', async () => {
+    // Main thread started at epoch 1_000_000; the worker was created 250 ms later,
+    // so worker-local t=10 is main-local t=260.
+    let mainNow = 0;
+    const tracer = createLoadTracer({ enabled: true, now: () => mainNow, timeOrigin: 1_000_000, sink: null });
+    const trace = tracer.startLoad('l', {}, 0);
+    const pool = trace.begin('geometry.pool');
+
+    let workerNow = 10;
+    const posted: TraceSpansMessage[] = [];
+    const host = createWorkerTraceHost({
+      spanNames: { 'scan-shard': 'shard.scan', 'stream-chunk': 'geometry.firstChunk' },
+      onceTypes: ['stream-chunk'],
+      post: (m) => posted.push(m),
+      now: () => workerNow,
+      timeOrigin: 1_000_250,
+    });
+
+    // The enable request travels through the same channel as every other request.
+    const sent: unknown[] = [];
+    enableWorkerTrace({ postMessage: (m: unknown) => sent.push(m) }, trace, 'geom-0');
+    expect(sent).toHaveLength(1);
+    let ran = 0;
+    await host(sent[0], async () => { ran++; });
+    expect(ran).toBe(0); // the enable message is consumed by the host
+
+    await host({ type: 'scan-shard' }, async () => { ran++; workerNow = 40; });
+    await host({ type: 'stream-chunk' }, async () => { ran++; workerNow = 55; });
+    await host({ type: 'stream-chunk' }, async () => { ran++; workerNow = 90; });
+    await host({ type: 'set-styles' }, async () => { ran++; });
+    expect(ran).toBe(4);
+    expect(posted).toHaveLength(2);
+    expect(posted.every(isTraceSpansMessage)).toBe(true);
+
+    for (const m of posted) trace.merge(m.payload, pool);
+    const spans = tracer.latest()!.spans.filter((s) => s.thread === 'geom-0');
+    expect(spans).toEqual([
+      expect.objectContaining({ name: 'shard.scan', start: 260, end: 290, parentId: pool }),
+      expect.objectContaining({ name: 'geometry.firstChunk', start: 290, end: 305, parentId: pool }),
+    ]);
+  });
+
+  it('posts the span even when the handler throws, and rethrows', async () => {
+    const posted: TraceSpansMessage[] = [];
+    const host = createWorkerTraceHost({ spanNames: { init: 'worker.init' }, post: (m) => posted.push(m), now: () => 1, timeOrigin: 0 });
+    await host({ type: 'load-trace:enable', thread: 'prepass' }, async () => {});
+    await expect(host({ type: 'init' }, async () => { throw new Error('wasm'); })).rejects.toThrow('wasm');
+    expect(posted[0].payload).toMatchObject({ thread: 'prepass', spans: [{ name: 'worker.init' }] });
+  });
+
+  it('is a pass-through until enabled, and enableWorkerTrace sends nothing when tracing is off', async () => {
+    const posted: TraceSpansMessage[] = [];
+    const host = createWorkerTraceHost({ spanNames: { 'scan-shard': 'shard.scan' }, post: (m) => posted.push(m) });
+    let ran = 0;
+    await host({ type: 'scan-shard' }, async () => { ran++; });
+    expect(ran).toBe(1);
+    expect(posted).toEqual([]);
+
+    const sent: unknown[] = [];
+    const off = createLoadTracer({ enabled: false }).startLoad('l');
+    const worker = { postMessage: (m: unknown) => sent.push(m) };
+    expect(enableWorkerTrace(worker, off, 'geom-0')).toBe(worker);
+    expect(sent).toEqual([]);
+  });
+});

@@ -35,6 +35,7 @@ import {
   type BatchSizingConfig,
 } from './batch-sizing.js';
 import { takeWasmPanicStash } from './wasm-panic-forward.js';
+import { traceGeometryWorkerMessage } from './worker-trace.js'; // #6956 spans
 import { isColumnLengthRefusal } from './wasm-column-refusal.js';
 
 export interface GeometryWorkerInitMessage {
@@ -1341,7 +1342,7 @@ function emitSessionEnd(session: ProcessingSession): void {
 let messageTail: Promise<void> = Promise.resolve();
 
 self.onmessage = (rawEvent: MessageEvent<GeometryWorkerRequest>) => {
-  messageTail = messageTail.then(() => handleMessage(rawEvent)).catch((err) => {
+  messageTail = messageTail.then(() => traceGeometryWorkerMessage(rawEvent.data, () => handleMessage(rawEvent))).catch((err) => {
     // #2527 follow-up: forward this realm's panic-location stash (if the
     // failure was a wasm trap) so the main thread can re-plant it on ITS
     // global for `attachWasmPanicLocation`. Read AFTER the throw, so a panic

@@ -105,6 +105,7 @@ import { resolveRtcFrame, type RtcFrame } from './rtc-frame.js';
 import { streamNativeGeometry } from './geometry-native.js';
 import { processParallel } from './geometry-parallel.js';
 import type { StallPhaseHandle } from './stall-phase.js';
+import type { LoadTrace } from '@ifc-lite/load-trace';
 import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
 import { buildPrePassWithFinishes } from './style-finishes.js';
 
@@ -771,6 +772,7 @@ export class GeometryProcessor {
     hungJobTimeoutMs?: number,
     /** See `ProcessParallelOptions.stallPhaseHandle` (#4902). */
     stallPhaseHandle?: StallPhaseHandle,
+    trace?: LoadTrace, // #6956, see `ProcessParallelOptions.trace`
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
@@ -782,7 +784,7 @@ export class GeometryProcessor {
       sourceFingerprint,
       signal,
       hungJobTimeoutMs,
-      stallPhaseHandle,
+      stallPhaseHandle, trace,
       // Issue #540: forward the merge-layers preference snapshotted
       // at construction time. processParallel posts `set-merge-layers`
       // to every spawned worker right after `init`.
@@ -856,6 +858,8 @@ export class GeometryProcessor {
       hungJobTimeoutMs?: number;
       /** See `ProcessParallelOptions.stallPhaseHandle` (#4902); parallel path only. */
       stallPhaseHandle?: StallPhaseHandle;
+      /** Load trace for the parallel path; see `ProcessParallelOptions.trace` (#6956). */
+      trace?: LoadTrace;
     } = {}
   ): AsyncGenerator<StreamingGeometryEvent> {
     const sizeThreshold = options.sizeThreshold ?? 2 * 1024 * 1024; // Default 2MB
@@ -930,6 +934,7 @@ export class GeometryProcessor {
           options.signal,
           options.hungJobTimeoutMs,
           options.stallPhaseHandle,
+          options.trace,
         );
       } else {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);

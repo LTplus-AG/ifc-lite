@@ -4,6 +4,19 @@
 
 import { Page, ConsoleMessage } from '@playwright/test';
 import { waitForMetadataRenderReadiness } from './metadata-render-readiness.js';
+import {
+  compareSpanAndRegexMetrics,
+  metricsFromLoadTrace,
+  SPAN_METRIC_KEYS,
+  type LoadTraceSnapshotJson,
+  type SpanRegexDisagreement,
+} from './load-trace-metrics.js';
+
+/** Where the viewer publishes its span tree under `?perfTrace=1` (apps/viewer/src/lib/perf/loadTrace.ts). */
+const LOAD_TRACE_GLOBAL = '__IFC_LITE_LOAD_TRACE__';
+
+/** Which source each span-capable metric came from on this run (#6956). */
+export type MetricSource = 'span' | 'regex' | 'none';
 
 export interface ViewerBenchmarkMetrics {
   // Wall-clock total time (what users actually experience)
@@ -54,6 +67,9 @@ export class ViewerBenchmarkPage {
   private loadStartTime: number = 0;
   private loadEndTime: number = 0;
   private cacheMode: string;
+  private loadTrace: LoadTraceSnapshotJson | null = null;
+  private metricSources: Partial<Record<string, MetricSource>> = {};
+  private spanRegexDisagreements: SpanRegexDisagreement[] = [];
 
   /**
    * Defaults to the same port `playwright.config.ts` serves on. It used to be a
@@ -259,6 +275,13 @@ export class ViewerBenchmarkPage {
       console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_QUANTIZED (expected "1" or "0"): ${quantEnv}`);
     }
 
+    // #6956: turn on the viewer's load tracer so metrics come from its span
+    // tree (window.__IFC_LITE_LOAD_TRACE__); the console regexes below stay
+    // as the fallback for one release.
+    await this.page.addInitScript(() => {
+      (globalThis as unknown as { __IFC_LITE_PERF_TRACE?: number }).__IFC_LITE_PERF_TRACE = 1;
+    });
+
     // Navigate to viewer app
     await this.page.goto(this.origin);
     
@@ -341,6 +364,7 @@ export class ViewerBenchmarkPage {
       this.metrics.metadataRenderReadyMs = this.loadEndTime - this.loadStartTime;
       this.metrics.renderCompleteMs = this.metrics.metadataRenderReadyMs;
       this.metrics.canvasHasContent = true;
+      await this.readLoadTrace();
       this.parseMetrics();
       return;
     }
@@ -417,12 +441,52 @@ export class ViewerBenchmarkPage {
       await this.page.waitForTimeout(250);
     }
 
-    // Parse metrics from console logs
+    // Span tree first, console logs as the fallback.
+    await this.readLoadTrace();
     this.parseMetrics();
+  }
+
+  /** Pull the latest load's span tree out of the page (null when tracing is unavailable). */
+  private async readLoadTrace(): Promise<void> {
+    try {
+      this.loadTrace = await this.page.evaluate(
+        (key: string) => {
+          const api = (globalThis as unknown as Record<string, { latest?: () => unknown } | undefined>)[key];
+          return (api?.latest?.() ?? null) as LoadTraceSnapshotJson | null;
+        },
+        LOAD_TRACE_GLOBAL,
+      );
+    } catch (err) {
+      console.warn('[Benchmark] could not read the load-trace span tree; using console regexes only', err);
+      this.loadTrace = null;
+    }
+  }
+
+  /**
+   * Override regex-derived values with span-derived ones where the span tree
+   * has them, recording each metric's source and every span/regex pair that
+   * disagrees beyond rounding (asserted on FZK by the spec).
+   */
+  private applySpanMetrics(appReportedTotalMs: number | null) {
+    // The span root is the app's own total; compare it only with the app's own
+    // total line, never with the Playwright-observed wall clock fallback.
+    const regex: Partial<Record<string, number | null>> = { ...this.metrics, totalWallClockMs: appReportedTotalMs };
+    const span = metricsFromLoadTrace(this.loadTrace);
+    this.spanRegexDisagreements = compareSpanAndRegexMetrics(span, regex);
+    for (const key of SPAN_METRIC_KEYS) {
+      const value = span[key];
+      if (value !== undefined) {
+        this.metrics[key] = value;
+        this.metricSources[key] = 'span';
+      } else {
+        this.metricSources[key] = this.metrics[key] === null || this.metrics[key] === undefined ? 'none' : 'regex';
+      }
+    }
   }
 
   private parseMetrics() {
     const logs = this.consoleLogs.join('\n');
+    let appReportedTotalMs: number | null = null;
     
     // Calculate wall-clock total time
     if (this.loadStartTime > 0 && this.loadEndTime > 0) {
@@ -579,6 +643,7 @@ export class ViewerBenchmarkPage {
     const totalLoadMatch = logs.match(/\[useIfc\] TOTAL LOAD TIME.*?: (\d+)ms/);
     if (totalLoadMatch) {
       this.metrics.totalWallClockMs = parseInt(totalLoadMatch[1], 10);
+      appReportedTotalMs = this.metrics.totalWallClockMs;
     }
 
     // Current primary-path final summary carries the app's own measured total:
@@ -591,6 +656,7 @@ export class ViewerBenchmarkPage {
       this.metrics.fileSizeMB = this.metrics.fileSizeMB ?? parseFloat(finalSummaryMatch[1]);
       this.metrics.totalMeshes = this.metrics.totalMeshes ?? parseInt(finalSummaryMatch[2].replace(/,/g, ''), 10);
       this.metrics.totalWallClockMs = Math.round(parseFloat(finalSummaryMatch[3]) * 1000);
+      appReportedTotalMs = this.metrics.totalWallClockMs;
     }
 
     // Steady-state render stats (issue #1682), emitted post-settle by
@@ -612,6 +678,8 @@ export class ViewerBenchmarkPage {
         this.metrics.instancedContributionCulled = parseInt(renderStatsMatch[8], 10);
       }
     }
+
+    this.applySpanMetrics(appReportedTotalMs);
   }
 
   getMetrics(): ViewerBenchmarkMetrics {
@@ -649,6 +717,20 @@ export class ViewerBenchmarkPage {
       instancedFrustumCulled: this.metrics.instancedFrustumCulled ?? null,
       instancedContributionCulled: this.metrics.instancedContributionCulled ?? null,
     };
+  }
+
+  /** The raw span tree of the measured load, or null when the page exposed none. */
+  getLoadTrace(): LoadTraceSnapshotJson | null {
+    return this.loadTrace;
+  }
+
+  getMetricSources(): Partial<Record<string, MetricSource>> {
+    return { ...this.metricSources };
+  }
+
+  /** Span/regex pairs for the same metric that differ beyond rounding; empty when they agree. */
+  getSpanRegexDisagreements(): SpanRegexDisagreement[] {
+    return [...this.spanRegexDisagreements];
   }
 
   getConsoleLogs(): string[] {

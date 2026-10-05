@@ -35,8 +35,11 @@ function entityFacet(value: JsonRecord, at: string, extra: readonly string[]): I
     ...(value.predefinedType !== undefined ? { predefinedType: parseConstraint(value.predefinedType, { at: `${at}.predefinedType` }) } : {}) };
 }
 
-/** One facet; `extra` are the requirement-only keys (`cardinality`, `instructions`). */
-export function parseFacet(value: unknown, at: string, extra: readonly string[] = []): IDSFacet {
+/**
+ * One facet; `extra` are the requirement-only keys (`cardinality`, `instructions`).
+ * `onUnit` receives a declared measure unit, whose value was converted to SI.
+ */
+export function parseFacet(value: unknown, at: string, extra: readonly string[] = [], onUnit?: (unit: string) => void): IDSFacet {
   if (!isRecord(value)) throw new Error(`${at} must be a facet object with "type"`);
   const required = (key: string, hint: string) => {
     if (value[key] === undefined) throw new Error(`${at}.${key} is required (${hint})`);
@@ -63,6 +66,7 @@ export function parseFacet(value: unknown, at: string, extra: readonly string[] 
       }
       const factor = unitFactor(value.unit, dataType, at);
       if (factor !== undefined && value.value === undefined) throw new Error(`${at}.unit needs a value`);
+      if (factor !== undefined) onUnit?.(value.unit as string);
       return { type: 'property', propertySet, baseName,
         ...(dataType ? { dataType: { type: 'simpleValue', value: dataType } } : {}),
         ...(value.value !== undefined ? { value: parseConstraint(value.value, { at: `${at}.value`, base: dataType ? dataTypeBase(dataType) : null, factor }) } : {}) };
@@ -87,15 +91,18 @@ export function parseFacet(value: unknown, at: string, extra: readonly string[] 
   }
 }
 
-/** Applicability: AND of facets, at most one entity, written in `ids.xsd` order. */
-export function parseApplicability(value: unknown, at: string): IDSFacet[] {
+/** Applicability: AND of facets, at most one entity, written in `ids.xsd` order; `onUnit` gets the written (reordered) index. */
+export function parseApplicability(value: unknown, at: string, onUnit?: (index: number, unit: string) => void): IDSFacet[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > 20) {
     throw new Error(`${at} must list 1 to 20 facets that select the checked elements (usually an entity facet first)`);
   }
-  const facets = value.map((facet, index) => parseFacet(facet, `${at}[${index}]`));
+  const units = new Map<number, string>();
+  const facets = value.map((facet, index) => parseFacet(facet, `${at}[${index}]`, [], unit => units.set(index, unit)));
   if (facets.filter(facet => facet.type === 'entity').length > 1) throw new Error(`${at} may have only one entity facet; use an enumeration or pattern for several classes`);
-  return facets.map((facet, index) => ({ facet, index }))
-    .sort((a, b) => XSD_ORDER[a.facet.type] - XSD_ORDER[b.facet.type] || a.index - b.index).map(entry => entry.facet);
+  const ordered = facets.map((facet, index) => ({ facet, index }))
+    .sort((a, b) => XSD_ORDER[a.facet.type] - XSD_ORDER[b.facet.type] || a.index - b.index);
+  ordered.forEach((entry, position) => { const unit = units.get(entry.index); if (unit) onUnit?.(position, unit); });
+  return ordered.map(entry => entry.facet);
 }
 
 const CARDINALITIES: readonly RequirementOptionality[] = ['required', 'optional', 'prohibited'];

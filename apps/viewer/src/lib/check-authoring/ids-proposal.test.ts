@@ -9,6 +9,7 @@ import { parseIDS, validateIDS, type IDSDocument } from '@ifc-lite/ids';
 import { createDataAccessor } from '@/hooks/ids/idsDataAccessor';
 import { SAMPLE_IDS_PROPOSAL as SAMPLE_PROPOSAL, SAMPLE_IDS_XML as SAMPLE_IDS, parseSampleIfc, json as answer } from '@/test/check-authoring-fixture';
 import { auditIdsDraft, buildIdsDraft, parseIdsProposal } from './ids-proposal';
+import { siUnitOf, unitConversions } from './ids-constraint';
 import { auditBlocks } from './save';
 
 /** What a validator reads: parser bookkeeping (raw echoes, ids it invents) and the document metadata excluded.
@@ -50,6 +51,28 @@ test('measure units convert to the SI values IDS stores, and partOf/classificati
   assert.deepEqual(width.facet.type === 'property' && width.facet.value, { type: 'bounds', minInclusive: 0.9, base: 'xs:double' });
   assert.deepEqual(area.facet.type === 'property' && area.facet.value, { type: 'simpleValue', value: '2.5' });
   assert.equal(classification.optionality, 'optional');
+});
+
+// #6915 review: the SI conversion is not hidden; the review shows the declared unit next to the stored SI value.
+test('a declared unit stays on the proposal, located on its facet, and converts the current SI value back for display', () => {
+  const proposal = parseIdsProposal(answer({ version: 1, kind: 'ids.specifications', title: 'Doors', specifications: [{
+    name: 'Tall doors are wide', applicability: [
+      { type: 'property', propertySet: 'Qto_DoorBaseQuantities', baseName: 'Height', dataType: 'IFCLENGTHMEASURE', unit: 'mm', value: { type: 'bounds', minInclusive: 2000 } },
+      { type: 'entity', name: 'IFCDOOR' }],
+    requirements: [{ type: 'attribute', name: 'Name' },
+      { type: 'property', propertySet: 'Qto_DoorBaseQuantities', baseName: 'Width', dataType: 'IFCLENGTHMEASURE', unit: 'mm', value: 2400 }] }] }));
+  assert.deepEqual(proposal.units, [{ spec: 0, part: 'applicability', index: 1, unit: 'mm' }, { spec: 0, part: 'requirements', index: 1, unit: 'mm' }],
+    'the applicability index is the one after the ids.xsd reordering');
+  const spec = proposal.document.specifications[0];
+  const height = spec.applicability.facets[1], width = spec.requirements[1].facet;
+  assert.ok(height.type === 'property' && width.type === 'property');
+  assert.deepEqual(unitConversions(width.value, 'mm'), [{ authored: 2400, si: 2.4 }]);
+  assert.deepEqual(unitConversions(height.value, 'mm'), [{ authored: 2000, si: 2 }]);
+  assert.deepEqual(unitConversions({ type: 'simpleValue', value: '3' }, 'mm'), [{ authored: 3000, si: 3 }], 'an edited SI value reads back in the declared unit');
+  assert.deepEqual(unitConversions({ type: 'simpleValue', value: '2.5' }, 'cm2'), [{ authored: 25000, si: 2.5 }]);
+  assert.deepEqual(unitConversions({ type: 'simpleValue', value: 'tall' }, 'mm'), []);
+  assert.deepEqual([siUnitOf('IFCLENGTHMEASURE'), siUnitOf('IFCAREAMEASURE'), siUnitOf('IFCVOLUMEMEASURE'), siUnitOf('IFCLABEL')], ['m', 'm²', 'm³', null]);
+  assert.deepEqual(parseIdsProposal(answer(SAMPLE_PROPOSAL)).units, [], 'no unit declared, nothing recorded');
 });
 
 test('refusals name the field and what to change', () => {

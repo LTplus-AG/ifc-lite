@@ -21,12 +21,23 @@ const SPEC_CARDINALITY = { required: { minOccurs: 1, maxOccurs: 'unbounded' }, o
   prohibited: { minOccurs: 0, maxOccurs: 0 } } as const;
 export type SpecificationCardinality = keyof typeof SPEC_CARDINALITY;
 
+/** A measure value authored in a declared unit; `document` holds it in SI, as IDS stores it. */
+export interface DeclaredUnit {
+  spec: number;
+  part: 'applicability' | 'requirements';
+  /** Facet index within `part`, as written (applicability in `ids.xsd` order). */
+  index: number;
+  unit: string;
+}
+
 /** The authored, editable draft. `document` carries no unsupported notes; they are composed at serialisation. */
 export interface IdsProposal {
   title: string;
   rationale?: string;
   document: IDSDocument;
   unsupported: UnsupportedRequirement[];
+  /** Declared units, so the review shows each SI conversion instead of hiding it. */
+  units: DeclaredUnit[];
 }
 
 function versions(value: unknown, at: string, fallback: IFCVersion[]): IFCVersion[] {
@@ -37,14 +48,14 @@ function versions(value: unknown, at: string, fallback: IFCVersion[]): IFCVersio
   return [...new Set(value as IFCVersion[])];
 }
 
-function requirement(value: unknown, at: string, index: number): IDSRequirement {
-  const facet = parseFacet(value, at, ['cardinality', 'instructions']);
+function requirement(value: unknown, at: string, index: number, onUnit: (unit: string) => void): IDSRequirement {
+  const facet = parseFacet(value, at, ['cardinality', 'instructions'], onUnit);
   const record = value as Record<string, unknown>;
   const instructions = optionalText(record, 'instructions', at, 1000);
   return { id: `req-${index}`, facet, optionality: parseOptionality(record.cardinality, facet, at), ...(instructions ? { instructions } : {}) };
 }
 
-function specification(value: unknown, index: number, fallback: IFCVersion[]): IDSSpecification {
+function specification(value: unknown, index: number, fallback: IFCVersion[], units: DeclaredUnit[]): IDSSpecification {
   const at = `specifications[${index}]`;
   if (!isRecord(value)) throw new Error(`${at} must be an object`);
   onlyKeys(value, ['name', 'description', 'instructions', 'identifier', 'ifcVersions', 'cardinality', 'applicability', 'requirements'], at);
@@ -61,8 +72,10 @@ function specification(value: unknown, index: number, fallback: IFCVersion[]): I
     id: identifier ?? `spec-${index}`, name: requiredText(value, 'name', at),
     ...(description ? { description } : {}), ...(instructions ? { instructions } : {}), ...(identifier ? { identifier } : {}),
     ifcVersions: versions(value.ifcVersions, `${at}.ifcVersions`, fallback),
-    applicability: { facets: parseApplicability(value.applicability, `${at}.applicability`) },
-    requirements: value.requirements.map((item, i) => requirement(item, `${at}.requirements[${i}]`, i)),
+    applicability: { facets: parseApplicability(value.applicability, `${at}.applicability`,
+      (position, unit) => units.push({ spec: index, part: 'applicability', index: position, unit })) },
+    requirements: value.requirements.map((item, i) => requirement(item, `${at}.requirements[${i}]`, i,
+      unit => units.push({ spec: index, part: 'requirements', index: i, unit }))),
     minOccurs: occurs.minOccurs, maxOccurs: occurs.maxOccurs,
   };
 }
@@ -79,7 +92,8 @@ export function parseIdsProposal(answer: string): IdsProposal {
   if (!Array.isArray(value.specifications)) throw new Error('"specifications" must be a list');
   if (value.specifications.length === 0 && unsupported.length === 0) throw new Error('The proposal needs at least one specification, or lists every requirement as unsupported');
   if (value.specifications.length > IDS_SPECIFICATION_LIMIT) throw new Error(`At most ${IDS_SPECIFICATION_LIMIT} specifications may be proposed at once`);
-  const specifications = value.specifications.map((spec, index) => specification(spec, index, fallback));
+  const units: DeclaredUnit[] = [];
+  const specifications = value.specifications.map((spec, index) => specification(spec, index, fallback, units));
   const names = new Set<string>();
   for (const spec of specifications) {
     if (names.has(spec.name)) throw new Error(`Specification names must be distinct: "${spec.name}" repeats`);
@@ -87,7 +101,7 @@ export function parseIdsProposal(answer: string): IdsProposal {
   }
   const ids = specifications.map(spec => spec.id);
   if (new Set(ids).size !== ids.length) throw new Error('Specification identifiers must be distinct');
-  return { title, ...(rationale ? { rationale } : {}), unsupported,
+  return { title, ...(rationale ? { rationale } : {}), unsupported, units,
     document: { info: { title, ...(description ? { description } : {}) }, specifications } };
 }
 

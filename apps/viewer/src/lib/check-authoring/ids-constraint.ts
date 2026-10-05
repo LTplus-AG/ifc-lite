@@ -24,6 +24,30 @@ const MEASURE_KIND: Record<string, 'length' | 'area' | 'volume'> = {
   IFCLENGTHMEASURE: 'length', IFCPOSITIVELENGTHMEASURE: 'length', IFCAREAMEASURE: 'area', IFCVOLUMEMEASURE: 'volume',
 };
 export const DECLARED_UNITS = Object.keys(UNITS);
+const SI_UNIT = { length: 'm', area: 'm²', volume: 'm³' } as const;
+
+/** The SI unit the native validator compares a measure dataType in, or null for a non-measure type. */
+export function siUnitOf(dataType: string | undefined): string | null {
+  const kind = dataType ? MEASURE_KIND[dataType] : undefined;
+  return kind ? SI_UNIT[kind] : null;
+}
+
+/**
+ * The numbers of `constraint` (stored in SI) read back in the declared `unit`,
+ * so the review shows "2400 mm → 2.4 m" for the current value, edits included.
+ * Non-numeric values have no conversion.
+ */
+export function unitConversions(constraint: IDSConstraint | undefined, unit: string): Array<{ authored: number; si: number }> {
+  const factor = UNITS[unit]?.factor;
+  if (!constraint || !factor) return [];
+  const values = constraint.type === 'simpleValue' ? [constraint.value]
+    : constraint.type === 'enumeration' ? constraint.values
+      : constraint.type === 'bounds' ? [constraint.minInclusive, constraint.minExclusive, constraint.maxInclusive, constraint.maxExclusive] : [];
+  return values.flatMap(value => {
+    const si = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
+    return Number.isFinite(si) ? [{ authored: Number((si / factor).toPrecision(12)), si }] : [];
+  });
+}
 
 /** The XSD type behind an IFC data type, or null when the name is not an IFC data type. */
 export function dataTypeBase(dataType: string): string | null {

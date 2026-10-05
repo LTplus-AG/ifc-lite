@@ -24,6 +24,7 @@ import { AssistantConversation } from './AssistantConversation';
 
 const FlowProposalReview = lazy(() => import('./FlowProposalReview').then(m => ({ default: m.FlowProposalReview })));
 const ReportDraftReview = lazy(() => import('./ReportDraftReview').then(m => ({ default: m.ReportDraftReview })));
+const ModelChangeProposal = lazy(() => import('./ModelChangeProposal').then(m => ({ default: m.ModelChangeProposal })));
 const ClashGroupReview = lazy(() => import('./ClashGroupReview').then(m => ({ default: m.ClashGroupReview })));
 
 export function AssistantPanel() {
@@ -96,6 +97,7 @@ export function AssistantPanel() {
         evidencePayload={evidence?.payload ?? null} focusCitation={focusCitation} />
       {evidence?.source === 'clash' && <Suspense fallback={null}><ClashGroupReview /></Suspense>}
       {evidence?.source === 'flow' && <Suspense fallback={null}><FlowProposalReview /></Suspense>}
+      {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><ModelChangeProposal /></Suspense>}
       {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><ReportDraftReview /></Suspense>}
       </>}
       <div ref={endRef} />

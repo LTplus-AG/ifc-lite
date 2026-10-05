@@ -29,6 +29,7 @@ import { ionUploadEn } from './catalogues/ion-upload.en';
 import { cesiumGeoEn } from './catalogues/cesium-geo.en';
 import { chatEn } from './catalogues/chat.en';
 import { chatByokEn } from './catalogues/chat-byok.en';
+import { modelChangesEn } from './catalogues/model-changes.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { commandsEn } from './catalogues/commands.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
@@ -208,6 +209,7 @@ export const en = {
   ...flowPanelEn,
   ...chatEn,
   ...chatByokEn,
+  ...modelChangesEn,
   ...clashPanelEn,
   ...clashToolsEn,
   ...bcfEn,

@@ -94,6 +94,7 @@ export function planContentImport(prepared: PreparedContentImport, existing: Con
   }
   for (const entry of libraries.assistant ?? []) add('assistant', entry, () => ({ ...entry, id: crypto.randomUUID() }));
   for (const entry of libraries.clashGroups ?? []) add('clashGroups', entry, () => ({ ...entry, id: crypto.randomUUID() }));
+  for (const entry of libraries.modelChanges ?? []) add('modelChanges', entry, () => ({ ...entry, id: crypto.randomUUID() }));
   return rows;
 }
 

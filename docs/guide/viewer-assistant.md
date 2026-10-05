@@ -43,3 +43,12 @@ Open **Load report** and choose **Discuss with AI** to attach the native per-mod
 The same conversation Save/Open and reviewed document controls apply. Model replacement or edits invalidate an active discussion; saved evidence remains historical. Large federations and long diagnostics use the common bounded evidence projection with explicit omission notices.
 
 Evidence distinguishes an unavailable native report from an attached report with no rows. Run the native check and refresh evidence when no report is available. An empty result applies only to the native check and its captured scope; it does not establish that the models are free of issues. Older saved snapshots that lack availability metadata remain explicitly unknown.
+
+## Reviewed model changes
+
+Ask for corrections, for example with **Prepare corrections for the failing requirements** on Data validation. A valid answer appears as a **Model change proposal** with **Review model changes** beneath it. Each change addresses an element by GlobalId and states the value it expects to replace. The review resolves every element in the loaded models and compares that expected value with the model's current value, including unsaved edits. It marks each row as **Ready**, **Already set**, **Value changed**, **Element not found**, **Element in several models**, **Not editable** or **Unsupported value**. Only ready rows can be approved, and each one can be excluded.
+
+Changes are applied with the normal edit tools, so Edit mode must be on; the card offers to turn it on. **Apply** writes the approved rows as one undo step per model. If any model refuses, the whole batch is reverted. If the model changed while you reviewed, nothing is applied and the statuses update. Supported changes are property values (set or delete), existing quantity values, and the Name, Description, ObjectType and Tag attributes. GlobalIds and geometry are not changed here.
+
+Each applied batch leaves a receipt with the before and after values. Receipts are kept in the native library (and in backups), listed under **Changes → Reviewed changes**, and label their row in the Changes history. **Undo these changes** reverts the batch, or Ctrl+Z does. Undo refuses rather than overwrite newer edits to the same values. After a reload the receipt remains, but the edit history it refers to does not, so undo reports that.
+

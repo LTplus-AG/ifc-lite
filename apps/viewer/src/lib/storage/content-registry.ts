@@ -4,6 +4,7 @@
 
 import { assistantContent } from '../assistant/persistence.js';
 import { clashGroupsContent } from '../clash/group-workspace.js';
+import { modelChangeContent } from '../actions/receipts.js';
 import { comparisonContent } from '../compare/savedComparisonPersistence.js';
 import { documentContent } from '../document/persistence.js';
 import { validationContent } from '../validation/reports/persistence.js';
@@ -17,6 +18,7 @@ export const CONTENT_DEFINITIONS = {
   document: documentContent,
   assistant: assistantContent,
   clashGroups: clashGroupsContent,
+  modelChanges: modelChangeContent,
 } satisfies Record<ContentKind, Pick<ContentDefinition<{ id: string }>, 'kind' | 'legacyKey' | 'decode'>>;
 
 export function contentKindForLegacyKey(key: string): ContentKind | undefined {

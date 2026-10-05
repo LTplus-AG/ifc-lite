@@ -9,6 +9,8 @@ import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { selectChangedEntity } from '@/lib/changes/select-changed-entity';
+import { useModelChangeReceipts } from '@/lib/actions/receipts';
+import { ReceiptList } from './actions/ReceiptList';
 import { inverseMutationTargets, pruneInverseMutationTargets } from '@/store/slices/mutation-inverse-registry';
 import { changeOperations, type ChangeOperation } from '@/lib/changes/change-operations';
 import { revertChangeOperation, type RevertRefusal } from '@/lib/changes/revert-change-operation';
@@ -48,6 +50,9 @@ export function ChangesPanel({ onClose }: { onClose?: () => void }) {
     return changeOperations(undoStacks, mutationBatchTags, inverseMutationTargets(useViewerStore));
   }, [undoStacks, mutationBatchTags, mutationVersion]);
 
+  const receipts = useModelChangeReceipts(state => state.entries);
+  const reviewedTitle = (operation: ChangeOperation) =>
+    receipts.find(receipt => receipt.batches.some(batch => operation.id === `batch:${batch.batchId}`))?.title;
   const revert = (operation: ChangeOperation) => {
     const result = revertChangeOperation(useViewerStore, operation);
     setError(result.ok ? null : refusalKey(result.reason));
@@ -67,7 +72,7 @@ export function ChangesPanel({ onClose }: { onClose?: () => void }) {
         : <ol className="divide-y">{rows.map(operation => <li key={operation.id} className="space-y-2 p-3">
           <div className="flex items-center gap-2">
             <span className="min-w-0 flex-1 truncate text-xs font-medium">
-              {operation.modelIds.map(id => models.get(id)?.name ?? id).join(', ')}
+              {reviewedTitle(operation) ?? operation.modelIds.map(id => models.get(id)?.name ?? id).join(', ')}
             </span>
             <span className="text-2xs text-muted-foreground">{t('changesPanel.rowCount', { count: operation.mutations.length })}</span>
             <Button type="button" variant="outline" size="sm" onClick={() => revert(operation)}>
@@ -94,6 +99,7 @@ export function ChangesPanel({ onClose }: { onClose?: () => void }) {
           })}</ul>
         </li>)}</ol>}
     </div>
+    <ReceiptList />
     <div className="flex flex-wrap gap-2 border-t p-3">
       <ExportChangesButton surface="changes_panel" trigger={<Button type="button" size="sm" disabled={!hasExportableChanges}>{t('exportChangesButton.buttonLabel')}</Button>} />
       <ExportDialog surface="changes_panel" initialChangesOnly trigger={<Button type="button" variant="outline" size="sm" disabled={rows.length === 0}>{deltaLabel}</Button>} />

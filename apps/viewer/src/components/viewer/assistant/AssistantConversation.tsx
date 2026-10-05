@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { memo, useEffect, useMemo, useState, type MouseEvent } from 'react';
-import { Bot, Crosshair, GitBranch, Layers, User, X } from 'lucide-react';
+import { Bot, Crosshair, GitBranch, Layers, PencilLine, User, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
@@ -12,46 +12,52 @@ import type { AssistantMessage } from '@/lib/assistant/persistence';
 import type { AssistantSource } from '@/lib/assistant/sources';
 import { parseClashGroupPatch } from '@/lib/assistant/clash-group-proposal';
 import { parseFlowPatch } from '@/lib/assistant/flow-patch';
+import { parseModelChangeBatch } from '@/lib/actions/model-change';
 import { markdownHtml } from '@/lib/assistant/markdown';
 import { capturedEvidence, rowFields } from '@/lib/assistant/captured-rows';
 
 const SUGGESTIONS: Record<AssistantSource, TranslationKey[]> = {
   clash: ['assistant.suggestClashSummary', 'assistant.suggestClashGroups'],
-  validation: ['assistant.suggestValidationSummary', 'assistant.suggestValidationRequirements'],
+  validation: ['assistant.suggestValidationSummary', 'assistant.suggestValidationRequirements', 'assistant.suggestValidationCorrections'],
   compare: ['assistant.suggestCompareSummary'],
   flow: ['assistant.suggestFlowExplain', 'assistant.suggestFlowPatch'],
   loadReport: ['assistant.suggestLoadReport'],
 };
 
+type Declared = 'clash' | 'flow' | 'changes';
 type Proposal = { kind: 'clash'; groups: number; findings: number } | { kind: 'flow'; operations: number }
-  | { kind: 'invalid'; declared: 'clash' | 'flow'; reason: string };
+  | { kind: 'changes'; changes: number } | { kind: 'invalid'; declared: Declared; reason: string };
+const DECLARED: Record<string, Declared> = { 'clash.groups': 'clash', 'flow.patch': 'flow', 'model.changes': 'changes' };
+const PROPOSAL_TITLE = { clash: 'assistant.proposalClash', flow: 'assistant.proposalFlow', changes: 'assistant.proposalChanges' } as const;
+const PROPOSAL_ICON = { clash: Layers, flow: GitBranch, changes: PencilLine } as const;
 
 /** Typed proposals are reviewed natively below the conversation; raw JSON is secondary. */
 export function proposalOf(content: string): Proposal | null {
   const trimmed = content.trimStart();
   if (!trimmed.startsWith('{') && !trimmed.startsWith('```')) return null;
   // Only a reply that declares a typed kind is parsed; prose never reaches the strict parsers.
-  const kind = /"kind"\s*:\s*"(clash\.groups|flow\.patch)"/.exec(content)?.[1];
+  const kind = /"kind"\s*:\s*"(clash\.groups|flow\.patch|model\.changes)"/.exec(content)?.[1];
   if (!kind) return null;
   try {
     if (kind === 'flow.patch') return { kind: 'flow', operations: parseFlowPatch(content).operations.length };
+    if (kind === 'model.changes') return { kind: 'changes', changes: parseModelChangeBatch(content).changes.length };
     const patch = parseClashGroupPatch(content);
     return { kind: 'clash', groups: patch.groups.length, findings: patch.groups.reduce((sum, group) => sum + group.citations.length, 0) };
   } catch (error) {
     // Shown as a refused proposal card so the coordinator can ask again; never reviewable.
     console.warn('[Assistant] Typed proposal failed validation', error);
-    return { kind: 'invalid', declared: kind === 'flow.patch' ? 'flow' : 'clash', reason: error instanceof Error ? error.message : String(error) };
+    return { kind: 'invalid', declared: DECLARED[kind], reason: error instanceof Error ? error.message : String(error) };
   }
 }
 
 function ProposalCard({ content, proposal, onRepair }: { content: string; proposal: Proposal; onRepair?: (prompt: string) => void }) {
   const { t } = useTranslation();
   const declared = proposal.kind === 'invalid' ? proposal.declared : proposal.kind;
-  const Icon = declared === 'clash' ? Layers : GitBranch;
+  const Icon = PROPOSAL_ICON[declared];
   const invalid = proposal.kind === 'invalid';
   return <div className={invalid ? 'rounded border border-amber-500/40 bg-amber-500/10 p-2 space-y-1' : 'rounded border border-primary/30 bg-primary/5 p-2 space-y-1'}>
     <p className="flex items-center gap-1.5 font-semibold"><Icon className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-      {t(declared === 'clash' ? 'assistant.proposalClash' : 'assistant.proposalFlow')}</p>
+      {t(PROPOSAL_TITLE[declared])}</p>
     {proposal.kind === 'invalid' ? <>
       <p>{t('assistant.proposalInvalid')}</p>
       <p className="text-muted-foreground break-words">{proposal.reason}</p>
@@ -61,7 +67,8 @@ function ProposalCard({ content, proposal, onRepair }: { content: string; propos
     </> : <>
       <p className="text-muted-foreground">{proposal.kind === 'clash'
         ? `${t('assistant.proposalGroups', { count: proposal.groups })} · ${t('assistant.proposalFindings', { count: proposal.findings })}`
-        : t('assistant.proposalFlowSummary', { count: proposal.operations })}</p>
+        : proposal.kind === 'flow' ? t('assistant.proposalFlowSummary', { count: proposal.operations })
+          : t('assistant.proposalChangesSummary', { count: proposal.changes })}</p>
       <p>{t('assistant.proposalNext')}</p>
     </>}
     <details><summary className="cursor-pointer text-muted-foreground hover:text-foreground">{t('assistant.proposalJson')}</summary>

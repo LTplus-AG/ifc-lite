@@ -9,6 +9,7 @@ import { getApiKeys } from '@/services/api-keys';
 import { UNCONFIGURED_MODEL_ID } from '@/lib/llm/models';
 import { evidenceIsCurrent } from './evidence';
 import { CLASH_GROUP_OUTPUT_GUIDANCE } from './clash-taxonomy';
+import { MODEL_CHANGE_OUTPUT_GUIDANCE } from '../actions/model-change';
 import { useViewerStore } from '@/store';
 import { useAssistant } from './conversation';
 
@@ -75,6 +76,10 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
       if (JSON.stringify(messages).length + system.length > 90_000) {
         options.onError(new Error('context-limit')); return false;
       }
+    }
+    if (state.snapshot.source !== 'flow') {
+      // Corrections are proposals only: the user reviews each change before anything is applied.
+      options.system = `${options.system ?? ''}\n${MODEL_CHANGE_OUTPUT_GUIDANCE}`;
     }
     if (state.snapshot.source === 'clash') {
       if (!ownsRequest()) return false;

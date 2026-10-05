@@ -104,11 +104,11 @@ test('an outline saves as a new native document bound to the live report; a repl
   useViewerStore.setState({ idsValidationReport: report });
   const outline = parseDocumentOutline(json({ version: 1, kind: 'document.outline', title: 'Walls', sections: [{ heading: 'Failures',
     blocks: [{ kind: 'validationTable', specification: 'spec-1', rows: 'failed', columns: ['name', 'reason'] }] }] }));
-  const prepared = prepareDocumentDraft(outline, report);
+  const prepared = prepareDocumentDraft(outline, report, report);
   assert.equal(await saveDocumentDraft(prepared), true);
   const stored = (await loadDocuments()).find(document => document.id === prepared.document.id);
   assert.ok(stored);
   assert.deepEqual(stored.blocks.find(block => block.kind === 'table'), prepared.document.blocks.find(block => block.kind === 'table'));
   useViewerStore.setState({ idsValidationReport: { ...report, timestamp: new Date() } });
-  await assert.rejects(saveDocumentDraft(prepareDocumentDraft(outline, report)), /report changed/);
+  await assert.rejects(saveDocumentDraft(prepareDocumentDraft(outline, report, report)), /report changed/);
 });

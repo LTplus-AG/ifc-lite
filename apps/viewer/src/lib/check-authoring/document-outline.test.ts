@@ -5,7 +5,8 @@
 import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseIDS } from '@ifc-lite/ids';
+import { parseIDS, type IDSDocument } from '@ifc-lite/ids';
+import { writeIdsXml } from '@ifc-lite/rules';
 import { PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
 import { SAMPLE_MODEL, seedAuthoringSample } from '@/test/authoring-sample-fixture';
@@ -19,9 +20,9 @@ import { parseDocumentOutline, prepareDocumentDraft } from './document-outline';
 const initial = useViewerStore.getState();
 afterEach(() => useViewerStore.setState(initial, true));
 
-async function sampleReport() {
+async function sampleReport(document: IDSDocument = parseIDS(SAMPLE_IDS_XML)) {
   const state = useViewerStore.getState();
-  const { report } = await runIdsCheck({ document: parseIDS(SAMPLE_IDS_XML), modelId: SAMPLE_MODEL, dataStore: state.models.get(SAMPLE_MODEL)!.ifcDataStore!,
+  const { report } = await runIdsCheck({ document, modelId: SAMPLE_MODEL, dataStore: state.models.get(SAMPLE_MODEL)!.ifcDataStore!,
     mutationView: state.getMutationView(SAMPLE_MODEL), locale: 'en', models: state.models });
   return report;
 }
@@ -36,7 +37,7 @@ test('an outline validation table resolves against whichever report is current, 
   const { view } = await seedAuthoringSample({ editEnabled: false });
   const before = await sampleReport();
   useViewerStore.setState({ idsValidationReport: before });
-  const draft = prepareDocumentDraft(parseDocumentOutline(json(OUTLINE)), before);
+  const draft = prepareDocumentDraft(parseDocumentOutline(json(OUTLINE)), before, before);
   const table = draft.document.blocks.find((block): block is TableBlock => block.kind === 'table')!;
   assert.deepEqual(table.source, { kind: 'validation', rows: 'failed', columns: ['name', 'globalId', 'reason'], ruleId: 'spec-1' });
   const failing = before.specificationResults[1].entityResults.filter(entity => !entity.passed);
@@ -64,9 +65,28 @@ test('outline refusals: written values, unknown specifications and summaries wit
   const outline = (blocks: unknown[]) => json({ ...OUTLINE, sections: [{ heading: 'Findings', blocks }] });
   assert.throws(() => parseDocumentOutline(outline([{ kind: 'number', value: 12 }])), /values come from native blocks, not written numbers/);
   assert.throws(() => parseDocumentOutline(outline([{ kind: 'validationTable', rows: 'failed', columns: ['cost'] }])), /columns must list columns from/);
-  assert.throws(() => prepareDocumentDraft(parseDocumentOutline(outline([{ kind: 'validationTable', specification: 'spec-9', rows: 'failed', columns: ['name'] }])), report),
+  assert.throws(() => prepareDocumentDraft(parseDocumentOutline(outline([{ kind: 'validationTable', specification: 'spec-9', rows: 'failed', columns: ['name'] }])), report, report),
     /specification "spec-9" is not in the current report; use one of spec-0, spec-1, spec-2/);
-  assert.throws(() => prepareDocumentDraft(parseDocumentOutline(outline([{ kind: 'validationSummary' }])), null), /needs a current validation report/);
-  assert.doesNotThrow(() => prepareDocumentDraft(parseDocumentOutline(outline([{ kind: 'validationTable', rows: 'all', columns: ['name'] }])), null),
+  assert.throws(() => prepareDocumentDraft(parseDocumentOutline(outline([{ kind: 'validationSummary' }])), null, null), /needs a current validation report/);
+  assert.doesNotThrow(() => prepareDocumentDraft(parseDocumentOutline(outline([{ kind: 'validationTable', rows: 'all', columns: ['name'] }])), null, null),
     'an unbound table may wait for a report');
+});
+
+// #6915 review: report specification ids are positional (`spec-1`), so another IDS run can give the
+// same id to a different specification. A bound table is only prepared against the report the
+// conversation was drafted from.
+test('a specification-bound table refuses a report other than the one the outline was drafted from', async () => {
+  await seedAuthoringSample({ editEnabled: false });
+  const drafted = await sampleReport();
+  const sample = parseIDS(SAMPLE_IDS_XML);
+  const reordered = await sampleReport(parseIDS(writeIdsXml({ ...sample, specifications: [...sample.specifications.slice(1), sample.specifications[0]] })));
+  const name = (report: typeof drafted) => report.specificationResults.find(result => result.specification.id === 'spec-1')?.specification.name;
+  const first = name(drafted);
+  assert.ok(first && name(reordered) && name(reordered) !== first, 'the other run reuses spec-1 for a different specification');
+  const outline = parseDocumentOutline(json(OUTLINE));
+  assert.doesNotThrow(() => prepareDocumentDraft(outline, drafted, drafted));
+  assert.throws(() => prepareDocumentDraft(outline, reordered, drafted), /drafted from a different validation report/);
+  assert.throws(() => prepareDocumentDraft(outline, drafted, null), /drafted from a different validation report/, 'no evidence report, no specification binding');
+  const unbound = parseDocumentOutline(json({ ...OUTLINE, sections: [{ heading: 'All', blocks: [{ kind: 'validationTable', rows: 'all', columns: ['name'] }, { kind: 'validationSummary' }] }] }));
+  assert.doesNotThrow(() => prepareDocumentDraft(unbound, reordered, drafted), 'unbound tables and the summary name no specification');
 });

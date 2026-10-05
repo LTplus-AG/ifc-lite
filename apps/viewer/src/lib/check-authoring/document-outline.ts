@@ -106,8 +106,15 @@ export interface DocumentDraft {
 const PROVENANCE = 'Outline drafted with AI assistance. Validation tables are live native results, resolved whenever this document is shown or printed; '
   + 'a validation summary is the native report snapshot taken when the draft was prepared. Text is an unverified draft: check every statement.';
 
-/** Native document blocks from a parsed outline; refuses tables bound to a specification the current report lacks. */
-export function prepareDocumentDraft(outline: DocumentOutline, report: ValidationReport | null): DocumentDraft {
+/**
+ * Native document blocks from a parsed outline. `evidence` is the report the
+ * conversation was drafted from (its evidence identity), or null when there
+ * was none. Report specification ids are positional (`spec-1`), so another
+ * run can give the same id to a different specification: a table bound to a
+ * specification is refused unless `report` IS that evidence report, and when
+ * the current report lacks the specification.
+ */
+export function prepareDocumentDraft(outline: DocumentOutline, report: ValidationReport | null, evidence: object | null): DocumentDraft {
   const text = (style: TextBlock['style'], value: string): TextBlock => ({ kind: 'text', id: freshBlockId(), style, text: literalTemplateText(value) });
   const specs = new Set(report?.specificationResults.map(result => result.specification.id) ?? []);
   const blocks: DocumentBlock[] = [text('title', outline.title), text('small', PROVENANCE)];
@@ -122,6 +129,9 @@ export function prepareDocumentDraft(outline: DocumentOutline, report: Validatio
         blocks.push(idsReportBlockFromReport(report, freshBlockId()));
       } else {
         if (item.specification && !report) throw new Error(`${at}: no current validation report to bind "${item.specification}" to; run the native validation first`);
+        if (item.specification && report !== evidence) {
+          throw new Error(`${at}: "${item.specification}" was drafted from a different validation report than the one shown now; discuss the current report and ask again`);
+        }
         if (item.specification && !specs.has(item.specification)) {
           throw new Error(`${at}: specification "${item.specification}" is not in the current report; use one of ${[...specs].slice(0, 10).join(', ')}`);
         }

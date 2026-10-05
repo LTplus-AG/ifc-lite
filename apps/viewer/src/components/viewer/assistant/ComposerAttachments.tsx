@@ -11,7 +11,7 @@
  * for such a model rather than dropping it silently.
  */
 
-import { useState, type Dispatch, type SetStateAction } from 'react';
+import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { Camera, MousePointerClick, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -45,8 +45,10 @@ function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
   </span>;
 }
 
-export function ComposerAttachments({ model, value, onChange, disabled }: {
+export function ComposerAttachments({ model, value, onChange, disabled, sent }: {
   model: string;
+  /** Messages sent so far: a capture still running when a message is sent belongs to no message and is dropped. */
+  sent: number;
   value: ComposerAttachmentValue;
   /** A state setter: the screenshot lands after an await, so it updates the current value, not the one it started from. */
   onChange: Dispatch<SetStateAction<ComposerAttachmentValue>>;
@@ -57,13 +59,17 @@ export function ComposerAttachments({ model, value, onChange, disabled }: {
   const images = getModelById(model)?.supportsImages === true;
   const [capturing, setCapturing] = useState(false);
   const [problem, setProblem] = useState<'unsupported' | 'failed' | null>(null);
+  const sentRef = useRef(sent);
+  sentRef.current = sent;
   const attachView = async () => {
     // Explained on click rather than by a disabled control, so keyboard users learn why too.
     if (!images) { setProblem('unsupported'); return; }
     setCapturing(true);
     setProblem(null);
+    const startedAt = sentRef.current;
     const shot = await captureViewportScreenshot();
     setCapturing(false);
+    if (sentRef.current !== startedAt) return;
     if (shot) onChange(current => ({ ...current, screenshot: shot }));
     else setProblem('failed');
   };

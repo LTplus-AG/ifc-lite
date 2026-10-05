@@ -44,6 +44,7 @@ export function AssistantPanel() {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [picking, setPicking] = useState(false);
   const [attachments, setAttachments] = useState(NO_ATTACHMENTS);
+  const [sent, setSent] = useState(0);
   const { confirmDialog } = useDialogs();
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -65,6 +66,7 @@ export function AssistantPanel() {
       if (!success) return;
       setPrompt(current => current === text ? '' : current);
       setAttachments(NO_ATTACHMENTS);
+      setSent(count => count + 1);
     });
   };
   const refresh = () => { if (evidence) replaceEvidence(captureEvidence(evidence.source)); };
@@ -117,7 +119,7 @@ export function AssistantPanel() {
       <div ref={endRef} />
     </div>
     <form className="shrink-0 border-t border-border p-2 space-y-1" onSubmit={event => { event.preventDefault(); submit(); }}>
-      <ComposerAttachments model={model} value={attachments} onChange={setAttachments} disabled={!canAsk} />
+      <ComposerAttachments model={model} value={attachments} onChange={setAttachments} disabled={!canAsk} sent={sent} />
       <label className="sr-only" htmlFor="assistant-prompt">{t('assistant.prompt')}</label>
       <textarea id="assistant-prompt" ref={promptRef} rows={2} maxLength={8000} disabled={!canAsk} value={prompt}
         placeholder={t('assistant.placeholder')}

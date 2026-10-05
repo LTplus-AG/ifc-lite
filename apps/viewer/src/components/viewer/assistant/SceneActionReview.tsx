@@ -57,8 +57,8 @@ function ActionLine({ preview }: { preview: ActionPreview }) {
 function AppliedNote({ result }: { result: ApplyResult }) {
   const { t } = useTranslation();
   return <output className="block rounded bg-muted/50 p-2 space-y-0.5">
-    <span className="block font-semibold">{t('sceneActions.applied')}</span>
-    <span className="block">{result.applied.map(({ type, count }) => count ? t('sceneActions.appliedCount', { action: t(`sceneActions.${type}`), count }) : t(`sceneActions.${type}`)).join(' · ')}</span>
+    {result.applied.length > 0 && <span className="block font-semibold">{t('sceneActions.applied')}</span>}
+    {result.applied.length > 0 && <span className="block">{result.applied.map(({ type, count }) => count ? t('sceneActions.appliedCount', { action: t(`sceneActions.${type}`), count }) : t(`sceneActions.${type}`)).join(' · ')}</span>}
     {result.unavailable.length > 0 && <span className="block">{t('sceneActions.unavailable', { actions: result.unavailable.map(type => t(`sceneActions.${type}`)).join(', ') })}</span>}
     {result.replaced && <RestoreNote report={result.replaced} />}
   </output>;
@@ -69,10 +69,13 @@ function RestoreNote({ report }: { report: RestoreReport }) {
   if (report.channels.some(channel => channel.outcome === 'models-changed')) {
     return <output className="block rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('sceneActions.modelsChanged')}</output>;
   }
-  const kept = report.channels.filter(channel => channel.outcome !== 'restored');
+  const names = (outcome: RestoreReport['channels'][number]['outcome']) => report.channels.filter(channel => channel.outcome === outcome)
+    .map(({ channel }) => t(`sceneActions.channel.${channel}`)).join(', ');
+  const kept = names('changed'), unavailable = names('unavailable');
   return <output className="block rounded bg-muted/50 p-2 space-y-0.5">
     <span className="block font-semibold">{t('sceneActions.restored')}</span>
-    {kept.length > 0 && <span className="block">{t('sceneActions.notRestored', { channels: kept.map(({ channel }) => t(`sceneActions.channel.${channel}`)).join(', ') })}</span>}
+    {kept && <span className="block">{t('sceneActions.notRestored', { channels: kept })}</span>}
+    {unavailable && <span className="block">{t('sceneActions.restoreUnavailable', { channels: unavailable })}</span>}
   </output>;
 }
 
@@ -100,7 +103,7 @@ function SceneActionCard({ set, evidence }: { set: SceneActionSet; evidence: Evi
       <ul className="space-y-1">{preview.actions.map(action => <ActionLine key={action.index} preview={action} />)}</ul>
       {preview.ready === 0 && <p role="note" className="text-muted-foreground">{t('sceneActions.nothingReady')}</p>}
       {active && !ours && <p role="note" className="text-muted-foreground">{t('sceneActions.replacesActive', { title: active.title })}</p>}
-      {result && ours && <AppliedNote result={result.applied} />}
+      {result && (ours || !result.applied.applied.length) && <AppliedNote result={result.applied} />}
       <Button size="sm" className="h-7" disabled={preview.ready === 0 || ours} onClick={apply}>
         {t('sceneActions.apply', { count: preview.ready })}
       </Button>

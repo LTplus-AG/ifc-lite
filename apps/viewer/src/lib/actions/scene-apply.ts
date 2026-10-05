@@ -160,7 +160,8 @@ export function applySceneActions(set: SceneActionSet, evidence: EvidenceSnapsho
     else if (applyCamera(action, application)) applied.push({ type, count: action.ids.length });
     else unavailable.push(type);
   }
-  // A set whose every ready action was unavailable changed nothing and has nothing to restore.
-  setActiveApplication(applied.length ? application : null);
+  // A set whose every ready action was unavailable changed nothing and has nothing to restore;
+  // the report of the earlier view it restored first is kept for the restore bar.
+  setActiveApplication(applied.length ? application : null, applied.length ? null : replaced);
   return { preview, applied, unavailable, replaced };
 }

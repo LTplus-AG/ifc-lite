@@ -12,6 +12,9 @@ import { cameraStub, sceneModels, W1, W2 } from '@/test/scene-actions-fixture';
 import { captureEvidence } from '@/lib/assistant/evidence';
 import { replaceEvidence, useAssistant, cancelAssistant } from '@/lib/assistant/conversation';
 import { setActiveApplication, useSceneSession } from '@/lib/actions/scene-session';
+import { clearApiKeys, updateApiKeys } from '@/services/api-keys';
+import { setGlobalCanvasRef, setGlobalRendererRef } from '@/hooks/useBCF';
+import type { Renderer } from '@ifc-lite/renderer';
 import { AssistantPanel } from './AssistantPanel';
 
 const initial = useViewerStore.getState();
@@ -107,4 +110,56 @@ test('a proposal applied over an active one discloses that the earlier view is r
   click(button(second, 'Apply 1 action')!);
   assert.deepEqual([...useViewerStore.getState().isolatedEntities ?? []], [102]);
   await waitFor(() => /Previous view restored\./.test(second.textContent ?? ''), 'the replaced restore is reported on the card');
+});
+
+// #6907: a capture still running when the message is sent must not attach itself to the next message.
+test('a viewport capture that finishes after the send is dropped, not attached to the next message', async () => {
+  useViewerStore.setState({ ...sceneModels(), chatActiveModel: 'gpt-6-luna' });
+  updateApiKeys({ openaiKey: 'sk-test' });
+  replaceEvidence(captureEvidence('loadReport'));
+  let release: () => void = () => {};
+  const gpuDone = new Promise<void>(resolve => { release = resolve; });
+  setGlobalRendererRef({ current: { getGPUDevice: () => ({ queue: { onSubmittedWorkDone: () => gpuDone } }) } as unknown as Renderer });
+  setGlobalCanvasRef({ current: { width: 0, height: 0, clientWidth: 0, clientHeight: 0, toDataURL: () => 'data:image/jpeg;base64,TEFURQ==' } as unknown as HTMLCanvasElement });
+  globalThis.fetch = async () => new Response('data: {"choices":[{"delta":{"content":"Ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+  try {
+    const ui = render(<AssistantPanel />);
+    click(button(ui, 'Attach view')!);
+    type(ui.querySelector('textarea')!, 'What is selected?');
+    click(button(ui, 'Send')!);
+    await waitFor(() => useAssistant.getState().status === 'idle' && useAssistant.getState().messages.length === 2, 'send completes');
+    await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 600)); });
+    assert.doesNotMatch(ui.textContent ?? '', /Viewport screenshot/, 'the late capture belongs to the message already sent');
+  } finally {
+    clearApiKeys(); setGlobalRendererRef({ current: null }); setGlobalCanvasRef({ current: null });
+  }
+});
+
+// #6907: an apply that could not touch the view says so, keeps the report of the view it restored,
+// and a camera that could not be restored is never reported as "changed by you".
+test('an apply with nothing applicable and a restore without a camera are reported as unavailable', async () => {
+  const camera = cameraStub();
+  useViewerStore.setState({ ...sceneModels(), cameraCallbacks: camera.callbacks });
+  replaceEvidence(captureEvidence('loadReport'));
+  const isolateAndFrame = JSON.stringify({ version: 1, kind: 'scene.actions', title: 'Wall one',
+    actions: [{ type: 'isolate', targets: [{ globalId: W1 }] }, { type: 'frame', targets: [{ globalId: W1 }] }] });
+  act(() => useAssistant.setState({ messages: [{ role: 'user', content: 'Show W1' }, { role: 'assistant', content: isolateAndFrame }] }));
+  const ui = render(<AssistantPanel />);
+  await waitFor(() => !!ui.querySelector('section[aria-label="Show in the model"]'), 'first card');
+  click(button(ui.querySelector('section[aria-label="Show in the model"]') as HTMLElement, 'Apply 2 actions')!);
+  assert.deepEqual([...useViewerStore.getState().isolatedEntities ?? []], [101]);
+
+  // The viewport unmounts: no camera callbacks. A frame-only proposal now has nothing it can do.
+  act(() => useViewerStore.setState({ cameraCallbacks: {} }));
+  const frameOnly = JSON.stringify({ version: 1, kind: 'scene.actions', title: 'Frame W2', actions: [{ type: 'frame', targets: [{ globalId: W2 }] }] });
+  act(() => useAssistant.setState(s => ({ messages: [...s.messages, { role: 'user', content: 'Frame W2' }, { role: 'assistant', content: frameOnly }] })));
+  await waitFor(() => /Frame W2/.test(ui.querySelector('section[aria-label="Show in the model"]')?.textContent ?? ''), 'second card');
+  const second = ui.querySelector('section[aria-label="Show in the model"]') as HTMLElement;
+  click(button(second, 'Apply 1 action')!);
+  assert.equal(useViewerStore.getState().isolatedEntities, null, 'the earlier proposal was restored first');
+  await waitFor(() => /Not applied \(the 3D view is not ready\): Frame/.test(second.textContent ?? ''), 'unavailable action reported');
+  assert.doesNotMatch(second.textContent ?? '', /Applied to the view\./, 'nothing was applied');
+  assert.match(second.textContent ?? '', /Could not be restored \(the 3D view is not ready\): camera/);
+  assert.doesNotMatch(ui.textContent ?? '', /Kept as you changed it since: camera/);
+  assert.match(ui.textContent ?? '', /Previous view restored\./, 'the restore report is kept, not overwritten');
 });

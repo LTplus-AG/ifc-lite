@@ -1,0 +1,89 @@
+{
+  "file": {
+    "name": "Apartment.e57",
+    "points": 23151066
+  },
+  "detect": {
+    "status": "done",
+    "points": 2000000,
+    "planes": 69,
+    "cylinders": 1,
+    "proposals": 37,
+    "by": {
+      "IfcWall/pairedFaces": 8,
+      "IfcWall/singleFace": 21,
+      "IfcSlab/floor": 2,
+      "IfcSlab/ceiling": 5,
+      "IfcPipeSegment/cylinder": 1
+    },
+    "stats": {
+      "verticalPlanes": 53,
+      "horizontalPlanes": 14,
+      "slopedPlanes": 2,
+      "pairedWalls": 8,
+      "singleFaceWalls": 21,
+      "facesTooSmall": 16,
+      "pairedSlabs": 0,
+      "singleSlabs": 7,
+      "slabsTooSmall": 7,
+      "columns": 0,
+      "pipes": 1
+    },
+    "column": null,
+    "cylinder": {
+      "axisStart": [
+        4.545343953859793,
+        0.02653320308044149,
+        2.712836279201402
+      ],
+      "axisEnd": [
+        4.284493471214007,
+        0.015171433568216397,
+        3.1350822076494644
+      ],
+      "axisDirection": [
+        -0.5254303718614897,
+        -0.02288597942875764,
+        0.8505287509961573
+      ],
+      "radius": 0.10542867587457874,
+      "length": 0.49645109345629884,
+      "heightRange": [
+        0.015171433568216397,
+        0.02653320308044149
+      ],
+      "arcDegrees": 95,
+      "inlierPoints": 447,
+      "inlierVoxels": 102,
+      "rmsMetres": 0.007376068977539392,
+      "orientation": "horizontal",
+      "faceted": null
+    }
+  },
+  "accepted": 23,
+  "created": {
+    "modelId": "fb7e4c86-49a5-48e9-a64f-2be1686c2282",
+    "created": 23,
+    "byProposal": {
+      "IfcWall": 15,
+      "IfcSlab": 7,
+      "IfcPipeSegment": 1
+    },
+    "meshes": 23,
+    "undo": 47,
+    "message": "23 accepted, 0 rejected, 14 to review | 23 elements created in Scan_to_BIM.ifc, one undo step."
+  },
+  "undoRedo": {
+    "before": 23,
+    "afterUndo": 0,
+    "afterRedo": 23
+  },
+  "exported": "/home/louistrue/scratch/6894/evidence3/Scan_to_BIM-export.ifc",
+  "reopened": {
+    "schema": "IFC4",
+    "walls": 15,
+    "slabs": 7,
+    "columns": 0,
+    "meshes": 23
+  }
+}

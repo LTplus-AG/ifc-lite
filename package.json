@@ -43,6 +43,7 @@
     "check:rust-source-text-assertions": "node scripts/check-rust-source-text-assertions.mjs",
     "check:refwalk-guards": "node scripts/check-refwalk-guards.mjs",
     "check:raw-entity-enumeration": "node scripts/check-raw-entity-enumeration.mjs",
+    "check:perf-flags": "node scripts/check-perf-flags.mjs",
     "check:module-size": "node scripts/check-module-size.mjs",
     "check:i18n-literals": "node scripts/check-i18n-literals.mjs",
     "lint:i18n-literals-baseline": "node scripts/check-i18n-literals.mjs --update",

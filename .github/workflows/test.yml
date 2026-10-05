@@ -1097,6 +1097,16 @@ jobs:
         run: node --test scripts/check-raw-entity-enumeration.test.mjs
       - name: Check for new raw entity enumeration
         run: node scripts/check-raw-entity-enumeration.mjs
+      # #6962: perf toggles live in one registry (apps/viewer/src/lib/perf/
+      # flags.ts). The lint fails on a ramp more than four weeks past its
+      # introducedAt, a flag with no owner or removal condition, and any
+      # production `__IFC_LITE_*` global read outside the registry and the
+      # shared reader. Its own tests run first so a broken detector fails here
+      # rather than report a clean tree.
+      - name: Check perf-flag lint's own tests
+        run: node --test scripts/check-perf-flags.test.mjs
+      - name: Check perf-flag registry and global-read ratchet
+        run: node scripts/check-perf-flags.mjs
       # AGENTS.md has asked for TypeScript modules under ~400 lines since long
       # before this gate existed, and self-policing left 312 files over the
       # line. A convention with no gate ratchets the wrong way: the allowlist

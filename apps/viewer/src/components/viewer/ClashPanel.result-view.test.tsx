@@ -117,6 +117,28 @@ describe('Clash panel selection (U02, #6925)', () => {
     assert.equal(button(ui, /Group selected/)?.disabled, true);
   });
 
+  it('a re-sort or a review-status change keeps select all: the population is the same (PR #6951 review)', async () => {
+    // Two clearance findings in one severity section: by severity they tie and
+    // fall back to id order (Wall, Beam); by distance the closer Beam comes first.
+    const spread = [{ ...THREE[0], status: 'clearance' as const, distance: 0.03 }, { ...THREE[1], status: 'clearance' as const, distance: 0.01 }, THREE[2]];
+    await act(async () => { useViewerStore.getState().setClashSortBy('severity'); });
+    const ui = await mount(result(spread));
+    const wallFirst = () => text(ui).indexOf('IfcWall ×') < text(ui).indexOf('IfcBeam ×');
+    assert.equal(wallFirst(), true, text(ui));
+    click(button(ui, /Select all 3 matching results/)!);
+    assert.match(text(ui), /All 3 matching results are selected\./);
+
+    // Same findings in a new order.
+    await act(async () => { useViewerStore.getState().setClashSortBy('distance'); });
+    assert.equal(wallFirst(), false, 'the rows were re-ordered');
+    assert.match(text(ui), /All 3 matching results are selected\./, 'a sort change is not a filter change');
+
+    // Every status is shown, so a review decision changes no membership.
+    await act(async () => { useViewerStore.getState().setClashReview(clashReviewKey(THREE[0]), { status: 'resolved' }); });
+    assert.match(text(ui), /All 3 matching results are selected\./, 'a review decision under "show all" is not a filter change');
+    assert.equal(button(ui, /Group selected \(3\)/)?.disabled, false);
+  });
+
   it('an individual pick survives a filter change', async () => {
     const reviews = new Map([[clashReviewKey(THREE[2]), { status: 'resolved' as const }]]);
     const ui = await mount(result(THREE), reviews);

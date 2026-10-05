@@ -5,7 +5,7 @@
 import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
 import { useFederatedGeometry } from './useFederatedGeometry';
 import { modelIndices } from '@/lib/model-placement/model-indices';
-import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
 import { useAuthoredGridOverlay } from './useAuthoredGridOverlay';
@@ -75,12 +75,22 @@ import { isMeshVisibleInViewMode, meshClassIsPlaced, meshIsNonOccurrence } from 
  * The primary container for the 3D viewport, managing IFC model loading,
  * geometry streaming, scene overlays, and interaction tools.
  */
+// Lazy: the scan-to-BIM overlay (#6894) and its mesh builder stay out of the entry chunk.
+const ScanDetectionOverlay = lazy(() => import('./useScanDetectionOverlay')
+  .then((m) => ({ default: m.ScanDetectionOverlay }))
+  .catch((error: unknown) => {
+    console.warn('[scan-to-bim] the detection overlay could not load', error);
+    return { default: () => null };
+  }));
+
 export function ViewportContainer() {
   // Drive Stacked / Solo / Exploded level display from the slice.
   // Mount-once hook — it self-gates on mode + gap + model changes.
   useLevelDisplayEffect();
   // Grids authored this session are lines the mesher does not draw (#6232 D3).
   useAuthoredGridOverlay();
+  // Scan-to-BIM detections under review (#6894): a lazy host, mounted only while a run exists.
+  const scanRunActive = useViewerStore((s) => s.scanDetectionRun !== null);
 
   const { loadFile, loading, clearAllModels, loadFilesSequentially, addModel } = useIfc();
   // Resolves a source provider's display title for toasts; null outside the
@@ -956,6 +966,7 @@ export function ViewportContainer() {
       className="relative h-full w-full bg-zinc-50 dark:bg-black overflow-hidden"
       data-viewport
     >
+      {scanRunActive && <Suspense fallback={null}><ScanDetectionOverlay /></Suspense>}
       {/* Drop overlay for a loaded file - "Add Model"; `status-ok` (tokens, #5504) sets it apart from the plain overlay above. */}
       {isDragging && createPortal(
         <div className="pointer-events-none fixed inset-0 z-50 bg-status-ok/10 backdrop-blur-[2px] flex items-center justify-center">

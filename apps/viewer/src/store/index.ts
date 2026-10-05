@@ -62,6 +62,7 @@ import { createLevelDisplaySlice, type LevelDisplaySlice } from './slices/levelD
 import { createStoreyContextSlice, type StoreyContextSlice } from './slices/storeyContextSlice.js';
 import { createModelPlacementSlice, type ModelPlacementSlice } from './slices/modelPlacementSlice.js';
 import { createPointCloudSlice, type PointCloudSlice } from './slices/pointCloudSlice.js';
+import { createScanDetectionSlice, type ScanDetectionSlice } from './slices/scanDetectionSlice.js';
 import { createUnitDisplaySlice, type UnitDisplaySlice } from './slices/unitDisplaySlice.js';
 import { createSpaceMouseSlice, type SpaceMouseSlice } from './slices/spaceMouseSlice.js';
 import { createLayerStackSlice, type LayerStackSlice } from './slices/layerStackSlice.js';
@@ -179,7 +180,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   CollabSlice &
   AuthoringSessionSlice & AuthoringDefaultsSlice &
   LevelDisplaySlice & StoreyContextSlice &
-  PointCloudSlice & ModelPlacementSlice &
+  PointCloudSlice & ScanDetectionSlice & ModelPlacementSlice &
   UnitDisplaySlice & SpaceMouseSlice & ZonesSlice & ModelTagsSlice &
   ExtensionsSlice & SourcesSlice & SceneStateSlice & ViewerActions;
 
@@ -241,6 +242,7 @@ const createViewerStore = () => create<ViewerState>()(withStoreChurnCounters(wit
   ...createAuthoringSessionSlice(...args), ...createAuthoringDefaultsSlice(...args),
   ...createLevelDisplaySlice(...args), ...createStoreyContextSlice(...args),
   ...createPointCloudSlice(...args),
+  ...createScanDetectionSlice(...args),
   ...createModelPlacementSlice(...args),
   ...createUnitDisplaySlice(...args),
   ...createSpaceMouseSlice(...args),

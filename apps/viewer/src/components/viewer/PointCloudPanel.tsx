@@ -22,6 +22,7 @@ import { PointCloudLegend } from './PointCloudLegend';
 import { PointCloudClasses } from './PointCloudClasses';
 import { DeviationPanel } from './DeviationPanel';
 import { AssistantAction } from './assistant/AssistantAction';
+import { ScanDetectionSection } from './scan-detection/ScanDetectionSection';
 import { applyPointCloudAlignmentToggle } from '@/hooks/ingest/pointCloudAlignment';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 
@@ -282,6 +283,9 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
           and points are loaded. The panel renders nothing when there
           are no triangles in the scene. */}
       <DeviationPanel triangleCount={triangleCount} />
+
+      {/* Scan to BIM (#6894): detect and review proposed IFC elements. */}
+      <ScanDetectionSection />
       </div>
     </div>
   );

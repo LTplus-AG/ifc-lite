@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import type { DeviationDistances } from '@ifc-lite/renderer';
-import { cleanup, click, render } from '@/test/render';
+import { cleanup, click, render, waitFor } from '@/test/render';
 import { fixtureModel } from '@/test/store-fixture';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { useViewerStore } from '@/store';
@@ -158,6 +158,8 @@ test('#6833 deviation: the Point clouds panel header attaches this source', asyn
   adopt(await storedRun(twoAssets({ expressId: 1, modelIndex: 0 }, { expressId: 2, modelIndex: 0 })));
   useViewerStore.setState({ pointCloudAssetCount: 2 });
   const ui = render(renderPanelBody('pointclouds', () => undefined));
+  // The Point clouds panel is a lazy chunk (#6894): wait for it to mount.
+  await waitFor(() => !!ui.querySelector('button[aria-label="Discuss with AI"]'), 'the Point clouds panel loaded');
   const button = ui.querySelector('button[aria-label="Discuss with AI"]');
   assert.ok(button, 'Discuss with AI in the Point clouds header');
   click(button);

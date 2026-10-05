@@ -75,6 +75,7 @@ async function seedClashRevB(): Promise<EvidenceSnapshot> {
 /** Native IDS run of the committed sample IDS against a parsed model; evidence is the native report. */
 async function validate(store: IfcDataStore, modelId: string): Promise<EvidenceSnapshot> {
   const document = parseIDS(await readFile(samples('building-architecture.ids'), 'utf8'));
+  // @raw-entity-enumeration-ok freshly parsed source model with no mutation view; the IDS report records its source entity count
   const report = await validateIDS(document, createDataAccessor(store, modelId),
     { modelId, schemaVersion: 'IFC4', entityCount: store.entities.count });
   // The run's wall-clock time is the only non-deterministic evidence field; freeze it so recordings can be compared byte for byte.

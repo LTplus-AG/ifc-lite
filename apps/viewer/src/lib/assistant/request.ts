@@ -12,6 +12,7 @@ import { adapterFor } from './adapters/registry';
 import { CLASH_GROUP_OUTPUT_GUIDANCE } from './clash-taxonomy';
 import { MODEL_CHANGE_OUTPUT_GUIDANCE } from '../actions/model-change';
 import { SCENE_ACTION_OUTPUT_GUIDANCE } from '../actions/scene-actions';
+import { CHECK_AUTHORING_GUIDANCE } from '../check-authoring/guidance';
 import { useViewerStore } from '@/store';
 import { useAssistant } from './conversation';
 
@@ -98,6 +99,8 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     if (state.snapshot.source !== 'flow') system = `${system}\n${MODEL_CHANGE_OUTPUT_GUIDANCE}`;
     // Scene actions are proposals too: nothing changes the view until the user applies them.
     if (state.snapshot.source !== 'flow') system = `${system}\n${SCENE_ACTION_OUTPUT_GUIDANCE}`;
+    // IDS, information rules and report outlines are drafted from validation results or any loaded model (P07).
+    if (state.snapshot.source === 'validation' || state.snapshot.source === 'loadReport') system = `${system}\n${CHECK_AUTHORING_GUIDANCE}`;
     // Every source now carries guidance, so the full system prompt is re-bounded.
     if (JSON.stringify(messages).length + system.length > 90_000) { fail('context-limit'); return false; }
     if (attachments.screenshot) {

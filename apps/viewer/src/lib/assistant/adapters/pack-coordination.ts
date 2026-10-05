@@ -3,5 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { EvidenceAdapter } from './types';
+import { changesAdapter } from './changes';
+import { changeSetsAdapter } from './change-sets';
+import { scheduleAdapter } from './schedule';
+import { semanticAdapter } from './semantic';
 
-export const PACK: readonly EvidenceAdapter[] = [];
+export const PACK: readonly EvidenceAdapter[] = [changesAdapter, changeSetsAdapter, scheduleAdapter, semanticAdapter];

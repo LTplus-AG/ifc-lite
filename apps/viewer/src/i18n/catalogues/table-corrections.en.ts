@@ -88,6 +88,7 @@ export const tableCorrectionsEn = {
   'receiptValidation.refused.model-unavailable': 'The validated model is no longer loaded.',
   'receiptValidation.refused.busy': 'Wait for the running workflow to finish.',
   'receiptValidation.refused.failed': 'Validation failed: {detail}',
+  'receiptValidation.notRecorded': 'The check ran and its report is in Validation, but this receipt could not record the counts: it was undone meanwhile or is not saved.',
   'assistant.proposalMapping': 'Table mapping proposal',
   'assistant.proposalMappingSummary': { one: '{count} column matched by {key}', other: '{count} columns matched by {key}' },
   'assistant.proposalMappingNext': 'Mappings are reviewed against the table rows: open Data Connector with the table and choose Suggest mapping.',

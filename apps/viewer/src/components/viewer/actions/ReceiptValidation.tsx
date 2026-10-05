@@ -33,7 +33,8 @@ export function ReceiptValidation({ receipt }: { receipt: ModelChangeReceipt }) 
       const { recordReceiptRerun, rerunReceiptValidation } = await import('@/lib/actions/validation-rerun');
       const outcome = await rerunReceiptValidation(useViewerStore, receipt);
       if (!outcome.ok) { setError(t(`receiptValidation.refused.${outcome.reason}`, { detail: outcome.detail ?? '' })); return; }
-      if (outcome.receipt.validation) await recordReceiptRerun(receipt.id, outcome.receipt.validation);
+      // The report is published either way; say so when this receipt could not take the counts (undone or unsaved).
+      if (outcome.receipt.validation && !await recordReceiptRerun(receipt.id, outcome.receipt.validation)) setError(t('receiptValidation.notRecorded'));
     } catch (failure) {
       // A storage refusal keeps the report; the receipt just does not record the counts.
       console.error('[model-changes] recording the validation rerun failed', failure);

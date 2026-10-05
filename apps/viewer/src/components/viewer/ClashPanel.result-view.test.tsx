@@ -107,7 +107,7 @@ describe('Clash panel selection (U02, #6925)', () => {
     const ui = await mount(result(THREE), reviews);
     click(button(ui, /Select all 3 matching results/)!);
     assert.match(text(ui), /All 3 matching results are selected\./);
-    assert.match(text(ui), /3 selected/);
+    assert.doesNotMatch(text(ui), /\b3 selected/, 'the select-all line states the count once');
     assert.equal(button(ui, /Group selected \(3\)/)?.disabled, false);
 
     // Hiding the resolved finding changes the population: "all 3" no longer names it.

@@ -238,6 +238,7 @@ export function SourceBrowser({
   const startFileAreas = fileAreasPaged.start;
   const enterFileAreaDirect = useCallback(
     (project: SourceProject, fileArea: SourceContainer) => {
+      setSkipProjectsOnBack(true);
       projectIdRef.current = project.id;
       setSelectedProject(project);
       // Required even though this skips the file-areas step: Back lands there,

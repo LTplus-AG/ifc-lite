@@ -7,9 +7,9 @@
  * carries no archive for the current platform (#5525).
  *
  * binary.ts derives the release tag from the package version, so a version
- * that reaches npm without a matching `v<version>` release (1.20.0 and 1.21.0
- * both did) 404s on every platform. Instead of failing, look up the newest
- * OLDER `vX.Y.Z` release that does carry this platform's archive, via the
+ * that reaches npm without a matching release (1.20.0 and 1.21.0 both did)
+ * 404s on every platform. Instead of failing, look up the newest OLDER release
+ * of the SAME major that does carry this platform's archive, via the
  * unauthenticated GitHub releases API. The caller verifies the fallback's
  * checksum exactly as it does the primary download.
  */
@@ -28,6 +28,27 @@ const RELEASES_DOWNLOAD_URL = `${RELEASES_PAGE_URL}/download`;
  */
 const PER_PAGE = 100;
 const MAX_PAGES = 5;
+
+/**
+ * Tag prefixes a server-bin release can live under, newest scheme first.
+ * Releases from 2.0.1 on are tagged `server-v<version>`. Before that they
+ * shared the root product's `v<version>` namespace, and collided with it:
+ * root v2.0.0 already existed (asset-less), so server-bin 2.0.0 got no release
+ * of its own and installed 1.22.1 instead (#6900). The root is at v10, so
+ * every later 2.x-10.x would have collided the same way.
+ */
+export const SERVER_RELEASE_TAG_PREFIXES = ['server-v', 'v'] as const;
+
+/** The candidate release tags for a server-bin version, in download order. */
+export function serverReleaseTags(version: string): string[] {
+  return SERVER_RELEASE_TAG_PREFIXES.map((prefix) => `${prefix}${version}`);
+}
+
+/** The version a server-bin release tag stands for, or null for any other tag. */
+function versionFromTag(tag: string): string | null {
+  const prefix = SERVER_RELEASE_TAG_PREFIXES.find((p) => tag.startsWith(p));
+  return prefix ? tag.slice(prefix.length) : null;
+}
 
 /** A download that failed with an HTTP status (as opposed to a network error). */
 export class HttpStatusError extends Error {
@@ -72,7 +93,7 @@ function compareSemver(a: [number, number, number], b: [number, number, number])
 
 /**
  * Return this release's asset URL for `archiveName` when the release is a
- * published `vX.Y.Z` release carrying both the archive and a checksum
+ * published server-bin X.Y.Z release carrying both the archive and a checksum
  * (per-asset sidecar or SHA256SUMS). A release with the archive but no
  * checksum would fail the fail-closed verification anyway, so skip it here
  * and keep looking for one that can actually install.
@@ -103,9 +124,9 @@ async function sumsCoverArchive(candidate: Candidate, archiveName: string): Prom
 
 function usableAsset(release: ApiRelease, archiveName: string): Candidate | null {
   if (release.draft === true || release.prerelease === true) return null;
-  if (typeof release.tag_name !== 'string' || !release.tag_name.startsWith('v')) return null;
-  const version = release.tag_name.slice(1);
-  if (!parseSemver(version) || !Array.isArray(release.assets)) return null;
+  if (typeof release.tag_name !== 'string') return null;
+  const version = versionFromTag(release.tag_name);
+  if (!version || !parseSemver(version) || !Array.isArray(release.assets)) return null;
 
   const assets = (release.assets as ApiAsset[]).filter(
     (a) => typeof a.name === 'string' && (a.state === undefined || a.state === 'uploaded')
@@ -121,8 +142,8 @@ function usableAsset(release: ApiRelease, archiveName: string): Candidate | null
 }
 
 /**
- * Find the newest release OLDER than `requestedVersion` that carries
- * `archiveName` plus its checksum. Never throws: API, rate-limit and network
+ * Find the newest release OLDER than `requestedVersion`, within its major,
+ * that carries `archiveName` plus its checksum. Never throws: API, rate-limit and network
  * failures come back as `{ found: null, reason }` so the caller can put them
  * in its error message.
  */
@@ -173,6 +194,11 @@ export async function findFallbackRelease(
       // Only ever fall BACK: a release newer than the requested version is
       // not what this package version was built against.
       if (compareSemver(semver, requested) >= 0) continue;
+      // Nor across a major: the bump is the signal that the HTTP API differs,
+      // so an older major would silently ignore or invert documented
+      // behaviour (#6900: 2.0.0 ran 1.22.1, with the opposite cache DELETE
+      // contract). Failing loudly is the better outcome.
+      if (semver[0] !== requested[0]) continue;
       candidates.push({ candidate, semver });
     }
 
@@ -192,7 +218,7 @@ export async function findFallbackRelease(
 
   return {
     found: null,
-    reason: `no release older than v${requestedVersion} in the ${MAX_PAGES * PER_PAGE} most recent carries ${archiveName} with a checksum`,
+    reason: `no v${requested[0]}.x release older than v${requestedVersion} in the ${MAX_PAGES * PER_PAGE} most recent carries ${archiveName} with a checksum`,
   };
 }
 

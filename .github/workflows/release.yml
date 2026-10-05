@@ -523,17 +523,7 @@ jobs:
           root=false
           server=false
           [ "$root_released" = "true" ] && { gh release view "v${VERSION}"    > /dev/null 2>&1 || root=true; }
-          [ "$sb_released"   = "true" ] && { gh release view "v${SB_VERSION}" > /dev/null 2>&1 || server=true; }
-
-          # When the two versions coincide, the ONE release must be created by
-          # the server-bin step, which uses the PAT. A GITHUB_TOKEN-created
-          # release emits no `release: published` event (GitHub recursion
-          # guard), so server-binaries.yml would never upload the archives and
-          # `npx @ifc-lite/server-bin` would 404 against an empty release.
-          if [ "${VERSION}" = "${SB_VERSION}" ] && [ "$server" = "true" ]; then
-            echo "root and server-bin versions coincide — letting the PAT-authored server-bin step create v${VERSION}"
-            root=false
-          fi
+          [ "$sb_released"   = "true" ] && { gh release view "server-v${SB_VERSION}" > /dev/null 2>&1 || server=true; }
 
           echo "run_root=${root}" >> $GITHUB_OUTPUT
           echo "run_server=${server}" >> $GITHUB_OUTPUT
@@ -609,7 +599,8 @@ jobs:
           VERSION: ${{ steps.get-version.outputs.version }}
 
       # @ifc-lite/server-bin downloads its native archive from a GitHub
-      # release tagged `v<its-own-version>` (packages/server-bin/src/binary.ts).
+      # release tagged `server-v<its-own-version>`
+      # (packages/server-bin/src/release-fallback.ts, SERVER_RELEASE_TAG_PREFIXES).
       # The root `v<version>` release above is keyed to the *highest* workspace
       # package version, which is usually NOT server-bin's — so without a
       # matching tag `npx @ifc-lite/server-bin` 404s on download, and native
@@ -617,13 +608,17 @@ jobs:
       # Create a release at server-bin's own version: that `release: published`
       # event triggers server-binaries.yml to build + upload the per-platform
       # archives to this tag, so the download URL resolves with fresh binaries.
+      #
+      # Its own `server-v` namespace, NOT `v`: the two used to share `v*`, and
+      # server-bin 2.0.0 collided with the root's asset-less v2.0.0 of
+      # 2026-03-09. "Release exists" read as "already published", so no build
+      # ever ran and installs fell back to 1.22.1 (#6900).
       - name: Create server-bin binary release
         if: steps.release-gate.outputs.run_server == 'true'
         run: |
           # SB_VERSION arrives via env (see below), not spliced into this script.
-          TAG="v${SB_VERSION}"
-          # Skip when the tag already exists (server-bin unchanged this cycle,
-          # or it happens to equal the root release already created above).
+          TAG="server-v${SB_VERSION}"
+          # Skip when the tag already exists (server-bin unchanged this cycle).
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "Release $TAG already exists, skipping (server binaries already published)"
           else

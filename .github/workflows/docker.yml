@@ -42,7 +42,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Optional v-prefixed release tag to rebuild and publish'
+        description: 'Optional server-bin release tag (server-v2.0.1, or legacy v1.22.1) to rebuild and publish'
         required: false
         type: string
 
@@ -67,10 +67,11 @@ env:
 jobs:
   docker:
     name: Build & Push Docker Image
-    # Changesets publishes one GitHub release per package. Only the v-prefixed
-    # product release owns the server image; scoped package releases must not
-    # fan out into duplicate multi-arch builds.
-    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
+    # Changesets publishes one GitHub release per package. Only the server-bin
+    # release (`server-v<version>`, release.yml) owns the server image; scoped
+    # package releases must not fan out into duplicate multi-arch builds. (The
+    # root `v*` release is created with GITHUB_TOKEN and fires no event.)
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'server-v')
     # Keep recurring image builds out of Depot's metered runner pool. This is
     # a public repository, so GitHub's standard Ubuntu runner is free.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","dkr"]') || 'ubuntu-latest' }}
@@ -123,10 +124,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # tag release as version (e.g. 0.5.0)
-            type=match,pattern=v(.*),group=1,event=tag
+            # tag release as version (e.g. server-v2.0.1 or legacy v1.22.1 -> 2.0.1 / 1.22.1)
+            type=match,pattern=^(?:server-)?v(.*)$,group=1,event=tag
             # workflow_dispatch recovery for a release that exceeded its cap
-            type=match,pattern=v(.*),group=1,value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
+            type=match,pattern=^(?:server-)?v(.*)$,group=1,value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
             # tag release also as latest
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=latest,enable=${{ github.event_name == 'release' || inputs.release_tag != '' }}

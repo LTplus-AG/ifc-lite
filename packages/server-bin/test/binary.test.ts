@@ -335,7 +335,7 @@ describe('downloadBinary - checksum verification gates extraction (PR #2650)', (
     const { platform } = getBinaryInfo();
     expect(archiveName).toBe(platform.archiveName);
     expect(String(archivePath).endsWith(platform.archiveName)).toBe(true);
-    expect(String(assetUrl).endsWith(`/v${PKG_VERSION}/${platform.archiveName}`)).toBe(true);
+    expect(String(assetUrl).endsWith(`/server-v${PKG_VERSION}/${platform.archiveName}`)).toBe(true);
 
     // Extraction must actually have been observed, or the ordering claim
     // below would be vacuously true.
@@ -351,18 +351,18 @@ describe('downloadBinary - checksum verification gates extraction (PR #2650)', (
     }
   });
 
-  it('verifies against the ALTERNATE URL that actually succeeded, not the primary one that failed', async () => {
-    // The primary v${version} URL 404s; the server-v${version} alternate
-    // succeeds. `resolvedAssetUrl` exists specifically so the checksum
-    // sidecar is fetched from the release that produced the bytes on disk -
-    // fetching it from the primary (failed) URL would 404 the sidecar too
-    // and fail the whole install closed on an otherwise-good binary.
+  it('verifies against the legacy v<version> URL that actually succeeded, not the server-v one that failed', async () => {
+    // Releases up to 2.0.0 are tagged v<version>; the server-v<version> URL
+    // tried first 404s for them. `resolvedAssetUrl` exists specifically so
+    // the checksum sidecar is fetched from the release that produced the
+    // bytes on disk - fetching it from the failed URL would 404 the sidecar
+    // too and fail the whole install closed on an otherwise-good binary.
     const { platform } = getBinaryInfo();
-    const primaryUrl = `https://github.com/LTplus-AG/ifc-lite/releases/download/v${PKG_VERSION}/${platform.archiveName}`;
-    const altUrl = `https://github.com/LTplus-AG/ifc-lite/releases/download/server-v${PKG_VERSION}/${platform.archiveName}`;
+    const serverUrl = `https://github.com/LTplus-AG/ifc-lite/releases/download/server-v${PKG_VERSION}/${platform.archiveName}`;
+    const legacyUrl = `https://github.com/LTplus-AG/ifc-lite/releases/download/v${PKG_VERSION}/${platform.archiveName}`;
 
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      if (url === primaryUrl) throw new Error('ENOTFOUND (primary)');
+      if (url === serverUrl) return { ok: false, status: 404, statusText: 'Not Found' };
       return fakeDownloadResponse();
     }));
 
@@ -370,8 +370,7 @@ describe('downloadBinary - checksum verification gates extraction (PR #2650)', (
 
     expect(verifyChecksumMock).toHaveBeenCalledTimes(1);
     const [, assetUrl] = verifyChecksumMock.mock.calls[0];
-    expect(assetUrl).toBe(altUrl);
-    expect(assetUrl).not.toBe(primaryUrl);
+    expect(assetUrl).toBe(legacyUrl);
   });
 
   it('extracts, chmods and persists NOTHING when verification fails', async () => {
@@ -425,15 +424,16 @@ describe('downloadBinary - fallback when the version has no release (#5525)', ()
     return { ok: true, status: 200, headers: { get: () => null }, json: async () => body };
   }
 
-  /** A `v<version>` release; `assets` lists asset names (the archive's own name via `$`). */
-  function release(version: string, assets: string[], extra: Record<string, unknown> = {}) {
+  /** A `<prefix><version>` release; `assets` lists asset names (the archive's own name via `$`). */
+  function release(version: string, assets: string[], extra: Record<string, unknown> = {}, prefix = 'v') {
+    const tag = `${prefix}${version}`;
     return {
-      tag_name: `v${version}`,
+      tag_name: tag,
       draft: false,
       prerelease: false,
       assets: assets.map((a) => {
         const name = a.replace('$', archiveName());
-        return { name, state: 'uploaded', browser_download_url: `${RELEASES}/v${version}/${name}` };
+        return { name, state: 'uploaded', browser_download_url: `${RELEASES}/${tag}/${name}` };
       }),
       ...extra,
     };
@@ -458,7 +458,7 @@ describe('downloadBinary - fallback when the version has no release (#5525)', ()
         return body === undefined ? status(404, 'Not Found') : { ok: true, status: 200, text: async () => body };
       }
       // Every version-derived URL for the package version 404s.
-      if (url.includes(`/v${PKG_VERSION}/`) || url.includes(`/server-v${PKG_VERSION}/`) || url.includes(`/${PKG_VERSION}/`)) {
+      if (url.includes(`v${PKG_VERSION}/`)) {
         return status(404, 'Not Found');
       }
       return okDownload();
@@ -595,6 +595,26 @@ describe('downloadBinary - fallback when the version has no release (#5525)', ()
 
     await downloadBinary();
     expect(verifyChecksumMock.mock.calls[0][1]).toBe(`${RELEASES}/v1.16.2/${archiveName()}`);
+  });
+
+  it('falls back to a server-v<version> release like a legacy v<version> one', async () => {
+    apiBody = [release('1.16.4', ['$', '$.sha256'], {}, 'server-v'), release('1.16.3', ['$', '$.sha256'])];
+
+    await downloadBinary();
+    expect(verifyChecksumMock.mock.calls[0][1]).toBe(`${RELEASES}/server-v1.16.4/${archiveName()}`);
+  });
+
+  it('never falls back across a major version (#6900)', async () => {
+    // server-bin 2.0.0 shipped with no release of its own and silently ran
+    // 1.22.1, whose cache DELETE contract is the opposite of 2.0.0's.
+    readFileMock.mockImplementation(async (path: string) =>
+      String(path).endsWith('package.json') ? JSON.stringify({ version: '2.0.0' }) : ''
+    );
+    apiBody = [release('2.0.0', []), release('1.22.1', ['$', '$.sha256'])];
+    fetchMock.mockImplementation(async (url: string) => (url.startsWith(API) ? json(apiBody) : status(404, 'Not Found')));
+
+    await expect(downloadBinary()).rejects.toThrow(/No fallback release was used: no v2\.x release older than v2\.0\.0/);
+    expect(verifyChecksumMock).not.toHaveBeenCalled();
   });
 
   it('authenticates the releases lookup with GITHUB_TOKEN when it is set', async () => {

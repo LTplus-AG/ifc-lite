@@ -41,9 +41,10 @@ on:
         # Backfill lever: a plain dispatch only produces 1-day artifacts, so
         # before this input existed a release missing an archive (issue
         # #2619, v1.16.6 shipped without the win32-x64 zip) could not be
-        # repaired self-service. Supplying an existing v* tag uploads the
-        # rebuilt archives to that release and re-verifies its assets.
-        description: 'Existing release tag (e.g. v1.16.6) to upload the built archives to; leave empty for artifacts only'
+        # repaired self-service. Supplying an existing server-v* (or legacy
+        # v*) tag uploads the rebuilt archives to that release and re-verifies
+        # its assets.
+        description: 'Existing release tag (e.g. server-v2.0.1, or legacy v1.16.6) to upload the built archives to; leave empty for artifacts only'
         required: false
         type: string
         default: ''
@@ -62,8 +63,8 @@ jobs:
   validate-server-binaries:
     name: Validate Server Binary (${{ matrix.target }})
     # Changesets emits a release event for every scoped package. Only the
-    # v-prefixed product release should spend runners validating server bins.
-    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
+    # server-bin release (`server-v*`) should spend runners validating server bins.
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'server-v')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     strategy:
@@ -208,7 +209,7 @@ jobs:
     name: Validate Server Binary (${{ matrix.target }})
     if: >-
       github.event_name != 'pull_request'
-      && (github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v'))
+      && (github.event_name != 'release' || startsWith(github.event.release.tag_name, 'server-v'))
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     strategy:
@@ -344,13 +345,14 @@ jobs:
 
   release-server-binaries:
     name: Release Server Binary (${{ matrix.target }})
-    # Only build + upload server binaries for version-tagged releases (e.g.
-    # `v2.1.9`). Without this filter every published release fires this job,
-    # so non-version tags like `fixtures-v1` end up with stray server
-    # tarballs uploaded to the wrong release. Manual `workflow_dispatch`
-    # is still allowed for ad-hoc rebuilds.
+    # Only build + upload server binaries for server-bin releases,
+    # `server-v<version>`. Without this filter every published release fires
+    # this job, so tags like `fixtures-v1` or a root `v*` release end up with
+    # stray server tarballs uploaded to the wrong release (#6900: the root and
+    # server-bin once shared `v*`). Manual `workflow_dispatch` is still allowed
+    # for ad-hoc rebuilds and for backfilling a legacy `v*` server release.
     if: |
-      (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v'))
+      (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'server-v'))
       || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
@@ -703,7 +705,7 @@ jobs:
     if: |
       always()
       && (
-        (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v'))
+        (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'server-v'))
         || (github.event_name == 'workflow_dispatch' && inputs.upload-to-tag != '')
       )
     runs-on: ubuntu-latest

@@ -6402,6 +6402,20 @@
     "rtcRebaseDeltaFor: function",
     "rtcRebaseDeltaYup: function"
   ],
+  "@ifc-lite/geometry/scan-proposals": [
+    "DetectionRef: interface",
+    "ProposalBasis: type",
+    "ProposalClass: type",
+    "ProposalFit: interface",
+    "ProposalGeometry: type",
+    "ProposalSchema: type",
+    "ScanElementProposal: interface",
+    "ScanProposalEngine: type",
+    "ScanProposalOptions: interface",
+    "ScanProposalReport: interface",
+    "ScanProposalStats: interface",
+    "proposeScanElements: function"
+  ],
   "@ifc-lite/geometry/scan-segmentation": [
     "ScanAxisOrientation: type",
     "ScanCylinder: interface",

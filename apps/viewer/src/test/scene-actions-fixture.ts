@@ -19,8 +19,9 @@ export const SHARED = '0Shared000000000000001';
 /** Offset of the second model's renderer ids. */
 export const B_OFFSET = 10_000;
 
-function sceneModel(id: string, idOffset: number, entities: FixtureEntity[]): FederatedModel {
-  const geometryResult = {
+/** The render-frame geometry of one fixture model: IFC world = render frame + the WASM RTC offset (1000, 2000, 0). */
+function sceneGeometry(): GeometryResult {
+  return {
     meshes: [],
     coordinateInfo: {
       originShift: { x: 0, y: 0, z: 0 },
@@ -31,7 +32,10 @@ function sceneModel(id: string, idOffset: number, entities: FixtureEntity[]): Fe
       wasmRtcOffset: { x: 1000, y: 2000, z: 0 },
     },
   } as unknown as GeometryResult;
-  return { ...fixtureModel(id, { idOffset, entities }), maxExpressId: 1000, loadedAt: idOffset + 1, loadState: 'complete', geometryResult };
+}
+
+function sceneModel(id: string, idOffset: number, entities: FixtureEntity[]): FederatedModel {
+  return { ...fixtureModel(id, { idOffset, entities }), maxExpressId: 1000, loadedAt: idOffset + 1, loadState: 'complete', geometryResult: sceneGeometry() };
 }
 
 export function sceneModels() {

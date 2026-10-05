@@ -51,6 +51,8 @@ export const POLICED_ACTIONS = [
  * are repo-relative, forward-slashed.
  */
 export const REQUIRES_ROUTING_MARKER = new Set([
+  // Assistant scene actions (#6907): hide routes its targets through resolvePresentationIds.
+  'apps/viewer/src/lib/actions/scene-apply.ts',
   'apps/viewer/src/components/viewer/LensPanel.tsx',
   'apps/viewer/src/components/viewer/PropertiesPanel.tsx',
   'apps/viewer/src/components/viewer/SearchModal.filter.tsx',
@@ -89,6 +91,13 @@ export const REQUIRES_ROUTING_MARKER = new Set([
  * `ROUTING_MARKERS` call, each with a reason a reviewer can check.
  */
 export const NO_MARKER_REQUIRED = new Map([
+  [
+    'apps/viewer/src/lib/actions/scene-restore.ts',
+    'Assistant scene-action restore (#6907): showEntities releases exactly the ids applySceneActions ' +
+    'recorded in application.hide.added, which were already expanded through resolvePresentationIds at ' +
+    'apply time. Expanding again here could reveal elements the apply never hid (an ownership ledger, ' +
+    'like the lens hide/show pair).',
+  ],
   [
     // The lens hidden-id sync moved here from LensPanel.tsx with #5877 (the
     // lens runtime now outlives its panel); the gap below moved with it.

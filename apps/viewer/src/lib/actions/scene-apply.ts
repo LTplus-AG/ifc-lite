@@ -80,7 +80,8 @@ function applyIsolate(ids: number[], application: SceneApplication): number {
 
 function applyHide(ids: number[], application: SceneApplication): number {
   const state = useViewerStore.getState();
-  const added = presentation(ids).filter(id => !state.hiddenEntities.has(id));
+  // Routed inline (not through `presentation`) so the expansion-routing gate sees this hide's argument.
+  const added = resolvePresentationIds(state.cameraCallbacks?.resolveHighlightIds, ids).filter(id => !state.hiddenEntities.has(id));
   application.hide = { added };
   if (added.length) state.hideEntities(added);
   return ids.length;

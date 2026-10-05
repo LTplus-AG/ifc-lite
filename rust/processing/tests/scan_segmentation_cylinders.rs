@@ -16,8 +16,8 @@ mod scan_synthetic;
 use ifc_lite_processing::scan_segmentation::{
     segment_scan_points, AxisOrientation, ScanCylinder, ScanSegmentationOptions, ScanSegmentationReport,
 };
-use scan_synthetic::{cylinder_room, room_with, room_with_facets, twisted_fragments, two_rooms, vertical_strips, ExpectedCylinder, Rng, ScanSpec};
-use std::f64::consts::TAU;
+use scan_synthetic::{angle_between, half_column_on_floor, room_column_where, cylinder_room, room_with, room_with_facets, twisted_fragments, two_rooms, vertical_strips, ExpectedCylinder, Rng, ScanSpec};
+use std::f64::consts::{FRAC_PI_2, TAU};
 use std::sync::OnceLock;
 
 const AXIS_TOLERANCE_DEGREES: f64 = 2.;
@@ -190,6 +190,13 @@ fn issue_6870_every_cylinder_refusal_is_counted() {
         + s.cylinders_rejected_for_uneven_arc;
     assert!(s.cylinder_candidates_below_share >= 1, "the whole sphere fits no cylinder: {s:?}");
     assert!(refused + report.cylinders.len() as u64 >= s.cylinder_groups, "every group ends in a count: {s:?}");
+    // A free-standing 0.4 x 0.4 m panel is under the plane minimum, so its
+    // voxels form a group; all its normals are parallel, so no pair defines a
+    // candidate at all. That exit is counted too.
+    let panel = room_with_facets(&ScanSpec::default(), &[], &[[[2.8, 2., 1.], [0.4, 0., 0.], [0., 0., 0.4]]]);
+    let report = segment_scan_points(&panel, &ScanSegmentationOptions::default()).unwrap();
+    assert!(report.cylinders.is_empty());
+    assert!(report.stats.cylinder_candidates_below_share >= 1, "{:?}", report.stats);
 }
 
 #[test]
@@ -279,7 +286,66 @@ fn issue_6870_fragments_at_different_heights_are_not_one_cylinder() {
     // reported as a cylinder although no height shows a circular arc. Each
     // fragment here is truly curved (the facet guard passes it); only the
     // per-slice arc test sees that the arc is not the same at every height.
-    let report = segment_scan_points(&twisted_fragments(&ScanSpec { seed: 31, ..Default::default() }), &ScanSegmentationOptions::default()).unwrap();
+    let report = segment_scan_points(&twisted_fragments(&ScanSpec { seed: 31, ..Default::default() }, 90., 45., 9), &ScanSegmentationOptions::default()).unwrap();
     assert!(report.cylinders.is_empty(), "{:?}", report.cylinders);
     assert!(report.stats.cylinders_rejected_for_uneven_arc >= 1, "{:?}", report.stats);
+}
+
+#[test]
+fn issue_6870_large_and_finely_voxelised_columns_pass_the_facet_guard() {
+    // Round 3 review: adjacent voxels on a column many voxels in radius are
+    // under 3 degrees apart, so the facet guard measured nothing and refused.
+    let fine = ScanSegmentationOptions { voxel_size_metres: 0.01, ..Default::default() };
+    let (positions, column) = half_column_on_floor(&ScanSpec { seed: 41, density: 40_000., ..Default::default() }, 0.3);
+    assert_finds_exactly(&segment_scan_points(&positions, &fine).unwrap(), &[column]);
+    let medium = ScanSegmentationOptions { voxel_size_metres: 0.02, ..Default::default() };
+    // (r 0.8 at this voxel is lost before the guards, to plane growth: a
+    // separate, known limit of large radii.)
+    let (positions, column) = room_column_where(&ScanSpec { seed: 2, ..Default::default() }, 0.6, &|a, _, front| angle_between(a, front) < FRAC_PI_2);
+    assert_finds_exactly(&segment_scan_points(&positions, &medium).unwrap(), &[column]);
+}
+
+#[test]
+fn issue_6870_a_column_occluded_over_most_of_its_height_is_found() {
+    // Round 3 review: 180 degrees visible above `z`, only `low` degrees below
+    // (furniture in front). Every slice agrees with the same round surface.
+    for (z, low) in [(1.6, 80.), (1.8, 60.), (2.0, 75.)] {
+        for sigma in [0.003, 0.008] {
+            let h = f64::to_radians(low) / 2.;
+            let visible = move |a: f64, zz: f64, front: f64| {
+                if zz > z { angle_between(a, front) < FRAC_PI_2 } else { angle_between(a, front + FRAC_PI_2 - h) < h }
+            };
+            let (positions, column) = room_column_where(&ScanSpec { seed: 51, noise_sigma: sigma, ..Default::default() }, 0.3, &visible);
+            let report = segment_scan_points(&positions, &ScanSegmentationOptions::default()).unwrap();
+            // Two thirds of the height shows 60..80 degrees of arc, so the axis
+            // is less constrained: 3 cm axis tolerance here, radius 1 cm.
+            assert_eq!(report.cylinders.len(), 1, "z {z}, {low} deg, sigma {sigma}: {:?}", report.stats);
+            let found = &report.cylinders[0];
+            assert!((found.radius - column.radius).abs() <= RADIUS_TOLERANCE_METRES, "{}", found.radius);
+            assert!(off_axis(found, column.start).max(off_axis(found, column.end)) <= 0.03);
+        }
+    }
+}
+
+#[test]
+fn issue_6870_overlapping_fragments_that_disagree_by_height_are_refused() {
+    // Round 3 review: the apartment's corner clutter showed about a third of
+    // its claimed arc per slice. Here 150 degree pieces turned 25 degrees per
+    // 0.15 m: neighbouring slices overlap, so the group is one piece covering
+    // the circumference, and each piece is truly curved (the facet guard
+    // passes it), but only 0.47 of the slices agree with the widest one: just
+    // under the 0.5 bar, so a looser bar (0.3) lets it through.
+    let positions = twisted_fragments(&ScanSpec { seed: 31, ..Default::default() }, 150., 25., 9);
+    let report = segment_scan_points(&positions, &ScanSegmentationOptions::default()).unwrap();
+    assert!(report.cylinders.is_empty(), "{:?}", report.cylinders);
+    assert!(report.stats.cylinders_rejected_for_uneven_arc >= 1, "{:?}", report.stats);
+}
+
+#[test]
+fn issue_6870_a_column_with_density_gaps_is_one_cylinder() {
+    // Round 3 review (optional): three 0.3 m bands without points used to
+    // split the column into four coaxial pieces.
+    let gaps = |_: f64, z: f64, _: f64| !(0.5..0.8).contains(&z) && !(1.2..1.5).contains(&z) && !(1.9..2.2).contains(&z);
+    let (positions, column) = room_column_where(&ScanSpec { seed: 7, ..Default::default() }, 0.3, &gaps);
+    assert_finds_exactly(&segment_scan_points(&positions, &ScanSegmentationOptions::default()).unwrap(), &[column]);
 }

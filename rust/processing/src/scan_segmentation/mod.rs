@@ -25,6 +25,7 @@
 //! code was consulted.
 mod cylinder;
 mod cylinder_fit;
+mod cylinder_guards;
 mod extent;
 mod grow;
 mod normals;

@@ -150,6 +150,7 @@ export interface ScanSegmentationStats {
   cylindersRejectedAsFacets: number;
   cylindersRejectedForUnevenArc: number;
   cylindersRejectedAsDuplicates: number;
+  cylindersJoinedAcrossGaps: number;
   cylindersRejectedForArc: number;
   cylindersRejectedForLength: number;
 }

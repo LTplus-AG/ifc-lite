@@ -898,20 +898,26 @@ least `minCylinderInlierFraction` (0.6) of the group, and it is refused when:
 - a sphere fits its inliers as well;
 - they cover less than `minCylinderArcDegrees` (90);
 - they are shorter than `minCylinderLengthMetres` (0.3);
-- its normals do not turn around the axis as a cylinder's do: the median, over
-  neighbouring inlier voxels, of normal turn per radian of position is under
-  0.6 (about 1 on a real cylinder, near 0 on flat facets meeting at an angle,
-  such as a pier or a chamfered corner);
-- the median axial slice (3 voxels thick) shows under half of the arc the
-  whole candidate covers: fragments at different heights, such as clutter in
-  a wall corner, not one round surface;
+- fewer than half of its axial slices (3 voxels thick) agree with the widest
+  slice's arc (10° bins, three quarters inside it): fragments at different
+  heights, such as clutter in a wall corner. A column occluded low down
+  agrees, because its smaller lower arcs lie inside the arc seen higher up;
+- its normals do not behave as a round surface's: they point more than 11°
+  (RMS over 5° bins) away from the radial direction, or they turn under 0.6
+  radians per radian of position around the axis (compared between angular
+  bins at least 5° and one voxel of arc wide, so large columns at fine voxels
+  measure the same). Flat facets meeting at an angle, such as a pier or a
+  chamfered corner, fail this; when nothing can be measured the candidate
+  passes;
 - the radius falls outside `minCylinderRadiusMetres`..`maxCylinderRadiusMetres`.
   The minimum defaults to two voxel edges (0.06 m at the default voxel; below
   that a circumference cannot carry its curvature), the maximum to 1.5 m.
 
 Near-identical cylinders (axes within 5°, axis lines within half the larger
-radius, radii within 25 %, overlapping extents) are one surface found twice;
-the better supported one is kept.
+radius, radii within 25 %, overlapping extents) are one surface found twice,
+and the better supported one is kept. Coaxial pieces of one radius up to 0.3 m
+(plus two voxels) apart along the axis are one column with a band of missing
+points, and are joined.
 
 Each cylinder reports `axisStart`, `axisEnd`, `axisDirection` (up, unless
 horizontal), `radius`, `length`, `heightRange` along `upAxis`, `arcDegrees`,

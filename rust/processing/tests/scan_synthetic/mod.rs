@@ -389,17 +389,62 @@ pub fn room_with_facets(spec: &ScanSpec, cylinders: &[(ExpectedCylinder, f64)], 
 }
 
 /// Clutter decoy: 90 degree arc fragments of one r 0.1 axis at (3, 2), each
-/// 0.15 m tall and turned 45 degrees from the one below, from z 0.7 to 2.05.
+/// 0.15 m tall and turned `turn` degrees from the one below (`count` pieces
+/// of `arc` degrees from z 0.7).
 /// Each piece is truly curved and overlaps its neighbours (one connected
 /// group covering the whole circumference), but every height shows only one
 /// or two neighbouring pieces.
-pub fn twisted_fragments(spec: &ScanSpec) -> Vec<f32> {
+pub fn twisted_fragments(spec: &ScanSpec, arc: f64, turn: f64, count: usize) -> Vec<f32> {
     let mut s = Sampler { rng: Rng::new(spec.seed), spec, out: Vec::new() };
     s.out = room_with(spec, &[]);
-    for k in 0..9 {
+    for k in 0..count {
         let z = 0.7 + 0.15 * k as f64;
         let piece = ExpectedCylinder::vertical([3., 2.], 0.1, (z, z + 0.15));
-        s.cylinder_from(&piece, k as f64 * std::f64::consts::FRAC_PI_4, std::f64::consts::FRAC_PI_2);
+        s.cylinder_from(&piece, (k as f64 * turn).to_radians(), arc.to_radians());
     }
     s.out
+}
+
+/// Absolute difference of two plan angles, in 0..=pi.
+pub fn angle_between(a: f64, b: f64) -> f64 {
+    ((a - b + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI).abs()
+}
+
+impl Sampler<'_> {
+    /// Vertical column surface where `visible(plan angle, z)` holds; the angle
+    /// is measured from +x about the column's own axis.
+    fn column_where(&mut self, c: &ExpectedCylinder, visible: &dyn Fn(f64, f64) -> bool) {
+        let (z0, z1) = (c.start[2], c.end[2]);
+        let area = std::f64::consts::TAU * c.radius * (z1 - z0);
+        for _ in 0..(area * self.spec.density).round() as usize {
+            let (angle, z) = (self.rng.range(0., std::f64::consts::TAU), self.rng.range(z0, z1));
+            let p = [c.start[0] + c.radius * angle.cos(), c.start[1] + c.radius * angle.sin(), z];
+            if visible(angle, z) && self.rng.uniform() <= self.density_at(p) {
+                self.push(p);
+            }
+        }
+    }
+}
+
+/// A 3 x 3 m floor with a column of radius `radius` at (1.5, 1.5), 2.7 m
+/// tall, of which only the half facing a scanner at (3.5, 0.2) is sampled.
+pub fn half_column_on_floor(spec: &ScanSpec, radius: f64) -> (Vec<f32>, ExpectedCylinder) {
+    let column = ExpectedCylinder::vertical([1.5, 1.5], radius, (0., 2.7));
+    let mut s = Sampler { rng: Rng::new(spec.seed), spec, out: Vec::new() };
+    s.patch([0., 0., 0.], [3., 0., 0.], [0., 3., 0.], &|x, y| (x - 1.5).hypot(y - 1.5) > radius);
+    let front = (0.2_f64 - 1.5).atan2(3.5 - 1.5);
+    s.column_where(&column, &|a, _| angle_between(a, front) < std::f64::consts::FRAC_PI_2);
+    (s.out, column)
+}
+
+/// Room x 0..6, y 0..4, z 0..2.7 with a column `radius` at (2, 2.5) whose
+/// sampled surface is `visible(plan angle, z, angle facing the scanner at
+/// (3.5, 1.2))`.
+pub fn room_column_where(spec: &ScanSpec, radius: f64, visible: &dyn Fn(f64, f64, f64) -> bool) -> (Vec<f32>, ExpectedCylinder) {
+    let column = ExpectedCylinder::vertical([2., 2.5], radius, (0., 2.7));
+    let mut s = Sampler { rng: Rng::new(spec.seed), spec, out: Vec::new() };
+    s.out = room_with(spec, &[]);
+    let front = (1.2_f64 - 2.5).atan2(3.5 - 2.);
+    s.column_where(&column, &|a, z| visible(a, z, front));
+    (s.out, column)
 }

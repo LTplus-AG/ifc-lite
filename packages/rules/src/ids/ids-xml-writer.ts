@@ -3,11 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Serialise an `IDSDocument` as IDS 1.0 XML (#5225). Covers the subset of
- * the model `ruleSetToIds` produces: entity, attribute, property,
- * classification and material facets, with simple-value, pattern,
- * enumeration and numeric-bound constraints. Element order follows
- * `ids.xsd`, so `parseIDS` and `auditIDSDocument` read the result back.
+ * Serialise an `IDSDocument` as IDS 1.0 XML (#5225). Covers entity,
+ * attribute, property (with `dataType`), classification, material and
+ * partOf facets, requirement `instructions`, and simple-value, pattern,
+ * enumeration and numeric-bound constraints. Element order within a facet
+ * follows `ids.xsd`, so `parseIDS` and `auditIDSDocument` read the result
+ * back; applicability facets are written in the order given (the caller
+ * owns the XSD's entity, partOf, classification, attribute, property,
+ * material sequence there). The viewer's reviewed IDS drafts (#6915) also
+ * serialise through here.
  */
 
 import type {
@@ -67,7 +71,18 @@ function renderAttrs(attrs: Record<string, string | undefined>): string {
   return out;
 }
 
+/** Constraint parts this writer has no XML for: refused, never written as a weaker check. */
+function unwritable(constraint: IDSConstraint): string | null {
+  if (constraint.type !== 'simpleValue' && constraint.and?.length) return 'conjunctive restriction facets';
+  if (constraint.type !== 'bounds') return null;
+  if (constraint.unparseableFacets?.length) return 'unparseable bound facets';
+  const lengths = [constraint.length, constraint.minLength, constraint.maxLength, constraint.totalDigits, constraint.fractionDigits];
+  return lengths.some((value) => value !== undefined) ? 'length or digit bounds' : null;
+}
+
 function writeConstraint(xml: XmlLines, tag: string, constraint: IDSConstraint): void {
+  const refused = unwritable(constraint);
+  if (refused) throw new Error(`writeIdsXml: ${refused} are not supported by this writer`);
   xml.open(tag);
   switch (constraint.type) {
     case 'simpleValue':
@@ -101,50 +116,70 @@ function writeConstraint(xml: XmlLines, tag: string, constraint: IDSConstraint):
   xml.close(tag);
 }
 
-function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefined): void {
+/** `IfcRelContainedInSpatialStructure` -> the XSD's upper-case `relations` token. */
+function relationToken(relation: string): string {
+  return relation.toUpperCase();
+}
+
+function writeEntity(xml: XmlLines, facet: Extract<IDSFacet, { type: 'entity' }>, attrs: Record<string, string | undefined> = {}): void {
+  xml.open('entity', attrs);
+  writeConstraint(xml, 'name', facet.name);
+  if (facet.predefinedType) writeConstraint(xml, 'predefinedType', facet.predefinedType);
+  xml.close('entity');
+}
+
+/** `dataType` is an XSD attribute holding one upper-case name, never a restriction. */
+function dataTypeAttr(facet: Extract<IDSFacet, { type: 'property' }>): string | undefined {
+  if (!facet.dataType) return undefined;
+  if (facet.dataType.type !== 'simpleValue') throw new Error('writeIdsXml: a property dataType must be a simple value');
+  return facet.dataType.value;
+}
+
+function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefined, instructions?: string): void {
   switch (facet.type) {
     case 'entity':
-      xml.open('entity');
-      writeConstraint(xml, 'name', facet.name);
-      if (facet.predefinedType) writeConstraint(xml, 'predefinedType', facet.predefinedType);
-      xml.close('entity');
+      writeEntity(xml, facet, { instructions });
       return;
     case 'attribute':
-      xml.open('attribute', { cardinality });
+      xml.open('attribute', { cardinality, instructions });
       writeConstraint(xml, 'name', facet.name);
       if (facet.value) writeConstraint(xml, 'value', facet.value);
       xml.close('attribute');
       return;
     case 'property':
-      xml.open('property', { cardinality });
+      xml.open('property', { dataType: dataTypeAttr(facet), cardinality, instructions });
       writeConstraint(xml, 'propertySet', facet.propertySet);
       writeConstraint(xml, 'baseName', facet.baseName);
       if (facet.value) writeConstraint(xml, 'value', facet.value);
       xml.close('property');
       return;
     case 'classification':
-      xml.open('classification', { cardinality });
+      xml.open('classification', { cardinality, instructions });
       if (facet.value) writeConstraint(xml, 'value', facet.value);
       if (facet.system) writeConstraint(xml, 'system', facet.system);
       xml.close('classification');
       return;
     case 'material':
-      xml.open('material', { cardinality });
+      xml.open('material', { cardinality, instructions });
       if (facet.value) writeConstraint(xml, 'value', facet.value);
       xml.close('material');
       return;
     case 'partOf':
       // `ruleSetToIds` never produces one (a rule's `parent` subject matches
-      // an ancestor's Name, not its class); refusing here keeps the writer
-      // honest if a caller hands it a document from elsewhere.
-      throw new Error('writeIdsXml: partOf facets are not supported by this writer');
+      // an ancestor's Name, not its class). The XSD requires the related
+      // entity, so a partOf without one is refused rather than written invalid.
+      if (!facet.entity) throw new Error('writeIdsXml: a partOf facet needs its related entity');
+      xml.open('partOf', { relation: relationToken(facet.relation), cardinality, instructions });
+      writeEntity(xml, facet.entity);
+      xml.close('partOf');
+      return;
   }
 }
 
 function writeRequirement(xml: XmlLines, requirement: IDSRequirement): void {
   // IDS 1.0 has no cardinality on an entity facet inside requirements.
   const cardinality = requirement.facet.type === 'entity' ? undefined : requirement.optionality;
-  writeFacet(xml, requirement.facet, cardinality);
+  writeFacet(xml, requirement.facet, cardinality, requirement.instructions);
 }
 
 function writeSpecification(xml: XmlLines, spec: IDSSpecification): void {

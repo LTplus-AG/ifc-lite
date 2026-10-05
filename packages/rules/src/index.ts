@@ -54,4 +54,6 @@ export * from './engine/rule-engine.js';
 
 // ── IDS interchange: rule set -> IDS 1.0 export, simple IDS -> rule import (#5225)
 export { ruleSetToIds, type RuleSetToIdsOptions, type RuleSetToIdsResult, type RefusedRule } from './ids/rule-set-to-ids.js';
+// The one IDS 1.0 writer: rule-set export and the viewer's reviewed IDS drafts (#6915).
+export { writeIdsXml } from './ids/ids-xml-writer.js';
 export { idsToRuleSet, type IdsToRuleSetOptions, type IdsToRuleSetResult, type RefusedSpecification } from './ids/ids-to-rule-set.js';

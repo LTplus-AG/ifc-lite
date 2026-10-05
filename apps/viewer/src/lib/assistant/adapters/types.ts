@@ -68,6 +68,8 @@ export interface EvidenceAdapter {
   unavailableKey: TranslationKey;
   suggestionKeys: readonly TranslationKey[];
   readiness: (state: ViewerState) => AdapterReadiness;
+  /** Only for sources whose native state lives outside the viewer store: notifies readiness changes. */
+  subscribe?: (listener: () => void) => () => void;
   identity: (state: ViewerState) => unknown;
   reportStamp?: (state: ViewerState) => AnalysisStamp | null;
   capture: (state: ViewerState, limit: number) => AdapterCapture;

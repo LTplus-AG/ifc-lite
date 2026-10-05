@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 import { ArrowUpRight, MessageSquare, Play } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,13 @@ import type { AdapterReadiness } from '@/lib/assistant/adapters/types';
 
 /** Live native status per source: what the assistant would see if attached now. */
 function useReadiness(): ReadonlyMap<AssistantSource, AdapterReadiness> {
+  // Sources whose native state lives outside the viewer store re-render the picker themselves;
+  // the selector below re-reads every adapter on that render.
+  const [, refresh] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    const detach = ADAPTERS.flatMap(adapter => adapter.subscribe ? [adapter.subscribe(refresh)] : []);
+    return () => { for (const off of detach) off(); };
+  }, []);
   // One primitive signature keeps re-renders to actual status changes.
   const signature = useViewerStore(s => JSON.stringify(ADAPTERS.map(adapter => adapter.readiness(s))));
   return useMemo(() => {

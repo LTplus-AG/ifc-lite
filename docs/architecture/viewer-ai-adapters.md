@@ -1,46 +1,69 @@
 # Viewer AI native evidence adapter register
 
-Coverage belongs to [#6833](https://github.com/LTplus-AG/ifc-lite/issues/6833), within P01/P03 and the [full implementation ledger](viewer-ai-implementation.md). This register distinguishes enabled adapters from required gaps. Only explicitly attached evidence is sent; a registered panel does not automatically become an AI source. The baseline charter inventoried 31 panels; adding Assistant makes the current registry 32.
+Coverage belongs to [#6833](https://github.com/LTplus-AG/ifc-lite/issues/6833), within P01/P03 and the [full implementation ledger](viewer-ai-implementation.md). Only explicitly attached evidence is sent; opening a panel or the Assistant sends nothing. The register is code: `apps/viewer/src/lib/assistant/adapters/registry.ts`, with its completeness invariants in `registry.test.ts` (every source has exactly one adapter; every workspace panel is either mapped to a source or an explained boundary, never both and never neither).
 
-## Enabled adapter contracts
+## Adapter contract
 
-| Context | Native owner / source | Included row meaning | Coverage, freshness and boundaries |
-|---|---|---|---|
-| Clash | `clashSlice.clashResult` / `clashRawResult`; `@ifc-lite/clash` | A native finding with both model-qualified references, rule, native status/severity, measured or estimated distance kind and native selector discipline candidates for each side | Native summary/settings/truncation retained; report and model stamps govern freshness. Overlapping candidates stay ambiguous; unmatched types stay unknown. Human reviews are not projected or changed. Candidates do not establish responsibility; BCF assignees require verified mapping. |
-| IDS / information rules | `idsValidationReport`; native validators | A specification/cardinality summary, entity result or set result | Native counts, errors, applicability and source kind retained. Manual checklist is a distinct required adapter. |
-| Compare | `compareResult`; native comparison service | A native diff entry and canonical base/head references | Native counts/scope/exclusions and geometry limitations retained. No AI promotion of ambiguous matches. |
-| Flow | `flowDoc`; native registry/editor | Graph structure, with node/edge counts | Parameters, execution inputs/outputs and run state excluded. Typed graph patches have separate native validation and review. |
-| Load report | `buildLoadReports(models)` in `lib/loadReport.ts`; canonical loaded-model diagnostics | One original-load report per model | Original native counters, load time/path, approximations and supplied affected identities. Absent diagnostics remain unavailable, never clean. Does not establish validation or complete affected-element coverage. |
+Each source has one adapter (`adapters/types.ts`):
 
-All adapters currently project at most 100 rows, with bounded strings/depth/work and a 48,000-character complete JSON envelope. Native population counts remain independent of the included sample. Partial rows and omitted metadata are explicitly marked. Runtime model/revision pins stay local; saved conversations strip handles, credentials and current-freshness claims. Reports embed the exact included snapshot and state its historical/sample limits.
-
-## Required remaining contexts
-
-This is a gap list, not authorization to defer a context. Each family needs subtool-specific API/fixture measurements before its adapter is enabled.
-
-| Native panels / family | Required source distinctions and native actions |
+| Member | Meaning |
 |---|---|
-| Hierarchy / Properties | Effective attributes, inherited/type properties, quantities/materials/classifications/relationships, selected population and canonical overlay references; no buffer reparsing in retrieval loops. |
-| Sources / Layers | Provider retrieval errors, revision associations, layer provenance and native overlay changes; endpoint grants and credentials never become report content or imported authorization. |
-| Zones / Placement | Criteria, assigned population, workspace placements, source frames and units; native editors and restored scene state. |
-| Changes / Change sets | Native mutation journal, expected prior values, undo ownership, export receipts and revision associations; separate from model comparison. |
-| BCF | Local and server topics, viewpoints, review decisions, project vocabulary, publication receipts and uncertain outcomes; current scene references versus historical evidence. |
-| Validation | Manual checklist answers/unsupported items and retained report history; conversational IDS/rule authoring and separate semantic profile validation. |
-| Clash | Duplicate/coincident sets and native group/review evidence adapters, labeled classification policies and full-run classification beyond the discussion sample. Native manual membership now uses whole-partition CAS storage with backup/recovery; AI approve/apply/undo remains open. |
-| Lens / Lists / Charts | Editable filter groups, actual query population, table mappings, native aggregation units and denominators, missing values and revision invalidation. |
-| Measurements | Finished distance/polyline/angle/radius readings, stale placement markers, point/georeference readouts, native quantity and centreline inspection; unlike units/kinds cannot share an invented total. |
-| Cost | Native quantities, rate schedule, currency/unit conversion, scope, missing rates and selection/federation distinctions. |
-| Gantt | Native schedules, task/sequence validation, timing/playback/4D associations and unavailable dates; model-linked versus manually supplied facts. |
-| Script / Extensions | Existing script chat and sandbox diagnostics, capability manifests, Plan Card and Ideas provenance; migration must preserve old transcripts and grants. |
-| Flow | Actual run diagnostics/artifacts, tracking ownership, AI nodes and durable reviewed pause/resume; graph structure alone does not prove execution success. |
-| Document / Presentation | Saved native blocks, source snapshots, edited report reconciliation, PDF warnings and captured views; original issued evidence stays immutable. |
-| Appearance / Environment | Settings versus actual calculated/recorded outcomes; solar readouts/site/time and renderer/context availability; no invented daylight performance from display settings. |
-| Point clouds | Captured classification/scan/deviation/registration/alignment outputs and algorithm availability; display palette/stride is not analytical evidence. |
-| Drawing | Canonical section/drawing geometry and sheet/export diagnostics, units, cuts and annotation ownership. |
-| Model | Full supported native builders, editing commands, relationships and geometry operations; parameter/permission/preview/undo/IFC roundtrip matrix. |
-| Semantic | Read query results and partiality, supplied source records/spans, profile/schema/SHACL validation and native projections with revision identity. |
-| Session / Assistant | Actual shared editing permissions and private/shared artifact boundaries; provider usage, task/proposal receipts and recovery state. |
+| `id`, `group` | Source id (`sources.ts`) and picker group: Checks, Coordination, Quantities, Model, Automation. |
+| `panelIds`, `panelSubject` | Panels whose header **Discuss with AI** attaches this source (the first is where **Open** goes). When one panel hosts several sources, `panelSubject(state)` decides the current one (Clash vs duplicate scan, IDS/rules vs manual checklist). A panel can also force a second source explicitly (Flow's run bar). |
+| `titleKey`, `descriptionKey`, `rowMeaningKey`, `unavailableKey`, `suggestionKeys` | Catalogued copy for the picker, evidence view and suggested questions. |
+| `readiness(state)` | Live picker status (`TranslatableMessage`), `ready` only when a native result exists. Cheap: sizes and references, never a population walk. `subscribe` exists only for state outside the viewer store (Linked records). |
+| `identity(state)` | The native result captured, compared by reference (element-wise for composite identities). Replacing the native result makes the snapshot not current. |
+| `reportStamp(state)` | Run-time analysis stamp (`stampAnalysisReport`) of stored results, so a result that predates an edit is stale even when captured after it. Live sources omit it. |
+| `capture(state, limit)` | `{ summary, rows ≤ limit, totalRows, availability }`. Native totals live in `summary` and are never recomputed from the sample; `totalRows` is the exact native population; `availability` is `available` or `unavailable` (an available result with zero rows is *empty*). |
 
-## Completion evidence
+The common capture path (`evidence.ts`) adds the envelope every source shares: `E1…En` citations, model pins and fingerprints, the context stamp (any mutation/geometry/placement change invalidates every snapshot), `sourceAvailability`, `reportProvenance`, `sampled`, and the bounded projection (100 rows, bounded strings/depth/work, 48,000-character JSON). New adapters start each row with `{ kind, modelId?, globalId?, expressId?, unit?, status? }`; unknown provenance stays `null` or absent, never guessed. The five original adapters keep their established row shapes, which saved conversations already contain. Credentials, endpoints, grants, binary data, images, script source text and artifact bytes are never captured.
 
-The load adapter has native-counter and missing-diagnostic invariants, federated scope/replacement tests, a mounted real panel action and portable conversation/document validation. The real ArchiCAD browser journey checks captured failure counts against actual loaded-model diagnostics and records a screenshot when CI completes; wiring is not a completed run. Other adapters retain the evidence linked from the implementation ledger. Full adapter coverage and independent fixture acceptance are still outstanding.
+## Enabled adapters
+
+| Source (group) · panels | Native owner | Rows · summary | Freshness | Limits | Acceptance tests (`lib/assistant/adapters/` unless noted) |
+|---|---|---|---|---|---|
+| `clash` (Checks) · Clash | `clashResult`/`clashRawResult`; `@ifc-lite/clash` | Finding with both model-qualified references, rule, native status/severity, distance kind, discipline candidates · native summary, settings, truncation | Identity `clashResult`; run stamp | Candidates do not establish responsibility; human reviews not projected. Duplicate scans discuss as `duplicates`. | `../evidence.test.ts`, `components/viewer/assistant/*.test.tsx` |
+| `duplicates` (Checks) · Clash (duplicate scan) | Same result via `duplicateSetSections` / `groupDuplicateSets` | One coincident **set** (members ≤10 with model/GlobalId/expressId/type) · set, element and pair counts, severity meaning, tolerance (m) | `[clashResult, clashGroups]`; run stamp | Panel touch/review filters are component state, so all non-excluded pairs are covered. | `duplicates.test.tsx` (real duplicate scan at 1 and 2 models; >100 sets over three committed samples) |
+| `validation` (Checks) · Data validation (IDS/rules side) | `idsValidationReport`; native IDS and rules engines | Specification summary, then entity/set results · native summary, source kind, model info | Identity report; run stamp (IDS **and now information rules**) | Manual checklist is its own source. | `../evidence.test.ts`, `validation-rules-stamp.test.tsx` |
+| `manualChecklist` (Checks) · Data validation (manual side) | `manualLibrary`/`manualChecklist`/`manualAnswers`; `summarizeChecklist` | Item × loaded model with human verdict, comment, answer time · per-model status counts incl. unanswered, latest answer | `[library, checklist, answers]` | Verdicts are human decisions, not native results. The tab's own model picker is component state, so every loaded model is reported. | `manual-checklist.test.tsx` |
+| `lens` (Checks) · Lens | `lensRuleCounts`/`lensRuleEntityIds`/`lensAutoColorLegend` via `useLens` | Rule or legend entry with count and ≤5 resolved sample elements · matched, hidden and unmatched (null when not published) | Live refs | Unavailable while evaluation is pending. | `lens.test.tsx` (real `LensRuntimeHost` over parsed sample, 1 and 2 models) |
+| `bcf` (Checks) · BCF | `bcfProject` | Topic: status, priority, assignee, labels, dates, counts, IFC GUIDs ≤10 · counts by status | Identity `bcfProject` | No snapshots, comment text, server state or credentials. | `bcf.test.tsx` (committed `AC20-FZK-Haus_BIMcollabZoom.bcf`) |
+| `compare` (Coordination) · Compare | `compareResult` | Diff entry with base/head references · counts, scope, exclusions, geometry limits | Identity; run stamp | No AI promotion of ambiguous matches. | `../evidence.test.ts` |
+| `changes` (Coordination) · Changes | Undo/redo stacks, batch tags; `changeOperations()` | Edit: model, GlobalId (null for created/model-level), path, old/new value, time · per model/type counts, undo/redo depth, hidden reverted edits | Live refs | Separate from model comparison. | `changes.test.tsx` (120 real wall edits over two models) |
+| `changeSets` (Coordination) · Change sets | `changeSets`, `changeSetSummaries` | Set metadata, edit/element counts, models, edit kinds · totals | Live refs | No edit values; no updated/exported time is recorded natively. | `change-sets.test.tsx` |
+| `zones` (Coordination) · Zones | `zoneTableRows` and zone facts | Element × zone table row (unit m³) · per-set revision digest, counts, refusals by reason | `[zoneSets, zoneAssignments, zoneApportionment]` | Mesh basis only; never runs the split; refusals are `null` until a split exists. | `zones.test.tsx` |
+| `placement` (Coordination) · Placement | `modelPlacement`, `getEffectiveGeoreference`, `detectDoubleGeoreference` | One model: local translation/rotation (m, rad), georeference present/absent/unknown, frozen `ProjectedCRS`/`MapConversion` fields, double-georeference flag | `[models, modelPlacement, georefMutations]` | Unknown georeference stays unknown. | `placement.test.tsx` (real `building-architecture.ifc` EPSG:32760, `hello-wall.ifc`) |
+| `schedule` (Coordination) · Schedule | `scheduleData`; `taskStartIso`/`taskFinishIso` | Task: dates (null when unavailable), milestone, parent, products ≤10, provenance `ifc-file`/`session-authored` · counts, date range, provenance | Identity `scheduleData` | Generated vs imported is not recorded natively and is reported as such; data exists only after the Gantt panel extracts it. | `schedule.test.tsx` (real IfcTask extraction through the mounted panel) |
+| `semantic` (Coordination) · Linked records | `useSemanticSession` via `semantic-access.ts` | Record resolution, then validation finding · resolution/severity counts, profile, completeness | Session refs; picker subscribes to the session | Unavailable until the lazy panel loads; source text, revision URIs, endpoints and grants never captured; an in-flight question is guarded by the viewer-store freshness check only. | `semantic.test.tsx` |
+| `layerDiff` (Coordination) · Layers | `layerStack`, `layerStackDiff` | Added/modified/deleted path with composition resolution · counts, layer provenance | `[diff, stack, pathToId]` | No signatures/keys/documents. | `layer-diff.test.tsx` (real IFCX layer diff) |
+| `lists` (Quantities) · Lists | `listResult` (`runListFederated`) | Row with model/GlobalId/values · columns with units per model, native summary/groups | Identity; **new run stamp** (`recordListRun`, `carryListRun`) | Values in source units; mixed-unit sums withheld. | `lists.test.tsx` (mounted run over the real sample; 31-model federation) |
+| `charts` (Quantities) · Charts | Dashboards; aggregation moved from `ChartCard` to `lib/charts/card-aggregation.ts` (shared) | Bucket with value, count, unit · per chart status, measure, unit, unbucketed/unmeasured/unsupported | Dashboard, slice and dataset inputs | Element-filtered charts report `filter-unresolved`; no totals across charts. | `charts.test.tsx` |
+| `cost` (Quantities) · Cost | `readCostModels` (moved out of `useCostModels`), `bim.cost` `evaluateItem` | IfcCostItem with Amount/Currency/Dimension/diagnostics · per model state (`no-cost-source`/`no-cost-data`/`cost-data`), exact decimal root totals per currency and dimension | `[models, ifcDataStore]` | Never sums across currencies; nested items are not double-counted. | `cost.test.tsx` (real parser over the sample plus an appended cost schedule; no committed IFC carries IfcCostItem) |
+| `measurements` (Quantities) · Measurements | `measurementSlice`; panel readout maths | Distance/polyline/angle/radius with its own unit, stale flag · counts per kind, current distance total only | Live refs incl. stale set | Never summed across kinds; workspace points carry no model anchor (`modelId: null`). | `measurements.test.tsx` |
+| `drawingMeasurements` (Quantities) · 2D drawing | `measure2DResults`, `polygonArea2DResults` | Distance (m) or area (m²) · current drawing plane | Lists and drawing refs | Markup is not tagged with its section; text/cloud only counted. | `drawing-measurements.test.tsx` |
+| `deviation` (Quantities) · Point clouds | **New** `pointCloudDeviationStatistics` (moved from panel state; teardown-registered) | Scan asset statistics (m), no histograms · pooled statistics, tolerance share, clip range | Identity record; run stamp | Distances are to all scene meshes; COPC covers loaded chunks only. | `deviation.test.tsx`, `store/teardown-registry.test.ts` |
+| `loadReport` (Model) · Load report | `buildLoadReports(models)` | One original-load report per model | Identity `models` | Missing diagnostics are unavailable, never clean. | `../load-evidence.test.ts` |
+| `selection` (Model) · Properties, Hierarchy | Selection channels; `effectiveElementData` (moved out of the selection summary) | Element with effective attributes, psets and quantities with units (edits applied) · selection size, per model/class counts, bounds | Selection refs | Type-inherited psets, materials and classifications not included; per-element set bounds. Hierarchy has no header row, so its Discuss button is not placed. | `selection.test.tsx` (real wall #262 checked against STEP text; mounted edit) |
+| `flow` (Automation) · Flow | `flowDoc` | Graph structure | Identity `flowDoc` | No parameters or run state. | `../flow-proposal.test.ts`, assistant tests |
+| `flowRun` (Automation) · Flow run bar | `flowLastRun`, warnings, artifacts | Node result, warning, artifact metadata, output preview, log · status counts, duration | Run refs; run-window stamp after the run's own writes | Never artifact bytes; missing node rows on error do not mean success. | `flow-run.test.tsx` |
+| `script` (Automation) · Script | `scriptLastResult`/`Error`/`Diagnostics` | Return value (bounded), diagnostic, log entry · counts per level | Result refs; stamp on publication (`useSandbox`) | Script source and diagnostic snippets excluded. | `script.test.tsx` |
+| `document` (Automation) · Document | `documents`/`activeDocumentId` | Block: kind, excerpt/bindings, image/chart metadata only | Identity active document | No data URLs. | `document.test.tsx` |
+
+## Explicit boundaries
+
+| Panel | Reason (shown in the source picker under **Not discussable**) |
+|---|---|
+| Appearance | Display styling settings, not an analysis result. |
+| Model | Authoring tools; edits are discussed through Changes or Change sets. Native builder/command matrices remain P15A. |
+| Extensions | Installed extensions and their permissions; an extension's output is discussed in the panel that shows it. |
+| Session (collab) | Live roster and permissions; no analysis result. |
+| Sources | Cloud connections and retrieval; credentials and endpoint grants are never evidence. |
+| Presentation | Saved camera views; no analysis result. |
+| Assistant | Saved conversations are reopened, not attached as evidence. |
+| Environment | Sky, lighting and sun-time display settings. No solar analysis is recorded; display settings are not daylight performance. |
+
+## Remaining limits
+
+- Freshness during an in-flight request is checked on viewer-store changes; the Linked records session and the Data validation side choice are separate stores.
+- Population-wide AI classification beyond the 100-row sample, durable cross-analysis review, and per-source reviewed actions remain P04/P10/P18 work.
+- Acceptance tests use committed real models (`apps/viewer/public/samples/*`, the committed BCF archive) and real native engines; tests that need `tests/models/*` fixtures skip when they are absent. Rendered-browser screenshots for each new source have not been recorded.

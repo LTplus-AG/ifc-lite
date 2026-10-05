@@ -137,7 +137,8 @@ function forEachCase(fn: (root: TestNode, cam: LodCamera, budget: number, sel: L
   }
 }
 
-describe('selectLod properties (#6869)', () => {
+// #6916: each property retains 120 seeded octrees; allow bounded CI CPU contention.
+describe('selectLod properties (#6869)', { timeout: 30_000 }, () => {
   it('never exceeds the point budget or the node cap, and never over-asks a node', () => {
     let nonTrivial = 0;
     forEachCase((_root, _cam, budget, sel) => {

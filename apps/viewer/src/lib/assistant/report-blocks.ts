@@ -91,9 +91,11 @@ export function buildReportBlocks(input: ReportBuild): SlotBlock[] {
   }
   const evidence = record.evidence;
   const ledger = new StandardFontLedger();
-  const text = (slot: string, style: TextBlock['style'], value: string): SlotBlock => {
+  /** `generated` differs from `value` only for text a reviewer rewrote before saving: the block then reads as human-edited. */
+  const text = (slot: string, style: TextBlock['style'], value: string, generated = value): SlotBlock => {
     const stored = literalTemplateText(ledger.print(value));
-    return { slot, block: { kind: 'text', id: freshBlockId(), style, text: stored, aiProvenance: { origin: 'ai', slot, generated: stored } } };
+    const baseline = generated === value ? stored : literalTemplateText(ledger.print(generated));
+    return { slot, block: { kind: 'text', id: freshBlockId(), style, text: stored, aiProvenance: { origin: 'ai', slot, generated: baseline } } };
   };
   const counter = (prefix: string) => { let index = 0; return (style: TextBlock['style'], value: string) => text(`${prefix}:${index++}`, style, value); };
   const rows = parseCapturedEvidence(evidence.payload);
@@ -120,7 +122,8 @@ export function buildReportBlocks(input: ReportBuild): SlotBlock[] {
       text('claims-intro', 'small', 'Each claim was checked against the native values it cites. Supported means every cited value matches the captured row; it does not certify the conclusion.'));
     for (const presentation of input.claims) {
       const { claim, changes } = presentation;
-      body.push(text(`claim:${claim.id}`, 'body', relabelText(claim.text, presentation.current)), text(`claim-facts:${claim.id}`, 'caption', claimCaption(presentation, rows)));
+      body.push(text(`claim:${claim.id}`, 'body', relabelText(claim.text, presentation.current),
+        relabelText(claim.generatedText ?? claim.text, presentation.current)), text(`claim-facts:${claim.id}`, 'caption', claimCaption(presentation, rows)));
       const flagged = changes?.filter(change => change.kind !== 'unchanged') ?? [];
       if (flagged.length) {
         body.push(text(`claim-refresh:${claim.id}`, 'small', `Evidence refreshed (revision ${record.revision}): ${flagged.filter(c => c.kind === 'changed').length} cited value(s) changed`

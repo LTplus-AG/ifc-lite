@@ -31,6 +31,8 @@ export interface AiReportClaim {
   status: AiClaimStatus;
   /** True once a reviewer rewrote the claim text before saving. */
   edited: boolean;
+  /** The provider's own statement, kept once a reviewer rewrote it, so the block reads as human-edited. */
+  generatedText?: string;
 }
 
 export interface AiReportEvidence {
@@ -88,7 +90,7 @@ export function validateAiProvenance(value: unknown, at: string, errors: Documen
 function validClaim(value: unknown): boolean {
   if (!isRecord(value) || !isText(value.id, 100) || !isText(value.text, 4000) || !STATUSES.includes(value.status as string)
     || typeof value.edited !== 'boolean' || !Array.isArray(value.citations) || !value.citations.every(c => isText(c, 20))
-    || !Array.isArray(value.facts)) return false;
+    || (value.generatedText !== undefined && !isText(value.generatedText, 4000)) || !Array.isArray(value.facts)) return false;
   return value.facts.every(fact => isRecord(fact) && isText(fact.citation, 20) && isText(fact.field, 200)
     && (typeof fact.value === 'string' || typeof fact.value === 'boolean' || (typeof fact.value === 'number' && Number.isFinite(fact.value)))
     && (fact.unit === undefined || isText(fact.unit, 40)));

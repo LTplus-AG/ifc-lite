@@ -11,8 +11,10 @@ import { useViewerStore } from '@/store';
 import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
 import { captureEvidence } from './evidence';
 import { replaceEvidence, useAssistant, cancelAssistant } from './conversation';
-import { prepareReportDraft, saveReportDraft, isReportDraftCurrent } from './report-draft';
+import { prepareReportDraft, reviseReportClaim, saveReportDraft, isReportDraftCurrent } from './report-draft';
 import { validateDocumentSpec } from '../document/types';
+import { aiBlockOrigin } from '../document/ai-report-types';
+import { clashDiscussion, typedReport } from '@/test/ai-report-fixture';
 import { renderTemplate, templatePaths } from '../document/bindings';
 import { readContentRows } from '../storage/content-database';
 import { openConversation } from './library';
@@ -136,4 +138,18 @@ test('actual native PDF retains evidence and literal braces against a parsed rea
   assert.match(text, /1 of 1 native rows/);
   // Standard PDF fonts only: the appendix line must extract as real text, not re-encoded glyphs.
   assert.match(text, /E1\s+IfcWall vs IfcPipeSegment · hard · major · -0\.02 m \(estimate\)/);
+});
+
+// Review of #6972: a claim the reviewer rewrote before saving is their text, not AI-generated text.
+test('a claim edited during review is saved as human-edited text', () => {
+  clashDiscussion(typedReport('Hard clashes [E1].', [{ text: 'E1 overlaps by 2 cm.', facts: [{ citation: 'E1', field: 'distance', value: -2, unit: 'cm' }] }]));
+  const draft = reviseReportClaim(prepareReportDraft('Edited claim'), 'C1', { text: 'E1 overlaps by 20 mm.' });
+  const block = draft.document.blocks.find(entry => entry.kind === 'text' && entry.aiProvenance?.slot === 'claim:C1');
+  assert.ok(block?.kind === 'text');
+  assert.equal(block.text, 'E1 overlaps by 20 mm.');
+  assert.equal(aiBlockOrigin(block), 'human-edited');
+  assert.equal(block.aiProvenance?.generated, 'E1 overlaps by 2 cm.', 'the AI statement stays the generated baseline');
+  assert.deepEqual(validateDocumentSpec(JSON.parse(draft.documentJson)), []);
+  const untouched = prepareReportDraft('Untouched').document.blocks.find(entry => entry.kind === 'text' && entry.aiProvenance?.slot === 'claim:C1');
+  assert.ok(untouched?.kind === 'text' && aiBlockOrigin(untouched) === 'ai-generated');
 });

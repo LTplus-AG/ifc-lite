@@ -137,5 +137,5 @@ export function editClaim(claim: CheckedClaim, textValue: string, captured: Capt
   const statement = textValue.trim();
   const known = claim.citations.filter(citation => !claim.unknownCitations.includes(citation));
   const citations = [...new Set([...known, ...textCitations(statement)])];
-  return checkClaim({ id: claim.id, text: statement, citations, facts: kept, edited: true }, captured);
+  return checkClaim({ id: claim.id, text: statement, citations, facts: kept, edited: true, generatedText: claim.generatedText ?? claim.text }, captured);
 }

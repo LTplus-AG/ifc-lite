@@ -93,7 +93,7 @@ Each claim is checked against the captured evidence and labelled:
 
 - **Supported by data**: every cited value equals the captured value. A claimed unit is converted only to a unit of the same dimension that the evidence itself declares. A JSON number is compared exactly (`0` m does not match a 20 mm overlap, and `-0.1` m does not match `-0.14` m); only a value written as a string with its decimals, such as `"-0.10"`, may round to that many decimals.
 - **Unverifiable**: the claim cites no values, the field is absent or omitted, or the evidence records no comparable unit. Treat it as interpretation.
-- **Contradicted**: a cited row does not exist, or a value or unit dimension differs. Saving stays blocked until you choose **Edit claim** or **Remove claim**. An edited claim keeps only its uncontradicted facts, is checked again and is marked as edited by you. Any edit withdraws approval.
+- **Contradicted**: a cited row does not exist, or a value or unit dimension differs. Saving stays blocked until you choose **Edit claim** or **Remove claim**. An edited claim keeps only its uncontradicted facts, is checked again and is marked as edited by you; in the saved document its text block counts as edited AI text, not AI-generated text. Any edit withdraws approval.
 
 A supported claim means that the cited values match. It does not establish the conclusion. A block that is declared but invalid is refused rather than ignored. An answer without claims is drafted as before, with citation checks only.
 

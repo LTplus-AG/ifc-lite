@@ -69,7 +69,8 @@ test('requested German draft shows checked claims and a contradicted claim block
   assert.deepEqual(validateDocumentSpec(saved), []);
   assert.equal(saved.aiReport?.language, 'de');
   assert.deepEqual(saved.aiReport?.claims.map(claim => [claim.status, claim.edited]), [['supported', false], ['unverifiable', true]]);
-  assert.ok(saved.blocks.some(block => block.kind === 'text' && block.text === 'E2 überlappt deutlich.' && aiBlockOrigin(block) === 'ai-generated'));
+  assert.ok(saved.blocks.some(block => block.kind === 'text' && block.text === 'E2 überlappt deutlich.' && aiBlockOrigin(block) === 'human-edited'),
+    'a reviewer rewrite is their text, not AI text');
 });
 
 test('an answer declaring another language than the chosen one is flagged in the review', () => {

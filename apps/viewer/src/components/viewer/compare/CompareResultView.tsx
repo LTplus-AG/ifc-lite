@@ -54,7 +54,7 @@ export function CompareResultView({ result, split, matchedElements, exportBar, l
       />,
       coverage: <ResultCoverage
         status={geometryGap ? 'partial' : 'complete'}
-        counts={t('comparePanel.result.counts', { changed: number(changed), unchanged: number(counts.unchanged) })}
+        counts={t('comparePanel.result.counts', { count: changed, countDisplay: number(changed), unchanged: number(counts.unchanged) })}
         incomplete={geometryGap
           ? [t(result.placementOnlyGeometry ? 'comparePanel.result.noShapeChanges' : 'comparePanel.result.noGeometryChanges')]
           : []}

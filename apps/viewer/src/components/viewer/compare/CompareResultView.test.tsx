@@ -32,7 +32,10 @@ describe('comparison result view (U02, #6925)', () => {
     assert.ok(region);
     // A → B: wall modified, `removed` deleted, `new` added; nothing unchanged.
     assert.match(text(region), /Comparison · Data scope.*Models \(2\): A, B.*3 elements compared/);
-    assert.match(text(region), /Complete.*3 changed · 0 unchanged/);
+    assert.match(text(region), /Complete.*3 differences · 0 unchanged/);
+    // The Changed badge counts modified elements only; the coverage line must
+    // not state a second, different "changed" number (PR #6951 review).
+    assert.doesNotMatch(text(region), /\d+ changed/);
     assert.equal(region.querySelector('ul[aria-label="Incomplete"]'), null);
     assert.match(text(region), /EXPORT.*LIST/);
   });

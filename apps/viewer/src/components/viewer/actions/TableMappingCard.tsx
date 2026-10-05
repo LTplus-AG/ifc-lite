@@ -105,10 +105,10 @@ export function TableMappingCard({ modelId, headers, rows, mapping, onChange, on
         { column: problem.column, field: 'field' in problem ? problem.field : '' })}</li>)}</ul>}
     {sample && <div className="space-y-1">
       <p className="font-medium">{t('tableMapping.sampleTitle', { count: Math.min(SAMPLE, rows.length) })}</p>
-      {sample.total === 0 ? <p className="text-muted-foreground">{t('tableMapping.sampleEmpty')}</p>
+      {sample.refusal ? null : sample.total === 0 ? <p className="text-muted-foreground">{t('tableMapping.sampleEmpty')}</p>
         : <ul className="space-y-0.5">{sample.batches.flatMap((batch) => batch.changes).map((change, index) => <li key={index} className="break-words font-mono text-2xs">
           {change.target.globalId} · {changeField(change)}: {String(change.expected ?? '∅')} → {change.op === 'property.delete' ? '∅' : String(change.value)}</li>)}</ul>}
-      {sample.issues.length > 0 && <ConversionSummary conversion={sample} />}
+      {(sample.issues.length > 0 || sample.refusal) && <ConversionSummary conversion={sample} />}
     </div>}
     <div className="flex gap-2">
       <Button size="sm" className="h-7" disabled={problems.length > 0}

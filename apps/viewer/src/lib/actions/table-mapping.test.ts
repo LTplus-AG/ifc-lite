@@ -44,6 +44,12 @@ test('validation names unknown columns, a written identity column, duplicate tar
   assert.deepEqual(validateTableMapping(mapping, ['GUID', 'Fire', 'Rating']).map((p) => [p.kind, p.column]), [
     ['unit-needs-number', 'Fire'], ['target-twice', 'Rating'], ['identity-mapped', 'GUID'], ['unknown-column', 'Nope']]);
   assert.deepEqual(validateTableMapping(parseTableMapping(JSON.stringify(draft)), ['GUID', 'Fire', 'Width [mm]']), []);
+  // Dotted names are distinct targets, not one value written twice.
+  const dotted = parseTableMapping(JSON.stringify({ ...draft, columns: [
+    { column: 'Fire', target: 'property', pset: 'A.B', name: 'C', valueType: 'text' },
+    { column: 'Rating', target: 'property', pset: 'A', name: 'B.C', valueType: 'text' },
+  ] }));
+  assert.deepEqual(validateTableMapping(dotted, ['GUID', 'Fire', 'Rating']), []);
 });
 
 test('Suggest mapping sends bounded headers, samples and model set names, and returns only a strictly parsed draft', async () => {

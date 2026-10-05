@@ -126,7 +126,9 @@ export function validateTableMapping(mapping: TableMapping, headers: readonly st
     const empty = target.target === 'property' ? !target.pset.trim() || !target.name.trim()
       : target.target === 'quantity' ? !target.qset.trim() || !target.name.trim() : false;
     if (empty) problems.push({ kind: 'empty-name', column: target.column });
-    const field = `${target.target}:${targetField(target)}`;
+    // Structured, not the dotted label: `A.B` + `C` and `A` + `B.C` are different values.
+    const field = JSON.stringify(target.target === 'property' ? ['property', target.pset, target.name]
+      : target.target === 'quantity' ? ['quantity', target.qset, target.name] : ['attribute', target.name]);
     if (fields.has(field)) problems.push({ kind: 'target-twice', column: target.column, field: targetField(target) });
     fields.add(field);
     if (target.target === 'property' && target.unit && target.valueType !== 'real' && target.valueType !== 'integer') {

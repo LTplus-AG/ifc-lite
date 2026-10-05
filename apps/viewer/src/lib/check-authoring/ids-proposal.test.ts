@@ -97,6 +97,9 @@ test('refusals name the field and what to change', () => {
   refuse(withRequirement({ type: 'property', propertySet: 'Pset_WallCommon', baseName: 'Width', value: { type: 'bounds', minExclusive: 5, maxInclusive: 5 } }), /admits no value/);
   assert.doesNotThrow(() => parseIdsProposal(answer(withRequirement({ type: 'property', propertySet: 'Pset_WallCommon', baseName: 'Width',
     value: { type: 'bounds', minInclusive: 5, maxInclusive: 5 } }))), 'inclusive equal bounds admit exactly that value');
+  refuse(withSpec({ name: 'Walls\u0001' }), /specifications\[0\]\.name contains a control character \(U\+0001\)/);
+  refuse(withRequirement({ type: 'attribute', name: 'Name', value: { type: 'enumeration', values: ['A', 'B\u001b'] } }),
+    /requirements\[0\]\.value\.values\[1\] contains a control character \(U\+001B\)/);
   refuse(withRequirement({ type: 'classification', value: 'Ss_25' }), /system is required/);
   refuse(withRequirement({ type: 'partOf', relation: 'IfcRelAggregates', entity: { name: 'IFCBUILDING' }, cardinality: 'optional' }), /required or prohibited/);
   refuse(withRequirement({ type: 'attribute', name: 'Name', value: { type: 'enumeration', values: ['A', 'A'] } }), /repeats a value/);

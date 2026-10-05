@@ -11,7 +11,7 @@
 
 import { IFC_DATA_TYPES } from '@ifc-lite/data';
 import { translateXsdRegex, type IDSConstraint } from '@ifc-lite/ids';
-import { isRecord, onlyKeys } from './proposal-json';
+import { isRecord, onlyKeys, plainText } from './proposal-json';
 
 /** Declared units the native IDS validator can compare, and their SI factor. */
 const UNITS: Record<string, { kind: 'length' | 'area' | 'volume'; factor: number }> = {
@@ -72,7 +72,7 @@ const si = (value: number, factor: number): number => Number((value * factor).to
 function scalarText(value: Scalar, context: ConstraintContext, at: string): string {
   if (typeof value === 'number') return String(context.factor ? si(value, context.factor) : value);
   if (context.factor) throw new Error(`${at} must be a number when a unit is declared`);
-  return String(value);
+  return typeof value === 'string' ? plainText(value, at) : String(value);
 }
 
 function bound(value: unknown, key: string, context: ConstraintContext): number | undefined {

@@ -109,4 +109,19 @@ describe('writeIdsXml round-trips the buildingSMART IDS corpus (#6915)', () => {
       facet: { type: 'attribute', name: { type: 'simpleValue', value: 'Name' }, value: { type: 'bounds', maxLength: 4 } } }] }] }))
       .toThrow(/length or digit bounds are not supported/);
   });
+
+  // #6915 review: attribute-value normalisation turns raw line breaks and tabs into spaces, and
+  // XML 1.0 cannot carry other control characters at all.
+  it('keeps line breaks and tabs in attributes, and refuses control characters by field', () => {
+    const spec = (patch: Partial<IDSDocument['specifications'][number]>): IDSDocument => ({ info: { title: 'Whitespace' }, specifications: [{
+      id: 's', name: 'Walls', ifcVersions: ['IFC4'], minOccurs: 1, maxOccurs: 'unbounded',
+      applicability: { facets: [{ type: 'entity', name: { type: 'simpleValue', value: 'IFCWALL' } }] },
+      requirements: [{ id: 'r', optionality: 'required', instructions: 'Line one\nLine two\r\n\tindented',
+        facet: { type: 'attribute', name: { type: 'simpleValue', value: 'Name' } } }], ...patch }] });
+    const reread = parseIDS(writeIdsXml(spec({ instructions: 'Check:\n1. names' })));
+    expect(reread.specifications[0].instructions).toBe('Check:\n1. names');
+    expect(reread.specifications[0].requirements[0].instructions).toBe('Line one\nLine two\r\n\tindented');
+    expect(() => writeIdsXml(spec({ name: 'Walls\u0001' }))).toThrow(/specification "name" contains control character U\+0001/);
+    expect(() => writeIdsXml({ ...spec({}), info: { title: 'T\u001b' } })).toThrow(/title contains control character U\+001B/);
+  });
 });

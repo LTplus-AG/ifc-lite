@@ -30,15 +30,22 @@ export function onlyKeys(value: JsonRecord, allowed: readonly string[], at: stri
   if (unknown.length) throw new Error(`${at} has unsupported field(s) ${unknown.join(', ')}; allowed: ${allowed.join(', ')}`);
 }
 
+/** Control characters other than tab and line breaks: XML 1.0 cannot carry them, so a saved IDS could not either. */
+export function plainText(text: string, at: string): string {
+  const bad = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.exec(text);
+  if (bad) throw new Error(`${at} contains a control character (U+${bad[0].charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}); remove it`);
+  return text;
+}
+
 export function optionalText(value: JsonRecord, key: string, at: string, max = TEXT_LIMIT): string | undefined {
   if (value[key] === undefined) return undefined;
   if (!isText(value[key], max)) throw new Error(`${at}.${key} must be non-empty text of at most ${max} characters`);
-  return (value[key] as string).trim();
+  return plainText((value[key] as string).trim(), `${at}.${key}`);
 }
 
 export function requiredText(value: JsonRecord, key: string, at: string, max = 200): string {
   if (!isText(value[key], max)) throw new Error(`${at}.${key} is required: non-empty text of at most ${max} characters`);
-  return (value[key] as string).trim();
+  return plainText((value[key] as string).trim(), `${at}.${key}`);
 }
 
 /** Which typed kind a reply declares, if any. Prose never reaches the strict parsers. */

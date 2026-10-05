@@ -135,12 +135,19 @@ pub struct ScanSegmentationStats {
     pub cylinder_refits_failed: u64,
     /// Refits outside the radius range.
     pub cylinders_rejected_for_radius: u64,
+    /// Candidates whose inliers cover under 40 % of the patch their length and
+    /// arc claim: loose fits through scattered voxels, not a surface.
+    pub cylinders_rejected_as_sparse: u64,
     /// Candidates whose normals do not behave as a round surface's: they
     /// point more than 11 degrees (RMS over 5 degree bins) away from the
     /// radial direction, or turn under 0.6 radians per radian of position.
     /// Flat facets meeting at an angle (a pier, a chamfered corner) and
     /// clutter in a wall corner.
     pub cylinders_rejected_as_facets: u64,
+    /// Candidates whose inside is crossed by a scanned plane over more than
+    /// half their length: the walls of an inside corner cutting through the
+    /// circle a rounded crease fits, not a solid column or pipe.
+    pub cylinders_rejected_as_pierced: u64,
     /// Candidates where fewer than half the axial slices agree with the
     /// widest slice's arc: fragments at different heights (clutter in a wall
     /// corner), not one round surface.

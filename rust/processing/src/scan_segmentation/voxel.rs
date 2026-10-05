@@ -184,6 +184,11 @@ impl VoxelSet {
         self.keys.len()
     }
 
+    /// The voxel at `key`, if occupied.
+    pub fn lookup(&self, key: Key) -> Option<u32> {
+        self.index.get(&key).copied()
+    }
+
     /// Calls `visit` for every occupied voxel within `rings` of voxel `i`
     /// (excluding `i`), in a fixed z-y-x order.
     pub fn for_each_neighbor(&self, i: u32, rings: i32, mut visit: impl FnMut(u32)) {

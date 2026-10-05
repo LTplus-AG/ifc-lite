@@ -902,22 +902,38 @@ least `minCylinderInlierFraction` (0.6) of the group, and it is refused when:
   slice's arc (10° bins, three quarters inside it): fragments at different
   heights, such as clutter in a wall corner. A column occluded low down
   agrees, because its smaller lower arcs lie inside the arc seen higher up;
+- its inliers cover under 40 % of the patch its length and arc claim (a loose
+  fit through scattered voxels);
+- a scanned plane lies inside it (closer to the axis than radius minus
+  tolerance) over more than half its length: a flat surface cannot lie inside
+  a solid column or pipe, but the walls of an inside corner cut through the
+  circle a rounded crease fits;
 - its normals do not behave as a round surface's: they point more than 11°
   (RMS over 5° bins) away from the radial direction, or they turn under 0.6
   radians per radian of position around the axis (compared between angular
-  bins at least 5° and one voxel of arc wide, so large columns at fine voxels
-  measure the same). Flat facets meeting at an angle, such as a pier or a
-  chamfered corner, fail this; when nothing can be measured the candidate
-  passes;
+  bins at least 5° and one voxel of arc wide). The ends of each visible arc
+  are left out of the radial test, by one normal neighbourhood plus one bin,
+  because normals estimated from a one-sided neighbourhood lean toward the
+  arc there. Flat facets meeting at an angle, such as a pier or a chamfered
+  corner, fail this; when nothing can be measured the candidate passes;
 - the radius falls outside `minCylinderRadiusMetres`..`maxCylinderRadiusMetres`.
   The minimum defaults to two voxel edges (0.06 m at the default voxel; below
   that a circumference cannot carry its curvature), the maximum to 1.5 m.
 
 Near-identical cylinders (axes within 5°, axis lines within half the larger
 radius, radii within 25 %, overlapping extents) are one surface found twice,
-and the better supported one is kept. Coaxial pieces of one radius up to 0.3 m
-(plus two voxels) apart along the axis are one column with a band of missing
-points, and are joined.
+and the better supported one is kept. Coaxial pieces whose radii differ by at
+most one voxel and that lie up to 0.3 m (plus two voxels) apart along the axis
+are one column with a band of missing points, and are joined; a narrower
+column on a wider plinth stays two cylinders.
+
+Every threshold above is guarded by the cylinder acceptance table
+(`rust/processing/tests/scan_cylinder_acceptance.rs`): real pipes and columns
+(thin half-visible pipes at two voxels of radius, grazing ceiling pipes,
+occluded, out-of-round and strapped columns) must be found, and flat-facet
+decoys must not be. Stated limit: flat faces narrower than about 3.5 voxels
+(a pier of 0.1 m faces at 3 cm voxels) cannot be told from a pipe and are
+reported as cylinders.
 
 Each cylinder reports `axisStart`, `axisEnd`, `axisDirection` (up, unless
 horizontal), `radius`, `length`, `heightRange` along `upAxis`, `arcDegrees`,

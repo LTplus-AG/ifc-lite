@@ -186,7 +186,7 @@ fn issue_6870_every_cylinder_refusal_is_counted() {
     let s = &report.stats;
     let refused = s.cylinder_candidates_below_share + s.cylinder_refits_failed + s.cylinders_rejected_as_spheres
         + s.cylinders_rejected_for_arc + s.cylinders_rejected_for_length + s.cylinders_rejected_as_duplicates
-        + s.cylinders_rejected_for_radius + s.cylinders_rejected_as_facets
+        + s.cylinders_rejected_for_radius + s.cylinders_rejected_as_facets + s.cylinders_rejected_as_pierced + s.cylinders_rejected_as_sparse
         + s.cylinders_rejected_for_uneven_arc;
     assert!(s.cylinder_candidates_below_share >= 1, "the whole sphere fits no cylinder: {s:?}");
     assert!(refused + report.cylinders.len() as u64 >= s.cylinder_groups, "every group ends in a count: {s:?}");

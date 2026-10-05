@@ -118,19 +118,20 @@ fn turning_ratio(
 }
 
 /// Whether the candidate's normals fail to behave as a round surface's: they
-/// point more than 11 degrees (RMS over 5 degree bins) off the radial
-/// direction, or turn under 0.6 radians per radian of position. Real round
-/// surfaces measured at most 9.3 degrees and at least 0.68; flat facets,
-/// corner clutter and loose fits at least 11.8 degrees or at most 0.49.
+/// point more than 11 degrees (RMS over 5 degree bins, the ends of each
+/// visible arc trimmed) off the radial direction, or turn under 0.6 radians
+/// per radian of position. The cylinder acceptance table
+/// (`tests/scan_cylinder_acceptance.rs`) guards both bars.
 /// Nothing measurable (no normals, no comparable bins) is not evidence of
 /// facets.
 pub(crate) fn looks_faceted(
     cylinder: &Cylinder,
     inliers: &[u32],
     voxels: &VoxelSet,
+    rings: i32,
     normal_of: &dyn Fn(u32) -> Option<Vec3>,
 ) -> bool {
-    radial_deviation_degrees(cylinder, inliers, voxels, normal_of).is_some_and(|d| d > MAX_RADIAL_DEVIATION_DEGREES)
+    radial_deviation_degrees(cylinder, inliers, voxels, rings, normal_of).is_some_and(|d| d > MAX_RADIAL_DEVIATION_DEGREES)
         || turning_ratio(cylinder, inliers, voxels, normal_of).is_some_and(|ratio| ratio < MIN_TURNING_RATIO)
 }
 
@@ -144,6 +145,7 @@ fn radial_deviation_degrees(
     cylinder: &Cylinder,
     inliers: &[u32],
     voxels: &VoxelSet,
+    rings: i32,
     normal_of: &dyn Fn(u32) -> Option<Vec3>,
 ) -> Option<f64> {
     let frame = Frame::new(cylinder, inliers, voxels);
@@ -160,12 +162,94 @@ fn radial_deviation_degrees(
         cell[2] += facing.cos();
         cell[3] += facing.sin();
     }
-    let deviations: Vec<f64> = sums
-        .iter()
-        .filter(|c| c[0] != 0. || c[1] != 0.)
-        .map(|c| wrap(c[3].atan2(c[2]) - c[1].atan2(c[0])))
+    let occupied: [bool; MAX_TURN_BINS] = std::array::from_fn(|k| sums[k][0] != 0. || sums[k][1] != 0.);
+    // Where the visible arc ends, voxel normals come from a one-sided
+    // neighbourhood and lean toward the arc (measured: about 16 degrees RMS in
+    // the end bins, falling to about 4 beyond the neighbourhood). Trim
+    // `rings` voxels of arc plus one bin from each end of every visible run;
+    // gaps narrower than one voxel of arc are sampling, not ends.
+    let bin_width = TAU / MAX_TURN_BINS as f64;
+    let voxel_arc = voxels.size / cylinder.radius;
+    let bridge = (voxel_arc / bin_width).ceil() as usize;
+    let trim = (f64::from(rings) * voxel_arc / bin_width).ceil() as usize + 1;
+    let to_end = |k: usize, step_sign: isize| -> usize {
+        let (mut last, mut empty) = (0, 0);
+        for step in 1..MAX_TURN_BINS {
+            let b = (k as isize + step_sign * step as isize).rem_euclid(MAX_TURN_BINS as isize) as usize;
+            if occupied[b] {
+                (last, empty) = (step, 0);
+            } else {
+                empty += 1;
+                if empty > bridge {
+                    return last;
+                }
+            }
+        }
+        MAX_TURN_BINS
+    };
+    let deviations: Vec<f64> = (0..MAX_TURN_BINS)
+        .filter(|&k| occupied[k] && to_end(k, 1).min(to_end(k, -1)) >= trim)
+        .map(|k| wrap(sums[k][3].atan2(sums[k][2]) - sums[k][1].atan2(sums[k][0])))
         .collect();
     (!deviations.is_empty()).then(|| (deviations.iter().map(|d| d * d).sum::<f64>() / deviations.len() as f64).sqrt().to_degrees())
+}
+
+/// Inlier voxels over the voxels the claimed patch (length by arc) should
+/// hold: about 1 on a scanned surface (a column occluded low down 0.56..0.69),
+/// 0.1..0.4 for loose fits threaded through what is left of a group after its
+/// best candidate was refused.
+pub(crate) fn coverage(cylinder: &Cylinder, inliers: &[u32], voxels: &VoxelSet, arc_degrees: f64) -> f64 {
+    let frame = Frame::new(cylinder, inliers, voxels);
+    let along = |i: &u32| dot(sub(voxels.means[*i as usize], cylinder.point), cylinder.axis);
+    let hi = inliers.iter().map(along).fold(f64::NEG_INFINITY, f64::max);
+    let rows = (hi - frame.lo) / voxels.size + 1.;
+    let around = (arc_degrees.to_radians() * cylinder.radius / voxels.size).max(1.);
+    inliers.len() as f64 / (rows * around)
+}
+
+/// Share of the candidate's axial slices in which a planar voxel lies inside
+/// the circle (closer to the axis than radius minus tolerance). A scanned flat
+/// surface cannot lie inside a solid column or pipe (the wall behind a column
+/// is never seen), but the walls of an inside corner cut through the circle a
+/// rounded crease fits: on a real apartment scan 0.67 of such a candidate's
+/// slices were pierced, against 0 for every real round surface measured.
+pub(crate) fn pierced_share(cylinder: &Cylinder, inliers: &[u32], voxels: &VoxelSet, planar: &[bool], tolerance: f64) -> f64 {
+    let frame = Frame::new(cylinder, inliers, voxels);
+    let core = cylinder.radius - tolerance;
+    if core <= 0. {
+        return 0.;
+    }
+    let span = frame.thickness * frame.slices as f64;
+    let along = |p: Vec3| dot(sub(p, cylinder.point), cylinder.axis);
+    let mut pierced = vec![false; frame.slices];
+    let mut visit = |k: u32| {
+        let p = voxels.means[k as usize];
+        let t = along(p) - frame.lo;
+        if planar[k as usize] && (0. ..span).contains(&t) && cylinder.radial(p).0 < core {
+            pierced[frame.slice(cylinder, p)] = true;
+        }
+    };
+    // Visit the voxels in the candidate's bounding box (one voxel of margin),
+    // or every voxel when the box would hold more keys than there are voxels.
+    let ends = [frame.lo, frame.lo + span].map(|t| std::array::from_fn::<f64, 3, _>(|a| cylinder.point[a] + t * cylinder.axis[a]));
+    let key = |v: f64| (v / voxels.size).floor();
+    let lo: [f64; 3] = std::array::from_fn(|a| key(ends[0][a].min(ends[1][a]) - cylinder.radius) - 1.);
+    let hi: [f64; 3] = std::array::from_fn(|a| key(ends[0][a].max(ends[1][a]) + cylinder.radius) + 1.);
+    let cells: f64 = (0..3).map(|a| hi[a] - lo[a] + 1.).product();
+    if cells > voxels.len() as f64 {
+        (0..voxels.len() as u32).for_each(&mut visit);
+    } else {
+        for x in lo[0] as i32..=hi[0] as i32 {
+            for y in lo[1] as i32..=hi[1] as i32 {
+                for z in lo[2] as i32..=hi[2] as i32 {
+                    if let Some(k) = voxels.lookup([x, y, z]) {
+                        visit(k);
+                    }
+                }
+            }
+        }
+    }
+    pierced.iter().filter(|p| **p).count() as f64 / frame.slices as f64
 }
 
 /// Share of slices whose arc agrees with the widest slice's arc (10 degree

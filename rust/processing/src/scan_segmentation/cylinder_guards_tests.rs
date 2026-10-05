@@ -36,7 +36,7 @@ fn rotated_radial(voxels: &VoxelSet, i: u32, tilt: f64) -> Vec3 {
 #[test]
 fn issue_6870_radial_normals_pass_the_facet_test() {
     let (voxels, cylinder, inliers) = arc();
-    assert!(!looks_faceted(&cylinder, &inliers, &voxels, &|i| Some(rotated_radial(&voxels, i, 0.))));
+    assert!(!looks_faceted(&cylinder, &inliers, &voxels, 1, &|i| Some(rotated_radial(&voxels, i, 0.))));
 }
 
 #[test]
@@ -45,7 +45,7 @@ fn issue_6870_normals_that_turn_but_point_off_radial_fail_the_facet_test() {
     // radial deviation test can refuse them: the apartment's corner clutter
     // turned 0.74 but pointed 13.5 degrees off radial.
     let (voxels, cylinder, inliers) = arc();
-    assert!(looks_faceted(&cylinder, &inliers, &voxels, &|i| Some(rotated_radial(&voxels, i, 20_f64.to_radians()))));
+    assert!(looks_faceted(&cylinder, &inliers, &voxels, 1, &|i| Some(rotated_radial(&voxels, i, 20_f64.to_radians()))));
 }
 
 #[test]
@@ -54,13 +54,13 @@ fn issue_6870_normals_that_do_not_turn_fail_the_facet_test() {
     // increasingly off, and never turning (one flat facet).
     let (voxels, cylinder, inliers) = arc();
     let middle = 75_f64.to_radians();
-    assert!(looks_faceted(&cylinder, &inliers, &voxels, &|_| Some([middle.cos(), middle.sin(), 0.])));
+    assert!(looks_faceted(&cylinder, &inliers, &voxels, 1, &|_| Some([middle.cos(), middle.sin(), 0.])));
 }
 
 #[test]
 fn issue_6870_nothing_measurable_is_not_evidence_of_facets() {
     let (voxels, cylinder, inliers) = arc();
-    assert!(!looks_faceted(&cylinder, &inliers, &voxels, &|_| None));
+    assert!(!looks_faceted(&cylinder, &inliers, &voxels, 1, &|_| None));
 }
 
 #[test]
@@ -75,5 +75,5 @@ fn issue_6870_normals_that_turn_too_slowly_fail_the_facet_test() {
         let a = middle + 0.45 * (m[1].atan2(m[0]) - middle);
         Some([a.cos(), a.sin(), 0.])
     };
-    assert!(looks_faceted(&cylinder, &inliers, &voxels, &slow));
+    assert!(looks_faceted(&cylinder, &inliers, &voxels, 1, &slow));
 }

@@ -32,7 +32,7 @@
 //! counts. The RNG is seeded per group from its first voxel, and voxels are
 //! ordered by key, so results do not depend on point order.
 use super::cylinder_fit::{arc_degrees, refine, sphere_rms, Cylinder};
-use super::cylinder_guards::{looks_faceted, slice_agreement};
+use super::cylinder_guards::{coverage, looks_faceted, pierced_share, slice_agreement};
 use super::normals::{canonical_sign, cross, dot, sub, unit, Normals, Vec3};
 use super::options::{CylinderParams, Params};
 use super::report::{AxisOrientation, ScanCylinder, ScanSegmentationStats};
@@ -46,10 +46,10 @@ const MAX_PER_GROUP: usize = 4;
 /// their crossing by a radius or more.
 const MIN_PAIR_SIN: f64 = 0.5; // sin 30 degrees
 /// Near-identical cylinders (same axis line within this angle, axis lines
-/// within half the larger radius, radii within this ratio, overlapping
+/// within half the larger radius, radii within 25 %, overlapping
 /// extents) are one surface found twice; only the best supported is kept.
-const DUPLICATE_SIN: f64 = 0.087; // sin 5 degrees
 const DUPLICATE_RADIUS_RATIO: f64 = 1.25;
+const DUPLICATE_SIN: f64 = 0.087; // sin 5 degrees
 /// Coaxial pieces of one radius separated by up to this (plus two voxels for
 /// the rows lost at each edge) along the axis are one column with a band of
 /// missing points (occlusion, scanner shadow), not two cylinders.
@@ -57,6 +57,13 @@ const MAX_JOIN_GAP: f64 = 0.3;
 /// Share of axial slices whose arc must agree with the widest slice's arc;
 /// see `cylinder_guards::slice_agreement`.
 const MIN_SLICE_AGREEMENT: f64 = 0.5;
+/// Planes may pierce the inside of a candidate over at most this share of its
+/// length (a pipe through a wall is pierced over the wall's thickness only);
+/// see `cylinder_guards::pierced_share`.
+const MAX_PIERCED_SHARE: f64 = 0.5;
+/// Inliers must cover at least this share of the patch their length and arc
+/// claim; see `cylinder_guards::coverage`.
+const MIN_COVERAGE: f64 = 0.4;
 
 /// SplitMix64, as in the test generator: tiny and identical everywhere.
 struct Rng(u64);
@@ -228,7 +235,15 @@ pub(crate) fn detect(
                 stats.cylinders_rejected_for_uneven_arc += 1;
                 continue;
             }
-            if looks_faceted(&cylinder, &inliers, voxels, &normal_of) {
+            if coverage(&cylinder, &inliers, voxels, arc) < MIN_COVERAGE {
+                stats.cylinders_rejected_as_sparse += 1;
+                continue;
+            }
+            if pierced_share(&cylinder, &inliers, voxels, planar, tolerance) > MAX_PIERCED_SHARE {
+                stats.cylinders_rejected_as_pierced += 1;
+                continue;
+            }
+            if looks_faceted(&cylinder, &inliers, voxels, params.rings, &normal_of) {
                 stats.cylinders_rejected_as_facets += 1;
                 continue;
             }
@@ -240,7 +255,7 @@ pub(crate) fn detect(
             found.push((out, cylinder));
         }
     }
-    let mut found = suppress_duplicates(found, MAX_JOIN_GAP + 2. * voxels.size, params.up, stats);
+    let mut found = suppress_duplicates(found, MAX_JOIN_GAP + 2. * voxels.size, voxels.size, params.up, stats);
     found.sort_by(|a, b| {
         b.length.total_cmp(&a.length).then_with(|| {
             a.axis_start.iter().zip(&b.axis_start).fold(std::cmp::Ordering::Equal, |o, (x, y)| o.then(x.total_cmp(y)))
@@ -249,30 +264,32 @@ pub(crate) fn detect(
     (found, limit_hit)
 }
 
-/// How two cylinders relate along one axis line (parallel within 5 degrees,
-/// axis lines within half the larger radius, radii within 25 %): the same
-/// surface found twice (overlapping extents), or one column whose points have
-/// a band of missing density (a gap up to `max_gap` along the axis).
+/// How two cylinders on one axis line (parallel within 5 degrees, axis lines
+/// within half the larger radius) relate: the same surface found twice
+/// (overlapping extents, radii within 25 %: refits of one noisy or
+/// out-of-round surface), or one column whose points have a band of missing
+/// density (a gap up to `max_gap` along the axis, radii within
+/// `radius_tolerance`, one voxel: a column on a wider plinth stays two).
 enum Relation {
     Unrelated,
     Duplicate,
     Continuation,
 }
 
-fn relation(a: &(ScanCylinder, Cylinder), b: &(ScanCylinder, Cylinder), max_gap: f64) -> Relation {
+fn relation(a: &(ScanCylinder, Cylinder), b: &(ScanCylinder, Cylinder), max_gap: f64, radius_tolerance: f64) -> Relation {
     let (x, y) = (&a.1, &b.1);
     let parallel = dot(cross(x.axis, y.axis), cross(x.axis, y.axis)).sqrt() <= DUPLICATE_SIN;
-    let (ra, rb) = (x.radius.max(y.radius), x.radius.min(y.radius));
-    let coaxial = x.radial(y.point).0.max(y.radial(x.point).0) <= ra / 2.;
-    if !(parallel && coaxial && ra <= DUPLICATE_RADIUS_RATIO * rb) {
+    let larger = x.radius.max(y.radius);
+    let coaxial = x.radial(y.point).0.max(y.radial(x.point).0) <= larger / 2.;
+    if !(parallel && coaxial) {
         return Relation::Unrelated;
     }
     let along = |p: Vec3| dot(sub(p, a.0.axis_start), a.0.axis_direction);
     let (b0, b1) = (along(b.0.axis_start), along(b.0.axis_end));
     let gap = (b0.min(b1) - a.0.length).max(-b0.max(b1));
-    if gap <= 0. {
+    if gap <= 0. && x.radius.max(y.radius) <= DUPLICATE_RADIUS_RATIO * x.radius.min(y.radius) {
         Relation::Duplicate
-    } else if gap <= max_gap {
+    } else if gap > 0. && gap <= max_gap && (x.radius - y.radius).abs() <= radius_tolerance {
         Relation::Continuation
     } else {
         Relation::Unrelated
@@ -302,12 +319,18 @@ fn absorb(a: &mut ScanCylinder, b: &ScanCylinder, up: Vec3) {
 /// surface split across groups or tries), and join coaxial pieces separated
 /// by a short band without points. Repeats until nothing changes, so a chain
 /// of pieces joins regardless of order (bounded: each pass removes one).
-fn suppress_duplicates(mut found: Vec<(ScanCylinder, Cylinder)>, max_gap: f64, up: Vec3, stats: &mut ScanSegmentationStats) -> Vec<ScanCylinder> {
+fn suppress_duplicates(
+    mut found: Vec<(ScanCylinder, Cylinder)>,
+    max_gap: f64,
+    radius_tolerance: f64,
+    up: Vec3,
+    stats: &mut ScanSegmentationStats,
+) -> Vec<ScanCylinder> {
     found.sort_by(|a, b| b.0.inlier_voxels.cmp(&a.0.inlier_voxels).then(a.0.axis_start[0].total_cmp(&b.0.axis_start[0])));
     'pass: loop {
         for i in 0..found.len() {
             for j in i + 1..found.len() {
-                match relation(&found[i], &found[j], max_gap) {
+                match relation(&found[i], &found[j], max_gap, radius_tolerance) {
                     Relation::Unrelated => continue,
                     Relation::Duplicate => stats.cylinders_rejected_as_duplicates += 1,
                     Relation::Continuation => {

@@ -141,3 +141,12 @@ test('a single selection held only in selectedEntity is still the selection', as
   assert.equal(JSON.parse(snapshot.payload).sourceAvailability, 'available');
   assert.deepEqual(rowsOf(snapshot).map(row => [row.modelId, row.expressId, row.globalId]), [['arch', WALL, WALL_GUID]]);
 });
+
+// #6833: a one-element storey/multi-model channel is a single selection, not "nothing selected".
+test('a single selection held only in a one-element selectedEntities array is still the selection', async () => {
+  seedModel('arch', OFFSET, await sample('building-architecture.ifc'), WALL);
+  useViewerStore.setState({ selectedEntityId: null, selectedEntity: null, selectedEntities: [{ modelId: 'arch', expressId: WALL }] });
+  const snapshot = captureEvidence('selection');
+  assert.equal(JSON.parse(snapshot.payload).sourceAvailability, 'available');
+  assert.deepEqual(rowsOf(snapshot).map(row => [row.modelId, row.expressId, row.globalId]), [['arch', WALL, WALL_GUID]]);
+});

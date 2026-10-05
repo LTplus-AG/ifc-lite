@@ -174,7 +174,9 @@ test('#6833 Flow run evidence keeps native totals over a 100-row sample and neve
   assert.equal(payload.evidence.summary.startedAt, new Date(1_000).toISOString());
   assert.equal(payload.evidence.summary.nodeStatusCounts.error, 13);
   assert.equal(payload.evidence.summary.artifactCount, 1);
-  assert.equal(payload.evidence.summary.executedNodes, 130 - payload.evidence.summary.nodeStatusCounts.skipped);
+  // Independent of the adapter: the fixture skips i % 7 === 0 unless i % 10 === 0 over 0..129 (17 nodes).
+  assert.equal(payload.evidence.summary.nodeStatusCounts.skipped, 17);
+  assert.equal(payload.evidence.summary.executedNodes, 113);
   assert.ok(payload.evidence.rows.every(row => row.data.kind === 'nodeResult'), 'node results come first');
   assert.equal(payload.evidence.rows[10].data.error, 'boom 10');
   assert.doesNotMatch(snapshot.payload, /PDF-secret-bytes/);

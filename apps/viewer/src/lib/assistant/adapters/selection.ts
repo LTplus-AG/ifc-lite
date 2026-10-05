@@ -37,8 +37,22 @@ function selectionSize(s: ViewerState): number {
   if (s.selectedEntities.length > 1) return s.selectedEntities.length;
   if (s.selectedEntitiesSet.size > 1) return s.selectedEntitiesSet.size;
   if (s.selectedEntityIds.size > 1) return s.selectedEntityIds.size;
-  // Multi-model actions write `selectedEntity` without `selectedEntityId`; the Properties panel reads `selectedEntity`.
-  return s.selectedEntity || s.selectedEntityId !== null ? 1 : 0;
+  return singleRef(s) ? 1 : 0;
+}
+
+/**
+ * The one selected element, from whichever channel holds it: multi-model actions write `selectedEntity`
+ * without `selectedEntityId` (the Properties panel reads `selectedEntity`), and a one-element storey or
+ * multi-model set is a single selection too.
+ */
+function singleRef(s: ViewerState): EntityRef | null {
+  if (s.selectedEntity) return s.selectedEntity;
+  if (s.selectedEntities.length === 1) return s.selectedEntities[0];
+  if (s.selectedEntitiesSet.size === 1) {
+    const ref = stringToEntityRef([...s.selectedEntitiesSet][0]);
+    if (ref.expressId > 0) return ref;
+  }
+  return s.selectedEntityId !== null ? resolveEntityRef(s.selectedEntityId) : null;
 }
 
 function selectionRefs(s: ViewerState): { channel: Channel; refs: EntityRef[] } | null {
@@ -47,9 +61,8 @@ function selectionRefs(s: ViewerState): { channel: Channel; refs: EntityRef[] } 
     return { channel: 'multi', refs: [...s.selectedEntitiesSet].map(stringToEntityRef).filter(ref => ref.expressId > 0) };
   }
   if (s.selectedEntityIds.size > 1) return { channel: 'renderer-ids', refs: [...s.selectedEntityIds].map(resolveEntityRef) };
-  if (s.selectedEntity) return { channel: 'single', refs: [s.selectedEntity] };
-  if (s.selectedEntityId === null) return null;
-  return { channel: 'single', refs: [resolveEntityRef(s.selectedEntityId)] };
+  const single = singleRef(s);
+  return single ? { channel: 'single', refs: [single] } : null;
 }
 
 const isLegacy = (modelId: string) => modelId === 'legacy' || modelId === '__legacy__';

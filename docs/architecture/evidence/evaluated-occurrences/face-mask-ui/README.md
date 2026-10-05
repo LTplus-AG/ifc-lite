@@ -142,7 +142,7 @@ remesh. The planar member reopens 1:1.
   wasm geometry pipeline: two items under one product, textured binds the
   portable image, retained keeps the colour, corners partition exactly, 41
   siblings byte-identical, one extra mesh.
-- `apps/viewer/src/lib/appearance/face-masks.test.ts`: request scoping and
+- `apps/viewer/src/lib/appearance/face-masks-wasm.test.ts`: request scoping and
   reconciliation against the real planner; a geometry edit of a masked swept
   box (profile widened) is reported stale and the workspace drops the mask
   with its diagnostic; for a (12.345, 67.891, 0.1) m translation the test

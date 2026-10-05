@@ -118,7 +118,11 @@ All of these are required before production rollout is discussed:
 
 ## Reproducing the evaluation
 
-Fetch fixtures and build the viewer before running the corpus:
+Historical: the corpus runner, its `test:instanced-culling:corpus` script and
+the `CULL_CORPUS_*` variables were removed with the implementation (#4819),
+so the commands below no longer run. They are kept as a record of how the
+evaluation was produced. Fetch fixtures and build the viewer before running
+the corpus:
 
 ```bash
 pnpm fixtures

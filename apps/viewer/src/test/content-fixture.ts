@@ -8,6 +8,8 @@ import { beforeEach, mock } from 'node:test';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { clashGroupLibrary, useClashGroupLibrary, DEFAULT_GROUP_WORKSPACE } from '@/lib/clash/group-workspace';
+import { bcfDraftLibrary } from '@/lib/bcf-drafts/draft-library';
+import { bcfOutboxLibrary } from '@/lib/bcf-publication/outbox-store';
 import { modelChangeLibrary } from '@/lib/actions/receipts';
 import { waitFor } from './render.js';
 import { createDocumentSlice } from '@/store/slices/documentSlice';
@@ -61,7 +63,7 @@ beforeEach(async () => {
     localStorage.removeItem('ifc-lite-saved-comparisons');
     localStorage.removeItem('ifc-lite-clash-manual-groups');
     await clashGroupLibrary.restore();
-    await modelChangeLibrary.restore();
+    await Promise.all([bcfDraftLibrary.restore(), bcfOutboxLibrary.restore(), modelChangeLibrary.restore()]);
     useClashGroupLibrary.setState({ activeId: DEFAULT_GROUP_WORKSPACE });
     useViewerStore.setState({
       ...createDocumentSlice(useViewerStore.setState, useViewerStore.getState, useViewerStore),

@@ -4,6 +4,8 @@
 
 import { assistantLibrary } from '../assistant/library.js';
 import { clashGroupLibrary } from '../clash/group-workspace.js';
+import { bcfDraftLibrary } from '../bcf-drafts/draft-library.js';
+import { bcfOutboxLibrary, initializeBcfOutbox } from '../bcf-publication/outbox-store.js';
 import { modelChangeLibrary } from '../actions/receipts.js';
 import { useViewerStore } from '../../store/index.js';
 import { subscribeContentChanges } from './content-events.js';
@@ -17,6 +19,8 @@ function contentHosts() {
   return {
     assistant: { initialize: assistantLibrary.initialize, refresh: assistantLibrary.refresh },
     clashGroups: { initialize: clashGroupLibrary.initialize, refresh: clashGroupLibrary.refresh },
+    bcfDrafts: { initialize: bcfDraftLibrary.initialize, refresh: bcfDraftLibrary.refresh },
+    bcfOutbox: { initialize: initializeBcfOutbox, refresh: bcfOutboxLibrary.refresh },
     modelChanges: { initialize: modelChangeLibrary.initialize, refresh: modelChangeLibrary.refresh },
     document: { initialize: state.initializeDocuments, refresh: state.refreshDocuments },
     validation: { initialize: state.initializeValidationReports, refresh: state.refreshValidationReports },

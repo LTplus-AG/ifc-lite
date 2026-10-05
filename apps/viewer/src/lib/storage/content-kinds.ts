@@ -9,6 +9,8 @@ export const CONTENT_POLICIES = {
   document: { immutableEvidence: false },
   assistant: { immutableEvidence: false },
   clashGroups: { immutableEvidence: false },
+  bcfDrafts: { immutableEvidence: false },
+  bcfOutbox: { immutableEvidence: false },
   modelChanges: { immutableEvidence: false },
 } as const;
 export type ContentKind = keyof typeof CONTENT_POLICIES;

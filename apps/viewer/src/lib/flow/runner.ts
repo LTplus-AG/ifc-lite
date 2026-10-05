@@ -22,6 +22,10 @@ import { runFlow, checkAvailability, type HostFeatures, type FlowDocument, type 
 import { BROWSER_FEATURES, AUTOMATION_FEATURES, createStandardRegistry, invalidateGlobalIdIndex, referencedSecrets, type FlowHost } from '@ifc-lite/flow-nodes';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BrowserTrackingStore } from './persistence.js';
+import { createViewerBcfWriteGateway } from '../bcf-publication/flow-gateway.js';
+
+/** BCF write nodes share the viewer's durable publication outbox (#6896). */
+const bcfWrites = createViewerBcfWriteGateway();
 
 let registry: ReturnType<typeof createStandardRegistry> | undefined;
 
@@ -86,6 +90,7 @@ export async function runFlowInViewer(input: ViewerRunInput): Promise<RunResult>
     grants: parsed.value,
     networkGrants: parsed.value,
     defaultModelId: input.bim.model.activeId() ?? undefined,
+    bcfWrites,
     ...(input.tables ? { tables: input.tables } : {}),
     ...(input.openModel ? { openModel: input.openModel } : {}),
     ...(input.automation ? { automation: input.automation } : {}),

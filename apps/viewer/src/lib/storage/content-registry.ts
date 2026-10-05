@@ -4,6 +4,8 @@
 
 import { assistantContent } from '../assistant/persistence.js';
 import { clashGroupsContent } from '../clash/group-workspace.js';
+import { bcfDraftsContent } from '../bcf-drafts/draft-library.js';
+import { bcfOutboxContent } from '../bcf-publication/outbox-store.js';
 import { modelChangeContent } from '../actions/receipts.js';
 import { comparisonContent } from '../compare/savedComparisonPersistence.js';
 import { documentContent } from '../document/persistence.js';
@@ -18,6 +20,8 @@ export const CONTENT_DEFINITIONS = {
   document: documentContent,
   assistant: assistantContent,
   clashGroups: clashGroupsContent,
+  bcfDrafts: bcfDraftsContent,
+  bcfOutbox: bcfOutboxContent,
   modelChanges: modelChangeContent,
 } satisfies Record<ContentKind, Pick<ContentDefinition<{ id: string }>, 'kind' | 'legacyKey' | 'decode'>>;
 

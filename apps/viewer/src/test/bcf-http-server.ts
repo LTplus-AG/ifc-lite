@@ -10,7 +10,6 @@ import type { BcfCommentDto, BcfTopicDto, BcfViewpointDto } from '@ifc-lite/bcf-
 export const LOCAL_BCF_PROJECT = '00000000-0000-4000-8000-000000000001';
 export const LOCAL_BCF_TOKEN = 'local-test-token';
 export const LOCAL_BCF_USER = 'coordinator@example.test';
-const DATE = '2026-10-04T12:00:00Z';
 const STATUSES = ['Open', 'Resolved'];
 const TYPES = ['Issue', 'Clash'];
 const PRIORITIES = ['Normal', 'High'];
@@ -26,10 +25,14 @@ export interface LocalBcfState {
   tokenValid: boolean;
   /** Close the connection after the next accepted write is committed. */
   loseNextWriteResponse: boolean;
+  /** Accepted-write ordinals (1-based) whose responses are dropped after commit. */
+  loseResponsesOfWrites: Set<number>;
   acceptedWrites: number;
   receivedWrites: number;
 }
 
+/** Server-assigned timestamps use the peer's clock, as a real server's do. */
+const now = (): string => new Date().toISOString();
 function json(response: ServerResponse, value: unknown, status = 200): void {
   response.writeHead(status, { 'Content-Type': 'application/json' });
   response.end(JSON.stringify(value));
@@ -72,11 +75,11 @@ export async function startLocalBcfServer(): Promise<{
   close: () => Promise<void>;
 }> {
   const state: LocalBcfState = { topics: new Map(), writesAllowed: true, tokenValid: true,
-    loseNextWriteResponse: false, acceptedWrites: 0, receivedWrites: 0 };
+    loseNextWriteResponse: false, loseResponsesOfWrites: new Set(), acceptedWrites: 0, receivedWrites: 0 };
   let baseUrl = '';
   const commit = (response: ServerResponse, value: unknown, status = 201): void => {
     state.acceptedWrites += 1;
-    if (state.loseNextWriteResponse) {
+    if (state.loseNextWriteResponse || state.loseResponsesOfWrites.has(state.acceptedWrites)) {
       state.loseNextWriteResponse = false;
       response.destroy();
     } else json(response, value, status);
@@ -124,7 +127,7 @@ export async function startLocalBcfServer(): Promise<{
         const fields = topicFields(await body(request));
         if (!fields) { json(response, { message: 'Invalid topic fields or project vocabulary' }, 400); return; }
         const topic: BcfTopicDto = { ...fields, guid: randomUUID(), title: String(fields.title),
-          creation_date: DATE, creation_author: LOCAL_BCF_USER, modified_date: DATE,
+          creation_date: now(), creation_author: LOCAL_BCF_USER, modified_date: now(),
           authorization: { topic_actions: ['update', 'createComment', 'createViewpoint'] } };
         state.topics.set(topic.guid, { topic, comments: [], viewpoints: [] });
         commit(response, topic); return;
@@ -148,7 +151,7 @@ export async function startLocalBcfServer(): Promise<{
         if (!record(value) || typeof value.comment !== 'string' || !value.comment.trim()) {
           json(response, { message: 'Comment text required' }, 400); return;
         }
-        const comment: BcfCommentDto = { guid: randomUUID(), comment: value.comment, date: DATE,
+        const comment: BcfCommentDto = { guid: randomUUID(), comment: value.comment, date: now(),
           author: LOCAL_BCF_USER, topic_guid: stored.topic.guid,
           viewpoint_guid: typeof value.viewpoint_guid === 'string' ? value.viewpoint_guid : undefined };
         stored.comments.push(comment); commit(response, comment); return;

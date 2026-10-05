@@ -104,11 +104,13 @@ export function savedReconciliationOf(state: State, base: CapturedRun, head: Cap
 
 /**
  * The saved reconciliation for the current comparison; null for another one.
- * `stale` once any reconciled run predates later edits (or has no stamp): the
- * outcome then no longer describes the models and must not be shown as current.
+ * A compatible outcome is `stale` once any reconciled run predates later edits
+ * (or has no stamp): its findings then no longer describe the models and must
+ * not be shown as current. A refusal names properties of the runs themselves,
+ * which a later edit does not make untrue, so it is never stale.
  */
 export function currentReconciliationOf(state: ReconciliationState): { outcome: ReconcileOutcome; stale: boolean } | null {
   const saved = state.compareReconciliation;
   if (!saved || !state.compareResult || saved.comparison !== state.compareResult) return null;
-  return { outcome: saved.outcome, stale: saved.stamps.some(stamp => freshness(state, stamp) !== false) };
+  return { outcome: saved.outcome, stale: saved.outcome.ok && saved.stamps.some(stamp => freshness(state, stamp) !== false) };
 }

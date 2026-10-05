@@ -17,11 +17,18 @@
  *   included, quantities too), the nearest `IfcRelAggregates` ancestor
  *   that has one supplies it. The walk is iterative with a visited set (AGENTS.md
  *   "Bounding walks"), so a cyclic aggregation in a broken file ends.
+ *
+ * A `mutationView` (search and applicability pass the model's live one) puts
+ * in-session edits on top of the file for an element, or type object, that
+ * has edits, through the same overlay plain property rules read
+ * (`filter-evaluate-mutations.ts`); an edited value keeps its unit and so its
+ * SI factor. A complex property's `memberPath` reads the file as loaded: the
+ * overlay does not carry complex members. Type quantity sets and validation
+ * (which passes no view) read the file as loaded.
  */
 
 import {
   extractPropertiesOnDemand,
-  extractQuantitiesOnDemand,
   extractTypePropertiesOnDemand,
   extractTypeQuantitiesOnDemand,
   mergeInheritedPropertySets,
@@ -30,9 +37,11 @@ import {
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import { QuantityType, RelationshipType } from '@ifc-lite/data';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertyRule, QuantityRule } from './filter-rules.js';
 import { nameMatches, propertyCandidates, stringifyValue } from './filter-match.js';
 import { projectSiScale, projectUnitSymbol, quantityValueSiScale, QUANTITY_MEASURE_TYPE } from './measure-units.js';
+import { ownPropertySetsFor, quantitySetsFor, typePropertySetsFor } from './filter-evaluate-mutations.js';
 
 type MeasureSubject = Omit<PropertyRule, 'op' | 'value' | 'valueKind'> | Omit<QuantityRule, 'op' | 'value'>;
 
@@ -46,15 +55,20 @@ export interface MeasureValue {
   displayValues?: ReadonlyArray<string>;
 }
 
-/** `expressId`'s type-level property sets via `IfcRelDefinesByType`. */
-function inheritedTypePsets(store: IfcDataStore, expressId: number) {
+/** `expressId`'s type-level property sets via `IfcRelDefinesByType`, the type's edits on top when `mutationView` has any. */
+function inheritedTypePsets(store: IfcDataStore, expressId: number, mutationView: MutablePropertyView | undefined) {
   if (!store.relationships) return [];
   const typeIds = store.relationships.getRelated(expressId, RelationshipType.DefinesByType, 'inverse');
   if (typeIds.length === 0) return [];
-  if (store.source && store.source.length > 0) {
-    return extractTypePropertiesOnDemand(store, expressId)?.properties ?? [];
-  }
-  return (store.properties?.getForEntity?.(typeIds[0]) ?? []) as ReturnType<typeof extractPropertiesOnDemand>;
+  const base = store.source && store.source.length > 0
+    ? extractTypePropertiesOnDemand(store, expressId)?.properties ?? []
+    : (store.properties?.getForEntity?.(typeIds[0]) ?? []) as ReturnType<typeof extractPropertiesOnDemand>;
+  return typePropertySetsFor(base, typeIds[0], mutationView);
+}
+
+/** The view to read `expressId` through: only when it has edits there, so an unedited element reads the file at full fidelity. */
+function editsOf(mutationView: MutablePropertyView | undefined, expressId: number): MutablePropertyView | undefined {
+  return mutationView?.hasChanges(expressId) ? mutationView : undefined;
 }
 
 /**
@@ -71,8 +85,10 @@ function complexMembers(property: ExtractedProperty, memberPath: readonly string
   return level;
 }
 
-function readProperty(subject: Extract<MeasureSubject, { kind: 'property' }>, store: IfcDataStore, expressId: number): MeasureValue {
-  const merged = mergeInheritedPropertySets(extractPropertiesOnDemand(store, expressId), inheritedTypePsets(store, expressId));
+function readProperty(subject: Extract<MeasureSubject, { kind: 'property' }>, store: IfcDataStore, expressId: number, mutationView: MutablePropertyView | undefined): MeasureValue {
+  // The overlay drops complex members, so a member read stays on the file.
+  const view = subject.memberPath ? undefined : mutationView;
+  const merged = mergeInheritedPropertySets(ownPropertySetsFor(store, expressId, editsOf(view, expressId)), inheritedTypePsets(store, expressId, view));
   const values: string[] = [];
   const valueUnits: Array<string | undefined> = [];
   const valueSiScales: Array<number | undefined> = [];
@@ -107,8 +123,8 @@ function inheritedTypeQsets(store: IfcDataStore, expressId: number) {
   return typeIds.length > 0 ? (store.quantities?.getForEntity?.(typeIds[0]) ?? []) : [];
 }
 
-function readQuantity(subject: Extract<MeasureSubject, { kind: 'quantity' }>, store: IfcDataStore, expressId: number): MeasureValue {
-  const own = extractQuantitiesOnDemand(store, expressId);
+function readQuantity(subject: Extract<MeasureSubject, { kind: 'quantity' }>, store: IfcDataStore, expressId: number, mutationView: MutablePropertyView | undefined): MeasureValue {
+  const own = quantitySetsFor(store, expressId, editsOf(mutationView, expressId));
   // Both options read the type's quantities: 'aggregation' falls back to
   // the aggregate parent only when neither the element nor its type has
   // the value, the same "own (type included) first" rule as properties.
@@ -132,12 +148,12 @@ function readQuantity(subject: Extract<MeasureSubject, { kind: 'quantity' }>, st
   return { present: values.length > 0, values, unit: valueUnits.find((u) => u !== undefined), valueUnits, valueSiScales };
 }
 
-function readOwn(subject: MeasureSubject, store: IfcDataStore, expressId: number): MeasureValue {
-  return subject.kind === 'property' ? readProperty(subject, store, expressId) : readQuantity(subject, store, expressId);
+function readOwn(subject: MeasureSubject, store: IfcDataStore, expressId: number, mutationView: MutablePropertyView | undefined): MeasureValue {
+  return subject.kind === 'property' ? readProperty(subject, store, expressId, mutationView) : readQuantity(subject, store, expressId, mutationView);
 }
 
-export function readMeasureSubject(subject: MeasureSubject, store: IfcDataStore, expressId: number): MeasureValue {
-  const own = readOwn(subject, store, expressId);
+export function readMeasureSubject(subject: MeasureSubject, store: IfcDataStore, expressId: number, mutationView?: MutablePropertyView): MeasureValue {
+  const own = readOwn(subject, store, expressId, mutationView);
   if (own.present || subject.inherit !== 'aggregation' || !store.relationships) return own;
   const visited = new Set<number>([expressId]);
   let frontier = store.relationships.getRelated(expressId, RelationshipType.Aggregates, 'inverse');
@@ -146,7 +162,7 @@ export function readMeasureSubject(subject: MeasureSubject, store: IfcDataStore,
     for (const parent of frontier) {
       if (visited.has(parent)) continue;
       visited.add(parent);
-      const value = readOwn(subject, store, parent);
+      const value = readOwn(subject, store, parent, mutationView);
       if (value.present) return value;
       next.push(...store.relationships.getRelated(parent, RelationshipType.Aggregates, 'inverse'));
     }

@@ -16,7 +16,10 @@ import assert from 'node:assert/strict';
 import { afterEach, before, test } from 'node:test';
 import { aggregate, ELEMENT_COLUMNS } from '@ifc-lite/charts';
 import { evaluateFilterGroupsFederated } from '@ifc-lite/rules';
+import { QuantityType } from '@ifc-lite/data';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
+import { configureMutationView } from '@/utils/configureMutationView';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { buildElementsDataset } from '@/lib/charts/datasets/elements';
 import { ARCH, WALL, seedArtifactModels } from '@/test/artifact-models-fixture';
@@ -131,4 +134,29 @@ test('a review belongs to one model revision', async () => {
   assert.equal(isPreviewCurrent(result, useViewerStore.getState()), true);
   useViewerStore.setState({ mutationVersion: 1 });
   assert.equal(isPreviewCurrent(result, useViewerStore.getState()), false, 'an edit after the run makes its numbers stale');
+});
+
+test('a numeric threshold reads the unsaved edit the list and chart read, not the file as loaded (#6914 review)', async () => {
+  const state = useViewerStore.getState();
+  const store = state.models.get(ARCH)?.ifcDataStore;
+  assert.ok(store);
+  const view = new MutablePropertyView(null, ARCH);
+  configureMutationView(view, store);
+  const netSideArea = (op: string, value: number) => ({ combinator: 'AND', rules: [{ kind: 'quantity', setName: 'Qto_WallBaseQuantities', quantityName: 'NetSideArea', op, value }] });
+  const before = await preview({ kind: 'filter.proposal', name: 'Large', groups: [netSideArea('gt', 10)] });
+  assert.deepEqual(before.population.map((m) => m.count), [1, 0], 'only the 21.154 m² wall is over 10 m² in the file');
+  const [smallest] = (await preview({ kind: 'filter.proposal', name: 'Small', groups: [netSideArea('lt', 6.5)] })).samples;
+  const wall = (await evaluateFilterGroupsFederated(evaluatorModelsFromState(state), [{ combinator: 'AND', rules: [{ kind: 'globalId', op: 'in', values: [smallest.globalId] }] }], { limit: 1 }))[0];
+  try {
+    // The 6.346 m² wall is edited to 12 m² and not saved.
+    view.setQuantity(wall.expressId, 'Qto_WallBaseQuantities', 'NetSideArea', 12, QuantityType.Area);
+    useViewerStore.setState({ mutationViews: new Map([[ARCH, view]]), mutationVersion: 1 });
+    const after = await preview({ kind: 'filter.proposal', name: 'Large', groups: [netSideArea('gt', 10)] });
+    assert.deepEqual(after.samples.map((row) => row.globalId).sort(), [smallest.globalId, before.samples[0].globalId].sort());
+    const list = await preview({ kind: 'list.proposal', list: { name: 'Areas', entityTypes: ['IfcWall'], columns: [
+      { id: 'area', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'NetSideArea' }] } });
+    close(list.measures[0].total, 43.2914 - 6.346 + 12);
+  } finally {
+    useViewerStore.setState({ mutationViews: new Map() });
+  }
 });

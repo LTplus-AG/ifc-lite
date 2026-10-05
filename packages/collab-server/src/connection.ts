@@ -160,8 +160,6 @@ export async function handleConnection(ws: WebSocket, req: http.IncomingMessage,
   }, PING_INTERVAL_MS);
   ws.on('pong', () => { alive = true; });
 
-  inbox.attach((bytes) => room.handleMessage(conn, bytes));
-
   const cleanup = () => {
     clearInterval(ping);
     clearInterval(keepalive);
@@ -169,4 +167,8 @@ export async function handleConnection(ws: WebSocket, req: http.IncomingMessage,
   };
   ws.on('close', cleanup);
   ws.on('error', cleanup);
+
+  // Last, and after the teardown above: the replay runs the room's handlers
+  // synchronously, and if one throws the peer must already be removable.
+  inbox.attach((bytes) => room.handleMessage(conn, bytes));
 }

@@ -22,6 +22,7 @@ import {
   MAX_PENDING_FRAMES,
 } from '../src/connection.js';
 import { FilePersistence, startCollabServer, type CollabServerHandle } from '../src/server.js';
+import { MetricsRegistry } from '../src/metrics.js';
 
 const LOAD_DELAY_MS = 400;
 const SYNC_BUDGET_MS = 3000;
@@ -42,14 +43,16 @@ afterEach(async () => {
   while (cleanups.length) await cleanups.pop()!();
 });
 
-async function seededServer(): Promise<{ url: string; handle: CollabServerHandle }> {
+async function seededServer(
+  extra: Partial<Parameters<typeof startCollabServer>[0]> = {},
+): Promise<{ url: string; handle: CollabServerHandle }> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'collab-first-frame-'));
   cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
   const persistence = new SlowFilePersistence(dir, LOAD_DELAY_MS);
   const seed = new Y.Doc();
   seed.getMap('test').set('persisted', 'on-disk');
   await persistence.append('cold-room', Y.encodeStateAsUpdate(seed));
-  const handle = await startCollabServer({ port: 0, persistence });
+  const handle = await startCollabServer({ port: 0, persistence, ...extra });
   cleanups.push(() => handle.stop());
   const address = handle.httpServer.address();
   const port = typeof address === 'object' && address ? address.port : 0;
@@ -108,6 +111,40 @@ describe('a peer that leaves while its room hydrates', () => {
   }, 15_000);
 });
 
+describe('a held frame the room cannot process', () => {
+  it('still tears the peer down when the replay throws', async () => {
+    const { url, handle } = await seededServer({
+      verifyMessage: () => { throw new Error('verifier blew up'); },
+    });
+    const ws = new WebSocket(`${url}/cold-room`);
+    await new Promise<void>((resolve, reject) => {
+      ws.once('open', () => resolve());
+      ws.once('error', reject);
+    });
+    ws.send(new Uint8Array([0, 0, 1, 0]));
+    await new Promise((r) => ws.once('close', r));
+    await new Promise((r) => setTimeout(r, 100)); // the server's own close event
+    const room = await handle.roomManager.getOrCreate('cold-room');
+    expect(room.peerCount).toBe(0);
+  }, 15_000);
+});
+
+describe('pre-ready buffer overflow through a real server', () => {
+  it('closes 1009 and counts reason hydration-buffer on the rejects metric', async () => {
+    const metrics = new MetricsRegistry();
+    const { url } = await seededServer({ metrics });
+    const ws = new WebSocket(`${url}/cold-room`);
+    await new Promise<void>((resolve, reject) => {
+      ws.once('open', () => resolve());
+      ws.once('error', reject);
+    });
+    const closed = new Promise<number>((r) => ws.once('close', (code: number) => r(code)));
+    for (let i = 0; i <= MAX_PENDING_FRAMES; i++) ws.send(new Uint8Array([9, 9]));
+    expect(await closed).toBe(1009);
+    expect(metrics.render()).toMatch(/collab_rejects_total\{reason="hydration-buffer"\} 1/);
+  }, 15_000);
+});
+
 describe('holdFramesUntilAttached', () => {
   function fakeSocket() {
     const ee = new EventEmitter() as EventEmitter & { close: (code: number, reason: string) => void };
@@ -149,5 +186,20 @@ describe('holdFramesUntilAttached', () => {
     ee.emit('message', frame(2));
     expect(overflows).toBe(1);
     expect(closed).toHaveLength(1);
+  });
+
+  it('holds exactly MAX_PENDING_FRAMES frames and refuses the next', () => {
+    const { ws, ee, closed } = fakeSocket();
+    const inbox = holdFramesUntilAttached(ws, () => {});
+    for (let i = 0; i < MAX_PENDING_FRAMES; i++) ee.emit('message', frame(i));
+    expect(closed).toEqual([]);
+    const seen: number[] = [];
+    inbox.attach((b) => seen.push(b[0]));
+    expect(seen).toHaveLength(MAX_PENDING_FRAMES);
+
+    const second = fakeSocket();
+    holdFramesUntilAttached(second.ws, () => {});
+    for (let i = 0; i <= MAX_PENDING_FRAMES; i++) second.ee.emit('message', frame(i));
+    expect(second.closed).toHaveLength(1);
   });
 });

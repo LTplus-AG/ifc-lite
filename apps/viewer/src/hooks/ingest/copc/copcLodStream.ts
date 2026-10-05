@@ -144,12 +144,14 @@ function startCopcLod(options: StreamPointCloudOptions, ctx: CopcIngestContext, 
     controller = new CopcLodController(createCopcLodTree(reader.hierarchy, info, originOffset), activeReader, sink, {
       pointBudget: budget,
       onError: failAfterLoad,
-      onPassComplete: (pass) => {
+      onPassComplete: () => {
         // Progress belongs to the load; later camera passes must not
         // rewrite the global status line.
         if (!loaded) options.onProgress?.(controller?.points ?? 0, header.pointCount);
-        if (pass.added > 0) sink.passSettled();
       },
+      // After the pass's evictions, and for eviction-only passes too: the
+      // deviation refresh must measure what stays on screen.
+      onPassSettled: () => sink.passSettled(),
     });
     let lastCamera: unknown = null;
     diagnostics.set(ctx.handle.id, () => ({
@@ -164,7 +166,6 @@ function startCopcLod(options: StreamPointCloudOptions, ctx: CopcIngestContext, 
     signal.throwIfAborted();
     loaded = true;
     options.onComplete?.(bbox, controller.points, null);
-    sink.passSettled();
     watchCamera();
   })().catch((err: unknown) => {
     const aborted = signal.aborted;

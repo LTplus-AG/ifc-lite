@@ -161,6 +161,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     setRunning(true);
     const t0 = performance.now();
     const placement = placementSnapshot(useViewerStore.getState());
+    let readingAt: number | null = null;
     try {
       noteDeviationWrite(renderer);
       const result = await renderer.computeDeviations({ maxRange: DEVIATION_CLIP_RANGE_M });
@@ -194,7 +195,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       // the result immediately.
       setColorMode('deviation');
       // The heatmap is already on screen; the statistics follow the readback.
-      readRevisionRef.current = useViewerStore.getState().pointCloudDeviationRevision;
+      readingAt = readRevisionRef.current = useViewerStore.getState().pointCloudDeviationRevision;
       const read = await renderer.readDeviationDistances();
       const after = useViewerStore.getState();
       // `computed` falls whenever the run is invalidated (placement, model
@@ -204,6 +205,9 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       }
       setDistances(read);
     } catch (err) {
+      // A COPC LOD re-run that landed during this readback superseded it
+      // (#6880): the refresh below reads the new run, so this is not an error.
+      if (readingAt !== null && useViewerStore.getState().pointCloudDeviationRevision !== readingAt) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setRunning(false);

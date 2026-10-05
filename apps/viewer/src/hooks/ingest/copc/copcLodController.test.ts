@@ -368,6 +368,44 @@ describe('CopcLodController review fixes (#6880)', () => {
   });
 });
 
+describe('CopcLodController settled passes (#6880 x #6877 deviation refresh)', () => {
+  /** Every `onPassSettled`, with what the sink held when it fired. */
+  function settledSetup() {
+    const { hierarchy, childPages } = syntheticCopc(3);
+    const sink = budgetSink(20_000_000);
+    const settled: Array<{ resident: string[]; ops: number }> = [];
+    const controller = new CopcLodController(createCopcLodTree(hierarchy, INFO), fakeReader(hierarchy, childPages).reader, sink.sink, {
+      pointBudget: 20_000_000,
+      pacer: new LodPacer({ initialPointsPerMs: 500, minFirstPassPoints: 20_000 }),
+      now: () => 0,
+      schedule: () => {},
+      onPassSettled: () => settled.push({ resident: [...sink.resident.keys()].sort(), ops: sink.log.length }),
+    });
+    return { controller, sink, settled };
+  }
+
+  it('a view that only evicts (the scan leaves the frustum) still settles, after its evictions', async () => {
+    const { controller, sink, settled } = settledSetup();
+    await controller.update(camera([-300, 128, 100], [128, 128, 60]));
+    assert.ok(sink.resident.size > 0);
+    const before = settled.length;
+    // Looking straight away from the cube: the selection is empty, nothing is added.
+    await controller.update(camera([-300, 128, 100], [-600, 128, 100]));
+    assert.equal(sink.resident.size, 0, 'every node left the view');
+    assert.ok(settled.length > before, 'an eviction-only pass is announced');
+    // Every announcement of the new view comes after that pass's evictions:
+    // a deviation re-run started earlier would measure the departing nodes.
+    assert.deepEqual(settled.slice(before).map((s) => s.resident), settled.slice(before).map(() => []));
+  });
+
+  it('a view that adds nodes settles after it retired the old view', async () => {
+    const { controller, sink, settled } = settledSetup();
+    await controller.update(camera([-4_000, 128, 600], [128, 128, 60]));
+    await controller.update(camera([20, 20, 40], [80, 80, 20], 0.7));
+    assert.deepEqual(settled.at(-1), { resident: [...sink.resident.keys()].sort(), ops: sink.log.length });
+  });
+});
+
 describe('quantizeStride', () => {
   it('rounds up to a power of two, so the decoded count never exceeds the share', () => {
     assert.deepEqual([1, 2, 3, 5, 8, 9, 0.5].map(quantizeStride), [1, 2, 4, 8, 8, 16, 1]);

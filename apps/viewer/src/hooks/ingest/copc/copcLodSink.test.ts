@@ -11,6 +11,7 @@
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Renderer } from '@ifc-lite/renderer';
+import type { CopcLodNode } from '@ifc-lite/pointcloud';
 import { useViewerStore } from '../../../store/index.js';
 import { createCopcLodSink } from './copcLodSink.js';
 
@@ -18,10 +19,14 @@ afterEach(() => {
   useViewerStore.getState().setPointCloudDeviationComputed(false);
 });
 
+/** A sink whose last pass changed the resident chunks (one node evicted). */
 function sinkWith(computeDeviations: () => Promise<unknown>) {
-  const renderer = { computeDeviations } as unknown as Renderer;
-  return createCopcLodSink({ renderer, handle: { id: 1 } });
+  const renderer = { computeDeviations, removePointCloudChunk: () => 0 } as unknown as Renderer;
+  const sink = createCopcLodSink({ renderer, handle: { id: 1 } });
+  return { passSettled: () => { sink.remove(node('2-0-0-0')); sink.passSettled(); } };
 }
+
+const node = (id: string) => ({ id, entry: { key: { d: 3, x: 0, y: 0, z: 0 } } }) as unknown as CopcLodNode;
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -62,4 +67,28 @@ it('#6872 a failed or skipped deviation refresh leaves the revision alone', asyn
   } finally {
     console.warn = originalWarn;
   }
+});
+
+
+it('#6880 a settled pass that only removed nodes re-runs deviation; one that changed nothing does not', async () => {
+  let runs = 0;
+  const sink = createCopcLodSink({
+    renderer: { computeDeviations: async () => { runs++; }, removePointCloudChunk: () => 0 } as unknown as Renderer,
+    handle: { id: 1 },
+  });
+  useViewerStore.getState().setPointCloudDeviationComputed(true);
+  const before = useViewerStore.getState().pointCloudDeviationRevision;
+
+  // The scan left the view: nodes were evicted, none arrived.
+  sink.remove(node('3-1-1-1'));
+  sink.passSettled();
+  await settle();
+  assert.equal(runs, 1, 'the evicted chunks are no longer measured: re-run');
+  assert.equal(useViewerStore.getState().pointCloudDeviationRevision, before + 1, 'the panel re-reads');
+
+  // A view that kept exactly the resident set has nothing new to measure.
+  sink.passSettled();
+  await settle();
+  assert.equal(runs, 1);
+  assert.equal(useViewerStore.getState().pointCloudDeviationRevision, before + 1);
 });

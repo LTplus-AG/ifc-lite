@@ -15,7 +15,7 @@ interface SourceProjectsStepProps {
   ctx: PluginContext;
   /** Report a listing error, or clear the current one with `null`. */
   onError: (message: string | null) => void;
-  onSelect: (project: SourceProject) => void;
+  onSelect: (project: SourceProject, autoEntered?: boolean) => void;
 }
 
 /**
@@ -56,7 +56,7 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
   // of making users select the account they just signed into a second time.
   useEffect(() => {
     if ((provider.manifest.name === 'dropbox' || provider.manifest.name === 'msgraph')
-      && !paged.loading && !paged.hasMore && paged.items.length === 1 && !query) onSelect(paged.items[0]);
+      && !paged.loading && !paged.hasMore && paged.items.length === 1 && !query) onSelect(paged.items[0], true);
   }, [provider.manifest.name, paged.loading, paged.hasMore, paged.items, query, onSelect]);
 
   const submitSearch = useCallback(() => {

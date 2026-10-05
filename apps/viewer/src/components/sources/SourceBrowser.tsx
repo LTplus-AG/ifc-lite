@@ -61,6 +61,7 @@ export function SourceBrowser({
 }: SourceBrowserProps) {
   const capabilities = provider.manifest.capabilities;
   const [step, setStep] = useState<Step>('projects');
+  const [skipProjectsOnBack, setSkipProjectsOnBack] = useState(false);
   const [selectedProject, setSelectedProject] = useState<SourceProject | null>(null);
   const [selectedFileArea, setSelectedFileArea] = useState<SourceContainer | null>(null);
   const [selectedContainer, setSelectedContainer] = useState<SourceContainer | null>(null);
@@ -146,7 +147,8 @@ export function SourceBrowser({
   }, [catalog]);
 
   const openProject = useCallback(
-    (p: SourceProject) => {
+    (p: SourceProject, autoEntered = false) => {
+      setSkipProjectsOnBack(autoEntered);
       setSelectedProject(p);
       setStep('file-areas');
       setSelectedFileArea(null);
@@ -216,7 +218,7 @@ export function SourceBrowser({
       clearSearch();
       catalog.resetCatalog();
     } else if (step === 'file-areas') {
-      if (provider.manifest.name === 'dropbox' || provider.manifest.name === 'msgraph') onBack();
+      if (skipProjectsOnBack) onBack();
       else setStep('projects');
       setSelectedProject(null);
       projectIdRef.current = null;
@@ -224,7 +226,7 @@ export function SourceBrowser({
     } else {
       onBack();
     }
-  }, [catalog, clearSearch, fileAreasPaged, step, onBack, provider.manifest.name]);
+  }, [catalog, clearSearch, fileAreasPaged, step, onBack, skipProjectsOnBack]);
 
   // Opening a favourite is one entry point plus the hook that drives the
   // two-phase jump. It cannot reuse `openFileArea` above: that one reads the

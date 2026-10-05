@@ -9,25 +9,26 @@ const KEY = 'ifc-lite-source-provider-pins';
 /** Provider pins contain only public provider ids, never account or folder names. */
 export function useSourceProviderPins() {
   const { t } = useTranslation();
-  const [ids, setIds] = useState<readonly string[]>(() => {
+  const [state, setState] = useState<{ ids: readonly string[]; restoreFailed: boolean }>(() => {
     try {
       const value: unknown = JSON.parse(localStorage.getItem(KEY) ?? '[]');
-      return Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === 'string'))].slice(0, 100) : [];
+      return { ids: Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === 'string'))].slice(0, 100) : [], restoreFailed: false };
     } catch (error) {
       console.warn('[sources] Cannot restore provider pins', error);
-      return [];
+      return { ids: [], restoreFailed: true };
     }
   });
+  const { ids } = state;
   const toggle = (id: string) => {
     const next = ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id];
     if (next.length > 100) { toast.error(t('sources.workspace.pinFailed')); return; }
     try {
       localStorage.setItem(KEY, JSON.stringify(next));
-      setIds(next);
+      setState({ ids: next, restoreFailed: false });
     } catch (error) {
       console.warn('[sources] Cannot save provider pins', error);
       toast.error(t('sources.workspace.pinFailed'));
     }
   };
-  return { ids, toggle };
+  return { ids, toggle, restoreFailed: state.restoreFailed };
 }

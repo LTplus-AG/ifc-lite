@@ -286,6 +286,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
           </div>
         )}
 
+        {pins.restoreFailed && <p role="alert" className="mb-2 rounded border p-2 text-xs text-muted-foreground">{t('sources.workspace.pinRestoreFailed')}</p>}
         {downloading && <div className="mb-2 flex items-center gap-2 rounded border p-2">
           <output className="min-w-0 flex-1 text-xs">{t('sources.workspace.downloading', { title: sourceHost.get(downloadOwner ?? '')?.manifest.title ?? '' })}</output>
           <Button size="sm" variant="outline" onClick={cancelDownload}>{t('sources.sourceBrowserHeader.cancelDownload')}</Button>

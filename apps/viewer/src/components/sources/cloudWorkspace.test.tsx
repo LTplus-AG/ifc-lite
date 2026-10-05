@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, StrictMode } from 'react';
 import { PLUGIN_API_VERSION, type FileSourceProvider, type SourceFile, type PluginContext } from '@ifc-lite/plugin-api';
@@ -71,6 +71,22 @@ describe('Cloud workspace (#6897)', () => {
     assert.equal(ui.querySelector('ul.space-y-2 > li')?.textContent?.includes('Workspace Files'), true, 'pinned provider sorts first');
     click(labelled(ui, 'Browse Workspace Files')); await pump();
     assert.equal(labelled(ui, 'Browse Workspace Files').getAttribute('aria-expanded'), 'false', 'manual collapse must not immediately auto-open again');
+  });
+
+  it('reports unavailable pin storage while leaving provider navigation usable', async () => {
+    const getItem = localStorage.getItem.bind(localStorage);
+    const denied = mock.method(localStorage, 'getItem', (key: string) => {
+      if (key === 'ifc-lite-source-provider-pins') throw new DOMException('Storage denied', 'SecurityError');
+      return getItem(key);
+    });
+    try {
+      const p = provider();
+      const ui = render(<SourceHostProvider additionalProviders={[() => p]}><SourcesPanel onClose={() => {}} /></SourceHostProvider>);
+      await pump();
+      assert.ok(ui.querySelector('[role="alert"]')?.textContent?.includes('pinned sources could not be restored'));
+      click(labelled(ui, 'Browse Workspace Files')); await pump();
+      assert.ok(labelled(ui, 'Search files in Workspace Files'), 'storage failure does not disable cloud access');
+    } finally { denied.mock.restore(); }
   });
 
   it('pins the current folder above files and opens it directly from the overview', async () => {
@@ -171,6 +187,15 @@ describe('Cloud workspace (#6897)', () => {
     assert.ok(labelled(ui, 'Search files in Workspace Files'));
     click(labelled(ui, 'Back')); await pump();
     assert.equal(back, 1, 'Back leaves the personal account instead of re-entering it automatically');
+  });
+
+  it('keeps project selection reachable when a personal-drive provider lists multiple projects', async () => {
+    const original = provider(); let back = 0;
+    const p: FileSourceProvider = { ...original, manifest: { ...original.manifest, name: 'msgraph' },
+      listProjects: async () => ({ items: [{ id: 'p1', name: 'First Project' }, { id: 'p2', name: 'Second Project' }] }) };
+    const ui = browser(p, () => {}, () => back++); await pump();
+    click(named(ui, 'First Project')); await pump(); click(labelled(ui, 'Back')); await pump();
+    assert.ok(named(ui, 'Second Project')); assert.equal(back, 0, 'manual project selection returns to projects');
   });
 
   it('bounds empty-result work and continues through later projects without dropping them', async () => {

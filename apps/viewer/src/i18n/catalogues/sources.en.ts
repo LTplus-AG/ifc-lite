@@ -45,6 +45,7 @@ export const sourcesEn = {
   'sources.workspace.connecting': 'Connecting…',
   'sources.workspace.pin': 'Pin {title}',
   'sources.workspace.unpin': 'Unpin {title}',
+  'sources.workspace.pinRestoreFailed': 'Your pinned sources could not be restored. Browser storage may be unavailable. You can still open a source below.',
   'sources.workspace.pinFailed': 'Could not save your pinned sources. Browser storage may be unavailable.',
   'sources.workspace.searchSection': 'Find cloud models',
   'sources.workspace.searchAria': 'Search files in {title}',

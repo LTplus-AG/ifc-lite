@@ -91,7 +91,7 @@ A report answer may end with one fenced `report.claims` JSON block. Each claim i
 
 Each claim is checked against the captured evidence and labelled:
 
-- **Supported by data**: every cited value equals the captured value, at the precision the claim states. A claimed unit is converted only to a unit of the same dimension that the evidence itself declares.
+- **Supported by data**: every cited value equals the captured value. A claimed unit is converted only to a unit of the same dimension that the evidence itself declares. A JSON number is compared exactly (`0` m does not match a 20 mm overlap, and `-0.1` m does not match `-0.14` m); only a value written as a string with its decimals, such as `"-0.10"`, may round to that many decimals.
 - **Unverifiable**: the claim cites no values, the field is absent or omitted, or the evidence records no comparable unit. Treat it as interpretation.
 - **Contradicted**: a cited row does not exist, or a value or unit dimension differs. Saving stays blocked until you choose **Edit claim** or **Remove claim**. An edited claim keeps only its uncontradicted facts, is checked again and is marked as edited by you. Any edit withdraws approval.
 

@@ -6,8 +6,8 @@
  * Typed report claims (#6918). A provider may append a `report.claims` JSON
  * block to its prose (or answer with it alone). Each claim is checked
  * against the captured evidence: cited rows must exist, and every cited
- * native value must equal the captured value within the claimed precision
- * and unit. The check decides one of three states; it never upgrades prose.
+ * native value must equal the captured value (exactly, or at the decimals a
+ * string value writes out) after unit conversion. The check decides one of three states; it never upgrades prose.
  */
 
 import type { AiClaimFact, AiClaimStatus, AiReportClaim } from '../document/ai-report-types';
@@ -20,6 +20,7 @@ export const REPORT_CLAIMS_OUTPUT_GUIDANCE =
   + '"citations":["E3"],"facts":[{"citation":"E3","field":"distance","value":-0.02,"unit":"m"}]}]}. '
   + 'Each claim states one observation; each fact copies a native value exactly from its cited row (field is the JSON path '
   + 'inside the row data, such as a.tag or requirementResults[0].actualValue) or from the native summary with citation "summary". '
+  + 'Numbers are compared exactly; to state a rounded value, give it as a string with its decimals, such as "-0.10". '
   + 'Give a unit only when the evidence states one. Interpretations and recommendations belong in the narrative, not in claims. At most 30 claims.';
 
 export interface ProposedClaim { text: string; citations: string[]; facts: AiClaimFact[] }

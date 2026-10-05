@@ -6,12 +6,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { citationsByIdentity, compareFact, declaredUnit, formatFactValue, rowIdentity, valueAt } from './report-facts';
 
-// #6918 invariant: a claimed number matches only when it equals the captured value at the claimed
-// precision, after converting between units of the same dimension the evidence itself declares.
-test('numeric facts match at the claimed precision and only across declared, comparable units', () => {
-  assert.equal(compareFact(2.4, 'm', 2.4349, 'm').kind, 'match', 'one decimal claimed: 2.4349 rounds to 2.4');
-  assert.equal(compareFact(2.4, 'm', 2.46, 'm').kind, 'mismatch');
+// #6918 invariant: a claimed number matches only when it equals the captured value after converting
+// between units of the same dimension the evidence itself declares. Only a string that writes out its
+// decimals states a precision; a JSON number has already lost any trailing zeros.
+test('numeric facts match exactly, or at the precision a decimal string states, only across declared, comparable units', () => {
+  assert.equal(compareFact('2.4', 'm', 2.4349, 'm').kind, 'match', 'one decimal written: 2.4349 rounds to 2.4');
+  assert.equal(compareFact('2.4', 'm', 2.46, 'm').kind, 'mismatch');
+  assert.equal(compareFact(2.4, 'm', 2.4349, 'm').kind, 'mismatch', 'a JSON number states no precision');
   assert.equal(compareFact('2,40', 'm', 2.4, 'm').kind, 'match', 'decimal comma');
+  assert.equal(compareFact('2,40', 'm', 2.404, 'm').kind, 'match', 'two decimals written');
+  assert.equal(compareFact('2,40', 'm', 2.406, 'm').kind, 'mismatch');
+  // Review of #6972: a whole number in JSON is not "rounded to metres", and -0.10 arrives as -0.1.
+  assert.equal(compareFact(0, 'm', -0.02, 'm').kind, 'mismatch', '0 m is not a 20 mm overlap');
+  assert.equal(compareFact(-0.1, 'm', -0.14, 'm').kind, 'mismatch', '-0.1 m is not -0.14 m');
+  assert.equal(compareFact('3', undefined, 3.4, undefined).kind, 'mismatch', 'a string without decimals is exact too');
   assert.equal(compareFact(-20, 'mm', -0.02, 'm').kind, 'match', 'mm against m');
   assert.equal(compareFact(-25, 'mm', -0.02, 'm').kind, 'mismatch');
   assert.equal(compareFact(12.5, 'm²', 12.5, 'm2').kind, 'match', 'superscript spelling of the same unit');

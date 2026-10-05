@@ -69,15 +69,18 @@ function numeric(value: unknown): number | null {
   return null;
 }
 
-/** Tolerance of a claimed number: the captured value rounded to the claimed precision still matches. */
-function precisionOf(value: string | number): number {
-  const text = typeof value === 'number' ? String(value) : value.trim().replace(',', '.');
-  if (/e/i.test(text)) return Math.abs(Number(text)) * 1e-9;
-  const decimals = text.includes('.') ? text.split('.')[1].length : 0;
-  return 0.5 * 10 ** -decimals;
+/**
+ * Rounding a claim may state, in claimed units: only a string that writes out its decimals ("2.40")
+ * states one. A JSON number has lost its trailing zeros (-0.10 arrives as -0.1, 0 says nothing about
+ * millimetres), so it is compared exactly.
+ */
+function statedRounding(value: string | number): number {
+  if (typeof value === 'number') return 0;
+  const decimals = /[.,](\d+)\s*$/.exec(value)?.[1].length;
+  return decimals === undefined ? 0 : 0.5 * 10 ** -decimals;
 }
 
-/** Claimed value against captured value. Unknown units never pass and never contradict a value. */
+/** Claimed value against captured value: exact unless a decimal string states its rounding. Unknown units never pass and never contradict a value. */
 export function compareFact(claimed: string | number | boolean, claimedUnit: string | undefined, captured: unknown, capturedUnit: string | undefined): FactCheck {
   const base = { captured, unit: capturedUnit };
   if (captured === undefined) return { kind: 'unverifiable', ...base, reason: 'field not present in the captured evidence' };
@@ -93,8 +96,10 @@ export function compareFact(claimed: string | number | boolean, claimedUnit: str
       if (from[0] !== to[0]) return { kind: 'mismatch', ...base, reason: `unit ${claimedUnit} is not a ${to[0]} unit like ${capturedUnit}` };
       factor = from[1] / to[1];
     }
-    const tolerance = Math.max(precisionOf(claimed) * factor, Math.abs(capturedNumber) * 1e-9);
-    return Math.abs(claimedNumber * factor - capturedNumber) <= tolerance ? { kind: 'match', ...base }
+    const converted = claimedNumber * factor;
+    // Relative 1e-9 absorbs unit-conversion float noise, never a different value.
+    const tolerance = Math.max(statedRounding(claimed) * factor, Math.max(Math.abs(converted), Math.abs(capturedNumber)) * 1e-9);
+    return Math.abs(converted - capturedNumber) <= tolerance ? { kind: 'match', ...base }
       : { kind: 'mismatch', ...base, reason: 'value differs from the captured value' };
   }
   if (capturedNumber !== null) return { kind: 'mismatch', ...base, reason: 'the captured value is a number' };

@@ -2,29 +2,56 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+// Drives the gate as a CLI (as CI does) against throwaway git repositories whose
+// index is populated with `update-index --cacheinfo`, so a synthetic collision
+// can be tracked even on a case-insensitive filesystem.
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
-import { findCaseCollisions } from './check-path-case-collisions.mjs';
+import { fileURLToPath } from 'node:url';
 
-test('reports paths that differ only in case', () => {
-  const groups = findCaseCollisions([
+const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'check-path-case-collisions.mjs');
+const EMPTY_BLOB = 'e69de29bb2d1d6434b8b29ae775ad8c2e48c5391';
+
+function run(tracked) {
+  const dir = mkdtempSync(join(tmpdir(), 'case-collisions-'));
+  try {
+    const git = (...args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
+    assert.equal(git('init', '-q').status, 0);
+    assert.equal(git('hash-object', '-w', '--stdin').status, 0);
+    for (const path of tracked) {
+      assert.equal(git('update-index', '--add', '--cacheinfo', `100644,${EMPTY_BLOB},${path}`).status, 0);
+    }
+    return spawnSync(process.execPath, [SCRIPT, '--root', dir], { encoding: 'utf8' });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('fails and lists paths that differ only in case', () => {
+  const result = run([
     'apps/viewer/src/SourceWideSearch.tsx',
-    'apps/viewer/src/sourceWideSearch.ts',
     'apps/viewer/src/sourceWideSearch.tsx',
+    'apps/viewer/src/other.ts',
   ]);
-  assert.deepEqual(groups, [['apps/viewer/src/SourceWideSearch.tsx', 'apps/viewer/src/sourceWideSearch.tsx']]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /SourceWideSearch\.tsx\s+<->\s+apps\/viewer\/src\/sourceWideSearch\.tsx/);
+  assert.doesNotMatch(result.stderr, /other\.ts/);
 });
 
-test('detects a collision in a directory name', () => {
-  assert.equal(findCaseCollisions(['a/Foo/x.ts', 'a/foo/y.ts', 'a/foo/x.ts']).length, 1);
+test('fails on a collision in a directory name', () => {
+  assert.equal(run(['a/Foo/x.ts', 'a/foo/y.ts']).status, 1);
 });
 
-test('distinct names and duplicate entries are clean', () => {
-  assert.deepEqual(findCaseCollisions(['a.ts', 'b.ts', 'b.ts']), []);
+test('passes when names are distinct', () => {
+  const result = run(['a.ts', 'b.ts', 'dir/a.ts']);
+  assert.equal(result.status, 0, result.stderr);
 });
 
-test('the current repository has no collisions', async () => {
-  const { execFileSync } = await import('node:child_process');
-  const out = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
-  assert.deepEqual(findCaseCollisions(out.split('\0').filter(Boolean)), []);
+test('passes on the current repository', () => {
+  const result = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
 });

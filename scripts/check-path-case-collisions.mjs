@@ -10,25 +10,32 @@
  * of such paths survives a checkout, which breaks typecheck and build there.
  */
 import { execFileSync } from 'node:child_process';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Groups of paths (2+) that collide once lowercased. */
+/** Groups of spellings (2+) that collide once lowercased, covering directory
+ * prefixes too (`a/Foo/x` and `a/foo/y` collapse into one directory). */
 export function findCaseCollisions(paths) {
-  const groups = new Map();
-  for (const path of new Set(paths)) {
-    const key = path.toLowerCase();
-    const group = groups.get(key);
-    if (group) group.push(path);
-    else groups.set(key, [path]);
+  const spellings = new Map();
+  for (const path of paths) {
+    const parts = path.split('/');
+    for (let i = 1; i <= parts.length; i++) {
+      const spelling = parts.slice(0, i).join('/');
+      const key = spelling.toLowerCase();
+      const set = spellings.get(key);
+      if (set) set.add(spelling);
+      else spellings.set(key, new Set([spelling]));
+    }
   }
-  return [...groups.values()].filter((group) => group.length > 1).map((group) => group.sort());
+  return [...spellings.values()].filter((set) => set.size > 1).map((set) => [...set].sort());
 }
 
 function main() {
-  const out = execFileSync('git', ['ls-files', '-z'], { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  const rootFlag = process.argv.indexOf('--root');
+  const root = rootFlag > 0 ? resolve(process.argv[rootFlag + 1]) : REPO_ROOT;
+  const out = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
   const collisions = findCaseCollisions(out.split('\0').filter(Boolean));
   if (collisions.length === 0) {
     console.log('check-path-case-collisions: no case-colliding tracked paths.');

@@ -34,6 +34,7 @@ const geometry = {
 
 function model(id: string, name: string, store: IfcDataStore, idOffset: number): FederatedModel {
   let maxExpressId = 0;
+  // @raw-entity-enumeration-ok test fixture sizes the federation id range of a freshly parsed source before any mutation view exists
   for (let i = 0; i < store.entities.count; i++) maxExpressId = Math.max(maxExpressId, store.entities.expressId[i]);
   return { ...fixtureModel(id, { idOffset }), name, ifcDataStore: store, geometryResult: geometry, maxExpressId,
     sourceFingerprint: `fixture:${id}` } as unknown as FederatedModel;

@@ -16,7 +16,7 @@
     "@ifc-lite/plugin-api": "workspace:^"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.4",
     "typescript": "^6.0.3",
     "vitest": "^5.0.2",
     "tsx": "^4.23.15"

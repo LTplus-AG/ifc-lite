@@ -128,14 +128,14 @@
     "@changesets/cli": "^3.0.3",
     "@changesets/parse": "1.0.0",
     "@playwright/test": "^1.63.0",
-    "@posthog/cli": "0.18.7",
-    "@types/node": "^26.6.2",
-    "@vercel/functions": "3.9.9",
+    "@posthog/cli": "0.18.9",
+    "@types/node": "^26.6.4",
+    "@vercel/functions": "3.9.11",
     "gltf-validator": "2.0.0-dev.3.10",
-    "knip": "^6.38.0",
-    "oxlint": "^1.85.0",
+    "knip": "^6.39.0",
+    "oxlint": "^1.86.0",
     "tsx": "^4.23.15",
-    "turbo": "^2.11.4",
+    "turbo": "^2.11.7",
     "typescript": "^6.0.3",
     "yaml": "^2.9.1"
   },
@@ -144,7 +144,7 @@
     "pnpm": ">=10.0.0"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.1.0"
+    "@neondatabase/serverless": "^1.2.0"
   },
   "pnpm": {
     "overrides": {

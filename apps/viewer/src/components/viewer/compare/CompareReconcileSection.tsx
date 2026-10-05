@@ -8,6 +8,8 @@
  * revisions can serve as base and head), picks a base and a head run, and
  * gets either new / resolved / persisting / changed / not-evaluated findings
  * or an explicit refusal listing every incompatibility. Nothing is re-run.
+ * An outcome is shown only for the base/head pair it was computed from, and
+ * is withdrawn once a model edit postdates one of its runs.
  */
 
 import { useMemo, useState } from 'react';
@@ -19,8 +21,7 @@ import { useTranslation } from '@/i18n';
 import { formatLocaleDate } from '@/i18n/intlFormat';
 import { useViewerStore } from '@/store';
 import type { CompareResult } from '@/store/slices/compareSlice';
-import { captureClashRun, captureValidationRun, reconcileContextOf } from '@/lib/compare/compare-analysis-state';
-import { reconcileRuns } from '@/lib/compare/run-reconcile';
+import { captureClashRun, captureValidationRun, currentReconciliationOf, savedReconciliationOf } from '@/lib/compare/compare-analysis-state';
 import type { CapturedRun, RunKind } from '@/lib/compare/run-reconcile-types';
 import { ReconcileOutcomeView } from './ReconcileOutcomeView';
 
@@ -45,6 +46,7 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
   const hasClash = useViewerStore(s => !!(s.clashRawResult ?? s.clashResult));
   const hasValidation = useViewerStore(s => !!s.idsValidationReport);
   const stored = useViewerStore(s => s.compareReconciliation);
+  const stale = useViewerStore(s => currentReconciliationOf(s)?.stale ?? false);
   const [kind, setKind] = useState<RunKind>('clash');
   const [picked, setPicked] = useState<{ base?: string; head?: string }>({});
 
@@ -52,7 +54,8 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
   // Newest first: the head defaults to the latest capture, the base to the one before it (or the same run).
   const headId = runs.some(r => r.id === picked.head) ? picked.head! : runs[0]?.id ?? '';
   const baseId = runs.some(r => r.id === picked.base) ? picked.base! : runs[1]?.id ?? runs[0]?.id ?? '';
-  const outcome = stored && stored.comparison === result && stored.outcome.kind === kind ? stored.outcome : null;
+  const outcome = stored && stored.comparison === result && stored.outcome.kind === kind
+    && stored.outcome.baseRunId === baseId && stored.outcome.headRunId === headId ? stored.outcome : null;
   const canCapture = kind === 'clash' ? hasClash : hasValidation;
 
   const describe = (run: CapturedRun) => t('compareAnalysis.reconcile.runLabel', {
@@ -73,7 +76,7 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
     const state = useViewerStore.getState();
     const base = runs.find(r => r.id === baseId), head = runs.find(r => r.id === headId);
     if (!base || !head) return;
-    state.setCompareReconciliation({ outcome: reconcileRuns(base, head, reconcileContextOf(state)), comparison: result });
+    state.setCompareReconciliation(savedReconciliationOf(state, base, head));
   };
 
   return (
@@ -111,7 +114,9 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
           </div>
         </>
       )}
-      {outcome && <ReconcileOutcomeView outcome={outcome} />}
+      {outcome && (stale
+        ? <p role="status" className="text-amber-700 dark:text-amber-400">{t('compareAnalysis.reconcile.stale')}</p>
+        : <ReconcileOutcomeView outcome={outcome} />)}
     </div>
   );
 }

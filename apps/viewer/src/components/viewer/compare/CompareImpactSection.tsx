@@ -4,9 +4,10 @@
 
 /**
  * Impact of the current comparison on the other loaded analyses (#6921):
- * per source, whether it is loaded, stale or absent and how many of its
- * findings name a changed element, then the bounded joined rows. Every
- * number is native (`computeCompareImpact`); nothing is inferred.
+ * per source, whether it is loaded, stale, unverified (no run stamp) or
+ * absent and how many of its findings name a changed element, then the
+ * bounded joined rows. Every number is native (`computeCompareImpact`);
+ * nothing is inferred.
  */
 
 import { useTranslation } from '@/i18n';
@@ -81,7 +82,7 @@ export function CompareImpactSection({ impact }: { impact: CompareImpact }) {
           const status = impact.sources[source];
           return [
             <dt key={`${source}-t`} className="text-muted-foreground">{t(`compareAnalysis.source.${source}`)}</dt>,
-            <dd key={`${source}-d`} className={cn(status === 'stale' && 'text-amber-700 dark:text-amber-400')}>
+            <dd key={`${source}-d`} className={cn((status === 'stale' || status === 'unverified') && 'text-amber-700 dark:text-amber-400')}>
               {status === 'unavailable' ? t('compareAnalysis.status.unavailable')
                 : t(`compareAnalysis.status.${status}`, { count: impact.totals[source] })}
             </dd>,

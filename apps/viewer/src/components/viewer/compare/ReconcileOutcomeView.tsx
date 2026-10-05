@@ -10,20 +10,24 @@
  */
 
 import { useTranslation } from '@/i18n';
-import type { ReconcileOutcome, ReconcileState } from '@/lib/compare/run-reconcile-types';
+import type { Incompatibility, ReconcileOutcome, ReconcileState } from '@/lib/compare/run-reconcile-types';
 
 const STATES: readonly ReconcileState[] = ['new', 'resolved', 'persisting', 'changed', 'notEvaluated'];
 const LISTED_FINDINGS = 40;
 
 export function ReconcileOutcomeView({ outcome }: { outcome: ReconcileOutcome }) {
   const { t } = useTranslation();
+  // A run-level refusal names the picked run by its role, not by an internal id.
+  const detail = (item: Incompatibility) => item.sides
+    ? item.sides.map(side => t(side === 'base' ? 'compareAnalysis.reconcile.baseRun' : 'compareAnalysis.reconcile.headRun')).join(', ')
+    : item.detail ?? '';
   if (!outcome.ok) {
     return (
       <div role="alert" className="rounded border border-destructive/40 bg-destructive/5 px-2 py-1.5 space-y-1">
         <p className="font-medium">{t('compareAnalysis.reconcile.refused')}</p>
         <ul className="list-disc pl-4 space-y-0.5">
           {outcome.incompatibilities.map(item => (
-            <li key={item.code}>{t(`compareAnalysis.incompat.${item.code}`, { detail: item.detail ?? '' })}</li>
+            <li key={item.code}>{t(`compareAnalysis.incompat.${item.code}`, { detail: detail(item) })}</li>
           ))}
         </ul>
       </div>

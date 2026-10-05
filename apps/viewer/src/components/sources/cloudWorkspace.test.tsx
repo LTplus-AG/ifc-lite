@@ -371,4 +371,95 @@ describe('Cloud workspace (#6897)', () => {
     click(named(ui, 'Second Project')); await pump(); click(named(ui, 'Documents')); await pump();
     assert.ok(ui.textContent?.includes('p2.ifc')); assert.equal(ui.textContent?.includes('p1.ifc'), false);
   });
+
+  it('does not resurrect a terminal download status after clearing and repeating a search (#6898)', async () => {
+    const p = provider(); p.download = async () => { throw new Error('Provider download failed'); };
+    const ui = render(<SourceHostProvider additionalProviders={[() => p]}><SourcesPanel onClose={() => {}} /></SourceHostProvider>);
+    await pump(); click(labelled(ui, 'Browse Workspace Files')); await pump();
+    const search = async () => {
+      type(labelled(ui, 'Search files in Workspace Files') as HTMLInputElement, 'Tower');
+      await act(async () => { ui.querySelector('form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); });
+      await pump();
+    };
+    await search(); click(named(ui, 'Open Tower.ifc')); await pump();
+    assert.ok(ui.textContent?.includes('Download failed'));
+    click(named(ui, 'Back to browsing')); await pump(); await search();
+    assert.ok(named(ui, 'Open Tower.ifc')); assert.equal(ui.textContent?.includes('Download failed'), false);
+  });
+
+  it('keeps the download owner open when a sign-in started earlier finishes (#6898)', async () => {
+    const p = provider(); let signedIn = false; let finish: (() => void) | undefined;
+    const other: FileSourceProvider = { ...provider(), manifest: { ...p.manifest, name: 'other-provider', title: 'Other Files', auth: 'interactive' },
+      auth: { restore: async () => null, getIdentity: async () => signedIn ? { id: 'other-account' } : null, signOut: async () => { signedIn = false; },
+        signIn: async () => new Promise((resolve) => { finish = () => { signedIn = true; resolve({ id: 'other-account' }); }; }) } };
+    p.download = async (_ctx, _ref, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true });
+    });
+    const ui = render(<SourceHostProvider additionalProviders={[() => p, () => other]}><SourcesPanel onClose={() => {}} /></SourceHostProvider>);
+    await pump(); click(labelled(ui, 'Browse Workspace Files')); await pump();
+    click(labelled(ui, 'Sign in to Other Files')); await pump(); assert.ok(finish);
+    type(labelled(ui, 'Search files in Workspace Files') as HTMLInputElement, 'Tower');
+    await act(async () => { ui.querySelector('form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); });
+    await pump(); click(named(ui, 'Open Tower.ifc')); await pump();
+    await act(async () => { finish!(); }); await pump();
+    assert.ok(labelled(ui, 'Sign out of Other Files'), 'sign-in completes without stealing the download browser');
+    assert.equal(labelled(ui, 'Browse Workspace Files').getAttribute('aria-expanded'), 'true');
+    assert.equal(labelled(ui, 'Browse Other Files').getAttribute('aria-expanded'), 'false');
+    click(named(ui, 'Cancel download')); await pump();
+    click(labelled(ui, 'Browse Other Files')); await pump();
+    assert.equal(labelled(ui, 'Browse Other Files').getAttribute('aria-expanded'), 'true');
+  });
+
+  it('preserves unreadable pins until the user explicitly resets them (#6898)', async () => {
+    const original = '["dropbox",5]'; localStorage.setItem('ifc-lite-source-provider-pins', original);
+    const p = provider();
+    const ui = render(<SourceHostProvider additionalProviders={[() => p]}><SourcesPanel onClose={() => {}} /></SourceHostProvider>);
+    await pump(); click(labelled(ui, 'Pin Workspace Files')); await pump();
+    assert.equal(localStorage.getItem('ifc-lite-source-provider-pins'), original, 'failed restoration cannot authorize a destructive write');
+    const denied = mock.method(localStorage, 'removeItem', () => { throw new DOMException('Storage denied', 'SecurityError'); });
+    try {
+      click(named(ui, 'Reset saved source pins')); await pump();
+      assert.ok(ui.querySelector('[role="alert"]'), 'failed reset must keep the restore warning');
+      assert.equal(localStorage.getItem('ifc-lite-source-provider-pins'), original);
+    } finally { denied.mock.restore(); }
+    click(named(ui, 'Reset saved source pins')); await pump();
+    assert.equal(ui.querySelector('[role="alert"]'), null);
+    click(labelled(ui, 'Pin Workspace Files')); await pump();
+    assert.equal(labelled(ui, 'Unpin Workspace Files').getAttribute('aria-pressed'), 'true');
+  });
+
+  it('keeps a provider open when it is pinned during its download (#6898)', async () => {
+    const p = provider(); let complete: (() => void) | undefined;
+    p.download = async () => new Promise((resolve) => { complete = () => resolve(new ArrayBuffer(0)); });
+    const ui = render(<SourceHostProvider additionalProviders={[() => p]}><SourcesPanel onClose={() => {}} /></SourceHostProvider>);
+    await pump(); click(labelled(ui, 'Browse Workspace Files')); await pump();
+    type(labelled(ui, 'Search files in Workspace Files') as HTMLInputElement, 'Tower');
+    await act(async () => { ui.querySelector('form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); });
+    await pump(); click(named(ui, 'Open Tower.ifc')); await pump(); assert.ok(complete);
+    click(labelled(ui, 'Pin Workspace Files')); await pump();
+    await act(async () => { complete!(); }); await pump();
+    assert.equal(labelled(ui, 'Browse Workspace Files').getAttribute('aria-expanded'), 'true');
+    assert.ok(labelled(ui, 'Search files in Workspace Files'));
+  });
+
+  it('scopes live file progress to its project when file ids collide (#6898)', async () => {
+    const p = provider();
+    p.listProjects = async () => ({ items: [{ id: 'p1', name: 'First Project' }, { id: 'p2', name: 'Second Project' }] });
+    p.listFiles = async () => ({ items: [{ ...file, containerId: 'root' }] });
+    p.download = async (_ctx, _ref, options) => {
+      options?.onProgress?.(25, 100);
+      return new Promise((_resolve, reject) => { options?.signal?.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true }); });
+    };
+    const ui = render(<SourceHostProvider additionalProviders={[() => p]}><SourcesPanel onClose={() => {}} /></SourceHostProvider>);
+    await pump(); click(labelled(ui, 'Browse Workspace Files')); await pump();
+    type(labelled(ui, 'Search files in Workspace Files') as HTMLInputElement, 'Tower');
+    await act(async () => { ui.querySelector('form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); });
+    await pump(); click(named(ui, 'Open Tower.ifc')); await pump(); assert.ok(ui.querySelector('[role="progressbar"]'));
+    click(named(ui, 'Second Project')); await pump(); click(named(ui, 'Documents')); await pump();
+    assert.equal(labelled(ui, 'Select Tower.ifc').closest('li')?.querySelector('[role="progressbar"]'), null, 'another project cannot inherit the ring for the same file id');
+    click(labelled(ui, 'Back')); await pump(); click(labelled(ui, 'Back')); await pump();
+    click(named(ui, 'First Project')); await pump(); click(named(ui, 'Documents')); await pump();
+    assert.ok(labelled(ui, 'Select Tower.ifc').closest('li')?.querySelector('[role="progressbar"]'), 'returning to the owner project preserves real progress');
+    click(named(ui, 'Cancel download')); await pump();
+  });
 });

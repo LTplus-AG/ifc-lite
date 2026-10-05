@@ -104,9 +104,12 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
     [sourceHost],
   );
   const pins = useSourceProviderPins();
+  const pinnedIds = useRef(pins.ids);
+  pinnedIds.current = pins.ids;
   const didAutoOpen = useRef(false);
   const [readyProviders, setReadyProviders] = useState<ReadonlySet<string>>(() => new Set());
-  const [downloadOwner, setDownloadOwner] = useState<string | null>(null);
+  const [downloadContext, setDownloadContext] = useState<{ providerId: string; projectId: string } | null>(null);
+  const downloadOwner = downloadContext?.providerId ?? null;
   const [browsing, setBrowsing] = useState<string | null>(null);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
   // Bumped when saved prefs change so rows/contexts re-derive configured state.
@@ -229,15 +232,20 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
     provider: activeProvider,
     providerId: browsing,
     sourceHost,
-    onBatchSucceeded: pins.ids.includes(browsing ?? '') ? () => {} : closeBrowser,
+    onBatchSucceeded: () => { if (!pinnedIds.current.includes(browsing ?? '')) closeBrowser(); },
   });
 
+  // A sign-in started before a download may resolve afterward. Async browse
+  // callbacks must consult the current lock rather than their captured render.
+  const navigationLock = useRef<{ busy: boolean; providerId: string | null }>({ busy: false, providerId: null });
+  navigationLock.current = { busy: downloading, providerId: downloadOwner };
+
   const openFavourite = useCallback((favourite: SourceFavourite) => {
-    if (downloading) return;
+    if (navigationLock.current.busy) return;
     didAutoOpen.current = true;
     setBrowseTarget(favourite);
     setBrowsing(favourite.providerId);
-  }, [downloading]);
+  }, []);
 
   useEffect(() => {
     if (downloading && downloadOwner && sourceHost.get(downloadOwner)?.manifest.auth === 'interactive'
@@ -287,7 +295,10 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
           </div>
         )}
 
-        {pins.restoreFailed && <p role="alert" className="mb-2 rounded border p-2 text-xs text-muted-foreground">{t('sources.workspace.pinRestoreFailed')}</p>}
+        {pins.restoreFailed && <div role="alert" className="mb-2 rounded border p-2 text-xs text-muted-foreground">
+          <p>{t('sources.workspace.pinRestoreFailed')}</p>
+          <Button className="mt-2" size="sm" variant="outline" onClick={pins.reset}>{t('sources.workspace.resetPins')}</Button>
+        </div>}
         {downloading && <div className="mb-2 flex items-center gap-2 rounded border p-2">
           <output className="min-w-0 flex-1 text-xs">{t('sources.workspace.downloading', { title: sourceHost.get(downloadOwner ?? '')?.manifest.title ?? '' })}</output>
           <Button size="sm" variant="outline" onClick={cancelDownload}>{t('sources.sourceBrowserHeader.cancelDownload')}</Button>
@@ -310,6 +321,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
               prefsVersion={prefsVersion}
               onOpenSettings={() => setSettingsFor(p.manifest.name)}
               onBrowse={() => {
+                if (navigationLock.current.busy && navigationLock.current.providerId !== p.manifest.name) return;
                 didAutoOpen.current = true;
                 setBrowseTarget(null);
                 setBrowsing((previous) => previous === p.manifest.name ? null : p.manifest.name);
@@ -324,9 +336,10 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
               {browsing === p.manifest.name && activeProvider && browsingCtx && (
                 <div className="flex h-[min(65vh,600px)] min-h-64 flex-col">
                   <SourceBrowser key={JSON.stringify([browsing, prefsVersion, browseTarget?.projectId, browseTarget?.fileAreaId, browseTarget?.containerId, browseTarget?.fileId])} provider={activeProvider} ctx={browsingCtx}
-                    onDownload={(selection) => { setDownloadOwner(browsing); void handleDownload(selection); }}
+                    onDownload={(selection) => { navigationLock.current = { busy: true, providerId: p.manifest.name }; setDownloadContext({ providerId: p.manifest.name, projectId: selection.projectId }); void handleDownload(selection); }}
                     onBack={() => { didAutoOpen.current = true; closeBrowser(); clearFinishedDownloadStates(); }}
                     busy={downloading} onCancelDownload={cancelDownload} downloadStates={downloadOwner === browsing ? downloadStates : new Map()}
+                    downloadProjectId={downloadContext?.projectId ?? null}
                     openTarget={browseTarget} onFavouritesChanged={bumpFavourites} favouritesVersion={favouritesVersion} />
                 </div>
               )}

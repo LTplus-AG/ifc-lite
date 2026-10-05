@@ -16,10 +16,11 @@ import { SourceResourceDetails } from './SourceResourceDetails';
 import { SourceDownloadStatus } from './SourceDownloadStatus';
 import type { SourceDownloadState } from '@/lib/sources/downloadProgress';
 
-export function SourceWideSearch({ provider, ctx, onDownload, busy, downloadStates }: {
+export function SourceWideSearch({ provider, ctx, onDownload, busy, downloadStates, downloadProjectId }: {
   provider: FileSourceProvider; ctx: PluginContext;
   onDownload: (selection: { projectId: string; files: readonly SourceFile[] }) => void;
   busy: boolean; downloadStates: ReadonlyMap<string, SourceDownloadState>;
+  downloadProjectId: string | null;
 }) {
   const { t } = useTranslation();
   const [revisions, setRevisions] = useState<ReadonlyMap<string, SourceFile>>(() => new Map());
@@ -35,6 +36,7 @@ export function SourceWideSearch({ provider, ctx, onDownload, busy, downloadStat
   const submit = useCallback(() => {
     if (!query.trim()) return;
     setError(null);
+    setOpening(null);
     setRevisions(new Map());
     setSubmitted(query.trim());
     setFetcher(() => createSourceWideSearch(provider, ctx, query.trim()));
@@ -57,7 +59,7 @@ export function SourceWideSearch({ provider, ctx, onDownload, busy, downloadStat
     <p className="mt-1 text-xs text-muted-foreground">{t(provider.manifest.capabilities.search && provider.searchFiles ? 'sources.workspace.searchScope' : 'sources.workspace.searchListed', { title: provider.manifest.title })}</p>
     {provider.manifest.capabilities.projectsAreDiscoverableOnly && <p className="mt-1 text-xs text-muted-foreground">{t('sources.workspace.discoverable')}</p>}
     {submitted && <div className="mt-2">
-      <Button size="sm" variant="ghost" onClick={() => { setSubmitted(''); setQuery(''); setError(null); setStartPending(false); paged.reset(); }}>{t('sources.workspace.clearResults')}</Button>
+      <Button size="sm" variant="ghost" onClick={() => { setSubmitted(''); setQuery(''); setError(null); setOpening(null); setRevisions(new Map()); setStartPending(false); paged.reset(); }}>{t('sources.workspace.clearResults')}</Button>
       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
       {(paged.loading || startPending) && <output className="flex items-center gap-2 text-xs"><Spinner size="sm" />{t('sources.workspace.searching')}</output>}
       {!paged.loading && !startPending && results.length === 0 && !error && <output className="block py-2 text-xs text-muted-foreground">{t(paged.hasMore ? 'sources.workspace.searchContinue' : 'sources.sourceFolderStep.noSearchResults')}</output>}
@@ -77,7 +79,7 @@ export function SourceWideSearch({ provider, ctx, onDownload, busy, downloadStat
           <SourceResourceDetails provider={provider} ctx={ctx} projectId={project.id} file={file}
             selectedFile={revisions.get(JSON.stringify([project.id, file.id]))} busy={busy}
             onSelect={(revision) => setRevisions((previous) => new Map(previous).set(JSON.stringify([project.id, file.id]), revision))} />
-          {opening?.projectId === project.id && opening.fileId === file.id && downloadStates.get(file.id) && <SourceDownloadStatus name={file.name} state={downloadStates.get(file.id)!} />}
+          {downloadProjectId === project.id && opening?.projectId === project.id && opening.fileId === file.id && downloadStates.get(file.id) && <SourceDownloadStatus name={file.name} state={downloadStates.get(file.id)!} />}
         </li>)}
       </ul>
       <LoadMoreRow hasMore={paged.hasMore} loading={paged.loadingMore} onLoadMore={() => { setError(null); paged.loadMore(); }} label={t('sources.workspace.moreSearch')} />

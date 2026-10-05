@@ -37,6 +37,7 @@ interface SourceBrowserProps {
   onCancelDownload?: () => void;
   /** Per-file state of the running Load batch, by file id (#6375). */
   downloadStates?: ReadonlyMap<string, SourceDownloadState>;
+  downloadProjectId?: string | null;
   /** A favourite to jump straight to, consumed once on mount. */
   openTarget?: SourceFavourite | null;
   /** Fires when a star is pressed here, so the panel's favourites list re-reads storage. */
@@ -55,6 +56,7 @@ export function SourceBrowser({
   busy = false,
   onCancelDownload,
   downloadStates = NO_DOWNLOADS,
+  downloadProjectId = null,
   openTarget = null,
   onFavouritesChanged,
   favouritesVersion = 0,
@@ -288,7 +290,7 @@ export function SourceBrowser({
       />
 
       {(step === 'projects' || step === 'file-areas') && <SourceWideSearch provider={provider} ctx={ctx}
-        onDownload={onDownload} busy={busy} downloadStates={downloadStates} />}
+        onDownload={onDownload} busy={busy} downloadStates={downloadStates} downloadProjectId={downloadProjectId} />}
 
       {error && (
         <div className="flex items-center gap-2 border-b px-3 py-2 text-sm text-red-600 dark:text-red-400">
@@ -348,7 +350,7 @@ export function SourceBrowser({
           syncingFileIds={loadedModels.syncingFileIds}
           syncStatesByFileId={loadedModels.syncStatesByFileId}
           onSyncLoadedFile={(file) => void loadedModels.syncLoadedFile(file)}
-          downloadStates={downloadStates}
+          downloadStates={selectedProject?.id === downloadProjectId ? downloadStates : NO_DOWNLOADS}
           busy={busy}
           onLoad={handleLoad}
           foldersHaveMore={catalog.hasMoreFolders(selectedContainerId)}

@@ -21,6 +21,7 @@ export function useSourceProviderPins() {
   });
   const { ids } = state;
   const toggle = (id: string) => {
+    if (state.restoreFailed) { toast.error(t('sources.workspace.pinRestoreFailed')); return; }
     const next = ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id];
     if (next.length > 100) { toast.error(t('sources.workspace.pinFailed')); return; }
     try {
@@ -31,5 +32,14 @@ export function useSourceProviderPins() {
       toast.error(t('sources.workspace.pinFailed'));
     }
   };
-  return { ids, toggle, restoreFailed: state.restoreFailed };
+  const reset = () => {
+    try {
+      localStorage.removeItem(KEY);
+      setState({ ids: [], restoreFailed: false });
+    } catch (error) {
+      console.warn('[sources] Cannot reset provider pins', error);
+      toast.error(t('sources.workspace.pinFailed'));
+    }
+  };
+  return { ids, toggle, reset, restoreFailed: state.restoreFailed };
 }

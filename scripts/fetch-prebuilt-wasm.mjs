@@ -5,6 +5,13 @@
 /**
  * Download prebuilt @ifc-lite/wasm from npm when Rust/wasm-pack is unavailable.
  * Useful for Windows dev setups without WSL or a Rust toolchain.
+ *
+ * Usage: node scripts/fetch-prebuilt-wasm.mjs [--force]
+ *
+ * The runtime (ifc-lite.js + ifc-lite_bg.wasm) is checked against the
+ * COMMITTED ifc-lite.d.ts both when it is fetched and when one is already
+ * installed. `--force` re-fetches even if a runtime is installed; the existing
+ * runtime is replaced only if the fetched one passes the check.
  */
 
 import { execSync } from 'node:child_process';
@@ -26,8 +33,37 @@ const tarball = `@ifc-lite/wasm@${version}`;
 const wasmOut = join(rootDir, 'packages/wasm/pkg');
 const wasmFile = join(wasmOut, 'ifc-lite_bg.wasm');
 
-if (existsSync(wasmFile)) {
+const force = process.argv.includes('--force');
+const committedDts = join(wasmOut, 'ifc-lite.d.ts');
+const RUNTIME_FILES = ['ifc-lite_bg.wasm', 'ifc-lite.js'];
+
+if (existsSync(wasmFile) && !force) {
   console.log(`Prebuilt WASM already present at ${wasmFile}`);
+  // An installed runtime may have been fetched before this check existed, or
+  // by an older checkout, or built before the Rust sources moved on. Check it
+  // like a fresh fetch, but never delete it: its origin is unknown and it may
+  // be a source build.
+  const installedJs = join(wasmOut, 'ifc-lite.js');
+  if (!existsSync(installedJs)) {
+    console.error(
+      `\n${wasmFile} is present but ${installedJs} is missing, so the runtime is incomplete.\n` +
+        `Rebuild from source (pnpm build:wasm) or re-fetch with: node scripts/fetch-prebuilt-wasm.mjs --force`,
+    );
+    process.exit(1);
+  }
+  const parity = parityAgainstCommittedDts(readFileSync(installedJs, 'utf8'));
+  if (parity.missing.length > 0) {
+    console.error(
+      `\nThe installed WASM runtime in ${wasmOut} is behind this checkout (${checkoutCommit()}).\n` +
+        listMissing(parity.missing) +
+        `\n\nThe installed runtime was left untouched. Either build from source with a Rust toolchain ` +
+        `(pnpm build:wasm), or re-fetch ${tarball} with: node scripts/fetch-prebuilt-wasm.mjs --force ` +
+        `(replaces the installed runtime only if the published one passes this check; ` +
+        `the published package may itself be behind).`,
+    );
+    process.exit(1);
+  }
+  warnExtra(parity.extra);
   process.exit(0);
 }
 
@@ -60,7 +96,26 @@ const pkgDir = join(extractDir, 'package/pkg');
 // checkout's Rust crate; the published copy describes the last publish, so
 // overwriting it dirties the tree and breaks the typecheck of anything built
 // against newer bindings. The published .d.ts is used for nothing here.
-const RUNTIME_FILES = ['ifc-lite_bg.wasm', 'ifc-lite.js'];
+//
+// The published runtime can predate this checkout (main merges Rust changes
+// between publishes). A symbol the committed .d.ts declares and the fetched
+// .js lacks type-checks, then fails in a bundler far from here, so name it
+// BEFORE installing anything: a stale bundle is never left behind for the
+// "already present" early exit to accept, and under --force the previously
+// installed runtime survives a failed fetch.
+const fetchedParity = parityAgainstCommittedDts(readFileSync(join(pkgDir, 'ifc-lite.js'), 'utf8'));
+if (fetchedParity.missing.length > 0) {
+  rmSync(extractDir, { recursive: true, force: true });
+  rmSync(join(rootDir, tgzName), { force: true });
+  console.error(
+    `\nThe published ${tarball} is behind this checkout (${checkoutCommit()}).\n` +
+      listMissing(fetchedParity.missing) +
+      `\n\nNothing was installed. Either build from source with a Rust toolchain ` +
+      `(pnpm build:wasm), or wait for a publish that includes these exports.`,
+  );
+  process.exit(1);
+}
+
 for (const name of RUNTIME_FILES) {
   copyFileSync(join(pkgDir, name), join(wasmOut, name));
 }
@@ -68,36 +123,7 @@ for (const name of RUNTIME_FILES) {
 rmSync(extractDir, { recursive: true, force: true });
 rmSync(join(rootDir, tgzName), { force: true });
 
-// The published runtime can predate this checkout (main merges Rust changes
-// between publishes). A symbol the committed .d.ts declares and the fetched
-// .js lacks type-checks, then fails in a bundler far from here, so name it now.
-const committedDts = join(wasmOut, 'ifc-lite.d.ts');
-if (existsSync(committedDts)) {
-  const { missing, extra } = compareWasmExports(
-    readFileSync(committedDts, 'utf8'),
-    readFileSync(join(wasmOut, 'ifc-lite.js'), 'utf8'),
-  );
-  if (missing.length > 0) {
-    // Leave no runtime behind: the "already present" early exit above would
-    // otherwise accept this stale bundle on the next run.
-    for (const name of RUNTIME_FILES) rmSync(join(wasmOut, name), { force: true });
-    console.error(
-      `\nThe published ${tarball} is behind this checkout (${checkoutCommit()}).\n` +
-        `packages/wasm/pkg/ifc-lite.d.ts declares ${missing.length} export(s) the published runtime does not provide:\n` +
-        missing.map((n) => `  - ${n}`).join('\n') +
-        `\n\nThe fetched runtime was removed. Either build from source with a Rust toolchain ` +
-        `(pnpm build:wasm), or wait for a publish that includes these exports.`,
-    );
-    process.exit(1);
-  }
-  if (extra.length > 0) {
-    console.warn(
-      `Warning: the published ${tarball} provides ${extra.length} export(s) this checkout's ` +
-        `ifc-lite.d.ts does not declare (${extra.join(', ')}). The package is ahead of ` +
-        `${checkoutCommit()}; harmless unless this checkout is stale.`,
-    );
-  }
-}
+warnExtra(fetchedParity.extra);
 
 console.log(`Installed prebuilt WASM runtime to ${wasmOut}`);
 
@@ -107,4 +133,26 @@ function checkoutCommit() {
   } catch {
     return 'this checkout, commit unknown';
   }
+}
+
+/** Exports the committed .d.ts declares vs those `js` provides; empty if there is no committed .d.ts. */
+function parityAgainstCommittedDts(js) {
+  if (!existsSync(committedDts)) return { missing: [], extra: [] };
+  return compareWasmExports(readFileSync(committedDts, 'utf8'), js);
+}
+
+function listMissing(missing) {
+  return (
+    `packages/wasm/pkg/ifc-lite.d.ts declares ${missing.length} export(s) the runtime does not provide:\n` +
+    missing.map((n) => `  - ${n}`).join('\n')
+  );
+}
+
+function warnExtra(extra) {
+  if (extra.length === 0) return;
+  console.warn(
+    `Warning: the runtime provides ${extra.length} export(s) this checkout's ` +
+      `ifc-lite.d.ts does not declare (${extra.join(', ')}). The package is ahead of ` +
+      `${checkoutCommit()}; harmless unless this checkout is stale.`,
+  );
 }

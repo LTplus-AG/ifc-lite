@@ -25,8 +25,8 @@ async function __wbg_init(x) {}
 export { initSync, __wbg_init as default };
 `;
 
-test('declared exports skip type-only declarations and the default init', () => {
-  assert.deepEqual([...declaredExports(DTS)].sort(), ['ScanOutlineJs', 'initSync', 'traceScanOutline']);
+test('declared exports skip type-only declarations and include the default init', () => {
+  assert.deepEqual([...declaredExports(DTS)].sort(), ['ScanOutlineJs', 'default', 'initSync', 'traceScanOutline']);
 });
 
 test('provided exports read both inline exports and the export list, aliases by public name', () => {
@@ -53,5 +53,45 @@ test('a symbol the js provides beyond the d.ts is reported as extra, not missing
 });
 
 test('an empty js is all missing, never silently equal', () => {
-  assert.deepEqual(compareWasmExports(DTS, '').missing, ['ScanOutlineJs', 'initSync', 'traceScanOutline']);
+  assert.deepEqual(compareWasmExports(DTS, '').missing, ['ScanOutlineJs', 'default', 'initSync', 'traceScanOutline']);
+});
+
+// Review of #6945: the first scanner pair ignored these shapes.
+test('a js without a default export is missing "default" when the d.ts declares one', () => {
+  const noDefault = JS_FULL.replace('export { initSync, __wbg_init as default };', 'export { initSync };');
+  assert.deepEqual(compareWasmExports(DTS, noDefault).missing, ['default']);
+});
+
+test('d.ts export lists, enums and declare-prefixed exports are runtime names; type-only ones are not', () => {
+  const dts = `
+export enum Mode { A, B }
+export const enum Erased { A }
+export declare function declared(): void;
+export abstract class Base {}
+export const answer: number;
+export { listed, other as renamed, type OnlyAType };
+export type { AlsoType };
+export type Only = string;
+`;
+  assert.deepEqual([...declaredExports(dts)].sort(), ['Base', 'Mode', 'answer', 'declared', 'listed', 'renamed']);
+});
+
+test('commented-out exports and declare module bodies are not demanded of the js', () => {
+  const dts = `
+/**
+ * Example:
+export function inComment(): void;
+ */
+declare module 'ambient' {
+export function inAmbient(): void;
+  namespace n { export function nested(): void; }
+}
+export function real(): void;
+`;
+  assert.deepEqual([...declaredExports(dts)], ['real']);
+});
+
+test('multi-line js export lists and generators are read', () => {
+  const js = `export function* gen() {}\nexport async function later() {}\nexport {\n  a,\n  b as c,\n};\n`;
+  assert.deepEqual([...providedExports(js)].sort(), ['a', 'c', 'gen', 'later']);
 });

@@ -10,7 +10,7 @@ import { aiBlockOrigin, type AiClaimStatus } from '@/lib/document/ai-report-type
 import type { DocumentSpec } from '@/lib/document/types';
 import { captureEvidence } from '@/lib/assistant/evidence';
 import { isAssistantSource } from '@/lib/assistant/sources';
-import { applyReportRefresh, planReportRefresh, type ReportRefreshPlan } from '@/lib/assistant/report-refresh';
+import { applyReportRefresh, planReportRefresh, ReportRefreshError, type ReportRefreshPlan } from '@/lib/assistant/report-refresh';
 import { reportLanguageName } from '@/lib/assistant/report-language';
 
 const STATUS: Record<AiClaimStatus, TranslationKey> = {
@@ -26,13 +26,18 @@ export function AiReportRefresh({ document, onChange }: { document: DocumentSpec
   const record = document.aiReport;
   if (!record) return null;
   const texts = document.blocks.flatMap(block => block.kind === 'text' ? [aiBlockOrigin(block)] : []);
+  // A refusal the reviewer can act on is shown in the viewer language; anything else is unexpected and logged.
+  const fail = (error: unknown) => {
+    if (!(error instanceof ReportRefreshError)) console.error('[AI report] Refresh failed', error);
+    setMessage({ error: true, text: error instanceof ReportRefreshError ? t(error.key) : error instanceof Error ? error.message : String(error) });
+  };
   const refresh = () => {
     setMessage(null);
     try {
-      if (!isAssistantSource(record.evidence.source)) throw new Error(t('aiReports.sourceUnsupported'));
+      if (!isAssistantSource(record.evidence.source)) throw new ReportRefreshError('aiReports.sourceUnsupported', `Unknown report source ${record.evidence.source}.`);
       setPlan(planReportRefresh(document, captureEvidence(record.evidence.source)));
       setReplace(new Set());
-    } catch (error) { setMessage({ error: true, text: error instanceof Error ? error.message : String(error) }); }
+    } catch (error) { fail(error); }
   };
   const apply = () => {
     if (!plan) return;
@@ -40,7 +45,7 @@ export function AiReportRefresh({ document, onChange }: { document: DocumentSpec
       onChange(applyReportRefresh(document, plan, replace));
       setPlan(null);
       setMessage({ error: false, text: t('aiReports.refreshApplied') });
-    } catch (error) { setMessage({ error: true, text: error instanceof Error ? error.message : String(error) }); }
+    } catch (error) { fail(error); }
   };
   const toggle = (id: string, on: boolean) => setReplace(previous => {
     const next = new Set(previous);
@@ -58,6 +63,7 @@ export function AiReportRefresh({ document, onChange }: { document: DocumentSpec
     <p className="text-muted-foreground">{t('aiReports.refreshHint')}</p>
     {!plan && <Button variant="outline" size="sm" className="h-7" onClick={refresh}><RefreshCw className="h-3 w-3 mr-1" aria-hidden="true" />{t('aiReports.refreshEvidence')}</Button>}
     {plan && <div className="space-y-2">
+      {plan.modelsChanged && <p role="note" className="rounded border border-amber-500/40 bg-amber-500/10 p-1.5">{t('aiReports.modelsChanged')}</p>}
       <ul className="space-y-0.5">{plan.claims.map(claim => <li key={claim.id}>{t('aiReports.refreshClaim', { id: claim.id,
         before: t(STATUS[claim.before]), after: t(STATUS[claim.after]),
         changed: claim.changes.filter(change => change.kind === 'changed').length, missing: claim.changes.filter(change => change.kind === 'missing').length })}</li>)}</ul>

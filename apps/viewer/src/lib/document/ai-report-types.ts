@@ -60,6 +60,8 @@ export interface AiReportRecord {
   narrative: string;
   /** Every block slot the generator has ever produced; a missing one was deleted by a person. */
   slots: string[];
+  /** Sorted source fingerprints of the models first drafted against; set by the first refresh. */
+  originModels?: string[];
 }
 
 /** Marks generator-written text. `generated` is the exact text written, so an edit is observable. */
@@ -122,4 +124,6 @@ export function validateAiReportRecord(value: unknown, errors: DocumentValidatio
   if (!Array.isArray(value.claims) || value.claims.length > 50 || !value.claims.every(validClaim)) fail('expected at most 50 valid claims');
   if (!isText(value.narrative, 32_000)) fail('expected the narrative text');
   if (!Array.isArray(value.slots) || !value.slots.every(slot => isText(slot, 200))) fail('expected generated slots');
+  if (value.originModels !== undefined && (!Array.isArray(value.originModels) || value.originModels.length > 1000
+    || !value.originModels.every(fingerprint => isText(fingerprint, 200)))) fail('expected origin model fingerprints');
 }

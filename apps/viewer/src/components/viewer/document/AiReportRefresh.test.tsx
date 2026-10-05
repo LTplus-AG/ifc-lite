@@ -9,6 +9,7 @@ import { act } from 'react';
 import { render, click, cleanup } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { clashDiscussion, seedClashResult, typedReport } from '@/test/ai-report-fixture';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { cancelAssistant } from '@/lib/assistant/conversation';
 import { prepareReportDraft } from '@/lib/assistant/report-draft';
 import type { DocumentSpec, TextBlock } from '@/lib/document/types';
@@ -56,5 +57,27 @@ test('refresh reports an unavailable native result as an alert and changes nothi
   const ui = render(<AiReportRefresh document={saved} onChange={next => applied.push(next)} />);
   click([...ui.querySelectorAll('button')].find(candidate => candidate.textContent?.trim() === 'Refresh evidence')!);
   assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /No native result is available/);
+  assert.equal(applied.length, 0);
+});
+
+// Review of #6973: refusals raised in lib/ reach the reviewer in the viewer language, and a refresh
+// against other models than the report was drafted from says so before it is applied.
+test('an out-of-date native result is refused in the viewer language, and changed models are flagged', () => {
+  useViewerStore.setState(fixtureModels({ ...fixtureModel('m1'), sourceFingerprint: 'rev-a' }));
+  clashDiscussion('Answer [E1].');
+  const saved = prepareReportDraft('Saved report').document;
+  act(() => useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 }));
+  const applied: DocumentSpec[] = [];
+  const ui = render(<AiReportRefresh document={saved} onChange={next => applied.push(next)} />);
+  const refresh = () => click([...ui.querySelectorAll('button')].find(candidate => candidate.textContent?.trim() === 'Refresh evidence')!);
+  refresh();
+  assert.equal(ui.querySelector('[role="alert"]')?.textContent,
+    'The native result is out of date: the model changed after it was run. Run it again in its panel, then refresh evidence.');
+  assert.equal(ui.querySelector('[role="note"]'), null);
+  act(() => { useViewerStore.setState(fixtureModels({ ...fixtureModel('m1'), sourceFingerprint: 'rev-b' })); seedClashResult([-0.02, -0.035, -0.05]); });
+  refresh();
+  assert.equal(ui.querySelector('[role="alert"]'), null);
+  assert.equal(ui.querySelector('[role="note"]')?.textContent,
+    'The loaded models differ from those this report was drafted against. Claims will be re-checked against the loaded models.');
   assert.equal(applied.length, 0);
 });

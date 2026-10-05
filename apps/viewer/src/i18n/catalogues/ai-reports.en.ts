@@ -46,4 +46,8 @@ export const aiReportsEn = {
   'aiReports.originGenerated': 'AI-generated',
   'aiReports.originEdited': 'AI text edited',
   'aiReports.sourceUnsupported': 'This report source cannot be recaptured in this viewer.',
+  'aiReports.noNativeResult': 'No native result is available for this source. Run it in its panel, then refresh evidence.',
+  'aiReports.analysisStale': 'The native result is out of date: the model changed after it was run. Run it again in its panel, then refresh evidence.',
+  'aiReports.documentChanged': 'The document changed while the refresh was open. Refresh evidence again.',
+  'aiReports.modelsChanged': 'The loaded models differ from those this report was drafted against. Claims will be re-checked against the loaded models.',
 } as const satisfies Record<string, TranslationValue>;

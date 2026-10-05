@@ -61,7 +61,7 @@ describe('shared result chrome (U02, #6925)', () => {
       cursor = at;
     }
     // A group, not a toolbar: a toolbar promises arrow-key navigation between its controls.
-    assert.ok(region.querySelector('[role="group"][aria-label="Result actions"]'), 'actions are one named group');
+    assert.ok(region.querySelector('fieldset[aria-label="Result actions"]'), 'actions are one named group (a fieldset is role=group)');
     assert.equal(region.querySelector('[role="toolbar"]'), null);
     assert.ok(region.querySelector('section[aria-label="Evidence details"]'), 'evidence is its own region');
     assert.ok(region.querySelector('ul[aria-label="Incomplete"]'), 'every known gap is listed');

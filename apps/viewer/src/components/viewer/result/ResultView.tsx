@@ -119,8 +119,8 @@ export function ResultView({
       )}
       {summary && <div className={cn(SLOT, 'py-2.5', summaryClassName)} {...summaryProps}>{summary}</div>}
       {filters}
-      {/* A named group, not a toolbar: a toolbar promises arrow-key roving focus. */}
-      {actions && <div role="group" aria-label={t('resultView.actions')}>{actions}</div>}
+      {/* A named group (fieldset), not a toolbar: a toolbar promises arrow-key roving focus. */}
+      {actions && <fieldset aria-label={t('resultView.actions')} className="min-w-0">{actions}</fieldset>}
       {rows}
       {evidence && <section aria-label={t('resultView.evidence')}>{evidence}</section>}
     </section>

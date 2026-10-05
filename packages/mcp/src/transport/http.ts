@@ -28,6 +28,7 @@ import { errorResponse, parseMessage } from '../protocol/jsonrpc.js';
 import { JsonRpcErrorCode } from '../protocol/index.js';
 import { MCPServer, OutgoingMessageSink } from '../server.js';
 import { AuthScope } from '../auth/scope.js';
+import { parseHostHeader, reclaimIdleSessions, sameScope, setCors, DEFAULT_MAX_SESSIONS, DEFAULT_SESSION_IDLE_MS, type SessionCapacityOptions } from './http-helpers.js';
 
 export interface HttpAuthenticator {
   /**
@@ -50,7 +51,7 @@ export interface SessionFactory {
   build(scope: AuthScope, sessionId: string): Promise<MCPServer> | MCPServer;
 }
 
-export interface HttpTransportOptions {
+export interface HttpTransportOptions extends SessionCapacityOptions {
   port: number;
   host?: string;
   authenticator: HttpAuthenticator;
@@ -72,11 +73,15 @@ interface Session {
   scope: AuthScope;
   sseClients: Set<ServerResponse>;
   createdAt: number;
+  /** Wall-clock ms of the last request that named this session. */
+  lastSeen: number;
 }
 
 export class HttpTransport {
   private server: Server;
   private sessions = new Map<string, Session>();
+  /** Sessions whose factory call is in flight: not yet in `sessions`, but already spoken for. */
+  private building = 0;
   private opts: HttpTransportOptions;
   /** Browser Origins permitted to read responses (empty = none). */
   private allowedOrigins: Set<string>;
@@ -226,6 +231,7 @@ export class HttpTransport {
     let session: Session;
     if (sessionId && this.sessions.has(sessionId)) {
       session = this.sessions.get(sessionId) as Session;
+      session.lastSeen = Date.now();
       // The session was bound to a specific scope/principal at initialize.
       // A leaked Mcp-Session-Id must NOT be reusable by a caller whose
       // current token has different (narrower OR wider) access — accepting
@@ -247,8 +253,22 @@ export class HttpTransport {
         res.end('Mcp-Session-Id required');
         return;
       }
+      if (!this.makeRoomForSession()) {
+        res.statusCode = 503;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'session-capacity' }));
+        return;
+      }
       const newId = randomUUID();
-      const server = await this.opts.sessionFactory.build(scope, newId);
+      // The factory may await, so concurrent initializes would each pass the
+      // capacity check above; count the ones still building.
+      this.building++;
+      let server: MCPServer;
+      try {
+        server = await this.opts.sessionFactory.build(scope, newId);
+      } finally {
+        this.building--;
+      }
       // A factory that drops the session id would put every HTTP session
       // on the shared local layer workspace (cross-session reads/writes,
       // no disposal) — refuse the deployment bug instead of running unsafe.
@@ -260,7 +280,7 @@ export class HttpTransport {
         }));
         return;
       }
-      session = { id: newId, server, scope, sseClients: new Set(), createdAt: Date.now() };
+      session = { id: newId, server, scope, sseClients: new Set(), createdAt: Date.now(), lastSeen: Date.now() };
       session.server.attach(this.makeSinkFor(session));
       this.sessions.set(newId, session);
       res.setHeader('Mcp-Session-Id', newId);
@@ -303,6 +323,14 @@ export class HttpTransport {
     });
   }
 
+  /** Whether a new session fits; at the cap, idle sessions are ended first. */
+  private makeRoomForSession(): boolean {
+    const max = this.opts.maxSessions ?? DEFAULT_MAX_SESSIONS;
+    if (this.sessions.size + this.building < max) return true;
+    reclaimIdleSessions(this.sessions, this.opts.sessionIdleMs ?? DEFAULT_SESSION_IDLE_MS, (id) => this.endSession(id));
+    return this.sessions.size + this.building < max;
+  }
+
   private endSession(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
@@ -321,54 +349,6 @@ export class HttpTransport {
       },
     };
   }
-}
-
-/**
- * Strict scope identity check used when reusing an HTTP session — both the
- * permission set and any narrowing (model_ids, user, session) must match
- * what the session was created with. We sort the scopes set so callers
- * that pass them in different orders still compare equal.
- */
-function sameScope(a: AuthScope, b: AuthScope): boolean {
-  if (a === b) return true;
-  if (a.user !== b.user || a.session !== b.session) return false;
-  const as = [...a.scopes].sort();
-  const bs = [...b.scopes].sort();
-  if (as.length !== bs.length || as.some((s, i) => s !== bs[i])) return false;
-  const am = a.modelIds ? [...a.modelIds].sort() : undefined;
-  const bm = b.modelIds ? [...b.modelIds].sort() : undefined;
-  if ((am?.length ?? 0) !== (bm?.length ?? 0)) return false;
-  if (am && bm && am.some((m, i) => m !== bm[i])) return false;
-  return true;
-}
-
-/**
- * Reflect CORS headers ONLY when the request carries an Origin we explicitly
- * allow. We never emit a wildcard `Access-Control-Allow-Origin` — that would
- * let any web page read JSON-RPC responses cross-origin. When `origin` is not
- * allowlisted we emit no CORS headers, so the browser blocks the response.
- */
-function setCors(res: ServerResponse, origin: string | undefined, allowed: Set<string>): void {
-  if (!origin || !allowed.has(origin)) return;
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Session-Id');
-  res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
-}
-
-/**
- * Extract the host name from a `Host` header, stripping the port. Handles the
- * bracketed IPv6 literal form (`[::1]:8765` -> `::1`).
- */
-function parseHostHeader(raw: string | undefined): string | undefined {
-  if (!raw) return undefined;
-  const value = raw.trim();
-  if (value.startsWith('[')) {
-    const end = value.indexOf(']');
-    return end > 0 ? value.slice(1, end) : value;
-  }
-  return value.split(':')[0];
 }
 
 function writeSse(res: ServerResponse, message: unknown): void {

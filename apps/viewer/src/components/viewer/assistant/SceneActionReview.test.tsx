@@ -129,6 +129,7 @@ test('a viewport capture that finishes after the send is dropped, not attached t
     click(button(ui, 'Send')!);
     await waitFor(() => useAssistant.getState().status === 'idle' && useAssistant.getState().messages.length === 2, 'send completes');
     await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 600)); });
+    assert.doesNotMatch(ui.textContent ?? '', /could not be captured/i, 'the capture itself succeeded, so only the guard can drop it');
     assert.doesNotMatch(ui.textContent ?? '', /Viewport screenshot/, 'the late capture belongs to the message already sent');
   } finally {
     clearApiKeys(); setGlobalRendererRef({ current: null }); setGlobalCanvasRef({ current: null });

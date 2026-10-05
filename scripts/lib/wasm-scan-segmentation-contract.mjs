@@ -37,6 +37,37 @@ function room() {
   return { positions: Float32Array.from(points), faces };
 }
 
+/** Seeded floor (4 x 4 m, Z up) with a regular octagonal column, circumradius 0.6 m at (2, 2), 3 mm noise (#6893). */
+function octagon() {
+  let state = 6893n;
+  const random = () => {
+    state = (state * 6364136223846793005n + 1442695040888963407n) & 0xffffffffffffffffn;
+    return Number(state >> 11n) / 2 ** 53;
+  };
+  const gauss = () => Math.sqrt(-2 * Math.log(Math.max(random(), 1e-300))) * Math.cos(2 * Math.PI * random());
+  const [r, apothem] = [0.6, 0.6 * Math.cos(Math.PI / 8)];
+  const inside = (x, y) => [...Array(8).keys()].every(k => {
+    const m = (2 * Math.PI * (k + 0.5)) / 8;
+    return (x - 2) * Math.cos(m) + (y - 2) * Math.sin(m) < apothem;
+  });
+  const points = [];
+  const push = p => points.push(...p.map(v => v + 0.003 * gauss()));
+  for (let i = 0; i < 16 * 3000; i++) {
+    const [x, y] = [random() * 4, random() * 4];
+    if (!inside(x, y)) push([x, y, 0]);
+  }
+  const corner = k => [2 + r * Math.cos((2 * Math.PI * k) / 8), 2 + r * Math.sin((2 * Math.PI * k) / 8)];
+  const side = 2 * r * Math.sin(Math.PI / 8);
+  for (let k = 0; k < 8; k++) {
+    const [a, b] = [corner(k), corner(k + 1)];
+    for (let i = 0; i < Math.round(side * 2.6 * 3000); i++) {
+      const [s, z] = [random(), random() * 2.6];
+      push([a[0] + s * (b[0] - a[0]), a[1] + s * (b[1] - a[1]), z]);
+    }
+  }
+  return Float32Array.from(points);
+}
+
 /** Same triples, Fisher-Yates permuted by a fixed seed. */
 function shuffled(positions) {
   const out = positions.slice();
@@ -50,6 +81,7 @@ function shuffled(positions) {
 }
 
 const PLANE_FIELDS = ['areaSquareMetres', 'centroid', 'd', 'extent', 'inlierPoints', 'inlierVoxels', 'normal', 'normalSource', 'orientation', 'rmsMetres'];
+const CYLINDER_FIELDS = ['arcDegrees', 'axisDirection', 'axisEnd', 'axisStart', 'faceted', 'heightRange', 'inlierPoints', 'inlierVoxels', 'length', 'orientation', 'radius', 'rmsMetres'];
 
 /** Actual Rust/WASM calls: plane and cylinder recovery, order invariance, strict options. */
 export function checkScanSegmentationContract(IfcAPI) {
@@ -74,11 +106,22 @@ export function checkScanSegmentationContract(IfcAPI) {
     }
     assert.equal(report.cylinders.length, 1, 'the column, and nothing along the room edges');
     const [column] = report.cylinders;
+    assert.deepEqual(Object.keys(column).sort(), CYLINDER_FIELDS);
+    assert.equal(column.faceted, null, 'a round column');
     assert.ok(Math.abs(column.radius - 0.25) < 0.01, `column radius ${column.radius}`);
     assert.equal(column.orientation, 'vertical');
     assert.ok(Math.hypot(column.axisStart[0] - 3.5, column.axisStart[1] - 2) < 0.015, `column axis ${column.axisStart}`);
     assert.ok(column.length > 2.4 && column.length < 2.7, `column length ${column.length}`);
     assert.equal(decode(api.segmentScanPoints(positions, '{"detectCylinders":false}')).cylinders.length, 0);
+    // A polygonal column is one faceted cylinder, and its faces are not also planes (#6893).
+    const prism = decode(api.segmentScanPoints(octagon(), '{}'));
+    assert.equal(prism.cylinders.length, 1, 'the octagonal column');
+    const [faceted] = prism.cylinders;
+    assert.equal(faceted.faceted?.faces, 8);
+    assert.ok(Math.abs(faceted.radius - 0.6) < 0.01, `circumradius ${faceted.radius}`);
+    assert.ok(Math.abs(faceted.faceted.apothem - 0.6 * Math.cos(Math.PI / 8)) < 0.01, `apothem ${faceted.faceted.apothem}`);
+    assert.equal(prism.planes.length, 1, 'only the floor remains a plane');
+    assert.equal(prism.stats.planesAbsorbedIntoCylinders, 8);
     // Integer voxel sums: any point order yields the identical report bytes.
     assert.deepEqual(api.segmentScanPoints(shuffled(positions), options), bytes);
     assert.throws(() => api.segmentScanPoints(positions, '{"surprise":1}'), /unknown field/);

@@ -316,10 +316,12 @@ fn issue_6870_large_and_finely_voxelised_columns_pass_the_facet_guard() {
     let (positions, column) = half_column_on_floor(&ScanSpec { seed: 41, density: 40_000., ..Default::default() }, 0.3);
     assert_finds_exactly(&segment_scan_points(&positions, &fine).unwrap(), &[column]);
     let medium = ScanSegmentationOptions { voxel_size_metres: 0.02, ..Default::default() };
-    // (r 0.8 at this voxel is lost before the guards, to plane growth: a
-    // separate, known limit of large radii.)
-    let (positions, column) = room_column_where(&ScanSpec { seed: 2, ..Default::default() }, 0.6, &|a, _, front| angle_between(a, front) < FRAC_PI_2);
-    assert_finds_exactly(&segment_scan_points(&positions, &medium).unwrap(), &[column]);
+    // r 0.8 at this voxel was lost before the guards, to plane growth, until
+    // #6893 reassembled the strips.
+    for r in [0.6, 0.8] {
+        let (positions, column) = room_column_where(&ScanSpec { seed: 2, ..Default::default() }, r, &|a, _, front| angle_between(a, front) < FRAC_PI_2);
+        assert_finds_exactly(&segment_scan_points(&positions, &medium).unwrap(), &[column]);
+    }
 }
 
 #[test]

@@ -211,8 +211,9 @@ not align a loaded model or approve scan accuracy. See the
 `IfcAPI.segmentScanPoints` detects planes in an xyz `Float32Array` point cloud
 (voxel means, PCA normals, region growing, a robust refit and coplanar
 merging). It also detects cylinders, such as columns and pipes, among the
-remaining voxels (seeded RANSAC, then a least-squares refit). The JSON report is
-independent of point order. See the
+remaining voxels (seeded RANSAC, then a least-squares refit), and wide round
+and polygonal columns among rings of vertical planes; a column's surface is
+not also reported as planes. The JSON report is independent of point order. See the
 [segmentation contract](../../docs/api/wasm.md#scan-plane-segmentation); the
 typed wrapper is `@ifc-lite/geometry/scan-segmentation`.
 

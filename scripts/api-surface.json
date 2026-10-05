@@ -6405,6 +6405,7 @@
   "@ifc-lite/geometry/scan-segmentation": [
     "ScanAxisOrientation: type",
     "ScanCylinder: interface",
+    "ScanFacets: interface",
     "ScanNormalSource: type",
     "ScanPlane: interface",
     "ScanPlaneExtent: interface",

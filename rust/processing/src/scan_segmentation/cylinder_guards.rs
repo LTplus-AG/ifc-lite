@@ -213,7 +213,10 @@ pub(crate) fn coverage(cylinder: &Cylinder, inliers: &[u32], voxels: &VoxelSet, 
 /// is never seen), but the walls of an inside corner cut through the circle a
 /// rounded crease fits: on a real apartment scan 0.67 of such a candidate's
 /// slices were pierced, against 0 for every real round surface measured.
-pub(crate) fn pierced_share(cylinder: &Cylinder, inliers: &[u32], voxels: &VoxelSet, planar: &[bool], tolerance: f64) -> f64 {
+/// Voxels of the candidate's own group (`own`, ascending: the planes of a
+/// ring that is a wide column split into strips, #6893) do not count: noisy
+/// strips put a few of their own voxels inside the circle in every slice.
+pub(crate) fn pierced_share(cylinder: &Cylinder, inliers: &[u32], voxels: &VoxelSet, planar: &[bool], own: &[u32], tolerance: f64) -> f64 {
     let frame = Frame::new(cylinder, inliers, voxels);
     let core = cylinder.radius - tolerance;
     if core <= 0. {
@@ -225,30 +228,13 @@ pub(crate) fn pierced_share(cylinder: &Cylinder, inliers: &[u32], voxels: &Voxel
     let mut visit = |k: u32| {
         let p = voxels.means[k as usize];
         let t = along(p) - frame.lo;
-        if planar[k as usize] && (0. ..span).contains(&t) && cylinder.radial(p).0 < core {
+        if planar[k as usize] && (0. ..span).contains(&t) && cylinder.radial(p).0 < core && own.binary_search(&k).is_err() {
             pierced[frame.slice(cylinder, p)] = true;
         }
     };
-    // Visit the voxels in the candidate's bounding box (one voxel of margin),
-    // or every voxel when the box would hold more keys than there are voxels.
+    // Visit the voxels in the candidate's bounding box (one voxel of margin).
     let ends = [frame.lo, frame.lo + span].map(|t| std::array::from_fn::<f64, 3, _>(|a| cylinder.point[a] + t * cylinder.axis[a]));
-    let key = |v: f64| (v / voxels.size).floor();
-    let lo: [f64; 3] = std::array::from_fn(|a| key(ends[0][a].min(ends[1][a]) - cylinder.radius) - 1.);
-    let hi: [f64; 3] = std::array::from_fn(|a| key(ends[0][a].max(ends[1][a]) + cylinder.radius) + 1.);
-    let cells: f64 = (0..3).map(|a| hi[a] - lo[a] + 1.).product();
-    if cells > voxels.len() as f64 {
-        (0..voxels.len() as u32).for_each(&mut visit);
-    } else {
-        for x in lo[0] as i32..=hi[0] as i32 {
-            for y in lo[1] as i32..=hi[1] as i32 {
-                for z in lo[2] as i32..=hi[2] as i32 {
-                    if let Some(k) = voxels.lookup([x, y, z]) {
-                        visit(k);
-                    }
-                }
-            }
-        }
-    }
+    voxels.for_each_in_box(ends, cylinder.radius, &mut visit);
     pierced.iter().filter(|p| **p).count() as f64 / frame.slices as f64
 }
 

@@ -2,12 +2,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Least-squares cylinder geometry over voxel means and normals: the axis as
-//! the direction all normals are perpendicular to, the circle across it
+//! Cylinder geometry over voxel means and normals: candidates from seeded
+//! RANSAC over point+normal pairs; the least-squares refit, with the axis as
+//! the direction all normals are perpendicular to and the circle across it
 //! (algebraic fit, then a bounded Gauss-Newton refinement of the geometric
-//! distance), the competing sphere fit, and the arc the inliers cover.
-use super::normals::{cross, dot, sub, unit, Vec3};
+//! distance); the competing sphere fit; and the arc the inliers cover.
+use super::normals::{cross, dot, sub, unit, Normals, Vec3};
+use super::options::CylinderParams;
 use super::refit::plane_basis;
+use super::voxel::VoxelSet;
 use crate::point_pca::symmetric_eigen_ascending;
 use nalgebra::{Matrix3, Matrix4, Vector3, Vector4};
 
@@ -17,6 +20,10 @@ const CIRCLE_ITERATIONS: usize = 10;
 pub(crate) const RADIAL_COS: f64 = 0.866; // cos 30 degrees
 /// Histogram bins for arc coverage (5 degrees each).
 const ARC_BINS: usize = 72;
+/// Two normals closer than 30 degrees to parallel (or antiparallel) cross
+/// too shallowly for a stable axis and radius: noise of a few degrees moves
+/// their crossing by a radius or more.
+const MIN_PAIR_SIN: f64 = 0.5; // sin 30 degrees
 
 /// An infinite cylinder: a point on the axis, the unit axis, the radius.
 #[derive(Clone, Copy, Debug)]
@@ -180,6 +187,72 @@ pub(crate) fn arc_degrees(cylinder: &Cylinder, points: impl Iterator<Item = Vec3
         }
     }
     360. * (ARC_BINS - widest) as f64 / ARC_BINS as f64
+}
+
+/// SplitMix64, as in the test generator: tiny and identical everywhere.
+struct Rng(u64);
+impl Rng {
+    fn below(&mut self, n: usize) -> usize {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        ((z ^ (z >> 31)) % n as u64) as usize
+    }
+}
+
+/// The cylinder two oriented samples imply, if their normals are not parallel
+/// and the two radii agree within the tolerance.
+fn from_pair(p1: Vec3, n1: Vec3, p2: Vec3, n2: Vec3, tolerance: f64) -> Option<Cylinder> {
+    let axis = cross(n1, n2);
+    if dot(axis, axis).sqrt() < MIN_PAIR_SIN {
+        return None;
+    }
+    let axis = unit(axis)?;
+    // Closest approach of p1 + t n1 and p2 + s n2. Both normals are
+    // perpendicular to the axis, so this is their crossing seen along it.
+    let w = sub(p1, p2);
+    let b = dot(n1, n2);
+    let (d, e) = (dot(n1, w), dot(n2, w));
+    let denominator = 1. - b * b;
+    let t = (b * e - d) / denominator;
+    let s = (e - b * d) / denominator;
+    if (t.abs() - s.abs()).abs() > 2. * tolerance {
+        return None;
+    }
+    let point = std::array::from_fn(|k| (p1[k] + t * n1[k] + p2[k] + s * n2[k]) / 2.);
+    Some(Cylinder { point, axis, radius: (t.abs() + s.abs()) / 2. })
+}
+
+/// Best candidate over `c.draws` seeded pairs, scored on an evenly strided
+/// subsample; with the share of that subsample it fits. None when no pair
+/// defined a candidate in range.
+pub(crate) fn ransac(
+    members: &[u32],
+    voxels: &VoxelSet,
+    normals: &Normals,
+    c: &CylinderParams,
+    min_radius: f64,
+    tolerance: f64,
+) -> Option<(Cylinder, f64)> {
+    let mut rng = Rng(0x6870 ^ u64::from(members[0]));
+    let stride = members.len().div_ceil(c.sample);
+    let sample: Vec<u32> = members.iter().copied().step_by(stride).collect();
+    let mut best: Option<(Cylinder, usize)> = None;
+    for _ in 0..c.draws {
+        let (i, j) = (members[rng.below(members.len())] as usize, members[rng.below(members.len())] as usize);
+        let Some(candidate) = from_pair(voxels.means[i], normals.normal[i], voxels.means[j], normals.normal[j], tolerance) else {
+            continue;
+        };
+        if candidate.radius < min_radius || candidate.radius > c.max_radius {
+            continue;
+        }
+        let score = sample.iter().filter(|&&k| candidate.fits(voxels.means[k as usize], Some(normals.normal[k as usize]), tolerance)).count();
+        if best.is_none_or(|(_, s)| score > s) {
+            best = Some((candidate, score));
+        }
+    }
+    best.map(|(cylinder, score)| (cylinder, score as f64 / sample.len() as f64))
 }
 
 #[cfg(test)]

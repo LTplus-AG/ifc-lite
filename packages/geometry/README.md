@@ -183,7 +183,8 @@ try {
     console.log(plane.orientation, plane.normal, plane.d, plane.areaSquareMetres);
   }
   for (const cylinder of report.cylinders) {
-    console.log(cylinder.orientation, cylinder.axisStart, cylinder.radius, cylinder.length);
+    // `faceted` is set for a polygonal column (radius is then the circumradius).
+    console.log(cylinder.orientation, cylinder.axisStart, cylinder.radius, cylinder.length, cylinder.faceted?.faces);
   }
 } finally {
   api.free();

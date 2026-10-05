@@ -60,7 +60,9 @@ describe('shared result chrome (U02, #6925)', () => {
       assert.ok(at > cursor, `"${part}" follows the previous region (${body})`);
       cursor = at;
     }
-    assert.ok(region.querySelector('[role="toolbar"][aria-label="Result actions"]'), 'actions are one toolbar');
+    // A group, not a toolbar: a toolbar promises arrow-key navigation between its controls.
+    assert.ok(region.querySelector('[role="group"][aria-label="Result actions"]'), 'actions are one named group');
+    assert.equal(region.querySelector('[role="toolbar"]'), null);
     assert.ok(region.querySelector('section[aria-label="Evidence details"]'), 'evidence is its own region');
     assert.ok(region.querySelector('ul[aria-label="Incomplete"]'), 'every known gap is listed');
   });
@@ -167,6 +169,29 @@ describe('select all and scoped actions (U02, #6925)', () => {
 
     click(button(ui, /Clear selection/)!);
     assert.equal(populationAction().disabled, true);
+  });
+
+  it('announces every selection change through one live region that stays mounted', async () => {
+    let answer: (keys: readonly string[]) => void = () => {};
+    const resolve = () => new Promise<readonly string[]>((done) => { answer = done; });
+    const ui = render(<SelectionHarness resolve={resolve} onRun={() => {}} />);
+    const regions = () => [...ui.querySelectorAll('[aria-live]')];
+    assert.equal(regions().length, 1, 'mounted before the first change, so its first message is announced');
+    const live = regions()[0];
+    assert.equal(text(live), '');
+
+    click(button(ui, /Select all 50 on this page/)!);
+    assert.equal(text(live), 'All 50 on this page selected.');
+    click(button(ui, /Select all 250 matching results/)!);
+    assert.match(text(live), /Retrieving all 250 matching results/);
+    await act(async () => { answer(Array.from({ length: 250 }, (_, i) => `row-${i}`)); });
+    await waitFor(() => /All 250 matching results are selected\./.test(text(live)), 'population resolved');
+    assert.deepEqual(regions(), [live], 'the same region, never remounted');
+    assert.equal(live.querySelector('button'), null, 'controls are not part of the announcement');
+
+    click(button(ui, /Clear selection/)!);
+    assert.deepEqual(regions(), [live]);
+    assert.equal(text(live), '');
   });
 
   it('offers a retry when the population cannot be retrieved', async () => {

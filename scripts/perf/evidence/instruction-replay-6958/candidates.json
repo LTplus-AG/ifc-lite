@@ -1,0 +1,231 @@
+{
+  "note": "Ledger replay inputs for #6958. `expect` is the work direction the ledger's recorded end-to-end verdict implies for the native processing call: fewer (a win), more (a net loss), flat (no work change on these fixtures). Refs are full-history commits on main, or PR-branch commits fetched from refs/pull/<n>/head where main only has a squash. `claims` lists the fixtures the ledger verdict actually covers; other fixtures are measured as context and get no verdict. PR-branch refs (b6be84c9d7, 46dcdeec2a) need `git fetch origin pull/1916/head` first.",
+  "candidates": [
+    {
+      "id": "cdt-scan-kill",
+      "title": "CDT: kill the three O(T)-per-item scans (PR #1916 branch commit 46dcdeec2)",
+      "class": "win",
+      "ledger": "ISSUE_129 geometry 991 -> 651 ms on its own commit (1568 -> 646 ms within the seam-conform branch); byte-identical output",
+      "expect": "fewer",
+      "before": {
+        "ref": "b6be84c9d7"
+      },
+      "after": {
+        "ref": "46dcdeec2a"
+      },
+      "fixtures": [
+        "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+      ],
+      "claims": [
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+      ]
+    },
+    {
+      "id": "seam-conform-1916",
+      "title": "#1916 squash on main (seam conform + CDT scan kill)",
+      "class": "win",
+      "ledger": "ISSUE_129 geometry, main before seam conform 979 ms -> 646 ms",
+      "expect": "fewer",
+      "before": {
+        "ref": "428c5ae54"
+      },
+      "after": {
+        "ref": "401ab1842"
+      },
+      "fixtures": [
+        "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+      ],
+      "claims": [
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+      ]
+    },
+    {
+      "id": "dedup-gate-1909",
+      "title": "#1909 / PR #1977 faceted-BREP dedup-key gate above 20,000 faces",
+      "class": "win",
+      "ledger": "2.00x fewer point accesses on a synthetic 980k-face BREP; no corpus fixture crosses the gate, wall-clock A/B was pure noise",
+      "expect": "flat",
+      "before": {
+        "ref": "8650ad5dd"
+      },
+      "after": {
+        "ref": "59792cc7d"
+      },
+      "fixtures": [
+        "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+      ]
+    },
+    {
+      "id": "brep-dedup-1184",
+      "title": "#1184 faceted-brep dedup with a cheap hash (re-enables content dedup)",
+      "class": "win",
+      "ledger": "shipped win: memoize shared geometry, big on steel/Tekla; the ledger measured it on steel/Tekla-style shared-point models, represented here by the committed #1572 regression fixture (12 faceted-BREP parts sharing one point pool); FZK-Haus and ISSUE_129 are context",
+      "expect": "fewer",
+      "before": {
+        "ref": "9d579cfca"
+      },
+      "after": {
+        "ref": "4a649b0ce"
+      },
+      "fixtures": [
+        "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "rust/geometry/tests/fixtures/shared_point_faceted_brep.ifc"
+      ],
+      "claims": [
+        "rust/geometry/tests/fixtures/shared_point_faceted_brep.ifc"
+      ]
+    },
+    {
+      "id": "point-cache-1568",
+      "title": "#1568 CartesianPoint cache hoisted across a worker's parts",
+      "class": "win",
+      "ledger": "shipped win: memoize shared points across parts; the ledger measured it on steel/Tekla-style shared-point models, represented here by the committed #1572 regression fixture (12 faceted-BREP parts sharing one point pool); FZK-Haus and ISSUE_129 are context",
+      "expect": "fewer",
+      "before": {
+        "ref": "f7f3437b8"
+      },
+      "after": {
+        "ref": "846db7df0"
+      },
+      "fixtures": [
+        "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "rust/geometry/tests/fixtures/shared_point_faceted_brep.ifc"
+      ],
+      "claims": [
+        "rust/geometry/tests/fixtures/shared_point_faceted_brep.ifc"
+      ]
+    },
+    {
+      "id": "point-cache-1572",
+      "title": "#1572 per-worker point cache kept across chunks and rayon splits",
+      "class": "win",
+      "ledger": "shipped win (with #1568): the cache survives chunk boundaries; the ledger measured it on steel/Tekla-style shared-point models, represented here by the committed #1572 regression fixture (12 faceted-BREP parts sharing one point pool); FZK-Haus and ISSUE_129 are context",
+      "expect": "fewer",
+      "before": {
+        "ref": "8490428db"
+      },
+      "after": {
+        "ref": "a03b38705"
+      },
+      "fixtures": [
+        "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "rust/geometry/tests/fixtures/shared_point_faceted_brep.ifc"
+      ],
+      "claims": [
+        "rust/geometry/tests/fixtures/shared_point_faceted_brep.ifc"
+      ]
+    },
+    {
+      "id": "content-dedup-1130",
+      "title": "#1130 content dedup lands (hash re-decodes the subtree)",
+      "class": "dead-end",
+      "ledger": "20-30% slower net; turned OFF by #1177",
+      "expect": "more",
+      "before": {
+        "ref": "9fca35988"
+      },
+      "after": {
+        "ref": "c7df70eb0"
+      },
+      "fixtures": [
+        "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "rust/geometry/tests/fixtures/shared_point_faceted_brep.ifc"
+      ]
+    },
+    {
+      "id": "content-dedup-off-1177",
+      "title": "#1177 turns #1130 content dedup off",
+      "class": "dead-end",
+      "ledger": "the revert of a 20-30% net loss",
+      "expect": "fewer",
+      "before": {
+        "ref": "f0abc8832"
+      },
+      "after": {
+        "ref": "f5901b8c3"
+      },
+      "fixtures": [
+        "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "rust/geometry/tests/fixtures/shared_point_faceted_brep.ifc"
+      ]
+    },
+    {
+      "id": "vertex-reuse-4061",
+      "title": "#4055 / PR #4061 CDT constraint-inventory vertex reuse (rejected)",
+      "class": "dead-end",
+      "ledger": "native full call -1.17% (ratio of medians) / -1.27% (median paired ratio) over 27 fixtures; rejected on browser readiness (+0.63%) and browser output gates",
+      "expect": "fewer",
+      "before": {
+        "ref": "e40992485"
+      },
+      "after": {
+        "ref": "e40992485",
+        "patch": "4fbbe8dd5:scripts/perf/evidence/rejected-vertex-reuse-2026-09-07/measured-candidate.patch"
+      },
+      "fixtures": [
+        "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+      ]
+    },
+    {
+      "id": "parity-bvh-4054",
+      "title": "#4054 / PR #4060 component parity BVH filtering (rejected)",
+      "class": "dead-end",
+      "ledger": "no corpus cold-load gain established in a one-pair Chrome screen (timeouts, gate failures); the ledger records NO native number, so the count has nothing to agree with",
+      "expect": "flat",
+      "before": {
+        "ref": "96ea5f08e"
+      },
+      "after": {
+        "ref": "96ea5f08e",
+        "patch": "4fbbe8dd5:scripts/perf/evidence/component-parity-bvh-rejected-2026-09-07/measured-candidate.patch"
+      },
+      "fixtures": [
+        "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+      ],
+      "claims": []
+    },
+    {
+      "id": "worker-sizing-1431",
+      "title": "#1431 worker right-sizing (SMALL_FILE_MB 64 -> 24), TypeScript only",
+      "class": "scheduling",
+      "ledger": "-21% peak memory, 0 regression",
+      "expect": "flat",
+      "before": {
+        "ref": "e6bd2dd32"
+      },
+      "after": {
+        "ref": "6eb46f1f8"
+      },
+      "fixtures": [
+        "tests/models/ara3d/AC20-FZK-Haus.ifc"
+      ]
+    },
+    {
+      "id": "threaded-wasm-1255",
+      "title": "#1255 threaded-WASM CSG bundle (the surviving half of the #1429 dead end), off by default",
+      "class": "scheduling",
+      "ledger": "4.19x CSG-only isolated, 2.33x whole pipeline at 4 threads, regressed at 8; live path unchanged",
+      "expect": "flat",
+      "before": {
+        "ref": "94e45011f"
+      },
+      "after": {
+        "ref": "736085b15"
+      },
+      "fixtures": [
+        "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+      ]
+    }
+  ]
+}

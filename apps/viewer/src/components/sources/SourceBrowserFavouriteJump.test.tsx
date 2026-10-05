@@ -333,7 +333,7 @@ function text(): string {
  * the folder really is.
  */
 function trail(): string {
-  const crumbs = document.body.querySelector('div.flex.flex-wrap.items-center.gap-x-1');
+  const crumbs = document.body.querySelector('nav[aria-label="Current folder"]');
   // Loud rather than empty: an unmatched selector would otherwise read as
   // "the jump went nowhere" when the markup was merely restyled.
   assert.ok(crumbs, 'no breadcrumb row in the DOM - has SourceFolderStep been restyled?');

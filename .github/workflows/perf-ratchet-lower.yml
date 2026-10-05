@@ -1,0 +1,203 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Daily perf-ratchet lowering (#6959). Builds and measures `main` exactly as
+# test.yml's `build` job does, lowers every ceiling in tests/perf-ratchets/
+# whose measured value cleared its tolerance band, and opens (or updates) one
+# PR from a fixed branch with the old -> new changelog. The PR says
+# `Refs #6955`, the standing ceilings issue, never `Closes`: the issue-queue
+# gate passes on it and every ceiling's history lives in one place.
+#
+# It only ever LOWERS (scripts/perf-ratchet/lower.mjs refuses to raise).
+# Raising a ceiling is a human PR with a justification; see
+# docs/guide/performance.md, "Perf ratchet ceilings".
+#
+# It also re-checks `main` against the committed ceilings. `main` above a
+# ceiling means something landed past the PR gate (an admin merge, a gate that
+# was skipped); the job then goes red after the lowering step, and the
+# scheduled-failure reporter opens or updates the lane's issue.
+#
+# Adding a family: add its measurer step below writing
+# "$RUNNER_TEMP/perf-ratchet/<family>.json". `--measured-dir` picks it up.
+
+name: Perf ratchet lowering
+
+on:
+  schedule:
+    # Daily 02:41 UTC: a slot no other scheduled lane uses (see the cron list
+    # across .github/workflows), and well before the 05:45 nightly deploy.
+    - cron: '41 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never two lowering runs pushing the same branch at once.
+  group: perf-ratchet-lower
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  LOWER_BRANCH: bot/perf-ratchet-lower
+
+jobs:
+  lower:
+    name: Measure main and lower ceilings
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          lfs: false
+          persist-credentials: false
+
+      # Same fast path as test.yml's `build`: when the WASM source is
+      # byte-identical to the published release tag, fetch that bundle, which
+      # is the binary a source build would produce.
+      - name: Resolve prebuilt-WASM eligibility
+        id: wasm
+        run: echo "eligible=$(bash scripts/ci-wasm-prebuilt-eligible.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup WASM build toolchain
+        if: steps.wasm.outputs.eligible != 'true'
+        uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: perf-ratchet
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Fetch prebuilt WASM
+        if: steps.wasm.outputs.eligible == 'true'
+        run: |
+          for attempt in 1 2 3; do
+            if node scripts/fetch-prebuilt-wasm.mjs; then exit 0; fi
+            echo "::warning::prebuilt WASM fetch attempt ${attempt} failed; retrying…"
+            sleep $((attempt * 5))
+          done
+          echo "::error::Could not fetch the prebuilt @ifc-lite/wasm bundle after 3 attempts."
+          exit 1
+
+      - name: Build WASM
+        if: steps.wasm.outputs.eligible != 'true'
+        run: bash scripts/build-wasm.sh
+
+      # The viewer and the workspace packages it depends on: the same vite
+      # build test.yml's `pnpm build` produces for apps/viewer.
+      - name: Build viewer
+        run: pnpm build:e2e
+
+      - name: Measure perf-ratchet bundle family
+        run: node scripts/perf-ratchet/measure-bundle.mjs --out "$RUNNER_TEMP/perf-ratchet/bundle.json" --commit "$(git rev-parse HEAD)"
+
+      # Judged at the END of the job (last step) so a breach on main does not
+      # stop the other ceilings from being lowered.
+      - name: Check main against the committed ceilings
+        id: check
+        continue-on-error: true
+        run: |
+          set +e
+          node scripts/perf-ratchet/perf-ratchet.mjs check \
+            --measured-dir "$RUNNER_TEMP/perf-ratchet" \
+            --markdown "$RUNNER_TEMP/perf-ratchet-report.md"
+          status=$?
+          set -e
+          [ -f "$RUNNER_TEMP/perf-ratchet-report.md" ] && cat "$RUNNER_TEMP/perf-ratchet-report.md" >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      - name: Lower ceilings that dropped
+        run: |
+          node scripts/perf-ratchet/perf-ratchet.mjs lower \
+            --measured-dir "$RUNNER_TEMP/perf-ratchet" \
+            --changelog "$RUNNER_TEMP/perf-ratchet-changelog.md"
+          cat "$RUNNER_TEMP/perf-ratchet-changelog.md" >> "$GITHUB_STEP_SUMMARY"
+
+      # PAT, not GITHUB_TOKEN, for the same reason as the Version Packages PR
+      # (release.yml, #766): a push or PR made with GITHUB_TOKEN starts no
+      # workflows, so the PR would never get its required checks. This repo
+      # also disallows Actions from creating PRs with GITHUB_TOKEN.
+      # PERF_RATCHET_PAT is used when set (a dedicated credential); otherwise
+      # RELEASE_PAT, the repo's one PR-opening bot credential. This job spends
+      # about five REST calls a day from it, far from the quota concern in
+      # RELEASE.md ("Release credential"), which is about interactive sessions
+      # sharing the account.
+      - name: Open or update the lowering PR
+        env:
+          PUSH_TOKEN: ${{ secrets.PERF_RATCHET_PAT || secrets.RELEASE_PAT }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if git diff --quiet -- tests/perf-ratchets; then
+            echo "No ceiling cleared its band; nothing to propose."
+            exit 0
+          fi
+          if [ -z "$PUSH_TOKEN" ]; then
+            echo "::error::Neither PERF_RATCHET_PAT nor RELEASE_PAT is set; cannot open the lowering PR."
+            git diff -- tests/perf-ratchets
+            exit 1
+          fi
+          sha=$(git rev-parse HEAD)
+          git config user.name 'ifc-lite perf ratchet'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$LOWER_BRANCH"
+          git add tests/perf-ratchets
+          git commit -q -m "perf(ratchet): lower ceilings to main at ${sha:0:12}" -m "Refs #6955"
+          auth=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 -w0)
+          echo "::add-mask::${auth}"
+          # Force: the branch is regenerated from today's main every run, so
+          # an unmerged PR always carries the latest measurement only.
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" \
+            push --force "https://github.com/${REPO}.git" "HEAD:refs/heads/${LOWER_BRANCH}"
+
+          body="$RUNNER_TEMP/perf-ratchet-pr-body.md"
+          {
+            echo 'Automated ceiling lowering from `.github/workflows/perf-ratchet-lower.yml` (#6959).'
+            echo
+            echo 'Refs #6955'
+            echo
+            cat "$RUNNER_TEMP/perf-ratchet-changelog.md"
+            echo
+            echo "Measured on \`main\` at \`${sha}\` by ${RUN_URL}."
+            echo
+            echo 'This PR only lowers ceilings in `tests/perf-ratchets/*.json`, each to the value measured above, so the `Perf ratchet ceilings` check on it passes by construction. It is regenerated daily from the current `main`; merging it locks the win in.'
+          } > "$body"
+
+          export GH_TOKEN="$PUSH_TOKEN"
+          title="perf(ratchet): lower ceilings to main at ${sha:0:12}"
+          existing=$(gh pr list --repo "$REPO" --head "$LOWER_BRANCH" --base main --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --repo "$REPO" --title "$title" --body-file "$body"
+            echo "Updated #${existing}."
+          else
+            gh pr create --repo "$REPO" --base main --head "$LOWER_BRANCH" --title "$title" --body-file "$body"
+          fi
+
+      - name: Fail if main exceeded a ceiling
+        if: steps.check.outcome != 'success'
+        run: |
+          echo "::error::main is above a committed perf-ratchet ceiling (or the check could not run); see the step summary."
+          exit 1
+
+  report-scheduled-failure:
+    needs: [lower]
+    if: always() && github.event_name == 'schedule' && needs.lower.result != 'success'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: Perf ratchet lowering
+      jobs: lower
+      result: lower=${{ needs.lower.result }}
+    permissions:
+      contents: read
+      issues: write

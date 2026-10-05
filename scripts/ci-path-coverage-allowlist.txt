@@ -32,6 +32,7 @@ scripts/fixtures/fetch-fixtures.test.mjs tests/* # `tests` fragment; the fetcher
 scripts/docs/generate-docs-sections.mjs tests/benchmark/* # `tests` prefix fragment; the one input under tests/benchmark is baseline.json, now in the docs filter and pinned by REQUIRED_COVERAGE
 scripts/docs/generate-docs-sections.mjs tests/extensions # `tests` prefix fragment; sdk-canary.yml carries tests/extensions/canaries/** in its own paths
 scripts/docs/generate-docs-sections.mjs tests/models # `tests` prefix fragment; the corpus input tests/models/manifest.json is in the rust, geometry and frontend filters
+scripts/docs/generate-docs-sections.mjs tests/perf-ratchets # `tests` prefix fragment; the generator reads no perf-ratchet ceiling file (#6959)
 scripts/docs/check-package-readmes.test.mjs docs/** # `docs` fragment; the gate reads packages/*/README.md
 scripts/docs/check-package-readmes.test.mjs README.md # root README fragment; the gate reads per-package READMEs
 scripts/check-swallowed-push.test.mjs README.md # fragment from the harness's fixture root, not an input
@@ -117,4 +118,5 @@ scripts/check-ci-path-coverage.test.mjs docs/** # quoted in an assertion, not re
 scripts/check-ci-path-coverage.test.mjs tests/benchmark # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs tests/extensions # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs tests/models # quoted in an assertion, not read
+scripts/check-ci-path-coverage.test.mjs tests/perf-ratchets # `tests` prefix fragment expanded over the tree, not read (#6959)
 scripts/check-agents-md-size.test.mjs README.md # a temp-fixture FILENAME inside the harness (a repo built in a tmpdir to prove a non-AGENTS.md file is ignored), not a path in this repository.

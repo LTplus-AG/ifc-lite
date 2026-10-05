@@ -1,0 +1,33 @@
+{
+  "family": "bundle",
+  "description": "Transfer size of what the viewer ships, measured by scripts/perf-ratchet/measure-bundle.mjs from the build job's artifacts: brotli (quality 11, node zlib) of the engine WASM and of the viewer's main entry chunk, and the number of JS files dist/index.html loads eagerly. Raising a ceiling is a human PR with a justification (docs/guide/performance.md, 'Perf ratchet ceilings'); lowering is the daily perf-ratchet-lower.yml job (Refs #6955).",
+  "entries": [
+    {
+      "id": "engine-wasm-brotli",
+      "metric": "brotli-bytes",
+      "unit": "bytes",
+      "description": "packages/wasm/pkg/ifc-lite_bg.wasm, the single-thread engine bundle",
+      "ceiling": 2196660,
+      "tolerance": { "kind": "relative", "value": 0.005 },
+      "provenance": { "commit": "17e3f195f52586529539c3cb9bef844dcd82b5fa", "measuredAt": "2026-10-05T16:52:49.646Z" }
+    },
+    {
+      "id": "viewer-entry-js-brotli",
+      "metric": "brotli-bytes",
+      "unit": "bytes",
+      "description": "the single <script type=\"module\" src> chunk of apps/viewer/dist/index.html",
+      "ceiling": 981130,
+      "tolerance": { "kind": "relative", "value": 0.005 },
+      "provenance": { "commit": "17e3f195f52586529539c3cb9bef844dcd82b5fa", "measuredAt": "2026-10-05T16:52:49.646Z" }
+    },
+    {
+      "id": "viewer-eager-js-chunks",
+      "metric": "count",
+      "unit": "chunks",
+      "description": "module <script src> plus <link rel=modulepreload> JS files in apps/viewer/dist/index.html",
+      "ceiling": 135,
+      "tolerance": { "kind": "exact", "value": 0 },
+      "provenance": { "commit": "17e3f195f52586529539c3cb9bef844dcd82b5fa", "measuredAt": "2026-10-05T16:52:49.646Z" }
+    }
+  ]
+}

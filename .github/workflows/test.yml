@@ -135,6 +135,7 @@ jobs:
       docs: ${{ steps.all.outputs.docs || steps.filter.outputs.docs }}
       agents_md: ${{ steps.all.outputs.agents_md || steps.filter.outputs.agents_md }}
       license_headers: ${{ steps.all.outputs.license_headers || steps.filter.outputs.license_headers }}
+      perf_ratchet: ${{ steps.all.outputs.perf_ratchet || steps.filter.outputs.perf_ratchet }}
       # `true` only for a title/body `edited` of a head that already has a
       # completed aggregate verdict. Every lane then skips (no filter output
       # above is `true`) and the aggregate replays the verdict. See the
@@ -218,7 +219,7 @@ jobs:
       # PR to diff on merge_group.
       - if: github.event_name == 'merge_group'
         id: all
-        run: for k in rust frontend geometry python plato docs agents_md license_headers; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
+        run: for k in rust frontend geometry python plato docs agents_md license_headers perf_ratchet; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         if: github.event_name != 'merge_group' && steps.noop.outputs.noop != 'true'
         id: filter
@@ -460,6 +461,16 @@ jobs:
               - 'packages/clash/src/math/generated/**'
               - 'scripts/generate-plato-clash.mjs'
               - '.github/workflows/test.yml'
+            # The perf-ratchet ceilings (#6959). Its own output so that the
+            # daily lowering bot's PR, which touches ONLY
+            # tests/perf-ratchets/*.json, runs `build` (which measures) and the
+            # `perf-ratchet` gate without dragging the nine-job frontend lane
+            # along. Its scripts are under `scripts/**`, which `frontend`
+            # already carries.
+            perf_ratchet:
+              - 'tests/perf-ratchets/**'
+              - 'scripts/perf-ratchet/**'
+              - '.github/workflows/test.yml'
             docs:
               - 'docs/**'
               - 'mkdocs.yml'
@@ -499,7 +510,7 @@ jobs:
   build:
     name: Build packages + WASM
     needs: changes
-    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true'
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.perf_ratchet == 'true'
     # Keep all routine CI on GitHub's free standard runner. This public repo's
     # previous 4-vCPU Depot path consumed the Developer plan's included minutes
     # in a few days; the prebuilt bundle remains a speed optimization only.
@@ -613,6 +624,27 @@ jobs:
       # downstream consumers — turbo handles the dep graph.
       - name: Build packages
         run: pnpm build
+
+      # Perf ratchet, `bundle` family (#6959). `pnpm build` above already
+      # built the engine wasm and the viewer's dist/ (turbo builds apps/*
+      # too), so this only reads them: no second build. It MEASURES here and
+      # the `perf-ratchet` job JUDGES, so a ceiling breach goes red on its own
+      # check instead of failing `build` and skipping every lane that needs it.
+      # continue-on-error for the same reason: a measurer fault uploads no
+      # artifact, and `perf-ratchet` then fails on the missing download.
+      - name: Measure perf-ratchet bundle family
+        id: perf-ratchet-measure
+        continue-on-error: true
+        run: node scripts/perf-ratchet/measure-bundle.mjs --out "$RUNNER_TEMP/perf-ratchet/bundle.json"
+
+      - name: Upload perf-ratchet measurements
+        if: steps.perf-ratchet-measure.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: perf-ratchet-measured
+          path: ${{ runner.temp }}/perf-ratchet/
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1638,7 +1670,7 @@ jobs:
       # per-DIRECTORY, so it goes blind on the next subdirectory anyone adds.
       # scripts/xmatch/ joined with its first test file (#4955, PR-6).
       - name: Run every scripts/ test file (glob catch-all)
-        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs scripts/review/*.test.mjs scripts/review/lib/*.test.mjs scripts/perf/*.test.mjs scripts/xmatch/*.test.mjs
+        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs scripts/review/*.test.mjs scripts/review/lib/*.test.mjs scripts/perf/*.test.mjs scripts/perf-ratchet/*.test.mjs scripts/xmatch/*.test.mjs
       # Committed codegen output (packages/codegen/generated/**,
       # packages/parser/src/generated/**, packages/data/src/ifc-schema/
       # generated/**) had no CI freshness gate at all — a generator bug fixed
@@ -2617,9 +2649,81 @@ jobs:
       - name: Check every source file declares MPL-2.0
         run: node scripts/add-license-headers.mjs --check
 
+  # PERF RATCHET (#6959): measured values against the committed ceilings in
+  # tests/perf-ratchets/<family>.json. A value above ceiling + tolerance fails;
+  # improvements are reported, and perf-ratchet-lower.yml lowers the ceilings
+  # once they are on main. Raising a ceiling is a human PR that edits the JSON
+  # and says why (docs/guide/performance.md, "Perf ratchet ceilings").
+  # Measurement happens in `build` (see the step there); this job only judges,
+  # so it needs no install and no build of its own.
+  perf-ratchet:
+    name: Perf ratchet ceilings
+    needs: [changes, build]
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.perf_ratchet == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # The sticky report comment (issues/comments endpoint on the PR).
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      # Fails the job when `build` produced no measurement: a gate that cannot
+      # find its input is red, never a skipped comparison.
+      - name: Download perf-ratchet measurements
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: perf-ratchet-measured
+          path: ${{ runner.temp }}/perf-ratchet
+      # The summary is written before the exit status is returned, so the
+      # table that explains a failure is never lost to `bash -e`.
+      - name: Check measured values against committed ceilings
+        run: |
+          set +e
+          node scripts/perf-ratchet/perf-ratchet.mjs check \
+            --measured "$RUNNER_TEMP/perf-ratchet/bundle.json" \
+            --markdown "$RUNNER_TEMP/perf-ratchet-report.md"
+          status=$?
+          set -e
+          [ -f "$RUNNER_TEMP/perf-ratchet-report.md" ] && cat "$RUNNER_TEMP/perf-ratchet-report.md" >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+      # Sticky comment, posted when the check fails and kept current after:
+      # once a red report exists it is updated on every run (to green too),
+      # so a fixed PR never shows a stale failure. A clean PR that never
+      # failed gets no comment. Best-effort: fork PRs get a read-only token
+      # and the step summary above carries the same report.
+      - name: Comment perf-ratchet report on PR
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CHECK_OUTCOME: ${{ job.status }}
+        run: |
+          marker='<!-- perf-ratchet-report -->'
+          body_file="$RUNNER_TEMP/perf-ratchet-report.md"
+          if [ ! -s "$body_file" ]; then
+            printf '%s\n\n%s\n' "$marker" \
+              'The perf-ratchet check produced no report: the measurement was missing or the check crashed. See the job log.' \
+              > "$body_file"
+          fi
+          existing=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq "[.[] | select(.body | contains(\"$marker\")) | .id] | first // empty" | head -n1)
+          if [ -n "$existing" ]; then
+            gh api --method PATCH "repos/${{ github.repository }}/issues/comments/${existing}" -F body=@"$body_file"
+          elif [ "$CHECK_OUTCOME" != "success" ]; then
+            gh api --method POST "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" -F body=@"$body_file"
+          fi
+
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, revert-oracle, typecheck, lint, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, perf-ratchet]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
@@ -2671,6 +2775,7 @@ jobs:
             [docs-site]="${{ needs.docs-site.result }}"
             [agents-md]="${{ needs.agents-md.result }}"
             [license-headers]="${{ needs.license-headers.result }}"
+            [perf-ratchet]="${{ needs.perf-ratchet.result }}"
           )
           fail=0
           for j in "${!results[@]}"; do

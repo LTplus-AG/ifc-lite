@@ -114,7 +114,7 @@ export function AssistantPanel() {
         output={state.output} streaming={busy} error={errorText} canAsk={canAsk} onSuggest={suggest}
         evidencePayload={evidence?.payload ?? null} focusCitation={focusCitation} />
       {evidence?.source === 'clash' && <Suspense fallback={null}><ClashGroupReview /></Suspense>}
-      {evidence?.source === 'flow' && <Suspense fallback={null}><FlowProposalReview /></Suspense>}
+      {(evidence?.source === 'flow' || evidence?.source === 'flowRun') && <Suspense fallback={null}><FlowProposalReview /></Suspense>}
       {evidence && isReportSource(evidence.source) && <Suspense fallback={null}><ModelChangeProposal /></Suspense>}
       {(evidence?.source === 'validation' || evidence?.source === 'loadReport') && <Suspense fallback={null}><CheckAuthoringProposal /></Suspense>}
       {evidence && isReportSource(evidence.source) && <Suspense fallback={null}><ReportDraftReview /></Suspense>}

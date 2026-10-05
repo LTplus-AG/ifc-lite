@@ -108,7 +108,7 @@ export const flowRunAdapter: EvidenceAdapter = {
   panelSubject: () => false,
   titleKey: 'assistantSources.flowRun.title', descriptionKey: 'assistantSources.flowRun.description',
   rowMeaningKey: 'assistantSources.flowRun.rows', unavailableKey: 'assistantSources.flowRun.unavailable',
-  suggestionKeys: ['assistantSources.flowRun.suggestExplain', 'assistantSources.flowRun.suggestFix'],
+  suggestionKeys: ['assistantSources.flowRun.suggestExplain', 'assistantSources.flowRun.suggestFix', 'flowAssistant.suggestDebug'],
   readiness: s => {
     if (s.flowRunning) return { status: { labelKey: 'assistantSources.flowRun.statusRunning' }, ready: false, running: true };
     if (s.flowLastRun) {

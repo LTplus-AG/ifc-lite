@@ -29,7 +29,7 @@ test('mounted Flow review requires approval and enables guarded graph undo', () 
   const evidence = ui.querySelector('section[aria-label="Captured evidence context"]');
   assert.ok(evidence);
   assert.match(evidence.textContent ?? '', /Captured workspace evidence/);
-  assert.match(evidence.textContent ?? '', /parameters and execution values are excluded/);
+  assert.match(evidence.textContent ?? '', /parameters are excluded except for failed nodes and their inputs/);
   assert.equal(useViewerStore.getState().flowDoc?.name, 'Original workflow');
   assert.equal(button('Apply graph changes').disabled, true);
   assert.match(ui.textContent ?? '', /Additional graph capabilities: None/);

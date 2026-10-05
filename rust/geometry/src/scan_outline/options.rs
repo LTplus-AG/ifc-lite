@@ -180,8 +180,11 @@ impl ScanOutlineOptions {
 
 /// What the run did, for the UI and for judging a result. Serialises to
 /// camelCase for the wasm binding.
+/// `#[non_exhaustive]`: diagnostics grow as the tracer does, and only this
+/// crate builds them.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ScanOutlineDiagnostics {
     /// Points passed in (pairs of coordinates).
     pub input_points: usize,

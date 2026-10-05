@@ -72,7 +72,9 @@ pub const MAX_GAP_LIMIT: f64 = 0.5;
 /// counter-clockwise, holes clockwise, so NonZero and EvenOdd fill agree.
 /// Rings are grouped like `ContourSet`: `shape_offsets[s]` is shape `s`'s outer
 /// ring and the rings up to the next offset are its holes.
+/// `#[non_exhaustive]`: a result type only this crate builds.
 #[derive(Clone, Debug, Default, PartialEq)]
+#[non_exhaustive]
 pub struct ScanOutline {
     pub rings: Vec<Vec<[f64; 2]>>,
     pub shape_offsets: Vec<usize>,

@@ -7,6 +7,7 @@ import type { FileSourceProvider } from '@ifc-lite/plugin-api';
 import type { SourceHost } from '@/services/sources/source-host';
 import { isPrefsConfigured, loadResolvedSourcePrefs } from '@/lib/sources/preferences';
 import { isAllowedHost, isHttpsUrl } from '@/services/sources/host-fetch';
+import { SourceLoadedBadge } from './SourceLoadedBadge';
 import { useSourceAuth } from './useSourceAuth';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -167,6 +168,7 @@ export function SourceProviderRow({
               {canBrowse && <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-600" aria-hidden />}
               {identityLabel ?? t(canBrowse ? 'sources.workspace.ready' : 'sources.workspace.notConnected')}
             </span>
+            <SourceLoadedBadge providerId={manifest.name} />
           </span>
           {canBrowse && (expanded ? <ChevronDown className="h-4 w-4 shrink-0" aria-hidden /> : <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />)}
         </button>

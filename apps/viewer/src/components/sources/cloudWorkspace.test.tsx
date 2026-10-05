@@ -11,6 +11,8 @@ import { SourceHostProvider } from '@/services/sources/SourceHostProvider';
 import { SourceHost } from '@/services/sources/source-host';
 import { saveFavourites } from '@/lib/sources/favourites';
 import { syncSourceCatalogCacheOwner } from '@/lib/sources/persistence';
+import { useViewerStore } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { SourcesPanel } from './SourcesPanel';
 import { SourceBrowser } from './SourceBrowser';
 
@@ -49,7 +51,7 @@ function labelled(ui: HTMLElement, label: string) {
 function named(ui: HTMLElement, name: string) {
   const button = [...ui.querySelectorAll('button')].find((item) => item.textContent === name); assert.ok(button, name); return button;
 }
-beforeEach(() => localStorage.clear());
+beforeEach(() => { localStorage.clear(); useViewerStore.setState({ models: new Map(), sourceTags: new Map() }); });
 afterEach(cleanup);
 
 describe('Cloud workspace (#6897)', () => {
@@ -124,6 +126,22 @@ describe('Cloud workspace (#6897)', () => {
     assert.equal(opens.length, 2, 'identical file ids in different projects stay distinct');
     click(opens[1]);
     assert.deepEqual(imports, [{ projectId: 'p2', files: [file] }]);
+  });
+
+  it('marks only genuinely loaded project/file/revision results and clears the indicator when their model closes', async () => {
+    const p = provider();
+    useViewerStore.setState({ ...fixtureModels(fixtureModel('loaded')), sourceTags: new Map([['loaded', {
+      provider: p.manifest.name, projectId: 'p2', containerId: 'models', fileId: file.id, revisionId: 'r1', loadedAt: 1,
+    }]]) });
+    const ui = browser(p); await pump();
+    type(labelled(ui, 'Search files in Workspace Files') as HTMLInputElement, 'Tower');
+    await act(async () => { ui.querySelector('form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); });
+    await pump();
+    assert.equal(ui.textContent?.includes('1 model open in viewer'), false, 'same file id in the other project is not marked loaded');
+    click(named(ui, 'Continue searching')); await pump();
+    assert.ok(ui.textContent?.includes('1 model open in viewer'));
+    act(() => { useViewerStore.setState({ models: new Map() }); });
+    assert.equal(ui.textContent?.includes('1 model open in viewer'), false);
   });
 
   it('imports the selected historical revision from a provider-root result', async () => {

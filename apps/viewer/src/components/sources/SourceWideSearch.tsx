@@ -11,6 +11,7 @@ import { useTranslation } from '@/i18n';
 import { usePagedList } from './usePagedList';
 import { LoadMoreRow } from './SourceEntityList';
 import { createSourceWideSearch, type SourceSearchMatch } from './sourceWideSearch';
+import { SourceLoadedBadge } from './SourceLoadedBadge';
 import { SourceResourceDetails } from './SourceResourceDetails';
 import { SourceDownloadStatus } from './SourceDownloadStatus';
 import type { SourceDownloadState } from '@/lib/sources/downloadProgress';
@@ -66,6 +67,8 @@ export function SourceWideSearch({ provider, ctx, onDownload, busy, downloadStat
             <span className="min-w-0 flex-1"><span className="block break-words text-sm font-medium">{file.name}</span>
               <span className="block truncate text-xs text-muted-foreground">{project.name}</span>
               {file.modifiedAt && <span className="block text-xs text-muted-foreground">{file.modifiedAt}</span>}
+              <SourceLoadedBadge providerId={provider.manifest.name} projectId={project.id} fileId={file.id}
+                revisionId={(revisions.get(JSON.stringify([project.id, file.id])) ?? file).currentRevisionId} />
               {file.unavailableReason && <span className="block text-xs text-muted-foreground">{file.unavailableReason}</span>}
             </span>
           </div>

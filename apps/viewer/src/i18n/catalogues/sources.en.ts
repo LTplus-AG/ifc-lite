@@ -29,6 +29,7 @@ import type { TranslationValue } from '../types';
  * folder row differently from a top-level file row.
  */
 export const sourcesEn = {
+  'sources.workspace.loadedModels': { one: '{count} model open in viewer', other: '{count} models open in viewer' },
   'sources.workspace.downloading': 'Importing from {title}…',
   'sources.workspace.kilobytes': '{size} KB',
   'sources.workspace.configure': 'Configure source',

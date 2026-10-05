@@ -1063,17 +1063,13 @@ export class Renderer {
     }
 
     /**
-     * Reassign a streamed point-cloud's expressId after upload. Use
-     * this when the federation registry assigns a new model offset and
-     * the renderer needs to emit the post-offset globalId in picking
-     * outputs. The change takes effect on the next render — no GPU
-     * buffer rewrite needed.
+     * Bind a streamed point cloud to its federation identity after upload:
+     * the post-offset globalId picking and deviation readback report, and,
+     * when given, the model index they attribute the asset to (#6887). Takes
+     * effect on the next render — no GPU buffer rewrite needed.
      */
-    relabelPointCloudAsset(
-        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
-        newExpressId: number,
-    ): void {
-        this.pointCloudRenderer?.relabelAsset(handle, newExpressId);
+    relabelPointCloudAsset(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle, newExpressId: number, modelIndex?: number): void {
+        this.pointCloudRenderer?.relabelAsset(handle, newExpressId, modelIndex);
         this.requestRender();
     }
 

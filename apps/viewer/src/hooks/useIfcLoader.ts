@@ -75,6 +75,7 @@ import {
   type GeometryProcessorDisposer,
 } from './ingest/geometryHandleDisposal.js';
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
+import { bindPointCloudIdentity } from './ingest/pointCloudIdentity.js';
 import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } from './ingest/pointCloudSpatialLoad.js';
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { stopCopcLodStream } from './ingest/copc/copcLodStream.js';
@@ -522,7 +523,7 @@ export function useIfcLoader() {
 
       // The ONE finalizer for every format/platform/role. Primary keeps the
       // historical updateModel-only behaviour; federated runs the georef-align
-      // → id-offset → relabel → addModel sequence lifted
+      // → id-offset → addModel sequence lifted
       // verbatim from the old useIfcFederation.addModel block (same order).
       const finalizeModel = async (
         dataStore: IfcDataStore | null,
@@ -609,12 +610,6 @@ export function useIfcLoader() {
               geometryResult.instancedGeometryVolumes = new Map(
                 Array.from(geometryResult.instancedGeometryVolumes, ([id, v]) => [id + idOffset, v]),
               );
-            }
-          }
-          if (idOffset > 0 && patch?.pointCloudHandleId !== undefined) {
-            const renderer = getGlobalRenderer();
-            if (renderer && geometryResult.pointClouds && geometryResult.pointClouds.length > 0) {
-              renderer.relabelPointCloudAsset({ id: patch.pointCloudHandleId }, geometryResult.pointClouds[0].expressId);
             }
           }
           const federatedModel: FederatedModel = {
@@ -956,6 +951,9 @@ export function useIfcLoader() {
           pointCloudHandleId: ingest.rendererHandle.id, loadPath: 'point-cloud',
           ...(sourceSpatialReference ? { spatialReference: sourceSpatialReference } : {}),
         });
+        // Every streamed format, primary or federated: the asset takes the
+        // global id and model index the model was registered under (#6887).
+        bindPointCloudIdentity(renderer, ingest.rendererHandle, modelId, useViewerStore.getState().models);
         // finalizeModel may await federated alignment. Its completion belongs
         // to this session only; do not publish completion telemetry/UI state
         // into a newer load after that await.

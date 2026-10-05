@@ -27,8 +27,6 @@ import { DEVIATION_RAMP_CSS_GRADIENT } from '@/lib/point-cloud/deviation-ramp';
 import { buildDeviationCsvReport } from '@/lib/analysis/export-csv';
 import { downloadFile } from '@/lib/export/download';
 import { trackExportCompleted } from '@/lib/analytics';
-import { modelIndices } from '@/lib/model-placement/model-indices';
-import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { cn } from '@/lib/utils';
 import { DeviationHistogramBars, DeviationSummary } from './DeviationStatistics';
 
@@ -108,8 +106,8 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     exportRef.current = { distances, controller };
     setExporting(true);
     setError(null);
-    const sourceModels = useViewerStore.getState().models;
-    const idsByIndex = new Map([...modelIndices(sourceModels)].map(([id, index]) => [index, id]));
+    const source = useViewerStore.getState();
+    const sourceModels = source.models;
     try {
       const options = { tolerance, clipRange: DEVIATION_CLIP_RANGE_M, signal: controller.signal };
       const summaries = await summarizeDeviationAssetsAsync(distances, options);
@@ -120,16 +118,19 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       if (useViewerStore.getState().models !== sourceModels) {
         throw new Error(t('deviationPanel.positionsChangedError'));
       }
+      // One source for the whole row (#6887): the asset's global id resolved
+      // against the federation it was read from. The model AND its entity come
+      // from the same lookup, so they cannot disagree. Not `resolveEntityRef`:
+      // its first-model fallback would name a model for an id no model owns.
       const assets = summaries.map((asset) => {
-        const modelId = idsByIndex.get(asset.modelIndex);
-        const model = modelId ? sourceModels.get(modelId) : undefined;
-        const ref = resolveEntityRef(asset.expressId);
-        const entities = ref.modelId === modelId ? model?.ifcDataStore?.entities : undefined;
+        const ref = source.resolveGlobalIdFromModels(asset.expressId);
+        const model = ref ? sourceModels.get(ref.modelId) : undefined;
+        const entities = model?.ifcDataStore?.entities;
         return {
           Model: model?.name ?? '',
-          GlobalId: entities?.getGlobalId(ref.expressId) ?? '',
-          Name: entities?.getName(ref.expressId) ?? '',
-          IfcClass: entities?.getTypeName(ref.expressId) ?? '',
+          GlobalId: (ref && entities?.getGlobalId(ref.expressId)) || '',
+          Name: (ref && entities?.getName(ref.expressId)) || '',
+          IfcClass: (ref && entities?.getTypeName(ref.expressId)) || '',
           statistics: asset.statistics,
         };
       });

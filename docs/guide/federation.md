@@ -276,12 +276,17 @@ re-runs deviation for a new view, the statistics are read back again.
 
 The panel's **Export CSV** action writes the same statistics for each scan
 asset, in metres, with the tolerance used. With several scan assets, a final
-row pools all of their points. The CSV identifies the scan model when several
-models are loaded. The renderer's `readDeviationDistances()` method returns
-the signed distances grouped by scan asset, and `readDeviationAssetStats()`
-returns per-asset statistics; both read GPU deviation buffers only when called
-and report nothing for a scan asset added after the run. Recompute before
-exporting after a model change.
+row pools all of their points. Each scan row names the scan's own model, its
+GlobalId, Name and IFC class, resolved from the asset's federated id, so the
+attribution holds in any load order and after other models are removed; the
+Model column appears when several models are loaded. The renderer's
+`readDeviationDistances()` method returns the signed distances grouped by scan
+asset, and `readDeviationAssetStats()` returns per-asset statistics; both read
+GPU deviation buffers only when called and report nothing for a scan asset
+added after the run. Each asset carries the `expressId` and `modelIndex` it was
+uploaded or bound with: the viewer binds a streamed scan to both through
+`relabelPointCloudAsset(handle, expressId, modelIndex)` once its model is
+registered. Recompute before exporting after a model change.
 
 ```ts
 import { computeDeviationStatisticsAsync, type Renderer } from '@ifc-lite/renderer';

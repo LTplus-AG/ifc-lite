@@ -42,10 +42,35 @@ test('an audited, dry-run IDS draft saves into the native library and reopens wi
   assert.deepEqual(entry.document.specifications.map(spec => spec.name), SAMPLE_IDS_PROPOSAL.specifications.map(spec => spec.name));
   assert.match(entry.document.info.description ?? '', /Spaces have daylight \(needs a daylight simulation; Spaces are named\)/);
   assert.match(parseIDS(entry.xml).specifications[0].instructions ?? '', /Spaces have daylight/);
-  assert.equal(reopened.library.active.ids, saved.id);
-  assert.equal(useViewerStore.getState().idsDocument?.info.title, 'Building Architecture IDS', 'it is the active native IDS');
+  assert.equal(reopened.library.active.ids, null, 'saving adds the entry without switching to it');
   openDefinition('ids', saved.id);
+  assert.equal(loadDefinitionLibrary().library.active.ids, saved.id);
+  assert.equal(useViewerStore.getState().idsDocument?.info.title, 'Building Architecture IDS', 'opening it makes it the active native IDS');
   assert.equal(useValidationSourceChoice.getState().choice, 'ids');
+});
+
+// #6915 review: the report a conversation was built on survives saving the drafts drafted from it.
+test('saving IDS and rules drafts keeps the shown validation report and the active definitions', async () => {
+  await seedAuthoringSample({ editEnabled: false });
+  const draft = buildIdsDraft(parseIdsProposal(json(SAMPLE_IDS_PROPOSAL)));
+  const { runIdsCheck } = await import('../validation/run-ids-check');
+  const state = useViewerStore.getState();
+  assert.ok(state.addValidationDefinition({ kind: 'ids', xml: draft.xml, document: draft.document }), 'an IDS the user already works with');
+  const previous = useViewerStore.getState().validationDefinitions.active.ids;
+  const { report } = await runIdsCheck({ document: draft.document, modelId: 'arch', dataStore: state.models.get('arch')!.ifcDataStore!, locale: 'en', models: state.models });
+  useViewerStore.setState({ idsValidationReport: report, validationRuleSetEditing: false });
+  const renamed = buildIdsDraft(parseIdsProposal(json({ ...SAMPLE_IDS_PROPOSAL, title: 'Drafted IDS' })));
+  const savedIds = saveIdsDraft(renamed, await auditIdsDraft(renamed), await dryRunIds(renamed.document));
+  const rules = parseRulesProposal(json(SAMPLE_RULES_PROPOSAL));
+  const savedRules = saveRulesDraft(rules, await dryRunRules(rules.ruleSet));
+  const after = useViewerStore.getState();
+  assert.equal(after.idsValidationReport, report, 'the shown report is not cleared');
+  assert.equal(after.validationRuleSetEditing, false, 'the rule editor is not opened');
+  assert.equal(after.validationDefinitions.active.ids, previous);
+  assert.equal(after.validationDefinitions.active.rules, null);
+  assert.equal(after.idsDocument?.info.title, 'Building Architecture IDS');
+  const entries = loadDefinitionLibrary().library.entries.map(entry => entry.id);
+  assert.ok(entries.includes(savedIds.id) && entries.includes(savedRules.id), 'both drafts are in the library');
 });
 
 test('dry-run rules save as a native rule set that reopens in the rule editor', async () => {
@@ -56,6 +81,7 @@ test('dry-run rules save as a native rule set that reopens in the rule editor', 
   const edited = { ...proposal, ruleSet: { ...proposal.ruleSet, name: 'Edited after the run' } };
   assert.throws(() => saveRulesDraft(edited, run), /Dry-run the rules/, 'an edit after the dry run needs a new run');
   const saved = saveRulesDraft(proposal, run);
+  assert.equal(useViewerStore.getState().validationRuleSetEditing, false, 'saving does not open the editor');
   const entry = loadDefinitionLibrary().library.entries.find(candidate => candidate.id === saved.id);
   assert.ok(entry && entry.kind === 'rules');
   const reparsed = parseRuleSetFile(JSON.parse(JSON.stringify(entry.file)));

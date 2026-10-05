@@ -28,16 +28,22 @@ export interface SavedDefinition {
 export const auditBlocks = (issues: readonly IDSAuditIssue[] | null): boolean =>
   !issues || issues.some(issue => issue.severity === 'error');
 
+/**
+ * Adds a new library entry WITHOUT activating it: activating clears the shown
+ * validation report (and, for rules, opens the editor), which may be the very
+ * report the conversation was drafted from. `openDefinition` activates it.
+ */
 function addDefinition(definition: Parameters<ReturnType<typeof useViewerStore.getState>['addValidationDefinition']>[0]): SavedDefinition {
   const state = useViewerStore.getState();
-  if (!state.addValidationDefinition(definition)) throw new Error(state.validationDefinitionsError ?? 'The validation library refused the draft.');
+  const before = new Set(state.validationDefinitions.entries.map(entry => entry.id));
+  if (!state.addValidationDefinition(definition, undefined, { activate: false })) throw new Error(state.validationDefinitionsError ?? 'The validation library refused the draft.');
   const after = useViewerStore.getState();
-  const id = after.validationDefinitions.active[definition.kind];
-  if (!id) throw new Error('The saved definition is not active in its library.');
-  return { id, warning: after.validationDefinitionsError };
+  const added = after.validationDefinitions.entries.find(entry => !before.has(entry.id) && entry.kind === definition.kind);
+  if (!added) throw new Error('The saved definition is not in its library.');
+  return { id: added.id, warning: after.validationDefinitionsError };
 }
 
-/** New IDS library entry with the exact reviewed XML; it becomes the active IDS. */
+/** New IDS library entry with the exact reviewed XML; the active IDS and its shown report are unchanged. */
 export function saveIdsDraft(draft: IdsDraft, issues: readonly IDSAuditIssue[] | null, run: DryRun | null): SavedDefinition {
   if (!draft.xml) throw new Error('The draft has no specification to save.');
   if (auditBlocks(issues)) throw new Error('Resolve the native IDS audit errors before saving.');
@@ -45,7 +51,7 @@ export function saveIdsDraft(draft: IdsDraft, issues: readonly IDSAuditIssue[] |
   return addDefinition({ kind: 'ids', xml: draft.xml, document: parseIDS(draft.xml) });
 }
 
-/** New information rule set; unsupported requirements are kept in its descriptions. */
+/** New information rule set, not activated; unsupported requirements are kept in its descriptions. */
 export function saveRulesDraft(proposal: RulesProposal, run: DryRun | null): SavedDefinition {
   if (!isDryRunCurrent(run, proposal.ruleSet)) throw new Error('Dry-run the rules on the current models before saving.');
   return addDefinition({ kind: 'rules', file: ruleSetForSave(proposal) });
@@ -65,7 +71,7 @@ export function exportIdsDraft(draft: IdsDraft, issues: readonly IDSAuditIssue[]
   downloadFile(draft.xml, `${sanitizeFilename(draft.proposal.title, { fallback: 'ids' })}.ids`, 'application/xml');
 }
 
-/** Handoff: the saved definition becomes the panel's active one, on the matching side. */
+/** Handoff: the saved definition becomes the panel's active one, on the matching side (this clears the shown report). */
 export function openDefinition(kind: 'ids' | 'rules', id: string): void {
   const state = useViewerStore.getState();
   state.selectValidationDefinition(id);

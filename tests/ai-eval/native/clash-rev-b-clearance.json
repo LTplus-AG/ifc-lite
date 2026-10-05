@@ -1,0 +1,413 @@
+{
+  "version": 1,
+  "kind": "native-clash-result",
+  "provenance": {
+    "model": "apps/viewer/public/samples/building-architecture-rev-b.ifc",
+    "sha256": "0dfb7152db0a845747d2f35ee5ba9ba3772744072cb23040353c469c2a05f366",
+    "engine": "@ifc-lite/cli 0.38.2 (ts clash backend)",
+    "command": "ifc-lite clash apps/viewer/public/samples/building-architecture-rev-b.ifc --mode clearance --clearance 0.05 --json",
+    "options": {
+      "mode": "clearance",
+      "clearance": 0.05
+    },
+    "recordedAt": "2026-10-05",
+    "note": "Native engine output for the committed sample, not an independent clash label. Regenerate with the command above when the engine or sample changes."
+  },
+  "result": {
+    "summary": {
+      "total": 9,
+      "byRule": {
+        "cli-rule": 9
+      },
+      "byTypePair": {
+        "IfcSlab vs IfcWall": 7,
+        "IfcDuctSegment vs IfcWall": 1,
+        "IfcBuildingElementProxy vs IfcSlab": 1
+      },
+      "bySeverity": {
+        "critical": 0,
+        "major": 1,
+        "minor": 0,
+        "info": 8
+      }
+    },
+    "truncated": null,
+    "ruleCoverageOutcome": "clean",
+    "ruleCoverage": [
+      {
+        "rule": "cli-rule",
+        "matchedA": 11,
+        "matchedB": null,
+        "matchedKeysA": [
+          "0OfZwWc8j9QP5uX8xPTxDH",
+          "0ZTBBPo6f6bxqV2K7Oelrq",
+          "12UVOn4wvAJPMUExKdZLb8",
+          "1AQAupaRP1txwK1AGiN61V",
+          "1uS5vfZPn9R8PlAaVd73on",
+          "2F44QMqSH3TOkM$SZoqCBe",
+          "3Fit2Fad92zf2f6aWdJtF5",
+          "3GwpRmJBf7fhCP8KgMyfOD",
+          "3_4VN63S96DfWiJjgG8j1C",
+          "3wdauVJT5Fx9drrREiDqA$",
+          "3zR0BOEcLADRKln4HYporH"
+        ],
+        "matchedKeysB": null,
+        "candidatesExamined": 11
+      }
+    ],
+    "clashes": [
+      {
+        "id": "cli-rule building-architecture-rev-b.ifc 0OfZwWc8j9QP5uX8xPTxDH building-architecture-rev-b.ifc 3GwpRmJBf7fhCP8KgMyfOD",
+        "a": {
+          "key": "0OfZwWc8j9QP5uX8xPTxDH",
+          "ref": 315,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcWall",
+          "name": "house - outer wall - house left"
+        },
+        "b": {
+          "key": "3GwpRmJBf7fhCP8KgMyfOD",
+          "ref": 1034,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcDuctSegment",
+          "name": "Duct D-New (unrouted MEP run)"
+        },
+        "rule": "cli-rule",
+        "status": "hard",
+        "distance": -0.15000009536743164,
+        "distanceKind": "estimate",
+        "depthFloor": 0.000002426084506623738,
+        "point": [
+          3.1066666901111604,
+          1.4745528598626454,
+          -5.95166666507721
+        ],
+        "bounds": {
+          "min": [
+            3,
+            1.4249999523162842,
+            -6.099999904632568
+          ],
+          "max": [
+            3.200000047683716,
+            1.5750000476837158,
+            -5.900000095367432
+          ]
+        },
+        "severity": "major"
+      },
+      {
+        "id": "cli-rule building-architecture-rev-b.ifc 0OfZwWc8j9QP5uX8xPTxDH building-architecture-rev-b.ifc 0ZTBBPo6f6bxqV2K7Oelrq",
+        "a": {
+          "key": "0OfZwWc8j9QP5uX8xPTxDH",
+          "ref": 315,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcWall",
+          "name": "house - outer wall - house left"
+        },
+        "b": {
+          "key": "0ZTBBPo6f6bxqV2K7Oelrq",
+          "ref": 395,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcSlab",
+          "name": "house - roof - slab left"
+        },
+        "rule": "cli-rule",
+        "status": "clearance",
+        "distance": 0,
+        "distanceKind": "mesh",
+        "point": [
+          3.200000047683716,
+          3.3757359981536865,
+          -9
+        ],
+        "bounds": {
+          "min": [
+            3.200000047683716,
+            3.3757359981536865,
+            -9
+          ],
+          "max": [
+            3.200000047683716,
+            3.3757359981536865,
+            -9
+          ]
+        },
+        "severity": "info"
+      },
+      {
+        "id": "cli-rule building-architecture-rev-b.ifc 0OfZwWc8j9QP5uX8xPTxDH building-architecture-rev-b.ifc 3zR0BOEcLADRKln4HYporH",
+        "a": {
+          "key": "3zR0BOEcLADRKln4HYporH",
+          "ref": 52,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcSlab",
+          "name": "floor"
+        },
+        "b": {
+          "key": "0OfZwWc8j9QP5uX8xPTxDH",
+          "ref": 315,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcWall",
+          "name": "house - outer wall - house left"
+        },
+        "rule": "cli-rule",
+        "status": "clearance",
+        "distance": 0,
+        "distanceKind": "mesh",
+        "point": [
+          3.200000047683716,
+          -0.25,
+          -5
+        ],
+        "bounds": {
+          "min": [
+            3.200000047683716,
+            -0.25,
+            -5
+          ],
+          "max": [
+            3.200000047683716,
+            -0.25,
+            -5
+          ]
+        },
+        "severity": "info"
+      },
+      {
+        "id": "cli-rule building-architecture-rev-b.ifc 12UVOn4wvAJPMUExKdZLb8 building-architecture-rev-b.ifc 1AQAupaRP1txwK1AGiN61V",
+        "a": {
+          "key": "1AQAupaRP1txwK1AGiN61V",
+          "ref": 262,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcWall",
+          "name": "house - outer wall - house right front"
+        },
+        "b": {
+          "key": "12UVOn4wvAJPMUExKdZLb8",
+          "ref": 425,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcSlab",
+          "name": "house - roof - slab right"
+        },
+        "rule": "cli-rule",
+        "status": "clearance",
+        "distance": 0,
+        "distanceKind": "mesh",
+        "point": [
+          7.199999809265137,
+          3.1757359504699707,
+          -4.800000190734863
+        ],
+        "bounds": {
+          "min": [
+            7.199999809265137,
+            3.1757359504699707,
+            -4.800000190734863
+          ],
+          "max": [
+            7.199999809265137,
+            3.1757359504699707,
+            -4.800000190734863
+          ]
+        },
+        "severity": "info"
+      },
+      {
+        "id": "cli-rule building-architecture-rev-b.ifc 12UVOn4wvAJPMUExKdZLb8 building-architecture-rev-b.ifc 1uS5vfZPn9R8PlAaVd73on",
+        "a": {
+          "key": "1uS5vfZPn9R8PlAaVd73on",
+          "ref": 353,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcWall",
+          "name": "plumbing wall"
+        },
+        "b": {
+          "key": "12UVOn4wvAJPMUExKdZLb8",
+          "ref": 425,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcSlab",
+          "name": "house - roof - slab right"
+        },
+        "rule": "cli-rule",
+        "status": "clearance",
+        "distance": 0,
+        "distanceKind": "mesh",
+        "point": [
+          8.173999786376953,
+          2.2017359733581543,
+          -8.300000190734863
+        ],
+        "bounds": {
+          "min": [
+            8.173999786376953,
+            2.2017359733581543,
+            -8.300000190734863
+          ],
+          "max": [
+            8.173999786376953,
+            2.2017359733581543,
+            -8.300000190734863
+          ]
+        },
+        "severity": "info"
+      },
+      {
+        "id": "cli-rule building-architecture-rev-b.ifc 1AQAupaRP1txwK1AGiN61V building-architecture-rev-b.ifc 3zR0BOEcLADRKln4HYporH",
+        "a": {
+          "key": "3zR0BOEcLADRKln4HYporH",
+          "ref": 52,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcSlab",
+          "name": "floor"
+        },
+        "b": {
+          "key": "1AQAupaRP1txwK1AGiN61V",
+          "ref": 262,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcWall",
+          "name": "house - outer wall - house right front"
+        },
+        "rule": "cli-rule",
+        "status": "clearance",
+        "distance": 0,
+        "distanceKind": "mesh",
+        "point": [
+          7,
+          -0.25,
+          -4.800000190734863
+        ],
+        "bounds": {
+          "min": [
+            7,
+            -0.25,
+            -4.800000190734863
+          ],
+          "max": [
+            7,
+            -0.25,
+            -4.800000190734863
+          ]
+        },
+        "severity": "info"
+      },
+      {
+        "id": "cli-rule building-architecture-rev-b.ifc 1uS5vfZPn9R8PlAaVd73on building-architecture-rev-b.ifc 3zR0BOEcLADRKln4HYporH",
+        "a": {
+          "key": "3zR0BOEcLADRKln4HYporH",
+          "ref": 52,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcSlab",
+          "name": "floor"
+        },
+        "b": {
+          "key": "1uS5vfZPn9R8PlAaVd73on",
+          "ref": 353,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcWall",
+          "name": "plumbing wall"
+        },
+        "rule": "cli-rule",
+        "status": "clearance",
+        "distance": 0,
+        "distanceKind": "mesh",
+        "point": [
+          8.173999786376953,
+          0,
+          -5
+        ],
+        "bounds": {
+          "min": [
+            8.173999786376953,
+            0,
+            -5
+          ],
+          "max": [
+            8.173999786376953,
+            0,
+            -5
+          ]
+        },
+        "severity": "info"
+      },
+      {
+        "id": "cli-rule building-architecture-rev-b.ifc 3_4VN63S96DfWiJjgG8j1C building-architecture-rev-b.ifc 3zR0BOEcLADRKln4HYporH",
+        "a": {
+          "key": "3zR0BOEcLADRKln4HYporH",
+          "ref": 52,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcSlab",
+          "name": "floor"
+        },
+        "b": {
+          "key": "3_4VN63S96DfWiJjgG8j1C",
+          "ref": 464,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcBuildingElementProxy",
+          "name": "sand bedding"
+        },
+        "rule": "cli-rule",
+        "status": "clearance",
+        "distance": 0,
+        "distanceKind": "mesh",
+        "point": [
+          3.3500001430511475,
+          -0.25,
+          -5.150000095367432
+        ],
+        "bounds": {
+          "min": [
+            3.3500001430511475,
+            -0.25,
+            -5.150000095367432
+          ],
+          "max": [
+            3.3500001430511475,
+            -0.25,
+            -5.150000095367432
+          ]
+        },
+        "severity": "info"
+      },
+      {
+        "id": "cli-rule building-architecture-rev-b.ifc 12UVOn4wvAJPMUExKdZLb8 building-architecture-rev-b.ifc 3wdauVJT5Fx9drrREiDqA$",
+        "a": {
+          "key": "3wdauVJT5Fx9drrREiDqA$",
+          "ref": 291,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcWall",
+          "name": "house - outer wall - house right back"
+        },
+        "b": {
+          "key": "12UVOn4wvAJPMUExKdZLb8",
+          "ref": 425,
+          "model": "building-architecture-rev-b.ifc",
+          "tag": "IfcSlab",
+          "name": "house - roof - slab right"
+        },
+        "rule": "cli-rule",
+        "status": "clearance",
+        "distance": 9.5367431640625e-7,
+        "distanceKind": "mesh",
+        "point": [
+          8.900000095367432,
+          1.8999998569488525,
+          -4.799999713897705
+        ],
+        "bounds": {
+          "min": [
+            8.899999618530273,
+            1.8999998569488525,
+            -4.799999713897705
+          ],
+          "max": [
+            8.90000057220459,
+            1.8999998569488525,
+            -4.799999713897705
+          ]
+        },
+        "severity": "info"
+      }
+    ]
+  }
+}

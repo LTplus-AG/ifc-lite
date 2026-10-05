@@ -1,0 +1,428 @@
+{
+  "$schema": "../recording.schema.json",
+  "version": 1,
+  "id": "clash-grouping-wrong-kind-negative",
+  "task": "clash-grouping",
+  "scene": "clash-rev-b",
+  "corpus": "negative",
+  "prompt": "Propose clash groups for coordination review",
+  "route": {
+    "kind": "proxy",
+    "model": "openai/gpt-free"
+  },
+  "provenance": {
+    "kind": "authored",
+    "recordedAt": "2026-10-06",
+    "note": "Negative: a Flow patch offered while discussing clash evidence."
+  },
+  "response": {
+    "status": 200,
+    "events": [
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "{\"version\": 1, \"ki"
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "nd\": \"flow.patch\","
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": " \"operations\": []}"
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {},
+            "finish_reason": "stop"
+          }
+        ]
+      }
+    ],
+    "done": true
+  },
+  "evidence": {
+    "source": "clash",
+    "models": [
+      {
+        "id": "building-architecture-rev-b.ifc",
+        "name": "building-architecture-rev-b.ifc",
+        "fingerprint": "0dfb7152db0a845747d2f35ee5ba9ba3772744072cb23040353c469c2a05f366"
+      }
+    ],
+    "totalModels": 1,
+    "modelMetadataTruncated": false,
+    "sourceAvailability": "available",
+    "reportProvenance": "unknown",
+    "totalRows": 9,
+    "includedRows": 9,
+    "sampled": false,
+    "projectionTruncated": false,
+    "evidence": {
+      "summary": {
+        "total": 9,
+        "byRule": {
+          "cli-rule": 9
+        },
+        "byTypePair": {
+          "IfcDuctSegment vs IfcWall": 1,
+          "IfcSlab vs IfcWall": 7,
+          "IfcBuildingElementProxy vs IfcSlab": 1
+        },
+        "bySeverity": {
+          "critical": 0,
+          "major": 1,
+          "minor": 0,
+          "info": 8
+        },
+        "settings": {
+          "tolerance": 0.002,
+          "excludeVoidsAndHosts": true
+        },
+        "taxonomyLimitations": "Default taxonomy: native status (detection type) and severity plus discipline pairs. disciplineCandidates are native IFC-type selector hints for each side, not verified project mappings. Multiple candidates are ambiguous; an empty list is unknown. Preserve all alternatives and side/model identities. Detection status is not human review status. Never change native severity or infer resolved/accepted from grouping. Omitted findings remain unclassified. BCF assignees stay empty until a verified project mapping is chosen."
+      },
+      "rows": [
+        {
+          "citation": "E1",
+          "data": {
+            "id": "cli-rule building-architecture-rev-b.ifc 0OfZwWc8j9QP5uX8xPTxDH building-architecture-rev-b.ifc 3GwpRmJBf7fhCP8KgMyfOD",
+            "a": {
+              "key": "0OfZwWc8j9QP5uX8xPTxDH",
+              "ref": 315,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcWall",
+              "name": "house - outer wall - house left"
+            },
+            "b": {
+              "key": "3GwpRmJBf7fhCP8KgMyfOD",
+              "ref": 1034,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcDuctSegment",
+              "name": "Duct D-New (unrouted MEP run)"
+            },
+            "rule": "cli-rule",
+            "status": "hard",
+            "severity": "major",
+            "distance": -0.15000009536743164,
+            "distanceKind": "estimate",
+            "disciplineCandidates": {
+              "a": [
+                "ARCH",
+                "STR"
+              ],
+              "b": [
+                "HVAC"
+              ]
+            }
+          }
+        },
+        {
+          "citation": "E2",
+          "data": {
+            "id": "cli-rule building-architecture-rev-b.ifc 0OfZwWc8j9QP5uX8xPTxDH building-architecture-rev-b.ifc 0ZTBBPo6f6bxqV2K7Oelrq",
+            "a": {
+              "key": "0OfZwWc8j9QP5uX8xPTxDH",
+              "ref": 315,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcWall",
+              "name": "house - outer wall - house left"
+            },
+            "b": {
+              "key": "0ZTBBPo6f6bxqV2K7Oelrq",
+              "ref": 395,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcSlab",
+              "name": "house - roof - slab left"
+            },
+            "rule": "cli-rule",
+            "status": "clearance",
+            "severity": "info",
+            "distance": 0,
+            "distanceKind": "mesh",
+            "disciplineCandidates": {
+              "a": [
+                "ARCH",
+                "STR"
+              ],
+              "b": [
+                "ARCH",
+                "STR"
+              ]
+            }
+          }
+        },
+        {
+          "citation": "E3",
+          "data": {
+            "id": "cli-rule building-architecture-rev-b.ifc 0OfZwWc8j9QP5uX8xPTxDH building-architecture-rev-b.ifc 3zR0BOEcLADRKln4HYporH",
+            "a": {
+              "key": "3zR0BOEcLADRKln4HYporH",
+              "ref": 52,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcSlab",
+              "name": "floor"
+            },
+            "b": {
+              "key": "0OfZwWc8j9QP5uX8xPTxDH",
+              "ref": 315,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcWall",
+              "name": "house - outer wall - house left"
+            },
+            "rule": "cli-rule",
+            "status": "clearance",
+            "severity": "info",
+            "distance": 0,
+            "distanceKind": "mesh",
+            "disciplineCandidates": {
+              "a": [
+                "ARCH",
+                "STR"
+              ],
+              "b": [
+                "ARCH",
+                "STR"
+              ]
+            }
+          }
+        },
+        {
+          "citation": "E4",
+          "data": {
+            "id": "cli-rule building-architecture-rev-b.ifc 12UVOn4wvAJPMUExKdZLb8 building-architecture-rev-b.ifc 1AQAupaRP1txwK1AGiN61V",
+            "a": {
+              "key": "1AQAupaRP1txwK1AGiN61V",
+              "ref": 262,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcWall",
+              "name": "house - outer wall - house right front"
+            },
+            "b": {
+              "key": "12UVOn4wvAJPMUExKdZLb8",
+              "ref": 425,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcSlab",
+              "name": "house - roof - slab right"
+            },
+            "rule": "cli-rule",
+            "status": "clearance",
+            "severity": "info",
+            "distance": 0,
+            "distanceKind": "mesh",
+            "disciplineCandidates": {
+              "a": [
+                "ARCH",
+                "STR"
+              ],
+              "b": [
+                "ARCH",
+                "STR"
+              ]
+            }
+          }
+        },
+        {
+          "citation": "E5",
+          "data": {
+            "id": "cli-rule building-architecture-rev-b.ifc 12UVOn4wvAJPMUExKdZLb8 building-architecture-rev-b.ifc 1uS5vfZPn9R8PlAaVd73on",
+            "a": {
+              "key": "1uS5vfZPn9R8PlAaVd73on",
+              "ref": 353,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcWall",
+              "name": "plumbing wall"
+            },
+            "b": {
+              "key": "12UVOn4wvAJPMUExKdZLb8",
+              "ref": 425,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcSlab",
+              "name": "house - roof - slab right"
+            },
+            "rule": "cli-rule",
+            "status": "clearance",
+            "severity": "info",
+            "distance": 0,
+            "distanceKind": "mesh",
+            "disciplineCandidates": {
+              "a": [
+                "ARCH",
+                "STR"
+              ],
+              "b": [
+                "ARCH",
+                "STR"
+              ]
+            }
+          }
+        },
+        {
+          "citation": "E6",
+          "data": {
+            "id": "cli-rule building-architecture-rev-b.ifc 1AQAupaRP1txwK1AGiN61V building-architecture-rev-b.ifc 3zR0BOEcLADRKln4HYporH",
+            "a": {
+              "key": "3zR0BOEcLADRKln4HYporH",
+              "ref": 52,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcSlab",
+              "name": "floor"
+            },
+            "b": {
+              "key": "1AQAupaRP1txwK1AGiN61V",
+              "ref": 262,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcWall",
+              "name": "house - outer wall - house right front"
+            },
+            "rule": "cli-rule",
+            "status": "clearance",
+            "severity": "info",
+            "distance": 0,
+            "distanceKind": "mesh",
+            "disciplineCandidates": {
+              "a": [
+                "ARCH",
+                "STR"
+              ],
+              "b": [
+                "ARCH",
+                "STR"
+              ]
+            }
+          }
+        },
+        {
+          "citation": "E7",
+          "data": {
+            "id": "cli-rule building-architecture-rev-b.ifc 1uS5vfZPn9R8PlAaVd73on building-architecture-rev-b.ifc 3zR0BOEcLADRKln4HYporH",
+            "a": {
+              "key": "3zR0BOEcLADRKln4HYporH",
+              "ref": 52,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcSlab",
+              "name": "floor"
+            },
+            "b": {
+              "key": "1uS5vfZPn9R8PlAaVd73on",
+              "ref": 353,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcWall",
+              "name": "plumbing wall"
+            },
+            "rule": "cli-rule",
+            "status": "clearance",
+            "severity": "info",
+            "distance": 0,
+            "distanceKind": "mesh",
+            "disciplineCandidates": {
+              "a": [
+                "ARCH",
+                "STR"
+              ],
+              "b": [
+                "ARCH",
+                "STR"
+              ]
+            }
+          }
+        },
+        {
+          "citation": "E8",
+          "data": {
+            "id": "cli-rule building-architecture-rev-b.ifc 3_4VN63S96DfWiJjgG8j1C building-architecture-rev-b.ifc 3zR0BOEcLADRKln4HYporH",
+            "a": {
+              "key": "3zR0BOEcLADRKln4HYporH",
+              "ref": 52,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcSlab",
+              "name": "floor"
+            },
+            "b": {
+              "key": "3_4VN63S96DfWiJjgG8j1C",
+              "ref": 464,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcBuildingElementProxy",
+              "name": "sand bedding"
+            },
+            "rule": "cli-rule",
+            "status": "clearance",
+            "severity": "info",
+            "distance": 0,
+            "distanceKind": "mesh",
+            "disciplineCandidates": {
+              "a": [
+                "ARCH",
+                "STR"
+              ],
+              "b": []
+            }
+          }
+        },
+        {
+          "citation": "E9",
+          "data": {
+            "id": "cli-rule building-architecture-rev-b.ifc 12UVOn4wvAJPMUExKdZLb8 building-architecture-rev-b.ifc 3wdauVJT5Fx9drrREiDqA$",
+            "a": {
+              "key": "3wdauVJT5Fx9drrREiDqA$",
+              "ref": 291,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcWall",
+              "name": "house - outer wall - house right back"
+            },
+            "b": {
+              "key": "12UVOn4wvAJPMUExKdZLb8",
+              "ref": 425,
+              "model": "building-architecture-rev-b.ifc",
+              "tag": "IfcSlab",
+              "name": "house - roof - slab right"
+            },
+            "rule": "cli-rule",
+            "status": "clearance",
+            "severity": "info",
+            "distance": 9.5367431640625e-07,
+            "distanceKind": "mesh",
+            "disciplineCandidates": {
+              "a": [
+                "ARCH",
+                "STR"
+              ],
+              "b": [
+                "ARCH",
+                "STR"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "expect": {
+    "outcome": "completed",
+    "proposal": {
+      "kind": "flow.patch",
+      "valid": false
+    },
+    "violations": [
+      "proposal-kind-allowed"
+    ],
+    "review": {
+      "kind": "refused",
+      "stage": "parse"
+    }
+  }
+}

@@ -1,0 +1,57 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Chart review: the exact path a dashboard card takes. The `elements` dataset
+ * is built for the proposal's scope and fields (`buildElementsDataset`), its
+ * source filter resolved by the shared evaluator (`resolveChartFilter`) and
+ * applied (`applyChartFilter`), and the result aggregated by Charts
+ * `aggregate`. The aggregation's own `total`, `unbucketed` and `unmeasured`
+ * become the denominators: a sum states how many rows carried the measure.
+ */
+
+import { aggregate, elementFieldLabel, type ElementFieldBinding } from '@ifc-lite/charts';
+import type { ViewerState } from '@/store';
+import { buildElementsDataset } from '@/lib/charts/datasets/elements';
+import type { ElementFieldCatalog } from '@/lib/charts/element-field-reader';
+import { applyChartFilter, resolveChartFilter } from '@/lib/charts/source-filter';
+import { toGlobalIdFromModels } from '@/store/globalId';
+import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
+import { fieldIdentityKey, resolveChartSpec, type ChartProposal, type FieldIdentity } from './chart-proposal';
+import { modelSchemaIndex } from './model-schema';
+import { populationOf, revisionOf, type ArtifactPreview, type MeasureSummary } from './preview-shared';
+
+/** The binding the chart editor's field picker would offer for `field`, from what the loaded models carry. */
+export function discoveredBinding(field: FieldIdentity, catalog: ElementFieldCatalog): ElementFieldBinding | null {
+  const key = fieldIdentityKey(field);
+  const options = [...catalog.attributes, ...[...catalog.properties.values()].flat(), ...[...catalog.quantities.values()].flat(), ...catalog.relations];
+  return options.find((option) => fieldIdentityKey(option.binding) === key)?.binding ?? null;
+}
+
+export async function previewChart(proposal: ChartProposal, state: ViewerState, signal?: AbortSignal): Promise<ArtifactPreview> {
+  const { catalog } = await modelSchemaIndex(state, signal);
+  const spec = resolveChartSpec(proposal.chart, `chart-${crypto.randomUUID()}`, (field) => discoveredBinding(field, catalog));
+  const fields = [spec.elementField, spec.measureField].filter((field): field is ElementFieldBinding => !!field);
+  let dataset = buildElementsDataset(proposal.scope, fields, state);
+  const ids = await resolveChartFilter(evaluatorModelsFromState(state), spec.filter,
+    (modelId, expressId) => toGlobalIdFromModels(state.models, modelId, expressId),
+    { definedModelTagIds: definedModelTagIdsOf(state), limit: Number.POSITIVE_INFINITY, signal });
+  if (ids) dataset = applyChartFilter(dataset, ids);
+  const aggregation = aggregate(spec, dataset);
+  const rows = dataset.rows.length;
+  const measures: MeasureSummary[] = spec.measure.agg === 'sum' && spec.measureField
+    ? [{ label: elementFieldLabel(spec.measureField), unit: aggregation.unit ?? null, total: aggregation.total,
+      measured: rows - aggregation.unbucketed - (aggregation.unmeasured ?? 0), rows }]
+    : [];
+  const refs = dataset.rows.flatMap((row) => {
+    const ref = row.ids.length > 0 ? state.resolveGlobalIdFromModels(row.ids[0]) : null;
+    return ref ? [{ modelId: ref.modelId }] : [];
+  });
+  return {
+    kind: 'chart.proposal', matched: rows, population: populationOf(refs, state), sampleColumns: [], samples: [], measures,
+    buckets: aggregation.categories.map((bucket) => ({ label: bucket.label, count: bucket.count, value: bucket.value, color: bucket.color })),
+    unassigned: aggregation.unbucketed, ...(aggregation.unit ? { unit: aggregation.unit } : {}),
+    artifact: { kind: 'chart.proposal', spec, scope: proposal.scope }, revision: revisionOf(state),
+  };
+}

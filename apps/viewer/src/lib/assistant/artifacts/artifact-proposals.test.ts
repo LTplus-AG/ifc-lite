@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import { elementFieldColumnId, validateChartSpec } from '@ifc-lite/charts';
+import type { FilterRule } from '@ifc-lite/rules';
 import { declaredArtifactKind, parseArtifactProposal } from './proposal-kinds';
 import { parseFilterProposal } from './filter-proposal';
 import { parseListProposal } from './list-proposal';
@@ -34,9 +35,10 @@ test('a numeric property equality is SI like every numeric threshold; text stays
   const rule = (op: string, value: unknown) => parseFilterProposal(json({ version: 1, kind: 'filter.proposal', title: 'T', name: 'N',
     groups: [{ combinator: 'AND', rules: [{ kind: 'property', setName: 'Pset_Dims', propertyName: 'Height', op, value }] }] })).groups[0].rules[0];
   assert.deepEqual(rule('eq', 2.5), { kind: 'property', setName: 'Pset_Dims', propertyName: 'Height', op: 'eq', value: '2.5', valueUnit: 'si' });
-  assert.equal(rule('ne', 3).kind === 'property' && rule('ne', 3).valueUnit, 'si');
-  assert.equal(rule('eq', 'EI60').kind === 'property' && rule('eq', 'EI60').valueUnit, undefined, 'a text equality compares the stored text');
-  assert.equal(rule('gte', '2').kind === 'property' && rule('gte', '2').valueUnit, 'si');
+  const unit = (parsed: FilterRule) => parsed.kind === 'property' ? parsed.valueUnit : 'not a property rule';
+  assert.equal(unit(rule('ne', 3)), 'si');
+  assert.equal(unit(rule('eq', 'EI60')), undefined, 'a text equality compares the stored text');
+  assert.equal(unit(rule('gte', '2')), 'si');
 });
 
 test('a model rule names loaded models; they stay names until the review resolves them', () => {

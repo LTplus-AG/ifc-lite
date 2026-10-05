@@ -23,6 +23,9 @@ export const activityTrayEn = {
   'activityTray.persistent': 'Kept across reloads',
   'activityTray.interruptedHint': 'The page closed while this ran. It did not finish; run it again.',
   'activityTray.progress': '{done} of {total}',
+  // Spoken when a job finishes while the viewer is open: "Export (Export IFC): Failed".
+  'activityTray.announce': '{title}: {status}',
+  'activityTray.announceSubject': '{title} ({subject}): {status}',
 
 
   'activityTray.job.load': 'Load model',

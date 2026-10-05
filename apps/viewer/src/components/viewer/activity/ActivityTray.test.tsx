@@ -132,6 +132,45 @@ describe('activity tray (U02, #6925)', () => {
   });
 });
 
+describe('activity tray announcements (U02, #6925)', () => {
+  it('announces a job that finishes while the viewer is open, without opening the tray', async () => {
+    const done = beginActivity({ kind: 'export', title: 'activityTray.job.export', subject: 'Export IFC' }, T0);
+    finishActivity(done, 'completed', {}, T0 + 1); // finished before mount (e.g. restored): not news
+    const ui = render(<ActivityTrayButton />);
+    const live = ui.querySelector('output[aria-live="polite"]');
+    assert.ok(live, 'the live region is mounted with the status-bar button');
+    assert.equal(text(live).trim(), '');
+
+    let job = '';
+    await act(async () => { job = beginActivity({ kind: 'export', title: 'activityTray.job.export', subject: 'Export IFC' }); });
+    assert.equal(text(live).trim(), '', 'a start is not announced');
+    await act(async () => { finishActivity(job, 'failed', { detail: 'Disk full' }); });
+    assert.equal(text(live).trim(), 'Export (Export IFC): Failed');
+    assert.equal(rows().length, 0, 'the tray stayed closed');
+
+    await act(async () => { finishActivity(beginActivity({ kind: 'check', title: 'activityTray.job.clash' }), 'completed'); });
+    assert.equal(text(live).trim(), 'Clash detection: Complete', 'a job that starts and ends between renders is announced too');
+    const first = live.textContent;
+    await act(async () => { finishActivity(beginActivity({ kind: 'check', title: 'activityTray.job.clash' }), 'completed'); });
+    assert.equal(text(live).trim(), 'Clash detection: Complete');
+    assert.notEqual(live.textContent, first, 'the same words again still change the region, so they are read again');
+    assert.deepEqual([...ui.querySelectorAll('output[aria-live]')], [live], 'one region, never remounted');
+  });
+
+  it('does not announce jobs restored from before a reload, finished or interrupted', async () => {
+    // The previous page: one job finished, one cut off while running.
+    finishActivity(beginActivity({ kind: 'export', title: 'activityTray.job.export' }, T0), 'completed', {}, T0 + 1);
+    beginActivity({ kind: 'load', title: 'activityTray.job.load' }, T0 + 2);
+    useActivityJournal.setState({ jobs: [] });
+    // The new page mounts the status bar before the shell restores the journal.
+    const ui = render(<ActivityTrayButton />);
+    const live = ui.querySelector('output[aria-live="polite"]')!;
+    await act(async () => { restoreActivityJournal(isCataloguedKey); });
+    assert.equal(useActivityJournal.getState().jobs.length, 2);
+    assert.equal(text(live).trim(), '');
+  });
+});
+
 describe('activity tray on phones (U02, #6925)', () => {
   it('the overflow menu opens the same jobs in a dialog, since phones show no status bar', async () => {
     beginActivity({ kind: 'flow', title: 'activityTray.job.flow', subject: 'Door check', panel: 'flow', cancel: () => {} }, T0);
@@ -147,5 +186,13 @@ describe('activity tray on phones (U02, #6925)', () => {
     assert.ok(dialog, 'the tray opens as a dialog');
     assert.equal(dialog.getAttribute('aria-labelledby') && document.getElementById(dialog.getAttribute('aria-labelledby')!)?.textContent, 'Activity');
     assert.match(text(dialog), /Flow run.*Door check.*Running/);
+  });
+
+  it('phones get the same finish announcement, with the tray closed', async () => {
+    render(<BimReactContext.Provider value={{} as BimContext}><MobileToolbar /></BimReactContext.Provider>);
+    const live = document.querySelector('output[aria-live="polite"][data-activity-announcer]');
+    assert.ok(live);
+    await act(async () => { finishActivity(beginActivity({ kind: 'flow', title: 'activityTray.job.flow' }), 'cancelled'); });
+    assert.equal(text(live).trim(), 'Flow run: Cancelled');
   });
 });

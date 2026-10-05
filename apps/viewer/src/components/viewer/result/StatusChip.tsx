@@ -55,6 +55,11 @@ const TONE: Record<Tone, string> = {
   bad: 'border-destructive/50 text-destructive',
 };
 
+/** The word a status is shown with, for text that names it outside a chip (an announcement). */
+export function statusLabelKey(status: ResultStatus): TranslationKey {
+  return STATUS[status].labelKey;
+}
+
 export function StatusChip({ status, className }: { status: ResultStatus; className?: string }) {
   const { t } = useTranslation();
   const { labelKey, icon: Icon, tone } = STATUS[status];

@@ -38,6 +38,7 @@ import { assistantPackMeasureEn } from './catalogues/assistant-pack-measure.en';
 import { assistantPackAutomationEn } from './catalogues/assistant-pack-automation.en';
 import { chatByokEn } from './catalogues/chat-byok.en';
 import { modelChangesEn } from './catalogues/model-changes.en';
+import { clashGroupApplyEn } from './catalogues/clash-group-apply.en';
 import { assistantUsageEn } from './catalogues/assistant-usage.en';
 import { modelAuthoringEn } from './catalogues/model-authoring.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
@@ -227,6 +228,7 @@ export const en = {
   ...assistantPackAutomationEn,
   ...chatByokEn,
   ...modelChangesEn,
+  ...clashGroupApplyEn,
   ...assistantUsageEn,
   ...modelAuthoringEn,
   ...clashPanelEn,

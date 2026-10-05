@@ -97,6 +97,7 @@ export function planContentImport(prepared: PreparedContentImport, existing: Con
   for (const entry of libraries.clashGroups ?? []) add('clashGroups', entry, () => ({ ...entry, id: crypto.randomUUID() }));
   for (const entry of libraries.bcfDrafts ?? []) add('bcfDrafts', entry, () => ({ ...entry, id: crypto.randomUUID() }));
   for (const entry of libraries.modelChanges ?? []) add('modelChanges', entry, () => ({ ...entry, id: crypto.randomUUID() }));
+  for (const entry of libraries.clashGroupApplications ?? []) add('clashGroupApplications', entry, () => ({ ...entry, id: crypto.randomUUID() }));
   // An imported outbox never dispatches by itself: every unfinished effect is blocked until checked against the server.
   for (const entry of libraries.bcfOutbox ?? []) {
     const quarantined = quarantineImported(entry);

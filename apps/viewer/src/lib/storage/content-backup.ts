@@ -7,6 +7,8 @@ import type { ClashGroupWorkspace } from '../clash/group-workspace.js';
 import type { DraftBatch } from '../bcf-drafts/draft-types.js';
 import type { BcfPublication } from '../bcf-publication/outbox-types.js';
 import type { ModelChangeReceipt } from '../actions/model-change-commit.js';
+import type { ClashGroupApplication } from '../clash/group-applications.js';
+import type { ClashGroupApplication } from '../clash/group-applications.js';
 import type { SavedValidationReport } from '../validation/reports/history.js';
 import type { SavedComparison } from '../compare/savedComparisonSchema.js';
 import type { DocumentSpec } from '../document/types.js';
@@ -33,6 +35,10 @@ export interface ContentLibraries {
   bcfOutbox?: BcfPublication[];
   /** Optional for backups written before reviewed model change receipts existed. */
   modelChanges?: ModelChangeReceipt[];
+  /** Optional for backups written before AI clash group apply receipts existed. */
+  clashGroupApplications?: ClashGroupApplication[];
+  /** Optional for backups written before AI clash group apply receipts existed. */
+  clashGroupApplications?: ClashGroupApplication[];
 }
 export interface ContentBackup {
   version: 1;
@@ -64,6 +70,8 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
     ...(copied.bcfDrafts ? { bcfDrafts: partition('bcfDrafts', copied.bcfDrafts, CONTENT_DEFINITIONS.bcfDrafts.decode) } : {}),
     ...(copied.bcfOutbox ? { bcfOutbox: partition('bcfOutbox', copied.bcfOutbox, CONTENT_DEFINITIONS.bcfOutbox.decode) } : {}),
     ...(copied.modelChanges ? { modelChanges: partition('modelChanges', copied.modelChanges, CONTENT_DEFINITIONS.modelChanges.decode) } : {}),
+    ...(copied.clashGroupApplications ? { clashGroupApplications: partition('clashGroupApplications', copied.clashGroupApplications, CONTENT_DEFINITIONS.clashGroupApplications.decode) } : {}),
+    ...(copied.clashGroupApplications ? { clashGroupApplications: partition('clashGroupApplications', copied.clashGroupApplications, CONTENT_DEFINITIONS.clashGroupApplications.decode) } : {}),
   }, drafts: mergeContentDrafts(parseContentDrafts(preservedDrafts), pendingContentDrafts(), drafts) };
 }
 
@@ -96,6 +104,8 @@ export function parseContentBackup(text: string): ContentBackup {
     ...(libraries.bcfDrafts !== undefined ? { bcfDrafts: parse('bcfDrafts', CONTENT_DEFINITIONS.bcfDrafts.decode) } : {}),
     ...(libraries.bcfOutbox !== undefined ? { bcfOutbox: parse('bcfOutbox', CONTENT_DEFINITIONS.bcfOutbox.decode) } : {}),
     ...(libraries.modelChanges !== undefined ? { modelChanges: parse('modelChanges', CONTENT_DEFINITIONS.modelChanges.decode) } : {}),
+    ...(libraries.clashGroupApplications !== undefined ? { clashGroupApplications: parse('clashGroupApplications', CONTENT_DEFINITIONS.clashGroupApplications.decode) } : {}),
+    ...(libraries.clashGroupApplications !== undefined ? { clashGroupApplications: parse('clashGroupApplications', CONTENT_DEFINITIONS.clashGroupApplications.decode) } : {}),
   }, drafts: parseContentDrafts(backup.drafts) };
 }
 
@@ -146,7 +156,8 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
     const entries: ContentLibraries = { validation: [], comparison: [], document: [],
       ...(parsed.libraries.assistant ? { assistant: [] } : {}), ...(parsed.libraries.clashGroups ? { clashGroups: [] } : {}),
       ...(parsed.libraries.bcfDrafts ? { bcfDrafts: [] } : {}), ...(parsed.libraries.bcfOutbox ? { bcfOutbox: [] } : {}),
-      ...(parsed.libraries.modelChanges ? { modelChanges: [] } : {}) };
+      ...(parsed.libraries.modelChanges ? { modelChanges: [] } : {}),
+      ...(parsed.libraries.clashGroupApplications ? { clashGroupApplications: [] } : {}) };
     for (const row of planned) {
       // Keep newer edits to an already-staged identity. Reimport is not an undo.
       const current = visible?.[row.kind]?.find(entry => entry.id === row.id);
@@ -156,6 +167,8 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
       if (row.kind === 'bcfDrafts') { const entry = CONTENT_DEFINITIONS.bcfDrafts.decode(row.payload); if (entry) (entries.bcfDrafts ??= []).push(entry); }
       if (row.kind === 'bcfOutbox') { const entry = CONTENT_DEFINITIONS.bcfOutbox.decode(row.payload); if (entry) (entries.bcfOutbox ??= []).push(entry); }
       if (row.kind === 'modelChanges') { const entry = CONTENT_DEFINITIONS.modelChanges.decode(row.payload); if (entry) (entries.modelChanges ??= []).push(entry); }
+      if (row.kind === 'clashGroupApplications') { const entry = CONTENT_DEFINITIONS.clashGroupApplications.decode(row.payload); if (entry) (entries.clashGroupApplications ??= []).push(entry); }
+      if (row.kind === 'clashGroupApplications') { const entry = CONTENT_DEFINITIONS.clashGroupApplications.decode(row.payload); if (entry) (entries.clashGroupApplications ??= []).push(entry); }
       if (row.kind === 'document') { const entry = CONTENT_DEFINITIONS.document.decode(row.payload); if (entry) entries.document.push(entry); }
       if (row.kind === 'comparison') { const entry = CONTENT_DEFINITIONS.comparison.decode(row.payload); if (entry) entries.comparison.push(entry); }
       if (row.kind === 'validation') { const entry = CONTENT_DEFINITIONS.validation.decode(row.payload); if (entry) entries.validation.push(entry); }

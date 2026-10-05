@@ -39,6 +39,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { isCI } from './lib/host-preconditions.mjs';
+import { canonicalBaseArgs } from './lib/canonical-remote.mjs';
 import { fileURLToPath } from 'node:url';
 import { allowlistScope, parseAllowlist } from './lib/module-size-ratchet.mjs';
 
@@ -431,28 +432,9 @@ test('regenerating the real allowlist reproduces it byte for byte', () => {
   assert.equal(readFileSync(copy, 'utf8'), realText);
 });
 
-/**
- * The ref CI's `origin/main` denotes: the main branch of the canonical
- * repository. CI's checkout names that remote `origin`, so the checker's
- * default is right THERE; on a contributor machine `origin` is often a stale
- * fork and the canonical repository is another remote (`upstream`), so the
- * default would judge this branch against a base months behind. Find the
- * remote by URL, not by name. Returns `{ args }` to pass to the checker, or
- * `{ skip }` when this host has no remote for the canonical repository and is
- * not CI (CI keeps the checker's own default: a fork's Actions run has no such
- * remote and `origin/main` is its own main).
- */
-function canonicalBaseArgs() {
-  const remotes = spawnSync('git', ['remote', '-v'], { encoding: 'utf8', cwd: ROOT }).stdout ?? '';
-  for (const line of remotes.split('\n')) {
-    const m = /^(\S+)\s+\S*LTplus-AG\/ifc-lite(?:\.git)?\s+\(fetch\)$/.exec(line.trim());
-    if (m) return { args: ['--base', `${m[1]}/main`] };
-  }
-  if (isCI()) return { args: [] };
-  return { skip: 'no remote points at LTplus-AG/ifc-lite, so there is no canonical main to judge allowlist rows against (add one and fetch it). CI never skips this test.' };
-}
-
-const COMMITTED_GATE_BASE = canonicalBaseArgs();
+// The remote lookup lives in lib/canonical-remote.mjs so its matcher and the
+// CI-versus-contributor-machine decision are unit tested.
+const COMMITTED_GATE_BASE = canonicalBaseArgs(spawnSync('git', ['remote', '-v'], { encoding: 'utf8', cwd: ROOT }).stdout ?? '', isCI());
 
 test('the committed gate runs green against the real repo', { skip: COMMITTED_GATE_BASE.skip ?? false }, () => {
   // The real tree, the real allowlist, judged against the canonical main (the

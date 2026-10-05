@@ -11,6 +11,12 @@
  * under test rather than a missing `pnpm build`. CI restores the build output
  * first, and `skipUnlessBuilt` never skips there.
  *
+ * The guard checks that the build output EXISTS, not that it is current: a
+ * stale `dist` from an older checkout passes it and the tests then run against
+ * that old code. Rebuild after pulling (`pnpm build`) before trusting a green
+ * run here. A present-but-broken build is not skipped: `load` imports it, so a
+ * syntax or resolution error fails the file.
+ *
  * A test file imports `{ test, load }` from here instead of `node:test` and
  * `await load('./subject.mjs')` instead of a static import: with the build
  * output missing, `load` returns an empty namespace and every `test` is

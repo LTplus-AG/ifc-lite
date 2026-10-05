@@ -57,6 +57,20 @@ test('skipUnlessCommand skips off CI when the probe fails and runs when it succe
   assert.equal(typeof missingBin, 'string');
 });
 
+test('a probe that hangs is killed at the timeout and reads as a skip, not a crash or a hang', () => {
+  const started = Date.now();
+  const reason = skipUnlessCommand(process.execPath, ['-e', 'setTimeout(() => {}, 4000)'], 'install the thing', LOCAL, { timeoutMs: 300 });
+  assert.equal(typeof reason, 'string');
+  assert.ok(Date.now() - started < 2_500, 'the probe must not outlive its timeout');
+});
+
+test('skipUnlessCommand never skips on CI, and does not even run the probe there', () => {
+  // A probe that would hang proves the CI branch returns before spawning.
+  const started = Date.now();
+  assert.equal(skipUnlessCommand(process.execPath, ['-e', 'setTimeout(() => {}, 4000)'], 'x', CI, { timeoutMs: 60_000 }), false);
+  assert.ok(Date.now() - started < 2_500);
+});
+
 test('skipUnlessCommand never skips on CI', () => {
   assert.equal(skipUnlessCommand(process.execPath, ['-e', 'process.exit(3)'], 'install the thing', CI), false);
 });

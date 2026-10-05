@@ -5,14 +5,15 @@
 /**
  * Data Connector UI - Import data from CSV files and map to IFC properties
  *
- * Full integration with CsvConnector from @ifc-lite/mutations
+ * Full integration with CsvConnector from @ifc-lite/mutations. "Review as
+ * changes" (#6912) is the primary action; the direct import stays secondary
+ * for Express ID / property matches, one-row-to-many writes and large tables.
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect, type DragEvent } from 'react';
-import { Upload, FileSpreadsheet, Link2, ArrowRight, Check, AlertCircle, Trash2, Plus, Eye, Play, Wand2, ChevronRight } from 'lucide-react';
+import { Upload, FileSpreadsheet, Link2, Check, AlertCircle, Eye, Play, ChevronRight, ListChecks } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -67,8 +68,20 @@ import {
   type ImportProgress,
 } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { ChangeConversion } from '@/lib/actions/change-conversion';
+import { tableToModelChanges } from '@/lib/actions/table-changes';
+import type { ColumnValueType, TableMapping } from '@/lib/actions/table-mapping';
+import { suggestTableMapping, tableMappingContext } from '@/lib/actions/table-mapping-request';
+import { ChangeReviewDialog } from './actions/ChangeReviewDialog';
+import { TableMappingCard } from './actions/TableMappingCard';
+import { DataConnectorMappings, type MappingRow } from './DataConnectorMappings';
 
-type MatchType = 'globalId' | 'expressId' | 'name' | 'property';
+type MatchType = 'globalId' | 'expressId' | 'name' | 'tag' | 'property';
+/** Match types a reviewed import can key on (P15); the others import directly only. */
+const REVIEW_KEYS: Partial<Record<MatchType, TableMapping['identity']['key']>> = { globalId: 'GlobalId', name: 'Name', tag: 'Tag' };
+const COLUMN_TYPES: Partial<Record<PropertyValueType, ColumnValueType>> = {
+  [PropertyValueType.String]: 'text', [PropertyValueType.Real]: 'real', [PropertyValueType.Integer]: 'integer', [PropertyValueType.Boolean]: 'boolean',
+};
 
 interface DataConnectorProps {
   trigger?: React.ReactNode;
@@ -77,14 +90,6 @@ interface DataConnectorProps {
 interface CsvColumn {
   name: string;
   sampleValues: string[];
-}
-
-interface MappingRow {
-  id: string;
-  sourceColumn: string;
-  targetPset: string;
-  targetProperty: string;
-  valueType: PropertyValueType;
 }
 
 export function DataConnector({ trigger }: DataConnectorProps) {
@@ -133,6 +138,10 @@ export function DataConnector({ trigger }: DataConnectorProps) {
   const [error, setError] = useState<string | null>(null);
   // Track whether config changed since last import (disables button after success)
   const [importDirty, setImportDirty] = useState(true);
+  // Reviewed import (P15): the conversion under review and an AI-drafted mapping being edited.
+  const [review, setReview] = useState<ChangeConversion | null>(null);
+  const [aiMapping, setAiMapping] = useState<TableMapping | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
 
   // Get list of models - includes both federated models and legacy single-model
   const modelList = useMemo(() => {
@@ -220,6 +229,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
     setImportStats(null);
     setError(null);
     setImportDirty(true);
+    setAiMapping(null);
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -324,6 +334,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
     setImportStats(null);
     setError(null);
     setImportDirty(true);
+    setAiMapping(null);
   }, []);
 
   // Add a mapping row
@@ -467,6 +478,29 @@ export function DataConnector({ trigger }: DataConnectorProps) {
       setIsProcessing(false);
     }
   }, [csvConnector, csvContent, canEditInSession, buildDataMapping, selectedModelId]);
+
+  const tableRows = useMemo(() => csvConnector && csvContent ? csvConnector.parse(csvContent) : [], [csvConnector, csvContent]);
+  const headers = useMemo(() => csvColumns.map((c) => c.name), [csvColumns]);
+  const reviewKey = REVIEW_KEYS[matchType];
+  // Review as changes: the same mapping, converted to checked changes with the model's current values expected.
+  const handleReview = useCallback(() => {
+    if (!reviewKey || !matchColumn) return;
+    const columns = mappings.filter((m) => m.sourceColumn && m.targetProperty && COLUMN_TYPES[m.valueType])
+      .map((m) => ({ column: m.sourceColumn, target: 'property' as const, pset: m.targetPset, name: m.targetProperty, valueType: COLUMN_TYPES[m.valueType]! }));
+    const mapping: TableMapping = { version: 1, kind: 'table.mapping', title: t('tableChanges.importTitle', { file: fileName }),
+      identity: { column: matchColumn, key: reviewKey }, columns };
+    setReview(tableToModelChanges(useViewerStore.getState(), { modelId: selectedModelId, rows: tableRows, mapping }));
+  }, [reviewKey, matchColumn, mappings, fileName, selectedModelId, tableRows, t]);
+  const handleSuggest = useCallback(async () => {
+    setSuggesting(true);
+    setError(null);
+    const state = useViewerStore.getState();
+    const outcome = await suggestTableMapping(tableMappingContext(state, selectedModelId, headers, tableRows),
+      state.chatActiveModel, import.meta.env.VITE_LLM_PROXY_URL || '/api/chat');
+    setSuggesting(false);
+    if (outcome.ok) setAiMapping(outcome.mapping);
+    else setError(t(`tableChanges.suggestError.${outcome.reason}`, { detail: outcome.detail ?? '' }));
+  }, [tableRows, selectedModelId, headers, t]);
 
   // Scroll to bottom of the body area — double rAF ensures DOM is painted
   const scrollToBottom = useCallback(() => {
@@ -743,6 +777,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                           <SelectItem value="globalId">{t('dataConnector.matchTypeGlobalId')}</SelectItem>
                           <SelectItem value="expressId">{t('dataConnector.matchTypeExpressId')}</SelectItem>
                           <SelectItem value="name">{t('dataConnector.matchTypeEntityName')}</SelectItem>
+                          <SelectItem value="tag">{t('tableChanges.matchTypeTag')}</SelectItem>
                           <SelectItem value="property">{t('dataConnector.matchTypePropertyValue')}</SelectItem>
                         </SelectContent>
                       </Select>
@@ -797,123 +832,13 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                 <Separator />
 
                 {/* Property Mappings */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-medium">{t('dataConnector.propertyMappingsLabel')}</Label>
-                    <div className="flex items-center gap-2">
-                      {csvConnector && (
-                        <Button variant="ghost" size="sm" onClick={handleAutoDetect}>
-                          <Wand2 className="h-3 w-3 mr-1" />
-                          {t('dataConnector.autoDetectButton')}
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="sm" onClick={addMapping}>
-                        <Plus className="h-3 w-3 mr-1" />
-                        {t('dataConnector.addMappingButton')}
-                      </Button>
-                    </div>
-                  </div>
+                <DataConnectorMappings csvColumns={csvColumns} mappings={mappings} canAutoDetect={!!csvConnector}
+                  onAutoDetect={handleAutoDetect} onAdd={addMapping} onRemove={removeMapping} updateMapping={updateMapping}
+                  onSuggest={csvConnector ? () => void handleSuggest() : undefined} suggesting={suggesting} />
 
-                  {mappings.length === 0 ? (
-                    <div className="text-center py-6 border rounded-lg border-dashed">
-                      <p className="text-sm text-muted-foreground">
-                        {t('dataConnector.noMappingsText')}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {t('dataConnector.noMappingsHint')}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {/* Column headers for mapping rows */}
-                      <div className="grid grid-cols-[1fr_auto_1fr_1fr_auto_auto] gap-2 px-2 text-xs text-muted-foreground">
-                        <span>{t('dataConnector.sourceColumnHeader')}</span>
-                        <span />
-                        <span>{t('dataConnector.targetPsetHeader')}</span>
-                        <span>{t('dataConnector.targetPropertyHeader')}</span>
-                        <span>{t('dataConnector.typeHeader')}</span>
-                        <span />
-                      </div>
-                      {mappings.map((mapping) => (
-                        <div
-                          key={mapping.id}
-                          className="grid grid-cols-[1fr_auto_1fr_1fr_auto_auto] gap-2 items-center p-2 border rounded-md bg-muted/30"
-                        >
-                          <Select
-                            value={mapping.sourceColumn}
-                            onValueChange={(v) => updateMapping(mapping.id, 'sourceColumn', v)}
-                          >
-                            <SelectTrigger className="h-8">
-                              <SelectValue placeholder={t('dataConnector.columnPlaceholder')} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {csvColumns.map((col) => (
-                                <SelectItem key={col.name} value={col.name}>
-                                  {col.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-
-                          <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
-
-                          <Input
-                            placeholder={t('dataConnector.psetNamePlaceholder')}
-                            aria-label={t('dataConnector.targetPsetHeader')}
-                            value={mapping.targetPset}
-                            onChange={(e) =>
-                              updateMapping(mapping.id, 'targetPset', e.target.value)
-                            }
-                            className="h-8 text-xs"
-                          />
-
-                          <Input
-                            placeholder={t('dataConnector.propertyPlaceholder')}
-                            aria-label={t('dataConnector.targetPropertyHeader')}
-                            value={mapping.targetProperty}
-                            onChange={(e) =>
-                              updateMapping(mapping.id, 'targetProperty', e.target.value)
-                            }
-                            className="h-8 text-xs"
-                          />
-
-                          <Select
-                            value={mapping.valueType.toString()}
-                            onValueChange={(v) =>
-                              updateMapping(mapping.id, 'valueType', parseInt(v))
-                            }
-                          >
-                            <SelectTrigger className="h-8 w-24">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={PropertyValueType.String.toString()}>
-                                {t('dataConnector.valueTypeString')}
-                              </SelectItem>
-                              <SelectItem value={PropertyValueType.Real.toString()}>
-                                {t('dataConnector.valueTypeReal')}
-                              </SelectItem>
-                              <SelectItem value={PropertyValueType.Integer.toString()}>
-                                {t('dataConnector.valueTypeInteger')}
-                              </SelectItem>
-                              <SelectItem value={PropertyValueType.Boolean.toString()}>
-                                {t('dataConnector.valueTypeBoolean')}
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-
-                          <IconButton
-                            label={t('dataConnector.removeMappingLabel')}
-                            className="h-8 w-8"
-                            onClick={() => removeMapping(mapping.id)}
-                          >
-                            <Trash2 className="h-3 w-3 text-destructive" />
-                          </IconButton>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                {aiMapping && <TableMappingCard modelId={selectedModelId} headers={headers} rows={tableRows}
+                  mapping={aiMapping} onChange={setAiMapping} onReview={setReview} onDiscard={() => setAiMapping(null)} />}
+                {!reviewKey && <p className="text-xs text-muted-foreground">{t('tableChanges.reviewUnsupportedKey')}</p>}
 
                 {/* Match Results */}
                 {matchStats && (
@@ -1002,7 +927,11 @@ export function DataConnector({ trigger }: DataConnectorProps) {
             )}
             {t('dataConnector.previewMatchesButton')}
           </Button>
+          <Button onClick={handleReview} disabled={!csvConnector || !csvContent || !matchColumn || !reviewKey || mappings.length === 0 || isProcessing}>
+            <ListChecks className="h-4 w-4 mr-2" />{t('tableChanges.reviewButton')}
+          </Button>
           <Button
+            variant="outline"
             onClick={handleImport}
             disabled={
               !canEditInSession ||
@@ -1030,6 +959,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
             )}
           </Button>
         </DialogFooter>
+        <ChangeReviewDialog conversion={review} origin={`csv:${fileName}`} onClose={() => setReview(null)} />
       </DialogContent>
     </Dialog>
   );

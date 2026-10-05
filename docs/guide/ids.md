@@ -278,6 +278,8 @@ In the IFClite viewer, IDS validation is integrated through the Data validation 
 7. **Export BCF** - Turn validation failures into BCF topics (see [BCF](bcf.md#ids-validation-reports-as-bcf))
 8. **Re-run** - After editing the model, the header's Re-run button repeats the check with the same IDS against the same model the report describes. **Clear results** returns to the pre-run card and keeps the IDS loaded; **Unload IDS** removes both
 
+To correct failures, select a failed specification whose requirement names an exact property and choose **Correct**. Enter the value as the IDS states it (base SI units) and pick the failed elements. **Review as changes** shows each element's stored value and the typed value it would get, scaled into the model's units; apply it from the review and use **Re-run validation** on the receipt to see the before and after counts per specification. **Apply to N entities** writes directly and re-runs validation, without a review or receipt. See [Reviewed table, bulk and IDS corrections](mutations.md#reviewed-table-bulk-and-ids-corrections).
+
 No `.ids` file to hand? With no model of your own open, the empty panel's **Try with demo data** loads the demo project and the IDS written for it.
 
 Checks do not automatically create saved reports. To keep a completed IDS or information-validation result, choose **Save report** in its results toolbar. **Saved reports** holds the evidence from that run, including its evaluated model names and fingerprints. The same result can be saved once; later runs can be saved separately. Unsaved results last only for the current session and are replaced by a later completed run or cleared with the results.

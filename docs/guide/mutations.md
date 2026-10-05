@@ -256,6 +256,19 @@ In the IFClite viewer:
 6. **Undo/Redo** — Ctrl+Z / Ctrl+Shift+Z to undo/redo edits
 7. **Export** — Use **Export modified IFC…** or **Changes only (JSON delta)** from Changes. Both open the viewer's existing export flow.
 
+### Reviewed table, bulk and IDS corrections
+
+The Data Connector (CSV import), the Bulk Property Editor and the IDS correction dialog each have **Review as changes** as their primary action. It converts the configured edit into the reviewed change batch described in [Viewer Assistant: reviewed model changes](viewer-assistant.md#reviewed-model-changes): every change names its element by GlobalId, pins its model, and states the value the model holds now (including unsaved edits) as the expected value. Nothing is written until a batch is applied in the review, which happens as one undo step with a receipt. A value edited after the table or selection was read shows as **Value changed** and is never overwritten.
+
+- **CSV rows** are keyed by a GlobalId, Tag or Name column. A row whose key is empty, repeats on another row, matches no element or matches several elements (a wall and its wall type often share a Name) is skipped and listed with its row number; a key is never guessed. Cells are parsed with the same rules as the direct import (`12,5` in a Real column is refused). Empty cells change nothing, and values already set are counted rather than proposed. Tag keys read each element's Tag and are refused above 200,000 elements.
+- **Units**: a mapped column may declare a unit. The value is converted to SI and then to the frame the model stores: the property's own unit when it has one, otherwise the project unit (0.25 `m` is written as 250 in a millimetre model). A unit that does not fit the target (an area unit on a length quantity) is refused. Without a unit a number is taken to be in the model's stored units. Quantities are only updated where they already exist.
+- **Bulk edits** become one change per target. Deleting a property that is absent, or setting a value that is already set, is counted rather than proposed. A whole number set as Real stays `IfcReal`.
+- **IDS corrections** use the same value typing and base-SI-to-model-unit scaling as the direct correction, keep the IFC data type, and leave validation to the receipt's **Re-run validation**.
+
+One batch holds at most 500 changes; a larger set is split into numbered parts (`… (part 2 of 3)`), each reviewed, applied and undone on its own. Parts never touch the same value. Above 20 parts (10,000 changes) the set is refused with a request to narrow the table or selection.
+
+The direct paths remain as secondary buttons (**Import** and **Apply to N entities**): they stream large imports with progress, match rows by Express ID or by a property value, write one row to several matched elements, and handle sets above the review limit. They do not show expected values or produce a receipt.
+
 ### Properties panel tabs
 
 Use **Find properties** to narrow attributes, property sets, and quantities by

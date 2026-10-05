@@ -27,6 +27,7 @@ import { CompareSetupControls } from './compare/CompareSetupControls';
 import { CompareRunControls } from './compare/CompareRunControls';
 import { SavedComparisonLibrary } from './compare/SavedComparisonLibrary';
 import { CompareExportBar } from './compare/CompareExportBar';
+import { CompareAnalysisSections } from './compare/CompareAnalysisSections';
 import { AnalysisPanel, AnalysisStaleRegion } from './analysis/AnalysisPanel';
 import { AnalysisEmptyState } from './analysis/AnalysisEmptyState';
 import { loadDemoRevisions } from '@/lib/tours/demo-kit';
@@ -298,6 +299,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                       onFocusSuggestionGroup={(rows) => focusRefs(rows.flatMap((row) => row.refs), null)}
                       onAcceptSuggestion={suggest.accept}
                       onRejectSuggestion={suggest.reject}
+                      header={result ? <CompareAnalysisSections result={result} /> : null}
                     />
                   )}
                   detail={detail && selectedRow ? <ChangeDetailView row={selectedRow} detail={detail} /> : null}

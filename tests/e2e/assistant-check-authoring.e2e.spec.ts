@@ -10,7 +10,7 @@ import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';
 const fixture = join(process.cwd(), 'tests/models/ara3d/AC20-FZK-Haus.ifc');
 
 // Recorded so the reviewer can watch the journey; the hosted-viewer privacy toast is acknowledged up front.
-test.use({ video: 'on', viewport: { width: 1440, height: 1000 } });
+test.use({ video: 'retain-on-failure', viewport: { width: 1440, height: 1000 } });
 
 type Counts = { applicable: number; passed: number; failed: number };
 type StoreState = {
@@ -125,7 +125,7 @@ test('assistant check drafts are dry-run natively and saved only after review', 
   await ids.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath('p07-ids-dry-run.png') });
   await saveIds.click();
-  await expect(ids).toContainText('Saved as the active IDS');
+  await expect(ids).toContainText('Saved to the Data validation IDS library');
   await ids.getByRole('button', { name: 'Open in Data validation', exact: true }).click();
 
   // The saved IDS runs in the native panel with the same counts the dry run showed.
@@ -153,7 +153,7 @@ test('assistant check drafts are dry-run natively and saved only after review', 
   expect((await state(page)).ruleEditing).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('p07-rules-editor.png') });
 
-  // Report outline from the native validation result, bound to the live report. Saving the rule set
+  // Report outline from the native validation result, bound to the live report. Opening the saved rule set
   // made it the active definition, which (as any library switch does) cleared the shown report: run the IDS again.
   expect((await state(page)).report).toBeNull();
   await page.getByRole('tab', { name: 'IDS validation', exact: true }).click();

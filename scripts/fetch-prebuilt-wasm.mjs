@@ -8,10 +8,11 @@
  */
 
 import { execSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tarballNameFromPackOutput } from './lib/npm-pack-output.mjs';
+import { compareWasmExports } from './lib/wasm-export-parity.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, '..');
@@ -54,9 +55,56 @@ execSync(`tar -xzf ${JSON.stringify(tgzName)} -C ${JSON.stringify(EXTRACT_DIR_NA
 mkdirSync(wasmOut, { recursive: true });
 
 const pkgDir = join(extractDir, 'package/pkg');
-cpSync(pkgDir, wasmOut, { recursive: true, force: true });
+
+// Install only the runtime. `pkg/ifc-lite.d.ts` is COMMITTED and tracks this
+// checkout's Rust crate; the published copy describes the last publish, so
+// overwriting it dirties the tree and breaks the typecheck of anything built
+// against newer bindings. The published .d.ts is used for nothing here.
+const RUNTIME_FILES = ['ifc-lite_bg.wasm', 'ifc-lite.js'];
+for (const name of RUNTIME_FILES) {
+  copyFileSync(join(pkgDir, name), join(wasmOut, name));
+}
 
 rmSync(extractDir, { recursive: true, force: true });
 rmSync(join(rootDir, tgzName), { force: true });
 
-console.log(`Installed prebuilt WASM to ${wasmOut}`);
+// The published runtime can predate this checkout (main merges Rust changes
+// between publishes). A symbol the committed .d.ts declares and the fetched
+// .js lacks type-checks, then fails in a bundler far from here, so name it now.
+const committedDts = join(wasmOut, 'ifc-lite.d.ts');
+if (existsSync(committedDts)) {
+  const { missing, extra } = compareWasmExports(
+    readFileSync(committedDts, 'utf8'),
+    readFileSync(join(wasmOut, 'ifc-lite.js'), 'utf8'),
+  );
+  if (missing.length > 0) {
+    // Leave no runtime behind: the "already present" early exit above would
+    // otherwise accept this stale bundle on the next run.
+    for (const name of RUNTIME_FILES) rmSync(join(wasmOut, name), { force: true });
+    console.error(
+      `\nThe published ${tarball} is behind this checkout (${checkoutCommit()}).\n` +
+        `packages/wasm/pkg/ifc-lite.d.ts declares ${missing.length} export(s) the published runtime does not provide:\n` +
+        missing.map((n) => `  - ${n}`).join('\n') +
+        `\n\nThe fetched runtime was removed. Either build from source with a Rust toolchain ` +
+        `(pnpm build:wasm), or wait for a publish that includes these exports.`,
+    );
+    process.exit(1);
+  }
+  if (extra.length > 0) {
+    console.warn(
+      `Warning: the published ${tarball} provides ${extra.length} export(s) this checkout's ` +
+        `ifc-lite.d.ts does not declare (${extra.join(', ')}). The package is ahead of ` +
+        `${checkoutCommit()}; harmless unless this checkout is stale.`,
+    );
+  }
+}
+
+console.log(`Installed prebuilt WASM runtime to ${wasmOut}`);
+
+function checkoutCommit() {
+  try {
+    return `commit ${execSync('git rev-parse --short HEAD', { cwd: rootDir, encoding: 'utf8' }).trim()}`;
+  } catch {
+    return 'this checkout, commit unknown';
+  }
+}

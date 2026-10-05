@@ -64,6 +64,18 @@ test('a dry run authorises saving only for the same draft on unchanged models', 
   assert.equal(isDryRunCurrent(run, draft.document), false, 'a model edit needs a new dry run');
 });
 
+// #6915 review: a run where no loaded model had parsed data checked nothing, and must not authorise a save.
+test('a dry run with no parsed model is refused, and a run that checked nothing never authorises saving', async () => {
+  await seedAuthoringSample({ editEnabled: false });
+  const draft = buildIdsDraft(parseIdsProposal(json(SAMPLE_IDS_PROPOSAL)));
+  const rules = parseRulesProposal(json(SAMPLE_RULES_PROPOSAL));
+  const run = await dryRunIds(draft.document);
+  assert.equal(isDryRunCurrent({ ...run, checkedModels: [] }, draft.document), false, 'an empty run is not a dry run');
+  useViewerStore.setState({ models: new Map([['bare', { ...fixtureModel('bare'), ifcDataStore: null }]]) });
+  await assert.rejects(dryRunIds(draft.document), /No loaded model has parsed data/);
+  await assert.rejects(dryRunRules(rules.ruleSet), /No loaded model has parsed data/);
+});
+
 test('a specification nothing applies to is reported as an empty population', async () => {
   await seedAuthoringSample({ editEnabled: false });
   const draft = buildIdsDraft(parseIdsProposal(json({ ...SAMPLE_IDS_PROPOSAL, specifications: [{ name: 'Ramps', cardinality: 'optional',

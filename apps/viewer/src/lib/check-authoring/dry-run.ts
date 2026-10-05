@@ -81,6 +81,8 @@ function begin(kind: DryRun['kind'], subject: unknown): DryRun {
   if (isNativeWorkflowBusy()) throw new Error('A workflow is running; wait or cancel it before a dry run.');
   const state = useViewerStore.getState();
   if (state.models.size === 0) throw new Error('Load a model to dry-run the draft.');
+  // A run over models without parsed data would check nothing and still look complete.
+  if (![...state.models.values()].some(model => model.ifcDataStore)) throw new Error('No loaded model has parsed data to dry-run the draft on.');
   return { kind, subject: JSON.stringify(subject), stamp: captureAnalysisStamp(), models: state.models,
     checkedModels: [], skippedModels: [], checks: [] };
 }
@@ -113,9 +115,9 @@ export async function dryRunRules(ruleSet: RuleSetFile, signal?: AbortSignal): P
   return run;
 }
 
-/** A dry run authorises saving only for the same definition on unchanged models. */
+/** A dry run authorises saving only for the same definition on unchanged models, and only if it checked one. */
 export function isDryRunCurrent(run: DryRun | null, subject: unknown): run is DryRun {
-  if (!run) return false;
+  if (!run || run.checkedModels.length === 0) return false;
   const state = useViewerStore.getState();
   return run.subject === JSON.stringify(subject) && run.models === state.models && !isAnalysisStale(run.stamp, state);
 }

@@ -26,6 +26,28 @@ export function capturedEvidence(payload: string): CapturedEvidence | null {
   return { summary: parsed.evidence.summary, rows };
 }
 
+/**
+ * Strict reading for documents built from the evidence (#6918): every row
+ * must carry a unique `E<n>` citation, or the payload is refused.
+ */
+export function parseCapturedEvidence(payload: string): CapturedEvidence {
+  const parsed: unknown = JSON.parse(payload);
+  if (!record(parsed) || !record(parsed.evidence) || !Array.isArray(parsed.evidence.rows)) throw new Error('The report evidence rows are invalid.');
+  const rows = new Map<string, unknown>();
+  for (const row of parsed.evidence.rows) {
+    if (!record(row) || typeof row.citation !== 'string' || !/^E[1-9]\d{0,2}$/.test(row.citation) || rows.has(row.citation)) {
+      throw new Error('The report contains an invalid evidence identity.');
+    }
+    rows.set(row.citation, row.data);
+  }
+  return { summary: parsed.evidence.summary, rows };
+}
+
+/** One value as people read it in panels and documents. */
+export function displayScalar(value: unknown): string {
+  return scalar(value);
+}
+
 function scalar(value: unknown): string {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'number') return Number.isInteger(value) ? String(value) : String(Number(value.toPrecision(6)));

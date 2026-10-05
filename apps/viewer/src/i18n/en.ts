@@ -42,6 +42,7 @@ import { modelChangesEn } from './catalogues/model-changes.en';
 import { clashGroupApplyEn } from './catalogues/clash-group-apply.en';
 import { tableCorrectionsEn } from './catalogues/table-corrections.en';
 import { assistantUsageEn } from './catalogues/assistant-usage.en';
+import { aiReportsEn } from './catalogues/ai-reports.en';
 import { modelAuthoringEn } from './catalogues/model-authoring.en';
 import { sceneActionsEn } from './catalogues/scene-actions.en';
 import { checkAuthoringEn } from './catalogues/check-authoring.en';
@@ -238,6 +239,7 @@ export const en = {
   ...clashGroupApplyEn,
   ...tableCorrectionsEn,
   ...assistantUsageEn,
+  ...aiReportsEn,
   ...modelAuthoringEn,
   ...sceneActionsEn,
   ...checkAuthoringEn,

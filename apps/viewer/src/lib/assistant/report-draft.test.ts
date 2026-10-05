@@ -16,6 +16,7 @@ import { validateDocumentSpec } from '../document/types';
 import { renderTemplate, templatePaths } from '../document/bindings';
 import { readContentRows } from '../storage/content-database';
 import { openConversation } from './library';
+import { printDocumentText } from '@/test/document-pdf-text';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cancelAssistant(); useViewerStore.setState(initial, true); mock.restoreAll(); });
@@ -124,40 +125,13 @@ test('actual native PDF retains evidence and literal braces against a parsed rea
   assert.equal(Array.from(store.entities.expressId).filter(id => store.entities.getTypeName(id) === 'IfcWall').length, 4);
   discussion('Literal {Count[IfcWall]} and source estimate -0.02 [E1].', 1);
   const draft = prepareReportDraft('PDF evidence');
-  const { generateDocumentPdf } = await import('../document/generate-document-pdf');
-  const { browserReportSeams } = await import('../export/report/generate-report-pdf');
-  const jspdf = await import('jspdf');
-  const previous = Reflect.get(window, 'jspdf');
-  Reflect.set(window, 'jspdf', jspdf);
-  let result;
-  try {
-    result = await generateDocumentPdf({ document: draft.document,
-      bindings: { models: [{ id: 'public', name: 'building-architecture.ifc', store }], activeModelId: 'public', today: new Date() },
-      aggregations: new Map(), chartMessages: new Map(), topics: new Map(), tables: new Map(), snapshotIds: () => [] },
-    { ...await browserReportSeams(null), imageSize: async () => { throw new Error('Text-only report must not measure images'); } });
-  } finally { Reflect.set(window, 'jspdf', previous); }
-  assert.deepEqual(result.unresolved, []);
-  const { createRequire } = await import('node:module');
-  const { dirname, join } = await import('node:path');
-  const require = createRequire(import.meta.url);
-  const reader = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const task = reader.getDocument({ data: new Uint8Array(await result.blob.arrayBuffer()), stopAtErrors: true,
-    standardFontDataUrl: `${join(dirname(require.resolve('pdfjs-dist/package.json')), 'standard_fonts')}/` });
-  try {
-    const pdf = await task.promise;
-    const pages: string[] = [];
-    for (let number = 1; number <= pdf.numPages; number++) {
-      const page = await pdf.getPage(number);
-      try { pages.push((await page.getTextContent()).items.flatMap(item => 'str' in item ? [item.str] : []).join('\n')); }
-      finally { page.cleanup(); }
-    }
-    const text = pages.join('\n');
-    assert.match(text, /Literal \{Count\[IfcWall\]\}/);
-    assert.match(text, /estimate -0.02 \[E1\]/);
-    assert.match(text, /actual-provider/);
-    assert.match(text, /1 of 1 native rows/);
-    // Standard PDF fonts only: the appendix line must extract as real text, not re-encoded glyphs.
-    assert.match(text, /E1\s+IfcWall vs IfcPipeSegment · hard · major · -0\.02 m \(estimate\)/);
-    assert.equal(pdf.numPages, result.pages);
-  } finally { await task.destroy(); }
+  const { text, unresolved } = await printDocumentText(draft.document,
+    { models: [{ id: 'public', name: 'building-architecture.ifc', store }], activeModelId: 'public', today: new Date() });
+  assert.deepEqual(unresolved, []);
+  assert.match(text, /Literal \{Count\[IfcWall\]\}/);
+  assert.match(text, /estimate -0.02 \[E1\]/);
+  assert.match(text, /actual-provider/);
+  assert.match(text, /1 of 1 native rows/);
+  // Standard PDF fonts only: the appendix line must extract as real text, not re-encoded glyphs.
+  assert.match(text, /E1\s+IfcWall vs IfcPipeSegment · hard · major · -0\.02 m \(estimate\)/);
 });

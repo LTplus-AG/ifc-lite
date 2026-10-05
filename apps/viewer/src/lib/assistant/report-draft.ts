@@ -3,20 +3,35 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useViewerStore } from '@/store';
-import { literalTemplateText } from '../document/bindings';
-import { freshBlockId, freshDocumentId } from '../document/persistence';
-import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type TextBlock } from '../document/types';
+import { freshDocumentId } from '../document/persistence';
+import type { AiReportRecord } from '../document/ai-report-types';
+import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type TableBlock } from '../document/types';
 import { useAssistant } from './conversation';
 import { evidenceIsCurrent } from './evidence';
 import { decodeConversation, type SavedConversation } from './persistence';
-import { appendixBlocks, narrativeBlocks } from './report-narrative';
+import { buildReportBlocks } from './report-blocks';
+import { checkProposedClaims, editClaim, splitReportAnswer, type CheckedClaim } from './report-claims';
+import { parseCapturedEvidence, type CapturedEvidence } from './captured-rows';
+import { rowIdentity, SUMMARY_CITATION } from './report-facts';
+import type { ReportLanguage } from './report-language';
+import { nativeTableBlocks } from './report-sources';
+import { isReportSource } from './sources';
 
 export interface ReportDraft {
   source: SavedConversation;
   /** Pins the completed discussion; later turns cannot silently change a reviewed report. */
   conversationJson: string;
+  /** Narrative language chosen for this draft, independent of the UI language. */
+  language: ReportLanguage;
+  /** Language the provider declared in its typed claims, when it declared one. */
+  declaredLanguage: string | null;
+  prose: string;
+  claims: CheckedClaim[];
+  captured: CapturedEvidence;
+  tables: TableBlock[];
   document: DocumentSpec;
   documentJson: string;
+  /** Citations used by the prose narrative. */
   citations: string[];
   historical: boolean;
 }
@@ -24,7 +39,7 @@ export interface ReportDraft {
 function completedConversation(): SavedConversation {
   const state = useAssistant.getState();
   const evidence = state.snapshot ?? state.archived?.evidence;
-  if (!evidence || evidence.source === 'flow' || state.status !== 'idle' || state.error || state.output || state.pendingPrompt) {
+  if (!evidence || !isReportSource(evidence.source) || state.status !== 'idle' || state.error || state.output || state.pendingPrompt) {
     throw new Error('Choose a completed analysis answer before preparing a report.');
   }
   if (state.snapshot && !evidenceIsCurrent(state.snapshot)) throw new Error('Source evidence changed. Refresh before preparing a report.');
@@ -37,47 +52,65 @@ function completedConversation(): SavedConversation {
   return entry;
 }
 
-/** Citation existence is validated here; semantic support remains a visible human review duty. */
-export function prepareReportDraft(name: string): ReportDraft {
+/** Row identity of every cited row, so a refresh can find the same native row again. */
+function citedRows(claims: CheckedClaim[], captured: CapturedEvidence): Record<string, string | null> {
+  const cited: Record<string, string | null> = {};
+  for (const citation of claims.flatMap(claim => claim.citations)) {
+    if (citation === SUMMARY_CITATION) cited[citation] = SUMMARY_CITATION;
+    else cited[citation] = captured.rows.has(citation) ? rowIdentity(captured.rows.get(citation)) : null;
+  }
+  return cited;
+}
+
+function compose(draft: Omit<ReportDraft, 'document' | 'documentJson'>, id: string, title: string): DocumentSpec {
+  const answer = draft.source.messages.at(-1)!;
+  const record: AiReportRecord = { version: 1, language: draft.language, model: answer.model ?? 'unknown', conversationId: draft.source.id,
+    revision: 1, evidence: { ...draft.source.evidence }, citedRows: citedRows(draft.claims, draft.captured),
+    claims: draft.claims.map(({ id: claimId, text, citations, facts, status, edited }) => ({ id: claimId, text, citations, facts, status, edited })),
+    narrative: draft.prose, slots: [] };
+  const blocks = buildReportBlocks({ title, record, tables: draft.tables, proseCitations: draft.citations,
+    claims: draft.claims.map(claim => ({ claim, current: citation => citation })) });
+  record.slots = blocks.flatMap(entry => entry.slot ? [entry.slot] : []);
+  const document: DocumentSpec = { version: DOCUMENT_VERSION, id, name: title, page: { size: 'A4', orientation: 'portrait' },
+    blocks: blocks.map(entry => entry.block), aiReport: record };
+  const errors = validateDocumentSpec(document);
+  if (errors.length) throw new Error(`Invalid native document: ${errors.map(error => `${error.path} ${error.message}`).join('; ')}`);
+  return document;
+}
+
+/** Claims are checked against the captured rows; prose citations must exist. Semantic support stays a human review duty. */
+export function prepareReportDraft(name: string, language: ReportLanguage = 'en'): ReportDraft {
   const source = completedConversation();
-  const payload: unknown = JSON.parse(source.evidence.payload);
-  if (!payload || typeof payload !== 'object' || !('evidence' in payload)) throw new Error('The report has no included evidence.');
-  const facts = payload.evidence;
-  if (!facts || typeof facts !== 'object' || !('rows' in facts) || !Array.isArray(facts.rows)) throw new Error('The report evidence rows are invalid.');
-  const rows = facts.rows as unknown[];
-  const ids = rows.map(row => {
-    if (!row || typeof row !== 'object' || !('citation' in row) || typeof row.citation !== 'string'
-      || !/^E[1-9]\d{0,2}$/.test(row.citation)) throw new Error('The report contains an invalid evidence identity.');
-    return row.citation;
-  });
-  if (ids.length !== source.evidence.includedRows || new Set(ids).size !== ids.length) throw new Error('The report evidence coverage is inconsistent.');
+  const captured = parseCapturedEvidence(source.evidence.payload);
+  if (captured.rows.size !== source.evidence.includedRows) throw new Error('The report evidence coverage is inconsistent.');
   const answer = source.messages.at(-1)!;
-  const citations = [...new Set([...answer.content.matchAll(/\bE\d+\b/g)].map(match => match[0]))];
-  const unknown = citations.filter(id => !ids.includes(id));
+  const { prose, envelope } = splitReportAnswer(answer.content);
+  const citations = [...new Set([...prose.matchAll(/\bE\d+\b/g)].map(match => match[0]))];
+  const unknown = citations.filter(id => !captured.rows.has(id));
   if (unknown.length) throw new Error(`Unknown evidence citations: ${unknown.join(', ')}`);
   const title = name.trim() || 'Analysis report draft';
   if (title.length > 200) throw new Error('Report names may contain at most 200 characters.');
-  const text = (style: TextBlock['style'], value: string): TextBlock => ({ kind: 'text', id: freshBlockId(), style,
-    text: literalTemplateText(value) });
-  const document: DocumentSpec = { version: DOCUMENT_VERSION, id: freshDocumentId(), name: title,
-    page: { size: 'A4', orientation: 'portrait' }, blocks: [
-      text('title', title),
-      text('small', `AI narrative draft · Source: ${source.evidence.source} · Captured: ${source.evidence.capturedAt}\nEvidence identity: ${source.id}\nProvider model: ${answer.model}`),
-      text('body', `Included evidence: ${source.evidence.includedRows} of ${source.evidence.totalRows} native rows.\n`
-        + (source.evidence.includedRows < source.evidence.totalRows ? 'This is a sample; unseen findings are not evaluated by this narrative.\n' : '')
-        + (source.evidence.projectionTruncated ? 'Some evidence values were shortened or omitted.\n' : '')
-        + 'Captured evidence is historical. AI prose requires human verification and does not change native results or certify compliance.'),
-      text('heading', 'Narrative for review'), ...narrativeBlocks(answer.content, text),
-      text('small', citations.length ? `Referenced evidence: ${citations.join(', ')}. Citation existence does not prove that a claim is supported.`
-        : 'The narrative has no row citations. Verify each factual claim against the captured evidence.'),
-      { kind: 'page-break', id: freshBlockId() }, text('heading', 'Captured evidence appendix'),
-      // Every included row and omission notice travels with the document as literal text, never live bindings.
-      ...appendixBlocks(payload as Record<string, unknown>, rows as Array<{ citation: string; data: unknown }>, text),
-    ] };
-  const errors = validateDocumentSpec(document);
-  if (errors.length) throw new Error(`Invalid native document: ${errors.map(error => error.message).join('; ')}`);
-  return { source, conversationJson: JSON.stringify(source), document, documentJson: JSON.stringify(document), citations,
-    historical: useAssistant.getState().archived !== null };
+  const historical = useAssistant.getState().archived !== null;
+  const parts = { source, conversationJson: JSON.stringify(source), language, declaredLanguage: envelope?.language ?? null, prose,
+    claims: envelope ? checkProposedClaims(envelope.claims, captured) : [], captured, citations, historical,
+    // Native tables describe the live source, so only a current capture may add them.
+    tables: historical ? [] : nativeTableBlocks(source.evidence.source, { title }) };
+  const document = compose(parts, freshDocumentId(), title);
+  return { ...parts, document, documentJson: JSON.stringify(document) };
+}
+
+/** Reviewer edit or removal of one claim; the document is recomposed under the same identity. */
+export function reviseReportClaim(draft: ReportDraft, claimId: string, edit: { text: string } | 'remove'): ReportDraft {
+  const claims = edit === 'remove' ? draft.claims.filter(claim => claim.id !== claimId)
+    : draft.claims.map(claim => claim.id === claimId ? editClaim(claim, edit.text, draft.captured) : claim);
+  const parts = { ...draft, claims };
+  const document = compose(parts, draft.document.id, draft.document.name);
+  return { ...parts, document, documentJson: JSON.stringify(document) };
+}
+
+/** Claims that must be edited or removed before the report can be saved. */
+export function contradictedClaims(draft: ReportDraft): CheckedClaim[] {
+  return draft.claims.filter(claim => claim.status === 'contradicted');
 }
 
 export function isReportDraftCurrent(draft: ReportDraft): boolean {
@@ -93,6 +126,8 @@ export function isReportDraftCurrent(draft: ReportDraft): boolean {
 /** New native document, not an overwrite of an existing human-authored report. */
 export async function saveReportDraft(draft: ReportDraft, reviewedJson: string): Promise<boolean> {
   if (reviewedJson !== draft.documentJson || !isReportDraftCurrent(draft)) throw new Error('The reviewed discussion or report changed. Prepare a new draft.');
+  const blocked = contradictedClaims(draft);
+  if (blocked.length) throw new Error(`Claims contradicted by the captured evidence must be edited or removed: ${blocked.map(claim => claim.id).join(', ')}`);
   await useViewerStore.getState().initializeDocuments();
   if (!isReportDraftCurrent(draft)) throw new Error('The discussion changed while document storage initialized.');
   // Once submitted this is an explicitly historical artifact. Source changes while IDB commits

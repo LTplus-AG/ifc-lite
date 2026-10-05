@@ -77,11 +77,35 @@ For Flow, ask for a graph patch. A valid answer appears as a **Flow patch propos
 
 ## Reviewed report drafts
 
-After a completed Clash, Data validation or Compare answer, expand **Review report draft**, enter a name and choose **Prepare report draft**. Inspect the narrative and captured evidence, verify its claims, then tick the review checkbox before saving or exporting. Unknown row citations, incomplete answers and changed live evidence block saving. A saved conversation can produce an explicitly historical report.
+After a completed answer about any analysis source (every source except Flow, whose evidence is a graph definition rather than a result), expand **Review report draft**. Choose the **Narrative language** (it defaults to the viewer language and does not change it), then either use the existing answer or choose **Draft report with AI**, which asks the selected model for a narrative plus typed claims in that language. Enter a name and choose **Prepare report draft**. Inspect the narrative, the checked claims and the captured evidence, then tick the review checkbox before saving or exporting. Unknown row citations, incomplete answers, contradicted claims and changed live evidence block saving. A saved conversation can produce an explicitly historical report.
 
-The document includes the provider model, capture time, actual included/native row counts and omission notices. The narrative keeps the answer's structure as document headings, paragraphs and lists; a typed clash proposal becomes one section per group with its cited findings. The appendix lists the models at capture, the native summary and every included row on one readable line (for clash rows: element types, detection type, severity, distance, discipline candidates and GlobalIds). Citation existence is checked; human review establishes whether a claim is supported. AI prose does not change native verdicts or certify compliance. Values that resemble model bindings remain literal captured text.
+### Checked claims
 
-**Save reviewed document** uses the existing Documents library. If storage refuses the write, its native recovery/export controls retain the draft. Open the saved document to edit it, export document JSON or generate PDF using the normal Documents controls. Every preparation creates a new document and preserves earlier human edits. Broader structured narrative generation and refresh reconciliation remain required work in the [implementation ledger](../architecture/viewer-ai-implementation.md).
+A report answer may end with one fenced `report.claims` JSON block. Each claim is one statement with the rows it cites and the native values it asserts, each with a field path into the cited row (or `summary`) and an optional unit:
+
+```json
+{"version":1,"kind":"report.claims","language":"de","claims":[
+  {"text":"E1 überlappt um 20 mm.","citations":["E1"],
+   "facts":[{"citation":"E1","field":"distance","value":-20,"unit":"mm"}]}]}
+```
+
+Each claim is checked against the captured evidence and labelled:
+
+- **Supported by data**: every cited value equals the captured value, at the precision the claim states. A claimed unit is converted only to a unit of the same dimension that the evidence itself declares.
+- **Unverifiable**: the claim cites no values, the field is absent or omitted, or the evidence records no comparable unit. Treat it as interpretation.
+- **Contradicted**: a cited row does not exist, or a value or unit dimension differs. Saving stays blocked until you choose **Edit claim** or **Remove claim**. An edited claim keeps only its uncontradicted facts, is checked again and is marked as edited by you. Any edit withdraws approval.
+
+A supported claim means that the cited values match. It does not establish the conclusion. A block that is declared but invalid is refused rather than ignored. An answer without claims is drafted as before, with citation checks only.
+
+### Narrative blocks and languages
+
+Every text block the generator writes records the exact text it wrote, so the document can tell AI-generated, human-edited and human-written blocks apart. The document also embeds its captured evidence, claims and narrative language.
+
+Documents print with the standard PDF fonts, which cover Windows-1252 text: German, French, Italian, Spanish, Dutch, Portuguese and the Nordic languages print exactly. Polish and Czech letters outside that set keep their base letter (`ł` as `l`, `ř` as `r`), and the document adds a notice that lists each substitution by code point. The preview shows the same printable text as the PDF. A narrative that is mostly unprintable, such as Japanese, is refused with a request to choose a Latin-script language.
+
+The document includes the provider model, capture time, narrative language, actual included/native row counts and omission notices. The narrative keeps the answer's structure as document headings, paragraphs and lists; a typed clash proposal becomes one section per group with its cited findings. A current Data validation capture adds the live native results table, captioned as live. A current Compare capture adds an immutable comparison snapshot. The appendix lists the models at capture, the native summary and every included row on one readable line (for clash rows: element types, detection type, severity, distance, discipline candidates and GlobalIds). AI prose does not change native verdicts or certify compliance. Values that resemble model bindings remain literal captured text.
+
+**Save reviewed document** uses the existing Documents library. If storage refuses the write, its native recovery/export controls retain the draft. Open the saved document to edit it, export document JSON or generate PDF using the normal Documents controls. Every preparation creates a new document and preserves earlier human edits.
 
 ## Load diagnostics
 

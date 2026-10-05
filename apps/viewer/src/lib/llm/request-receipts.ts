@@ -19,8 +19,25 @@ export type UsageReceipt = SharedUsageReceipt<Exclude<StreamRoute['kind'], 'miss
 /** Enough for a session's recent history without growing unbounded. */
 export const RECEIPT_LIMIT = 50;
 
-export const useRequestReceipts = create<{ receipts: UsageReceipt[] }>(() => ({ receipts: [] }));
+/** A request on the network right now; its receipt will carry the same id. */
+export interface InFlightRequest {
+  id: string;
+  model: string;
+  startedAt: number;
+  cancel: () => void;
+}
+
+export const useRequestReceipts = create<{ receipts: UsageReceipt[]; inFlight: InFlightRequest[] }>(() => ({
+  receipts: [], inFlight: [],
+}));
 
 export function recordReceipt(receipt: UsageReceipt): void {
-  useRequestReceipts.setState(state => ({ receipts: [...state.receipts, receipt].slice(-RECEIPT_LIMIT) }));
+  useRequestReceipts.setState(state => ({
+    receipts: [...state.receipts, receipt].slice(-RECEIPT_LIMIT),
+    inFlight: state.inFlight.filter(request => request.id !== receipt.id),
+  }));
+}
+
+export function recordRequestStart(request: InFlightRequest): void {
+  useRequestReceipts.setState(state => ({ inFlight: [...state.inFlight, request] }));
 }

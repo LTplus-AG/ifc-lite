@@ -600,7 +600,7 @@ jobs:
 
       # @ifc-lite/server-bin downloads its native archive from a GitHub
       # release tagged `server-v<its-own-version>`
-      # (packages/server-bin/src/release-fallback.ts, SERVER_RELEASE_TAG_PREFIXES).
+      # (serverReleaseTag in packages/server-bin/src/release-fallback.ts).
       # The root `v<version>` release above is keyed to the *highest* workspace
       # package version, which is usually NOT server-bin's — so without a
       # matching tag `npx @ifc-lite/server-bin` 404s on download, and native

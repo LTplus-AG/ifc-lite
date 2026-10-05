@@ -125,9 +125,9 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             # tag release as version (e.g. server-v2.0.1 or legacy v1.22.1 -> 2.0.1 / 1.22.1)
-            type=match,pattern=^(?:server-)?v(.*)$,group=1,event=tag
+            type=match,pattern=^(server-)?v(.*)$,group=2,event=tag
             # workflow_dispatch recovery for a release that exceeded its cap
-            type=match,pattern=^(?:server-)?v(.*)$,group=1,value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
+            type=match,pattern=^(server-)?v(.*)$,group=2,value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
             # tag release also as latest
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=latest,enable=${{ github.event_name == 'release' || inputs.release_tag != '' }}

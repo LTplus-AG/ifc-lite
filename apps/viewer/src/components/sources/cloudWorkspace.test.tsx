@@ -126,6 +126,32 @@ describe('Cloud workspace (#6897)', () => {
     assert.deepEqual(imports, [{ projectId: 'p2', files: [file] }]);
   });
 
+  it('imports the selected historical revision from a provider-root result', async () => {
+    const p = provider();
+    p.listRevisions = async () => ({ items: [{ id: 'older', label: 'Earlier version', createdAt: '2026-01-01' }] });
+    const imports: Array<{projectId: string; files: readonly SourceFile[]}> = [];
+    const ui = browser(p, (selection) => imports.push(selection)); await pump();
+    type(labelled(ui, 'Search files in Workspace Files') as HTMLInputElement, 'Tower');
+    await act(async () => { ui.querySelector('form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); });
+    await pump();
+    const details = ui.querySelector('details'); assert.ok(details);
+    await act(async () => { details.open = true; details.dispatchEvent(new window.Event('toggle')); });
+    await pump();
+    const revision = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Earlier version')); assert.ok(revision);
+    click(revision); await pump(); click(named(ui, 'Open Tower.ifc'));
+    assert.equal(imports[0]?.files[0].currentRevisionId, 'older');
+  });
+
+  for (const name of ['dropbox', 'msgraph']) it(`enters the signed-in ${name} account root without a redundant project click`, async () => {
+    const original = provider();
+    const p: FileSourceProvider = { ...original, manifest: { ...original.manifest, name },
+      listProjects: async () => ({ items: [{ id: 'account', name: 'Personal account' }] }) };
+    const ui = browser(p); await pump();
+    assert.ok(named(ui, 'Documents'), 'account folder contents appear automatically');
+    assert.equal([...ui.querySelectorAll('button')].some((button) => button.textContent === 'Personal account'), false);
+    assert.ok(labelled(ui, 'Search files in Workspace Files'));
+  });
+
   it('bounds empty-result work and continues through later projects without dropping them', async () => {
     const p = provider(); let requests = 0;
     p.listProjects = async (_ctx, options) => {

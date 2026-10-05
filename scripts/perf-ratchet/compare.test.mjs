@@ -114,6 +114,14 @@ rt('an empty ceiling file or measurement is invalid, not vacuously passing', () 
   assert.ok(ceilings.validateMeasuredFile({ family: 'bundle', commit: 'x', measuredAt: PROV.measuredAt, metrics: [{ id: 'a', value: NaN }] }).length > 0);
 });
 
+rt('a measured commit must be a sha, since lower copies it into provenance.commit', () => {
+  const ok = measured([{ id: 'a', value: 1 }]);
+  assert.deepEqual(ceilings.validateMeasuredFile(ok), []);
+  const problems = ceilings.validateMeasuredFile({ ...ok, commit: 'main' });
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /git sha/);
+});
+
 rt('the report lists only moved metrics, flags failure, and notes improvements', () => {
   const ceil = family([entry('up', 1000), entry('same', 50), entry('down', 1000)]);
   const res = compare.compareFamily(ceil, measured([{ id: 'up', value: 1100 }, { id: 'same', value: 50 }, { id: 'down', value: 900 }]));

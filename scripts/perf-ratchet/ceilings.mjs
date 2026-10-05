@@ -51,6 +51,7 @@ import { join } from 'node:path';
 export const TOLERANCE_KINDS = ['exact', 'relative'];
 const FAMILY_RE = /^[a-z][a-z0-9-]*$/;
 const ID_RE = /^[a-z0-9][a-z0-9._/-]*$/;
+const SHA_RE = /^[0-9a-f]{7,40}$/;
 
 /** Path of a family's committed ceiling file under `ceilingsDir`. */
 export function ceilingPath(ceilingsDir, family) {
@@ -95,7 +96,7 @@ export function validateCeilingFile(data) {
       problems.push(`${at}: a \`relative\` tolerance is a fraction, 0 < value < 1 (0.005 = 0.5%)`);
     }
     const p = e.provenance;
-    if (!p || typeof p !== 'object' || typeof p.commit !== 'string' || !/^[0-9a-f]{7,40}$/.test(p.commit)) {
+    if (!p || typeof p !== 'object' || typeof p.commit !== 'string' || !SHA_RE.test(p.commit)) {
       problems.push(`${at}: \`provenance.commit\` must be the git sha the ceiling was measured at`);
     }
     if (!p || typeof p.measuredAt !== 'string' || Number.isNaN(Date.parse(p.measuredAt))) {
@@ -115,7 +116,10 @@ export function validateMeasuredFile(data) {
   const problems = [];
   if (!data || typeof data !== 'object' || Array.isArray(data)) return ['measured file is not a JSON object'];
   if (typeof data.family !== 'string' || !FAMILY_RE.test(data.family)) problems.push('`family` must be a lowercase kebab-case string');
-  if (typeof data.commit !== 'string' || data.commit === '') problems.push('`commit` must name the measured commit');
+  // Same rule as a ceiling's provenance.commit, which `lower` copies this
+  // into: a branch or tag name here would make `lower` write a ceiling file
+  // the CLI then refuses.
+  if (typeof data.commit !== 'string' || !SHA_RE.test(data.commit)) problems.push('`commit` must be the git sha that was measured');
   if (typeof data.measuredAt !== 'string' || Number.isNaN(Date.parse(data.measuredAt))) problems.push('`measuredAt` must be an ISO-8601 timestamp');
   if (!Array.isArray(data.metrics) || data.metrics.length === 0) {
     problems.push('`metrics` must be a non-empty array (a measurement of nothing is not a pass)');

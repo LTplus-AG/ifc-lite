@@ -2706,6 +2706,8 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           CHECK_OUTCOME: ${{ job.status }}
         run: |
+          # Only this workflow's own comment is ever updated: a contributor
+          # comment quoting the marker must not capture the report.
           marker='<!-- perf-ratchet-report -->'
           body_file="$RUNNER_TEMP/perf-ratchet-report.md"
           if [ ! -s "$body_file" ]; then
@@ -2714,7 +2716,7 @@ jobs:
               > "$body_file"
           fi
           existing=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" --paginate \
-            --jq "[.[] | select(.body | contains(\"$marker\")) | .id] | first // empty" | head -n1)
+            --jq "[.[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .id] | first // empty" | head -n1)
           if [ -n "$existing" ]; then
             gh api --method PATCH "repos/${{ github.repository }}/issues/comments/${existing}" -F body=@"$body_file"
           elif [ "$CHECK_OUTCOME" != "success" ]; then

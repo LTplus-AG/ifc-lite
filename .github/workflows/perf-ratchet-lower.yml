@@ -141,6 +141,18 @@ jobs:
         run: |
           if git diff --quiet -- tests/perf-ratchets; then
             echo "No ceiling cleared its band; nothing to propose."
+            # An open PR from an earlier day may propose a ceiling today's
+            # main no longer meets (main grew back inside the band). Merging
+            # it would put main above its own ceiling, so close it rather
+            # than leave yesterday's measurement standing.
+            if [ -n "$PUSH_TOKEN" ]; then
+              existing=$(GH_TOKEN="$PUSH_TOKEN" gh pr list --repo "$REPO" --head "$LOWER_BRANCH" --base main --state open --json number --jq '.[0].number // empty')
+              if [ -n "$existing" ]; then
+                GH_TOKEN="$PUSH_TOKEN" gh pr close "$existing" --repo "$REPO" --delete-branch \
+                  --comment "Superseded: today's measurement of main (${GITHUB_SHA}) no longer clears any ceiling's band, so this lowering no longer holds. ${RUN_URL}"
+                echo "Closed stale #${existing}."
+              fi
+            fi
             exit 0
           fi
           if [ -z "$PUSH_TOKEN" ]; then
@@ -157,7 +169,8 @@ jobs:
           auth=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 -w0)
           echo "::add-mask::${auth}"
           # Force: the branch is regenerated from today's main every run, so
-          # an unmerged PR always carries the latest measurement only.
+          # an unmerged PR always carries the latest measurement only (and a
+          # no-drop day closes it, above).
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" \
             push --force "https://github.com/${REPO}.git" "HEAD:refs/heads/${LOWER_BRANCH}"
 

@@ -170,3 +170,20 @@ test('an apply with nothing applicable and a restore without a camera are report
   assert.doesNotMatch(ui.textContent ?? '', /Kept as you changed it since: camera/);
   assert.match(ui.textContent ?? '', /Previous view restored\./, 'the restore report is kept, not overwritten');
 });
+
+// #6907: a restore that put nothing back never announces "Previous view restored."
+test('a restore with nothing restorable says so instead of claiming success', async () => {
+  useViewerStore.setState({ ...sceneModels(), cameraCallbacks: cameraStub().callbacks });
+  replaceEvidence(captureEvidence('loadReport'));
+  const frameOnly = JSON.stringify({ version: 1, kind: 'scene.actions', title: 'Frame W1', actions: [{ type: 'frame', targets: [{ globalId: W1 }] }] });
+  act(() => useAssistant.setState({ messages: [{ role: 'user', content: 'Frame W1' }, { role: 'assistant', content: frameOnly }] }));
+  const ui = render(<AssistantPanel />);
+  await waitFor(() => !!ui.querySelector('section[aria-label="Show in the model"]'), 'card');
+  click(button(ui.querySelector('section[aria-label="Show in the model"]') as HTMLElement, 'Apply 1 action')!);
+  await waitFor(() => !!button(ui, /Restore previous view/), 'restore bar');
+  act(() => useViewerStore.setState({ cameraCallbacks: {} }));
+  click(button(ui, /Restore previous view/)!);
+  await waitFor(() => /Nothing of the previous view could be put back\./.test(ui.textContent ?? ''), 'honest headline');
+  assert.doesNotMatch(ui.textContent ?? '', /Previous view restored\./);
+  assert.match(ui.textContent ?? '', /Could not be restored \(the 3D view is not ready\): camera/);
+});

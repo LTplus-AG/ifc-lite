@@ -73,7 +73,7 @@ function RestoreNote({ report }: { report: RestoreReport }) {
     .map(({ channel }) => t(`sceneActions.channel.${channel}`)).join(', ');
   const kept = names('changed'), unavailable = names('unavailable');
   return <output className="block rounded bg-muted/50 p-2 space-y-0.5">
-    <span className="block font-semibold">{t('sceneActions.restored')}</span>
+    <span className="block font-semibold">{t(report.channels.some(channel => channel.outcome === 'restored') ? 'sceneActions.restored' : 'sceneActions.nothingRestored')}</span>
     {kept && <span className="block">{t('sceneActions.notRestored', { channels: kept })}</span>}
     {unavailable && <span className="block">{t('sceneActions.restoreUnavailable', { channels: unavailable })}</span>}
   </output>;

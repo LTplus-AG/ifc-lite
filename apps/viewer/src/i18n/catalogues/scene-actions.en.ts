@@ -39,6 +39,7 @@ export const sceneActionsEn = {
   'sceneActions.unavailable': 'Not applied (the 3D view is not ready): {actions}',
   'sceneActions.restore': 'Restore previous view',
   'sceneActions.restored': 'Previous view restored.',
+  'sceneActions.nothingRestored': 'Nothing of the previous view could be put back.',
   'sceneActions.notRestored': 'Kept as you changed it since: {channels}',
   'sceneActions.restoreUnavailable': 'Could not be restored (the 3D view is not ready): {channels}',
   'sceneActions.modelsChanged': 'The loaded models changed since applying, so nothing was restored.',

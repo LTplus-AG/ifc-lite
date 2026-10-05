@@ -179,6 +179,23 @@ fn issue_6870_minimum_radius_defaults_to_two_voxels() {
 }
 
 #[test]
+fn issue_6870_an_empty_radius_range_reads_as_radius_refusals() {
+    // Review #6878: with the minimum unset it is two voxels, so a maximum
+    // under it (or a voxel coarsened past half the maximum) leaves no radius
+    // to accept. That must read as refused for radius, not as "no candidate
+    // fit the group".
+    let pipe = ExpectedCylinder { start: [1., 2., 1.5], end: [4., 2., 1.5], radius: 0.07 };
+    let points = room_with(&ScanSpec::default(), &[(pipe, TAU)]);
+    let empty = ScanSegmentationOptions { max_cylinder_radius_metres: 0.05, ..Default::default() };
+    let report = segment_scan_points(&points, &empty).unwrap();
+    let s = &report.stats;
+    assert!(report.cylinders.is_empty(), "min 0.06 > max 0.05: {:?}", report.cylinders);
+    assert!(s.cylinder_groups >= 1, "{s:?}");
+    assert_eq!(s.cylinders_rejected_for_radius, s.cylinder_groups, "{s:?}");
+    assert_eq!(s.cylinder_candidates_below_share, 0, "{s:?}");
+}
+
+#[test]
 fn issue_6870_every_cylinder_refusal_is_counted() {
     // Review #6878 (1): candidates under the inlier share and failed refits
     // used to leave the loop without a stat.

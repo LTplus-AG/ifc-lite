@@ -133,7 +133,8 @@ pub struct ScanSegmentationStats {
     pub cylinder_candidates_below_share: u64,
     /// Candidates whose least-squares refit kept too few inliers or degenerated.
     pub cylinder_refits_failed: u64,
-    /// Refits outside the radius range.
+    /// Refits outside the radius range; every group when the range is empty
+    /// (an unset minimum, two voxels, above `maxCylinderRadiusMetres`).
     pub cylinders_rejected_for_radius: u64,
     /// Candidates whose inliers cover under 40 % of the patch their length and
     /// arc claim: loose fits through scattered voxels, not a surface.

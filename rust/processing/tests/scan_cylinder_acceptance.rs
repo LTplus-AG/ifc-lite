@@ -130,12 +130,16 @@ const LIMITS: [Decoy; 3] = [
     Decoy { name: "facet pair 90 deg, 0.1 m", voxel: 0.03, scene: |z, seed, s| scan_matrix::facet_pair(z, seed, s, 90., 0.1) },
 ];
 
-/// (hit, false positives off every true axis) for one run.
+/// (hit, false positives) for one run. With a hit, every other cylinder is a
+/// false positive, a second or wrong-radius one on the true axis included;
+/// without one, a wrong-radius fit of the true pipe is the miss itself, and
+/// only cylinders off its axis count.
 fn run_real(row: &Real, size: Size, seed: u64, sigma: f64) -> (bool, usize) {
     let (points, truth) = (row.scene)(size, seed, sigma);
     let report = segment_scan_points(&points, &options(row.voxel)).unwrap();
     let hit = report.cylinders.iter().any(|c| matches(c, &truth, row.radius_tolerance));
-    (hit, report.cylinders.iter().filter(|c| !axis_matches(c, &truth)).count())
+    let extra = if hit { report.cylinders.len() - 1 } else { report.cylinders.iter().filter(|c| !axis_matches(c, &truth)).count() };
+    (hit, extra)
 }
 
 fn run_decoy(row: &Decoy, size: Size, seed: u64, sigma: f64) -> usize {

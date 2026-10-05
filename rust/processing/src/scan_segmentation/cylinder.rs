@@ -193,6 +193,13 @@ pub(crate) fn detect(
     let limit_hit = groups.len() > c.max_groups;
     groups.truncate(c.max_groups);
     stats.cylinder_groups = groups.len() as u64;
+    // An unset minimum is two voxels, which can exceed the maximum (a small
+    // maximum, or a voxel coarsened by the budget): no radius is acceptable,
+    // and every group is refused for radius rather than read as a misfit.
+    if min_radius > c.max_radius {
+        stats.cylinders_rejected_for_radius += groups.len() as u64;
+        return (Vec::new(), limit_hit);
+    }
     let normal_of = |i: u32| normals.valid(i).then(|| normals.normal[i as usize]);
     let mut found = Vec::new();
     for mut members in groups {

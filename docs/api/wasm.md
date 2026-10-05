@@ -919,6 +919,9 @@ least `minCylinderInlierFraction` (0.6) of the group, and it is refused when:
 - the radius falls outside `minCylinderRadiusMetres`..`maxCylinderRadiusMetres`.
   The minimum defaults to two voxel edges (0.06 m at the default voxel; below
   that a circumference cannot carry its curvature), the maximum to 1.5 m.
+  When that default minimum exceeds the maximum (a small maximum, or a voxel
+  coarsened by the budget), no radius is acceptable and every group counts
+  in `cylindersRejectedForRadius`.
 
 Near-identical cylinders (axes within 5°, axis lines within half the larger
 radius, radii within 25 %, overlapping extents) are one surface found twice,
@@ -933,8 +936,9 @@ inlier counts, `rmsMetres` and `orientation` (`vertical` for a column,
 `horizontal` for a pipe or beam, or `sloped`). `stats` counts each refusal;
 `limits.cylinderGroupLimitHit` reports a group budget that acted.
 
-Resolution limit: flat faces about 3 voxels wide (a pier of 0.1 m faces at a
-3 or 5 cm voxel) deviate from their best-fit circle by under 1 cm and are
+Resolution limit: flat faces two to three voxels wide (a pier of 0.1 m faces
+spans about 3.3 voxels at 3 cm and 2 at 5 cm) deviate from their best-fit
+circle by under 1 cm and are
 indistinguishable from thin pipes, so such a pier is reported as a cylinder.
 Every measured property of the pier (radial deviation, normal turning,
 cross-section curvature, slice agreement, coverage) lies within the range of

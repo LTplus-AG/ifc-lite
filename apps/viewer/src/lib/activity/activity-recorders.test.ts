@@ -19,12 +19,16 @@ import { useViewerStore } from '@/store';
 import { runModelRequest } from '@/lib/llm/request-service';
 import { createRootBudget } from '@/lib/llm/root-budget';
 import { useRequestReceipts } from '@/lib/llm/request-receipts';
+import { cancelWorkflowRun, startWorkflowRun, type WorkflowRun } from '@/lib/flow/run-session';
+import { installModelLoadCanceller } from '@/hooks/modelLoadCanceller';
+import { selectLoadCanceller } from '@/store/slices/loadingSlice';
 import { ACTIVITY_STORAGE_KEY, activityCanceller, useActivityJournal, type ActivityJob } from './activity-journal.js';
 import { resetActivityRecordersForTest, startActivityRecorders } from './activity-recorders.js';
 
 const initial = useViewerStore.getState();
 const originalFetch = globalThis.fetch;
 let stop: () => void = () => {};
+let flowRun: WorkflowRun | null = null;
 
 beforeEach(() => {
   resetActivityRecordersForTest();
@@ -32,6 +36,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   stop();
+  flowRun?.release();
+  flowRun = null;
   sessionStorage.clear();
   useViewerStore.setState(initial, true);
   useRequestReceipts.setState({ receipts: [], inFlight: [] });
@@ -83,17 +89,28 @@ describe('validation, Flow and load recorders', () => {
   });
 
   it('a Flow run cancelled from the tray is cancelled even though the runner reports an error', () => {
+    flowRun = startWorkflowRun(); // as useFlowRunner does before it raises flowRunning
     useViewerStore.setState({ flowRunning: true, flowProgress: 'Running node 2 of 5' });
     assert.equal(only().phase, 'Running node 2 of 5');
     const cancel = activityCanceller(only().id);
     assert.ok(cancel, 'Flow runs can be cancelled from the tray');
     cancel();
-    useViewerStore.setState({ flowRunning: false, flowLastError: 'Run cancelled' });
+    assert.equal(flowRun.controller.signal.aborted, true, 'tray Cancel aborts the real run');
+    useViewerStore.setState({ flowRunning: false, flowLastError: 'Workflow cancelled or superseded' });
     assert.equal(only().outcome, 'cancelled');
     assert.equal(only().phase, undefined, 'the last live phase is not shown as the outcome');
   });
 
+  it('a Flow run stopped from the Flow panel is cancelled, not failed (PR #6952 review)', () => {
+    flowRun = startWorkflowRun();
+    useViewerStore.setState({ flowRunning: true });
+    cancelWorkflowRun(); // FlowPlayer's Stop: useFlowRunner().cancel
+    useViewerStore.setState({ flowRunning: false, flowLastError: 'Workflow cancelled or superseded' });
+    assert.equal(only().outcome, 'cancelled');
+  });
+
   it('a Flow run that errors on its own is failed', () => {
+    flowRun = startWorkflowRun();
     useViewerStore.setState({ flowRunning: true });
     useViewerStore.setState({ flowRunning: false, flowLastError: 'Node 3 threw' });
     assert.deepEqual([only().outcome, only().detail], ['failed', 'Node 3 threw']);
@@ -111,6 +128,23 @@ describe('validation, Flow and load recorders', () => {
     useViewerStore.setState({ loading: false, error: 'Unsupported schema' });
     assert.deepEqual([only().outcome, only().detail], ['failed', 'Unsupported schema']);
   });
+
+  it('a load that ends without an error or a cancel is completed', () => {
+    useViewerStore.setState({ loading: true });
+    useViewerStore.setState({ loading: false });
+    assert.equal(only().outcome, 'completed');
+  });
+
+  for (const kind of ['primary', 'federated'] as const) {
+    it(`a ${kind} load cancelled from the status bar or loading card is cancelled, not completed (PR #6952 review)`, () => {
+      useViewerStore.setState({ loading: true, loadingFileName: 'AC20-FZK-Haus.ifc' });
+      installModelLoadCanceller(kind, () => {});
+      // StatusBar's and ViewportLoadingCard's Cancel: the load UI's own canceller, not the tray's.
+      selectLoadCanceller(useViewerStore.getState())!();
+      assert.equal(useViewerStore.getState().loading, false, 'the real canceller ended the load');
+      assert.equal(only().outcome, 'cancelled');
+    });
+  }
 });
 
 describe('assistant request recorder', () => {

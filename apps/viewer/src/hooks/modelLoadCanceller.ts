@@ -59,6 +59,8 @@ export function installModelLoadCanceller(
     // A retained reference to a load that has since ended or been replaced
     // must not supersede, or reset the viewer under, the load that owns the slot.
     if (store.getState().activeLoadCanceller !== cancel) return;
+    // Before the load UI clears: the activity tray reads this when `loading` drops.
+    store.getState().noteLoadCancelled();
     abandon();
     const state = store.getState();
     // Stop this load's point-cloud stream too. A federated add may overlap

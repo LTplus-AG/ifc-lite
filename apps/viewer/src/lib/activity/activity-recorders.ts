@@ -7,22 +7,25 @@
  * (U02, #6925). Nothing here runs a job or changes one; each recorder watches
  * the native running flag and records start, phase and the native outcome:
  *
- *   load    `loading` / `geometryStreamingActive`, `progress`, `error`; cancel = `selectLoadCanceller`
+ *   load    `loading` / `geometryStreamingActive`, `progress`, `error`, `loadCancelSeq`; cancel = `selectLoadCanceller`
  *   clash   `clashRunning`, `clashProgress`, `clashError`, `clashRunSeq` (bumped only on success)
  *   ids     `idsLoading` with `idsProgress`, `idsError`, `idsValidationReport`
- *   flow    `flowRunning`, `flowProgress`, `flowLastRun.ok`, `flowLastError`; cancel = `cancelWorkflowRun`
+ *   flow    `flowRunning`, `flowProgress`, `flowLastRun.ok`, `flowLastError`, the run's abort signal; cancel = `cancelWorkflowRun`
  *   ai      request-service in-flight entries and their receipts; cancel aborts the request
  *
  * A run that stops without an error and without a new result is recorded as
- * cancelled, never as completed. Exports record themselves in
- * `ExportDialogShell`, the one runner every export dialog shares.
+ * cancelled, never as completed. Cancellation is read from the SOURCE (the
+ * load cancel counter, the Flow run's abort signal), so a job stopped from its
+ * own panel, the status bar or the loading card is recorded the same as one
+ * cancelled from the tray. Exports record themselves where they run
+ * (`ExportDialogShell`, and `recordActivity` in the dialogs outside it).
  */
 
 import { en } from '@/i18n/en';
 import type { TranslationKey } from '@/i18n';
 import { selectActiveLoadProgress, selectLoadCanceller } from '@/store/slices/loadingSlice';
 import type { ViewerState } from '@/store';
-import { cancelWorkflowRun } from '@/lib/flow/run-session';
+import { activeWorkflowSignal, cancelWorkflowRun } from '@/lib/flow/run-session';
 import { useRequestReceipts, type UsageReceipt } from '@/lib/llm/request-receipts';
 import {
   beginActivity, finishActivity, restoreActivityJournal, updateActivity, useActivityJournal, type ActivityJob,
@@ -41,27 +44,21 @@ interface Watch<B> {
   running: (state: ViewerState) => boolean;
   start: (state: ViewerState) => { job: Parameters<typeof beginActivity>[0]; baseline: B };
   tick?: (state: ViewerState) => Pick<ActivityJob, 'phase' | 'progress' | 'subject'>;
-  end: (state: ViewerState, baseline: B, cancelRequested: boolean) =>
+  end: (state: ViewerState, baseline: B) =>
     { outcome: 'completed' | 'partial' | 'failed' | 'cancelled'; detail?: string };
 }
 
 function watch<B>(store: ViewerStoreLike, spec: Watch<B>): () => void {
-  let current: { id: string; baseline: B; cancelRequested: boolean } | null = null;
+  let current: { id: string; baseline: B } | null = null;
   const observe = (state: ViewerState) => {
     const running = spec.running(state);
     if (running && !current) {
       const { job, baseline } = spec.start(state);
-      const handle = { id: '', baseline, cancelRequested: false };
-      const cancel = job.cancel;
-      handle.id = beginActivity({
-        ...job,
-        ...(cancel ? { cancel: () => { handle.cancelRequested = true; cancel(); } } : {}),
-      });
-      current = handle;
+      current = { id: beginActivity(job), baseline };
     }
     if (running && current && spec.tick) updateActivity(current.id, spec.tick(state));
     if (!running && current) {
-      const { outcome, detail } = spec.end(state, current.baseline, current.cancelRequested);
+      const { outcome, detail } = spec.end(state, current.baseline);
       finishActivity(current.id, outcome, detail ? { detail } : {});
       current = null;
     }
@@ -82,14 +79,16 @@ function watchLoads(store: ViewerStoreLike): () => void {
           // Read the CURRENT canceller at click time; a later load phase may replace it.
           ...(canceller ? { cancel: () => selectLoadCanceller(store.getState())?.() } : {}),
         },
-        baseline: null,
+        baseline: s.loadCancelSeq,
       };
     },
     // The file name can land after the loading flag; pick it up while running.
     tick: (s) => ({ phase: selectActiveLoadProgress(s)?.phase, ...(s.loadingFileName ? { subject: s.loadingFileName } : {}) }),
-    end: (s, _baseline, cancelled) => s.error
-      ? { outcome: 'failed', detail: s.error }
-      : { outcome: cancelled ? 'cancelled' : 'completed' },
+    // A cancel from any button bumps the counter before the loading flags drop.
+    end: (s, cancelsBefore) => {
+      if (s.loadCancelSeq > cancelsBefore) return { outcome: 'cancelled' };
+      return s.error ? { outcome: 'failed', detail: s.error } : { outcome: 'completed' };
+    },
   });
 }
 
@@ -128,12 +127,15 @@ function watchFlow(store: ViewerStoreLike): () => void {
     start: (s) => ({
       job: { kind: 'flow', title: 'activityTray.job.flow', panel: 'flow', cancel: cancelWorkflowRun,
         ...(s.flowDoc?.name ? { subject: s.flowDoc.name } : {}) },
-      baseline: s.flowLastRun,
+      // useFlowRunner starts the run session before it raises `flowRunning`.
+      baseline: { lastRun: s.flowLastRun, signal: activeWorkflowSignal() },
     }),
     tick: (s) => (s.flowProgress ? { phase: s.flowProgress } : {}),
-    end: (s, before, cancelled) => {
-      if (s.flowLastError) return { outcome: cancelled ? 'cancelled' : 'failed', detail: s.flowLastError };
-      if (s.flowLastRun && s.flowLastRun !== before) return { outcome: s.flowLastRun.ok ? 'completed' : 'failed' };
+    end: (s, { lastRun, signal }) => {
+      // Aborted by the Flow panel's Stop, the tray's Cancel, or a superseding change.
+      if (signal?.aborted) return { outcome: 'cancelled' };
+      if (s.flowLastError) return { outcome: 'failed', detail: s.flowLastError };
+      if (s.flowLastRun && s.flowLastRun !== lastRun) return { outcome: s.flowLastRun.ok ? 'completed' : 'failed' };
       return { outcome: 'cancelled' };
     },
   });

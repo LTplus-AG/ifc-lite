@@ -161,3 +161,6 @@ scripts/perf/browser-corpus.local.json
 # Autodesk SDK worker build outputs (proprietary SDK/native dependencies).
 apps/autodesk-exchange-worker/bin/
 apps/autodesk-exchange-worker/obj/
+
+# perf-climb skill: per-thread scratch state (see .claude/skills/perf-climb)
+.perf-climb/

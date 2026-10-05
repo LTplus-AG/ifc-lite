@@ -10,7 +10,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
 import { usePagedList } from './usePagedList';
 import { LoadMoreRow } from './SourceEntityList';
-import { createSourceWideSearch, type SourceSearchMatch } from './sourceWideSearch';
+import { createSourceWideSearch, type SourceSearchMatch } from './sourceWideSearchModel';
 import { SourceLoadedBadge } from './SourceLoadedBadge';
 import { SourceResourceDetails } from './SourceResourceDetails';
 import { SourceDownloadStatus } from './SourceDownloadStatus';

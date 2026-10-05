@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { FileSourceProvider, PluginContext, SourceProject, Page } from '@ifc-lite/plugin-api';
-import type { SourceSearchMatch } from './sourceWideSearch';
+import type { SourceSearchMatch } from './sourceWideSearchModel';
 import { IFC_NAME_PATTERNS, LIST_PAGE_LIMIT } from './sourceCatalogPaging';
 
 type Task = { kind: 'projects'; cursor?: string }

@@ -38,8 +38,10 @@ test('fails and lists paths that differ only in case', () => {
     'apps/viewer/src/other.ts',
   ]);
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /SourceWideSearch\.tsx\s+<->\s+apps\/viewer\/src\/sourceWideSearch\.tsx/);
-  assert.doesNotMatch(result.stderr, /other\.ts/);
+  // Booleans, not the raw stderr, so a missing script reads as a plain
+  // assertion failure rather than a module-load error.
+  assert.equal(/SourceWideSearch\.tsx\s+<->\s+apps\/viewer\/src\/sourceWideSearch\.tsx/.test(result.stderr), true);
+  assert.equal(/other\.ts/.test(result.stderr), false);
 });
 
 test('fails on a collision in a directory name', () => {
@@ -48,10 +50,10 @@ test('fails on a collision in a directory name', () => {
 
 test('passes when names are distinct', () => {
   const result = run(['a.ts', 'b.ts', 'dir/a.ts']);
-  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.status, 0);
 });
 
 test('passes on the current repository', () => {
   const result = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' });
-  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.status, 0);
 });

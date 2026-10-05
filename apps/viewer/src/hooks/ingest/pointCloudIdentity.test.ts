@@ -30,7 +30,8 @@ import {
 import { useViewerStore } from '@/store';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { addIfcModel, loadScan, readbackIdentities, scanTestRenderer, type ScanLoad } from '@/test/scan-federation';
-import type { PointCloudFormat } from './pointCloudIngest.js';
+import { ingestPointCloud, type PointCloudFormat } from './pointCloudIngest.js';
+import { bindPointCloudIdentity } from './pointCloudIdentity.js';
 import { removePointCloudScanCache } from './pointCloudScanCache.js';
 import { unregisterPointCloudAlignment } from './pointCloudAlignment.js';
 
@@ -149,6 +150,25 @@ describe('streamed scan identity after ingest (#6887)', () => {
       assert.deepEqual(assertBound(points, 'scan'), alone);
     });
   }
+
+  it('a superseded stream is never bound to the identity of a model that owns another handle', async () => {
+    const { renderer, points } = scanTestRenderer();
+    addIfcModel('ifc', [{ expressId: 1, type: 'IfcWall' }]);
+    // A stream whose load was superseded: opened on the same renderer, never registered.
+    const stale = ingestPointCloud({ format: 'las', blob: lasBlob(), fileName: 'stale.las', fileSize: 1, renderer,
+      createSource: (o) => new LasStreamingSource(o.blob, hint(o)) });
+    await stale.done;
+    handles.push(stale.rendererHandle.id);
+    // The live load registered under the same model id with its own handle.
+    const { handle } = await loadScan(renderer, 'scan', SCANS.las());
+    handles.push(handle.id);
+    const live = assertBound(points, 'scan');
+    const staleBefore = readbackIdentities(points).find((a) => a.expressId !== live.expressId);
+    assert.ok(staleBefore, 'the stale stream is still resident');
+    bindPointCloudIdentity(renderer, stale.rendererHandle, 'scan', useViewerStore.getState().models);
+    assert.deepEqual(assertBound(points, 'scan'), live, 'only the owning handle carries the scan identity');
+    assert.ok(readbackIdentities(points).some((a) => a.expressId === staleBefore.expressId && a.modelIndex === staleBefore.modelIndex));
+  });
 
   it('removing an earlier model shifts neither the scan id nor its index', async () => {
     const { renderer, points } = scanTestRenderer();

@@ -42,7 +42,7 @@ const RULES: ClashRule[] = [
 const PLUMBING_WALL = '1uS5vfZPn9R8PlAaVd73on';
 
 let seq = 0;
-const meta = () => ({ id: `run-${++seq}`, capturedAt: '2026-10-05T00:00:00.000Z', stamp: null });
+const meta = () => ({ id: `run-${++seq}`, capturedAt: '2026-10-05T00:00:00.000Z', stamp: { mutationVersion: 0, geometryContentVersion: 0 } });
 const clashRun = async (pair: RevisionPair, models: string[], options: Parameters<typeof runClash>[2] = {}): Promise<CapturedRun> =>
   ({ ...meta(), kind: 'clash', modelIds: models, result: await runClash(pair, models, { rules: RULES, ...options }) });
 const idsRun = async (pair: RevisionPair, model: string, options: Parameters<typeof runIds>[2] = {}): Promise<CapturedRun> =>
@@ -102,6 +102,19 @@ describe('clash run reconciliation on the committed revision pair (#6921)', () =
     assert.equal(outcome.partial, true);
   });
 
+  it('a truncated base run never calls a head finding new', async (t) => {
+    const pair = await revisionPair(t);
+    if (!pair) return;
+    const base = await clashRun(pair, ['A'], { maxCandidatePairs: 1 });
+    assert.ok(base.kind === 'clash' && base.result.truncated, 'the cap truncated the native base run');
+    const outcome = ok(reconcileRuns(base, await clashRun(pair, ['B']), context(pair)));
+    assert.equal(outcome.counts.new, 0, 'a capped base run cannot show the finding was absent before');
+    const unobserved = outcome.findings.filter(f => !f.baseOccurrence);
+    assert.ok(unobserved.length > 0);
+    assert.ok(unobserved.every(f => f.state === 'notEvaluated' && f.reason === 'baseNotEvaluated'));
+    assert.equal(outcome.partial, true);
+  });
+
   it('refuses changed rules, settings, models and stale runs, naming each', async (t) => {
     const pair = await revisionPair(t);
     if (!pair) return;
@@ -125,7 +138,7 @@ describe('clash run reconciliation on the committed revision pair (#6921)', () =
 
     const stale = reconcileRuns(base, await clashRun(pair, ['B']), context(pair, { isStale: run => run === base }));
     assert.ok(!stale.ok);
-    assert.deepEqual(stale.incompatibilities, [{ code: 'runStale', detail: base.id }]);
+    assert.deepEqual(stale.incompatibilities, [{ code: 'runStale', sides: ['base'] }]);
 
     const mixed = reconcileRuns(base, await idsRun(pair, 'B'), context(pair));
     assert.ok(!mixed.ok);

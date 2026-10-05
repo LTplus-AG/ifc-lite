@@ -28,10 +28,12 @@ import { createClashEngine, disciplineMatrixRules, type ClashResult, type ClashR
 import { elementsFromStep } from '@ifc-lite/clash/step';
 import { parseIDS, validateIDS, type ValidationReport } from '@ifc-lite/ids';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
+import type { RuleSetFile } from '@ifc-lite/rules';
 import type { FederatedModel } from '@/store';
 import type { CompareResult } from '@/store/slices/compareSlice';
 import { createDataAccessor } from '@/hooks/ids/idsDataAccessor';
 import { recordGatheredModel, rememberFederationIdentity } from '@/lib/clash/federation-identity';
+import { runInformationCheck } from '@/lib/validation/run-information-check';
 import { buildEntityFingerprints } from './buildFingerprints';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');
@@ -133,6 +135,8 @@ export interface IdsRunOptions {
   edit?: (xml: string) => string;
   /** Pending native property edits, read the way the viewer's accessor reads them. */
   view?: MutablePropertyView;
+  /** Omit passing entities, as a capped run does: the report then evaluates fewer than it found applicable. */
+  omitPassing?: boolean;
 }
 
 /** The committed IDS validated against one model, as the viewer's main-thread path runs it. */
@@ -142,5 +146,13 @@ export async function runIds(pair: RevisionPair, modelId: string, options: IdsRu
   const document = options.edit ? parseIDS(options.edit(xml)) : (ids ??= parseIDS(xml));
   const accessor = createDataAccessor(m.ifcDataStore, modelId, options.view ?? null);
   return validateIDS(document, accessor, { modelId, schemaVersion: 'IFC4', entityCount: m.ifcDataStore.entityCount },
-    { includePassingEntities: true });
+    { includePassingEntities: !options.omitPassing });
+}
+
+/** A rule set run against one model through the viewer's shared native runner. */
+export async function runRules(pair: RevisionPair, modelId: string, ruleSet: RuleSetFile): Promise<ValidationReport> {
+  const m = modelId === pair.base.id ? pair.base : pair.head;
+  const { report } = await runInformationCheck({ ruleSet, models: [{ id: modelId, filterIdentity: m.sourceFingerprint, store: m.ifcDataStore }],
+    reportModels: new Map([[modelId, m]]) });
+  return report;
 }

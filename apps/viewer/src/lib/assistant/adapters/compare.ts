@@ -4,7 +4,7 @@
 
 import type { ViewerState } from '@/store';
 import { analysisStampOf } from '@/hooks/useAnalysisStaleness';
-import { compareImpactOf } from '@/lib/compare/compare-analysis-state';
+import { compareImpactOf, currentReconciliationOf } from '@/lib/compare/compare-analysis-state';
 import { IMPACT_LIMITATIONS } from '@/lib/compare/impact';
 import { unavailableCapture, type AdapterCapture, type EvidenceAdapter } from './types';
 
@@ -13,7 +13,9 @@ const RECONCILIATION_ROWS = 20;
 
 const RECONCILIATION_LIMITATIONS = 'Reconciliation pairs findings by native identity (clash review key; specification id + GlobalId) '
   + 'only between runs that passed the compatibility check. notEvaluated means the head run could not have observed the finding '
-  + '(truncated or partial run, rule/specification not run or errored, element not re-examined); it is never a resolution.';
+  + '(truncated or partial run, rule/specification not run or errored, element not re-examined), or, for a head finding, '
+  + 'that the base run left a gap so the finding cannot be called new; it is never a resolution.';
+const STALE_RECONCILIATION = 'A reconciled run predates later model edits or has no run stamp; the outcome is withheld until runs are captured and reconciled again.';
 
 /**
  * Native diff entries, the Impact section (#6921) and the last run reconciliation.
@@ -24,7 +26,9 @@ function captureCompare(s: ViewerState, rowLimit: number): AdapterCapture {
   const r = s.compareResult;
   if (!r) return unavailableCapture();
   const impact = compareImpactOf(s, IMPACT_ROWS);
-  const outcome = s.compareReconciliation?.comparison === r ? s.compareReconciliation.outcome : null;
+  const saved = currentReconciliationOf(s);
+  // A stale outcome no longer describes the models: disclose it, send none of its numbers.
+  const outcome = saved && !saved.stale ? saved.outcome : null;
   const reconciled = outcome?.ok ? outcome.findings.filter(f => f.state !== 'persisting') : [];
   const reconciliationRows = reconciled.slice(0, RECONCILIATION_ROWS);
   const sectionRows = (impact?.rows.length ?? 0) + reconciliationRows.length;
@@ -38,7 +42,7 @@ function captureCompare(s: ViewerState, rowLimit: number): AdapterCapture {
     geometryUnavailable: r.geometryUnavailable, placementOnlyGeometry: r.placementOnlyGeometry, excludedTypes: r.diff.excludedTypes,
     impact: impact ? { changedElements: impact.changedElements, unresolvedChanges: impact.unresolvedChanges, sources: impact.sources,
       totals: impact.totals, totalRows: impact.totalRows, includedRows: impact.rows.length, limitations: IMPACT_LIMITATIONS } : null,
-    reconciliation: outcome ? (outcome.ok
+    reconciliation: saved?.stale ? { kind: saved.outcome.kind, stale: true, note: STALE_RECONCILIATION } : outcome ? (outcome.ok
       ? { kind: outcome.kind, compatible: true, counts: outcome.counts, partial: outcome.partial, excluded: outcome.excluded,
         includedRows: reconciliationRows.length, limitations: RECONCILIATION_LIMITATIONS }
       : { kind: outcome.kind, compatible: false, incompatibilities: outcome.incompatibilities }) : null };

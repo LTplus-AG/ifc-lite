@@ -24,7 +24,8 @@ import type { CompareRef } from './buildFingerprints';
 
 export type ImpactSide = 'base' | 'head';
 export type ChangedState = 'added' | 'deleted' | 'modified';
-export type ImpactSourceStatus = 'available' | 'unavailable' | 'stale';
+/** `unverified`: loaded, but carries no run stamp, so whether it predates later edits is unknown. */
+export type ImpactSourceStatus = 'available' | 'unavailable' | 'stale' | 'unverified';
 export type ImpactSource = 'clash' | 'validation' | 'list' | 'bcf';
 
 export interface ChangedElementRef {
@@ -63,9 +64,10 @@ export interface ImpactInput {
   entries: readonly DiffEntry<CompareRef>[];
   /** GlobalId of one compared entity, read from the store the diff ran on. */
   globalIdOf: (modelId: string, localId: number) => string | undefined;
-  clash?: { result: ClashResult; stale: boolean } | null;
-  validation?: { report: ValidationReport; stale: boolean } | null;
-  list?: { id: string; name: string; result: ListResult; stale: boolean } | null;
+  /** `stale: null` means the source's freshness is unknown (no run stamp). */
+  clash?: { result: ClashResult; stale: boolean | null } | null;
+  validation?: { report: ValidationReport; stale: boolean | null } | null;
+  list?: { id: string; name: string; result: ListResult; stale: boolean | null } | null;
   bcfTopics?: readonly BCFTopic[] | null;
   rowLimit?: number;
 }
@@ -76,9 +78,9 @@ const modelKey = (modelId: string, globalId: string) => `${modelId}\u0000${globa
 /** A clash key is the GlobalId, suffixed `:<occurrence>` for a GPU-instanced occurrence. */
 export const clashKeyGlobalId = (key: string) => key.length > 22 && key[22] === ':' ? key.slice(0, 22) : key;
 
-function status(present: unknown, stale: boolean | undefined): ImpactSourceStatus {
+function status(present: unknown, stale: boolean | null | undefined): ImpactSourceStatus {
   if (!present) return 'unavailable';
-  return stale ? 'stale' : 'available';
+  return stale === null ? 'unverified' : stale ? 'stale' : 'available';
 }
 
 /** Changed elements, per side, keyed by model + GlobalId and by GlobalId alone. */
@@ -216,5 +218,6 @@ export function computeCompareImpact(input: ImpactInput): CompareImpact {
 
 /** Disclosed to the assistant and the panel alongside every impact section. */
 export const IMPACT_LIMITATIONS = 'Impact joins analyses to changed elements by model and GlobalId membership only (BCF topics by GlobalId). '
-  + 'It is computed against the analyses loaded at capture; an analysis marked stale was run before later edits. '
+  + 'It is computed against the analyses loaded at capture; an analysis marked stale was run before later edits; '
+  + 'one marked unverified carries no run stamp, so whether it predates later edits is unknown. '
   + 'A touched finding is not proof that the change caused or fixed it. Unchanged elements and unresolved changes are never joined.';

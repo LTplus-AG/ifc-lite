@@ -8,7 +8,8 @@
  * Refuses, listing every specific incompatibility, unless the runs are of
  * the same kind, cover the comparison's base and head models respectively,
  * ran the same rules/specifications with the same settings and scope, and
- * are current. Compatible runs are reconciled into new / resolved /
+ * are current: a run without an analysis stamp has unknown freshness and is
+ * refused like a stale one. Compatible runs are reconciled into new / resolved /
  * persisting / changed / not evaluated; partial evidence never becomes
  * `resolved` (see the per-kind modules).
  */
@@ -23,8 +24,13 @@ export function runIncompatibilities(base: CapturedRun, head: CapturedRun, ctx: 
   const out = base.kind === 'clash' && head.kind === 'clash'
     ? clashIncompatibilities(base, head, ctx)
     : base.kind === 'validation' && head.kind === 'validation' ? validationIncompatibilities(base, head, ctx) : [];
-  const stale = [base, head].filter((run, i, all) => all.indexOf(run) === i && ctx.isStale(run));
-  if (stale.length) out.push({ code: 'runStale', detail: stale.map(run => run.id).join(', ') });
+  const sides = (pick: (run: CapturedRun) => boolean): Array<'base' | 'head'> =>
+    (['base', 'head'] as const).filter(side => pick(side === 'base' ? base : head));
+  // A run without a stamp cannot be shown current: refuse rather than assume it is.
+  const unknown = sides(run => run.stamp === null);
+  if (unknown.length) out.push({ code: 'runFreshnessUnknown', sides: unknown });
+  const stale = sides(run => run.stamp !== null && ctx.isStale(run));
+  if (stale.length) out.push({ code: 'runStale', sides: stale });
   return out;
 }
 

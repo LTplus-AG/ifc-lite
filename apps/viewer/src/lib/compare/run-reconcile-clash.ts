@@ -13,7 +13,8 @@
  * `compareClashRevisions`, extended to a run that gathered both revisions at
  * once (then the GlobalId-keyed coverage cannot say which revision matched,
  * so the head element's class must satisfy the rule's own selector, and a
- * membership-scoped rule is never attributable).
+ * membership-scoped rule is never attributable). Symmetrically, a head
+ * finding is `new` only when the base run was not truncated.
  */
 
 import { clashReviewKey, matchesSelector, ruleHadNoMatch, type Clash, type ClashRule, type ClashRuleCoverage } from '@ifc-lite/clash';
@@ -134,7 +135,10 @@ export function reconcileClashRuns(base: ClashRun, head: ClashRun, ctx: Reconcil
         push({ state: changes.length ? 'changed' : 'persisting', identity, baseOccurrence: prev.id, headOccurrence: next.id,
           label: label(next), ...(changes.length ? { changes } : {}) });
       } else if (next) {
-        push({ state: 'new', identity, headOccurrence: next.id, label: label(next) });
+        // A truncated base run may have stopped before testing this pair: absence there is not newness.
+        push(base.result.truncated
+          ? { state: 'notEvaluated', identity, headOccurrence: next.id, label: label(next), reason: 'baseNotEvaluated' }
+          : { state: 'new', identity, headOccurrence: next.id, label: label(next) });
       } else if (prev) {
         const reason = notResolvedReason(prev, head, ctx);
         push(reason

@@ -8,7 +8,8 @@
  * the native diff, the impact section with its limitations, and the last
  * reconciliation — compatible counts, or the refusal with its reasons, never
  * findings for incompatible runs. A reconciliation computed for another
- * comparison is not sent.
+ * comparison is not sent, and one whose runs predate later model edits is
+ * sent as stale with no findings.
  */
 
 import '@/test/setup-dom.js';
@@ -16,8 +17,8 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { fixtureModels } from '@/test/store-fixture';
-import { reconcileContextOf } from '@/lib/compare/compare-analysis-state';
-import { reconcileRuns } from '@/lib/compare/run-reconcile';
+import { analysisStampOf, captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
+import { savedReconciliationOf } from '@/lib/compare/compare-analysis-state';
 import type { CapturedRun } from '@/lib/compare/run-reconcile-types';
 import { PINS, revisionPair, runClash, type RevisionPair } from '@/lib/compare/revision-pair.test-support';
 import { captureEvidence } from './evidence';
@@ -28,16 +29,21 @@ afterEach(() => { useViewerStore.setState(initial, true); });
 interface Payload {
   totalRows: number;
   evidence: { summary: { counts: unknown; impact: { totals: Record<string, number>; limitations: string; sources: Record<string, string> };
-    reconciliation: { compatible: boolean; counts?: Record<string, number>; excluded?: number; incompatibilities?: Array<{ code: string }> } | null };
+    reconciliation: { compatible?: boolean; stale?: boolean; counts?: Record<string, number>; excluded?: number;
+      incompatibilities?: Array<{ code: string }> } | null };
   rows: Array<{ citation: string; data: { section: string; state?: string; kind?: string; identity?: string } }> };
 }
 
 async function seed(pair: RevisionPair) {
-  const clash = await runClash(pair, ['A', 'B']);
-  useViewerStore.setState({ ...fixtureModels(pair.base, pair.head), compareResult: pair.compare, clashResult: clash, clashRawResult: clash });
-  const run: CapturedRun = { kind: 'clash', id: 'joint', capturedAt: '2026-10-05T00:00:00.000Z', modelIds: ['A', 'B'], stamp: null, result: clash };
+  useViewerStore.setState({ ...fixtureModels(pair.base, pair.head), compareResult: pair.compare });
+  const clash = stampAnalysisReport(await runClash(pair, ['A', 'B']), captureAnalysisStamp());
+  useViewerStore.setState({ clashResult: clash, clashRawResult: clash });
+  const run: CapturedRun = { kind: 'clash', id: 'joint', capturedAt: '2026-10-05T00:00:00.000Z', modelIds: ['A', 'B'],
+    stamp: analysisStampOf(clash), result: clash };
   return run;
 }
+const reconcile = (base: CapturedRun, head: CapturedRun) =>
+  useViewerStore.getState().setCompareReconciliation(savedReconciliationOf(useViewerStore.getState(), base, head));
 const payload = () => JSON.parse(captureEvidence('compare').payload) as Payload;
 
 describe('comparison evidence for the assistant (#6921)', () => {
@@ -45,8 +51,7 @@ describe('comparison evidence for the assistant (#6921)', () => {
     const pair = await revisionPair(t);
     if (!pair) return;
     const run = await seed(pair);
-    const state = useViewerStore.getState();
-    state.setCompareReconciliation({ outcome: reconcileRuns(run, run, reconcileContextOf(state)), comparison: pair.compare });
+    reconcile(run, run);
     const sent = payload();
     assert.deepEqual(sent.evidence.summary.counts, { added: 1, deleted: 1, modified: 2, unchanged: 19 });
     assert.equal(sent.evidence.summary.impact.totals.clash, 2);
@@ -70,14 +75,27 @@ describe('comparison evidence for the assistant (#6921)', () => {
     if (!pair) return;
     const run = await seed(pair);
     const wider: CapturedRun = { ...run, id: 'wider', result: await runClash(pair, ['A', 'B'], { tolerance: 0.01 }) } as CapturedRun;
-    const state = useViewerStore.getState();
-    state.setCompareReconciliation({ outcome: reconcileRuns(run, wider, reconcileContextOf(state)), comparison: pair.compare });
+    reconcile(run, wider);
     const refused = payload();
     assert.deepEqual(refused.evidence.summary.reconciliation, { kind: 'clash', compatible: false, incompatibilities:
       [{ code: 'settingsDiffer', detail: 'tolerance 0.002 / 0.01; excludeVoidsAndHosts true / true' }] });
     assert.equal(refused.evidence.rows.some(row => row.data.section === 'reconciliation'), false);
 
-    state.setCompareReconciliation({ outcome: reconcileRuns(run, run, reconcileContextOf(state)), comparison: { ...pair.compare } });
+    reconcile(run, run);
+    useViewerStore.setState({ compareResult: { ...pair.compare } });
     assert.equal(payload().evidence.summary.reconciliation, null);
+  });
+
+  it('withholds a saved reconciliation once a model edit postdates its runs', async (t) => {
+    const pair = await revisionPair(t);
+    if (!pair) return;
+    const run = await seed(pair);
+    reconcile(run, run);
+    assert.equal(payload().evidence.summary.reconciliation?.compatible, true);
+    useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
+    const sent = payload();
+    assert.equal(sent.evidence.summary.reconciliation?.stale, true);
+    assert.equal(sent.evidence.summary.reconciliation?.counts, undefined, 'stale counts are not presented as current');
+    assert.equal(sent.evidence.rows.some(row => row.data.section === 'reconciliation'), false);
   });
 });

@@ -9,7 +9,7 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { CapturedRun, ReconcileOutcome } from '@/lib/compare/run-reconcile-types';
+import type { CapturedRun, SavedReconciliation } from '@/lib/compare/run-reconcile-types';
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 /** Bounded so a long session cannot pin unbounded native results in memory. */
@@ -18,13 +18,14 @@ export const MAX_RUN_CAPTURES = 8;
 export interface CompareRunsSlice {
   /** Newest first. */
   compareRunCaptures: CapturedRun[];
-  /** The last outcome and the comparison result it was computed against;
-   *  readers ignore it once `compareResult` is a different object. */
-  compareReconciliation: { outcome: ReconcileOutcome; comparison: object } | null;
+  /** The last outcome, the comparison result it was computed against and its
+   *  runs' stamps. Read it through `currentReconciliationOf`, which ignores it
+   *  for another comparison and marks it stale after later edits. */
+  compareReconciliation: SavedReconciliation | null;
   /** Hold a run; returns the id of the capture (an existing one for the same native result). */
   addCompareRunCapture: (run: CapturedRun) => string;
   removeCompareRunCapture: (id: string) => void;
-  setCompareReconciliation: (value: { outcome: ReconcileOutcome; comparison: object } | null) => void;
+  setCompareReconciliation: (value: SavedReconciliation | null) => void;
 }
 
 const nativeResult = (run: CapturedRun): object => run.kind === 'clash' ? run.result : run.report;

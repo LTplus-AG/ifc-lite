@@ -9,17 +9,24 @@
  */
 
 import type { ViewerState } from '@/store';
-import { analysisStampOf, isAnalysisStale } from '@/hooks/useAnalysisStaleness';
+import { analysisStampOf, isAnalysisStale, type AnalysisStamp } from '@/hooks/useAnalysisStaleness';
 import { gatheredModelIds } from '@/lib/clash/federation-identity';
 import { computeCompareImpact, type CompareImpact } from './impact';
-import type { CapturedRun, ReconcileContext } from './run-reconcile-types';
+import { reconcileRuns } from './run-reconcile';
+import type { CapturedRun, ReconcileContext, ReconcileOutcome, SavedReconciliation } from './run-reconcile-types';
 
 type State = Pick<ViewerState, 'compareResult' | 'models' | 'clashResult' | 'clashRawResult' | 'idsValidationReport'
   | 'listResult' | 'listDefinitions' | 'activeListId' | 'bcfProject' | 'mutationVersion' | 'geometryContentVersion' | 'modelPlacement'>;
+type ReconciliationState = State & Pick<ViewerState, 'compareReconciliation'>;
 
 function staleness(state: State) {
   return { mutationVersion: state.mutationVersion, geometryContentVersion: state.geometryContentVersion,
     modelPlacement: state.modelPlacement, models: state.models };
+}
+
+/** Whether a stamped result predates later edits; null when it carries no stamp (freshness unknown). */
+function freshness(state: State, stamp: AnalysisStamp | null): boolean | null {
+  return stamp ? isAnalysisStale(stamp, staleness(state)) : null;
 }
 
 /** GlobalId of a compared entity, read from the store the diff actually ran on. */
@@ -38,11 +45,11 @@ export function compareImpactOf(state: State, rowLimit?: number): CompareImpact 
   return computeCompareImpact({
     baseModelId: result.baseModelId, headModelId: result.headModelId, entries: result.diff.entries,
     globalIdOf: globalIdReader(state), rowLimit,
-    clash: state.clashResult ? { result: state.clashResult, stale: isAnalysisStale(analysisStampOf(clashSource), staleness(state)) } : null,
+    clash: state.clashResult ? { result: state.clashResult, stale: freshness(state, analysisStampOf(clashSource)) } : null,
     validation: state.idsValidationReport
-      ? { report: state.idsValidationReport, stale: isAnalysisStale(analysisStampOf(state.idsValidationReport), staleness(state)) } : null,
-    // A list result carries no run stamp; its freshness is unknown, never assumed stale.
-    list: list ? { id: state.activeListId ?? '', name: listName, result: list, stale: false } : null,
+      ? { report: state.idsValidationReport, stale: freshness(state, analysisStampOf(state.idsValidationReport)) } : null,
+    // A list result carries no run stamp: its freshness is unknown, never assumed current.
+    list: list ? { id: state.activeListId ?? '', name: listName, result: list, stale: null } : null,
     bcfTopics: state.bcfProject ? [...state.bcfProject.topics.values()] : null,
   });
 }
@@ -86,4 +93,22 @@ export function reconcileContextOf(state: State): ReconcileContext | null {
     },
     isStale: (run) => isAnalysisStale(run.stamp, staleness(state)),
   };
+}
+
+/** Reconcile two captured runs against the current comparison, keeping what a later staleness check needs. */
+export function savedReconciliationOf(state: State, base: CapturedRun, head: CapturedRun): SavedReconciliation | null {
+  if (!state.compareResult) return null;
+  return { outcome: reconcileRuns(base, head, reconcileContextOf(state)), comparison: state.compareResult,
+    stamps: base === head ? [base.stamp] : [base.stamp, head.stamp] };
+}
+
+/**
+ * The saved reconciliation for the current comparison; null for another one.
+ * `stale` once any reconciled run predates later edits (or has no stamp): the
+ * outcome then no longer describes the models and must not be shown as current.
+ */
+export function currentReconciliationOf(state: ReconciliationState): { outcome: ReconcileOutcome; stale: boolean } | null {
+  const saved = state.compareReconciliation;
+  if (!saved || !state.compareResult || saved.comparison !== state.compareResult) return null;
+  return { outcome: saved.outcome, stale: saved.stamps.some(stamp => freshness(state, stamp) !== false) };
 }

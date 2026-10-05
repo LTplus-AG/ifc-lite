@@ -13,7 +13,8 @@ interface CapturedRunBase {
   capturedAt: string;
   /** Federation model ids the run actually examined; null when unknown. */
   modelIds: string[] | null;
-  /** Analysis stamp at run time; a later edit makes the run stale. */
+  /** Analysis stamp at run time; a later edit makes the run stale. Null means
+   *  freshness is unknown, and such a run is never reconciled. */
   stamp: AnalysisStamp | null;
 }
 
@@ -35,17 +36,21 @@ export type IncompatibilityCode =
   | 'settingsDiffer'
   | 'scopeDiffers'
   | 'sourceDiffers'
+  | 'sourceUnknown'
   | 'specificationsDiffer'
-  | 'runStale';
+  | 'runStale'
+  | 'runFreshnessUnknown';
 
 export interface Incompatibility {
   code: IncompatibilityCode;
   detail?: string;
+  /** Which picked run(s) a run-level code is about (`runStale`, `runFreshnessUnknown`). */
+  sides?: Array<'base' | 'head'>;
 }
 
 export type ReconcileState = 'new' | 'resolved' | 'persisting' | 'changed' | 'notEvaluated';
 
-/** Why an absent base finding is not called resolved. */
+/** Why an absent base finding is not called resolved, or a head finding absent from base not called new. */
 export type NotEvaluatedReason =
   | 'headRunTruncated'
   | 'ruleNotRun'
@@ -53,7 +58,8 @@ export type NotEvaluatedReason =
   | 'elementNotReexamined'
   | 'coverageNotAttributable'
   | 'specificationError'
-  | 'entityNotEvaluated';
+  | 'entityNotEvaluated'
+  | 'baseNotEvaluated';
 
 export interface ReconciledFinding {
   state: ReconcileState;
@@ -76,6 +82,15 @@ export type ReconcileOutcome =
     /** Findings left out by construction: cross-revision clashes, entities without GlobalId. */
     excluded: number }
   | { ok: false; kind: RunKind | null; baseRunId: string; headRunId: string; incompatibilities: Incompatibility[] };
+
+/** A reconciliation as kept for the panel and the assistant: the outcome, the
+ *  comparison it was computed against, and the stamps of the runs it read, so a
+ *  later edit is detected after the fact. */
+export interface SavedReconciliation {
+  outcome: ReconcileOutcome;
+  comparison: object;
+  stamps: Array<AnalysisStamp | null>;
+}
 
 export interface ReconcileContext {
   baseModelId: string;

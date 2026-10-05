@@ -44,11 +44,11 @@ describe('compareRunsSlice (#6921)', () => {
     s().addCompareRunCapture(a);
     s().addCompareRunCapture(b);
     const outcome = { ok: false as const, kind: 'clash' as const, baseRunId: a.id, headRunId: b.id, incompatibilities: [] };
-    s().setCompareReconciliation({ outcome, comparison: {} });
+    s().setCompareReconciliation({ outcome, comparison: {}, stamps: [] });
     s().removeCompareRunCapture(a.id);
     assert.deepEqual(s().compareRunCaptures.map(r => r.id), [b.id]);
     assert.equal(s().compareReconciliation, null);
-    s().setCompareReconciliation({ outcome, comparison: {} });
+    s().setCompareReconciliation({ outcome, comparison: {}, stamps: [] });
     s().resetViewerState();
     assert.deepEqual([s().compareRunCaptures, s().compareReconciliation], [[], null]);
   });

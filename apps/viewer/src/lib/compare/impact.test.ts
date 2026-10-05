@@ -21,6 +21,9 @@ import { addViewpointToTopic, createBCFTopic, type BCFTopic } from '@ifc-lite/bc
 import { executeList, type ListDefinition } from '@ifc-lite/lists';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import { createListDataProvider } from '@/lib/lists/adapter';
+import type { ViewerState } from '@/store';
+import { stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
+import { compareImpactOf } from './compare-analysis-state';
 import { computeCompareImpact, type ImpactInput, type ImpactRow } from './impact';
 import { PINS, revisionPair, runClash, runIds, type RevisionPair } from './revision-pair.test-support';
 
@@ -132,5 +135,18 @@ describe('comparison impact on the committed revision pair (#6921)', () => {
     assert.equal(impact.totalRows, 2);
     assert.equal(impact.rowsTruncated, true);
     assert.equal(impact.totals.clash, 2);
+  });
+
+  it('discloses an analysis whose freshness is unknown as unverified, never as current', async (t) => {
+    const pair = await revisionPair(t);
+    if (!pair) return;
+    const clash = stampAnalysisReport(await runClash(pair, ['A', 'B']), { mutationVersion: 1, geometryContentVersion: 0 });
+    // A list result and an unstamped validation report carry no run stamp.
+    const state = { compareResult: pair.compare, models: new Map([['A', pair.base], ['B', pair.head]]),
+      clashResult: clash, clashRawResult: null, idsValidationReport: await runIds(pair, 'A'),
+      listResult: wallVolumeList(pair), listDefinitions: [], activeListId: 'walls', bcfProject: null,
+      mutationVersion: 1, geometryContentVersion: 0, modelPlacement: null } as unknown as ViewerState;
+    assert.deepEqual(compareImpactOf(state)?.sources, { clash: 'available', validation: 'unverified', list: 'unverified', bcf: 'unavailable' });
+    assert.equal(compareImpactOf({ ...state, mutationVersion: 2 })?.sources.clash, 'stale');
   });
 });

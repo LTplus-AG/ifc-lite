@@ -165,3 +165,13 @@ test('a section box applies through setSectionBox and restore puts back the prio
   assert.deepEqual(restore(), { section: 'restored' });
   assert.equal(store().sectionPlane, before, 'the prior section object is back, without the box');
 });
+
+// #6907: hiding what is already hidden changes nothing, so nothing is reported as applied or offered for restore.
+test('a hide of elements that are already hidden is not applied and leaves no restore point', () => {
+  useViewerStore.setState(sceneModels());
+  store().hideEntities([101]);
+  const result = applySceneActions(set([{ type: 'hide', targets: [{ globalId: W1 }] }]), null);
+  assert.deepEqual(result?.applied, []);
+  assert.equal(useSceneSession.getState().active, null, 'no restore point for an apply that changed nothing');
+  assert.ok(store().hiddenEntities.has(101), 'the user hide stays');
+});

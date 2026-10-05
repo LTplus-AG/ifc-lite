@@ -67,8 +67,11 @@ export function ComposerAttachments({ model, value, onChange, disabled, sent }: 
     setCapturing(true);
     setProblem(null);
     const startedAt = sentRef.current;
-    const shot = await captureViewportScreenshot();
-    setCapturing(false);
+    let shot: string | null = null;
+    // A lost GPU device rejects the frame wait: report a failed capture rather than leave the control capturing.
+    try { shot = await captureViewportScreenshot(); }
+    catch (error) { console.warn('[Assistant] viewport capture failed', error); }
+    finally { setCapturing(false); }
     if (sentRef.current !== startedAt) return;
     if (shot) onChange(current => ({ ...current, screenshot: shot }));
     else setProblem('failed');

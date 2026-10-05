@@ -82,9 +82,11 @@ function applyHide(ids: number[], application: SceneApplication): number {
   const state = useViewerStore.getState();
   // Routed inline (not through `presentation`) so the expansion-routing gate sees this hide's argument.
   const added = resolvePresentationIds(state.cameraCallbacks?.resolveHighlightIds, ids).filter(id => !state.hiddenEntities.has(id));
+  // Elements already hidden are left as they are: only what this apply hid is recorded, counted and restored.
+  if (!added.length) return 0;
   application.hide = { added };
-  if (added.length) state.hideEntities(added);
-  return ids.length;
+  state.hideEntities(added);
+  return added.length;
 }
 
 function applyColour(action: ActionPreview, application: SceneApplication): number {
@@ -155,7 +157,7 @@ export function applySceneActions(set: SceneActionSet, evidence: EvidenceSnapsho
     const type = action.action.type;
     if (type === 'select') applied.push({ type, count: applySelection(action.ids, application) });
     else if (type === 'isolate') applied.push({ type, count: applyIsolate(action.ids, application) });
-    else if (type === 'hide') applied.push({ type, count: applyHide(action.ids, application) });
+    else if (type === 'hide') { const count = applyHide(action.ids, application); if (count) applied.push({ type, count }); }
     else if (type === 'colour') applied.push({ type, count: applyColour(action, application) });
     else if (type === 'section') { applySection(action, application); applied.push({ type, count: 0 }); }
     else if (applyCamera(action, application)) applied.push({ type, count: action.ids.length });

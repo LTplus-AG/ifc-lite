@@ -187,3 +187,20 @@ test('a restore with nothing restorable says so instead of claiming success', as
   assert.doesNotMatch(ui.textContent ?? '', /Previous view restored\./);
   assert.match(ui.textContent ?? '', /Could not be restored \(the 3D view is not ready\): camera/);
 });
+
+// #6907: a lost GPU device rejects the capture's frame wait; the control reports a failure instead of staying "Capturing".
+test('a capture that rejects (device lost) reports a failed capture and frees the control', async () => {
+  useViewerStore.setState({ ...sceneModels(), chatActiveModel: 'gpt-6-luna' });
+  updateApiKeys({ openaiKey: 'sk-test' });
+  replaceEvidence(captureEvidence('loadReport'));
+  setGlobalRendererRef({ current: { getGPUDevice: () => ({ queue: { onSubmittedWorkDone: () => Promise.reject(new Error('device lost')) } }) } as unknown as Renderer });
+  setGlobalCanvasRef({ current: { width: 0, height: 0, clientWidth: 0, clientHeight: 0, toDataURL: () => 'data:image/jpeg;base64,TEFURQ==' } as unknown as HTMLCanvasElement });
+  try {
+    const ui = render(<AssistantPanel />);
+    click(button(ui, 'Attach view')!);
+    await waitFor(() => /could not be captured/i.test(ui.textContent ?? ''), 'failure reported');
+    assert.equal(button(ui, 'Attach view')?.disabled, false, 'the control is usable again');
+  } finally {
+    clearApiKeys(); setGlobalRendererRef({ current: null }); setGlobalCanvasRef({ current: null });
+  }
+});

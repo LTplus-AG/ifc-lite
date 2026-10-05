@@ -52,6 +52,7 @@ import {
   extractQuantityTotals, findExpressIdsByNamePrefix, initChecks,
 } from './lib/checks.mjs';
 import { getFlag, numberFlag, seedFlag } from './lib/flags.mjs';
+import { isMainEntry } from '../../scripts/lib/is-main-entry.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -260,7 +261,7 @@ async function main() {
   process.stdout.write(`${JSON.stringify(line)}\n`);
 }
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+const isMain = isMainEntry(import.meta.url);
 if (isMain) {
   main().catch((err) => {
     process.stderr.write(`${err.stack ?? err.message}\n`);

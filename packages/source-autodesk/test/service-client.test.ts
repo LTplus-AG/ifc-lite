@@ -5,6 +5,43 @@ import { expect, it, vi } from 'vitest';
 import { createAutodeskService } from '../src/service-client.js';
 import { address } from '../src/refs.js';
 
+it('restarts sign-in after the restored gateway session expires (#6905)', async () => {
+  let generation = 1;
+  const authorizations: string[] = [];
+  const fetcher: typeof fetch = async (input, init) => {
+    const path = String(input);
+    if (path.endsWith('/session')) return Response.json({ csrf: `session-${generation}`, identity: null });
+    if (path.endsWith('/authorize')) {
+      const csrf = new Headers(init?.headers).get('X-IFClite-CSRF');
+      if (csrf !== `session-${generation}`) return Response.json({ message: 'Sign in with Autodesk.' }, { status: 401 });
+      authorizations.push(csrf);
+      return Response.json({ url: 'https://developer.api.autodesk.com/authentication/v2/authorize', state: 'transaction' });
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  };
+  const service = createAutodeskService(fetcher);
+  await service.identity();
+  generation++; // Gateway idle expiry or restart invalidates the old session.
+  await service.startSignIn();
+  generation++;
+  await service.startSignIn();
+  expect(authorizations).toEqual(['session-2', 'session-3']);
+});
+
+it('does not authorize when sign-in is cancelled during session discovery (#6905)', async () => {
+  const controller = new AbortController(); let authorized = false;
+  const fetcher: typeof fetch = async (input) => {
+    if (String(input).endsWith('/session')) {
+      controller.abort(new DOMException('Cancelled', 'AbortError'));
+      return Response.json({ csrf: 'session', identity: null });
+    }
+    authorized = true;
+    throw new Error('Authorization must not run after cancellation');
+  };
+  await expect(createAutodeskService(fetcher).startSignIn(controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+  expect(authorized).toBe(false);
+});
+
 const id = 'a'.repeat(32);
 const ref = {
   projectId: address({ kind: 'project', project: 'project', region: 'EMEA' }),

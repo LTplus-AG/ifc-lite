@@ -8,7 +8,8 @@
  * the report validated, the entity–specification population, and how much
  * of the check actually applied. A specification with no applicable
  * elements is called out instead of reading as a pass; an unevaluable one
- * (e.g. a rejected pattern) or a capped set check makes the run partial.
+ * (e.g. a rejected pattern), a capped set check, or a check where no
+ * specification applied to anything makes the run partial.
  */
 
 import { useMemo } from 'react';
@@ -56,7 +57,8 @@ export function ValidationResultCoverage({ report }: { report: ValidationReport 
   ].filter((line): line is string => typeof line === 'string');
   return (
     <ResultCoverage
-      status={coverage.unevaluable > 0 || coverage.capped > 0 ? 'partial' : 'complete'}
+      // Nothing applied to anything: no requirement was checked, so the run did not cover the check.
+      status={coverage.unevaluable > 0 || coverage.capped > 0 || coverage.applied === 0 ? 'partial' : 'complete'}
       counts={t('validationPanel.result.applied', { applied: number(coverage.applied), total: number(coverage.total) })}
       incomplete={incomplete}
     />

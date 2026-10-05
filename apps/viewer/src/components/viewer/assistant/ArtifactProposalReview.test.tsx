@@ -59,7 +59,7 @@ test('a chart answer is reviewed with the engine\'s denominator, saved to a dash
 test('an unknown property waits for the user\'s pick among real candidates before anything runs', async () => {
   const ui = answer({ kind: 'list.proposal', list: { name: 'Ratings', entityTypes: ['IfcSlab'], columns: [
     { id: 'name', source: 'attribute', propertyName: 'Name' }, { id: 'rating', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating' }] } });
-  await waitFor(() => !!ui.querySelector('[role="group"][aria-label="Pick the fields this means"]'), 'ambiguity shown');
+  await waitFor(() => !!ui.querySelector('fieldset[aria-label="Pick the fields this means"]'), 'ambiguity shown');
   assert.match(ui.textContent ?? '', /Property Pset_WallCommon\.FireRating \(Column rating\) is not in the loaded models\./);
   assert.equal(button(ui, 'Save to Lists'), undefined, 'no preview and no save until the name resolves');
   assert.equal(button(ui, 'Use the selected fields')?.disabled, true);

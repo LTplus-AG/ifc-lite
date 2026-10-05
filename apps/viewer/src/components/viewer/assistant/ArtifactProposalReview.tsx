@@ -116,8 +116,8 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
     <div className="p-2 space-y-2">
       <p className="font-medium break-words">{proposal.title}</p>
       {proposal.rationale && <p className="text-muted-foreground break-words">{proposal.rationale}</p>}
-      {models.size === 0 && <p role="status">{t('assistantArtifacts.noModels')}</p>}
-      {checking && <p role="status" className="text-muted-foreground animate-pulse">{t('assistantArtifacts.checking')}</p>}
+      {models.size === 0 && <output className="block">{t('assistantArtifacts.noModels')}</output>}
+      {checking && <output className="block text-muted-foreground animate-pulse">{t('assistantArtifacts.checking')}</output>}
       {indexError && <p role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive break-words">
         {t('assistantArtifacts.indexFailed', { reason: indexError })}</p>}
       {resolutions.some((resolution) => resolution.status === 'exact') && <ul aria-label={t('assistantArtifacts.checkedFields')} className="text-muted-foreground">
@@ -129,7 +129,7 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
         onResolve={(picks) => setProposal((currentProposal) => picks.reduce((next, { resolution, candidate }) =>
           resolution.site.replace(next, candidate.set, candidate.name), currentProposal))} />}
       {index?.partial && <p className="text-muted-foreground">{t('assistantArtifacts.partialIndex')}</p>}
-      {running && <p role="status" className="text-muted-foreground animate-pulse">{t('assistantArtifacts.running')}</p>}
+      {running && <output className="block text-muted-foreground animate-pulse">{t('assistantArtifacts.running')}</output>}
       {preview && !running && <ArtifactPreviewView preview={preview} />}
       {error && <p role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive break-words">{error}</p>}
       {preview && !saved && <div className="flex flex-wrap gap-2">

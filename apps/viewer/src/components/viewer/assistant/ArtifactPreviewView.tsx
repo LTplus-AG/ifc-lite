@@ -13,7 +13,7 @@ export function ArtifactPreviewView({ preview }: { preview: ArtifactPreview }) {
   const valued = preview.buckets.some((bucket) => bucket.value !== undefined && bucket.value !== bucket.count);
   return <div className="space-y-2">
     <p className="font-medium">{t('assistantArtifacts.matched', { count: preview.matched })}</p>
-    {preview.matched === 0 && <p role="status" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('assistantArtifacts.empty')}</p>}
+    {preview.matched === 0 && <output className="block rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('assistantArtifacts.empty')}</output>}
     <ul aria-label={t('assistantArtifacts.populationLabel')} className="space-y-0.5">
       {preview.population.map((model) => <li key={model.modelId} className="flex gap-2">
         <span className="min-w-0 flex-1 truncate">{model.name}</span><span className="tabular-nums">{t('assistantArtifacts.populationCount', { count: model.count })}</span>

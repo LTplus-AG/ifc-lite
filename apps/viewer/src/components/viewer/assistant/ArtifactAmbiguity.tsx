@@ -25,10 +25,10 @@ export function ArtifactAmbiguity({ unresolved, onResolve, onAsk }: {
   const [picks, setPicks] = useState<Record<number, string>>({});
   const complete = unresolved.every((_, index) => picks[index] !== undefined);
   const named = (set: string, name: string) => `${set}.${name}`;
-  return <div role="group" aria-label={t('assistantArtifacts.ambiguityTitle')} className="rounded border border-amber-500/40 bg-amber-500/10 p-2 space-y-2">
+  return <fieldset aria-label={t('assistantArtifacts.ambiguityTitle')} className="min-w-0 rounded border border-amber-500/40 bg-amber-500/10 p-2 space-y-2">
     <p className="font-medium">{t('assistantArtifacts.ambiguityTitle')}</p>
     <p>{t('assistantArtifacts.ambiguityHint')}</p>
-    {unresolved.map((resolution, index) => <fieldset key={`${resolution.site.where}:${index}`} className="space-y-1">
+    {unresolved.map((resolution, index) => <fieldset key={`${resolution.site.where}:${index}`} className="min-w-0 space-y-1">
       <legend className="font-medium break-words">{t(resolution.site.kind === 'quantity' ? 'assistantArtifacts.ambiguityQuantity' : 'assistantArtifacts.ambiguityProperty',
         { field: named(resolution.site.set, resolution.site.name), where: resolution.site.where })}</legend>
       {resolution.candidates.length === 0 ? <p>{t('assistantArtifacts.ambiguityNone')}</p>
@@ -51,5 +51,5 @@ export function ArtifactAmbiguity({ unresolved, onResolve, onAsk }: {
         fields: unresolved.map((resolution) => named(resolution.site.set, resolution.site.name)).join(', '),
       }))}>{t('assistantArtifacts.ambiguityAskButton')}</Button>}
     </div>
-  </div>;
+  </fieldset>;
 }

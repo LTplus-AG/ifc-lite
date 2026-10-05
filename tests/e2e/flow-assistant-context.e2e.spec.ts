@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #6919: preflight → Run → debug from the real run's diagnostics → rerun →
- * edit the tracked branch → rerun, on the committed `building-architecture.ifc`
- * sample through the real Flow panel. The graph is imported into the Flow
- * library as a coordinator would. Only the paid provider response is
- * recorded; validation, preflight, runs and tracking are the viewer's own. Runs in `viewer-e2e-ci` through the
+ * #6919: describe → review → create → preflight → Run → debug from the real
+ * run's diagnostics → rerun → edit the tracked branch → rerun, on the
+ * committed `building-architecture.ifc` sample through the real Flow panel.
+ * Only the paid provider response is recorded; graphs, validation, preflight,
+ * runs and tracking are the viewer's own. Runs in `viewer-e2e-ci` through the
  * project's `assistant-context` spec pattern.
  */
 
@@ -37,7 +37,8 @@ const store = (page: Page) => page.evaluate(() => {
     xs: state.flowDoc?.nodes.find(node => node.id === 'xs')?.params?.items };
 });
 
-const columns = (xs: unknown[]) => ({ name: 'Columns along X', description: 'One column per X position on the first storey',
+const created = (xs: unknown[]) => ({ version: 1, kind: 'flow.create', name: 'Columns along X',
+  description: 'One column per X position on the first storey',
   nodes: [
     { id: 'storeys', type: 'model.byType', params: { type: 'IfcBuildingStorey' } }, { id: 'first', type: 'core.first' },
     { id: 'xs', type: 'core.list', params: { items: xs } }, { id: 'y', type: 'core.number', params: { value: 0 } },
@@ -52,12 +53,13 @@ const columns = (xs: unknown[]) => ({ name: 'Columns along X', description: 'One
   outputs: [{ nodeId: 'add', port: 'entity', label: 'Columns' }] });
 // Recorded answers keyed by the user's question; the assistant sees real evidence either way.
 const ANSWERS: Array<[RegExp, unknown]> = [
+  [/^Create/, created(['0', '4', '8'])],
   [/^Why did the last run fail/, { version: 1, kind: 'flow.patch', operations: [{ op: 'setParam', node: 'xs', param: 'items', value: [0, 4, 8] }],
     diagnosis: { nodes: ['pt'], explanation: 'The X positions are text; geometry.point needs numbers, so every lane failed and no column was added.' } }],
   [/^Drop the last column/, { version: 1, kind: 'flow.patch', operations: [{ op: 'setParam', node: 'xs', param: 'items', value: [0, 4] }] }],
 ];
 
-test('#6919 Flow debugging with the assistant on a real sample', async ({ page }, testInfo) => {
+test('#6919 Flow authoring and debugging with the assistant on a real sample', async ({ page }, testInfo) => {
   // The one-time privacy toast would cover the review cards in the screenshots.
   await page.addInitScript(() => localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e'));
   const viewer = new ViewerBenchmarkPage(page);
@@ -95,19 +97,42 @@ test('#6919 Flow debugging with the assistant on a real sample', async ({ page }
     await reveal.scrollIntoViewIfNeeded();
     await assistant.screenshot({ path: testInfo.outputPath(name) });
   };
+  const preflight = async (card: Locator) => {
+    await expect(assistant.getByRole('button', { name: 'Preflight', exact: true })).toHaveCount(1);
+    await card.getByRole('button', { name: 'Preflight', exact: true }).click();
+    await expect(card.getByText(/Preflight passed for “Columns along X”/)).toBeVisible();
+  };
 
-  // 1. A coordinator's graph in the Flow library: the Flow panel's own Run fails every lane on the text X positions.
-  await page.evaluate(({ graph }) => {
-    const state = (globalThis as unknown as { __ifc_lite_viewer_store__: { getState(): { importFlow(doc: unknown): string | null } } }).__ifc_lite_viewer_store__.getState();
-    if (!state.importFlow({ flowVersion: 2, id: 'columns-along-x', inputs: [], capabilities: ['model.create', 'model.read'], ...graph })) throw new Error('Flow library refused the graph');
-  }, { graph: columns(['0', '4', '8']) });
+  // 1. Describe a new graph with no graph open; review is inert until approved.
+  await ask('Create a graph that places three columns along X on the first storey.');
+  await expect(assistant).toContainText('New Flow graph proposal');
+  const createReview = assistant.getByRole('region', { name: 'Review new Flow graph', exact: true });
+  await createReview.getByRole('button', { name: 'Review new graph', exact: true }).click();
+  await expect(createReview).toContainText('Capabilities the graph declares: model.create, model.read');
+  await expect(createReview).toContainText('Nodes that edit the model when run: add (model.addElement)');
+  await expect(createReview).toContainText('add will create elements owned by this graph under “Columns along X/add”.');
+  const createButton = createReview.getByRole('button', { name: 'Create and open graph', exact: true });
+  await expect(createButton).toBeDisabled();
+  expect((await store(page)).saved).toEqual([]);
+  await shot(createReview.getByText('New graph: Columns along X'), 'flow-create-review.png');
+  await createReview.getByRole('checkbox', { name: /I reviewed the new graph/ }).check();
+  await createButton.click();
+  await expect(createReview).toContainText('Created “Columns along X” as a new saved graph and opened it in Flow. Nothing was run.');
   expect(await store(page)).toMatchObject({ saved: ['Columns along X'], flowName: 'Columns along X', lastRun: null });
+
+  // 2. Preflight from the assistant catches what Run would hit (Edit mode off), fixes it in place,
+  //    then the Flow panel's own Run: every lane of the text X positions fails natively.
+  await createReview.getByRole('button', { name: 'Preflight', exact: true }).click();
+  await expect(createReview).toContainText('add edits the model: Turn on Edit mode before changing a model');
+  await shot(createReview.getByText(/add edits the model/), 'flow-preflight-edit-mode.png');
+  await createReview.getByRole('button', { name: 'Turn on Edit mode', exact: true }).click();
+  await expect(createReview.getByText(/Preflight passed for “Columns along X”/)).toBeVisible();
   const failed = await runInFlow();
   expect(failed.reports.find(report => report.nodeId === 'pt')?.laneErrors).toBe(3);
   expect(failed.reports.find(report => report.nodeId === 'add')?.laneErrors).toBe(0);
   await page.screenshot({ path: testInfo.outputPath('flow-run-lane-errors.png') });
 
-  // 2. Debug from the captured run: the native error, not the model's, is cited; both acknowledgements gate apply.
+  // 3. Debug from the captured run: the native error, not the model's, is cited; both acknowledgements gate apply.
   await ask('Why did the last run fail, and how can the graph be fixed?', 'Discuss run with AI');
   expect(lastSystem).toContain('"verdict":"lane-errors"');
   expect(lastSystem).toContain('must be a finite number');
@@ -124,18 +149,13 @@ test('#6919 Flow debugging with the assistant on a real sample', async ({ page }
   await patchReview.getByRole('checkbox', { name: /I understand which tracked elements/ }).check();
   await apply.click();
   expect((await store(page)).xs).toEqual([0, 4, 8]);
-  // Preflight reports what Run would hit (Edit mode is off), fixes it in place, and passes.
-  await patchReview.getByRole('button', { name: 'Preflight', exact: true }).click();
-  await expect(patchReview).toContainText('add edits the model: Turn on Edit mode before changing a model');
-  await shot(patchReview.getByText(/add edits the model/), 'flow-preflight-edit-mode.png');
-  await patchReview.getByRole('button', { name: 'Turn on Edit mode', exact: true }).click();
-  await expect(patchReview.getByText(/Preflight passed for “Columns along X”/)).toBeVisible();
+  await preflight(patchReview);
   const fixed = await runInFlow();
   expect(fixed.ok).toBe(true);
   expect(fixed.reports.filter(report => report.laneErrors > 0)).toEqual([]);
   expect(fixed.reports.find(report => report.nodeId === 'add')?.tracking).toEqual({ created: 3, updated: 0, kept: 0, removed: 0 });
 
-  // 3. Edit the tracked branch: the review counts the three owned columns; the rerun keeps two and removes one.
+  // 4. Edit the tracked branch: the review counts the three owned columns; the rerun keeps two and removes one.
   await ask('Drop the last column.');
   await patchReview.getByRole('button', { name: 'Review changes', exact: true }).click();
   await expect(patchReview).toContainText('add or its inputs change: 3 owned elements under “Columns along X/add” are updated on the next Run.');
@@ -146,5 +166,5 @@ test('#6919 Flow debugging with the assistant on a real sample', async ({ page }
   const rerun = await runInFlow();
   expect(rerun.reports.find(report => report.nodeId === 'add')?.tracking).toEqual({ created: 0, updated: 0, kept: 2, removed: 1 });
   await page.screenshot({ path: testInfo.outputPath('flow-tracked-rerun.png') });
-  expect(prompts).toHaveLength(2);
+  expect(prompts).toHaveLength(3);
 });

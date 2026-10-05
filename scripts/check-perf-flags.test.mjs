@@ -82,7 +82,7 @@ test('tests, the benchmark harness and the allowed readers are exempt from the r
   assert.equal(isScanned('packages/geometry/src/geometry-parallel.ts'), true);
   assert.equal(isScanned('apps/viewer/src/utils/lodConfig.test.ts'), false);
   assert.equal(isScanned('apps/viewer/src/test/harness.ts'), false);
-  assert.equal(isScanned('tests/benchmark/viewer-benchmark-page.ts'), false);
+  assert.equal(isScanned('tests/benchmark/example-harness.ts'), false);
   for (const path of ALLOWED_READERS) assert.equal(isScanned(path), false, path);
 });
 

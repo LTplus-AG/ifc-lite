@@ -30,7 +30,9 @@ export const ALLOWED_READERS = new Set([
   'packages/data/src/perf-flag-reader.ts',
   'packages/geometry/src/perf-flags.ts',
 ]);
-const SCAN_ROOTS = ['apps', 'packages'];
+// Production sources only: the viewer and every package's src/ (other apps
+// and package tooling never read these flags).
+const SCAN_ROOTS = ['apps/viewer/src', 'packages/*/src'];
 const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 const EXEMPT = [
   /(?:^|\/)tests?\//,
@@ -55,7 +57,7 @@ function parseToday(argv) {
 function main() {
   const today = parseToday(process.argv.slice(2));
   const problems = checkRegistry(readFileSync(join(ROOT, REGISTRY_PATH), 'utf8'), { today, fileName: REGISTRY_PATH });
-  const files = execFileSync('git', ['ls-files', '-co', '--exclude-standard', '--', ...SCAN_ROOTS], { cwd: ROOT, encoding: 'utf8' })
+  const files = execFileSync('git', ['ls-files', '-co', '--exclude-standard', '--', ...SCAN_ROOTS.map((root) => `:(glob)${root}/**`)], { cwd: ROOT, encoding: 'utf8' })
     .split('\n')
     .filter((path) => path && isScanned(path));
   if (files.length === 0) throw new Error('check-perf-flags: no source files scanned (wrong cwd?)');

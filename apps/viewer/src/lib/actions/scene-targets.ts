@@ -84,7 +84,8 @@ function rowIdentities(state: TargetState, data: unknown): number[] | 'ambiguous
   };
   visit(data, 0);
   if (!found) return null;
-  return ambiguous && ids.length === 0 ? 'ambiguous' : ids;
+  // One ambiguous identity makes the whole cited row ambiguous: applying only the rest would hide the omission.
+  return ambiguous ? 'ambiguous' : ids;
 }
 
 /** The attached evidence, parsed and freshness-checked once per preview rather than once per target. */

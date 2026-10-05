@@ -12,6 +12,8 @@ import { B_OFFSET, SHARED, W1, W2, sceneModels } from '@/test/scene-actions-fixt
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { parseSceneActions } from './scene-actions';
 import { previewSceneActions } from './scene-preview';
+import { resolveSceneTarget } from './scene-targets';
+import type { EvidenceSnapshot } from '@/lib/assistant/evidence';
 
 const initial = useViewerStore.getState();
 afterEach(() => useViewerStore.setState(initial, true));
@@ -113,4 +115,13 @@ test('coordinates convert from IFC world in stated units through the RTC frame, 
   useViewerStore.setState(fixtureModels(fixtureModel('m')));
   assert.equal(preview([{ type: 'section', units: 'm', plane: { origin: [0, 0, 0], normal: [0, 0, 1] } }]).actions[0].reason, 'no-bounds',
     'without geometry bounds coordinates cannot be checked, so they are refused');
+});
+
+// #6907: a cited row that names one ambiguous element is ambiguous as a whole, never silently narrowed to the rest.
+test('a citation whose row holds an ambiguous GlobalId beside a resolvable one is reported ambiguous', () => {
+  useViewerStore.setState(sceneModels());
+  const citations = { evidence: { source: 'compare' } as EvidenceSnapshot,
+    rows: new Map<string, unknown>([['E1', { base: { globalId: SHARED }, head: { globalId: W1 } }], ['E2', { head: { globalId: W1 } }]]) };
+  assert.equal(resolveSceneTarget(useViewerStore.getState(), { citation: 'E1' }, citations).status, 'ambiguous');
+  assert.deepEqual(resolveSceneTarget(useViewerStore.getState(), { citation: 'E2' }, citations), { target: { citation: 'E2' }, status: 'resolved', ids: [101] });
 });

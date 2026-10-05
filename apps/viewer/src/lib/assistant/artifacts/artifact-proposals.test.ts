@@ -27,7 +27,16 @@ test('a filter proposal becomes native Rules groups with canonical classes and S
   assert.ok(type.kind === 'ifcType' && type.values.includes('IfcWall') && type.values.includes('IfcWallStandardCase'), 'a class names its subclasses, as the selector does');
   assert.deepEqual(quantity, { kind: 'quantity', setName: 'Qto_WallBaseQuantities', quantityName: 'NetSideArea', op: 'gt', value: 10, valueUnit: 'si' });
   assert.equal(property.kind === 'property' && property.value, 'TRUE', 'an IFC boolean reads as its STEP spelling');
-  assert.equal(property.kind === 'property' && property.valueUnit, undefined, 'an equality is not a unit-bearing comparison');
+  assert.equal(property.kind === 'property' && property.valueUnit, undefined, 'a boolean equality is not a unit-bearing comparison');
+});
+
+test('a numeric property equality is SI like every numeric threshold; text stays as stored (#6914 review)', () => {
+  const rule = (op: string, value: unknown) => parseFilterProposal(json({ version: 1, kind: 'filter.proposal', title: 'T', name: 'N',
+    groups: [{ combinator: 'AND', rules: [{ kind: 'property', setName: 'Pset_Dims', propertyName: 'Height', op, value }] }] })).groups[0].rules[0];
+  assert.deepEqual(rule('eq', 2.5), { kind: 'property', setName: 'Pset_Dims', propertyName: 'Height', op: 'eq', value: '2.5', valueUnit: 'si' });
+  assert.equal(rule('ne', 3).kind === 'property' && rule('ne', 3).valueUnit, 'si');
+  assert.equal(rule('eq', 'EI60').kind === 'property' && rule('eq', 'EI60').valueUnit, undefined, 'a text equality compares the stored text');
+  assert.equal(rule('gte', '2').kind === 'property' && rule('gte', '2').valueUnit, 'si');
 });
 
 test('a model rule names loaded models; they stay names until the review resolves them', () => {
@@ -47,6 +56,10 @@ test('filter proposals refuse with reasons a person can act on', () => {
   refuse([walls], /runs over every loaded model.*"visible" and "selected"/, { scope: 'visible' });
   refuse([{ combinator: 'AND', rules: [{ kind: 'name', op: 'matches', value: '^W' }] }], /"op" must be one of eq, ne, contains/);
   refuse([{ combinator: 'AND', rules: [{ kind: 'quantity', setName: 'Q', quantityName: 'A', op: 'gt', value: '10 m2' }] }], /finite number \(SI units/);
+  // `Number('')` is 0: an empty or blank threshold is refused, never saved as a fabricated zero (#6914 review).
+  for (const value of ['', '  ', 'ten']) {
+    refuse([{ combinator: 'AND', rules: [{ kind: 'property', setName: 'S', propertyName: 'P', op: 'gt', value }] }], /compares with "gt", so "value" must be a number/);
+  }
   refuse([{ combinator: 'XOR', rules: [] }], /"combinator" must be AND or OR/);
   refuse([walls], /unsupported field "selector"/, { selector: 'IfcWall' });
   refuse([], /at least one filter group/);

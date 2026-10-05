@@ -23,7 +23,7 @@ export const ARTIFACT_OUTPUT_GUIDANCE =
   + '{"version":1,"kind":"chart.proposal","title":"…","scope":"all|visible|basket","chart":{"type":"bar|pie|treemap|stackedBar|histogram|elementCount",'
   + '"dimension":"IfcType|Storey|Model|Name" or "elementField":F,"measure":{"agg":"count|sum"},"measureField":F (sum only),"filter":{"groups":[G]},"topN":10}}. '
   + 'G = {"combinator":"AND|OR","rules":[R]}; groups OR together. R: {"kind":"ifcType","op":"in|notIn","values":["IfcWall"]} (subclasses included); '
-  + '{"kind":"property","setName":"Pset_WallCommon","propertyName":"FireRating","op":"eq|ne|contains|startsWith|gt|lt|isSet|isNotSet","value":"EI60"}; '
+  + '{"kind":"property","setName":"Pset_WallCommon","propertyName":"FireRating","op":"eq|ne|contains|startsWith|gt|lt|isSet|isNotSet","value":"EI60"} (a number value compares in SI: m, m², m³); '
   + '{"kind":"quantity","setName":"Qto_WallBaseQuantities","quantityName":"NetSideArea","op":"gt|gte|lt|lte|eq|ne","value":10} (numbers in SI: m, m², m³); '
   + 'storey/predefinedType/globalId {"op":"in","values":[…]}; model {"op":"in|notIn","values":["<a model name listed below>"]}; '
   + 'name/material/type {"op":"eq|contains|startsWith","value":"…"}; '

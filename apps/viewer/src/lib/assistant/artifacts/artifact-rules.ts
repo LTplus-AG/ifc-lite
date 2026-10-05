@@ -13,8 +13,11 @@
  * output, so every field is checked here. Classes are canonical: a known IFC
  * class names its subclasses too (`expandTypes`, the same reading the selector
  * field gives `IfcWall`), so a wall filter reaches `IfcWallStandardCase`.
- * Numeric property and quantity thresholds are SI (`valueUnit: 'si'`): metres,
- * square metres, cubic metres, whatever unit the model stores in.
+ * Numeric property and quantity comparisons are SI (`valueUnit: 'si'`): metres,
+ * square metres, cubic metres, whatever unit the model stores in. For a
+ * property that is every ordering op, and `eq` / `ne` with a JSON number; a
+ * text or boolean equality compares the stored value. Values with no unit
+ * (labels, counts) compare as stored either way.
  */
 
 import { expandTypes, isKnownType, normalizeIfcTypeName } from '@ifc-lite/parser';
@@ -115,10 +118,12 @@ function parseRule(value: unknown, at: string): FilterRule {
       onlyKeys(value, ['kind', 'setName', 'propertyName', 'op', 'value'], at);
       const ruleOp = op(value.op, VALUE_OPS, at);
       const ruleValue = PRESENCE_OPS.has(ruleOp) ? '' : textValue(value.value, at);
-      if (NUMERIC_VALUE_OPS.has(ruleOp) && !Number.isFinite(Number(ruleValue))) throw new Error(`${at} compares with "${ruleOp}", so "value" must be a number`);
+      // `Number('')` is 0, so a blank operand is refused before the numeric check.
+      if (NUMERIC_VALUE_OPS.has(ruleOp) && (ruleValue.trim() === '' || !Number.isFinite(Number(ruleValue)))) throw new Error(`${at} compares with "${ruleOp}", so "value" must be a number`);
       const rule = Rule.property(requiredText(value.setName, `${at} "setName"`), requiredText(value.propertyName, `${at} "propertyName"`), ruleOp, ruleValue);
-      // A numeric comparison of a measure reads the operand in SI, never the file's unit.
-      return NUMERIC_VALUE_OPS.has(ruleOp) ? { ...rule, valueUnit: 'si' } : rule;
+      // A numeric comparison of a measure, an equality with a JSON number included, reads the operand in SI, never the file's unit.
+      const numeric = NUMERIC_VALUE_OPS.has(ruleOp) || ((ruleOp === 'eq' || ruleOp === 'ne') && typeof value.value === 'number');
+      return numeric ? { ...rule, valueUnit: 'si' } : rule;
     }
     case 'quantity': {
       onlyKeys(value, ['kind', 'setName', 'quantityName', 'op', 'value'], at);

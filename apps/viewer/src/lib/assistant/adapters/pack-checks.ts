@@ -3,5 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { EvidenceAdapter } from './types';
+import { duplicatesAdapter } from './duplicates';
+import { manualChecklistAdapter } from './manual-checklist';
+import { lensAdapter } from './lens';
+import { bcfAdapter } from './bcf';
 
-export const PACK: readonly EvidenceAdapter[] = [];
+export const PACK: readonly EvidenceAdapter[] = [duplicatesAdapter, manualChecklistAdapter, lensAdapter, bcfAdapter];

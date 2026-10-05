@@ -4,11 +4,14 @@
 
 import { analysisStampOf } from '@/hooks/useAnalysisStaleness';
 import { clashDisciplineCandidates, CLASH_TAXONOMY_LIMITATIONS } from '../clash-taxonomy';
+import { isDuplicateScan } from './duplicates';
 import { unavailableCapture, type EvidenceAdapter } from './types';
 
 /** Native clash findings; row shape frozen by saved conversations (#6813). */
 export const clashAdapter: EvidenceAdapter = {
   id: 'clash', group: 'checks', panelIds: ['clash'],
+  // A duplicate scan in the panel is discussed as coincident sets (`duplicates`).
+  panelSubject: s => !isDuplicateScan(s.clashResult),
   titleKey: 'clashPanel.title', descriptionKey: 'assistant.pickClashDescription',
   rowMeaningKey: 'assistant.evidenceRowsClash', unavailableKey: 'assistant.evidenceUnavailableClash',
   suggestionKeys: ['assistant.suggestClashSummary', 'assistant.suggestClashGroups'],

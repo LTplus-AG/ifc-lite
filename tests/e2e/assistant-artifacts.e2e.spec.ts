@@ -85,6 +85,7 @@ test('assistant artifact proposals are reviewed by the native engines and saved 
   const review = assistant.getByRole('region', { name: 'Review against the loaded models', exact: true });
   const ambiguity = review.getByRole('group', { name: 'Pick the fields this means', exact: true });
   await expect(ambiguity).toContainText('Property Pset_WallCommon.FireRating');
+  // Absence on first poll; the deterministic proof that the engine never starts is the mounted test in ArtifactProposalReview.test.tsx.
   await expect(review.getByRole('button', { name: 'Save to Lists', exact: true }), 'nothing runs before every name resolves').toHaveCount(0);
   await ambiguity.scrollIntoViewIfNeeded();
   // The narrow sidebar never scrolls sideways, even for long dotted field names.

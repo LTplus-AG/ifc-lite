@@ -124,6 +124,9 @@ export function parseConstraint(value: unknown, context: ConstraintContext): IDS
       if (result.maxInclusive !== undefined && result.maxExclusive !== undefined) throw new Error(`${at} may set maxInclusive or maxExclusive, not both`);
       const low = result.minInclusive ?? result.minExclusive, high = result.maxInclusive ?? result.maxExclusive;
       if (low !== undefined && high !== undefined && low > high) throw new Error(`${at} has its lower bound above its upper bound`);
+      if (low !== undefined && low === high && (result.minExclusive !== undefined || result.maxExclusive !== undefined)) {
+        throw new Error(`${at} admits no value: an exclusive bound equals the other bound; use minInclusive and maxInclusive for one exact value`);
+      }
       if (base && base !== 'xs:double' && base !== 'xs:integer' && base !== 'xs:decimal') throw new Error(`${at}: bounds need a numeric dataType, not one backed by ${base}`);
       return { type: 'bounds', ...Object.fromEntries(defined), base: base ?? 'xs:double' };
     }

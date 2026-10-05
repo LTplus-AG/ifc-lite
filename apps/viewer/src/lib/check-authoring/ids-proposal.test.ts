@@ -91,6 +91,12 @@ test('refusals name the field and what to change', () => {
   refuse(withRequirement({ type: 'property', propertySet: 'Pset_WallCommon', baseName: 'FireRating', dataType: 'IFCLABEL', unit: 'mm', value: 1 }), /unit needs dataType/);
   refuse(withRequirement({ type: 'property', propertySet: 'Pset_WallCommon', baseName: 'Width', dataType: 'IFCREALX' }), /upper-case IFC data type/);
   refuse(withRequirement({ type: 'property', propertySet: 'Pset_WallCommon', baseName: 'Width', value: { type: 'bounds', minInclusive: 3, maxInclusive: 1 } }), /lower bound above its upper bound/);
+  // #6915 review: equal bounds with an exclusive side admit no value, so every applicable element would fail.
+  refuse(withRequirement({ type: 'property', propertySet: 'Pset_WallCommon', baseName: 'Width', value: { type: 'bounds', minExclusive: 5, maxExclusive: 5 } }), /admits no value/);
+  refuse(withRequirement({ type: 'property', propertySet: 'Pset_WallCommon', baseName: 'Width', value: { type: 'bounds', minInclusive: 5, maxExclusive: 5 } }), /admits no value/);
+  refuse(withRequirement({ type: 'property', propertySet: 'Pset_WallCommon', baseName: 'Width', value: { type: 'bounds', minExclusive: 5, maxInclusive: 5 } }), /admits no value/);
+  assert.doesNotThrow(() => parseIdsProposal(answer(withRequirement({ type: 'property', propertySet: 'Pset_WallCommon', baseName: 'Width',
+    value: { type: 'bounds', minInclusive: 5, maxInclusive: 5 } }))), 'inclusive equal bounds admit exactly that value');
   refuse(withRequirement({ type: 'classification', value: 'Ss_25' }), /system is required/);
   refuse(withRequirement({ type: 'partOf', relation: 'IfcRelAggregates', entity: { name: 'IFCBUILDING' }, cardinality: 'optional' }), /required or prohibited/);
   refuse(withRequirement({ type: 'attribute', name: 'Name', value: { type: 'enumeration', values: ['A', 'A'] } }), /repeats a value/);

@@ -88,7 +88,7 @@ function formatHostDetail(h: GeometryDiagnostics['worstHosts'][number]): string 
     parts.push(`bbox=[${h.bbox.min.map(fmt).join(', ')}] – [${h.bbox.max.map(fmt).join(', ')}]`);
   }
   if (h.triangleCount !== undefined) {
-    parts.push(`triangles=${h.triangleCount.toLocaleString()}`);
+    parts.push(`triangles=${h.triangleCount.toLocaleString('en-US')}`);
   }
   return parts.length > 0 ? parts.join('  ') : undefined;
 }

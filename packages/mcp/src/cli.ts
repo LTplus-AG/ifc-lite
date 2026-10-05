@@ -102,7 +102,7 @@ async function main(): Promise<void> {
       const m = await loadIfcModel(resolve(file), { allowedPaths: opts.allowedPaths });
       registry.add(m);
       // Use stderr — stdout is sacred for the JSON-RPC channel.
-      process.stderr.write(`[ifc-lite-mcp] loaded ${m.name} (${m.id}) — ${m.store.entityCount.toLocaleString()} entities\n`);
+      process.stderr.write(`[ifc-lite-mcp] loaded ${m.name} (${m.id}) — ${m.store.entityCount.toLocaleString('en-US')} entities\n`);
     }
 
     const server = createMCPServer({

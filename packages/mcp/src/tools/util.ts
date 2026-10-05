@@ -149,7 +149,7 @@ export function okResult(text: string, structured?: Record<string, unknown>): Ca
 
 export function fmtCount(n: number, singular: string, plural?: string): string {
   if (n === 1) return `1 ${singular}`;
-  return `${n.toLocaleString()} ${plural ?? singular + 's'}`;
+  return `${n.toLocaleString('en-US')} ${plural ?? singular + 's'}`;
 }
 
 /** Slice a large array down to `limit` and return `{ items, truncated }`. */

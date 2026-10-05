@@ -99,7 +99,7 @@ export async function infoCommand(args: string[]): Promise<void> {
   process.stdout.write(`\n  File:     ${filePath}\n`);
   process.stdout.write(`  Schema:   ${store.schemaVersion}\n`);
   process.stdout.write(`  Size:     ${summary.fileSizeHuman}\n`);
-  process.stdout.write(`  Entities: ${store.entityCount.toLocaleString()}\n`);
+  process.stdout.write(`  Entities: ${store.entityCount.toLocaleString('en-US')}\n`);
   process.stdout.write(`  Parsed:   ${summary.parseTime}\n`);
 
   if (storeys.length > 0) {
@@ -135,7 +135,7 @@ export async function infoCommand(args: string[]): Promise<void> {
     process.stdout.write(`\n  Building elements:\n`);
     process.stdout.write(formatTable(
       ['Type', 'Count'],
-      buildingElements.map(([name, count]) => [name, count.toLocaleString()]),
+      buildingElements.map(([name, count]) => [name, count.toLocaleString('en-US')]),
     ).split('\n').map(l => '    ' + l).join('\n') + '\n');
   }
 
@@ -143,7 +143,7 @@ export async function infoCommand(args: string[]): Promise<void> {
     process.stdout.write(`\n  Other types (top ${otherTypes.length}):\n`);
     process.stdout.write(formatTable(
       ['Type', 'Count'],
-      otherTypes.map(([name, count]) => [name, count.toLocaleString()]),
+      otherTypes.map(([name, count]) => [name, count.toLocaleString('en-US')]),
     ).split('\n').map(l => '    ' + l).join('\n') + '\n');
   }
 
@@ -152,9 +152,9 @@ export async function infoCommand(args: string[]): Promise<void> {
     process.stdout.write(`\n  Drop census: did not run (no dropCensus on this store).\n`);
   } else {
     process.stdout.write(
-      `\n  Drop census: ${dropCensusSummary.totalScanned.toLocaleString()} scanned, `
-      + `${dropCensusSummary.totalRetained.toLocaleString()} retained, `
-      + `${dropCensusSummary.totalSkipped.toLocaleString()} skipped.\n`
+      `\n  Drop census: ${dropCensusSummary.totalScanned.toLocaleString('en-US')} scanned, `
+      + `${dropCensusSummary.totalRetained.toLocaleString('en-US')} retained, `
+      + `${dropCensusSummary.totalSkipped.toLocaleString('en-US')} skipped.\n`
     );
     if (dropCensusSummary.unexpectedSkippedClasses.length > 0) {
       // Classes with a GlobalId (IfcRoot descendants) that fell to CAT_SKIP
@@ -162,7 +162,7 @@ export async function infoCommand(args: string[]): Promise<void> {
       process.stdout.write(`  Skipped classes with a GlobalId (unexpected):\n`);
       process.stdout.write(formatTable(
         ['Type', 'Count', 'In schema'],
-        dropCensusSummary.unexpectedSkippedClasses.map((c: { type: string; scanned: number; knownInSchema: boolean }) => [c.type, c.scanned.toLocaleString(), c.knownInSchema ? 'yes' : 'no']),
+        dropCensusSummary.unexpectedSkippedClasses.map((c: { type: string; scanned: number; knownInSchema: boolean }) => [c.type, c.scanned.toLocaleString('en-US'), c.knownInSchema ? 'yes' : 'no']),
       ).split('\n').map(l => '    ' + l).join('\n') + '\n');
     }
     if (dropCensusSummary.expectedSkippedClasses.length > 0) {
@@ -171,14 +171,14 @@ export async function infoCommand(args: string[]): Promise<void> {
       process.stdout.write(`  Skipped classes with no GlobalId (expected — geometry/placement/style resources):\n`);
       process.stdout.write(formatTable(
         ['Type', 'Count', 'In schema'],
-        dropCensusSummary.expectedSkippedClasses.map((c: { type: string; scanned: number; knownInSchema: boolean }) => [c.type, c.scanned.toLocaleString(), c.knownInSchema ? 'yes' : 'no']),
+        dropCensusSummary.expectedSkippedClasses.map((c: { type: string; scanned: number; knownInSchema: boolean }) => [c.type, c.scanned.toLocaleString('en-US'), c.knownInSchema ? 'yes' : 'no']),
       ).split('\n').map(l => '    ' + l).join('\n') + '\n');
     }
     if (dropCensusSummary.unindexedRelClasses.length > 0) {
       process.stdout.write(`  IFCREL* classes seen but not indexed as edges:\n`);
       process.stdout.write(formatTable(
         ['Type', 'Count'],
-        dropCensusSummary.unindexedRelClasses.map((c: { type: string; scanned: number }) => [c.type, c.scanned.toLocaleString()]),
+        dropCensusSummary.unindexedRelClasses.map((c: { type: string; scanned: number }) => [c.type, c.scanned.toLocaleString('en-US')]),
       ).split('\n').map(l => '    ' + l).join('\n') + '\n');
     }
     if (dropCensusSummary.unknownClasses.length > 0) {
@@ -189,7 +189,7 @@ export async function infoCommand(args: string[]): Promise<void> {
       process.stdout.write(`  Classes not recognised by the schema registry (unknown):\n`);
       process.stdout.write(formatTable(
         ['Type', 'Count'],
-        dropCensusSummary.unknownClasses.map((c: { type: string; scanned: number }) => [c.type, c.scanned.toLocaleString()]),
+        dropCensusSummary.unknownClasses.map((c: { type: string; scanned: number }) => [c.type, c.scanned.toLocaleString('en-US')]),
       ).split('\n').map(l => '    ' + l).join('\n') + '\n');
     }
   }

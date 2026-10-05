@@ -342,7 +342,7 @@ const modelSave: Tool = {
     const content = m.bim.export.ifc(undefined, { schema: schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' }); // no ref list: whole model (#4738)
     const text = typeof content === 'string' ? content : new TextDecoder().decode(content);
     await writeFile(filePath, text, 'utf-8');
-    return okResult(`Wrote ${text.length.toLocaleString()} bytes to ${filePath}.`, {
+    return okResult(`Wrote ${text.length.toLocaleString('en-US')} bytes to ${filePath}.`, {
       filePath,
       bytes: text.length,
       schema,

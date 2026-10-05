@@ -278,7 +278,7 @@ const modelAudit: Tool = {
     if (unnamed > 0) {
       issues.push({
         severity: 'warning', category: 'data-quality', rule: 'has-name', entityCount: unnamed,
-        message: `${unnamed.toLocaleString()} of ${totalProducts.toLocaleString()} entities have no Name attribute.`,
+        message: `${unnamed.toLocaleString('en-US')} of ${totalProducts.toLocaleString('en-US')} entities have no Name attribute.`,
       });
     }
 

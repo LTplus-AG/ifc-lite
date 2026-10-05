@@ -213,7 +213,7 @@ const bcfExport: Tool = {
     const blob = (await writeBCF(project)) as unknown as Blob;
     const buffer = Buffer.from(await blob.arrayBuffer());
     await writeFile(filePath, buffer);
-    return okResult(`Wrote BCF (${buffer.length.toLocaleString()} bytes, ${project.topics.size} topic(s)) to ${filePath}.`, {
+    return okResult(`Wrote BCF (${buffer.length.toLocaleString('en-US')} bytes, ${project.topics.size} topic(s)) to ${filePath}.`, {
       filePath,
       bytes: buffer.length,
       topicCount: project.topics.size,

@@ -91,7 +91,7 @@ const exportIfc: Tool = {
     const text = typeof content === 'string' ? content : new TextDecoder().decode(content);
     await writeFile(filePath, text, 'utf-8');
     return okResult(
-      `Wrote ${text.length.toLocaleString()} bytes to ${filePath}.`,
+      `Wrote ${text.length.toLocaleString('en-US')} bytes to ${filePath}.`,
       {
         filePath,
         bytes: text.length,
@@ -128,7 +128,7 @@ const exportCsv: Tool = {
     if (typeof input.file_path === 'string') {
       const filePath = await resolveSafePath(input.file_path, ctx, 'write');
       await writeFile(filePath, csv, 'utf-8');
-      return okResult(`Wrote ${csv.length.toLocaleString()} bytes to ${filePath}.`, { filePath, rows: refs.length });
+      return okResult(`Wrote ${csv.length.toLocaleString('en-US')} bytes to ${filePath}.`, { filePath, rows: refs.length });
     }
     return okResult(`${refs.length} rows.`, { csv, rows: refs.length });
   },
@@ -233,7 +233,7 @@ const exportGlb: Tool = {
           });
         }
         await writeFile(filePath, glb);
-        return okResult(`Wrote ${glb.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: glb.length });
+        return okResult(`Wrote ${glb.length.toLocaleString('en-US')} bytes to ${filePath}.`, { filePath, bytes: glb.length });
       } finally {
         gp.dispose();
       }
@@ -297,7 +297,7 @@ const exportObj: Tool = {
           });
         }
         await writeFile(filePath, obj);
-        return okResult(`Wrote ${obj.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: obj.length });
+        return okResult(`Wrote ${obj.length.toLocaleString('en-US')} bytes to ${filePath}.`, { filePath, bytes: obj.length });
       } finally {
         gp.dispose();
       }
@@ -331,7 +331,7 @@ const exportIfcx: Tool = {
           throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'IFCX export produced no output.' });
         }
         await writeFile(filePath, ifcx);
-        return okResult(`Wrote ${ifcx.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: ifcx.length });
+        return okResult(`Wrote ${ifcx.length.toLocaleString('en-US')} bytes to ${filePath}.`, { filePath, bytes: ifcx.length });
       } finally {
         gp.dispose();
       }
@@ -364,7 +364,7 @@ const exportUsd: Tool = {
           throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'USD export produced no output.' });
         }
         await writeFile(filePath, usd);
-        return okResult(`Wrote ${usd.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: usd.length });
+        return okResult(`Wrote ${usd.length.toLocaleString('en-US')} bytes to ${filePath}.`, { filePath, bytes: usd.length });
       } finally {
         gp.dispose();
       }

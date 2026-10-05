@@ -134,7 +134,7 @@ const queryEntities: Tool = {
 };
 
 function formatQueryResult(total: number, truncated: boolean, _shaped: unknown[], items: EntityData[]): string {
-  const head = `Found ${total.toLocaleString()} matching entit${total === 1 ? 'y' : 'ies'}${truncated ? ` (showing ${items.length})` : ''}.`;
+  const head = `Found ${total.toLocaleString('en-US')} matching entit${total === 1 ? 'y' : 'ies'}${truncated ? ` (showing ${items.length})` : ''}.`;
   if (items.length === 0) return head;
   const lines = items.slice(0, 25).map((e) => {
     const name = e.name ? ` '${e.name}'` : '';
@@ -212,7 +212,7 @@ const countEntities: Tool = {
     if (!groupBy) {
       const total = entities.length;
       return okResult(
-        `${total.toLocaleString()} entities${typeFilter ? ` of type ${typeFilter}` : ''}.`,
+        `${total.toLocaleString('en-US')} entities${typeFilter ? ` of type ${typeFilter}` : ''}.`,
         { total, ...pendingMutationsField(overlay) },
       );
     }

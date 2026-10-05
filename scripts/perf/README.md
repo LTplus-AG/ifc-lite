@@ -12,6 +12,24 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## Worker capability is part of viewport qualification (#6709)
+
+Restoring a frozen build with a default HTTP server omitted COOP/COEP and disabled
+SharedArrayBuffer. The canonical adaptive loader consequently took its flat
+fallback: zero uploaded instances did not identify a Rust admission defect.
+Restore the viewer's actual headers and assert origin isolation and worker
+capability before treating a browser control as production worker coverage.
+
+The public structural sample then exercises actual GPU instancing and passes
+isolated-owner picking, UI selection and resolution restoration on both subjects.
+Use source mesh arrays for a flat-only oracle: scene enumeration includes
+instanced entities. Thin geometry needs an actual rendered target, and low-level
+picking needs the viewer's visibility options. Preserve observer/setup failures
+separately from product defects. The fixed timing cohorts remain unqualified;
+neither a single accepted baseline nor functional passage establishes a speed
+result. [Original records and exact limits](evidence/hidpi-worker-native-6709/README.md)
+remain available. Final integration still needs a matching current engine.
+
 ## TL;DR
 
 ```bash

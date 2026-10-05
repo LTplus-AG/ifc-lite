@@ -31,7 +31,6 @@ import {
   type ClashResult,
   type ClashReviewStatus,
   type ClashRule,
-  type ClashSeverity,
   type ExclusionSet,
 } from '@ifc-lite/clash';
 import { elementsFromStep } from '@ifc-lite/clash/step';
@@ -51,6 +50,7 @@ import {
 import { clashFramingBounds } from '@/lib/clash/clash-framing';
 import { contactLineList } from '@/lib/clash/contact-lines';
 import { filterResultBySeverity } from '@/lib/clash/severity-filter';
+import type { ClashBcfConfig } from '@/lib/clash/bcf-export-config';
 import { withResolvedClashSetFilters } from '@/lib/clash/set-filter-resolve';
 import { computeClashIntersectionSolid } from '@/lib/clash/intersection-solid';
 import { restoreOverridesForGhosting } from '@/lib/clash/ghost-color-overrides';
@@ -151,23 +151,7 @@ interface SelectionRef {
  */
 export type { ClashFocusMode };
 
-/** How clashes collapse into BCF topics. `storey` is omitted — Clash has no
- *  storey, so it degrades to `rule` (see grouping.ts) and would only confuse. */
-export type ClashBcfGroupBy = 'cluster' | 'rule' | 'typePair' | 'element';
-
-/** User-controllable settings for a BCF export — "what gets created". */
-export interface ClashBcfConfig {
-  /** Grouping dimension → one BCF topic per group. */
-  groupBy: ClashBcfGroupBy;
-  /** Only clashes of these severities become topics. */
-  severities: ClashSeverity[];
-  /** Render each topic's viewpoint offscreen and embed a PNG snapshot. */
-  includeSnapshots: boolean;
-  /** Safety cap on topic count; overflow is recorded in one marker topic. */
-  maxTopics: number;
-  /** Only these clashes, pinned when the export was opened (selected or filtered, #6925); all when absent. */
-  clashIds?: ReadonlySet<string>;
-}
+export type { ClashBcfConfig, ClashBcfGroupBy } from '@/lib/clash/bcf-export-config';
 
 /** Dark, neutral background for offscreen snapshot captures (Tokyo Night base). */
 const SNAPSHOT_CLEAR_COLOR: [number, number, number, number] = [0.04, 0.05, 0.1, 1];

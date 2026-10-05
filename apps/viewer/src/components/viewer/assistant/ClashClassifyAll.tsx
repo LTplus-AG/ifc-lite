@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ListChecks, Square } from 'lucide-react';
 import type { ClashResult } from '@ifc-lite/clash';
 import { useTranslation } from '@/i18n';
@@ -37,6 +37,9 @@ export function ClashClassifyAll({ result, enabled, onResult, limits = CLASSIFY_
   const [run, setRun] = useState<ClassifyRunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const plan = useMemo(() => planClassification(result.clashes), [result]);
+  // Closing the review mid-run (stale evidence, another conversation) aborts the run: no budget is spent without visible progress.
+  const active = useRef<AbortController | null>(null);
+  useEffect(() => () => { active.current?.abort(); active.current = null; }, []);
   const estimate = estimateClassification(plan, limits, modelCapabilities(model).maxOutputTokens);
   const start = async () => {
     if (model === UNCONFIGURED_MODEL_ID) { setError(t('clashClassify.missingModel')); return; }
@@ -44,14 +47,18 @@ export function ClashClassifyAll({ result, enabled, onResult, limits = CLASSIFY_
     if (route.kind === 'missing-key') { setError(t('clashClassify.missingKey')); return; }
     if (!estimate.fits) return;
     const abort = new AbortController();
+    active.current = abort;
     setController(abort); setError(null); setRun(null); setChunks([]);
     try {
       const outcome = await runClassification({ plan, route, proxyUrl: import.meta.env.VITE_LLM_PROXY_URL || '/api/chat',
         budget: createRootBudget(limits), signal: abort.signal, allowNormalization: consent,
-        isCurrent: () => useViewerStore.getState().clashResult === result, onProgress: setChunks });
+        isCurrent: () => useViewerStore.getState().clashResult === result, onProgress: chunks => { if (active.current === abort) setChunks(chunks); } });
+      if (active.current !== abort) return;
       setRun(outcome); setChunks(outcome.chunks);
       onResult(outcome);
-    } finally { setController(null); }
+    } finally {
+      if (active.current === abort) { active.current = null; setController(null); }
+    }
   };
   const done = chunks.filter(chunk => DONE.has(chunk.status)).length;
   const running = controller !== null;

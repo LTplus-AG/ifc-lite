@@ -153,3 +153,35 @@ test('a changed run, unsaved drafts and stale findings refuse before anything is
   assert.deepEqual(await applyClashGroupPlan(onDraft.plan, options), { ok: false, reason: 'unsaved-edits' });
   assert.equal(await storedWorkspace(DEFAULT_GROUP_WORKSPACE), undefined);
 });
+
+// #6906: an imported receipt can point at a workspace that sits at the same revision number with other
+// content (imports reset revisions to 1; the default workspace id is shared by every install). Undo must not replace it.
+test('undo refuses when the workspace is at the applied revision but no longer holds what the apply wrote', async () => {
+  const clashes = install(findings(6));
+  const human: ClashGroupWorkspace = { version: 1, id: DEFAULT_GROUP_WORKSPACE, name: 'Coordination',
+    groups: [{ id: 'human', name: 'Level 1', members: [manualClashMember(clashes[4])] }] };
+  assert.equal(await clashGroupLibrary.put(DEFAULT_GROUP_WORKSPACE, human), true);
+  assert.equal((await storedWorkspace(DEFAULT_GROUP_WORKSPACE))?.revision, 1);
+  const planned = planClashGroupApply(proposal(clashes), newWorkspaceBase('AI'), clashes);
+  assert.ok(planned.ok);
+  const applied = await applyClashGroupPlan(planned.plan, { confirmMoves: false, origin: 'assistant:test', source: 'sample', partial: false });
+  assert.ok(applied.ok);
+  assert.equal(applied.receipt.appliedRevision, 1);
+  const rebound = { ...applied.receipt, workspaceId: DEFAULT_GROUP_WORKSPACE, created: false,
+    before: { version: 1 as const, id: DEFAULT_GROUP_WORKSPACE, name: 'Coordination', groups: [] } };
+  assert.deepEqual(await undoClashGroupApplication(rebound), { ok: false, reason: 'workspace-changed' });
+  assert.deepEqual((await storedWorkspace(DEFAULT_GROUP_WORKSPACE))?.payload, human, 'human work survives');
+});
+
+test('a clash run replaced while storage initializes refuses apply before anything is written', async () => {
+  const clashes = install(findings(6));
+  const planned = planClashGroupApply(proposal(clashes), newWorkspaceBase('AI'), clashes);
+  assert.ok(planned.ok);
+  const initialize = clashGroupLibrary.initialize;
+  clashGroupLibrary.initialize = async () => { const ready = await initialize(); install(findings(6)); return ready; };
+  try {
+    assert.deepEqual(await applyClashGroupPlan(planned.plan, { confirmMoves: false, origin: 'assistant:test', source: 'sample', partial: false }),
+      { ok: false, reason: 'stale-run' });
+  } finally { clashGroupLibrary.initialize = initialize; }
+  assert.equal((await readContentRows('clashGroupApplications')).length, 0, 'no receipt for a refused apply');
+});

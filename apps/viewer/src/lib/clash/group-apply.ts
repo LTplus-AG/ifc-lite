@@ -129,6 +129,11 @@ export function planClashGroupApply(
     movedFindings: movedList.reduce((sum, entry) => sum + entry.count, 0), removedGroups, keptGroups: kept.length } };
 }
 
+function samePartition(stored: unknown, written: ClashGroupWorkspace): boolean {
+  const decoded = decodeClashGroupWorkspace(stored);
+  return decoded !== null && JSON.stringify(decoded) === JSON.stringify(decodeClashGroupWorkspace(written));
+}
+
 /** Unsaved, failed or conflicting local drafts of a workspace are human work: never write over them. */
 function hasLocalDraft(id: string): boolean {
   const item = useClashGroupLibrary.getState().status.items[id];
@@ -157,6 +162,8 @@ export async function applyClashGroupPlan(plan: ClashGroupApplyPlan, options: {
     after: plan.after, addedGroupIds: plan.added.map(group => group.id), movedFindings: plan.movedFindings,
     population: occurrences.length <= POPULATION_LIMIT ? [...new Set(occurrences.map(occurrenceHash))] : null, status: 'applied',
   };
+  // The run may have been replaced while storage initialized: the plan's findings would no longer exist.
+  if (useViewerStore.getState().clashResult?.clashes !== plan.clashes) return { ok: false, reason: 'stale-run' };
   const result = await writeContentBatch([
     { kind: 'clashGroups', id: plan.base.id, payload: plan.after, expected: plan.base.revision },
     { kind: 'clashGroupApplications', id: receipt.id, payload: receipt, expected: 0 },
@@ -169,8 +176,9 @@ export async function applyClashGroupPlan(plan: ClashGroupApplyPlan, options: {
 
 /**
  * Restore the partition a receipt replaced. Refuses unless the workspace is
- * still exactly at the revision the apply wrote: a later human edit, another
- * tab or an import is never overwritten.
+ * still exactly at the revision the apply wrote and still holds what it wrote:
+ * a later human edit, another tab or an import is never overwritten (imports
+ * reset revisions, so the revision alone cannot tell).
  */
 export async function undoClashGroupApplication(receipt: ClashGroupApplication):
   Promise<{ ok: true; receipt: ClashGroupApplication } | { ok: false; reason: UndoRefusal }> {
@@ -183,7 +191,8 @@ export async function undoClashGroupApplication(receipt: ClashGroupApplication):
   const stored = receipts.find(row => row.id === receipt.id);
   if (!stored || stored.deleted) return { ok: false, reason: 'receipt-missing' };
   if (decodeClashGroupApplication(stored.payload)?.status === 'undone') return { ok: false, reason: 'already-undone' };
-  if (!workspace || workspace.deleted || workspace.revision !== receipt.appliedRevision) return { ok: false, reason: 'workspace-changed' };
+  if (!workspace || workspace.deleted || workspace.revision !== receipt.appliedRevision
+    || !samePartition(workspace.payload, receipt.after)) return { ok: false, reason: 'workspace-changed' };
   const undone: ClashGroupApplication = { ...receipt, status: 'undone', undoneAt: new Date().toISOString() };
   const result = await writeContentBatch([
     // A created workspace is removed; an existing one gets its whole previous partition back.

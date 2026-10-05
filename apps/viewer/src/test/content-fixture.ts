@@ -12,7 +12,6 @@ import { bcfDraftLibrary } from '@/lib/bcf-drafts/draft-library';
 import { bcfOutboxLibrary } from '@/lib/bcf-publication/outbox-store';
 import { modelChangeLibrary } from '@/lib/actions/receipts';
 import { clashGroupApplicationLibrary } from '@/lib/clash/group-applications';
-import { clashGroupApplicationLibrary } from '@/lib/clash/group-applications';
 import { waitFor } from './render.js';
 import { createDocumentSlice } from '@/store/slices/documentSlice';
 import { createValidationReportsSlice } from '@/store/slices/validationReportsSlice';

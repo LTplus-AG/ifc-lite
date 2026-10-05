@@ -8,7 +8,6 @@ import { bcfDraftLibrary, useBcfDraftLibrary } from '@/lib/bcf-drafts/draft-libr
 import { bcfOutboxLibrary, initializeBcfOutbox, useBcfOutbox } from '@/lib/bcf-publication/outbox-store';
 import { modelChangeLibrary, useModelChangeReceipts } from '@/lib/actions/receipts';
 import { clashGroupApplicationLibrary, useClashGroupApplications } from '@/lib/clash/group-applications';
-import { clashGroupApplicationLibrary, useClashGroupApplications } from '@/lib/clash/group-applications';
 import { useRef, useState } from 'react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -70,7 +69,6 @@ export function ContentStorageNotice({ status, retry, restore }: {
       clashGroups: useClashGroupLibrary.getState().status, bcfDrafts: useBcfDraftLibrary.getState().status,
       bcfOutbox: useBcfOutbox.getState().status,
       modelChanges: useModelChangeReceipts.getState().status,
-      clashGroupApplications: useClashGroupApplications.getState().status,
       clashGroupApplications: useClashGroupApplications.getState().status,
     }, preserved.drafts), null, 2), 'ifc-lite-library-backup.json', 'application/json');
     if (!preserved.complete) toast.info(t('contentStorage.draftReadUnavailable'));

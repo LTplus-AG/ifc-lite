@@ -10,7 +10,7 @@
  * it silently. Both fields are optional and additive within document v12:
  * an older viewer prints and edits such a document as plain text.
  */
-import type { DocumentValidationError } from './types';
+import type { DocumentBlock, DocumentValidationError } from './types';
 
 export type AiClaimStatus = 'supported' | 'unverifiable' | 'contradicted';
 
@@ -74,6 +74,17 @@ export type AiBlockOrigin = 'ai-generated' | 'human-edited' | 'human';
 export function aiBlockOrigin(block: { text: string; aiProvenance?: AiBlockProvenance }): AiBlockOrigin {
   if (!block.aiProvenance) return 'human';
   return block.aiProvenance.generated === block.text ? 'ai-generated' : 'human-edited';
+}
+
+/**
+ * A copy placed elsewhere is the copier's own text: a duplicated block or a
+ * template-built document must not be regenerated as if the AI wrote it there.
+ */
+export function detachAiProvenance(block: DocumentBlock): DocumentBlock {
+  if (block.kind !== 'text' || !block.aiProvenance) return block;
+  const copy = { ...block };
+  delete copy.aiProvenance;
+  return copy;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);

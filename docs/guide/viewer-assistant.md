@@ -97,9 +97,14 @@ Each claim is checked against the captured evidence and labelled:
 
 A supported claim means that the cited values match. It does not establish the conclusion. A block that is declared but invalid is refused rather than ignored. An answer without claims is drafted as before, with citation checks only.
 
-### Narrative blocks and languages
+### Narrative blocks, refresh and languages
 
-Every text block the generator writes records the exact text it wrote, so the document can tell AI-generated, human-edited and human-written blocks apart. The document also embeds its captured evidence, claims and narrative language.
+Every text block the generator writes records the exact text it wrote, so the document can tell AI-generated, human-edited and human-written blocks apart. A duplicated block, or a document built from this one as a workflow template, belongs to you and never carries the old evidence. A saved AI report shows its language, revision and claim states above the blocks in **Documents**. **Refresh evidence** recaptures the same native source, finds each cited row again by its native identity (not its `E` number), re-checks every claim and lists:
+
+- each claim's state before and after the refresh, with the number of changed and missing values;
+- every block you edited whose regenerated text would differ.
+
+**Apply refresh** regenerates untouched AI blocks. Changed and missing values are flagged in the claim captions (`was …`), with a notice after each affected claim and a refresh summary under the coverage block. Your edited blocks are kept unless you tick **Replace my edit with the regenerated text**. Blocks you deleted stay deleted, and blocks you wrote stay where you put them. Narrative prose outside the typed claims is not re-checked.
 
 Documents print with the standard PDF fonts, which cover Windows-1252 text: German, French, Italian, Spanish, Dutch, Portuguese and the Nordic languages print exactly. Polish and Czech letters outside that set keep their base letter (`ł` as `l`, `ř` as `r`), and the document adds a notice that lists each substitution by code point. The preview shows the same printable text as the PDF. A narrative that is mostly unprintable, such as Japanese, is refused with a request to choose a Latin-script language.
 

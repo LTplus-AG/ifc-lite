@@ -90,7 +90,8 @@ pub struct ScanCylinder {
     pub length: f64,
     /// Lowest and highest axis end, measured along `up_axis`.
     pub height_range: [f64; 2],
-    /// Share of the circumference the inliers cover, in degrees.
+    /// Share of the circumference the inliers cover, in degrees. For pieces
+    /// joined across a density gap, the larger piece's arc (a lower bound).
     pub arc_degrees: f64,
     pub inlier_points: u64,
     pub inlier_voxels: u32,

@@ -117,7 +117,7 @@ export interface ScanCylinder {
   length: number;
   /** Lowest and highest axis end along `upAxis`. */
   heightRange: [number, number];
-  /** Circumference covered by the inliers, in degrees. */
+  /** Circumference covered by the inliers, in degrees; for pieces joined across a density gap, the larger piece's arc (a lower bound). */
   arcDegrees: number;
   inlierPoints: number;
   inlierVoxels: number;

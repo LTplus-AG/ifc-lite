@@ -51,7 +51,7 @@ test('a list saves into the Lists library, survives reload, reruns to the review
   assert.equal(useViewerStore.getState().pendingListDraft?.id, outcome.saved.id, 'the list builder opens on the saved list');
   assert.equal(useViewerStore.getState().listPanelVisible, true);
   assert.equal(useViewerStore.getState().selectedEntityIds, selection);
-  assert.equal(saveArtifact(reviewed.artifact).ok, false, 'saving the same review twice does not duplicate it');
+  assert.deepEqual(saveArtifact(reviewed.artifact), { ok: false, reason: 'already-saved' }, 'saving the same review twice does not duplicate it');
 });
 
 test('a filter saves as a new saved filter, never over one the user already has, and opens in the Filter tab', async () => {
@@ -71,6 +71,11 @@ test('a filter saves as a new saved filter, never over one the user already has,
   assert.equal(state.searchFilterAutoRunPending, true, 'the Filter tab runs it natively when it mounts');
   assert.deepEqual(state.searchFilter.groups, presets[1].groups);
   assert.equal(state.isolatedEntities, isolated, 'opening applies nothing to the scene');
+  // A double click on Save: the second save of the same review is refused, not written as "Walls (3)" (#6914 review).
+  assert.deepEqual(saveArtifact(reviewed.artifact), { ok: false, reason: 'already-saved' });
+  assert.deepEqual(loadSavedFilters().map((preset) => preset.name), ['Walls', 'Walls (2)']);
+  const again = await review({ kind: 'filter.proposal', name: 'Walls', groups: [walls] });
+  assert.ok(saveArtifact(again.artifact).ok, 'a new review of the same proposal is a new save');
 });
 
 test('a lens saves into the lens library through createLens and reloads through the saved-lens migration', async () => {

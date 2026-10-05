@@ -27,7 +27,16 @@ export type SavedArtifact =
   | { kind: 'lens.proposal'; name: string; id: string }
   | { kind: 'chart.proposal'; name: string; id: string; dashboardId: string; dashboardName: string };
 
-export type SaveOutcome = { ok: true; saved: SavedArtifact } | { ok: false; reason: string };
+/** Why a save did not happen, as a code the review card translates. */
+export type SaveRefusal = 'already-saved' | 'storage';
+export type SaveOutcome = { ok: true; saved: SavedArtifact } | { ok: false; reason: SaveRefusal };
+
+/**
+ * Filter reviews already saved. Saved filters carry no id to check, so the
+ * review's own artifact is the identity: a second click on Save is refused
+ * like the other kinds, while a new review of the same proposal saves anew.
+ */
+const savedFilterReviews = new WeakSet<PreviewArtifact>();
 
 /** `name`, or `name (2)`, `name (3)`… — never overwrite an entry the user already has. */
 export function uniqueName(name: string, taken: Iterable<string>, max = 80): string {
@@ -60,25 +69,29 @@ export function saveArtifact(artifact: PreviewArtifact): SaveOutcome {
   const state = useViewerStore.getState();
   switch (artifact.kind) {
     case 'filter.proposal': {
+      if (savedFilterReviews.has(artifact)) return { ok: false, reason: 'already-saved' };
       const name = uniqueName(artifact.name, loadSavedFilters().map((preset) => preset.name));
       const { persisted } = saveFilter(name, artifact.groups);
-      return persisted ? { ok: true, saved: { kind: 'filter.proposal', name } }
-        : { ok: false, reason: 'Saved filters could not be written to this browser\'s storage.' };
+      if (!persisted) return { ok: false, reason: 'storage' };
+      savedFilterReviews.add(artifact);
+      return { ok: true, saved: { kind: 'filter.proposal', name } };
     }
     case 'list.proposal': {
-      if (state.listDefinitions.some((d) => d.id === artifact.definition.id)) return { ok: false, reason: 'This list is already saved.' };
+      if (state.listDefinitions.some((d) => d.id === artifact.definition.id)) return { ok: false, reason: 'already-saved' };
       const name = uniqueName(artifact.definition.name, state.listDefinitions.map((d) => d.name));
       state.addListDefinition({ ...artifact.definition, name });
       return { ok: true, saved: { kind: 'list.proposal', name, id: artifact.definition.id } };
     }
     case 'lens.proposal': {
-      if (state.savedLenses.some((l) => l.id === artifact.lens.id)) return { ok: false, reason: 'This lens is already saved.' };
+      if (state.savedLenses.some((l) => l.id === artifact.lens.id)) return { ok: false, reason: 'already-saved' };
       const name = uniqueName(artifact.lens.name, state.savedLenses.map((l) => l.name));
       const result = state.createLens({ ...artifact.lens, name });
-      return result.ok ? { ok: true, saved: { kind: 'lens.proposal', name, id: artifact.lens.id } } : { ok: false, reason: result.message };
+      if (result.ok) return { ok: true, saved: { kind: 'lens.proposal', name, id: artifact.lens.id } };
+      console.warn('[Assistant] The lens library refused the reviewed lens', result.message);
+      return { ok: false, reason: 'storage' };
     }
     case 'chart.proposal': {
-      if (state.dashboards.some((d) => d.charts.some((c) => c.id === artifact.spec.id))) return { ok: false, reason: 'This chart is already saved.' };
+      if (state.dashboards.some((d) => d.charts.some((c) => c.id === artifact.spec.id))) return { ok: false, reason: 'already-saved' };
       return saveChart(artifact);
     }
   }

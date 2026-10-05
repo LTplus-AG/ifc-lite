@@ -22,7 +22,7 @@ export const assistantArtifactsEn = {
   'assistantArtifacts.indexFailed': 'The loaded models could not be read to check this proposal, so it cannot be reviewed: {reason}',
   'assistantArtifacts.checkedFields': 'Fields found in the loaded models',
   'assistantArtifacts.checkedField': { one: '{field}: on {count} element', other: '{field}: on {count} elements' },
-  'assistantArtifacts.partialIndex': 'Large models: field counts cover the first scanned elements of each model.',
+  'assistantArtifacts.partialIndex': 'Large models: field counts cover the first scanned elements of each model, so a name that only later elements carry is listed as not found.',
   'assistantArtifacts.running': 'Running the native engine…',
   'assistantArtifacts.matched': { one: '{count} element matched', other: '{count} elements matched' },
   'assistantArtifacts.empty': 'Nothing in the loaded models matches. Check the names and values before saving.',

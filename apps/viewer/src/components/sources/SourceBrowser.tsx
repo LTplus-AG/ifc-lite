@@ -142,9 +142,10 @@ export function SourceBrowser({
 
   const selectContainer = useCallback((c: SourceContainer) => {
     setError(null);
+    clearSearch();
     setSelectedContainer(c);
     catalog.openContainer(c);
-  }, [catalog]);
+  }, [catalog, clearSearch]);
 
   const openProject = useCallback(
     (p: SourceProject, autoEntered = false) => {

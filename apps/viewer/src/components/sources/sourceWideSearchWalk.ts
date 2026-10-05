@@ -38,7 +38,9 @@ export function createSourceWideSearchWalk(provider: FileSourceProvider, ctx: Pl
         const page = await provider.listContainers(ctx, task.project.id, task.parentId, { ...options, cursor: task.cursor });
         if (page.cursor !== undefined) tasks.push({ ...task, cursor: page.cursor });
         for (const container of page.items) {
-          if (task.files) tasks.push({ kind: 'files', project: task.project, containerId: container.id });
+          if (task.files && (!provider.manifest.capabilities.listFilesIsRecursive || container.parentId === task.parentId)) {
+            tasks.push({ kind: 'files', project: task.project, containerId: container.id });
+          }
           if (provider.manifest.capabilities.containerListing === 'direct-children') {
             tasks.push({ kind: 'containers', project: task.project, parentId: container.id,
               files: !provider.manifest.capabilities.listFilesIsRecursive });

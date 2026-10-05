@@ -146,12 +146,6 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
     if (pinned) { didAutoOpen.current = true; setBrowsing(pinned); }
   }, [pins.ids, readyProviders, browsing]);
 
-  const openFavourite = useCallback((favourite: SourceFavourite) => {
-    didAutoOpen.current = true;
-    setBrowseTarget(favourite);
-    setBrowsing(favourite.providerId);
-  }, []);
-
   const closeBrowser = useCallback(() => {
     setBrowsing(null);
     setBrowseTarget(null);
@@ -238,6 +232,13 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
     onBatchSucceeded: pins.ids.includes(browsing ?? '') ? () => {} : closeBrowser,
   });
 
+  const openFavourite = useCallback((favourite: SourceFavourite) => {
+    if (downloading) return;
+    didAutoOpen.current = true;
+    setBrowseTarget(favourite);
+    setBrowsing(favourite.providerId);
+  }, [downloading]);
+
   useEffect(() => {
     if (downloading && downloadOwner && sourceHost.get(downloadOwner)?.manifest.auth === 'interactive'
       && liveIdentities.has(downloadOwner) && liveIdentities.get(downloadOwner) === null) cancelDownload();
@@ -296,6 +297,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
           favouritesVersion={favouritesVersion}
           liveIdentities={liveIdentities}
           onOpen={openFavourite}
+          navigationDisabled={downloading}
           onChanged={bumpFavourites}
         />
 

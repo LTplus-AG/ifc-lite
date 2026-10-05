@@ -15,6 +15,7 @@ import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { SourcesPanel } from './SourcesPanel';
 import { SourceBrowser } from './SourceBrowser';
+import { createSourceWideSearchWalk } from './sourceWideSearchWalk';
 
 // #6897: same file id in different projects is deliberately valid. Search must
 // retain its addressing project, including results reached through pagination.
@@ -233,8 +234,7 @@ describe('Cloud workspace (#6897)', () => {
     assert.ok(ui.textContent?.includes('Tower.ifc'));
     click(named(ui, 'Open Tower.ifc'));
     assert.equal(imports[0]?.projectId, 'p'); assert.equal(imports[0]?.files[0].containerId, 'child');
-    const more = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Continue searching');
-    if (more) { click(more); await pump(); }
+    click(named(ui, 'Continue searching')); await pump();
     assert.equal(fileRequests, 2, 'cycle does not re-read root or child');
   });
 
@@ -252,5 +252,57 @@ describe('Cloud workspace (#6897)', () => {
     assert.equal(signals[0].aborted, true);
     assert.equal([...ui.querySelectorAll('button')].some((button) => button.textContent === 'Open Tower.ifc'), false);
 
+  });
+
+  it('clears project search when a favorite folder is selected (#6898)', async () => {
+    const p = provider();
+    p.listFiles = async () => ({ items: [{ ...file, name: 'Folder.ifc', containerId: 'root' }] });
+    p.searchFiles = async () => ({ items: [{ ...file, name: 'Elsewhere.ifc' }] });
+    const ui = browser(p); await pump();
+    click(named(ui, 'First Project')); await pump(); click(named(ui, 'Documents')); await pump();
+    click(labelled(ui, 'Pin current folder: Documents')); await pump();
+    const input = labelled(ui, 'Search files in project') as HTMLInputElement;
+    type(input, 'Elsewhere');
+    await act(async () => { input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+    await pump(); assert.ok(ui.textContent?.includes('Elsewhere.ifc'));
+    click(named(labelled(ui, 'Favorite folders') as HTMLElement, 'Documents')); await pump();
+    assert.equal(ui.textContent?.includes('Elsewhere.ifc'), false);
+    assert.ok(ui.textContent?.includes('Folder.ifc'));
+    assert.equal(input.value, '');
+  });
+
+  it('keeps the download browser visible when another provider favorite is pressed (#6898)', async () => {
+    const p = provider();
+    const other: FileSourceProvider = { ...provider(), manifest: { ...p.manifest, name: 'other-provider', title: 'Other Files' } };
+    p.download = async (_ctx, _ref, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true });
+    });
+    saveFavourites(other.manifest.name, [{ providerId: other.manifest.name, kind: 'folder', projectId: 'p1', projectName: 'First Project', fileAreaId: 'root', fileAreaName: 'Documents', containerId: 'root', containerName: 'Other folder', identityId: null, addedAt: 1 }]);
+    const ui = render(<SourceHostProvider additionalProviders={[() => p, () => other]}><SourcesPanel onClose={() => {}} /></SourceHostProvider>);
+    await pump(); click(labelled(ui, 'Browse Workspace Files')); await pump();
+    const input = labelled(ui, 'Search files in Workspace Files') as HTMLInputElement;
+    type(input, 'Tower');
+    await act(async () => { ui.querySelector('form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); });
+    await pump(); click(named(ui, 'Open Tower.ifc')); await pump();
+    const remove = labelled(ui, 'Remove favourite: Other folder');
+    const favorite = remove.closest('li')?.querySelector('button'); assert.ok(favorite);
+    assert.equal(favorite.disabled, true, 'shortcut visibly waits for the active download');
+    click(favorite); await pump();
+    assert.equal(labelled(ui, 'Browse Workspace Files').getAttribute('aria-expanded'), 'true');
+    assert.equal(labelled(ui, 'Browse Other Files').getAttribute('aria-expanded'), 'false');
+    click(named(ui, 'Cancel download')); await pump();
+    assert.equal(favorite.disabled, false, 'navigation resumes after cancellation');
+  });
+
+  it('requests recursive files once per subtree root (#6898)', async () => {
+    const original = provider(); const requested: string[] = [];
+    const p: FileSourceProvider = { ...original, searchFiles: undefined,
+      manifest: { ...original.manifest, capabilities: { ...original.manifest.capabilities, search: false, containerListing: 'flat-subtree', listFilesIsRecursive: true } },
+      listProjects: async () => ({ items: [{ id: 'p', name: 'Project' }] }),
+      listContainers: async () => ({ items: [{ id: 'root', name: 'Root' }, { id: 'child', name: 'Child', parentId: 'root' }] }),
+      listFiles: async (_ctx, _project, container) => { requested.push(container); return { items: [{ ...file, containerId: 'child' }] }; },
+    };
+    const page = await createSourceWideSearchWalk(p, context(p), 'Tower')(undefined, new AbortController().signal);
+    assert.deepEqual(requested, ['root']); assert.equal(page.items.length, 1); assert.equal(page.cursor, undefined);
   });
 });

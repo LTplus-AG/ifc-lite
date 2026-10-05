@@ -164,7 +164,7 @@ test('#6833 semantic: a Linked records change while an answer streams makes that
   const store = await seedModels(['A']);
   const session = await loadPanelChunk();
   const door = idsOfType(store, 'IfcDoor')[0] ?? idsOfType(store, 'IfcWall')[0];
-  session.getState().setDocument({ profile: PROFILE_ID, completeness: 'partial', resources: records(store.entities.getGlobalId(door)) });
+  session.getState().setDocument({ profile: PROFILE_ID, source: BASE, completeness: 'partial', resources: records(store.entities.getGlobalId(door)) });
   replaceEvidence(captureEvidence('semantic'));
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(new ReadableStream());

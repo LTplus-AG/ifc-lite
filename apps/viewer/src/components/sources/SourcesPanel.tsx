@@ -323,7 +323,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
             >
               {browsing === p.manifest.name && activeProvider && browsingCtx && (
                 <div className="flex h-[min(65vh,600px)] min-h-64 flex-col">
-                  <SourceBrowser key={`${browsing}:${prefsVersion}:${browseTarget?.containerId ?? ""}:${browseTarget?.fileId ?? ""}`} provider={activeProvider} ctx={browsingCtx}
+                  <SourceBrowser key={JSON.stringify([browsing, prefsVersion, browseTarget?.projectId, browseTarget?.fileAreaId, browseTarget?.containerId, browseTarget?.fileId])} provider={activeProvider} ctx={browsingCtx}
                     onDownload={(selection) => { setDownloadOwner(browsing); void handleDownload(selection); }}
                     onBack={() => { didAutoOpen.current = true; closeBrowser(); clearFinishedDownloadStates(); }}
                     busy={downloading} onCancelDownload={cancelDownload} downloadStates={downloadOwner === browsing ? downloadStates : new Map()}

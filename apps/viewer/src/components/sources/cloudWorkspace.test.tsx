@@ -305,4 +305,29 @@ describe('Cloud workspace (#6897)', () => {
     const page = await createSourceWideSearchWalk(p, context(p), 'Tower')(undefined, new AbortController().signal);
     assert.deepEqual(requested, ['root']); assert.equal(page.items.length, 1); assert.equal(page.cursor, undefined);
   });
+
+  it('keeps discovery search reachable for an incomplete one-project Microsoft catalog (#6898)', async () => {
+    const original = provider();
+    const p: FileSourceProvider = { ...original, manifest: { ...original.manifest, name: 'msgraph', capabilities: { ...original.manifest.capabilities, projectsAreDiscoverableOnly: true } },
+      listProjects: async (_ctx, options) => ({ items: [{ id: options?.query ? 'p2' : 'p1', name: options?.query ? 'Discovered Project' : 'First Project' }] }) };
+    const ui = browser(p); await pump();
+    const search = labelled(ui, 'Search projects') as HTMLInputElement;
+    type(search, 'Other site');
+    await act(async () => { search.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+    await pump(); click(named(ui, 'Discovered Project')); await pump();
+    click(labelled(ui, 'Back')); await pump();
+    assert.ok(labelled(ui, 'Search projects')); assert.ok(named(ui, 'First Project'));
+  });
+
+  it('jumps between favorites sharing folder ids in distinct projects (#6898)', async () => {
+    const p = provider();
+    p.listFiles = async (_ctx, project) => ({ items: [{ ...file, name: `${project}.ifc`, containerId: 'root' }] });
+    saveFavourites(p.manifest.name, ['p1', 'p2'].map((projectId) => ({ providerId: p.manifest.name, kind: 'folder', projectId, projectName: projectId, fileAreaId: 'root', fileAreaName: 'Documents', containerId: 'root', containerName: projectId, identityId: null, addedAt: 1 })));
+    const ui = render(<SourceHostProvider additionalProviders={[() => p]}><SourcesPanel onClose={() => {}} /></SourceHostProvider>);
+    await pump();
+    const shortcut = (name: string) => { const remove = labelled(ui, `Remove favourite: ${name}`); const button = remove.closest('li')?.querySelector('button'); assert.ok(button); return button; };
+    click(shortcut('p1')); await pump(); assert.ok(ui.textContent?.includes('p1.ifc'));
+    click(shortcut('p2')); await pump(); assert.ok(ui.textContent?.includes('p2.ifc'));
+    assert.equal(ui.textContent?.includes('p1.ifc'), false, 'old project files cannot survive the favorite jump');
+  });
 });

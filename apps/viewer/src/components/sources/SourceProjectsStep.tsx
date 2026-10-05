@@ -56,8 +56,8 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
   // of making users select the account they just signed into a second time.
   useEffect(() => {
     if ((provider.manifest.name === 'dropbox' || provider.manifest.name === 'msgraph')
-      && !paged.loading && !paged.hasMore && paged.items.length === 1 && !query) onSelect(paged.items[0], true);
-  }, [provider.manifest.name, paged.loading, paged.hasMore, paged.items, query, onSelect]);
+      && !discoverableOnly && !paged.loading && !paged.hasMore && paged.items.length === 1 && !query) onSelect(paged.items[0], true);
+  }, [discoverableOnly, provider.manifest.name, paged.loading, paged.hasMore, paged.items, query, onSelect]);
 
   const submitSearch = useCallback(() => {
     // A retry after a failed listing must not render results under the stale

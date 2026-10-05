@@ -20,6 +20,7 @@ export function useSourceProviderPins() {
   });
   const toggle = (id: string) => {
     const next = ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id];
+    if (next.length > 100) { toast.error(t('sources.workspace.pinFailed')); return; }
     try {
       localStorage.setItem(KEY, JSON.stringify(next));
       setIds(next);

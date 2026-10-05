@@ -52,6 +52,13 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
     start();
   }, [start]);
 
+  // Personal drives have exactly one account root. Enter it directly instead
+  // of making users select the account they just signed into a second time.
+  useEffect(() => {
+    if ((provider.manifest.name === 'dropbox' || provider.manifest.name === 'msgraph')
+      && !paged.loading && !paged.hasMore && paged.items.length === 1 && !query) onSelect(paged.items[0]);
+  }, [provider.manifest.name, paged.loading, paged.hasMore, paged.items, query, onSelect]);
+
   const submitSearch = useCallback(() => {
     // A retry after a failed listing must not render results under the stale
     // red banner — clear it up front.

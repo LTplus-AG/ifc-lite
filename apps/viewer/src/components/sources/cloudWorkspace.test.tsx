@@ -85,6 +85,9 @@ describe('Cloud workspace (#6897)', () => {
     click(labelled(ui, 'Browse Workspace Files')); await pump();
     click(favourite); await pump();
     assert.ok(labelled(ui, 'Current folder').textContent?.includes('Documents'), 'favorite jumps directly into the folder');
+    click(labelled(ui, 'Remove favourite: Documents')); await pump();
+    assert.equal(ui.querySelector('[aria-label="Favorite folders"]'), null, 'removing an overview favorite updates the open browser too');
+    assert.ok(labelled(ui, 'Pin current folder: Documents'));
   });
 
   it('does not open a pinned signed-out provider or reveal its previous account favorites', async () => {

@@ -324,7 +324,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
                     onDownload={(selection) => { setDownloadOwner(browsing); void handleDownload(selection); }}
                     onBack={() => { didAutoOpen.current = true; closeBrowser(); clearFinishedDownloadStates(); }}
                     busy={downloading} onCancelDownload={cancelDownload} downloadStates={downloadOwner === browsing ? downloadStates : new Map()}
-                    openTarget={browseTarget} onFavouritesChanged={bumpFavourites} />
+                    openTarget={browseTarget} onFavouritesChanged={bumpFavourites} favouritesVersion={favouritesVersion} />
                 </div>
               )}
             </SourceProviderRow>

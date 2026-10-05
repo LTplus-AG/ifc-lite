@@ -41,6 +41,7 @@ interface SourceBrowserProps {
   openTarget?: SourceFavourite | null;
   /** Fires when a star is pressed here, so the panel's favourites list re-reads storage. */
   onFavouritesChanged?: () => void;
+  favouritesVersion?: number;
 }
 
 type Step = 'projects' | 'file-areas' | 'folders';
@@ -56,6 +57,7 @@ export function SourceBrowser({
   downloadStates = NO_DOWNLOADS,
   openTarget = null,
   onFavouritesChanged,
+  favouritesVersion = 0,
 }: SourceBrowserProps) {
   const capabilities = provider.manifest.capabilities;
   const [step, setStep] = useState<Step>('projects');
@@ -179,6 +181,7 @@ export function SourceBrowser({
     selectedFileArea,
     folders: sortedFolders,
     onChanged: onFavouritesChanged,
+    externalVersion: favouritesVersion,
   });
 
   const handleLoad = useCallback(() => {

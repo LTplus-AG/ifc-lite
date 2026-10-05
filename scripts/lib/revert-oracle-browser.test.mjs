@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 
 import { browserRunArgs, browserRunner, isAssertionError, parsePlaywrightReport, scriptCommand } from './revert-oracle-browser.mjs';
 import { buildExecutionLedger, ledgerVerdict } from './revert-oracle-ledger.mjs';
+import { freePort } from './revert-oracle-browser-run.mjs';
 import rootPackage from '../../package.json' with { type: 'json' };
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -161,4 +162,19 @@ test('a report that disagrees with the process, or runs another file, is not att
   assert.equal(foreign.foreign, 1);
   const baseline = measured(parse(report([[GEOREF, 'expected']]), 0), 0);
   assert.notEqual(verdictOf(baseline, measured(foreign, 1)).verdict, 'OBSERVED');
+});
+
+test('the preview port is reserved even when FORCE_COLOR is set in the inherited environment', () => {
+  // Some terminals export FORCE_COLOR=3. A child that prints the port with
+  // console.log(<number>) then emits it wrapped in ANSI escapes, and the
+  // reservation reads as "could not reserve a preview port".
+  const saved = process.env.FORCE_COLOR;
+  process.env.FORCE_COLOR = '3';
+  try {
+    const port = freePort();
+    assert.equal(Number.isInteger(port) && port > 0 && port < 65536, true, `port: ${port}`);
+  } finally {
+    if (saved === undefined) delete process.env.FORCE_COLOR;
+    else process.env.FORCE_COLOR = saved;
+  }
 });

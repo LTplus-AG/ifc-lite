@@ -111,8 +111,11 @@ export function planBrowserSpecs(specs, root, { prodPaths = [], log = console.lo
   return { plans, gaps };
 }
 
-function freePort() {
-  const probe = spawnSync(process.execPath, ['-e', "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})"], { encoding: 'utf8', timeout: 10_000 });
+// The port goes out as a STRING on stdout. `console.log(<number>)` colours the
+// number when FORCE_COLOR is set in the inherited environment (`\x1b[33m5173\x1b[39m`),
+// which `parseInt` reads as NaN and reports as "could not reserve a preview port".
+export function freePort() {
+  const probe = spawnSync(process.execPath, ['-e', "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{process.stdout.write(String(s.address().port));s.close()})"], { encoding: 'utf8', timeout: 10_000 });
   const port = Number.parseInt(probe.stdout ?? '', 10);
   if (!Number.isInteger(port) || port <= 0) throw new Error(`could not reserve a preview port: ${probe.error?.message ?? probe.stderr}`);
   return port;

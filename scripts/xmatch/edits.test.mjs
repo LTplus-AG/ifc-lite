@@ -10,22 +10,24 @@
  */
 
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import { indexModel } from './edits.mjs';
-import {
+import { load as loadBuilt, test } from './built-guard.mjs';
+
+// Dynamic, because the subjects need built `@ifc-lite/*` packages (see built-guard.mjs).
+const { indexModel } = await loadBuilt('./edits.mjs');
+const {
   ownedRectangleExtrusion,
   shrinkOwnedExtrusion,
   splitElementLength,
   thickenElement,
-} from './rectangle-edits.mjs';
-import {
+} = await loadBuilt('./rectangle-edits.mjs');
+const {
   ownedPropertyValues,
   representationMapDigest,
   respecifyProperty,
-} from './successor-edits.mjs';
-import * as successorMutations from './successor-mutations.mjs';
-import * as mergeBaseSplit from './merge-base-split.mjs';
-import { parseStepFile, serializeStepFile, splitArgs } from './step-file.mjs';
+} = await loadBuilt('./successor-edits.mjs');
+const successorMutations = await loadBuilt('./successor-mutations.mjs');
+const mergeBaseSplit = await loadBuilt('./merge-base-split.mjs');
+const { parseStepFile, serializeStepFile, splitArgs } = await loadBuilt('./step-file.mjs');
 
 const { mapDonors } = successorMutations;
 

@@ -29,6 +29,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { skipUnlessBuilt } from './lib/host-preconditions.mjs';
 import {
   checkConcept,
   ALLOWLIST,
@@ -50,6 +51,11 @@ import {
 
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SCRIPTS, '..');
+
+// These tests run the checker over the REAL tree, and the checker reads
+// HIERARCHY_REL_TYPES from the built `@ifc-lite/parser` (it names `pnpm build`
+// itself when that is missing). CI restores the build output before this runs.
+const NEEDS_PARSER_DIST = skipUnlessBuilt(ROOT, ['packages/parser/dist/relationship-schema-slots.js'], 'pnpm build');
 const CHECKER = join(SCRIPTS, 'check-server-browser-type-parity.mjs');
 
 const FILES = {
@@ -100,7 +106,7 @@ function replaceOnce(source, anchor, replacement) {
   return source.replace(anchor, replacement);
 }
 
-test('the unmutated repo passes for every concept, given the documented allowlist', () => {
+test('the unmutated repo passes for every concept, given the documented allowlist', { skip: NEEDS_PARSER_DIST }, () => {
   const { status, out } = runOn({});
   assert.equal(status, 0, out);
   assert.match(out, /check-server-browser-type-parity: OK/);
@@ -132,7 +138,7 @@ test('RELATIONSHIPS (#4672): a complete alternate checkout uses its matching bui
 
 // -- relationships -----------------------------------------------------
 
-test('RELATIONSHIPS: RED when a type is removed from the generated Rust slot table', () => {
+test('RELATIONSHIPS: RED when a type is removed from the generated Rust slot table', { skip: NEEDS_PARSER_DIST }, () => {
   const rust = replaceOnce(
     real.RUST_REL,
     '"IFCRELAGGREGATES" => Some(RelationshipSlots {',
@@ -144,7 +150,7 @@ test('RELATIONSHIPS: RED when a type is removed from the generated Rust slot tab
   assert.match(out, /TS parser .* handles `IFCRELAGGREGATES` but the Rust server .* does not/);
 });
 
-test('RELATIONSHIPS (documents the corrected claim, #4205): emptying PROPERTY_REL_TYPES does NOT drop IFCRELDEFINESBYPROPERTIES from the TS-recognized set', () => {
+test('RELATIONSHIPS (documents the corrected claim, #4205): emptying PROPERTY_REL_TYPES does NOT drop IFCRELDEFINESBYPROPERTIES from the TS-recognized set', { skip: NEEDS_PARSER_DIST }, () => {
   // Before #4205, IFCRELDEFINESBYPROPERTIES was named ONLY by
   // PROPERTY_REL_TYPES, so emptying that literal set used to surface as
   // "Rust has it, TS does not". #4205 made HIERARCHY_REL_TYPES a
@@ -173,13 +179,13 @@ test('RELATIONSHIPS (documents the corrected claim, #4205): emptying PROPERTY_RE
 // divergences, the gate's stale-entry check demanded the entries go, and
 // suppression is concept-agnostic, so this test and the `deliberate` one
 // below cover the mechanism for every concept.
-test('RELATIONSHIPS: the schema exception IFCRELASSOCIATES is allowlisted', () => {
+test('RELATIONSHIPS: the schema exception IFCRELASSOCIATES is allowlisted', { skip: NEEDS_PARSER_DIST }, () => {
   assert.ok(Object.hasOwn(ALLOWLIST, 'relationships:IFCRELASSOCIATES'));
   const { status, out } = runOn({});
   assert.equal(status, 0, out);
 });
 
-test('RELATIONSHIPS: a FAKE divergence not on the allowlist still fails (allowlist does not over-suppress)', () => {
+test('RELATIONSHIPS: a FAKE divergence not on the allowlist still fails (allowlist does not over-suppress)', { skip: NEEDS_PARSER_DIST }, () => {
   // Add a type to the TS set that the Rust side genuinely lacks and that is
   // NOT in ALLOWLIST — proves the allowlist suppresses only what it names.
   // Added to PROPERTY_REL_TYPES, not HIERARCHY_REL_TYPES: since #4205,
@@ -198,7 +204,7 @@ test('RELATIONSHIPS: a FAKE divergence not on the allowlist still fails (allowli
   assert.match(out, /`IFCRELINVENTEDFAKETYPE`/);
 });
 
-test('RELATIONSHIPS: adding a type to BOTH sides keeps it passing', () => {
+test('RELATIONSHIPS: adding a type to BOTH sides keeps it passing', { skip: NEEDS_PARSER_DIST }, () => {
   // Same reasoning as the FAKE-divergence test above: PROPERTY_REL_TYPES is
   // the literal set that stays source-text-readable after #4205.
   const rust = replaceOnce(
@@ -352,7 +358,7 @@ test('PROPERTIES: RED when a case is removed from the TS switch', () => {
 
 // -- quantities -------------------------------------------------------------
 
-test('QUANTITIES: an allowlisted DELIBERATE gap (IfcPhysicalComplexQuantity, #3254) does not fail on its own', () => {
+test('QUANTITIES: an allowlisted DELIBERATE gap (IfcPhysicalComplexQuantity, #3254) does not fail on its own', { skip: NEEDS_PARSER_DIST }, () => {
   const entry = ALLOWLIST['quantities:IFCPHYSICALCOMPLEXQUANTITY'];
   assert.ok(entry);
   assert.equal(entry.status, 'deliberate');
@@ -395,7 +401,7 @@ test('QUANTITIES: making the Rust side also name IFCPHYSICALCOMPLEXQUANTITY now 
 
 // -- materials (control: no divergence expected) ----------------------------
 
-test('MATERIALS: passes with an EMPTY allowlist footprint (verified matching control)', () => {
+test('MATERIALS: passes with an EMPTY allowlist footprint (verified matching control)', { skip: NEEDS_PARSER_DIST }, () => {
   const materialKeys = Object.keys(ALLOWLIST).filter((k) => k.startsWith('materials:'));
   assert.deepEqual(materialKeys, []);
   const { status, out } = runOn({});
@@ -421,7 +427,7 @@ test('MATERIALS: RED when a case is removed from the TS resolver', () => {
 
 // -- vacuity guard ------------------------------------------------------
 
-test('vacuity guard: RED when the generated Rust relationship table is starved', () => {
+test('vacuity guard: RED when the generated Rust relationship table is starved', { skip: NEEDS_PARSER_DIST }, () => {
   const { status, out } = runOn({ RUST_REL: '// no relationship slot arms at all\n' });
   assert.equal(status, 1, out);
   assert.match(out, /no types extracted from apps\/server\/src\/services\/data_model\/generated\/relationship_slots\.rs/);
@@ -506,7 +512,7 @@ test('RELATIONSHIPS UNDER-READ: RED when a 4th `*_REL_TYPES` Set appears on the 
   assert.match(out, /extractor may be under-reading; update it/);
 });
 
-test('RELATIONSHIPS UNDER-READ: an unrelated `*_TYPES` Set (not `*_REL_TYPES`) does not false-positive on the TS side', () => {
+test('RELATIONSHIPS UNDER-READ: an unrelated `*_TYPES` Set (not `*_REL_TYPES`) does not false-positive on the TS side', { skip: NEEDS_PARSER_DIST }, () => {
   // GEOMETRY_TYPES/SPATIAL_TYPES/etc. already coexist in this file with
   // uppercase IFC-looking literals; the nameFilter must not treat them as an
   // unread relationship-types sibling, or the real tree would fail this gate.
@@ -546,7 +552,7 @@ test('SPATIAL TYPES UNDER-READ: RED when a 5th `*_TYPE_ENUMS` array appears on t
   assert.match(out, /extractor may be under-reading; update it/);
 });
 
-test('SPATIAL TYPES UNDER-READ: the real tree (master list plus its three known subset lists) does not false-positive', () => {
+test('SPATIAL TYPES UNDER-READ: the real tree (master list plus its three known subset lists) does not false-positive', { skip: NEEDS_PARSER_DIST }, () => {
   const { status, out } = runOn({});
   assert.equal(status, 0, out);
 });
@@ -637,7 +643,7 @@ test('staleAllowlistEntries(): a concept missing from conceptSets (vacuous/under
   assert.deepEqual(stale, []);
 });
 
-test('the real ALLOWLIST has zero stale entries against the real sources today', () => {
+test('the real ALLOWLIST has zero stale entries against the real sources today', { skip: NEEDS_PARSER_DIST }, () => {
   const conceptSets = {
     relationships: { rust: rustRelationshipTypes(real.RUST_REL), ts: tsRelationshipTypes(real.TS_REL_INDEXES) },
     spatialTypes: { rust: rustSpatialTypes(real.RUST_SPATIAL), ts: tsSpatialTypes(real.TS_SPATIAL) },
@@ -665,7 +671,7 @@ test('the real ALLOWLIST has zero stale entries against the real sources today',
 // under-read tests above, so this exercises the actual CLI output/exit code
 // path, not just the pure detector.
 
-test('E2E: a FAKE allowlist entry for a type both sides already handle identically turns the gate RED and says to remove it', () => {
+test('E2E: a FAKE allowlist entry for a type both sides already handle identically turns the gate RED and says to remove it', { skip: NEEDS_PARSER_DIST }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'server-browser-type-parity-stale-'));
   try {
     for (const [key, rel] of Object.entries(FILES)) {

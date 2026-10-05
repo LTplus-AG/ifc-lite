@@ -111,8 +111,9 @@ export function ClashGroupDraftEditor({ draft, onChange, resolve, focusClash, fo
   const [target, setTarget] = useState('');
   const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);
-  // Selection belongs to one draft revision: an applied edit or a new proposal clears it.
-  useEffect(() => { setSelected(new Set()); }, [draft]);
+  // Selection and destination belong to one draft revision: an applied edit or a new proposal clears both
+  // (group keys restart at g1 in a new proposal, so a kept destination could name an unrelated group).
+  useEffect(() => { setSelected(new Set()); setTarget(''); }, [draft]);
   const apply = (edit: DraftEdit): boolean => {
     if (!edit.ok) { setError(t(`clashApply.edit.${edit.reason}`)); return false; }
     setError(null);

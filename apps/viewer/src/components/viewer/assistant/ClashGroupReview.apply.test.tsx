@@ -130,3 +130,22 @@ test('classify all findings reviews every native finding, beyond the 100-row sam
   assert.ok(ui.querySelector('section[aria-label="Major walls/pipes"]'));
   assert.match(ui.textContent ?? '', /2 groups were merged across chunks by name/);
 });
+
+// #6906: a new proposal restarts group keys at g1, so a destination picked for the old draft must not carry over.
+test('a destination chosen before an edit or a new proposal is cleared with the selection', () => {
+  install(clashFindings(3));
+  propose([{ name: 'Routing', citations: ['E1', 'E2'] }, { name: 'Riser', citations: ['E3'] }]);
+  const ui = render(<ClashGroupReview />);
+  click(button(ui, 'Preview groups'));
+  const select = () => labelled<HTMLSelectElement>(ui, 'Move selected to');
+  click(labelled<HTMLInputElement>(ui, 'Select E1 to move'));
+  const riser = [...select().options].find(option => option.textContent === 'Riser')!.value;
+  choose(select(), riser);
+  assert.equal(select().value, riser);
+  click(button(ui, 'Rename Routing'));
+  type(labelled<HTMLInputElement>(ui, 'Group name'), 'Pipe routing');
+  click(button(ui, 'Save name'));
+  click(labelled<HTMLInputElement>(ui, 'Select E1 to move'));
+  assert.equal(select().value, '', 'the edited draft starts without a destination');
+  assert.equal(button(ui, 'Move').disabled, true, 'Move needs a destination chosen for this draft');
+});

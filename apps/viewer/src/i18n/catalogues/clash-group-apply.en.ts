@@ -25,7 +25,7 @@ export const clashGroupApplyEn = {
   'clashApply.edit.name-taken': 'Another group in this review already has this name.',
   'clashApply.edit.no-findings': 'Select at least one finding first.',
   'clashApply.edit.unknown-group': 'That group is no longer in this review.',
-  'clashApply.statFailed': 'Failed chunks',
+  'clashApply.statFailed': 'In failed chunks',
   'clashApply.statNotRun': 'Not run',
   'clashApply.fullCounts': 'Native findings: {total}. Grouped: {grouped}. Unclassified: {unclassified}. In failed chunks: {failed}. Not run: {notRun}.',
   'clashApply.unaddressable': {

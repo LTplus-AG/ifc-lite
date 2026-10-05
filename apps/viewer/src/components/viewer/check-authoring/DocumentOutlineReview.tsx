@@ -24,13 +24,18 @@ import { Notice, ReviewCard, TextField, UnsupportedList } from './DraftParts';
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 
 /** What a validation table would print now: its live row count, or why it has none. */
-function LiveTable({ block }: { block: Extract<OutlineBlock, { kind: 'validationTable' }> }) {
+function LiveTable({ block, evidence }: { block: Extract<OutlineBlock, { kind: 'validationTable' }>; evidence: object | null }) {
   const { t } = useTranslation();
   const report = useViewerStore(s => s.idsValidationReport);
   const models = useViewerStore(s => s.models);
   const source: ValidationTableSource = { kind: 'validation', rows: block.rows, columns: block.columns, ...(block.specification ? { ruleId: block.specification } : {}) };
   const state = resolveValidationTableState(source, report, id => models.get(id)?.name ?? id);
   const target = block.specification ?? t('checkAuthoring.allChecks');
+  // Specification ids are positional: another report may give this id to a different specification.
+  if (block.specification && report !== evidence) {
+    return <p className="break-words"><span className="font-medium">{block.title ?? t('checkAuthoring.validationTable')}</span>{' '}
+      <span className="text-destructive">{t('checkAuthoring.liveEvidenceChanged', { target })}</span></p>;
+  }
   return <p className="break-words">
     <span className="font-medium">{block.title ?? t('checkAuthoring.validationTable')}</span>{' '}
     <span className="text-muted-foreground">{state.status === 'ok' && state.kind === 'validation'
@@ -39,7 +44,8 @@ function LiveTable({ block }: { block: Extract<OutlineBlock, { kind: 'validation
   </p>;
 }
 
-export function DocumentOutlineReview({ initial }: { initial: DocumentOutline }) {
+/** `evidence` is the validation report the conversation was drafted from (its evidence identity), or null. */
+export function DocumentOutlineReview({ initial, evidence }: { initial: DocumentOutline; evidence: object | null }) {
   const { t } = useTranslation();
   const panels = usePanelControls();
   const report = useViewerStore(s => s.idsValidationReport);
@@ -52,9 +58,9 @@ export function DocumentOutlineReview({ initial }: { initial: DocumentOutline })
   const [savedId, setSavedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const prepared = useMemo(() => {
-    try { return { draft: prepareDocumentDraft(outline, report), error: null }; }
+    try { return { draft: prepareDocumentDraft(outline, report, evidence), error: null }; }
     catch (failure) { return { draft: null, error: message(failure) }; }
-  }, [outline, report]);
+  }, [outline, report, evidence]);
   const setSection = (index: number, change: (section: DocumentOutline['sections'][number]) => DocumentOutline['sections'][number]) =>
     setOutline({ ...outline, sections: outline.sections.map((section, i) => i === index ? change(section) : section) });
   const save = async () => {
@@ -76,7 +82,7 @@ export function DocumentOutlineReview({ initial }: { initial: DocumentOutline })
         {section.blocks.map((block, b) => <div key={b} className="pl-2 border-l border-border">
           {block.kind === 'text' ? <TextField id={`outline-${s}-${b}`} label={t('checkAuthoring.textBlock')} value={block.text} disabled={locked} multiline
             onChange={text => setSection(s, current => ({ ...current, blocks: current.blocks.map((item, i) => i === b ? { ...block, text } : item) }))} />
-            : block.kind === 'validationTable' ? <LiveTable block={block} />
+            : block.kind === 'validationTable' ? <LiveTable block={block} evidence={evidence} />
               : <p className="text-muted-foreground">{t(block.kind === 'pageBreak' ? 'checkAuthoring.pageBreak' : 'checkAuthoring.validationSummary')}</p>}
         </div>)}
       </li>)}

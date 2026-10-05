@@ -31,8 +31,10 @@ function build(proposal: IdsProposal): { draft: IdsDraft | null; error: string |
   catch (error) { return { draft: null, error: message(error) }; }
 }
 
-function AuditSummary({ issues }: { issues: IDSAuditIssue[] | null }) {
+function AuditSummary({ issues, failure }: { issues: IDSAuditIssue[] | null; failure: string | null }) {
   const { t } = useTranslation();
+  // A rejected audit is not a clean one: it keeps saving and export blocked (issues stay null).
+  if (failure) return <p className="font-medium text-destructive break-words">{t('checkAuthoring.auditFailed', { reason: failure })}</p>;
   if (!issues) return <p className="text-muted-foreground">{t('checkAuthoring.auditRunning')}</p>;
   const errors = issues.filter(issue => issue.severity === 'error'), warnings = issues.length - errors.length;
   return <div className="space-y-0.5">
@@ -44,12 +46,14 @@ function AuditSummary({ issues }: { issues: IDSAuditIssue[] | null }) {
   </div>;
 }
 
-export function IdsDraftReview({ initial }: { initial: IdsProposal }) {
+/** `audit` is the native IDS audit; replaceable only so a test can make it fail. */
+export function IdsDraftReview({ initial, audit = auditIdsDraft }: { initial: IdsProposal; audit?: (draft: IdsDraft) => Promise<IDSAuditIssue[]> }) {
   const { t } = useTranslation();
   const panels = usePanelControls();
   const [proposal, setProposal] = useState(initial);
   const { draft, error: buildError } = useMemo(() => build(proposal), [proposal]);
   const [issues, setIssues] = useState<IDSAuditIssue[] | null>(null);
+  const [auditFailure, setAuditFailure] = useState<string | null>(null);
   const [run, setRun] = useState<DryRun | null>(null);
   const [running, setRunning] = useState(false);
   const [saved, setSaved] = useState<SavedDefinition | null>(null);
@@ -59,12 +63,12 @@ export function IdsDraftReview({ initial }: { initial: IdsProposal }) {
   useViewerStore(s => s.models); useViewerStore(s => s.mutationVersion); useViewerStore(s => s.geometryContentVersion);
   useEffect(() => {
     let live = true;
-    setIssues(null);
+    setIssues(null); setAuditFailure(null);
     if (!draft) return;
-    auditIdsDraft(draft).then(result => { if (live) setIssues(result); },
-      (failure: unknown) => { if (live) { setIssues([]); setError(message(failure)); } });
+    audit(draft).then(result => { if (live) setIssues(result); },
+      (failure: unknown) => { if (live) setAuditFailure(message(failure)); });
     return () => { live = false; };
-  }, [draft]);
+  }, [draft, audit]);
   useEffect(() => () => abort.current?.abort(), []);
   const current = !!draft && isDryRunCurrent(run, draft.document);
   const locked = saved !== null || running;
@@ -93,10 +97,10 @@ export function IdsDraftReview({ initial }: { initial: IdsProposal }) {
     <TextField id="ids-draft-title" label={t('checkAuthoring.draftTitle')} value={proposal.title} disabled={locked}
       onChange={title => edit({ ...proposal, title, document: { ...proposal.document, info: { ...proposal.document.info, title } } })} />
     {proposal.rationale && <p className="text-muted-foreground break-words">{proposal.rationale}</p>}
-    {draft && specs.length > 0 && <AuditSummary issues={issues} />}
+    {draft && specs.length > 0 && <AuditSummary issues={issues} failure={auditFailure} />}
     {buildError && <Notice tone="error">{buildError === 'names' ? t('checkAuthoring.namesRequired') : buildError}</Notice>}
     {specs.length > 0 && <ul aria-label={t('checkAuthoring.specifications')} className="space-y-1.5">
-      {specs.map((spec, index) => <IdsSpecificationEditor key={index} spec={spec} index={index} disabled={locked}
+      {specs.map((spec, index) => <IdsSpecificationEditor key={index} spec={spec} index={index} units={proposal.units} disabled={locked}
         onChange={next => edit({ ...proposal, document: { ...proposal.document, specifications: specs.map((item, i) => i === index ? next : item) } })} />)}
     </ul>}
     <UnsupportedList items={proposal.unsupported} />

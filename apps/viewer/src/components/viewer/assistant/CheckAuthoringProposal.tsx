@@ -41,5 +41,7 @@ export function CheckAuthoringProposal() {
   const key = `${assistant.snapshot?.id ?? assistant.archived?.id ?? 'conversation'}:${assistant.messages.length}`;
   if (reviewable.kind === 'ids') return <IdsDraftReview key={key} initial={reviewable.proposal} />;
   if (reviewable.kind === 'rules') return <RulesDraftReview key={key} initial={reviewable.proposal} />;
-  return <DocumentOutlineReview key={key} initial={reviewable.proposal} />;
+  // Outline tables bind by report specification id, so only the report this conversation read can back them.
+  const evidence = assistant.snapshot?.source === 'validation' ? assistant.snapshot.sourceIdentity : null;
+  return <DocumentOutlineReview key={key} initial={reviewable.proposal} evidence={evidence} />;
 }

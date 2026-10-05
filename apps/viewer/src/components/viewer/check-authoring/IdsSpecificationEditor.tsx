@@ -6,7 +6,8 @@ import { useMemo } from 'react';
 import { createTranslationService, type IDSFacet, type IDSRequirement, type IDSSpecification, type RequirementOptionality } from '@ifc-lite/ids';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { specificationCardinality, withSpecificationCardinality, type SpecificationCardinality } from '@/lib/check-authoring/ids-proposal';
+import { specificationCardinality, withSpecificationCardinality, type DeclaredUnit, type SpecificationCardinality } from '@/lib/check-authoring/ids-proposal';
+import { siUnitOf, unitConversions } from '@/lib/check-authoring/ids-constraint';
 import { TextField } from './DraftParts';
 
 const SPEC_CARDINALITIES: SpecificationCardinality[] = ['required', 'optional', 'prohibited'];
@@ -29,14 +30,30 @@ function withValue(requirement: IDSRequirement, value: string): IDSRequirement {
 
 const selectClass = 'h-7 rounded border border-input bg-background px-1';
 
+/** The SI unit a property value is compared in, for a measure dataType. */
+function siUnitOfFacet(facet: IDSFacet): string | null {
+  return facet.type === 'property' && facet.dataType?.type === 'simpleValue' ? siUnitOf(facet.dataType.value) : null;
+}
+
+/** "2400 mm → 2.4 m": the current SI value read back in the unit it was authored in. */
+function UnitNote({ facet, unit }: { facet: IDSFacet; unit: string | undefined }) {
+  const { t } = useTranslation();
+  const siUnit = siUnitOfFacet(facet);
+  const pairs = unit && siUnit && facet.type === 'property' ? unitConversions(facet.value, unit) : [];
+  if (!unit || !siUnit || !pairs.length) return null;
+  return <p className="text-muted-foreground break-words">{t('checkAuthoring.unitConversion', { unit,
+    values: pairs.map(pair => t('checkAuthoring.unitPair', { authored: String(pair.authored), unit, si: String(pair.si), siUnit })).join(', ') })}</p>;
+}
+
 /** Inline edits of one drafted specification; every edit re-runs the native serialisation and audit. */
-export function IdsSpecificationEditor({ spec, index, disabled, onChange }: {
-  spec: IDSSpecification; index: number; disabled: boolean; onChange: (spec: IDSSpecification) => void;
+export function IdsSpecificationEditor({ spec, index, units, disabled, onChange }: {
+  spec: IDSSpecification; index: number; units: readonly DeclaredUnit[]; disabled: boolean; onChange: (spec: IDSSpecification) => void;
 }) {
   const { t } = useTranslation();
   const locale = useViewerStore(s => s.idsLocale);
   const describe = useMemo(() => createTranslationService(locale), [locale]);
   const id = `ids-draft-spec-${index}`;
+  const unitAt = (part: DeclaredUnit['part'], at: number) => units.find(unit => unit.spec === index && unit.part === part && unit.index === at)?.unit;
   const setRequirement = (at: number, requirement: IDSRequirement) =>
     onChange({ ...spec, requirements: spec.requirements.map((item, i) => i === at ? requirement : item) });
   return <li className="rounded border border-border p-2 space-y-1.5">
@@ -50,14 +67,16 @@ export function IdsSpecificationEditor({ spec, index, disabled, onChange }: {
     </div>
     <div>
       <p className="text-2xs text-muted-foreground">{t('checkAuthoring.appliesTo')}</p>
-      <ul className="pl-2">{spec.applicability.facets.map((facet, i) => <li key={i} className="break-words">{describe.describeFacet(facet, 'applicability')}</li>)}</ul>
+      <ul className="pl-2">{spec.applicability.facets.map((facet, i) => <li key={i} className="break-words">{describe.describeFacet(facet, 'applicability')}
+        <UnitNote facet={facet} unit={unitAt('applicability', i)} /></li>)}</ul>
     </div>
     {spec.requirements.length > 0 && <div className="space-y-1">
       <p className="text-2xs text-muted-foreground">{t('checkAuthoring.requires')}</p>
       <ul className="space-y-1">{spec.requirements.map((requirement, i) => {
-        const value = simpleValue(requirement.facet);
+        const value = simpleValue(requirement.facet), siUnit = siUnitOfFacet(requirement.facet);
         return <li key={i} className="pl-2 border-l border-border space-y-1">
           <p className="break-words">{describe.describeRequirement(requirement)}</p>
+          <UnitNote facet={requirement.facet} unit={unitAt('requirements', i)} />
           {requirement.instructions && <p className="text-muted-foreground whitespace-pre-wrap break-words">{requirement.instructions}</p>}
           <div className="flex flex-wrap items-end gap-1.5">
             <div className="space-y-0.5">
@@ -67,7 +86,7 @@ export function IdsSpecificationEditor({ spec, index, disabled, onChange }: {
                 {optionalities(requirement.facet).map(option => <option key={option} value={option}>{t(`checkAuthoring.cardinality.${option}`)}</option>)}
               </select>
             </div>
-            {value !== null && <div className="min-w-0 flex-1"><TextField id={`${id}-req-${i}-value`} label={t('checkAuthoring.requiredValue')} value={value}
+            {value !== null && <div className="min-w-0 flex-1"><TextField id={`${id}-req-${i}-value`} label={siUnit ? t('checkAuthoring.requiredValueIn', { unit: siUnit }) : t('checkAuthoring.requiredValue')} value={value}
               disabled={disabled} onChange={next => setRequirement(i, withValue(requirement, next))} /></div>}
           </div>
         </li>;

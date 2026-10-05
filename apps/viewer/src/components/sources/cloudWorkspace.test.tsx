@@ -355,4 +355,20 @@ describe('Cloud workspace (#6897)', () => {
     click(named(labelled(ui, 'Favorite folders') as HTMLElement, 'Deep archive')); await pump();
     assert.deepEqual(requests, ['root', 'archive']); assert.ok(ui.textContent?.includes('Archive.ifc'));
   });
+
+  it('returns from a favorite shortcut to the overview and can browse another project (#6898)', async () => {
+    const p = provider();
+    p.listProjects = async () => ({ items: [{ id: 'p1', name: 'First Project' }, { id: 'p2', name: 'Second Project' }] });
+    p.listFiles = async (_ctx, project) => ({ items: [{ ...file, name: `${project}.ifc`, containerId: 'root' }] });
+    saveFavourites(p.manifest.name, [{ providerId: p.manifest.name, kind: 'folder', projectId: 'p1', projectName: 'First Project', fileAreaId: 'root', fileAreaName: 'Documents', containerId: 'root', containerName: 'Shortcut', identityId: null, addedAt: 1 }]);
+    const ui = render(<SourceHostProvider additionalProviders={[() => p]}><SourcesPanel onClose={() => {}} /></SourceHostProvider>);
+    await pump();
+    const remove = labelled(ui, 'Remove favourite: Shortcut'); const shortcut = remove.closest('li')?.querySelector('button'); assert.ok(shortcut);
+    click(shortcut); await pump(); assert.ok(ui.textContent?.includes('p1.ifc'));
+    click(labelled(ui, 'Back')); await pump(); click(labelled(ui, 'Back')); await pump();
+    assert.equal(labelled(ui, 'Browse Workspace Files').getAttribute('aria-expanded'), 'false');
+    click(labelled(ui, 'Browse Workspace Files')); await pump();
+    click(named(ui, 'Second Project')); await pump(); click(named(ui, 'Documents')); await pump();
+    assert.ok(ui.textContent?.includes('p2.ifc')); assert.equal(ui.textContent?.includes('p1.ifc'), false);
+  });
 });

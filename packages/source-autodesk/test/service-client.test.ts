@@ -42,6 +42,22 @@ it('does not authorize when sign-in is cancelled during session discovery (#6905
   expect(authorized).toBe(false);
 });
 
+it('can sign out after the previously restored gateway session disappears (#6905)', async () => {
+  let generation = 1; let discarded = false;
+  const fetcher: typeof fetch = async (input, init) => {
+    if (String(input).endsWith('/session')) return Response.json({ csrf: `session-${generation}`, identity: generation === 1 ? { id: 'account' } : null, imports: ['exchange'] });
+    if (String(input).endsWith('/signout')) {
+      if (new Headers(init?.headers).get('X-IFClite-CSRF') !== `session-${generation}`) return Response.json({ message: 'Sign in with Autodesk.' }, { status: 401 });
+      discarded = true; return Response.json({ signedOut: true });
+    }
+    throw new Error(`Unexpected request: ${String(input)}`);
+  };
+  const service = createAutodeskService(fetcher);
+  await service.identity(); generation++;
+  await service.signOut();
+  expect(discarded).toBe(true); expect(service.imports).toEqual([]);
+});
+
 const id = 'a'.repeat(32);
 const ref = {
   projectId: address({ kind: 'project', project: 'project', region: 'EMEA' }),

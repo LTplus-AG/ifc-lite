@@ -41,17 +41,16 @@ export function createAutodeskService(fetcher: typeof fetch = fetch): AutodeskSe
     return { id: text(identity.id), displayName: optionalText(identity.displayName), email: optionalText(identity.email) };
   };
   const mutation = async (path: string, body?: unknown, signal?: AbortSignal) => {
-    if (!csrf) await session(signal);
+    // Discovery refreshes the cookie and CSRF after idle expiry or a gateway
+    // restart. This applies to sign-out/cancellation as well as authorization.
+    await session(signal);
+    signal?.throwIfAborted();
     return call(path, { method: 'POST', signal, headers: { 'X-IFClite-CSRF': csrf ?? '', 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
   };
   return {
     get imports() { return imports; },
     identity: session,
     async startSignIn(signal) {
-      // Discovery refreshes the cookie and CSRF after idle expiry or a gateway
-      // restart. Reusing the value from restore makes every login attempt 401.
-      await session(signal);
-      signal?.throwIfAborted();
       const value = record(await (await mutation('authorize', undefined, signal)).json());
       const url = new URL(text(value.url));
       if (url.origin !== 'https://developer.api.autodesk.com' || url.pathname !== '/authentication/v2/authorize') throw new AutodeskError('invalid-authorization', 'The service returned an unexpected sign-in URL.');

@@ -26,11 +26,18 @@ export function SourceResourceDetails({ provider, ctx, projectId, file, selected
     }}>
       <summary className="cursor-pointer text-muted-foreground">{t('sources.resourceDetails.title')}</summary>
       <div className="mt-2 space-y-2 rounded border p-2">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+          <dt className="text-muted-foreground">{t('sources.workspace.fileName')}</dt><dd className="break-words">{file.name}</dd>
+          {file.sizeBytes != null && <><dt className="text-muted-foreground">{t('sources.workspace.fileSize')}</dt><dd>{t('sources.workspace.kilobytes', { size: new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(file.sizeBytes / 1024) })}</dd></>}
+          {file.modifiedAt && <><dt className="text-muted-foreground">{t('sources.workspace.modified')}</dt><dd>{file.modifiedAt}</dd></>}
+          {file.modifiedBy && <><dt className="text-muted-foreground">{t('sources.workspace.modifiedBy')}</dt><dd>{file.modifiedBy}</dd></>}
+        </dl>
         <p>{file.kind === 'proposal' ? t('sources.resourceDetails.proposal') : file.kind === 'exchange'
           ? t('sources.resourceDetails.exchange') : t('sources.resourceDetails.file')}</p>
         {file.kind === 'exchange' && <p>{t('sources.resourceDetails.exchangeVersions')}</p>}
         {file.kind === 'proposal' && <p>{t('sources.resourceDetails.proposalFidelity')}</p>}
         {error && <p role="alert" className="text-red-600">{error}</p>}
+        {!provider.listRevisions && <p>{t('sources.workspace.noVersions')}</p>}
         {versions.loading && <output>{t('sources.resourceDetails.loading')}</output>}
         <ul className="max-h-48 space-y-1 overflow-y-auto" aria-label={t('sources.resourceDetails.versions')}>
           {versions.items.map((revision) => {

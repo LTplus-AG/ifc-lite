@@ -19,6 +19,7 @@ import { useSourceCatalogSync } from './useSourceCatalogSync';
 import { useSourceFileSearch } from './useSourceFileSearch';
 import { useLoadedSourceModels } from './useLoadedSourceModels';
 import { usePagedList } from './usePagedList';
+import { SourceWideSearch } from './SourceWideSearch';
 import { SourceProjectsStep } from './SourceProjectsStep';
 import { SourceFileAreasStep } from './SourceFileAreasStep';
 import { SourceFolderStep } from './SourceFolderStep';
@@ -277,6 +278,9 @@ export function SourceBrowser({
         onBack={goBack}
         onSync={handleSync}
       />
+
+      {(step === 'projects' || step === 'file-areas') && <SourceWideSearch provider={provider} ctx={ctx}
+        onDownload={onDownload} busy={busy} downloadStates={downloadStates} />}
 
       {error && (
         <div className="flex items-center gap-2 border-b px-3 py-2 text-sm text-red-600 dark:text-red-400">

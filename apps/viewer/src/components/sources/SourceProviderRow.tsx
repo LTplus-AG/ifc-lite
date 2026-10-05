@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useEffect } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import type { FileSourceProvider } from '@ifc-lite/plugin-api';
 import type { SourceHost } from '@/services/sources/source-host';
 import { isPrefsConfigured, loadResolvedSourcePrefs } from '@/lib/sources/preferences';
@@ -10,7 +10,7 @@ import { isAllowedHost, isHttpsUrl } from '@/services/sources/host-fetch';
 import { useSourceAuth } from './useSourceAuth';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
-import { Cloud, LogIn, LogOut, Settings } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronRight, Cloud, LogIn, LogOut, Settings, Star } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
 import { resolveLiveMessage } from '@/i18n/live-message';
@@ -22,6 +22,12 @@ interface SourceProviderRowProps {
   prefsVersion: number;
   onOpenSettings: () => void;
   onBrowse: () => void;
+  expanded?: boolean;
+  browseDisabled?: boolean;
+  pinned?: boolean;
+  onTogglePin?: () => void;
+  children?: ReactNode;
+  onReady?: (providerId: string, ready: boolean) => void;
   /**
    * Reports this provider's signed-in identity once its auth has SETTLED. Auth
    * lives in this row, but the favourites list above it is filtered by
@@ -83,11 +89,24 @@ export function SourceProviderRow({
   onOpenSettings,
   onBrowse,
   onIdentityChange,
+  expanded = false,
+  browseDisabled = false,
+  pinned = false,
+  onTogglePin,
+  children,
+  onReady,
 }: SourceProviderRowProps) {
   const { t } = useTranslation();
   const { manifest } = provider;
   const iconUrl = safeIconUrl(manifest.iconUrl, manifest.permissions.network);
   const auth = useSourceAuth(provider, sourceHost);
+  const openAfterSignIn = useRef(false);
+  useEffect(() => {
+    if (openAfterSignIn.current && auth.status === 'signed-in') {
+      openAfterSignIn.current = false;
+      if (!expanded) onBrowse();
+    }
+  }, [auth.status, expanded, onBrowse]);
   const interactive = auth.status !== 'not-interactive';
 
   const identityId = auth.identity?.id ?? null;
@@ -111,6 +130,9 @@ export function SourceProviderRow({
   const prefsConfigured = isPrefsConfigured(manifest, prefs);
 
   const canBrowse = interactive ? auth.status === 'signed-in' : prefsConfigured;
+  useEffect(() => {
+    onReady?.(providerId, canBrowse);
+  }, [providerId, canBrowse, onReady]);
   // Interactive providers can still require preferences (e.g. a client id for
   // the OAuth app registration) — sign-in is pointless until those exist.
   const canSignIn = auth.status === 'signed-out' && prefsConfigured;
@@ -130,88 +152,47 @@ export function SourceProviderRow({
     : null;
 
   return (
-    <li className="flex flex-col gap-1.5 px-3 py-2">
-      {/* Name on its own row. Sharing one row with up to three controls
-          truncated real provider titles ("SharePoint / OneDrive" became
-          "SharePo…") at the panel's default docked width. */}
-      <div className="flex items-center gap-2">
-        {iconUrl ? (
-          <img
-            src={iconUrl}
-            alt=""
-            className="h-4 w-4 shrink-0 rounded-sm object-contain"
-          />
-        ) : (
-          <Cloud className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-        )}
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm">{manifest.title}</span>
-          {identityLabel && (
-            <span className="block truncate text-xs text-muted-foreground">
-              {identityLabel}
-              {auth.identity?.organization ? ` · ${auth.identity.organization}` : ''}
+    <li className={`rounded-lg border bg-background ${expanded ? 'border-primary/40' : ''}`}>
+      <div className="flex items-center gap-1 p-2">
+        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 rounded-md p-1.5 text-left hover:bg-accent disabled:cursor-default"
+          disabled={!canBrowse || browseDisabled} onClick={onBrowse} aria-expanded={expanded}
+          aria-label={t('sources.sourceProviderRow.browseAria', { title: manifest.title })}>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+            {iconUrl ? <img src={iconUrl} alt="" className="h-5 w-5 object-contain" />
+              : <Cloud className="h-5 w-5 text-muted-foreground" aria-hidden />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium">{manifest.title}</span>
+            <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+              {canBrowse && <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-600" aria-hidden />}
+              {identityLabel ?? t(canBrowse ? 'sources.workspace.ready' : 'sources.workspace.notConnected')}
             </span>
-          )}
-        </span>
+          </span>
+          {canBrowse && (expanded ? <ChevronDown className="h-4 w-4 shrink-0" aria-hidden /> : <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />)}
+        </button>
+        {onTogglePin && <IconButton label={t(pinned ? 'sources.workspace.unpin' : 'sources.workspace.pin', { title: manifest.title })}
+          aria-pressed={pinned} onClick={onTogglePin} className={pinned ? 'text-amber-500' : 'text-muted-foreground'}>
+          <Star className={`h-4 w-4 ${pinned ? 'fill-current' : ''}`} aria-hidden />
+        </IconButton>}
       </div>
-
-      <div className="flex items-center justify-end gap-1 pl-6">
-        {interactive && auth.status === 'signed-in' && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2"
-            aria-label={t('sources.sourceProviderRow.signOutAria', { title: manifest.title })}
-            onClick={auth.signOut}
-          >
-            <LogOut className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-            {t('sources.sourceProviderRow.signOut')}
-          </Button>
-        )}
-        {interactive && (auth.status === 'signed-out' || auth.status === 'busy' || auth.status === 'restoring') && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 px-2"
-            aria-label={t('sources.sourceProviderRow.signInAria', { title: manifest.title })}
-            disabled={!canSignIn}
-            onClick={auth.signIn}
-          >
-            {auth.status === 'signed-out' ? (
-              <LogIn className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-            ) : (
-              <Spinner size="sm" className="mr-1.5" />
-            )}
-            {t('sources.sourceProviderRow.signIn')}
-          </Button>
-        )}
-
-        {auth.cancelSignIn && (
-          <Button variant="ghost" size="sm" onClick={auth.cancelSignIn}>
-            {t('sources.sourceProviderRow.cancelSignIn')}
-          </Button>
-        )}
-        <IconButton
-          label={t('sources.sourceProviderRow.settingsAria', { title: manifest.title })}
-          className="h-7 w-7"
-          onClick={onOpenSettings}
-        >
+      <div className="flex flex-wrap items-center gap-1 px-3 pb-2">
+        {interactive && auth.status === 'signed-in' && <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground"
+          aria-label={t('sources.sourceProviderRow.signOutAria', { title: manifest.title })} onClick={auth.signOut}>
+          <LogOut className="mr-1.5 h-3.5 w-3.5" aria-hidden />{t('sources.sourceProviderRow.signOut')}
+        </Button>}
+        {interactive && auth.status !== 'signed-in' && <Button variant="outline" size="sm" className="h-8 flex-1"
+          aria-label={t('sources.sourceProviderRow.signInAria', { title: manifest.title })} disabled={!canSignIn} onClick={() => { openAfterSignIn.current = true; auth.signIn(); }}>
+          {auth.status === 'signed-out' ? <LogIn className="mr-1.5 h-3.5 w-3.5" aria-hidden /> : <Spinner size="sm" className="mr-1.5" />}
+          {t(auth.status === 'restoring' ? 'sources.sourceProviderRow.restoringSession' : auth.status === 'busy' ? 'sources.workspace.connecting' : 'sources.sourceProviderRow.signIn')}
+        </Button>}
+        {!prefsConfigured && <Button variant="outline" size="sm" onClick={onOpenSettings}>{t('sources.workspace.configure')}</Button>}
+        {auth.cancelSignIn && <Button variant="ghost" size="sm" onClick={auth.cancelSignIn}>{t('sources.sourceProviderRow.cancelSignIn')}</Button>}
+        <IconButton label={t('sources.sourceProviderRow.settingsAria', { title: manifest.title })} className="ml-auto h-7 w-7" onClick={onOpenSettings}>
           <Settings className="h-3.5 w-3.5" aria-hidden />
         </IconButton>
-        <Button
-          variant={canBrowse ? 'ghost' : 'outline'}
-          size="sm"
-          className="h-7"
-          disabled={!canBrowse}
-          aria-label={t('sources.sourceProviderRow.browseAria', { title: manifest.title })}
-          onClick={onBrowse}
-        >
-          {t('sources.sourceProviderRow.browse')}
-        </Button>
       </div>
-      {hint && (
-        <p className="pl-6 text-xs text-muted-foreground">{hint}</p>
-      )}
+      {hint && <output className="block px-3 pb-2 text-xs text-muted-foreground">{hint}</output>}
+      {expanded && canBrowse && <div className="border-t">{children}</div>}
     </li>
   );
 }

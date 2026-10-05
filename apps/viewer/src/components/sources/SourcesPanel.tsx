@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { ConnectionTestResult } from '@ifc-lite/plugin-api';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { SourceSettingsDialog } from './SourceSettingsDialog';
@@ -20,6 +20,7 @@ import type { TranslationKey } from '@/i18n';
 import { getLocale, hasActiveTranslation, resolveEnglish, selectPluralCategory } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
 import { loadResolvedSourcePrefs, saveSourcePrefs } from '@/lib/sources/preferences';
+import { useSourceProviderPins } from './useSourceProviderPins';
 import { clearAllSourceData } from '@/lib/sources/persistence';
 import {
   claimRevisionWatchSlot,
@@ -102,6 +103,10 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
     () => sourceHost.getRegistrationFailures(),
     [sourceHost],
   );
+  const pins = useSourceProviderPins();
+  const didAutoOpen = useRef(false);
+  const [readyProviders, setReadyProviders] = useState<ReadonlySet<string>>(() => new Set());
+  const [downloadOwner, setDownloadOwner] = useState<string | null>(null);
   const [browsing, setBrowsing] = useState<string | null>(null);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
   // Bumped when saved prefs change so rows/contexts re-derive configured state.
@@ -127,7 +132,22 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
     });
   }, []);
 
+  const recordReady = useCallback((providerId: string, ready: boolean) => {
+    setReadyProviders((previous) => {
+      if (previous.has(providerId) === ready) return previous;
+      const next = new Set(previous);
+      if (ready) next.add(providerId); else next.delete(providerId);
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    if (didAutoOpen.current || browsing) return;
+    const pinned = pins.ids.find((id) => readyProviders.has(id));
+    if (pinned) { didAutoOpen.current = true; setBrowsing(pinned); }
+  }, [pins.ids, readyProviders, browsing]);
+
   const openFavourite = useCallback((favourite: SourceFavourite) => {
+    didAutoOpen.current = true;
     setBrowseTarget(favourite);
     setBrowsing(favourite.providerId);
   }, []);
@@ -136,6 +156,12 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
     setBrowsing(null);
     setBrowseTarget(null);
   }, []);
+
+  useEffect(() => {
+    if (browsing && liveIdentities.has(browsing) && !readyProviders.has(browsing)) {
+      setBrowsing(null); setBrowseTarget(null);
+    }
+  }, [browsing, liveIdentities, readyProviders]);
 
   const activeProvider = browsing ? sourceHost.get(browsing) : undefined;
   const settingsProvider = settingsFor ? sourceHost.get(settingsFor) : undefined;
@@ -209,8 +235,13 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
     provider: activeProvider,
     providerId: browsing,
     sourceHost,
-    onBatchSucceeded: closeBrowser,
+    onBatchSucceeded: pins.ids.includes(browsing ?? '') ? () => {} : closeBrowser,
   });
+
+  useEffect(() => {
+    if (downloading && downloadOwner && sourceHost.get(downloadOwner)?.manifest.auth === 'interactive'
+      && liveIdentities.has(downloadOwner) && liveIdentities.get(downloadOwner) === null) cancelDownload();
+  }, [downloading, downloadOwner, liveIdentities, sourceHost, cancelDownload]);
 
   const browsingCtx = useMemo(() => {
     if (!activeProvider || !browsing) return null;
@@ -230,24 +261,6 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
     return loadResolvedSourcePrefs(settingsProvider.manifest);
   }, [settingsProvider, prefsVersion]);
 
-  if (activeProvider && browsingCtx) {
-    return (
-      <SourceBrowser
-        provider={activeProvider}
-        ctx={browsingCtx}
-        onDownload={(selection) => void handleDownload(selection)}
-        onBack={() => {
-          closeBrowser();
-          clearFinishedDownloadStates();
-        }}
-        busy={downloading}
-        onCancelDownload={cancelDownload}
-        downloadStates={downloadStates}
-        openTarget={browseTarget}
-        onFavouritesChanged={bumpFavourites}
-      />
-    );
-  }
 
   return (
     <div className="flex h-full flex-col">
@@ -264,7 +277,8 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        <p className="px-1 pb-3 text-xs text-muted-foreground">{t('sources.workspace.intro')}</p>
         {providers.length === 0 && registrationFailures.length === 0 && (
           <div className="flex flex-col items-center gap-2 px-4 py-8 text-center text-sm text-muted-foreground">
             <Cloud className="h-8 w-8" aria-hidden />
@@ -272,6 +286,10 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
           </div>
         )}
 
+        {downloading && <div className="mb-2 flex items-center gap-2 rounded border p-2">
+          <output className="min-w-0 flex-1 text-xs">{t('sources.workspace.downloading', { title: sourceHost.get(downloadOwner ?? '')?.manifest.title ?? '' })}</output>
+          <Button size="sm" variant="outline" onClick={cancelDownload}>{t('sources.sourceBrowserHeader.cancelDownload')}</Button>
+        </div>}
         <SourceFavouritesList
           sourceHost={sourceHost}
           favouritesVersion={favouritesVersion}
@@ -280,17 +298,36 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
           onChanged={bumpFavourites}
         />
 
-        <ul className="divide-y">
-          {providers.map((p) => (
+        <ul className="space-y-2">
+          {[...providers].sort((a, b) => Number(pins.ids.includes(b.manifest.name)) - Number(pins.ids.includes(a.manifest.name))).map((p) => (
             <SourceProviderRow
               key={p.manifest.name}
               provider={p}
               sourceHost={sourceHost}
               prefsVersion={prefsVersion}
               onOpenSettings={() => setSettingsFor(p.manifest.name)}
-              onBrowse={() => setBrowsing(p.manifest.name)}
+              onBrowse={() => {
+                didAutoOpen.current = true;
+                setBrowseTarget(null);
+                setBrowsing((previous) => previous === p.manifest.name ? null : p.manifest.name);
+              }}
+              browseDisabled={downloading && downloadOwner !== p.manifest.name}
+              expanded={browsing === p.manifest.name}
+              pinned={pins.ids.includes(p.manifest.name)}
+              onTogglePin={() => pins.toggle(p.manifest.name)}
+              onReady={recordReady}
               onIdentityChange={recordIdentity}
-            />
+            >
+              {browsing === p.manifest.name && activeProvider && browsingCtx && (
+                <div className="flex h-[min(65vh,600px)] min-h-64 flex-col">
+                  <SourceBrowser key={`${browsing}:${browseTarget?.containerId ?? ""}:${browseTarget?.fileId ?? ""}`} provider={activeProvider} ctx={browsingCtx}
+                    onDownload={(selection) => { setDownloadOwner(browsing); void handleDownload(selection); }}
+                    onBack={() => { didAutoOpen.current = true; closeBrowser(); clearFinishedDownloadStates(); }}
+                    busy={downloading} onCancelDownload={cancelDownload} downloadStates={downloadOwner === browsing ? downloadStates : new Map()}
+                    openTarget={browseTarget} onFavouritesChanged={bumpFavourites} />
+                </div>
+              )}
+            </SourceProviderRow>
           ))}
         </ul>
 

@@ -62,7 +62,8 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {discoverableOnly && (
+      {(
+
         <div className="border-b px-3 py-2">
           <div className="relative">
             <Search
@@ -81,14 +82,14 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
             />
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {t(provider.manifest.name === 'autodesk' ? 'sources.sourceProjectsStep.autodeskHint' : 'sources.sourceProjectsStep.discoverableHint')}
+            {discoverableOnly && t(provider.manifest.name === 'autodesk' ? 'sources.sourceProjectsStep.autodeskHint' : 'sources.sourceProjectsStep.discoverableHint')}
           </p>
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <SourceEntityList
-          items={paged.items}
+          items={discoverableOnly ? paged.items : paged.items.filter((project) => project.name.toLocaleLowerCase().includes(query.toLocaleLowerCase().trim()))}
           loading={paged.loading}
           icon={Folder}
           emptyLabel={

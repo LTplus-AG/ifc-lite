@@ -8,7 +8,7 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { EntityRef } from '@/store/types';
 import { effectiveSelectedClass } from './effectiveSelectedClass';
 import { propertyDisplayValue, quantityDisplayValue } from './propertyDisplayValue';
-import { effectivePropertySets, effectiveQuantitySets } from './effectiveSets';
+import { effectiveElementData } from './effectiveElementData';
 
 /**
  * Values are compared across at most this many elements. Counts and the
@@ -109,28 +109,23 @@ export function summarizeSelection(
   for (const { ref } of elements.slice(0, SUMMARY_VALUE_LIMIT)) {
     const source = sourceFor(ref.modelId);
     const store = source?.store ?? null;
-    const node = queryFor(ref.modelId, store)?.entity(ref.expressId) ?? null;
-    const view = source?.view;
     const projectUnits = unitsFor(ref.modelId, store);
+    const data = effectiveElementData(ref.expressId, queryFor(ref.modelId, store), source?.view);
 
     const attributes = new Map<string, string>();
-    for (const attr of node?.allAttributes() ?? []) attributes.set(`\u0000${attr.name}`, String(attr.value));
-    for (const attr of view?.getAttributeMutationsForEntity(ref.expressId) ?? []) attributes.set(`\u0000${attr.name}`, String(attr.value));
+    for (const [name, value] of data.attributes) attributes.set(`\u0000${name}`, String(value));
     attributeValues.push(attributes);
 
-    const query = queryFor(ref.modelId, store);
-    const psets = effectivePropertySets(view, ref.expressId, () => node?.properties() ?? []);
     const properties = new Map<string, string>();
-    for (const pset of psets) {
+    for (const pset of data.psets) {
       for (const prop of pset.properties) {
         properties.set(`${pset.name}\u0000${prop.name}`, propertyDisplayValue(prop, projectUnits, unitDisplayOverrides).full);
       }
     }
     propertyValues.push(properties);
 
-    const qsets = effectiveQuantitySets(view, ref.expressId, (baseId) => query?.entity(baseId).quantities() ?? []);
     const quantities = new Map<string, string>();
-    for (const qset of qsets) {
+    for (const qset of data.qsets) {
       for (const q of qset.quantities) {
         quantities.set(`${qset.name}\u0000${q.name}`, quantityDisplayValue(q, projectUnits, unitDisplayOverrides, locale));
       }

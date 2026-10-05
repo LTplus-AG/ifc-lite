@@ -3,5 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { EvidenceAdapter } from './types';
+import { zonesAdapter } from './zones';
+import { placementAdapter } from './placement';
+import { layerDiffAdapter } from './layer-diff';
+import { selectionAdapter } from './selection';
 
-export const PACK: readonly EvidenceAdapter[] = [];
+export const PACK: readonly EvidenceAdapter[] = [zonesAdapter, placementAdapter, layerDiffAdapter, selectionAdapter];

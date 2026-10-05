@@ -57,6 +57,14 @@ describe('validation result head (U02, #6925)', () => {
     assert.match(text(ui.querySelector('ul[aria-label="Incomplete"]')!), /1 specification had no applicable elements/);
   });
 
+  it('a check where no specification applied to anything is partial, never complete (PR #6951 review)', () => {
+    const ui = render(<ValidationResultCoverage report={report([spec('Doors', 0), spec('Windows', 0)])} />);
+    const chip = ui.querySelector('[data-status]');
+    assert.equal(chip?.getAttribute('data-status'), 'partial', text(ui));
+    assert.match(text(ui), /0 of 2 specifications applied to elements/);
+    assert.match(text(ui.querySelector('ul[aria-label="Incomplete"]')!), /2 specifications had no applicable elements/);
+  });
+
   it('an unevaluable or capped specification makes the run partial', () => {
     const unevaluable = render(<ValidationResultCoverage report={report([spec('Doors', 3), spec('Names', 4, { status: 'fail', error: 'pattern rejected' })])} />);
     assert.match(text(unevaluable), /Partial.*1 of 2 specifications applied.*1 specification could not be evaluated/);

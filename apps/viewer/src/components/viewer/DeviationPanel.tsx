@@ -68,6 +68,8 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   // Recompute stays disabled (the #5832 lock), and anything that replaces or
   // drops the readback aborts it, so a CSV never describes a stale run.
   const [exporting, setExporting] = useState(false);
+  // Why the last Export CSV produced no file (#6880): no scan point was measured.
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
   const exportRef = useRef<{ distances: DeviationDistances; controller: AbortController } | null>(null);
 
   // A placement change, model removal or device loss clears `computed`; drop
@@ -78,6 +80,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   useEffect(() => {
     const pending = exportRef.current;
     if (pending && pending.distances !== distances) pending.controller.abort();
+    setExportNotice(null);
   }, [distances]);
 
   // COPC LOD streaming re-runs deviation on the chunks of each settled view
@@ -106,6 +109,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     exportRef.current = { distances, controller };
     setExporting(true);
     setError(null);
+    setExportNotice(null);
     const source = useViewerStore.getState();
     const sourceModels = source.models;
     try {
@@ -138,6 +142,10 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       if (report) {
         downloadFile(report.content, report.filename, 'text/csv;charset=utf-8');
         trackExportCompleted({ format: 'csv', surface: 'deviation_panel', row_count: report.rows });
+      } else {
+        // A COPC scan keeps only the nodes in view; with every node dropped
+        // the run measured nothing, and an empty file would explain nothing.
+        setExportNotice(t('deviationPanel.exportNoPointsNotice'));
       }
     } catch (err) {
       setError(controller.signal.aborted
@@ -274,6 +282,9 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
         </div>
       )}
 
+      {exportNotice && (
+        <span role="status" data-testid="deviation-export-notice" className="text-2xs text-muted-foreground">{exportNotice}</span>
+      )}
       {computed && distances && (
         <button type="button" onClick={handleExport}
           disabled={running || exporting}

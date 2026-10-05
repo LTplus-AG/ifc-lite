@@ -320,3 +320,22 @@ it('DeviationPanel #6880 a readback a COPC re-run superseded is replaced by the 
   assert.ok(!(container.textContent ?? '').includes('changed during readback'), 'the superseded read\'s error is gone');
   assert.ok(button(container, 'Export CSV'), 'the refreshed run can be exported');
 });
+
+it('DeviationPanel #6880 Export CSV with no measured points says why instead of silently downloading nothing', async () => {
+  const stub = stubRenderer();
+  const container = render(<DeviationPanel triangleCount={1} />);
+  // Every COPC node left the view: the refreshed run measured no points.
+  await computeWith(container, stub, { values: new Float32Array(0), assets: [] });
+  const downloads = await captureDownloads(async () => {
+    click(button(container, 'Export CSV')!);
+    await waitFor(() => container.querySelector('[role="status"][data-testid="deviation-export-notice"]') !== null, 'notice shown');
+  });
+  assert.equal(downloads.length, 0);
+  assert.equal(
+    container.querySelector('[data-testid="deviation-export-notice"]')?.textContent,
+    'No scan points are loaded in the current view. Frame the scan and recompute.',
+  );
+  // A later run with points clears the notice.
+  await computeWith(container, stub, ladder(10, 0.01));
+  await waitFor(() => container.querySelector('[data-testid="deviation-export-notice"]') === null, 'notice cleared');
+});

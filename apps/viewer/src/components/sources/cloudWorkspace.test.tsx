@@ -409,6 +409,30 @@ describe('Cloud workspace (#6897)', () => {
     assert.ok(named(ui, 'Open Tower.ifc')); assert.equal(ui.textContent?.includes('Download failed'), false);
   });
 
+  for (const exit of ['collapse', 'sign-out'] as const) {
+    it(`clears finished folder failures after ${exit} and reopening (#6898)`, async () => {
+      const original = provider(); let signedIn = true; const identity = { id: 'workspace-account' };
+      const p: FileSourceProvider = { ...original, manifest: { ...original.manifest, auth: 'interactive' },
+        auth: { restore: async () => signedIn ? identity : null, getIdentity: async () => signedIn ? identity : null,
+          signIn: async () => { signedIn = true; return identity; }, signOut: async () => { signedIn = false; } } };
+      p.listFiles = async () => ({ items: [{ ...file, containerId: 'root' }] });
+      p.download = async () => { throw new Error('Provider download failed'); };
+      const ui = render(<SourceHostProvider additionalProviders={[() => p]}><SourcesPanel onClose={() => {}} /></SourceHostProvider>);
+      await pump(); click(labelled(ui, 'Browse Workspace Files')); await pump();
+      const enterFolder = async () => { click(named(ui, 'First Project')); await pump(); click(named(ui, 'Documents')); await pump(); };
+      await enterFolder(); click(labelled(ui, 'Select Tower.ifc')); await pump();
+      click(named(ui, 'Load 1 file as federated model')); await pump();
+      assert.ok(ui.textContent?.includes('Download failed'));
+      if (exit === 'collapse') {
+        click(labelled(ui, 'Browse Workspace Files')); await pump(); click(labelled(ui, 'Browse Workspace Files')); await pump();
+      } else {
+        click(labelled(ui, 'Sign out of Workspace Files')); await pump(); click(labelled(ui, 'Sign in to Workspace Files')); await pump();
+      }
+      await enterFolder();
+      assert.ok(labelled(ui, 'Select Tower.ifc')); assert.equal(ui.textContent?.includes('Download failed'), false);
+    });
+  }
+
   it('keeps the download owner open when a sign-in started earlier finishes (#6898)', async () => {
     const p = provider(); let signedIn = false; let finish: (() => void) | undefined;
     const other: FileSourceProvider = { ...provider(), manifest: { ...p.manifest, name: 'other-provider', title: 'Other Files', auth: 'interactive' },

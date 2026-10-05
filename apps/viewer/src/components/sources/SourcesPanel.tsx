@@ -235,6 +235,11 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
     onBatchSucceeded: () => { if (!pinnedIds.current.includes(browsing ?? '')) closeBrowser(); },
   });
 
+  // Every exit from the download owner's browser forgets finished failures.
+  useEffect(() => {
+    if (browsing !== downloadOwner && !downloading) clearFinishedDownloadStates();
+  }, [browsing, downloadOwner, downloading, clearFinishedDownloadStates]);
+
   // A sign-in started before a download may resolve afterward. Async browse
   // callbacks must consult the current lock rather than their captured render.
   const navigationLock = useRef<{ busy: boolean; providerId: string | null }>({ busy: false, providerId: null });
@@ -337,7 +342,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
                 <div className="flex h-[min(65vh,600px)] min-h-64 flex-col">
                   <SourceBrowser key={JSON.stringify([browsing, prefsVersion, browseTarget?.projectId, browseTarget?.fileAreaId, browseTarget?.containerId, browseTarget?.fileId])} provider={activeProvider} ctx={browsingCtx}
                     onDownload={(selection) => { navigationLock.current = { busy: true, providerId: p.manifest.name }; setDownloadContext({ providerId: p.manifest.name, projectId: selection.projectId }); void handleDownload(selection); }}
-                    onBack={() => { didAutoOpen.current = true; closeBrowser(); clearFinishedDownloadStates(); }}
+                    onBack={() => { didAutoOpen.current = true; closeBrowser(); }}
                     busy={downloading} onCancelDownload={cancelDownload} downloadStates={downloadOwner === browsing ? downloadStates : new Map()}
                     downloadProjectId={downloadContext?.projectId ?? null}
                     openTarget={browseTarget} onFavouritesChanged={bumpFavourites} favouritesVersion={favouritesVersion} />

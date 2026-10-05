@@ -111,7 +111,7 @@ test('an IDS correction applied by review changes the native verdict counts reco
   assert.deepEqual([reparsedWalls?.passedCount, reparsedWalls?.failedCount], [4, 0], 'the exported IFC passes the corrected requirement on its own');
 });
 
-test('a rerun refuses when a different check is loaded', async () => {
+test('a rerun refuses when no report is loaded', async () => {
   await installSampleModel();
   const outcome = await rerunReceiptValidation(useViewerStore, { version: 1, id: 'r', title: 't', digest: 'd', createdAt: '', origin: 'o',
     batches: [], applied: [], skipped: [], status: 'applied',

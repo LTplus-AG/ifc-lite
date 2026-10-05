@@ -69,7 +69,7 @@ import {
 } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ChangeConversion } from '@/lib/actions/change-conversion';
-import { tableToModelChanges } from '@/lib/actions/table-changes';
+import { tableRowsOf, tableToModelChanges } from '@/lib/actions/table-changes';
 import type { ColumnValueType, TableMapping } from '@/lib/actions/table-mapping';
 import { suggestTableMapping, tableMappingContext } from '@/lib/actions/table-mapping-request';
 import { ChangeReviewDialog } from './actions/ChangeReviewDialog';
@@ -479,7 +479,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
     }
   }, [csvConnector, csvContent, canEditInSession, buildDataMapping, selectedModelId]);
 
-  const tableRows = useMemo(() => csvConnector && csvContent ? csvConnector.parse(csvContent) : [], [csvConnector, csvContent]);
+  const tableRows = useMemo(() => tableRowsOf(csvConnector, csvContent), [csvConnector, csvContent]);
   const headers = useMemo(() => csvColumns.map((c) => c.name), [csvColumns]);
   const reviewKey = REVIEW_KEYS[matchType];
   // Review as changes: the same mapping, converted to checked changes with the model's current values expected.

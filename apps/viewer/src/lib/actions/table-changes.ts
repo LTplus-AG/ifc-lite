@@ -51,6 +51,20 @@ function cellChange(reader: ModelReader, expressId: number, globalId: string, mo
     ...(typed.dataType ? { dataType: typed.dataType } : {}) } };
 }
 
+/**
+ * The rows the review converts. A file the CSV parser rejects is already reported by the Data Connector's
+ * file handler; here it is simply no rows, never a throw during render.
+ */
+export function tableRowsOf(connector: { parse(text: string): CsvRow[] } | null, text: string): CsvRow[] {
+  if (!connector || !text) return [];
+  try {
+    return connector.parse(text);
+  } catch (error) {
+    console.warn('[table-changes] CSV rows unavailable for review', error);
+    return [];
+  }
+}
+
 export function tableToModelChanges(state: ViewerState, input: TableConversionInput): TableConversion {
   const { mapping, modelId } = input;
   const rows = input.limit === undefined ? input.rows : input.rows.slice(0, input.limit);

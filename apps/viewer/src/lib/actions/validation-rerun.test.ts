@@ -44,6 +44,14 @@ test('an IDS rerun refuses when the loaded report validates a model the receipt 
   assert.ok(same.ok, 'the model the receipt changed reruns');
 });
 
+test('a rerun refuses when the loaded report is a different check than the one recorded at apply', async () => {
+  const validation = await sampleReport();
+  assert.deepEqual(await rerunReceiptValidation(useViewerStore, receipt('titled', 'sample', { ...validation, title: 'Another IDS' })),
+    { ok: false, reason: 'source-changed' });
+  assert.deepEqual(await rerunReceiptValidation(useViewerStore, receipt('kind', 'sample', { ...validation, source: 'rules' })),
+    { ok: false, reason: 'source-changed' });
+});
+
 test('a rerun result never turns a receipt undone meanwhile back into an applied one', async () => {
   const validation = await sampleReport();
   assert.equal(await modelChangeLibrary.put('raced', receipt('raced', 'sample', validation, 'undone')), true);

@@ -16,7 +16,7 @@ import { installSampleModel, parseIfcBytes, SAMPLE_WALLS } from '@/test/sample-c
 import { parseModelChangeBatch } from './model-change';
 import { previewModelChanges } from './model-change-preview';
 import { commitModelChanges } from './model-change-commit';
-import { tableToModelChanges } from './table-changes';
+import { tableRowsOf, tableToModelChanges } from './table-changes';
 import type { TableMapping } from './table-mapping';
 
 const original = useViewerStore.getState();
@@ -131,4 +131,11 @@ test('a mapping with two columns writing one value or an empty set name is refus
   assert.deepEqual(conversion.batches, []);
   const unnamed = mapping({ columns: [{ column: 'Fire', target: 'property', pset: ' ', name: 'FireRating', valueType: 'text' }] });
   assert.equal(tableToModelChanges(useViewerStore.getState(), { modelId: 'sample', rows: rows.slice(0, 2), mapping: unnamed }).refusal, 'invalid-mapping');
+});
+
+// #6912: the Data Connector reads rows during render; a CSV the parser rejects is no rows, not a crashed dialog.
+test('rows of a CSV the parser rejects are none, never a throw', () => {
+  assert.deepEqual(tableRowsOf({ parse: () => { throw new Error('Unterminated quote'); } }, '"a,b'), []);
+  assert.deepEqual(tableRowsOf(null, 'a,b'), []);
+  assert.deepEqual(tableRowsOf({ parse: () => [{ a: '1' }] }, 'a\n1'), [{ a: '1' }]);
 });

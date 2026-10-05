@@ -80,6 +80,10 @@ describe('comparison evidence for the assistant (#6921)', () => {
     assert.deepEqual(refused.evidence.summary.reconciliation, { kind: 'clash', compatible: false, incompatibilities:
       [{ code: 'settingsDiffer', detail: 'tolerance 0.002 / 0.01; excludeVoidsAndHosts true / true' }] });
     assert.equal(refused.evidence.rows.some(row => row.data.section === 'reconciliation'), false);
+    // A later edit does not make a refusal's reasons untrue: it is still sent.
+    useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
+    assert.equal(payload().evidence.summary.reconciliation?.compatible, false);
+    useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion - 1 });
 
     reconcile(run, run);
     useViewerStore.setState({ compareResult: { ...pair.compare } });

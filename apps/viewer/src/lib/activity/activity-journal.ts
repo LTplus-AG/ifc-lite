@@ -158,6 +158,24 @@ export function finishActivity(
     : job));
 }
 
+/**
+ * Record a user-started job that runs outside the recorders and the shared
+ * export shell (an export dialog with its own runner): running while `run`
+ * runs, completed when it resolves, failed with its message when it throws.
+ * The error is rethrown, so the host still reports it its own way.
+ */
+export async function recordActivity<T>(input: BeginActivity, run: () => Promise<T>): Promise<T> {
+  const id = beginActivity(input);
+  try {
+    const result = await run();
+    finishActivity(id, 'completed');
+    return result;
+  } catch (error) {
+    finishActivity(id, 'failed', { detail: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
+}
+
 /** Drop a job whose outcome its host reports elsewhere. */
 export function discardActivity(id: string): void {
   cancellers.delete(id);

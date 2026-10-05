@@ -24,6 +24,7 @@ import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { browserReportSeams, generateReportPdf, type ReportPdfSeams } from '@/lib/export/report/generate-report-pdf';
 import { createSnapshotCapture } from '@/lib/export/report/snapshots';
+import { recordActivity } from '@/lib/activity/activity-journal';
 import { largestBucketIds } from '@/lib/charts/buckets';
 import { comparisonChartMessage, isSavedComparisonChart, resolveComparisonChartSource } from '@/lib/charts/comparison-source';
 
@@ -86,20 +87,27 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
     const captureNeeded = snapshots && dashboard.charts.some((chart) => !isSavedComparisonChart(chart) && (aggregations.get(chart.id)?.categories.length ?? 0) > 0);
     const snapshot = seams || !captureNeeded ? null : createSnapshotCapture();
     try {
-      const s = await (seams ? seams() : browserReportSeams(snapshots ? snapshot?.capture ?? null : null));
-      const result = await generateReportPdf({
-        name: dashboard.name,
-        page,
-        titleBlock: Object.fromEntries(FIELDS.map(([k, label]) => [label, fields[k] ?? ''])),
-        snapshots,
-        charts: dashboard.charts.map((c) => {
-          const source = resolveComparisonChartSource(c, { source: c.source, columns: [], rows: [], fingerprint: '' }, savedComparisons);
-          return { id: c.id, title: c.title, aggregation: aggregations.get(c.id) ?? null,
-            snapshot: !isSavedComparisonChart(c), message: comparisonChartMessage(source, t) };
-        }),
-        snapshotIds: (chartId) => largestBucketIds(aggregations.get(chartId)),
-      }, s);
-      downloadBlob(result.blob, `${sanitizeFilename(dashboard.name, { fallback: 'report' })}-report.pdf`);
+      // Outside ExportDialogShell, so it records itself in the activity tray (#6925).
+      const result = await recordActivity(
+        { kind: 'export', title: 'activityTray.job.export', subject: t('reportExportDialog.dialogTitle') },
+        async () => {
+          const s = await (seams ? seams() : browserReportSeams(snapshots ? snapshot?.capture ?? null : null));
+          const pdf = await generateReportPdf({
+            name: dashboard.name,
+            page,
+            titleBlock: Object.fromEntries(FIELDS.map(([k, label]) => [label, fields[k] ?? ''])),
+            snapshots,
+            charts: dashboard.charts.map((c) => {
+              const source = resolveComparisonChartSource(c, { source: c.source, columns: [], rows: [], fingerprint: '' }, savedComparisons);
+              return { id: c.id, title: c.title, aggregation: aggregations.get(c.id) ?? null,
+                snapshot: !isSavedComparisonChart(c), message: comparisonChartMessage(source, t) };
+            }),
+            snapshotIds: (chartId) => largestBucketIds(aggregations.get(chartId)),
+          }, s);
+          downloadBlob(pdf.blob, `${sanitizeFilename(dashboard.name, { fallback: 'report' })}-report.pdf`);
+          return pdf;
+        },
+      );
       onSaveReportSetup({ ...dashboard, page, titleBlock: Object.fromEntries(FIELDS.map(([k]) => [k, fields[k] ?? ''])), snapshots });
       // Counts only — never the dashboard name or a chart title.
       trackExportCompleted({ format: 'pdf', surface: 'charts_report', chart_count: result.charts, page_count: result.pages, snapshot_count: result.snapshots });

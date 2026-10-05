@@ -10,6 +10,7 @@
  * complete-population actions stay disabled (`canActOnPopulation`).
  */
 
+import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
@@ -36,44 +37,41 @@ export function SelectAllControl({ selection, pageKeys, populationTotal }: Selec
     </Button>
   );
 
+  // One live region, mounted from the start and never swapped: a region that
+  // appears together with its first message is not announced by every screen
+  // reader. It carries the selection status only; the controls sit beside it.
+  let status: ReactNode = null;
   if (all?.scope === 'population') {
-    return (
-      <div className="flex flex-wrap items-center gap-1.5 text-2xs" aria-live="polite">
-        {all.state === 'resolving' && <><Spinner size="sm" />{t('resultSelection.resolving', n(all.total))}</>}
-        {all.state === 'resolved' && <span>{t('resultSelection.populationSelected', n(all.total))}</span>}
-        {all.state === 'failed' && (
-          <>
-            <span className="text-destructive">{t('resultSelection.failed')}</span>
-            <Button variant="outline" size="sm" className="h-6 px-2 text-2xs" onClick={selectPopulation}>{t('resultSelection.retry')}</Button>
-          </>
-        )}
-        {clear}
-      </div>
-    );
+    status = all.state === 'resolving' ? <><Spinner size="sm" />{t('resultSelection.resolving', n(all.total))}</>
+      : all.state === 'resolved' ? t('resultSelection.populationSelected', n(all.total))
+        : <span className="text-destructive">{t('resultSelection.failed')}</span>;
+  } else if (all?.scope === 'page') {
+    status = t('resultSelection.pageSelected', n(all.count));
   }
-  if (all?.scope === 'page') {
-    return (
-      <div className="flex flex-wrap items-center gap-1.5 text-2xs" aria-live="polite">
-        <span>{t('resultSelection.pageSelected', n(all.count))}</span>
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-2xs">
+      <output aria-live="polite" className={status ? 'inline-flex items-center gap-1.5' : 'sr-only'}>{status}</output>
+      {all?.scope === 'population' && all.state === 'failed' && (
+        <Button variant="outline" size="sm" className="h-6 px-2 text-2xs" onClick={selectPopulation}>{t('resultSelection.retry')}</Button>
+      )}
+      {all?.scope === 'page' && (
         <Button variant="outline" size="sm" className="h-6 px-2 text-2xs" onClick={selectPopulation}>
           {t('resultSelection.selectPopulation', n(populationTotal))}
         </Button>
-        {clear}
-      </div>
-    );
-  }
-  return (
-    <div className="flex flex-wrap items-center gap-1.5 text-2xs">
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-6 px-2 text-2xs"
-        disabled={pageKeys.length === 0}
-        onClick={() => dispatch({ type: 'selectPage', keys: pageKeys, complete: pageIsPopulation })}
-      >
-        {t(pageIsPopulation ? 'resultSelection.selectEverything' : 'resultSelection.selectPage', n(pageKeys.length))}
-      </Button>
-      {state.selected.size > 0 && clear}
+      )}
+      {!all && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 px-2 text-2xs"
+          disabled={pageKeys.length === 0}
+          onClick={() => dispatch({ type: 'selectPage', keys: pageKeys, complete: pageIsPopulation })}
+        >
+          {t(pageIsPopulation ? 'resultSelection.selectEverything' : 'resultSelection.selectPage', n(pageKeys.length))}
+        </Button>
+      )}
+      {(all || state.selected.size > 0) && clear}
     </div>
   );
 }

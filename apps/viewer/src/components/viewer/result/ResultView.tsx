@@ -10,8 +10,8 @@
  *   coverage   completion status, the engine's own counts, incompleteness
  *   summary    the panel's native summary (severity bar, pass rate, A/B counts)
  *   filters    the panel's filter controls
- *   actions    scoped bulk actions and exports (a toolbar above the rows, where
- *              every adopted panel already had it)
+ *   actions    scoped bulk actions and exports (a named group above the rows,
+ *              where every adopted panel already had it)
  *   rows       typed rows/groups, or a `ResultState` when there are none
  *   evidence   underlying values for the focused row
  *
@@ -119,7 +119,8 @@ export function ResultView({
       )}
       {summary && <div className={cn(SLOT, 'py-2.5', summaryClassName)} {...summaryProps}>{summary}</div>}
       {filters}
-      {actions && <div role="toolbar" aria-label={t('resultView.actions')}>{actions}</div>}
+      {/* A named group, not a toolbar: a toolbar promises arrow-key roving focus. */}
+      {actions && <div role="group" aria-label={t('resultView.actions')}>{actions}</div>}
       {rows}
       {evidence && <section aria-label={t('resultView.evidence')}>{evidence}</section>}
     </section>

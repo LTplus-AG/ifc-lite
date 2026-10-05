@@ -21,7 +21,8 @@ import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { nativePointCloudOriginMatrix } from '@/hooks/ingest/pointCloudDecodeOrigin';
 import type { ScanDetectJob, ScanDetectResult } from './detect-job';
 import type { ScanDetectOutcome, ScanDetector } from './scan-detector';
-import { startScanDetection, type DetectionDeps } from './run-detection';
+import { scanFrameMoved, startScanDetection, type DetectionDeps } from './run-detection';
+import { scanToModelMatrix } from './scan-model-frame';
 
 const HANDLE = 77;
 const initial = useViewerStore.getState();
@@ -186,6 +187,64 @@ describe('the detection frame at map-grid origins is float64 (#6894)', () => {
       }
       const run = useViewerStore.getState().scanDetectionRun!;
       assert.ok(Math.abs(run.cloudMatrix![12] - origin[0]) < 1e-6 && Math.abs(run.cloudMatrix![14] + origin[1]) < 1e-6, 'the overlay maps through the exact placement too');
+    });
+  }
+});
+
+describe('scanFrameMoved in georeferenced projects (#6894)', () => {
+  type V3 = [number, number, number];
+  const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
+  /** An IFC anchor whose loader shifted it by `shift` (Y-up: east, height, -north). */
+  function anchored(shift: V3): void {
+    const [x, y, z] = shift;
+    const coordinateInfo = { originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: true, originShift: { x, y, z } };
+    const ifc = { ...fixtureModel('ifc', { idOffset: 100_000 }), loadedAt: 1, geometryResult: { meshes: [], totalTriangles: 0, totalVertices: 0, coordinateInfo } } as unknown as FederatedModel;
+    const scan = { ...fixtureModel('scan', { idOffset: 0 }), loadedAt: 2, name: 'room.e57', ifcDataStore: undefined, pointCloudHandleId: HANDLE } as unknown as FederatedModel;
+    useViewerStore.setState({ models: new Map([['ifc', ifc], ['scan', scan]]), activeModelId: 'ifc' });
+  }
+  /** Column-major: the scan placed `east` metres along render x from where it was detected. */
+  const placed = (east: number) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 12.5 + east, 1.5, -7.25, 1];
+
+  for (const [name, shift] of [['LV95', [2_600_000, 410, -1_200_000]], ['UTM', [500_000, 300, -5_300_000]]] as const) {
+    it(`${name}-sized anchor: a 1 cm or 0.5 m move of the scan is seen, no move is not`, () => {
+      anchored([...shift]);
+      const detectedAt = placed(0);
+      const run = {
+        sourceModelId: 'scan', targetModelId: 'ifc', cropped: false, pointCount: 4, cloudMatrix: detectedAt,
+        scanToModel: scanToModelMatrix(useViewerStore.getState(), detectedAt), result: RESULT,
+      };
+      assert.ok(Math.abs(run.scanToModel[3]) > 4e5, 'the frame carries the georeferenced offset');
+      const at = (east: number): DetectionDeps => ({ detector: () => heldDetector().detector, cloudMatrix: () => placed(east) });
+      assert.equal(scanFrameMoved(run, at(0)), false, 'unmoved');
+      assert.equal(scanFrameMoved(run, at(0.01)), true, 'moved 1 cm');
+      assert.equal(scanFrameMoved(run, at(0.5)), true, 'moved 0.5 m');
+      assert.equal(scanFrameMoved(run, at(-2)), true, 'moved 2 m west');
+    });
+  }
+});
+
+describe('scanFrameMoved sees a 1 cm move of a scan at native map coordinates (#6894)', () => {
+  // The frame is composed from the exact float64 placement, so a float32 step
+  // (0.25 m in LV95 eastings, 0.5 m in UTM northings) cannot hide a move.
+  for (const [name, origin] of [['LV95', [2_600_000.37, 1_200_000.83, 410.21]], ['UTM', [500_000.37, 5_300_000.83, 300.21]]] as const) {
+    it(`${name}: unmoved is not moved, 1 cm east or north is`, async () => {
+      const { points, handleId } = mapGridScan(origin);
+      const held = heldDetector();
+      const running = startScanDetection('scan', { detector: () => held.detector });
+      held.answer({ status: 'done', result: RESULT });
+      await running;
+      const run = useViewerStore.getState().scanDetectionRun!;
+      for (const [entry, expected] of [[3, origin[0]], [7, origin[1]], [11, origin[2]]] as const) {
+        assert.ok(Math.abs(run.scanToModel[entry] - expected) < 1e-6, `stored scanToModel[${entry}] ${run.scanToModel[entry]} vs ${expected}`);
+      }
+      assert.equal(scanFrameMoved(run), false, 'unmoved');
+      // Manual placement through the renderer's one writer (render frame, Y up: north is -z).
+      points.setAssetTranslation({ id: handleId }, [0.01, 0, 0]);
+      assert.equal(scanFrameMoved(run), true, 'moved 1 cm east');
+      points.setAssetTranslation({ id: handleId }, [0, 0, -0.01]);
+      assert.equal(scanFrameMoved(run), true, 'moved 1 cm north');
+      points.setAssetTranslation({ id: handleId }, [0, 0, 0]);
+      assert.equal(scanFrameMoved(run), false, 'moved back');
     });
   }
 });

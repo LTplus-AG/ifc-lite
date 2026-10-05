@@ -328,6 +328,40 @@ accepted ones are drawn more opaque. A run ends when its scan or its IFC
 model is removed; removing either while detection runs stops the worker and
 discards its result.
 
+**Create accepted elements** writes the accepted proposals into the IFC
+model as one undo step, through the same path as the Model workspace's own
+commands. The new elements appear in the model tree and the properties
+panel, and they export with the model. Each element goes on the highest
+storey whose floor is at or below its base, within 0.3 m; an element below
+every floor goes on the lowest storey. Its geometry passes through that
+storey's own frame:
+- walls have a centred axis;
+- slabs are the outline extruded by their thickness;
+- columns have a circular profile;
+- pipes are a circular member along the axis, reclassified as
+  `IfcPipeSegment` or `IfcFlowSegment`.
+
+Each element carries an `IfcLite_ScanDetection` property set with
+`SourceScan`, `DetectionId`, `Basis`, `SourceDetections`, `Confidence`,
+`FitRmsMetres` and `InlierPoints`. The set does not use the `Pset_` prefix,
+which is reserved for buildingSMART's own property sets.
+
+- **Create** acts on the accepted proposals the filter shows. Accepted
+  proposals the filter hides are counted under the button, not created.
+- Created proposals are marked **Created** while the target model holds an
+  element with their GlobalId, so a reopened export still shows them.
+  Undoing the batch makes them available to create again.
+- **Detect again** starts a fresh review. If the target model already holds
+  elements created from the same scan earlier in the session, the bar warns
+  that creating again may duplicate them. It does not match new proposals to
+  old elements, and it does not know about elements created in an earlier
+  session.
+- **Create** refuses when the scan's placement or alignment, or the workspace
+  anchor, has changed since detection: detect again first.
+
+Editing must be on. With no IFC model loaded, **Create a blank IFC model**
+adds one beside the scan to hold the elements.
+
 World Context refreshes its Cesium model after movement pauses, using the same
 placed geometry. Its previous model stays visible until the replacement is ready;
 the WebGPU view updates immediately throughout the move.

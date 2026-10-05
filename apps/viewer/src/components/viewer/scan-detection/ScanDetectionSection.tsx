@@ -23,6 +23,7 @@ import {
   type DetectionDeps,
 } from '@/lib/scan-to-bim/run-detection';
 import { ScanProposalReview } from './ScanProposalReview';
+import { ScanCreateBar } from './ScanCreateBar';
 
 const STAGE_KEYS: Record<'starting' | 'segmenting' | 'proposing', TranslationKey> = {
   starting: 'scanToBim.stage.starting',
@@ -102,6 +103,7 @@ export function ScanDetectionSection({ deps }: ScanDetectionSectionProps) {
           </p>
           {run.cropped && <p className="text-2xs text-muted-foreground leading-tight">{t('scanToBim.summaryCropped')}</p>}
           <ScanProposalReview run={run} />
+          <ScanCreateBar run={run} deps={deps} />
         </>
       )}
     </section>

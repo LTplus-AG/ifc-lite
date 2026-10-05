@@ -24,7 +24,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { canonicalMainRef, canonicalMainRefIn } from './canonical-remote.mjs';
-import { changedFiles, resolveBase } from './module-size-git.mjs';
+import { changedFiles, changedFilesWarned, resolveBase } from './module-size-git.mjs';
 
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FORK_URL = 'https://github.com/BIMvoice/ifc-lite.git';
@@ -90,13 +90,17 @@ function makeLayout(layout) {
   } else if (layout === 'canonical-origin') {
     git('remote', 'add', 'origin', CANONICAL_URL);
     git('update-ref', 'refs/remotes/origin/main', newer);
+  } else if (layout === 'upstream-never-fetched') {
+    git('remote', 'add', 'origin', FORK_URL);
+    git('remote', 'add', 'upstream', CANONICAL_URL);
+    git('update-ref', 'refs/remotes/origin/main', older);
   } else {
     git('remote', 'add', 'origin', FORK_URL);
     git('update-ref', 'refs/remotes/origin/main', older);
   }
-  // No local `main` fallback to hide behind.
   git('checkout', '-q', '-b', 'feature');
-  git('branch', '-q', '-D', 'main');
+  // No local `main` fallback to hide behind, except where the case is the fallback.
+  if (layout !== 'upstream-never-fetched') git('branch', '-q', '-D', 'main');
   return { ...repo, older, newer };
 }
 
@@ -134,6 +138,17 @@ test('module-size-git resolveBase: an explicit ref is used as given, whatever th
   const { dir, older } = makeLayout('fork-origin');
   assert.deepEqual(resolveBase(dir, { ref: 'origin/main' }), { ref: 'origin/main', sha: older, fellBack: false });
   assert.deepEqual(resolveBase(dir, { ref: 'nope/main' }), { error: 'no merge base with nope/main' });
+});
+
+test('module-size-git: a canonical upstream that was never fetched falls back to local main, and the warning names upstream/main (#6950)', () => {
+  const { dir, newer } = makeLayout('upstream-never-fetched');
+  assert.deepEqual(resolveBase(dir), { ref: 'main', sha: newer, fellBack: true, wanted: 'upstream/main' });
+  const warnings = [];
+  changedFilesWarned(dir, null, (message) => warnings.push(message));
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /no merge base with upstream\/main; fell back to local 'main'/);
+  assert.match(warnings[0], /Fetch upstream\/main and re-run/);
+  assert.doesNotMatch(warnings[0], /origin\/main/);
 });
 
 /**

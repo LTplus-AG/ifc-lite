@@ -61,9 +61,11 @@ export function worktreeTop(root) {
 
 /**
  * This worktree's merge base with main: `{ ref, sha, fellBack }` or
- * `{ error }`. Tries `origin/main` then a local `main`, or ONLY `ref` when
- * one is given (`--base`), so a clone that names its upstream differently can
- * still say which ref it means.
+ * `{ error }`. Tries the canonical remote's main (`origin/main` unless another
+ * remote points at LTplus-AG/ifc-lite; see canonical-remote.mjs) then a local
+ * `main`, or ONLY `ref` when one is given (`--base`), so a clone that names its
+ * upstream differently can still say which ref it means. A fallback result also
+ * carries `wanted`, the ref that had no merge base, so a warning can name it.
  *
  * `main` can be arbitrarily far behind `origin/main` (measured: 147 commits,
  * widening `--update`'s scope from 0 files to 381, 49 of them allowlisted),
@@ -76,13 +78,14 @@ export function resolveBase(root, { ref = null } = {}) {
   // The default names the canonical remote's main (`origin/main` unless
   // another remote points at LTplus-AG/ifc-lite), so a fork-origin clone is
   // not judged against its stale fork main. An explicit `ref` is untouched.
-  const defaultMain = canonicalMainRefIn(root);
+  const defaultMain = ref === null ? canonicalMainRefIn(root) : null;
   const candidates = ref === null ? [defaultMain, 'main'] : [ref];
   for (const candidate of candidates) {
     const merged = git(root, 'merge-base', candidate, 'HEAD');
     const sha = merged.stdout.trim();
     if (merged.status === 0 && sha !== '') {
-      return { ref: candidate, sha, fellBack: ref === null && candidate !== defaultMain };
+      const fellBack = ref === null && candidate !== defaultMain;
+      return fellBack ? { ref: candidate, sha, fellBack, wanted: defaultMain } : { ref: candidate, sha, fellBack };
     }
   }
   return { error: `no merge base with ${candidates.join(' or ')}` };
@@ -139,10 +142,10 @@ export function changedFilesWarned(root, baseRef, warn = console.warn) {
   const derived = changedFiles(root, { baseRef });
   if (derived.error === undefined && derived.base.fellBack) {
     warn(
-      `check-module-size: WARNING -- no merge base with origin/main; fell back to ` +
+      `check-module-size: WARNING -- no merge base with ${derived.base.wanted}; fell back to ` +
         `local '${derived.base.ref}' (${derived.base.sha.slice(0, 9)}). If that ref is stale, the scope ` +
         `is WIDER than your change: a regenerate may annex rows you did not touch, and the ` +
-        `merge-base audit may judge rows you did not write. Fetch origin/main and re-run.`,
+        `merge-base audit may judge rows you did not write. Fetch ${derived.base.wanted} and re-run.`,
     );
   }
   return derived;

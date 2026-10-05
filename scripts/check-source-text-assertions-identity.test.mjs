@@ -232,6 +232,24 @@ test('a pure addition (ceiling raised to cover it, nothing removed) passes', () 
   assert.match(out, /check-source-text-assertions: OK \(2 allowlisted, 0 marked, 0 new\)/);
 });
 
+test('a canonical upstream that was never fetched: the fallback warning names upstream/main, not origin/main (#6950)', () => {
+  const { dir, git } = gitTree(
+    { [A_TEST]: violatingTest(A_TEST) },
+    `${A_TEST}  # cannot convert yet\n`,
+  );
+  setCeiling(dir, 1);
+  git('add', '-A');
+  git('commit', '-qm', 'set ceiling to 1');
+  git('remote', 'add', 'origin', 'https://github.com/someone/ifc-lite.git');
+  git('remote', 'add', 'upstream', 'https://github.com/LTplus-AG/ifc-lite.git');
+  git('checkout', '-q', '-b', 'feature');
+
+  const { code, out } = run(dir);
+  assert.equal(code, 0, out);
+  assert.match(out, /WARNING -- no merge base with upstream\/main; fell back to local 'main'/);
+  assert.doesNotMatch(out, /no merge base with origin\/main/);
+});
+
 test('no origin/main and no local main: identity check degrades with a warning, not an error', () => {
   const { dir } = gitTree(
     { [A_TEST]: violatingTest(A_TEST) },

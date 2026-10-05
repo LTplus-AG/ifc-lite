@@ -21,12 +21,13 @@ import { useMemo, type ReactNode } from 'react';
 import { ValidationBenchmark } from './validation/ValidationBenchmark';
 import { AnalysisStaleRegion } from './analysis/AnalysisPanel';
 import { ValidationResultsSplit } from './validation/ValidationResultsSplit';
+import { ValidationResultCoverage, ValidationResultSource, validationSourceName } from './validation/ValidationResultHead';
+import { ResultView } from './result/ResultView';
 import { validationReportSummary } from '@/lib/validation/report-summary';
 import { Boxes, Eye, EyeOff, Filter, Focus, Layers, Palette } from 'lucide-react';
 import type { ValidationReport, IDSAuditReport } from '@ifc-lite/ids';
 import type { UseValidationResults } from '@/hooks/validation/useValidationResults';
 import type { IDSFocusMode } from '@/store/slices/idsSlice';
-import { useViewerStore } from '@/store';
 import { IconButton } from '@/components/ui/icon-button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
@@ -87,7 +88,6 @@ export function IDSPanelResults({
     exportReportJSON, exportReportHTML, exportReportBCF, bcfExportProgress,
     setActiveSpecification,
   } = results;
-  const storeModels = useViewerStore((s) => s.models);
   const summary = useMemo(() => report ? validationReportSummary(report) : null, [report]);
   const failedActive = isolationActive && isolateMode === 'failed';
   const passedActive = isolationActive && isolateMode === 'passed';
@@ -115,7 +115,13 @@ export function IDSPanelResults({
         </div>
       )}
 
-      <div className="p-3 border-b bg-muted/30" {...tourAnchor(TOUR_ANCHORS.idsSummary)}>
+      <ResultView
+        source={validationSourceName(report)}
+        header={<ValidationResultSource report={report} />}
+        coverage={<ValidationResultCoverage report={report} />}
+        summaryClassName="p-3 bg-muted/30"
+        summaryProps={tourAnchor(TOUR_ANCHORS.idsSummary)}
+        summary={<>
         {idsMultiModel && !isRules && (
           <div className="flex items-center gap-1.5 mb-2 text-xs text-muted-foreground min-w-0">
             <span className="shrink-0">{t('idsPanel.validate')}</span>
@@ -136,13 +142,6 @@ export function IDSPanelResults({
             </select>
           </div>
         )}
-        {isRules && report.modelInfo.length > 0 && (
-          <div className="mb-2 text-xs text-muted-foreground truncate">
-            {t('validationPanel.results.validatedAgainst', {
-              models: report.modelInfo.map((m) => storeModels.get(m.modelId)?.name ?? m.modelId).join(', '),
-            })}
-          </div>
-        )}
         <div className="flex items-center gap-2 mb-2">
           <StatusIcon status={report.summary.failedSpecifications > 0 ? 'fail' : 'pass'} />
           <span className="font-medium text-sm">
@@ -155,7 +154,7 @@ export function IDSPanelResults({
         </div>
         {!isRules && <IDSCheckSummary report={report} />}
         {!isRules && <div className="text-xs font-medium">{t('idsPanel.entitySpecificationResults')}</div>}
-        <ValidationBenchmark summary={summary} name={report.source.kind === 'rules' ? report.source.ruleSet.name : report.source.document.info.title} />
+        <ValidationBenchmark summary={summary} name={validationSourceName(report)} />
         <div className="grid grid-cols-3 gap-2 text-xs text-center">
           <div className="bg-background rounded p-2">
             <div className="font-medium">{formatLocaleNumber(locale, report.summary.totalEntitiesChecked)}</div>
@@ -175,7 +174,8 @@ export function IDSPanelResults({
         <p className="text-xs text-muted-foreground mt-2 text-center">
           {t(specScope ? 'idsPanel.specScopeHint' : 'idsPanel.idsScopeHint')}
         </p>
-      </div>
+        </>}
+      />
 
       <div className="p-2 border-b flex items-center gap-1 flex-wrap">
         <Select value={filterMode} onValueChange={(v) => setFilterMode(v as 'all' | 'failed' | 'passed')}>

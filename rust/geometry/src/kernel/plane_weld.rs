@@ -285,6 +285,8 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
         })
         .collect();
 
+    // Host planes the current vertex is already exactly on (reused scratch).
+    let mut on_planes: Vec<&Face> = Vec::new();
     for t in cutter.iter_mut() {
         for v in t.iter_mut() {
             if host_verts.contains(&super::near_band::vertex_bits(v)) { continue; } // #3353
@@ -296,11 +298,13 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
             // perpendicular projection onto it slides ALONG the bottom plane).
             // Ties → first in face order (deterministic).
             let mut best: Option<(f64, &Face)> = None; // (perp-dist², face)
+            on_planes.clear();
             for f in &faces {
                 let d = (v[0] - f.t[0][0]) * f.n[0]
                     + (v[1] - f.t[0][1]) * f.n[1]
                     + (v[2] - f.t[0][2]) * f.n[2];
                 if d == 0.0 {
+                    on_planes.push(f);
                     continue; // already exactly on this plane
                 }
                 let d2 = (d * d) / f.nn;
@@ -325,8 +329,24 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
             // vertex is left UNTOUCHED — never an inexact foot, which would be
             // off every grid and force the BigRational tier on every predicate
             // that sees it.
+            //
+            // NEVER BREAK AN EXACT INCIDENCE (#6940). A vertex that lies exactly
+            // on host planes (`d == 0` above) is already reconciled with them: an
+            // opening cutter extended through the host keeps its corners exactly
+            // on the hole's own wall planes while no longer being a host vertex.
+            // When another host plane passes within the band (two holes whose
+            // walls are nearly collinear) the nearest-plane search picks that
+            // one, and the weld moves the corner off the planes it was exactly
+            // on, so the cutter wall stops being coplanar with the hole wall
+            // and the boolean tears. The weld exists to remove noise between
+            // surfaces that disagree; it must not create disagreement with a
+            // surface that already agrees, so a weld that would leave any such
+            // plane is refused and the vertex stays where it was.
             if let Some((_, f)) = best {
                 if let Some(w) = exact_on_plane_weld(*v, f.t) {
+                    if on_planes.iter().any(|g| near_parallel(g.n, f.n) && !is_on_plane(&w, g.t[0], g.n)) {
+                        continue;
+                    }
                     if w != *v {
                         welded += 1;
                     }
@@ -337,6 +357,28 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
     }
     diag::record(diag::ALL, welded);
     welded
+}
+
+/// Do the planes a vertex is exactly on include two that are not parallel? Then
+/// the vertex is pinned to a LINE, not merely to a surface it may slide along.
+fn near_parallel(a: [f64; 3], b: [f64; 3]) -> bool {
+    let c = [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ];
+    let c2 = c[0] * c[0] + c[1] * c[1] + c[2] * c[2];
+    let aa = a[0] * a[0] + a[1] * a[1] + a[2] * a[2];
+    let bb = b[0] * b[0] + b[1] * b[1] + b[2] * b[2];
+    // sin^2 of the angle between the normals below 1e-4 (about 0.6 degrees)
+    c2 <= 1.0e-4 * aa * bb
+}
+
+/// Is `v` exactly on the plane through `t0` with raw normal `n`, by the same
+/// `d == 0` reading the promotion uses to call a vertex already reconciled?
+#[inline]
+fn is_on_plane(v: &[f64; 3], t0: [f64; 3], n: [f64; 3]) -> bool {
+    (v[0] - t0[0]) * n[0] + (v[1] - t0[1]) * n[1] + (v[2] - t0[2]) * n[2] == 0.0
 }
 
 /// Weld `v` onto the plane of the (snap-grid) host triangle `(t0,t1,t2)` such

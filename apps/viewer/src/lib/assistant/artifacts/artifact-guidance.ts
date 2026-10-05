@@ -40,31 +40,35 @@ export const ARTIFACT_OUTPUT_GUIDANCE =
   + 'when the wanted one is missing or ambiguous, say so and name the closest listed ones instead of inventing. '
   + 'The user reviews the matched population, units and denominators before anything is saved.';
 
+/** `label: a, b, c (+N more)` in at most `budget` characters, the suffix included. */
 function joinBounded(label: string, items: string[], budget: number): string {
   let out = `${label}: `;
   let shown = 0;
   for (const item of items) {
     const next = `${shown > 0 ? ', ' : ''}${item}`;
-    if (out.length + next.length > budget) break;
+    const rest = items.length - shown - 1;
+    // Room for the " (+N more)" this item would still leave behind.
+    if (out.length + next.length + (rest > 0 ? ` (+${rest} more)`.length : 0) > budget) break;
     out += next;
     shown += 1;
   }
   return shown < items.length ? `${out} (+${items.length - shown} more)` : out;
 }
 
-/** A bounded, count-ranked digest of the index: classes, then properties, then quantities. */
+/** A bounded, count-ranked digest of the index: models, classes, properties, then quantities, in at most DIGEST_LIMIT characters. */
 export function schemaDigest(index: ModelSchemaIndex): string {
   if (index.models.length === 0) return 'Model schema: no model with data is loaded.';
   const byCount = <T extends { count: number }>(items: T[]) => items.sort((a, b) => b.count - a.count);
+  const models = [...index.models].sort((a, b) => b.elements - a.elements).map((m) => `${m.name} (${m.elements} elements)`);
   const classes = byCount([...index.classes].map(([name, count]) => ({ name, count }))).map((c) => `${c.name} ${c.count}`);
   const fields = byCount([...index.fields.values()]);
   const properties = fields.filter((f) => f.kind === 'property').map((f) => `${f.set}.${f.name} ${f.count}`);
   const quantities = fields.filter((f) => f.kind === 'quantity').map((f) => `${f.set}.${f.name} ${f.count}`);
-  const head = `Model schema (exact names; numbers are elements carrying them${index.partial ? '; counts cover the first scanned elements of large models' : ''}). `
-    + `Models: ${index.models.map((m) => `${m.name} (${m.elements} elements)`).join(', ')}.`;
-  const budget = DIGEST_LIMIT - head.length;
-  return [head, joinBounded('Classes', classes, budget * 0.2), joinBounded('Properties', properties, budget * 0.5),
-    joinBounded('Quantities', quantities, budget * 0.25)].join('\n');
+  const head = `Model schema (exact names; numbers are elements carrying them${index.partial ? '; counts cover the first scanned elements of large models' : ''}).`;
+  // Five lines joined by four newlines; every section is bounded, the model list too.
+  const budget = DIGEST_LIMIT - head.length - 4;
+  return [head, joinBounded('Models', models, Math.floor(budget * 0.15)), joinBounded('Classes', classes, Math.floor(budget * 0.2)),
+    joinBounded('Properties', properties, Math.floor(budget * 0.4)), joinBounded('Quantities', quantities, Math.floor(budget * 0.25))].join('\n');
 }
 
 export async function artifactGuidance(state: Pick<ViewerState, 'models' | 'mutationViews' | 'mutationVersion'>, signal?: AbortSignal): Promise<string> {

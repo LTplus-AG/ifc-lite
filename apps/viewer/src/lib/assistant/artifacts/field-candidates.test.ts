@@ -105,10 +105,23 @@ test('guidance carries the contract and a bounded digest of exact names, not the
   assert.match(digest, /building-architecture\.ifc \(14 elements\)/);
   assert.match(digest, /Pset_SlabCommon\.FireRating 1/);
   assert.match(digest, /Qto_WallBaseQuantities\.NetSideArea 4/);
-  assert.ok(digest.length <= DIGEST_LIMIT + 200);
+  assert.ok(digest.length <= DIGEST_LIMIT);
   const guidance = await artifactGuidance(useViewerStore.getState());
   assert.ok(guidance.startsWith(ARTIFACT_OUTPUT_GUIDANCE));
   for (const kind of ['filter.proposal', 'list.proposal', 'lens.proposal', 'chart.proposal']) assert.ok(guidance.includes(kind));
+});
+
+test('the digest stays within DIGEST_LIMIT however many models, classes and fields are loaded (#6914 review)', async () => {
+  const real = await modelSchemaIndex(useViewerStore.getState());
+  const many = <T,>(count: number, make: (i: number) => T) => Array.from({ length: count }, (_, i) => make(i));
+  const fields = new Map(many(2000, (i) => [`property:${i}`, { kind: 'property' as const, set: `Pset_Custom_${i}`, name: `SomeLongPropertyName_${i}`, count: i, byModel: new Map() }]));
+  const index = { ...real, partial: true, fields,
+    models: many(600, (i) => ({ modelId: `m${i}`, name: `federated-discipline-model-number-${i}.ifc`, elements: 10_000 + i, scanned: 10_000 })),
+    classes: new Map(many(800, (i) => [`IfcCustomClass${i}`, i])) };
+  const digest = schemaDigest(index);
+  assert.ok(digest.length <= DIGEST_LIMIT, `${digest.length} <= ${DIGEST_LIMIT}`);
+  assert.match(digest, /federated-discipline-model-number-599\.ifc \(10599 elements\)/, 'the largest models are listed first');
+  assert.match(digest, /\(\+\d+ more\)/, 'the rest are counted, not dropped silently');
 });
 
 test('an unreadable model never fails the request: the contract goes out without the digest, and the reason is logged', async (t) => {

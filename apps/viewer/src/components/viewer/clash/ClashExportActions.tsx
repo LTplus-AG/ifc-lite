@@ -19,16 +19,21 @@ import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { exportClashTableCsv } from '@/lib/clash/export-table';
 import { ClashBcfExportDialog } from '@/components/viewer/ClashBcfExportDialog';
 import { AnalysisExportMenu } from '@/components/viewer/analysis/AnalysisExportMenu';
+import { useBcfDraftActions } from '@/components/viewer/bcf/useBcfDraftActions';
+import type { Clash } from '@ifc-lite/clash';
 
 export interface ClashExportActionsProps {
   /** Id of the selected clash, which scopes the BCF topic to that clash. */
   selectedId: string | null;
   creatingTopic: boolean;
   createBcfTopic: () => Promise<void>;
+  /** Findings checked in the list; they can become one reviewed BCF draft topic. */
+  selectedClashes?: readonly Clash[];
 }
 
-export function ClashExportActions({ selectedId, creatingTopic, createBcfTopic }: ClashExportActionsProps) {
+export function ClashExportActions({ selectedId, creatingTopic, createBcfTopic, selectedClashes = [] }: ClashExportActionsProps) {
   const { t } = useTranslation();
+  const { drafting, draftFromSelection } = useBcfDraftActions();
   const [bcfDialogOpen, setBcfDialogOpen] = useState(false);
   const exportCsv = (): void => {
     const outcome = exportClashTableCsv();
@@ -55,6 +60,12 @@ export function ClashExportActions({ selectedId, creatingTopic, createBcfTopic }
         {creatingTopic ? <Spinner size="sm" className="mr-1" /> : <FilePlus className="h-3.5 w-3.5 mr-1" />}
         {t('clashTools.export.bcfTopicButton')}
       </Button>
+      {selectedClashes.length > 0 && (
+        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={drafting}
+          title={t('bcfDrafts.create.fromSelectionTooltip')} onClick={() => void draftFromSelection(selectedClashes)}>
+          {t('bcfDrafts.create.fromSelection', { count: selectedClashes.length })}
+        </Button>
+      )}
       <AnalysisExportMenu
         formats={[
           {

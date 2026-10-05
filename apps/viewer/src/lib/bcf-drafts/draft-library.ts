@@ -17,8 +17,8 @@ export const bcfDraftsContent: ContentDefinition<DraftBatch> = {
   kind: 'bcfDrafts', legacyKey: BCF_DRAFTS_LEGACY_KEY, decode: decodeDraftBatch,
 };
 
-export const useBcfDraftLibrary = create<{ entries: DraftBatch[]; status: ContentStatus; activeId: string | null }>(() => ({
-  entries: [], status: initialContentStatus(), activeId: null,
+export const useBcfDraftLibrary = create<{ entries: DraftBatch[]; status: ContentStatus; activeId: string | null; dialogOpen: boolean }>(() => ({
+  entries: [], status: initialContentStatus(), activeId: null, dialogOpen: false,
 }));
 
 export const bcfDraftLibrary = createContentLibrary(bcfDraftsContent,

@@ -911,7 +911,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                 <option key={s} value={s}>{t(SORT_LABEL_KEY[s])}</option>
               ))}
             </select>
-            <ClashExportActions selectedId={selectedId} creatingTopic={creatingTopic} createBcfTopic={createBcfTopic} />
+            <ClashExportActions selectedId={selectedId} creatingTopic={creatingTopic} createBcfTopic={createBcfTopic} selectedClashes={selectedClashes} />
             <Button
               variant="outline"
               size="sm"

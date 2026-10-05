@@ -22,6 +22,7 @@ import { appearancePanelEn } from './catalogues/appearance-panel.en';
 import { appearancePickersEn } from './catalogues/appearance-pickers.en';
 import { appearanceWorkflowsEn } from './catalogues/appearance-workflows.en';
 import { bcfEn } from './catalogues/bcf.en';
+import { bcfDraftsEn } from './catalogues/bcf-drafts.en';
 import { clashGroupsEn } from './catalogues/clash-groups.en';
 import { clashToolsEn } from './catalogues/clash-tools.en';
 import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
@@ -215,6 +216,7 @@ export const en = {
   ...clashPanelEn,
   ...clashToolsEn,
   ...bcfEn,
+  ...bcfDraftsEn,
   ...layersPanelEn,
   ...lensPanelEn,
   ...searchModalEn,

@@ -355,6 +355,16 @@ Each takes `baseUrl` (up to but excluding the version segment), `version`
 `Authorization: Bearer <token>`. Put the token in a secret rather than the
 graph. The nodes are never memoised, so every run asks the server again.
 
+A create is not idempotent: if the connection drops after the server
+committed a write, a rerun would create it a second time. The write nodes
+therefore never retry, and they report a lost connection as an *unknown
+outcome* ("check the project before running this node again") rather than a
+plain failure. In the viewer, `bcf.createTopic` and `bcf.addComment` also go
+through the BCF publication outbox (`FlowHost.bcfWrites`): the intent is
+recorded before the request leaves, and an identical write whose earlier
+attempt has an unknown outcome is refused without sending until it is checked
+under **BCF → Drafts & publication**. The token is never stored there.
+
 ```json
 {
   "capabilities": ["network.fetch:bcf.example.com", "secret.read:BCF_TOKEN"],

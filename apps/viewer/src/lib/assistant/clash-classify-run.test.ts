@@ -10,7 +10,7 @@ import { createRootBudget } from '../llm/root-budget';
 import type { SendableRoute } from '../llm/request-service';
 import { manualClashOccurrenceKey } from '../clash/manual-groups';
 import { CLASSIFY_ROOT_BUDGET, estimateClassification, planClassification } from './clash-classify-chunks';
-import { draftFromClassification, runClassification, type ChunkResult, type ClassifyRunOptions } from './clash-classify-run';
+import { draftFromClassification, runClassification, type ChunkResult, type ClassifyRunOptions, type ClassifyRunResult } from './clash-classify-run';
 import { draftAccounting } from './clash-group-draft';
 import { clashFindings, serveClassifier } from '@/test/clash-classifier-stub';
 
@@ -22,7 +22,15 @@ function options(clashes: Clash[], overrides: Partial<ClassifyRunOptions> = {}):
   return { plan: planClassification(clashes), route, proxyUrl: '/api/chat', budget: createRootBudget(CLASSIFY_ROOT_BUDGET),
     signal: new AbortController().signal, allowNormalization: false, isCurrent: () => true, ...overrides };
 }
-function assertAccounted(accounting: { total: number; grouped: number; unclassified: number; failed: number; notRun: number; unaddressable: number }) {
+/**
+ * Independent of how `runClassification` derives `unclassified`: grouped is the number of distinct native
+ * occurrences in the merged groups (a finding grouped twice would make the buckets disagree), and no bucket is negative.
+ */
+function assertAccounted({ accounting, merged }: ClassifyRunResult) {
+  const occurrences = merged.flatMap(group => group.findings.map(finding => finding.occurrence));
+  assert.equal(new Set(occurrences).size, occurrences.length, 'no finding is grouped twice');
+  assert.equal(accounting.grouped, occurrences.length, 'grouped counts the merged findings');
+  for (const [bucket, count] of Object.entries(accounting)) assert.ok(count >= 0, `${bucket} is not negative`);
   assert.equal(accounting.grouped + accounting.unclassified + accounting.failed + accounting.notRun + accounting.unaddressable, accounting.total,
     'every native finding is in exactly one bucket');
 }
@@ -42,7 +50,7 @@ test('250 findings page into 3 chunks with chunk-local citations, progress and a
   assert.deepEqual(result.merged.map(group => [group.name, group.chunks, group.findings.length]),
     [['Major walls/pipes', [1, 2, 3], 125], ['Minor walls/pipes', [1, 2, 3], 100]], 'names fold across chunks; the first spelling wins');
   assert.deepEqual(result.accounting, { total: 250, grouped: 225, unclassified: 25, failed: 0, notRun: 0, unaddressable: 0 });
-  assertAccounted(result.accounting);
+  assertAccounted(result);
   // Chunk citations map back to native occurrences: C2/E1 is the 101st finding.
   const c2 = result.merged[0].findings.find(finding => finding.citation === 'C2/E1')!;
   assert.equal(c2.occurrence, manualClashOccurrenceKey(clashes[100]));
@@ -66,7 +74,7 @@ test('the budget is checked before starting and still bounds the run', async () 
   assert.deepEqual(result.chunks.map(chunk => [chunk.status, chunk.reason]), [['accepted', undefined], ['accepted', undefined], ['failed', 'budget-exhausted']]);
   assert.equal(result.partial, true);
   assert.equal(result.accounting.failed, 50);
-  assertAccounted(result.accounting);
+  assertAccounted(result);
 });
 
 test('cancelling mid-run keeps accepted chunks as a partial result and accounts for the rest', async () => {
@@ -90,13 +98,13 @@ test('an invalid chunk answer is normalized only with consent, and the adjustmen
   assert.equal(strict.chunks[1].status, 'invalid');
   assert.match(strict.chunks[1].reason ?? '', /unique captured evidence citations/);
   assert.equal(strict.accounting.failed, 100);
-  assertAccounted(strict.accounting);
+  assertAccounted(strict);
   serveClassifier({ repeatInChunk: 2 });
   const consented = await runClassification(options(clashFindings(250), { allowNormalization: true }));
   assert.equal(consented.chunks[1].status, 'adjusted');
   assert.deepEqual(consented.chunks[1].adjustments, { repeats: 1, unknown: 0, groups: 0 });
   assert.equal(consented.accounting.grouped, 225);
-  assertAccounted(consented.accounting);
+  assertAccounted(consented);
 });
 
 test('a native rerun during classification discards the answers instead of mixing populations', async () => {
@@ -108,7 +116,7 @@ test('a native rerun during classification discards the answers instead of mixin
   assert.equal(result.stale, true);
   assert.deepEqual(result.merged, []);
   assert.deepEqual(result.chunks.map(chunk => chunk.status), ['not-run', 'not-run', 'not-run']);
-  assertAccounted(result.accounting);
+  assertAccounted(result);
 });
 
 test('findings sharing one occurrence identity are counted as unaddressable, never chunked', () => {

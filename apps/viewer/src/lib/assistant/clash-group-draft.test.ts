@@ -40,7 +40,8 @@ function assertPartition(value: ClashGroupDraft) {
   const members = value.groups.flatMap(group => group.members);
   assert.equal(new Set(members).size, members.length, 'no finding in two groups');
   const counts = draftAccounting(value);
-  assert.equal(counts.grouped + counts.unclassified, value.totalFindings, 'every native finding grouped or unclassified');
+  assert.equal(counts.grouped, members.length, 'grouped counts the distinct group members');
+  assert.ok(counts.unclassified >= 0 && counts.grouped + counts.unclassified === value.totalFindings, 'every native finding grouped or unclassified');
   assert.equal(counts.unclassifiedByReview, draftUnclassified(value).length);
 }
 

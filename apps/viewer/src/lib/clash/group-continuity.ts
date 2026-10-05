@@ -60,5 +60,6 @@ export function applicationContinuity(
     newFindings = clashes.filter(clash => !grouped.has(clash) && !before.has(occurrenceHash(manualClashOccurrenceKey(clash))));
   }
   return { groups, missingGroups: applied.size - groups.length, newFindings,
-    unchanged: groups.every(group => !group.reidentified.length && !group.gone.length) && newFindings?.length === 0 };
+    // An applied group removed from the workspace since is a change too, never "every finding unchanged".
+    unchanged: groups.length === applied.size && groups.every(group => !group.reidentified.length && !group.gone.length) && newFindings?.length === 0 };
 }

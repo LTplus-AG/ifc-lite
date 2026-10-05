@@ -38,6 +38,8 @@ test('after a rerun, applied members are listed as unchanged, matched by identit
   assert.ok(applied.ok);
   const workspace = useClashGroupLibrary.getState().entries.find(entry => entry.id === applied.receipt.workspaceId)!;
   assert.equal(applicationContinuity(applied.receipt, workspace.groups, first).unchanged, true, 'the run at apply is unchanged');
+  const ungrouped = applicationContinuity(applied.receipt, [], first);
+  assert.deepEqual([ungrouped.missingGroups, ungrouped.unchanged], [2, false], 'applied groups removed since are a change, not "unchanged"');
 
   // Rerun: f-0 unchanged, f-1 gone, f-2 now reported against a revised MEP model (same GUID pair), f-3 kept, f-9 new.
   const second = [finding(0), finding(2, 'mep-rev-b'), finding(3), finding(9)];

@@ -927,19 +927,29 @@ most one voxel and that lie up to 0.3 m (plus two voxels) apart along the axis
 are one column with a band of missing points, and are joined; a narrower
 column on a wider plinth stays two cylinders.
 
-Every threshold above is guarded by the cylinder acceptance table
-(`rust/processing/tests/scan_cylinder_acceptance.rs`): real pipes and columns
-(thin half-visible pipes at two voxels of radius, grazing ceiling pipes,
-occluded, out-of-round and strapped columns) must be found, and flat-facet
-decoys must not be. Stated limit: flat faces narrower than about 3.5 voxels
-(a pier of 0.1 m faces at 3 cm voxels) cannot be told from a pipe and are
-reported as cylinders.
-
 Each cylinder reports `axisStart`, `axisEnd`, `axisDirection` (up, unless
 horizontal), `radius`, `length`, `heightRange` along `upAxis`, `arcDegrees`,
 inlier counts, `rmsMetres` and `orientation` (`vertical` for a column,
 `horizontal` for a pipe or beam, or `sloped`). `stats` counts each refusal;
 `limits.cylinderGroupLimitHit` reports a group budget that acted.
+
+Resolution limit: flat faces about 3 voxels wide (a pier of 0.1 m faces at a
+3 or 5 cm voxel) deviate from their best-fit circle by under 1 cm and are
+indistinguishable from thin pipes, so such a pier is reported as a cylinder.
+Every measured property of the pier (radial deviation, normal turning,
+cross-section curvature, slice agreement, coverage) lies within the range of
+real pipes of 0.06 to 0.12 m radius. A 2 cm voxel with low noise resolves it.
+Radii at the two-voxel minimum (0.06 m at 3 cm, 0.1 m at 5 cm) are found
+less reliably, because a refit just under the minimum is refused.
+
+Every threshold above is guarded by the cylinder acceptance table
+(`rust/processing/tests/scan_cylinder_acceptance.rs`): real pipes and columns
+(thin half-visible pipes at two voxels of radius, grazing ceiling pipes,
+occluded, out-of-round and strapped columns) must be found, and flat-facet
+decoys must not be. Every `cargo test` runs a compact tier (one seed per
+noise level, small rooms); after changing a threshold, run the full matrix
+with
+`cargo test -p ifc-lite-processing --test scan_cylinder_acceptance -- --ignored --nocapture`.
 
 `requestSha256` hashes the algorithm ID `ifclite-rigid-correspondence-v1`, one
 zero byte, and compact typed request JSON in Rust field order. It binds all frame

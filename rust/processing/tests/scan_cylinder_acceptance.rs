@@ -6,10 +6,21 @@
 //! every threshold in `scan_segmentation::cylinder` and `cylinder_guards`.
 //! Tuning changes are judged here, not by eye.
 //!
-//! Each real row runs seeds 101..=103 at 3 and 8 mm noise (6 runs) and must
-//! find its cylinder in at least `required` of them (5 of 6; 6 of 6 for whole
-//! surfaces; 4 of 6 for r 0.06 at a 3 cm voxel, which is the two-voxel
-//! minimum radius itself, so fits just under it are refused by design). A
+//! Two tiers over one list of rows:
+//! - `asserted_*` (every `cargo test`): each row in a compact room (the walls,
+//!   floor and ceiling within about a metre of the feature), seed 101 at 3 mm
+//!   and seed 102 at 8 mm noise. Real rows must hit in both runs (r 0.06 at a
+//!   3 cm voxel, the two-voxel minimum radius itself, in at least one); decoy
+//!   rows must report nothing in either.
+//! - `full_matrix` (`#[ignore]`; run it after any tuning change with
+//!   `cargo test -p ifc-lite-processing --test scan_cylinder_acceptance -- --ignored --nocapture`):
+//!   the review's full 6 x 4 x 2.7 m room, seeds 101..=103 at 3 and 8 mm (6
+//!   runs per row), 12 mm and the resolution-limit rows printed only.
+//!
+//! In the full matrix each real row must find its cylinder in at least
+//! `required` of 6 runs (5; 6 for whole surfaces; 4 for r 0.06 at a 3 cm
+//! voxel, which is the two-voxel minimum radius itself, so fits just under it
+//! are refused by design). A
 //! hit is: axis within 2 degrees, axis line within 3 cm of the truth's,
 //! radius within 1 cm (2 cm for the ellipse, against its mean radius). A
 //! cylinder on the right axis with the wrong radius is a miss; a cylinder off
@@ -32,11 +43,13 @@
 mod scan_matrix;
 
 use ifc_lite_processing::scan_segmentation::{segment_scan_points, ScanCylinder, ScanSegmentationOptions};
-use scan_matrix::Truth;
+use scan_matrix::{Size, Truth};
 
 const SEEDS: [u64; 3] = [101, 102, 103];
 const ASSERTED_NOISE: [f64; 2] = [0.003, 0.008];
 const INFORMATIONAL_NOISE: f64 = 0.012;
+/// The asserted tier's two runs: (seed, noise).
+const QUICK_RUNS: [(u64, f64); 2] = [(101, 0.003), (102, 0.008)];
 
 fn options(voxel: f64) -> ScanSegmentationOptions {
     ScanSegmentationOptions { voxel_size_metres: voxel, ..Default::default() }
@@ -58,139 +71,155 @@ fn matches(found: &ScanCylinder, truth: &Truth, radius_tolerance: f64) -> bool {
     axis_matches(found, truth) && (found.radius - truth.radius).abs() <= radius_tolerance
 }
 
-/// Runs a real row; returns (found exactly, runs) over the asserted runs and
-/// prints every run, the 12 mm one included.
-fn real_row(name: &str, voxel: f64, radius_tolerance: f64, required: usize, scene: &dyn Fn(u64, f64) -> (Vec<f32>, Truth)) {
-    let mut hits = 0;
-    let mut extras = Vec::new();
-    for sigma in ASSERTED_NOISE {
-        for seed in SEEDS {
-            let (points, truth) = scene(seed, sigma);
-            let report = segment_scan_points(&points, &options(voxel)).unwrap();
-            let good = report.cylinders.iter().filter(|c| matches(c, &truth, radius_tolerance)).count();
-            hits += usize::from(good >= 1);
-            extras.extend(report.cylinders.iter().filter(|c| !axis_matches(c, &truth)).map(|c| (seed, sigma, c.radius, c.axis_start)));
-            println!("ROW {name} v{voxel} s{sigma} seed{seed}: {} cylinder(s), match {}", report.cylinders.len(), good >= 1);
-        }
+type RealScene = fn(Size, u64, f64) -> (Vec<f32>, Truth);
+type DecoyScene = fn(Size, u64, f64) -> Vec<f32>;
+
+/// A real surface that must be found: `required` of the full matrix's 6
+/// runs, `quick` of the asserted tier's 2.
+struct Real {
+    name: &'static str,
+    voxel: f64,
+    radius_tolerance: f64,
+    required: usize,
+    quick: usize,
+    scene: RealScene,
+}
+
+struct Decoy {
+    name: &'static str,
+    voxel: f64,
+    scene: DecoyScene,
+}
+
+const fn real(name: &'static str, voxel: f64, radius_tolerance: f64, required: usize, quick: usize, scene: RealScene) -> Real {
+    Real { name, voxel, radius_tolerance, required, quick, scene }
+}
+
+/// Thin, half-visible pipes at 2 to 2.3 voxels of radius (DN100-125 at the
+/// default voxel), seen from one side only; columns whole, half-visible,
+/// out of round, strapped and occluded.
+const REAL: [Real; 13] = [
+    real("half pipe r0.06", 0.03, 0.01, 4, 1, |z, seed, s| scan_matrix::x_pipe(z, seed, s, 0.06, true)),
+    real("half pipe r0.065", 0.03, 0.01, 5, 2, |z, seed, s| scan_matrix::x_pipe(z, seed, s, 0.065, true)),
+    real("half pipe r0.07", 0.03, 0.01, 5, 2, |z, seed, s| scan_matrix::x_pipe(z, seed, s, 0.07, true)),
+    real("half pipe r0.1", 0.05, 0.01, 5, 2, |z, seed, s| scan_matrix::x_pipe(z, seed, s, 0.1, true)),
+    real("half pipe r0.11", 0.05, 0.01, 5, 2, |z, seed, s| scan_matrix::x_pipe(z, seed, s, 0.11, true)),
+    real("grazing ceiling pipe r0.1", 0.05, 0.01, 5, 2, scan_matrix::grazing_ceiling_pipe),
+    real("full pipe r0.08", 0.03, 0.01, 6, 2, |z, seed, s| scan_matrix::x_pipe(z, seed, s, 0.08, false)),
+    real("full column r0.3", 0.03, 0.01, 6, 2, |z, seed, s| scan_matrix::full_column(z, seed, s, 0.3)),
+    real("half column r0.3", 0.03, 0.01, 6, 2, |z, seed, s| scan_matrix::half_column(z, seed, s, 0.3)),
+    real("half column r0.12", 0.03, 0.01, 5, 2, |z, seed, s| scan_matrix::half_column(z, seed, s, 0.12)),
+    real("half ellipse 0.3 x 0.27", 0.03, 0.02, 5, 2, scan_matrix::half_ellipse),
+    real("column + strapped conduit + sign", 0.03, 0.01, 5, 2, scan_matrix::strapped_column),
+    real("column, 60 deg visible below 1.8 m", 0.03, 0.01, 5, 2, |z, seed, s| scan_matrix::occluded_column(z, seed, s, 1.8, 60.)),
+];
+
+const DECOYS: [Decoy; 6] = [
+    Decoy { name: "facet pair 90 deg, 0.15 m", voxel: 0.03, scene: |z, seed, s| scan_matrix::facet_pair(z, seed, s, 90., 0.15) },
+    Decoy { name: "facet pair 90 deg, 0.15 m", voxel: 0.05, scene: |z, seed, s| scan_matrix::facet_pair(z, seed, s, 90., 0.15) },
+    Decoy { name: "facet pair 120 deg, 0.15 m", voxel: 0.03, scene: |z, seed, s| scan_matrix::facet_pair(z, seed, s, 120., 0.15) },
+    Decoy { name: "facet pair 135 deg, 0.12 m", voxel: 0.03, scene: |z, seed, s| scan_matrix::facet_pair(z, seed, s, 135., 0.12) },
+    Decoy { name: "corner chamfer 45 deg", voxel: 0.03, scene: scan_matrix::corner_chamfer },
+    Decoy { name: "corner chamfer 45 deg", voxel: 0.05, scene: scan_matrix::corner_chamfer },
+];
+
+/// Past the stated resolution limit: printed by the full matrix, never asserted.
+const LIMITS: [Decoy; 3] = [
+    Decoy { name: "three facets, 45 deg steps", voxel: 0.03, scene: scan_matrix::three_facets },
+    Decoy { name: "three facets, 45 deg steps", voxel: 0.05, scene: scan_matrix::three_facets },
+    Decoy { name: "facet pair 90 deg, 0.1 m", voxel: 0.03, scene: |z, seed, s| scan_matrix::facet_pair(z, seed, s, 90., 0.1) },
+];
+
+/// (hit, false positives off every true axis) for one run.
+fn run_real(row: &Real, size: Size, seed: u64, sigma: f64) -> (bool, usize) {
+    let (points, truth) = (row.scene)(size, seed, sigma);
+    let report = segment_scan_points(&points, &options(row.voxel)).unwrap();
+    let hit = report.cylinders.iter().any(|c| matches(c, &truth, row.radius_tolerance));
+    (hit, report.cylinders.iter().filter(|c| !axis_matches(c, &truth)).count())
+}
+
+fn run_decoy(row: &Decoy, size: Size, seed: u64, sigma: f64) -> usize {
+    segment_scan_points(&(row.scene)(size, seed, sigma), &options(row.voxel)).unwrap().cylinders.len()
+}
+
+fn quick_real(rows: &[Real]) {
+    for row in rows {
+        let runs: Vec<(bool, usize)> = QUICK_RUNS.iter().map(|&(seed, sigma)| run_real(row, Size::Compact, seed, sigma)).collect();
+        let hits = runs.iter().filter(|r| r.0).count();
+        let false_positives: usize = runs.iter().map(|r| r.1).sum();
+        println!("QUICK {:<34} v{:<5} found {hits}/2 (required {}), false positives {false_positives}", row.name, row.voxel, row.quick);
+        assert!(hits >= row.quick, "{} v{}: found {hits}/2, required {}", row.name, row.voxel, row.quick);
+        assert_eq!(false_positives, 0, "{} v{}: false cylinders", row.name, row.voxel);
     }
-    let (points, truth) = scene(SEEDS[0], INFORMATIONAL_NOISE);
-    let report = segment_scan_points(&points, &options(voxel)).unwrap();
-    let info = report.cylinders.iter().any(|c| matches(c, &truth, radius_tolerance));
-    println!("TABLE {name:<34} v{voxel:<5} found {hits}/6 (required {required}), extras {}, 12 mm: {}", extras.len(), if info { "found" } else { "missed" });
-    assert!(hits >= required, "{name}: found {hits}/6, required {required}");
-    assert!(extras.is_empty(), "{name}: false cylinders {extras:?}");
 }
 
-/// A decoy past the stated resolution limit: printed, never asserted.
-fn limit_row(name: &str, voxel: f64, scene: &dyn Fn(u64, f64) -> Vec<f32>) {
-    let mut found = 0;
-    for sigma in ASSERTED_NOISE {
-        for seed in SEEDS {
-            found += usize::from(!segment_scan_points(&scene(seed, sigma), &options(voxel)).unwrap().cylinders.is_empty());
-        }
+fn quick_decoys(rows: &[Decoy]) {
+    for row in rows {
+        let found: usize = QUICK_RUNS.iter().map(|&(seed, sigma)| run_decoy(row, Size::Compact, seed, sigma)).sum();
+        println!("QUICK {:<34} v{:<5} false positives {found}", row.name, row.voxel);
+        assert_eq!(found, 0, "{} v{}: reported {found} cylinder(s)", row.name, row.voxel);
     }
-    println!("TABLE {name:<34} v{voxel:<5} (resolution limit, not asserted) reported in {found}/6 runs");
 }
 
-fn decoy_row(name: &str, voxel: f64, scene: &dyn Fn(u64, f64) -> Vec<f32>) {
-    let mut false_positives = Vec::new();
-    for sigma in ASSERTED_NOISE {
-        for seed in SEEDS {
-            let report = segment_scan_points(&scene(seed, sigma), &options(voxel)).unwrap();
-            false_positives.extend(report.cylinders.iter().map(|c| (seed, sigma, c.radius, c.arc_degrees)));
+// The asserted tier, split so the harness runs it on several threads.
+#[test]
+fn asserted_thin_pipes() {
+    quick_real(&REAL[..6]);
+}
+#[test]
+fn asserted_pipes_and_columns() {
+    quick_real(&REAL[6..]);
+}
+#[test]
+fn asserted_decoys() {
+    quick_decoys(&DECOYS);
+}
+
+/// The review's full matrix in the full room: 6 asserted runs per row, 12 mm
+/// and the resolution-limit rows printed. About 20 CPU-minutes in a debug
+/// build (one thread per row); run it after any change to a cylinder threshold:
+/// `cargo test -p ifc-lite-processing --test scan_cylinder_acceptance -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn full_matrix() {
+    // One thread per row: (line, passed).
+    let real = |row: &Real| {
+        let (mut hits, mut false_positives) = (0, 0);
+        for sigma in ASSERTED_NOISE {
+            for seed in SEEDS {
+                let (hit, extra) = run_real(row, Size::Full, seed, sigma);
+                hits += usize::from(hit);
+                false_positives += extra;
+            }
         }
+        let (info, _) = run_real(row, Size::Full, SEEDS[0], INFORMATIONAL_NOISE);
+        let line = format!("TABLE {:<34} v{:<5} found {hits}/6 (required {}), false positives {false_positives}, 12 mm: {}", row.name, row.voxel, row.required, if info { "found" } else { "missed" });
+        (line, hits >= row.required && false_positives == 0)
+    };
+    let runs = || ASSERTED_NOISE.iter().flat_map(|&sigma| SEEDS.map(|seed| (seed, sigma)));
+    let decoy = |row: &Decoy| {
+        let found: usize = runs().map(|(seed, sigma)| run_decoy(row, Size::Full, seed, sigma)).sum();
+        let info = run_decoy(row, Size::Full, SEEDS[0], INFORMATIONAL_NOISE);
+        (format!("TABLE {:<34} v{:<5} false positives {found} in 6 runs, 12 mm: {info}", row.name, row.voxel), found == 0)
+    };
+    let limit = |row: &Decoy| {
+        let found = runs().filter(|&(seed, sigma)| run_decoy(row, Size::Full, seed, sigma) > 0).count();
+        (format!("TABLE {:<34} v{:<5} (resolution limit, not asserted) reported in {found}/6 runs", row.name, row.voxel), true)
+    };
+    let results: Vec<(String, bool)> = std::thread::scope(|scope| {
+        let handles: Vec<_> = REAL
+            .iter()
+            .map(|row| scope.spawn(move || real(row)))
+            .chain(DECOYS.iter().map(|row| scope.spawn(move || decoy(row))))
+            .chain(LIMITS.iter().map(|row| scope.spawn(move || limit(row))))
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    for (line, _) in &results {
+        println!("{line}");
     }
-    let info = segment_scan_points(&scene(SEEDS[0], INFORMATIONAL_NOISE), &options(voxel)).unwrap().cylinders.len();
-    println!("TABLE {name:<34} v{voxel:<5} false positives {}/6 runs, 12 mm: {info}", false_positives.len());
-    assert!(false_positives.is_empty(), "{name}: {false_positives:?}");
-}
-
-// Thin, half-visible pipes at 2 to 2.3 voxels of radius (DN100-125 at the
-// default voxel), seen from one side only.
-#[test]
-fn table_half_pipe_r0060_v003() {
-    real_row("half pipe r0.06", 0.03, 0.01, 4, &|seed, s| scan_matrix::x_pipe(seed, s, 0.06, true));
-}
-#[test]
-fn table_half_pipe_r0065_v003() {
-    real_row("half pipe r0.065", 0.03, 0.01, 5, &|seed, s| scan_matrix::x_pipe(seed, s, 0.065, true));
-}
-#[test]
-fn table_half_pipe_r0070_v003() {
-    real_row("half pipe r0.07", 0.03, 0.01, 5, &|seed, s| scan_matrix::x_pipe(seed, s, 0.07, true));
-}
-#[test]
-fn table_half_pipe_r0100_v005() {
-    real_row("half pipe r0.1", 0.05, 0.01, 5, &|seed, s| scan_matrix::x_pipe(seed, s, 0.1, true));
-}
-#[test]
-fn table_half_pipe_r0110_v005() {
-    real_row("half pipe r0.11", 0.05, 0.01, 5, &|seed, s| scan_matrix::x_pipe(seed, s, 0.11, true));
-}
-#[test]
-fn table_grazing_ceiling_pipe_v005() {
-    real_row("grazing ceiling pipe r0.1", 0.05, 0.01, 5, &scan_matrix::grazing_ceiling_pipe);
-}
-#[test]
-fn table_full_pipe_r0080_v003() {
-    real_row("full pipe r0.08", 0.03, 0.01, 6, &|seed, s| scan_matrix::x_pipe(seed, s, 0.08, false));
-}
-#[test]
-fn table_full_column_r030_v003() {
-    real_row("full column r0.3", 0.03, 0.01, 6, &|seed, s| scan_matrix::full_column(seed, s, 0.3));
-}
-#[test]
-fn table_half_column_r030_v003() {
-    real_row("half column r0.3", 0.03, 0.01, 6, &|seed, s| scan_matrix::half_column(seed, s, 0.3));
-}
-#[test]
-fn table_half_column_r012_v003() {
-    real_row("half column r0.12", 0.03, 0.01, 5, &|seed, s| scan_matrix::half_column(seed, s, 0.12));
-}
-#[test]
-fn table_half_ellipse_v003() {
-    real_row("half ellipse 0.3 x 0.27", 0.03, 0.02, 5, &scan_matrix::half_ellipse);
-}
-#[test]
-fn table_strapped_column_v003() {
-    real_row("column + strapped conduit + sign", 0.03, 0.01, 5, &scan_matrix::strapped_column);
-}
-#[test]
-fn table_occluded_column_v003() {
-    real_row("column, 60 deg visible below 1.8 m", 0.03, 0.01, 5, &|seed, s| scan_matrix::occluded_column(seed, s, 1.8, 60.));
-}
-
-#[test]
-fn table_decoy_facet_pair_90_v003() {
-    decoy_row("facet pair 90 deg, 0.15 m", 0.03, &|seed, s| scan_matrix::facet_pair(seed, s, 90., 0.15));
-}
-#[test]
-fn table_decoy_facet_pair_120_v003() {
-    decoy_row("facet pair 120 deg, 0.15 m", 0.03, &|seed, s| scan_matrix::facet_pair(seed, s, 120., 0.15));
-}
-#[test]
-fn table_limit_facet_pair_90_narrow_v003() {
-    limit_row("facet pair 90 deg, 0.1 m", 0.03, &|seed, s| scan_matrix::facet_pair(seed, s, 90., 0.1));
-}
-#[test]
-fn table_decoy_facet_pair_135_v003() {
-    decoy_row("facet pair 135 deg, 0.12 m", 0.03, &|seed, s| scan_matrix::facet_pair(seed, s, 135., 0.12));
-}
-#[test]
-fn table_decoy_facet_pair_90_v005() {
-    decoy_row("facet pair 90 deg, 0.15 m", 0.05, &|seed, s| scan_matrix::facet_pair(seed, s, 90., 0.15));
-}
-#[test]
-fn table_limit_three_facets_v003() {
-    limit_row("three facets, 45 deg steps", 0.03, &scan_matrix::three_facets);
-}
-#[test]
-fn table_limit_three_facets_v005() {
-    limit_row("three facets, 45 deg steps", 0.05, &scan_matrix::three_facets);
-}
-#[test]
-fn table_decoy_corner_chamfer_v003() {
-    decoy_row("corner chamfer 45 deg", 0.03, &scan_matrix::corner_chamfer);
+    let failures: Vec<&String> = results.iter().filter(|r| !r.1).map(|r| &r.0).collect();
+    assert!(failures.is_empty(), "{failures:#?}");
 }
 
 #[test]
@@ -199,7 +228,7 @@ fn issue_6870_a_column_on_a_plinth_is_two_cylinders() {
     // plinth) used to join into one r 0.3 cylinder under the 25 % radius
     // ratio. Radii must agree within about a voxel to join.
     for upper in [0.24, 0.25] {
-        let (points, truths) = scan_matrix::plinth(61, 0.003, upper);
+        let (points, truths) = scan_matrix::plinth(Size::Compact, 61, 0.003, upper);
         let report = segment_scan_points(&points, &options(0.03)).unwrap();
         assert_eq!(report.cylinders.len(), 2, "upper r {upper}: {:?}", report.cylinders.iter().map(|c| c.radius).collect::<Vec<_>>());
         for truth in &truths {

@@ -235,6 +235,7 @@ nav:
     - Captured Mesh Authoring: architecture/captured-mesh-authoring.md
     - PDF Vector Annotations: architecture/pdf-vector-annotations.md
     - Scan Alignment Workbench: architecture/scan-alignment-workbench.md
+    - COPC Point Cloud Streaming: architecture/copc-lod-streaming.md
     - Extension System:
         - Extension Model: architecture/ai-customization/01-extension-model.md
         - Security Model: architecture/ai-customization/02-security.md

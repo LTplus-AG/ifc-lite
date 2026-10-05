@@ -270,7 +270,10 @@ assistant-drafted IDS. It writes entity, attribute, property (with `dataType`),
 classification, material and partOf facets, requirement cardinality and
 `instructions`, and simple, pattern, enumeration and numeric-bound values.
 Length and digit restrictions, and conjunctive restriction facets, are refused
-with an error instead of being written as a weaker check. Every pass/fail case
+with an error instead of being written as a weaker check. Line breaks and tabs
+in attributes such as `instructions` are written as character references, so
+they read back unchanged; a control character XML cannot carry is refused with
+the element or attribute it is in. Every pass/fail case
 of the vendored buildingSMART IDS corpus that it writes reads back with the
 same specifications and verdicts.
 

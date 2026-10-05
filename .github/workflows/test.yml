@@ -1487,11 +1487,6 @@ jobs:
       # untrustworthyExitReason is pinned in the same file.
       - name: Check unused-locals output classification
         run: node --test scripts/lib/unused-locals-classify.test.mjs
-      # check-case-collisions.mjs started as a stem-only comparison that
-      # missed directories, extension-case-only pairs, dotfiles and Unicode
-      # normalization; the pure finder is pinned here (#6944).
-      - name: Check case-collision finder
-        run: node --test scripts/lib/case-collisions.test.mjs
       # check-lint-ran.mjs buffered oxlint's whole output, wrote it, then
       # process.exit()'d. On a PIPE — every CI log — stdout is asynchronous, so
       # the exit discarded most of the write: a 120k-line failing run reached

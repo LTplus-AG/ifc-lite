@@ -63,7 +63,10 @@ pub struct ScanOutlineOptions {
     pub snap_distance_cells: f64,
     /// Fewest points an edge needs before it is refitted.
     pub min_snap_points: usize,
-    /// A snapped or squared vertex may move at most this far (cells).
+    /// A squared vertex may move at most this far (cells); a larger move is
+    /// undone. It also widens how far a moved edge may sit from the traced
+    /// boundary (the support check). Snapping bounds its own moves by the
+    /// closing radius (rebuilt corners reach about `2 × (radius + 3)` cells).
     pub max_vertex_move_cells: f64,
     /// Square edges against the dominant building direction.
     pub square: bool,

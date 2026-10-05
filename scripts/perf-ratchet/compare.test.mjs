@@ -17,9 +17,10 @@ async function load(rel) {
 const compare = await load('./compare.mjs');
 const ceilings = await load('./ceilings.mjs');
 const report = await load('./report.mjs');
+const lower = await load('./lower.mjs');
 function rt(name, body) {
   test(name, () => {
-    assert.ok(compare && ceilings && report, 'the perf-ratchet modules are absent');
+    assert.ok(compare && ceilings && report && lower, 'the perf-ratchet modules are absent');
     return body();
   });
 }
@@ -132,4 +133,15 @@ rt('an all-unchanged report says so in one line', () => {
   const md = report.formatReport([res]);
   assert.match(md, /all metrics within their ceilings/);
   assert.match(md, /All 1 metric\(s\) equal their ceilings/);
+});
+
+rt('changelog lists each lowered metric old -> new', () => {
+  const { changes } = lower.lowerFamily(family([entry('wasm', 1000), entry('chunks', 7, { kind: 'exact', value: 0 }), entry('noise', 1000)]),
+    measured([{ id: 'wasm', value: 900 }, { id: 'chunks', value: 6 }, { id: 'noise', value: 1000 }]));
+  const changelog = lower.formatChangelog([{ family: 'bundle', changes }], { commit: 'f00dfeed12345' });
+  assert.deepEqual(changelog.split('\n').filter((l) => l.startsWith('- ')), [
+    '- `bundle/wasm`: 1,000 -> 900 bytes (-10.00%)',
+    '- `bundle/chunks`: 7 -> 6 bytes (-14.29%)',
+  ]);
+  assert.match(lower.formatChangelog([{ family: 'bundle', changes: [] }], { commit: 'x' }), /No ceiling lowered/);
 });

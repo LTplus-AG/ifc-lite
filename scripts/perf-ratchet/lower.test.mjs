@@ -67,14 +67,6 @@ rt('a ceiling with no measurement is left alone rather than lowered to nothing',
   assert.deepEqual(next, ceilingFile());
 });
 
-rt('changelog lists each lowered metric old -> new', () => {
-  const { changes } = lower.lowerFamily(ceilingFile(), measurement({ wasm: 900, chunks: 6, noise: 1000 }));
-  const md = lower.formatChangelog([{ family: 'bundle', changes }], { commit: 'f00dfeed12345' });
-  assert.match(md, /`bundle\/wasm`: 1,000 -> 900 bytes \(-10\.00%\)/);
-  assert.match(md, /`bundle\/chunks`: 7 -> 6 \(-14\.29%\)/);
-  assert.match(lower.formatChangelog([{ family: 'bundle', changes: [] }], { commit: 'x' }), /No ceiling lowered/);
-});
-
 function scratch(values) {
   const dir = mkdtempSync(join(tmpdir(), 'perf-ratchet-cli-'));
   mkdirSync(join(dir, 'ceilings'));
@@ -89,9 +81,11 @@ function cli(dir, ...args) {
 rt('check exits 0 within ceilings, 1 on a breach, and writes the markdown report', () => {
   const dir = scratch({ wasm: 1004, chunks: 7, noise: 1000 });
   try {
-    const ok = cli(dir, 'check', '--measured', join(dir, 'measured.json'), '--markdown', join(dir, 'r.md'));
+    const ok = cli(dir, 'check', '--measured', join(dir, 'measured.json'), '--markdown', join(dir, 'report-out'));
     assert.equal(ok.status, 0);
-    assert.match(readFileSync(join(dir, 'r.md'), 'utf8'), /all metrics within their ceilings/);
+    assert.match(ok.stdout, /all metrics within their ceilings/);
+    // --markdown writes exactly the report it printed (console.log adds the newline).
+    assert.equal(`${readFileSync(join(dir, 'report-out'), 'utf8')}\n`, ok.stdout);
 
     writeFileSync(join(dir, 'measured.json'), JSON.stringify(measurement({ wasm: 1004, chunks: 8, noise: 1000 })));
     const bad = cli(dir, 'check', '--measured', join(dir, 'measured.json'));
@@ -125,11 +119,12 @@ rt('lower rewrites the ceiling file in place; --dry-run leaves it untouched', ()
     assert.match(dry.stdout, /`bundle\/wasm`: 1,000 -> 900/);
     assert.equal(readFileSync(file, 'utf8'), before);
 
-    const real = cli(dir, 'lower', '--measured', join(dir, 'measured.json'), '--changelog', join(dir, 'c.md'));
+    const real = cli(dir, 'lower', '--measured', join(dir, 'measured.json'), '--changelog', join(dir, 'changelog-out'));
     assert.equal(real.status, 0);
     const after = JSON.parse(readFileSync(file, 'utf8'));
     assert.equal(after.entries.find((e) => e.id === 'wasm').ceiling, 900);
-    assert.match(readFileSync(join(dir, 'c.md'), 'utf8'), /f00dfeed12345/);
+    assert.equal(`${readFileSync(join(dir, 'changelog-out'), 'utf8')}\n`, real.stdout);
+    assert.match(real.stdout, /measured on `main` at `f00dfeed12345`/);
     // Lowered ceilings now equal the measurement, so a re-check is clean.
     assert.equal(cli(dir, 'check', '--measured', join(dir, 'measured.json')).status, 0);
   } finally {

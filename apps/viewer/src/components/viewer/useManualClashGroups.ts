@@ -83,11 +83,15 @@ export function useManualClashGroups({
   // Checked findings on the shared result selection (U02, #6925): the whole
   // filtered population is loaded, so "select all" is authoritative at once,
   // and a filter change drops a select-all that no longer means what it said.
+  // `visibleClashes` is rebuilt on a re-sort or a review decision too, which
+  // change no membership, so the population is keyed by its id SET, not by
+  // the array instance or its order.
   const visibleIds = useMemo(() => visibleClashes.map((clash) => clash.id), [visibleClashes]);
+  const populationKey = useMemo(() => [...visibleIds].sort().join('\n'), [visibleIds]);
   const selection = useResultSelection({
     populationTotal: visibleIds.length,
     resolvePopulation: useCallback(async () => visibleIds, [visibleIds]),
-    populationKey: visibleIds,
+    populationKey,
   });
   const { dispatch: dispatchSelection } = selection;
   const checkedIds = selection.state.selected;

@@ -18,6 +18,7 @@ import type { FilterGroup } from '@ifc-lite/rules';
 import type { ListDefinition } from '@ifc-lite/lists';
 import type { Lens } from '@ifc-lite/lens';
 import type { ChartScope, ChartSpec } from '@ifc-lite/charts';
+import { chartScopeKey } from '@/lib/charts/datasets/elements';
 
 export type ArtifactPreviewKind = 'filter.proposal' | 'list.proposal' | 'lens.proposal' | 'chart.proposal';
 
@@ -52,16 +53,25 @@ export type PreviewArtifact =
   | { kind: 'lens.proposal'; lens: Lens }
   | { kind: 'chart.proposal'; spec: ChartSpec; scope: ChartScope };
 
-export interface PreviewRevision { models: object; mutationVersion: number }
+/** `scope`: a chart's `chartScopeKey`, what a visible or basket chart counts beyond the models; `null` otherwise. */
+export interface PreviewRevision { models: object; mutationVersion: number; scope: string | object | null }
 
 export const SAMPLE_LIMIT = 8;
 
-export function revisionOf(state: Pick<ViewerState, 'models' | 'mutationVersion'>): PreviewRevision {
-  return { models: state.models, mutationVersion: state.mutationVersion };
+type RevisionState = Pick<ViewerState, 'models' | 'mutationVersion' | 'pinboardEntities'>;
+
+/** The scope key `artifact`'s numbers depend on: only a chart has a scope. */
+export function artifactScopeKey(artifact: PreviewArtifact, state: Pick<ViewerState, 'pinboardEntities'>): string | object | null {
+  return artifact.kind === 'chart.proposal' ? chartScopeKey(artifact.scope, state) : null;
 }
 
-export function isPreviewCurrent(preview: ArtifactPreview, state: Pick<ViewerState, 'models' | 'mutationVersion'>): boolean {
-  return preview.revision.models === state.models && preview.revision.mutationVersion === state.mutationVersion;
+export function revisionOf(state: Pick<ViewerState, 'models' | 'mutationVersion'>, scope: string | object | null = null): PreviewRevision {
+  return { models: state.models, mutationVersion: state.mutationVersion, scope };
+}
+
+export function isPreviewCurrent(preview: ArtifactPreview, state: RevisionState): boolean {
+  return preview.revision.models === state.models && preview.revision.mutationVersion === state.mutationVersion
+    && preview.revision.scope === artifactScopeKey(preview.artifact, state);
 }
 
 /** Count rows per loaded model, in federation order; models with no rows are listed with 0. */

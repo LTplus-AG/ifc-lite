@@ -14,7 +14,7 @@
 
 import { aggregate, elementFieldLabel, type ElementFieldBinding } from '@ifc-lite/charts';
 import type { ViewerState } from '@/store';
-import { buildElementsDataset } from '@/lib/charts/datasets/elements';
+import { buildElementsDataset, chartScopeKey } from '@/lib/charts/datasets/elements';
 import type { ElementFieldCatalog } from '@/lib/charts/element-field-reader';
 import { applyChartFilter, resolveChartFilter } from '@/lib/charts/source-filter';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -34,6 +34,7 @@ export async function previewChart(proposal: ChartProposal, state: ViewerState, 
   const { catalog } = await modelSchemaIndex(state, signal);
   const spec = resolveChartSpec(proposal.chart, `chart-${crypto.randomUUID()}`, (field) => discoveredBinding(field, catalog));
   const fields = [spec.elementField, spec.measureField].filter((field): field is ElementFieldBinding => !!field);
+  const scopeKey = chartScopeKey(proposal.scope, state);
   let dataset = buildElementsDataset(proposal.scope, fields, state);
   const ids = await resolveChartFilter(evaluatorModelsFromState(state), spec.filter,
     (modelId, expressId) => toGlobalIdFromModels(state.models, modelId, expressId),
@@ -55,6 +56,6 @@ export async function previewChart(proposal: ChartProposal, state: ViewerState, 
     kind: 'chart.proposal', matched: rows, population: populationOf(refs, state), sampleColumns: [], samples: [], measures,
     buckets: aggregation.categories.map((bucket) => ({ label: bucket.label, count: bucket.count, value: bucket.value, color: bucket.color })),
     unassigned: aggregation.unbucketed, ...(aggregation.unit ? { unit: aggregation.unit } : {}),
-    artifact: { kind: 'chart.proposal', spec, scope: proposal.scope }, revision: revisionOf(state),
+    artifact: { kind: 'chart.proposal', spec, scope: proposal.scope }, revision: revisionOf(state, scopeKey),
   };
 }

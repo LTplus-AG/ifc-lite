@@ -23,7 +23,7 @@ import { previewChart } from './preview-chart';
 import { populationOf, revisionOf, SAMPLE_LIMIT, type ArtifactPreview } from './preview-shared';
 
 export type { ArtifactPreview, ModelPopulation, SampleRow, MeasureSummary, PreviewBucket, PreviewArtifact } from './preview-shared';
-export { isPreviewCurrent } from './preview-shared';
+export { artifactScopeKey, isPreviewCurrent } from './preview-shared';
 
 export async function previewFilterGroups(name: string, groups: FilterProposal['groups'], state: ViewerState, signal?: AbortSignal): Promise<ArtifactPreview> {
   const matched: FilteredElement[] = await evaluateFilterGroupsFederated(evaluatorModelsFromState(state), groups, {

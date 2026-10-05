@@ -28,7 +28,7 @@ import { modelSchemaIndex } from './model-schema';
 import { parseArtifactProposal, type ArtifactKind } from './proposal-kinds';
 
 before(async () => { await seedArtifactModels({ federated: true }); });
-afterEach(() => { useViewerStore.setState({ mutationVersion: 0 }); });
+afterEach(() => { useViewerStore.setState({ mutationVersion: 0, hiddenEntities: new Set(), pinboardEntities: new Set() }); });
 const preview = (value: { kind: ArtifactKind } & Record<string, unknown>) =>
   previewArtifact(parseArtifactProposal(JSON.stringify({ version: 1, title: 'T', ...value }), value.kind), useViewerStore.getState());
 const walls = { combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] };
@@ -180,4 +180,18 @@ test('a numeric threshold reads the unsaved edit the list and chart read, not th
   } finally {
     useViewerStore.setState({ mutationViews: new Map() });
   }
+});
+
+test('a visible or basket chart review is stale once what is visible, or in the basket, changes (#6914 review)', async () => {
+  const chart = (scope: string) => preview({ kind: 'chart.proposal', scope, chart: { type: 'pie', dimension: 'Model', measure: { agg: 'count' } } });
+  const visible = await chart('visible');
+  const basket = await chart('basket');
+  const all = await chart('all');
+  assert.equal(isPreviewCurrent(visible, useViewerStore.getState()), true);
+  useViewerStore.setState({ hiddenEntities: new Set([1]) });
+  assert.equal(isPreviewCurrent(visible, useViewerStore.getState()), false, 'hiding an element changes what a visible chart counts');
+  assert.equal(isPreviewCurrent(basket, useViewerStore.getState()), true, 'the basket did not change');
+  useViewerStore.setState({ pinboardEntities: new Set([`${ARCH}:1`]) });
+  assert.equal(isPreviewCurrent(basket, useViewerStore.getState()), false, 'a basket chart counts the basket');
+  assert.equal(isPreviewCurrent(all, useViewerStore.getState()), true, 'an all-elements chart depends on neither');
 });

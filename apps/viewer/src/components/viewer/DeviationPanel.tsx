@@ -283,7 +283,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       )}
 
       {exportNotice && (
-        <span role="status" data-testid="deviation-export-notice" className="text-2xs text-muted-foreground">{exportNotice}</span>
+        <output data-testid="deviation-export-notice" className="text-2xs text-muted-foreground">{exportNotice}</output>
       )}
       {computed && distances && (
         <button type="button" onClick={handleExport}

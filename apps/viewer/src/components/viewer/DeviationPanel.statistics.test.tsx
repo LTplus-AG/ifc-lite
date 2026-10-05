@@ -328,7 +328,7 @@ it('DeviationPanel #6880 Export CSV with no measured points says why instead of 
   await computeWith(container, stub, { values: new Float32Array(0), assets: [] });
   const downloads = await captureDownloads(async () => {
     click(button(container, 'Export CSV')!);
-    await waitFor(() => container.querySelector('[role="status"][data-testid="deviation-export-notice"]') !== null, 'notice shown');
+    await waitFor(() => container.querySelector('output[data-testid="deviation-export-notice"]') !== null, 'notice shown');
   });
   assert.equal(downloads.length, 0);
   assert.equal(

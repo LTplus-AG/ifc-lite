@@ -52,11 +52,14 @@ describe('DataConnector — Review as changes (#6912)', () => {
     const review = byText('Review as changes');
     assert.ok(review && !review.disabled, 'review is the primary, enabled action once a key column and mapping exist');
     assert.ok(byText(/^Import/), 'the direct import stays available as the secondary action');
+    const before = { version: useViewerStore.getState().mutationVersion, undo: useViewerStore.getState().undoStacks.get('sample')?.length ?? 0 };
     click(review!);
     await advance(0);
     const dialog = [...document.body.querySelectorAll('[role="dialog"]')].at(-1)!;
     assert.match(dialog.textContent ?? '', /2 changes in 1 part\(s\) · 0 already set · 1 skipped/);
-    assert.equal(view.getPropertyValue(back, 'Pset_WallCommon', 'FireRating'), null, 'opening the review wrote nothing');
+    // Whatever property set auto-detect targets: no mutation was recorded or applied by opening the review.
+    assert.deepEqual({ version: useViewerStore.getState().mutationVersion, undo: useViewerStore.getState().undoStacks.get('sample')?.length ?? 0 },
+      before, 'opening the review wrote nothing');
 
     click(byText('Apply 2 changes')!);
     await waitFor(() => useModelChangeReceipts.getState().entries.length === 1);

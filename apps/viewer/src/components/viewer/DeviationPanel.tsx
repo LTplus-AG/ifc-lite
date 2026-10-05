@@ -103,7 +103,8 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   // read at the current revision, so a later COPC re-run reads back again, and
   // statistics dropped while the panel was closed (a re-run bumps the revision
   // whether or not the panel is mounted) are read back now (#6833).
-  const readRevisionRef = useRef<number | null>(computed ? (statistics ? revision : -1) : null);
+  // A summary stored without its tolerance count (the panel closed mid-pass) is not fully read.
+  const readRevisionRef = useRef<number | null>(computed ? (statistics?.withinTolerance ? revision : -1) : null);
   useEffect(() => {
     const readAt = readRevisionRef.current;
     if (!computed || running || readAt === null || readAt === revision) return;

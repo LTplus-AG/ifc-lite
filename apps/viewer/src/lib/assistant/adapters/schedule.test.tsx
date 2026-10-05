@@ -142,6 +142,9 @@ test('#6833 schedule: more tasks than the row budget keep the exact native count
   assert.equal(payload.evidence.summary.taskCount, 120);
   assert.ok(snapshot.includedRows <= 100);
   assert.equal(payload.sampled, true);
+  const filtered = captureEvidence('schedule');
+  useViewerStore.setState({ activeWorkScheduleId: 'another-work-schedule' });
+  assert.equal(evidenceIsCurrent(filtered), false, 'the captured summary names the schedule filter, so changing it stales the capture');
   useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
   assert.equal(evidenceIsCurrent(snapshot), false);
 });

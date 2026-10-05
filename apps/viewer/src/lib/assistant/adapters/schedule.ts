@@ -84,8 +84,9 @@ export const scheduleAdapter: EvidenceAdapter = {
   readiness: s => s.scheduleData
     ? { status: { labelKey: 'assistantSources.schedule.ready', params: { count: s.scheduleData.tasks.length } }, ready: true }
     : { status: { labelKey: 'assistantSources.schedule.none' }, ready: false },
-  // Every schedule edit, extraction, generation and import replaces the extraction object.
-  identity: s => s.scheduleData,
+  // Every schedule edit, extraction, generation and import replaces the extraction object; the summary also
+  // reports the active work-schedule filter and the date range, so those are part of the identity.
+  identity: s => [s.scheduleData, s.activeWorkScheduleId, s.scheduleRange],
   capture: (s, limit) => {
     const data = s.scheduleData;
     if (!data) return unavailableCapture();

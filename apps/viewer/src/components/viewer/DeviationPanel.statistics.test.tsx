@@ -395,3 +395,17 @@ it('DeviationPanel #6833 re-reads after a COPC re-run when it mounted with stati
   await act(async () => { stub.readbacks[1](ladder(400, 0.004)); });
   await waitFor(() => stat(container, 'maxAbs') === '4.0 mm', 'refreshed statistics rendered');
 });
+
+it('DeviationPanel #6833 a summary stored without its tolerance count (closed mid-pass) is read back on remount', async () => {
+  const stub = stubRenderer();
+  const first = render(<DeviationPanel triangleCount={1} />);
+  await computeWith(first, stub, ladder(1000, 0.04));
+  cleanup();
+  // The pooled summary was adopted, then the panel closed before the tolerance count finished.
+  const stored = useViewerStore.getState().pointCloudDeviationStatistics!;
+  act(() => { useViewerStore.getState().setPointCloudDeviationStatistics({ ...stored, withinTolerance: null }); });
+  render(<DeviationPanel triangleCount={1} />);
+  await waitFor(() => stub.readbacks.length === 2, 'readback started on mount');
+  await act(async () => { stub.readbacks[1](ladder(1000, 0.04)); });
+  await waitFor(() => useViewerStore.getState().pointCloudDeviationStatistics?.withinTolerance != null, 'tolerance count completed');
+});

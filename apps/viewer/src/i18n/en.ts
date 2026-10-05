@@ -29,6 +29,13 @@ import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
 import { ionUploadEn } from './catalogues/ion-upload.en';
 import { cesiumGeoEn } from './catalogues/cesium-geo.en';
 import { chatEn } from './catalogues/chat.en';
+import { assistantSourcesEn } from './catalogues/assistant-sources.en';
+import { assistantPackChecksEn } from './catalogues/assistant-pack-checks.en';
+import { assistantPackCoordinationEn } from './catalogues/assistant-pack-coordination.en';
+import { assistantPackSiteEn } from './catalogues/assistant-pack-site.en';
+import { assistantPackTablesEn } from './catalogues/assistant-pack-tables.en';
+import { assistantPackMeasureEn } from './catalogues/assistant-pack-measure.en';
+import { assistantPackAutomationEn } from './catalogues/assistant-pack-automation.en';
 import { chatByokEn } from './catalogues/chat-byok.en';
 import { modelChangesEn } from './catalogues/model-changes.en';
 import { assistantUsageEn } from './catalogues/assistant-usage.en';
@@ -211,6 +218,13 @@ export const en = {
   ...automationEditorEn,
   ...flowPanelEn,
   ...chatEn,
+  ...assistantSourcesEn,
+  ...assistantPackChecksEn,
+  ...assistantPackCoordinationEn,
+  ...assistantPackSiteEn,
+  ...assistantPackTablesEn,
+  ...assistantPackMeasureEn,
+  ...assistantPackAutomationEn,
   ...chatByokEn,
   ...modelChangesEn,
   ...assistantUsageEn,

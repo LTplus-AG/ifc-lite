@@ -30,24 +30,18 @@ const PER_PAGE = 100;
 const MAX_PAGES = 5;
 
 /**
- * Tag prefixes a server-bin release can live under, newest scheme first.
- * Releases from 2.0.1 on are tagged `server-v<version>`. Before that they
- * shared the root product's `v<version>` namespace, and collided with it:
- * root v2.0.0 already existed (asset-less), so server-bin 2.0.0 got no release
- * of its own and installed 1.22.1 instead (#6900). The root is at v10, so
- * every later 2.x-10.x would have collided the same way.
+ * Server-bin releases are tagged `server-v<version>`. They used to share the
+ * root product's `v<version>` namespace and collided with it: root v2.0.0
+ * already existed (asset-less), so server-bin 2.0.0 got no release of its own
+ * and installed 1.22.1 instead (#6900). This code ships from 2.0.1, and no
+ * server-bin release was ever tagged `v2.x` or later, so a `v<version>` tag
+ * can only be a root release (some carry stale, checksum-less archives) and
+ * is never consulted.
  */
-export const SERVER_RELEASE_TAG_PREFIXES = ['server-v', 'v'] as const;
+const SERVER_RELEASE_TAG_PREFIX = 'server-v';
 
-/** The candidate release tags for a server-bin version, in download order. */
-export function serverReleaseTags(version: string): string[] {
-  return SERVER_RELEASE_TAG_PREFIXES.map((prefix) => `${prefix}${version}`);
-}
-
-/** The version a server-bin release tag stands for, or null for any other tag. */
-function versionFromTag(tag: string): string | null {
-  const prefix = SERVER_RELEASE_TAG_PREFIXES.find((p) => tag.startsWith(p));
-  return prefix ? tag.slice(prefix.length) : null;
+export function serverReleaseTag(version: string): string {
+  return `${SERVER_RELEASE_TAG_PREFIX}${version}`;
 }
 
 /** A download that failed with an HTTP status (as opposed to a network error). */
@@ -124,9 +118,9 @@ async function sumsCoverArchive(candidate: Candidate, archiveName: string): Prom
 
 function usableAsset(release: ApiRelease, archiveName: string): Candidate | null {
   if (release.draft === true || release.prerelease === true) return null;
-  if (typeof release.tag_name !== 'string') return null;
-  const version = versionFromTag(release.tag_name);
-  if (!version || !parseSemver(version) || !Array.isArray(release.assets)) return null;
+  if (typeof release.tag_name !== 'string' || !release.tag_name.startsWith(SERVER_RELEASE_TAG_PREFIX)) return null;
+  const version = release.tag_name.slice(SERVER_RELEASE_TAG_PREFIX.length);
+  if (!parseSemver(version) || !Array.isArray(release.assets)) return null;
 
   const assets = (release.assets as ApiAsset[]).filter(
     (a) => typeof a.name === 'string' && (a.state === undefined || a.state === 'uploaded')
@@ -257,8 +251,8 @@ export function parseVersionSidecar(text: string): { version: string; fallback: 
 /** The warning printed on every run that reuses a fallback binary. */
 export function fallbackInUseWarning(version: string, fallbackVersion: string): string {
   return (
-    `Warning: @ifc-lite/server-bin@${version} is running the server binary from release v${fallbackVersion}, ` +
-    `because release v${version} had no binary for this platform when it was installed.\n` +
+    `Warning: @ifc-lite/server-bin@${version} is running the server binary from release ${serverReleaseTag(fallbackVersion)}, ` +
+    `because release ${serverReleaseTag(version)} had no binary for this platform when it was installed.\n` +
     `Warning: run "npx @ifc-lite/server-bin download" to retry v${version}, or pin: npm i @ifc-lite/server-bin@${fallbackVersion}`
   );
 }
@@ -281,7 +275,7 @@ export function noBinaryMessage(details: {
     `Error: ${details.errorText}\n` +
     `No fallback release was used: ${details.reason}.\n\n` +
     `Fix: install a server-bin version whose GitHub release carries binaries.\n` +
-    `  1. Pick the newest "vX.Y.Z" release listing ${details.archiveName}: ${RELEASES_PAGE_URL}\n` +
+    `  1. Pick the newest "server-vX.Y.Z" release listing ${details.archiveName}: ${RELEASES_PAGE_URL}\n` +
     `  2. npm i @ifc-lite/server-bin@X.Y.Z   (or: npx @ifc-lite/server-bin@X.Y.Z)\n` +
     `Or build from source: cargo build --release -p ifc-lite-server`
   );

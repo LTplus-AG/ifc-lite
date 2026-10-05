@@ -351,26 +351,24 @@ describe('downloadBinary - checksum verification gates extraction (PR #2650)', (
     }
   });
 
-  it('verifies against the legacy v<version> URL that actually succeeded, not the server-v one that failed', async () => {
-    // Releases up to 2.0.0 are tagged v<version>; the server-v<version> URL
-    // tried first 404s for them. `resolvedAssetUrl` exists specifically so
-    // the checksum sidecar is fetched from the release that produced the
-    // bytes on disk - fetching it from the failed URL would 404 the sidecar
-    // too and fail the whole install closed on an otherwise-good binary.
+  it('never downloads from the v<version> tag, which belongs to the root release (#6900)', async () => {
+    // server-bin 2.0.0 shared `v2.0.0` with an older root release. Root `v*`
+    // releases can carry stale, checksum-less server archives, so a 404 on
+    // server-v<version> goes to the same-major fallback, never to v<version>.
     const { platform } = getBinaryInfo();
     const serverUrl = `https://github.com/LTplus-AG/ifc-lite/releases/download/server-v${PKG_VERSION}/${platform.archiveName}`;
-    const legacyUrl = `https://github.com/LTplus-AG/ifc-lite/releases/download/v${PKG_VERSION}/${platform.archiveName}`;
-
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    const rootUrl = `https://github.com/LTplus-AG/ifc-lite/releases/download/v${PKG_VERSION}/${platform.archiveName}`;
+    const fetchMock = vi.fn(async (url: string) => {
       if (url === serverUrl) return { ok: false, status: 404, statusText: 'Not Found' };
+      if (url.startsWith('https://api.github.com/')) return { ok: true, status: 200, json: async () => [] };
       return fakeDownloadResponse();
-    }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    await downloadBinary();
-
-    expect(verifyChecksumMock).toHaveBeenCalledTimes(1);
-    const [, assetUrl] = verifyChecksumMock.mock.calls[0];
-    expect(assetUrl).toBe(legacyUrl);
+    await expect(downloadBinary()).rejects.toThrow(/No fallback release was used/);
+    expect(fetchMock.mock.calls.map(([u]) => u)).not.toContain(rootUrl);
+    expect(verifyChecksumMock).not.toHaveBeenCalled();
   });
 
   it('extracts, chmods and persists NOTHING when verification fails', async () => {
@@ -425,7 +423,7 @@ describe('downloadBinary - fallback when the version has no release (#5525)', ()
   }
 
   /** A `<prefix><version>` release; `assets` lists asset names (the archive's own name via `$`). */
-  function release(version: string, assets: string[], extra: Record<string, unknown> = {}, prefix = 'v') {
+  function release(version: string, assets: string[], extra: Record<string, unknown> = {}, prefix = 'server-v') {
     const tag = `${prefix}${version}`;
     return {
       tag_name: tag,
@@ -452,13 +450,13 @@ describe('downloadBinary - fallback when the version has no release (#5525)', ()
     sums = {};
     fetchMock = vi.fn(async (url: string) => {
       if (url.startsWith(API)) return json(apiBody);
-      const sumsFor = /\/v([^/]+)\/SHA256SUMS$/.exec(url)?.[1];
+      const sumsFor = /\/server-v([^/]+)\/SHA256SUMS$/.exec(url)?.[1];
       if (sumsFor !== undefined) {
         const body = sums[sumsFor];
         return body === undefined ? status(404, 'Not Found') : { ok: true, status: 200, text: async () => body };
       }
       // Every version-derived URL for the package version 404s.
-      if (url.includes(`v${PKG_VERSION}/`)) {
+      if (url.includes(`/server-v${PKG_VERSION}/`)) {
         return status(404, 'Not Found');
       }
       return okDownload();
@@ -488,7 +486,7 @@ describe('downloadBinary - fallback when the version has no release (#5525)', ()
 
     await downloadBinary();
 
-    const expectedUrl = `${RELEASES}/v1.16.3/${archiveName()}`;
+    const expectedUrl = `${RELEASES}/server-v1.16.3/${archiveName()}`;
     expect(fetchMock.mock.calls.map(([u]) => u)).toContain(expectedUrl);
     expect(verifyChecksumMock).toHaveBeenCalledTimes(1);
     expect(verifyChecksumMock.mock.calls[0][1]).toBe(expectedUrl);
@@ -496,7 +494,7 @@ describe('downloadBinary - fallback when the version has no release (#5525)', ()
 
     const warning = vi.mocked(console.warn).mock.calls.map((c) => String(c[0])).join('\n');
     expect(warning).toContain(PKG_VERSION);
-    expect(warning).toContain('v1.16.3');
+    expect(warning).toContain('server-v1.16.3');
   });
 
   it('skips a release whose SHA256SUMS does not list this archive', async () => {
@@ -507,10 +505,10 @@ describe('downloadBinary - fallback when the version has no release (#5525)', ()
 
     await downloadBinary();
 
-    const expectedUrl = `${RELEASES}/v1.16.2/${archiveName()}`;
+    const expectedUrl = `${RELEASES}/server-v1.16.2/${archiveName()}`;
     expect(verifyChecksumMock).toHaveBeenCalledTimes(1);
     expect(verifyChecksumMock.mock.calls[0][1]).toBe(expectedUrl);
-    expect(fetchMock.mock.calls.map(([u]) => u)).not.toContain(`${RELEASES}/v1.16.3/${archiveName()}`);
+    expect(fetchMock.mock.calls.map(([u]) => u)).not.toContain(`${RELEASES}/server-v1.16.3/${archiveName()}`);
   });
 
   it('extracts nothing when the fallback archive fails checksum verification', async () => {
@@ -519,7 +517,7 @@ describe('downloadBinary - fallback when the version has no release (#5525)', ()
 
     await expect(downloadBinary()).rejects.toThrow(/checksum mismatch \(fallback\)/);
 
-    expect(verifyChecksumMock.mock.calls[0][1]).toBe(`${RELEASES}/v1.16.2/${archiveName()}`);
+    expect(verifyChecksumMock.mock.calls[0][1]).toBe(`${RELEASES}/server-v1.16.2/${archiveName()}`);
     expect(tarExtractMock).not.toHaveBeenCalled();
     expect(execFileSyncMock).not.toHaveBeenCalled();
     expect(chmodSyncMock).not.toHaveBeenCalled();
@@ -575,7 +573,7 @@ describe('downloadBinary - fallback when the version has no release (#5525)', ()
     );
     await expect(isBinaryCached()).resolves.toBe(true);
     const warning = vi.mocked(console.warn).mock.calls.map((c) => String(c[0])).join('\n');
-    expect(warning).toContain('release v1.16.3');
+    expect(warning).toContain('release server-v1.16.3');
     expect(warning).toContain('npx @ifc-lite/server-bin download');
   });
 
@@ -594,14 +592,16 @@ describe('downloadBinary - fallback when the version has no release (#5525)', ()
     apiBody = [foreign, release('1.16.2', ['$', '$.sha256'])];
 
     await downloadBinary();
-    expect(verifyChecksumMock.mock.calls[0][1]).toBe(`${RELEASES}/v1.16.2/${archiveName()}`);
+    expect(verifyChecksumMock.mock.calls[0][1]).toBe(`${RELEASES}/server-v1.16.2/${archiveName()}`);
   });
 
-  it('falls back to a server-v<version> release like a legacy v<version> one', async () => {
-    apiBody = [release('1.16.4', ['$', '$.sha256'], {}, 'server-v'), release('1.16.3', ['$', '$.sha256'])];
+  it('never falls back to a root v<version> release, even one carrying an archive (#6900)', async () => {
+    // Root releases such as v2.1.0 carry stale server archives from before
+    // the namespaces split; only server-v releases are server-bin's.
+    apiBody = [release('1.16.5', ['$', '$.sha256'], {}, 'v'), release('1.16.2', ['$', '$.sha256'])];
 
     await downloadBinary();
-    expect(verifyChecksumMock.mock.calls[0][1]).toBe(`${RELEASES}/server-v1.16.4/${archiveName()}`);
+    expect(verifyChecksumMock.mock.calls[0][1]).toBe(`${RELEASES}/server-v1.16.2/${archiveName()}`);
   });
 
   it('never falls back across a major version (#6900)', async () => {

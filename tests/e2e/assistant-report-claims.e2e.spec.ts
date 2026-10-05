@@ -59,9 +59,11 @@ test('German AI report: checked claims, contradicted claim edit, refresh reconci
     const { clashResult } = (globalThis as unknown as Store<ClashState>).__ifc_lite_viewer_store__.getState();
     return { first: clashResult!.clashes[0].distance, second: clashResult!.clashes[1].distance, total: clashResult!.summary.total };
   });
+  // Rounded to one decimal and sent as a string, the only way a claim may state a rounded value.
+  const firstMm = (native.first * 1000).toFixed(1);
   const answer = ['## Zusammenfassung', `Die Prüfung ergab ${native.total} Kollisionen; Wände und Decken überschneiden sich [E1].`, '',
     '```json', JSON.stringify({ version: 1, kind: 'report.claims', language: 'de', claims: [
-      { text: `E1 überlappt um ${Math.round(native.first * 1000)} mm.`, facts: [{ citation: 'E1', field: 'distance', value: Math.round(native.first * 1000), unit: 'mm' }] },
+      { text: `E1 überlappt um ${firstMm} mm.`, facts: [{ citation: 'E1', field: 'distance', value: firstMm, unit: 'mm' }] },
       { text: 'E2 überlappt um 999 mm.', facts: [{ citation: 'E2', field: 'distance', value: -999, unit: 'mm' }] },
       { text: `Insgesamt ${native.total} Kollisionen.`, facts: [{ citation: 'summary', field: 'total', value: native.total }] },
     ] }), '```'].join('\n');
@@ -113,8 +115,10 @@ test('German AI report: checked claims, contradicted claim edit, refresh reconci
   const withValue = (match: string) => blockTexts.evaluateAll((list, text) => list.filter(el => (el as HTMLTextAreaElement).value.includes(text)).length, match);
   const captionIndex = await blockTexts.evaluateAll(list => list.findIndex(el => (el as HTMLTextAreaElement).value.startsWith('Supported by captured data · Sources: E1\n')));
   expect(captionIndex).toBeGreaterThanOrEqual(0);
-  await blockTexts.nth(captionIndex).fill('Vor Ort geprüft: Durchbruch fehlt.');
+  // The claim rewritten during review is already edited text; the caption is the second edit.
   await expect(page.locator('[data-ai-origin="human-edited"]')).toHaveCount(1);
+  await blockTexts.nth(captionIndex).fill('Vor Ort geprüft: Durchbruch fehlt.');
+  await expect(page.locator('[data-ai-origin="human-edited"]')).toHaveCount(2);
   await page.evaluate(() => {
     const store = (globalThis as unknown as Store<ClashState>).__ifc_lite_viewer_store__;
     const result = store.getState().clashResult!;
@@ -132,7 +136,7 @@ test('German AI report: checked claims, contradicted claim edit, refresh reconci
   await expect(refresh).toContainText('revision 2');
   expect(await withValue('Vor Ort geprüft: Durchbruch fehlt.')).toBe(1);
   expect(await withValue('Evidence refreshed (revision 2): 1 cited value(s) changed')).toBe(1);
-  await page.locator('[data-ai-origin="human-edited"]').scrollIntoViewIfNeeded();
+  await page.locator('[data-ai-origin="human-edited"]').first().scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath('report-refresh-applied.png') });
 
   const download = page.waitForEvent('download');

@@ -214,14 +214,12 @@ function coalesceDisplayOptions(
     useSymbolicRepresentations: bool('useSymbolicRepresentations'),
     showIfcAnnotations: bool('showIfcAnnotations'),
     showConstructionProjection: bool('showConstructionProjection'),
-    constructionProjectionDepth: isManualProjectionDepth(o.constructionProjectionDepth)
-      ? o.constructionProjectionDepth : null,
+    constructionProjectionDepth: isManualProjectionDepth(o.constructionProjectionDepth) ? o.constructionProjectionDepth : null,
     showScanSection: bool('showScanSection'),
     scanSectionThickness: num('scanSectionThickness'),
     scanSectionOpacity: num('scanSectionOpacity'),
     scanSectionIncludeInExport: bool('scanSectionIncludeInExport'),
-    scanSectionOutline: bool('scanSectionOutline'),
-    scanSectionOutlineMaxGap: num('scanSectionOutlineMaxGap'),
+    scanSectionOutline: bool('scanSectionOutline'), scanSectionOutlineMaxGap: num('scanSectionOutlineMaxGap'),
     showPrintPreview: bool('showPrintPreview'),
   };
 }

@@ -52,15 +52,21 @@ export interface ChangeConversion {
 const TITLE_MAX = 160;
 
 /** Split checked changes into numbered review parts, or refuse an oversized set. */
-export function toConversion(title: string, rationale: string | undefined, changes: ModelChange[],
-  issues: ConversionIssue[], unchanged: number): ChangeConversion {
+export function toConversion(title: string, rationale: string | undefined, converted: ModelChange[],
+  convertedIssues: ConversionIssue[], unchanged: number): ChangeConversion {
   const short = title.trim().slice(0, TITLE_MAX) || 'Model changes';
-  const seen = new Set<string>();
-  for (const change of changes) {
+  // Two changes for one value come from two elements sharing a GlobalId (a model defect): which one a change
+  // means is ambiguous, so every change for that value is withheld and reported, never guessed.
+  const counts = new Map<string, number>();
+  for (const change of converted) counts.set(changeKey(change), (counts.get(changeKey(change)) ?? 0) + 1);
+  const reported = new Set<string>();
+  const issues = [...convertedIssues];
+  const changes = converted.filter((change) => {
     const key = changeKey(change);
-    if (seen.has(key)) throw new Error(`Converter produced two changes for ${key}`);
-    seen.add(key);
-  }
+    if (counts.get(key) === 1) return true;
+    if (!reported.has(key)) { reported.add(key); issues.push({ kind: 'ambiguous-key', element: change.target.globalId }); }
+    return false;
+  });
   if (changes.length > MODEL_CHANGE_SET_LIMIT) {
     return { title: short, batches: [], issues, unchanged, total: changes.length, refused: true };
   }

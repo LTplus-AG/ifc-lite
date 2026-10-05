@@ -65,6 +65,12 @@ test('change sets above the batch limit split into numbered parts; oversized set
     [['Import (part 1 of 3)', 500], ['Import (part 2 of 3)', 500], ['Import (part 3 of 3)', 1]]);
   const refused = toConversion('Import', undefined, Array.from({ length: MODEL_CHANGE_SET_LIMIT + 1 }, (_, i) => change(i)), [], 0);
   assert.deepEqual([refused.refused, refused.batches.length, refused.total], [true, 0, MODEL_CHANGE_SET_LIMIT + 1]);
+  // Two elements sharing one GlobalId (a real-world defect) give two changes with one key: both are withheld as ambiguous.
+  const twin: ModelChange = { op: 'property.set', target: change(1).target, pset: 'P', name: 'X', expected: null, value: 2 };
+  const shared = toConversion('Bulk', undefined, [change(1), twin, change(3)], [], 0);
+  assert.deepEqual(shared.batches.flatMap((b) => b.changes).map((c) => c.target.globalId), [change(3).target.globalId]);
+  assert.deepEqual(shared.issues.map((issue) => [issue.kind, issue.element]), [['ambiguous-key', change(1).target.globalId]]);
+  assert.equal(shared.total, 1);
 });
 
 test('an IDS correction applied by review changes the native verdict counts recorded on its receipt', async () => {

@@ -10,7 +10,7 @@
  * loudly instead of pooling every HTTP session on the local workspace.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { createMCPServer } from '../index.js';
 import type { AuthScope } from '../auth/scope.js';
@@ -219,6 +219,19 @@ describe('HttpTransport session factory contract', () => {
   });
 });
 
+const PING = (id: number) => JSON.stringify({ jsonrpc: '2.0', id, method: 'ping' });
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function capped(limits: { maxSessions?: number; sessionIdleMs?: number }, factory?: SessionFactory): HttpTransport {
+  return new HttpTransport({
+    port: 0,
+    host: '127.0.0.1',
+    authenticator: new BearerTokenAuth(new Map([['alice-token', ALICE], ['mallory-token', MALLORY]])),
+    sessionFactory: factory ?? { build: (scope, sessionId) => createMCPServer({ version: VERSION, scope, sessionId }) },
+    ...limits,
+  });
+}
+
 /**
  * Session allowance: `initialize` is the only request that creates a session
  * and, before the cap, only `DELETE` removed one, so a client that never ends
@@ -226,19 +239,6 @@ describe('HttpTransport session factory contract', () => {
  * entry) without limit.
  */
 describe('HttpTransport session capacity', () => {
-  const PING = (id: number) => JSON.stringify({ jsonrpc: '2.0', id, method: 'ping' });
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-  function capped(limits: { maxSessions: number; sessionIdleMs?: number }, factory?: SessionFactory): HttpTransport {
-    return new HttpTransport({
-      port: 0,
-      host: '127.0.0.1',
-      authenticator: new BearerTokenAuth(new Map([['alice-token', ALICE]])),
-      sessionFactory: factory ?? { build: (scope, sessionId) => createMCPServer({ version: VERSION, scope, sessionId }) },
-      ...limits,
-    });
-  }
-
   let transport: HttpTransport | undefined;
   beforeEach(() => resetLayerWorkspace());
   afterEach(async () => {
@@ -284,7 +284,7 @@ describe('HttpTransport session capacity', () => {
     expect(fresh.status).toBe(200);
     expect(getLayerWorkspace(stale).drafts.size).toBe(0);
     // The reclaimed session no longer exists; the busy one survived.
-    expect((await request(port, 'alice-token', { method: 'POST', sessionId: stale, body: PING(3) })).status).toBe(400);
+    expect((await request(port, 'alice-token', { method: 'POST', sessionId: stale, body: PING(3) })).status).toBe(404);
     expect((await request(port, 'alice-token', { method: 'POST', sessionId: busy, body: PING(4) })).status).toBe(200);
   });
 
@@ -319,5 +319,188 @@ describe('HttpTransport session capacity', () => {
       [0, 1, 2, 3].map(() => request(port, 'alice-token', { method: 'POST', body: INITIALIZE })),
     );
     expect(results.map((r) => r.status).sort()).toEqual([200, 503, 503, 503]);
+  });
+});
+
+/**
+ * Review of the session cap (#6943): the cap's arithmetic under concurrency and
+ * failure, which sessions the reclaim may take, and what a client is told when
+ * its session was ended for it.
+ */
+describe('HttpTransport session capacity: arithmetic, reclaim policy, signalling', () => {
+  let transport: HttpTransport | undefined;
+  beforeEach(() => resetLayerWorkspace());
+  afterEach(async () => {
+    await transport?.close();
+    transport = undefined;
+    resetLayerWorkspace();
+  });
+
+  const draft = (sid: string) => getLayerWorkspace(sid).drafts.set('d', { id: 'd', doc: new Y.Doc() } as never);
+  const live = async (port: number, sid: string) =>
+    (await request(port, 'alice-token', { method: 'POST', sessionId: sid, body: PING(9) })).status;
+
+  /** A factory whose builds stay pending until `release()`. */
+  function deferredFactory() {
+    const waiting: Array<() => void> = [];
+    const factory: SessionFactory = {
+      build: (scope, sessionId) => new Promise((resolve) => {
+        waiting.push(() => resolve(createMCPServer({ version: VERSION, scope, sessionId })));
+      }),
+    };
+    return { factory, pending: () => waiting.length, release: () => waiting.splice(0).forEach((f) => f()) };
+  }
+
+  it('default cap is 1000: the 1001st initialize is refused (no option passed)', async () => {
+    transport = capped({});
+    await transport.listen();
+    const port = transport.port() as number;
+    for (let i = 0; i < 1000; i++) {
+      const res = await request(port, 'alice-token', { method: 'POST', body: INITIALIZE });
+      if (res.status !== 200) throw new Error(`initialize ${i + 1} answered ${res.status}`);
+    }
+    expect((await request(port, 'alice-token', { method: 'POST', body: INITIALIZE })).status).toBe(503);
+  }, 60_000);
+
+  it('N concurrent initializes at cap-1 admit exactly one while their factories are pending', async () => {
+    const d = deferredFactory();
+    transport = capped({ maxSessions: 3 }, d.factory);
+    await transport.listen();
+    const port = transport.port() as number;
+    const first = [0, 1].map(() => request(port, 'alice-token', { method: 'POST', body: INITIALIZE }));
+    while (d.pending() < 2) await sleep(5);
+    d.release();
+    await Promise.all(first);
+    // Two live, cap 3: five at once, none has finished building yet.
+    const burst = [0, 1, 2, 3, 4].map(() => request(port, 'alice-token', { method: 'POST', body: INITIALIZE }));
+    while (d.pending() < 1) await sleep(5);
+    await sleep(100);
+    expect(d.pending()).toBe(1);
+    d.release();
+    expect((await Promise.all(burst)).map((r) => r.status).sort()).toEqual([200, 503, 503, 503, 503]);
+  });
+
+  it('a factory that throws, or returns the wrong session id, does not keep its slot', async () => {
+    let call = 0;
+    transport = capped({ maxSessions: 1 }, {
+      build: (scope, sessionId) => {
+        call++;
+        if (call === 1) throw new Error('factory exploded');
+        if (call === 2) return createMCPServer({ version: VERSION, scope, sessionId: 'not-the-id' });
+        return createMCPServer({ version: VERSION, scope, sessionId });
+      },
+    });
+    await transport.listen();
+    const port = transport.port() as number;
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect((await request(port, 'alice-token', { method: 'POST', body: INITIALIZE })).status).toBe(500);
+      expect((await request(port, 'alice-token', { method: 'POST', body: INITIALIZE })).status).toBe(500);
+    } finally {
+      errSpy.mockRestore();
+    }
+    expect((await request(port, 'alice-token', { method: 'POST', body: INITIALIZE })).status).toBe(200);
+  });
+
+  it('frees one slot per initialize, oldest idle first, not every idle session', async () => {
+    transport = capped({ maxSessions: 3, sessionIdleMs: 50 });
+    await transport.listen();
+    const port = transport.port() as number;
+    const a = await initSession(port, 'alice-token');
+    await sleep(20);
+    const b = await initSession(port, 'alice-token');
+    await sleep(20);
+    const c = await initSession(port, 'alice-token');
+    await sleep(80);
+    expect((await request(port, 'alice-token', { method: 'POST', body: INITIALIZE })).status).toBe(200);
+    expect(await live(port, a)).toBe(404);
+    expect(await live(port, b)).toBe(200);
+    expect(await live(port, c)).toBe(200);
+  });
+
+  it('prefers to end an idle session with no unpublished drafts over an older one that holds drafts', async () => {
+    transport = capped({ maxSessions: 2, sessionIdleMs: 50 });
+    await transport.listen();
+    const port = transport.port() as number;
+    const withDraft = await initSession(port, 'alice-token');
+    draft(withDraft);
+    await sleep(20);
+    const bare = await initSession(port, 'alice-token');
+    await sleep(80);
+    expect((await request(port, 'alice-token', { method: 'POST', body: INITIALIZE })).status).toBe(200);
+    expect(getLayerWorkspace(withDraft).drafts.size).toBe(1);
+    expect(await live(port, withDraft)).toBe(200);
+    expect(await live(port, bare)).toBe(404);
+  });
+
+  it('answers a request for an ended session with 404 and a body that says why and what to do', async () => {
+    transport = capped({ maxSessions: 1, sessionIdleMs: 30 });
+    await transport.listen();
+    const port = transport.port() as number;
+    const gone = await initSession(port, 'alice-token');
+    await sleep(60);
+    expect((await request(port, 'alice-token', { method: 'POST', body: INITIALIZE })).status).toBe(200);
+    const res = await request(port, 'alice-token', { method: 'POST', sessionId: gone, body: PING(2) });
+    expect(res.status).toBe(404);
+    const body = await res.json() as { error: string; message: string };
+    expect(body.error).toBe('unknown-session');
+    expect(body.message).toMatch(/idle/);
+    expect(body.message).toMatch(/initialize/);
+    // No header at all stays a client error, not a "session ended" signal.
+    expect((await request(port, 'alice-token', { method: 'POST', body: PING(3) })).status).toBe(400);
+  });
+
+  it('a session whose SSE stream just closed is not idle (the stream was activity)', async () => {
+    transport = capped({ maxSessions: 1, sessionIdleMs: 150 });
+    await transport.listen();
+    const port = transport.port() as number;
+    const sid = await initSession(port, 'alice-token');
+    const ac = new AbortController();
+    const sse = await request(port, 'alice-token', {
+      method: 'GET', sessionId: sid, headers: { Accept: 'text/event-stream' }, signal: ac.signal,
+    });
+    expect(sse.status).toBe(200);
+    await sleep(250);
+    ac.abort();
+    await sleep(40);
+    expect((await request(port, 'alice-token', { method: 'POST', body: INITIALIZE })).status).toBe(503);
+    expect(await live(port, sid)).toBe(200);
+  });
+
+  it("a request refused for scope mismatch does not keep another principal's session alive", async () => {
+    transport = capped({ maxSessions: 1, sessionIdleMs: 80 });
+    await transport.listen();
+    const port = transport.port() as number;
+    const sid = await initSession(port, 'alice-token');
+    await sleep(120);
+    const probe = await request(port, 'mallory-token', { method: 'POST', sessionId: sid, body: PING(2) });
+    expect(probe.status).toBe(403);
+    expect((await request(port, 'alice-token', { method: 'POST', body: INITIALIZE })).status).toBe(200);
+  });
+
+  it('a session with a request still in flight is not idle', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    transport = capped({ maxSessions: 1, sessionIdleMs: 30 }, {
+      build: (scope, sessionId) => {
+        const server = createMCPServer({ version: VERSION, scope, sessionId });
+        const handle = server.handleMessage.bind(server);
+        server.handleMessage = async (m) => {
+          if ((m as { method?: string }).method === 'ping') await gate;
+          return handle(m);
+        };
+        return server;
+      },
+    });
+    await transport.listen();
+    const port = transport.port() as number;
+    const sid = await initSession(port, 'alice-token');
+    const slow = request(port, 'alice-token', { method: 'POST', sessionId: sid, body: PING(2) });
+    await sleep(100);
+    expect((await request(port, 'alice-token', { method: 'POST', body: INITIALIZE })).status).toBe(503);
+    release();
+    expect((await slow).status).toBe(200);
+    // Idle time starts when the call settles, not when it began.
+    expect((await request(port, 'alice-token', { method: 'POST', body: INITIALIZE })).status).toBe(503);
   });
 });

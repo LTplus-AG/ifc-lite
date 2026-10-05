@@ -4,7 +4,7 @@
 
 /** Request-level helpers for the Streamable HTTP transport (`http.ts`). */
 
-import type { ServerResponse } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AuthScope } from '../auth/scope.js';
 
 /**
@@ -70,27 +70,81 @@ export interface SessionCapacityOptions {
    * A session with no request for this long, and no open SSE stream, may be
    * reclaimed to make room for a new one. Reclaiming disposes its unpublished
    * layer drafts, exactly as `DELETE` does, so it happens only under pressure
-   * (when `maxSessions` is reached), never on a timer. Default 30 minutes, the
-   * idle window those same services use.
+   * (when `maxSessions` is reached), never on a timer, and takes only as many
+   * sessions as the new one needs: oldest first, sessions with no unpublished
+   * drafts before sessions that hold some. A session with a request in flight
+   * or an open SSE stream is never idle. Default 30 minutes, the idle window
+   * those same services use.
    */
   sessionIdleMs?: number;
 }
-
 
 export const DEFAULT_MAX_SESSIONS = 1000;
 export const DEFAULT_SESSION_IDLE_MS = 30 * 60_000;
 
 /**
- * End every session with no request for `idleMs` and no open SSE stream.
- * `Session` here is structural: `http.ts` owns the full type.
+ * The structural slice of `http.ts`'s `Session` the reclaim policy reads.
  */
-export function reclaimIdleSessions(
-  sessions: ReadonlyMap<string, { sseClients: { size: number }; lastSeen: number }>,
+export interface ReclaimableSession {
+  sseClients: { size: number };
+  /** Requests currently being handled. */
+  inFlight: number;
+  lastSeen: number;
+}
+
+/**
+ * Pick up to `need` sessions to end: idle for `idleMs` (nothing in flight, no
+ * open SSE stream), sessions without unpublished drafts first, then oldest
+ * `lastSeen` first. Sessions holding drafts are chosen only when too few
+ * draft-free idle ones exist, because ending one destroys work that cannot be
+ * recovered. Single O(n) scan; allocates only for sessions that qualify.
+ */
+export function pickReclaimable(
+  sessions: ReadonlyMap<string, ReclaimableSession>,
   idleMs: number,
-  end: (id: string) => void,
-): void {
-  const now = Date.now();
-  for (const [id, session] of [...sessions]) {
-    if (session.sseClients.size === 0 && now - session.lastSeen >= idleMs) end(id);
+  need: number,
+  draftCount: (id: string) => number,
+  now: number = Date.now(),
+): string[] {
+  if (need <= 0) return [];
+  const idle: Array<{ id: string; drafts: boolean; lastSeen: number }> = [];
+  for (const [id, s] of sessions) {
+    if (s.sseClients.size === 0 && s.inFlight === 0 && now - s.lastSeen >= idleMs) {
+      idle.push({ id, drafts: draftCount(id) > 0, lastSeen: s.lastSeen });
+    }
   }
+  idle.sort((a, b) => Number(a.drafts) - Number(b.drafts) || a.lastSeen - b.lastSeen);
+  return idle.slice(0, need).map((c) => c.id);
+}
+
+/** 404 for a session id we do not hold; tells the client why it may be gone and what to do. */
+export function sendUnknownSession(res: ServerResponse): void {
+  res.statusCode = 404;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify({
+    error: 'unknown-session',
+    message: 'Unknown session. It was ended with DELETE, or the server ended it after it sat idle while the server was at its session limit (its unpublished layer drafts were disposed). Send initialize without Mcp-Session-Id to start a new session.',
+  }));
+}
+
+export function writeSse(res: ServerResponse, message: unknown): void {
+  res.write(`data: ${JSON.stringify(message)}\n\n`);
+}
+
+export async function readBody(req: IncomingMessage, max: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let total = 0;
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => {
+      total += chunk.length;
+      if (total > max) {
+        reject(new Error('Request body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
 }

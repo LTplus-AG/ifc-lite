@@ -10,10 +10,11 @@ export const flowAdapter: EvidenceAdapter = {
   id: 'flow', group: 'automation', panelIds: ['flow'],
   titleKey: 'flowPanel.title', descriptionKey: 'assistant.pickFlowDescription',
   rowMeaningKey: 'assistant.evidenceRowsFlow', unavailableKey: 'assistant.evidenceUnavailableFlow',
-  suggestionKeys: ['assistant.suggestFlowExplain', 'assistant.suggestFlowPatch'],
+  suggestionKeys: ['assistant.suggestFlowExplain', 'assistant.suggestFlowPatch', 'flowAssistant.suggestCreate'],
   readiness: s => s.flowDoc
     ? { status: { labelKey: 'assistant.pickGraph', params: { name: s.flowDoc.name, count: s.flowDoc.nodes.length } }, ready: true }
-    : { status: { labelKey: 'assistant.pickNoGraph' }, ready: false },
+    // A new graph can be described without one open (#6919): `flow.create` proposals.
+    : { status: { labelKey: 'flowAssistant.pickCreate' }, ready: true },
   identity: s => s.flowDoc,
   capture: s => {
     const doc = s.flowDoc;

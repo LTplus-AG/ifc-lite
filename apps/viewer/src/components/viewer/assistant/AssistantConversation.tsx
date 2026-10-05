@@ -13,6 +13,7 @@ import type { AssistantSource } from '@/lib/assistant/sources';
 import { adapterFor } from '@/lib/assistant/adapters/registry';
 import { parseClashGroupPatch } from '@/lib/assistant/clash-group-proposal';
 import { parseFlowPatch } from '@/lib/assistant/flow-patch';
+import { parseFlowCreate } from '@/lib/assistant/flow-create-envelope';
 import { parseModelChangeBatch } from '@/lib/actions/model-change';
 import { parseModelAuthoringBatch } from '@/lib/actions/model-authoring';
 import { parseSceneActions } from '@/lib/actions/scene-actions';
@@ -24,20 +25,20 @@ import { capturedEvidence, rowFields } from '@/lib/assistant/captured-rows';
 import { ReceiptFooter } from './AssistantUsage';
 
 type Artifact = 'filter' | 'list' | 'lens' | 'chart';
-type Declared = 'clash' | 'flow' | 'changes' | 'authoring' | 'scene' | 'mapping' | CheckDeclared | Artifact;
-type Proposal = { kind: 'clash'; groups: number; findings: number } | { kind: 'flow'; operations: number }
+type Declared = 'clash' | 'flow' | 'flowCreate' | 'changes' | 'authoring' | 'scene' | 'mapping' | CheckDeclared | Artifact;
+type Proposal = { kind: 'clash'; groups: number; findings: number } | { kind: 'flow'; operations: number } | { kind: 'flowCreate'; nodes: number }
   | { kind: 'changes'; changes: number } | { kind: 'authoring'; operations: number } | { kind: 'scene'; actions: number }
   | { kind: 'mapping'; columns: number; key: string } | { kind: Artifact; parts: number } | { kind: 'invalid'; declared: Declared; reason: string }
   | { kind: 'checks'; declared: CheckDeclared; items: number; unsupported: number };
-const DECLARED: Record<string, Declared> = { 'clash.groups': 'clash', 'flow.patch': 'flow', 'model.changes': 'changes',
+const DECLARED: Record<string, Declared> = { 'clash.groups': 'clash', 'flow.patch': 'flow', 'flow.create': 'flowCreate', 'model.changes': 'changes',
   'model.authoring': 'authoring', 'scene.actions': 'scene', 'table.mapping': 'mapping',
   'filter.proposal': 'filter', 'list.proposal': 'list', 'lens.proposal': 'lens', 'chart.proposal': 'chart' };
-const PROPOSAL_TITLE = { clash: 'assistant.proposalClash', flow: 'assistant.proposalFlow', changes: 'assistant.proposalChanges',
+const PROPOSAL_TITLE = { clash: 'assistant.proposalClash', flow: 'assistant.proposalFlow', flowCreate: 'flowAssistant.proposalCreate', changes: 'assistant.proposalChanges',
   authoring: 'assistant.proposalAuthoring', scene: 'sceneActions.proposal', mapping: 'assistant.proposalMapping',
   ids: 'checkAuthoring.proposalIds', rules: 'checkAuthoring.proposalRules', document: 'checkAuthoring.proposalDocument',
   filter: 'assistantArtifacts.proposal.filter', list: 'assistantArtifacts.proposal.list',
   lens: 'assistantArtifacts.proposal.lens', chart: 'assistantArtifacts.proposal.chart' } as const;
-const PROPOSAL_ICON = { clash: Layers, flow: GitBranch, changes: PencilLine, authoring: Hammer, scene: Eye, mapping: Table2,
+const PROPOSAL_ICON = { clash: Layers, flow: GitBranch, flowCreate: GitBranch, changes: PencilLine, authoring: Hammer, scene: Eye, mapping: Table2,
   ids: ClipboardCheck, rules: ListChecks, document: FileText,
   filter: Filter, list: Table, lens: Palette, chart: BarChart3 } as const;
 const CHECK_SUMMARY = { ids: 'checkAuthoring.proposalIdsSummary', rules: 'checkAuthoring.proposalRulesSummary',
@@ -60,11 +61,12 @@ export function proposalOf(content: string): Proposal | null {
   }
   // Only a reply that declares a typed kind is parsed; prose never reaches the strict parsers.
   const artifact = declaredArtifactKind(content);
-  const kind = /"kind"\s*:\s*"(clash\.groups|flow\.patch|model\.changes|model\.authoring|scene\.actions|table\.mapping)"/.exec(content)?.[1] ?? artifact;
+  const kind = /"kind"\s*:\s*"(clash\.groups|flow\.patch|flow\.create|model\.changes|model\.authoring|scene\.actions|table\.mapping)"/.exec(content)?.[1] ?? artifact;
   if (!kind) return null;
   try {
     if (artifact && kind === artifact) return { kind: ARTIFACT_OF[artifact], parts: artifactParts(parseArtifactProposal(content, artifact)) };
     if (kind === 'flow.patch') return { kind: 'flow', operations: parseFlowPatch(content).operations.length };
+    if (kind === 'flow.create') return { kind: 'flowCreate', nodes: parseFlowCreate(content).nodes.length };
     if (kind === 'scene.actions') return { kind: 'scene', actions: parseSceneActions(content).actions.length };
     if (kind === 'model.changes') return { kind: 'changes', changes: parseModelChangeBatch(content).changes.length };
     if (kind === 'model.authoring') return { kind: 'authoring', operations: parseModelAuthoringBatch(content).operations.length };
@@ -101,6 +103,7 @@ function ProposalCard({ content, proposal, onRepair }: { content: string; propos
         : proposal.kind === 'clash'
         ? `${t('assistant.proposalGroups', { count: proposal.groups })} · ${t('assistant.proposalFindings', { count: proposal.findings })}`
         : proposal.kind === 'flow' ? t('assistant.proposalFlowSummary', { count: proposal.operations })
+          : proposal.kind === 'flowCreate' ? t('flowAssistant.proposalCreateSummary', { count: proposal.nodes })
           : proposal.kind === 'authoring' ? t('assistant.proposalAuthoringSummary', { count: proposal.operations })
           : proposal.kind === 'scene' ? t('sceneActions.proposalSummary', { count: proposal.actions })
           : proposal.kind === 'mapping' ? t('assistant.proposalMappingSummary', { count: proposal.columns, key: proposal.key })

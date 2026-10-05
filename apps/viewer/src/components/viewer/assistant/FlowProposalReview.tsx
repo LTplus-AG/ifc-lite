@@ -14,6 +14,7 @@ import { EvidenceView } from '../analysis/EvidenceView';
 import { proposalOf } from './AssistantConversation';
 import { prepareFlowProposal, applyFlowProposal, undoFlowProposal, isFlowProposalCurrent, isFlowReceiptCurrent,
   type FlowProposal, type FlowApplyReceipt } from '@/lib/assistant/flow-proposal';
+import { FlowCreateReview } from './FlowCreateReview';
 import { FlowTrackingImpacts } from './FlowTrackingImpacts';
 import { FlowCodeParams } from './FlowCodeParams';
 import { FlowPreflight } from './FlowPreflight';
@@ -22,7 +23,12 @@ import { FlowPreflight } from './FlowPreflight';
 export const useFlowReview = create<{ proposal: FlowProposal | null; receipts: FlowApplyReceipt[]; approved: boolean; trackingAcknowledged: boolean; error: string | null }>(
   () => ({ proposal: null, receipts: [], approved: false, trackingAcknowledged: false, error: null }));
 
+/** New graphs and edits of the open graph are reviewed separately; each card hides when idle. */
 export function FlowProposalReview() {
+  return <><FlowCreateReview /><FlowPatchReview /></>;
+}
+
+function FlowPatchReview() {
   const { t } = useTranslation();
   const assistant = useAssistant();
   const review = useFlowReview();

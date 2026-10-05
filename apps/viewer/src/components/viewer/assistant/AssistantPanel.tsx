@@ -23,10 +23,13 @@ import { useClash } from '@/hooks/useClash';
 import { EvidenceSummary } from './EvidenceSummary';
 import { AssistantConversation } from './AssistantConversation';
 import { FreeQuotaNote } from './AssistantUsage';
+import { attachmentsForSend, ComposerAttachments, NO_ATTACHMENTS } from './ComposerAttachments';
 
 const FlowProposalReview = lazy(() => import('./FlowProposalReview').then(m => ({ default: m.FlowProposalReview })));
 const ReportDraftReview = lazy(() => import('./ReportDraftReview').then(m => ({ default: m.ReportDraftReview })));
 const ModelChangeProposal = lazy(() => import('./ModelChangeProposal').then(m => ({ default: m.ModelChangeProposal })));
+const SceneActionReview = lazy(() => import('./SceneActionReview').then(m => ({ default: m.SceneActionReview })));
+const SceneRestoreBar = lazy(() => import('./SceneActionReview').then(m => ({ default: m.SceneRestoreBar })));
 const ClashGroupReview = lazy(() => import('./ClashGroupReview').then(m => ({ default: m.ClashGroupReview })));
 
 export function AssistantPanel() {
@@ -40,6 +43,7 @@ export function AssistantPanel() {
   const [keysOpen, setKeysOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [attachments, setAttachments] = useState(NO_ATTACHMENTS);
   const { confirmDialog } = useDialogs();
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -48,15 +52,19 @@ export function AssistantPanel() {
   const canAsk = !!state.snapshot && !busy && !stale;
   const errors = { 'missing-model': t('assistant.missingModel'), 'missing-key': t('assistant.missingKey'), 'context-limit': t('assistant.contextLimit'),
     'stale-evidence': t('assistant.stale'), 'truncated-output': t('assistant.truncated'), 'empty-output': t('assistant.emptyOutput'), 'request-timeout': t('assistant.timeout'),
-    'budget-exhausted': t('assistantUsage.budgetExhausted') };
+    'budget-exhausted': t('assistantUsage.budgetExhausted'), 'image-unsupported': t('sceneActions.imageUnsupported'),
+    'image-too-large': t('sceneActions.imageTooLarge') };
   const errorText = state.error && (errors[state.error as keyof typeof errors] ?? state.error);
   // Follow the newest turn without stealing focus from the composer.
   useEffect(() => { endRef.current?.scrollIntoView?.({ block: 'end' }); }, [state.messages.length, state.pendingPrompt, state.output, state.error]);
   const submit = () => {
     if (!prompt.trim() || !canAsk) return;
     const text = prompt;
-    void sendAssistant(text, model, proxyUrl).then(success => {
-      if (success) setPrompt(current => current === text ? '' : current);
+    // Attachments go with this one message only, and only because the user attached them.
+    void sendAssistant(text, model, proxyUrl, attachmentsForSend(attachments)).then(success => {
+      if (!success) return;
+      setPrompt(current => current === text ? '' : current);
+      setAttachments(NO_ATTACHMENTS);
     });
   };
   const refresh = () => { if (evidence) replaceEvidence(captureEvidence(evidence.source)); };
@@ -103,10 +111,13 @@ export function AssistantPanel() {
       {evidence?.source === 'flow' && <Suspense fallback={null}><FlowProposalReview /></Suspense>}
       {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><ModelChangeProposal /></Suspense>}
       {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><ReportDraftReview /></Suspense>}
+      {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><SceneActionReview /></Suspense>}
       </>}
+      <Suspense fallback={null}><SceneRestoreBar /></Suspense>
       <div ref={endRef} />
     </div>
     <form className="shrink-0 border-t border-border p-2 space-y-1" onSubmit={event => { event.preventDefault(); submit(); }}>
+      <ComposerAttachments model={model} value={attachments} onChange={setAttachments} disabled={!canAsk} />
       <label className="sr-only" htmlFor="assistant-prompt">{t('assistant.prompt')}</label>
       <textarea id="assistant-prompt" ref={promptRef} rows={2} maxLength={8000} disabled={!canAsk} value={prompt}
         placeholder={t('assistant.placeholder')}

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { memo, useEffect, useMemo, useState, type MouseEvent } from 'react';
-import { Bot, Crosshair, GitBranch, Hammer, Layers, PencilLine, User, X } from 'lucide-react';
+import { Bot, Crosshair, Eye, GitBranch, Hammer, Layers, PencilLine, User, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
@@ -15,27 +15,31 @@ import { parseClashGroupPatch } from '@/lib/assistant/clash-group-proposal';
 import { parseFlowPatch } from '@/lib/assistant/flow-patch';
 import { parseModelChangeBatch } from '@/lib/actions/model-change';
 import { parseModelAuthoringBatch } from '@/lib/actions/model-authoring';
+import { parseSceneActions } from '@/lib/actions/scene-actions';
 import { markdownHtml } from '@/lib/assistant/markdown';
 import { capturedEvidence, rowFields } from '@/lib/assistant/captured-rows';
 import { ReceiptFooter } from './AssistantUsage';
 
-type Declared = 'clash' | 'flow' | 'changes' | 'authoring';
+type Declared = 'clash' | 'flow' | 'changes' | 'authoring' | 'scene';
 type Proposal = { kind: 'clash'; groups: number; findings: number } | { kind: 'flow'; operations: number }
-  | { kind: 'changes'; changes: number } | { kind: 'authoring'; operations: number } | { kind: 'invalid'; declared: Declared; reason: string };
-const DECLARED: Record<string, Declared> = { 'clash.groups': 'clash', 'flow.patch': 'flow', 'model.changes': 'changes', 'model.authoring': 'authoring' };
+  | { kind: 'changes'; changes: number } | { kind: 'authoring'; operations: number } | { kind: 'scene'; actions: number }
+  | { kind: 'invalid'; declared: Declared; reason: string };
+const DECLARED: Record<string, Declared> = { 'clash.groups': 'clash', 'flow.patch': 'flow', 'model.changes': 'changes',
+  'model.authoring': 'authoring', 'scene.actions': 'scene' };
 const PROPOSAL_TITLE = { clash: 'assistant.proposalClash', flow: 'assistant.proposalFlow', changes: 'assistant.proposalChanges',
-  authoring: 'assistant.proposalAuthoring' } as const;
-const PROPOSAL_ICON = { clash: Layers, flow: GitBranch, changes: PencilLine, authoring: Hammer } as const;
+  authoring: 'assistant.proposalAuthoring', scene: 'sceneActions.proposal' } as const;
+const PROPOSAL_ICON = { clash: Layers, flow: GitBranch, changes: PencilLine, authoring: Hammer, scene: Eye } as const;
 
 /** Typed proposals are reviewed natively below the conversation; raw JSON is secondary. */
 export function proposalOf(content: string): Proposal | null {
   const trimmed = content.trimStart();
   if (!trimmed.startsWith('{') && !trimmed.startsWith('```')) return null;
   // Only a reply that declares a typed kind is parsed; prose never reaches the strict parsers.
-  const kind = /"kind"\s*:\s*"(clash\.groups|flow\.patch|model\.changes|model\.authoring)"/.exec(content)?.[1];
+  const kind = /"kind"\s*:\s*"(clash\.groups|flow\.patch|model\.changes|model\.authoring|scene\.actions)"/.exec(content)?.[1];
   if (!kind) return null;
   try {
     if (kind === 'flow.patch') return { kind: 'flow', operations: parseFlowPatch(content).operations.length };
+    if (kind === 'scene.actions') return { kind: 'scene', actions: parseSceneActions(content).actions.length };
     if (kind === 'model.changes') return { kind: 'changes', changes: parseModelChangeBatch(content).changes.length };
     if (kind === 'model.authoring') return { kind: 'authoring', operations: parseModelAuthoringBatch(content).operations.length };
     const patch = parseClashGroupPatch(content);
@@ -66,6 +70,7 @@ function ProposalCard({ content, proposal, onRepair }: { content: string; propos
         ? `${t('assistant.proposalGroups', { count: proposal.groups })} · ${t('assistant.proposalFindings', { count: proposal.findings })}`
         : proposal.kind === 'flow' ? t('assistant.proposalFlowSummary', { count: proposal.operations })
           : proposal.kind === 'authoring' ? t('assistant.proposalAuthoringSummary', { count: proposal.operations })
+          : proposal.kind === 'scene' ? t('sceneActions.proposalSummary', { count: proposal.actions })
             : t('assistant.proposalChangesSummary', { count: proposal.changes })}</p>
       <p>{t('assistant.proposalNext')}</p>
     </>}

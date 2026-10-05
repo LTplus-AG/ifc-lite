@@ -27,16 +27,15 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 import { placementSnapshot, placementSnapshotIsCurrent } from '@/lib/model-placement/placement-snapshot';
 import { noteDeviationWrite } from '@/lib/model-placement/preview-analysis';
 import { DEVIATION_RAMP_CSS_GRADIENT } from '@/lib/point-cloud/deviation-ramp';
-import {
-  countDeviationWithinTolerance, summarizeDeviationRun, withToleranceShare, type PointCloudDeviationStatistics,
-} from '@/lib/point-cloud/deviation-run-statistics';
-import { captureAnalysisStamp, stampAnalysisReport, type AnalysisStamp } from '@/hooks/useAnalysisStaleness';
+import { countDeviationWithinTolerance, withToleranceShare } from '@/lib/point-cloud/deviation-run-statistics';
+import { captureAnalysisStamp, type AnalysisStamp } from '@/hooks/useAnalysisStaleness';
 import { buildDeviationCsvReport } from '@/lib/analysis/export-csv';
 import { downloadFile } from '@/lib/export/download';
 import { trackExportCompleted } from '@/lib/analytics';
 import { deviationAssetIdentities } from '@/lib/point-cloud/deviation-asset-identity';
 import { cn } from '@/lib/utils';
 import { DeviationHistogramBars, DeviationSummary } from './DeviationStatistics';
+import { useDeviationStatisticsDerivation } from './useDeviationStatisticsDerivation';
 
 /** The compute pass pegs |d| here; the statistics count points at the peg. */
 const DEVIATION_CLIP_RANGE_M = 1.0;
@@ -129,37 +128,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     return () => { current = false; };
   }, [computed, running, revision]);
 
-  // Derive the stored statistics from the held readback: the pooled and
-  // per-asset summaries once per readback, the tolerance counts again only
-  // when the tolerance changes. A result whose run was invalidated or re-run
-  // meanwhile is never adopted.
-  const summarizedRef = useRef<{ distances: DeviationDistances; summary: Pick<PointCloudDeviationStatistics, 'overall' | 'assets'> } | null>(null);
-  useEffect(() => {
-    // Dropping the readback also drops the summary cache that pins it (4 B/point).
-    if (!distances) { summarizedRef.current = null; return; }
-    const controller = new AbortController();
-    const { signal } = controller;
-    const revisionAt = readRevisionRef.current ?? useViewerStore.getState().pointCloudDeviationRevision;
-    const stamp = runStampRef.current;
-    const adopt = (record: PointCloudDeviationStatistics) => {
-      const s = useViewerStore.getState();
-      if (signal.aborted || !s.pointCloudDeviationComputed || s.pointCloudDeviationRevision !== revisionAt) return;
-      s.setPointCloudDeviationStatistics(stamp ? stampAnalysisReport(record, stamp) : record);
-    };
-    void (async () => {
-      let summary = summarizedRef.current?.distances === distances ? summarizedRef.current.summary : null;
-      if (!summary) {
-        summary = await summarizeDeviationRun(distances, { clipRange: DEVIATION_CLIP_RANGE_M, signal });
-        summarizedRef.current = { distances, summary };
-        adopt({ revision: revisionAt, clipRange: DEVIATION_CLIP_RANGE_M, ...summary, withinTolerance: null });
-      }
-      const withinTolerance = await countDeviationWithinTolerance(distances, tolerance, { signal });
-      adopt({ revision: revisionAt, clipRange: DEVIATION_CLIP_RANGE_M, ...summary, withinTolerance });
-    })().catch((err: unknown) => {
-      if (!signal.aborted) console.error('[DeviationPanel] statistics pass failed', err);
-    });
-    return () => controller.abort();
-  }, [distances, tolerance]);
+  useDeviationStatisticsDerivation(distances, tolerance, readRevisionRef, runStampRef, DEVIATION_CLIP_RANGE_M);
 
   const handleExport = useCallback(async () => {
     if (!computed || !distances || !statistics || running || exportRef.current) return;

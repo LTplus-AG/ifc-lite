@@ -365,6 +365,7 @@ it('DeviationPanel #6880 Export CSV with no measured points says why instead of 
   // A later run with points clears the notice.
   await computeWith(container, stub, ladder(10, 0.01));
   await waitFor(() => container.querySelector('[data-testid="deviation-export-notice"]')?.textContent === '', 'notice cleared');
+});
 
 it('DeviationPanel #6833 reads the statistics back on mount when a re-run dropped them while it was closed', async () => {
   const stub = stubRenderer();

@@ -7,8 +7,10 @@
  * scene. Rule lenses resolve each rule's groups through the shared federated
  * evaluator (`evaluateLensGroups`), then the Lens engine applies first-match
  * order, so a rule's count is what it would colour, not what it matches in
- * isolation. Auto-colour lenses report the engine's own legend. Elements the
- * lens leaves uncoloured are counted as the denominator's remainder.
+ * isolation. Auto-colour lenses report the engine's own legend, whose bucket
+ * counts may overlap (a layered element joins each of its materials); the
+ * matched count is distinct elements. Elements the lens leaves uncoloured are
+ * counted as the denominator's remainder.
  */
 
 import { evaluateAutoColorLens, evaluateLens, type Lens } from '@ifc-lite/lens';
@@ -31,7 +33,8 @@ export async function previewLens(proposal: LensProposal, state: ViewerState, si
     const result = evaluateAutoColorLens(lens.autoColor, provider);
     buckets = result.legend.map((entry) => ({ label: entry.name, count: entry.count, color: entry.color, ...(entry.isAbsent ? { absence: true } : {}) }));
     const absent = new Set(result.legend.filter((entry) => entry.isAbsent).map((entry) => entry.id));
-    colored = [...result.ruleEntityIds].filter(([id]) => !absent.has(id)).flatMap(([, ids]) => ids);
+    // A multi-material element is in each of its materials' buckets but coloured once (the engine's first group wins).
+    colored = [...new Set([...result.ruleEntityIds].filter(([id]) => !absent.has(id)).flatMap(([, ids]) => ids))];
     considered = result.colorMap.size;
   } else {
     const matched = await evaluateLensGroups(lens, evaluatorModelsFromState(state), state.models, definedModelTagIdsOf(state), signal);

@@ -104,6 +104,15 @@ test('a lens review counts first-match colouring, and the uncoloured remainder',
   assert.ok((result.unassigned ?? 0) > 0, 'non-wall entities stay uncoloured');
 });
 
+test('an auto-colour lens by material counts each element once, though a layered wall joins several material buckets (#6914 review)', async () => {
+  const result = await preview({ kind: 'lens.proposal', lens: { name: 'Materials', autoColor: { source: 'material' } } });
+  const memberships = result.buckets.reduce((sum, bucket) => sum + bucket.count, 0);
+  assert.ok(memberships > result.matched, `hello-wall's layered wall is in more than one bucket (${memberships} memberships)`);
+  assert.equal(result.population.reduce((sum, model) => sum + model.count, 0), result.matched);
+  // hello-wall.ifc has six elements (the chart review counts them), so it can colour at most six.
+  assert.ok((result.population.find((model) => model.modelId === WALL)?.count ?? 0) <= 6);
+});
+
 test('"this model" is a native model rule: names resolve to the durable fingerprint the Filter editor uses', async () => {
   const onlyWall = { combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }, { kind: 'model', op: 'in', values: ['hello-wall.ifc'] }] };
   const result = await preview({ kind: 'filter.proposal', name: 'Walls in hello-wall', groups: [onlyWall] });

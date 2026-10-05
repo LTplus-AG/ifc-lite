@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { memo, useEffect, useMemo, useState, type MouseEvent } from 'react';
-import { BarChart3, Bot, ClipboardCheck, Crosshair, Eye, FileText, Filter, GitBranch, Hammer, Layers, ListChecks, Palette, PencilLine, Table, Table2, User, X } from 'lucide-react';
+import { BarChart3, Bot, ClipboardCheck, Crosshair, Eye, FileText, Filter, GitBranch, Hammer, Layers, ListChecks, Network, Palette, PencilLine, Table, Table2, User, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
@@ -20,16 +20,18 @@ import { parseSceneActions } from '@/lib/actions/scene-actions';
 import { parseTableMapping } from '@/lib/actions/table-mapping';
 import { checkProposalOf, type CheckDeclared } from '@/lib/check-authoring/proposal-summary';
 import { artifactParts, declaredArtifactKind, parseArtifactProposal, type ArtifactKind } from '@/lib/assistant/artifacts/proposal-kinds';
+import { declaredSemanticKind, parseSemanticProposal, semanticProposalCount, type SemanticProposalKind } from '@/lib/semantic/assist/proposals';
 import { markdownHtml } from '@/lib/assistant/markdown';
 import { capturedEvidence, rowFields } from '@/lib/assistant/captured-rows';
 import { ReceiptFooter } from './AssistantUsage';
 
 type Artifact = 'filter' | 'list' | 'lens' | 'chart';
-type Declared = 'clash' | 'flow' | 'flowCreate' | 'changes' | 'authoring' | 'scene' | 'mapping' | CheckDeclared | Artifact;
+type Declared = 'clash' | 'flow' | 'flowCreate' | 'changes' | 'authoring' | 'scene' | 'mapping' | CheckDeclared | Artifact | 'semantic';
 type Proposal = { kind: 'clash'; groups: number; findings: number } | { kind: 'flow'; operations: number } | { kind: 'flowCreate'; nodes: number }
   | { kind: 'changes'; changes: number } | { kind: 'authoring'; operations: number } | { kind: 'scene'; actions: number }
   | { kind: 'mapping'; columns: number; key: string } | { kind: Artifact; parts: number } | { kind: 'invalid'; declared: Declared; reason: string }
-  | { kind: 'checks'; declared: CheckDeclared; items: number; unsupported: number };
+  | { kind: 'checks'; declared: CheckDeclared; items: number; unsupported: number }
+  | { kind: 'semantic'; type: SemanticProposalKind; count: number };
 const DECLARED: Record<string, Declared> = { 'clash.groups': 'clash', 'flow.patch': 'flow', 'flow.create': 'flowCreate', 'model.changes': 'changes',
   'model.authoring': 'authoring', 'scene.actions': 'scene', 'table.mapping': 'mapping',
   'filter.proposal': 'filter', 'list.proposal': 'list', 'lens.proposal': 'lens', 'chart.proposal': 'chart' };
@@ -37,15 +39,17 @@ const PROPOSAL_TITLE = { clash: 'assistant.proposalClash', flow: 'assistant.prop
   authoring: 'assistant.proposalAuthoring', scene: 'sceneActions.proposal', mapping: 'assistant.proposalMapping',
   ids: 'checkAuthoring.proposalIds', rules: 'checkAuthoring.proposalRules', document: 'checkAuthoring.proposalDocument',
   filter: 'assistantArtifacts.proposal.filter', list: 'assistantArtifacts.proposal.list',
-  lens: 'assistantArtifacts.proposal.lens', chart: 'assistantArtifacts.proposal.chart' } as const;
+  lens: 'assistantArtifacts.proposal.lens', chart: 'assistantArtifacts.proposal.chart', semantic: 'semanticAssist.proposalTitle' } as const;
 const PROPOSAL_ICON = { clash: Layers, flow: GitBranch, flowCreate: GitBranch, changes: PencilLine, authoring: Hammer, scene: Eye, mapping: Table2,
   ids: ClipboardCheck, rules: ListChecks, document: FileText,
-  filter: Filter, list: Table, lens: Palette, chart: BarChart3 } as const;
+  filter: Filter, list: Table, lens: Palette, chart: BarChart3, semantic: Network } as const;
 const CHECK_SUMMARY = { ids: 'checkAuthoring.proposalIdsSummary', rules: 'checkAuthoring.proposalRulesSummary',
   document: 'checkAuthoring.proposalDocumentSummary' } as const;
 const ARTIFACT_OF: Record<ArtifactKind, Artifact> = { 'filter.proposal': 'filter', 'list.proposal': 'list', 'lens.proposal': 'lens', 'chart.proposal': 'chart' };
 const ARTIFACT_SUMMARY = { filter: 'assistantArtifacts.summary.filter', list: 'assistantArtifacts.summary.list',
   lens: 'assistantArtifacts.summary.lens', chart: 'assistantArtifacts.summary.chart' } as const;
+const SEMANTIC_SUMMARY: Record<SemanticProposalKind, TranslationKey> = { 'semantic.query': 'semanticAssist.summaryQuery',
+  'semantic.mapping': 'semanticAssist.summaryMapping', 'semantic.projection': 'semanticAssist.summaryProjection', 'semantic.requirements': 'semanticAssist.summaryRequirements' };
 
 /** Typed proposals are reviewed natively below the conversation; raw JSON is secondary. */
 export function proposalOf(content: string): Proposal | null {
@@ -61,6 +65,11 @@ export function proposalOf(content: string): Proposal | null {
   }
   // Only a reply that declares a typed kind is parsed; prose never reaches the strict parsers.
   const artifact = declaredArtifactKind(content);
+  const semantic = declaredSemanticKind(content);
+  if (semantic) {
+    try { return { kind: 'semantic', type: semantic, count: semanticProposalCount(parseSemanticProposal(content, semantic)) }; }
+    catch (error) { return { kind: 'invalid', declared: 'semantic', reason: error instanceof Error ? error.message : String(error) }; }
+  }
   const kind = /"kind"\s*:\s*"(clash\.groups|flow\.patch|flow\.create|model\.changes|model\.authoring|scene\.actions|table\.mapping)"/.exec(content)?.[1] ?? artifact;
   if (!kind) return null;
   try {
@@ -100,6 +109,7 @@ function ProposalCard({ content, proposal, onRepair }: { content: string; propos
     </> : <>
       <p className="text-muted-foreground">{proposal.kind === 'checks'
         ? `${t(CHECK_SUMMARY[proposal.declared], { count: proposal.items })} · ${t('checkAuthoring.proposalUnsupported', { count: proposal.unsupported })}`
+        : proposal.kind === 'semantic' ? t(SEMANTIC_SUMMARY[proposal.type], { count: proposal.count })
         : proposal.kind === 'clash'
         ? `${t('assistant.proposalGroups', { count: proposal.groups })} · ${t('assistant.proposalFindings', { count: proposal.findings })}`
         : proposal.kind === 'flow' ? t('assistant.proposalFlowSummary', { count: proposal.operations })

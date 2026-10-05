@@ -13,6 +13,8 @@ import { SemanticIdentityControls } from './SemanticIdentityControls';
 import { SemanticProfileControls } from './SemanticProfileControls';
 import { SemanticResults } from './SemanticResults';
 import { SemanticValidationSummary } from './SemanticValidationSummary';
+import { SemanticAssistControls } from './SemanticAssistControls';
+import { recordEndpointGrant, revokeEndpointGrant } from '@/lib/semantic/assist/endpoint-grant';
 import { previewProjection, applyProjection, PROJECTION_MAPPINGS, type ProjectionPlan, type ConflictPolicy } from '@/lib/semantic/projection';
 import type { ValidationExecutor } from '@/lib/semantic/useSemanticPilot';
 import { PILOT_QUERY, pilotDocument } from '@/lib/semantic/demo';
@@ -58,7 +60,13 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
     loopbackHttpOrigin: loopbackGrant === eligibleLoopbackOrigin ? loopbackGrant : undefined };
   // Authority is ephemeral and exact to this source. Abort before replacing it
   // so a response from a revoked endpoint cannot publish into the workspace.
-  function revokeSource() { pilot.cancel(); setLoopbackGrant(undefined); }
+  function revokeSource() { pilot.cancel(); setLoopbackGrant(undefined); revokeEndpointGrant(); }
+  // The assistant may reuse only the authority exercised here, for as long as this panel holds it.
+  function exercise() {
+    if (['json', 'sparql', 'construct'].includes(mode)) recordEndpointGrant({ endpoint, host, loopbackHttpOrigin: sourceInput.loopbackHttpOrigin,
+      relayProvider: sourceInput.relayProvider, bearer: sourceInput.bearer });
+  }
+  useEffect(() => () => revokeEndpointGrant(), []);
   useEffect(() => { setPlan(undefined); setRecordPage(0); }, [pilot.document, pilot.profile, pilot.revisions, pilot.strategy, pilot.uriConfig, scope]);
   const models = useViewerStore(s => s.models);
   const mutationVersion = useViewerStore(s => s.mutationVersion);
@@ -99,21 +107,22 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
       : <><label className="block text-sm">{t('semantic.endpoint')}<input className={control} type="url" value={endpoint} onChange={e => { revokeSource(); setEndpoint(e.target.value); }} /></label>
         <label className="block text-sm">{t('semantic.host')}<input className={control} value={host} onChange={e => { revokeSource(); setHost(e.target.value); }} /></label>
         {eligibleLoopbackOrigin && <><label className="flex gap-2 text-sm"><input type="checkbox" checked={loopbackGrant === eligibleLoopbackOrigin}
-          onChange={e => { pilot.cancel(); setLoopbackGrant(e.target.checked ? eligibleLoopbackOrigin : undefined); }} />{t('semantic.loopbackGrant', { origin: eligibleLoopbackOrigin })}</label>
+          onChange={e => { pilot.cancel(); revokeEndpointGrant(); setLoopbackGrant(e.target.checked ? eligibleLoopbackOrigin : undefined); }} />{t('semantic.loopbackGrant', { origin: eligibleLoopbackOrigin })}</label>
           <p className="text-sm text-muted-foreground">{t('semantic.loopbackHelp')}</p></>}
       </>}
     {(mode === 'sparql' || mode === 'construct') && <><label className="block text-sm">{t('semantic.query')}<textarea className={control} rows={7} value={query} onChange={e => setQuery(e.target.value)} /></label>
       <details><summary>{t('semantic.mapping')}</summary>{Object.entries(mapping).map(([key, value]) => <label key={key} className="block text-sm">{key}
         <input className={control} value={value} onChange={e => setMapping({ ...mapping, [key]: e.target.value })} /></label>)}</details></>}
-    <div className="flex gap-2"><button className={button} disabled={pilot.busy} onClick={() => void pilot.load(sourceInput)}>{t('semantic.run')}</button>
+    <div className="flex gap-2"><button className={button} disabled={pilot.busy} onClick={() => { exercise(); void pilot.load(sourceInput); }}>{t('semantic.run')}</button>
       {pilot.busy && <button className={button} onClick={pilot.cancel}>{t('semantic.cancel')}</button>}</div>
     {['json', 'sparql', 'construct'].includes(mode) && <details><summary>{t('semantic.authentication')}</summary>
-      <label className="block text-sm">{t('semantic.bearer')}<input type="password" autoComplete="off" className={control} value={bearer} onChange={e => setBearer(e.target.value)} /></label>
+      <label className="block text-sm">{t('semantic.bearer')}<input type="password" autoComplete="off" className={control} value={bearer} onChange={e => { revokeEndpointGrant(); setBearer(e.target.value); }} /></label>
       <label className="block text-sm">{t('semantic.relay')}<input className={control} value={relayProvider} onChange={e => { revokeSource(); setRelayProvider(e.target.value); }} /></label>
     </details>}
-    {['json', 'sparql', 'construct'].includes(mode) && <button className={button} disabled={pilot.busy || !host || !endpoint} onClick={() => void pilot.related(sourceInput)}>{t('semantic.querySelected')}</button>}
+    {['json', 'sparql', 'construct'].includes(mode) && <button className={button} disabled={pilot.busy || !host || !endpoint} onClick={() => { exercise(); void pilot.related(sourceInput); }}>{t('semantic.querySelected')}</button>}
     <SemanticIdentityControls uriConfig={pilot.uriConfig} onUriConfig={pilot.setUriConfig} strategy={pilot.strategy} onStrategy={pilot.setStrategy} links={pilot.links} onLinks={pilot.setLinks} profile={pilot.profile} identityFields={pilot.identityFields} onIdentityFields={pilot.setIdentityFields} onError={pilot.setError} />
     <SemanticProfileControls profile={pilot.profile} onProfile={pilot.setProfile} onError={pilot.setError} />
+    <SemanticAssistControls onError={pilot.setError} />
     <details><summary>{t('semantic.workspace')}</summary>
       <button className={button} onClick={pilot.saveWorkspace}>{t('semantic.saveWorkspace')}</button>
       <button className={button} onClick={() => { revokeSource(); setBearer(''); setHost(''); pilot.restoreWorkspace(); }}>{t('semantic.restoreWorkspace')}</button>

@@ -216,14 +216,15 @@ export function SourceBrowser({
       clearSearch();
       catalog.resetCatalog();
     } else if (step === 'file-areas') {
-      setStep('projects');
+      if (provider.manifest.name === 'dropbox' || provider.manifest.name === 'msgraph') onBack();
+      else setStep('projects');
       setSelectedProject(null);
       projectIdRef.current = null;
       fileAreasPaged.reset();
     } else {
       onBack();
     }
-  }, [catalog, clearSearch, fileAreasPaged, step, onBack]);
+  }, [catalog, clearSearch, fileAreasPaged, step, onBack, provider.manifest.name]);
 
   // Opening a favourite is one entry point plus the hook that drives the
   // two-phase jump. It cannot reuse `openFileArea` above: that one reads the

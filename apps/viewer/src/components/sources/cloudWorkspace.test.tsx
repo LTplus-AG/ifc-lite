@@ -36,8 +36,8 @@ function provider(): FileSourceProvider {
     download: async () => new ArrayBuffer(0),
   };
 }
-function browser(p: FileSourceProvider, onDownload: (selection: {projectId: string; files: readonly SourceFile[]}) => void = () => {}) {
-  return render(<SourceHostProvider additionalProviders={[() => p]}><SourceBrowser provider={p} ctx={context(p)} busy={false} downloadStates={new Map()} onDownload={onDownload} onBack={() => {}} /></SourceHostProvider>);
+function browser(p: FileSourceProvider, onDownload: (selection: {projectId: string; files: readonly SourceFile[]}) => void = () => {}, onBack: () => void = () => {}) {
+  return render(<SourceHostProvider additionalProviders={[() => p]}><SourceBrowser provider={p} ctx={context(p)} busy={false} downloadStates={new Map()} onDownload={onDownload} onBack={onBack} /></SourceHostProvider>);
 }
 function context(p: FileSourceProvider): PluginContext {
   const host = new SourceHost(); host.register(p); return host.createContext(p.manifest, {});
@@ -146,10 +146,13 @@ describe('Cloud workspace (#6897)', () => {
     const original = provider();
     const p: FileSourceProvider = { ...original, manifest: { ...original.manifest, name },
       listProjects: async () => ({ items: [{ id: 'account', name: 'Personal account' }] }) };
-    const ui = browser(p); await pump();
+    let back = 0;
+    const ui = browser(p, () => {}, () => back++); await pump();
     assert.ok(named(ui, 'Documents'), 'account folder contents appear automatically');
     assert.equal([...ui.querySelectorAll('button')].some((button) => button.textContent === 'Personal account'), false);
     assert.ok(labelled(ui, 'Search files in Workspace Files'));
+    click(labelled(ui, 'Back')); await pump();
+    assert.equal(back, 1, 'Back leaves the personal account instead of re-entering it automatically');
   });
 
   it('bounds empty-result work and continues through later projects without dropping them', async () => {

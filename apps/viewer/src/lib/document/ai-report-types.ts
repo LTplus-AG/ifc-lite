@@ -51,7 +51,7 @@ export interface AiReportRecord {
   /** 1 at generation; every applied evidence refresh adds one. */
   revision: number;
   evidence: AiReportEvidence;
-  /** Row identity of every citation the claims used, resolved against the generation capture. */
+  /** Row identity of every citation the claims or the narrative used, resolved against the generation capture. */
   citedRows: Record<string, string | null>;
   claims: AiReportClaim[];
   /** The prose part of the answer, kept so refresh can reproduce unedited narrative blocks. */

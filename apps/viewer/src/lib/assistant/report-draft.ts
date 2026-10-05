@@ -52,10 +52,10 @@ function completedConversation(): SavedConversation {
   return entry;
 }
 
-/** Row identity of every cited row, so a refresh can find the same native row again. */
-function citedRows(claims: CheckedClaim[], captured: CapturedEvidence): Record<string, string | null> {
+/** Row identity of every row the claims or the narrative cite, so a refresh can find the same native row again. */
+function citedRows(claims: CheckedClaim[], prose: string[], captured: CapturedEvidence): Record<string, string | null> {
   const cited: Record<string, string | null> = {};
-  for (const citation of claims.flatMap(claim => claim.citations)) {
+  for (const citation of [...prose, ...claims.flatMap(claim => claim.citations)]) {
     if (citation === SUMMARY_CITATION) cited[citation] = SUMMARY_CITATION;
     else cited[citation] = captured.rows.has(citation) ? rowIdentity(captured.rows.get(citation)) : null;
   }
@@ -65,7 +65,7 @@ function citedRows(claims: CheckedClaim[], captured: CapturedEvidence): Record<s
 function compose(draft: Omit<ReportDraft, 'document' | 'documentJson'>, id: string, title: string): DocumentSpec {
   const answer = draft.source.messages.at(-1)!;
   const record: AiReportRecord = { version: 1, language: draft.language, model: answer.model ?? 'unknown', conversationId: draft.source.id,
-    revision: 1, evidence: { ...draft.source.evidence }, citedRows: citedRows(draft.claims, draft.captured),
+    revision: 1, evidence: { ...draft.source.evidence }, citedRows: citedRows(draft.claims, draft.citations, draft.captured),
     claims: draft.claims.map(({ id: claimId, text, citations, facts, status, edited }) => ({ id: claimId, text, citations, facts, status, edited })),
     narrative: draft.prose, slots: [] };
   const blocks = buildReportBlocks({ title, record, tables: draft.tables, proseCitations: draft.citations,

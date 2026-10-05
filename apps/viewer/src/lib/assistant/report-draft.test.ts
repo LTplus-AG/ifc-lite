@@ -50,6 +50,8 @@ test('native report preserves complete sample coverage and literal text after so
   assert.doesNotMatch(rendered, /^E101\s/m);
   assert.doesNotMatch(rendered, /"citation":/);
   assert.deepEqual(draft.citations, ['E1']);
+  // Review of #6972: narrative citations record their native row too, so a refresh can re-find it.
+  assert.deepEqual(draft.document.aiReport?.citedRows, { E1: 'id=c0' });
   const frozen = JSON.stringify(draft.document);
   useViewerStore.setState({ clashResult: null, clashRawResult: null });
   assert.equal(isReportDraftCurrent(draft), false);

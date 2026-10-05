@@ -39,6 +39,8 @@ export interface ReportBuild {
   tables: TableBlock[];
   /** Citations used by the prose narrative. */
   proseCitations: string[];
+  /** Current citation for a citation as written in the narrative or a claim; identity at generation. */
+  current?: (citation: string) => string | null;
   /** Present after a refresh: what was re-checked. */
   refreshSummary?: string;
 }
@@ -49,11 +51,18 @@ const STATUS_LABEL = {
   contradicted: 'Contradicted by captured data',
 } as const;
 
+/** A citation as it reads against the current capture: renumbered rows name both numbers, gone rows say so. */
+function relabel(citation: string, current: (citation: string) => string | null): string {
+  const now = current(citation);
+  return now === null ? `${citation} (no longer in the evidence)` : now === citation ? citation : `${now} (cited as ${citation})`;
+}
+
+/** Rewrites every row citation in generated text against the current capture. */
+const relabelText = (value: string, current: (citation: string) => string | null) =>
+  value.replace(/\bE\d+\b/g, citation => relabel(citation, current));
+
 function claimCaption({ claim, current, changes }: ClaimPresentation, rows: ReturnType<typeof parseCapturedEvidence>): string {
-  const sources = claim.citations.map(citation => {
-    const now = current(citation);
-    return now === null ? `${citation} (no longer in the evidence)` : now === citation ? citation : `${now} (cited as ${citation})`;
-  });
+  const sources = claim.citations.map(citation => relabel(citation, current));
   const lines = [`${STATUS_LABEL[claim.status]} · Sources: ${sources.length ? sources.join(', ') : 'none'}`];
   claim.results.forEach((result, index) => {
     const { fact, check } = result;
@@ -75,6 +84,7 @@ function claimCaption({ claim, current, changes }: ClaimPresentation, rows: Retu
 /** Blocks in document order. Throws when the text is mostly unprintable in the standard PDF fonts. */
 export function buildReportBlocks(input: ReportBuild): SlotBlock[] {
   const { record } = input;
+  const current = input.current ?? ((citation: string) => citation);
   // Judged on the provider's own text: native values in other scripts are reported, the narrative must print.
   if (unprintableShare([record.narrative, ...record.claims.map(claim => claim.text)].join('\n')) > 0.1) {
     throw new Error('Most of this text cannot be printed with the standard PDF fonts. Choose a Latin-script report language.');
@@ -102,7 +112,7 @@ export function buildReportBlocks(input: ReportBuild): SlotBlock[] {
   if (record.narrative.trim() || !input.claims.length) {
     const narrative = counter('narrative');
     body.push(text('narrative-heading', 'heading', 'Narrative for review'),
-      ...narrativeBlocks(record.narrative, (style, value) => narrative(style, value).block as TextBlock)
+      ...narrativeBlocks(record.narrative, (style, value) => narrative(style, relabelText(value, current)).block as TextBlock)
         .map(block => ({ slot: block.aiProvenance!.slot, block })));
   }
   if (input.claims.length) {
@@ -110,7 +120,7 @@ export function buildReportBlocks(input: ReportBuild): SlotBlock[] {
       text('claims-intro', 'small', 'Each claim was checked against the native values it cites. Supported means every cited value matches the captured row; it does not certify the conclusion.'));
     for (const presentation of input.claims) {
       const { claim, changes } = presentation;
-      body.push(text(`claim:${claim.id}`, 'body', claim.text), text(`claim-facts:${claim.id}`, 'caption', claimCaption(presentation, rows)));
+      body.push(text(`claim:${claim.id}`, 'body', relabelText(claim.text, presentation.current)), text(`claim-facts:${claim.id}`, 'caption', claimCaption(presentation, rows)));
       const flagged = changes?.filter(change => change.kind !== 'unchanged') ?? [];
       if (flagged.length) {
         body.push(text(`claim-refresh:${claim.id}`, 'small', `Evidence refreshed (revision ${record.revision}): ${flagged.filter(c => c.kind === 'changed').length} cited value(s) changed`
@@ -119,7 +129,7 @@ export function buildReportBlocks(input: ReportBuild): SlotBlock[] {
     }
   }
   body.push(text('citations-note', 'small', input.proseCitations.length
-    ? `Referenced evidence: ${input.proseCitations.join(', ')}. Citation existence does not prove that a claim is supported.`
+    ? `Referenced evidence: ${input.proseCitations.map(citation => relabel(citation, current)).join(', ')}. Citation existence does not prove that a claim is supported.`
     : input.claims.length ? 'The narrative prose has no row citations; only the claims above were checked against the evidence.'
       : 'The narrative has no row citations. Verify each factual claim against the captured evidence.'));
   if (input.tables.length) body.push(text('native-heading', 'heading', 'Native results'), ...input.tables.map(block => ({ slot: null, block })));

@@ -148,4 +148,10 @@ test('a destination chosen before an edit or a new proposal is cleared with the 
   click(labelled<HTMLInputElement>(ui, 'Select E1 to move'));
   assert.equal(select().value, '', 'the edited draft starts without a destination');
   assert.equal(button(ui, 'Move').disabled, true, 'Move needs a destination chosen for this draft');
+  // The same holds for a merge destination picked in a group header.
+  const mergeSelect = () => labelled<HTMLSelectElement>(ui, 'Merge Riser into');
+  choose(mergeSelect(), [...mergeSelect().options].find(option => option.textContent === 'Pipe routing')!.value);
+  choose(select(), 'unclassified');
+  click(button(ui, 'Move'));
+  assert.equal(mergeSelect().value, '', 'an edit clears a merge destination picked for the previous draft');
 });

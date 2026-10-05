@@ -70,6 +70,8 @@ function GroupHeader({ group, draft, resolve, focusClashes, apply }: {
   const { t } = useTranslation();
   const [renaming, setRenaming] = useState<string | null>(null);
   const [mergeTarget, setMergeTarget] = useState('');
+  // A pending rename or merge choice belongs to one draft revision, like the move destination below.
+  useEffect(() => { setRenaming(null); setMergeTarget(''); }, [draft]);
   const live = group.members.flatMap(occurrence => resolve(occurrence) ?? []);
   const others = draft.groups.filter(other => other.key !== group.key);
   return <>

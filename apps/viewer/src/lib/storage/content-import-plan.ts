@@ -12,6 +12,7 @@ import { CONTENT_DEFINITIONS } from './content-registry.js';
 import { rebindContentDocument } from './content-backup-references.js';
 import { computeFullSourceHash } from '../../utils/sourceContentHash.js';
 import type { DocumentSpec } from '../document/types.js';
+import type { ClashGroupApplication } from '../clash/group-applications.js';
 import { forgetImportIdentity, rememberImportIdentity } from './content-import-identity.js';
 import { quarantineImported } from '../bcf-publication/outbox-state.js';
 
@@ -41,6 +42,11 @@ export async function prepareContentImport(libraries: ContentLibraries): Promise
 }
 
 /** Both atomic writes and refused-import staging use these exact conflict/dedup rules. */
+function rebindApplication(entry: ClashGroupApplication, workspaceId: string): ClashGroupApplication {
+  if (workspaceId === entry.workspaceId) return entry;
+  return { ...entry, workspaceId, after: { ...entry.after, id: workspaceId }, before: entry.before && { ...entry.before, id: workspaceId } };
+}
+
 export function planContentImport(prepared: PreparedContentImport, existing: ContentRow[], visible?: ContentLibraries,
   trustedExisting = true): ContentRow[] {
   const known = new Map(existing.map(row => [key(row.kind, row.id), row]));
@@ -94,10 +100,15 @@ export function planContentImport(prepared: PreparedContentImport, existing: Con
       previous => rebindContentDocument(previous as DocumentSpec, comparisonReferences, validationReferences));
   }
   for (const entry of libraries.assistant ?? []) add('assistant', entry, () => ({ ...entry, id: crypto.randomUUID() }));
-  for (const entry of libraries.clashGroups ?? []) add('clashGroups', entry, () => ({ ...entry, id: crypto.randomUUID() }));
+  const workspaceIds = new Map((libraries.clashGroups ?? []).map(entry =>
+    [entry.id, add('clashGroups', entry, () => ({ ...entry, id: crypto.randomUUID() }))] as const));
   for (const entry of libraries.bcfDrafts ?? []) add('bcfDrafts', entry, () => ({ ...entry, id: crypto.randomUUID() }));
   for (const entry of libraries.modelChanges ?? []) add('modelChanges', entry, () => ({ ...entry, id: crypto.randomUUID() }));
-  for (const entry of libraries.clashGroupApplications ?? []) add('clashGroupApplications', entry, () => ({ ...entry, id: crypto.randomUUID() }));
+  // A receipt follows its workspace: when the import gives the workspace a new id, the receipt (and its undo) names the copy.
+  for (const entry of libraries.clashGroupApplications ?? []) {
+    const rebound = rebindApplication(entry, workspaceIds.get(entry.workspaceId) ?? entry.workspaceId);
+    add('clashGroupApplications', entry, () => ({ ...rebound, id: crypto.randomUUID() }), rebound);
+  }
   // An imported outbox never dispatches by itself: every unfinished effect is blocked until checked against the server.
   for (const entry of libraries.bcfOutbox ?? []) {
     const quarantined = quarantineImported(entry);

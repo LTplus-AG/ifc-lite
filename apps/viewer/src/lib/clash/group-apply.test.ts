@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { clashReviewKey, summarizeClashes, type Clash } from '@ifc-lite/clash';
 import { useViewerStore } from '@/store';
 import { readContentRows } from '../storage/content-database';
+import { createContentBackup, importContentBackup } from '../storage/content-backup';
 import { clashGroupLibrary, DEFAULT_GROUP_WORKSPACE, useClashGroupLibrary, type ClashGroupWorkspace } from './group-workspace';
 import { useClashGroupApplications } from './group-applications';
 import { applyClashGroupPlan, newWorkspaceBase, planClashGroupApply, readApplyBase, undoClashGroupApplication } from './group-apply';
@@ -184,4 +185,30 @@ test('a clash run replaced while storage initializes refuses apply before anythi
       { ok: false, reason: 'stale-run' });
   } finally { clashGroupLibrary.initialize = initialize; }
   assert.equal((await readContentRows('clashGroupApplications')).length, 0, 'no receipt for a refused apply');
+});
+
+// #6906: a backup applied into the shared default workspace, imported where that id already holds other groups,
+// lands as a copy under a new id; its receipt must follow the copy so it is listed with it and can undo it.
+test('an imported receipt follows its workspace when the import gives the workspace a new id', async () => {
+  const clashes = install(findings(6));
+  const planned = planClashGroupApply(proposal(clashes), (await readApplyBase(DEFAULT_GROUP_WORKSPACE, 'Coordination'))!, clashes);
+  assert.ok(planned.ok);
+  const applied = await applyClashGroupPlan(planned.plan, { confirmMoves: true, origin: 'assistant:test', source: 'sample', partial: false });
+  assert.ok(applied.ok);
+  const workspace = (await storedWorkspace(DEFAULT_GROUP_WORKSPACE))!.payload as ClashGroupWorkspace;
+  // As written by another install: the same receipt shape under its own id.
+  const foreign = { ...applied.receipt, id: 'receipt-from-another-install' };
+  const backup = createContentBackup({ validation: [], comparison: [], document: [], clashGroups: [workspace], clashGroupApplications: [foreign] });
+  // This install's default workspace now holds different human groups.
+  const local: ClashGroupWorkspace = { version: 1, id: DEFAULT_GROUP_WORKSPACE, name: 'Local', groups: [{ id: 'mine', name: 'Mine', members: [manualClashMember(clashes[5])] }] };
+  assert.equal(await clashGroupLibrary.put(DEFAULT_GROUP_WORKSPACE, local), true);
+  await importContentBackup(backup);
+  const copies = (await readContentRows('clashGroups')).filter(row => row.id !== DEFAULT_GROUP_WORKSPACE && !row.deleted);
+  assert.equal(copies.length, 1, 'the imported workspace is an independent copy');
+  const receipts = (await readContentRows('clashGroupApplications')).filter(row => row.id === foreign.id);
+  assert.equal(receipts.length, 1);
+  const imported = receipts[0].payload as typeof applied.receipt;
+  assert.equal(imported.workspaceId, copies[0].id, 'the receipt names the copy, not the local workspace');
+  assert.equal(imported.after.id, copies[0].id);
+  assert.deepEqual((await storedWorkspace(DEFAULT_GROUP_WORKSPACE))?.payload, local, 'the local workspace is untouched');
 });

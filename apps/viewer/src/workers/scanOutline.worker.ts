@@ -10,18 +10,29 @@
  *
  * Sources are cached by key: the main thread sends a source's points once
  * (structured clone, never transferred: they are the scan cache's own
- * buffers) and afterwards only its key. Every `trace` names the keys it uses,
- * and anything else is dropped from the cache.
+ * buffers) and afterwards only its key, plus the count and transform on every
+ * request. Every `trace` names the keys it uses, and anything else is dropped
+ * from the cache.
  */
 
 import { ensureWasm } from '@/lib/wasm/ensure-wasm';
 import { runScanOutlineJob, type ScanOutlineJob, type ScanOutlineSource } from '@/lib/scan-outline/scan-outline-job';
 import type { ScanOutlineLayer } from '@/lib/scan-outline/scan-outline';
 
-/** A source as sent: the points on first use, then the key alone. */
+/** The bulk of a source: sent once per key, then cached in the worker. */
+export type ScanOutlinePoints = Pick<ScanOutlineSource, 'positions' | 'classifications'>;
+
+/**
+ * A source as sent: its key, the points on first use of that key, and every
+ * time the small per-request part (the point count and the transform it is
+ * drawn through, which change without the points changing).
+ */
 export interface ScanOutlineSourceRef {
   key: number;
-  source?: ScanOutlineSource;
+  points?: ScanOutlinePoints;
+  count: number;
+  model?: Float32Array;
+  modelOutputsRenderFrame?: boolean;
 }
 
 export interface ScanOutlineWorkerRequest {
@@ -35,17 +46,17 @@ export type ScanOutlineWorkerResponse =
   | { type: 'complete'; id: number; layer: ScanOutlineLayer }
   | { type: 'error'; id: number; message: string };
 
-const cache = new Map<number, ScanOutlineSource>();
+const cache = new Map<number, ScanOutlinePoints>();
 
 /** Resolve the request's sources against the cache, keeping only those. */
-export function resolveSources(refs: readonly ScanOutlineSourceRef[], store: Map<number, ScanOutlineSource>): ScanOutlineSource[] {
+export function resolveSources(refs: readonly ScanOutlineSourceRef[], store: Map<number, ScanOutlinePoints>): ScanOutlineSource[] {
   const keep = new Set(refs.map((r) => r.key));
   for (const key of [...store.keys()]) if (!keep.has(key)) store.delete(key);
   return refs.map((ref) => {
-    if (ref.source) store.set(ref.key, ref.source);
-    const source = store.get(ref.key);
-    if (!source) throw new Error(`scan outline source ${ref.key} was never sent`);
-    return source;
+    if (ref.points) store.set(ref.key, ref.points);
+    const points = store.get(ref.key);
+    if (!points) throw new Error(`scan outline source ${ref.key} was never sent`);
+    return { ...points, count: ref.count, model: ref.model, modelOutputsRenderFrame: ref.modelOutputsRenderFrame };
   });
 }
 

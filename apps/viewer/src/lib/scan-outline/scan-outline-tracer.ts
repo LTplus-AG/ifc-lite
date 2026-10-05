@@ -66,7 +66,9 @@ function workerTracer(): ScanOutlineTracer {
   let worker: Worker | null = null;
   let nextId = 0;
   let nextKey = 0;
-  const keys = new WeakMap<Float32Array, number>();
+  // One key per points buffer and content revision: a buffer rewritten in
+  // place (new `revision`) gets a new key, so its points are sent again.
+  const keys = new WeakMap<Float32Array, { key: number; revision: number | undefined }>();
   let sentKeys = new Set<number>();
   let running: { id: number; resolve: Resolve; timer: ReturnType<typeof setTimeout> } | null = null;
   let queued: { job: ScanOutlineJob; resolve: Resolve } | null = null;
@@ -112,16 +114,21 @@ function workerTracer(): ScanOutlineTracer {
       worker ??= spawn();
       const id = ++nextId;
       const refs: ScanOutlineSourceRef[] = job.sources.map((source: ScanOutlineSource) => {
-        let key = keys.get(source.positions);
-        if (key === undefined) {
-          key = ++nextKey;
-          keys.set(source.positions, key);
+        let entry = keys.get(source.positions);
+        if (entry === undefined || entry.revision !== source.revision) {
+          entry = { key: ++nextKey, revision: source.revision };
+          keys.set(source.positions, entry);
         }
+        const key = entry.key;
         const fresh = !sentKeys.has(key);
         sentKeys.add(key);
-        // Only what the band test reads: no colours across the boundary.
+        // Only what the band test reads: no colours across the boundary. The
+        // count and transform go every time: alignment and placement change
+        // them without touching the points.
         const { positions, classifications, count, model, modelOutputsRenderFrame } = source;
-        return fresh ? { key, source: { positions, classifications, count, model, modelOutputsRenderFrame } } : { key };
+        const ref: ScanOutlineSourceRef = { key, count, model, modelOutputsRenderFrame };
+        if (fresh) ref.points = { positions, classifications };
+        return ref;
       });
       const rest = {
         coordinateInfo: job.coordinateInfo, plane: job.plane, thickness: job.thickness,

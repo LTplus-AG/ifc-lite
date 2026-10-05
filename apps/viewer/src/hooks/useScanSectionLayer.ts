@@ -92,7 +92,7 @@ const EMPTY_SELECTION: ScanBandSelection = {
  * place raw cached points where the 3D view actually shows them. Inline
  * assets are already in the viewer frame and receive their model placement.
  */
-type ScanSource = ScanPointSample & { model?: Float32Array; modelOutputsRenderFrame?: boolean };
+type ScanSource = ScanPointSample & { model?: Float32Array; modelOutputsRenderFrame?: boolean; revision?: number };
 
 function collectScanSources(
   models: ReadonlyMap<string, FederatedModel>,
@@ -125,6 +125,9 @@ function collectScanSources(
             colors: cached.colors ?? undefined,
             classifications: cached.classifications ?? undefined,
             count: cached.count,
+            // The reservoir rewrites these arrays in place; `seen` moves
+            // whenever it does, so the outline worker re-reads the points.
+            revision: cached.seen,
             ...(() => {
               const matrix = getGlobalRenderer()?.getPointCloudTransform({ id: model.pointCloudHandleId });
               // Exact GPU world coordinates, even with alignment disabled.
@@ -189,6 +192,10 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The off-main-thread tracer (latest-wins), alive while the outline is on.
   const tracerRef = useRef<ScanOutlineTracer | null>(null);
+  // Bumped by every recompute: a trace result is applied only if nothing
+  // changed since it was started (the scan may have been removed meanwhile,
+  // which starts no newer trace to supersede it).
+  const generationRef = useRef(0);
   // Which matrix each streamed asset is currently drawn through (#1804).
   // Flipping the toggle must move the 2D overlay with the 3D view, so this
   // is a real dependency of the recompute below, not a one-shot read.
@@ -220,6 +227,7 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
 
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    const generation = ++generationRef.current;
 
     if (!enabled) {
       setSelection(EMPTY_SELECTION);
@@ -260,7 +268,7 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
       void tracerRef.current
         .trace({ sources, coordinateInfo, plane, thickness, classMask, maxGap: outlineMaxGap })
         .then((result) => {
-          if (result.status === 'superseded') return;
+          if (result.status === 'superseded' || generation !== generationRef.current) return;
           if (result.status === 'failed') console.error('[scan outline] trace failed:', result.message);
           setSelection(merged);
           setOutline(result.status === 'done' ? result.layer : null);

@@ -13,7 +13,7 @@
 import { describe, it, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { ensureWasm, roomSlab } from '@/test/scan-slab-fixture';
-import { resolveSources, type ScanOutlineWorkerRequest } from '@/workers/scanOutline.worker';
+import { resolveSources, type ScanOutlinePoints, type ScanOutlineWorkerRequest } from '@/workers/scanOutline.worker';
 import { runScanOutlineJob, type ScanOutlineSource } from './scan-outline-job';
 import { createScanOutlineTracer } from './scan-outline-tracer';
 
@@ -43,9 +43,12 @@ class FakeWorker {
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
   terminated = false;
-  private cache = new Map<number, ScanOutlineSource>();
-  postMessage(request: ScanOutlineWorkerRequest): void {
-    posted.push(request);
+  private cache = new Map<number, ScanOutlinePoints>();
+  postMessage(message: ScanOutlineWorkerRequest): void {
+    posted.push(message);
+    // A real postMessage structured-clones: the worker never sees later
+    // main-thread mutations of what was sent.
+    const request = structuredClone(message);
     setTimeout(() => {
       if (this.terminated) return;
       const layer = runScanOutlineJob({ ...request.job, sources: resolveSources(request.sources, this.cache) });
@@ -92,9 +95,39 @@ describe('scan outline tracer (#6871)', () => {
     const source = sample();
     await tracer.trace(job(source));
     await tracer.trace(job(source, 0.25));
-    assert.ok(posted[0].sources[0].source, 'first request carries the points');
-    assert.equal(posted[1].sources[0].source, undefined, 'second request names the cached key');
+    assert.ok(posted[0].sources[0].points, 'first request carries the points');
+    assert.equal(posted[1].sources[0].points, undefined, 'second request names the cached key');
     assert.equal(posted[1].sources[0].key, posted[0].sources[0].key);
+    tracer.dispose();
+  });
+
+  it('a source sent again with a new transform traces through the new transform (#6884 review)', async (t) => {
+    if (!withFakeWorker(t)) return;
+    const tracer = createScanOutlineTracer();
+    const source = sample();
+    const before = await tracer.trace(job(source));
+    // The same retained points, now drawn 10 m further along x (alignment
+    // toggled, model moved): only the matrix is new.
+    const moved = { ...source, model: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 0, 0, 1]), modelOutputsRenderFrame: true };
+    const after = await tracer.trace(job(moved));
+    const expected = runScanOutlineJob(job(moved));
+    assert.ok(before.status === 'done' && after.status === 'done');
+    assert.deepEqual(after.layer.rings, expected.rings, 'the worker used the new matrix');
+    assert.notDeepEqual(after.layer.rings, before.layer.rings);
+    tracer.dispose();
+  });
+
+  it('a retained buffer rewritten in place is sent again when its revision moves (#6884 review)', async (t) => {
+    if (!withFakeWorker(t)) return;
+    const tracer = createScanOutlineTracer();
+    const source = { ...sample(), revision: 1 };
+    await tracer.trace(job(source));
+    // The scan cache's reservoir overwrites slots in place: same array, same count.
+    for (let i = 0; i < source.count; i++) source.positions[i * 3] += 10;
+    const rewritten = { ...source, revision: 2 };
+    const after = await tracer.trace(job(rewritten));
+    assert.ok(after.status === 'done');
+    assert.deepEqual(after.layer.rings, runScanOutlineJob(job(rewritten)).rings, 'the worker traced the rewritten points');
     tracer.dispose();
   });
 
@@ -109,9 +142,10 @@ describe('scan outline tracer (#6871)', () => {
   });
 
   it('the worker cache keeps only the sources the request names', () => {
-    const store = new Map<number, ScanOutlineSource>([[1, sample()], [2, sample()]]);
-    resolveSources([{ key: 2 }, { key: 3, source: sample() }], store);
+    const store = new Map<number, ScanOutlinePoints>([[1, sample()], [2, sample()]]);
+    const resolved = resolveSources([{ key: 2, count: 5 }, { key: 3, count: 7, points: sample() }], store);
     assert.deepEqual([...store.keys()].sort(), [2, 3]);
-    assert.throws(() => resolveSources([{ key: 9 }], store), /never sent/);
+    assert.deepEqual(resolved.map((s) => s.count), [5, 7], 'the count comes with every request');
+    assert.throws(() => resolveSources([{ key: 9, count: 1 }], store), /never sent/);
   });
 });

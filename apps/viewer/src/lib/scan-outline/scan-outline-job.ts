@@ -17,6 +17,13 @@ import { traceScanOutlineLayer, type ScanOutlineLayer } from './scan-outline';
 export interface ScanOutlineSource extends ScanPointSample {
   model?: Float32Array;
   modelOutputsRenderFrame?: boolean;
+  /**
+   * Content version of `positions` / `classifications` when their owner
+   * rewrites them in place (the scan cache's reservoir: same arrays, same
+   * count, new points). The worker tracer re-sends the points when it moves.
+   * Omit for buffers that never change.
+   */
+  revision?: number;
 }
 
 export interface ScanOutlineJob {

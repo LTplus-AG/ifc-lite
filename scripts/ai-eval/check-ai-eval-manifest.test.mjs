@@ -15,10 +15,11 @@ const withRoot = async fn => { const { root, cleanup } = cloneRoot(); try { awai
 const manifestPath = root => join(root, 'tests', 'ai-eval', 'manifest.json');
 const sample = root => join(root, 'apps', 'viewer', 'public', 'samples', 'building-architecture.ifc');
 
-test('the committed manifest and recordings pass, with stated gaps as notes', () => {
+test('the committed manifest, recordings, labels and study records pass, with stated gaps as notes', () => {
   const { errors, notes } = run(REPO_ROOT);
   assert.deepEqual(errors, []);
   assert.ok(notes.some(note => /await human privacy review/.test(note)), 'pending human review is stated, not hidden');
+  assert.ok(notes.some(note => /stay open until people perform them/.test(note)));
 });
 
 test('a changed fixture byte is caught by the recomputed fingerprint', () => withRoot(root => {

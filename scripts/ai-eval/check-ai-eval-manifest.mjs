@@ -9,7 +9,8 @@
  * schema, recomputes every committed fixture fingerprint, cross-checks
  * fixture-mechanism entries against `tests/models/manifest.json`, runs the
  * automated privacy scan, and ties every recording in
- * `tests/ai-eval/recordings` to a task and scene. Stated gaps (unfetched
+ * `tests/ai-eval/recordings` to a task and scene, validates committed label
+ * sheets and the U01 study protocol and session records. Stated gaps (unfetched
  * fixtures, journeys without tasks, pending human review) are printed as
  * notes, never hidden.
  *
@@ -21,6 +22,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { checkManifest } from './lib/manifest.mjs';
 import { loadRecordingDir, REPO_ROOT } from './lib/recording.mjs';
+import { loadLabelDir, sheetFileErrors } from './label.mjs';
+import { loadStudy } from './study.mjs';
+import { protocolErrors, sessionErrors } from './lib/study.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 export function run(root) {
@@ -30,6 +34,11 @@ export function run(root) {
   const recordings = existsSync(recordingsDir) ? loadRecordingDir(recordingsDir) : [];
   const result = checkManifest(JSON.parse(readFileSync(manifestPath, 'utf8')), { root, recordings });
   if (!recordings.length) result.errors.push('tests/ai-eval/recordings holds no recordings; the replay harness would pass vacuously');
+  const labels = loadLabelDir(root);
+  result.errors.push(...sheetFileErrors(labels, recordings, JSON.parse(readFileSync(join(root, 'tests', 'ai-eval', 'label-sheet.schema.json'), 'utf8'))));
+  const study = loadStudy(root);
+  result.errors.push(...protocolErrors(study.protocol, { root, manifest: study.manifest }), ...sessionErrors(study.sessions, study.protocol, study.schema));
+  result.notes.push(`${labels.length} label sheet(s) and ${study.sessions.length} study session(s) committed; human labelling and the coordinator study stay open until people perform them`);
   return { ...result, recordings: recordings.length };
 }
 

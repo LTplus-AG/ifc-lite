@@ -7,7 +7,7 @@
  * evidence it was given (#6928, plan "Evaluation and test strategy"). These
  * are machine checks with zero tolerated violations in the release corpus;
  * they never judge whether a claim is semantically supported — that is the
- * human claim label (docs/architecture/viewer-ai-evaluation.md).
+ * human claim label (`labels.mjs`).
  *
  * What a check CANNOT see is stated on each entry, so a pass is never read as
  * more than it proves.

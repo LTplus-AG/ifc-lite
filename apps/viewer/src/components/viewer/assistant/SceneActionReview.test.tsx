@@ -86,3 +86,25 @@ test('composer attaches the selection only on request, refuses a screenshot for 
   const sent = JSON.parse(body) as { messages: Array<{ content: unknown }> };
   assert.equal(sent.messages.at(-1)?.content, 'And now?', 'the next message carries no selection unless attached again');
 });
+
+// #6907: applying a second proposal first restores the first one (camera included); the card says so before and after.
+test('a proposal applied over an active one discloses that the earlier view is restored first', async () => {
+  useViewerStore.setState({ ...sceneModels(), cameraCallbacks: cameraStub().callbacks });
+  replaceEvidence(captureEvidence('loadReport'));
+  const proposal = (title: string, globalId: string) => JSON.stringify({ version: 1, kind: 'scene.actions', title,
+    actions: [{ type: 'isolate', targets: [{ globalId }] }] });
+  act(() => useAssistant.setState({ messages: [{ role: 'user', content: 'Show W1' }, { role: 'assistant', content: proposal('Wall one', W1) }] }));
+  const ui = render(<AssistantPanel />);
+  await waitFor(() => !!ui.querySelector('section[aria-label="Show in the model"]'), 'first card');
+  const first = ui.querySelector('section[aria-label="Show in the model"]') as HTMLElement;
+  assert.doesNotMatch(first.textContent ?? '', /restores the view from before/, 'nothing to replace yet');
+  click(button(first, 'Apply 1 action')!);
+
+  act(() => useAssistant.setState(s => ({ messages: [...s.messages, { role: 'user', content: 'Now W2' }, { role: 'assistant', content: proposal('Wall two', W2) }] })));
+  await waitFor(() => /Wall two/.test(ui.querySelector('section[aria-label="Show in the model"]')?.textContent ?? ''), 'second card');
+  const second = ui.querySelector('section[aria-label="Show in the model"]') as HTMLElement;
+  assert.match(second.textContent ?? '', /Applying first restores the view from before “Wall one”, including the camera\./);
+  click(button(second, 'Apply 1 action')!);
+  assert.deepEqual([...useViewerStore.getState().isolatedEntities ?? []], [102]);
+  await waitFor(() => /Previous view restored\./.test(second.textContent ?? ''), 'the replaced restore is reported on the card');
+});

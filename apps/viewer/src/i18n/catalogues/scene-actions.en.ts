@@ -42,6 +42,7 @@ export const sceneActionsEn = {
   'sceneActions.notRestored': 'Kept as you changed it since: {channels}',
   'sceneActions.modelsChanged': 'The loaded models changed since applying, so nothing was restored.',
   'sceneActions.activeTitle': 'Applied to the view: {title}',
+  'sceneActions.replacesActive': 'Applying first restores the view from before “{title}”, including the camera.',
   'sceneActions.channel.selection': 'selection',
   'sceneActions.channel.isolate': 'isolation',
   'sceneActions.channel.hide': 'hidden elements',

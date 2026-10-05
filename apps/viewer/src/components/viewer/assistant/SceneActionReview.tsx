@@ -3,12 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Eye, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { useAssistant } from '@/lib/assistant/conversation';
-import type { EvidenceSnapshot } from '@/lib/assistant/evidence';
+import { evidenceIsCurrent, type EvidenceSnapshot } from '@/lib/assistant/evidence';
 import { parseSceneActions, type SceneActionSet } from '@/lib/actions/scene-actions';
 import { previewSceneActions, unresolvedCount, type ActionPreview } from '@/lib/actions/scene-preview';
 import { applySceneActions, type ApplyResult } from '@/lib/actions/scene-apply';
@@ -59,6 +60,7 @@ function AppliedNote({ result }: { result: ApplyResult }) {
     <span className="block font-semibold">{t('sceneActions.applied')}</span>
     <span className="block">{result.applied.map(({ type, count }) => count ? t('sceneActions.appliedCount', { action: t(`sceneActions.${type}`), count }) : t(`sceneActions.${type}`)).join(' · ')}</span>
     {result.unavailable.length > 0 && <span className="block">{t('sceneActions.unavailable', { actions: result.unavailable.map(type => t(`sceneActions.${type}`)).join(', ') })}</span>}
+    {result.replaced && <RestoreNote report={result.replaced} />}
   </output>;
 }
 
@@ -76,9 +78,11 @@ function RestoreNote({ report }: { report: RestoreReport }) {
 
 function SceneActionCard({ set, evidence }: { set: SceneActionSet; evidence: EvidenceSnapshot | null }) {
   const { t } = useTranslation();
-  // Resolution reads models, edits, visibility and evidence freshness: re-preview on any store change.
-  const state = useViewerStore(s => s);
-  const preview = useMemo(() => previewSceneActions(state, set, evidence), [state, set, evidence]);
+  // Resolution reads models, edits, visibility, the render frame and evidence freshness: re-preview when one
+  // of those changes, not on every store write (hover, progress), since citations re-read the evidence.
+  const inputs = useViewerStore(useShallow(s => ({ models: s.models, mutationViews: s.mutationViews, mutationVersion: s.mutationVersion,
+    geometryResult: s.geometryResult, hiddenEntities: s.hiddenEntities, current: evidence !== null && evidenceIsCurrent(evidence) })));
+  const preview = useMemo(() => previewSceneActions(inputs, set, evidence), [inputs, set, evidence]);
   const active = useSceneSession(s => s.active);
   const [result, setResult] = useState<{ applied: ApplyResult; id: string | null } | null>(null);
   const ours = result?.id != null && active?.id === result.id;
@@ -95,6 +99,7 @@ function SceneActionCard({ set, evidence }: { set: SceneActionSet; evidence: Evi
       <p className="text-muted-foreground">{t('sceneActions.inert')}</p>
       <ul className="space-y-1">{preview.actions.map(action => <ActionLine key={action.index} preview={action} />)}</ul>
       {preview.ready === 0 && <p role="note" className="text-muted-foreground">{t('sceneActions.nothingReady')}</p>}
+      {active && !ours && <p role="note" className="text-muted-foreground">{t('sceneActions.replacesActive', { title: active.title })}</p>}
       {result && ours && <AppliedNote result={result.applied} />}
       <Button size="sm" className="h-7" disabled={preview.ready === 0 || ours} onClick={apply}>
         {t('sceneActions.apply', { count: preview.ready })}

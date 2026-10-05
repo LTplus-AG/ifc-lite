@@ -11,7 +11,7 @@
  * for such a model rather than dropping it silently.
  */
 
-import { useState } from 'react';
+import { useState, type Dispatch, type SetStateAction } from 'react';
 import { Camera, MousePointerClick, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -48,7 +48,8 @@ function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
 export function ComposerAttachments({ model, value, onChange, disabled }: {
   model: string;
   value: ComposerAttachmentValue;
-  onChange: (value: ComposerAttachmentValue) => void;
+  /** A state setter: the screenshot lands after an await, so it updates the current value, not the one it started from. */
+  onChange: Dispatch<SetStateAction<ComposerAttachmentValue>>;
   disabled: boolean;
 }) {
   const { t } = useTranslation();
@@ -63,7 +64,7 @@ export function ComposerAttachments({ model, value, onChange, disabled }: {
     setProblem(null);
     const shot = await captureViewportScreenshot();
     setCapturing(false);
-    if (shot) onChange({ ...value, screenshot: shot });
+    if (shot) onChange(current => ({ ...current, screenshot: shot }));
     else setProblem('failed');
   };
   const attached = value.selection !== null || value.screenshot !== null;

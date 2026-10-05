@@ -124,18 +124,33 @@ jobs:
             --changelog "$RUNNER_TEMP/perf-ratchet-changelog.md"
           cat "$RUNNER_TEMP/perf-ratchet-changelog.md" >> "$GITHUB_STEP_SUMMARY"
 
+      # The ceiling files as `lower` left them (lowered or not), so a run
+      # without PERF_RATCHET_PAT still hands a maintainer the exact files to
+      # commit by hand.
+      - name: Upload lowered ceiling files
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: perf-ratchet-lowered-ceilings
+          path: |
+            tests/perf-ratchets/*.json
+            ${{ runner.temp }}/perf-ratchet-changelog.md
+          retention-days: 30
+          if-no-files-found: error
+
       # PAT, not GITHUB_TOKEN, for the same reason as the Version Packages PR
       # (release.yml, #766): a push or PR made with GITHUB_TOKEN starts no
       # workflows, so the PR would never get its required checks. This repo
       # also disallows Actions from creating PRs with GITHUB_TOKEN.
-      # PERF_RATCHET_PAT is used when set (a dedicated credential); otherwise
-      # RELEASE_PAT, the repo's one PR-opening bot credential. This job spends
-      # about five REST calls a day from it, far from the quota concern in
-      # RELEASE.md ("Release credential"), which is about interactive sessions
-      # sharing the account.
+      # ONLY PERF_RATCHET_PAT, never RELEASE_PAT: RELEASE.md ("Release
+      # credential", #5693) requires the release account to be used by
+      # nothing else, because any other spend of its quota can fail a Release
+      # mid-job. PERF_RATCHET_PAT is a fine-grained PAT from a separate
+      # account (docs/guide/performance.md, "Perf ratchet ceilings"). Unset,
+      # the job still measures and lowers, leaves the table in the summary
+      # and the files in the artifact above, warns, and stays green.
       - name: Open or update the lowering PR
         env:
-          PUSH_TOKEN: ${{ secrets.PERF_RATCHET_PAT || secrets.RELEASE_PAT }}
+          PUSH_TOKEN: ${{ secrets.PERF_RATCHET_PAT }}
           REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -156,9 +171,9 @@ jobs:
             exit 0
           fi
           if [ -z "$PUSH_TOKEN" ]; then
-            echo "::error::Neither PERF_RATCHET_PAT nor RELEASE_PAT is set; cannot open the lowering PR."
+            echo "::warning::Ceilings dropped, but no lowering PR was opened: the PERF_RATCHET_PAT secret is missing. The old -> new table is in the step summary and the lowered files are in the perf-ratchet-lowered-ceilings artifact."
             git diff -- tests/perf-ratchets
-            exit 1
+            exit 0
           fi
           sha=$(git rev-parse HEAD)
           git config user.name 'ifc-lite perf ratchet'

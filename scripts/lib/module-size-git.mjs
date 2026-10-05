@@ -21,6 +21,7 @@
 
 import { realpathSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { canonicalMainRefIn } from './canonical-remote.mjs';
 
 function git(root, ...argv) {
   return spawnSync('git', ['-C', root, ...argv], { encoding: 'utf8' });
@@ -72,12 +73,16 @@ export function worktreeTop(root) {
  * happened and warns.
  */
 export function resolveBase(root, { ref = null } = {}) {
-  const candidates = ref === null ? ['origin/main', 'main'] : [ref];
+  // The default names the canonical remote's main (`origin/main` unless
+  // another remote points at LTplus-AG/ifc-lite), so a fork-origin clone is
+  // not judged against its stale fork main. An explicit `ref` is untouched.
+  const defaultMain = canonicalMainRefIn(root);
+  const candidates = ref === null ? [defaultMain, 'main'] : [ref];
   for (const candidate of candidates) {
     const merged = git(root, 'merge-base', candidate, 'HEAD');
     const sha = merged.stdout.trim();
     if (merged.status === 0 && sha !== '') {
-      return { ref: candidate, sha, fellBack: ref === null && candidate !== 'origin/main' };
+      return { ref: candidate, sha, fellBack: ref === null && candidate !== defaultMain };
     }
   }
   return { error: `no merge base with ${candidates.join(' or ')}` };

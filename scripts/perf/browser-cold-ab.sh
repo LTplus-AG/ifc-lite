@@ -141,7 +141,7 @@ if [ -n "$BASE_REF" ]; then
   fi
   CMD_ARGS+=(--dist-base "$BASE_WT/apps/viewer/dist" --base-label "$BASE_SHA" --branch-label "$BRANCH_LABEL")
 else
-  echo "browser-cold-ab.sh: no --base and no origin/main — running self-mode (repeatability only, no base build)." >&2
+  echo "browser-cold-ab.sh: no --base given — running self-mode (repeatability only, no base build)." >&2
 fi
 
 status=0

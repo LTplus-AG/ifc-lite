@@ -11,6 +11,8 @@
  * base months behind.
  */
 
+import { spawnSync } from 'node:child_process';
+
 /**
  * `LTplus-AG/ifc-lite` must be the WHOLE path: directly after the host
  * (`scheme://[user@]host/` or scp-style `[user@]host:`), so `Evil-LTplus-AG/...`
@@ -42,4 +44,24 @@ export function canonicalBaseArgs(remoteVerbose, onCI) {
   if (remote !== null) return { args: ['--base', `${remote}/main`] };
   if (onCI) return { args: [] };
   return { skip: 'no remote points at LTplus-AG/ifc-lite, so there is no canonical main to judge allowlist rows against (add one and fetch it). CI never skips this test.' };
+}
+
+/**
+ * The ref the base-judging scripts compare against: `<canonical remote>/main`
+ * when some remote points at `LTplus-AG/ifc-lite`, else the long-standing
+ * default `origin/main`. With `origin` pointing at the canonical repository
+ * (every Actions checkout of it) the answer is the string it always was.
+ * The no-canonical-remote fallback is deliberately the old default, never a
+ * skip, so a fork's own Actions run keeps judging against its own main.
+ *
+ * @param {string} remoteVerbose output of `git remote -v`
+ */
+export function canonicalMainRef(remoteVerbose) {
+  return `${findCanonicalRemote(remoteVerbose) ?? 'origin'}/main`;
+}
+
+/** `canonicalMainRef` for the repository at `root`; an unreadable `git remote -v` gives the `origin/main` default. */
+export function canonicalMainRefIn(root) {
+  const res = spawnSync('git', ['remote', '-v'], { cwd: root, encoding: 'utf8' });
+  return canonicalMainRef(res.status === 0 ? res.stdout : '');
 }

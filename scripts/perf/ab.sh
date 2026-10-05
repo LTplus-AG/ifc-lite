@@ -89,7 +89,10 @@ for f in "${FIXTURES[@]}"; do
 done
 
 if [ -z "$BASE_REF" ]; then
-  BASE_REF="$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD~1)"
+  # The canonical remote's main (origin/main unless another remote points at
+  # LTplus-AG/ifc-lite), so a fork-origin clone is not measured against a stale fork main.
+  MAIN_REF="$(node "$ROOT/scripts/lib/canonical-main-ref.mjs" 2>/dev/null || echo origin/main)"
+  BASE_REF="$(git merge-base HEAD "$MAIN_REF" 2>/dev/null || git rev-parse HEAD~1)"
 fi
 BASE_SHA="$(git rev-parse --short "$BASE_REF")"
 # `+dirty` must reflect BOTH unstaged (worktree) and staged (index) edits — the

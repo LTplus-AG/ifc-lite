@@ -95,7 +95,7 @@ export const clashGroupApplyEn = {
   'clashClassify.consent': 'If a chunk answer repeats or invents citations, use it with repeats removed (disclosed per chunk)',
   'clashClassify.start': 'Classify all findings',
   'clashClassify.cancel': 'Cancel classification',
-  'clashClassify.progress': 'Chunk {done} of {total}',
+  'clashClassify.progress': '{done} of {total} chunks done',
   'clashClassify.progressLabel': 'Classification progress',
   'clashClassify.chunkRow': 'Chunk {index} ({count} findings): {status}',
   'clashClassify.status.pending': 'waiting',

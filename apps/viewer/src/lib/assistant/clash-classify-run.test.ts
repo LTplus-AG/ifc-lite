@@ -26,11 +26,16 @@ function options(clashes: Clash[], overrides: Partial<ClassifyRunOptions> = {}):
  * Independent of how `runClassification` derives `unclassified`: grouped is the number of distinct native
  * occurrences in the merged groups (a finding grouped twice would make the buckets disagree), and no bucket is negative.
  */
-function assertAccounted({ accounting, merged }: ClassifyRunResult) {
+function assertAccounted({ accounting, merged, chunks }: ClassifyRunResult) {
   const occurrences = merged.flatMap(group => group.findings.map(finding => finding.occurrence));
   assert.equal(new Set(occurrences).size, occurrences.length, 'no finding is grouped twice');
   assert.equal(accounting.grouped, occurrences.length, 'grouped counts the merged findings');
   for (const [bucket, count] of Object.entries(accounting)) assert.ok(count >= 0, `${bucket} is not negative`);
+  // Chunk coverage, read from the per-chunk statuses rather than the accounting: the rows of answered chunks are
+  // grouped or unclassified, the rest failed or not run.
+  const rowsWith = (statuses: string[]) => chunks.filter(chunk => statuses.includes(chunk.status)).reduce((sum, chunk) => sum + chunk.rows, 0);
+  assert.equal(accounting.grouped + accounting.unclassified, rowsWith(['accepted', 'adjusted']), 'answered chunks hold exactly the grouped and unclassified findings');
+  assert.equal(rowsWith(['accepted', 'adjusted', 'invalid', 'failed', 'cancelled', 'not-run']), accounting.total - accounting.unaddressable, 'every addressable finding is in one chunk');
   assert.equal(accounting.grouped + accounting.unclassified + accounting.failed + accounting.notRun + accounting.unaddressable, accounting.total,
     'every native finding is in exactly one bucket');
 }

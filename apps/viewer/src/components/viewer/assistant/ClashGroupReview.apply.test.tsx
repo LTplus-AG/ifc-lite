@@ -125,7 +125,7 @@ test('classify all findings reviews every native finding, beyond the 100-row sam
   click(buttons(ui).find(candidate => candidate.textContent === 'Classify all findings')!);
   await waitFor(() => stats(ui).length === 5, 'full-run review');
   assert.equal(requests.length, 3);
-  assert.match(ui.textContent ?? '', /Chunk 3 of 3/);
+  assert.match(ui.textContent ?? '', /3 of 3 chunks done/);
   assert.deepEqual(stats(ui), ['250', '225', '25', '0', '0']);
   assert.ok(ui.querySelector('section[aria-label="Major walls/pipes"]'));
   assert.match(ui.textContent ?? '', /2 groups were merged across chunks by name/);

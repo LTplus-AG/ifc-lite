@@ -46,6 +46,10 @@ export function ContentStorageNotice({ status, retry, restore }: {
   const draftsLoading = useBcfDraftLibrary(s => s.status.phase === 'loading');
   const outboxLoading = useBcfOutbox(s => s.status.phase === 'loading');
   const bcfLoading = draftsLoading || outboxLoading;
+  // Receipts are exported too: a backup taken while they load would silently omit them.
+  const changeReceiptsLoading = useModelChangeReceipts(s => s.status.phase === 'loading');
+  const groupReceiptsLoading = useClashGroupApplications(s => s.status.phase === 'loading');
+  const receiptsLoading = changeReceiptsLoading || groupReceiptsLoading;
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const states = Object.values(status.items);
@@ -124,7 +128,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     <details>
       <summary className="cursor-pointer">{t('contentStorage.controls')}</summary>
       <div className="flex flex-wrap gap-1 py-1">
-        <Button size="sm" variant="outline" disabled={busy || librariesLoading || assistantLoading || clashGroupsLoading || bcfLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
+        <Button size="sm" variant="outline" disabled={busy || librariesLoading || assistantLoading || clashGroupsLoading || bcfLoading || receiptsLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
         {problem && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           if (await confirmDialog({ description: t('contentStorage.restoreConfirm'), destructive: true })) await restore();
         })}>{t('contentStorage.restore')}</Button>}

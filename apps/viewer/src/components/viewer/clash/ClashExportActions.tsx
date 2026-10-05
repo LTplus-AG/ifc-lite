@@ -17,10 +17,13 @@ import { trackExportCompleted } from '@/lib/analytics';
 import { useTranslation } from '@/i18n';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { exportClashTableCsv } from '@/lib/clash/export-table';
-import { ClashBcfExportDialog } from '@/components/viewer/ClashBcfExportDialog';
+import { ClashBcfExportDialog, type ClashBcfScopeIds } from '@/components/viewer/ClashBcfExportDialog';
+import type { ResultScope } from '@/components/viewer/result/ScopeControl';
 import { AnalysisExportMenu } from '@/components/viewer/analysis/AnalysisExportMenu';
 import { useBcfDraftActions } from '@/components/viewer/bcf/useBcfDraftActions';
 import type { Clash } from '@ifc-lite/clash';
+
+const EMPTY_SCOPE: ClashBcfScopeIds = { selected: new Set(), filtered: new Set() };
 
 export interface ClashExportActionsProps {
   /** Id of the selected clash, which scopes the BCF topic to that clash. */
@@ -29,12 +32,23 @@ export interface ClashExportActionsProps {
   createBcfTopic: () => Promise<void>;
   /** Findings checked in the list; they can become one reviewed BCF draft topic. */
   selectedClashes?: readonly Clash[];
+  /** Ids of the findings the panel's filters show; the archive export can be scoped to them. */
+  filteredIds?: readonly string[];
 }
 
-export function ClashExportActions({ selectedId, creatingTopic, createBcfTopic, selectedClashes = [] }: ClashExportActionsProps) {
+export function ClashExportActions({ selectedId, creatingTopic, createBcfTopic, selectedClashes = [], filteredIds = [] }: ClashExportActionsProps) {
   const { t } = useTranslation();
   const { drafting, draftFromSelection } = useBcfDraftActions();
   const [bcfDialogOpen, setBcfDialogOpen] = useState(false);
+  // The export's scope is pinned when the dialog opens (#6925): checking or
+  // filtering findings afterwards does not change an export being prepared.
+  const [scope, setScope] = useState<ResultScope>('all');
+  const [scopeIds, setScopeIds] = useState<ClashBcfScopeIds>(EMPTY_SCOPE);
+  const openBcfDialog = (): void => {
+    setScopeIds({ selected: new Set(selectedClashes.map((clash) => clash.id)), filtered: new Set(filteredIds) });
+    setScope('all');
+    setBcfDialogOpen(true);
+  };
   const exportCsv = (): void => {
     const outcome = exportClashTableCsv();
     if (!outcome) {
@@ -74,7 +88,7 @@ export function ClashExportActions({ selectedId, creatingTopic, createBcfTopic, 
             title: t('clashTools.export.bcfArchiveTooltip'),
             menuLabel: t('clashTools.export.bcfArchiveMenu'),
             icon: <FileBox />,
-            onExport: () => setBcfDialogOpen(true),
+            onExport: openBcfDialog,
           },
           {
             id: 'csv',
@@ -86,7 +100,7 @@ export function ClashExportActions({ selectedId, creatingTopic, createBcfTopic, 
           },
         ]}
       />
-      <ClashBcfExportDialog open={bcfDialogOpen} onOpenChange={setBcfDialogOpen} />
+      <ClashBcfExportDialog open={bcfDialogOpen} onOpenChange={setBcfDialogOpen} scope={scope} onScopeChange={setScope} scopeIds={scopeIds} />
     </div>
   );
 }

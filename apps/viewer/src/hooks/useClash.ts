@@ -165,6 +165,8 @@ export interface ClashBcfConfig {
   includeSnapshots: boolean;
   /** Safety cap on topic count; overflow is recorded in one marker topic. */
   maxTopics: number;
+  /** Only these clashes, pinned when the export was opened (selected or filtered, #6925); all when absent. */
+  clashIds?: ReadonlySet<string>;
 }
 
 /** Dark, neutral background for offscreen snapshot captures (Tokyo Night base). */
@@ -1135,7 +1137,7 @@ export function useClash() {
     const state = useViewerStore.getState();
     const current = state.clashResult;
     if (!current) return { clashes: 0, topics: 0 };
-    const filtered = filterResultBySeverity(current, new Set(config.severities));
+    const filtered = filterResultBySeverity(current, new Set(config.severities), config.clashIds);
     if (filtered.clashes.length === 0) return { clashes: 0, topics: 0 };
     const groups = groupClashes(filtered, { by: config.groupBy, epsilon: state.clashClusterEpsilon });
     const capped = Math.min(groups.length, config.maxTopics);
@@ -1158,7 +1160,7 @@ export function useClash() {
       const state = useViewerStore.getState();
       const current = state.clashResult;
       if (!current) return;
-      const filtered = filterResultBySeverity(current, new Set(config.severities));
+      const filtered = filterResultBySeverity(current, new Set(config.severities), config.clashIds);
       if (filtered.clashes.length === 0) return;
       const groups = groupClashes(filtered, { by: config.groupBy, epsilon: state.clashClusterEpsilon });
 

@@ -113,3 +113,34 @@ pub(crate) fn segments_intersect(a: [f64; 2], b: [f64; 2], c: [f64; 2], d: [f64;
         || cd_a == 0 && on_segment(c, d, a)
         || cd_b == 0 && on_segment(c, d, b)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The closed segment test both the scan outline repair and its test
+    /// oracle (`assert_valid`) rely on, pinned on hand cases so a regression
+    /// in it cannot hide behind the two agreeing (#6883 review).
+    #[test]
+    fn segments_intersect_covers_every_contact_kind() {
+        let s = |a: [f64; 2], b: [f64; 2], c: [f64; 2], d: [f64; 2]| segments_intersect(a, b, c, d);
+        assert!(s([0.0, 0.0], [2.0, 2.0], [0.0, 2.0], [2.0, 0.0]), "proper crossing");
+        assert!(s([0.0, 0.0], [2.0, 0.0], [1.0, 0.0], [1.0, 1.0]), "T-touch");
+        assert!(s([0.0, 0.0], [1.0, 0.0], [1.0, 0.0], [1.0, 1.0]), "shared endpoint");
+        assert!(s([0.0, 0.0], [2.0, 0.0], [1.0, 0.0], [3.0, 0.0]), "collinear overlap");
+        assert!(!s([0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]), "collinear, apart");
+        assert!(!s([0.0, 0.0], [1.0, 0.0], [0.0, 1e-12], [1.0, 1e-12]), "parallel, 1e-12 apart");
+        assert!(!s([0.0, 0.0], [1.0, 1.0], [1.0, 0.0], [2.0, -1.0]), "would cross only when extended");
+        // Exactness: a crossing far from the origin with tiny segments.
+        let o = 1e7;
+        assert!(s([o, o], [o + 1e-6, o + 1e-6], [o, o + 1e-6], [o + 1e-6, o]), "tiny crossing at 1e7");
+    }
+
+    #[test]
+    fn point_in_polygon_and_area_agree_on_a_square() {
+        let sq = [[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]];
+        assert_eq!(polygon_area(&sq), 4.0);
+        assert!(point_in_polygon([1.0, 1.0], &sq));
+        assert!(!point_in_polygon([3.0, 1.0], &sq));
+    }
+}

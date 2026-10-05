@@ -415,3 +415,24 @@ fn far_from_origin_input_reports_degraded_precision() {
     assert!(f.diagnostics.coordinate_precision_degraded, "{:?}", f.diagnostics);
     assert!(f.diagnostics.coordinate_spacing_metres >= 0.25);
 }
+
+/// A small enclosed gap is filled; when the building it surrounds is a
+/// separate solid component (an island in that gap), the fill merges the two,
+/// and the island's own rooms must stay holes of the merged shape (#6883
+/// review: they were dropped and the rooms came out solid).
+#[test]
+fn filling_a_gap_around_an_island_keeps_the_island_rooms() {
+    // A 4 m room with 0.2 m walls inside a ring wall 10 cm away: the 10 cm
+    // gap (about 1.8 m²) is below min_hole_area and is filled, the 16 m²
+    // room is not.
+    let mut rects = room_walls(0.0, 0.0, 4.0, 4.0, 0.2);
+    rects.extend(room_walls(-0.3, -0.3, 4.3, 4.3, 0.2));
+    let scene = Scene::new(rects);
+    let opts = ScanOutlineOptions { max_gap: 0.02, min_hole_area: 3.0, ..Default::default() };
+    let o = run(&scene, &SampleSpec::default(), &opts);
+    assert!(o.diagnostics.holes_filled >= 1, "the gap ring is filled: {:?}", o.diagnostics);
+    assert_eq!(o.shape_offsets.len(), 1, "one merged shape");
+    assert_eq!(o.rings.len(), 2, "the merged outline and the room it encloses");
+    let hole_area = polygon_area(&o.rings[1]).abs();
+    assert!((hole_area - 16.0).abs() < 0.5, "the room stays a 16 m² hole, got {hole_area}");
+}

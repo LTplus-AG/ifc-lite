@@ -252,8 +252,9 @@ pub(super) struct Labels {
 
 /// Clear solid components under `min_solid` cells, then fill enclosed empty
 /// regions under `min_empty` cells, and return the labels of the result.
-/// A filled hole is enclosed by exactly one solid component (the mask is
-/// saddle-free), whose label its cells take.
+/// Filling never creates a saddle (a filled region's 4-neighbours are all
+/// solid), and the solid labels are recomputed after it, since a fill can
+/// join an island to the component around it.
 pub(super) fn filter_components(mask: &mut [u8], w: usize, h: usize, min_solid: usize, min_empty: usize) -> Labels {
     let (mut solid, sizes) = label4(mask, w, h, 1);
     let small: Vec<bool> = sizes.iter().map(|&s| s < min_solid).collect();
@@ -269,24 +270,18 @@ pub(super) fn filter_components(mask: &mut [u8], w: usize, h: usize, min_solid: 
     let fill: Vec<bool> = sizes.iter().enumerate().map(|(id, &s)| id as u32 != outside && s < min_empty).collect();
     let filled = fill.iter().filter(|&&f| f).count();
     if filled > 0 {
-        let mut owner = vec![u32::MAX; sizes.len()];
-        for c in 0..w * h {
-            let e = empty[c];
-            if e == u32::MAX || !fill[e as usize] || owner[e as usize] != u32::MAX {
-                continue;
-            }
-            if let Some(n) = neighbours4(c, w, h).into_iter().flatten().find(|&n| solid[n] != u32::MAX) {
-                owner[e as usize] = solid[n];
-            }
-        }
         for c in 0..w * h {
             let e = empty[c];
             if e != u32::MAX && fill[e as usize] {
                 mask[c] = 1;
-                solid[c] = owner[e as usize];
                 empty[c] = u32::MAX;
             }
         }
+        // A filled region can join components: a building standing inside a
+        // filled gap merges with the wall around it. Label the solid again so
+        // every solid cell carries its merged component, which the tracer
+        // uses to nest that building's rooms under the merged outline.
+        solid = label4(mask, w, h, 1).0;
     }
     Labels { solid, empty, outside, dropped, filled }
 }

@@ -30,14 +30,14 @@
     "@ifc-lite/collab": "workspace:^",
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/merge": "workspace:^",
-    "lib0": "^0.2.118",
-    "ws": "^8.21.3",
+    "lib0": "^0.2.119",
+    "ws": "^8.22.0",
     "y-protocols": "^1.0.6",
     "yjs": "^13.6.33"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
-    "@types/ws": "^8.5.13",
+    "@types/node": "^26.6.4",
+    "@types/ws": "^8.18.2",
     "typescript": "^6.0.3",
     "vitest": "^5.0.2",
     "y-websocket": "^3.1.0"

@@ -34,7 +34,7 @@
     "vitest": "^5.0.2",
     "@types/jsonld": "^1.5.15",
     "@types/n3": "^1.26.1",
-    "@types/node": "^26.6.2"
+    "@types/node": "^26.6.4"
   },
   "license": "MPL-2.0",
   "repository": {

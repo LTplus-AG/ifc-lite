@@ -8,8 +8,8 @@
  * and secondary actions in an overflow menu.
  */
 
-import React, { useRef, useCallback, useMemo } from 'react';
-import { Download, MoreHorizontal } from 'lucide-react';
+import React, { useRef, useCallback, useMemo, useState } from 'react';
+import { Activity, Download, MoreHorizontal } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,9 +34,12 @@ import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { MOBILE_FILE_ACCEPT, isSupportedMobileModelFile } from '@/services/supported-model-files';
 import { surfaceCommand, type SurfaceCommandDefinition, type SurfaceCommandId } from './surface-commands';
 import { runSurfaceCommand, trackCommandExecution } from './surface-command-run';
+import { ActivityTrayDialog, useActivityMenuLabel } from './activity/ActivityTray';
 
 export function MobileToolbar() {
   const { t } = useTranslation();
+  const [activityOpen, setActivityOpen] = useState(false);
+  const activityLabel = useActivityMenuLabel();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addModelInputRef = useRef<HTMLInputElement>(null);
   const {
@@ -288,11 +291,18 @@ export function MobileToolbar() {
 
           <DropdownMenuSeparator />
 
+          {/* The activity tray lives in the status bar, which phones do not show (#6925). */}
+          <DropdownMenuItem data-mobile-activity onClick={() => setActivityOpen(true)}>
+            <Activity className="h-4 w-4 mr-2" />
+            {activityLabel}
+          </DropdownMenuItem>
+
           {/* Theme */}
           {menuItem('view:theme')}
         </DropdownMenuContent>
       </DropdownMenu>
       {exportDialog}
+      <ActivityTrayDialog open={activityOpen} onOpenChange={setActivityOpen} />
     </div>
   );
 }

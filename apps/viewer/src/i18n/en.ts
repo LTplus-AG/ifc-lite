@@ -12,6 +12,7 @@ import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-l
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { analysisPanelEn } from './catalogues/analysis-panel.en';
 import { resultViewEn } from './catalogues/result-view.en';
+import { activityTrayEn } from './catalogues/activity-tray.en';
 import { panelNoModelEn } from './catalogues/panel-no-model.en';
 import { annotationsEn } from './catalogues/annotations.en';
 import { anonymizedExportEn } from './catalogues/anonymized-export.en';
@@ -138,6 +139,7 @@ export const en = {
   ...semanticIdentityEn,
   ...analysisPanelEn,
   ...resultViewEn,
+  ...activityTrayEn,
   ...panelNoModelEn,
   ...annotationsEn,
   ...anonymizedExportEn,

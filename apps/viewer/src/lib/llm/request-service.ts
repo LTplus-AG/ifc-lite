@@ -13,7 +13,7 @@
 
 import type { StreamRoute } from './byok-guard.js';
 import { modelCapabilities } from './model-capabilities.js';
-import { recordReceipt, type UsageReceipt } from './request-receipts.js';
+import { recordReceipt, recordRequestStart, type UsageReceipt } from './request-receipts.js';
 import { reserveRequest, settleRequest, type RootBudget } from './root-budget.js';
 import { streamChat, type StreamMessage, type StreamOptions } from './stream-client.js';
 import { streamAnthropicChat, streamOpenAiChat } from './stream-direct.js';
@@ -67,7 +67,9 @@ export async function runModelRequest(request: ModelRequest): Promise<RequestOut
   if (!grant) return { kind: 'refused', reason: 'budget-exhausted' };
 
   const startedAt = Date.now();
+  const id = `req-${startedAt}-${++receiptSequence}`;
   const controller = new AbortController();
+  recordRequestStart({ id, model: route.model, startedAt, cancel: () => controller.abort(new DOMException('Cancelled', 'AbortError')) });
   let timedOut = false;
   const abortFromCaller = () => controller.abort(signal?.reason);
   signal?.addEventListener('abort', abortFromCaller, { once: true });
@@ -102,7 +104,7 @@ export async function runModelRequest(request: ModelRequest): Promise<RequestOut
   settleRequest(budget, grant, reported ? reported.outputTokens : seen.streamed ? null : 0);
   const receiptFor = (outcome: UsageReceipt['outcome']): UsageReceipt => {
     const receipt: UsageReceipt = {
-      id: `req-${startedAt}-${++receiptSequence}`, model: route.model, route: route.kind,
+      id, model: route.model, route: route.kind,
       startedAt, finishedAt: Date.now(), outcome,
       ...(reported ? { usageReported: true as const, ...reported } : { usageReported: false as const }),
     };

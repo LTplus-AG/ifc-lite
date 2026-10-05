@@ -3,5 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { EvidenceAdapter } from './types';
+import { listsAdapter } from './lists';
+import { chartsAdapter } from './charts';
+import { costAdapter } from './cost';
 
-export const PACK: readonly EvidenceAdapter[] = [];
+export const PACK: readonly EvidenceAdapter[] = [listsAdapter, chartsAdapter, costAdapter];

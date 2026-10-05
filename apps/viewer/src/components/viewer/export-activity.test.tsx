@@ -112,7 +112,7 @@ describe('Charts PDF report export in the activity tray', () => {
   it('records a failed report export with the real error', async () => {
     const dashboard: DashboardSpec = {
       version: 2, id: 'd', name: 'Overview', scope: { kind: 'all' },
-      charts: [{ id: 'c', title: 'Elements', source: 'elements', type: 'elementCount', measure: { kind: 'count' } }],
+      charts: [{ id: 'c', title: 'Elements', source: 'elements', type: 'elementCount', measure: { agg: 'count' } }],
       layout: [{ chartId: 'c', x: 0, y: 0, w: 6, h: 4 }],
     };
     render(<ReportExportDialog dashboard={dashboard} aggregations={new Map()} onSaveReportSetup={() => {}}

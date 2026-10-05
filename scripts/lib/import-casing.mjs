@@ -19,6 +19,8 @@ const SPEC_RES = [
   /\b(?:import|export)\b[^'"`;]*?\bfrom\s*(['"])(\.{1,2}\/[^'"\n]*|\.{1,2})\1/g,
   /\bimport\s*(['"])(\.{1,2}\/[^'"\n]*)\1/g,
   /\b(?:import|require|mock|doMock|importActual|importMock)\s*\(\s*(['"])(\.{1,2}\/[^'"\n]*|\.{1,2})\1/g,
+  // `new Worker(new URL('./x.worker.ts', import.meta.url))`, wasm and asset URLs.
+  /\bnew\s+URL\(\s*(['"])(\.{1,2}\/[^'"\n]*)\1\s*,\s*import\.meta\.url/g,
 ];
 
 export function extractRelativeSpecifiers(text) {

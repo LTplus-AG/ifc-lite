@@ -49,3 +49,15 @@ test('ignores specifiers that resolve to nothing and bare package imports', () =
 test('extractRelativeSpecifiers ignores non-relative specifiers', () => {
   assert.deepEqual(extractRelativeSpecifiers(`import a from 'a'; import b from './b';`), ['./b']);
 });
+
+test('flags a wrong-case `new URL(..., import.meta.url)` worker or asset path', () => {
+  const src = `new Worker(new URL('./Foo.worker.ts', import.meta.url), { type: 'module' });`;
+  const m = run(['a/main.ts', 'a/foo.worker.ts'], { 'a/main.ts': src });
+  assert.deepEqual(m, [{ file: 'a/main.ts', specifier: './Foo.worker.ts', actual: 'a/foo.worker.ts' }]);
+  assert.deepEqual(run(['a/main.ts', 'a/Foo.worker.ts'], { 'a/main.ts': src }), []);
+});
+
+test('a `new URL` against another base is not an import specifier', () => {
+  const m = run(['a/main.ts', 'a/foo.ts'], { 'a/main.ts': `new URL('./Foo', base);` });
+  assert.deepEqual(m, []);
+});

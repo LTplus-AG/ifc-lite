@@ -22,7 +22,7 @@
  * on purpose to demonstrate it.
  */
 
-const ARGV = /\bargv\[1\]/;
+const ARGV = /\bargv(?:\[1\]|\.at\(1\))/;
 const COMPARE = /[!=]==?/;
 const SELF_LOCATION = /import\.meta\b|\bfileURLToPath\b|\bpathToFileURL\b/;
 
@@ -37,10 +37,16 @@ export function findHandRolledMainGuards(files, read) {
     if (!/\.(?:[cm]?js|[cm]?ts)$/.test(file)) continue;
     if (file === 'scripts/lib/is-main-entry.mjs' || /\.test\.[cm]?[jt]sx?$/.test(file)) continue;
     const lines = read(file).split('\n');
+    const isComment = (t) => /^\s*(?:\/\/|\*|\/\*)/.test(t);
     lines.forEach((text, i) => {
-      const code = text.trimStart();
-      if (code.startsWith('//') || code.startsWith('*') || code.startsWith('/*')) return;
-      if (ARGV.test(text) && COMPARE.test(text) && SELF_LOCATION.test(text) && !/isMainEntry|realpath/.test(text)) {
+      if (isComment(text) || !ARGV.test(text)) return;
+      // A guard split over several lines (`process.argv[1] ===` / `fileURLToPath(...)`)
+      // is one statement: judge the argv line together with its neighbours.
+      const window = lines
+        .slice(Math.max(0, i - 2), i + 3)
+        .filter((t) => !isComment(t))
+        .join(' ');
+      if (COMPARE.test(window) && SELF_LOCATION.test(window) && !/isMainEntry|realpath/.test(window)) {
         out.push({ file, line: i + 1, text: text.trim() });
       }
     });

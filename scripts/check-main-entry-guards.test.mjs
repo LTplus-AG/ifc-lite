@@ -50,3 +50,19 @@ test('reports file and 1-based line', () => {
   assert.equal(hits[0].line, 3);
   assert.equal(hits[0].file, 'scripts/x.mjs');
 });
+
+test('flags a guard split over several lines and the argv.at(1) spelling', () => {
+  const split = "if (\n  process.argv[1] ===\n  fileURLToPath(import.meta.url)\n) main();";
+  assert.equal(scan(split).length, 1);
+  assert.equal(scan("if (process.argv.at(1) === fileURLToPath(import.meta.url)) main();").length, 1);
+});
+
+test('a multi-line guard that routes through isMainEntry or realpath is accepted', () => {
+  assert.deepEqual(scan("if (\n  process.argv[1] &&\n  isMainEntry(import.meta.url) === true\n) main();"), []);
+  assert.deepEqual(scan("const a = process.argv[1];\nif (realpathSync(a) === realpathSync(fileURLToPath(import.meta.url))) main();"), []);
+});
+
+test('argv use far from any self-location comparison is not flagged', () => {
+  const src = "const [, , cmd] = process.argv;\nconst x = process.argv[1];\nlet a;\nlet b;\nlet c;\nif (import.meta.url === other) {}";
+  assert.deepEqual(scan(src), []);
+});

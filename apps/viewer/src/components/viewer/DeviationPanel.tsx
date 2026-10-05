@@ -99,10 +99,11 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   // COPC LOD streaming re-runs deviation on the chunks of each settled view
   // (#6880) and bumps the revision. The held readback then describes chunks
   // that are no longer drawn, so drop it and read the new run back.
-  // A run whose statistics were dropped while the panel was closed (a COPC
-  // re-run bumps the revision whether or not the panel is mounted) is read
-  // back on mount, so the stored statistics never stay missing (#6833).
-  const readRevisionRef = useRef<number | null>(computed && !statistics ? -1 : null);
+  // Mounting on a computed run tracks its revision: stored statistics count as
+  // read at the current revision, so a later COPC re-run reads back again, and
+  // statistics dropped while the panel was closed (a re-run bumps the revision
+  // whether or not the panel is mounted) are read back now (#6833).
+  const readRevisionRef = useRef<number | null>(computed ? (statistics ? revision : -1) : null);
   useEffect(() => {
     const readAt = readRevisionRef.current;
     if (!computed || running || readAt === null || readAt === revision) return;

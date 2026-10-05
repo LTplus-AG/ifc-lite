@@ -10,7 +10,9 @@ import { cleanup, click, render, waitFor } from '@/test/render';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { useViewerStore } from '@/store';
 import { captureEvidence, evidenceIsCurrent } from '../evidence';
-import { cancelAssistant, useAssistant } from '../conversation';
+import { cancelAssistant, replaceEvidence, useAssistant } from '../conversation';
+import { sendAssistant } from '../request';
+import { safeIri } from './semantic';
 import { architectureSample, idsOfType, sampleModel } from './coordination.test-support';
 
 const initial = useViewerStore.getState();
@@ -148,4 +150,30 @@ test('#6833 semantic: the Linked records panel header attaches its records', asy
   click(button);
   assert.equal(useAssistant.getState().snapshot?.source, 'semantic');
   assert.equal(useAssistant.getState().snapshot?.totalRows, 5);
+});
+
+test('#6833 semantic: fragments and malformed IRIs never carry tokens into evidence', () => {
+  assert.equal(safeIri('https://records.example.org/rec#access_token=FRAGMENT-TOKEN'), 'https://records.example.org/rec');
+  for (const raw of ['https://user:pw@[bad/rec?token=MALFORMED-TOKEN', 'urn:x:rec?sig=URN-TOKEN#frag=URN-FRAGMENT', 'reader:pw@host/rec']) {
+    const safe = safeIri(raw);
+    for (const secret of ['MALFORMED-TOKEN', 'URN-TOKEN', 'URN-FRAGMENT', 'pw@']) assert.ok(!safe.includes(secret), `${raw} -> ${safe}`);
+  }
+});
+
+test('#6833 semantic: a Linked records change while an answer streams makes that answer stale', async () => {
+  const store = await seedModels(['A']);
+  const session = await loadPanelChunk();
+  const door = idsOfType(store, 'IfcDoor')[0] ?? idsOfType(store, 'IfcWall')[0];
+  session.getState().setDocument({ profile: PROFILE_ID, completeness: 'partial', resources: records(store.entities.getGlobalId(door)) });
+  replaceEvidence(captureEvidence('semantic'));
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(new ReadableStream());
+  try {
+    const pending = sendAssistant('Explain', 'openai/gpt-free', '/api/chat');
+    await new Promise(resolve => setImmediate(resolve));
+    session.getState().setDocument(undefined);
+    await pending;
+  } finally { globalThis.fetch = originalFetch; }
+  assert.equal(useAssistant.getState().error, 'stale-evidence', 'the viewer store never changed, the linked records did');
+  assert.equal(useAssistant.getState().messages.length, 0);
 });

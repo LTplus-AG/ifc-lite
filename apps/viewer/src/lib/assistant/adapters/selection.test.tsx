@@ -132,3 +132,12 @@ test('the Properties panel header discusses the selection, and an edit in the pa
   assert.equal(evidenceIsCurrent(first), false);
   assert.equal(pset(rowsOf(discuss())[0], 'Pset_Review')?.Checked, 'yes');
 });
+
+// #6833: multi-model actions write `selectedEntity` without `selectedEntityId`; the Properties panel shows it, so evidence must too.
+test('a single selection held only in selectedEntity is still the selection', async () => {
+  seedModel('arch', OFFSET, await sample('building-architecture.ifc'), WALL);
+  useViewerStore.setState({ selectedEntityId: null, selectedEntity: { modelId: 'arch', expressId: WALL } });
+  const snapshot = captureEvidence('selection');
+  assert.equal(JSON.parse(snapshot.payload).sourceAvailability, 'available');
+  assert.deepEqual(rowsOf(snapshot).map(row => [row.modelId, row.expressId, row.globalId]), [['arch', WALL, WALL_GUID]]);
+});

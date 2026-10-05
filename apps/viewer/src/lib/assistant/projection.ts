@@ -6,6 +6,10 @@
 export const ROW_LIMIT = 100;
 export const TEXT_LIMIT = 48_000;
 
+/** Field names that carry secrets (compared lower-case without separators): their values are withheld. */
+const CREDENTIAL_KEYS = /^(password|passwd|passphrase|secret|token|auth|authorization|cookie|credentials?)$|(password|secret|apikey|accesstoken|refreshtoken|idtoken|authtoken|bearertoken|sessiontoken|privatekey|authorization|credentials?)$/;
+const isCredentialKey = (key: string) => CREDENTIAL_KEYS.test(key.toLowerCase().replace(/[^a-z0-9]/g, ''));
+
 /** Explicitly bounded projection. No source buffers, stores, typed arrays or credentials. */
 export function evidenceJson(value: unknown): { text: string; truncated: boolean } {
   let remaining = 1800;
@@ -40,7 +44,8 @@ export function evidenceJson(value: unknown): { text: string; truncated: boolean
     if (Object.getPrototypeOf(item) !== Object.prototype) { truncated = true; return '[omitted: unsupported object]'; }
     const entries = Object.entries(item);
     if (entries.length > 64) truncated = true;
-    return Object.fromEntries(entries.slice(0, 64).map(([key, child]) => [key, project(child, depth + 1)]));
+    return Object.fromEntries(entries.slice(0, 64).map(([key, child]) =>
+      [key, isCredentialKey(key) ? '[omitted: credential]' : project(child, depth + 1)]));
   }
   const projected = project(value, 0);
   const text = JSON.stringify(projected);

@@ -30,6 +30,16 @@ function undoDepth(s: ViewerState): number {
   return depth;
 }
 
+/** Live edits as the drawer lists them (reverted pairs hidden), memoised per journal: readiness runs on every store change. */
+let liveCount: { stacks: ViewerState['undoStacks']; tags: ViewerState['mutationBatchTags']; count: number } | null = null;
+function liveEdits(s: ViewerState): number {
+  if (liveCount?.stacks !== s.undoStacks || liveCount.tags !== s.mutationBatchTags) {
+    const operations = changeOperations(s.undoStacks, s.mutationBatchTags, inverseMutationTargets(useViewerStore));
+    liveCount = { stacks: s.undoStacks, tags: s.mutationBatchTags, count: operations.reduce((sum, operation) => sum + operation.mutations.length, 0) };
+  }
+  return liveCount.count;
+}
+
 function stackDepths(stacks: ReadonlyMap<string, readonly Mutation[]>): Record<string, number> {
   return Object.fromEntries([...stacks].map(([modelId, stack]) => [modelId, stack.length]));
 }
@@ -67,8 +77,8 @@ export const changesAdapter: EvidenceAdapter = {
   suggestionKeys: ['assistantSources.changes.suggestSummary', 'assistantSources.changes.suggestReview'],
   readiness: s => {
     if (s.models.size === 0) return { status: { labelKey: 'assistant.pickNoModels' }, ready: false };
-    const depth = undoDepth(s);
-    return depth > 0 ? { status: { labelKey: 'assistantSources.changes.ready', params: { count: depth } }, ready: true }
+    const edits = liveEdits(s);
+    return edits > 0 ? { status: { labelKey: 'assistantSources.changes.ready', params: { count: edits } }, ready: true }
       : { status: { labelKey: 'assistantSources.changes.none' }, ready: false };
   },
   // The journal maps are replaced on every record, undo, redo and revert.

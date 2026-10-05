@@ -15,6 +15,7 @@ import { revertChangeOperation } from '@/lib/changes/revert-change-operation';
 import { inverseMutationTargets } from '@/store/slices/mutation-inverse-registry';
 import { captureEvidence, evidenceIsCurrent } from '../evidence';
 import { cancelAssistant, useAssistant } from '../conversation';
+import { adapterFor } from './registry';
 import { architectureSample, idsOfType, sampleModel } from './coordination.test-support';
 
 const initial = useViewerStore.getState();
@@ -113,6 +114,8 @@ test('#6833 changes: reverted pairs are hidden as in the drawer and an edit stal
   assert.equal(snapshot.totalRows, 1, 'the reverted edit and its inverse are not reported as live edits');
   assert.equal(summary.hiddenRevertedEdits, 2);
   assert.equal(rowsOf(snapshot.payload)[0].propName, 'Owner');
+  assert.deepEqual(adapterFor('changes').readiness(useViewerStore.getState()).status,
+    { labelKey: 'assistantSources.changes.ready', params: { count: 1 } }, 'the picker counts the edits capture attaches');
 
   useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
   assert.equal(evidenceIsCurrent(snapshot), false);

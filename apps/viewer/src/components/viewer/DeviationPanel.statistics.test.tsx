@@ -381,3 +381,17 @@ it('DeviationPanel #6833 reads the statistics back on mount when a re-run droppe
   assert.equal(useViewerStore.getState().pointCloudDeviationStatistics?.overall.maxAbs, ladder(400, 0.004).values.reduce((m, v) => Math.max(m, Math.abs(v)), 0));
   assert.equal(stub.computeCalls(), 1, 'remount reads back; it does not recompute');
 });
+
+it('DeviationPanel #6833 re-reads after a COPC re-run when it mounted with statistics already stored', async () => {
+  const stub = stubRenderer();
+  const first = render(<DeviationPanel triangleCount={1} />);
+  await computeWith(first, stub, ladder(1000, 0.04));
+  cleanup();
+  const container = render(<DeviationPanel triangleCount={1} />);
+  assert.equal(stat(container, 'maxAbs'), '40.0 mm', 'the stored statistics show on remount');
+  assert.equal(stub.readbacks.length, 1, 'stored statistics are not read again on mount');
+  act(() => { useViewerStore.getState().bumpPointCloudDeviationRevision(); });
+  await waitFor(() => stub.readbacks.length === 2, 'refresh readback started');
+  await act(async () => { stub.readbacks[1](ladder(400, 0.004)); });
+  await waitFor(() => stat(container, 'maxAbs') === '4.0 mm', 'refreshed statistics rendered');
+});

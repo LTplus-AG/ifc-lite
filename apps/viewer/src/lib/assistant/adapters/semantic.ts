@@ -26,13 +26,19 @@ function bounded(text: string, limit: number): string {
   return text.length > limit ? `${text.slice(0, limit)}…` : text;
 }
 
-/** Record IRIs are identities; userinfo and query strings (where signed tokens live) are dropped. */
+/** Without a parseable host: cut the query and fragment, and any userinfo before the first `@` of the authority. */
+function strippedIri(value: string): string {
+  const base = value.split(/[?#]/, 1)[0];
+  return base.replace(/^([a-z][a-z0-9+.-]*:\/\/)?[^/@]*@/i, '$1');
+}
+
+/** Record IRIs are identities; userinfo, query strings and fragments (where signed tokens live) are dropped. */
 export function safeIri(value: string): string {
   let url: URL;
   try { url = new URL(value); }
-  catch { return bounded(value, LABEL_CHARS); }
-  if (!url.host) return bounded(value, LABEL_CHARS);
-  url.username = ''; url.password = ''; url.search = '';
+  catch { return bounded(strippedIri(value), LABEL_CHARS); }
+  if (!url.host) return bounded(strippedIri(value), LABEL_CHARS);
+  url.username = ''; url.password = ''; url.search = ''; url.hash = '';
   return bounded(url.href, LABEL_CHARS);
 }
 

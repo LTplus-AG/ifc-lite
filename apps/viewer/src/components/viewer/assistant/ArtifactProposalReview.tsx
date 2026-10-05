@@ -22,7 +22,8 @@ import { fieldSites } from '@/lib/assistant/artifacts/field-refs';
 import { resolveFields, type FieldResolution } from '@/lib/assistant/artifacts/field-candidates';
 import { modelSchemaIndex, type ModelSchemaIndex } from '@/lib/assistant/artifacts/model-schema';
 import { isPreviewCurrent, previewArtifact, type ArtifactPreview } from '@/lib/assistant/artifacts/artifact-preview';
-import { openFilterInSearch, openSavedArtifact, saveArtifact, type SavedArtifact } from '@/lib/assistant/artifacts/artifact-save';
+import { openFilterInSearch, openSavedArtifact, saveArtifact, type SaveRefusal, type SavedArtifact } from '@/lib/assistant/artifacts/artifact-save';
+import { chartScopeKey } from '@/lib/charts/datasets/elements';
 import { ArtifactAmbiguity } from './ArtifactAmbiguity';
 import { ArtifactPreviewView } from './ArtifactPreviewView';
 
@@ -34,6 +35,8 @@ const OPEN_LABEL: Record<ArtifactProposal['kind'], TranslationKey> = {
   'filter.proposal': 'assistantArtifacts.openFilter', 'list.proposal': 'assistantArtifacts.openList',
   'lens.proposal': 'assistantArtifacts.openLens', 'chart.proposal': 'assistantArtifacts.openChart',
 };
+
+const REFUSED: Record<SaveRefusal, TranslationKey> = { 'already-saved': 'assistantArtifacts.refused.alreadySaved', storage: 'assistantArtifacts.refused.storage' };
 
 /** The latest completed artifact answer; a refused one shows its reason on the proposal card instead. */
 export function ArtifactProposalReview({ onAsk }: { onAsk: ((prompt: string) => void) | null }) {
@@ -59,7 +62,10 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
   const models = useViewerStore((s) => s.models);
   const mutationViews = useViewerStore((s) => s.mutationViews);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const pinboardEntities = useViewerStore((s) => s.pinboardEntities);
   const [proposal, setProposal] = useState(initial);
+  // What a visible or basket chart counts beyond the models: a change reruns the engine.
+  const scopeKey = useViewerStore((s) => proposal.kind === 'chart.proposal' ? chartScopeKey(proposal.scope, s) : null);
   const [preview, setPreview] = useState<ArtifactPreview | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +92,8 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
 
   // The engine reruns whenever the proposal resolves or the models change, so the numbers shown are always current.
   useEffect(() => {
-    if (blocked) return;
+    // A run the previous pass aborted never reaches its own `finally`, so a blocked pass clears the indicator itself.
+    if (blocked) { setRunning(false); return; }
     const controller = new AbortController();
     setRunning(true);
     setError(null);
@@ -100,14 +107,14 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
       })
       .finally(() => { if (!controller.signal.aborted) setRunning(false); });
     return () => controller.abort();
-  }, [proposal, blocked, index]);
+  }, [proposal, blocked, index, scopeKey]);
 
-  const current = !!preview && !running && isPreviewCurrent(preview, { models, mutationVersion });
+  const current = !!preview && !running && isPreviewCurrent(preview, { models, mutationVersion, pinboardEntities });
   const save = () => {
     if (!preview) return;
     const outcome = saveArtifact(preview.artifact);
     if (outcome.ok) { setSaved(outcome.saved); setError(null); }
-    else setError(outcome.reason);
+    else setError(t(REFUSED[outcome.reason]));
   };
   return <section aria-label={t('assistantArtifacts.title')} className="mx-3 my-2 rounded border border-border text-xs">
     <h3 className="flex items-center gap-1.5 border-b border-border px-2 py-1.5 font-semibold">

@@ -11,7 +11,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
-import { fieldKey } from '@/lib/assistant/artifacts/field-refs';
+import { fieldKey, type FieldWhere } from '@/lib/assistant/artifacts/field-refs';
 import type { FieldCandidate, FieldResolution } from '@/lib/assistant/artifacts/field-candidates';
 
 type Unresolved = Extract<FieldResolution, { status: 'unresolved' }>;
@@ -25,12 +25,22 @@ export function ArtifactAmbiguity({ unresolved, onResolve, onAsk }: {
   const [picks, setPicks] = useState<Record<number, string>>({});
   const complete = unresolved.every((_, index) => picks[index] !== undefined);
   const named = (set: string, name: string) => `${set}.${name}`;
+  const whereText = (where: FieldWhere): string => {
+    switch (where.kind) {
+      case 'rule': return where.lensRule === undefined ? t('assistantArtifacts.where.rule', { group: where.group, rule: where.rule })
+        : t('assistantArtifacts.where.lensRule', { name: where.lensRule, group: where.group, rule: where.rule });
+      case 'column': return t('assistantArtifacts.where.column', { column: where.column });
+      case 'colourBy': return t('assistantArtifacts.where.colourBy');
+      case 'dimension': return t('assistantArtifacts.where.dimension');
+      case 'measure': return t('assistantArtifacts.where.measure');
+    }
+  };
   return <fieldset aria-label={t('assistantArtifacts.ambiguityTitle')} className="min-w-0 rounded border border-amber-500/40 bg-amber-500/10 p-2 space-y-2">
     <p className="font-medium">{t('assistantArtifacts.ambiguityTitle')}</p>
     <p>{t('assistantArtifacts.ambiguityHint')}</p>
-    {unresolved.map((resolution, index) => <fieldset key={`${resolution.site.where}:${index}`} className="min-w-0 space-y-1">
+    {unresolved.map((resolution, index) => <fieldset key={`${fieldKey(resolution.site)}:${index}`} className="min-w-0 space-y-1">
       <legend className="font-medium break-words">{t(resolution.site.kind === 'quantity' ? 'assistantArtifacts.ambiguityQuantity' : 'assistantArtifacts.ambiguityProperty',
-        { field: named(resolution.site.set, resolution.site.name), where: resolution.site.where })}</legend>
+        { field: named(resolution.site.set, resolution.site.name), where: whereText(resolution.site.where) })}</legend>
       {resolution.candidates.length === 0 ? <p>{t('assistantArtifacts.ambiguityNone')}</p>
         : resolution.candidates.map((candidate) => {
           const key = fieldKey(candidate);

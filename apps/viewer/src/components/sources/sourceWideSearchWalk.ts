@@ -41,7 +41,10 @@ export function createSourceWideSearchWalk(provider: FileSourceProvider, ctx: Pl
           if (task.files && (!provider.manifest.capabilities.listFilesIsRecursive || container.parentId === task.parentId)) {
             tasks.push({ kind: 'files', project: task.project, containerId: container.id });
           }
-          if (provider.manifest.capabilities.containerListing === 'direct-children') {
+          if (provider.manifest.capabilities.containerListing === 'direct-children'
+            || (!provider.manifest.capabilities.listFilesIsRecursive && task.parentId === undefined && container.parentId === undefined)) {
+            // Flat listings expose file areas first, then each area's subtree.
+            // Per-folder files still require discovering that subtree once.
             tasks.push({ kind: 'containers', project: task.project, parentId: container.id,
               files: !provider.manifest.capabilities.listFilesIsRecursive });
           }

@@ -306,6 +306,28 @@ describe('Cloud workspace (#6897)', () => {
     assert.deepEqual(requested, ['root']); assert.equal(page.items.length, 1); assert.equal(page.cursor, undefined);
   });
 
+  it('searches flat file-area subtrees with per-folder files (#6898)', async () => {
+    const original = provider(); const listed: (string | undefined)[] = []; const requested: string[] = [];
+    const p: FileSourceProvider = { ...original, searchFiles: undefined,
+      manifest: { ...original.manifest, capabilities: { ...original.manifest.capabilities, search: false, containerListing: 'flat-subtree', listFilesIsRecursive: false } },
+      listProjects: async () => ({ items: [{ id: 'p', name: 'Project' }] }),
+      listContainers: async (_ctx, _project, parent) => {
+        listed.push(parent);
+        return { items: parent === undefined ? [{ id: 'area', name: 'Documents' }]
+          : [{ id: 'folder', name: 'Models', parentId: 'area' }, { id: 'deep', name: 'Archive', parentId: 'folder' }] };
+      },
+      listFiles: async (_ctx, _project, container) => {
+        requested.push(container);
+        return { items: container === 'deep' ? [{ ...file, containerId: 'deep' }] : [] };
+      },
+    };
+    const page = await createSourceWideSearchWalk(p, context(p), 'Tower')(undefined, new AbortController().signal);
+    assert.deepEqual(listed, [undefined, 'area'], 'fetch the whole flat subtree once');
+    assert.deepEqual(requested, ['area', 'folder', 'deep'], 'read each folder independently');
+    assert.deepEqual(page.items.map(({ file, project }) => [project.id, file.containerId, file.name]), [['p', 'deep', 'Tower.ifc']]);
+    assert.equal(page.cursor, undefined);
+  });
+
   it('keeps discovery search reachable for an incomplete one-project Microsoft catalog (#6898)', async () => {
     const original = provider();
     const p: FileSourceProvider = { ...original, manifest: { ...original.manifest, name: 'msgraph', capabilities: { ...original.manifest.capabilities, projectsAreDiscoverableOnly: true } },

@@ -27,6 +27,7 @@ interface SourceFolderStepProps {
   selectedContainer: SourceContainer | null;
   onSelectContainer: (container: SourceContainer) => void;
   sortedFolders: SourceContainer[];
+  favouriteFolders: readonly SourceContainer[];
   allFiles: readonly SourceFile[];
   /** Only grey out folders that contain no files when the catalog is complete
    *  enough to actually know that (flat-subtree + recursive files, no pages
@@ -76,6 +77,7 @@ export function SourceFolderStep({
   selectedContainer,
   onSelectContainer,
   sortedFolders,
+  favouriteFolders,
   allFiles,
   gateEmptyFolders,
   loadingFolders,
@@ -271,7 +273,7 @@ export function SourceFolderStep({
               )}
             </div>
           )}
-          <SourceFolderLocation trail={trail} folders={[selectedFileArea, ...sortedFolders.filter((folder) => folder.id !== selectedFileArea.id)]}
+          <SourceFolderLocation trail={trail} folders={favouriteFolders}
             selected={selectedContainer ?? selectedFileArea} searchActive={searchActive} isFavourite={isFolderFavourite}
             onSelect={onSelectContainer} onToggle={onToggleFolderFavourite} />
           {!searchActive && childFolders.length > 0 && (

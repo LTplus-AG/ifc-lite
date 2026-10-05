@@ -52,6 +52,16 @@ export function useSourceFavourites({
 
   const keys = useMemo(() => new Set(items.map((item) => favouriteKey(item))), [items]);
 
+  // Stored shortcuts must remain available before a deep/paged folder has
+  // been listed. Reuse upstream metadata when known; never invent a parent.
+  const favouriteFolders = useMemo<SourceContainer[]>(() => items
+    .filter((item) => item.kind === 'folder' && item.providerId === providerId
+      && item.identityId === identityId && item.projectId === selectedProject?.id
+      && item.fileAreaId === selectedFileArea?.id)
+    .map((item) => (item.containerId === selectedFileArea?.id ? selectedFileArea : folders.find((folder) => folder.id === item.containerId))
+      ?? { id: item.containerId, name: item.containerName }),
+  [items, providerId, identityId, selectedProject?.id, selectedFileArea, folders]);
+
   const apply = useCallback(
     (favourite: SourceFavourite) => {
       const result = toggleFavourite(favourite);
@@ -158,7 +168,7 @@ export function useSourceFavourites({
   // Memoised: the browser's favourite-jump effect lists this object in its
   // dependencies, and a fresh literal every render would re-run it every render.
   return useMemo(
-    () => ({ isFolderFavourite, toggleFolderFavourite, isFileFavourite, toggleFileFavourite, rename }),
-    [isFileFavourite, isFolderFavourite, rename, toggleFileFavourite, toggleFolderFavourite],
+    () => ({ favouriteFolders, isFolderFavourite, toggleFolderFavourite, isFileFavourite, toggleFileFavourite, rename }),
+    [favouriteFolders, isFileFavourite, isFolderFavourite, rename, toggleFileFavourite, toggleFolderFavourite],
   );
 }

@@ -12,7 +12,8 @@ export function useSourceProviderPins() {
   const [state, setState] = useState<{ ids: readonly string[]; restoreFailed: boolean }>(() => {
     try {
       const value: unknown = JSON.parse(localStorage.getItem(KEY) ?? '[]');
-      return { ids: Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === 'string'))].slice(0, 100) : [], restoreFailed: false };
+      if (!Array.isArray(value) || value.some((id) => typeof id !== 'string')) throw new Error('Invalid provider pin data');
+      return { ids: [...new Set(value.filter((id): id is string => typeof id === 'string'))].slice(0, 100), restoreFailed: false };
     } catch (error) {
       console.warn('[sources] Cannot restore provider pins', error);
       return { ids: [], restoreFailed: true };

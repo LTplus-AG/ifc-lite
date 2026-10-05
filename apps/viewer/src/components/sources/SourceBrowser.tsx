@@ -331,6 +331,7 @@ export function SourceBrowser({
           selectedContainer={selectedContainer}
           onSelectContainer={selectContainer}
           sortedFolders={sortedFolders}
+          favouriteFolders={favourites.favouriteFolders}
           allFiles={allFiles}
           gateEmptyFolders={
             capabilities.containerListing === 'flat-subtree' &&

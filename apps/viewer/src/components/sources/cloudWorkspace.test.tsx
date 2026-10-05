@@ -330,4 +330,29 @@ describe('Cloud workspace (#6897)', () => {
     click(shortcut('p2')); await pump(); assert.ok(ui.textContent?.includes('p2.ifc'));
     assert.equal(ui.textContent?.includes('p1.ifc'), false, 'old project files cannot survive the favorite jump');
   });
+
+  it('reports parseable malformed pin data instead of silently dropping pins (#6898)', async () => {
+    for (const value of ['{}', '["workspace-fixture",5]']) {
+      localStorage.setItem('ifc-lite-source-provider-pins', value);
+      const p = provider();
+      const ui = render(<SourceHostProvider additionalProviders={[() => p]}><SourcesPanel onClose={() => {}} /></SourceHostProvider>);
+      await pump();
+      assert.ok(ui.querySelector('[role="alert"]')?.textContent?.includes('pinned sources could not be restored'));
+      click(labelled(ui, 'Browse Workspace Files')); await pump();
+      assert.ok(labelled(ui, 'Search files in Workspace Files'));
+      cleanup();
+    }
+  });
+
+  it('opens a stored deep folder shortcut before that folder has been listed (#6898)', async () => {
+    const p = provider(); const requests: string[] = [];
+    p.listContainers = async (_ctx, _project, parent) => ({ items: parent ? [{ id: 'models', name: 'Models', parentId: 'root' }] : [{ id: 'root', name: 'Documents' }] });
+    p.listFiles = async (_ctx, _project, container) => { requests.push(container); return { items: container === 'archive' ? [{ ...file, name: 'Archive.ifc', containerId: 'archive' }] : [] }; };
+    saveFavourites(p.manifest.name, [{ providerId: p.manifest.name, kind: 'folder', projectId: 'p1', projectName: 'First Project', fileAreaId: 'root', fileAreaName: 'Documents', containerId: 'archive', containerName: 'Deep archive', identityId: null, addedAt: 1 }]);
+    const ui = browser(p); await pump();
+    click(named(ui, 'First Project')); await pump(); click(named(ui, 'Documents')); await pump();
+    assert.deepEqual(requests, ['root'], 'deep folder has not been fetched yet');
+    click(named(labelled(ui, 'Favorite folders') as HTMLElement, 'Deep archive')); await pump();
+    assert.deepEqual(requests, ['root', 'archive']); assert.ok(ui.textContent?.includes('Archive.ifc'));
+  });
 });

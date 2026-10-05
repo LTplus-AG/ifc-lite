@@ -131,6 +131,10 @@ test('a mapping with two columns writing one value or an empty set name is refus
   assert.deepEqual(conversion.batches, []);
   const unnamed = mapping({ columns: [{ column: 'Fire', target: 'property', pset: ' ', name: 'FireRating', valueType: 'text' }] });
   assert.equal(tableToModelChanges(useViewerStore.getState(), { modelId: 'sample', rows: rows.slice(0, 2), mapping: unnamed }).refusal, 'invalid-mapping');
+  // A mapping row with a target but no source column, or no columns at all, is refused too, never "nothing to change".
+  const sourceless = mapping({ columns: [{ column: '', target: 'property', pset: 'Pset_WallCommon', name: 'FireRating', valueType: 'text' }] });
+  assert.equal(tableToModelChanges(useViewerStore.getState(), { modelId: 'sample', rows: rows.slice(0, 2), mapping: sourceless }).refusal, 'invalid-mapping');
+  assert.equal(tableToModelChanges(useViewerStore.getState(), { modelId: 'sample', rows: rows.slice(0, 2), mapping: mapping({ columns: [] }) }).refusal, 'invalid-mapping');
 });
 
 // #6912: the Data Connector reads rows during render; a CSV the parser rejects is no rows, not a crashed dialog.

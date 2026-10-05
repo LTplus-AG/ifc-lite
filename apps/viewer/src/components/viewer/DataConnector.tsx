@@ -485,7 +485,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
   // Review as changes: the same mapping, converted to checked changes with the model's current values expected.
   const handleReview = useCallback(() => {
     if (!reviewKey || !matchColumn) return;
-    const columns = mappings.filter((m) => m.sourceColumn && COLUMN_TYPES[m.valueType]) // a blank target refuses as invalid-mapping
+    const columns = mappings.filter((m) => (m.sourceColumn || m.targetProperty) && COLUMN_TYPES[m.valueType]) // blank halves refuse as invalid-mapping
       .map((m) => ({ column: m.sourceColumn, target: 'property' as const, pset: m.targetPset, name: m.targetProperty, valueType: COLUMN_TYPES[m.valueType]! }));
     const mapping: TableMapping = { version: 1, kind: 'table.mapping', title: t('tableChanges.importTitle', { file: fileName }),
       identity: { column: matchColumn, key: reviewKey }, columns };

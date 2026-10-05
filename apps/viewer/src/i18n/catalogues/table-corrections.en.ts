@@ -16,7 +16,7 @@ export const tableCorrectionsEn = {
   'tableChanges.refused': 'This produces {total} changes, more than the {limit} that can be reviewed. Narrow the table or selection, or use the direct path.',
   'tableChanges.refusedModel': 'The target model is not loaded.',
   'tableChanges.refusedTagScan': 'The model has too many elements to match by Tag. Use a GlobalId or Name column.',
-  'tableChanges.refusedMapping': 'The mapping writes one value from two columns or has a property set or name missing. Correct the mapping and review again.',
+  'tableChanges.refusedMapping': 'The mapping has no column to review, writes one value from two columns, or has a column, property set or name missing. Correct the mapping and review again.',
   'tableChanges.nothing': 'Nothing to change: every value is already set or was skipped.',
   'tableChanges.issuesTitle': 'Skipped ({count})',
   'tableChanges.issuesMore': '{count} more not shown',

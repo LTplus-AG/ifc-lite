@@ -73,7 +73,9 @@ export function tableToModelChanges(state: ViewerState, input: TableConversionIn
   // Structural problems only (a column mapped twice, two columns writing one value, an empty name);
   // a column the rows lack just reads as empty cells.
   const declared = [mapping.identity.column, ...mapping.columns.map(target => target.column)];
-  if (validateTableMapping(mapping, declared).length > 0) return empty('invalid-mapping');
+  // A mapping with no column or an unnamed column (a half-filled mapping row) has nothing reviewable either.
+  if (mapping.columns.length === 0 || mapping.columns.some(target => !target.column.trim())
+    || validateTableMapping(mapping, declared).length > 0) return empty('invalid-mapping');
   const reader = modelReader(state, modelId);
   if (!reader) return empty('model-unavailable');
   const identity = resolveTableIdentity(reader, rows, mapping.identity);

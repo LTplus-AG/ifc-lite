@@ -36,6 +36,14 @@ const CITATION = /^(?:E[1-9]\d{0,2}|summary)$/;
 const FENCE = /```(?:json)?[ \t]*\n([\s\S]*?)\n[ \t]*```/g;
 const DECLARES = /"kind"\s*:\s*"report\.claims"/;
 
+/** Row citations written in a claim statement; each one is checked like a listed citation. */
+function textCitations(statement: string): string[] {
+  const named = [...new Set([...statement.matchAll(/\bE\d+\b/g)].map(match => match[0]))];
+  const invalid = named.filter(citation => !CITATION.test(citation));
+  if (invalid.length) throw new Error(`Claim text cites ${invalid.join(', ')}, which is not a captured row citation such as E3.`);
+  return named;
+}
+
 /** Splits an answer into prose and its typed claims block. A declared but invalid block is refused, never ignored. */
 export function splitReportAnswer(answer: string): { prose: string; envelope: ReportClaimsEnvelope | null } {
   if (!DECLARES.test(answer)) return { prose: answer, envelope: null };
@@ -81,8 +89,9 @@ function parseEnvelope(value: unknown): ReportClaimsEnvelope {
     if (!Array.isArray(cited) || cited.length > 100 || !cited.every(c => typeof c === 'string' && CITATION.test(c))) {
       throw new Error('Claim citations must be captured row citations such as E3.');
     }
-    const citations = [...new Set([...cited as string[], ...facts.map(fact => fact.citation)])];
-    return { text: claim.text.trim(), citations, facts };
+    const statement = claim.text.trim();
+    const citations = [...new Set([...cited as string[], ...facts.map(fact => fact.citation), ...textCitations(statement)])];
+    return { text: statement, citations, facts };
   });
   return { language: typeof value.language === 'string' && value.language.length <= 35 ? value.language : null, claims };
 }
@@ -125,6 +134,8 @@ export function checkProposedClaims(claims: ProposedClaim[], captured: CapturedE
 export function editClaim(claim: CheckedClaim, textValue: string, captured: CapturedEvidence): CheckedClaim {
   if (!text(textValue, 1200)) throw new Error('A claim needs its statement text (at most 1,200 characters).');
   const kept = claim.results.filter(result => result.check.kind !== 'mismatch' && result.check.kind !== 'unknown-citation').map(result => result.fact);
+  const statement = textValue.trim();
   const known = claim.citations.filter(citation => !claim.unknownCitations.includes(citation));
-  return checkClaim({ id: claim.id, text: textValue.trim(), citations: known, facts: kept, edited: true }, captured);
+  const citations = [...new Set([...known, ...textCitations(statement)])];
+  return checkClaim({ id: claim.id, text: statement, citations, facts: kept, edited: true }, captured);
 }

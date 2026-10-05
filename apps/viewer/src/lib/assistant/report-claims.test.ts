@@ -58,3 +58,21 @@ test('a reviewer edit drops contradicted facts and unknown citations and is re-c
   assert.equal(edited.status, 'supported');
   assert.throws(() => editClaim(claim, '   ', captured), /statement text/);
 });
+
+// Review of #6972: a row named only in the claim text is still a citation, so it is checked and recorded.
+test('E-numbers written in the claim text are citations; unknown ones contradict the claim', () => {
+  const { envelope } = splitReportAnswer(typedReport('', [
+    { text: 'E2 is soft, unlike E1.', facts: [{ citation: 'E2', field: 'status', value: 'soft' }] },
+    { text: 'E9 is resolved.' },
+  ]));
+  assert.deepEqual(envelope!.claims.map(claim => claim.citations), [['E2', 'E1'], ['E9']]);
+  const [soft, resolved] = checkProposedClaims(envelope!.claims, captured);
+  assert.equal(soft.status, 'supported');
+  assert.equal(resolved.status, 'contradicted');
+  assert.deepEqual(resolved.unknownCitations, ['E9']);
+  const edited = editClaim(soft, 'E2 is soft, like E7.', captured);
+  assert.deepEqual(edited.citations, ['E2', 'E1', 'E7'], 'a reviewer edit is scanned too');
+  assert.deepEqual(edited.unknownCitations, ['E7']);
+  assert.equal(edited.status, 'contradicted');
+  assert.throws(() => splitReportAnswer(typedReport('', [{ text: 'E0 is the first row.' }])), /not a captured row citation/);
+});

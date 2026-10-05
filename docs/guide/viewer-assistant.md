@@ -81,7 +81,7 @@ After a completed answer about any analysis source (every source except Flow, wh
 
 ### Checked claims
 
-A report answer may end with one fenced `report.claims` JSON block. Each claim is one statement with the rows it cites and the native values it asserts, each with a field path into the cited row (or `summary`) and an optional unit:
+A report answer may end with one fenced `report.claims` JSON block. Each claim is one statement with the rows it cites and the native values it asserts, each with a field path into the cited row (or `summary`) and an optional unit. A row named in the statement itself (such as `E1` below) counts as a citation even when `citations` omits it, and so does one a reviewer writes into an edited claim:
 
 ```json
 {"version":1,"kind":"report.claims","language":"de","claims":[

@@ -21,6 +21,7 @@ import { resolveCapturedClash } from '@/lib/assistant/clash-group-proposal';
 import { useClash } from '@/hooks/useClash';
 import { EvidenceSummary } from './EvidenceSummary';
 import { AssistantConversation } from './AssistantConversation';
+import { FreeQuotaNote } from './AssistantUsage';
 
 const FlowProposalReview = lazy(() => import('./FlowProposalReview').then(m => ({ default: m.FlowProposalReview })));
 const ReportDraftReview = lazy(() => import('./ReportDraftReview').then(m => ({ default: m.ReportDraftReview })));
@@ -42,16 +43,18 @@ export function AssistantPanel() {
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const busy = state.status === 'streaming';
+  const proxyUrl = import.meta.env.VITE_LLM_PROXY_URL || '/api/chat';
   const canAsk = !!state.snapshot && !busy && !stale;
   const errors = { 'missing-model': t('assistant.missingModel'), 'missing-key': t('assistant.missingKey'), 'context-limit': t('assistant.contextLimit'),
-    'stale-evidence': t('assistant.stale'), 'truncated-output': t('assistant.truncated'), 'empty-output': t('assistant.emptyOutput'), 'request-timeout': t('assistant.timeout') };
+    'stale-evidence': t('assistant.stale'), 'truncated-output': t('assistant.truncated'), 'empty-output': t('assistant.emptyOutput'), 'request-timeout': t('assistant.timeout'),
+    'budget-exhausted': t('assistantUsage.budgetExhausted') };
   const errorText = state.error && (errors[state.error as keyof typeof errors] ?? state.error);
   // Follow the newest turn without stealing focus from the composer.
   useEffect(() => { endRef.current?.scrollIntoView?.({ block: 'end' }); }, [state.messages.length, state.pendingPrompt, state.output, state.error]);
   const submit = () => {
     if (!prompt.trim() || !canAsk) return;
     const text = prompt;
-    void sendAssistant(text, model, import.meta.env.VITE_LLM_PROXY_URL || '/api/chat').then(success => {
+    void sendAssistant(text, model, proxyUrl).then(success => {
       if (success) setPrompt(current => current === text ? '' : current);
     });
   };
@@ -117,6 +120,7 @@ export function AssistantPanel() {
         {busy ? <Button type="button" size="sm" variant="outline" className="h-7 shrink-0" onClick={cancelAssistant}><Square className="h-3 w-3 mr-1" />{t('assistant.cancel')}</Button>
           : <Button type="submit" size="sm" className="h-7 shrink-0" disabled={!canAsk || !prompt.trim()}><Send className="h-3 w-3 mr-1" />{t('assistant.send')}</Button>}
       </div>
+      <FreeQuotaNote model={model} proxyUrl={proxyUrl} />
     </form>
     <ByokKeyModal open={keysOpen} onOpenChange={setKeysOpen} />
   </section>;

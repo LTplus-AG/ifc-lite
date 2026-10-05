@@ -13,6 +13,8 @@ import { outputTokenLimit, PROXY_OUTPUT_TOKEN_CEILING } from '../../../../../sha
 import { readSseStream } from './sse-reader.js';
 export { drainSseBuffer, readSseStream } from './sse-reader.js';
 import { buildCacheableSystem, logCacheHit } from './prompt-cache.js';
+import { chatCompletionsUsage, type TokenUsage } from './token-usage.js';
+import { parseUsageFromHeaders } from './usage-quota.js';
 /** A text content part in a multimodal message */
 export interface TextContentPart {
   type: 'text';
@@ -71,87 +73,18 @@ export interface StreamOptions {
   onError: (error: Error) => void;
   /** Called with usage info from response headers */
   onUsageInfo?: (usage: UsageInfo) => void;
+  /** Called with provider-reported token counts when the stream carries them. */
+  onTokenUsage?: (usage: TokenUsage) => void;
 }
 
 const STREAM_REQUEST_TIMEOUT_MS = 45_000;
-
-function parseUsageFromHeaders(headers: Headers): UsageInfo | null {
-  const creditsUsed = parseInt(headers.get('X-Credits-Used') ?? '0', 10);
-  const creditsLimit = parseInt(headers.get('X-Credits-Limit') ?? '0', 10);
-  const usageUsed = parseInt(headers.get('X-Usage-Used') ?? '0', 10);
-  const usageLimit = parseInt(headers.get('X-Usage-Limit') ?? '0', 10);
-
-  if (creditsLimit > 0) {
-    const billable = headers.get('X-Credits-Billable');
-    return {
-      type: 'credits',
-      used: creditsUsed,
-      limit: creditsLimit,
-      pct: parseInt(headers.get('X-Credits-Pct') ?? '0', 10),
-      resetAt: parseInt(headers.get('X-Credits-Reset') ?? '0', 10),
-      billable: billable === null ? undefined : billable === 'true',
-    };
-  }
-
-  if (usageLimit > 0) {
-    return {
-      type: 'requests',
-      used: usageUsed,
-      limit: usageLimit,
-      pct: parseInt(headers.get('X-Usage-Pct') ?? '0', 10),
-      resetAt: parseInt(headers.get('X-Usage-Reset') ?? '0', 10),
-    };
-  }
-
-  return null;
-}
-
-/**
- * Fetch current usage snapshot without sending a chat message.
- * Used for instant UI hydration and periodic refresh.
- */
-export async function fetchUsageSnapshot(proxyUrl: string): Promise<UsageInfo | null> {
-  const isDev = Boolean((import.meta as unknown as { env?: Record<string, unknown> }).env?.DEV);
-  const headers: Record<string, string> = {};
-
-  const snapshotUrl = `${proxyUrl}${proxyUrl.includes('?') ? '&' : '?'}usage=1`;
-  const appSnapshotUrl = '/api/chat?usage=1';
-  const canFallbackToAppProxy = isDev && snapshotUrl !== appSnapshotUrl;
-  const fetchSnapshot = (url: string) => fetch(url, { method: 'GET', headers });
-
-  let response: Response;
-  try {
-    response = await fetchSnapshot(snapshotUrl);
-  } catch {
-    if (!canFallbackToAppProxy) return null;
-    try {
-      response = await fetchSnapshot(appSnapshotUrl);
-    } catch {
-      return null;
-    }
-  }
-
-  if (!response.ok && response.status === 404 && canFallbackToAppProxy) {
-    try {
-      const retry = await fetchSnapshot(appSnapshotUrl);
-      if (retry.ok || retry.status !== 404) {
-        response = retry;
-      }
-    } catch {
-      // keep original response
-    }
-  }
-
-  if (!response.ok) return null;
-  return parseUsageFromHeaders(response.headers);
-}
 
 /**
  * Stream a chat completion from the LLM proxy.
  * Parses SSE format (data: {...}\n\n).
  */
 export async function streamChat(options: StreamOptions): Promise<void> {
-  const { proxyUrl, model, messages, system, signal, onChunk, onComplete, onError, onUsageInfo, onFinishReason } = options;
+  const { proxyUrl, model, messages, system, signal, onChunk, onComplete, onError, onUsageInfo, onFinishReason, onTokenUsage } = options;
   const isDev = Boolean((import.meta as unknown as { env?: Record<string, unknown> }).env?.DEV);
 
   const headers: Record<string, string> = {
@@ -325,6 +258,10 @@ export async function streamChat(options: StreamOptions): Promise<void> {
       logCacheHit(parsed.__ifcLiteUsage);
       return;
     }
+
+    // The proxy forwards upstream chunks verbatim, so a provider usage chunk arrives as-is.
+    const tokenUsage = chatCompletionsUsage(parsed);
+    if (tokenUsage) onTokenUsage?.(tokenUsage);
 
     const content = parsed.choices?.[0]?.delta?.content;
     if (content) {

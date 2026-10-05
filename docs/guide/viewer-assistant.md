@@ -20,6 +20,14 @@ If the source or model changes, sending is disabled. **Refresh evidence and star
 
 Model selection and API keys use the existing scripting assistant controls. A request has an output budget and time limit. Incomplete answers are marked. Cancel stops the active request. Failed or cancelled questions stay in the composer for retry and do not consume conversation history.
 
+## Budgets and usage
+
+Each answer has an output ceiling of 4,096 tokens (lower if the selected route allows less) and a two-minute limit. Every attached evidence snapshot also gets one conversation budget: 16 requests and 40,960 output tokens, shared by first questions, retries and **Ask for a corrected proposal** follow-ups. When it is used up, sending is refused with a message and nothing reaches the provider; **Refresh evidence** or switching source starts a new budget. Failed and cancelled requests count as requests. Output tokens are charged as the provider reports them; when the provider reports nothing, the full ceiling is charged, except for a request that returned no text at all.
+
+Below each completed answer a small footer shows the provider-reported token counts and the elapsed time, for example `1,234 → 456 tokens · 24 s` (input → output). When the provider did not report usage it says `Usage not reported` instead; the viewer never estimates tokens. Anthropic keys always report usage, and so do OpenAI keys. Free models through the hosted proxy report usage only when their upstream provider includes it in the stream. These receipts stay in memory for the browser session: they hold model, route, times, outcome and counts, never prompts, answers or keys, and are not saved with conversations.
+
+With a free model selected, the composer footer shows how many free requests remain (`Free requests left: 44 of 50`), checked when the panel opens and after each answer. If the check fails it reads `unknown` and the failure is logged in the browser console.
+
 Explanations preserve native results. Unsaved conversations stay in the current browser session; closing the panel preserves them. Choose **Saved conversations** (the history button in the Assistant header), enter a name and choose **Save conversation** to keep completed turns after reload. Storage failures retain an exportable draft and expose retry or conflict controls. Library backup export/import includes saved assistant conversations.
 
 Opening a saved conversation displays archived evidence and disables sending. Refresh captures current native results and starts a new conversation. Backup imports preserve originals when identities conflict and do not grant archived evidence permission to continue. It does not run scripts, change model data, execute Flow graphs or create BCF issues.

@@ -15,6 +15,7 @@ import { parseFlowPatch } from '@/lib/assistant/flow-patch';
 import { parseModelChangeBatch } from '@/lib/actions/model-change';
 import { markdownHtml } from '@/lib/assistant/markdown';
 import { capturedEvidence, rowFields } from '@/lib/assistant/captured-rows';
+import { ReceiptFooter } from './AssistantUsage';
 
 const SUGGESTIONS: Record<AssistantSource, TranslationKey[]> = {
   clash: ['assistant.suggestClashSummary', 'assistant.suggestClashGroups'],
@@ -111,7 +112,7 @@ function Waiting() {
   return <p className="px-3 py-2 text-xs text-muted-foreground animate-pulse">{seconds >= 3 ? t('assistant.thinkingElapsed', { seconds }) : t('assistant.thinking')}</p>;
 }
 
-const Message = memo(function Message({ message: { role, content, model }, streaming, onCitation, onRepair }: {
+const Message = memo(function Message({ message: { role, content, model, receipt }, streaming, onCitation, onRepair }: {
   message: AssistantMessage; streaming?: boolean; onCitation?: (citation: string) => void; onRepair?: (prompt: string) => void;
 }) {
   const { t } = useTranslation();
@@ -136,6 +137,7 @@ const Message = memo(function Message({ message: { role, content, model }, strea
           // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- delegates to the native citation <button>s inside
           : <div className="break-words leading-relaxed" onClick={citationClick} dangerouslySetInnerHTML={{ __html: html }} />}
       {streaming && <span className="inline-block w-1.5 h-3.5 bg-blue-500 animate-pulse ml-0.5 align-text-bottom rounded-sm" aria-hidden="true" />}
+      {receipt && !streaming && <ReceiptFooter receipt={receipt} />}
     </div>
   </div>;
 });

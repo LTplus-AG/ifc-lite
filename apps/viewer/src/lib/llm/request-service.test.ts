@@ -1,0 +1,192 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import test, { afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { runModelRequest, type ModelRequest, type SendableRoute } from './request-service.js';
+import { createRootBudget, remainingBudget } from './root-budget.js';
+import { useRequestReceipts, RECEIPT_LIMIT, recordReceipt } from './request-receipts.js';
+import { modelCapabilities } from './model-capabilities.js';
+
+const originalFetch = globalThis.fetch;
+afterEach(() => { globalThis.fetch = originalFetch; useRequestReceipts.setState({ receipts: [] }); });
+
+type Sent = { url: string; body: Record<string, unknown> };
+
+/** Serve one SSE body per request and record what went out. */
+function serve(frames: string, init: ResponseInit = { status: 200, headers: { 'Content-Type': 'text/event-stream' } }): Sent[] {
+  const sent: Sent[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, request?: RequestInit) => {
+    sent.push({ url: String(input), body: JSON.parse(String(request?.body ?? '{}')) as Record<string, unknown> });
+    return new Response(frames, init);
+  }) as typeof fetch;
+  return sent;
+}
+
+const data = (events: unknown[]) => events.map(e => `data: ${JSON.stringify(e)}\n\n`).join('');
+const proxy: SendableRoute = { kind: 'proxy', model: 'openai/gpt-free' };
+const request = (overrides: Partial<ModelRequest> = {}): ModelRequest => ({
+  route: proxy, proxyUrl: '/api/chat', messages: [{ role: 'user', content: 'SECRET_PROMPT_TEXT' }],
+  maxOutputTokens: 4096, budget: createRootBudget(), timeoutMs: 10_000, ...overrides,
+});
+
+// Proxy: OpenRouter's final chunk carries `usage`; the proxy forwards it and appends its quota event.
+test('proxy stream: forwarded OpenRouter usage chunk becomes a reported receipt', async () => {
+  serve(data([
+    { choices: [{ delta: { content: 'Hello' }, finish_reason: null }] },
+    { choices: [{ delta: { content: '' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1234, completion_tokens: 456, total_tokens: 1690 } },
+    { __ifcLiteUsage: { type: 'requests', used: 6, limit: 50, pct: 12, resetAt: 1_700_000_000 } },
+  ]) + 'data: [DONE]\n\n');
+  const outcome = await runModelRequest(request());
+  assert.equal(outcome.kind, 'completed');
+  assert.ok(outcome.kind === 'completed');
+  assert.equal(outcome.text, 'Hello');
+  assert.deepEqual({ ...outcome.receipt, id: '', startedAt: 0, finishedAt: 0 }, {
+    id: '', startedAt: 0, finishedAt: 0, model: 'openai/gpt-free', route: 'proxy', outcome: 'completed',
+    usageReported: true, inputTokens: 1234, outputTokens: 456,
+  });
+  assert.equal(useRequestReceipts.getState().receipts.length, 1);
+  assert.equal(JSON.stringify(useRequestReceipts.getState().receipts).includes('SECRET_PROMPT_TEXT'), false, 'receipts never hold prompts');
+  assert.equal(JSON.stringify(useRequestReceipts.getState().receipts).includes('Hello'), false, 'receipts never hold replies');
+});
+
+test('proxy stream without a usage chunk records usageReported: false, never an estimate', async () => {
+  serve(data([{ choices: [{ delta: { content: 'Hi' }, finish_reason: 'stop' }] }]));
+  const outcome = await runModelRequest(request());
+  assert.ok(outcome.kind === 'completed');
+  assert.equal(outcome.receipt.usageReported, false);
+  assert.equal('inputTokens' in outcome.receipt, false);
+  assert.equal('outputTokens' in outcome.receipt, false);
+});
+
+test('OpenAI Chat Completions: requests include_usage and reads the trailing choices:[] usage chunk', async () => {
+  const sent = serve(data([
+    { id: 'c1', object: 'chat.completion.chunk', choices: [{ index: 0, delta: { content: 'Ok' }, finish_reason: null }] },
+    { id: 'c1', object: 'chat.completion.chunk', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+    { id: 'c1', object: 'chat.completion.chunk', choices: [], usage: { prompt_tokens: 300, completion_tokens: 20, total_tokens: 320, prompt_tokens_details: { cached_tokens: 0 } } },
+  ]) + 'data: [DONE]\n\n');
+  const outcome = await runModelRequest(request({ route: { kind: 'openai', model: 'gpt-6-sol', apiKey: 'sk-test' } }));
+  assert.deepEqual(sent[0]?.body.stream_options, { include_usage: true });
+  assert.ok(outcome.kind === 'completed');
+  assert.equal(outcome.receipt.route, 'openai');
+  assert.ok(outcome.receipt.usageReported);
+  assert.equal(outcome.receipt.inputTokens, 300);
+  assert.equal(outcome.receipt.outputTokens, 20);
+});
+
+test('OpenAI Responses: usage comes from response.completed', async () => {
+  serve(data([
+    { type: 'response.output_text.delta', delta: 'Codex' },
+    { type: 'response.completed', response: { status: 'completed', usage: { input_tokens: 77, output_tokens: 9, total_tokens: 86 } } },
+  ]));
+  const outcome = await runModelRequest(request({ route: { kind: 'openai', model: 'gpt-5.3-codex', apiKey: 'sk-test' } }));
+  assert.ok(outcome.kind === 'completed');
+  assert.ok(outcome.receipt.usageReported);
+  assert.deepEqual([outcome.receipt.inputTokens, outcome.receipt.outputTokens], [77, 9]);
+});
+
+test('Anthropic: message_start + message_delta usage, with cache reads counted as input', async () => {
+  const events = [
+    { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-opus-5-5', content: [], stop_reason: null, stop_sequence: null,
+      usage: { input_tokens: 25, cache_creation_input_tokens: 0, cache_read_input_tokens: 100, output_tokens: 1 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Answer' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'message_delta', delta: { stop_reason: 'max_tokens', stop_sequence: null }, usage: { output_tokens: 15 } },
+    { type: 'message_stop' },
+  ];
+  serve(events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(''));
+  const outcome = await runModelRequest(request({ route: { kind: 'anthropic', model: 'claude-opus-5-5', credentials: { apiKey: 'sk-ant-test', workspaceId: '' } } }));
+  assert.ok(outcome.kind === 'truncated', `expected truncated, got ${outcome.kind}`);
+  assert.equal(outcome.finishReason, 'max_tokens');
+  assert.ok(outcome.receipt.usageReported);
+  assert.deepEqual([outcome.receipt.inputTokens, outcome.receipt.outputTokens], [125, 15]);
+});
+
+test('outcomes are typed: truncated, empty output and provider error', async () => {
+  serve(data([{ choices: [{ delta: { content: 'Partial' }, finish_reason: 'length' }] }]));
+  const truncated = await runModelRequest(request());
+  assert.equal(truncated.kind, 'truncated');
+
+  serve(data([{ choices: [{ delta: { content: '   ' }, finish_reason: 'stop' }] }]));
+  const empty = await runModelRequest(request());
+  assert.ok(empty.kind === 'error');
+  assert.equal(empty.code, 'empty-output');
+
+  serve(JSON.stringify({ error: 'Provider unavailable' }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+  const failed = await runModelRequest(request());
+  assert.ok(failed.kind === 'error');
+  assert.equal(failed.code, 'request-failed');
+  assert.equal(failed.message, 'Provider unavailable');
+  assert.deepEqual(useRequestReceipts.getState().receipts.map(r => r.outcome), ['truncated', 'error', 'error']);
+});
+
+test('caller cancellation resolves as cancelled and the deadline resolves as timeout', async () => {
+  let cancelledBody = false;
+  globalThis.fetch = (async () => new Response(new ReadableStream({ cancel() { cancelledBody = true; } }))) as typeof fetch;
+  const controller = new AbortController();
+  const pending = runModelRequest(request({ signal: controller.signal }));
+  await new Promise(resolve => setImmediate(resolve));
+  controller.abort();
+  const cancelled = await pending;
+  assert.equal(cancelled.kind, 'cancelled');
+  assert.equal(cancelledBody, true, 'cancellation reaches the stream body');
+
+  const timedOut = await runModelRequest(request({ timeoutMs: 20 }));
+  assert.equal(timedOut.kind, 'timeout');
+  assert.deepEqual(useRequestReceipts.getState().receipts.map(r => r.outcome), ['cancelled', 'timeout']);
+});
+
+test('root budget: retries draw on one root, exhaustion refuses before any request', async () => {
+  const budget = createRootBudget({ maxRequests: 2, maxOutputTokens: 10_000 });
+  const sent = serve(data([
+    { choices: [{ delta: { content: 'One' }, finish_reason: 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 100 } },
+  ]));
+  assert.equal((await runModelRequest(request({ budget }))).kind, 'completed');
+  // Reported output is charged exactly: 100 of the 4,096 reservation.
+  assert.deepEqual(remainingBudget(budget), { maxRequests: 1, maxOutputTokens: 9_900 });
+  serve(JSON.stringify({ error: 'Busy' }), { status: 503 });
+  assert.equal((await runModelRequest(request({ budget }))).kind, 'error');
+  // A request that streamed nothing is charged as a request but no output.
+  assert.deepEqual(remainingBudget(budget), { maxRequests: 0, maxOutputTokens: 9_900 });
+  const refusedSent = serve(data([]));
+  const refused = await runModelRequest(request({ budget }));
+  assert.deepEqual(refused, { kind: 'refused', reason: 'budget-exhausted' });
+  assert.equal(refusedSent.length, 0, 'nothing reaches the network once the root is exhausted');
+  assert.equal(sent.length, 1);
+  assert.equal(useRequestReceipts.getState().receipts.length, 2, 'a refusal is not a request and has no receipt');
+});
+
+test('root budget clamps the last request to the remaining output and charges unreported output in full', async () => {
+  const budget = createRootBudget({ maxRequests: 5, maxOutputTokens: 5_000 });
+  let sent = serve(data([{ choices: [{ delta: { content: 'A' }, finish_reason: 'stop' }] }]));
+  await runModelRequest(request({ budget }));
+  assert.equal(sent[0]?.body.maxOutputTokens, 4096);
+  assert.equal(remainingBudget(budget).maxOutputTokens, 904, 'unreported usage is charged at the reservation');
+  sent = serve(data([{ choices: [{ delta: { content: 'B' }, finish_reason: 'stop' }] }]));
+  await runModelRequest(request({ budget }));
+  assert.equal(sent[0]?.body.maxOutputTokens, 904);
+  assert.equal((await runModelRequest(request({ budget }))).kind, 'refused');
+});
+
+test('capabilities come from the registry and route ceilings, with no placeholder window for proxy models', () => {
+  assert.deepEqual(modelCapabilities('claude-opus-5-5'), {
+    id: 'claude-opus-5-5', route: 'anthropic', tier: 'byok', contextWindow: 1_000_000, maxOutputTokens: 32_000,
+    structuredOutput: false, usageReporting: 'provider',
+  });
+  const unknown = modelCapabilities('vendor/unlisted');
+  assert.equal(unknown.route, 'proxy');
+  assert.equal(unknown.contextWindow, null);
+  assert.equal(unknown.maxOutputTokens, 8192);
+  assert.equal(unknown.usageReporting, 'upstream-dependent');
+});
+
+test('the receipt store keeps only the most recent receipts', () => {
+  for (let i = 0; i < RECEIPT_LIMIT + 5; i++) {
+    recordReceipt({ id: `r${i}`, model: 'm', route: 'proxy', startedAt: i, finishedAt: i, outcome: 'completed', usageReported: false });
+  }
+  const receipts = useRequestReceipts.getState().receipts;
+  assert.equal(receipts.length, RECEIPT_LIMIT);
+  assert.equal(receipts[0]?.id, 'r5');
+});

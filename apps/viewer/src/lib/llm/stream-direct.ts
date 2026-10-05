@@ -23,6 +23,7 @@ import {
 import { readSseStream, type StreamMessage, type StreamOptions } from './stream-client.js';
 import { getModelById, sendsSamplingParams } from './models.js';
 import { buildCacheableSystem, logCacheHit } from './prompt-cache.js';
+import { anthropicUsage, chatCompletionsUsage, responsesUsage } from './token-usage.js';
 
 const STREAM_REQUEST_TIMEOUT_MS = 45_000;
 
@@ -123,6 +124,9 @@ export async function streamAnthropicChat(
     // Surface cache hit/miss numbers in dev tools so we can see
     // whether the authoring contract is paying off.
     logCacheHit(finalMessage.usage as { cache_creation_input_tokens?: number; cache_read_input_tokens?: number });
+    // The SDK accumulates message_start.usage and message_delta.usage into this.
+    const tokenUsage = anthropicUsage(finalMessage.usage);
+    if (tokenUsage) options.onTokenUsage?.(tokenUsage);
 
     const stopReason = finalMessage.stop_reason;
     onFinishReason?.(stopReason === 'end_turn' ? 'stop' : stopReason);
@@ -181,6 +185,8 @@ async function streamOpenAiChatCompletions(
       stream: true,
       ...(sendSamplingParams ? { temperature: 0.3 } : {}),
       max_completion_tokens: options.maxOutputTokens,
+      // Without this OpenAI streams no usage at all; with it the last chunk carries it.
+      stream_options: { include_usage: true },
     },
     apiKey,
     signal,
@@ -197,6 +203,8 @@ async function streamOpenAiChatCompletions(
     const parsed = JSON.parse(data) as {
       choices?: Array<{ delta?: { content?: string }; finish_reason?: string | null }>;
     };
+    const tokenUsage = chatCompletionsUsage(parsed);
+    if (tokenUsage) options.onTokenUsage?.(tokenUsage);
     const content = parsed.choices?.[0]?.delta?.content;
     if (content) { fullText += content; onChunk(content); }
     const fr = parsed.choices?.[0]?.finish_reason;
@@ -246,6 +254,10 @@ async function streamOpenAiResponses(
   // the ChatPanel "Continue" UX can resume a truncated Codex reply. Other
   // explicit reasons (e.g. `content_filter`) pass through unchanged.
   let finishReason: string | null = 'stop';
+  const reportResponsesUsage = (event: unknown) => {
+    const tokenUsage = responsesUsage(event);
+    if (tokenUsage) options.onTokenUsage?.(tokenUsage);
+  };
 
   const ok = await readSseStream(response.body, signal, (data) => {
     const event = JSON.parse(data) as {
@@ -260,9 +272,11 @@ async function streamOpenAiResponses(
       fullText += event.delta;
       onChunk(event.delta);
     } else if (event.type === 'response.incomplete') {
+      reportResponsesUsage(event);
       const reason = event.response?.incomplete_details?.reason;
       finishReason = reason == null || reason === 'max_output_tokens' ? 'length' : reason;
     } else if (event.type === 'response.completed') {
+      reportResponsesUsage(event);
       finishReason = 'stop';
     }
   }, onError);

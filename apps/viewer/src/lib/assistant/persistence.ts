@@ -5,8 +5,10 @@
 import type { ContentDefinition } from '../storage/content-migration';
 import type { AssistantSource } from './evidence';
 import { isAssistantSource } from './sources';
+import type { UsageReceipt } from '../llm/request-receipts';
 
-export interface AssistantMessage { role: 'user' | 'assistant'; content: string; model?: string }
+/** `receipt` is session-only: `decodeConversation` never saves or revives it. */
+export interface AssistantMessage { role: 'user' | 'assistant'; content: string; model?: string; receipt?: UsageReceipt }
 export interface SavedConversation {
   version: 1;
   id: string;

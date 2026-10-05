@@ -76,8 +76,30 @@ function persist(jobs: readonly ActivityJob[]): void {
   }
 }
 
+/**
+ * Keep at most `ACTIVITY_LIMIT` jobs, oldest out first. Finished jobs go
+ * before any running one, so a long load is not pushed out by a burst of short
+ * jobs; a running job is evicted only when nothing finished is left. An
+ * evicted job's cancel handle goes with it.
+ */
+function bound(jobs: ActivityJob[]): ActivityJob[] {
+  let excess = jobs.length - ACTIVITY_LIMIT;
+  if (excess <= 0) return jobs;
+  const evicted = new Set<string>();
+  for (const finishedFirst of [true, false]) {
+    for (const job of jobs) {
+      if (excess === 0) break;
+      if (evicted.has(job.id) || (finishedFirst && job.outcome === 'running')) continue;
+      evicted.add(job.id);
+      excess--;
+    }
+  }
+  for (const id of evicted) cancellers.delete(id);
+  return jobs.filter((job) => !evicted.has(job.id));
+}
+
 function commit(update: (jobs: ActivityJob[]) => ActivityJob[], write = true): void {
-  const jobs = update(useActivityJournal.getState().jobs).slice(-ACTIVITY_LIMIT);
+  const jobs = bound(update(useActivityJournal.getState().jobs));
   useActivityJournal.setState({ jobs });
   if (write) persist(jobs);
 }

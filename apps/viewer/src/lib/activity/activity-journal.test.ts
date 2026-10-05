@@ -89,6 +89,33 @@ describe('activity journal (U02, #6925)', () => {
     assert.equal(jobs[0].id, 'job-5');
   });
 
+  it('evicts finished jobs before a running one, which keeps its Cancel (PR #6952 review)', () => {
+    let cancelled = 0;
+    const live = beginActivity({ kind: 'load', title: 'activityTray.job.load', id: 'live', cancel: () => { cancelled++; } }, T0);
+    for (let i = 0; i < ACTIVITY_LIMIT + 5; i++) {
+      const id = beginActivity({ kind: 'export', title: 'activityTray.job.export', id: `done-${i}` }, T0 + 1 + i);
+      finishActivity(id, 'completed', {}, T0 + 1 + i);
+    }
+    const jobs = useActivityJournal.getState().jobs;
+    assert.equal(jobs.length, ACTIVITY_LIMIT);
+    assert.ok(jobs.some((job) => job.id === live && job.outcome === 'running'), 'the oldest job is running, so it stays');
+    assert.equal(jobs.at(-1)?.id, `done-${ACTIVITY_LIMIT + 4}`, 'the newest finished job is kept');
+    cancelActivity(live);
+    assert.equal(cancelled, 1, 'and it can still be cancelled');
+  });
+
+  it('a running job evicted by more running jobs drops its Cancel handle', () => {
+    let stale = 0;
+    beginActivity({ kind: 'ai', title: 'activityTray.job.ai', id: 'oldest', cancel: () => { stale++; } }, T0);
+    for (let i = 0; i < ACTIVITY_LIMIT; i++) beginActivity({ kind: 'ai', title: 'activityTray.job.ai', id: `req-${i}` }, T0 + 1 + i);
+    assert.equal(useActivityJournal.getState().jobs.some((job) => job.id === 'oldest'), false, 'evicted');
+    // The same id comes back (a source id reused) with no cancel of its own:
+    // the evicted job's handle must not be offered for it.
+    beginActivity({ kind: 'ai', title: 'activityTray.job.ai', id: 'oldest' }, T0 + 100);
+    assert.equal(activityCanceller('oldest'), null);
+    assert.equal(stale, 0);
+  });
+
   it('cancels through the source and clears only finished jobs', () => {
     let cancelled = 0;
     const live = beginActivity({ kind: 'load', title: 'activityTray.job.load', cancel: () => { cancelled++; } }, T0);

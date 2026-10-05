@@ -19,6 +19,7 @@ export function architectureSample(): Promise<IfcDataStore> {
 }
 
 export function sampleModel(id: string, store: IfcDataStore, idOffset: number): FederatedModel {
+  // @raw-entity-enumeration-ok test fixture sizes the federation range from a freshly parsed source before any mutation view exists
   return {
     id, name: `${id}.ifc`, ifcDataStore: store, geometryResult: null, visible: true, collapsed: false,
     schemaVersion: 'IFC4', loadedAt: 0, fileSize: 0, idOffset,
@@ -28,5 +29,6 @@ export function sampleModel(id: string, store: IfcDataStore, idOffset: number): 
 
 /** Express ids of one IFC type in file order. */
 export function idsOfType(store: IfcDataStore, type: string): number[] {
+  // @raw-entity-enumeration-ok test fixture picks real sample elements from the freshly parsed source, never a live session
   return [...(store.entityIndex.byType.get(type.toUpperCase()) ?? [])];
 }

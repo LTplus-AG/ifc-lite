@@ -20,7 +20,8 @@
   },
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
-    "@ifc-lite/geometry": "workspace:^"
+    "@ifc-lite/geometry": "workspace:^",
+    "@ifc-lite/load-trace": "workspace:^"
   },
   "devDependencies": {
     "@ifc-lite/parser": "workspace:^",

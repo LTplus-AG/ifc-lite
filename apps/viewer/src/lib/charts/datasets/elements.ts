@@ -15,7 +15,7 @@
  */
 import { elementFieldColumnId, elementsDataset, type ChartDataset, type ChartScope, type ElementFieldBinding, type ElementsDatasetModel } from '@ifc-lite/charts';
 import { useViewerStore, type ViewerState } from '@/store';
-import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
+import { getVisibleBasketEntityRefsFromStore, visibilityFingerprint } from '@/store/basketVisibleSet';
 import { ownsCurrentIsolation } from '@/lib/visibility/ownership';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { stringToEntityRef, type EntityRef } from '@/store/types';
@@ -34,15 +34,25 @@ function isFieldList(value: readonly ElementFieldBinding[] | ModelsState): value
   return Array.isArray(value);
 }
 
+/** A bucket click in Isolate focus writes `isolatedEntities` itself; counting that would collapse the chart to the bucket it just isolated (#6473). */
+const chartOwnsIsolation = (live: ViewerState): boolean => ownsCurrentIsolation(live, live.chartVisibilityOwned);
+
+/**
+ * What a scope's rows depend on besides the models and their edits: the
+ * visible set's fingerprint (the key its own cache uses), the basket, or
+ * nothing for `all`. Equal keys, equal include sets.
+ */
+export function chartScopeKey(scope: ChartScope, state: Pick<ViewerState, 'pinboardEntities'>): string | object | null {
+  if (scope.kind === 'basket') return state.pinboardEntities;
+  if (scope.kind !== 'visible') return null;
+  const live = useViewerStore.getState();
+  return visibilityFingerprint(chartOwnsIsolation(live) && live.isolatedEntities !== null ? { ...live, isolatedEntities: null } : live);
+}
+
 /** Per-model include sets for a scope, or `null` for "every element". */
 function includeSets(scope: ChartScope, state: ModelsState): Map<string, Set<number>> | null {
   let refs: EntityRef[];
-  if (scope.kind === 'visible') {
-    // A bucket click in Isolate focus writes `isolatedEntities` itself; counting
-    // that would collapse the chart to the bucket it just isolated (#6473).
-    const live = useViewerStore.getState();
-    refs = getVisibleBasketEntityRefsFromStore(ownsCurrentIsolation(live, live.chartVisibilityOwned));
-  }
+  if (scope.kind === 'visible') refs = getVisibleBasketEntityRefsFromStore(chartOwnsIsolation(useViewerStore.getState()));
   else if (scope.kind === 'basket') refs = [...state.pinboardEntities].map(stringToEntityRef);
   else return null; // 'all' — no include set; a per-chart source filter (#4946) narrows rows separately
   const sets = new Map<string, Set<number>>();

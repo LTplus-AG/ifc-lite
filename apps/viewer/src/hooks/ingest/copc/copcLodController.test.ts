@@ -9,7 +9,7 @@
  * real `CopcHierarchy`, nodes return `ceil(count / stride)` points.
  */
 
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CopcHierarchy,
@@ -27,7 +27,11 @@ import {
   type LodCamera,
   type VoxelKey,
 } from '@ifc-lite/pointcloud';
+import type { Renderer } from '@ifc-lite/renderer';
+import { useViewerStore } from '../../../store/index.js';
 import { CopcLodController, quantizeStride, type CopcLodReader, type CopcLodSink } from './copcLodController.js';
+import { createCopcLodSink } from './copcLodSink.js';
+import { createStreamController, loadOverview } from './copcLodWiring.js';
 
 const INFO: CopcInfo = {
   center: [128, 128, 128], halfsize: 128, spacing: 8, rootHierOffset: 0, rootHierSize: 32, gpsTimeMin: 0, gpsTimeMax: 0,
@@ -73,6 +77,8 @@ interface FakeReaderOptions {
   holdPages?: Deferred[];
   /** Return true to make this read of node `id` fail. */
   failNode?: (id: string, attempt: number) => boolean;
+  /** Give every chunk a classification (class 2), as a classified scan does. */
+  classified?: boolean;
 }
 
 function fakeReader(hierarchy: CopcHierarchy, childPages: Map<number, CopcHierarchyPage>, opts: FakeReaderOptions = {}) {
@@ -100,6 +106,7 @@ function fakeReader(hierarchy: CopcHierarchy, childPages: Map<number, CopcHierar
       return {
         positions: new Float32Array(n * 3), normalState: 'absent', pointCount: n,
         bbox: { min: [0, 0, 0], max: [0, 0, 0] },
+        ...(opts.classified ? { classifications: new Uint8Array(n).fill(2) } : {}),
       } satisfies DecodedPointChunk;
     },
   };
@@ -365,6 +372,103 @@ describe('CopcLodController review fixes (#6880)', () => {
       await scheduled.shift()?.();
     }
     assert.ok(retries > 0 && retries <= 3, `retried ${retries} times`);
+  });
+});
+
+describe('CopcLodController settled passes (#6880 x #6877 deviation refresh)', () => {
+  /** Every `onPassSettled`, with what the sink held when it fired. */
+  function settledSetup() {
+    const { hierarchy, childPages } = syntheticCopc(3);
+    const sink = budgetSink(20_000_000);
+    const settled: Array<{ resident: string[]; ops: number }> = [];
+    const controller = new CopcLodController(createCopcLodTree(hierarchy, INFO), fakeReader(hierarchy, childPages).reader, sink.sink, {
+      pointBudget: 20_000_000,
+      pacer: new LodPacer({ initialPointsPerMs: 500, minFirstPassPoints: 20_000 }),
+      now: () => 0,
+      schedule: () => {},
+      onPassSettled: () => settled.push({ resident: [...sink.resident.keys()].sort(), ops: sink.log.length }),
+    });
+    return { controller, sink, settled };
+  }
+
+  it('a view that only evicts (the scan leaves the frustum) still settles, after its evictions', async () => {
+    const { controller, sink, settled } = settledSetup();
+    await controller.update(camera([-300, 128, 100], [128, 128, 60]));
+    assert.ok(sink.resident.size > 0);
+    const before = settled.length;
+    // Looking straight away from the cube: the selection is empty, nothing is added.
+    await controller.update(camera([-300, 128, 100], [-600, 128, 100]));
+    assert.equal(sink.resident.size, 0, 'every node left the view');
+    assert.ok(settled.length > before, 'an eviction-only pass is announced');
+    // Every announcement of the new view comes after that pass's evictions:
+    // a deviation re-run started earlier would measure the departing nodes.
+    assert.deepEqual(settled.slice(before).map((s) => s.resident), settled.slice(before).map(() => []));
+  });
+
+  it('a view that adds nodes settles after it retired the old view', async () => {
+    const { controller, sink, settled } = settledSetup();
+    await controller.update(camera([-4_000, 128, 600], [128, 128, 60]));
+    await controller.update(camera([20, 20, 40], [80, 80, 20], 0.7));
+    assert.deepEqual(settled.at(-1), { resident: [...sink.resident.keys()].sort(), ops: sink.log.length });
+  });
+});
+
+describe('COPC stream wiring: the stream controller over the real sink (#6880)', () => {
+  afterEach(() => useViewerStore.getState().setPointCloudDeviationComputed(false));
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  /** A fake renderer that records the chunk set resident whenever deviation runs. */
+  function wire() {
+    const { hierarchy, childPages } = syntheticCopc(3);
+    const reader = fakeReader(hierarchy, childPages, { classified: true });
+    const resident = new Set<string>();
+    const runs: string[][] = [];
+    const classCounts: Array<Record<number, number> | null> = [];
+    const renderer = {
+      appendPointCloudChunk: (_handle: unknown, _chunk: unknown, id: string) => { resident.add(id); },
+      removePointCloudChunk: (_handle: unknown, id: string) => { resident.delete(id); return 0; },
+      computeDeviations: async () => { runs.push([...resident].sort()); },
+    } as unknown as Renderer;
+    const sink = createCopcLodSink({ renderer, handle: { id: 1 }, onClassCounts: (counts) => classCounts.push(counts) });
+    let loaded = false;
+    const controller = createStreamController(createCopcLodTree(hierarchy, INFO), reader.reader, sink, {
+      pointBudget: 20_000_000,
+      onError: (err) => { throw err; },
+      isLoaded: () => loaded,
+      overrides: { pacer: new LodPacer({ initialPointsPerMs: 500, minFirstPassPoints: 20_000 }), now: () => 0, schedule: () => {} },
+    });
+    const load = (onComplete: (points: number) => void = () => {}) => loadOverview({
+      controller, sink, camera: camera([-300, 128, 100], [128, 128, 60]), signal: new AbortController().signal,
+      markLoaded: () => { loaded = true; }, onComplete,
+    });
+    return { controller, resident, runs, classCounts, load };
+  }
+
+  it('a live deviation run follows the nodes that stay resident, including an eviction-only view', async () => {
+    const { controller, resident, runs, load } = wire();
+    useViewerStore.getState().setPointCloudDeviationComputed(true);
+    await load();
+    await settle();
+    assert.ok(resident.size > 0);
+    assert.ok(runs.length >= 1, 'the loaded overview is measured');
+    assert.deepEqual(runs.at(-1), [...resident].sort(), 'the last run measured exactly what is resident');
+
+    const before = runs.length;
+    // Looking away from the cube: nothing is added, every node leaves.
+    await controller.update(camera([-300, 128, 100], [-600, 128, 100]));
+    await settle();
+    assert.equal(resident.size, 0);
+    assert.equal(runs.length, before + 1, 'one re-run for the eviction-only pass');
+    assert.deepEqual(runs.at(-1), [], 'it measured the settled (empty) set, not the departing nodes');
+  });
+
+  it('completing the load re-sends the class histogram the ingest just cleared', async () => {
+    const { classCounts, load } = wire();
+    // The ingest's onComplete pushes null for a COPC stream (it never sees
+    // chunks), which makes the store drop the histogram.
+    await load(() => { classCounts.push(null); });
+    assert.notEqual(classCounts.at(-1), null, 'the histogram is the last word, not the ingest\'s null');
+    assert.ok(Object.keys(classCounts.at(-1) ?? {}).length > 0);
   });
 });
 

@@ -31,9 +31,10 @@ import {
   type StreamHandle,
   type StreamPointCloudOptions,
 } from '@ifc-lite/pointcloud';
-import { CopcLodController } from './copcLodController.js';
+import type { CopcLodController } from './copcLodController.js';
 import { lodCameraInDecodedFrame, overviewCamera } from './copcLodCamera.js';
 import { createCopcLodSink } from './copcLodSink.js';
+import { createStreamController, loadOverview } from './copcLodWiring.js';
 
 /** Resident point ceiling: 2.5x below the old whole-file cap, at any file size. */
 export const DEFAULT_COPC_POINT_BUDGET = 10_000_000;
@@ -141,15 +142,11 @@ function startCopcLod(options: StreamPointCloudOptions, ctx: CopcIngestContext, 
       options.onError?.(err instanceof Error ? err : new Error(String(err)));
     };
     const activeReader = reader;
-    controller = new CopcLodController(createCopcLodTree(reader.hierarchy, info, originOffset), activeReader, sink, {
+    controller = createStreamController(createCopcLodTree(reader.hierarchy, info, originOffset), activeReader, sink, {
       pointBudget: budget,
       onError: failAfterLoad,
-      onPassComplete: (pass) => {
-        // Progress belongs to the load; later camera passes must not
-        // rewrite the global status line.
-        if (!loaded) options.onProgress?.(controller?.points ?? 0, header.pointCount);
-        if (pass.added > 0) sink.passSettled();
-      },
+      onProgress: (points) => options.onProgress?.(points, header.pointCount),
+      isLoaded: () => loaded,
     });
     let lastCamera: unknown = null;
     diagnostics.set(ctx.handle.id, () => ({
@@ -160,11 +157,11 @@ function startCopcLod(options: StreamPointCloudOptions, ctx: CopcIngestContext, 
       cube: info, originOffset, lastCamera,
     }));
     trackCamera = (camera) => { lastCamera = camera; };
-    await controller.update(overviewCamera(info, originOffset));
-    signal.throwIfAborted();
-    loaded = true;
-    options.onComplete?.(bbox, controller.points, null);
-    sink.passSettled();
+    await loadOverview({
+      controller, sink, camera: overviewCamera(info, originOffset), signal,
+      markLoaded: () => { loaded = true; },
+      onComplete: (points) => options.onComplete?.(bbox, points, null),
+    });
     watchCamera();
   })().catch((err: unknown) => {
     const aborted = signal.aborted;

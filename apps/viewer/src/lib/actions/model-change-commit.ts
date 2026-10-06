@@ -22,6 +22,7 @@ import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import type { ChangeScalar, ModelChange } from './model-change';
 import type { AuthoringOpName } from './model-authoring';
 import { previewModelChanges, type ModelChangePreview, type PreviewRow } from './model-change-preview';
+import type { ReceiptValidation } from './validation-verdicts';
 
 export interface AppliedChange {
   index: number;
@@ -49,6 +50,8 @@ export interface ModelChangeReceipt {
   skipped: Array<{ index: number; status: PreviewRow['status'] | 'invalid' | 'blocked' | 'not-approved' }>;
   status: 'applied' | 'undone';
   undoneAt?: string;
+  /** Validation verdict counts before the apply and, once re-run, after it (P15). */
+  validation?: ReceiptValidation;
 }
 
 export type CommitOutcome =
@@ -76,7 +79,7 @@ function write(state: ViewerState, modelId: string, expressId: number, change: M
   let written: unknown;
   switch (change.op) {
     case 'property.set':
-      written = state.setProperty(modelId, expressId, change.pset, change.name, change.value, propertyType(change.value));
+      written = state.setProperty(modelId, expressId, change.pset, change.name, change.value, propertyType(change.value), change.dataType);
       break;
     case 'property.delete':
       written = state.deleteProperty(modelId, expressId, change.pset, change.name);

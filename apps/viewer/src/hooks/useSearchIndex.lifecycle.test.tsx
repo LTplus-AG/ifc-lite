@@ -13,6 +13,8 @@ import { useViewerStore } from '@/store';
 import { SearchInline } from '@/components/viewer/SearchInline.js';
 import { SearchModal } from '@/components/viewer/SearchModal.js';
 import { useSearchIndex } from './useSearchIndex.js';
+import { createLoadTracer } from '@ifc-lite/load-trace';
+import { publishLoadTrace } from '@/lib/perf/activeLoadTrace.js';
 
 const initial = useViewerStore.getState();
 let unsubscribe = () => {};
@@ -60,6 +62,16 @@ afterEach(() => {
 });
 
 describe('one search-index owner across viewer lifecycle (#3993)', () => {
+  it('records the model\'s first tier-1 build as its load\'s search.tier1 span (#6979)', async () => {
+    const tracer = createLoadTracer({ enabled: true, sink: null });
+    publishLoadTrace('one', tracer.startLoad('one'));
+    render(<Owner />);
+    await settle();
+    const spans = tracer.latest()!.spans.filter(span => span.name === 'search.tier1');
+    assert.equal(spans.length, 1);
+    assert.notEqual(spans[0].end, null, 'the span ends when the build resolves');
+  });
+
   it('both mounted search interfaces consume one build and keep immediate Tier-0 results', async () => {
     const container = render(<Owner><SearchInline /><SearchModal /></Owner>);
     assert.ok(container.textContent?.includes('Wall A'));

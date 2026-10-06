@@ -78,6 +78,7 @@ import { AttributeEditorField } from './properties/AttributeEditorField';
 import { CopyValueButton } from './properties/CopyValueButton';
 import { useCopyValue } from './properties/useCopyValue';
 import { SelectionSummaryPanel } from './properties/SelectionSummaryPanel';
+import { AssistantAction } from './assistant/AssistantAction';
 export function PropertiesPanel() {
   const { t, locale } = useTranslation();
   // Display-unit converter overrides (issue #1573 proposal 2) — read once
@@ -1825,9 +1826,7 @@ function MultiEntityPanel({
           </span>
           {/* Display-unit converter (issue #1573 proposal 2) — one control
               for the whole stacked list below, not per-entity section. */}
-          <div className="ml-auto">
-            <UnitDisplayControl />
-          </div>
+          <div className="ml-auto flex items-center gap-1"><AssistantAction /><UnitDisplayControl /></div>
         </div>
       </div>
 

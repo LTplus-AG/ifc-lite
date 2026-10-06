@@ -10,11 +10,11 @@
  */
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Copy, Crosshair, Pencil, X } from 'lucide-react';
-import { aggregate, buildEChartsOption, type Aggregation, type ChartDataset, type ChartSource, type ChartSpec, type PaletteAssignment } from '@ifc-lite/charts';
+import { buildEChartsOption, type Aggregation, type ChartDataset, type ChartSource, type ChartSpec, type PaletteAssignment } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
-import { applyChartFilter, applyClashRuleFilter, chartElementFilterKey } from '@/lib/charts/source-filter';
+import { chartCardAggregation, chartCardDataset, chartCardSlice, chartClashRule, chartFilterSelector } from '@/lib/charts/card-aggregation';
 import { countRows } from '@/lib/charts/row-noun';
 import { comparisonChartMessage, isSavedComparisonChart, resolveComparisonChartSource } from '@/lib/charts/comparison-source';
 import { readChartTheme, useEChart, type ChartRenderer, type ChartSize, type ChartSelectEvent } from './useEChart';
@@ -93,39 +93,17 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
   // Colours are kept by label across re-aggregations; the previous palette lives here.
   const paletteRef = useRef<PaletteAssignment | undefined>(undefined);
 
-  // Trimmed-empty is treated as no filter, consistent with every other
-  // reader of `spec.filter.selector` (`resolveChartFilter`, `validate.ts`
-  // now also refuses it outright) — a malformed saved/imported dashboard
-  // must not strand the card on "Resolving filter…" forever (review finding).
-  const filterSelector = chartElementFilterKey(spec.filter) ? (spec.filter?.groups?.length ? `${spec.filter.groups.reduce((sum, group) => sum + group.rules.length, 0)} rules` : spec.filter?.selector) : undefined;
-  // Only meaningful on `clash` — `validate.ts` refuses it on every other
-  // source (#5156). A rule id is a value already on the dataset, so it needs
-  // no async resolution the way a selector does.
-  const clashRule = spec.source === 'clash' ? spec.filter?.clashRule : undefined;
+  // Filter, slice and aggregation are the pure `card-aggregation` functions the
+  // assistant's charts evidence also calls (#6833), so both read one engine.
+  const filterSelector = chartFilterSelector(spec);
+  const clashRule = chartClashRule(spec);
   const clashRuleLabel = useViewerStore((s) => (clashRule ? s.clashResult?.rulesRun.find((r) => r.id === clashRule)?.name : undefined));
-  // Resolving or erred: an EMPTY dataset, never the unfiltered rows under a
-  // filter (#4946) — a card must not flash the whole model's numbers while
-  // its filter is still running, or keep showing them after it fails.
-  const filteredDataset = useMemo<ChartDataset>(() => {
-    let result = source.dataset;
-    if (filterSelector) {
-      if (filterState?.status !== 'ok') return { ...source.dataset, rows: [] };
-      result = applyChartFilter(result, filterState.ids);
-    }
-    if (clashRule) result = applyClashRuleFilter(result, clashRule);
-    return result;
-  }, [source.dataset, filterSelector, filterState, clashRule]);
+  const filteredDataset = useMemo<ChartDataset>(() => chartCardDataset(spec, source.dataset, filterState), [spec, source.dataset, filterState]);
 
   const aggregation = useMemo<Aggregation | null>(() => {
-    try {
-      const slice = recorded || chartSliceSource === spec.id ? null : chartSlice;
-      const result = aggregate(spec, filteredDataset, { slice, palette: paletteRef.current });
-      paletteRef.current = result.palette;
-      return result;
-    } catch (err) {
-      console.warn(`[Charts] chart "${spec.title}" cannot aggregate`, err);
-      return null;
-    }
+    const result = chartCardAggregation(spec, filteredDataset, chartCardSlice(spec, recorded, chartSlice, chartSliceSource), paletteRef.current);
+    if (result) paletteRef.current = result.palette;
+    return result;
   }, [spec, filteredDataset, chartSlice, chartSliceSource, recorded]);
 
   useEffect(() => { onAggregation?.(spec, aggregation); }, [onAggregation, spec, aggregation]);

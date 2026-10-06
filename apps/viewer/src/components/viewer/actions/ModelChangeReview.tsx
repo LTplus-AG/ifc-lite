@@ -20,6 +20,8 @@ import type { ChangeScalar, ModelChangeBatch } from '@/lib/actions/model-change'
 import { previewCounts, previewModelChanges, type PreviewRow, type RowStatus } from '@/lib/actions/model-change-preview';
 import { changeField, commitModelChanges, undoModelChanges, type ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import { modelChangeLibrary, useModelChangeReceipts } from '@/lib/actions/receipts';
+import { captureValidationBefore } from '@/lib/actions/validation-verdicts';
+import { ReceiptValidation } from './ReceiptValidation';
 
 export const STATUS: Record<RowStatus, { key: TranslationKey; tone: string }> = {
   ready: { key: 'modelChanges.status.ready', tone: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' },
@@ -64,19 +66,21 @@ function Row({ row, checked, onToggle }: { row: PreviewRow; checked: boolean; on
 export function ReceiptSummary({ receipt }: { receipt: ModelChangeReceipt }) {
   const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
+  const live = useModelChangeReceipts((s) => s.entries.find((entry) => entry.id === receipt.id)) ?? receipt;
   const undo = () => {
-    const outcome = undoModelChanges(useViewerStore, receipt);
+    const outcome = undoModelChanges(useViewerStore, live);
     if (!outcome.ok) { setError(t(`modelChanges.undoRefused.${outcome.reason}`)); return; }
     setError(null);
-    void modelChangeLibrary.put(receipt.id, { ...receipt, status: 'undone', undoneAt: new Date().toISOString() });
+    // The stored copy may carry a later validation rerun; keep it.
+    void modelChangeLibrary.put(live.id, { ...live, status: 'undone', undoneAt: new Date().toISOString() });
   };
-  const live = useModelChangeReceipts((s) => s.entries.find((entry) => entry.id === receipt.id)) ?? receipt;
   return <div aria-live="polite" className={cn('rounded border p-2 space-y-1.5',
     live.status === 'undone' ? 'border-border bg-muted/40' : 'border-emerald-500/40 bg-emerald-500/10')}>
     <p className="font-medium">{t(live.status === 'undone' ? 'modelChanges.receiptUndone' : 'modelChanges.receiptApplied', { count: live.applied.length })}</p>
     <p className="text-muted-foreground">{t('modelChanges.receiptDetail', { batches: live.batches.length, skipped: live.skipped.length })}</p>
     {live.status === 'applied' && <Button size="sm" variant="outline" className="h-7" onClick={undo}><Undo2 className="h-3 w-3 mr-1" />{t('modelChanges.undo')}</Button>}
     {error && <p role="alert" className="text-destructive">{error}</p>}
+    <ReceiptValidation receipt={live} />
   </div>;
 }
 
@@ -96,11 +100,14 @@ export function ModelChangeReview({ batch, origin }: { batch: ModelChangeBatch; 
   const counts = previewCounts(preview.rows);
   const approved = new Set(preview.rows.filter((row) => row.status === 'ready' && !excluded.has(row.index)).map((row) => row.index));
   const apply = () => {
+    // The current check's verdict counts are recorded first, so a rerun can show what the apply changed.
+    const validation = captureValidationBefore(useViewerStore.getState());
     const outcome = commitModelChanges(useViewerStore, preview, approved, origin);
     if (!outcome.ok) { setError(outcome.detail ?? t(`modelChanges.refused.${outcome.reason}`)); return; }
     setError(null);
-    setReceipt(outcome.receipt);
-    void modelChangeLibrary.put(outcome.receipt.id, outcome.receipt);
+    const applied = validation ? { ...outcome.receipt, validation } : outcome.receipt;
+    setReceipt(applied);
+    void modelChangeLibrary.put(applied.id, applied);
   };
   return <section aria-label={t('modelChanges.title')} className="mx-3 my-2 rounded border border-border text-xs">
     <h3 className="flex items-center gap-1.5 border-b border-border px-2 py-1.5 font-semibold">

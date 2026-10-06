@@ -89,6 +89,33 @@ node scripts/fixtures/fetch-fixtures.mjs "various/O-S1-BWK-BIM architectural - B
 
 Results are saved to `tests/benchmark/benchmark-results/` with automatic regression detection. See the [benchmark README](https://github.com/LTplus-AG/ifc-lite/tree/main/tests/benchmark) for details on test models, metrics, and CI integration.
 
+## Perf ratchet ceilings
+
+Some performance numbers are deterministic enough to block a merge on: byte sizes, structural counts, instruction counts. Those are held by a ratchet. Each family keeps its ceilings in `tests/perf-ratchets/<family>.json`, and the `Perf ratchet ceilings` job in `test.yml` fails a PR when a measured value goes above its ceiling plus tolerance. Families: `native-instructions` and `native-instructions-large` hold callgrind instruction counts per pipeline phase (`scripts/perf/instructions.sh`, tolerance 0.05%) for FZK-Haus (every Rust-affecting PR) and ISSUE_129 (daily lowering job only, about 2.5 minutes under callgrind); they gate kernel and parse work, not scheduling or browser effects. The first family is `bundle`: the brotli size (quality 11) of the engine WASM, of the viewer's main entry chunk, and of every JS file `index.html` loads eagerly (`viewer-eager-js-brotli`).
+
+**Reading a ceiling.** Each entry has an `id`, the `metric` it measures, the `ceiling`, a `tolerance`, and `provenance` (the `main` commit and time it was measured at). An `exact` tolerance means any rise fails, which is used for structural counts. A `relative` tolerance of `0.005` allows up to 0.5% above the ceiling. That band is total slack, not a per-PR allowance: the ceiling does not move when a PR lands inside it, so several small rises still fail once together they cross it. When the check fails, the job summary (and a sticky PR comment) shows a table of every metric that moved, with ceiling, allowed maximum, measured value and the change.
+
+**Lowering is automatic.** `.github/workflows/perf-ratchet-lower.yml` runs daily on `main`, rebuilds and re-measures, and opens or updates one PR that lowers every ceiling whose value dropped (for a `relative` metric, once the drop clears the tolerance band, so build noise does not open a PR every day). Those PRs reference the standing issue #6955 and list each change, old to new. If a later run finds that nothing clears its band any more, it closes the open lowering PR rather than leaving an outdated ceiling to be merged.
+
+The job opens PRs with the repository secret `PERF_RATCHET_PAT`, never `GITHUB_TOKEN`, because PRs that token creates do not start CI. It also never uses `RELEASE_PAT`, because RELEASE.md requires the release account to be used by nothing else. To set it up, create a fine-grained PAT from an account separate from the `RELEASE_PAT` account. Scope it to this repository only, with **Contents: Read and write** and **Pull requests: Read and write**. **Workflows: Read and write** is also needed when the lowering branch, which is reset onto `main`, carries workflow changes. Store it as `PERF_RATCHET_PAT`. Without it, the job still measures and lowers. It writes the old-to-new table to its summary, uploads the lowered files as the `perf-ratchet-lowered-ceilings` artifact, warns that no PR was opened, and stays green.
+
+**Raising is a human decision.** If a PR has to grow a metric, edit the entry in `tests/perf-ratchets/<family>.json` in that PR: set `ceiling` to the new measured value and `provenance` to the commit you measured, and justify the cost in the PR description (what grew, why it is worth it, what was tried to avoid it). Never widen `tolerance` to make a breach pass. Reproduce the CI measurement locally with:
+
+```bash
+pnpm build:wasm && pnpm build:e2e
+node scripts/perf-ratchet/measure-bundle.mjs --out /tmp/bundle.json
+node scripts/perf-ratchet/perf-ratchet.mjs check --measured /tmp/bundle.json
+```
+
+**When `viewer-eager-js-brotli` fails.** That metric is the total brotli size of every JS file `dist/index.html` makes the browser fetch before first paint: the module `<script src>` plus each `<link rel="modulepreload">`, each file compressed on its own, as a static host would serve it. A failure means the PR put more code on the boot path. The job summary table shows how many bytes; the `detail` of `viewer-eager-js-brotli` in the measured JSON lists the files. Pick one of two fixes:
+
+1. **Lazy-load the new code.** This is the default answer. A feature that is not needed to show the first frame belongs behind a dynamic `import()` (a panel, a dialog, an exporter, a tool that opens on click), so it ships in a chunk `index.html` does not list. Check afterwards that nothing eager imports it statically, which pulls it straight back in: re-run the local measurement above and compare the file list.
+2. **Raise the ceiling, with a reason.** If the code really has to be eager, edit the `viewer-eager-js-brotli` entry as described under "Raising is a human decision" and say in the PR what the code does at boot, why it cannot wait, and what you tried. Do not widen `tolerance`.
+
+The eager file count and names remain in the byte metric’s diagnostic detail. Chunk count has no ceiling: the requested week of measurements is unavailable, so #7002 removes the count gate rather than choosing an unsupported allowance.
+
+A local build embeds different source paths in the WASM than CI does, so expect small differences; the CI job's summary is the number that counts. Adding a family means adding a `scripts/perf-ratchet/measure-<family>.mjs` that writes the measured JSON, a seeded ceiling file, and a measure step in CI and in the daily workflow.
+
 ## Further Reading
 
 - [Architecture Overview](../architecture/overview.md) for system design and data flow

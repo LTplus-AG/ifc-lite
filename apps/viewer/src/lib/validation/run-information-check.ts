@@ -6,6 +6,7 @@ import { runRuleSet, type EvaluatorModel, type RuleSetFile, type RuleEngineProgr
 import { materializeEffectiveIfcStore } from '@/lib/effective-ifc-store';
 import { validationReportSnapshot, type ReportScopeModel } from './reports/history';
 import { throwIfCheckAborted } from './run-ids-check';
+import { recordReportRuleSet, ruleSetContentOf } from './report-rule-set';
 
 export interface RunInformationCheckOptions {
   ruleSet: RuleSetFile;
@@ -21,7 +22,8 @@ export interface RunInformationCheckOptions {
 /** Shared native rule-set execution, with no store publication or UI effects. */
 export async function runInformationCheck(options: RunInformationCheckOptions) {
   throwIfCheckAborted(options.signal);
-  const reportModels = new Map([...options.reportModels].map(([id, model]) => [id, { ...model }]));
+  const content = ruleSetContentOf(options.ruleSet);
+  const reportModels =new Map([...options.reportModels].map(([id, model]) => [id, { ...model }]));
   const models: EvaluatorModel[] = [];
   for (const model of options.models) {
     throwIfCheckAborted(options.signal);
@@ -45,5 +47,6 @@ export async function runInformationCheck(options: RunInformationCheckOptions) {
     onProgress: (progress) => { if (!options.signal?.aborted) options.onProgress?.(progress); },
   });
   throwIfCheckAborted(options.signal);
+  recordReportRuleSet(report, content);
   return { report, snapshot: validationReportSnapshot(report, reportModels, options.snapshotId ?? 'run') };
 }

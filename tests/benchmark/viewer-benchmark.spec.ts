@@ -17,6 +17,13 @@ interface ViewerBenchmarkResult {
     buildMode: string;
   };
   metrics: ViewerBenchmarkMetrics;
+  /** #6956: where each span-capable metric came from, and any span/regex disagreement. */
+  loadTrace: {
+    sources: Partial<Record<string, string>>;
+    disagreements: Array<{ metric: string; span: number; regex: number; toleranceMs: number }>;
+  };
+  /** #6957: pinned worker count, structural counters and the long-frame summary of the load. */
+  loadCounters: ReturnType<ViewerBenchmarkPage['getLoadCounters']>;
   thresholds: {
     passed: boolean;
     violations: string[];
@@ -164,6 +171,9 @@ test.describe('Viewer Performance Benchmarks', () => {
 
       // Extract metrics
       const metrics = benchmarkPage.getMetrics();
+      // #6957: structural counters keep moving after the load root ends
+      // (deferred GPU uploads), so record them once they have settled.
+      await benchmarkPage.settleLoadCounters();
 
       // Get baseline for this file
       const baselineMetrics = baseline[fileName]?.metrics || null;
@@ -241,6 +251,14 @@ test.describe('Viewer Performance Benchmarks', () => {
         thresholdResult.violations.forEach((v) => console.log(`  ⚠ ${v}`));
       }
 
+      const { counters: loadCounters } = benchmarkPage.getLoadCounters();
+      if (loadCounters) {
+        console.log(`\n--- Structural Counters (#6957) ---`);
+        for (const [name, value] of Object.entries(loadCounters.structural)) console.log(`  ${name}: ${value.toLocaleString()}`);
+        console.log(`  scheduling-dependent: ${JSON.stringify(loadCounters.scheduling)}`);
+        console.log(`  main thread: ${JSON.stringify(loadCounters.mainThread)}`);
+      }
+
       console.log(`${'='.repeat(80)}\n`);
 
       // Save results
@@ -259,6 +277,11 @@ test.describe('Viewer Performance Benchmarks', () => {
           buildMode: process.env.VIEWER_BENCHMARK_BUILD_MODE ?? 'dev',
         },
         metrics,
+        loadTrace: {
+          sources: benchmarkPage.getMetricSources(),
+          disagreements: benchmarkPage.getSpanRegexDisagreements(),
+        },
+        loadCounters: benchmarkPage.getLoadCounters(),
         thresholds: thresholdResult,
       };
 
@@ -279,6 +302,22 @@ test.describe('Viewer Performance Benchmarks', () => {
       // streamCompleteMs is the real "geometry finished" signal.)
       expect(metrics.streamCompleteMs).not.toBeNull();
       expect(metrics.totalMeshes).toBeGreaterThan(0);
+
+      // #6956: the span tree is the primary source now; on the reference
+      // fixture every metric both sources report must agree within rounding,
+      // so the regex fallback can be retired without moving any number.
+      if (fileName === 'AC20-FZK-Haus.ifc') {
+        expect(benchmarkPage.getLoadTrace(), 'viewer exposed no load-trace span tree').not.toBeNull();
+        expect(benchmarkPage.getMetricSources().streamCompleteMs).toBe('span');
+        expect(benchmarkPage.getSpanRegexDisagreements()).toEqual([]);
+        // #6957: the load carried its structural counters and frame summary.
+        const { counters } = benchmarkPage.getLoadCounters();
+        // GPU counters are not asserted: they need a WebGPU device, which a
+        // software-rendered runner may lose; the worker and store paths do not.
+        expect(counters?.structural['msg.geometry.out.count'] ?? 0, 'no geometry worker messages counted').toBeGreaterThan(0);
+        expect(counters?.scheduling['store.setState'] ?? 0, 'no store writes counted').toBeGreaterThan(0);
+        expect(counters?.mainThread, 'no long-frame summary recorded').not.toBeNull();
+      }
 
       // Geometry correctness validation: Check mesh count matches expected (within 5% tolerance)
       // This detects if optimizations break geometry (e.g., CSG skipping too much, missing cutouts)

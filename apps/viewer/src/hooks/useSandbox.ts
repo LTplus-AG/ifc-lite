@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useBim } from '../sdk/BimProvider.js';
 import { useViewerStore } from '../store/index.js';
+import { captureAnalysisStamp, stampAnalysisReport } from './useAnalysisStaleness.js';
 import type { Sandbox, ScriptResult, SandboxConfig } from '@ifc-lite/sandbox';
 import { validateScriptPreflightDetailed } from '../lib/llm/script-preflight.js';
 import {
@@ -154,7 +155,12 @@ export function useSandbox(config?: SandboxConfig) {
   const runEpochRef = useRef(0);
 
   const setExecutionState = useViewerStore((s) => s.setScriptExecutionState);
-  const setResult = useViewerStore((s) => s.setScriptResult);
+  const publishResult = useViewerStore((s) => s.setScriptResult);
+  // Stamped when published, after the run's own writes, so a result that
+  // predates a later model edit is stale as assistant evidence (#6833).
+  const setResult = useCallback((result: ScriptResult | null) => {
+    publishResult(result ? stampAnalysisReport(result, captureAnalysisStamp()) : null);
+  }, [publishResult]);
   const setError = useViewerStore((s) => s.setScriptError);
   const setDiagnostics = useViewerStore((s) => s.setScriptDiagnostics);
 

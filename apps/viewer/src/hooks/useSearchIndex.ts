@@ -11,6 +11,7 @@ import { useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { buildTier1Index } from '@/lib/search/tier1-index';
+import { modelLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
 
 export function useSearchIndex(): void {
   const {
@@ -68,14 +69,16 @@ export function useSearchIndex(): void {
 
       // Fire-and-forget — the build is cancellable via the controller, and
       // the completion handlers update the store without needing a ref.
-      void buildTier1Index(modelId, model.ifcDataStore, {
+      // The first build after a load is its `search.tier1` span (#6979).
+      const store = model.ifcDataStore;
+      void tracePhaseOnce(modelLoadTrace(modelId), 'search.tier1').span('search.tier1', () => buildTier1Index(modelId, store, {
         signal: controller.signal,
         onProgress: (done, total) => {
           if (controller.signal.aborted) return;
           const progress = total > 0 ? done / total : 1;
           setSearchIndexRecord(modelId, { status: 'building', progress });
         },
-      })
+      }))
         .then((index) => {
           if (controller.signal.aborted || controllers.get(modelId) !== controller) return;
           controllers.delete(modelId);

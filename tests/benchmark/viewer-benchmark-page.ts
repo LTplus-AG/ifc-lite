@@ -3,7 +3,26 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Page, ConsoleMessage } from '@playwright/test';
-import { waitForMetadataRenderReadiness } from './metadata-render-readiness.js';
+import { READINESS_SPANS, waitForMetadataRenderReadiness, type LoadTraceProbe } from './metadata-render-readiness.js';
+import {
+  compareSpanAndRegexMetrics,
+  countersFromLoadTrace,
+  metricsFromLoadTrace,
+  settleKey,
+  type LoadCounters,
+  SPAN_METRIC_KEYS,
+  type LoadTraceSnapshotJson,
+  type SpanRegexDisagreement,
+} from './load-trace-metrics.js';
+
+/** Where the viewer publishes its span tree under `?perfTrace=1` (apps/viewer/src/lib/perf/loadTrace.ts). */
+const LOAD_TRACE_GLOBAL = '__IFC_LITE_LOAD_TRACE__';
+
+/** Geometry workers the benchmark pins by default (#6957); `VIEWER_BENCHMARK_GEOM_WORKERS` overrides. */
+export const DEFAULT_GEOM_WORKERS = 4;
+
+/** Which source each span-capable metric came from on this run (#6956). */
+export type MetricSource = 'span' | 'regex' | 'none';
 
 export interface ViewerBenchmarkMetrics {
   // Wall-clock total time (what users actually experience)
@@ -54,6 +73,10 @@ export class ViewerBenchmarkPage {
   private loadStartTime: number = 0;
   private loadEndTime: number = 0;
   private cacheMode: string;
+  private loadTrace: LoadTraceSnapshotJson | null = null;
+  private metricSources: Partial<Record<string, MetricSource>> = {};
+  private spanRegexDisagreements: SpanRegexDisagreement[] = [];
+  private geomWorkers: number | null = null;
 
   /**
    * Defaults to the same port `playwright.config.ts` serves on. It used to be a
@@ -259,8 +282,24 @@ export class ViewerBenchmarkPage {
       console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_QUANTIZED (expected "1" or "0"): ${quantEnv}`);
     }
 
+    // #6956: turn on the viewer's load tracer so metrics and load completion
+    // come from its span tree (window.__IFC_LITE_LOAD_TRACE__); the console
+    // regexes stay as the fallback for one release (#7005).
+    await this.page.addInitScript(() => {
+      (globalThis as unknown as { __IFC_LITE_PERF_TRACE?: number }).__IFC_LITE_PERF_TRACE = 1;
+    });
+
+    // #6957: pin the geometry worker count so structural counters (messages,
+    // copies, uploads) compare across runs and machines. `auto` keeps the
+    // engine heuristic; `?geomWorkers=` is the viewer's own override.
+    const workersEnv = process.env.VIEWER_BENCHMARK_GEOM_WORKERS ?? String(DEFAULT_GEOM_WORKERS);
+    this.geomWorkers = /^([1-9]|1[0-6])$/.test(workersEnv) ? Number(workersEnv) : null;
+    if (this.geomWorkers === null && workersEnv !== 'auto') {
+      console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_GEOM_WORKERS (expected 1-16 or "auto"): ${workersEnv}`);
+    }
+
     // Navigate to viewer app
-    await this.page.goto(this.origin);
+    await this.page.goto(this.geomWorkers === null ? this.origin : `${this.origin}/?geomWorkers=${this.geomWorkers}`);
     
     // Wait for app to be ready (file input exists but is hidden, so check for existence)
     await this.page.waitForSelector('input[type="file"]', { state: 'attached', timeout: 30000 });
@@ -292,41 +331,20 @@ export class ViewerBenchmarkPage {
   }
 
   /**
-   * Check 2D content when available; WebGPU fallback establishes only canvas allocation
+   * Canvas allocation only. This used to sample pixels through
+   * `getContext('2d')`, but the viewport canvas exists before the renderer
+   * claims it, and a canvas holding a 2D context returns null for
+   * `getContext('webgpu')` from then on: the renderer failed with "Failed to
+   * get WebGPU context", and that run measured no GPU work at all (draw
+   * calls, uploads, the #6957 GPU counters).
+   * Pixels of a WebGPU canvas cannot be read back from here anyway.
    */
   private async checkCanvasHasContent(): Promise<boolean> {
     try {
-      const hasContent = await this.page.evaluate(() => {
+      return await this.page.evaluate(() => {
         const canvas = document.querySelector('canvas');
-        if (!canvas) return false;
-        
-        // Check if canvas has non-zero dimensions
-        if (canvas.width === 0 || canvas.height === 0) return false;
-        
-        // Try to sample a few pixels to see if there's actual content
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        if (ctx) {
-          const imageData = ctx.getImageData(
-            Math.floor(canvas.width / 2),
-            Math.floor(canvas.height / 2),
-            10, 10
-          );
-          // Check if any pixels have non-background colors
-          for (let i = 0; i < imageData.data.length; i += 4) {
-            const r = imageData.data[i];
-            const g = imageData.data[i + 1];
-            const b = imageData.data[i + 2];
-            // Not pure background gray (128, 128, 128 or similar)
-            if (Math.abs(r - g) > 5 || Math.abs(g - b) > 5 || r > 200 || r < 50) {
-              return true;
-            }
-          }
-        }
-        
-        // For WebGPU, we can't easily read pixels, so just check dimensions
-        return canvas.width > 0 && canvas.height > 0;
+        return !!canvas && canvas.width > 0 && canvas.height > 0;
       });
-      return hasContent;
     } catch {
       return false;
     }
@@ -335,21 +353,24 @@ export class ViewerBenchmarkPage {
   async waitForCompletion(timeoutMs: number = 600000, requireMetadataRender = false) {
     if (requireMetadataRender) {
       this.loadEndTime = await waitForMetadataRenderReadiness({
-        logs: () => this.consoleLogs, canvasReady: () => this.checkCanvasHasContent(),
+        trace: () => this.probeLoadTrace(), logs: () => this.consoleLogs, canvasReady: () => this.checkCanvasHasContent(),
         now: () => Date.now(), pause: () => this.page.waitForTimeout(100), timeoutMs,
       });
       this.metrics.metadataRenderReadyMs = this.loadEndTime - this.loadStartTime;
       this.metrics.renderCompleteMs = this.metrics.metadataRenderReadyMs;
       this.metrics.canvasHasContent = true;
+      await this.readLoadTrace();
       this.parseMetrics();
       return;
     }
     const startTime = Date.now();
     let renderCompleteTime: number | null = null;
 
-    // Wait for completion signals in console logs AND actual rendering
+    // Wait for the load's root span to end (#6979) AND actual rendering
     while (Date.now() - startTime < timeoutMs) {
-      // Check if we have all key completion signals
+      const probe = await this.probeLoadTrace();
+      // TODO(remove-by: first release after 2026-10-06 (one after #6977), #7005):
+      // console completion lines, read only when the page exposes no load trace.
       const hasStreamingComplete = this.consoleLogs.some(log =>
         log.includes('[useIfc] Geometry streaming complete')
       );
@@ -372,12 +393,13 @@ export class ViewerBenchmarkPage {
       // Check canvas has actual content
       const canvasReady = await this.checkCanvasHasContent();
 
-      if (
-        (hasStreamingComplete && hasDataModelComplete && hasTotalLoadTime)
-        || hasUnifiedSummary
-        || hasFinalSummary
-        || (hasStreamingComplete && hasDataModelComplete)
-      ) {
+      const loadComplete = probe
+        ? probe.ended
+        : (hasStreamingComplete && hasDataModelComplete && hasTotalLoadTime)
+          || hasUnifiedSummary
+          || hasFinalSummary
+          || (hasStreamingComplete && hasDataModelComplete);
+      if (loadComplete) {
         // Record when we see completion in logs
         if (!renderCompleteTime) {
           renderCompleteTime = Date.now();
@@ -417,12 +439,114 @@ export class ViewerBenchmarkPage {
       await this.page.waitForTimeout(250);
     }
 
-    // Parse metrics from console logs
+    // Span tree first, console logs as the fallback.
+    await this.readLoadTrace();
     this.parseMetrics();
   }
 
+  /**
+   * #6957: wait until the load's structural counters stop moving, then keep
+   * that snapshot for `getLoadCounters`. The load's root span ends before the
+   * renderer has drained its upload queue (and, under SwiftShader, before the
+   * renderer even starts), so counters read at completion would cut work off
+   * at a timing-dependent point. Timing metrics are untouched: they were taken
+   * from the completion snapshot. Stable = unchanged over `quietPolls` polls.
+   */
+  async settleLoadCounters({ pollMs = 250, quietPolls = 6, maxMs = 30_000 } = {}): Promise<void> {
+    const deadline = Date.now() + maxMs;
+    let last = '';
+    let quiet = 0;
+    for (;;) {
+      await this.readLoadTrace();
+      const key = settleKey(this.loadTrace);
+      quiet = key === last ? quiet + 1 : 0;
+      last = key;
+      if (quiet >= quietPolls) return;
+      if (Date.now() >= deadline) {
+        console.warn(`[Benchmark] structural counters still moving after ${maxMs} ms; recording the latest snapshot`);
+        return;
+      }
+      await this.page.waitForTimeout(pollMs);
+    }
+  }
+
+  /**
+   * The latest load's completion state, reduced inside the page so a poll
+   * copies a few span names rather than the tree (#6979). Null when the page
+   * exposes no trace yet (or at all: a viewer built before #6977).
+   */
+  private async probeLoadTrace(): Promise<LoadTraceProbe | null> {
+    try {
+      return await this.page.evaluate(
+        ({ key, names }: { key: string; names: readonly string[] }) => {
+          type Span = { name: string; end: number | null; attrs?: Record<string, unknown> };
+          const api = (globalThis as unknown as Record<string, { latest?: () => { end: number | null; spans: Span[] } | null } | undefined>)[key];
+          const snapshot = api?.latest?.() ?? null;
+          if (!snapshot) return null;
+          const done: string[] = [];
+          const failed: string[] = [];
+          for (const span of snapshot.spans) {
+            if (span.end === null || !names.includes(span.name)) continue;
+            done.push(span.name);
+            if (span.attrs?.error === true) failed.push(span.name);
+          }
+          return { ended: snapshot.end !== null, done, failed };
+        },
+        { key: LOAD_TRACE_GLOBAL, names: READINESS_SPANS },
+      );
+    } catch (err) {
+      console.warn('[Benchmark] could not probe the load trace', err);
+      return null;
+    }
+  }
+
+  /** Pull the latest load's span tree out of the page (null when tracing is unavailable). */
+  private async readLoadTrace(): Promise<void> {
+    try {
+      this.loadTrace = await this.page.evaluate(
+        (key: string) => {
+          const api = (globalThis as unknown as Record<string, { latest?: () => unknown } | undefined>)[key];
+          return (api?.latest?.() ?? null) as LoadTraceSnapshotJson | null;
+        },
+        LOAD_TRACE_GLOBAL,
+      );
+    } catch (err) {
+      console.warn('[Benchmark] could not read the load-trace span tree; using console regexes only', err);
+      this.loadTrace = null;
+    }
+  }
+
+  /**
+   * Override regex-derived values with span-derived ones where the span tree
+   * has them, recording each metric's source and every span/regex pair that
+   * disagrees beyond rounding (asserted on FZK by the spec).
+   */
+  private applySpanMetrics(appReportedTotalMs: number | null) {
+    // The span root is the app's own total; compare it only with the app's own
+    // total line, never with the Playwright-observed wall clock fallback.
+    const regex: Partial<Record<string, number | null>> = { ...this.metrics, totalWallClockMs: appReportedTotalMs };
+    const span = metricsFromLoadTrace(this.loadTrace);
+    this.spanRegexDisagreements = compareSpanAndRegexMetrics(span, regex);
+    for (const key of SPAN_METRIC_KEYS) {
+      const value = span[key];
+      if (value !== undefined) {
+        this.metrics[key] = value;
+        this.metricSources[key] = 'span';
+      } else {
+        this.metricSources[key] = this.metrics[key] === null || this.metrics[key] === undefined ? 'none' : 'regex';
+      }
+    }
+  }
+
+  /**
+   * TODO(remove-by: first release after 2026-10-06, i.e. one after #6977;
+   * #7005): the console regexes for metrics the span tree carries are the
+   * fallback for viewer builds without a load trace. `applySpanMetrics`
+   * overrides them whenever the tree has the value.
+   */
   private parseMetrics() {
     const logs = this.consoleLogs.join('\n');
+    let appReportedTotalMs: number | null = null;
     
     // Calculate wall-clock total time
     if (this.loadStartTime > 0 && this.loadEndTime > 0) {
@@ -579,6 +703,7 @@ export class ViewerBenchmarkPage {
     const totalLoadMatch = logs.match(/\[useIfc\] TOTAL LOAD TIME.*?: (\d+)ms/);
     if (totalLoadMatch) {
       this.metrics.totalWallClockMs = parseInt(totalLoadMatch[1], 10);
+      appReportedTotalMs = this.metrics.totalWallClockMs;
     }
 
     // Current primary-path final summary carries the app's own measured total:
@@ -591,6 +716,7 @@ export class ViewerBenchmarkPage {
       this.metrics.fileSizeMB = this.metrics.fileSizeMB ?? parseFloat(finalSummaryMatch[1]);
       this.metrics.totalMeshes = this.metrics.totalMeshes ?? parseInt(finalSummaryMatch[2].replace(/,/g, ''), 10);
       this.metrics.totalWallClockMs = Math.round(parseFloat(finalSummaryMatch[3]) * 1000);
+      appReportedTotalMs = this.metrics.totalWallClockMs;
     }
 
     // Steady-state render stats (issue #1682), emitted post-settle by
@@ -612,6 +738,8 @@ export class ViewerBenchmarkPage {
         this.metrics.instancedContributionCulled = parseInt(renderStatsMatch[8], 10);
       }
     }
+
+    this.applySpanMetrics(appReportedTotalMs);
   }
 
   getMetrics(): ViewerBenchmarkMetrics {
@@ -649,6 +777,29 @@ export class ViewerBenchmarkPage {
       instancedFrustumCulled: this.metrics.instancedFrustumCulled ?? null,
       instancedContributionCulled: this.metrics.instancedContributionCulled ?? null,
     };
+  }
+
+  /** The raw span tree of the measured load, or null when the page exposed none. */
+  getLoadTrace(): LoadTraceSnapshotJson | null {
+    return this.loadTrace;
+  }
+
+  /**
+   * #6957: the measured load's structural counters, its long-frame summary
+   * and the pinned worker count (null = engine heuristic), or null counters
+   * when the viewer recorded none.
+   */
+  getLoadCounters(): { geomWorkers: number | null; counters: LoadCounters | null } {
+    return { geomWorkers: this.geomWorkers, counters: countersFromLoadTrace(this.loadTrace) };
+  }
+
+  getMetricSources(): Partial<Record<string, MetricSource>> {
+    return { ...this.metricSources };
+  }
+
+  /** Span/regex pairs for the same metric that differ beyond rounding; empty when they agree. */
+  getSpanRegexDisagreements(): SpanRegexDisagreement[] {
+    return [...this.spanRegexDisagreements];
   }
 
   getConsoleLogs(): string[] {

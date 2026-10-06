@@ -33,6 +33,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { loadDemoLayerStack } from '@/lib/layers/demo-stack';
 import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
+import { AssistantAction } from '@/components/viewer/assistant/AssistantAction';
 
 interface LayersPanelProps {
   onClose: () => void;
@@ -305,12 +306,13 @@ export function LayersPanel(_props: LayersPanelProps) {
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-2xs text-muted-foreground">
         <Layers className="size-3.5" aria-hidden />
-        <span>
+        <span className="flex-1">
           {t('layersPanel.panel.layerCountHeader', {
             count: layerStack.length,
             countDisplay: String(layerStack.length),
           })}
         </span>
+        <AssistantAction />
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-1 px-2 pb-2">

@@ -7,6 +7,7 @@ import { clashGroupLibrary, useClashGroupLibrary, DEFAULT_GROUP_WORKSPACE } from
 import { ContentStorageNotice } from './ContentStorageNotice';
 import { Button } from '@/components/ui/button';
 import { useBcfDraftActions } from './bcf/useBcfDraftActions';
+import { ClashGroupApplications } from './assistant/ClashGroupApplicationCard';
 
 /** Imported conflicting partitions stay independent until the coordinator selects one. */
 export function ClashGroupStorage() {
@@ -31,5 +32,6 @@ export function ClashGroupStorage() {
       </Button>
     </div>
     <ContentStorageNotice status={library.status} retry={clashGroupLibrary.retry} restore={clashGroupLibrary.restore} />
+    <ClashGroupApplications />
   </div>;
 }

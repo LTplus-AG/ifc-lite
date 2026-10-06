@@ -5,6 +5,7 @@
 /**
  * WebGPU device initialization
  */
+import { meterGpuDevice } from './gpu-counters.js';
 
 /**
  * Vendor/architecture identity of the GPU adapter, copied out of
@@ -181,7 +182,7 @@ export class WebGPUDevice {
       device = await this.adapter.requestDevice();
     }
 
-    this.device = device;
+    this.device = meterGpuDevice(device); // #6957 upload counters (identity unless ?perfTrace=1)
     this.format = navigator.gpu.getPreferredCanvasFormat();
     this.canvas = canvas;
 

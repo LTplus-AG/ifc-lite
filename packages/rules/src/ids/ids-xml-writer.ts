@@ -28,6 +28,8 @@ const XSI_NS = 'http://www.w3.org/2001/XMLSchema-instance';
 const SCHEMA_LOCATION = `${IDS_NS} http://standards.buildingsmart.org/IDS/1.0/ids.xsd`;
 
 /** Characters XML 1.0 cannot carry, even as character references. */
+// Matching control characters is the point: they are refused, not allowed through.
+// eslint-disable-next-line no-control-regex
 const NOT_XML = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/;
 
 /** `field` names the element or attribute, so a refusal says what to fix. */

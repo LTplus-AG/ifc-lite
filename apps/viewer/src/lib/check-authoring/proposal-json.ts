@@ -32,6 +32,8 @@ export function onlyKeys(value: JsonRecord, allowed: readonly string[], at: stri
 
 /** Control characters other than tab and line breaks: XML 1.0 cannot carry them, so a saved IDS could not either. */
 export function plainText(text: string, at: string): string {
+  // Matching control characters is the point: they are refused, not allowed through.
+  // eslint-disable-next-line no-control-regex
   const bad = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.exec(text);
   if (bad) throw new Error(`${at} contains a control character (U+${bad[0].charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}); remove it`);
   return text;

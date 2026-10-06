@@ -3258,3 +3258,59 @@ prototype removing unused nested value trees on this evidence or revisit the
 rejected general constructor. A different worker capture must first establish
 substantial unused materialization on the critical path. This native opportunity
 screen is not a browser speedup or a measurement of indirect style decoding.
+
+## Subtract-weld guard for opening cutters (#6940)
+
+A correctness fix in the kernel's cutter weld, not a lever. The subtract weld
+no longer moves an opening-cutter vertex off a host face it is exactly on and
+onto a separate host face lying within the same band. The guard adds one
+scratch list per cutter vertex (the host faces it is exactly on) and, only
+when the nearest in-band face coincides with one of those, a walk over the
+host faces joined to that face. The walk is remembered per question, and most
+cutters never start it.
+
+Interleaved native A/B, `perf_probe --iters 1 --json --fingerprint` as fresh
+processes, seven rounds in the balanced order `ab-order.mjs` produced, base
+built from an export of `upstream/main` at `0382324e8`, same pinned toolchain
+and `profiling` profile on both sides, Apple M4 Pro. The machine was NOT idle
+(1-minute load 6 to 10 during the rounds), so read the ranges, not the
+medians.
+
+Base/branch, median (min-max) milliseconds:
+
+| Fixture | Parse | Geometry | Pipeline total |
+|---|---:|---:|---:|
+| AC20-FZK-Haus | 6 (5-9) / 6 (5-6) | 7 (7-9) / 7 (7-8) | 13 (13-18) / 14 (13-15) |
+| ISSUE_129 | 15 (15-16) / 15 (15-16) | 792 (740-809) / 758 (745-784) | 808 (756-824) / 774 (762-800) |
+| S_Office | 40 (39-54) / 40 (39-41) | 692 (629-720) / 693 (626-756) | 734 (668-762) / 733 (667-797) |
+| ISSUE_053 (Holter) | 282 (282-306) / 282 (278-313) | 491 (354-566) / 502 (348-542) | 773 (639-872) / 780 (649-821) |
+| MiniBIM-3.1-DO_01_VORM | 11 (11-12) / 11 (11-12) | 333 (282-354) / 162 (155-218) | 345 (294-366) / 174 (166-231) |
+
+Output. The first four fixtures kept their mesh, vertex and triangle counts
+and their ordered mesh FNV-1a64 on every run of both sides (`c4d504b83ff698ea`,
+`ff42e1a3f7fcf540`, `e54ef15fc7702c2f`, `52d69b2909024f56`). MiniBIM kept 3,946
+meshes and changed from 336,553 vertices / 182,848 triangles
+(`3ba0b4b5a565879b`) to 336,388 / 183,046 (`0386cbc3f5177650`), each stable
+across the seven runs of its side. An untimed pass over all 121 `.ifc`
+fixtures on disk (265,569 meshes on the base) found the ordered fingerprint
+identical on 120; a per-mesh comparison of the remaining one found exactly
+the nine floor-slab hosts whose census rows this change repins. These hashes
+cover the probe's ordered mesh payload, not text metadata, material
+definitions, UVs, textures or instancing.
+
+Verdict: no timing move outside the base's own range on the four fixtures
+whose output is unchanged, including the heavy CSG model. This is the observed
+native cost of a correctness fix, not a speedup claim and not a browser
+worker-pool result. The MiniBIM geometry ranges do not overlap (base slower),
+but that comparison is not like-for-like: seven slabs that came back torn now
+come back closed, and which downstream work stopped running was not traced.
+
+The lesson is about the instrument, not the timing. The first version of the
+guard sat in the weld every kernel subtract shares, and the watertightness
+census, which walks void hosts only, showed one non-slab row moving. The
+per-mesh fingerprint over the producer's whole output showed 21 elements in
+two models changing through the operand of an `IfcBooleanResult` DIFFERENCE,
+20 of them with no openings and so invisible to the census, 7 of them for the
+worse. Scoping the guard to opening cutters removed all 21. For a kernel
+change, diff the producer's per-mesh fingerprints over the corpus before
+trusting a census delta as the whole output delta.

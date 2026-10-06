@@ -18,7 +18,7 @@ import { auditIdsDraft, buildIdsDraft, parseIdsProposal } from './ids-proposal';
 import { parseRulesProposal } from './rules-proposal';
 import { parseDocumentOutline, prepareDocumentDraft } from './document-outline';
 import { dryRunIds, dryRunRules } from './dry-run';
-import { openDefinition, saveDocumentDraft, saveIdsDraft, saveRulesDraft } from './save';
+import { exportIdsDraft, openDefinition, saveDocumentDraft, saveIdsDraft, saveRulesDraft } from './save';
 
 const initial = useViewerStore.getState();
 afterEach(() => { useViewerStore.setState(initial, true); localStorage.clear(); useValidationSourceChoice.setState({ choice: null }); });
@@ -47,6 +47,23 @@ test('an audited, dry-run IDS draft saves into the native library and reopens wi
   assert.equal(loadDefinitionLibrary().library.active.ids, saved.id);
   assert.equal(useViewerStore.getState().idsDocument?.info.title, 'Building Architecture IDS', 'opening it makes it the active native IDS');
   assert.equal(useValidationSourceChoice.getState().choice, 'ids');
+});
+
+// #6915 review: audit issues and a dry run must describe the XML being saved, not an earlier draft.
+test('saving an IDS draft refuses an audit or dry run that describes a different draft', async () => {
+  await seedAuthoringSample({ editEnabled: false });
+  const draft = buildIdsDraft(parseIdsProposal(json(SAMPLE_IDS_PROPOSAL)));
+  const earlier = buildIdsDraft(parseIdsProposal(json({ ...SAMPLE_IDS_PROPOSAL, title: 'Earlier draft' })));
+  const issues = await auditIdsDraft(draft);
+  const earlierIssues = await auditIdsDraft(earlier);
+  const run = await dryRunIds(draft.document);
+  assert.throws(() => saveIdsDraft(earlier, issues, run), /earlier draft/, 'the audit belongs to another draft');
+  assert.throws(() => exportIdsDraft(earlier, issues), /earlier draft/);
+  assert.throws(() => saveIdsDraft(draft, [...issues], run), /earlier draft/, 'a copied audit result is not a recorded audit');
+  assert.throws(() => saveIdsDraft(earlier, earlierIssues, run), /Dry-run/, 'the dry run checked another draft');
+  const edited = { ...draft, xml: earlier.xml };
+  assert.throws(() => saveIdsDraft(edited, earlierIssues, run), /Dry-run/, 'the dry run checked a document other than the XML being saved');
+  assert.ok(saveIdsDraft(draft, issues, run));
 });
 
 // #6915 review: the report a conversation was built on survives saving the drafts drafted from it.

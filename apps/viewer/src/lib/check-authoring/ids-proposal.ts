@@ -139,8 +139,18 @@ export function buildIdsDraft(proposal: IdsProposal): IdsDraft {
   return { proposal, xml, document: parseIDS(xml) };
 }
 
+/** The exact XML each audit result describes, so a result cannot be reused for a different draft. */
+const auditedXml = new WeakMap<readonly IDSAuditIssue[], string>();
+
 /** Native document audit (XSD, IFC schema, restriction coherence). Errors block saving and export. */
 export async function auditIdsDraft(draft: IdsDraft): Promise<IDSAuditIssue[]> {
   if (!draft.xml) return [];
-  return (await auditIDSDocument(draft.xml)).issues;
+  const issues = (await auditIDSDocument(draft.xml)).issues;
+  auditedXml.set(issues, draft.xml);
+  return issues;
+}
+
+/** Whether `issues` came from auditing exactly `xml`. */
+export function isAuditOf(issues: readonly IDSAuditIssue[] | null, xml: string): boolean {
+  return issues !== null && auditedXml.get(issues) === xml;
 }

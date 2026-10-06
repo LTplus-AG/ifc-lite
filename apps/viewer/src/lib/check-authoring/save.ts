@@ -14,7 +14,7 @@ import { useViewerStore } from '@/store';
 import { downloadFile, sanitizeFilename } from '../export/download';
 import { setValidationSourceChoice } from '../validation/validation-source-choice';
 import { isDryRunCurrent, type DryRun } from './dry-run';
-import type { IdsDraft } from './ids-proposal';
+import { isAuditOf, type IdsDraft } from './ids-proposal';
 import { ruleSetForSave, type RulesProposal } from './rules-proposal';
 import type { DocumentDraft } from './document-outline';
 
@@ -27,6 +27,9 @@ export interface SavedDefinition {
 
 export const auditBlocks = (issues: readonly IDSAuditIssue[] | null): boolean =>
   !issues || issues.some(issue => issue.severity === 'error');
+
+/** The audit must have run on exactly this XML; a result for an earlier draft proves nothing. */
+const auditStale = (draft: IdsDraft, issues: readonly IDSAuditIssue[] | null): boolean => !isAuditOf(issues, draft.xml);
 
 /**
  * Adds a new library entry WITHOUT activating it: activating clears the shown
@@ -47,8 +50,11 @@ function addDefinition(definition: Parameters<ReturnType<typeof useViewerStore.g
 export function saveIdsDraft(draft: IdsDraft, issues: readonly IDSAuditIssue[] | null, run: DryRun | null): SavedDefinition {
   if (!draft.xml) throw new Error('The draft has no specification to save.');
   if (auditBlocks(issues)) throw new Error('Resolve the native IDS audit errors before saving.');
-  if (!isDryRunCurrent(run, draft.document)) throw new Error('Dry-run the draft on the current models before saving.');
-  return addDefinition({ kind: 'ids', xml: draft.xml, document: parseIDS(draft.xml) });
+  if (auditStale(draft, issues)) throw new Error('The native IDS audit was run on an earlier draft. Audit this draft before saving.');
+  // What is stored is parsed from the XML, so the dry run must have checked that document.
+  const document = parseIDS(draft.xml);
+  if (!isDryRunCurrent(run, document)) throw new Error('Dry-run the draft on the current models before saving.');
+  return addDefinition({ kind: 'ids', xml: draft.xml, document });
 }
 
 /** New information rule set, not activated; unsupported requirements are kept in its descriptions. */
@@ -68,6 +74,7 @@ export async function saveDocumentDraft(draft: DocumentDraft): Promise<boolean> 
 
 export function exportIdsDraft(draft: IdsDraft, issues: readonly IDSAuditIssue[] | null): void {
   if (!draft.xml || auditBlocks(issues)) throw new Error('Resolve the native IDS audit errors before exporting.');
+  if (auditStale(draft, issues)) throw new Error('The native IDS audit was run on an earlier draft. Audit this draft before exporting.');
   downloadFile(draft.xml, `${sanitizeFilename(draft.proposal.title, { fallback: 'ids' })}.ids`, 'application/xml');
 }
 

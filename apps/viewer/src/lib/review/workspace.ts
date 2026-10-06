@@ -66,9 +66,23 @@ export const reviewWorkspaceLibrary = createContentLibrary(reviewWorkspacesConte
   () => useReviewWorkspaces.getState().entries,
   (entries, status) => useReviewWorkspaces.setState({ entries, status }));
 
+/**
+ * The review a person sees. An import never overwrites: a backup whose
+ * decisions differ from the local review is stored under a fresh id, so those
+ * copies are folded in here (per card, the newer decision wins) instead of
+ * being orphaned under an id nothing reads.
+ */
 export function currentReviewWorkspace(entries: readonly ReviewWorkspace[]): ReviewWorkspace {
-  return entries.find(entry => entry.id === DEFAULT_REVIEW_WORKSPACE)
+  const local = entries.find(entry => entry.id === DEFAULT_REVIEW_WORKSPACE)
     ?? { version: 1, id: DEFAULT_REVIEW_WORKSPACE, name: 'Coordination review', decisions: [] };
+  const imported = entries.filter(entry => entry.id !== DEFAULT_REVIEW_WORKSPACE);
+  if (!imported.length) return local;
+  const decisions = new Map(local.decisions.map(decision => [decision.cardKey, decision]));
+  for (const workspace of imported) for (const decision of workspace.decisions) {
+    const held = decisions.get(decision.cardKey);
+    if (!held || Date.parse(decision.updatedAt) > Date.parse(held.updatedAt)) decisions.set(decision.cardKey, decision);
+  }
+  return { ...local, decisions: [...decisions.values()] };
 }
 
 export function decisionFor(workspace: ReviewWorkspace, cardKey: string): CardDecision | null {
@@ -77,14 +91,19 @@ export function decisionFor(workspace: ReviewWorkspace, cardKey: string): CardDe
 
 /**
  * Record (or clear, with `null`) one person's decision on a card. A refused
- * save stays visible as a staged draft with its native save state.
+ * save stays visible as a staged draft with its native save state. The save
+ * persists the folded review, then retires the imported copies it absorbed, so
+ * a cleared card cannot reappear from an older imported decision.
  */
-export function saveCardDecision(cardKey: string, decision: { status: HumanStatus; comment: string } | null, now = new Date()): Promise<boolean> {
-  const workspace = currentReviewWorkspace(useReviewWorkspaces.getState().entries);
+export async function saveCardDecision(cardKey: string, decision: { status: HumanStatus; comment: string } | null, now = new Date()): Promise<boolean> {
+  const entries = useReviewWorkspaces.getState().entries;
+  const workspace = currentReviewWorkspace(entries);
   const others = workspace.decisions.filter(entry => entry.cardKey !== cardKey);
   const next: ReviewWorkspace = { ...workspace, decisions: decision
     ? [...others, { cardKey, status: decision.status, comment: decision.comment.slice(0, REVIEW_LIMITS.comment), updatedAt: now.toISOString() }]
     : others };
-  if (!decodeReviewWorkspace(next)) return Promise.resolve(false);
-  return reviewWorkspaceLibrary.put(next.id, next);
+  if (!decodeReviewWorkspace(next)) return false;
+  if (!await reviewWorkspaceLibrary.put(next.id, next)) return false;
+  const absorbed = entries.filter(entry => entry.id !== DEFAULT_REVIEW_WORKSPACE);
+  return (await Promise.all(absorbed.map(entry => reviewWorkspaceLibrary.put(entry.id, null)))).every(Boolean);
 }

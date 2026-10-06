@@ -28,7 +28,8 @@ export function reviewModel(id: string, name: string, store: IfcDataStore, view?
     globalIdOf: expressId => store.entities.getGlobalId(expressId) ?? '',
     storeyOf: expressId => {
       const storey = effectiveStoreyId(store, view, expressId);
-      return storey ? store.entities.getName(storey) || null : null;
+      // A resolved storey with a blank Name still facets, under the label the rest of the viewer uses.
+      return storey ? store.entities.getName(storey) || `Storey #${storey}` : null;
     },
   };
 }

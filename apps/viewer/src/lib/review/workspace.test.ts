@@ -60,3 +60,28 @@ test('review decisions travel through the library backup and import like every o
   assert.equal(await reviewWorkspaceLibrary.refresh(receipts), true);
   assert.equal(decisionFor(currentReviewWorkspace(useReviewWorkspaces.getState().entries), 'k1')?.status, 'accepted');
 });
+
+test('an imported review that differs from the local one is folded in, never orphaned, and retired on the next save', async () => {
+  await clearContentDatabase();
+  assert.equal(await reviewWorkspaceLibrary.restore(), true);
+  assert.equal(await saveCardDecision('local', { status: 'open', comment: '' }, new Date('2026-03-01T00:00:00.000Z')), true);
+  assert.equal(await saveCardDecision('shared', { status: 'open', comment: 'local' }, new Date('2026-03-01T00:00:00.000Z')), true);
+  const theirs: ReviewWorkspace = { ...base, decisions: [
+    { cardKey: 'shared', status: 'resolved', comment: 'theirs', updatedAt: '2026-04-01T00:00:00.000Z' },
+    { cardKey: 'stale', status: 'dismissed', comment: '', updatedAt: '2026-01-01T00:00:00.000Z' }] };
+  const backup = parseContentBackup(JSON.stringify(createContentBackup({ validation: [], comparison: [], document: [], reviewWorkspaces: [theirs] })));
+  let receipts: Parameters<typeof reviewWorkspaceLibrary.refresh>[0];
+  assert.equal(await importContentBackup(backup, undefined, true, rows => { receipts = rows; }), 1);
+  assert.equal(await reviewWorkspaceLibrary.refresh(receipts), true);
+  assert.equal(useReviewWorkspaces.getState().entries.length, 2, 'the import kept the local review and stored a copy');
+  const folded = currentReviewWorkspace(useReviewWorkspaces.getState().entries);
+  assert.equal(folded.id, DEFAULT_REVIEW_WORKSPACE);
+  assert.equal(decisionFor(folded, 'shared')?.comment, 'theirs', 'the newer imported decision wins');
+  assert.equal(decisionFor(folded, 'local')?.status, 'open');
+  assert.equal(decisionFor(folded, 'stale')?.status, 'dismissed');
+  assert.equal(await saveCardDecision('stale', null), true);
+  assert.deepEqual(useReviewWorkspaces.getState().entries.map(entry => entry.id), [DEFAULT_REVIEW_WORKSPACE]);
+  const after = currentReviewWorkspace(useReviewWorkspaces.getState().entries);
+  assert.equal(decisionFor(after, 'stale'), null, 'a cleared card does not reappear from the absorbed copy');
+  assert.equal(decisionFor(after, 'shared')?.comment, 'theirs');
+});

@@ -20,12 +20,13 @@
 
 import { buildSpanTree, createLoadTracer, toChromeTrace, type LoadTracer } from '@ifc-lite/load-trace';
 import { downloadBlob } from '../export/download.js';
+import { readPerfFlag } from './flags.js';
 
 const GLOBAL_KEY = '__IFC_LITE_LOAD_TRACE__';
 
 export function isPerfTraceRequested(
   search: string = globalThis.location?.search ?? '',
-  flag: unknown = (globalThis as { __IFC_LITE_PERF_TRACE?: unknown }).__IFC_LITE_PERF_TRACE,
+  flag: unknown = readPerfFlag('perfTrace'),
 ): boolean {
   if (flag === 1 || flag === true || flag === '1') return true;
   return new URLSearchParams(search).get('perfTrace') === '1';

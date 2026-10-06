@@ -30,6 +30,13 @@ export const ALLOWED_READERS = new Set([
   'packages/data/src/perf-flag-reader.ts',
   'packages/geometry/src/perf-flags.ts',
 ]);
+/**
+ * `__IFC_LITE_*` names the viewer PUBLISHES for harnesses (outputs it writes),
+ * not flags it reads. They are not perf flags, so they are not registry entries.
+ */
+export const PUBLISHED_GLOBALS = new Set([
+  '__IFC_LITE_LOAD_TRACE__', // load-trace span API, apps/viewer/src/lib/perf/loadTrace.ts (#6956)
+]);
 // Production sources only: the viewer and every package's src/ (other apps
 // and package tooling never read these flags).
 const SCAN_ROOTS = ['apps/viewer/src', 'packages/*/src'];
@@ -71,6 +78,7 @@ function main() {
     }
     if (!text.includes('__IFC_LITE_')) continue;
     for (const hit of findPerfGlobalReads(text, path)) {
+      if (PUBLISHED_GLOBALS.has(hit.name)) continue;
       problems.push(`${path}:${hit.line}: reads ${hit.name} directly; go through readPerfFlag (viewer) or readPerfFlagRaw (packages)`);
     }
   }

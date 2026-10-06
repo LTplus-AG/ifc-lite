@@ -179,6 +179,15 @@ export const PERF_FLAGS = [
     default: '0',
     bindings: { urlParam: 'perfMem' },
   },
+  {
+    id: 'perfTrace',
+    kind: 'kill-switch',
+    owner: '@louistrue',
+    removalCondition: 'Keep while the load-trace span API (#6956) is the benchmark and DevTools timing source; delete with it.',
+    introducedAt: '2026-10-06',
+    default: false,
+    bindings: { global: '__IFC_LITE_PERF_TRACE', urlParam: 'perfTrace' },
+  },
 ] as const satisfies readonly PerfFlagDefinition[];
 
 export type PerfFlagId = (typeof PERF_FLAGS)[number]['id'];

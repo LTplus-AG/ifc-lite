@@ -92,7 +92,14 @@ function proposalDigest(proposal: Omit<FlowProposal, 'digest'>): string {
     diagnosis: JSON.stringify(proposal.diagnosis) });
 }
 
-/** Cited nodes must have failed in the captured run, and the fix must touch their branch. */
+/** Nodes whose evaluation an operation changes; positions, labels and the graph name change none. */
+function behaviourTargets(patch: FlowPatch): string[] {
+  return patch.operations.flatMap(op => op.op === 'connect' ? [op.from[0], op.to[0]] : op.op === 'disconnect' ? [op.to[0]]
+    : op.op === 'setParam' || op.op === 'unsetParam' || op.op === 'removeNode' ? [op.node]
+      : op.op === 'updateNode' && Object.keys(op.patch).some(key => key !== 'label') ? [op.node] : []);
+}
+
+/** Cited nodes must have failed in the captured run, and the fix must change their branch's behaviour. */
 function diagnose(patch: FlowPatch, before: FlowDocument, evidence: EvidenceSnapshot): FlowProposalDiagnosis | null {
   if (!patch.diagnosis) return null;
   // Only `flowRun` evidence pins a run; graph-structure (`flow`) evidence cannot support a diagnosis.
@@ -105,9 +112,7 @@ function diagnose(patch: FlowPatch, before: FlowDocument, evidence: EvidenceSnap
     return { nodeId, status: node.status, laneErrors: node.laneErrors, messages: [...node.error ? [node.error] : [], ...node.errorMessages].slice(0, 5) };
   });
   const branch = withUpstream(before, nodes.map(node => node.nodeId));
-  const touched = patch.operations.flatMap(op => op.op === 'connect' ? [op.from[0], op.to[0]] : op.op === 'disconnect' ? [op.to[0]]
-    : op.op === 'moveNode' || op.op === 'addNode' || op.op === 'rename' ? [] : [op.node]);
-  if (!touched.some(id => branch.has(id))) throw new Error('Debug patch does not change the failing nodes or their inputs');
+  if (!behaviourTargets(patch).some(id => branch.has(id))) throw new Error('Debug patch does not change the failing nodes or their inputs');
   return { explanation: patch.diagnosis.explanation.trim(), nodes };
 }
 

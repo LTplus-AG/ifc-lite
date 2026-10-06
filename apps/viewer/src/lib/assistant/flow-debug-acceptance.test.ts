@@ -64,6 +64,11 @@ test('#6919 lane errors are diagnosed from the native run and a cited debug patc
   assert.throws(() => prepareFlowProposal(patch(fix, { nodes: ['y'], explanation: 'y is wrong' }), evidence), /did not fail/);
   assert.throws(() => prepareFlowProposal(patch([{ op: 'setParam', node: 'column', param: 'width', value: 0.4 }],
     { nodes: ['pt'], explanation: 'wider columns' }), evidence), /does not change the failing nodes/);
+  // Relabelling or moving the failing node changes no behaviour, so it is no fix.
+  assert.throws(() => prepareFlowProposal(patch([{ op: 'updateNode', node: 'pt', patch: { label: 'Point' } }, { op: 'moveNode', node: 'pt', pos: [5, 5] }],
+    { nodes: ['pt'], explanation: 'clearer label' }), evidence), /does not change the failing nodes/);
+  assert.equal(prepareFlowProposal(patch([{ op: 'updateNode', node: 'pt', patch: { label: 'Point', lacing: 'longest' } }],
+    { nodes: ['pt'], explanation: 'lace the lists' }), evidence).diagnosis?.nodes[0].nodeId, 'pt', 'a lacing change is behaviour');
   const debug = prepareFlowProposal(patch(fix, { nodes: ['pt'], explanation: 'The X positions are strings; geometry.point needs numbers.' }), evidence);
   assert.deepEqual(debug.diagnosis?.nodes.map(node => [node.nodeId, node.laneErrors]), [['pt', 3]]);
   assert.match(debug.diagnosis!.nodes[0].messages[0], /must be a finite number/);

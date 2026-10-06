@@ -457,7 +457,7 @@ ara3d/S_Office_Integrated Design Archi.ifc	767111	CSG	0	108	0	0	0	-	0	98168
 ara3d/S_Office_Integrated Design Archi.ifc	767445	Curve2D	0	0	0	0	0	-	0	0
 ara3d/S_Office_Integrated Design Archi.ifc	768209	CSG	0	224	0	0	0	-	0	58476
 ara3d/S_Office_Integrated Design Archi.ifc	768976	CSG	0	232	0	0	0	-	0	59521
-ara3d/S_Office_Integrated Design Archi.ifc	769740	CSG	0	280	0	0	0	-	0	92429
+ara3d/S_Office_Integrated Design Archi.ifc	769740	CSG	0	230	0	0	0	-	0	92429
 ara3d/S_Office_Integrated Design Archi.ifc	770504	CSG	0	100	0	0	0	-	0	835195
 ara3d/S_Office_Integrated Design Archi.ifc	771268	CSG	0	196	0	0	0	-	0	91977
 ara3d/S_Office_Integrated Design Archi.ifc	772032	CSG	0	196	0	0	0	-	0	91674
@@ -969,7 +969,7 @@ ara3d/tested_sample_project.ifc	186	SweptSolid	0	192	0	0	0	-	0	2995683
 ara3d/tested_sample_project.ifc	294	SweptSolid	0	28	0	0	0	-	0	2022122
 buildingsmart/wall-with-opening-and-window.ifc	45	unknown	0	32	0	0	0	-	0	1500015
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	135719	Tessellation	0	334	0	0	0	-	0	18548173
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	135923	SweptSolid	390	761	1	0	392	28	390	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	135923	SweptSolid	160	826	0	0	110	28	160	-
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	136462	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	136970	Tessellation	0	78	0	0	0	-	0	630934
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137017	Tessellation	0	64	0	0	0	-	0	1497205
@@ -978,7 +978,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137116	Tessellation	0	104	0	0	0	-	0	832
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137246	Tessellation	0	78	0	0	0	-	0	165757
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137317	Tessellation	0	98	0	0	0	-	0	165754
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137489	Tessellation	0	226	0	0	0	-	0	14571928
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137627	SweptSolid	39	499	0	0	39	0	39	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137627	SweptSolid	0	512	0	0	0	-	0	132176407
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137836	Tessellation	0	116	0	0	0	-	0	3647478
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	138286	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	138749	Tessellation	0	72	0	0	0	-	0	630933
@@ -989,7 +989,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	138985	Tessellation	0	78	0	0	0	-	0	1657
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	139056	Tessellation	0	98	0	0	0	-	0	165754
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	139274	Tessellation	0	228	0	0	0	-	0	14571970
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	139407	Tessellation	0	230	0	0	0	-	0	14571911
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	139545	SweptSolid	39	499	0	0	39	0	39	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	139545	SweptSolid	0	512	0	0	0	-	0	132176407
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	139754	Tessellation	0	114	0	0	0	-	0	3647478
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	140204	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	140667	Tessellation	0	78	0	0	0	-	0	630934
@@ -1000,7 +1000,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	140903	Tessellation	0	78	0	0	0	-	0	1657
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	140974	Tessellation	0	98	0	0	0	-	0	165754
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	141163	Tessellation	0	232	0	0	0	-	0	14571954
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	141296	Tessellation	0	230	0	0	0	-	0	14571911
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	141434	SweptSolid	39	499	0	0	39	0	39	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	141434	SweptSolid	0	512	0	0	0	-	0	132176407
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	141643	Tessellation	0	114	0	0	0	-	0	3647478
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	142093	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	142556	Tessellation	0	78	0	0	0	-	0	630934
@@ -1011,7 +1011,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	142792	Tessellation	0	78	0	0	0	-	0	1657
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	142863	Tessellation	0	98	0	0	0	-	0	165754
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	143052	Tessellation	0	232	0	0	0	-	0	14571954
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	143185	Tessellation	0	230	0	0	0	-	0	14571911
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	143323	SweptSolid	39	499	0	0	39	0	39	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	143323	SweptSolid	0	512	0	0	0	-	0	132176407
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	143532	Tessellation	0	114	0	0	0	-	0	3647478
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	143982	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	144445	Tessellation	0	78	0	0	0	-	0	630934
@@ -1022,7 +1022,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	144681	Tessellation	0	78	0	0	0	-	0	1657
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	144752	Tessellation	0	98	0	0	0	-	0	165754
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	144941	Tessellation	0	232	0	0	0	-	0	14571954
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	145074	Tessellation	0	230	0	0	0	-	0	14571911
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	145212	SweptSolid	39	499	0	0	39	0	39	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	145212	SweptSolid	0	512	0	0	0	-	0	132176407
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	145421	Tessellation	0	114	0	0	0	-	0	3647478
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	145871	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	146334	Tessellation	0	78	0	0	0	-	0	630934
@@ -1056,12 +1056,12 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150455	Tessellation	0	78	0	0	0	-	0	6309
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150502	Tessellation	0	64	0	0	0	-	0	1497197
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150695	Tessellation	0	126	0	0	0	-	0	28660641
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150794	Tessellation	0	120	0	0	0	-	0	28660376
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150890	SweptSolid	53	337	1	0	50	0	53	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150890	SweptSolid	17	381	0	0	17	0	17	-
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151287	Tessellation	0	84	0	0	0	-	0	191272
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151334	Tessellation	0	46	0	0	0	-	0	5998797
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151425	Tessellation	0	250	0	0	0	-	0	24865520
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151622	Tessellation	0	230	0	0	0	-	0	14571911
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151760	SweptSolid	39	499	0	0	39	0	39	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151760	SweptSolid	0	510	0	0	0	-	0	132176407
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151969	Tessellation	0	114	0	0	0	-	0	3647478
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	152419	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	152882	Tessellation	0	78	0	0	0	-	0	630934
@@ -1076,7 +1076,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	153909	Tessellation	0	68	0	0	0	-	0	6309
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	153956	Tessellation	0	64	0	0	0	-	0	1497197
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	154376	SweptSolid	0	144	0	0	0	-	0	134662518
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	154488	Tessellation	0	230	0	0	0	-	0	14571911
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	154626	SweptSolid	39	499	0	0	39	0	39	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	154626	SweptSolid	0	512	0	0	0	-	0	132176407
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	154835	Tessellation	0	114	0	0	0	-	0	3647478
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	155285	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	155500	Tessellation	0	78	0	0	0	-	0	630934
@@ -1611,7 +1611,7 @@ various/rvt01.ifc	11753	Tessellation	10	144	0	0	0	0	10	-
 various/rvt01.ifc	11803	SweptSolid	0	104	0	0	0	-	0	451981
 various/rvt01.ifc	12235	SweptSolid	0	24	0	0	0	-	0	723933
 various/rvt01.ifc	12345	SweptSolid	0	172	0	0	0	-	8	702242
-various/rvt01.ifc	12449	Tessellation	27	235	1	0	21	0	36	-
+various/rvt01.ifc	12449	Tessellation	24	236	1	0	21	0	33	-
 various/rvt01.ifc	13735	SweptSolid	0	80	0	0	0	-	16	5531986
 various/rvt01.ifc	13797	Tessellation	72	398	1	0	91	23	132	-
 various/rvt01.ifc	14014	SweptSolid	0	88	0	0	0	-	16	3247957

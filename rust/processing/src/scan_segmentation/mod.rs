@@ -18,26 +18,34 @@
 //! 6. `cylinder`: seeded RANSAC over the smoothly connected voxels no plane
 //!    claimed, a least-squares refit, and refusal of spheres, narrow arcs and
 //!    short pieces: columns and pipes.
+//! 7. `ring` and `prism`: rings of vertical planes about a common axis are
+//!    wide round columns split into strips, or polygonal columns (#6893);
+//!    `columns` runs 6 and 7 and gives a column precedence over the planes
+//!    it is made of, so a surface is reported once.
 //!
 //! Every stage is bounded by the voxel count, which the budget bounds; the
 //! report's `limits` says when a budget acted. A clean-room implementation of
 //! the published technique (region growing on voxel means); no third-party
 //! code was consulted.
+mod columns;
 mod cylinder;
 mod cylinder_fit;
 mod cylinder_guards;
+mod cylinder_merge;
 mod extent;
 mod grow;
 mod normals;
 mod options;
 mod plane_report;
+mod prism;
 mod refit;
 mod report;
+mod ring;
 mod voxel;
 
 pub use options::{ScanRegion, ScanSegmentationOptions};
 pub use report::{
-    AxisOrientation, NormalSource, PlaneExtent, PlaneOrientation, ScanCylinder, ScanPlane,
+    AxisOrientation, NormalSource, PlaneExtent, PlaneOrientation, ScanCylinder, ScanFacets, ScanPlane,
     ScanSegmentationLimits, ScanSegmentationReport, ScanSegmentationStats,
 };
 
@@ -91,8 +99,9 @@ impl ScanVoxelizer {
         stats.voxels = voxels.len() as u64;
         let normals = normals::estimate(&voxels, params.rings, params.min_support);
         stats.voxels_with_normals = normals.curvature.iter().filter(|c| c.is_finite()).count() as u64;
-        let grow::Grown { regions, mut labels, seeds } = grow::grow(&voxels, &normals, &params);
+        let grow::Grown { regions, mut labels, seeds, seed_curvature } = grow::grow(&voxels, &normals, &params);
         stats.seed_voxels = seeds;
+        stats.seed_curvature = seed_curvature;
         stats.regions_grown = regions.len() as u64;
 
         let trimmed: Vec<Region> = regions
@@ -103,7 +112,7 @@ impl ScanVoxelizer {
         let (merged, joins) = refit::merge_coplanar(regions, &voxels, &labels, &params);
         stats.regions_merged = joins;
 
-        let mut planes = Vec::new();
+        let mut accepted = Vec::new();
         let mut planar = vec![false; voxels.len()];
         for region in merged {
             if refit::bend(&region, &voxels, &normals) > params.max_bend {
@@ -115,18 +124,26 @@ impl ScanVoxelizer {
                 stats.small_regions_rejected += 1;
                 continue;
             }
-            stats.planar_voxels += region.voxels.len() as u64;
             for &i in &region.voxels {
                 planar[i as usize] = true;
             }
-            planes.push(plane_report::describe(&region, &voxels, area, &params));
+            accepted.push((region, area));
+        }
+        let (regions, areas): (Vec<Region>, Vec<f64>) = accepted.into_iter().unzip();
+        let columns = columns::detect(&voxels, &normals, &regions, &planar, &params, &mut stats);
+        let mut planes = Vec::new();
+        for ((region, area), keep) in regions.iter().zip(areas).zip(columns.keep) {
+            if keep {
+                stats.planar_voxels += region.voxels.len() as u64;
+                planes.push(plane_report::describe(region, &voxels, area, &params));
+            }
         }
         planes.sort_by(|a, b| {
             b.area_square_metres
                 .total_cmp(&a.area_square_metres)
                 .then_with(|| a.centroid.iter().zip(&b.centroid).fold(std::cmp::Ordering::Equal, |o, (x, y)| o.then(x.total_cmp(y))))
         });
-        let (cylinders, cylinder_group_limit_hit) = cylinder::detect(&voxels, &normals, &planar, &params, &mut stats);
+        let (cylinders, cylinder_group_limit_hit) = (columns.cylinders, columns.limit_hit);
         let limits = ScanSegmentationLimits {
             voxel_budget_coarsened: stats.coarsenings > 0,
             plane_limit_hit: planes.len() > params.max_planes,

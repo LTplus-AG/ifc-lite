@@ -5,10 +5,14 @@
 import { resolveStreamRoute } from '@/lib/llm/byok-guard';
 import { runModelRequest } from '@/lib/llm/request-service';
 import { getApiKeys } from '@/services/api-keys';
-import { UNCONFIGURED_MODEL_ID } from '@/lib/llm/models';
+import { getModelById, UNCONFIGURED_MODEL_ID } from '@/lib/llm/models';
+import type { StreamMessage } from '@/lib/llm/stream-client';
 import { evidenceIsCurrent } from './evidence';
+import { adapterFor } from './adapters/registry';
 import { CLASH_GROUP_OUTPUT_GUIDANCE } from './clash-taxonomy';
 import { MODEL_CHANGE_OUTPUT_GUIDANCE } from '../actions/model-change';
+import { SCENE_ACTION_OUTPUT_GUIDANCE } from '../actions/scene-actions';
+import { CHECK_AUTHORING_GUIDANCE } from '../check-authoring/guidance';
 import { useViewerStore } from '@/store';
 import { useAssistant } from './conversation';
 
@@ -17,12 +21,26 @@ export const ASSISTANT_OUTPUT_TOKENS = 4096;
 /** Overall deadline per Assistant request, from send to last byte. */
 export const ASSISTANT_TIMEOUT_MS = 120_000;
 
+/** Largest viewport screenshot (data URL characters) an Assistant send carries. */
+const ASSISTANT_IMAGE_LIMIT = 1_200_000;
+
+/**
+ * Context the user explicitly attached to ONE send. Nothing here is gathered
+ * automatically: the composer only fills it from its attach controls.
+ */
+export interface AssistantAttachments {
+  /** Prompt block from `selectionGroundingText`. */
+  selection?: string;
+  /** Viewport screenshot as an image data URL; refused for models without image input. */
+  screenshot?: string;
+}
+
 /**
  * One user send, one model request. No automatic continuation, tools or execution.
  * Every send draws on the conversation's root budget (`useAssistant().budget`),
  * which Refresh or switching source replaces.
  */
-export async function sendAssistant(prompt: string, model: string, proxyUrl: string): Promise<boolean> {
+export async function sendAssistant(prompt: string, model: string, proxyUrl: string, attachments: AssistantAttachments = {}): Promise<boolean> {
   const state = useAssistant.getState();
   if (!state.snapshot || state.status === 'streaming' || !prompt.trim()) return false;
   if (model === UNCONFIGURED_MODEL_ID) {
@@ -38,8 +56,17 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     useAssistant.setState({ error: 'missing-key', status: 'error' });
     return false;
   }
+  // An attached screenshot is never dropped silently: a model without image input refuses the send.
+  if (attachments.screenshot && (!getModelById(model)?.supportsImages || attachments.screenshot.length > ASSISTANT_IMAGE_LIMIT
+    || !attachments.screenshot.startsWith('data:image/'))) {
+    useAssistant.setState({ error: getModelById(model)?.supportsImages ? 'image-too-large' : 'image-unsupported', status: 'error' });
+    return false;
+  }
+  // The stored turn records what was attached; the image itself is sent once and never persisted.
+  const userText = [prompt.trim(), attachments.selection, attachments.screenshot ? '[Attached: current viewport screenshot]' : undefined]
+    .filter(Boolean).join('\n\n');
   // Limit the complete conversation, rather than silently trimming away evidence.
-  const messages = [...state.messages.map(({ role, content }) => ({ role, content })), { role: 'user' as const, content: prompt.trim() }];
+  const messages: StreamMessage[] = [...state.messages.map(({ role, content }) => ({ role, content })), { role: 'user' as const, content: userText }];
   if (prompt.length > 8000 || messages.length > 20 || JSON.stringify(messages).length + state.snapshot.payload.length > 90_000) {
     useAssistant.setState({ error: 'context-limit', status: 'error' });
     return false;
@@ -47,12 +74,15 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
   const controller = new AbortController();
   const budget = state.budget;
   useAssistant.setState({ controller, status: 'streaming', error: null, output: '', pendingPrompt: prompt.trim() });
-  const unsubscribe = useViewerStore.subscribe(() => {
+  const staleCheck = () => {
     if (useAssistant.getState().controller === controller && !evidenceIsCurrent(state.snapshot!)) {
       controller.abort();
       useAssistant.setState({ controller: null, pendingPrompt: null, status: 'error', error: 'stale-evidence', output: '' });
     }
-  });
+  };
+  const unsubscribe = useViewerStore.subscribe(staleCheck);
+  // Sources whose native state lives outside the viewer store (Linked records) notify through their adapter.
+  const detachSource = adapterFor(state.snapshot.source).subscribe?.(staleCheck);
   const ownsRequest = () => useAssistant.getState().controller === controller && !controller.signal.aborted;
   const fail = (error: string) => {
     if (ownsRequest()) useAssistant.setState({ error, pendingPrompt: null, output: '', status: 'error', controller: null });
@@ -67,8 +97,15 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     if (state.snapshot.source === 'clash') system = `${system}\n${CLASH_GROUP_OUTPUT_GUIDANCE}`;
     // Corrections are proposals only: the user reviews each change before anything is applied.
     if (state.snapshot.source !== 'flow') system = `${system}\n${MODEL_CHANGE_OUTPUT_GUIDANCE}`;
+    // Scene actions are proposals too: nothing changes the view until the user applies them.
+    if (state.snapshot.source !== 'flow') system = `${system}\n${SCENE_ACTION_OUTPUT_GUIDANCE}`;
+    // IDS, information rules and report outlines are drafted from validation results or any loaded model (P07).
+    if (state.snapshot.source === 'validation' || state.snapshot.source === 'loadReport') system = `${system}\n${CHECK_AUTHORING_GUIDANCE}`;
     // Every source now carries guidance, so the full system prompt is re-bounded.
     if (JSON.stringify(messages).length + system.length > 90_000) { fail('context-limit'); return false; }
+    if (attachments.screenshot) {
+      messages[messages.length - 1] = { role: 'user', content: [{ type: 'image_url', image_url: { url: attachments.screenshot } }, { type: 'text', text: userText }] };
+    }
     const outcome = await runModelRequest({
       route, proxyUrl, messages, system, maxOutputTokens: ASSISTANT_OUTPUT_TOKENS, budget, signal: controller.signal,
       timeoutMs: ASSISTANT_TIMEOUT_MS,
@@ -77,7 +114,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     if (!ownsRequest()) return false;
     if (outcome.kind === 'completed' || outcome.kind === 'truncated') {
       useAssistant.setState({
-        messages: [...state.messages, { role: 'user', content: prompt.trim() },
+        messages: [...state.messages, { role: 'user', content: userText },
           { role: 'assistant', content: outcome.text, model: route.model, receipt: outcome.receipt }],
         pendingPrompt: null, output: '', status: 'idle', controller: null,
         error: outcome.kind === 'truncated' ? 'truncated-output' : null,
@@ -94,6 +131,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     return false;
   } finally {
     unsubscribe();
+    detachSource?.();
     if (ownsRequest()) useAssistant.setState({ controller: null, pendingPrompt: null, status: 'idle' });
   }
 }

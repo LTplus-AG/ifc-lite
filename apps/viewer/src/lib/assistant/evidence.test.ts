@@ -128,3 +128,12 @@ test('oversized model metadata is explicitly projected and keeps the full snapsh
   assert.equal(payload.modelMetadataTruncated, true);
   assert.equal(snapshot.models.length, 120, 'freshness retains all pins even when prompt metadata is omitted');
 });
+
+test('projection withholds credential-named fields wherever they appear (#6833)', () => {
+  const result = evidenceJson({ apiKey: 'K1', name: 'kept', outputTokens: 12, nested: { accessToken: 'K2', client_secret: 'K3', Password: 'K4',
+    headers: { Authorization: 'Bearer K5' } }, list: [{ refresh_token: 'K6', tokenCount: 3 }] });
+  for (const secret of ['K1', 'K2', 'K3', 'K4', 'K5', 'K6']) assert.ok(!result.text.includes(secret), secret);
+  const projected = JSON.parse(result.text);
+  assert.equal(projected.apiKey, '[omitted: credential]');
+  assert.deepEqual([projected.name, projected.outputTokens, projected.list[0].tokenCount], ['kept', 12, 3]);
+});

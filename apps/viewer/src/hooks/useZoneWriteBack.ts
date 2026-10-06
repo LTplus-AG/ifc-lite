@@ -211,7 +211,7 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
     // declared basis and the stale-zone-qset sweep below. Each read is an
     // on-demand extraction, so asking twice would double the run's cost.
     const qsets = quantitySetsFor(context, ref.expressId);
-    const facts = zoneFactsFor(globalId, assignment, zoneNameById, basis, context, qsets, proved, apportioned);
+    const facts = zoneFactsFor(globalId, assignment, zoneNameById, basis, context.volumeSiScale, qsets, proved, apportioned);
     const built = buildElementWriteBack(facts, {
       zoneSetName: zoneSet.name,
       zoneSetId: zoneSet.id,

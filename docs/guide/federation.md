@@ -269,19 +269,27 @@ Percentiles are exact nearest-rank values of |d|, not estimates, found by a
 radix select over the readback without copying it. Every figure takes at most
 two linear passes, run in short slices so the viewer stays responsive at the
 25-million-point cap. The readback holds 4 bytes per point in memory until
-the next run or until the result is invalidated. When a streamed COPC scan
-re-runs deviation for a new view, the statistics are read back again.
+the next run or until the result is invalidated. A streamed COPC scan keeps
+only the octree nodes the view needs, so its statistics and CSV describe the
+points resident now: when the view adds or drops nodes, including when the
+scan leaves the view entirely, deviation re-runs and the statistics are read
+back again.
 
 ![Deviation statistics for a synthetic scan sampled from a real Archicad IFC with 4 mm noise and 25 mm offsets on some faces](../assets/deviation-statistics-panel.png)
 
 The panel's **Export CSV** action writes the same statistics for each scan
 asset, in metres, with the tolerance used. With several scan assets, a final
-row pools all of their points. The CSV identifies the scan model when several
-models are loaded. The renderer's `readDeviationDistances()` method returns
-the signed distances grouped by scan asset, and `readDeviationAssetStats()`
-returns per-asset statistics; both read GPU deviation buffers only when called
-and report nothing for a scan asset added after the run. Recompute before
-exporting after a model change.
+row pools all of their points. Each scan row names the scan's own model, its
+GlobalId, Name and IFC class, resolved from the asset's federated id, so the
+attribution holds in any load order and after other models are removed; the
+Model column appears when several models are loaded. The renderer's
+`readDeviationDistances()` method returns the signed distances grouped by scan
+asset, and `readDeviationAssetStats()` returns per-asset statistics; both read
+GPU deviation buffers only when called and report nothing for a scan asset
+added after the run. Each asset carries the `expressId` and `modelIndex` it was
+uploaded or bound with: the viewer binds a streamed scan to both through
+`relabelPointCloudAsset(handle, expressId, modelIndex)` once its model is
+registered. Recompute before exporting after a model change.
 
 ```ts
 import { computeDeviationStatisticsAsync, type Renderer } from '@ifc-lite/renderer';

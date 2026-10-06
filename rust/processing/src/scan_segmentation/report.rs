@@ -4,10 +4,10 @@
 
 //! Measured output of scan segmentation. Coordinates are in the positions'
 //! frame plus `options.origin`, in metres.
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Classification hint relative to `options.up_axis`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PlaneOrientation {
     /// Normal within `classificationAngleDegrees` of up: floor, ceiling, slab.
@@ -18,7 +18,7 @@ pub enum PlaneOrientation {
 }
 
 /// Which side the reported normal faces.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum NormalSource {
     /// Toward `options.scanner_position`: the scanned (visible) side.
@@ -33,7 +33,7 @@ pub enum NormalSource {
 /// vertical and sloped planes `v_axis` points up (along the fall line) and
 /// `u_axis` is horizontal; horizontal planes take the minimum-area rectangle.
 /// `u_axis x v_axis = normal`.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaneExtent {
     pub center: [f64; 3],
@@ -45,7 +45,7 @@ pub struct PlaneExtent {
     pub corners: [[f64; 3]; 4],
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanPlane {
     /// Unit normal; `normal . x + d = 0`.
@@ -66,7 +66,7 @@ pub struct ScanPlane {
 }
 
 /// Axis direction relative to `options.up_axis`, with the plane tolerance.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AxisOrientation {
     /// Axis along up: a column.
@@ -76,9 +76,27 @@ pub enum AxisOrientation {
     Sloped,
 }
 
+/// The faces of a polygonal (prism) column: a regular polygon of `faces`
+/// sides about the cylinder's axis, `radius` being its circumradius (axis to
+/// corner).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanFacets {
+    /// Number of sides of the whole polygon (6 or more), seen or not.
+    pub faces: u32,
+    /// Unit outward normal of one face, perpendicular to the axis; the others
+    /// follow at multiples of 360 / `faces` degrees about the axis. Of the
+    /// equivalent choices, the one nearest the first in-plane basis direction
+    /// (see the guide) is reported, so it is deterministic.
+    pub face_normal: [f64; 3],
+    /// Distance from the axis to each face (inradius).
+    pub apothem: f64,
+}
+
 /// A detected cylinder (column, pipe). The axis runs from `axis_start` to
-/// `axis_end` over the inliers' extent.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// `axis_end` over the inliers' extent. A polygonal column of six or more
+/// faces is reported here too, with `faceted` set.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanCylinder {
     pub axis_start: [f64; 3],
@@ -86,6 +104,7 @@ pub struct ScanCylinder {
     /// Unit; points up for vertical and sloped axes, along the positive axis
     /// of its largest component for horizontal ones.
     pub axis_direction: [f64; 3],
+    /// Radius; for a faceted column the circumradius (axis to corner).
     pub radius: f64,
     pub length: f64,
     /// Lowest and highest axis end, measured along `up_axis`.
@@ -98,9 +117,12 @@ pub struct ScanCylinder {
     /// RMS radial distance of the inlier voxel means from the surface.
     pub rms_metres: f64,
     pub orientation: AxisOrientation,
+    /// Set for a polygonal column (a ring of six or more flat faces); None
+    /// for a round surface.
+    pub faceted: Option<ScanFacets>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanSegmentationStats {
     pub input_points: u64,
@@ -117,6 +139,9 @@ pub struct ScanSegmentationStats {
     pub voxels: u64,
     pub voxels_with_normals: u64,
     pub seed_voxels: u64,
+    /// The curvature gate the seeds passed: `maxSeedCurvature`, or, when noise
+    /// lifts even flat voxels above it, the curvature of the flattest 5 %.
+    pub seed_curvature: f64,
     pub regions_grown: u64,
     /// Coplanar adjacent regions joined into one.
     pub regions_merged: u64,
@@ -163,10 +188,22 @@ pub struct ScanSegmentationStats {
     pub cylinders_rejected_for_arc: u64,
     /// Candidates shorter than `minCylinderLengthMetres`.
     pub cylinders_rejected_for_length: u64,
+    /// Rings of adjacent vertical planes around a common axis, examined as
+    /// wide round or polygonal columns.
+    pub plane_rings: u64,
+    /// Rings that were neither round nor a regular polygon of six or more
+    /// similar faces turning at least 120 degrees in all: they stay planes.
+    pub plane_rings_rejected_as_irregular: u64,
+    /// Rings with scanned surface inside their footprint (a bay or a niche
+    /// seen from the room, whose floor runs inside): not a solid column.
+    pub plane_rings_rejected_as_hollow: u64,
+    /// Planes removed from `planes` because they lie on a reported cylinder
+    /// or are the faces of a faceted column: a surface is reported once.
+    pub planes_absorbed_into_cylinders: u64,
 }
 
 /// Which bounds acted. A bound that acts is always reported here.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanSegmentationLimits {
     /// The voxel budget doubled the voxel size at least once.
@@ -184,7 +221,7 @@ pub struct ScanSegmentationLimits {
     pub cylinder_group_limit_hit: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanSegmentationReport {
     pub algorithm: String,

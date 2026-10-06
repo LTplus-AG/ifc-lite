@@ -7,7 +7,7 @@ use wasm_bindgen::prelude::*;
 
 const MAX_OPTIONS_BYTES: usize = 64 * 1024;
 
-fn segment_json(positions: &[f32], options_json: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn segment_json(positions: &[f32], options_json: &str) -> Result<Vec<u8>, String> {
     if options_json.len() > MAX_OPTIONS_BYTES {
         return Err("Scan segmentation options exceed 64 KiB".into());
     }

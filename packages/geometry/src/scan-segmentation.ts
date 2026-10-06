@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Typed entry to plane and cylinder detection in point clouds (#6870). The algorithm is
+ * Typed entry to plane and cylinder detection in point clouds (#6870, #6893). The algorithm is
  * Rust (`ifc_lite_processing::scan_segmentation`); this module only frames
  * the input and types the JSON report the wasm call returns.
  *
@@ -35,7 +35,11 @@ export interface ScanSegmentationOptions {
   normalNeighborRings?: number;
   /** Occupied voxels (self included) a normal needs. Default 6. */
   minNeighbors?: number;
-  /** Seed voxels have curvature at most this. Default 0.02. */
+  /**
+   * Seed voxels have curvature at most this, or at most the curvature of the
+   * flattest 5 % of voxels when noise lifts even flat surfaces above it.
+   * Default 0.02.
+   */
   maxSeedCurvature?: number;
   /** Growth and merge angle tolerance. Default 10 degrees. */
   maxNormalAngleDegrees?: number;
@@ -61,7 +65,7 @@ export interface ScanSegmentationOptions {
   maxPlanes?: number;
   /** Look for cylinders (columns, pipes) among non-planar voxels. Default true. */
   detectCylinders?: boolean;
-  /** Accepted cylinder radius range. The minimum defaults to two voxel edges (null), the maximum to 1.5 m. */
+  /** Accepted cylinder radius range. The minimum defaults to two voxel edges (null), the maximum to 2 m. */
   minCylinderRadiusMetres?: number | null;
   maxCylinderRadiusMetres?: number;
   /** Share of a group a candidate must fit. Default 0.6. */
@@ -108,11 +112,26 @@ export interface ScanPlane {
 /** Axis relative to `upAxis`: vertical is a column, horizontal a pipe or beam. */
 export type ScanAxisOrientation = 'vertical' | 'horizontal' | 'sloped';
 
+/** The faces of a polygonal column: a regular polygon of `faces` sides about the axis. */
+export interface ScanFacets {
+  /** Sides of the whole polygon (6 or more), seen or not. */
+  faces: number;
+  /**
+   * Unit outward normal of one face, across the axis; the others follow at
+   * multiples of 360 / `faces` degrees. The face nearest the frame's +x
+   * (+y when the axis runs along x).
+   */
+  faceNormal: ScanVec3;
+  /** Distance from the axis to each face (inradius). */
+  apothem: number;
+}
+
 export interface ScanCylinder {
   axisStart: ScanVec3;
   axisEnd: ScanVec3;
   /** Unit; points up unless horizontal. */
   axisDirection: ScanVec3;
+  /** For a faceted column, the circumradius (axis to corner). */
   radius: number;
   length: number;
   /** Lowest and highest axis end along `upAxis`. */
@@ -123,6 +142,8 @@ export interface ScanCylinder {
   inlierVoxels: number;
   rmsMetres: number;
   orientation: ScanAxisOrientation;
+  /** Set for a polygonal column (a ring of six or more flat faces); null when round. */
+  faceted: ScanFacets | null;
 }
 
 export interface ScanSegmentationStats {
@@ -137,6 +158,8 @@ export interface ScanSegmentationStats {
   voxels: number;
   voxelsWithNormals: number;
   seedVoxels: number;
+  /** The curvature gate the seeds passed: `maxSeedCurvature`, or higher on noisy data. */
+  seedCurvature: number;
   regionsGrown: number;
   regionsMerged: number;
   curvedRegionsRejected: number;
@@ -155,6 +178,14 @@ export interface ScanSegmentationStats {
   cylindersJoinedAcrossGaps: number;
   cylindersRejectedForArc: number;
   cylindersRejectedForLength: number;
+  /** Rings of adjacent vertical planes about a common axis, examined as wide or polygonal columns. */
+  planeRings: number;
+  /** Rings neither round nor a regular polygon of six or more faces: they stay planes. */
+  planeRingsRejectedAsIrregular: number;
+  /** Rings with scanned surface inside their footprint (a bay or niche seen from the room). */
+  planeRingsRejectedAsHollow: number;
+  /** Planes removed because they lie on a reported cylinder or are a faceted column's faces. */
+  planesAbsorbedIntoCylinders: number;
 }
 
 /** Which bounds acted; a bound that acts is always reported. */
@@ -168,9 +199,9 @@ export interface ScanSegmentationLimits {
 
 export interface ScanSegmentationReport {
   algorithm: string;
-  /** Largest area first. */
+  /** Largest area first. A surface reported as a cylinder is not also a plane. */
   planes: ScanPlane[];
-  /** Longest first. */
+  /** Longest first; round and faceted columns, pipes. */
   cylinders: ScanCylinder[];
   stats: ScanSegmentationStats;
   limits: ScanSegmentationLimits;

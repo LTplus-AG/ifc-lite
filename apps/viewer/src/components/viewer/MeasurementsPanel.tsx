@@ -27,6 +27,7 @@ import { MeasurementList } from './tools/MeasurementList';
 import { MeasurePointReadout } from './tools/MeasurePointReadout';
 import { MeasureQuantities } from './tools/MeasureQuantities';
 import { SweptDiskInspection } from './properties/SweptDiskInspection';
+import { AssistantAction } from './assistant/AssistantAction';
 
 type PanelTab = 'list' | 'point' | 'quantities' | 'centreline';
 
@@ -71,6 +72,7 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
             <Trash2 className="h-3.5 w-3.5" />
           </IconButton>
         )}
+        <AssistantAction />
         {onClose && (
           <IconButton label={t('measure.panel.close')} variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
             <X className="h-3.5 w-3.5" />

@@ -36,6 +36,12 @@
 //!
 //! `--fingerprint` checks ordered mesh payloads after timing (excludes text,
 //! material definitions, UVs, textures and instancing); see `perf_probe/fingerprint.rs`.
+//!
+//! `--single-thread` pins the rayon global pool to one worker, so the run is
+//! deterministic enough to count instructions. Built with
+//! `--features phase-markers` it is the per-phase instruction-count harness
+//! behind `scripts/perf/instructions.sh` (#6958); its wall times are not
+//! comparable with multi-threaded runs.
 
 #[path = "perf_probe/fingerprint.rs"]
 mod fingerprint;
@@ -281,6 +287,7 @@ fn main() {
     let mut fingerprint = false;
     let mut suite = false;
     let mut cold = false;
+    let mut single_thread = false;
     let mut fixtures: Vec<String> = Vec::new();
 
     let mut args = std::env::args().skip(1);
@@ -301,9 +308,10 @@ fn main() {
             "--fingerprint" => fingerprint = true,
             "--suite" => suite = true,
             "--cold" => cold = true,
+            "--single-thread" => single_thread = true,
             other if other.starts_with("--") => {
                 eprintln!("unknown flag: {other}");
-                eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--cold] [--census] [--fingerprint] [--json]");
+                eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--cold] [--single-thread] [--census] [--fingerprint] [--json]");
                 std::process::exit(2);
             }
             other => fixtures.push(other.to_string()),
@@ -315,7 +323,7 @@ fn main() {
         }
     }
     if fixtures.is_empty() {
-        eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--cold] [--census] [--fingerprint] [--json]");
+        eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--cold] [--single-thread] [--census] [--fingerprint] [--json]");
         eprintln!("  no fixtures given; try --suite (uses catalogued models on disk)");
         std::process::exit(2);
     }
@@ -325,11 +333,19 @@ fn main() {
         std::process::exit(2);
     }
 
+    if single_thread {
+        if let Err(error) = rayon::ThreadPoolBuilder::new().num_threads(1).use_current_thread().build_global() {
+            eprintln!("--single-thread: could not pin the rayon pool: {error}");
+            std::process::exit(2);
+        }
+    }
+
     eprintln!(
-        "perf_probe: {} fixture(s), best-of-{}{}",
+        "perf_probe: {} fixture(s), best-of-{}{}{}",
         fixtures.len(),
         iters,
-        if census { ", +csg-census" } else { "" }
+        if census { ", +csg-census" } else { "" },
+        if single_thread { ", single-thread" } else { "" }
     );
 
     let mut probes = Vec::new();

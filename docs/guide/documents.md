@@ -157,6 +157,10 @@ existing native format (a workflow template saved at an older version is upgrade
 warning means the document remains available in memory. Download retries reuse
 the current PDF artifact rather than rerunning checks.
 
+### Assistant report outlines
+
+A [reviewed report outline](viewer-assistant.md#reviewed-ids-rule-and-report-drafts) from the viewer assistant is saved as a new document built from these blocks: a title, an AI-draft notice, section headings, literal text, validation-results tables bound to the live report (optionally to one specification or rule), an optional validation report snapshot and page breaks. A requirement the outline lists as unsupported is kept in a closing **Not covered by this report** section. After saving, the document is edited and printed like any other.
+
 ### Storage, backup, and migration
 
 Each saved-content library has **Storage and backup** controls. **Download library backup** downloads a self-contained JSON file with validation reports, comparison reports, documents, and the current unsaved drafts. Valid entries stay in its importable libraries. Incomplete drafts, such as an image block awaiting its image, are preserved separately as raw JSON recovery evidence, so they never prevent valid neighboring entries from being imported. Save-status metadata identifies drafts that have not reached browser storage. Downloading the backup works even when browser storage refuses writes. Individual document **Export template** and **Export PDF** remain available.

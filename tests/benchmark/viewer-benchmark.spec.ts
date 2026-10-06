@@ -17,6 +17,11 @@ interface ViewerBenchmarkResult {
     buildMode: string;
   };
   metrics: ViewerBenchmarkMetrics;
+  /** #6956: where each span-capable metric came from, and any span/regex disagreement. */
+  loadTrace: {
+    sources: Partial<Record<string, string>>;
+    disagreements: Array<{ metric: string; span: number; regex: number; toleranceMs: number }>;
+  };
   thresholds: {
     passed: boolean;
     violations: string[];
@@ -259,6 +264,10 @@ test.describe('Viewer Performance Benchmarks', () => {
           buildMode: process.env.VIEWER_BENCHMARK_BUILD_MODE ?? 'dev',
         },
         metrics,
+        loadTrace: {
+          sources: benchmarkPage.getMetricSources(),
+          disagreements: benchmarkPage.getSpanRegexDisagreements(),
+        },
         thresholds: thresholdResult,
       };
 
@@ -279,6 +288,15 @@ test.describe('Viewer Performance Benchmarks', () => {
       // streamCompleteMs is the real "geometry finished" signal.)
       expect(metrics.streamCompleteMs).not.toBeNull();
       expect(metrics.totalMeshes).toBeGreaterThan(0);
+
+      // #6956: the span tree is the primary source now; on the reference
+      // fixture every metric both sources report must agree within rounding,
+      // so the regex fallback can be retired without moving any number.
+      if (fileName === 'AC20-FZK-Haus.ifc') {
+        expect(benchmarkPage.getLoadTrace(), 'viewer exposed no load-trace span tree').not.toBeNull();
+        expect(benchmarkPage.getMetricSources().streamCompleteMs).toBe('span');
+        expect(benchmarkPage.getSpanRegexDisagreements()).toEqual([]);
+      }
 
       // Geometry correctness validation: Check mesh count matches expected (within 5% tolerance)
       // This detects if optimizations break geometry (e.g., CSG skipping too much, missing cutouts)

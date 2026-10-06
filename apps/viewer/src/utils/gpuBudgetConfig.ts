@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { readPerfFlag } from '../lib/perf/flags.js';
+
 /**
  * GPU residency budget for the renderer scene (issue #1682, phase 3a).
  *
@@ -17,7 +19,7 @@
 const DEFAULT_GPU_BUDGET_MB = 2048;
 
 export function getGpuResidencyBudgetBytes(): number | null {
-  const raw = (globalThis as { __IFC_LITE_GPU_BUDGET_MB?: unknown }).__IFC_LITE_GPU_BUDGET_MB;
+  const raw = readPerfFlag('gpuBudgetMb');
   if (raw === undefined || raw === null) return DEFAULT_GPU_BUDGET_MB * 1024 * 1024;
   if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return null;
   const bytes = Math.round(raw * 1024 * 1024);
@@ -37,7 +39,7 @@ export function getGpuResidencyBudgetBytes(): number | null {
 const DEFAULT_HOST_BUDGET_MB = 3072;
 
 export function getHostResidencyBudgetBytes(): number | null {
-  const raw = (globalThis as { __IFC_LITE_HOST_BUDGET_MB?: unknown }).__IFC_LITE_HOST_BUDGET_MB;
+  const raw = readPerfFlag('hostBudgetMb');
   if (raw === undefined || raw === null) return DEFAULT_HOST_BUDGET_MB * 1024 * 1024;
   if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return null;
   const bytes = Math.round(raw * 1024 * 1024);

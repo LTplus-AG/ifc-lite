@@ -23,9 +23,124 @@ scripts/perf/probe.sh tests/models/ara3d/schependomlaan.ifc --iters 5 --json > /
 
 # symbolized flamegraph (opens Firefox profiler) to see WHICH function:
 scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
+
+# deterministic per-phase instruction counts (callgrind, single thread):
+scripts/perf/instructions.sh tests/models/ara3d/AC20-FZK-Haus.ifc --json
 ```
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
+
+**Instruction ceilings gate kernel and parse work only (#6982).** The
+`native-instructions` ratchet (`tests/perf-ratchets/native-instructions*.json`,
+0.05% tolerance, FZK-Haus per PR, ISSUE_129 daily) is a blocking check for
+per-element kernel, decode and caching changes: callgrind counts follow them
+to ~0.1% with run-to-run variance <= 1e-6. It runs `--single-thread` natively,
+so it does not see scheduling, threading, WASM or browser-only effects (worker
+fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
+A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
+
+### Frame-time rigs (#6960)
+
+Two rigs measure viewer frames; neither is a PR gate. Both inject the same
+in-page probe (`tests/benchmark/frames/frame-probe.ts`): rAF callback time,
+rendered vs idle frames (a frame that called `getCurrentTexture`), and
+`GPUQueue.submit` / `draw*` / `writeBuffer` per frame.
+
+- **Deterministic, CI-capable**: `pnpm test:benchmark:frames` (needs a built
+  viewer and `pnpm exec playwright install chromium-headless-shell`).
+  chrome-headless-shell is driven frame by frame over CDP
+  `HeadlessExperimental.beginFrame` on an exact 8.333 ms grid (new-headless
+  Chrome lacks that command). Scenarios on FZK and Snowdon: streaming load,
+  Home plus scripted orbit, hover sweep. Records main-thread task time per
+  frame, frames over budget, missed vsyncs (load only) and rendered vs idle
+  frames as `browser-frames` rows in `test-results/browser-frames.json`. GPU
+  time is excluded by construction (SwiftShader). Runs nightly in
+  `.github/workflows/browser-frames.yml`. Count metrics (frames, draws,
+  submits) repeat; millisecond metrics move with machine load, so compare
+  spreads, not single runs.
+- **Real GPU, local only**: `scripts/perf/frame-gpu-rig.mts` drives Windows
+  Chrome from WSL (random CDP port, throwaway profile killed by path and
+  deleted), serves a production build same-origin, loads `?model=`, presses
+  Home and replays the same orbit and hover at 120 Hz of wall time. Reports
+  rAF delta p50/p95/max, submits and draws per rendered frame and
+  `onSubmittedWorkDone` latency. Absolute frame time drifts between sessions,
+  so pass `--dist-base <base build>` for counterbalanced base/branch pairs and
+  read the paired ratio. Serialise timed runs:
+  `flock /tmp/ifclite-perf.lock npx tsx scripts/perf/frame-gpu-rig.mts tests/models/ara3d/AC20-FZK-Haus.ifc --pairs 3`.
+
+## Instruction counts track kernel and parse work, not scheduling (#6958)
+
+Replay before any gate: `instructions-replay.mjs` rebuilt both sides of 12
+ledger entries in throwaway worktrees (every side built and ran on today's pinned
+toolchain; none had to be skipped) and counted one single-threaded `process_geometry` call per fixture
+under callgrind, 3 runs per side. A direction is read only outside a flat band
+of max(0.01%, combined run-to-run spread of the two sides). Raw runs:
+`evidence/instruction-replay-6958/results.json`. Inputs, refs and claims:
+`candidates.json`.
+
+| entry | ledger end-to-end verdict | fixture (claimed) | Ir delta | flat band | verdict |
+|---|---|---|---:|---:|---|
+| CDT scan kill (46dcdeec2) | ISSUE_129 geometry 991 -> 651 ms | ISSUE_129 | -47.12% | ±0.011% | tracks |
+| #1916 squash (seam conform + CDT) | 979 -> 646 ms | ISSUE_129 | -27.17% | ±0.040% | tracks (output changed) |
+| #1568 point-cache hoist | win on shared-point steel models | #1572 shared-point fixture | -3.17% | ±0.017% | tracks |
+| #1572 cache across chunks/splits | win on shared-point steel models | #1572 shared-point fixture | -0.34% | ±0.021% | tracks |
+| #1184 cheap-hash BREP dedup | win on steel/Tekla | #1572 shared-point fixture | -2.46% | ±0.010% | tracks |
+| #1130 content dedup | 20-30% slower net | FZK / ISSUE_129 / shared-point | +9.98% / +0.33% / +87.0% | <= ±0.031% | tracks |
+| #1177 dedup off | revert of that loss | FZK / ISSUE_129 / shared-point | -12.31% / -0.51% / -43.45% | <= ±0.017% | tracks |
+| #4061 vertex reuse (rejected) | native -1.17% / -1.27%; rejected in the browser | FZK / ISSUE_129 | -0.11% / -1.08% | ±0.010% | tracks the native direction |
+| #1909 dedup gate | no corpus fixture crosses the gate; A/B was noise | FZK / ISSUE_129 | +0.22% / +0.03% | ±0.045% / ±0.076% | FZK does not track: real cost |
+| #1431 worker sizing (TS only) | -21% peak memory, 0 regression | FZK | +0.01% | ±0.058% | tracks (flat) |
+| #1255 threads bundle (feature off) | #1429 dead end | FZK / ISSUE_129 | -0.00% / -0.00% | <= ±0.036% | tracks (flat) |
+| #4054 parity BVH (rejected) | no native number recorded | FZK / ISSUE_129 | -0.21% / -5.74% | ±0.010% | no claim to compare |
+
+Not every fixture had a ledger claim; unclaimed ones are recorded as context
+in `results.json`. Notable ones: #1184 and #1568 cost +1.3% / -0.12% on FZK,
+and #1572 is flat on FZK and ISSUE_129. The #1916 squash costs +1.5% on FZK,
+with changed output.
+
+- **Where counts apply.** Every claimed direction for a kernel, decode or
+  memoization change came back with the ledger's sign, with one exception:
+  #1909 on FZK-Haus, where the ledger expected flat and the count rose +0.22%
+  (see below). The agreeing set includes both
+  content-dedup flips and the CDT kill, which the ledger measured only by
+  instrumented slot counts and wall time. Magnitudes are not wall-clock
+  proportional: the CDT kill is -47% Ir against -34% geometry ms, the #1916
+  squash -27% against -34%. Use counts to detect and size a change in work, not
+  to predict milliseconds.
+- **Where they do not.** Scheduling, threading and memory policy are invisible
+  by construction: the run is one thread and counts no stalls. #1431 and #1255
+  are flat because they do not change the native work, and #1572's multi-thread
+  amplification fix shows only its small single-thread part (-0.34%). Browser
+  verdicts are invisible too. #4061's native direction tracks, but it was
+  rejected on browser readiness and output gates, and #4054's -5.7% on ISSUE_129
+  says nothing about the browser screen that rejected it. A count win is not a
+  ship verdict.
+- **What counts saw that wall-clock missed.** #1909's gate decodes the shell's
+  face list for every faceted BREP. On FZK-Haus, where no BREP crosses the
+  gate, that is +0.22% work, about 5x outside the band. The wall-clock A/B
+  recorded for it swung ±10% with run order.
+- **Determinism caveat for history.** Today's code repeats to ~1e-6.
+  Historical binaries repeat only to ~1e-3 on a single run, because glibc
+  `_int_malloc`/`unlink_chunk` path lengths vary between runs. The first
+  single-run replay (`results-single-run.json`) produced false "flat/more" reads
+  inside that spread. Always run several times per side and take the band from
+  the measured spread.
+- **Verdict for #6958.** Counts track kernel and parse work, so per-phase
+  FZK-Haus and ISSUE_129 counts are now M4 ceilings (seeded by #6995 for
+  #6982, FZK-Haus per PR and ISSUE_129 daily). Scheduling-only and
+  browser-only levers still need the end-to-end harnesses.
+
+## Load-trace spans replace console scraping (#6956)
+
+Viewer load milestones are now named spans (`@ifc-lite/load-trace`): one tree
+per load across the main thread and the geometry workers, mirrored into User
+Timing as `ifc:<name>` and readable as `window.__IFC_LITE_LOAD_TRACE__` under
+`?perfTrace=1`. The viewer benchmark reads its timing metrics from that tree
+and keeps the console regexes only as a fallback; on FZK the two must agree
+within the logs' rounding, which the spec asserts. Use the span tree, not log
+lines, for any new load-time metric. Tracing off is not a lever: the disabled
+trace is a no-op object, about 2 ns per instrumented call in Node, against
+roughly 25 calls per load.
 
 ## Pending picking survives redundant viewport synchronization (#6882)
 
@@ -979,6 +1094,8 @@ timings the pipeline already publishes (`ProcessingStats`) plus an isolated
 Flags: `--suite` (all catalogued heavy fixtures on disk), `--iters N`,
 `--census` (CSG op distribution), `--json` (stdout; table stays on stderr),
 `--fingerprint` (ordered mesh fingerprint, computed outside the timed interval),
+`--single-thread` (one rayon worker on the calling thread; for instruction
+counting, its times are not comparable with multi-threaded runs),
 `OBS=1` env (build with `observability` to fill `faceted_brep_time_ms`).
 
 JSON `allWallMs` measures each complete `process_geometry` call, including final
@@ -1008,6 +1125,48 @@ Why `--profile profiling`: release-grade opt but keeps symbols and
   dead-end ledger below before touching the kernel.
 - `index-scan alone` vs `entity_scan`: the gap is job-list + quick-metadata
   building layered on the raw scan.
+
+## Instruction counts (`instructions.sh`, #6958)
+
+`scripts/perf/instructions.sh <fixture> [--json] [--keep <dir>]` builds
+`perf_probe` with `--features phase-markers` (into `target/phase-markers`, so it
+never swaps the binary under `probe.sh`) and runs it once under
+`valgrind --tool=callgrind` with `--single-thread --iters 1`. The feature puts a
+never-inlined empty marker call on every `ProcessingStats` timer edge
+(`rust/processing/src/processor/phase_marks.rs`); callgrind's
+`--dump-before=...::phase_marks::*` writes one dump per edge, and
+`instructions-report.mjs` folds them into
+`{fixture, commit, phases:{parseIr, entityScanIr, lookupIr, preprocessIr,
+geometryIr, totalIr}, outside, processIr, meshes, vertices, triangles}`. Each
+phase covers exactly the window its millisecond timer covers; `parseIr`
+includes the untimed code between the sub-phases, as `parse_time_ms` does.
+Without the feature the markers compile to nothing (mesh fingerprints are
+identical with the feature off, on, and with `--single-thread`).
+
+- **Determinism.** Entity scan and lookup are exactly reproducible. Across
+  independent runs of one binary (some concurrent, on a loaded machine),
+  geometry varied by at most 254 Ir of 367M on FZK-Haus (7e-7) and 8,912 Ir of
+  28.7G on ISSUE_129 (3e-7); preprocess varied by at most 31 Ir. The residue
+  comes from `std::collections::HashMap` per-process hash seeds (probe lengths
+  in `clip_mesh_with_half_space`, `promote_cutter_verts_onto_host_faces`,
+  `remove_internal_membrane`, `union_all`, and in preprocess); output is
+  unaffected. `--single-thread` runs the one rayon worker on the calling thread
+  (`use_current_thread`): with a separate worker thread, idle spinning and
+  hand-off added noise of up to ~1e-5. Raw runs:
+  `evidence/instruction-replay-6958/determinism.json`.
+- **Not wall time.** Counts are immune to machine load and need no quiet
+  machine, but they ignore memory stalls, cache misses and parallel
+  scheduling. Read them as work, not latency.
+- **Cost.** ~60-100x a native run: FZK-Haus ~6 s, ISSUE_129 ~2.5 min.
+- `perf stat -e instructions:u` is not wired in: it is unavailable under WSL and
+  counts from different tools are not comparable with each other.
+
+For historical commits, which have no markers,
+`instructions-replay.mjs` injects `rust/processing/examples/instructions_driver.rs`
+(one `process_geometry` call between `--dump-before`/`--dump-after` dumps) into
+a throwaway worktree per ref via `build-at-ref.sh`, the same worktree builder
+`ab.sh` uses for its base side. It counts whole calls only. See the replay
+verdict in the ledger below.
 
 ## Flamegraph (`flame.sh`)
 

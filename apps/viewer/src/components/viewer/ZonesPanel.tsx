@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
+import { AssistantAction } from '@/components/viewer/assistant/AssistantAction';
 import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useViewerStore } from '@/store';
@@ -317,6 +318,7 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
       <div className="flex items-center gap-2 border-b p-3">
         <Box className="h-4 w-4 text-amber-600" />
         <span className="font-medium text-sm flex-1">{t('zonesPanel.header.title')}</span>
+        <AssistantAction />
         {onClose && (
           <IconButton label={t('zonesPanel.header.closeLabel')} className="h-6 w-6" onClick={handleClose}>
             <X className="h-3.5 w-3.5" />

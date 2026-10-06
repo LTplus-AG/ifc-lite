@@ -31,6 +31,11 @@
       "import": "./dist/scan-segmentation.js",
       "default": "./dist/scan-segmentation.js"
     },
+    "./scan-proposals": {
+      "types": "./dist/scan-proposals.d.ts",
+      "import": "./dist/scan-proposals.js",
+      "default": "./dist/scan-proposals.js"
+    },
     "./remesh": {
       "types": "./dist/remesh/index.d.ts",
       "import": "./dist/remesh/index.js",
@@ -45,6 +50,7 @@
   },
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
+    "@ifc-lite/load-trace": "workspace:^",
     "@ifc-lite/wasm": "workspace:^",
     "@ifc-lite/wasm-lifecycle": "workspace:^"
   },

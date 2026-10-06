@@ -69,7 +69,17 @@ Guide to setting up a development environment for IFClite.
     ```
 
 If you do not want a Rust toolchain at all, `pnpm build:wasm:fetch` downloads
-the prebuilt `@ifc-lite/wasm` bundle from npm instead of compiling it.
+the prebuilt `@ifc-lite/wasm` runtime from npm instead of compiling it.
+
+The published runtime is the last release, so it can be older than your
+checkout. The fetch compares it with the committed type declarations
+(`packages/wasm/pkg/ifc-lite.d.ts`) and, if those declare a top-level export
+the runtime does not provide, lists the missing names, installs nothing and
+exits 1. In that case a source build (`pnpm build:wasm`) is the only way to
+get a matching runtime until the next release. A runtime that is already
+installed gets the same check and is never deleted; `pnpm build:wasm:fetch
+--force` re-fetches over it, replacing it only if the published one passes.
+The committed `ifc-lite.d.ts` is never overwritten.
 
 ## Clone and Build
 

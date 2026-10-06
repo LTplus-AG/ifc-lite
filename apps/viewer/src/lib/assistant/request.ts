@@ -15,6 +15,7 @@ import { SCENE_ACTION_OUTPUT_GUIDANCE } from '../actions/scene-actions';
 import { CHECK_AUTHORING_GUIDANCE } from '../check-authoring/guidance';
 import { artifactGuidance } from './artifacts/artifact-guidance';
 import { REPORT_CLAIMS_OUTPUT_GUIDANCE } from './report-claims';
+import { isReportSource } from './sources';
 import { useViewerStore } from '@/store';
 import { useAssistant } from './conversation';
 
@@ -100,7 +101,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     }
     if (state.snapshot.source === 'clash') system = `${system}\n${CLASH_GROUP_OUTPUT_GUIDANCE}`;
     // Corrections are proposals only: the user reviews each change before anything is applied.
-    if (state.snapshot.source !== 'flow') system = `${system}\n${MODEL_CHANGE_OUTPUT_GUIDANCE}\n${REPORT_CLAIMS_OUTPUT_GUIDANCE}`;
+    if (isReportSource(state.snapshot.source)) system = `${system}\n${MODEL_CHANGE_OUTPUT_GUIDANCE}\n${REPORT_CLAIMS_OUTPUT_GUIDANCE}`;
     // Scene actions are proposals too: nothing changes the view until the user applies them.
     if (state.snapshot.source !== 'flow') system = `${system}\n${SCENE_ACTION_OUTPUT_GUIDANCE}`;
     // IDS, information rules and report outlines are drafted from validation results or any loaded model (P07).

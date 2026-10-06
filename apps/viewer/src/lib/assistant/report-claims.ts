@@ -114,6 +114,9 @@ function source(captured: CapturedEvidence, citation: string): { found: boolean;
  */
 export interface CheckOptions { resolve?: (citation: string) => string | null; partial?: boolean }
 
+/** One rule for "this capture is a sample": shared by claim checks and the document's labels. */
+export const sampledCapture = (evidence: { includedRows: number; totalRows: number }): boolean => evidence.includedRows < evidence.totalRows;
+
 /** One fact against one capture. `resolve` maps a claim citation to the citation it now has (refresh). */
 export function checkFact(fact: AiClaimFact, captured: CapturedEvidence, { resolve = c => c, partial = false }: CheckOptions = {}): FactResult {
   const current = resolve(fact.citation);
@@ -135,16 +138,16 @@ export function checkClaim(claim: Omit<AiReportClaim, 'status'>, captured: Captu
   return { ...claim, status: absent.length && status === 'supported' ? 'unverifiable' : status, results, unknownCitations };
 }
 
-export function checkProposedClaims(claims: ProposedClaim[], captured: CapturedEvidence): CheckedClaim[] {
-  return claims.map((claim, index) => checkClaim({ id: `C${index + 1}`, edited: false, ...claim }, captured));
+export function checkProposedClaims(claims: ProposedClaim[], captured: CapturedEvidence, partial = false): CheckedClaim[] {
+  return claims.map((claim, index) => checkClaim({ id: `C${index + 1}`, edited: false, ...claim }, captured, { partial }));
 }
 
 /** A reviewer rewrites a claim: its text becomes theirs and its contradicted facts no longer stand. */
-export function editClaim(claim: CheckedClaim, textValue: string, captured: CapturedEvidence): CheckedClaim {
+export function editClaim(claim: CheckedClaim, textValue: string, captured: CapturedEvidence, partial = false): CheckedClaim {
   if (!text(textValue, 1200)) throw new Error('A claim needs its statement text (at most 1,200 characters).');
   const kept = claim.results.filter(result => result.check.kind !== 'mismatch' && result.check.kind !== 'unknown-citation').map(result => result.fact);
   const statement = textValue.trim();
   const known = claim.citations.filter(citation => !claim.unknownCitations.includes(citation));
   const citations = [...new Set([...known, ...textCitations(statement)])];
-  return checkClaim({ id: claim.id, text: statement, citations, facts: kept, edited: true, generatedText: claim.generatedText ?? claim.text }, captured);
+  return checkClaim({ id: claim.id, text: statement, citations, facts: kept, edited: true, generatedText: claim.generatedText ?? claim.text }, captured, { partial });
 }

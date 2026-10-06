@@ -51,9 +51,11 @@ test('every registered analysis source drafts a native report with checked claim
         { text: 'Seven native rows exist.', facts: [{ citation: 'summary', field: 'total', value: 7 }] },
         { text: 'E3 is wrong on purpose.', facts: [{ citation: 'E3', field: 'value', value: values[2] + 1, unit: 'm' }] },
         { text: 'E4 is in a plant room.', citations: ['E4'] },
+        // E6 is a native row outside the 5-of-7 sample: unverifiable, never contradicted.
+        { text: 'E6 measures 1 m.', facts: [{ citation: 'E6', field: 'value', value: 1, unit: 'm' }] },
       ]) }] });
     const draft = prepareReportDraft(`${source} report`, 'fr');
-    assert.deepEqual(draft.claims.map(claim => claim.status), ['supported', 'supported', 'contradicted', 'unverifiable'], source);
+    assert.deepEqual(draft.claims.map(claim => claim.status), ['supported', 'supported', 'contradicted', 'unverifiable', 'unverifiable'], source);
     assert.deepEqual(validateDocumentSpec(JSON.parse(draft.documentJson)), [], source);
     assert.equal(draft.document.aiReport?.evidence.source, source);
     assert.equal(draft.document.aiReport?.language, 'fr');
@@ -62,7 +64,9 @@ test('every registered analysis source drafts a native report with checked claim
     assert.match(text, new RegExp(`Source: ${source} `));
     assert.match(text, /Included evidence: 5 of 7 native rows\.\nThis is a sample/);
     const revised = reviseReportClaim(draft, 'C3', 'remove');
-    assert.deepEqual(revised.claims.map(claim => claim.id), ['C1', 'C2', 'C4'], 'removal keeps the other claim ids');
+    assert.deepEqual(revised.claims.map(claim => claim.id), ['C1', 'C2', 'C4', 'C5'], 'removal keeps the other claim ids');
+    assert.equal(reviseReportClaim(revised, 'C5', { text: 'E6 is a long pipe [E6].' }).claims.at(-1)?.status, 'unverifiable',
+      'an edited claim is re-checked as a sample too');
     assert.deepEqual(contradictedClaims(revised), []);
     assert.equal(revised.document.id, draft.document.id, 'a reviewer change recomposes the same document');
     assert.equal(revised.document.aiReport?.citedRows.E3, undefined, 'a removed claim no longer pins its row');

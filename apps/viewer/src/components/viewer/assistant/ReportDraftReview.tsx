@@ -89,7 +89,7 @@ export function ReportDraftReview() {
         {declaredLanguageDiffers(draft.declaredLanguage, draft.language) && <output className="block rounded border border-amber-500/40 bg-amber-500/10 p-2">
           {t('aiReports.languageMismatch', { declared: draft.declaredLanguage ?? '', chosen: draft.language })}</output>}
         {draft.prose.trim() && <blockquote className="whitespace-pre-wrap break-words border-l-2 border-border pl-2">{draft.prose}</blockquote>}
-        <ReportClaimList claims={draft.claims} disabled={busy || saved || !current} onEdit={(id, text) => revise(id, { text })} onRemove={id => revise(id, 'remove')} />
+        <ReportClaimList key={draft.document.id} claims={draft.claims} disabled={busy || saved || !current} onEdit={(id, text) => revise(id, { text })} onRemove={id => revise(id, 'remove')} />
         <details><summary className="cursor-pointer text-muted-foreground hover:text-foreground">{t('assistant.evidenceDetails')}</summary>
           <div className="mt-2"><EvidenceView evidence={draft.source.evidence} state="historical" /></div>
         </details>

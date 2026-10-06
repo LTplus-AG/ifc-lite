@@ -10,7 +10,7 @@ import { useAssistant } from './conversation';
 import { evidenceIsCurrent } from './evidence';
 import { decodeConversation, type SavedConversation } from './persistence';
 import { buildReportBlocks } from './report-blocks';
-import { checkProposedClaims, editClaim, splitReportAnswer, type CheckedClaim } from './report-claims';
+import { checkProposedClaims, editClaim, sampledCapture, splitReportAnswer, type CheckedClaim } from './report-claims';
 import { parseCapturedEvidence, type CapturedEvidence } from './captured-rows';
 import { rowIdentity, SUMMARY_CITATION } from './report-facts';
 import type { ReportLanguage } from './report-language';
@@ -93,7 +93,7 @@ export function prepareReportDraft(name: string, language: ReportLanguage = 'en'
   if (title.length > 200) throw new Error('Report names may contain at most 200 characters.');
   const historical = useAssistant.getState().archived !== null;
   const parts = { source, conversationJson: JSON.stringify(source), language, declaredLanguage: envelope?.language ?? null, prose,
-    claims: envelope ? checkProposedClaims(envelope.claims, captured) : [], captured, citations, historical,
+    claims: envelope ? checkProposedClaims(envelope.claims, captured, sampledCapture(source.evidence)) : [], captured, citations, historical,
     // Native tables describe the live source, so only a current capture may add them.
     tables: historical ? [] : nativeTableBlocks(source.evidence.source, { title }) };
   const document = compose(parts, freshDocumentId(), title);
@@ -103,7 +103,7 @@ export function prepareReportDraft(name: string, language: ReportLanguage = 'en'
 /** Reviewer edit or removal of one claim; the document is recomposed under the same identity. */
 export function reviseReportClaim(draft: ReportDraft, claimId: string, edit: { text: string } | 'remove'): ReportDraft {
   const claims = edit === 'remove' ? draft.claims.filter(claim => claim.id !== claimId)
-    : draft.claims.map(claim => claim.id === claimId ? editClaim(claim, edit.text, draft.captured) : claim);
+    : draft.claims.map(claim => claim.id === claimId ? editClaim(claim, edit.text, draft.captured, sampledCapture(draft.source.evidence)) : claim);
   const parts = { ...draft, claims };
   const document = compose(parts, draft.document.id, draft.document.name);
   return { ...parts, document, documentJson: JSON.stringify(document) };

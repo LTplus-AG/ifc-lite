@@ -16,7 +16,7 @@ import type { DocumentBlock, TableBlock, TextBlock } from '../document/types';
 import { StandardFontLedger, unprintableShare } from '../document/standard-font-text';
 import { parseCapturedEvidence } from './captured-rows';
 import { declaredUnit, formatFactValue, valueAt } from './report-facts';
-import type { CheckedClaim } from './report-claims';
+import { sampledCapture, type CheckedClaim } from './report-claims';
 import { appendixBlocks, narrativeBlocks } from './report-narrative';
 
 export interface SlotBlock { slot: string | null; block: DocumentBlock }
@@ -94,7 +94,7 @@ function claimCaption({ claim, current, changes }: ClaimPresentation, rows: Retu
 export function buildReportBlocks(input: ReportBuild): SlotBlock[] {
   const { record } = input;
   const current: Current = input.current ?? (citation => citation);
-  const partial = record.evidence.includedRows < record.evidence.totalRows;
+  const partial = sampledCapture(record.evidence);
   // Judged on the provider's own text: native values in other scripts are reported, the narrative must print.
   if (unprintableShare([record.narrative, ...record.claims.map(claim => claim.text)].join('\n')) > 0.1) {
     throw new Error('Most of this text cannot be printed with the standard PDF fonts. Choose a Latin-script report language.');
@@ -115,7 +115,7 @@ export function buildReportBlocks(input: ReportBuild): SlotBlock[] {
     text('provenance', 'small', `AI narrative draft · Source: ${evidence.source} · Captured: ${evidence.capturedAt}\nEvidence identity: ${record.conversationId}`
       + `\nProvider model: ${record.model}\nNarrative language: ${record.language} · Revision ${record.revision}`),
     text('coverage', 'body', `Included evidence: ${evidence.includedRows} of ${evidence.totalRows} native rows.\n`
-      + (evidence.includedRows < evidence.totalRows ? 'This is a sample; unseen findings are not evaluated by this narrative.\n' : '')
+      + (sampledCapture(evidence) ? 'This is a sample; unseen findings are not evaluated by this narrative.\n' : '')
       + (evidence.projectionTruncated ? 'Some evidence values were shortened or omitted.\n' : '')
       + 'Captured evidence is historical. AI prose requires human verification and does not change native results or certify compliance.'),
     ...(input.refreshSummary ? [text('refresh-summary', 'small', input.refreshSummary)] : []),

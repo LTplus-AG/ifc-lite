@@ -59,7 +59,7 @@ rt('buildMeasured refuses a zero, missing or unknown input instead of measuring 
   assert.throws(() => measure.buildMeasured({ set: 'huge', report: REPORT, commit: 'a' }), /unknown --set/);
 });
 
-test('the CLI exits 2 (harness fault) without --set or with a bad one', () => {
+rt('the CLI exits 2 (harness fault) without --set or with a bad one', () => {
   for (const args of [[], ['--set', 'huge'], ['--bogus', 'x']]) {
     const r = spawnSync(process.execPath, [MEASURER, ...args], { encoding: 'utf8' });
     assert.equal(r.status, 2, `args ${args.join(' ')}: ${r.stderr}`);

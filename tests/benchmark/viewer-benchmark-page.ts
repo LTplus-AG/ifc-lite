@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Page, ConsoleMessage } from '@playwright/test';
-import { waitForMetadataRenderReadiness } from './metadata-render-readiness.js';
+import { READINESS_SPANS, waitForMetadataRenderReadiness, type LoadTraceProbe } from './metadata-render-readiness.js';
 import {
   compareSpanAndRegexMetrics,
   metricsFromLoadTrace,
@@ -275,9 +275,9 @@ export class ViewerBenchmarkPage {
       console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_QUANTIZED (expected "1" or "0"): ${quantEnv}`);
     }
 
-    // #6956: turn on the viewer's load tracer so metrics come from its span
-    // tree (window.__IFC_LITE_LOAD_TRACE__); the console regexes below stay
-    // as the fallback for one release.
+    // #6956: turn on the viewer's load tracer so metrics and load completion
+    // come from its span tree (window.__IFC_LITE_LOAD_TRACE__); the console
+    // regexes stay as the fallback for one release (#7005).
     await this.page.addInitScript(() => {
       (globalThis as unknown as { __IFC_LITE_PERF_TRACE?: number }).__IFC_LITE_PERF_TRACE = 1;
     });
@@ -358,7 +358,7 @@ export class ViewerBenchmarkPage {
   async waitForCompletion(timeoutMs: number = 600000, requireMetadataRender = false) {
     if (requireMetadataRender) {
       this.loadEndTime = await waitForMetadataRenderReadiness({
-        logs: () => this.consoleLogs, canvasReady: () => this.checkCanvasHasContent(),
+        trace: () => this.probeLoadTrace(), logs: () => this.consoleLogs, canvasReady: () => this.checkCanvasHasContent(),
         now: () => Date.now(), pause: () => this.page.waitForTimeout(100), timeoutMs,
       });
       this.metrics.metadataRenderReadyMs = this.loadEndTime - this.loadStartTime;
@@ -371,9 +371,11 @@ export class ViewerBenchmarkPage {
     const startTime = Date.now();
     let renderCompleteTime: number | null = null;
 
-    // Wait for completion signals in console logs AND actual rendering
+    // Wait for the load's root span to end (#6979) AND actual rendering
     while (Date.now() - startTime < timeoutMs) {
-      // Check if we have all key completion signals
+      const probe = await this.probeLoadTrace();
+      // TODO(remove-by: first release after 2026-10-06 (one after #6977), #7005):
+      // console completion lines, read only when the page exposes no load trace.
       const hasStreamingComplete = this.consoleLogs.some(log =>
         log.includes('[useIfc] Geometry streaming complete')
       );
@@ -396,12 +398,13 @@ export class ViewerBenchmarkPage {
       // Check canvas has actual content
       const canvasReady = await this.checkCanvasHasContent();
 
-      if (
-        (hasStreamingComplete && hasDataModelComplete && hasTotalLoadTime)
-        || hasUnifiedSummary
-        || hasFinalSummary
-        || (hasStreamingComplete && hasDataModelComplete)
-      ) {
+      const loadComplete = probe
+        ? probe.ended
+        : (hasStreamingComplete && hasDataModelComplete && hasTotalLoadTime)
+          || hasUnifiedSummary
+          || hasFinalSummary
+          || (hasStreamingComplete && hasDataModelComplete);
+      if (loadComplete) {
         // Record when we see completion in logs
         if (!renderCompleteTime) {
           renderCompleteTime = Date.now();
@@ -446,6 +449,36 @@ export class ViewerBenchmarkPage {
     this.parseMetrics();
   }
 
+  /**
+   * The latest load's completion state, reduced inside the page so a poll
+   * copies a few span names rather than the tree (#6979). Null when the page
+   * exposes no trace yet (or at all: a viewer built before #6977).
+   */
+  private async probeLoadTrace(): Promise<LoadTraceProbe | null> {
+    try {
+      return await this.page.evaluate(
+        ({ key, names }: { key: string; names: readonly string[] }) => {
+          type Span = { name: string; end: number | null; attrs?: Record<string, unknown> };
+          const api = (globalThis as unknown as Record<string, { latest?: () => { end: number | null; spans: Span[] } | null } | undefined>)[key];
+          const snapshot = api?.latest?.() ?? null;
+          if (!snapshot) return null;
+          const done: string[] = [];
+          const failed: string[] = [];
+          for (const span of snapshot.spans) {
+            if (span.end === null || !names.includes(span.name)) continue;
+            done.push(span.name);
+            if (span.attrs?.error === true) failed.push(span.name);
+          }
+          return { ended: snapshot.end !== null, done, failed };
+        },
+        { key: LOAD_TRACE_GLOBAL, names: READINESS_SPANS },
+      );
+    } catch (err) {
+      console.warn('[Benchmark] could not probe the load trace', err);
+      return null;
+    }
+  }
+
   /** Pull the latest load's span tree out of the page (null when tracing is unavailable). */
   private async readLoadTrace(): Promise<void> {
     try {
@@ -484,6 +517,12 @@ export class ViewerBenchmarkPage {
     }
   }
 
+  /**
+   * TODO(remove-by: first release after 2026-10-06, i.e. one after #6977;
+   * #7005): the console regexes for metrics the span tree carries are the
+   * fallback for viewer builds without a load trace. `applySpanMetrics`
+   * overrides them whenever the tree has the value.
+   */
   private parseMetrics() {
     const logs = this.consoleLogs.join('\n');
     let appReportedTotalMs: number | null = null;

@@ -26,6 +26,7 @@ import type { ParserMemorySnapshot } from './data-store-transport.js';
 import { WorkerIndexPublisher, type WorkerStorePayload } from './worker-index-publication.js';
 import { takeWasmPanicStash } from './wasm-panic-forward.js';
 import { createLogger } from '@ifc-lite/data';
+import { columnarPhaseSpan, createParserWorkerTrace, finishParseTrace } from './parser-worker-trace.js';
 
 /** Input message: pass the SAB-backed source bytes and an opaque request id. */
 export interface ParserWorkerInputMessage {
@@ -77,6 +78,7 @@ export interface ParserWorkerProgressMessage {
 }
 
 const parseLiteLog = createLogger('parseLite');
+const trace = createParserWorkerTrace(); // #6979 load-trace spans, off until enabled
 
 /** Optional structured diagnostic line (mirrors parseColumnar `onDiagnostic`). */
 export interface ParserWorkerDiagnosticMessage {
@@ -223,6 +225,7 @@ type ParserInbound = ParserWorkerInputMessage | ParserWorkerEntityIndexMessage;
 
 self.onmessage = async (event: MessageEvent<ParserInbound>) => {
   const data = event.data;
+  if (trace.accept(data)) return;
   if (data.type === 'set-entity-index') {
     pendingEntityIndex = {
       ids: data.ids,
@@ -242,6 +245,7 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
 
   const { id, source, yieldIntervalMs, deferPropertyAtomIndex, waitForEntityIndex } = data;
   const startedAt = performance.now();
+  const parseSpan = trace.begin('parser.parse');
 
   try {
     // The SAB itself is shared by reference — both this worker and the
@@ -278,7 +282,9 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
       // wait here would hurt more than it helps. The host gates this
       // flag to paths that actually emit, so timeouts shouldn't fire
       // in practice.
+      const waitSpan = trace.begin('parser.entityIndexWait');
       preScanned = await awaitEntityIndex(60_000);
+      trace.end(waitSpan, { handedOver: preScanned !== null });
       if (!preScanned) {
         // The promised index never came (pre-pass aborted / path mismatch):
         // we now DO need the wasm scan, so compile it — serially here, which
@@ -292,7 +298,8 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
     // `undefined` when the handoff succeeded — parseColumnar then uses the
     // pre-scanned index and never touches the (uncompiled) wasm scanner. If the
     // index were somehow empty, the scanner falls through to the JS tokeniser.
-    const wasmApi = wasmApiPromise ? await wasmApiPromise : undefined;
+    const wasmInit = wasmApiPromise;
+    const wasmApi = wasmInit ? await trace.span('parser.wasmInit', () => wasmInit) : undefined;
     const parser = new IfcParser();
     const indexPublisher = new WorkerIndexPublisher(data.indexTransport === 'packed-index-v1');
     let publishedContentKey: string | null | undefined;
@@ -318,6 +325,7 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
       deferPropertyAtomIndex,
       preScannedEntityIndex: preScanned ?? undefined,
       onProgress: (progress) => {
+        trace.step(columnarPhaseSpan(progress.phase));
         postOutput({ type: 'progress', id, progress });
       },
       onDiagnostic: (message) => {
@@ -325,18 +333,22 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
       },
       onSpatialReady: (partialStore) => {
         try {
-          const { payload, transfers } = indexPublisher.serialize(partialStore, false);
-          // #3983: overlays and Cesium availability read these during React
-          // rendering. Do the full-source/hash and property-set walks here.
-          payload.sourceContentKey = chooseContentKey(partialStore);
-          if (!deferPropertyAtomIndex) {
-            georeferencing = extractGeoreferencingOnDemand(partialStore);
-            payload.georeferencing = georeferencing;
-          }
+          const { payload, transfers } = trace.span('parser.spatialReady.serialize', () => {
+            const serialized = indexPublisher.serialize(partialStore, false);
+            // #3983: overlays and Cesium availability read these during React
+            // rendering. Do the full-source/hash and property-set walks here.
+            serialized.payload.sourceContentKey = chooseContentKey(partialStore);
+            if (!deferPropertyAtomIndex) {
+              georeferencing = extractGeoreferencingOnDemand(partialStore);
+              serialized.payload.georeferencing = georeferencing;
+            }
+            return serialized;
+          });
           // The packed byType snapshot is worker-independent; primary numeric
           // columns still clone because parsing continues to read them.
           postOutput({ type: 'partial-store', id, payload }, transfers);
           indexPublisher.publishedPartial(partialStore);
+          trace.flush();
         } catch (err) {
           postOutput({
             type: 'error',
@@ -346,10 +358,14 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
         }
       },
     });
-    const { payload, transfers, transportBytes } = indexPublisher.serialize(dataStore, true);
-    payload.sourceContentKey = chooseContentKey(dataStore);
-    payload.georeferencing = georeferencing === undefined
-      ? extractGeoreferencingOnDemand(dataStore) : georeferencing;
+    trace.step(null);
+    const { payload, transfers, transportBytes } = trace.span('parser.transport.serialize', () => {
+      const serialized = indexPublisher.serialize(dataStore, true);
+      serialized.payload.sourceContentKey = chooseContentKey(dataStore);
+      serialized.payload.georeferencing = georeferencing === undefined
+        ? extractGeoreferencingOnDemand(dataStore) : georeferencing;
+      return serialized;
+    });
     // CRITICAL: every field here MUST be synchronous. Do NOT await on this path —
     // it gates the 'complete' message (the full data store) reaching the main thread.
     // This previously `await`ed performance.measureUserAgentSpecificMemory(); in a
@@ -363,8 +379,10 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
       sourceBytes: source.byteLength,
       parseTimeMs: performance.now() - startedAt,
     };
+    finishParseTrace(trace, parseSpan, { entities: dataStore.entityCount });
     postOutput({ type: 'complete', id, payload, memory }, transfers);
   } catch (err) {
+    finishParseTrace(trace, parseSpan, { error: true });
     // #2527 follow-up: forward this realm's panic-location stash (set by the
     // Rust panic hook if this failure was a wasm trap) so the main thread can
     // re-plant it on ITS global for `attachWasmPanicLocation`.

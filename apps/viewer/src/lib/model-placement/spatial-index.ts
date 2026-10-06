@@ -8,6 +8,7 @@ import { withInstancedMeshes } from '@/utils/instancedExport';
 import { modelIndices } from './model-indices';
 import { displayedTranslation } from './state';
 import { equalTranslation } from './translation';
+import { modelLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
 
 /** Build (or rebuild) `modelId`'s spatial index from its PLACED geometry — flat
  * meshes plus GPU-instanced occurrences materialized at their current heading
@@ -21,13 +22,19 @@ import { equalTranslation } from './translation';
  * ranges (a collab-joined model re-using an id space a normally loaded model
  * already occupies), and the id-range filter alone would leak one model's
  * occurrences into the other's index — the renderer index disambiguates
- * exactly which model's template each materialized occurrence came from. */
+ * exactly which model's template each materialized occurrence came from.
+ *
+ * The first build after a load is its `bvh.build` span (#6979): instanced
+ * materialization plus the BVH, until the index publishes or is dropped. */
 export function buildPlacedSpatialIndex(state: ViewerState, modelId: string): Promise<boolean> {
   const model = state.models.get(modelId);
   if (!model?.ifcDataStore || !model.geometryResult) return Promise.resolve(false);
-  const geometry = withInstancedMeshes(model.geometryResult, { modelId, idOffset: model.idOffset,
-    maxExpressId: model.maxExpressId, rendererModelIndex: modelIndices(state.models).get(modelId) });
-  return buildSpatialIndexForModel(geometry.meshes, modelId, model.ifcDataStore, 'placed');
+  const { ifcDataStore, geometryResult } = model;
+  return tracePhaseOnce(modelLoadTrace(modelId), 'bvh.build').span('bvh.build', () => {
+    const geometry = withInstancedMeshes(geometryResult, { modelId, idOffset: model.idOffset,
+      maxExpressId: model.maxExpressId, rendererModelIndex: modelIndices(state.models).get(modelId) });
+    return buildSpatialIndexForModel(geometry.meshes, modelId, ifcDataStore, 'placed');
+  });
 }
 
 /** Debounce the CPU query index, never geometry uploads. Generation guards in

@@ -99,6 +99,8 @@ test('linked-records assistant: spans, grants, revision pins and reviewed apply 
   await panel.getByRole('button', { name: 'Load records', exact: true }).click();
   await expect.poll(() => requests.length).toBe(1);
   expect(requests[0].authorization).toBe(`Bearer ${SECRET}`);
+  // Let the load finish publishing, or the evidence captured next would already be out of date.
+  await expect(panel.getByRole('button', { name: 'Load records', exact: true })).toBeEnabled();
   await shot('01-linked-records-attached-text');
 
   // Provider answers are the only intercepted model output; the card is chosen by the prompt.

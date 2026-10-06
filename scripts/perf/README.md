@@ -30,6 +30,15 @@ scripts/perf/instructions.sh tests/models/ara3d/AC20-FZK-Haus.ifc --json
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+**Instruction ceilings gate kernel and parse work only (#6982).** The
+`native-instructions` ratchet (`tests/perf-ratchets/native-instructions*.json`,
+0.05% tolerance, FZK-Haus per PR, ISSUE_129 daily) is a blocking check for
+per-element kernel, decode and caching changes: callgrind counts follow them
+to ~0.1% with run-to-run variance <= 1e-6. It runs `--single-thread` natively,
+so it does not see scheduling, threading, WASM or browser-only effects (worker
+fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
+A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
+
 ### Frame-time rigs (#6960)
 
 Two rigs measure viewer frames; neither is a PR gate. Both inject the same

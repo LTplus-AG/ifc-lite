@@ -1,0 +1,86 @@
+{
+  "family": "native-instructions-large",
+  "description": "Daily-only native instruction-count ceilings for tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc, measured by scripts/perf-ratchet/measure-native-instructions.mjs --set large (scripts/perf/instructions.sh: perf_probe --single-thread under callgrind, feature phase-markers). Gates per-element kernel and parse work only; scheduling, threading and browser-only effects need an end-to-end A/B. Tolerance 0.05%: run-to-run variance is <=1e-6, the smallest change the ledger cares about is ~0.1-0.3%. Measured only by perf-ratchet-lower.yml (ISSUE_129 is ~2.5 min under callgrind); lookup is ~21k Ir and not ratcheted. Raising a ceiling is a human PR with a justification (docs/guide/performance.md, 'Perf ratchet ceilings'); lowering is the daily perf-ratchet-lower.yml job (Refs #6955).",
+  "entries": [
+    {
+      "id": "issue-129.parse",
+      "metric": "instructions",
+      "unit": "Ir",
+      "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "description": "parse: entity scan + lookup + preprocess + untimed glue phase, callgrind Ir, single thread",
+      "ceiling": 336159104,
+      "tolerance": {
+        "kind": "relative",
+        "value": 0.0005
+      },
+      "provenance": {
+        "commit": "fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e",
+        "measuredAt": "2026-10-06T04:21:45.189Z"
+      }
+    },
+    {
+      "id": "issue-129.entity-scan",
+      "metric": "instructions",
+      "unit": "Ir",
+      "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "description": "entity scan phase, callgrind Ir, single thread",
+      "ceiling": 281080882,
+      "tolerance": {
+        "kind": "relative",
+        "value": 0.0005
+      },
+      "provenance": {
+        "commit": "fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e",
+        "measuredAt": "2026-10-06T04:21:45.189Z"
+      }
+    },
+    {
+      "id": "issue-129.preprocess",
+      "metric": "instructions",
+      "unit": "Ir",
+      "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "description": "preprocess phase, callgrind Ir, single thread",
+      "ceiling": 7083109,
+      "tolerance": {
+        "kind": "relative",
+        "value": 0.0005
+      },
+      "provenance": {
+        "commit": "fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e",
+        "measuredAt": "2026-10-06T04:21:45.189Z"
+      }
+    },
+    {
+      "id": "issue-129.geometry",
+      "metric": "instructions",
+      "unit": "Ir",
+      "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "description": "geometry phase, callgrind Ir, single thread",
+      "ceiling": 28689371549,
+      "tolerance": {
+        "kind": "relative",
+        "value": 0.0005
+      },
+      "provenance": {
+        "commit": "fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e",
+        "measuredAt": "2026-10-06T04:21:45.189Z"
+      }
+    },
+    {
+      "id": "issue-129.total",
+      "metric": "instructions",
+      "unit": "Ir",
+      "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "description": "whole pipeline (like total_time_ms) phase, callgrind Ir, single thread",
+      "ceiling": 29025576798,
+      "tolerance": {
+        "kind": "relative",
+        "value": 0.0005
+      },
+      "provenance": {
+        "commit": "fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e",
+        "measuredAt": "2026-10-06T04:21:45.189Z"
+      }
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "family": "native-instructions",
+  "description": "Per-PR native instruction-count ceilings for tests/models/ara3d/AC20-FZK-Haus.ifc, measured by scripts/perf-ratchet/measure-native-instructions.mjs --set small (scripts/perf/instructions.sh: perf_probe --single-thread under callgrind, feature phase-markers). Gates per-element kernel and parse work only; scheduling, threading and browser-only effects need an end-to-end A/B. Tolerance 0.05%: run-to-run variance is <=1e-6, the smallest change the ledger cares about is ~0.1-0.3%. Raising a ceiling is a human PR with a justification (docs/guide/performance.md, 'Perf ratchet ceilings'); lowering is the daily perf-ratchet-lower.yml job (Refs #6955).",
+  "entries": [
+    {
+      "id": "fzk-haus.parse",
+      "metric": "instructions",
+      "unit": "Ir",
+      "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "description": "parse: entity scan + lookup + preprocess + untimed glue phase, callgrind Ir, single thread",
+      "ceiling": 105610041,
+      "tolerance": {
+        "kind": "relative",
+        "value": 0.0005
+      },
+      "provenance": {
+        "commit": "fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e",
+        "measuredAt": "2026-10-06T04:20:21.115Z"
+      }
+    },
+    {
+      "id": "fzk-haus.entity-scan",
+      "metric": "instructions",
+      "unit": "Ir",
+      "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "description": "entity scan phase, callgrind Ir, single thread",
+      "ceiling": 63680711,
+      "tolerance": {
+        "kind": "relative",
+        "value": 0.0005
+      },
+      "provenance": {
+        "commit": "fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e",
+        "measuredAt": "2026-10-06T04:20:21.115Z"
+      }
+    },
+    {
+      "id": "fzk-haus.lookup",
+      "metric": "instructions",
+      "unit": "Ir",
+      "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "description": "by-id lookup build phase, callgrind Ir, single thread",
+      "ceiling": 13255576,
+      "tolerance": {
+        "kind": "relative",
+        "value": 0.0005
+      },
+      "provenance": {
+        "commit": "fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e",
+        "measuredAt": "2026-10-06T04:20:21.115Z"
+      }
+    },
+    {
+      "id": "fzk-haus.preprocess",
+      "metric": "instructions",
+      "unit": "Ir",
+      "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "description": "preprocess phase, callgrind Ir, single thread",
+      "ceiling": 26849159,
+      "tolerance": {
+        "kind": "relative",
+        "value": 0.0005
+      },
+      "provenance": {
+        "commit": "fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e",
+        "measuredAt": "2026-10-06T04:20:21.115Z"
+      }
+    },
+    {
+      "id": "fzk-haus.geometry",
+      "metric": "instructions",
+      "unit": "Ir",
+      "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "description": "geometry phase, callgrind Ir, single thread",
+      "ceiling": 366875870,
+      "tolerance": {
+        "kind": "relative",
+        "value": 0.0005
+      },
+      "provenance": {
+        "commit": "fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e",
+        "measuredAt": "2026-10-06T04:20:21.115Z"
+      }
+    },
+    {
+      "id": "fzk-haus.total",
+      "metric": "instructions",
+      "unit": "Ir",
+      "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "description": "whole pipeline (like total_time_ms) phase, callgrind Ir, single thread",
+      "ceiling": 472489700,
+      "tolerance": {
+        "kind": "relative",
+        "value": 0.0005
+      },
+      "provenance": {
+        "commit": "fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e",
+        "measuredAt": "2026-10-06T04:20:21.115Z"
+      }
+    }
+  ]
+}

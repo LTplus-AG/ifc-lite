@@ -38,7 +38,7 @@ fn snap(c: f64) -> f64 {
 // The cross-operand near-coincidence weld lives in `super::plane_weld`: it was
 // split out of this module when #3353 made it a boolean-wide concern rather
 // than a subtraction-only one, and this module was at its size budget.
-use super::plane_weld::{promote_cutter_verts_onto_host_faces, promote_operands_mutually};
+use super::plane_weld::{promote_operands_mutually, promote_subtract_cutter_onto_host_faces};
 
 /// `Mesh` → the kernel's triangle list (f32 → f64, snapped to the reconcile
 /// grid). Panic-free: an out-of-range index OR a non-finite (NaN/Inf) coord drops
@@ -165,7 +165,7 @@ pub(crate) fn subtract_with_change(host: &Mesh, cutter: &Mesh) -> (Mesh, bool, b
     crate::csg_capture::record_single(host, cutter);
     let h = orient_outward(mesh_to_tris(host));
     let mut c = mesh_to_tris(cutter);
-    promote_cutter_verts_onto_host_faces(&mut c, &h);
+    promote_subtract_cutter_onto_host_faces(&mut c, &h);
     let c = orient_outward(c);
     let (tris, changed, conforming) = difference_all_lenient_with_conformity(&h, &[&c]);
     (tris_to_mesh_without_plane_tags(&tris), changed, conforming)
@@ -226,7 +226,7 @@ pub(crate) fn subtract_many_with_conformity(
         .iter()
         .map(|m| {
             let mut c = mesh_to_tris(m);
-            promote_cutter_verts_onto_host_faces(&mut c, &h);
+            promote_subtract_cutter_onto_host_faces(&mut c, &h);
             orient_outward(c)
         })
         .collect();

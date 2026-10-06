@@ -17,6 +17,10 @@
 
 use super::arrangement::Tri;
 use super::near_band::NearBand;
+use lift::exact_on_plane_weld;
+
+mod incidence;
+mod lift;
 
 pub use diag::take_plane_weld_stats;
 
@@ -246,6 +250,21 @@ const MAX_WELD_PASSES: usize = 4;
 /// census run) can measure whether the promotion fires at all rather than
 /// inferring it from an unchanged golden.
 pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) -> usize {
+    promote(cutter, host, false)
+}
+
+/// The SUBTRACT form of [`promote_cutter_verts_onto_host_faces`]: the same
+/// weld, except that it never moves a cutter vertex off a host face it is
+/// exactly on and onto a SEPARATE host surface lying in-band of that face
+/// (#6940; the rule and its limits are on [`incidence::leaves_a_separate_surface`]).
+/// The union's mutual promotion keeps the unguarded weld: with the guard on
+/// it too, `union_many_nary_sweep_regression_gate` and
+/// `issue_3917_retries_share_one_boolean_budget` fail.
+pub(crate) fn promote_subtract_cutter_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) -> usize {
+    promote(cutter, host, true)
+}
+
+fn promote(cutter: &mut [Tri], host: &[Tri], keep_incidence: bool) -> usize {
     if cutter.is_empty() || host.is_empty() {
         return 0;
     }
@@ -253,40 +272,10 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
     [cutter as &[Tri], host].into_iter().for_each(|t| band.observe_tris(t));
     let host_verts = super::near_band::exact_vertex_set(host); // #3353 N-ary half
 
-    struct Face {
-        /// `t[0]` anchors the plane; all three are [`exact_on_plane_weld`]'s
-        /// edge basis.
-        t: Tri,
-        n: [f64; 3], // raw (unnormalised) plane normal
-        nn: f64,     // |n|²
-        /// Squared PERPENDICULAR band for THIS face's plane. `NearBand`
-        /// returns it scaled by `nn` (its comparisons are made against a raw
-        /// `d = dot(v − t0, n)`); the `/ nn` here puts it back into true
-        /// distance units, because the nearest-plane search below compares
-        /// `d²/nn` ACROSS faces with different `|n|`.
-        band2: f64,
-    }
-    let faces: Vec<Face> = host
-        .iter()
-        .filter_map(|t| {
-            let e1 = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
-            let e2 = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
-            let n = [
-                e1[1] * e2[2] - e1[2] * e2[1],
-                e1[2] * e2[0] - e1[0] * e2[2],
-                e1[0] * e2[1] - e1[1] * e2[0],
-            ];
-            let nn = n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
-            if nn <= 0.0 || !nn.is_finite() {
-                return None; // degenerate host triangle
-            }
-            let band2 = band.scaled_band2(n, nn) / nn;
-            Some(Face { t: *t, n, nn, band2 })
-        })
-        .collect();
+    let faces: Vec<Face> = host.iter().filter_map(|t| Face::new(t, &band)).collect();
 
-    // Host planes the current vertex is already exactly on (reused scratch).
-    let mut on_planes: Vec<&Face> = Vec::new();
+    // Host faces whose plane the current vertex is exactly on (reused scratch).
+    let mut on: Vec<&Face> = Vec::new();
     for t in cutter.iter_mut() {
         for v in t.iter_mut() {
             if host_verts.contains(&super::near_band::vertex_bits(v)) { continue; } // #3353
@@ -298,13 +287,11 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
             // perpendicular projection onto it slides ALONG the bottom plane).
             // Ties → first in face order (deterministic).
             let mut best: Option<(f64, &Face)> = None; // (perp-dist², face)
-            on_planes.clear();
+            on.clear();
             for f in &faces {
-                let d = (v[0] - f.t[0][0]) * f.n[0]
-                    + (v[1] - f.t[0][1]) * f.n[1]
-                    + (v[2] - f.t[0][2]) * f.n[2];
+                let d = f.raw_offset(v);
                 if d == 0.0 {
-                    on_planes.push(f);
+                    on.push(f);
                     continue; // already exactly on this plane
                 }
                 let d2 = (d * d) / f.nn;
@@ -329,23 +316,10 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
             // vertex is left UNTOUCHED — never an inexact foot, which would be
             // off every grid and force the BigRational tier on every predicate
             // that sees it.
-            //
-            // NEVER BREAK AN EXACT INCIDENCE (#6940). A vertex that lies exactly
-            // on host planes (`d == 0` above) is already reconciled with them: an
-            // opening cutter extended through the host keeps its corners exactly
-            // on the hole's own wall planes while no longer being a host vertex.
-            // When another host plane passes within the band (two holes whose
-            // walls are nearly collinear) the nearest-plane search picks that
-            // one, and the weld moves the corner off the planes it was exactly
-            // on, so the cutter wall stops being coplanar with the hole wall
-            // and the boolean tears. The weld exists to remove noise between
-            // surfaces that disagree; it must not create disagreement with a
-            // surface that already agrees, so a weld that would leave any such
-            // plane is refused and the vertex stays where it was.
             if let Some((_, f)) = best {
                 if let Some(w) = exact_on_plane_weld(*v, f.t) {
-                    if on_planes.iter().any(|g| near_parallel(g.n, f.n) && !is_on_plane(&w, g.t[0], g.n)) {
-                        continue;
+                    if keep_incidence && incidence::leaves_a_separate_surface(&w, f, &on) {
+                        continue; // #6940
                     }
                     if w != *v {
                         welded += 1;
@@ -359,84 +333,45 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
     welded
 }
 
-/// Do the planes a vertex is exactly on include two that are not parallel? Then
-/// the vertex is pinned to a LINE, not merely to a surface it may slide along.
-fn near_parallel(a: [f64; 3], b: [f64; 3]) -> bool {
-    let c = [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    ];
-    let c2 = c[0] * c[0] + c[1] * c[1] + c[2] * c[2];
-    let aa = a[0] * a[0] + a[1] * a[1] + a[2] * a[2];
-    let bb = b[0] * b[0] + b[1] * b[1] + b[2] * b[2];
-    // sin^2 of the angle between the normals below 1e-4 (about 0.6 degrees)
-    c2 <= 1.0e-4 * aa * bb
+/// A host triangle as the weld reads it: its plane and that plane's band.
+struct Face {
+    /// `t[0]` anchors the plane; all three are [`exact_on_plane_weld`]'s
+    /// edge basis.
+    t: Tri,
+    n: [f64; 3], // raw (unnormalised) plane normal
+    nn: f64,     // |n|²
+    /// Squared PERPENDICULAR band for THIS face's plane. `NearBand`
+    /// returns it scaled by `nn` (its comparisons are made against a raw
+    /// `d = dot(v − t0, n)`); the `/ nn` here puts it back into true
+    /// distance units, because the nearest-plane search compares
+    /// `d²/nn` ACROSS faces with different `|n|`.
+    band2: f64,
 }
 
-/// Is `v` exactly on the plane through `t0` with raw normal `n`, by the same
-/// `d == 0` reading the promotion uses to call a vertex already reconciled?
-#[inline]
-fn is_on_plane(v: &[f64; 3], t0: [f64; 3], n: [f64; 3]) -> bool {
-    (v[0] - t0[0]) * n[0] + (v[1] - t0[1]) * n[1] + (v[2] - t0[2]) * n[2] == 0.0
-}
+impl Face {
+    /// `None` for a degenerate host triangle.
+    fn new(t: &Tri, band: &NearBand) -> Option<Self> {
+        let e1 = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
+        let e2 = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
+        let n = [
+            e1[1] * e2[2] - e1[2] * e2[1],
+            e1[2] * e2[0] - e1[0] * e2[2],
+            e1[0] * e2[1] - e1[1] * e2[0],
+        ];
+        let nn = n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
+        if nn <= 0.0 || !nn.is_finite() {
+            return None;
+        }
+        let band2 = band.scaled_band2(n, nn) / nn;
+        Some(Face { t: *t, n, nn, band2 })
+    }
 
-/// Weld `v` onto the plane of the (snap-grid) host triangle `(t0,t1,t2)` such
-/// that the result is EXACTLY on that plane and EXACTLY representable in f64.
-///
-/// The foot is solved in the triangle's edge basis (Gram system over `u=t1−t0`,
-/// `w=t2−t0`), then α,β are quantized to the 2⁻²⁰ grid and the point
-/// `t0 + α·u + β·w` is recombined in INTEGER arithmetic on the 2⁻³⁶ grid
-/// (operands are k/2¹⁶ ⇒ α·u terms are k/2³⁶ exactly). Any α,β on that grid
-/// yields a point mathematically ON the plane; the only requirement is that the
-/// f64 result is exact, which the i128 round-trip check enforces (and which
-/// bounds every magnitude case — huge georef coords simply fail the check and
-/// skip the weld). The in-plane quantization shift is ≤ edge·2⁻²⁰ (µm). The
-/// f64 Gram solve itself may round — harmless, it only picks WHICH on-grid
-/// (α,β) is used. |α|,|β| ≤ 8 bounds the integer products (the perpendicular
-/// foot of a band-near vertex is always within a few edge lengths; anything
-/// farther is a degenerate sliver basis we refuse to weld with).
-///
-/// DETERMINISM: FMA-free f64 + integer ops, fixed iteration order ⇒
-/// byte-identical native==wasm.
-fn exact_on_plane_weld(v: [f64; 3], [t0, t1, t2]: Tri) -> Option<[f64; 3]> {
-    const Q: f64 = 1_048_576.0; // 2^20 — α,β quantization
-    const S16: f64 = 65_536.0; // the operand snap grid (1/SNAP_GRID)
-    const S36: f64 = 68_719_476_736.0; // 2^36 = S16 · Q — the welded-vertex grid
-    let u = [t1[0] - t0[0], t1[1] - t0[1], t1[2] - t0[2]];
-    let w = [t2[0] - t0[0], t2[1] - t0[1], t2[2] - t0[2]];
-    let p = [v[0] - t0[0], v[1] - t0[1], v[2] - t0[2]];
-    let dot = |a: &[f64; 3], b: &[f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-    let (uu, ww, uw) = (dot(&u, &u), dot(&w, &w), dot(&u, &w));
-    let (pu, pw) = (dot(&p, &u), dot(&p, &w));
-    let det = uu * ww - uw * uw;
-    if det == 0.0 || !det.is_finite() {
-        return None; // degenerate (collinear) edge basis
+    /// Raw signed offset of `p` from this plane, `dot(p − t0, n)`: zero exactly
+    /// when `p` is on the plane by the weld's own `d == 0` reading.
+    #[inline]
+    fn raw_offset(&self, p: &[f64; 3]) -> f64 {
+        (p[0] - self.t[0][0]) * self.n[0]
+            + (p[1] - self.t[0][1]) * self.n[1]
+            + (p[2] - self.t[0][2]) * self.n[2]
     }
-    let alpha = ((ww * pu - uw * pw) / det * Q).round();
-    let beta = ((uu * pw - uw * pu) / det * Q).round();
-    if !alpha.is_finite() || !beta.is_finite() || alpha.abs() > 8.0 * Q || beta.abs() > 8.0 * Q {
-        return None;
-    }
-    let (ai, bi) = (alpha as i128, beta as i128);
-    let mut out = [0.0f64; 3];
-    for k in 0..3 {
-        // scale the on-grid coords to integers (k/2^16 · 2^16); a coordinate
-        // off the snap grid (or too large to scale exactly) refuses the weld.
-        let (s0, s1, s2) = (t0[k] * S16, t1[k] * S16, t2[k] * S16);
-        for s in [s0, s1, s2] {
-            if s.fract() != 0.0 || s.abs() >= 9.0e18 {
-                return None;
-            }
-        }
-        let (i0, i1, i2) = (s0 as i128, s1 as i128, s2 as i128);
-        // the welded coordinate on the 2^-36 grid: t0·2^20 + α·u + β·w
-        let r36 = (i0 << 20) + ai * (i1 - i0) + bi * (i2 - i0);
-        let rf = r36 as f64;
-        if rf as i128 != r36 {
-            return None; // not exactly representable in f64 ⇒ skip the weld
-        }
-        out[k] = rf / S36; // power-of-two divide: exact
-    }
-    Some(out)
 }

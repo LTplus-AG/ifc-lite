@@ -812,7 +812,7 @@ fn lenient_batch_on_an_open_host_reads_both_volumes_about_one_point_4693() {
         .iter()
         .map(|m| {
             let mut c = mesh_to_tris(m);
-            promote_cutter_verts_onto_host_faces(&mut c, &h);
+            promote_subtract_cutter_onto_host_faces(&mut c, &h);
             orient_outward(c)
         })
         .collect();

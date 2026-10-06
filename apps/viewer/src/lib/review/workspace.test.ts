@@ -85,3 +85,20 @@ test('an imported review that differs from the local one is folded in, never orp
   assert.equal(decisionFor(after, 'stale'), null, 'a cleared card does not reappear from the absorbed copy');
   assert.equal(decisionFor(after, 'shared')?.comment, 'theirs');
 });
+
+test('a fold over the decision limit still saves: the local review takes the edit and the card leaves the imported copy', async () => {
+  await clearContentDatabase();
+  assert.equal(await reviewWorkspaceLibrary.restore(), true);
+  const many = (prefix: string) => Array.from({ length: 2_600 }, (_, i) =>
+    ({ cardKey: `${prefix}${i}`, status: 'open' as const, comment: '', updatedAt: '2026-01-01T00:00:00.000Z' }));
+  const shared = { cardKey: 'shared', status: 'resolved' as const, comment: 'theirs', updatedAt: '2026-01-02T00:00:00.000Z' };
+  assert.equal(await reviewWorkspaceLibrary.put(DEFAULT_REVIEW_WORKSPACE, { ...base, decisions: many('l') }), true);
+  assert.equal(await reviewWorkspaceLibrary.put('imported', { ...base, id: 'imported', decisions: [...many('i'), shared] }), true);
+  assert.equal(currentReviewWorkspace(useReviewWorkspaces.getState().entries).decisions.length, 5_201);
+  assert.equal(await saveCardDecision('shared', null), true, 'clearing is never blocked by the combined size');
+  assert.equal(decisionFor(currentReviewWorkspace(useReviewWorkspaces.getState().entries), 'shared'), null);
+  assert.equal(await saveCardDecision('i7', { status: 'accepted', comment: 'mine' }), true);
+  const view = currentReviewWorkspace(useReviewWorkspaces.getState().entries);
+  assert.equal(decisionFor(view, 'i7')?.status, 'accepted');
+  assert.equal(view.decisions.length, 5_200, 'both reviews remain visible');
+});

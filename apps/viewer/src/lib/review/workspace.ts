@@ -93,17 +93,27 @@ export function decisionFor(workspace: ReviewWorkspace, cardKey: string): CardDe
  * Record (or clear, with `null`) one person's decision on a card. A refused
  * save stays visible as a staged draft with its native save state. The save
  * persists the folded review, then retires the imported copies it absorbed, so
- * a cleared card cannot reappear from an older imported decision.
+ * a cleared card cannot reappear from an older imported decision. When the fold
+ * would exceed the per-workspace limit, only the local review takes the edit and
+ * the card leaves the imported copies, which stay folded in on read.
  */
 export async function saveCardDecision(cardKey: string, decision: { status: HumanStatus; comment: string } | null, now = new Date()): Promise<boolean> {
   const entries = useReviewWorkspaces.getState().entries;
-  const workspace = currentReviewWorkspace(entries);
-  const others = workspace.decisions.filter(entry => entry.cardKey !== cardKey);
-  const next: ReviewWorkspace = { ...workspace, decisions: decision
-    ? [...others, { cardKey, status: decision.status, comment: decision.comment.slice(0, REVIEW_LIMITS.comment), updatedAt: now.toISOString() }]
-    : others };
-  if (!decodeReviewWorkspace(next)) return false;
-  if (!await reviewWorkspaceLibrary.put(next.id, next)) return false;
-  const absorbed = entries.filter(entry => entry.id !== DEFAULT_REVIEW_WORKSPACE);
-  return (await Promise.all(absorbed.map(entry => reviewWorkspaceLibrary.put(entry.id, null)))).every(Boolean);
+  const edit = (workspace: ReviewWorkspace): ReviewWorkspace => {
+    const others = workspace.decisions.filter(entry => entry.cardKey !== cardKey);
+    return { ...workspace, decisions: decision
+      ? [...others, { cardKey, status: decision.status, comment: decision.comment.slice(0, REVIEW_LIMITS.comment), updatedAt: now.toISOString() }]
+      : others };
+  };
+  const imported = entries.filter(entry => entry.id !== DEFAULT_REVIEW_WORKSPACE);
+  const folded = edit(currentReviewWorkspace(entries));
+  if (decodeReviewWorkspace(folded)) {
+    if (!await reviewWorkspaceLibrary.put(folded.id, folded)) return false;
+    return (await Promise.all(imported.map(entry => reviewWorkspaceLibrary.put(entry.id, null)))).every(Boolean);
+  }
+  const local = edit(currentReviewWorkspace(entries.filter(entry => entry.id === DEFAULT_REVIEW_WORKSPACE)));
+  if (!decodeReviewWorkspace(local) || !await reviewWorkspaceLibrary.put(local.id, local)) return false;
+  const holding = imported.filter(entry => entry.decisions.some(held => held.cardKey === cardKey));
+  return (await Promise.all(holding.map(entry => reviewWorkspaceLibrary.put(entry.id,
+    { ...entry, decisions: entry.decisions.filter(held => held.cardKey !== cardKey) })))).every(Boolean);
 }

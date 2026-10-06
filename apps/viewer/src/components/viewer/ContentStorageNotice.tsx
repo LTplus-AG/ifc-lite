@@ -50,7 +50,9 @@ export function ContentStorageNotice({ status, retry, restore }: {
   // Receipts are exported too: a backup taken while they load would silently omit them.
   const changeReceiptsLoading = useModelChangeReceipts(s => s.status.phase === 'loading');
   const groupReceiptsLoading = useClashGroupApplications(s => s.status.phase === 'loading');
-  const receiptsLoading = changeReceiptsLoading || groupReceiptsLoading;
+  // Review decisions are exported too; an export while they load would carry an empty review.
+  const reviewsLoading = useReviewWorkspaces(s => s.status.phase === 'loading');
+  const receiptsLoading = changeReceiptsLoading || groupReceiptsLoading || reviewsLoading;
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const states = Object.values(status.items);

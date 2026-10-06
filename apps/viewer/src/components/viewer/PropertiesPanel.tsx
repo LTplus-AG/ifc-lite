@@ -1159,7 +1159,7 @@ export function PropertiesPanel() {
   }, [renderedAttributes]);
   // Model metadata display (when clicking top-level model in hierarchy)
   const landXmlInspector = useLandXmlSourceInspector(models);
-  useInspectTiming(!landXmlInspector && !selectedModelId && selectedMaterialId === null && selectedEntities.length <= 1 && selectedEntityId && modelQuery && (entityNode || overlayEntity) ? selectedEntityId : null); // #6961 ifc_inspect: the single-entity view only
+  useInspectTiming(!landXmlInspector && !selectedModelId && selectedMaterialId === null && selectedEntities.length <= 1 && selectedEntityId !== null && modelQuery && (entityNode || overlayEntity) ? selectedEntityId : null); // #6961 ifc_inspect: the single-entity view only
   if (landXmlInspector) return landXmlInspector;
 
   if (selectedModelId) {

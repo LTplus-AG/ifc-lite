@@ -7,6 +7,7 @@ import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { runFlow, TRACKING_SIDECAR_VERSION, type FlowDocument } from '@ifc-lite/flow';
 import { createBimContext } from '@ifc-lite/sdk';
+import { resolveEnglish } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { newFlowDocument } from '../flow/persistence';
@@ -83,22 +84,25 @@ test('#6919 renaming the graph or switching tracking mode is a tracked-element e
   assert.deepEqual(trackingImpacts(base, { ...base, nodes: base.nodes.map(node => ({ ...node, pos: [5, 5] as const })) }), [], 'moving nodes changes nothing owned');
 });
 
+/** Preflight problems are catalogued messages; native errors pass through verbatim. */
+const problems = (result: Awaited<ReturnType<typeof preflightOpenFlow>>) => result.problems.map(problem => resolveEnglish(problem.labelKey, problem.params));
+
 test('#6919 preflight reports native refusals without running', async () => {
   const doc = { ...newFlowDocument('Needs a model'), capabilities: ['model.read'], nodes: [{ id: 'w', type: 'model.byType', params: { type: 'IfcWall' } }] };
   useViewerStore.setState({ flowDoc: doc, activeFlowId: doc.id });
-  assert.deepEqual((await preflightOpenFlow()).problems, ['Load a model before running this graph']);
+  assert.deepEqual(problems(await preflightOpenFlow()), ['Load a model before running this graph']);
   useViewerStore.setState({ ...fixtureModels(fixtureModel('m')), flowDoc: { ...doc, capabilities: [] } });
   const denied = await preflightOpenFlow();
   assert.equal(denied.ok, false);
-  assert.match(denied.problems.join(' '), /capability denied: model\.read/);
+  assert.match(problems(denied).join(' '), /capability denied: model\.read/);
   useViewerStore.setState({ flowDoc: { ...doc, nodes: [{ id: 'r', type: 'http.request', params: { url: 'https://x/?t={{secret:TOKEN}}' } }] } });
-  assert.match((await preflightOpenFlow()).problems.join(' '), /Secrets are never available in the viewer: TOKEN/);
+  assert.match(problems(await preflightOpenFlow()).join(' '), /Secrets are never available in the viewer: TOKEN/);
   // A graph that edits the model would fail every write lane while Edit mode is off.
   const writer = { ...doc, capabilities: ['model.create'], nodes: [{ id: 'add', type: 'model.addElement' }] };
   useViewerStore.setState({ flowDoc: writer, editEnabled: false });
-  assert.match((await preflightOpenFlow()).problems.join(' '), /add edits the model: Turn on Edit mode before changing a model/);
+  assert.match(problems(await preflightOpenFlow()).join(' '), /add edits the model: Turn on Edit mode before changing a model/);
   useViewerStore.setState({ editEnabled: true });
-  assert.doesNotMatch((await preflightOpenFlow()).problems.join(' '), /Edit mode/);
+  assert.doesNotMatch(problems(await preflightOpenFlow()).join(' '), /Edit mode/);
   assert.equal(useViewerStore.getState().flowLastRun, null);
 });
 

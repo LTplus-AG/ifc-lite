@@ -30,21 +30,8 @@ import type {
   ParserWorkerOutputMessage,
 } from './parser.worker.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
-import { accountWorkerMessages } from '@ifc-lite/load-trace';
-
-/**
- * Build an `AbortError`-shaped error for a cancelled parse. Uses `DOMException`
- * when available (browsers, modern Node) so `err.name === 'AbortError'` matches
- * the same check callers already use for `fetch`/`AbortController` cancellation.
- */
-function makeAbortError(message = 'Parser worker terminated'): Error {
-  if (typeof DOMException !== 'undefined') {
-    return new DOMException(message, 'AbortError') as unknown as Error;
-  }
-  const err = new Error(message);
-  err.name = 'AbortError';
-  return err;
-}
+import { makeAbortError } from './abort-error.js';
+import { NOOP_LOAD_TRACE, accountWorkerMessages, enableWorkerTrace, isTraceSpansMessage, type LoadTrace } from '@ifc-lite/load-trace';
 
 export interface WorkerParserOptions extends ParseOptions {
   /** Fresh per-request 16-byte prepass fingerprint cell; never awaited. */
@@ -67,6 +54,12 @@ export interface WorkerParserOptions extends ParseOptions {
    * `abort(reason)` is passed through as-is, the default is an `AbortError`.
    */
   signal?: AbortSignal;
+  /**
+   * The caller's load trace (#6979). Records `parser.worker` (spawn to settle)
+   * with the worker's own phase spans merged under it, plus the main-thread
+   * `parser.hydrate` / `parser.hydratePartial`. Absent or disabled: no-op.
+   */
+  trace?: LoadTrace;
 }
 
 export class WorkerParser {
@@ -129,8 +122,10 @@ export class WorkerParser {
     if (options.signal?.aborted) {
       return Promise.reject(options.signal.reason ?? makeAbortError('Parse aborted before start'));
     }
+    const trace = options.trace ?? NOOP_LOAD_TRACE;
     return new Promise((resolve, reject) => {
       const id = `parse_${Date.now()}_${++this.requestCounter}`;
+      const parseSpan = trace.begin('parser.worker');
       let onSignalAbort: (() => void) | null = null;
       let worker: Worker;
       try {
@@ -183,6 +178,7 @@ export class WorkerParser {
 
       const settle = (cleanup: () => void) => {
         settled = true;
+        trace.end(parseSpan);
         indexReceiver.clear();
         worker.onmessage = null;
         worker.onerror = null;
@@ -199,6 +195,8 @@ export class WorkerParser {
       }
 
       worker.onmessage = (event: MessageEvent<ParserWorkerOutputMessage>) => {
+        const raw: unknown = event.data;
+        if (isTraceSpansMessage(raw)) { trace.merge(raw.payload, parseSpan); return; }
         const msg = event.data;
         if (!msg || msg.id !== id) return;
 
@@ -215,7 +213,7 @@ export class WorkerParser {
             try {
               indexReceiver.capturePartial(msg.payload);
               if (!options.onSpatialReady) return;
-              const partial = hydrate(msg.payload);
+              const partial = trace.span('parser.hydratePartial', () => hydrate(msg.payload));
               options.onSpatialReady(partial);
             } catch (err) {
               // Don't fail the whole parse on partial deserialization
@@ -232,7 +230,7 @@ export class WorkerParser {
               // retain indexReceiver's partial seed until hydration completes.
               worker.terminate();
               if (this.worker === worker) this.worker = null;
-              const dataStore = hydrate(msg.payload);
+              const dataStore = trace.span('parser.hydrate', () => hydrate(msg.payload));
               options.onMemorySnapshot?.(msg.memory);
               settle(() => {});
               resolve(dataStore);
@@ -297,6 +295,7 @@ export class WorkerParser {
         }
       }
 
+      enableWorkerTrace(worker, trace, 'parser');
       const input: ParserWorkerInputMessage = {
         type: 'parse',
         sourceFingerprint: options.sourceFingerprint,

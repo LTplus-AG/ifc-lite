@@ -51,6 +51,13 @@ export const comparePanelEn = {
   'comparePanel.panel.backToChangesTitle': 'Back to changes',
   'comparePanel.panel.topicFor': 'Topic for',
   'comparePanel.panel.countUnchanged': 'Unchanged',
+  // Shared result view (#6925): source, population and coverage lines.
+  'comparePanel.result.source': 'Comparison · {scope} scope',
+  'comparePanel.result.population': { one: '{countDisplay} element compared', other: '{countDisplay} elements compared' },
+  // "differences", not "changed": the Changed badge counts modified elements only.
+  'comparePanel.result.counts': { one: '{countDisplay} difference · {unchanged} unchanged', other: '{countDisplay} differences · {unchanged} unchanged' },
+  'comparePanel.result.noShapeChanges': 'Shape changes are not detected (no mesh fingerprints); placement moves and data are compared.',
+  'comparePanel.result.noGeometryChanges': 'Geometry changes are not detected: a model has no geometry fingerprints.',
 
   // Shared across CompareMatchGroups / CompareResultsList / CompareSuggestions
   'comparePanel.moreNotShown': '+{count} more not shown',

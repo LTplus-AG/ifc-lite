@@ -53,6 +53,27 @@ const traced = createWorkerTraceHost({
 self.onmessage = (e) => { void traced(e.data, async () => { /* handle e.data */ }); };
 ```
 
+For phases inside one long handler, `createWorkerPhaseTrace` records spans
+the handler opens itself (`begin`/`end`, `span`, and `step` for sequential
+phases such as a parser's progress callback) and posts them on `flush()`. Call
+`flush()` before any message the main thread answers with `terminate()`:
+spans posted after it die with the worker.
+
+```ts
+import { createWorkerPhaseTrace } from '@ifc-lite/load-trace';
+
+const phases = createWorkerPhaseTrace({ post: (message) => self.postMessage(message) });
+self.onmessage = (e) => {
+  if (phases.accept(e.data)) return; // the enable request
+  const whole = phases.begin('parse');
+  phases.step('scan');
+  phases.step('index');
+  phases.step(null);
+  phases.end(whole);
+  phases.flush(); // before posting `complete`
+};
+```
+
 On the main thread, `enableWorkerTrace(worker, trace, 'geom-0')` turns
 recording on (it sends nothing when tracing is off), and `isTraceSpansMessage`
 recognises the replies to pass to `trace.merge`.
@@ -67,8 +88,10 @@ next load started (or the snapshot was taken), plus everything its workers
 posted back (`workerCounters`, per worker thread).
 
 ```ts
-import { accountWorkerMessages, countCopy, meterTypedArrayArgs, perfTally, startFrameMonitor } from '@ifc-lite/load-trace';
+import { accountWorkerMessages, countCopy, createLoadTracer, meterTypedArrayArgs, perfTally, startFrameMonitor } from '@ifc-lite/load-trace';
 
+declare const url: URL;        // the worker script
+declare const vertices: number; // merged vertex count
 const tracer = createLoadTracer({ enabled: true, frames: startFrameMonitor() });
 const worker = accountWorkerMessages(new Worker(url), 'geometry'); // msg.geometry.{out,in}.*
 const copy = countCopy('source.zip', bytes.slice().buffer);           // copy.source.zip.{count,bytes}

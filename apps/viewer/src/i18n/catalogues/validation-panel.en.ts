@@ -46,7 +46,12 @@ export const validationPanelEn = {
   'validationPanel.running.applicability': 'Finding applicable elements…',
   'validationPanel.running.requirements': 'Checking requirements…',
 
-  'validationPanel.results.validatedAgainst': 'Validated against: {models}',
+  // Shared result view (#6925): population and coverage of a validation run.
+  'validationPanel.result.population': { one: '{countDisplay} entity–specification result', other: '{countDisplay} entity–specification results' },
+  'validationPanel.result.applied': '{applied} of {total} specifications applied to elements',
+  'validationPanel.result.notApplicable': { one: '{count} specification had no applicable elements', other: '{count} specifications had no applicable elements' },
+  'validationPanel.result.unevaluable': { one: '{count} specification could not be evaluated', other: '{count} specifications could not be evaluated' },
+  'validationPanel.result.setsCapped': { one: '{count} specification stopped its set checks at the limit', other: '{count} specifications stopped their set checks at the limit' },
   'validationPanel.results.resizeSummary': 'Resize validation summary',
 
   'validationPanel.error.validationFailed': 'Validation failed',

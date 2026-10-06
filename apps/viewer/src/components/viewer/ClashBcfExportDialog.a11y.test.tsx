@@ -11,7 +11,7 @@ import { ClashBcfExportDialog } from './ClashBcfExportDialog.js';
 afterEach(cleanup);
 
 it('#6342 associates the visible BCF topic cap label with its editable number field', () => {
-  render(<ClashBcfExportDialog open onOpenChange={() => {}} />);
+  render(<ClashBcfExportDialog open onOpenChange={() => {}} scope="all" onScopeChange={() => {}} scopeIds={{ selected: new Set(), filtered: new Set() }} />);
   const input = document.body.querySelector<HTMLInputElement>('input[type="number"]');
   assert.ok(input);
   assert.equal(input.labels?.[0]?.textContent?.trim(), 'Max topics');

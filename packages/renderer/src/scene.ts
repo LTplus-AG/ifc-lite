@@ -50,7 +50,7 @@ import { unionInstancedWorldAabb as unionInstanceBounds } from './scene-instance
 import { DerivedMeshProvenance } from './scene-derived-mesh-provenance.js';
 import { rebuildSceneBatches } from './scene-batch-rebuild.js';
 import { regroupStreamedBuckets, type FinalizeRegroup } from './scene-finalize-regroup.js';
-import { perfCount, perfTally } from '@ifc-lite/load-trace';
+import { perfCount, perfCounters, perfTally, type LoadTrace } from '@ifc-lite/load-trace';
 import {
   dropAllPartialCaches as dropAllPartialCachesIn,
   dropPartialCacheForBatch as dropPartialCacheForBatchIn,
@@ -1905,9 +1905,11 @@ export class Scene {
    * @param budgetMs Time slice per call. The 12 ms default keeps the main
    *   thread returning to the worker-message pump while geometry streams; a
    *   host with nothing else to serve may drain faster (#6436).
+   * @param trace The streaming load's trace (#6979): a call that uploaded
+   *   anything records one `scene.flushPending` span.
    * @returns true if any meshes were processed (caller should render)
    */
-  flushPending(device: GPUDevice, pipeline: RenderPipeline, budgetMs = 12): boolean {
+  flushPending(device: GPUDevice, pipeline: RenderPipeline, budgetMs = 12, trace?: LoadTrace): boolean {
     if (!this.hasQueuedMeshes()) return false;
 
     // Drain the queue in chunks bounded by BOTH mesh count AND triangle volume,
@@ -1975,6 +1977,7 @@ export class Scene {
       this.meshQueueReadIndex = 0;
     }
 
+    if (processed > 0 && trace?.enabled) trace.record('scene.flushPending', start, performance.now(), { meshes: processed, queued: this.meshQueue.length - this.meshQueueReadIndex });
     return processed > 0;
   }
 
@@ -2108,6 +2111,8 @@ export class Scene {
     // already retired by rebuildPendingBatches.
     this.retireFinalizedBatches(oldFragments);
     this.retireFinalizedBatches(regroup?.retired ?? []);
+    // #6957: same batch tally as the time-sliced path (only reached when the rebuild succeeded).
+    if (perfCounters.enabled) perfCount('render.finalize.batches', this.batchedMeshes.filter((b) => !oldBatchSet.has(b)).length);
   }
 
   /**
@@ -2119,18 +2124,23 @@ export class Scene {
    * @param device  GPU device
    * @param pipeline  Render pipeline
    * @param budgetMs  Max milliseconds per chunk (default 8 — half a 60fps frame)
+   * @param trace  The load's trace (#6979): `scene.finalize` from this call
+   *   until the promise settles, with `scene.finalize.regroup` under it
    * @returns Promise that resolves when all batches are rebuilt
    */
   finalizeStreamingAsync(
     device: GPUDevice,
     pipeline: RenderPipeline,
     budgetMs: number = 8,
+    trace?: LoadTrace,
   ): Promise<void> {
+    const span = trace?.enabled ? trace.begin('scene.finalize', { fragments: this.streamingFragments.length, ephemeral: this.ephemeralStreamingMode }) : -1;
     if (this.ephemeralStreamingMode) {
       this.finishEphemeralStreaming();
+      trace?.end(span);
       return Promise.resolve();
     }
-    if (this.streamingFragments.length === 0) return Promise.resolve();
+    if (this.streamingFragments.length === 0) { trace?.end(span); return Promise.resolve(); }
     // Mark the rebuild as in-flight: the preamble empties streamingFragments
     // synchronously, so settle-sensitive consumers need this flag until the
     // time-sliced rebuild swaps the new batch array in.
@@ -2171,6 +2181,7 @@ export class Scene {
       let regroup: FinalizeRegroup | null = null;
       let pendingKeys: string[] = [];
       let keyIdx = 0;
+      let chunks = 0;
 
       function rollback(): void {
         for (const { bucket, previous, previousFrameOrigin, batch } of createdOwned) {
@@ -2194,6 +2205,7 @@ export class Scene {
       function processChunk(): void {
         try {
           const chunkStart = performance.now();
+          chunks++;
           while (keyIdx < pendingKeys.length) {
             const key = pendingKeys[keyIdx++];
             const bucket = scene.buckets.get(key);
@@ -2234,9 +2246,11 @@ export class Scene {
           scene.retireFinalizedBatches(retired);
           perfCount('render.finalize.batches', createdOwned.length);
           scene.finalizeInProgress = false;
+          trace?.end(span, { batches: createdOwned.length, chunks });
           resolve();
         } catch (err) {
           rollback();
+          trace?.end(span, { error: true });
           reject(err);
         }
       }
@@ -2244,11 +2258,14 @@ export class Scene {
       try {
         // --- Synchronous preamble: re-group the streamed meshes only ---
         scene.streamingFragments = [];
+        const regroupStart = performance.now();
         regroup = scene.regroupStreamed();
+        if (trace?.enabled) trace.record('scene.finalize.regroup', regroupStart, performance.now(), undefined, span);
         pendingKeys = Array.from(scene.pendingBatchKeys);
         scene.pendingBatchKeys.clear();
       } catch (err) {
         rollback();
+        trace?.end(span, { error: true });
         reject(err);
         return;
       }

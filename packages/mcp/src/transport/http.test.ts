@@ -307,6 +307,12 @@ describe('HttpTransport session cap (#6943)', () => {
   let transport: HttpTransport | undefined;
   const T0 = Date.UTC(2026, 0, 1);
   const advance = (ms: number) => vi.setSystemTime(Date.now() + ms);
+  /**
+   * Gates to open and streams to abort before `close()`. A test that fails
+   * while a request or a build is still held would otherwise leave `close()`
+   * waiting on that connection.
+   */
+  const cleanups: Array<() => void> = [];
 
   async function start(limits: { maxSessions?: number; sessionIdleMs?: number }, factory?: SessionFactory): Promise<number> {
     transport = capped(limits, factory);
@@ -321,6 +327,7 @@ describe('HttpTransport session cap (#6943)', () => {
   });
   afterEach(async () => {
     vi.useRealTimers();
+    for (const cleanup of cleanups.splice(0)) cleanup();
     await transport?.close();
     transport = undefined;
     resetLayerWorkspace();
@@ -408,6 +415,7 @@ describe('HttpTransport session cap (#6943)', () => {
   describe('concurrency', () => {
     it('N concurrent initializes at cap-1 admit exactly one while their factories are pending', async () => {
       const d = deferredFactory();
+      cleanups.push(d.release);
       const port = await start({ maxSessions: 3 }, d.factory);
       const first = [0, 1].map(() => initialize(port));
       while (d.pending() < 2) await sleep(5);
@@ -424,6 +432,7 @@ describe('HttpTransport session cap (#6943)', () => {
 
     it('a build still in flight counts against the cap: the next initialize is refused before the first has a session', async () => {
       const d = deferredFactory();
+      cleanups.push(d.release);
       const port = await start({ maxSessions: 1 }, d.factory);
       const building = initialize(port);
       while (d.pending() < 1) await sleep(5);
@@ -457,6 +466,7 @@ describe('HttpTransport session cap (#6943)', () => {
   describe('active requests and SSE streams', () => {
     it('a session with a request in flight is not reclaimed however stale; the idle window starts when the request settles', async () => {
       const g = gatedPingFactory();
+      cleanups.push(g.release);
       const port = await start({ maxSessions: 1, sessionIdleMs: IDLE }, g.factory);
       const sid = await initSession(port, 'alice-token');
       const slow = request(port, 'alice-token', { method: 'POST', sessionId: sid, body: PING(2) });
@@ -478,6 +488,7 @@ describe('HttpTransport session cap (#6943)', () => {
       const port = await start({ maxSessions: 1, sessionIdleMs: IDLE });
       const sid = await initSession(port, 'alice-token');
       const ac = new AbortController();
+      cleanups.push(() => ac.abort());
       const sse = await request(port, 'alice-token', {
         method: 'GET', sessionId: sid, headers: { Accept: 'text/event-stream' }, signal: ac.signal,
       });
@@ -498,6 +509,7 @@ describe('HttpTransport session cap (#6943)', () => {
       const port = await start({ maxSessions: 1, sessionIdleMs: IDLE });
       const sid = await initSession(port, 'alice-token');
       const ac = new AbortController();
+      cleanups.push(() => ac.abort());
       const stream = await request(port, 'alice-token', {
         method: 'POST', sessionId: sid, body: PING(2), headers: { Accept: 'text/event-stream' }, signal: ac.signal,
       });

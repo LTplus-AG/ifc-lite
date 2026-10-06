@@ -256,7 +256,7 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
 /// The SUBTRACT form of [`promote_cutter_verts_onto_host_faces`]: the same
 /// weld, except that it never moves a cutter vertex off a host face it is
 /// exactly on and onto a SEPARATE host surface lying in-band of that face
-/// (#6940; the rule and its limits are on [`incidence::leaves_a_separate_surface`]).
+/// (#6940; the rule and its limits are in the [`incidence`] module docs).
 /// The union's mutual promotion keeps the unguarded weld: with the guard on
 /// it too, `union_many_nary_sweep_regression_gate` and
 /// `issue_3917_retries_share_one_boolean_budget` fail.
@@ -275,7 +275,7 @@ fn promote(cutter: &mut [Tri], host: &[Tri], keep_incidence: bool) -> usize {
     let faces: Vec<Face> = host.iter().filter_map(|t| Face::new(t, &band)).collect();
 
     // Host faces whose plane the current vertex is exactly on (reused scratch).
-    let mut on: Vec<&Face> = Vec::new();
+    let (mut on, mut guard): (Vec<usize>, _) = (Vec::new(), incidence::Guard::new(&faces));
     for t in cutter.iter_mut() {
         for v in t.iter_mut() {
             if host_verts.contains(&super::near_band::vertex_bits(v)) { continue; } // #3353
@@ -286,12 +286,12 @@ fn promote(cutter: &mut [Tri], host: &[Tri], keep_incidence: bool) -> usize {
             // plane; the end plane is the one that needs the weld, and the
             // perpendicular projection onto it slides ALONG the bottom plane).
             // Ties → first in face order (deterministic).
-            let mut best: Option<(f64, &Face)> = None; // (perp-dist², face)
+            let mut best: Option<(f64, usize)> = None; // (perp-dist², face index)
             on.clear();
-            for f in &faces {
+            for (i, f) in faces.iter().enumerate() {
                 let d = f.raw_offset(v);
                 if d == 0.0 {
-                    on.push(f);
+                    on.push(i);
                     continue; // already exactly on this plane
                 }
                 let d2 = (d * d) / f.nn;
@@ -299,7 +299,7 @@ fn promote(cutter: &mut [Tri], host: &[Tri], keep_incidence: bool) -> usize {
                     continue; // outside the snap-scatter band
                 }
                 if best.is_none_or(|(bd2, _)| d2 < bd2) {
-                    best = Some((d2, f));
+                    best = Some((d2, i));
                 }
             }
             // EXACT-PLANE LIFT (the crack-family fix): re-express the foot of
@@ -317,8 +317,8 @@ fn promote(cutter: &mut [Tri], host: &[Tri], keep_incidence: bool) -> usize {
             // off every grid and force the BigRational tier on every predicate
             // that sees it.
             if let Some((_, f)) = best {
-                if let Some(w) = exact_on_plane_weld(*v, f.t) {
-                    if keep_incidence && incidence::leaves_a_separate_surface(&w, f, &on) {
+                if let Some(w) = exact_on_plane_weld(*v, faces[f].t) {
+                    if keep_incidence && guard.refuses(&w, f, &on) {
                         continue; // #6940
                     }
                     if w != *v {

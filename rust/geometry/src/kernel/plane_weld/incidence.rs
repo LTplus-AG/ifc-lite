@@ -26,9 +26,18 @@
 //!   every vertex of `g` within the band of `f`'s. Over their whole extent
 //!   the two faces are what the weld itself calls one surface up to noise. No
 //!   angle threshold is involved; the test reuses the band the weld already
-//!   decides by.
-//! * separate: the two faces share no vertex, so they are not neighbours in
-//!   the host mesh.
+//!   decides by ([`Face`]'s `band2`, the one value both read).
+//! * separate: no chain of host faces joins `f` to `g`, each face sharing a
+//!   vertex with the next (by exact position) and lying wholly within the
+//!   band of `f`'s plane or of the plane of a coinciding face the vertex
+//!   would leave. A face square or oblique to both ends the chain, so two
+//!   hole walls are not joined through the cap they both meet. A sliver
+//!   facet whose own plane is ill-conditioned still carries the chain: it is
+//!   asked where its vertices are, not where its plane goes.
+//!
+//! "Exactly on" is the weld's own reading, [`Face::raw_offset`] `== 0.0`: the
+//! `f64` evaluation the nearest-plane search skips a face by, not an exact
+//! predicate.
 //!
 //! Why refusing is right there: the weld exists to make a vertex agree with a
 //! surface it is noisily near. Here it already agrees EXACTLY with one copy of
@@ -36,34 +45,37 @@
 //! coplanar with anything (one moved corner does not carry a triangle onto a
 //! plane) while it certainly ends the coplanarity the cutter already had.
 //!
+//! The host is not moved by the weld, so the answer for one cutter vertex
+//! depends on that vertex and the host alone: not on the order of the host
+//! faces, nor on what was decided for another vertex.
+//!
 //! # What it deliberately leaves alone
 //!
-//! * A target that is not in-band of `g` over its whole extent (the
-//!   perpendicular end face of the original #1007 repro, any oblique face):
-//!   that weld slides the vertex along `g` or reconciles a real second
-//!   surface, and is the weld's purpose.
-//! * HINGED faces, which coincide the same way but share a vertex: two
-//!   neighbouring facets of one host face that the snap creased. A planar
-//!   cutter face can be coplanar with only one facet, and which one it should
-//!   follow depends on which facet it overlaps, not on where one corner sits.
-//!   Refusing there too was measured on real hosts and is not settled: it
-//!   closed one torn wall at the right volume, and it made another, torn
-//!   before and after, newly depend on the triangulator's diagonal. So this
-//!   guard does not decide it and the weld behaves as it did before; creased
-//!   faces are not fixed here.
+//! * A target that does not coincide with `g` (the perpendicular end face of
+//!   the original #1007 repro, any oblique face, a small facet whose plane
+//!   leaves `g`'s band over `g`'s extent): that weld slides the vertex along
+//!   `g` or reconciles a real second surface, and is the weld's purpose.
+//! * CREASED faces: `f` and `g` coincide but such a chain joins them, so they
+//!   are facets of one host face that the snap creased, neighbouring or
+//!   further apart. A planar cutter face can be coplanar with only one facet,
+//!   and which one it should follow depends on which facet it overlaps, not
+//!   on where one corner sits. Refusing there too was measured on real hosts
+//!   and is not settled: it closed one torn wall at the right volume, and it
+//!   made another, torn before and after, newly depend on the triangulator's
+//!   diagonal. So this guard does not decide it and the weld behaves as it
+//!   did before; creased faces are not fixed here.
+//! * A refused vertex is not welded at all. Trying the next-nearest in-band
+//!   plane in `f`'s place was measured over the census corpus and changed no
+//!   row, so it is not done.
 
 use super::Face;
+use rustc_hash::{FxHashMap, FxHashSet};
 
-/// How target face `f` relates to a face `g` the vertex is exactly on.
-#[derive(PartialEq, Debug)]
-enum Relation {
-    /// Not in-band of each other over their whole extent.
-    Unrelated,
-    /// In-band both ways and sharing a vertex: neighbouring facets of one
-    /// creased face.
-    Hinged,
-    /// In-band both ways and sharing no vertex.
-    Separate,
+/// Exact-position key. `+ 0.0` folds `-0.0` onto `0.0`, so two vertices that
+/// compare equal as `f64` share a key.
+type Key = [u64; 3];
+fn key(p: &[f64; 3]) -> Key {
+    [(p[0] + 0.0).to_bits(), (p[1] + 0.0).to_bits(), (p[2] + 0.0).to_bits()]
 }
 
 /// Is every vertex of `a` within the band of `b`'s plane?
@@ -74,228 +86,93 @@ fn in_band_of(a: &Face, b: &Face) -> bool {
     })
 }
 
-fn relation(f: &Face, g: &Face) -> Relation {
-    if !(in_band_of(f, g) && in_band_of(g, f)) {
-        Relation::Unrelated
-    } else if f.t.iter().any(|p| g.t.contains(p)) {
-        Relation::Hinged
-    } else {
-        Relation::Separate
-    }
+/// In-band of each other over their whole extent.
+fn coincide(a: &Face, b: &Face) -> bool {
+    in_band_of(a, b) && in_band_of(b, a)
 }
 
-/// Would welding a vertex to `w`, on `target`'s plane, take it off a host face
-/// in `on` (the faces it is exactly on) and onto a separate surface that
-/// coincides with that face? See the module docs for the rule.
-///
-/// One hinged face among those the weld would leave withdraws the refusal:
-/// the vertex then sits on a creased face, the case this guard does not decide.
-pub(super) fn leaves_a_separate_surface(w: &[f64; 3], target: &Face, on: &[&Face]) -> bool {
-    let mut separate = false;
-    for g in on {
-        if g.raw_offset(w) == 0.0 {
-            continue; // the weld keeps this incidence
-        }
-        match relation(target, g) {
-            Relation::Hinged => return false,
-            Relation::Separate => separate = true,
-            Relation::Unrelated => {}
-        }
+/// The guard over one host: [`Guard::refuses`] is the rule in the module docs.
+/// Faces are named by their index in the slice it was built over.
+pub(super) struct Guard<'a> {
+    faces: &'a [Face],
+    /// The host faces at each vertex position. Built on first need: most
+    /// cutters never reach a coinciding pair.
+    at: Option<FxHashMap<Key, Vec<usize>>>,
+    /// The last question asked, `(target, faces left)`, and its answer.
+    /// Consecutive cutter vertices usually repeat it.
+    last: Option<(usize, Vec<usize>, bool)>,
+}
+
+impl<'a> Guard<'a> {
+    pub(super) fn new(faces: &'a [Face]) -> Self {
+        Guard { faces, at: None, last: None }
     }
-    separate
+
+    /// Is `target` joined to any face of `left` by a chain of host faces,
+    /// each sharing a vertex with the next and lying wholly within the band
+    /// of the plane of `target` or of a face of `left`?
+    ///
+    /// Walks outward from `target` and stops at the first face of `left`, so
+    /// the cost is the faces of `target`'s surface (and those bordering it)
+    /// times the band tests of one face, at most `1 + left.len()`.
+    fn joined(&mut self, target: usize, left: &[usize]) -> bool {
+        let faces = self.faces;
+        let at = self.at.get_or_insert_with(|| {
+            let mut at: FxHashMap<Key, Vec<usize>> = FxHashMap::default();
+            for (i, h) in faces.iter().enumerate() {
+                h.t.iter().for_each(|p| at.entry(key(p)).or_default().push(i));
+            }
+            at
+        });
+        let near = |h: usize| {
+            in_band_of(&faces[h], &faces[target])
+                || left.iter().any(|&g| in_band_of(&faces[h], &faces[g]))
+        };
+        let mut seen: FxHashSet<usize> = [target].into_iter().collect();
+        let mut stack = vec![target];
+        while let Some(a) = stack.pop() {
+            for p in &faces[a].t {
+                for &b in at.get(&key(p)).map_or(&[][..], Vec::as_slice) {
+                    if !seen.insert(b) {
+                        continue;
+                    }
+                    if left.contains(&b) {
+                        return true;
+                    }
+                    if near(b) {
+                        stack.push(b);
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Would welding a vertex to `w`, on face `target`'s plane, take it off a
+    /// host face in `on` (the faces it is exactly on) and onto a separate
+    /// surface that coincides with that face?
+    ///
+    /// One facet of `target`'s own surface among the coinciding faces the weld
+    /// would leave withdraws the refusal: the vertex then sits on a creased
+    /// face, the case this guard does not decide.
+    pub(super) fn refuses(&mut self, w: &[f64; 3], target: usize, on: &[usize]) -> bool {
+        let faces = self.faces;
+        let left: Vec<usize> = on
+            .iter()
+            .copied()
+            .filter(|&g| faces[g].raw_offset(w) != 0.0 && coincide(&faces[target], &faces[g]))
+            .collect();
+        if left.is_empty() {
+            return false; // the weld leaves no face it coincides with
+        }
+        if self.last.as_ref().is_none_or(|(t, l, _)| *t != target || *l != left) {
+            let joined = self.joined(target, &left);
+            self.last = Some((target, left, joined));
+        }
+        self.last.as_ref().is_some_and(|(_, _, joined)| !joined)
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::super::{
-        promote_cutter_verts_onto_host_faces as unguarded,
-        promote_subtract_cutter_onto_host_faces as guarded, NearBand,
-    };
-    use super::*;
-    use crate::kernel::arrangement::{box_mesh, Tri};
-    use crate::kernel::mesh_bridge::{mesh_to_tris, orient_outward};
-    use crate::{extrude_profile, Point2, Profile2D};
-
-    /// One snap-grid step.
-    const G: f64 = 1.0 / 65536.0;
-
-    fn faces(tris: &[Tri]) -> Vec<Face> {
-        let mut band = NearBand::default();
-        band.observe_tris(tris);
-        tris.iter()
-            .map(|t| Face::new(t, &band).expect("non-degenerate"))
-            .collect()
-    }
-
-    /// `g`: a wall in the plane `y = 0`. The vertex `v` is exactly on it.
-    const WALL: Tri = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
-    const V: [f64; 3] = [0.5, 0.0, 2.0];
-
-    #[test]
-    fn a_separate_wall_two_grid_steps_away_is_refused() {
-        // A second wall further along, skewed so it crosses `y = 0`, and a
-        // third that STARTS exactly on `y = 0`: touching the other's plane
-        // does not make two walls one face, only a shared vertex does.
-        let crossing: Tri = [[3.0, -G, 0.0], [5.0, 2.0 * G, 0.0], [3.0, -G, 1.0]];
-        let touching: Tri = [[3.0, 0.0, 0.0], [5.0, 2.0 * G, 0.0], [3.0, 0.0, 1.0]];
-        let f = faces(&[WALL, crossing, touching]);
-        let w = [V[0], V[1] - 4.0 * G, V[2]]; // any point off `y = 0`
-        for other in [&f[1], &f[2]] {
-            assert_eq!(relation(other, &f[0]), Relation::Separate);
-            assert!(leaves_a_separate_surface(&w, other, &[&f[0]]));
-        }
-    }
-
-    #[test]
-    fn a_weld_that_stays_on_the_face_is_not_refused() {
-        let other: Tri = [[3.0, -G, 0.0], [5.0, 2.0 * G, 0.0], [3.0, -G, 1.0]];
-        let f = faces(&[WALL, other]);
-        let w = [0.75, 0.0, 2.0]; // still on `y = 0`
-        assert!(!leaves_a_separate_surface(&w, &f[1], &[&f[0]]));
-    }
-
-    #[test]
-    fn a_facet_hinged_on_the_face_keeps_the_weld() {
-        // Shares WALL's vertex `(1, 0, 0)` and leans one grid step off its
-        // plane: the neighbouring facet of one creased face.
-        let facet: Tri = [[1.0, 0.0, 0.0], [2.0, G, 0.0], [1.0, 0.0, 1.0]];
-        let f = faces(&[WALL, facet]);
-        let w = [V[0], V[1] + G, V[2]];
-        assert_eq!(relation(&f[1], &f[0]), Relation::Hinged);
-        assert!(!leaves_a_separate_surface(&w, &f[1], &[&f[0]]));
-    }
-
-    #[test]
-    fn a_hinged_facet_withdraws_a_refusal_another_face_would_make() {
-        let other: Tri = [[3.0, -G, 0.0], [5.0, 2.0 * G, 0.0], [3.0, -G, 1.0]];
-        // A second face the vertex is exactly on (it is one of its corners),
-        // sharing `other`'s vertical edge: `other` is hinged on it.
-        let hinge: Tri = [[3.0, -G, 0.0], [3.0, -G, 1.0], V];
-        let f = faces(&[WALL, other, hinge]);
-        let w = [V[0], V[1] - 4.0 * G, V[2]];
-        assert_eq!(
-            f[2].raw_offset(&V),
-            0.0,
-            "the vertex must be exactly on the hinge face"
-        );
-        assert_eq!(relation(&f[1], &f[2]), Relation::Hinged);
-        assert!(leaves_a_separate_surface(&w, &f[1], &[&f[0]]));
-        assert!(!leaves_a_separate_surface(&w, &f[1], &[&f[0], &f[2]]));
-        assert!(!leaves_a_separate_surface(&w, &f[1], &[&f[2], &f[0]]));
-    }
-
-    #[test]
-    fn a_perpendicular_or_oblique_face_is_unrelated_and_keeps_the_weld() {
-        // The #1007 shape: on the bottom plane, a few micrometres off an end
-        // face square to it. The end face's vertices are far outside the band
-        // of `y = 0`.
-        let end: Tri = [
-            [0.5 + G, 0.0, 0.0],
-            [0.5 + G, 1.0, 0.0],
-            [0.5 + G, 0.0, 1.0],
-        ];
-        let oblique: Tri = [
-            [0.5 + G, 0.0, 0.0],
-            [1.5 + G, 1.0, 0.0],
-            [0.5 + G, 0.0, 1.0],
-        ];
-        let f = faces(&[WALL, end, oblique]);
-        let w = [V[0] + G, V[1] - G, V[2]]; // off `y = 0`, so only the relation decides
-        assert_eq!(relation(&f[1], &f[0]), Relation::Unrelated);
-        assert_eq!(relation(&f[2], &f[0]), Relation::Unrelated);
-        assert!(!leaves_a_separate_surface(&w, &f[1], &[&f[0]]));
-        assert!(!leaves_a_separate_surface(&w, &f[2], &[&f[0]]));
-    }
-
-    #[test]
-    fn a_face_in_band_one_way_only_is_unrelated() {
-        // A small facet close to `y = 0` but leaning 20 grid steps per unit:
-        // all of it is inside WALL's band, while WALL's far corner `(1, 0, 0)`
-        // is 17 steps off the facet's plane. The two diverge over WALL's
-        // extent, so they are not one surface, whichever is the target.
-        let lean: Tri = [[0.2, G, 0.2], [0.3, 3.0 * G, 0.2], [0.2, G, 0.3]];
-        let f = faces(&[WALL, lean]);
-        assert!(in_band_of(&f[1], &f[0]) && !in_band_of(&f[0], &f[1]));
-        assert_eq!(relation(&f[1], &f[0]), Relation::Unrelated);
-        assert_eq!(relation(&f[0], &f[1]), Relation::Unrelated);
-    }
-
-    #[test]
-    fn a_parallel_face_outside_the_band_is_unrelated() {
-        // 1 mm away: far beyond the band (8 grid steps here), a real second wall.
-        let far: Tri = [[3.0, 1.0e-3, 0.0], [5.0, 1.0e-3, 0.0], [3.0, 1.0e-3, 1.0]];
-        let f = faces(&[WALL, far]);
-        assert_eq!(relation(&f[1], &f[0]), Relation::Unrelated);
-    }
-
-    /// A slab `[0,8] x [0,8]`, depth 0.25, with the given holes, as the host
-    /// triangles `subtract` hands the weld.
-    fn slab(holes: &[&[[f64; 2]]]) -> Vec<Tri> {
-        let ring = |r: &[[f64; 2]]| {
-            r.iter()
-                .map(|p| Point2::new(p[0], p[1]))
-                .collect::<Vec<_>>()
-        };
-        let mut profile = Profile2D::new(ring(&[[0.0, 0.0], [8.0, 0.0], [8.0, 8.0], [0.0, 8.0]]));
-        holes.iter().for_each(|h| profile.add_hole(ring(h)));
-        orient_outward(mesh_to_tris(
-            &extrude_profile(&profile, 0.25, None).expect("slab extrudes"),
-        ))
-    }
-
-    /// The weld run both ways over one cutter: `(guarded, moved, unguarded, moved)`.
-    fn both(cutter: &[Tri], host: &[Tri]) -> (Vec<Tri>, usize, Vec<Tri>, usize) {
-        let (mut a, mut b) = (cutter.to_vec(), cutter.to_vec());
-        let (na, nb) = (guarded(&mut a, host), unguarded(&mut b, host));
-        (a, na, b, nb)
-    }
-
-    /// #6940's shape end to end: the cutter fills hole A and is pushed through
-    /// both caps; hole B's left wall runs a few grid steps off collinear with
-    /// hole A's. The unguarded weld drags the cutter's `x = 1` corners onto
-    /// hole B's wall; the subtract weld leaves the cutter exactly as it came.
-    #[test]
-    fn a_cutter_filling_a_hole_is_not_welded_onto_a_neighbouring_holes_wall() {
-        for skew in [G, 2.0 * G, 3.0 * G] {
-            let host = slab(&[
-                &[[1.0, 1.0], [1.0, 2.0], [2.0, 2.0], [2.0, 1.0]],
-                &[[1.0, 3.0], [1.0 + skew, 5.0], [2.0, 5.0], [2.0, 3.0]],
-            ]);
-            let cutter = box_mesh([1.0, 1.0, -0.125], [2.0, 2.0, 0.375]);
-            let (kept, moved, dragged, dragged_n) = both(&cutter, &host);
-            assert!(
-                dragged_n > 0 && dragged != cutter,
-                "skew {skew}: the fixture must weld unguarded"
-            );
-            assert_eq!(
-                (moved, &kept),
-                (0, &cutter),
-                "skew {skew}: the guarded weld moved the cutter"
-            );
-        }
-    }
-
-    /// The guard's scope: on a CREASED wall (flat to `x = 2`, then leaning into
-    /// the hole) the facets are hinged, and the subtract weld must do exactly
-    /// what the unguarded weld does, vertex for vertex.
-    #[test]
-    fn a_creased_hole_wall_is_welded_exactly_as_without_the_guard() {
-        for skew in [G, 2.0 * G, 4.0 * G] {
-            let host = slab(&[&[
-                [1.0, 1.0],
-                [1.0, 2.0],
-                [2.0, 2.0],
-                [3.0, 2.0 - skew],
-                [3.0, 1.0],
-            ]]);
-            let cutter = box_mesh([1.0, 1.0, -0.125], [3.0, 2.0, 0.375]);
-            let (a, moved, b, moved_unguarded) = both(&cutter, &host);
-            assert!(moved_unguarded > 0, "skew {skew}: the fixture must weld");
-            assert_eq!(
-                (moved, a),
-                (moved_unguarded, b),
-                "skew {skew}: the guard reached a creased wall"
-            );
-        }
-    }
-}
+#[path = "incidence_tests.rs"]
+mod tests;

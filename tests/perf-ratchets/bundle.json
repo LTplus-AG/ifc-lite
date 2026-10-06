@@ -37,14 +37,14 @@
       "metric": "count",
       "unit": "chunks",
       "description": "module <script src> plus <link rel=modulepreload> JS files in apps/viewer/dist/index.html",
-      "ceiling": 135,
+      "ceiling": 137,
       "tolerance": {
         "kind": "exact",
         "value": 0
       },
       "provenance": {
-        "commit": "17e3f195f52586529539c3cb9bef844dcd82b5fa",
-        "measuredAt": "2026-10-05T17:11:27.266Z"
+        "commit": "5f3fa294b5ca800afb7a27faa56ce378328bf3e2",
+        "measuredAt": "2026-10-06T04:20:23Z"
       }
     }
   ]

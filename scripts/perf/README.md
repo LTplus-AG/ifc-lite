@@ -30,17 +30,14 @@ scripts/perf/instructions.sh tests/models/ara3d/AC20-FZK-Haus.ifc --json
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
-## Load-trace spans replace console scraping (#6956)
-
-Viewer load milestones are now named spans (`@ifc-lite/load-trace`): one tree
-per load across the main thread and the geometry workers, mirrored into User
-Timing as `ifc:<name>` and readable as `window.__IFC_LITE_LOAD_TRACE__` under
-`?perfTrace=1`. The viewer benchmark reads its timing metrics from that tree
-and keeps the console regexes only as a fallback; on FZK the two must agree
-within the logs' rounding, which the spec asserts. Use the span tree, not log
-lines, for any new load-time metric. Tracing off is not a lever: the disabled
-trace is a no-op object, about 2 ns per instrumented call in Node, against
-roughly 25 calls per load.
+**Instruction ceilings gate kernel and parse work only (#6982).** The
+`native-instructions` ratchet (`tests/perf-ratchets/native-instructions*.json`,
+0.05% tolerance, FZK-Haus per PR, ISSUE_129 daily) is a blocking check for
+per-element kernel, decode and caching changes: callgrind counts follow them
+to ~0.1% with run-to-run variance <= 1e-6. It runs `--single-thread` natively,
+so it does not see scheduling, threading, WASM or browser-only effects (worker
+fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
+A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 ### Frame-time rigs (#6960)
 
@@ -70,6 +67,18 @@ rendered vs idle frames (a frame that called `getCurrentTexture`), and
   so pass `--dist-base <base build>` for counterbalanced base/branch pairs and
   read the paired ratio. Serialise timed runs:
   `flock /tmp/ifclite-perf.lock npx tsx scripts/perf/frame-gpu-rig.mts tests/models/ara3d/AC20-FZK-Haus.ifc --pairs 3`.
+
+## Load-trace spans replace console scraping (#6956)
+
+Viewer load milestones are now named spans (`@ifc-lite/load-trace`): one tree
+per load across the main thread and the geometry workers, mirrored into User
+Timing as `ifc:<name>` and readable as `window.__IFC_LITE_LOAD_TRACE__` under
+`?perfTrace=1`. The viewer benchmark reads its timing metrics from that tree
+and keeps the console regexes only as a fallback; on FZK the two must agree
+within the logs' rounding, which the spec asserts. Use the span tree, not log
+lines, for any new load-time metric. Tracing off is not a lever: the disabled
+trace is a no-op object, about 2 ns per instrumented call in Node, against
+roughly 25 calls per load.
 
 ## Pending picking survives redundant viewport synchronization (#6882)
 

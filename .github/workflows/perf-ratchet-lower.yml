@@ -46,7 +46,7 @@ jobs:
   lower:
     name: Measure main and lower ceilings
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -101,6 +101,31 @@ jobs:
 
       - name: Measure perf-ratchet bundle family
         run: node scripts/perf-ratchet/measure-bundle.mjs --out "$RUNNER_TEMP/perf-ratchet/bundle.json" --commit "$(git rev-parse HEAD)"
+
+      # Native instruction ceilings (#6982): both fixtures, so the ISSUE_129
+      # family (~2.5 min of callgrind, too slow for every PR) is measured,
+      # checked and lowered here. test.yml measures only the FZK family.
+      - name: Setup Rust for the native build
+        run: rustup show
+
+      - name: Cargo cache (native instructions)
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          prefix-key: perf-ratchet-native-ir
+          shared-key: main
+          workspaces: ". -> target/phase-markers"
+
+      - name: Install valgrind
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends valgrind
+
+      - name: Fetch the native-instructions fixtures
+        run: node scripts/fixtures/fetch-fixtures.mjs ara3d/AC20-FZK-Haus.ifc ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc
+
+      - name: Measure perf-ratchet native-instructions family
+        run: node scripts/perf-ratchet/measure-native-instructions.mjs --set small --out "$RUNNER_TEMP/perf-ratchet/native-instructions.json" --commit "$(git rev-parse HEAD)"
+
+      - name: Measure perf-ratchet native-instructions-large family
+        run: node scripts/perf-ratchet/measure-native-instructions.mjs --set large --out "$RUNNER_TEMP/perf-ratchet/native-instructions-large.json" --commit "$(git rev-parse HEAD)"
 
       # Judged at the END of the job (last step) so a breach on main does not
       # stop the other ceilings from being lowered.

@@ -70,7 +70,9 @@ export function holdFramesUntilAttached(ws: WebSocket, onOverflow: () => void): 
     if (held.length >= MAX_PENDING_FRAMES || heldBytes + bytes.byteLength > MAX_PENDING_BYTES) {
       held = null;
       onOverflow();
-      try { ws.close(1009, 'hydration-buffer-overflow'); } catch { /* socket already gone */ }
+      try { ws.close(1009, 'hydration-buffer-overflow'); } catch (err) {
+        console.error('[collab-server] overflow close failed:', err);
+      }
       return;
     }
     held.push(bytes);
@@ -151,12 +153,16 @@ export async function handleConnection(ws: WebSocket, req: http.IncomingMessage,
   let alive = true;
   const ping = setInterval(() => {
     if (!alive) {
-      try { ws.terminate(); } catch { /* socket already gone */ }
+      try { ws.terminate(); } catch (err) {
+        console.error('[collab-server] socket termination failed:', err);
+      }
       clearInterval(ping);
       return;
     }
     alive = false;
-    try { ws.ping(); } catch { /* socket already gone */ }
+    try { ws.ping(); } catch (err) {
+      console.error('[collab-server] socket ping failed:', err);
+    }
   }, PING_INTERVAL_MS);
   ws.on('pong', () => { alive = true; });
 

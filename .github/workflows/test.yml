@@ -2708,6 +2708,15 @@ jobs:
         run: node scripts/fixtures/fetch-fixtures.mjs ara3d/AC20-FZK-Haus.ifc
       - name: Measure perf-ratchet native-instructions family
         run: node scripts/perf-ratchet/measure-native-instructions.mjs --set small --out "$RUNNER_TEMP/perf-ratchet-native/native-instructions.json"
+      - name: TEMP seed large
+        run: |
+          node scripts/fixtures/fetch-fixtures.mjs ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc
+          node scripts/perf-ratchet/measure-native-instructions.mjs --set large --out "$RUNNER_TEMP/seed-large/native-instructions-large.json"
+      - name: TEMP upload seed large
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: seed-large
+          path: ${{ runner.temp }}/seed-large/
       - name: Upload native-instructions measurement
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

@@ -78,13 +78,21 @@ export function eagerScripts(html) {
   const text = html.replace(/<!--[\s\S]*?-->/g, '');
   const entries = [];
   const eager = [];
-  for (const m of text.matchAll(/<script\b([^>]*)>/gi)) {
-    const a = parseAttributes(m[1]);
-    if (a.src === undefined || a.src === '') continue;
+  // Script elements are read whole, so markup that only appears inside an
+  // inline script body (a string that spells out a <link>) is not a load, and
+  // the link scan below runs over what is left of the document.
+  const JS_TYPES = new Set(['', 'module', 'text/javascript', 'application/javascript', 'text/ecmascript', 'application/ecmascript']);
+  const markup = text.replace(/<script\b([^>]*)>[\s\S]*?<\/script\s*>/gi, (_, attrText) => {
+    const a = parseAttributes(attrText);
+    const type = (a.type ?? '').trim().toLowerCase();
+    // nomodule scripts are fetched only by browsers that cannot run modules;
+    // importmap/json and the like are not JavaScript.
+    if (a.src === undefined || a.src === '' || a.nomodule !== undefined || !JS_TYPES.has(type)) return '';
     eager.push(a.src);
-    if ((a.type ?? '').toLowerCase() === 'module') entries.push(a.src);
-  }
-  for (const m of text.matchAll(/<link\b([^>]*)>/gi)) {
+    if (type === 'module') entries.push(a.src);
+    return '';
+  });
+  for (const m of markup.matchAll(/<link\b([^>]*)>/gi)) {
     const a = parseAttributes(m[1]);
     const rel = (a.rel ?? '').toLowerCase().split(/\s+/);
     if (rel.includes('modulepreload') && a.href) eager.push(a.href);
@@ -128,6 +136,8 @@ export function eagerJsFiles(dist, html) {
     seen.add(file);
     files.push({ url, file });
   }
+  // A measurement of zero files would make the byte ceiling vacuous.
+  if (files.length === 0) throw new Error(`index.html lists no eager JS files (entry ${entry}); is this a built index.html?`);
   return { entry, files };
 }
 

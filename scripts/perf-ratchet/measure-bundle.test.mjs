@@ -189,3 +189,42 @@ rt('every committed ceiling file is valid, and bundle.json ratchets exactly what
   const headroom = compare.allowedMax(chunks) - chunks.ceiling;
   assert.ok(headroom >= 3 && headroom <= 8, `chunk-count headroom is ${headroom}; it should be a few chunks`);
 });
+
+// #7002 review: shapes of index.html that must not change what counts as eager.
+function withDist(files, body) {
+  const dist = mkdtempSync(join(tmpdir(), 'perf-ratchet-shapes-'));
+  try {
+    mkdirSync(join(dist, 'assets'), { recursive: true });
+    for (const f of files) writeFileSync(join(dist, 'assets', f), 'export {}');
+    return body(dist);
+  } finally {
+    rmSync(dist, { recursive: true, force: true });
+  }
+}
+const names = (found) => found.files.map((f) => f.url.replace(/^.*\//, ''));
+
+rt('eagerJsFiles ignores markup that only appears inside an inline script body', () => {
+  withDist(['entry.js', 'real.js'], (dist) => {
+    const html = `<script>var s = '<link rel="modulepreload" href="/assets/ghost.js"><script type="module" src="/assets/ghost2.js"><\\/script>';</script>
+      <script type="module" src="/assets/entry.js"></script>
+      <link rel="modulepreload" href="/assets/real.js">`;
+    assert.deepEqual(names(measure.eagerJsFiles(dist, html)), ['entry.js', 'real.js']);
+  });
+});
+
+rt('eagerJsFiles leaves out nomodule scripts and non-JavaScript script types', () => {
+  withDist(['entry.js', 'legacy.js'], (dist) => {
+    const html = `<script type="module" src="/assets/entry.js"></script>
+      <script nomodule src="/assets/legacy.js"></script>
+      <script type="importmap" src="/assets/map.js"></script>`;
+    assert.deepEqual(names(measure.eagerJsFiles(dist, html)), ['entry.js']);
+  });
+});
+
+rt('eagerJsFiles throws on a preload that is not in dist and on an entry that is not JS', () => {
+  withDist(['entry.js'], (dist) => {
+    assert.throws(() => measure.eagerJsFiles(dist, '<script type="module" src="/assets/entry.js"></script><link rel="modulepreload" href="/assets/gone.js">'), /is not in/);
+    // An unbuilt index.html (dev entry) would otherwise measure zero eager files.
+    assert.throws(() => measure.eagerJsFiles(dist, '<script type="module" src="/src/main.tsx"></script>'), /no eager JS/);
+  });
+});

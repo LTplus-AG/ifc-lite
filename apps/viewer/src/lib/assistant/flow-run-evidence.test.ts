@@ -10,6 +10,7 @@ import type { ViewerState } from '@/store';
 import { flowRunDiagnostics, isFailingNode } from './flow-run-evidence';
 import { flowRunAdapter, pinnedFlowRun } from './adapters/flow-run';
 import { sameIdentity } from './adapters/types';
+import { flowRegistry } from '../flow/runner';
 
 // Invariants (#6919): the verdict is read from the native run only; parameters reach
 // the prompt only for failing nodes and the nodes feeding them; messages are bounded.
@@ -31,6 +32,15 @@ const state = (flowLastRun: RunResult | null, flowLastError: string | null = nul
   flowDoc: doc, flowLastRun, flowLastError, flowLastRunWindow: null, flowRunWarnings: [], flowArtifacts: [],
 });
 const healthy = [report('a'), report('b'), report('sum'), report('other')];
+
+// Runs first, before any registry exists in this process: unknown parameter kinds are never sent.
+test('#6919 without a loaded node registry every failing-branch parameter is withheld', () => {
+  const failing = run([report('a'), report('b'), report('sum', { status: 'error', error: 'boom' })], [], false);
+  const params = flowRunDiagnostics(state(failing))!.nodes.find(node => node.nodeId === 'a')!.params;
+  assert.deepEqual(params, { value: '[withheld: node registry not loaded]' });
+  flowRegistry();
+  assert.deepEqual(flowRunDiagnostics(state(failing))!.nodes.find(node => node.nodeId === 'a')!.params, { value: 'secret-ish' });
+});
 
 test('#6919 run verdicts come from the native run record', () => {
   assert.equal(flowRunDiagnostics({ ...state(null), flowDoc: null }), null, 'no graph, no diagnostics');
@@ -58,7 +68,7 @@ test('#6919 only failing nodes and their inputs expose parameters; messages are 
   assert.ok(sum.errorMessages.every(message => message.length <= 600 && message.startsWith('lane ')));
   assert.deepEqual(diagnostics.hostMessages, ['orphans: removed 2 element(s) of deleted node "k"']);
   assert.ok(isFailingNode(sum) && !isFailingNode(diagnostics.nodes[3]));
-  assert.ok(isFailingNode({ status: 'skipped', laneErrors: 0 }) && isFailingNode({ status: 'ok', laneErrors: 1 }));
+  assert.ok(!isFailingNode({ status: 'skipped', laneErrors: 0 }) && isFailingNode({ status: 'ok', laneErrors: 1 }), 'skipped only follows an upstream failure');
 });
 
 test('#6919 a flowRun snapshot pins its run; another run or refusal replaces the identity', () => {

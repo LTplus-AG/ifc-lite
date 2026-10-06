@@ -177,8 +177,11 @@ test('#6833 Flow run evidence keeps native totals over a 100-row sample and neve
   // Independent of the adapter: the fixture skips i % 7 === 0 unless i % 10 === 0 over 0..129 (17 nodes).
   assert.equal(payload.evidence.summary.nodeStatusCounts.skipped, 17);
   assert.equal(payload.evidence.summary.executedNodes, 113);
-  assert.ok(payload.evidence.rows.every(row => row.data.kind === 'nodeResult'), 'node results come first');
-  assert.equal(payload.evidence.rows[10].data.error, 'boom 10');
+  // #6919: failing node results come first (13 errors), then run-level rows, then the other node results.
+  assert.deepEqual(payload.evidence.rows.slice(0, 13).map(row => [row.data.nodeId, row.data.error]),
+    Array.from({ length: 13 }, (_, i) => [`n${i * 10}`, `boom ${i * 10}`]));
+  assert.deepEqual(payload.evidence.rows.slice(13, 16).map(row => row.data.kind), ['warning', 'artifact', 'graphOutput']);
+  assert.ok(payload.evidence.rows.slice(16).every(row => row.data.kind === 'nodeResult'));
   assert.doesNotMatch(snapshot.payload, /PDF-secret-bytes/);
   assert.equal(evidenceIsCurrent(snapshot), true);
 
@@ -186,10 +189,11 @@ test('#6833 Flow run evidence keeps native totals over a 100-row sample and neve
   useViewerStore.setState({ flowLastRun: seededRun(3) });
   const small = payloadOf(captureEvidence('flowRun'));
   assert.equal(evidenceIsCurrent(snapshot), false, 'replacing the run makes the earlier evidence stale');
-  assert.deepEqual(small.evidence.rows.map(row => row.data.kind), ['nodeResult', 'nodeResult', 'nodeResult', 'warning', 'artifact', 'graphOutput', 'log']);
-  const artifactRow = small.evidence.rows[4].data;
+  assert.deepEqual(small.evidence.rows.map(row => [row.data.kind, row.data.nodeId ?? null]),
+    [['nodeResult', 'n0'], ['warning', null], ['artifact', null], ['graphOutput', 'n1'], ['nodeResult', 'n1'], ['nodeResult', 'n2'], ['log', 'n0']]);
+  const artifactRow = small.evidence.rows[2].data;
   assert.deepEqual([artifactRow.name, artifactRow.mediaType, artifactRow.sizeBytes, artifactRow.pages], ['report.pdf', 'application/pdf', 17, 2]);
-  const output = small.evidence.rows[5].data;
+  const output = small.evidence.rows[3].data;
   assert.deepEqual([output.itemCount, (output.preview as unknown[]).length], [40, 5]);
   assert.ok((small.evidence.rows[6].data.message as string).length <= 501, 'log text is bounded');
 });

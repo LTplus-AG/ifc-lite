@@ -7,15 +7,22 @@
  * evidence adapter (what the Assistant sees) and debug-proposal review (what
  * a diagnosis may cite). Everything here is read from `flowLastRun` /
  * `flowLastError` / `flowLastRunWindow` / `flowRunWarnings` /
- * `flowArtifacts`; nothing is re-executed or inferred. Parameters are
- * included only for nodes that failed and the nodes feeding them, so a debug
- * proposal can correct them; other values stay out of the prompt.
+ * `flowArtifacts`; nothing is re-executed or inferred.
+ *
+ * Parameter policy: parameters are included only for nodes that failed
+ * (`error` or lane errors; a `skipped` node only follows an upstream failure)
+ * and the nodes feeding them, so a debug proposal can correct them. Even
+ * there, `code` parameters (script source) are withheld, credential-like
+ * text (bearer tokens, URL user info, token query values, API keys) is
+ * redacted, and credential-named keys are withheld by `evidenceJson`. Without
+ * a loaded node registry the kinds are unknown and every value is withheld.
  */
 
 import { countItems, type FlowDocument, type NodeReport, type NodeStatus, type RunResult } from '@ifc-lite/flow';
 import type { WorkflowArtifact } from '../flow/artifact';
 import type { FlowRunWindow } from '@/store/slices/flowSlice';
 import { withUpstream } from '../flow/upstream';
+import { flowParamDefs } from '../flow/param-kinds';
 
 type FlowRunState = {
   flowDoc: FlowDocument | null;
@@ -72,8 +79,29 @@ const MAX_NODES = 100;
 const MAX_MESSAGES = 5;
 const text = (value: string) => value.slice(0, 600);
 
+/** A node whose own evaluation failed. `skipped` only means an upstream node failed, so it is not a cause. */
 export function isFailingNode(node: Pick<FlowNodeDiagnostic, 'status' | 'laneErrors'>): boolean {
-  return node.status === 'error' || node.status === 'skipped' || node.laneErrors > 0;
+  return node.status === 'error' || node.laneErrors > 0;
+}
+
+const CREDENTIAL_TEXT: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]{6,}/gi, '$1 [redacted]'],
+  [/(\b[a-z][a-z0-9+.-]*:\/\/)[^/\s:@]+:[^/\s@]+@/gi, '$1[redacted]@'],
+  [/([?&;]|\b)((?:access_|refresh_|id_)?token|api[_-]?key|key|secret|client_secret|password|passwd|pwd|auth|sig|signature)=([^&\s"'#]+)/gi, '$1$2=[redacted]'],
+  [/\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/g, '[redacted]'],
+  [/\b(?:sk|pk|rk)[-_](?:live|test)[-_][A-Za-z0-9]{8,}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bxox[abprs]-[A-Za-z0-9-]{10,}|\bAKIA[0-9A-Z]{16}\b/g, '[redacted]'],
+];
+
+/** Redacts credential-like substrings; `{{secret:NAME}}` references carry no secret and stay. */
+export function redactCredentialText(text: string): string {
+  return CREDENTIAL_TEXT.reduce((out, [pattern, replacement]) => out.replace(pattern, replacement), text);
+}
+
+function redactValue(value: unknown, depth = 0): unknown {
+  if (typeof value === 'string') return redactCredentialText(value);
+  if (!value || typeof value !== 'object' || depth > 8) return value;
+  if (Array.isArray(value)) return value.map(item => redactValue(item, depth + 1));
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactValue(item, depth + 1)]));
 }
 
 export function flowRunVerdict(run: RunResult | null, error: string | null): FlowRunVerdict {
@@ -91,12 +119,18 @@ export function failingBranch(doc: Pick<FlowDocument, 'edges'>, run: RunResult |
 /** The node's native error log lines, lane-tagged and bounded. */
 export function nodeErrorMessages(run: RunResult, nodeId: string): string[] {
   return run.log.filter(entry => entry.nodeId === nodeId && entry.level === 'error')
-    .slice(0, MAX_MESSAGES).map(entry => text(entry.laneKey === null ? entry.message : `lane ${entry.laneKey}: ${entry.message}`));
+    .slice(0, MAX_MESSAGES).map(entry => text(redactCredentialText(entry.laneKey === null ? entry.message : `lane ${entry.laneKey}: ${entry.message}`)));
 }
 
-/** Parameters a node exposes to the prompt: only on the failing branch. */
+/** Parameters a node exposes to the prompt: only on the failing branch, under the policy above. */
 export function branchParams(node: FlowDocument['nodes'][number] | undefined, branch: ReadonlySet<string>): Readonly<Record<string, unknown>> | undefined {
-  return node && branch.has(node.id) && node.params ? node.params : undefined;
+  if (!node || !branch.has(node.id) || !node.params) return undefined;
+  const defs = flowParamDefs(node.type);
+  return Object.fromEntries(Object.entries(node.params).map(([name, value]) => [name,
+    defs === null ? '[withheld: node registry not loaded]'
+      : defs === undefined ? '[withheld: unknown node type]'
+        : defs.find(def => def.name === name)?.kind === 'code' ? '[withheld: script source]'
+          : redactValue(value)]));
 }
 
 function nodeDiagnostic(report: NodeReport, run: RunResult, doc: FlowDocument, branch: ReadonlySet<string>): FlowNodeDiagnostic {

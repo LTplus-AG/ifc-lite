@@ -21,6 +21,7 @@ import { parseCapabilities } from '@ifc-lite/extensions';
 import { runFlow, checkAvailability, type HostFeatures, type FlowDocument, type MemoCache, type RunResult } from '@ifc-lite/flow';
 import { BROWSER_FEATURES, AUTOMATION_FEATURES, createStandardRegistry, invalidateGlobalIdIndex, referencedSecrets, type FlowHost } from '@ifc-lite/flow-nodes';
 import type { BimContext } from '@ifc-lite/sdk';
+import { publishFlowParamDefs } from './param-kinds.js';
 import { BrowserTrackingStore } from './persistence.js';
 import { createViewerBcfWriteGateway } from '../bcf-publication/flow-gateway.js';
 
@@ -31,7 +32,11 @@ let registry: ReturnType<typeof createStandardRegistry> | undefined;
 
 /** The standard registry, built once per page. */
 export function flowRegistry(): ReturnType<typeof createStandardRegistry> {
-  registry ??= createStandardRegistry();
+  if (!registry) {
+    const created = createStandardRegistry();
+    registry = created;
+    publishFlowParamDefs(type => created.get(type)?.params);
+  }
   return registry;
 }
 

@@ -53,8 +53,9 @@ function nodeRow(report: NodeReport, run: RunResult, doc: FlowDocument | null, b
     error: report.error === undefined ? null : bounded(report.error),
     errorMessages: nodeErrorMessages(run, report.nodeId).map(message => bounded(message)),
     failing: isFailingNode(report),
-    inputs: (doc?.edges ?? []).filter(edge => edge.to[0] === report.nodeId).map(edge => ({ port: edge.to[1], from: edge.from })),
     tracking: report.tracking ?? null,
+    // Graph locality around a failure: what feeds the node, and its parameters (policy in `flow-run-evidence.ts`).
+    ...(branch.has(report.nodeId) ? { inputs: (doc?.edges ?? []).filter(edge => edge.to[0] === report.nodeId).map(edge => ({ port: edge.to[1], from: edge.from })) } : {}),
     ...(params ? { params } : {}),
   });
 }
@@ -80,13 +81,27 @@ function logRow(entry: RunLogEntry) {
   return evidenceRow({ kind: 'log', status: entry.level }, { nodeId: entry.nodeId, laneKey: entry.laneKey, message: bounded(entry.message) });
 }
 
+/**
+ * Diagnostics first, so the row and text budgets cut healthy detail, never a
+ * failure (#6919): failing nodes, then the nodes feeding them nearest first,
+ * then run-level rows, then the remaining node results and the log. The
+ * summary's native counts cover every node either way.
+ */
 function* runRows(s: ViewerState, doc: FlowDocument | null) {
   const run = s.flowLastRun;
-  const branch = doc ? failingBranch(doc, run) : new Set<string>();
-  if (run) for (const report of run.reports) yield nodeRow(report, run, doc, branch);
+  // Failing nodes first (run order), then their inputs breadth-first.
+  const branch = failingBranch(doc ?? { edges: [] }, run);
+  const reports = new Map((run?.reports ?? []).map(report => [report.nodeId, report]));
+  if (run) {
+    for (const id of branch) {
+      const report = reports.get(id);
+      if (report) yield nodeRow(report, run, doc, branch);
+    }
+  }
   for (const message of s.flowRunWarnings) yield evidenceRow({ kind: 'warning', status: 'warning' }, { source: 'run', message: bounded(message) });
   for (const artifact of s.flowArtifacts) yield artifactRow(artifact);
   for (const output of run?.graphOutputs ?? []) yield outputRow(output);
+  if (run) for (const report of run.reports) if (!branch.has(report.nodeId)) yield nodeRow(report, run, doc, branch);
   for (const entry of run?.log ?? []) yield logRow(entry);
 }
 
@@ -154,10 +169,11 @@ export const flowRunAdapter: EvidenceAdapter = {
         artifactCount: s.flowArtifacts.length,
         graphOutputCount: run?.graphOutputs.length ?? 0,
         logCounts,
-        rowOrder: 'nodeResult, warning, artifact, graphOutput, log',
+        rowOrder: 'failing nodeResult, nodeResult of their inputs (nearest first), warning, artifact, graphOutput, other nodeResult, log',
         limitations: 'Describes the last run of the open graph only. Editing or switching the graph clears the run, so it belongs to the graph named here. '
           + 'executedNodes counts every node report that was not skipped; memo means cached outputs were reused. '
-          + 'Node parameters are excluded except on rows of failing nodes (error, skipped or laneErrors > 0) and the nodes feeding them. '
+          + 'Node parameters are excluded except on rows of failing nodes (error or laneErrors > 0; skipped nodes only follow an upstream failure) and the nodes feeding them; '
+          + 'even there, script source is withheld and credential-like text is redacted. '
           + 'Full output values and artifact contents (PDF bytes) are excluded; graph outputs carry at most a short preview. '
           + (run ? '' : 'The run failed before a result existed, so no node reports are available; absence of node rows is not success. ')
           + 'A run says nothing about model edits made after it finished.',

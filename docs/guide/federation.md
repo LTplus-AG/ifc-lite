@@ -302,6 +302,32 @@ const stats = await computeDeviationStatisticsAsync(values, { tolerance: 0.01, c
 console.log(stats.p95Abs, stats.withinTolerance?.share, stats.clippedCount);
 ```
 
+### Scan to BIM: detect and review elements
+
+The Point Clouds panel's **Scan to BIM** section runs **Detect elements** on a
+loaded scan. It reads the scan's retained sample (up to 2 million points, or
+the coarse COPC levels). When the section box is on and shown, it reads only
+the points inside the box, mapped back through the scan's alignment. Planes and
+cylinders are found off the main thread and turned into proposed `IfcWall`,
+`IfcSlab`, `IfcColumn` and pipe elements in the coordinates of the active IFC
+model, or the first one loaded. The proposals include that model's offsets,
+its placement and the scan's alignment. Pipes are `IfcPipeSegment`, or
+`IfcFlowSegment` in an IFC2X3 model. With no IFC model loaded, proposals use
+the workspace coordinates. **Cancel** stops a running detection, and a second
+**Detect** replaces it. The rules behind the proposals (wall pairing, default
+thicknesses, floor and ceiling sides, snapping, confidence) are in the
+[proposal contract](../api/wasm.md#scan-element-proposals).
+
+The detected planes and cylinders are drawn over the scan, coloured by
+proposed class: walls blue, slabs grey, columns orange, pipes green. The
+review list shows each proposal's size, how it was derived, its confidence
+and its fit (RMS and points). **Accept** or **Reject** each one, or use
+**Accept all shown** and **Reject all shown** after filtering by class and
+minimum confidence. Rejected proposals disappear from the overlay, and
+accepted ones are drawn more opaque. A run ends when its scan or its IFC
+model is removed; removing either while detection runs stops the worker and
+discards its result.
+
 World Context refreshes its Cesium model after movement pauses, using the same
 placed geometry. Its previous model stays visible until the replacement is ready;
 the WebGPU view updates immediately throughout the move.

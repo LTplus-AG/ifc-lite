@@ -159,17 +159,27 @@ export async function loadControlTriplet(
   page: Page, testInfo: TestInfo, files: ControlTripletLoad, pageErrors: readonly string[],
 ): Promise<ModelSnapshot | null> {
   let pageErrorStart = pageErrors.length;
+  let loadFailed = false;
   try {
-    await loadThroughViewer(page, files.ifc, 1, files.timeout);
-    const primary = (await snapshotModels(page)).find((model) => model.name === 'terrain.ifc');
-    expect(primary, 'IFC model registered from the primary load').toBeDefined();
-    await assertSingleModelResolution(page, primary!.id);
-    pageErrorStart = pageErrors.length;
-    await loadThroughViewer(page, files.landxml, 2, files.timeout);
-    pageErrorStart = pageErrors.length;
-    await loadThroughViewer(page, files.xyz, 3, files.timeout);
-    return primary!;
+    const loadAll = async () => {
+      await loadThroughViewer(page, files.ifc, 1, files.timeout);
+      const primary = (await snapshotModels(page)).find((model) => model.name === 'terrain.ifc');
+      expect(primary, 'IFC model registered from the primary load').toBeDefined();
+      await assertSingleModelResolution(page, primary!.id);
+      pageErrorStart = pageErrors.length;
+      await loadThroughViewer(page, files.landxml, 2, files.timeout);
+      pageErrorStart = pageErrors.length;
+      await loadThroughViewer(page, files.xyz, 3, files.timeout);
+      return primary!;
+    };
+    // Only a rejection of loadAll itself reaches the diagnostics below: the skip
+    // raceLoss throws on a device loss must not, because their page.evaluate can
+    // fail on the closing page and turn the skip into a failure.
+    const guardedLoadAll = () => loadAll().catch((error: unknown) => { loadFailed = true; throw error; });
+    // Skip at the first console loss signal rather than after the load wait times out (#7008).
+    return files.deviceLoss ? await files.deviceLoss.raceLoss('the control-triplet load', guardedLoadAll) : await guardedLoadAll();
   } catch (error) {
+    if (!loadFailed) throw error;
     const state = await page.evaluate(() => {
       const current = globalThis.__ifc_lite_viewer_store__.getState();
       return {

@@ -43,7 +43,7 @@ function lasFile(name: string, z = 100) {
 
 async function load(page: Page, gpu: GpuDeviceLossWatch, file: { name: string; mimeType: string; buffer: Buffer }, count: number) {
   await page.locator(count === 1 ? '#file-input-open' : '#file-input-add').setInputFiles(file);
-  const outcome = await page.waitForFunction(({ n, deviceLost }) => {
+  const outcome = await gpu.raceLoss(`load ${file.name}`, () => page.waitForFunction(({ n, deviceLost }) => {
     const state = globalThis.__ifc_lite_viewer_store__?.getState();
     if (!state) return false;
     if (new RegExp(deviceLost).test(String(state.error ?? ''))) return 'device-lost';
@@ -53,8 +53,8 @@ async function load(page: Page, gpu: GpuDeviceLossWatch, file: { name: string; m
     // its stream is registered, an IFC once it has meshes.
     return !state.loading && !state.geometryStreamingActive && models.length === n
       && models.every((m) => m.pointCloudHandleId !== undefined || (m.geometryResult?.meshes.length ?? 0) > 0) ? 'ok' : false;
-  }, { n: count, deviceLost: DEVICE_LOST_STATE_ERROR.source }, { timeout: 120_000 }).then((h) => h.jsonValue(), async (error) => {
-    // A load that never settles after the software device died is the loss, not a regression.
+  }, { n: count, deviceLost: DEVICE_LOST_STATE_ERROR.source }, { timeout: 120_000 }).then((h) => h.jsonValue())).catch(async (error) => {
+    // raceLoss skips the instant the console reports the loss; this covers a loss only the toast shows.
     const found = await gpu.lost(500);
     if (found !== null) skipForGpuDeviceLoss(`load ${file.name}`, found);
     throw error;
@@ -90,7 +90,7 @@ test('Deviation CSV names each scan row after its own model, IFC first (#6887)',
   await load(page, gpu, lasFile('second.las', 150), 3);
   await gpu.skipIfLost('IFC + scans load');
 
-  const rows = await gpu.requireLiveGpu('deviation compute and CSV', () => deviationCsv(page));
+  const rows = await gpu.requireLiveGpu('deviation compute and CSV', () => gpu.raceLoss('deviation compute and CSV', () => deviationCsv(page)));
   await info.attach('deviation CSV, IFC first', { body: JSON.stringify(rows, null, 2), contentType: 'application/json' });
   for (const name of ['survey.las', 'second.las']) {
     const row = scanRow(rows, name);
@@ -108,7 +108,7 @@ test('Deviation CSV names the scan row after the scan model, scan first (#6887)'
   await load(page, gpu, IFC, 2);
   await gpu.skipIfLost('scan + IFC load');
 
-  const rows = await gpu.requireLiveGpu('deviation compute and CSV', () => deviationCsv(page));
+  const rows = await gpu.requireLiveGpu('deviation compute and CSV', () => gpu.raceLoss('deviation compute and CSV', () => deviationCsv(page)));
   await info.attach('deviation CSV, scan first', { body: JSON.stringify(rows, null, 2), contentType: 'application/json' });
   const row = scanRow(rows, 'survey.las');
   expect(row.Model).toBe('survey.las');

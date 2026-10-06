@@ -8,6 +8,7 @@ import { bcfDraftsContent } from '../bcf-drafts/draft-library.js';
 import { bcfOutboxContent } from '../bcf-publication/outbox-store.js';
 import { modelChangeContent } from '../actions/receipts.js';
 import { clashGroupApplicationContent } from '../clash/group-applications.js';
+import { reviewWorkspacesContent } from '../review/workspace.js';
 import { comparisonContent } from '../compare/savedComparisonPersistence.js';
 import { documentContent } from '../document/persistence.js';
 import { validationContent } from '../validation/reports/persistence.js';
@@ -25,6 +26,7 @@ export const CONTENT_DEFINITIONS = {
   bcfOutbox: bcfOutboxContent,
   modelChanges: modelChangeContent,
   clashGroupApplications: clashGroupApplicationContent,
+  reviewWorkspaces: reviewWorkspacesContent,
 } satisfies Record<ContentKind, Pick<ContentDefinition<{ id: string }>, 'kind' | 'legacyKey' | 'decode'>>;
 
 export function contentKindForLegacyKey(key: string): ContentKind | undefined {

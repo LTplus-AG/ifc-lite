@@ -48,7 +48,7 @@ import { translateSceneModel, rotateSceneModelInstances, releaseInstanceVertices
 import { ModelTranslations, type ModelYaw } from './model-translation.js';
 import { unionInstancedWorldAabb as unionInstanceBounds } from './scene-instance-bounds.js';
 import { DerivedMeshProvenance } from './scene-derived-mesh-provenance.js';
-import { rebuildSceneBatches } from './scene-batch-rebuild.js';
+import { forgetEmptyModelFrames, rebuildSceneBatches } from './scene-batch-rebuild.js';
 import { regroupStreamedBuckets, type FinalizeRegroup } from './scene-finalize-regroup.js';
 import { perfCount, perfCounters, perfTally, type LoadTrace } from '@ifc-lite/load-trace';
 import {
@@ -1314,6 +1314,7 @@ export class Scene {
 
     this.batchedMeshes = [...this.buckets.values()].flatMap(bucket => bucket.batchedMesh ? [bucket.batchedMesh] : []);
     this.pendingBatchKeys.clear();
+    forgetEmptyModelFrames(this.buckets, this.sharedFrameOrigins);
   }
 
   /**

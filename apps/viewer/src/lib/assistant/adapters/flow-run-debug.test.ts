@@ -17,6 +17,7 @@ import { newFlowDocument } from '@/lib/flow/persistence';
 import { flowRegistry } from '@/lib/flow/runner';
 import { captureEvidence } from '../evidence';
 import { isFailingNode } from '../flow-run-evidence';
+import { flowRunAdapter } from './flow-run';
 
 // Publishes the native parameter declarations, as the Flow panel's Run does.
 flowRegistry();
@@ -96,4 +97,14 @@ test('#6919 parameters reach the prompt only for the failing branch, without scr
   // A passing run exposes no parameters at all.
   record(doc, doc.nodes.map(node => report(node.id)));
   assert.ok(capture().evidence.rows.every(row => row.data.params === undefined));
+});
+
+test('#6919 editing the graph clears a refusal, so run evidence never describes the patched graph', () => {
+  const doc = newFlowDocument('Refused graph');
+  useViewerStore.setState({ flowDoc: doc, flowLastRun: null, flowLastError: 'capability denied: model.read', flowLastRunWindow: null });
+  assert.equal(flowRunAdapter.readiness(useViewerStore.getState()).ready, true);
+  useViewerStore.getState().setFlowDoc({ ...doc, name: 'Patched graph' });
+  assert.equal(useViewerStore.getState().flowLastError, null);
+  assert.equal(flowRunAdapter.readiness(useViewerStore.getState()).ready, false);
+  assert.equal(JSON.parse(captureEvidence('flowRun').payload).sourceAvailability, 'unavailable');
 });

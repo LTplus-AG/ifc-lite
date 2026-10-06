@@ -53,8 +53,8 @@ pins 4 geometry workers (`VIEWER_BENCHMARK_GEOM_WORKERS`) and records them in
 `loadCounters`, split in two. `structural` (copies, messages, wasm ingress)
 repeated exactly across runs on FZK and Snowdon, except for a few bytes of
 parser diagnostic strings that carry elapsed times, so a diff there means
-the load did different work. `scheduling` (GPU uploads and merges, store
-churn) moves with frame timing. `flushPending` slices its
+the load did different work. `scheduling` (GPU uploads and merges, React
+commits, store churn) moves with frame timing. `flushPending` slices its
 upload queue by a time budget, and SwiftShader loses and re-creates the
 device mid-load, which re-uploads everything, so compare those as a spread.
 Lesson: the benchmark's old 2D canvas probe could claim the viewport canvas
@@ -62,6 +62,14 @@ before the renderer did. After that `getContext('webgpu')` returns null, the
 renderer logs "Failed to get WebGPU context", and the run measures no GPU work
 at all. The probe now checks only the canvas size, and the counters are read
 once they stop moving, not when the load root ends.
+
+React commits per load are the `react.commits` counter, taken from the
+DevTools global hook's `onCommitFiberRoot`: React's production build compiles
+`<Profiler onRender>` out, so a root Profiler would count zero in the build
+the benchmark and users run. `node scripts/perf/hook-census.mjs` counts hook
+call sites and `useViewerStore` subscriptions on the viewport, properties,
+hierarchy and streaming paths statically (minified component names make a
+runtime fiber census unattributable, and mounted counts move with UI state).
 
 ## Pending picking survives redundant viewport synchronization (#6882)
 

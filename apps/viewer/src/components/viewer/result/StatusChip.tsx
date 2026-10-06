@@ -14,7 +14,7 @@
 
 import type { ComponentType } from 'react';
 import {
-  AlertTriangle, Ban, CheckCircle2, CircleDashed, CircleSlash, Clock, FilePen, HelpCircle, PauseCircle,
+  AlertTriangle, Ban, CheckCircle2, CircleDashed, CircleMinus, Clock, FilePen, HelpCircle, PauseCircle,
   ShieldAlert, Sparkles, XCircle,
 } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
@@ -35,7 +35,7 @@ const STATUS: Record<ResultStatus, { labelKey: TranslationKey; icon: ComponentTy
   failed: { labelKey: 'resultStatus.failed', icon: XCircle, tone: 'bad' },
   running: { labelKey: 'resultStatus.running', icon: null, tone: 'progress' },
   stale: { labelKey: 'resultStatus.stale', icon: Clock, tone: 'warn' },
-  cancelled: { labelKey: 'resultStatus.cancelled', icon: CircleSlash, tone: 'neutral' },
+  cancelled: { labelKey: 'resultStatus.cancelled', icon: CircleMinus, tone: 'neutral' },
   interrupted: { labelKey: 'resultStatus.interrupted', icon: PauseCircle, tone: 'warn' },
   queued: { labelKey: 'resultStatus.queued', icon: CircleDashed, tone: 'neutral' },
   uncertain: { labelKey: 'resultStatus.uncertain', icon: HelpCircle, tone: 'warn' },

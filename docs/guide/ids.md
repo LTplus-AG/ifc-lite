@@ -234,7 +234,10 @@ other rule is refused with each reason listed:
 property or quantity rule can compare in SI too: `valueUnit: 'si'` (the
 **SI** toggle on the chip) converts each value with its own unit, meaning
 an explicit `Unit` on the property or quantity, else the project unit for its
-measure type, before comparing. Such a rule exports unchanged. A numeric
+measure type, before comparing. In search and in filters it reads unsaved
+in-session edits like any other property rule, the edited value converted
+with its own unit; validation reads the model as loaded. Such a rule exports
+unchanged. A numeric
 rule without it compares the model's stored numbers. The export converts its
 operand to SI with the unit the given `models` store that value in, and
 refuses the rule when there are no models, when no model has the value, or

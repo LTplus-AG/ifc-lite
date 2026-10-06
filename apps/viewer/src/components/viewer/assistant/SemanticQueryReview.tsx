@@ -73,7 +73,7 @@ export function SemanticQueryReview({ proposal }: { proposal: SemanticQueryPropo
       {running && <Button size="sm" variant="outline" className="h-7" onClick={() => pending.current?.controller.abort()}><Square className="h-3 w-3 mr-1" />{t('semanticAssist.cancel')}</Button>}
     </div>
     {error && <p role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive break-words">{error}</p>}
-    {run && <div aria-live="polite" className="space-y-1">
+    {run && <div aria-live="polite" className="space-y-1 overflow-x-auto">
       <p className="text-muted-foreground break-all">{t('semanticAssist.queryRan', { source: run.source, time: run.retrievedAt })}</p>
       {run.result.form === 'construct' ? <>
         <p>{t('semanticAssist.queryStatements', { count: run.result.quadCount })}</p>

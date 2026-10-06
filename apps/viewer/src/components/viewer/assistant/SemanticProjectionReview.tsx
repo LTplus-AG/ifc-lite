@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -16,6 +16,7 @@ const show = (value: unknown) => value === undefined || value === null ? '—' :
 /** Native projection previews per row: target, prior and new value, unit and conflict policy; applied only when approved. */
 export function SemanticProjectionReview({ proposal }: { proposal: SemanticProjectionProposal }) {
   const { t } = useTranslation();
+  const id = useId();
   const document = useSemanticSession(s => s.document);
   const profile = useSemanticSession(s => s.profile);
   const revisions = useSemanticSession(s => s.revisions);
@@ -40,16 +41,16 @@ export function SemanticProjectionReview({ proposal }: { proposal: SemanticProje
     {denial && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t(mutationDenialKey(denial))}</p>}
     <ol className="space-y-2">{rows.map((row, index) => <li key={index} className="rounded border border-border p-1.5 space-y-1">
       <p className="break-all"><span className="font-mono text-2xs">{row.projection.field}</span> · {row.projection.resource}</p>
-      {row.status === 'ready' ? <label className="flex items-start gap-2">
-        <input type="checkbox" checked={approved.has(index)} disabled={row.plan.skip}
+      {row.status === 'ready' ? <div className="flex items-start gap-2">
+        <input id={`${id}-${index}`} type="checkbox" checked={approved.has(index)} disabled={row.plan.skip}
           onChange={event => setApproved(current => { const next = new Set(current); if (event.target.checked) next.add(index); else next.delete(index); return next; })} />
-        <span className="min-w-0">
-          <span className="block font-mono text-2xs break-all">{row.plan.targetGlobalId} · {row.plan.mapping.pset}.{row.plan.mapping.property}</span>
+        <div className="min-w-0">
+          <label htmlFor={`${id}-${index}`} className="block font-mono text-2xs break-all">{row.plan.targetGlobalId} · {row.plan.mapping.pset}.{row.plan.mapping.property}</label>
           <span className="block">{t('semanticAssist.projectionValues', { previous: show(row.plan.previous), value: show(row.plan.value), unit: row.plan.mapping.unit ?? '' })}</span>
           <span className="block text-muted-foreground">{t('semanticAssist.projectionPolicy', { policy: row.plan.policy })}
             {row.plan.skip ? ` · ${t('semanticAssist.projectionSkipped')}` : ''}</span>
-        </span>
-      </label> : <p className="text-destructive break-words">{t('semanticAssist.projectionRefused', { reason: row.reason })}</p>}
+        </div>
+      </div> : <p className="text-destructive break-words">{t('semanticAssist.projectionRefused', { reason: row.reason })}</p>}
     </li>)}</ol>
     <Button size="sm" className="h-7" disabled={!plans.length || !!denial} onClick={apply}>{t('semanticAssist.projectionApply', { count: plans.length })}</Button>
     {outcome && <div aria-live="polite" className="rounded border border-border p-2 space-y-1">

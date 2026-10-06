@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -31,6 +31,7 @@ function Term({ match, value }: { match: TermMatch | undefined; value: string | 
 /** Each mapping is checked against the live model scope, the current profile and the captured passages before it can be saved. */
 export function SemanticMappingReview({ proposal, origin, passages }: { proposal: SemanticMappingProposal; origin: string; passages: readonly Passage[] }) {
   const { t } = useTranslation();
+  const id = useId();
   const profile = useSemanticSession(s => s.profile);
   const revisions = useSemanticSession(s => s.revisions);
   const models = useViewerStore(s => s.models);
@@ -55,16 +56,16 @@ export function SemanticMappingReview({ proposal, origin, passages }: { proposal
     <p className="text-muted-foreground break-all">{t('semanticAssist.mappingRevision', { revision: proposal.modelRevision })}</p>
     {!review.modelId && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('semanticAssist.mappingUnscoped')}</p>}
     <ol className="space-y-2">{review.rows.map((row, index) => <li key={index} className="rounded border border-border p-1.5 space-y-1">
-      <label className="flex items-start gap-2">
-        <input type="checkbox" checked={approved.has(index)} disabled={!row.approvable || saved}
+      <div className="flex items-start gap-2">
+        <input id={`${id}-${index}`} type="checkbox" checked={approved.has(index)} disabled={!row.approvable || saved}
           onChange={event => setApproved(current => { const next = new Set(current); if (event.target.checked) next.add(index); else next.delete(index); return next; })} />
-        <span className="min-w-0 space-y-0.5">
-          <span className="block font-mono text-2xs break-all">{[row.mapping.ifc.class, row.mapping.ifc.pset && `${row.mapping.ifc.pset}.${row.mapping.ifc.property}`].filter(Boolean).join(' · ')}</span>
+        <div className="min-w-0 space-y-0.5">
+          <label htmlFor={`${id}-${index}`} className="block font-mono text-2xs break-all">{[row.mapping.ifc.class, row.mapping.ifc.pset && `${row.mapping.ifc.pset}.${row.mapping.ifc.property}`].filter(Boolean).join(' · ')}</label>
           <span className="block">→ <Term match={row.classTerm} value={row.mapping.ontology.class} /> <Term match={row.propertyTerm} value={row.mapping.ontology.property} /></span>
           <span className="block text-muted-foreground">{t('semanticAssist.mappingConfidence', { percent: Math.round(row.mapping.confidence * 100) })}
             {' · '}{t('semanticAssist.mappingElements', { count: row.elements })}</span>
-        </span>
-      </label>
+        </div>
+      </div>
       {row.mapping.rationale && <p className="text-muted-foreground break-words">{row.mapping.rationale}</p>}
       {row.spans.map(({ span, check }, spanIndex) => <SpanQuote key={spanIndex} span={span} check={check} />)}
       {row.issues.length > 0 && <ul className="text-2xs text-amber-700 dark:text-amber-400">{row.issues.map(issue => <li key={issue}>{t(ISSUE[issue])}</li>)}</ul>}

@@ -37,7 +37,7 @@ import { useViewerStore } from '../store/index.js';
 import { getCached, setCached, deleteCached, type CacheResult } from '../services/cacheService.js';
 import { rebuildSpatialHierarchy, rebuildOnDemandMaps } from '../utils/spatialHierarchy.js';
 import { calculateStoreyHeights } from '../utils/localParsingUtils.js';
-import { nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
+import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 
 // Re-export types for convenience
 export type { CacheResult } from '../services/cacheService.js';
@@ -399,11 +399,7 @@ export function useIfcCache() {
             }
             allMeshes.push(...chunkMeshes);
             appendGeometryBatch(modelId, chunkMeshes, open.coordinateInfo);
-            if (i === 0 && trace.enabled) {
-              const appendedAt = trace.milestone('geometry.firstAppend');
-              // Same bounded race as the cold path: a stalled rAF falls back to the append time.
-              firstVisible = nextPaintOrTimeout(250).then((how) => { trace.milestone('geometry.firstVisible', how === 'paint' ? undefined : appendedAt); });
-            }
+            if (i === 0 && trace.enabled) firstVisible = recordFirstVisible(trace, trace.milestone('geometry.firstAppend'));
             if ((i & 3) === 3 || i === open.chunks.length - 1) {
               setProgress({
                 phase: 'Loading geometry from cache',
@@ -431,6 +427,7 @@ export function useIfcCache() {
           if (!isStale?.()) setGeometryStreamingActive(false);
         }
 
+        await firstVisible; // bounded (rAF or 250 ms); ahead of the ownership re-check below
         // Re-check after the chunk loop: it awaits per chunk (and yields to the
         // event loop after each append), so a newer load can have taken the
         // active slot mid-stream — including after the LAST chunk's yield. This
@@ -441,7 +438,6 @@ export function useIfcCache() {
         }
 
         meshCount = allMeshes.length;
-        await firstVisible; // recorded before the load closes, never after
         trace.milestone('geometry.streamComplete');
 
         // Restore the GPU-instancing shards (opaque repeated occurrences that

@@ -18,7 +18,7 @@
  * With tracing off every instrumented call site is a no-op method call.
  */
 
-import { buildSpanTree, createLoadTracer, toChromeTrace, type LoadTracer } from '@ifc-lite/load-trace';
+import { buildSpanTree, createLoadTracer, toChromeTrace, type LoadTrace, type LoadTracer } from '@ifc-lite/load-trace';
 import { downloadBlob } from '../export/download.js';
 import { readPerfFlag } from './flags.js';
 
@@ -63,6 +63,16 @@ export function nextPaintOrTimeout(fallbackMs = 250): Promise<'paint' | 'timeout
       globalThis.clearTimeout(timer);
       resolve('paint');
     });
+  });
+}
+
+/**
+ * Record `geometry.firstVisible` on the next paint, or at `appendedAt` (the
+ * first append) when rAF stalls. Await the result before the load closes.
+ */
+export function recordFirstVisible(trace: Pick<LoadTrace, 'milestone'>, appendedAt: number, fallbackMs = 250): Promise<void> {
+  return nextPaintOrTimeout(fallbackMs).then((how) => {
+    trace.milestone('geometry.firstVisible', how === 'paint' ? undefined : appendedAt);
   });
 }
 

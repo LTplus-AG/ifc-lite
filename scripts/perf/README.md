@@ -61,7 +61,9 @@ and #1572 is flat on FZK and ISSUE_129. The #1916 squash costs +1.5% on FZK,
 with changed output.
 
 - **Where counts apply.** Every claimed direction for a kernel, decode or
-  memoization change came back with the ledger's sign. That includes both
+  memoization change came back with the ledger's sign, with one exception:
+  #1909 on FZK-Haus, where the ledger expected flat and the count rose +0.22%
+  (see below). The agreeing set includes both
   content-dedup flips and the CDT kill, which the ledger measured only by
   instrumented slot counts and wall time. Magnitudes are not wall-clock
   proportional: the CDT kill is -47% Ir against -34% geometry ms, the #1916

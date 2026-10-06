@@ -200,8 +200,11 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
       assert.equal(out?.properties?.load_path, loadPath);
     }
     // Anything outside the vocabulary is still a path-shaped key and goes.
-    const leaked = scrubEvent({ event: 'ifc_model_loaded', properties: { load_path: '/Users/me/Tower.ifc' } });
-    assert.ok(!('load_path' in (leaked?.properties ?? {})));
+    const leaked = scrubEvent({ event: 'ifc_model_loaded', properties: { load_path: '/Users/me/Tower.ifc', mesh_count: 3 } });
+    assert.ok(leaked?.properties, 'the event itself is kept');
+    const kept: Record<string, unknown> = leaked.properties;
+    assert.ok(!('load_path' in kept));
+    assert.equal(kept.mesh_count, 3);
   });
 
   it('strips a confidential file name and path from event properties', () => {

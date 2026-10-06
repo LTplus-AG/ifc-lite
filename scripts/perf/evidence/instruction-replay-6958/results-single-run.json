@@ -1,0 +1,627 @@
+{
+  "tool": "scripts/perf/instructions-replay.mjs",
+  "harnessCommit": "17e3f195f5",
+  "valgrind": "valgrind-3.26.0",
+  "flatThreshold": 0.0001,
+  "candidates": [
+    {
+      "id": "cdt-scan-kill",
+      "title": "CDT: kill the three O(T)-per-item scans (PR #1916 branch commit 46dcdeec2)",
+      "class": "win",
+      "ledger": "ISSUE_129 geometry 991 -> 651 ms on its own commit (1568 -> 646 ms within the seam-conform branch); byte-identical output",
+      "expect": "fewer",
+      "before": {
+        "ref": "b6be84c9d7"
+      },
+      "after": {
+        "ref": "46dcdeec2a"
+      },
+      "fixtures": [
+        {
+          "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "before": {
+            "ir": 490233216,
+            "meshes": 285,
+            "vertices": 35940,
+            "triangles": 19456
+          },
+          "after": {
+            "ir": 489287415,
+            "meshes": 285,
+            "vertices": 35940,
+            "triangles": 19456
+          },
+          "verdict": "tracks",
+          "observed": "fewer",
+          "relDelta": -0.0019292878759157763,
+          "outputChanged": false
+        },
+        {
+          "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+          "before": {
+            "ir": 50684119198,
+            "meshes": 1402,
+            "vertices": 218619,
+            "triangles": 132760
+          },
+          "after": {
+            "ir": 26800231418,
+            "meshes": 1402,
+            "vertices": 218619,
+            "triangles": 132760
+          },
+          "verdict": "tracks",
+          "observed": "fewer",
+          "relDelta": -0.47123020302861374,
+          "outputChanged": false
+        }
+      ]
+    },
+    {
+      "id": "seam-conform-1916",
+      "title": "#1916 squash on main (seam conform + CDT scan kill)",
+      "class": "win",
+      "ledger": "ISSUE_129 geometry, main before seam conform 979 ms -> 646 ms",
+      "expect": "fewer",
+      "before": {
+        "ref": "428c5ae54"
+      },
+      "after": {
+        "ref": "401ab1842"
+      },
+      "fixtures": [
+        {
+          "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "before": {
+            "ir": 481948286,
+            "meshes": 285,
+            "vertices": 35985,
+            "triangles": 19516
+          },
+          "after": {
+            "ir": 489312873,
+            "meshes": 285,
+            "vertices": 35940,
+            "triangles": 19456
+          },
+          "verdict": "does-not-track",
+          "observed": "more",
+          "relDelta": 0.015280865632127178,
+          "outputChanged": true
+        },
+        {
+          "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+          "before": {
+            "ir": 36793831266,
+            "meshes": 1402,
+            "vertices": 217498,
+            "triangles": 131865
+          },
+          "after": {
+            "ir": 26795123021,
+            "meshes": 1402,
+            "vertices": 218619,
+            "triangles": 132760
+          },
+          "verdict": "tracks",
+          "observed": "fewer",
+          "relDelta": -0.2717495814098459,
+          "outputChanged": true
+        }
+      ]
+    },
+    {
+      "id": "dedup-gate-1909",
+      "title": "#1909 / PR #1977 faceted-BREP dedup-key gate above 20,000 faces",
+      "class": "win",
+      "ledger": "2.00x fewer point accesses on a synthetic 980k-face BREP; no corpus fixture crosses the gate, wall-clock A/B was pure noise",
+      "expect": "flat",
+      "before": {
+        "ref": "8650ad5dd"
+      },
+      "after": {
+        "ref": "59792cc7d"
+      },
+      "fixtures": [
+        {
+          "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "before": {
+            "ir": 489433625,
+            "meshes": 285,
+            "vertices": 35940,
+            "triangles": 19456
+          },
+          "after": {
+            "ir": 490429058,
+            "meshes": 285,
+            "vertices": 35940,
+            "triangles": 19456
+          },
+          "verdict": "does-not-track",
+          "observed": "more",
+          "relDelta": 0.0020338467754437593,
+          "outputChanged": false
+        },
+        {
+          "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+          "before": {
+            "ir": 26798284153,
+            "meshes": 1402,
+            "vertices": 218473,
+            "triangles": 132760
+          },
+          "after": {
+            "ir": 26805959595,
+            "meshes": 1402,
+            "vertices": 218473,
+            "triangles": 132760
+          },
+          "verdict": "does-not-track",
+          "observed": "more",
+          "relDelta": 0.0002864154270541517,
+          "outputChanged": false
+        }
+      ]
+    },
+    {
+      "id": "brep-dedup-1184",
+      "title": "#1184 faceted-brep dedup with a cheap hash (re-enables content dedup)",
+      "class": "win",
+      "ledger": "shipped win: memoize shared geometry, big on steel/Tekla",
+      "expect": "fewer",
+      "before": {
+        "ref": "9d579cfca"
+      },
+      "after": {
+        "ref": "4a649b0ce"
+      },
+      "fixtures": [
+        {
+          "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "before": {
+            "ir": 1341668198,
+            "meshes": 285,
+            "vertices": 38674,
+            "triangles": 19890
+          },
+          "after": {
+            "ir": 1358688974,
+            "meshes": 285,
+            "vertices": 38674,
+            "triangles": 19890
+          },
+          "verdict": "does-not-track",
+          "observed": "more",
+          "relDelta": 0.012686278191115029,
+          "outputChanged": false
+        },
+        {
+          "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+          "before": {
+            "ir": 158753876814,
+            "meshes": 1402,
+            "vertices": 355765,
+            "triangles": 146725
+          },
+          "after": {
+            "ir": 158844275201,
+            "meshes": 1402,
+            "vertices": 355765,
+            "triangles": 146725
+          },
+          "verdict": "does-not-track",
+          "observed": "more",
+          "relDelta": 0.0005694247524166795,
+          "outputChanged": false
+        }
+      ]
+    },
+    {
+      "id": "point-cache-1568",
+      "title": "#1568 CartesianPoint cache hoisted across a worker's parts",
+      "class": "win",
+      "ledger": "shipped win: memoize shared points across parts",
+      "expect": "fewer",
+      "before": {
+        "ref": "f7f3437b8"
+      },
+      "after": {
+        "ref": "846db7df0"
+      },
+      "fixtures": [
+        {
+          "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "before": {
+            "ir": 1408753830,
+            "meshes": 285,
+            "vertices": 36256,
+            "triangles": 19828
+          },
+          "after": {
+            "ir": 1406859087,
+            "meshes": 285,
+            "vertices": 36256,
+            "triangles": 19828
+          },
+          "verdict": "tracks",
+          "observed": "fewer",
+          "relDelta": -0.0013449780647623866,
+          "outputChanged": false
+        },
+        {
+          "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+          "before": {
+            "ir": 76993579488,
+            "meshes": 1402,
+            "vertices": 226781,
+            "triangles": 140227
+          },
+          "after": {
+            "ir": 77002234217,
+            "meshes": 1402,
+            "vertices": 226781,
+            "triangles": 140227
+          },
+          "verdict": "does-not-track",
+          "observed": "more",
+          "relDelta": 0.00011240845090659671,
+          "outputChanged": false
+        }
+      ]
+    },
+    {
+      "id": "point-cache-1572",
+      "title": "#1572 per-worker point cache kept across chunks and rayon splits",
+      "class": "win",
+      "ledger": "shipped win (with #1568): the cache survives chunk boundaries",
+      "expect": "fewer",
+      "before": {
+        "ref": "8490428db"
+      },
+      "after": {
+        "ref": "a03b38705"
+      },
+      "fixtures": [
+        {
+          "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "before": {
+            "ir": 1407058292,
+            "meshes": 285,
+            "vertices": 36256,
+            "triangles": 19828
+          },
+          "after": {
+            "ir": 1407096396,
+            "meshes": 285,
+            "vertices": 36256,
+            "triangles": 19828
+          },
+          "verdict": "does-not-track",
+          "observed": "flat",
+          "relDelta": 0.000027080612236639304,
+          "outputChanged": false
+        },
+        {
+          "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+          "before": {
+            "ir": 76972301267,
+            "meshes": 1402,
+            "vertices": 226781,
+            "triangles": 140227
+          },
+          "after": {
+            "ir": 76966898080,
+            "meshes": 1402,
+            "vertices": 226781,
+            "triangles": 140227
+          },
+          "verdict": "does-not-track",
+          "observed": "flat",
+          "relDelta": -0.00007019651109634271,
+          "outputChanged": false
+        }
+      ]
+    },
+    {
+      "id": "content-dedup-1130",
+      "title": "#1130 content dedup lands (hash re-decodes the subtree)",
+      "class": "dead-end",
+      "ledger": "20-30% slower net; turned OFF by #1177",
+      "expect": "more",
+      "before": {
+        "ref": "9fca35988"
+      },
+      "after": {
+        "ref": "c7df70eb0"
+      },
+      "fixtures": [
+        {
+          "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "before": {
+            "ir": 1890989583,
+            "meshes": 285,
+            "vertices": 39042,
+            "triangles": 19970
+          },
+          "after": {
+            "ir": 2079546628,
+            "meshes": 285,
+            "vertices": 39042,
+            "triangles": 19970
+          },
+          "verdict": "tracks",
+          "observed": "more",
+          "relDelta": 0.09971342343454888,
+          "outputChanged": false
+        },
+        {
+          "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+          "before": {
+            "ir": 244867599010,
+            "meshes": 1402,
+            "vertices": 347624,
+            "triangles": 143889
+          },
+          "after": {
+            "ir": 245684727347,
+            "meshes": 1402,
+            "vertices": 347624,
+            "triangles": 143889
+          },
+          "verdict": "tracks",
+          "observed": "more",
+          "relDelta": 0.0033370210689517552,
+          "outputChanged": false
+        }
+      ]
+    },
+    {
+      "id": "content-dedup-off-1177",
+      "title": "#1177 turns #1130 content dedup off",
+      "class": "dead-end",
+      "ledger": "the revert of a 20-30% net loss",
+      "expect": "fewer",
+      "before": {
+        "ref": "f0abc8832"
+      },
+      "after": {
+        "ref": "f5901b8c3"
+      },
+      "fixtures": [
+        {
+          "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "before": {
+            "ir": 1529887581,
+            "meshes": 285,
+            "vertices": 38674,
+            "triangles": 19890
+          },
+          "after": {
+            "ir": 1341639143,
+            "meshes": 285,
+            "vertices": 38674,
+            "triangles": 19890
+          },
+          "verdict": "tracks",
+          "observed": "fewer",
+          "relDelta": -0.12304723584784757,
+          "outputChanged": false
+        },
+        {
+          "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+          "before": {
+            "ir": 159592365120,
+            "meshes": 1402,
+            "vertices": 355765,
+            "triangles": 146725
+          },
+          "after": {
+            "ir": 158742770466,
+            "meshes": 1402,
+            "vertices": 355765,
+            "triangles": 146725
+          },
+          "verdict": "tracks",
+          "observed": "fewer",
+          "relDelta": -0.005323529439275974,
+          "outputChanged": false
+        }
+      ]
+    },
+    {
+      "id": "vertex-reuse-4061",
+      "title": "#4055 / PR #4061 CDT constraint-inventory vertex reuse (rejected)",
+      "class": "dead-end",
+      "ledger": "native full call -1.17% (ratio of medians) / -1.27% (median paired ratio) over 27 fixtures; rejected on browser readiness (+0.63%) and browser output gates",
+      "expect": "fewer",
+      "before": {
+        "ref": "e40992485"
+      },
+      "after": {
+        "ref": "e40992485",
+        "patch": "4fbbe8dd5:scripts/perf/evidence/rejected-vertex-reuse-2026-09-07/measured-candidate.patch"
+      },
+      "fixtures": [
+        {
+          "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "before": {
+            "ir": 424387539,
+            "meshes": 285,
+            "vertices": 35940,
+            "triangles": 19456
+          },
+          "after": {
+            "ir": 423933147,
+            "meshes": 285,
+            "vertices": 35940,
+            "triangles": 19456
+          },
+          "verdict": "tracks",
+          "observed": "fewer",
+          "relDelta": -0.0010707006173430553,
+          "outputChanged": false
+        },
+        {
+          "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+          "before": {
+            "ir": 26898343466,
+            "meshes": 1402,
+            "vertices": 218326,
+            "triangles": 132674
+          },
+          "after": {
+            "ir": 26608475240,
+            "meshes": 1402,
+            "vertices": 218326,
+            "triangles": 132674
+          },
+          "verdict": "tracks",
+          "observed": "fewer",
+          "relDelta": -0.010776434108903351,
+          "outputChanged": false
+        }
+      ]
+    },
+    {
+      "id": "parity-bvh-4054",
+      "title": "#4054 / PR #4060 component parity BVH filtering (rejected)",
+      "class": "dead-end",
+      "ledger": "no corpus cold-load gain established (one-pair Chrome screen; timeouts and gate failures); no native number recorded",
+      "expect": "flat",
+      "before": {
+        "ref": "96ea5f08e"
+      },
+      "after": {
+        "ref": "96ea5f08e",
+        "patch": "4fbbe8dd5:scripts/perf/evidence/component-parity-bvh-rejected-2026-09-07/measured-candidate.patch"
+      },
+      "fixtures": [
+        {
+          "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "before": {
+            "ir": 424387855,
+            "meshes": 285,
+            "vertices": 35940,
+            "triangles": 19456
+          },
+          "after": {
+            "ir": 423504894,
+            "meshes": 285,
+            "vertices": 35940,
+            "triangles": 19456
+          },
+          "verdict": "does-not-track",
+          "observed": "fewer",
+          "relDelta": -0.002080551998831352,
+          "outputChanged": false
+        },
+        {
+          "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+          "before": {
+            "ir": 26898364326,
+            "meshes": 1402,
+            "vertices": 218326,
+            "triangles": 132674
+          },
+          "after": {
+            "ir": 25354800542,
+            "meshes": 1402,
+            "vertices": 218326,
+            "triangles": 132674
+          },
+          "verdict": "does-not-track",
+          "observed": "fewer",
+          "relDelta": -0.0573850426476672,
+          "outputChanged": false
+        }
+      ]
+    },
+    {
+      "id": "worker-sizing-1431",
+      "title": "#1431 worker right-sizing (SMALL_FILE_MB 64 -> 24), TypeScript only",
+      "class": "scheduling",
+      "ledger": "-21% peak memory, 0 regression",
+      "expect": "flat",
+      "before": {
+        "ref": "e6bd2dd32"
+      },
+      "after": {
+        "ref": "6eb46f1f8"
+      },
+      "fixtures": [
+        {
+          "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "before": {
+            "ir": 1390630936,
+            "meshes": 285,
+            "vertices": 38506,
+            "triangles": 19834
+          },
+          "after": {
+            "ir": 1390513165,
+            "meshes": 285,
+            "vertices": 38506,
+            "triangles": 19834
+          },
+          "verdict": "tracks",
+          "observed": "flat",
+          "relDelta": -0.00008468889692527307,
+          "outputChanged": false
+        }
+      ]
+    },
+    {
+      "id": "threaded-wasm-1255",
+      "title": "#1255 threaded-WASM CSG bundle (the surviving half of the #1429 dead end), off by default",
+      "class": "scheduling",
+      "ledger": "4.19x CSG-only isolated, 2.33x whole pipeline at 4 threads, regressed at 8; live path unchanged",
+      "expect": "flat",
+      "before": {
+        "ref": "94e45011f"
+      },
+      "after": {
+        "ref": "736085b15"
+      },
+      "fixtures": [
+        {
+          "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "before": {
+            "ir": 1353629106,
+            "meshes": 285,
+            "vertices": 38674,
+            "triangles": 19890
+          },
+          "after": {
+            "ir": 1353810462,
+            "meshes": 285,
+            "vertices": 38674,
+            "triangles": 19890
+          },
+          "verdict": "does-not-track",
+          "observed": "more",
+          "relDelta": 0.00013397761557884232,
+          "outputChanged": false
+        },
+        {
+          "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+          "before": {
+            "ir": 158823454482,
+            "meshes": 1402,
+            "vertices": 355765,
+            "triangles": 146725
+          },
+          "after": {
+            "ir": 158827185203,
+            "meshes": 1402,
+            "vertices": 355765,
+            "triangles": 146725
+          },
+          "verdict": "tracks",
+          "observed": "flat",
+          "relDelta": 0.000023489735896802417,
+          "outputChanged": false
+        }
+      ]
+    }
+  ]
+}

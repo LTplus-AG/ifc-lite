@@ -17,7 +17,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { ViewerState } from '../../apps/viewer/src/store';
-import { DEVICE_LOST_SIGNAL, skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss';
+import { DEVICE_LOST_STATE_ERROR, skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
@@ -49,7 +49,7 @@ test('COPC files stream octree nodes into one renderer asset each and free them 
     if (models.some((m) => m.loadState === 'error')) return `error: ${models.map((m) => m.loadError).join(', ')}`;
     return !state.loading && models.length === 1 && models[0].pointCloudHandleId !== undefined
       && models[0].loadState === 'complete' ? 'ok' : false;
-  }, DEVICE_LOST_SIGNAL.source, { timeout: 120_000 }).then((h) => h.jsonValue());
+  }, DEVICE_LOST_STATE_ERROR.source, { timeout: 120_000 }).then((h) => h.jsonValue());
   if (outcome === 'device-lost' || await gpu.lost(500)) skipForGpuDeviceLoss('COPC load', String(outcome));
   expect(outcome, `load outcome; page errors: ${pageErrors.join('; ')}`).toBe('ok');
 

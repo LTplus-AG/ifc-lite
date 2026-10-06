@@ -18,7 +18,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { ViewerState } from '../../apps/viewer/src/store';
-import { DEVICE_LOST_SIGNAL, skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss';
+import { DEVICE_LOST_STATE_ERROR, skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
@@ -40,7 +40,7 @@ async function load(page: Page, file: typeof IFC, count: number) {
     if (models.some((m) => m.loadState === 'error')) return `error: ${models.map((m) => m.loadError).join(', ')}`;
     return !state.loading && !state.geometryStreamingActive && models.length === n
       && models.every((m) => m.pointCloudHandleId !== undefined || (m.geometryResult?.meshes.length ?? 0) > 0) ? 'ok' : false;
-  }, { n: count, deviceLost: DEVICE_LOST_SIGNAL.source }, { timeout: 120_000 }).then((h) => h.jsonValue());
+  }, { n: count, deviceLost: DEVICE_LOST_STATE_ERROR.source }, { timeout: 120_000 }).then((h) => h.jsonValue());
   if (outcome === 'device-lost') skipForGpuDeviceLoss(`load ${file.name}`, String(outcome));
   expect(outcome, `load ${file.name}`).toBe('ok');
 }

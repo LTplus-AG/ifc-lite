@@ -49,6 +49,7 @@ on:
       - 'packages/ifcx/**'
       - 'packages/lens/**'
       - 'packages/lists/**'
+      - 'packages/load-trace/**'
       - 'packages/mcp/**'
       - 'packages/merge/**'
       - 'packages/mutations/**'

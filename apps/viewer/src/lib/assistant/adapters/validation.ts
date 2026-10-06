@@ -16,7 +16,8 @@ export const validationAdapter: EvidenceAdapter = {
   },
   titleKey: 'validationPanel.title', descriptionKey: 'assistant.pickValidationDescription',
   rowMeaningKey: 'assistant.evidenceRowsValidation', unavailableKey: 'assistant.evidenceUnavailableValidation',
-  suggestionKeys: ['assistant.suggestValidationSummary', 'assistant.suggestValidationRequirements', 'assistant.suggestValidationCorrections'],
+  suggestionKeys: ['assistant.suggestValidationSummary', 'assistant.suggestValidationRequirements', 'assistant.suggestValidationCorrections', 'sceneActions.suggestShowFailing',
+    'assistant.suggestIdsDraft', 'assistant.suggestReportOutline'],
   readiness: s => s.idsValidationReport
     ? { status: { labelKey: 'assistant.pickSpecifications', params: { count: s.idsValidationReport.specificationResults.length } }, ready: true }
     : { status: { labelKey: 'assistant.pickNoReport' }, ready: false },

@@ -33,6 +33,7 @@
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/lens": "workspace:^",
     "@ifc-lite/lists": "workspace:^",
+    "@ifc-lite/load-trace": "workspace:^",
     "@ifc-lite/mcp": "workspace:^",
     "@ifc-lite/merge": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",

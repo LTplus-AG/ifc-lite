@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 
 /** Seeded box room, Z up: 5 x 4 m, 2.6 m high, a column r 0.25 at (3.5, 2), 3 mm noise, 1% outliers. */
-function room() {
+export function room() {
   let state = 6870n;
   const random = () => {
     state = (state * 6364136223846793005n + 1442695040888963407n) & 0xffffffffffffffffn;

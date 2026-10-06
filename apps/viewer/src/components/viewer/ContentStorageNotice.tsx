@@ -7,6 +7,7 @@ import { clashGroupLibrary, useClashGroupLibrary } from '@/lib/clash/group-works
 import { bcfDraftLibrary, useBcfDraftLibrary } from '@/lib/bcf-drafts/draft-library';
 import { bcfOutboxLibrary, initializeBcfOutbox, useBcfOutbox } from '@/lib/bcf-publication/outbox-store';
 import { modelChangeLibrary, useModelChangeReceipts } from '@/lib/actions/receipts';
+import { clashGroupApplicationLibrary, useClashGroupApplications } from '@/lib/clash/group-applications';
 import { useRef, useState } from 'react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -29,7 +30,7 @@ const visibleLibraries = () => {
   return { validation: state.savedValidationReports, comparison: state.savedComparisons, document: state.documents,
     assistant: useAssistantLibrary.getState().entries, clashGroups: useClashGroupLibrary.getState().entries,
     bcfDrafts: useBcfDraftLibrary.getState().entries, bcfOutbox: useBcfOutbox.getState().entries,
-    modelChanges: useModelChangeReceipts.getState().entries };
+    modelChanges: useModelChangeReceipts.getState().entries, clashGroupApplications: useClashGroupApplications.getState().entries };
 };
 
 /** Per-library save status; backup includes all user-content libraries and unsaved drafts. */
@@ -45,6 +46,10 @@ export function ContentStorageNotice({ status, retry, restore }: {
   const draftsLoading = useBcfDraftLibrary(s => s.status.phase === 'loading');
   const outboxLoading = useBcfOutbox(s => s.status.phase === 'loading');
   const bcfLoading = draftsLoading || outboxLoading;
+  // Receipts are exported too: a backup taken while they load would silently omit them.
+  const changeReceiptsLoading = useModelChangeReceipts(s => s.status.phase === 'loading');
+  const groupReceiptsLoading = useClashGroupApplications(s => s.status.phase === 'loading');
+  const receiptsLoading = changeReceiptsLoading || groupReceiptsLoading;
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const states = Object.values(status.items);
@@ -68,6 +73,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
       clashGroups: useClashGroupLibrary.getState().status, bcfDrafts: useBcfDraftLibrary.getState().status,
       bcfOutbox: useBcfOutbox.getState().status,
       modelChanges: useModelChangeReceipts.getState().status,
+      clashGroupApplications: useClashGroupApplications.getState().status,
     }, preserved.drafts), null, 2), 'ifc-lite-library-backup.json', 'application/json');
     if (!preserved.complete) toast.info(t('contentStorage.draftReadUnavailable'));
   };
@@ -76,7 +82,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     const drafts = parsed.drafts ?? [];
     stageContentDrafts(drafts);
     const state = useViewerStore.getState();
-    const initialized = await Promise.all([assistantLibrary.initialize(), clashGroupLibrary.initialize(), bcfDraftLibrary.initialize(), modelChangeLibrary.initialize(),
+    const initialized = await Promise.all([assistantLibrary.initialize(), clashGroupLibrary.initialize(), bcfDraftLibrary.initialize(), modelChangeLibrary.initialize(), clashGroupApplicationLibrary.initialize(),
       initializeBcfOutbox(), state.initializeValidationReports(), state.initializeSavedComparisons(), state.initializeDocuments()]);
     let count: number, committed: readonly ContentCommitReceipt[] = [];
     try {
@@ -91,6 +97,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
       for (const entry of error.entries.clashGroups ?? []) clashGroupLibrary.stage(entry.id, entry);
       for (const entry of error.entries.bcfDrafts ?? []) bcfDraftLibrary.stage(entry.id, entry);
       for (const entry of error.entries.modelChanges ?? []) modelChangeLibrary.stage(entry.id, entry);
+      for (const entry of error.entries.clashGroupApplications ?? []) clashGroupApplicationLibrary.stage(entry.id, entry);
       // Staged outbox records are visible only; dispatch reads committed rows, and these are already blocked.
       for (const entry of error.entries.bcfOutbox ?? []) bcfOutboxLibrary.stage(entry.id, entry);
       for (const entry of error.entries.document) state.stageDocument(entry);
@@ -103,7 +110,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     // A committed import is never restaged just because refreshing its UI failed.
     try {
       const refreshed = await Promise.all([assistantLibrary.refresh(committed), clashGroupLibrary.refresh(committed),
-        bcfDraftLibrary.refresh(committed), bcfOutboxLibrary.refresh(committed), modelChangeLibrary.refresh(committed), state.refreshValidationReports(committed), state.refreshSavedComparisons(committed), state.refreshDocuments(committed)]);
+        bcfDraftLibrary.refresh(committed), bcfOutboxLibrary.refresh(committed), modelChangeLibrary.refresh(committed), clashGroupApplicationLibrary.refresh(committed), state.refreshValidationReports(committed), state.refreshSavedComparisons(committed), state.refreshDocuments(committed)]);
       if (!refreshed.every(Boolean)) toast.info(t('contentStorage.refreshFailed'));
     }
     catch (error) {
@@ -121,14 +128,14 @@ export function ContentStorageNotice({ status, retry, restore }: {
     <details>
       <summary className="cursor-pointer">{t('contentStorage.controls')}</summary>
       <div className="flex flex-wrap gap-1 py-1">
-        <Button size="sm" variant="outline" disabled={busy || librariesLoading || assistantLoading || clashGroupsLoading || bcfLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
+        <Button size="sm" variant="outline" disabled={busy || librariesLoading || assistantLoading || clashGroupsLoading || bcfLoading || receiptsLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
         {problem && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           if (await confirmDialog({ description: t('contentStorage.restoreConfirm'), destructive: true })) await restore();
         })}>{t('contentStorage.restore')}</Button>}
         <Button size="sm" variant="outline" disabled={busy} onClick={() => input.current?.click()}>{t('contentStorage.import')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           const live = useViewerStore.getState();
-          const saved = await Promise.all([assistantLibrary.retry(), clashGroupLibrary.retry(), bcfDraftLibrary.retry(), bcfOutboxLibrary.retry(), modelChangeLibrary.retry(), live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons(), retryContentDrafts()]);
+          const saved = await Promise.all([assistantLibrary.retry(), clashGroupLibrary.retry(), bcfDraftLibrary.retry(), bcfOutboxLibrary.retry(), modelChangeLibrary.retry(), clashGroupApplicationLibrary.retry(), live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons(), retryContentDrafts()]);
           const identitiesSaved = await retryContentImports();
           if (saved.every(Boolean) && identitiesSaved) toast.success(t('contentStorage.saved'));
           else toast.error(t('contentStorage.someUnsaved'));

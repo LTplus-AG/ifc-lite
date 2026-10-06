@@ -127,7 +127,12 @@ export function hookCensus(srcRoot = VIEWER_SRC, paths = PATHS, top = 10) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   const topArg = args.indexOf('--top');
-  const top = topArg >= 0 ? Number(args[topArg + 1]) || 10 : 10;
+  // `--top 0` is valid (totals only); only a missing/garbled value is an error.
+  const top = topArg >= 0 ? Number(args[topArg + 1]) : 10;
+  if (!Number.isInteger(top) || top < 0) {
+    console.error(`hook-census: --top expects a non-negative integer, got ${JSON.stringify(args[topArg + 1])}`);
+    process.exit(2);
+  }
   const census = hookCensus(VIEWER_SRC, PATHS, top);
   if (args.includes('--json')) {
     console.log(JSON.stringify(census, null, 2));

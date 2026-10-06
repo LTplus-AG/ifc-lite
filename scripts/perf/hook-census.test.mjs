@@ -6,6 +6,7 @@
 // call sites and store subscriptions in the component/hook modules it reaches.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -65,4 +66,14 @@ test('#6957 the four viewer paths resolve to real entry modules', () => {
   for (const name of ['viewport', 'properties', 'hierarchy', 'streaming']) {
     assert.ok(census[name].modules > 0 && census[name].hooks > 0, `${name}: ${JSON.stringify(census[name])}`);
   }
+});
+
+test('#6957 --top 0 yields totals with no top modules; a garbled --top is rejected', () => {
+  const cli = new URL('./hook-census.mjs', import.meta.url).pathname;
+  const zero = spawnSync(process.execPath, [cli, '--json', '--top', '0'], { encoding: 'utf8' });
+  assert.equal(zero.status, 0, zero.stderr);
+  for (const path of Object.values(JSON.parse(zero.stdout))) assert.deepEqual(path.topModules, [], '--top 0 must not fall back to the default 10');
+  const bad = spawnSync(process.execPath, [cli, '--top', 'lots'], { encoding: 'utf8' });
+  assert.equal(bad.status, 2);
+  assert.match(bad.stderr, /--top expects a non-negative integer/);
 });

@@ -5,12 +5,20 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { diffCounters, perfCounters } from '@ifc-lite/load-trace';
-import { installReactCommitCounter } from './reactCommits.js';
+import { existsSync } from 'node:fs';
+
+// Loaded after asserting the module exists, so a reverted counter fails this
+// test on an assertion rather than as a file that cannot load.
+async function loadReactCommits(): Promise<typeof import('./reactCommits.js')> {
+  assert.ok(existsSync(new URL('./reactCommits.ts', import.meta.url)), 'lib/perf/reactCommits.ts must exist');
+  return import('./reactCommits.js');
+}
 
 perfCounters.enable();
 
 describe('React commit counter (#6957)', () => {
   it('installs a DevTools hook that react-dom accepts and counts its commits', async () => {
+    const { installReactCommitCounter } = await loadReactCommits();
     const target: Record<string, unknown> = {};
     installReactCommitCounter(target);
     // react-dom reads the global hook when it loads, so install it on the real
@@ -35,7 +43,8 @@ describe('React commit counter (#6957)', () => {
     }
   });
 
-  it('chains onto an existing DevTools hook instead of replacing it', () => {
+  it('chains onto an existing DevTools hook instead of replacing it', async () => {
+    const { installReactCommitCounter } = await loadReactCommits();
     const seen: unknown[] = [];
     const hook = { supportsFiber: true, onCommitFiberRoot: (...a: unknown[]) => seen.push(a) };
     const target: Record<string, unknown> = { __REACT_DEVTOOLS_GLOBAL_HOOK__: hook };

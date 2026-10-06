@@ -7,10 +7,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { censusFrom, hookCensus } from './hook-census.mjs';
+const CENSUS = new URL('./hook-census.mjs', import.meta.url);
+
+// Loaded per test, after asserting the module exists, so a reverted census
+// fails these tests on an assertion rather than as a file that cannot load.
+async function loadCensus() {
+  assert.ok(existsSync(CENSUS), 'scripts/perf/hook-census.mjs must exist');
+  return import(CENSUS.href);
+}
 
 function fixture(files) {
   const root = mkdtempSync(join(tmpdir(), 'hook-census-'));
@@ -21,7 +28,8 @@ function fixture(files) {
   return root;
 }
 
-test('#6957 counts hooks and subscriptions across the reachable component and hook modules', () => {
+test('#6957 counts hooks and subscriptions across the reachable component and hook modules', async () => {
+  const { censusFrom } = await loadCensus();
   const root = fixture({
     'Panel.tsx': `
       import React, { useMemo } from 'react';
@@ -29,6 +37,7 @@ test('#6957 counts hooks and subscriptions across the reachable component and ho
       import { useSelection } from '@/hooks/useSelection';
       import { format } from './format';
       import type { Unused } from './TypesOnly';
+      import './Panel.test';
       const Lazy = React.lazy(() => import('./LazyPane'));
       export function Panel() {
         const a = useViewerStore((s) => s.a);
@@ -61,7 +70,8 @@ test('#6957 counts hooks and subscriptions across the reachable component and ho
   }
 });
 
-test('#6957 the four viewer paths resolve to real entry modules', () => {
+test('#6957 the four viewer paths resolve to real entry modules', async () => {
+  const { hookCensus } = await loadCensus();
   const census = hookCensus();
   for (const name of ['viewport', 'properties', 'hierarchy', 'streaming']) {
     assert.ok(census[name].modules > 0 && census[name].hooks > 0, `${name}: ${JSON.stringify(census[name])}`);
@@ -69,7 +79,8 @@ test('#6957 the four viewer paths resolve to real entry modules', () => {
 });
 
 test('#6957 --top 0 yields totals with no top modules; a garbled --top is rejected', () => {
-  const cli = new URL('./hook-census.mjs', import.meta.url).pathname;
+  assert.ok(existsSync(CENSUS), 'scripts/perf/hook-census.mjs must exist');
+  const cli = CENSUS.pathname;
   const zero = spawnSync(process.execPath, [cli, '--json', '--top', '0'], { encoding: 'utf8' });
   assert.equal(zero.status, 0, zero.stderr);
   for (const path of Object.values(JSON.parse(zero.stdout))) assert.deepEqual(path.topModules, [], '--top 0 must not fall back to the default 10');

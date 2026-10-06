@@ -24,7 +24,7 @@ export function passagesOf(source: string, value: string): Passage[] {
     while (start < end) {
       let stop = Math.min(end, start + PASSAGE_CHARACTERS);
       if (stop < end) {
-        const space = value.lastIndexOf(' ', stop);
+        const space = value.lastIndexOf(' ', stop - 1);
         if (space > start + PASSAGE_CHARACTERS / 2) stop = space + 1;
       }
       // Never split a surrogate pair: the quote must be representable on its own.

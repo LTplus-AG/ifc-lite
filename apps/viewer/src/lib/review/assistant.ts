@@ -1,0 +1,52 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * "Ask the assistant about this card" (P18, #6922). The Review panel pins the
+ * card it was asked about; the `review` evidence adapter projects exactly that
+ * card: its findings with native statuses, run temporality and completeness,
+ * and the separately stored human decision. The card object is the source
+ * identity, so pinning another card makes earlier evidence stale.
+ */
+
+import { create } from 'zustand';
+import type { CoordinationCard } from './cards';
+import type { CardDecision } from './workspace';
+
+export const useReviewAssistantCard = create<{ card: CoordinationCard | null; decision: CardDecision | null }>(() => ({ card: null, decision: null }));
+
+/** Pin one card (and the person's decision on it) for the next assistant attachment. */
+export function pinReviewCard(card: CoordinationCard, decision: CardDecision | null): void {
+  useReviewAssistantCard.setState({ card, decision });
+}
+
+export const REVIEW_EVIDENCE_LIMITATIONS =
+  'One coordination card from the review workspace. Findings were grouped only because they name exactly the same validated elements; '
+  + 'nativeStatus is the source analysis status, verbatim. run.temporal=historical is saved earlier evidence and does not describe the live model. '
+  + 'lifecycle no-longer-observed is a resolution candidate for a person to confirm, never a resolution; not-evaluated means no complete compatible run looked again. '
+  + 'humanDecision is the reviewer\'s own status and comment; do not restate it as an engine result, and never propose changing native statuses or BCF topic status.';
+
+/** One cited row per finding; the common envelope first, then the source fields. */
+export function reviewFindingRow(finding: CoordinationCard['findings'][number]) {
+  const [first] = finding.elements;
+  return {
+    kind: 'reviewFinding', modelId: first?.modelId ?? null, globalId: first?.globalId ?? null, status: finding.nativeStatus || null,
+    source: finding.source,
+    run: { label: finding.run.label, temporal: finding.run.temporal, capturedAt: finding.run.capturedAt, complete: finding.run.complete,
+      incomplete: finding.run.incomplete.map(gap => gap.detail ? `${gap.code}: ${gap.detail}` : gap.code) },
+    lifecycle: finding.lifecycle, title: finding.title, detail: finding.detail, disciplineCandidates: finding.disciplines, storeys: finding.storeys,
+    elements: finding.elements.map(element => ({ GlobalId: element.globalId, model: element.modelName })),
+  };
+}
+
+export function reviewCardSummary(card: CoordinationCard, decision: CardDecision | null) {
+  return {
+    kind: 'coordination-card', identity: card.identity, state: card.state, sources: card.sources, topics: card.topics,
+    relatedCards: card.related.length, findingCount: card.findings.length,
+    elements: card.elements.map(element => ({ GlobalId: element.globalId, model: element.modelName, ifcType: element.ifcType,
+      name: element.name, identity: element.resolution })),
+    humanDecision: decision ? { status: decision.status, comment: decision.comment, updatedAt: decision.updatedAt } : null,
+    limitations: REVIEW_EVIDENCE_LIMITATIONS,
+  };
+}

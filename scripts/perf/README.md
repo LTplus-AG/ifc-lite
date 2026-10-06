@@ -63,7 +63,7 @@ renderer logs "Failed to get WebGPU context", and the run measures no GPU work
 at all. The probe now checks only the canvas size, and the counters are read
 once they stop moving, not when the load root ends.
 
-### Frame-time rigs (#6960)
+## Frame-time rigs (#6960)
 
 Two rigs measure viewer frames; neither is a PR gate. Both inject the same
 in-page probe (`tests/benchmark/frames/frame-probe.ts`): rAF callback time,

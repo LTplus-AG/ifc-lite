@@ -20,6 +20,8 @@ const clashFinding = (): ReviewFinding => finding('c1', 'clash', [wall('W1'), pi
   { evidence: { kind: 'clash', clashId: 'c1', occurrenceKey: '', reviewKey: 'k' }, nativeStatus: 'hard' });
 const cardsOf = (...findings: ReviewFinding[]) => buildCards(findings, models).cards;
 const fixedNow = () => new Date('2026-03-01T00:00:00.000Z');
+/** Pinned oracle for the wall/pipe clash card (key 'arch.ifc\u001fW1\nmep.ifc\u001fP1'), computed outside cardDigest. */
+const CLASH_CARD_DIGEST = '40844136db37800c';
 
 test('a current clash card becomes one topic with the live clash as its exact member', async () => {
   const [card] = cardsOf(clashFinding());
@@ -27,7 +29,7 @@ test('a current clash card becomes one topic with the live clash as its exact me
   assert.deepEqual(exclusions, []);
   assert.equal(batch?.topics.length, 1);
   assert.equal(batch?.topics[0].members.length, 1);
-  assert.deepEqual(batch?.topics[0].origin, { kind: 'review', card: cardDigest(card) });
+  assert.deepEqual(batch?.topics[0].origin, { kind: 'review', card: CLASH_CARD_DIGEST });
   assert.equal(batch?.source.kind, 'review');
   assert.equal(batch?.createdAt, '2026-03-01T00:00:00.000Z');
 });
@@ -74,5 +76,11 @@ test('the archive footer of a review topic keeps its card origin, so a published
   const { batch } = await draftBatchFromCards('Review', [card], [live], { now: fixedNow });
   const topic = batch!.topics[0];
   const parsed = parseDraftFooter(describeWithFooter(topic, { batchId: batch!.id, full: { batchName: batch!.name, source: batch!.source } }));
-  assert.deepEqual(parsed?.origin, { kind: 'review', card: cardDigest(card) });
+  assert.deepEqual(parsed?.origin, { kind: 'review', card: CLASH_CARD_DIGEST });
+});
+
+test('a card digest is pinned to the card key and distinguishes keys', () => {
+  assert.equal(cardDigest({ key: 'arch.ifc\u001fW1\nmep.ifc\u001fP1' }), CLASH_CARD_DIGEST);
+  assert.equal(cardDigest({ key: 'card-a' }), '59bbf293d8a76e35');
+  assert.equal(cardDigest({ key: 'card-b' }), '58bbf100d5a7697c');
 });

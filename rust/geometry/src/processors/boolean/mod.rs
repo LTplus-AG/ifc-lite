@@ -874,7 +874,7 @@ impl BooleanClippingProcessor {
                 return Ok((mesh, false));
             }
             let clipper = ClippingProcessor::with_unit_scale(decoder.length_unit_scale());
-            let outcome = clipper.subtract_mesh(&mesh, &second_mesh);
+            let outcome = clipper.subtract_operand(&mesh, &second_mesh);
             self.absorb_failures(clipper.take_failures());
             // A rejection keeps the host un-cut; any failure is on record above.
             return Ok((outcome.into_mesh().unwrap_or(mesh), false));

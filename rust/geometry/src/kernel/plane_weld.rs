@@ -259,7 +259,9 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
 /// (#6940; the rule and its limits are in the [`incidence`] module docs).
 /// The union's mutual promotion keeps the unguarded weld: with the guard on
 /// it too, `union_many_nary_sweep_regression_gate` and
-/// `issue_3917_retries_share_one_boolean_budget` fail.
+/// `issue_3917_retries_share_one_boolean_budget` fail. So does the operand
+/// of an `IfcBooleanResult` DIFFERENCE (`ClippingProcessor::subtract_operand`
+/// says why): this form is for opening cutters.
 pub(crate) fn promote_subtract_cutter_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) -> usize {
     promote(cutter, host, true)
 }

@@ -20,7 +20,7 @@
 
 use ifc_lite_geometry::kernel::mesh_bridge::subtract;
 use ifc_lite_geometry::kernel::mesh_volume::mesh_volume;
-use ifc_lite_geometry::{extrude_profile, Mesh, Point2, Profile2D};
+use ifc_lite_geometry::{extrude_profile, ClippingProcessor, Mesh, Point2, Profile2D};
 use std::collections::HashMap;
 
 /// Directed-edge balance on a 1 mm position snap: every undirected edge must be
@@ -136,4 +136,30 @@ fn issue_6940_a_cutter_filling_a_hole_leaves_the_slab_watertight_and_unchanged()
             );
         }
     }
+}
+
+/// The guard is scoped to OPENING cutters. The second operand of an
+/// `IfcBooleanResult` DIFFERENCE goes through `subtract_operand` and keeps the
+/// weld it had before #6940, so on the same slab and cutter the two forms give
+/// different meshes: the opening form closed, the operand form what the
+/// unguarded weld produces.
+#[test]
+fn issue_6940_the_guard_is_for_opening_cutters_not_boolean_operands() {
+    let host = slab_with_two_holes(2.0 * G);
+    let cutter = box_cutter([[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]], -0.1, 0.35);
+    let clipper = ClippingProcessor::new();
+    let opening = clipper
+        .subtract_mesh(&host, &cutter)
+        .into_mesh()
+        .expect("the opening form produces a mesh");
+    let operand = clipper
+        .subtract_operand(&host, &cutter)
+        .into_mesh()
+        .expect("the operand form produces a mesh");
+    assert_eq!(open_edges(&opening), 0, "the opening form must leave the slab closed");
+    assert_ne!(
+        (&opening.positions, &opening.indices),
+        (&operand.positions, &operand.indices),
+        "the operand form took the guarded weld"
+    );
 }

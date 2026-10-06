@@ -38,7 +38,10 @@ fn snap(c: f64) -> f64 {
 // The cross-operand near-coincidence weld lives in `super::plane_weld`: it was
 // split out of this module when #3353 made it a boolean-wide concern rather
 // than a subtraction-only one, and this module was at its size budget.
-use super::plane_weld::{promote_operands_mutually, promote_subtract_cutter_onto_host_faces};
+use super::plane_weld::{
+    promote_cutter_verts_onto_host_faces, promote_operands_mutually,
+    promote_subtract_cutter_onto_host_faces,
+};
 
 /// `Mesh` → the kernel's triangle list (f32 → f64, snapped to the reconcile
 /// grid). Panic-free: an out-of-range index OR a non-finite (NaN/Inf) coord drops
@@ -146,9 +149,10 @@ pub(crate) fn orient_outward(mut tris: Vec<Tri>) -> Vec<Tri> {
     tris
 }
 
-/// `host − cutter` as a `Mesh`.
+/// `host − cutter` as a `Mesh`, the cutter welded as an OPENING cutter (see
+/// [`subtract_with_change`]).
 pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
-    subtract_with_change(host, cutter).0
+    subtract_with_change(host, cutter, true).0
 }
 
 /// Like [`subtract`], but also returns the classifier's `changed` bit (#4692):
@@ -160,12 +164,16 @@ pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
 /// `boolean(.., Difference)`: the same arrangement over the same operands,
 /// classified through the same one-component `BComponents`, and neither gates
 /// on conformity. The third element says whether the arrangement conformed.
-pub(crate) fn subtract_with_change(host: &Mesh, cutter: &Mesh) -> (Mesh, bool, bool) {
+///
+/// `opening` picks the weld: an opening cutter takes the guarded subtract weld
+/// (#6940), an `IfcBooleanResult` operand the plain one, as before #6940.
+pub(crate) fn subtract_with_change(host: &Mesh, cutter: &Mesh, opening: bool) -> (Mesh, bool, bool) {
     #[cfg(feature = "csg_capture")]
     crate::csg_capture::record_single(host, cutter);
     let h = orient_outward(mesh_to_tris(host));
     let mut c = mesh_to_tris(cutter);
-    promote_subtract_cutter_onto_host_faces(&mut c, &h);
+    let weld = if opening { promote_subtract_cutter_onto_host_faces } else { promote_cutter_verts_onto_host_faces };
+    weld(&mut c, &h);
     let c = orient_outward(c);
     let (tris, changed, conforming) = difference_all_lenient_with_conformity(&h, &[&c]);
     (tris_to_mesh_without_plane_tags(&tris), changed, conforming)

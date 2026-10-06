@@ -13,6 +13,10 @@ import { useViewerStore, type AuthoringOverlayChannel } from '@/store';
 import { GROUND_STOREY, PLUMBING_WALL, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { parseModelAuthoringBatch } from '@/lib/actions/model-authoring';
 import { modelChangeLibrary, useModelChangeReceipts } from '@/lib/actions/receipts';
+import { parseIDS } from '@ifc-lite/ids';
+import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
+import { runIdsCheck } from '@/lib/validation/run-ids-check';
+import { sampleIdsXml } from '@/test/sample-corrections-fixture';
 import { ModelAuthoringReview } from './ModelAuthoringReview';
 
 const original = useViewerStore.getState();
@@ -72,4 +76,23 @@ test('the authoring card gates on Edit mode, excludes dependent rows, previews g
   click(button('Undo these changes')!);
   await waitFor(() => useModelChangeReceipts.getState().entries.find((entry) => entry.kind === 'model.authoring')?.status === 'undone');
   assert.equal(view.getNewEntities().some((entity) => entity.type === 'IfcWall'), false, 'undo removes the created wall');
+});
+
+// #6912: reviewed authoring receipts record the loaded check's counts too, so Re-run validation is offered for them.
+test('an authoring apply records the loaded validation baseline on its receipt', async () => {
+  await modelChangeLibrary.initialize();
+  const { dataStore, view } = await seedAuthoringSample();
+  const state = useViewerStore.getState();
+  const { report, snapshot } = await runIdsCheck({ document: parseIDS(await sampleIdsXml()), modelId: 'arch', dataStore, mutationView: view,
+    locale: 'en', models: state.models });
+  state.setIdsValidationReport(stampAnalysisReport(report, captureAnalysisStamp()), snapshot);
+  const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Remove plumbing wall', units: 'mm',
+    frame: 'storey-local', operations: [{ op: 'element.delete', target: { globalId: PLUMBING_WALL, ifcClass: 'IfcWall', name: 'plumbing wall' } }] }));
+  const ui = render(<ModelAuthoringReview batch={batch} origin="test" />);
+  click([...ui.querySelectorAll('button')].find(b => b.textContent?.startsWith('Apply'))!);
+  await waitFor(() => useModelChangeReceipts.getState().entries.some((entry) => entry.title === 'Remove plumbing wall'));
+  const receipt = useModelChangeReceipts.getState().entries.find((entry) => entry.title === 'Remove plumbing wall');
+  assert.equal(receipt?.validation?.source, 'ids');
+  assert.equal(receipt?.validation?.beforeFreshness, 'current');
+  assert.ok((receipt?.validation?.before.length ?? 0) > 0, 'per-specification counts at apply');
 });

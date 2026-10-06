@@ -39,8 +39,10 @@ import { assistantPackAutomationEn } from './catalogues/assistant-pack-automatio
 import { chatByokEn } from './catalogues/chat-byok.en';
 import { modelChangesEn } from './catalogues/model-changes.en';
 import { clashGroupApplyEn } from './catalogues/clash-group-apply.en';
+import { tableCorrectionsEn } from './catalogues/table-corrections.en';
 import { assistantUsageEn } from './catalogues/assistant-usage.en';
 import { modelAuthoringEn } from './catalogues/model-authoring.en';
+import { sceneActionsEn } from './catalogues/scene-actions.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { commandsEn } from './catalogues/commands.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
@@ -229,8 +231,10 @@ export const en = {
   ...chatByokEn,
   ...modelChangesEn,
   ...clashGroupApplyEn,
+  ...tableCorrectionsEn,
   ...assistantUsageEn,
   ...modelAuthoringEn,
+  ...sceneActionsEn,
   ...clashPanelEn,
   ...clashToolsEn,
   ...bcfEn,

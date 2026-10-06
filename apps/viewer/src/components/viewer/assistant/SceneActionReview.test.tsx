@@ -1,0 +1,227 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import '@/test/setup-dom.js';
+import assert from 'node:assert/strict';
+import { afterEach, test } from 'node:test';
+import { act } from 'react';
+import { render, cleanup, click, type, waitFor } from '@/test/render';
+import { useViewerStore } from '@/store';
+import { cameraStub, sceneModels, W1, W2 } from '@/test/scene-actions-fixture';
+import { captureEvidence } from '@/lib/assistant/evidence';
+import { replaceEvidence, useAssistant, cancelAssistant } from '@/lib/assistant/conversation';
+import { setActiveApplication, useSceneSession } from '@/lib/actions/scene-session';
+import { clearApiKeys, updateApiKeys } from '@/services/api-keys';
+import { setGlobalCanvasRef, setGlobalRendererRef } from '@/hooks/useBCF';
+import type { Renderer } from '@ifc-lite/renderer';
+import { AssistantPanel } from './AssistantPanel';
+
+const initial = useViewerStore.getState();
+const originalFetch = globalThis.fetch;
+afterEach(() => {
+  cleanup(); cancelAssistant(); setActiveApplication(null); globalThis.fetch = originalFetch; useViewerStore.setState(initial, true);
+  useAssistant.setState({ snapshot: null, archived: null, messages: [], error: null, status: 'idle' });
+});
+
+const button = (root: HTMLElement, name: string | RegExp) =>
+  [...root.querySelectorAll('button')].find(b => typeof name === 'string' ? b.textContent === name : name.test(b.textContent ?? ''));
+
+// #6907: proposal card → native review → explicit apply → restore, through the mounted Assistant.
+test('a scene.actions answer is previewed inertly, applied on click and restored from the persistent bar', async () => {
+  useViewerStore.setState({ ...sceneModels(), cameraCallbacks: cameraStub().callbacks });
+  replaceEvidence(captureEvidence('loadReport'));
+  const answer = JSON.stringify({ version: 1, kind: 'scene.actions', title: 'Failing walls', actions: [
+    { type: 'isolate', targets: [{ globalId: W1 }, { globalId: '0Missing00000000000000' }] },
+    { type: 'colour', groups: [{ label: 'Failing', colour: 'red', targets: [{ globalId: W1 }] }] },
+    { type: 'section', units: 'm', plane: { origin: [0, 0, 0], normal: [0, 0, 1] } },
+  ] });
+  act(() => useAssistant.setState({ messages: [{ role: 'user', content: 'Show me the failing elements' }, { role: 'assistant', model: 'recorded', content: answer }] }));
+  const ui = render(<AssistantPanel />);
+  await waitFor(() => !!ui.querySelector('section[aria-label="Show in the model"]'), 'scene review card');
+  assert.match(ui.textContent ?? '', /Scene action proposal/);
+  assert.match(ui.textContent ?? '', /3 view actions/);
+  const review = ui.querySelector('section[aria-label="Show in the model"]')!;
+  assert.match(review.textContent ?? '', /Isolate · 1 element · 1 target not found or ambiguous/);
+  assert.match(review.textContent ?? '', /Refused: the coordinates lie outside the loaded models/);
+  assert.equal(useViewerStore.getState().isolatedEntities, null, 'reviewing changes nothing');
+
+  click(button(review as HTMLElement, 'Apply 2 actions')!);
+  assert.deepEqual([...useViewerStore.getState().isolatedEntities ?? []], [101]);
+  await waitFor(() => !!button(ui, /Restore previous view/), 'restore bar');
+  assert.match(review.textContent ?? '', /Applied to the view\./);
+  assert.match(ui.textContent ?? '', /Applied to the view: Failing walls/);
+  assert.equal(button(review as HTMLElement, 'Apply 2 actions')!.disabled, true, 'the applied proposal cannot be stacked on itself');
+
+  // A later answer replaces the card; the restore point survives it.
+  act(() => useAssistant.setState(s => ({ messages: [...s.messages, { role: 'user', content: 'Why?' }, { role: 'assistant', content: 'Because.' }] })));
+  assert.equal(ui.querySelector('section[aria-label="Show in the model"]'), null);
+  click(button(ui, /Restore previous view/)!);
+  assert.equal(useViewerStore.getState().isolatedEntities, null);
+  assert.equal(useSceneSession.getState().active, null);
+  await waitFor(() => /Previous view restored\./.test(ui.textContent ?? ''), 'restore report');
+});
+
+test('composer attaches the selection only on request, refuses a screenshot for a text-only model and clears after sending', async () => {
+  useViewerStore.setState({ ...sceneModels(), chatActiveModel: 'openai/gpt-free' });
+  useViewerStore.getState().setSelectedEntityIds([102]);
+  replaceEvidence(captureEvidence('loadReport'));
+  let body = '';
+  globalThis.fetch = async (_url, init) => {
+    body = String(init?.body);
+    return new Response('data: {"choices":[{"delta":{"content":"Ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+  };
+  const ui = render(<AssistantPanel />);
+  click(button(ui, 'Attach view')!);
+  assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /cannot read images/);
+  click(button(ui, 'Attach selection (1)')!);
+  assert.match(ui.textContent ?? '', /Selection: 1 element/);
+  type(ui.querySelector('textarea')!, 'What is selected?');
+  click(button(ui, 'Send')!);
+  await waitFor(() => useAssistant.getState().status === 'idle' && useAssistant.getState().messages.length === 2, 'send completes');
+  assert.match(body, new RegExp(W2));
+  assert.doesNotMatch(body, /data:image/);
+  await waitFor(() => !/Selection: 1 element/.test(ui.textContent ?? ''), 'attachment cleared after the send');
+  body = '';
+  type(ui.querySelector('textarea')!, 'And now?');
+  click(button(ui, 'Send')!);
+  await waitFor(() => useAssistant.getState().messages.length === 4, 'second send completes');
+  const sent = JSON.parse(body) as { messages: Array<{ content: unknown }> };
+  assert.equal(sent.messages.at(-1)?.content, 'And now?', 'the next message carries no selection unless attached again');
+});
+
+// #6907: applying a second proposal first restores the first one (camera included); the card says so before and after.
+test('a proposal applied over an active one discloses that the earlier view is restored first', async () => {
+  useViewerStore.setState({ ...sceneModels(), cameraCallbacks: cameraStub().callbacks });
+  replaceEvidence(captureEvidence('loadReport'));
+  const proposal = (title: string, globalId: string) => JSON.stringify({ version: 1, kind: 'scene.actions', title,
+    actions: [{ type: 'isolate', targets: [{ globalId }] }] });
+  act(() => useAssistant.setState({ messages: [{ role: 'user', content: 'Show W1' }, { role: 'assistant', content: proposal('Wall one', W1) }] }));
+  const ui = render(<AssistantPanel />);
+  await waitFor(() => !!ui.querySelector('section[aria-label="Show in the model"]'), 'first card');
+  const first = ui.querySelector('section[aria-label="Show in the model"]') as HTMLElement;
+  assert.doesNotMatch(first.textContent ?? '', /restores the view from before/, 'nothing to replace yet');
+  click(button(first, 'Apply 1 action')!);
+
+  act(() => useAssistant.setState(s => ({ messages: [...s.messages, { role: 'user', content: 'Now W2' }, { role: 'assistant', content: proposal('Wall two', W2) }] })));
+  await waitFor(() => /Wall two/.test(ui.querySelector('section[aria-label="Show in the model"]')?.textContent ?? ''), 'second card');
+  const second = ui.querySelector('section[aria-label="Show in the model"]') as HTMLElement;
+  assert.match(second.textContent ?? '', /Applying first restores the view from before “Wall one”, including the camera\./);
+  click(button(second, 'Apply 1 action')!);
+  assert.deepEqual([...useViewerStore.getState().isolatedEntities ?? []], [102]);
+  await waitFor(() => /Previous view restored\./.test(second.textContent ?? ''), 'the replaced restore is reported on the card');
+});
+
+// #6907: a capture still running when the message is sent must not attach itself to the next message.
+test('a viewport capture that finishes after the send is dropped, not attached to the next message', async () => {
+  useViewerStore.setState({ ...sceneModels(), chatActiveModel: 'gpt-6-luna' });
+  updateApiKeys({ openaiKey: 'sk-test' });
+  replaceEvidence(captureEvidence('loadReport'));
+  let release: () => void = () => {};
+  const gpuDone = new Promise<void>(resolve => { release = resolve; });
+  setGlobalRendererRef({ current: { getGPUDevice: () => ({ queue: { onSubmittedWorkDone: () => gpuDone } }) } as unknown as Renderer });
+  setGlobalCanvasRef({ current: { width: 0, height: 0, clientWidth: 0, clientHeight: 0, toDataURL: () => 'data:image/jpeg;base64,TEFURQ==' } as unknown as HTMLCanvasElement });
+  globalThis.fetch = async () => new Response('data: {"choices":[{"delta":{"content":"Ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+  try {
+    const ui = render(<AssistantPanel />);
+    click(button(ui, 'Attach view')!);
+    type(ui.querySelector('textarea')!, 'What is selected?');
+    let finish: () => void = () => {};
+    const streaming = new Promise<void>(resolve => { finish = resolve; });
+    globalThis.fetch = async () => { await streaming; return new Response('data: {"choices":[{"delta":{"content":"Ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'); };
+    click(button(ui, 'Send')!);
+    // The answer completes first; only then does the capture land.
+    finish();
+    await waitFor(() => useAssistant.getState().status === 'idle' && useAssistant.getState().messages.length === 2, 'send completes');
+    await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 600)); });
+    assert.doesNotMatch(ui.textContent ?? '', /could not be captured/i, 'the capture itself succeeded, so only the guard can drop it');
+    assert.doesNotMatch(ui.textContent ?? '', /Viewport screenshot/, 'the late capture belongs to the message already sent');
+  } finally {
+    clearApiKeys(); setGlobalRendererRef({ current: null }); setGlobalCanvasRef({ current: null });
+  }
+});
+
+// #6907: an apply that could not touch the view says so, keeps the report of the view it restored,
+// and a camera that could not be restored is never reported as "changed by you".
+test('an apply with nothing applicable and a restore without a camera are reported as unavailable', async () => {
+  const camera = cameraStub();
+  useViewerStore.setState({ ...sceneModels(), cameraCallbacks: camera.callbacks });
+  replaceEvidence(captureEvidence('loadReport'));
+  const isolateAndFrame = JSON.stringify({ version: 1, kind: 'scene.actions', title: 'Wall one',
+    actions: [{ type: 'isolate', targets: [{ globalId: W1 }] }, { type: 'frame', targets: [{ globalId: W1 }] }] });
+  act(() => useAssistant.setState({ messages: [{ role: 'user', content: 'Show W1' }, { role: 'assistant', content: isolateAndFrame }] }));
+  const ui = render(<AssistantPanel />);
+  await waitFor(() => !!ui.querySelector('section[aria-label="Show in the model"]'), 'first card');
+  click(button(ui.querySelector('section[aria-label="Show in the model"]') as HTMLElement, 'Apply 2 actions')!);
+  assert.deepEqual([...useViewerStore.getState().isolatedEntities ?? []], [101]);
+
+  // The viewport unmounts: no camera callbacks. A frame-only proposal now has nothing it can do.
+  act(() => useViewerStore.setState({ cameraCallbacks: {} }));
+  const frameOnly = JSON.stringify({ version: 1, kind: 'scene.actions', title: 'Frame W2', actions: [{ type: 'frame', targets: [{ globalId: W2 }] }] });
+  act(() => useAssistant.setState(s => ({ messages: [...s.messages, { role: 'user', content: 'Frame W2' }, { role: 'assistant', content: frameOnly }] })));
+  await waitFor(() => /Frame W2/.test(ui.querySelector('section[aria-label="Show in the model"]')?.textContent ?? ''), 'second card');
+  const second = ui.querySelector('section[aria-label="Show in the model"]') as HTMLElement;
+  click(button(second, 'Apply 1 action')!);
+  assert.equal(useViewerStore.getState().isolatedEntities, null, 'the earlier proposal was restored first');
+  await waitFor(() => /Not applied \(the 3D view is not ready\): Frame/.test(second.textContent ?? ''), 'unavailable action reported');
+  assert.doesNotMatch(second.textContent ?? '', /Applied to the view\./, 'nothing was applied');
+  assert.match(second.textContent ?? '', /Could not be restored \(the 3D view is not ready\): camera/);
+  assert.doesNotMatch(ui.textContent ?? '', /Kept as you changed it since: camera/);
+  assert.match(ui.textContent ?? '', /Previous view restored\./, 'the restore report is kept, not overwritten');
+});
+
+// #6907: a restore that put nothing back never announces "Previous view restored."
+test('a restore with nothing restorable says so instead of claiming success', async () => {
+  useViewerStore.setState({ ...sceneModels(), cameraCallbacks: cameraStub().callbacks });
+  replaceEvidence(captureEvidence('loadReport'));
+  const frameOnly = JSON.stringify({ version: 1, kind: 'scene.actions', title: 'Frame W1', actions: [{ type: 'frame', targets: [{ globalId: W1 }] }] });
+  act(() => useAssistant.setState({ messages: [{ role: 'user', content: 'Frame W1' }, { role: 'assistant', content: frameOnly }] }));
+  const ui = render(<AssistantPanel />);
+  await waitFor(() => !!ui.querySelector('section[aria-label="Show in the model"]'), 'card');
+  click(button(ui.querySelector('section[aria-label="Show in the model"]') as HTMLElement, 'Apply 1 action')!);
+  await waitFor(() => !!button(ui, /Restore previous view/), 'restore bar');
+  act(() => useViewerStore.setState({ cameraCallbacks: {} }));
+  click(button(ui, /Restore previous view/)!);
+  await waitFor(() => /Nothing of the previous view could be put back\./.test(ui.textContent ?? ''), 'honest headline');
+  assert.doesNotMatch(ui.textContent ?? '', /Previous view restored\./);
+  assert.match(ui.textContent ?? '', /Could not be restored \(the 3D view is not ready\): camera/);
+});
+
+// #6907: a lost GPU device rejects the capture's frame wait; the control reports a failure instead of staying "Capturing".
+test('a capture that rejects (device lost) reports a failed capture and frees the control', async () => {
+  useViewerStore.setState({ ...sceneModels(), chatActiveModel: 'gpt-6-luna' });
+  updateApiKeys({ openaiKey: 'sk-test' });
+  replaceEvidence(captureEvidence('loadReport'));
+  setGlobalRendererRef({ current: { getGPUDevice: () => ({ queue: { onSubmittedWorkDone: () => Promise.reject(new Error('device lost')) } }) } as unknown as Renderer });
+  setGlobalCanvasRef({ current: { width: 0, height: 0, clientWidth: 0, clientHeight: 0, toDataURL: () => 'data:image/jpeg;base64,TEFURQ==' } as unknown as HTMLCanvasElement });
+  try {
+    const ui = render(<AssistantPanel />);
+    click(button(ui, 'Attach view')!);
+    await waitFor(() => /could not be captured/i.test(ui.textContent ?? ''), 'failure reported');
+    assert.equal(button(ui, 'Attach view')?.disabled, false, 'the control is usable again');
+  } finally {
+    clearApiKeys(); setGlobalRendererRef({ current: null }); setGlobalCanvasRef({ current: null });
+  }
+});
+
+// #6907: a refused send keeps the prompt and attachments for a retry, including a capture that lands afterwards.
+test('a capture that finishes after a refused send stays attached for the retry', async () => {
+  useViewerStore.setState({ ...sceneModels(), chatActiveModel: 'gpt-6-luna' });
+  clearApiKeys();
+  replaceEvidence(captureEvidence('loadReport'));
+  let release: () => void = () => {};
+  const gpuDone = new Promise<void>(resolve => { release = resolve; });
+  setGlobalRendererRef({ current: { getGPUDevice: () => ({ queue: { onSubmittedWorkDone: () => gpuDone } }) } as unknown as Renderer });
+  setGlobalCanvasRef({ current: { width: 0, height: 0, clientWidth: 0, clientHeight: 0, toDataURL: () => 'data:image/jpeg;base64,TEFURQ==' } as unknown as HTMLCanvasElement });
+  try {
+    const ui = render(<AssistantPanel />);
+    click(button(ui, 'Attach view')!);
+    type(ui.querySelector('textarea')!, 'What is selected?');
+    click(button(ui, 'Send')!);
+    await waitFor(() => useAssistant.getState().error === 'missing-key', 'the send is refused without a key');
+    await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 600)); });
+    assert.match(ui.textContent ?? '', /Viewport screenshot/, 'the capture is kept for the retry');
+  } finally {
+    setGlobalRendererRef({ current: null }); setGlobalCanvasRef({ current: null });
+  }
+});

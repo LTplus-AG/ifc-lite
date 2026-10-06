@@ -10,7 +10,7 @@ export const loadReportAdapter: EvidenceAdapter = {
   id: 'loadReport', group: 'model', panelIds: ['loadReport'],
   titleKey: 'loadReportPanel.title', descriptionKey: 'assistant.pickLoadReportDescription',
   rowMeaningKey: 'assistant.evidenceRowsLoadReport', unavailableKey: 'assistant.evidenceUnavailableLoadReport',
-  suggestionKeys: ['assistant.suggestLoadReport', 'assistant.suggestAuthoring'],
+  suggestionKeys: ['assistant.suggestLoadReport', 'assistant.suggestAuthoring', 'assistant.suggestIdsDraft', 'assistant.suggestRulesDraft'],
   readiness: s => s.models.size ? { status: { labelKey: 'assistant.pickModels', params: { count: s.models.size } }, ready: true }
     : { status: { labelKey: 'assistant.pickNoModels' }, ready: false },
   identity: s => s.models,

@@ -58,8 +58,14 @@ const ISO_STAMP = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g;
 const ISO_PLACEHOLDER = '0000-00-00T00:00:00.000Z';
 const HASHED_NAME = /^(.+)-([A-Za-z0-9_-]{8})(\.[A-Za-z0-9]+)$/;
 
-/** File names under `dist` that carry a content hash (`<stem>-<8 chars>.<ext>`). */
-export function hashedAssetNames(dist) {
+/**
+ * File names under `dir` that carry a content hash (`<stem>-<8 chars>.<ext>`).
+ * Callers pass the entry's own directory (Vite's `assetsDir`), NOT `dist`: the
+ * shape also matches unhashed files copied from `public/` (`AC20-FZK-Haus.ifc`
+ * reads as stem `AC20`, hash `FZK-Haus`), and rewriting those would blank
+ * real, distinguishable strings.
+ */
+export function hashedAssetNames(dir) {
   const names = [];
   const walk = (dir) => {
     for (const ent of readdirSync(dir, { withFileTypes: true })) {
@@ -67,7 +73,7 @@ export function hashedAssetNames(dist) {
       else if (HASHED_NAME.test(ent.name)) names.push(ent.name);
     }
   };
-  walk(dist);
+  walk(dir);
   return names;
 }
 
@@ -82,8 +88,13 @@ export function hashedAssetNames(dist) {
  * keep the raw length, yet brotli q11 is chaotic in its input: re-hashing
  * one and the same entry moved its size by +0.5% in about 1 of 20 samples.
  *
- * Only names that exist in `dist` and ISO-8601 millisecond timestamps are
- * rewritten, so real code and string content still count.
+ * Only names that exist in the build's asset directory and ISO-8601 millisecond timestamps are
+ * rewritten, so real code and string content still count. Two known costs:
+ * the constant makes the many import strings of one stem identical, so the
+ * measured number sits below the bytes a browser downloads by roughly 6 bytes
+ * per distinct hashed name (a stable offset, not a trend), and a genuine
+ * ISO-8601 millisecond timestamp in app code or data is blanked too (a large
+ * table of unique stamps would be under-counted).
  *
  * @param {Buffer} buf  chunk bytes
  * @param {string[]} assetNames  from {@link hashedAssetNames}
@@ -163,7 +174,7 @@ export function measureBundle({ wasm, dist, commit, measuredAt = new Date().toIS
   const entryBytes = readFileSync(resolveAsset(dist, entry));
   // Compressed WITHOUT the per-build stamps (see stripBuildNoise); `raw` in
   // the detail stays the real byte count.
-  const entryStable = stripBuildNoise(entryBytes, hashedAssetNames(dist));
+  const entryStable = stripBuildNoise(entryBytes, hashedAssetNames(dirname(resolveAsset(dist, entry))));
 
   return {
     family: FAMILY,

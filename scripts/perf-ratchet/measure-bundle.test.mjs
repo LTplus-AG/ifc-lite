@@ -134,10 +134,81 @@ rt('the entry measures the same for two builds that differ only in content hashe
   }
 });
 
-rt('stripBuildNoise rewrites only hashed names that exist in dist, and timestamps', () => {
-  const out = measure.stripBuildNoise(
-    Buffer.from('a "x-AbCdEfGh.js" b "not-a-file-ZZZZZZZZ.js" 2026-10-06T09:54:58.613Z'), ['x-AbCdEfGh.js']).toString();
-  assert.equal(out, 'a "x-########.js" b "not-a-file-ZZZZZZZZ.js" 0000-00-00T00:00:00.000Z');
+const entryMetric = (root, dist) => measure.measureBundle({ wasm: join(root, 'w.wasm'), dist, commit: 'a' })
+  .metrics.find((x) => x.id === 'viewer-entry-js-brotli').value;
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+const randTok = (seed) => { let s = seed; return () => Array.from({ length: 8 }, () => ALPHABET[((s = (Math.imul(s, 1103515245) + 12345) >>> 0) >>> 16) % ALPHABET.length]).join(''); };
+
+rt('the entry is measured as exactly its placeholder form: same width, one constant for every hash and stamp', () => {
+  // Independent oracle: B is the entry already written in normalised form
+  // (names rewritten to `<stem>-########.js`, stamp to zeros) with no hashed
+  // files in dist, so nothing is rewritten. A is the real-looking build.
+  const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-form-'));
+  try {
+    writeFileSync(join(root, 'w.wasm'), 'x');
+    const tok = randTok(7);
+    const names = Array.from({ length: 120 }, (_, i) => `part${i}-${tok()}.js`);
+    const body = (ref, stamp) => `const t="${stamp}";\n${names.map((n) => `import("./${ref(n)}");`).join('\n')}\n${'export const x = 1;\n'.repeat(50)}`;
+    const dist = (tag, text, files) => {
+      const d = join(root, tag);
+      mkdirSync(join(d, 'assets'), { recursive: true });
+      for (const f of files) writeFileSync(join(d, 'assets', f), 'export {}');
+      writeFileSync(join(d, 'assets', 'main-AbCdEfGh.js'), text);
+      writeFileSync(join(d, 'index.html'), '<script type="module" src="/assets/main-AbCdEfGh.js"></script>');
+      return d;
+    };
+    const real = dist('real', body((n) => n, '2026-10-06T09:50:57.315Z'), names);
+    const placeholder = dist('ph', body((n) => n.replace(/-[^-]{8}\.js$/, '-########.js'), '0000-00-00T00:00:00.000Z'), []);
+    assert.equal(entryMetric(root, real), entryMetric(root, placeholder));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+rt('hash-shaped names that are not files of the build are real content and still count', () => {
+  const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-lazy-'));
+  try {
+    writeFileSync(join(root, 'w.wasm'), 'x');
+    const sizes = [];
+    let text11 = '';
+    for (const seed of [11, 12]) {
+      const tok = randTok(seed);
+      const d = join(root, `d${seed}`);
+      mkdirSync(join(d, 'assets'), { recursive: true });
+      // 300 distinct hash-shaped names, none of them a file in dist.
+      const text = Array.from({ length: 300 }, (_, i) => `import("./gone${i}-${tok()}.js");`).join('\n');
+      if (seed === 11) text11 = text;
+      writeFileSync(join(d, 'assets', 'main-AbCdEfGh.js'), text);
+      writeFileSync(join(d, 'index.html'), '<script type="module" src="/assets/main-AbCdEfGh.js"></script>');
+      sizes.push(entryMetric(root, d));
+    }
+    // Nothing was rewritten: the metric is the plain brotli of the bytes, and
+    // 300 random 8-char tokens carry well over 1 KB of entropy.
+    assert.equal(sizes[0], measure.brotliSize(Buffer.from(text11)));
+    assert.ok(sizes[0] > 1500, `unknown tokens must stay random: ${sizes}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+rt('unhashed public files that merely look hashed (AC20-FZK-Haus.ifc) are not rewritten', () => {
+  const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-public-'));
+  try {
+    writeFileSync(join(root, 'w.wasm'), 'x');
+    const tok = randTok(21);
+    const d = join(root, 'd');
+    mkdirSync(join(d, 'assets'), { recursive: true });
+    mkdirSync(join(d, 'samples'), { recursive: true });
+    // Public files sit outside assets/ and have 8-char tails by accident.
+    const pub = Array.from({ length: 300 }, (_, i) => `model${i}-${tok()}.ifc`);
+    for (const f of pub) writeFileSync(join(d, 'samples', f), 'x');
+    const text = pub.map((f) => `fetch("/samples/${f}");`).join('\n');
+    writeFileSync(join(d, 'assets', 'main-AbCdEfGh.js'), text);
+    writeFileSync(join(d, 'index.html'), '<script type="module" src="/assets/main-AbCdEfGh.js"></script>');
+    assert.equal(entryMetric(root, d), measure.brotliSize(Buffer.from(text)), 'a public file name is content, not a build hash');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 rt('measureBundle names the missing build instead of measuring nothing', () => {

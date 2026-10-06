@@ -113,3 +113,20 @@ test('mounted preflight offers Edit mode for a graph that writes the model', asy
   assert.doesNotMatch(ui.textContent ?? '', /Edit mode/);
   assert.equal(useViewerStore.getState().flowLastRun, null);
 });
+
+// #6919: script source in a described graph is shown verbatim and pinned by the digest.
+test('mounted create review lists the script code of the new graph', () => {
+  useViewerStore.setState(fixtureModels(fixtureModel('m')));
+  replaceEvidence(captureEvidence('flow'));
+  const code = 'const factor = 2;\ninputs.a * factor';
+  reply({ version: 1, kind: 'flow.create', name: 'Scripted', nodes: [
+    { id: 'a', type: 'core.number', params: { value: 7 } }, { id: 'calc', type: 'script.run', params: { code } },
+  ], edges: [{ from: ['a', 'value'], to: ['calc', 'a'] }] });
+  const ui = render(<FlowProposalReview />);
+  click(button(ui, 'Review new graph'));
+  const proposal = useFlowCreateReview.getState().proposal!;
+  assert.deepEqual(proposal.code.map(entry => [entry.nodeId, entry.param, entry.code]), [['calc', 'code', code]]);
+  const listed = ui.querySelector('[aria-label="Script code this change sets"]');
+  assert.ok(listed && !listed.closest('details'), 'code is listed outside the collapsed JSON');
+  assert.equal(listed.querySelector('pre')?.textContent, code);
+});

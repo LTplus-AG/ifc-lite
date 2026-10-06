@@ -18,7 +18,7 @@ import { flowRegistry, viewerFlowFeatures } from '../flow/runner';
 import { requiredCapabilities } from '../flow/editor-ops';
 import type { EvidenceSnapshot } from './evidence';
 import { parseFlowCreate, type FlowCreateRequest } from './flow-create-envelope';
-import { isNativeParamValue, validateProposedGraph } from './flow-validate';
+import { changedCodeParams, isNativeParamValue, validateProposedGraph, type FlowCodeParam } from './flow-validate';
 import { trackingImpacts, type TrackingImpact } from './flow-tracking';
 
 export interface FlowCreateProposal {
@@ -33,6 +33,8 @@ export interface FlowCreateProposal {
   readonly unavailable: readonly string[];
   /** Node ids in native execution order. */
   readonly order: readonly string[];
+  /** Script source the new graph contains, listed verbatim in review. */
+  readonly code: readonly FlowCodeParam[];
   readonly digest: string;
 }
 export interface FlowCreateReceipt { readonly proposal: FlowCreateProposal; readonly flowId: string; readonly created: FlowDocument }
@@ -77,7 +79,8 @@ export function buildCreatedFlow(request: FlowCreateRequest): FlowDocument {
 
 function createDigest(proposal: Omit<FlowCreateProposal, 'digest'>): string {
   return digest({ evidenceId: proposal.evidence.id, doc: proposal.docJson, capabilities: JSON.stringify(proposal.capabilities),
-    writers: JSON.stringify(proposal.writers), tracking: JSON.stringify(proposal.tracking), unavailable: JSON.stringify(proposal.unavailable) });
+    writers: JSON.stringify(proposal.writers), tracking: JSON.stringify(proposal.tracking), unavailable: JSON.stringify(proposal.unavailable),
+    code: JSON.stringify(proposal.code) });
 }
 
 export function prepareFlowCreateProposal(input: string, evidence: EvidenceSnapshot): FlowCreateProposal {
@@ -88,7 +91,7 @@ export function prepareFlowCreateProposal(input: string, evidence: EvidenceSnaps
     tracking: trackingImpacts(null, doc),
     unavailable: checkAvailability(doc, registry, viewerFlowFeatures(true)).filter(n => n.status === 'unknown' || n.status === 'unavailable')
       .map(n => `${n.nodeId}: ${n.reasons.join(', ')}`),
-    order: topologicalOrder(doc) };
+    order: topologicalOrder(doc), code: changedCodeParams(null, doc) };
   return { ...proposal, digest: createDigest(proposal) };
 }
 

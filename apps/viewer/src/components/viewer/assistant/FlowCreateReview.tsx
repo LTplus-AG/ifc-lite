@@ -14,6 +14,7 @@ import { useAssistant } from '@/lib/assistant/conversation';
 import { prepareFlowCreateProposal, applyFlowCreateProposal, flowCreateBlocker, openCreatedFlow, canRemoveCreatedFlow, removeCreatedFlow,
   type FlowCreateProposal, type FlowCreateReceipt } from '@/lib/assistant/flow-create';
 import { proposalOf } from './AssistantConversation';
+import { FlowCodeParams } from './FlowCodeParams';
 import { FlowTrackingImpacts } from './FlowTrackingImpacts';
 import { FlowPreflight } from './FlowPreflight';
 
@@ -69,6 +70,7 @@ export function FlowCreateReview() {
         {review.proposal.writers.length > 0 && <p>{t('flowAssistant.createWriters', { nodes: review.proposal.writers.join(', ') })}</p>}
         {review.proposal.unavailable.length > 0 && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2 break-words">
           {t('flowAssistant.createUnavailable', { nodes: review.proposal.unavailable.join('; ') })}</p>}
+        <FlowCodeParams code={review.proposal.code} />
         <FlowTrackingImpacts impacts={review.proposal.tracking} />
         <GraphPreview doc={doc} order={review.proposal.order} />
         <details><summary className="cursor-pointer">{t('assistant.flowAfter')}</summary>

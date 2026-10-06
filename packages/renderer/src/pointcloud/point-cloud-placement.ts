@@ -75,6 +75,15 @@ export class PointCloudPlacements {
   }
 }
 
+/**
+ * A copy of the canonical float64 placement, for CPU callers that compose
+ * coordinates with it (#6894). `node.model` is the float32 GPU copy and rounds
+ * map-grid translations by centimetres, so it is never a fallback here.
+ */
+export function exactPlacement(node: PointCloudNode | undefined): Float64Array | undefined {
+  return node?.placement ? new Float64Array(node.placement) : undefined;
+}
+
 /** Shared world-space bounds for whole-scene fitting and model-specific framing. */
 export function unionPointCloudBounds(nodes: Iterable<PointCloudNode | undefined>) {
   const min: [number, number, number] = [Infinity, Infinity, Infinity];

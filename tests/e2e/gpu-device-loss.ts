@@ -94,6 +94,18 @@ export interface GpuDeviceLossWatch {
    * moment before the `device.lost` promise's log reaches the test.
    */
   lost(graceMs?: number): Promise<string | null>;
+  /**
+   * Run a wait that can only succeed on a live device (a load that settles, a
+   * poll on resident points) and skip the moment the console reports a loss,
+   * instead of letting the wait run to its own timeout (#7008: a load wait that
+   * never settled after the device died cost 120 s per spec, and several such
+   * specs pushed `Viewer E2E smoke (1/2)` past its 13-minute budget).
+   *
+   * Non-strict only. A strict run (real GPU) just awaits `run`, so a loss there
+   * still fails with the step's own error. A wait that wins the race is returned
+   * untouched, so a surviving device still runs every assertion in `run`.
+   */
+  raceLoss<T>(stage: string, run: () => Promise<T>): Promise<T>;
   /** Skip now (non-strict only) when the device has already been lost. */
   skipIfLost(stage: string): Promise<void>;
   /**
@@ -109,9 +121,15 @@ export interface GpuDeviceLossWatch {
  */
 export async function watchGpuDeviceLoss(page: Page): Promise<GpuDeviceLossWatch> {
   let evidence: string | null = null;
+  let announceLoss!: (found: string) => void;
+  // Never rejects, so an unraced loss leaves nothing unhandled.
+  const lossSignal = new Promise<string>((resolve) => { announceLoss = resolve; });
   page.on('console', (message) => {
     const text = message.text();
-    if (evidence === null && DEVICE_LOST_SIGNAL.test(text)) evidence = text.slice(0, 300);
+    if (evidence === null && DEVICE_LOST_SIGNAL.test(text)) {
+      evidence = text.slice(0, 300);
+      announceLoss(evidence);
+    }
   });
   const forced = process.env.E2E_FORCE_DEVICE_LOSS;
   if (forced === '1' || forced === 'destroyed') {
@@ -132,6 +150,19 @@ export async function watchGpuDeviceLoss(page: Page): Promise<GpuDeviceLossWatch
   return {
     get evidence() { return evidence; },
     lost,
+    async raceLoss(stage, run) {
+      if (GPU_STRICT) return run();
+      const pending = run();
+      // If the loss wins, `run` is abandoned and the skip closes the page, so its
+      // eventual rejection is expected and must not surface as unhandled.
+      pending.catch(() => undefined);
+      const found = await Promise.race([pending.then(() => null, () => null), lossSignal]);
+      if (found !== null) {
+        test.info().annotations.push({ type: 'gpu-device-lost', description: `${stage}: ${found}` });
+        skipForGpuDeviceLoss(stage, found);
+      }
+      return pending;
+    },
     async skipIfLost(stage) {
       const found = await lost();
       if (found !== null) skipForGpuDeviceLoss(stage, found);

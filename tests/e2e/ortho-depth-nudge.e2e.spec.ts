@@ -182,11 +182,11 @@ async function loadScene(page: Page, gpu: GpuDeviceLossWatch, ifc: string, url =
   await page.locator('#file-input-open').setInputFiles({
     name: 'ortho-depth-nudge.ifc', mimeType: 'application/octet-stream', buffer: Buffer.from(ifc),
   });
-  await gpu.requireLiveGpu('the model load', () => page.waitForFunction(() => {
+  await gpu.requireLiveGpu('the model load', () => gpu.raceLoss('the model load', () => page.waitForFunction(() => {
     const state = globalThis.__ifc_lite_viewer_store__?.getState();
     return !!state && !state.loading && state.models.size === 1 && !!state.cameraCallbacks.getViewpoint?.()
       && !!globalThis.__ifc_lite_capture_color_frame__ && !!globalThis.__ifc_lite_view_projection__;
-  }, undefined, { timeout: 180_000 }));
+  }, undefined, { timeout: 180_000 })));
 }
 
 /** The renderer's colour and draw path for an entity, so hashes are checked against what it drew. */
@@ -384,7 +384,7 @@ for (const site of [{ name: '40 m', size: 40 }, { name: '1 km', size: 1000 }] as
       for (const { id } of tops) expect(await drawnHash(page, id), `#${id} hashes to the top of the range`).toBeGreaterThanOrEqual(250);
 
       // Annotation overlays upload after the model finishes loading.
-      await page.waitForFunction(() => (globalThis.__ifc_lite_annotation_line_vertices__?.() ?? 0) >= 4);
+      await gpu.raceLoss('orthographic geometry and pixel assertions', () => page.waitForFunction(() => (globalThis.__ifc_lite_annotation_line_vertices__?.() ?? 0) >= 4));
       // Straight down (a hair off vertical, so the view keeps a horizontal up axis).
       const middle: Point = [0, topRowY / 2 + 0.6, TOP];
       const eye: Point = [middle[0], middle[1] - 0.01, 30];
@@ -420,7 +420,7 @@ for (const site of [{ name: '40 m', size: 40 }, { name: '1 km', size: 1000 }] as
         state.setSelectedEntityIds([selectedId]);
         state.setPendingColorUpdates(new Map([[state.toGlobalId(model.id, overridden), [1, 1, 0, 1]]]));
       }, { selected: tops[4]!.id, overridden: tops[5]!.id });
-      await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__.getState().pendingColorUpdates === null);
+      await gpu.raceLoss('orthographic geometry and pixel assertions', () => page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__.getState().pendingColorUpdates === null));
       const marked = await orthoFrame(page, gpu, `plates-${site.size}-marked`, eye, middle, 5);
       const [selectedCorner, selectedOpposite] = topBoxes[4]!;
       const [highlight, unhighlighted] = count(marked, selectedCorner, selectedOpposite, 4, isBlue, isGreen);
@@ -468,7 +468,7 @@ test.describe('clip planes', () => {
         expect(await drawnHash(page, id), `#${id} hashes to the top of the range`).toBeGreaterThanOrEqual(250);
       }
 
-      await page.waitForFunction(() => (globalThis.__ifc_lite_annotation_line_vertices__?.() ?? 0) >= 4);
+      await gpu.raceLoss('orthographic geometry and pixel assertions', () => page.waitForFunction(() => (globalThis.__ifc_lite_annotation_line_vertices__?.() ?? 0) >= 4));
       const ahead = await orthoFrame(page, gpu, 'clip-level', [0, -10, 0], [0, 0, 0], 1.5, bounds);
       expect(ahead.depth([0, yFar, 0]), 'the far plane is where the narrowed bounds put it').toBeCloseTo(0, 5);
       expect(ahead.depth([0, yNear, 0]), 'the near plane is where the narrowed bounds put it').toBeCloseTo(1, 5);

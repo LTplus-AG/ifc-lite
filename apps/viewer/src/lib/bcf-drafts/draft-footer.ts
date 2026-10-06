@@ -111,6 +111,7 @@ export function parseDraftFooter(description: string | undefined): ParsedFooter 
   if (isRecord(origin) && origin.kind === 'group' && typeof origin.workspaceId === 'string' && typeof origin.groupId === 'string') {
     parsed.origin = { kind: 'group', workspaceId: origin.workspaceId, groupId: origin.groupId };
   }
+  if (isRecord(origin) && origin.kind === 'review' && typeof origin.card === 'string') parsed.origin = { kind: 'review', card: origin.card };
   if (memberLines.length > 0 || fields.has('batch-name')) {
     const members = memberLines.map(line => decodeFinding(json(line)));
     if (members.some(member => !member)) return null;

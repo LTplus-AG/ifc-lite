@@ -8,6 +8,7 @@ import { bcfDraftLibrary } from '../bcf-drafts/draft-library.js';
 import { bcfOutboxLibrary, initializeBcfOutbox } from '../bcf-publication/outbox-store.js';
 import { modelChangeLibrary } from '../actions/receipts.js';
 import { clashGroupApplicationLibrary } from '../clash/group-applications.js';
+import { reviewWorkspaceLibrary } from '../review/workspace.js';
 import { useViewerStore } from '../../store/index.js';
 import { subscribeContentChanges } from './content-events.js';
 import { preserveLegacyChange } from './content-backup.js';
@@ -24,6 +25,7 @@ function contentHosts() {
     bcfOutbox: { initialize: initializeBcfOutbox, refresh: bcfOutboxLibrary.refresh },
     modelChanges: { initialize: modelChangeLibrary.initialize, refresh: modelChangeLibrary.refresh },
     clashGroupApplications: { initialize: clashGroupApplicationLibrary.initialize, refresh: clashGroupApplicationLibrary.refresh },
+    reviewWorkspaces: { initialize: reviewWorkspaceLibrary.initialize, refresh: reviewWorkspaceLibrary.refresh },
     document: { initialize: state.initializeDocuments, refresh: state.refreshDocuments },
     validation: { initialize: state.initializeValidationReports, refresh: state.refreshValidationReports },
     comparison: { initialize: state.initializeSavedComparisons, refresh: state.refreshSavedComparisons },

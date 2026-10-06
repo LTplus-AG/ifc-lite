@@ -57,8 +57,8 @@ const PROVIDER_META: Record<BYOKProvider, {
   anthropic: {
     label: 'Anthropic',
     apiHost: 'api.anthropic.com',
-    keyPrefix: 'sk-ant-api03-',
-    placeholder: 'sk-ant-api03-...',
+    keyPrefix: 'sk-ant-',
+    placeholder: 'sk-ant-...',
     consoleUrl: 'https://console.anthropic.com/settings/keys',
     consoleLabel: 'console.anthropic.com',
     pricingHint: 'Pay-as-you-go on Anthropic billing. New accounts get $5 free credit.',

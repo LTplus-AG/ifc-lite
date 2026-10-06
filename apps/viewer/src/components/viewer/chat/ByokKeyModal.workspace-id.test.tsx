@@ -32,7 +32,7 @@ import { ByokKeyModal } from './ByokKeyModal.js';
 const WORKSPACE_INPUT = '#byok-anthropic-workspace';
 const KEY_INPUT = '#byok-anthropic-input';
 const OPENAI_KEY_INPUT = '#byok-openai-input';
-/** Long enough for looksLikeProviderKey, which wants 50+ body characters. */
+/** Synthetic legacy key; no live credentials are needed for modal tests. */
 const FAKE_KEY = `sk-ant-api03-${'A'.repeat(60)}`;
 const OTHER_KEY = `sk-ant-api03-${'B'.repeat(60)}`;
 const FAKE_OPENAI_KEY = `sk-${'C'.repeat(30)}`;
@@ -81,6 +81,20 @@ describe('ByokKeyModal Anthropic credential', () => {
     typeInto(query<HTMLInputElement>(KEY_INPUT)!, FAKE_KEY);
     click(buttonWithText('Save'));
     assert.equal(getApiKeys().anthropicKey, FAKE_KEY);
+  });
+
+  it('lets a newer Anthropic key format be saved with its workspace', () => {
+    // #7017: the api03-only prefix check disabled Save before the
+    // identity-linked key and workspace could reach the request path.
+    const key = `sk-ant-api04-${'A'.repeat(30)}`; // Synthetic non-api03 key.
+    open();
+    typeInto(query<HTMLInputElement>(KEY_INPUT)!, key);
+    typeInto(query<HTMLInputElement>(WORKSPACE_INPUT)!, 'wrkspc_01abc');
+    assert.equal(buttonWithText('Save').disabled, false);
+    click(buttonWithText('Save'));
+    assert.equal(getApiKeys().anthropicKey, key);
+    assert.equal(getApiKeys().anthropicWorkspaceId, 'wrkspc_01abc');
+    assert.match(document.body.textContent ?? '', /sk-ant-••••AAAA/);
   });
 
   it('saves an OpenAI key, which has no workspace id at all', () => {

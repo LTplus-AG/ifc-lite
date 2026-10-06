@@ -9,7 +9,8 @@
  * set before boot, which is how the Playwright benchmark enables it) turns it
  * on and publishes `window.__IFC_LITE_LOAD_TRACE__`:
  *
- *   loads()                every retained load's span tree (JSON-safe)
+ *   loads()                every retained load's span tree (JSON-safe), with
+ *                          its structural counters and long-frame summary (#6957)
  *   latest()               the most recent load, or null
  *   tree()                 the latest load nested by parent span
  *   chromeTrace()          Chrome-trace JSON for DevTools / Perfetto
@@ -18,18 +19,13 @@
  * With tracing off every instrumented call site is a no-op method call.
  */
 
-import { buildSpanTree, createLoadTracer, toChromeTrace, type LoadTracer } from '@ifc-lite/load-trace';
+import { buildSpanTree, createLoadTracer, startFrameMonitor, toChromeTrace, type LoadTracer } from '@ifc-lite/load-trace';
 import { downloadBlob } from '../export/download.js';
+import { isPerfTraceRequested, PERF_TRACE_ENABLED } from './perfTraceFlag.js';
+
+export { isPerfTraceRequested };
 
 const GLOBAL_KEY = '__IFC_LITE_LOAD_TRACE__';
-
-export function isPerfTraceRequested(
-  search: string = globalThis.location?.search ?? '',
-  flag: unknown = (globalThis as { __IFC_LITE_PERF_TRACE?: unknown }).__IFC_LITE_PERF_TRACE,
-): boolean {
-  if (flag === 1 || flag === true || flag === '1') return true;
-  return new URLSearchParams(search).get('perfTrace') === '1';
-}
 
 export function exposeLoadTrace(tracer: LoadTracer, target: Record<string, unknown> = globalThis as Record<string, unknown>): void {
   target[GLOBAL_KEY] = {
@@ -47,5 +43,10 @@ export function exposeLoadTrace(tracer: LoadTracer, target: Record<string, unkno
   };
 }
 
-export const loadTracer: LoadTracer = createLoadTracer({ enabled: isPerfTraceRequested() });
+// #6957: each load also carries its structural counters and a long-frame
+// (LoAF / longtask) summary; see `LoadTraceSnapshot.counters` / `.mainThread`.
+export const loadTracer: LoadTracer = createLoadTracer({
+  enabled: PERF_TRACE_ENABLED,
+  frames: PERF_TRACE_ENABLED ? startFrameMonitor() : null,
+});
 if (loadTracer.enabled) exposeLoadTrace(loadTracer);

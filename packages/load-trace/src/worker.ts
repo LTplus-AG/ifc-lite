@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { perfCounters, type PerfCounterRegistry } from './counters.js';
 import type { LoadTrace } from './load-trace.js';
 import type { TraceAttrs, WorkerSpan, WorkerTracePayload } from './types.js';
 
@@ -66,39 +67,63 @@ export interface WorkerTraceHostOptions {
   post: (message: TraceSpansMessage) => void;
   now?: () => number;
   timeOrigin?: number;
+  /**
+   * This worker's counter registry (#6957), switched on with tracing. Its
+   * increments ride back with the spans after every handler, so per-chunk
+   * work (wasm copies, ...) reaches the load even for untraced message types.
+   */
+  counters?: PerfCounterRegistry;
 }
 
 /**
  * Wrap a worker's message dispatch. Until the main thread sends
  * `TRACE_ENABLE_MESSAGE` the wrapper is one null check and a direct call, so
  * an untraced load pays nothing measurable. Once enabled, each listed message
- * type becomes one span, posted back as soon as its handler settles.
+ * type becomes one span, posted back as soon as its handler settles, and any
+ * handler that moved a counter posts those increments (#6957).
  */
-export function createWorkerTraceHost(
-  options: WorkerTraceHostOptions,
-): (data: unknown, run: () => Promise<void>) => Promise<void> {
+/**
+ * The wrapped dispatch, plus `flush()`: post what is pending NOW. A worker the
+ * main thread terminates on a message it is about to send (the pre-pass
+ * worker on its final event) calls it first, or the counters die with it.
+ */
+export type WorkerTraceHost = ((data: unknown, run: () => Promise<void>) => Promise<void>) & { flush(): void };
+
+export function createWorkerTraceHost(options: WorkerTraceHostOptions): WorkerTraceHost {
   let recorder: WorkerSpanRecorder | null = null;
   const seenOnce = new Set<string>();
   const once = new Set(options.onceTypes ?? []);
-  return async (data, run) => {
+  const counters = options.counters ?? perfCounters;
+  const flush = (rec: WorkerSpanRecorder) => {
+    const payload = rec.drain();
+    const moved = counters.drain();
+    if (!payload && !moved) return;
+    const out = payload ?? { thread: rec.thread, timeOrigin: options.timeOrigin ?? performance.timeOrigin, spans: [] };
+    options.post({ type: TRACE_SPANS_MESSAGE, payload: moved ? { ...out, counters: moved } : out });
+  };
+  const host = async (data: unknown, run: () => Promise<void>): Promise<void> => {
     const type = (data as { type?: unknown } | null)?.type;
     if (type === TRACE_ENABLE_MESSAGE) {
       const thread = (data as { thread?: unknown }).thread;
       recorder = createWorkerSpanRecorder(typeof thread === 'string' ? thread : 'worker', options.now, options.timeOrigin);
+      counters.enable();
+      counters.drain(); // only what happens from here on belongs to a load
       return;
     }
-    const name = recorder && typeof type === 'string' ? options.spanNames[type] : undefined;
-    if (!recorder || name === undefined || (once.has(type as string) && seenOnce.has(type as string))) return run();
-    if (once.has(type as string)) seenOnce.add(type as string);
-    const token = recorder.begin(name);
+    const rec = recorder;
+    if (!rec) return run();
+    const name = typeof type === 'string' ? options.spanNames[type] : undefined;
+    const traced = name !== undefined && !(once.has(type as string) && seenOnce.has(type as string));
+    if (traced && once.has(type as string)) seenOnce.add(type as string);
+    const token = traced ? rec.begin(name) : -1;
     try {
       await run();
     } finally {
-      recorder.end(token);
-      const payload = recorder.drain();
-      if (payload) options.post({ type: TRACE_SPANS_MESSAGE, payload });
+      if (traced) rec.end(token);
+      flush(rec);
     }
   };
+  return Object.assign(host, { flush: () => { if (recorder) flush(recorder); } });
 }
 
 /** Ask `worker` to record spans for `trace` (no-op when tracing is off). Returns `worker`. */

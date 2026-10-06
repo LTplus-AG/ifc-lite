@@ -836,6 +836,9 @@ importers:
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../geometry
+      '@ifc-lite/load-trace':
+        specifier: workspace:^
+        version: link:../load-trace
     devDependencies:
       '@ifc-lite/parser':
         specifier: workspace:^
@@ -1662,6 +1665,9 @@ importers:
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../ifcx
+      '@ifc-lite/load-trace':
+        specifier: workspace:^
+        version: link:../load-trace
       '@ifc-lite/wasm':
         specifier: workspace:^
         version: link:../wasm
@@ -1761,6 +1767,9 @@ importers:
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../geometry
+      '@ifc-lite/load-trace':
+        specifier: workspace:^
+        version: link:../load-trace
       '@ifc-lite/spatial':
         specifier: workspace:^
         version: link:../spatial

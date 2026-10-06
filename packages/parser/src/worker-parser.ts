@@ -30,6 +30,7 @@ import type {
   ParserWorkerOutputMessage,
 } from './parser.worker.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
+import { accountWorkerMessages } from '@ifc-lite/load-trace';
 
 /**
  * Build an `AbortError`-shaped error for a cancelled parse. Uses `DOMException`
@@ -146,7 +147,7 @@ export class WorkerParser {
       // `this.worker` is only the `setEntityIndex` target: the most recently
       // spawned worker. Every path below clears it only while it still points
       // at THIS request's worker, so settling one request never detaches another.
-      this.worker = worker;
+      this.worker = accountWorkerMessages(worker, 'parser'); // #6957 message counters (no-op unless traced)
 
       // Reject + terminate THIS request on demand, invoked by terminate() and by
       // this request's own 'abort' listener. Removed from `activeCancels` in

@@ -50,6 +50,7 @@ import { unionInstancedWorldAabb as unionInstanceBounds } from './scene-instance
 import { DerivedMeshProvenance } from './scene-derived-mesh-provenance.js';
 import { rebuildSceneBatches } from './scene-batch-rebuild.js';
 import { regroupStreamedBuckets, type FinalizeRegroup } from './scene-finalize-regroup.js';
+import { perfCount, perfTally } from '@ifc-lite/load-trace';
 import {
   dropAllPartialCaches as dropAllPartialCachesIn,
   dropPartialCacheForBatch as dropPartialCacheForBatchIn,
@@ -2069,6 +2070,7 @@ export class Scene {
     // Save references to old fragments/batches — keep them rendering
     // until the new proper batches are fully built (no visual gap).
     const oldFragments = this.streamingFragments;
+    perfTally('render.finalize', oldFragments.length, 'fragments'); // #6957 fragment rebuilds
     const oldBatches = this.batchedMeshes;
     const fragmentSet = new Set(oldFragments);
     const oldBatchSet = new Set(oldBatches);
@@ -2138,6 +2140,7 @@ export class Scene {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const scene = this;
     const oldFragments = this.streamingFragments;
+    perfTally('render.finalize', oldFragments.length, 'fragments'); // #6957 fragment rebuilds
     const oldBatches = this.batchedMeshes;
     const fragmentSet = new Set(oldFragments);
     const oldBatchSet = new Set(oldBatches);
@@ -2229,6 +2232,7 @@ export class Scene {
             ...scene.streamingFragments,
           ];
           scene.retireFinalizedBatches(retired);
+          perfCount('render.finalize.batches', createdOwned.length);
           scene.finalizeInProgress = false;
           resolve();
         } catch (err) {

@@ -6,7 +6,10 @@ import { Page, ConsoleMessage } from '@playwright/test';
 import { waitForMetadataRenderReadiness } from './metadata-render-readiness.js';
 import {
   compareSpanAndRegexMetrics,
+  countersFromLoadTrace,
   metricsFromLoadTrace,
+  settleKey,
+  type LoadCounters,
   SPAN_METRIC_KEYS,
   type LoadTraceSnapshotJson,
   type SpanRegexDisagreement,
@@ -14,6 +17,9 @@ import {
 
 /** Where the viewer publishes its span tree under `?perfTrace=1` (apps/viewer/src/lib/perf/loadTrace.ts). */
 const LOAD_TRACE_GLOBAL = '__IFC_LITE_LOAD_TRACE__';
+
+/** Geometry workers the benchmark pins by default (#6957); `VIEWER_BENCHMARK_GEOM_WORKERS` overrides. */
+export const DEFAULT_GEOM_WORKERS = 4;
 
 /** Which source each span-capable metric came from on this run (#6956). */
 export type MetricSource = 'span' | 'regex' | 'none';
@@ -70,6 +76,7 @@ export class ViewerBenchmarkPage {
   private loadTrace: LoadTraceSnapshotJson | null = null;
   private metricSources: Partial<Record<string, MetricSource>> = {};
   private spanRegexDisagreements: SpanRegexDisagreement[] = [];
+  private geomWorkers: number | null = null;
 
   /**
    * Defaults to the same port `playwright.config.ts` serves on. It used to be a
@@ -282,8 +289,17 @@ export class ViewerBenchmarkPage {
       (globalThis as unknown as { __IFC_LITE_PERF_TRACE?: number }).__IFC_LITE_PERF_TRACE = 1;
     });
 
+    // #6957: pin the geometry worker count so structural counters (messages,
+    // copies, uploads) compare across runs and machines. `auto` keeps the
+    // engine heuristic; `?geomWorkers=` is the viewer's own override.
+    const workersEnv = process.env.VIEWER_BENCHMARK_GEOM_WORKERS ?? String(DEFAULT_GEOM_WORKERS);
+    this.geomWorkers = /^([1-9]|1[0-6])$/.test(workersEnv) ? Number(workersEnv) : null;
+    if (this.geomWorkers === null && workersEnv !== 'auto') {
+      console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_GEOM_WORKERS (expected 1-16 or "auto"): ${workersEnv}`);
+    }
+
     // Navigate to viewer app
-    await this.page.goto(this.origin);
+    await this.page.goto(this.geomWorkers === null ? this.origin : `${this.origin}/?geomWorkers=${this.geomWorkers}`);
     
     // Wait for app to be ready (file input exists but is hidden, so check for existence)
     await this.page.waitForSelector('input[type="file"]', { state: 'attached', timeout: 30000 });
@@ -315,41 +331,20 @@ export class ViewerBenchmarkPage {
   }
 
   /**
-   * Check 2D content when available; WebGPU fallback establishes only canvas allocation
+   * Canvas allocation only. This used to sample pixels through
+   * `getContext('2d')`, but the viewport canvas exists before the renderer
+   * claims it, and a canvas holding a 2D context returns null for
+   * `getContext('webgpu')` from then on: the renderer failed with "Failed to
+   * get WebGPU context", and that run measured no GPU work at all (draw
+   * calls, uploads, the #6957 GPU counters).
+   * Pixels of a WebGPU canvas cannot be read back from here anyway.
    */
   private async checkCanvasHasContent(): Promise<boolean> {
     try {
-      const hasContent = await this.page.evaluate(() => {
+      return await this.page.evaluate(() => {
         const canvas = document.querySelector('canvas');
-        if (!canvas) return false;
-        
-        // Check if canvas has non-zero dimensions
-        if (canvas.width === 0 || canvas.height === 0) return false;
-        
-        // Try to sample a few pixels to see if there's actual content
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        if (ctx) {
-          const imageData = ctx.getImageData(
-            Math.floor(canvas.width / 2),
-            Math.floor(canvas.height / 2),
-            10, 10
-          );
-          // Check if any pixels have non-background colors
-          for (let i = 0; i < imageData.data.length; i += 4) {
-            const r = imageData.data[i];
-            const g = imageData.data[i + 1];
-            const b = imageData.data[i + 2];
-            // Not pure background gray (128, 128, 128 or similar)
-            if (Math.abs(r - g) > 5 || Math.abs(g - b) > 5 || r > 200 || r < 50) {
-              return true;
-            }
-          }
-        }
-        
-        // For WebGPU, we can't easily read pixels, so just check dimensions
-        return canvas.width > 0 && canvas.height > 0;
+        return !!canvas && canvas.width > 0 && canvas.height > 0;
       });
-      return hasContent;
     } catch {
       return false;
     }
@@ -444,6 +439,32 @@ export class ViewerBenchmarkPage {
     // Span tree first, console logs as the fallback.
     await this.readLoadTrace();
     this.parseMetrics();
+  }
+
+  /**
+   * #6957: wait until the load's structural counters stop moving, then keep
+   * that snapshot for `getLoadCounters`. The load's root span ends before the
+   * renderer has drained its upload queue (and, under SwiftShader, before the
+   * renderer even starts), so counters read at completion would cut work off
+   * at a timing-dependent point. Timing metrics are untouched: they were taken
+   * from the completion snapshot. Stable = unchanged over `quietPolls` polls.
+   */
+  async settleLoadCounters({ pollMs = 250, quietPolls = 6, maxMs = 30_000 } = {}): Promise<void> {
+    const deadline = Date.now() + maxMs;
+    let last = '';
+    let quiet = 0;
+    for (;;) {
+      await this.readLoadTrace();
+      const key = settleKey(this.loadTrace);
+      quiet = key === last ? quiet + 1 : 0;
+      last = key;
+      if (quiet >= quietPolls) return;
+      if (Date.now() >= deadline) {
+        console.warn(`[Benchmark] structural counters still moving after ${maxMs} ms; recording the latest snapshot`);
+        return;
+      }
+      await this.page.waitForTimeout(pollMs);
+    }
   }
 
   /** Pull the latest load's span tree out of the page (null when tracing is unavailable). */
@@ -722,6 +743,15 @@ export class ViewerBenchmarkPage {
   /** The raw span tree of the measured load, or null when the page exposed none. */
   getLoadTrace(): LoadTraceSnapshotJson | null {
     return this.loadTrace;
+  }
+
+  /**
+   * #6957: the measured load's structural counters, its long-frame summary
+   * and the pinned worker count (null = engine heuristic), or null counters
+   * when the viewer recorded none.
+   */
+  getLoadCounters(): { geomWorkers: number | null; counters: LoadCounters | null } {
+    return { geomWorkers: this.geomWorkers, counters: countersFromLoadTrace(this.loadTrace) };
   }
 
   getMetricSources(): Partial<Record<string, MetricSource>> {

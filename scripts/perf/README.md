@@ -39,6 +39,30 @@ lines, for any new load-time metric. Tracing off is not a lever: the disabled
 trace is a no-op object, about 2 ns per instrumented call in Node, against
 roughly 25 calls per load.
 
+
+## Structural counters and long frames per load (#6957)
+
+Under `?perfTrace=1` and in every benchmark run, each load's span tree also
+carries counters (`LoadTraceSnapshot.counters`): full source copies, worker
+messages and their clone/transfer/shared bytes per direction, typed-array
+bytes handed to wasm per worker and method, GPU buffers and uploaded bytes,
+`mergeGeometry` calls and vertices, finalize rebuilds, store writes and
+subscriber notifications, the per-append model-index re-spread, and a
+LoAF/longtask summary attributed to the innermost open span. The benchmark
+pins 4 geometry workers (`VIEWER_BENCHMARK_GEOM_WORKERS`) and records them in
+`loadCounters`, split in two. `structural` (copies, messages, wasm ingress)
+repeated exactly across runs on FZK and Snowdon, except for a few bytes of
+parser diagnostic strings that carry elapsed times, so a diff there means
+the load did different work. `scheduling` (GPU uploads and merges, store
+churn) moves with frame timing. `flushPending` slices its
+upload queue by a time budget, and SwiftShader loses and re-creates the
+device mid-load, which re-uploads everything, so compare those as a spread.
+Lesson: the benchmark's old 2D canvas probe could claim the viewport canvas
+before the renderer did. After that `getContext('webgpu')` returns null, the
+renderer logs "Failed to get WebGPU context", and the run measures no GPU work
+at all. The probe now checks only the canvas size, and the counters are read
+once they stop moving, not when the load root ends.
+
 ## Pending picking survives redundant viewport synchronization (#6882)
 
 Native-GPU navigation qualification exposed a shared correctness defect before

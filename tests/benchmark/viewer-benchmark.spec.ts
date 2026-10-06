@@ -22,6 +22,8 @@ interface ViewerBenchmarkResult {
     sources: Partial<Record<string, string>>;
     disagreements: Array<{ metric: string; span: number; regex: number; toleranceMs: number }>;
   };
+  /** #6957: pinned worker count, structural counters and the long-frame summary of the load. */
+  loadCounters: ReturnType<ViewerBenchmarkPage['getLoadCounters']>;
   thresholds: {
     passed: boolean;
     violations: string[];
@@ -169,6 +171,9 @@ test.describe('Viewer Performance Benchmarks', () => {
 
       // Extract metrics
       const metrics = benchmarkPage.getMetrics();
+      // #6957: structural counters keep moving after the load root ends
+      // (deferred GPU uploads), so record them once they have settled.
+      await benchmarkPage.settleLoadCounters();
 
       // Get baseline for this file
       const baselineMetrics = baseline[fileName]?.metrics || null;
@@ -246,6 +251,14 @@ test.describe('Viewer Performance Benchmarks', () => {
         thresholdResult.violations.forEach((v) => console.log(`  ⚠ ${v}`));
       }
 
+      const { counters: loadCounters } = benchmarkPage.getLoadCounters();
+      if (loadCounters) {
+        console.log(`\n--- Structural Counters (#6957) ---`);
+        for (const [name, value] of Object.entries(loadCounters.structural)) console.log(`  ${name}: ${value.toLocaleString()}`);
+        console.log(`  scheduling-dependent: ${JSON.stringify(loadCounters.scheduling)}`);
+        console.log(`  main thread: ${JSON.stringify(loadCounters.mainThread)}`);
+      }
+
       console.log(`${'='.repeat(80)}\n`);
 
       // Save results
@@ -268,6 +281,7 @@ test.describe('Viewer Performance Benchmarks', () => {
           sources: benchmarkPage.getMetricSources(),
           disagreements: benchmarkPage.getSpanRegexDisagreements(),
         },
+        loadCounters: benchmarkPage.getLoadCounters(),
         thresholds: thresholdResult,
       };
 
@@ -296,6 +310,13 @@ test.describe('Viewer Performance Benchmarks', () => {
         expect(benchmarkPage.getLoadTrace(), 'viewer exposed no load-trace span tree').not.toBeNull();
         expect(benchmarkPage.getMetricSources().streamCompleteMs).toBe('span');
         expect(benchmarkPage.getSpanRegexDisagreements()).toEqual([]);
+        // #6957: the load carried its structural counters and frame summary.
+        const { counters } = benchmarkPage.getLoadCounters();
+        // GPU counters are not asserted: they need a WebGPU device, which a
+        // software-rendered runner may lose; the worker and store paths do not.
+        expect(counters?.structural['msg.geometry.out.count'] ?? 0, 'no geometry worker messages counted').toBeGreaterThan(0);
+        expect(counters?.scheduling['store.setState'] ?? 0, 'no store writes counted').toBeGreaterThan(0);
+        expect(counters?.mainThread, 'no long-frame summary recorded').not.toBeNull();
       }
 
       // Geometry correctness validation: Check mesh count matches expected (within 5% tolerance)

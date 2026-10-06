@@ -13,6 +13,7 @@
  */
 
 import { markLocalModelFiles } from './reload-resume.js';
+import { countCopy } from '@ifc-lite/load-trace';
 
 const KEY = 'ifc-lite:recent-files';
 const DB_NAME = 'ifc-lite-file-cache';
@@ -145,7 +146,7 @@ export async function cacheFileBlobs(files: File[]): Promise<void> {
     for (const file of eligible) {
       records.push({
         name: file.name,
-        blob: await file.arrayBuffer(),
+        blob: countCopy('source.recentFiles', await file.arrayBuffer()), // #6957: a second full read
         size: file.size,
         type: file.type,
         timestamp: Date.now(),

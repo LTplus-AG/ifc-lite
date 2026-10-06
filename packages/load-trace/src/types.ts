@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { FrameSummary } from './frames.js';
+
 /** Attribute values that survive structured clone, JSON and the User Timing `detail`. */
 export type TraceAttrValue = string | number | boolean;
 export type TraceAttrs = Readonly<Record<string, TraceAttrValue>>;
@@ -47,6 +49,16 @@ export interface LoadTraceSnapshot {
   start: number;
   end: number | null;
   spans: TraceSpan[];
+  /**
+   * Structural counters (#6957) moved while this load was the latest one:
+   * from its start until the next load starts (or the snapshot is taken),
+   * plus every counter its workers posted back. Absent when counters are off.
+   */
+  counters?: Record<string, number>;
+  /** The worker share of `counters`, per worker thread label. */
+  workerCounters?: Record<string, Record<string, number>>;
+  /** Long-frame summary over the same window; absent without a frame monitor. */
+  mainThread?: FrameSummary;
 }
 
 /** A finished span recorded inside a worker, on that worker's own clock. */
@@ -62,4 +74,6 @@ export interface WorkerTracePayload {
   thread: string;
   timeOrigin: number;
   spans: WorkerSpan[];
+  /** Counter increments in the worker since its previous payload (#6957). */
+  counters?: Record<string, number>;
 }

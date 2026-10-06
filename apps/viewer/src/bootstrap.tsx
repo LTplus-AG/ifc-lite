@@ -22,6 +22,9 @@ import './disable-react-dev-perf-track';
 // translation extension mutating the DOM can't crash the reconciler. See
 // harden-dom-mutations.ts (PostHog issues #1229/#1230/#1232).
 import './harden-dom-mutations';
+// Under ?perfTrace=1, switch the #6957 counters on before the store and the
+// renderer exist, so their first writes and subscriptions are counted.
+import './lib/perf/perfTraceFlag';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';

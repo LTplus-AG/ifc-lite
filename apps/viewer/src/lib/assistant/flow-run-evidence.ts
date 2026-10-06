@@ -41,7 +41,8 @@ export interface FlowRunPin {
 }
 
 /**
- * `failed`: the native run reported `ok: false` or refused to start;
+ * `refused`: the run never started (no run window was recorded);
+ * `failed`: the native run reported `ok: false`, or started and threw before a result existed;
  * `lane-errors`: the run finished `ok` but some lanes threw, so their outputs are missing.
  */
 export type FlowRunVerdict = 'not-run' | 'refused' | 'failed' | 'lane-errors' | 'warnings' | 'passed';
@@ -104,8 +105,9 @@ function redactValue(value: unknown, depth = 0): unknown {
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactValue(item, depth + 1)]));
 }
 
-export function flowRunVerdict(run: RunResult | null, error: string | null): FlowRunVerdict {
-  if (!run) return error ? 'refused' : 'not-run';
+/** `window`: `useFlowRunner` records it once a run started, including one that then threw. */
+export function flowRunVerdict(run: RunResult | null, error: string | null, window: FlowRunWindow | null): FlowRunVerdict {
+  if (!run) return error ? (window ? 'failed' : 'refused') : 'not-run';
   if (!run.ok) return 'failed';
   if (run.reports.some(report => report.laneErrors > 0)) return 'lane-errors';
   return run.reports.some(report => report.warnings.length > 0) || run.log.some(entry => entry.level === 'warn') ? 'warnings' : 'passed';
@@ -153,7 +155,7 @@ export function flowRunDiagnostics(state: FlowRunState): FlowRunDiagnostics | nu
   const window = state.flowLastRunWindow;
   return {
     graphId: doc.id,
-    verdict: flowRunVerdict(run, state.flowLastError),
+    verdict: flowRunVerdict(run, state.flowLastError, state.flowLastRunWindow),
     refusal: state.flowLastError ? text(state.flowLastError) : null,
     durationMs: window ? window.end - window.start : null,
     writes: run?.writes ?? null,

@@ -47,6 +47,9 @@ test('#6919 run verdicts come from the native run record', () => {
   assert.equal(flowRunDiagnostics(state(null))!.verdict, 'not-run');
   const refused = flowRunDiagnostics(state(null, 'capability denied: model.read'))!;
   assert.deepEqual([refused.verdict, refused.refusal], ['refused', 'capability denied: model.read']);
+  // `useFlowRunner` records a run window once the run started: a throw after that is a failed run, not a refusal.
+  const window = { start: 1, end: 2, doc, mutationIds: new Set<string>() };
+  assert.equal(flowRunDiagnostics({ ...state(null, 'sandbox crashed'), flowLastRunWindow: window })!.verdict, 'failed');
   assert.equal(flowRunDiagnostics(state(run(healthy)))!.verdict, 'passed');
   assert.equal(flowRunDiagnostics(state(run(healthy, [{ nodeId: 'b', laneKey: null, level: 'warn', message: 'rounded' }])))!.verdict, 'warnings');
   assert.equal(flowRunDiagnostics(state(run([report('a', { warnings: ['coerced'] }), ...healthy.slice(1)])))!.verdict, 'warnings');

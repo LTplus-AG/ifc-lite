@@ -153,7 +153,7 @@ export const flowRunAdapter: EvidenceAdapter = {
         graph: doc ? { id: doc.id, name: doc.name, nodeCount: doc.nodes.length, edgeCount: doc.edges.length,
           identity: runWindow ? 'document as run' : 'open working copy (the run window was not recorded)' } : null,
         status: run ? (run.ok ? 'ok' : 'failed') : 'error',
-        verdict: flowRunVerdict(run, s.flowLastError),
+        verdict: flowRunVerdict(run, s.flowLastError, runWindow),
         failingNodeIds: reports.filter(isFailingNode).slice(0, 100).map(report => report.nodeId),
         error: s.flowLastError === null ? null : bounded(s.flowLastError, 2000),
         startedAt: iso(runWindow?.start), finishedAt: iso(runWindow?.end),

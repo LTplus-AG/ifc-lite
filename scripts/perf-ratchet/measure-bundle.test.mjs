@@ -130,16 +130,16 @@ rt('viewer-eager-js-brotli sums the brotli size of each eager JS file, once, and
     const out = measure.measureBundle({ wasm, dist, commit: 'abc1234', measuredAt: '2026-10-06T00:00:00.000Z' });
     assert.deepEqual(ceilings.validateMeasuredFile(out), []);
     const v = Object.fromEntries(out.metrics.map((m) => [m.id, m]));
+    assert.ok(v['viewer-eager-js-brotli'], 'the eager-bytes metric is emitted');
     const expected = Object.values(eagerFiles).reduce((n, body) => n + measure.brotliSize(Buffer.from(body)), 0);
     assert.equal(v['viewer-eager-js-brotli'].value, expected);
     assert.equal(v['viewer-eager-js-chunks'].value, 4);
     assert.match(v['viewer-eager-js-brotli'].detail, /^4 files, raw 7500 bytes/);
     // The lazy chunk is large and incompressible: counting it would show.
     assert.ok(measure.brotliSize(Buffer.from(jsOf(5, 9000))) > 4000);
-    // One discovery: the count is the number of files whose bytes were summed.
-    const found = measure.eagerJsFiles(dist, EAGER_HTML);
-    assert.deepEqual(found.files.map((f) => f.url.replace(/^.*\//, '')), ['index-entry.js', 'vendor-a.js', 'vendor-b.mjs', 'vendor-c.js']);
-    assert.equal(found.files.length, v['viewer-eager-js-chunks'].value);
+    // One discovery: the chunk count and its detail list exactly the files whose bytes were summed.
+    assert.ok(v['viewer-eager-js-brotli'], 'the eager-bytes metric is emitted');
+    assert.deepEqual(v['viewer-eager-js-chunks'].detail.split(' '), ['index-entry.js', 'vendor-a.js', 'vendor-b.mjs', 'vendor-c.js']);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -191,40 +191,52 @@ rt('every committed ceiling file is valid, and bundle.json ratchets exactly what
 });
 
 // #7002 review: shapes of index.html that must not change what counts as eager.
-function withDist(files, body) {
-  const dist = mkdtempSync(join(tmpdir(), 'perf-ratchet-shapes-'));
+// Entered through measureBundle, the producer of the metrics list.
+function inShape(files, html, body) {
+  const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-shapes-'));
   try {
+    const dist = join(root, 'dist');
     mkdirSync(join(dist, 'assets'), { recursive: true });
     for (const f of files) writeFileSync(join(dist, 'assets', f), 'export {}');
-    return body(dist);
+    writeFileSync(join(dist, 'index.html'), html);
+    writeFileSync(join(root, 'w.wasm'), 'x');
+    return body(() => measure.measureBundle({ wasm: join(root, 'w.wasm'), dist, commit: 'a' }));
   } finally {
-    rmSync(dist, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }
 }
-const names = (found) => found.files.map((f) => f.url.replace(/^.*\//, ''));
+const metricsOf = (out) => Object.fromEntries(out.metrics.map((m) => [m.id, m]));
 
-rt('eagerJsFiles ignores markup that only appears inside an inline script body', () => {
-  withDist(['entry.js', 'real.js'], (dist) => {
-    const html = `<script>var s = '<link rel="modulepreload" href="/assets/ghost.js"><script type="module" src="/assets/ghost2.js"><\\/script>';</script>
+rt('markup that only appears inside an inline script body is not an eager load', () => {
+  const html = `<script>var s = '<link rel="modulepreload" href="/assets/ghost.js"><script type="module" src="/assets/ghost2.js"><\\/script>';</script>
       <script type="module" src="/assets/entry.js"></script>
       <link rel="modulepreload" href="/assets/real.js">`;
-    assert.deepEqual(names(measure.eagerJsFiles(dist, html)), ['entry.js', 'real.js']);
+  inShape(['entry.js', 'real.js'], html, (run) => {
+    const v = metricsOf(run());
+    assert.ok(v['viewer-eager-js-brotli'], 'the eager-bytes metric is emitted');
+    assert.equal(v['viewer-eager-js-chunks'].value, 2);
+    assert.equal(v['viewer-eager-js-chunks'].detail, 'entry.js real.js');
   });
 });
 
-rt('eagerJsFiles leaves out nomodule scripts and non-JavaScript script types', () => {
-  withDist(['entry.js', 'legacy.js'], (dist) => {
-    const html = `<script type="module" src="/assets/entry.js"></script>
+rt('nomodule scripts and non-JavaScript script types are not eager', () => {
+  const html = `<script type="module" src="/assets/entry.js"></script>
       <script nomodule src="/assets/legacy.js"></script>
       <script type="importmap" src="/assets/map.js"></script>`;
-    assert.deepEqual(names(measure.eagerJsFiles(dist, html)), ['entry.js']);
+  inShape(['entry.js', 'legacy.js'], html, (run) => {
+    const v = metricsOf(run());
+    assert.ok(v['viewer-eager-js-brotli'], 'the eager-bytes metric is emitted');
+    assert.equal(v['viewer-eager-js-chunks'].value, 1);
+    assert.equal(v['viewer-eager-js-chunks'].detail, 'entry.js');
   });
 });
 
-rt('eagerJsFiles throws on a preload that is not in dist and on an entry that is not JS', () => {
-  withDist(['entry.js'], (dist) => {
-    assert.throws(() => measure.eagerJsFiles(dist, '<script type="module" src="/assets/entry.js"></script><link rel="modulepreload" href="/assets/gone.js">'), /is not in/);
-    // An unbuilt index.html (dev entry) would otherwise measure zero eager files.
-    assert.throws(() => measure.eagerJsFiles(dist, '<script type="module" src="/src/main.tsx"></script>'), /no eager JS/);
+rt('measureBundle throws on a preload that is not in dist and on an entry that is not JS', () => {
+  inShape(['entry.js'], '<script type="module" src="/assets/entry.js"></script><link rel="modulepreload" href="/assets/gone.js">', (run) => {
+    assert.throws(run, /is not in/);
+  });
+  // An unbuilt index.html (dev entry) would otherwise measure zero eager files.
+  inShape(['entry.js'], '<script type="module" src="/src/main.tsx"></script>', (run) => {
+    assert.throws(run, /no eager JS/);
   });
 });

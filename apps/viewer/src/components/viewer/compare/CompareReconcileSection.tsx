@@ -21,7 +21,8 @@ import { useTranslation } from '@/i18n';
 import { formatLocaleDate } from '@/i18n/intlFormat';
 import { useViewerStore } from '@/store';
 import type { CompareResult } from '@/store/slices/compareSlice';
-import { captureClashRun, captureValidationRun, currentReconciliationOf, savedReconciliationOf } from '@/lib/compare/compare-analysis-state';
+import { captureClashRun, captureValidationRun, currentReconciliationOf } from '@/lib/compare/compare-analysis-state';
+import { savedReconciliationOf } from '@/lib/compare/compare-reconcile-state';
 import type { CapturedRun, RunKind } from '@/lib/compare/run-reconcile-types';
 import { ReconcileOutcomeView } from './ReconcileOutcomeView';
 
@@ -115,7 +116,7 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
         </>
       )}
       {outcome && (stale
-        ? <p role="status" className="text-amber-700 dark:text-amber-400">{t('compareAnalysis.reconcile.stale')}</p>
+        ? <output className="block text-amber-700 dark:text-amber-400">{t('compareAnalysis.reconcile.stale')}</output>
         : <ReconcileOutcomeView outcome={outcome} />)}
     </div>
   );

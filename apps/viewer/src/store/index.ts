@@ -40,6 +40,7 @@ import { createLensSlice, type LensSlice } from './slices/lensSlice.js';
 import { createClashSlice, type ClashSlice } from './slices/clashSlice.js';
 import { createSavedComparisonsSlice, type SavedComparisonsSlice } from './slices/savedComparisonsSlice.js';
 import { createCompareSlice, type CompareSlice } from './slices/compareSlice.js';
+import { createCompareRunsSlice, type CompareRunsSlice } from './slices/compareRunsSlice.js';
 import { createDockSlice, type DockSlice } from './slices/dockSlice.js';
 import { createSidebarSlice, type SidebarSlice } from './slices/sidebarSlice.js';
 import { createDrawingInspectorSlice, type DrawingInspectorSlice } from './slices/drawingInspectorSlice.js';
@@ -159,7 +160,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   PinboardSlice &
   LensSlice &
   ClashSlice &
-  CompareSlice & SavedComparisonsSlice &
+  CompareSlice & SavedComparisonsSlice & CompareRunsSlice &
   LayerStackSlice &
   DockSlice &
   SidebarSlice &
@@ -219,6 +220,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createClashSlice(...args),
   ...createCompareSlice(...args),
   ...createSavedComparisonsSlice(...args),
+  ...createCompareRunsSlice(...args),
   ...createLayerStackSlice(...args),
   ...createDockSlice(...args),
   ...createSidebarSlice(...args),

@@ -61,19 +61,28 @@ function fakePage(snapshot) {
     async waitForLoadState() {},
     async waitForTimeout() {},
     locator() { return { first() { return { async setInputFiles() {} }; } }; },
-    // The span tree is requested by global key; every other evaluate is the
-    // canvas probe, which reports an allocated canvas.
-    async evaluate(_fn, arg) { return arg === '__IFC_LITE_LOAD_TRACE__' ? snapshot : true; },
+    // The span tree is requested by global key, and the completion probe
+    // (#6979) runs its real in-page reducer over the same snapshot; every
+    // other evaluate is the canvas probe, which reports an allocated canvas.
+    async evaluate(fn, arg) {
+      if (arg === '__IFC_LITE_LOAD_TRACE__') return snapshot;
+      if (arg?.key === '__IFC_LITE_LOAD_TRACE__') {
+        const g = globalThis;
+        g.__IFC_LITE_LOAD_TRACE__ = { latest: () => snapshot };
+        try { return fn(arg); } finally { delete g.__IFC_LITE_LOAD_TRACE__; }
+      }
+      return true;
+    },
   };
 }
 
-async function measure(snapshot) {
+async function measure(snapshot, timeoutMs = 5_000) {
   const page = fakePage(snapshot);
   const bench = new ViewerBenchmarkPage(page);
   await bench.setup();
   for (const line of LOGS) page.emit(line);
   await bench.loadFile('AC20-FZK-Haus.ifc', false);
-  await bench.waitForCompletion(5_000);
+  await bench.waitForCompletion(timeoutMs);
   return { page, metrics: bench.getMetrics() };
 }
 
@@ -128,4 +137,17 @@ test('#6956 without a span tree the console regexes still supply every metric', 
   assert.equal(metrics.firstVisibleGeometryMs, 200);
   assert.equal(metrics.streamCompleteMs, 300);
   assert.equal(metrics.metadataCompleteMs, 260);
+});
+
+test('#6979 load completion comes from the span tree: an open load root is not complete, whatever the console says', async () => {
+  // Every console completion line is present (LOGS); only the root span is still open.
+  const { metrics } = await measure({ ...SNAPSHOT, end: null }, 300);
+  assert.equal(metrics.canvasHasContent, false);
+  assert.equal(metrics.renderCompleteMs, null);
+});
+
+test('#6979 an ended load root completes the load', async () => {
+  const { metrics } = await measure(SNAPSHOT);
+  assert.equal(metrics.canvasHasContent, true);
+  assert.equal(typeof metrics.renderCompleteMs, 'number');
 });

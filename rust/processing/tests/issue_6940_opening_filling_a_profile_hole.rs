@@ -38,9 +38,9 @@ fn require_fixtures() -> bool {
         Err(std::env::VarError::NotPresent) => false,
         Ok(v) if v.is_empty() || v == "0" => false,
         Ok(v) if v == "1" => true,
-        other => panic!(
-            "IFC_LITE_REQUIRE_FIXTURES must be unset, \"\", \"0\" or \"1\"; got {other:?}"
-        ),
+        other => {
+            panic!("IFC_LITE_REQUIRE_FIXTURES must be unset, \"\", \"0\" or \"1\"; got {other:?}")
+        }
     }
 }
 
@@ -88,11 +88,14 @@ fn issue_6940_openings_filling_profile_holes_leave_the_slabs_closed() {
         for mesh in result.meshes.iter().filter(|m| m.express_id == id) {
             let key = |i: u32| {
                 let b = i as usize * 3;
-                [0, 1, 2].map(|k| {
-                    ((mesh.positions[b + k] as f64 + mesh.origin[k]) * 1e3).round() as i64
-                })
+                [0, 1, 2]
+                    .map(|k| ((mesh.positions[b + k] as f64 + mesh.origin[k]) * 1e3).round() as i64)
             };
-            triangles.extend(mesh.indices.chunks_exact(3).map(|t| [key(t[0]), key(t[1]), key(t[2])]));
+            triangles.extend(
+                mesh.indices
+                    .chunks_exact(3)
+                    .map(|t| [key(t[0]), key(t[1]), key(t[2])]),
+            );
         }
         assert!(!triangles.is_empty(), "slab {id}: no mesh was produced");
         assert_eq!(

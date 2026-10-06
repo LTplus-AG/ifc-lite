@@ -9,9 +9,9 @@ use super::super::{
     promote_subtract_cutter_onto_host_faces as guarded, NearBand,
 };
 use super::{coincide, in_band_of, Guard};
-use crate::kernel::plane_weld::Face;
 use crate::kernel::arrangement::{box_mesh, Tri};
 use crate::kernel::mesh_bridge::{mesh_to_tris, orient_outward};
+use crate::kernel::plane_weld::Face;
 use crate::{extrude_profile, Point2, Profile2D};
 
 /// One snap-grid step.
@@ -315,12 +315,26 @@ fn the_guard_does_not_depend_on_the_order_of_the_host_faces() {
     for (shift, reverse, rotate) in [(0, true, 0), (7, false, 1), (31, true, 2), (53, false, 2)] {
         let host = reordered(&two_holes, shift, reverse, rotate);
         let (kept, moved, _, dragged) = both(&filling, &host);
-        assert!(dragged > 0, "order {shift}/{reverse}/{rotate}: the fixture must weld unguarded");
-        assert_eq!((moved, &kept), (0, &filling), "order {shift}/{reverse}/{rotate}");
+        assert!(
+            dragged > 0,
+            "order {shift}/{reverse}/{rotate}: the fixture must weld unguarded"
+        );
+        assert_eq!(
+            (moved, &kept),
+            (0, &filling),
+            "order {shift}/{reverse}/{rotate}"
+        );
 
         let host = reordered(&creased, shift, reverse, rotate);
         let (a, moved, b, moved_unguarded) = both(&along, &host);
-        assert!(moved_unguarded > 0, "order {shift}/{reverse}/{rotate}: the fixture must weld");
-        assert_eq!((moved, a), (moved_unguarded, b), "order {shift}/{reverse}/{rotate}");
+        assert!(
+            moved_unguarded > 0,
+            "order {shift}/{reverse}/{rotate}: the fixture must weld"
+        );
+        assert_eq!(
+            (moved, a),
+            (moved_unguarded, b),
+            "order {shift}/{reverse}/{rotate}"
+        );
     }
 }

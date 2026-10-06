@@ -75,7 +75,11 @@ use rustc_hash::{FxHashMap, FxHashSet};
 /// compare equal as `f64` share a key.
 type Key = [u64; 3];
 fn key(p: &[f64; 3]) -> Key {
-    [(p[0] + 0.0).to_bits(), (p[1] + 0.0).to_bits(), (p[2] + 0.0).to_bits()]
+    [
+        (p[0] + 0.0).to_bits(),
+        (p[1] + 0.0).to_bits(),
+        (p[2] + 0.0).to_bits(),
+    ]
 }
 
 /// Is every vertex of `a` within the band of `b`'s plane?
@@ -105,7 +109,11 @@ pub(super) struct Guard<'a> {
 
 impl<'a> Guard<'a> {
     pub(super) fn new(faces: &'a [Face]) -> Self {
-        Guard { faces, at: None, last: None }
+        Guard {
+            faces,
+            at: None,
+            last: None,
+        }
     }
 
     /// Is `target` joined to any face of `left` by a chain of host faces,
@@ -120,7 +128,8 @@ impl<'a> Guard<'a> {
         let at = self.at.get_or_insert_with(|| {
             let mut at: FxHashMap<Key, Vec<usize>> = FxHashMap::default();
             for (i, h) in faces.iter().enumerate() {
-                h.t.iter().for_each(|p| at.entry(key(p)).or_default().push(i));
+                h.t.iter()
+                    .for_each(|p| at.entry(key(p)).or_default().push(i));
             }
             at
         });
@@ -165,7 +174,11 @@ impl<'a> Guard<'a> {
         if left.is_empty() {
             return false; // the weld leaves no face it coincides with
         }
-        if self.last.as_ref().is_none_or(|(t, l, _)| *t != target || *l != left) {
+        if self
+            .last
+            .as_ref()
+            .is_none_or(|(t, l, _)| *t != target || *l != left)
+        {
             let joined = self.joined(target, &left);
             self.last = Some((target, left, joined));
         }

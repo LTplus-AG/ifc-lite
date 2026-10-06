@@ -6,9 +6,9 @@
  * Explicit, per-message grounding for the Assistant composer: the current
  * selection and an optional viewport screenshot. Selecting elements or moving
  * the camera attaches nothing; only these controls do, and an attachment is
- * sent with the next message and then cleared. The screenshot control is
- * disabled for models without image input, and the request refuses an image
- * for such a model rather than dropping it silently.
+ * sent with the next message and then cleared. For a model without image
+ * input the screenshot control explains on click why it cannot attach, and the
+ * request refuses an image for such a model rather than dropping it silently.
  */
 
 import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
@@ -47,7 +47,7 @@ function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
 
 export function ComposerAttachments({ model, value, onChange, disabled, sent }: {
   model: string;
-  /** Messages submitted so far: a capture still running when a message is submitted belongs to no message and is dropped. */
+  /** Messages sent so far: a capture still running when a message is sent belongs to no message and is dropped. */
   sent: number;
   value: ComposerAttachmentValue;
   /** A state setter: the screenshot lands after an await, so it updates the current value, not the one it started from. */

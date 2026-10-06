@@ -130,11 +130,10 @@ test('a viewport capture that finishes after the send is dropped, not attached t
     const streaming = new Promise<void>(resolve => { finish = resolve; });
     globalThis.fetch = async () => { await streaming; return new Response('data: {"choices":[{"delta":{"content":"Ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'); };
     click(button(ui, 'Send')!);
-    // The capture lands while the answer is still streaming, then the answer completes.
-    await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 600)); });
-    assert.doesNotMatch(ui.textContent ?? '', /Viewport screenshot/, 'not attached while the sent message streams');
+    // The answer completes first; only then does the capture land.
     finish();
     await waitFor(() => useAssistant.getState().status === 'idle' && useAssistant.getState().messages.length === 2, 'send completes');
+    await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 600)); });
     assert.doesNotMatch(ui.textContent ?? '', /could not be captured/i, 'the capture itself succeeded, so only the guard can drop it');
     assert.doesNotMatch(ui.textContent ?? '', /Viewport screenshot/, 'the late capture belongs to the message already sent');
   } finally {
@@ -202,5 +201,27 @@ test('a capture that rejects (device lost) reports a failed capture and frees th
     assert.equal(button(ui, 'Attach view')?.disabled, false, 'the control is usable again');
   } finally {
     clearApiKeys(); setGlobalRendererRef({ current: null }); setGlobalCanvasRef({ current: null });
+  }
+});
+
+// #6907: a refused send keeps the prompt and attachments for a retry, including a capture that lands afterwards.
+test('a capture that finishes after a refused send stays attached for the retry', async () => {
+  useViewerStore.setState({ ...sceneModels(), chatActiveModel: 'gpt-6-luna' });
+  clearApiKeys();
+  replaceEvidence(captureEvidence('loadReport'));
+  let release: () => void = () => {};
+  const gpuDone = new Promise<void>(resolve => { release = resolve; });
+  setGlobalRendererRef({ current: { getGPUDevice: () => ({ queue: { onSubmittedWorkDone: () => gpuDone } }) } as unknown as Renderer });
+  setGlobalCanvasRef({ current: { width: 0, height: 0, clientWidth: 0, clientHeight: 0, toDataURL: () => 'data:image/jpeg;base64,TEFURQ==' } as unknown as HTMLCanvasElement });
+  try {
+    const ui = render(<AssistantPanel />);
+    click(button(ui, 'Attach view')!);
+    type(ui.querySelector('textarea')!, 'What is selected?');
+    click(button(ui, 'Send')!);
+    await waitFor(() => useAssistant.getState().error === 'missing-key', 'the send is refused without a key');
+    await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 600)); });
+    assert.match(ui.textContent ?? '', /Viewport screenshot/, 'the capture is kept for the retry');
+  } finally {
+    setGlobalRendererRef({ current: null }); setGlobalCanvasRef({ current: null });
   }
 });

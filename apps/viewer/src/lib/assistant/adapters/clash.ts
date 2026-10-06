@@ -14,7 +14,7 @@ export const clashAdapter: EvidenceAdapter = {
   panelSubject: s => !isDuplicateScan(s.clashResult),
   titleKey: 'clashPanel.title', descriptionKey: 'assistant.pickClashDescription',
   rowMeaningKey: 'assistant.evidenceRowsClash', unavailableKey: 'assistant.evidenceUnavailableClash',
-  suggestionKeys: ['assistant.suggestClashSummary', 'assistant.suggestClashGroups'],
+  suggestionKeys: ['assistant.suggestClashSummary', 'assistant.suggestClashGroups', 'sceneActions.suggestShowClashes'],
   readiness: s => s.clashRunning ? { status: { labelKey: 'assistant.pickRunning' }, ready: false, running: true }
     : s.clashResult ? { status: { labelKey: 'assistant.pickFindings', params: { count: s.clashResult.clashes.length } }, ready: true }
       : { status: { labelKey: 'assistant.pickNotRun' }, ready: false, runnable: s.models.size > 0 },

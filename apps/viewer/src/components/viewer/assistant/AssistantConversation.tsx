@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { memo, useEffect, useMemo, useState, type MouseEvent } from 'react';
-import { Bot, Crosshair, GitBranch, Hammer, Layers, PencilLine, User, X } from 'lucide-react';
+import { Bot, ClipboardCheck, Crosshair, Eye, FileText, GitBranch, Hammer, Layers, ListChecks, PencilLine, Table2, User, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
@@ -15,29 +15,52 @@ import { parseClashGroupPatch } from '@/lib/assistant/clash-group-proposal';
 import { parseFlowPatch } from '@/lib/assistant/flow-patch';
 import { parseModelChangeBatch } from '@/lib/actions/model-change';
 import { parseModelAuthoringBatch } from '@/lib/actions/model-authoring';
+import { parseSceneActions } from '@/lib/actions/scene-actions';
+import { parseTableMapping } from '@/lib/actions/table-mapping';
+import { checkProposalOf, type CheckDeclared } from '@/lib/check-authoring/proposal-summary';
 import { markdownHtml } from '@/lib/assistant/markdown';
 import { capturedEvidence, rowFields } from '@/lib/assistant/captured-rows';
 import { ReceiptFooter } from './AssistantUsage';
 
-type Declared = 'clash' | 'flow' | 'changes' | 'authoring';
+type Declared = 'clash' | 'flow' | 'changes' | 'authoring' | 'scene' | 'mapping' | CheckDeclared;
 type Proposal = { kind: 'clash'; groups: number; findings: number } | { kind: 'flow'; operations: number }
-  | { kind: 'changes'; changes: number } | { kind: 'authoring'; operations: number } | { kind: 'invalid'; declared: Declared; reason: string };
-const DECLARED: Record<string, Declared> = { 'clash.groups': 'clash', 'flow.patch': 'flow', 'model.changes': 'changes', 'model.authoring': 'authoring' };
+  | { kind: 'changes'; changes: number } | { kind: 'authoring'; operations: number } | { kind: 'scene'; actions: number }
+  | { kind: 'mapping'; columns: number; key: string } | { kind: 'invalid'; declared: Declared; reason: string }
+  | { kind: 'checks'; declared: CheckDeclared; items: number; unsupported: number };
+const DECLARED: Record<string, Declared> = { 'clash.groups': 'clash', 'flow.patch': 'flow', 'model.changes': 'changes',
+  'model.authoring': 'authoring', 'scene.actions': 'scene', 'table.mapping': 'mapping' };
 const PROPOSAL_TITLE = { clash: 'assistant.proposalClash', flow: 'assistant.proposalFlow', changes: 'assistant.proposalChanges',
-  authoring: 'assistant.proposalAuthoring' } as const;
-const PROPOSAL_ICON = { clash: Layers, flow: GitBranch, changes: PencilLine, authoring: Hammer } as const;
+  authoring: 'assistant.proposalAuthoring', scene: 'sceneActions.proposal', mapping: 'assistant.proposalMapping',
+  ids: 'checkAuthoring.proposalIds', rules: 'checkAuthoring.proposalRules', document: 'checkAuthoring.proposalDocument' } as const;
+const PROPOSAL_ICON = { clash: Layers, flow: GitBranch, changes: PencilLine, authoring: Hammer, scene: Eye, mapping: Table2,
+  ids: ClipboardCheck, rules: ListChecks, document: FileText } as const;
+const CHECK_SUMMARY = { ids: 'checkAuthoring.proposalIdsSummary', rules: 'checkAuthoring.proposalRulesSummary',
+  document: 'checkAuthoring.proposalDocumentSummary' } as const;
 
 /** Typed proposals are reviewed natively below the conversation; raw JSON is secondary. */
 export function proposalOf(content: string): Proposal | null {
   const trimmed = content.trimStart();
   if (!trimmed.startsWith('{') && !trimmed.startsWith('```')) return null;
+  const check = checkProposalOf(content);
+  if (check) {
+    try { return { kind: 'checks', ...check.summary() }; }
+    catch (error) {
+      console.warn('[Assistant] Check authoring proposal failed validation', error);
+      return { kind: 'invalid', declared: check.declared, reason: error instanceof Error ? error.message : String(error) };
+    }
+  }
   // Only a reply that declares a typed kind is parsed; prose never reaches the strict parsers.
-  const kind = /"kind"\s*:\s*"(clash\.groups|flow\.patch|model\.changes|model\.authoring)"/.exec(content)?.[1];
+  const kind = /"kind"\s*:\s*"(clash\.groups|flow\.patch|model\.changes|model\.authoring|scene\.actions|table\.mapping)"/.exec(content)?.[1];
   if (!kind) return null;
   try {
     if (kind === 'flow.patch') return { kind: 'flow', operations: parseFlowPatch(content).operations.length };
+    if (kind === 'scene.actions') return { kind: 'scene', actions: parseSceneActions(content).actions.length };
     if (kind === 'model.changes') return { kind: 'changes', changes: parseModelChangeBatch(content).changes.length };
     if (kind === 'model.authoring') return { kind: 'authoring', operations: parseModelAuthoringBatch(content).operations.length };
+    if (kind === 'table.mapping') {
+      const mapping = parseTableMapping(content);
+      return { kind: 'mapping', columns: mapping.columns.length, key: mapping.identity.key };
+    }
     const patch = parseClashGroupPatch(content);
     return { kind: 'clash', groups: patch.groups.length, findings: patch.groups.reduce((sum, group) => sum + group.citations.length, 0) };
   } catch (error) {
@@ -49,7 +72,7 @@ export function proposalOf(content: string): Proposal | null {
 
 function ProposalCard({ content, proposal, onRepair }: { content: string; proposal: Proposal; onRepair?: (prompt: string) => void }) {
   const { t } = useTranslation();
-  const declared = proposal.kind === 'invalid' ? proposal.declared : proposal.kind;
+  const declared = proposal.kind === 'invalid' || proposal.kind === 'checks' ? proposal.declared : proposal.kind;
   const Icon = PROPOSAL_ICON[declared];
   const invalid = proposal.kind === 'invalid';
   return <div className={invalid ? 'rounded border border-amber-500/40 bg-amber-500/10 p-2 space-y-1' : 'rounded border border-primary/30 bg-primary/5 p-2 space-y-1'}>
@@ -62,12 +85,16 @@ function ProposalCard({ content, proposal, onRepair }: { content: string; propos
         {t('assistant.proposalRepair')}
       </Button>}
     </> : <>
-      <p className="text-muted-foreground">{proposal.kind === 'clash'
+      <p className="text-muted-foreground">{proposal.kind === 'checks'
+        ? `${t(CHECK_SUMMARY[proposal.declared], { count: proposal.items })} · ${t('checkAuthoring.proposalUnsupported', { count: proposal.unsupported })}`
+        : proposal.kind === 'clash'
         ? `${t('assistant.proposalGroups', { count: proposal.groups })} · ${t('assistant.proposalFindings', { count: proposal.findings })}`
         : proposal.kind === 'flow' ? t('assistant.proposalFlowSummary', { count: proposal.operations })
           : proposal.kind === 'authoring' ? t('assistant.proposalAuthoringSummary', { count: proposal.operations })
+          : proposal.kind === 'scene' ? t('sceneActions.proposalSummary', { count: proposal.actions })
+          : proposal.kind === 'mapping' ? t('assistant.proposalMappingSummary', { count: proposal.columns, key: proposal.key })
             : t('assistant.proposalChangesSummary', { count: proposal.changes })}</p>
-      <p>{t('assistant.proposalNext')}</p>
+      <p>{t(proposal.kind === 'mapping' ? 'assistant.proposalMappingNext' : 'assistant.proposalNext')}</p>
     </>}
     <details><summary className="cursor-pointer text-muted-foreground hover:text-foreground">{t('assistant.proposalJson')}</summary>
       <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{content}</pre>

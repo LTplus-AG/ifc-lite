@@ -82,16 +82,6 @@ function installedProcessBehaviour(self: FakeWorker, msg: Posted): void {
   else if (msg.type === 'stream-end') self.reply({ type: 'complete', totalMeshes: 0 });
 }
 
-async function drainOrTimeout(gen: AsyncGenerator<StreamingGeometryEvent>, advanceMs: number) {
-  const events: StreamingGeometryEvent[] = [];
-  const drain = (async () => {
-    for await (const event of gen) events.push(event);
-  })();
-  await vi.advanceTimersByTimeAsync(advanceMs);
-  await Promise.race([drain, new Promise((resolve) => setTimeout(resolve, 0))]);
-  return events;
-}
-
 interface Call { fn: string; args: unknown[] }
 
 function recordingTrace(): { trace: LoadTrace; calls: Call[] } {

@@ -53,6 +53,17 @@ export const GPU_STRICT = process.env.E2E_GPU_STRICT !== '0';
 export const DEVICE_LOST_SIGNAL =
   /\[WebGPU\] Device lost:|\[Renderer\] GPU device lost|\[Viewport\] GPU device lost:|popErrorScope rejected \(device likely lost\)|A valid external Instance reference no longer exists/;
 
+/**
+ * The load error the viewer files in `state.error` when the device dies while a
+ * point cloud is loading (`useIfcLoader.ts`, `renderer_device_lost`): the Add
+ * path never registers the new model, so this string is the ONLY page-state
+ * trace of the loss and a `loadState` wait would otherwise hang to its timeout.
+ */
+export const DEVICE_LOST_LOAD_ERROR = /The graphics device was lost during the load/;
+
+/** What a load wait should test against `state.error`: the console signals plus {@link DEVICE_LOST_LOAD_ERROR}. */
+export const DEVICE_LOST_STATE_ERROR = new RegExp(`${DEVICE_LOST_SIGNAL.source}|${DEVICE_LOST_LOAD_ERROR.source}`);
+
 /** The toast `reportDeviceLost` shows (device-loss-report.ts). */
 export const DEVICE_LOST_TOAST = 'The graphics device was lost, so the 3D view has stopped drawing.';
 

@@ -26,12 +26,12 @@
 
 import type { ProcessParallelOptions } from './geometry-parallel-options.js';
 import { postGeometryWorkerInit } from './geometry-worker-init.js';
-import type { BatchSizingConfig } from './batch-sizing.js';
 import type { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData } from './types.js';
 import type { StreamingGeometryEvent } from './index.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import { computeWorkerCount } from './worker-count.js';
+import { readBatchSizingOverride, readShardScanFlag, readVisibilityFilterOverride } from './perf-flags.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 import { mergeShardStyleSlices, type MergedShardStyles, type StylesSlice } from './shard-style-merge.js';
@@ -155,48 +155,6 @@ export function planAffinityRouting(
     buckets[w].push(j);
   }
   return { buckets, nextWorker };
-}
-
-/**
- * Optional runtime override for the geometry worker's adaptive batch sizing
- * (#1097), read off `globalThis` on the host thread. A zero-cost escape hatch
- * for hardware-specific tuning / field-debugging the watchdog↔throughput
- * trade-off without a rebuild; unset ⇒ the worker uses DEFAULT_BATCH_SIZING.
- * Validation/merge happens in the worker via `resolveBatchSizing`.
- */
-function readBatchSizingOverride(): Partial<BatchSizingConfig> | undefined {
-  const g = globalThis as unknown as { __IFC_LITE_BATCH_SIZING?: Partial<BatchSizingConfig> };
-  const v = g.__IFC_LITE_BATCH_SIZING;
-  return v && typeof v === 'object' ? v : undefined;
-}
-
-/**
- * Optional load-time visibility filter (#1097), read off `globalThis` on the
- * host thread (tuning / benchmarking escape hatch). `{ disabledTypes,
- * skipTypeGeometry }` skip the matching geometry jobs at the prepass so they're
- * never decoded/meshed/uploaded. Unset ⇒ load everything.
- */
-function readVisibilityFilterOverride(): { disabledTypes?: string[]; skipTypeGeometry?: boolean } | undefined {
-  const g = globalThis as unknown as {
-    __IFC_LITE_VISIBILITY_FILTER?: { disabledTypes?: string[]; skipTypeGeometry?: boolean };
-  };
-  const v = g.__IFC_LITE_VISIBILITY_FILTER;
-  return v && typeof v === 'object' ? v : undefined;
-}
-
-/**
- * SPIKE flag: shard the entity-index scan across the idle geometry workers and
- * deliver the stitched index early, instead of waiting for the pre-pass
- * worker's single-threaded post-scan `entity-index` emission. Read off
- * `globalThis.__IFC_LITE_SHARD_SCAN` (benchmark A/B knob). Truthy ⇒ on.
- */
-function readShardScanFlag(): boolean {
-  const g = globalThis as unknown as { __IFC_LITE_SHARD_SCAN?: unknown };
-  const v = g.__IFC_LITE_SHARD_SCAN;
-  // ON by default; 0/'0'/false is the kill switch (same convention as the
-  // other #1682 load/render knobs).
-  if (v === 0 || v === '0' || v === false) return false;
-  return true;
 }
 
 /**

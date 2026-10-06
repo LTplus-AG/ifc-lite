@@ -10,7 +10,7 @@ export const compareAdapter: EvidenceAdapter = {
   id: 'compare', group: 'coordination', panelIds: ['compare'],
   titleKey: 'comparePanel.panel.title', descriptionKey: 'assistant.pickCompareDescription',
   rowMeaningKey: 'assistant.evidenceRowsCompare', unavailableKey: 'assistant.evidenceUnavailableCompare',
-  suggestionKeys: ['assistant.suggestCompareSummary'],
+  suggestionKeys: ['assistant.suggestCompareSummary', 'sceneActions.suggestShowChanged'],
   readiness: s => s.compareResult
     ? { status: { labelKey: 'assistant.pickChanges', params: { count: s.compareResult.diff.entries.length } }, ready: true }
     : { status: { labelKey: s.models.size < 2 ? 'assistant.pickNeedsTwoModels' : 'assistant.pickNotRun' }, ready: false },

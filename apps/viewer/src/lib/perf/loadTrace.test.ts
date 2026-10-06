@@ -5,7 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createLoadTracer } from '@ifc-lite/load-trace';
-import { exposeLoadTrace, isPerfTraceRequested, loadTracer } from './loadTrace.js';
+import { isPerfTraceRequested, loadTracer } from './loadTrace.js';
+import { exposeLoadTrace } from './loadTraceEnabled.js';
 
 interface ExposedTrace {
   latest(): { loadId: string; spans: Array<{ name: string }> } | null;
@@ -19,6 +20,8 @@ describe('viewer load trace (#6956)', () => {
     assert.equal(isPerfTraceRequested('?perfTrace=0', undefined), false);
     assert.equal(isPerfTraceRequested('?geomWorkers=2&perfTrace=1', undefined), true);
     assert.equal(isPerfTraceRequested('', 1), true);
+    assert.equal(isPerfTraceRequested('?perfTrace=1', 0), false, 'an explicit off flag beats the URL');
+    assert.equal(isPerfTraceRequested('?perfTrace=1', false), false, 'an explicit off flag beats the URL');
     // No flag in this process, so the shared tracer is off and records nothing.
     assert.equal(loadTracer.enabled, false);
     assert.equal(loadTracer.startLoad('m').snapshot(), null);

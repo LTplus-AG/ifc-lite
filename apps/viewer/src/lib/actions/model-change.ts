@@ -10,6 +10,7 @@
  * validation corrections) only create this description; nothing here writes.
  */
 
+import { validatePropertyDataType } from '@ifc-lite/export';
 import { MODEL_AUTHORING_OUTPUT_GUIDANCE } from './model-authoring-guidance';
 
 export type ChangeScalar = string | number | boolean | null;
@@ -27,7 +28,8 @@ export interface ChangeTarget {
 
 /** `expected: null` asserts the value is absent today. */
 export type ModelChange =
-  | { op: 'property.set'; target: ChangeTarget; pset: string; name: string; expected: ChangeScalar; value: Exclude<ChangeScalar, null> }
+  /** `dataType` optionally declares the IFC value type (e.g. `IfcLengthMeasure`); absent means it follows the JS value. */
+  | { op: 'property.set'; target: ChangeTarget; pset: string; name: string; expected: ChangeScalar; value: Exclude<ChangeScalar, null>; dataType?: string }
   | { op: 'property.delete'; target: ChangeTarget; pset: string; name: string; expected: Exclude<ChangeScalar, null> }
   | { op: 'quantity.set'; target: ChangeTarget; qset: string; name: string; expected: number; value: number }
   | { op: 'attribute.set'; target: ChangeTarget; name: EditableAttribute; expected: string; value: string };
@@ -60,6 +62,13 @@ function target(value: unknown): ChangeTarget {
   return value.modelId === undefined ? { globalId: value.globalId } : { globalId: value.globalId, modelId: value.modelId as string };
 }
 
+/** The canonical IFC type name, or a refusal naming why the value does not fit it. */
+function declaredType(value: Exclude<ChangeScalar, null>, dataType: unknown, at: string): string {
+  if (!text(dataType, 64)) throw new Error(`${at} has an invalid dataType`);
+  try { return validatePropertyDataType(value, dataType).dataType; }
+  catch (error) { throw new Error(`${at}: ${error instanceof Error ? error.message : String(error)}`); }
+}
+
 function change(value: unknown, index: number): ModelChange {
   if (!record(value)) throw new Error(`Change ${index + 1} is not an object`);
   const at = `Change ${index + 1}`;
@@ -68,7 +77,11 @@ function change(value: unknown, index: number): ModelChange {
     case 'property.set':
       if (!text(value.pset) || !text(value.name)) throw new Error(`${at} needs a property set and property name`);
       if (!scalar(value.expected) || !scalar(value.value) || value.value === null) throw new Error(`${at} has an invalid value`);
-      return { op: 'property.set', target: target(value.target), pset: value.pset, name: value.name, expected: value.expected, value: value.value };
+      if (value.dataType === undefined) {
+        return { op: 'property.set', target: target(value.target), pset: value.pset, name: value.name, expected: value.expected, value: value.value };
+      }
+      return { op: 'property.set', target: target(value.target), pset: value.pset, name: value.name, expected: value.expected, value: value.value,
+        dataType: declaredType(value.value, value.dataType, at) };
     case 'property.delete':
       if (!text(value.pset) || !text(value.name)) throw new Error(`${at} needs a property set and property name`);
       if (!scalar(value.expected) || value.expected === null) throw new Error(`${at} must state the value being deleted`);

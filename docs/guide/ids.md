@@ -234,7 +234,10 @@ other rule is refused with each reason listed:
 property or quantity rule can compare in SI too: `valueUnit: 'si'` (the
 **SI** toggle on the chip) converts each value with its own unit, meaning
 an explicit `Unit` on the property or quantity, else the project unit for its
-measure type, before comparing. Such a rule exports unchanged. A numeric
+measure type, before comparing. In search and in filters it reads unsaved
+in-session edits like any other property rule, the edited value converted
+with its own unit; validation reads the model as loaded. Such a rule exports
+unchanged. A numeric
 rule without it compares the model's stored numbers. The export converts its
 operand to SI with the unit the given `models` store that value in, and
 refuses the rule when there are no models, when no model has the value, or
@@ -265,6 +268,26 @@ In the viewer, the Data validation panel's Information validation side has
 **Export as IDS** next to **Save**. Both show what was converted and every
 refused rule or specification with its reasons.
 
+`writeIdsXml` is the IDS 1.0 writer behind both the export and the viewer's
+assistant-drafted IDS. It writes entity, attribute, property (with `dataType`),
+classification, material and partOf facets, requirement cardinality and
+`instructions`, and simple, pattern, enumeration and numeric-bound values.
+Length and digit restrictions, and conjunctive restriction facets, are refused
+with an error instead of being written as a weaker check. Line breaks and tabs
+in attributes such as `instructions` are written as character references, so
+they read back unchanged; a control character XML cannot carry is refused with
+the element or attribute it is in. Every pass/fail case
+of the vendored buildingSMART IDS corpus that it writes reads back with the
+same specifications and verdicts.
+
+```typescript
+import { parseIDS } from '@ifc-lite/ids';
+import { writeIdsXml } from '@ifc-lite/rules';
+
+declare const idsXml: string;
+const rewritten = writeIdsXml(parseIDS(idsXml));
+```
+
 ## Viewer Integration
 
 In the IFClite viewer, IDS validation is integrated through the Data validation panel's IDS validation entry:
@@ -278,7 +301,11 @@ In the IFClite viewer, IDS validation is integrated through the Data validation 
 7. **Export BCF** - Turn validation failures into BCF topics (see [BCF](bcf.md#ids-validation-reports-as-bcf))
 8. **Re-run** - After editing the model, the header's Re-run button repeats the check with the same IDS against the same model the report describes. **Clear results** returns to the pre-run card and keeps the IDS loaded; **Unload IDS** removes both
 
+To correct failures, select a failed specification whose requirement names an exact property and choose **Correct**. Enter the value as the IDS states it (base SI units) and pick the failed elements. **Review as changes** shows each element's stored value and the typed value it would get, scaled into the model's units; apply it from the review and use **Re-run validation** on the receipt to see the before and after counts per specification. **Apply to N entities** writes directly and re-runs validation, without a review or receipt. See [Reviewed table, bulk and IDS corrections](mutations.md#reviewed-table-bulk-and-ids-corrections).
+
 No `.ids` file to hand? With no model of your own open, the empty panel's **Try with demo data** loads the demo project and the IDS written for it.
+
+The [viewer assistant](viewer-assistant.md#reviewed-ids-rule-and-report-drafts) can also draft IDS specifications, information rules and report outlines. It runs the native IDS audit and a dry run on the loaded models before a draft can be saved into this panel's libraries, and keeps requirements no check can cover as explicit unsupported items.
 
 Checks do not automatically create saved reports. To keep a completed IDS or information-validation result, choose **Save report** in its results toolbar. **Saved reports** holds the evidence from that run, including its evaluated model names and fingerprints. The same result can be saved once; later runs can be saved separately. Unsaved results last only for the current session and are replaced by a later completed run or cleared with the results.
 

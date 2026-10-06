@@ -43,6 +43,7 @@ import {
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import { RelationshipType, collectSpatialAncestors } from '@ifc-lite/data';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { Subject } from '../rule-set/rule-set.js';
 import { stringifyValue, materialNamesOf } from './filter-match.js';
 import { defaultStoreyName } from './filter-storey.js';
@@ -51,12 +52,14 @@ import { readMeasureSubject } from './read-measure-subject.js';
 import { assignedGroupNames } from './filter-group-rule.js';
 import { readModelFact } from './filter-model-fact.js';
 
-/** What `readSubject` needs about the element it reads. No `mutationView` —
- *  the engine reads the model as loaded, not with live in-session edits
- *  applied (those are a follow-up; noted in the PR body). */
+/** What `readSubject` needs about the element it reads. Validation passes no
+ *  `mutationView` and reads the model as loaded; search and applicability
+ *  pass the model's live view, which `property` / `quantity` subjects read
+ *  edits through (`read-measure-subject.ts`). Other subjects read the file. */
 export interface ReadSubjectContext {
   store: IfcDataStore;
   expressId: number;
+  mutationView?: MutablePropertyView;
 }
 
 /** The result `readSubject` returns for every `Subject` kind. */
@@ -132,7 +135,7 @@ export function readSubject(subject: Subject, ctx: ReadSubjectContext): SubjectV
     }
     case 'property':
     case 'quantity':
-      return readMeasureSubject(subject, store, expressId);
+      return readMeasureSubject(subject, store, expressId, ctx.mutationView);
     case 'classification': {
       const sys = subject.system?.trim().toLowerCase();
       const refs = extractClassificationsOnDemand(store, expressId).filter(

@@ -522,10 +522,10 @@ function evaluateRule(
       return matchAttributeRule(rule, attrsFor());
     }
     case 'property':
-      if (readsThroughSubject(rule)) return matchRuleThroughSubject(rule, ctx.store, expressId);
+      if (readsThroughSubject(rule)) return matchRuleThroughSubject(rule, ctx.store, expressId, ctx.mutationView);
       return psetsFor ? matchPropertyRule(rule, psetsFor(rule.legacyListFirst)) : false;
     case 'quantity':
-      if (readsThroughSubject(rule)) return matchRuleThroughSubject(rule, ctx.store, expressId);
+      if (readsThroughSubject(rule)) return matchRuleThroughSubject(rule, ctx.store, expressId, ctx.mutationView);
       return qtysFor ? matchQuantityRule(rule, qtysFor()) : false;
     case 'material': {
       if (!matNamesFor) return false;

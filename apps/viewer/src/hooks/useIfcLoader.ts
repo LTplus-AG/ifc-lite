@@ -28,7 +28,7 @@ import { modelAppearanceAssets } from '../lib/appearance/model-assets.js';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { createModelLoadCompletion } from './ingest/modelLoadCompletion.js';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
-import { loadTracer } from '../lib/perf/loadTrace.js';
+import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 import {
   GeometryProcessor,
   geometryAabbAt,
@@ -2094,23 +2094,11 @@ export function useIfcLoader() {
       if (isStale()) return;
 
       if (firstVisibleGeometryMs === null && firstAppendGeometryBatchMs !== null) {
-        await new Promise<void>((resolve) => {
-          const fallbackTimer = globalThis.setTimeout(() => {
-            if (firstVisibleGeometryMs === null && isCurrent()) {
-              firstVisibleGeometryMs = trace.milestone('geometry.firstVisible', firstAppendGeometryBatchMs);
-              console.log(`[useIfc] First visible geometry for ${file.name}: ${firstVisibleGeometryMs.toFixed(0)}ms`);
-            }
-            resolve();
-          }, 250);
-          requestAnimationFrame(() => {
-            globalThis.clearTimeout(fallbackTimer);
-            if (firstVisibleGeometryMs === null && isCurrent()) {
-              firstVisibleGeometryMs = trace.milestone('geometry.firstVisible');
-              console.log(`[useIfc] First visible geometry for ${file.name}: ${firstVisibleGeometryMs.toFixed(0)}ms`);
-            }
-            resolve();
-          });
-        });
+        const how = await nextPaintOrTimeout(250);
+        if (firstVisibleGeometryMs === null && isCurrent()) {
+          firstVisibleGeometryMs = trace.milestone('geometry.firstVisible', how === 'paint' ? undefined : firstAppendGeometryBatchMs);
+          console.log(`[useIfc] First visible geometry for ${file.name}: ${firstVisibleGeometryMs.toFixed(0)}ms`);
+        }
       }
 
       const totalElapsedMs = trace.finish({ loadPath: 'wasm', cacheTier: cachePlan.tier });

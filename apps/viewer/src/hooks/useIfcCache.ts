@@ -37,6 +37,7 @@ import { useViewerStore } from '../store/index.js';
 import { getCached, setCached, deleteCached, type CacheResult } from '../services/cacheService.js';
 import { rebuildSpatialHierarchy, rebuildOnDemandMaps } from '../utils/spatialHierarchy.js';
 import { calculateStoreyHeights } from '../utils/localParsingUtils.js';
+import { nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 
 // Re-export types for convenience
 export type { CacheResult } from '../services/cacheService.js';
@@ -384,6 +385,7 @@ export function useIfcCache() {
         setGeometryStreamingActive(true);
         const allMeshes: MeshData[] = [];
         let superseded = false;
+        let firstVisible: Promise<void> | undefined;
         try {
           for (let i = 0; i < open.chunks.length; i++) {
             const chunkMeshes = await open.readChunk(i);
@@ -397,7 +399,11 @@ export function useIfcCache() {
             }
             allMeshes.push(...chunkMeshes);
             appendGeometryBatch(modelId, chunkMeshes, open.coordinateInfo);
-            if (i === 0 && trace.enabled) { trace.milestone('geometry.firstAppend'); globalThis.requestAnimationFrame?.(() => trace.milestone('geometry.firstVisible')); }
+            if (i === 0 && trace.enabled) {
+              const appendedAt = trace.milestone('geometry.firstAppend');
+              // Same bounded race as the cold path: a stalled rAF falls back to the append time.
+              firstVisible = nextPaintOrTimeout(250).then((how) => { trace.milestone('geometry.firstVisible', how === 'paint' ? undefined : appendedAt); });
+            }
             if ((i & 3) === 3 || i === open.chunks.length - 1) {
               setProgress({
                 phase: 'Loading geometry from cache',
@@ -435,6 +441,7 @@ export function useIfcCache() {
         }
 
         meshCount = allMeshes.length;
+        await firstVisible; // recorded before the load closes, never after
         trace.milestone('geometry.streamComplete');
 
         // Restore the GPU-instancing shards (opaque repeated occurrences that

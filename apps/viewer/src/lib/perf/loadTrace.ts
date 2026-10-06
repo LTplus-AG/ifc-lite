@@ -51,5 +51,20 @@ export function exposeLoadTrace(tracer: LoadTracer, target: Record<string, unkno
   };
 }
 
+/**
+ * Resolve on the next animation frame, or after `fallbackMs` when rAF stalls
+ * (hidden tab, host without rAF), and say which. Both load paths use it to
+ * record `geometry.firstVisible` without losing it to a stalled frame.
+ */
+export function nextPaintOrTimeout(fallbackMs = 250): Promise<'paint' | 'timeout'> {
+  return new Promise((resolve) => {
+    const timer = globalThis.setTimeout(() => resolve('timeout'), fallbackMs);
+    globalThis.requestAnimationFrame?.(() => {
+      globalThis.clearTimeout(timer);
+      resolve('paint');
+    });
+  });
+}
+
 export const loadTracer: LoadTracer = createLoadTracer({ enabled: isPerfTraceRequested() });
 if (loadTracer.enabled) exposeLoadTrace(loadTracer);

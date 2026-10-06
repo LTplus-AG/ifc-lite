@@ -43,9 +43,9 @@ export function parseCapturedEvidence(payload: string): CapturedEvidence {
   return { summary: parsed.evidence.summary, rows };
 }
 
-/** One value as people read it in panels and documents. */
+/** One value as people read it in claim checks and documents: a captured empty text is shown as such, never as the absent-value dash. */
 export function displayScalar(value: unknown): string {
-  return scalar(value);
+  return value === '' ? '""' : scalar(value);
 }
 
 function scalar(value: unknown): string {

@@ -61,6 +61,7 @@ test('field paths and units are read generically from any row shape', () => {
   assert.equal(declaredUnit({ distance: 1 }, { units: { distance: 'm' } }, 'distance'), 'm', 'summary units');
   assert.equal(declaredUnit({ distance: 1 }, null, 'distance'), undefined);
   assert.equal(formatFactValue(undefined), 'not present');
+  assert.equal(formatFactValue(''), '""', 'a captured empty text is distinct from an absent value');
   assert.equal(formatFactValue(-0.0200000001, 'm'), '-0.02 m');
 });
 

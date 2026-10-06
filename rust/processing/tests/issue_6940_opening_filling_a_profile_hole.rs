@@ -21,6 +21,16 @@
 //! or both holes filled has its cutter welded 18 vertices off its walls and
 //! still comes back closed through the router. The seven slabs below do tear
 //! without the guard (39 open edges each on `main`).
+//!
+//! What this does NOT cover: it runs the native default frame. The result is
+//! frame-dependent, because the frame decides how the snap rounds the opening
+//! against the hole. Measured on slab 137627 through the router: in the
+//! browser batch path's frame (no model offset, per-element local frame) the
+//! guard takes it from 29 open edges to 12, not to 0, and with no model
+//! offset and no local frame it leaves 3. In those frames the opening's
+//! corners are not on the hole's walls to begin with (with the weld switched
+//! off entirely the browser frame reads 24), so there is no exact incidence
+//! for the guard to keep. That remainder is not fixed here.
 
 use ifc_lite_processing::process_geometry;
 use std::collections::HashMap;

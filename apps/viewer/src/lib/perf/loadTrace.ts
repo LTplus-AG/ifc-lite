@@ -28,7 +28,10 @@ export function isPerfTraceRequested(
   search: string = globalThis.location?.search ?? '',
   flag: unknown = readPerfFlag('perfTrace'),
 ): boolean {
-  if (flag === 1 || flag === true || flag === '1') return true;
+  // A defined flag value is authoritative: `__IFC_LITE_PERF_TRACE = 0` must
+  // keep tracing off even when the URL asks for it. The URL decides only when
+  // the flag is unset.
+  if (flag !== undefined && flag !== null) return flag === 1 || flag === true || flag === '1';
   return new URLSearchParams(search).get('perfTrace') === '1';
 }
 

@@ -63,18 +63,17 @@
   1187 apps/viewer/src/components/mcp/PlaygroundChat.tsx
    415 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
    529 apps/viewer/src/components/viewer/BCFPanel.tsx
-   623 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
+   604 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    485 apps/viewer/src/components/viewer/CesiumOverlay.tsx
   1682 apps/viewer/src/components/viewer/ChatPanel.tsx
   1243 apps/viewer/src/components/viewer/ClashPanel.tsx
-  1052 apps/viewer/src/components/viewer/DataConnector.tsx
+   966 apps/viewer/src/components/viewer/DataConnector.tsx
   1698 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
    535 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
    644 apps/viewer/src/components/viewer/ExportDialog.tsx
    468 apps/viewer/src/components/viewer/GLBExportDialog.tsx
   1357 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    740 apps/viewer/src/components/viewer/HierarchyPanel.tsx
-   432 apps/viewer/src/components/viewer/IDSCorrectionDialog.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1012 apps/viewer/src/components/viewer/LensPanel.tsx
    989 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
@@ -101,7 +100,7 @@
    501 apps/viewer/src/components/viewer/tools/measure-modes/radius.ts
    818 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
    677 apps/viewer/src/components/viewer/tools/MeasureQuantities.tsx
-   970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
+   926 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    893 apps/viewer/src/components/viewer/useMouseControls.ts
    461 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1641 apps/viewer/src/components/viewer/Viewport.tsx
@@ -112,7 +111,7 @@
    525 apps/viewer/src/hooks/ingest/pointCloudIngest.ts
    461 apps/viewer/src/hooks/useAnnotation2D.ts
    764 apps/viewer/src/hooks/useBCF.ts
-  1348 apps/viewer/src/hooks/useClash.ts
+  1334 apps/viewer/src/hooks/useClash.ts
   1353 apps/viewer/src/hooks/useDrawingExport.ts
   1041 apps/viewer/src/hooks/useDrawingGeneration.ts
    586 apps/viewer/src/hooks/useIfcCache.ts
@@ -217,10 +216,10 @@
    526 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    638 packages/geometry/src/coordinate-handler.ts
-  1695 packages/geometry/src/geometry-parallel.ts
+  1667 packages/geometry/src/geometry-parallel.ts
   1780 packages/geometry/src/geometry.worker.ts
    918 packages/geometry/src/ifc-lite-bridge.ts
-  1543 packages/geometry/src/index.ts
+  1536 packages/geometry/src/index.ts
    730 packages/geometry/src/native-bridge.ts
    904 packages/ids/src/audit/ifc-schema/index.ts
    566 packages/ids/src/audit/structural/index.ts

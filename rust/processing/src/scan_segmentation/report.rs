@@ -4,10 +4,10 @@
 
 //! Measured output of scan segmentation. Coordinates are in the positions'
 //! frame plus `options.origin`, in metres.
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Classification hint relative to `options.up_axis`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PlaneOrientation {
     /// Normal within `classificationAngleDegrees` of up: floor, ceiling, slab.
@@ -18,7 +18,7 @@ pub enum PlaneOrientation {
 }
 
 /// Which side the reported normal faces.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum NormalSource {
     /// Toward `options.scanner_position`: the scanned (visible) side.
@@ -33,7 +33,7 @@ pub enum NormalSource {
 /// vertical and sloped planes `v_axis` points up (along the fall line) and
 /// `u_axis` is horizontal; horizontal planes take the minimum-area rectangle.
 /// `u_axis x v_axis = normal`.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaneExtent {
     pub center: [f64; 3],
@@ -45,7 +45,7 @@ pub struct PlaneExtent {
     pub corners: [[f64; 3]; 4],
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanPlane {
     /// Unit normal; `normal . x + d = 0`.
@@ -66,7 +66,7 @@ pub struct ScanPlane {
 }
 
 /// Axis direction relative to `options.up_axis`, with the plane tolerance.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AxisOrientation {
     /// Axis along up: a column.
@@ -79,7 +79,7 @@ pub enum AxisOrientation {
 /// The faces of a polygonal (prism) column: a regular polygon of `faces`
 /// sides about the cylinder's axis, `radius` being its circumradius (axis to
 /// corner).
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanFacets {
     /// Number of sides of the whole polygon (6 or more), seen or not.
@@ -96,7 +96,7 @@ pub struct ScanFacets {
 /// A detected cylinder (column, pipe). The axis runs from `axis_start` to
 /// `axis_end` over the inliers' extent. A polygonal column of six or more
 /// faces is reported here too, with `faceted` set.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanCylinder {
     pub axis_start: [f64; 3],
@@ -122,7 +122,7 @@ pub struct ScanCylinder {
     pub faceted: Option<ScanFacets>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanSegmentationStats {
     pub input_points: u64,
@@ -203,7 +203,7 @@ pub struct ScanSegmentationStats {
 }
 
 /// Which bounds acted. A bound that acts is always reported here.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanSegmentationLimits {
     /// The voxel budget doubled the voxel size at least once.
@@ -221,7 +221,7 @@ pub struct ScanSegmentationLimits {
     pub cylinder_group_limit_hit: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanSegmentationReport {
     pub algorithm: String,

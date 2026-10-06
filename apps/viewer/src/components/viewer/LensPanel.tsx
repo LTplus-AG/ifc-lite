@@ -43,6 +43,7 @@ import { useTranslation } from '@/i18n';
 import { TYPE_LABEL_KEYS } from './lens-editor-labels';
 import { LensRuleEditor } from './LensRuleEditor';
 import { RuleRow, AutoColorRow } from './LensLegendRows';
+import { AssistantAction } from './assistant/AssistantAction';
 
 interface LensPanelProps {
   onClose?: () => void;
@@ -876,13 +877,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
           >
             <Upload className="h-3.5 w-3.5" />
           </IconButton>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json"
-            className="hidden"
-            onChange={handleImport}
-          />
+          <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
           {activeLensId && (
             <Button
               variant="ghost"
@@ -901,6 +896,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
               {t('lensPanel.clearButton')}
             </Button>
           )}
+          <AssistantAction />
           {onClose && (
             <IconButton
               label={t('lensPanel.closeAriaLabel')}

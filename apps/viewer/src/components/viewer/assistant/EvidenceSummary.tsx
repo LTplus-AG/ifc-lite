@@ -8,9 +8,9 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
-import { panelTitleKey } from '@/lib/panels/registry';
+import { adapterFor } from '@/lib/assistant/adapters/registry';
 import type { SavedConversation } from '@/lib/assistant/persistence';
-import { EvidenceView, sourceAvailability, UNAVAILABLE } from '../analysis/EvidenceView';
+import { EvidenceView, sourceAvailability } from '../analysis/EvidenceView';
 
 type EvidenceState = 'captured' | 'stale' | 'historical';
 const STATE_LABEL = { captured: 'assistant.stateCaptured', stale: 'assistant.stateStale', historical: 'assistant.stateHistorical' } as const;
@@ -30,12 +30,13 @@ export function EvidenceSummary({ evidence, state, onReturn, onRefresh, onChange
 }) {
   const { t } = useTranslation();
   const availability = useMemo(() => sourceAvailability(evidence.payload), [evidence.payload]);
-  const scope = availability === 'unavailable' ? t(UNAVAILABLE[evidence.source])
+  const adapter = adapterFor(evidence.source);
+  const scope = availability === 'unavailable' ? t(adapter.unavailableKey)
     : availability === 'available' && evidence.totalRows === 0 ? t('assistant.evidenceEmpty')
       : t('assistant.attachedRows', { included: evidence.includedRows, total: evidence.totalRows });
   return <div className="border-b border-border p-3 space-y-2 text-xs">
     <div className="flex items-center gap-2 min-w-0">
-      <span className="font-semibold truncate">{t(panelTitleKey(evidence.source))}</span>
+      <span className="font-semibold truncate">{t(adapter.titleKey)}</span>
       <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-2xs font-medium', STATE_TONE[state])}>{t(STATE_LABEL[state])}</span>
       <div className="ml-auto flex shrink-0 items-center">
         <IconButton label={t('assistant.changeSource')} className="h-7 w-7" onClick={onChange}><ArrowLeftRight className="h-3.5 w-3.5" /></IconButton>

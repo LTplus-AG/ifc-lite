@@ -1,0 +1,193 @@
+{
+  "issue": 6958,
+  "what": "Run-to-run determinism of scripts/perf/instructions.sh: one binary (perf_probe --features phase-markers, --single-thread --iters 1), independent valgrind processes, some run concurrently on a loaded 24-core machine.",
+  "valgrind": "valgrind-3.26.0",
+  "harness": "working tree on 17e3f195f5 (+ this change)",
+  "residualSource": "std::collections::HashMap per-process RandomState seeds change probe lengths in the geometry kernel (clip_mesh_with_half_space, promote_cutter_verts_onto_host_faces, remove_internal_membrane, union_all) and in preprocess; output is unaffected (identical mesh fingerprints).",
+  "fixtures": {
+    "AC20-FZK-Haus": {
+      "runs": [
+        {
+          "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "commit": "17e3f195f5+dirty",
+          "phases": {
+            "parseIr": 105617350,
+            "entityScanIr": 63685903,
+            "lookupIr": 13255565,
+            "preprocessIr": 26851287,
+            "geometryIr": 366888106,
+            "totalIr": 472509245
+          },
+          "outside": {
+            "beforePipelineIr": 108756740,
+            "afterPipelineIr": 8353713
+          },
+          "processIr": 589619698,
+          "meshes": 285,
+          "vertices": 35940,
+          "triangles": 20322
+        },
+        {
+          "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "commit": "17e3f195f5+dirty",
+          "phases": {
+            "parseIr": 105617340,
+            "entityScanIr": 63685903,
+            "lookupIr": 13255565,
+            "preprocessIr": 26851277,
+            "geometryIr": 366888300,
+            "totalIr": 472509429
+          },
+          "outside": {
+            "beforePipelineIr": 108756740,
+            "afterPipelineIr": 8353835
+          },
+          "processIr": 589620004,
+          "meshes": 285,
+          "vertices": 35940,
+          "triangles": 20322
+        },
+        {
+          "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "commit": "17e3f195f5+dirty",
+          "phases": {
+            "parseIr": 105617366,
+            "entityScanIr": 63685903,
+            "lookupIr": 13255565,
+            "preprocessIr": 26851303,
+            "geometryIr": 366888360,
+            "totalIr": 472509515
+          },
+          "outside": {
+            "beforePipelineIr": 108756740,
+            "afterPipelineIr": 8353832
+          },
+          "processIr": 589620087,
+          "meshes": 285,
+          "vertices": 35940,
+          "triangles": 20322
+        }
+      ],
+      "spread": {
+        "parseIr": {
+          "min": 105617340,
+          "max": 105617366,
+          "spreadIr": 26,
+          "relSpread": 2.46e-7
+        },
+        "entityScanIr": {
+          "min": 63685903,
+          "max": 63685903,
+          "spreadIr": 0,
+          "relSpread": 0
+        },
+        "lookupIr": {
+          "min": 13255565,
+          "max": 13255565,
+          "spreadIr": 0,
+          "relSpread": 0
+        },
+        "preprocessIr": {
+          "min": 26851277,
+          "max": 26851303,
+          "spreadIr": 26,
+          "relSpread": 9.68e-7
+        },
+        "geometryIr": {
+          "min": 366888106,
+          "max": 366888360,
+          "spreadIr": 254,
+          "relSpread": 6.92e-7
+        },
+        "totalIr": {
+          "min": 472509245,
+          "max": 472509515,
+          "spreadIr": 270,
+          "relSpread": 5.71e-7
+        }
+      }
+    },
+    "ISSUE_129": {
+      "runs": [
+        {
+          "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+          "commit": "17e3f195f5+dirty",
+          "phases": {
+            "parseIr": 336154690,
+            "entityScanIr": 281076720,
+            "lookupIr": 21449,
+            "preprocessIr": 7082857,
+            "geometryIr": 28689476015,
+            "totalIr": 29025676844
+          },
+          "outside": {
+            "beforePipelineIr": 491691242,
+            "afterPipelineIr": 91646441
+          },
+          "processIr": 29609014527,
+          "meshes": 1402,
+          "vertices": 219999,
+          "triangles": 136807
+        },
+        {
+          "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+          "commit": "17e3f195f5+dirty",
+          "phases": {
+            "parseIr": 336154659,
+            "entityScanIr": 281076720,
+            "lookupIr": 21449,
+            "preprocessIr": 7082826,
+            "geometryIr": 28689484927,
+            "totalIr": 29025685706
+          },
+          "outside": {
+            "beforePipelineIr": 491691242,
+            "afterPipelineIr": 91646130
+          },
+          "processIr": 29609023078,
+          "meshes": 1402,
+          "vertices": 219999,
+          "triangles": 136807
+        }
+      ],
+      "spread": {
+        "parseIr": {
+          "min": 336154659,
+          "max": 336154690,
+          "spreadIr": 31,
+          "relSpread": 9.22e-8
+        },
+        "entityScanIr": {
+          "min": 281076720,
+          "max": 281076720,
+          "spreadIr": 0,
+          "relSpread": 0
+        },
+        "lookupIr": {
+          "min": 21449,
+          "max": 21449,
+          "spreadIr": 0,
+          "relSpread": 0
+        },
+        "preprocessIr": {
+          "min": 7082826,
+          "max": 7082857,
+          "spreadIr": 31,
+          "relSpread": 0.00000438
+        },
+        "geometryIr": {
+          "min": 28689476015,
+          "max": 28689484927,
+          "spreadIr": 8912,
+          "relSpread": 3.11e-7
+        },
+        "totalIr": {
+          "min": 29025676844,
+          "max": 29025685706,
+          "spreadIr": 8862,
+          "relSpread": 3.05e-7
+        }
+      }
+    }
+  }
+}

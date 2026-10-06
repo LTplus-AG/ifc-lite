@@ -1105,6 +1105,15 @@ export class IfcAPI {
      */
     processGeometryBatchPartitionedFromSource(jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): PartitionedBatch;
     /**
+     * Propose IFC walls, slabs, columns and pipes from a scan segmentation
+     * report (#6894). `report_json` is the JSON `segmentScanPoints`
+     * returned; `options_json` is a camelCase `ScanProposalOptions` object
+     * (`{}` for the defaults; `scanToModel` maps the report's frame into the
+     * IFC model frame). Returns the UTF-8 JSON `ScanProposalReport` in the
+     * model frame (Z up, metres). Pure: loads and changes nothing.
+     */
+    proposeScanElements(report_json: string, options_json: string): Uint8Array;
+    /**
      * Fit bounded manual correspondences in source metres -> IFC world Z-up
      * metres, reporting held-out errors separately. Does not load or move models.
      */
@@ -2671,6 +2680,7 @@ export interface InitOutput {
     readonly ifcapi_processGeometryBatchInstanced: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number) => void;
     readonly ifcapi_processGeometryBatchPartitioned: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
     readonly ifcapi_processGeometryBatchPartitionedFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;
+    readonly ifcapi_proposeScanElements: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_registerScanCorrespondences: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_resolveStyledItemsShard: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_resolveStyledItemsShardFromSource: (a: number, b: number, c: number, d: number) => void;

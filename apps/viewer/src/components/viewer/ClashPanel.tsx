@@ -11,7 +11,6 @@ import {
   Info,
   Focus,
   ArrowUpDown,
-  AlertTriangle,
   ChevronDown,
   ChevronRight,
   Layers,
@@ -41,6 +40,9 @@ import { useManualClashGroups } from '@/components/viewer/useManualClashGroups';
 import { ClashGroupingCheckbox, RemoveFromClashGroupButton } from '@/components/viewer/ClashManualGroupControls';
 import { ClashGroupHeaderWithActions } from '@/components/viewer/ClashGroupHeaderWithActions';
 import { ClashResultSummary, type ClashResultView } from '@/components/viewer/ClashResultSummary';
+import { ClashResultState } from '@/components/viewer/clash/ClashResultState';
+import { ResultAction, SelectionSummary } from '@/components/viewer/result/ResultAction';
+import { SelectAllControl } from '@/components/viewer/result/SelectAllControl';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { duplicateSetSections } from '@/lib/clash/duplicate-set-sections';
 import { clashDisplayRows, type ClashDisplaySection } from '@/lib/clash/display-rows';
@@ -504,7 +506,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const showManualGroups = useCallback(() => setResultView('groups'), []);
   const {
     sections: manualSections, groupCount: manualGroupCount, membersById: manualMembersById,
-    selected: selectedClashes, checkedIds: checkedClashIds, setCheckedIds: setCheckedClashIds,
+    selected: selectedClashes, checkedIds: checkedClashIds, selection: clashSelection, visibleIds: visibleClashIds,
     dialog: groupDialog, setDialog: setGroupDialog, openCreate: openCreateGroupDialog, openAddToGroup,
     submitDialog: submitGroupDialog, removeGroup: removeManualGroup, dialogProps,
     removeMember: removeManualGroupMember, createBcfTopic: createBcfTopicForGroup,
@@ -911,18 +913,22 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                 <option key={s} value={s}>{t(SORT_LABEL_KEY[s])}</option>
               ))}
             </select>
-            <ClashExportActions selectedId={selectedId} creatingTopic={creatingTopic} createBcfTopic={createBcfTopic} selectedClashes={selectedClashes} />
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-6 px-2 text-2xs"
+            <ClashExportActions selectedId={selectedId} creatingTopic={creatingTopic} createBcfTopic={createBcfTopic} selectedClashes={selectedClashes} filteredIds={visibleClashIds} />
+            <ResultAction
+              acts="selected"
+              selection={clashSelection.state}
               disabled={selectedClashes.length < 2}
               title={t('clashPanel.groupSelectedTooltip')}
-              onClick={openCreateGroupDialog}
-            >
-              <FolderPlus className="mr-1 h-3.5 w-3.5" />
-              {t('clashPanel.groupSelectedButton')}{selectedClashes.length > 0 ? ` (${selectedClashes.length})` : ''}
-            </Button>
+              icon={<FolderPlus className="h-3.5 w-3.5" />}
+              label={`${t('clashPanel.groupSelectedButton')}${selectedClashes.length > 0 ? ` (${selectedClashes.length})` : ''}`}
+              onRun={openCreateGroupDialog}
+            />
+          </div>
+          {/* Selection: which findings the bulk actions above apply to (U02, #6925). */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <SelectAllControl selection={clashSelection} pageKeys={visibleClashIds} populationTotal={visibleClashIds.length} />
+            {/* A select-all line already states the selected count. */}
+            <SelectionSummary highlighted={selectedId !== null} selected={clashSelection.state.selectAll ? 0 : checkedClashIds.size} />
           </div>
           {/* Filters: touching + review status, grouped so "what's shown" reads
               as one control cluster (#1468). */}
@@ -1111,12 +1117,9 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               <ClashGroupingCheckbox
                 clash={row.clash}
                 checked={checkedClashIds.has(row.clash.id)}
-                onChange={(checked) => setCheckedClashIds((previous) => {
-                    const next = new Set(previous);
-                    if (checked) next.add(row.clash.id);
-                    else next.delete(row.clash.id);
-                    return next;
-                })}
+                onChange={(checked) => {
+                  if (checked !== checkedClashIds.has(row.clash.id)) clashSelection.dispatch({ type: 'toggle', key: row.clash.id });
+                }}
               />
               <button
                 onClick={() => toggleExpand(row.clash.id)}
@@ -1190,43 +1193,17 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             />
           )}
 
-          {result && total === 0 && coverageOutcome === 'no-match' && isMultiRuleRun && (
-            <div className="flex flex-col items-center justify-center p-8 text-center">
-              <AlertTriangle className="h-6 w-6 mb-2 text-[#e0af68]" />
-              <p className="text-sm font-medium">{t('clashPanel.matrixNoMatch.title')}</p>
-              <p className="mt-1.5 text-xs text-muted-foreground max-w-xs">{t('clashPanel.matrixNoMatch.description', { count: result.rulesRun.length })}</p>
-              <p className="mt-1.5 text-2xs text-muted-foreground max-w-xs">{t('clashPanel.matrixNoMatch.emptyRules', { names: emptyRuleNames.join(', ') })}</p>
-            </div>
-          )}
-
-          {result && total === 0 && coverageOutcome === 'no-match' && !isMultiRuleRun && (
-            <div className="flex flex-col items-center justify-center p-8 text-center">
-              <AlertTriangle className="h-6 w-6 mb-2 text-[#e0af68]" />
-              <p className="text-sm font-medium">{t('clashPanel.selectorNoMatch.title')}</p>
-              <p className="mt-1.5 text-xs text-muted-foreground max-w-xs">
-                {t('clashPanel.selectorNoMatch.description', { reasons: emptySelectorDescriptions.join(', ') })}
-              </p>
-            </div>
-          )}
-
-          {result && total === 0 && coverageOutcome !== 'no-match' && (
-            <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
-              <p className="text-sm">{t('clashPanel.noClashes.title')}</p>
-              {coverageOutcome === 'partial' && emptyRuleNames.length > 0 && (
-                <p className="mt-1.5 text-2xs max-w-xs">
-                  {t('clashPanel.noClashes.partialRules', { count: emptyRuleNames.length, names: emptyRuleNames.join(', ') })}
-                </p>
-              )}
-            </div>
-          )}
-
-          {result && total > 0 && shown === 0 && (
-            <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
-              <p className="text-sm">{t('clashPanel.noMatches.title')}</p>
-              <p className="mt-1 text-2xs">
-                {hideTouching && touchingCount > 0 ? t('clashPanel.noMatches.hintWithUntick') : t('clashPanel.noMatches.hintPlain')}
-              </p>
-            </div>
+          {result && (
+            <ClashResultState
+              total={total}
+              shown={shown}
+              coverage={coverageOutcome}
+              multiRule={isMultiRuleRun}
+              ruleCount={result.rulesRun.length}
+              emptyRuleNames={emptyRuleNames}
+              emptySelectorDescriptions={emptySelectorDescriptions}
+              touchingHidden={hideTouching && touchingCount > 0}
+            />
           )}
         </AnalysisResultList>
       </AnalysisStaleRegion>

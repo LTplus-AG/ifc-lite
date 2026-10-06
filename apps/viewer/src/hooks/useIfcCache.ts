@@ -30,12 +30,14 @@ import { makeColdGeometryProvider } from '../utils/coldGeometryProvider.js';
 import { getGlobalRenderer } from './useBCF.js';
 import { computeFullSourceHash } from '../utils/sourceContentHash.js';
 import type { MeshData } from '@ifc-lite/geometry';
+import { NOOP_LOAD_TRACE, type LoadTrace } from '@ifc-lite/load-trace';
 
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '../store/index.js';
 import { getCached, setCached, deleteCached, type CacheResult } from '../services/cacheService.js';
 import { rebuildSpatialHierarchy, rebuildOnDemandMaps } from '../utils/spatialHierarchy.js';
 import { calculateStoreyHeights } from '../utils/localParsingUtils.js';
+import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 
 // Re-export types for convenience
 export type { CacheResult } from '../services/cacheService.js';
@@ -202,6 +204,7 @@ export function useIfcCache() {
      * keeps the old behaviour.
      */
     isStale?: () => boolean,
+    trace: LoadTrace = NOOP_LOAD_TRACE, // #6956: the J2 (warm open) spans land on the caller's load trace
   ): Promise<CacheLoadResult> => {
     try {
       const cacheLoadStart = performance.now();
@@ -237,7 +240,7 @@ export function useIfcCache() {
       const rawCacheBuffer = cacheResult.buffer;
       const cacheBlob = rawCacheBuffer instanceof Blob ? rawCacheBuffer : null;
       const cacheBuffer: ArrayBuffer = rawCacheBuffer instanceof Blob
-        ? await rawCacheBuffer.arrayBuffer()
+        ? await trace.span('cache.read', () => rawCacheBuffer.arrayBuffer())
         : rawCacheBuffer;
 
       // Geometry streams chunk-by-chunk below (first paint after the FIRST
@@ -252,7 +255,7 @@ export function useIfcCache() {
         throw new Error(`unexpected pre-v13 cache entry (v${headerInfo.version})`);
       }
       const geometrySection = headerInfo.sections.find((s) => s.type === SectionType.Geometry);
-      const result = await reader.read(cacheBuffer, { skipGeometry: true });
+      const result = await trace.span('cache.decode', () => reader.read(cacheBuffer, { skipGeometry: true }));
 
       // Restore the source buffer — required for on-demand property extraction
       // AND the lazy entity accessors (getEntity/getProperties/...). The web
@@ -311,14 +314,14 @@ export function useIfcCache() {
       // Typed cache→runtime hydration (#952): builds the parser-shaped
       // IfcDataStore with compiler-checked field mapping (no `as unknown` cast)
       // and wires the lazy accessors via attachDataStoreAccessors.
-      const dataStore = hydrateCacheStore(cacheStore, {
+      const dataStore = trace.span('cache.hydrate', () => hydrateCacheStore(cacheStore, {
         source,
         fileSize: sourceBuffer?.byteLength ?? 0,
         entityIndex,
         onDemandPropertyMap,
         onDemandQuantityMap,
         onDemandMaterialMap,
-      });
+      }));
 
       // Rebuild spatial hierarchy from cache data (cache doesn't serialize it)
       // Use SpatialHierarchyBuilder to extract elevations from source buffer
@@ -344,12 +347,7 @@ export function useIfcCache() {
             }
           }
         } else {
-          console.warn('[useIfcCache] Missing data for elevation extraction:', {
-            hasSource: !!dataStore.source,
-            sourceLength: dataStore.source?.length ?? 0,
-            hasEntityIndex: !!dataStore.entityIndex,
-            hasStrings: !!dataStore.strings,
-          });
+          console.warn('[useIfcCache] Missing data for elevation extraction:', { hasSource: !!dataStore.source, sourceLength: dataStore.source?.length ?? 0, hasEntityIndex: !!dataStore.entityIndex, hasStrings: !!dataStore.strings });
           // Fallback: use simplified rebuild if source data not available
           dataStore.spatialHierarchy = rebuildSpatialHierarchy(
             dataStore.entities,
@@ -387,6 +385,7 @@ export function useIfcCache() {
         setGeometryStreamingActive(true);
         const allMeshes: MeshData[] = [];
         let superseded = false;
+        let firstVisible: Promise<void> | undefined;
         try {
           for (let i = 0; i < open.chunks.length; i++) {
             const chunkMeshes = await open.readChunk(i);
@@ -400,6 +399,7 @@ export function useIfcCache() {
             }
             allMeshes.push(...chunkMeshes);
             appendGeometryBatch(modelId, chunkMeshes, open.coordinateInfo);
+            if (i === 0 && trace.enabled) firstVisible = recordFirstVisible(trace, trace.milestone('geometry.firstAppend'));
             if ((i & 3) === 3 || i === open.chunks.length - 1) {
               setProgress({
                 phase: 'Loading geometry from cache',
@@ -427,6 +427,7 @@ export function useIfcCache() {
           if (!isStale?.()) setGeometryStreamingActive(false);
         }
 
+        await firstVisible; // bounded (rAF or 250 ms); ahead of the ownership re-check below
         // Re-check after the chunk loop: it awaits per chunk (and yields to the
         // event loop after each append), so a newer load can have taken the
         // active slot mid-stream — including after the LAST chunk's yield. This
@@ -437,6 +438,7 @@ export function useIfcCache() {
         }
 
         meshCount = allMeshes.length;
+        trace.milestone('geometry.streamComplete');
 
         // Restore the GPU-instancing shards (opaque repeated occurrences that
         // were partitioned off the flat meshes).

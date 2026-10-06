@@ -49,7 +49,7 @@ function baseAttribute(dataStore: IfcDataStore, expressId: number, name: string)
 }
 
 export function currentValue(reader: ModelReader, expressId: number, change: ModelChange): CurrentValue {
-  const { dataStore, view } = reader;
+  const { view } = reader;
   switch (change.op) {
     case 'property.set': case 'property.delete':
       return scalarOf(view.getPropertyValue(expressId, change.pset, change.name));
@@ -58,8 +58,14 @@ export function currentValue(reader: ModelReader, expressId: number, change: Mod
       return scalarOf(set?.quantities.find((quantity) => quantity.name === change.name)?.value);
     }
     case 'attribute.set':
-      return effectiveListStringAttribute(dataStore, view, expressId, change.name, () => baseAttribute(dataStore, expressId, change.name));
+      return effectiveAttribute(reader, expressId, change.name);
   }
+}
+
+/** Effective IfcRoot string attribute: pending edits first, then the parsed (or on-demand) value. */
+export function effectiveAttribute(reader: ModelReader, expressId: number, name: string): string {
+  const { dataStore, view } = reader;
+  return effectiveListStringAttribute(dataStore, view, expressId, name, () => baseAttribute(dataStore, expressId, name));
 }
 
 /**

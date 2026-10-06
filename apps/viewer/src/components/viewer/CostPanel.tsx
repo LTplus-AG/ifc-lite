@@ -42,6 +42,7 @@ import { buildCostCsvReport } from '@/lib/analysis/export-csv';
 import type { EntityRefLike } from '@/lib/cost/cost-tree';
 import { downloadFile } from '@/lib/export/download';
 import { trackExportCompleted } from '@/lib/analytics';
+import { AssistantAction } from './assistant/AssistantAction';
 import { CostDetail } from './cost/CostDetail';
 import { CostTreeView } from './cost/CostTreeView';
 import { useCostBackend } from './cost/useCostBackend';
@@ -118,6 +119,7 @@ export function CostPanel({ onClose }: CostPanelProps) {
           disabled={!entries.some((entry) => (entry.graph?.CostItems.length ?? 0) > 0)}>
           <Download className="h-3.5 w-3.5" /> {t('costPanel.exportCsv')}
         </Button>
+        <AssistantAction />
         {onClose && (
           <IconButton label={t('costPanel.close')} className="h-6 w-6" onClick={onClose}>
             <X className="h-3.5 w-3.5" />

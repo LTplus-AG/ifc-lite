@@ -31,7 +31,6 @@ import {
   addRecentRuleSet, loadRecentRuleSets, removeRecentRuleSet, type RecentRuleSet,
 } from '@/lib/validation/recent-rule-sets';
 import { useValidationEpoch } from './useValidationEpoch';
-import { captureAnalysisStamp, stampAnalysisReport } from '../useAnalysisStaleness';
 import { activeDefinition } from '@/lib/validation/definition-library';
 import { beginDefinitionImport } from '@/lib/validation/definition-import-owner';
 

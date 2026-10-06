@@ -43,7 +43,9 @@ export interface DraftFinding {
 export type DraftOrigin =
   | { kind: 'group'; workspaceId: string; groupId: string }
   | { kind: 'selection' }
-  | { kind: 'archive' };
+  | { kind: 'archive' }
+  /** A coordination review card (P18); `card` is the digest of the card's durable identity. */
+  | { kind: 'review'; card: string };
 
 export interface DraftComment {
   id: string;
@@ -69,9 +71,9 @@ export interface DraftTopic {
   comments: DraftComment[];
 }
 
-/** The clash run (or archive) a batch was drafted from. */
+/** The clash run, review snapshot (P18) or archive a batch was drafted from. Only clash batches reconcile against a newer run. */
 export interface DraftSource {
-  kind: 'clash' | 'archive';
+  kind: 'clash' | 'archive' | 'review';
   /** Order-independent digest of the run's finding identities and rules. */
   runDigest: string;
   rules: string[];

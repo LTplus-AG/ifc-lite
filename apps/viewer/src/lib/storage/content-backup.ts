@@ -8,6 +8,7 @@ import type { DraftBatch } from '../bcf-drafts/draft-types.js';
 import type { BcfPublication } from '../bcf-publication/outbox-types.js';
 import type { ModelChangeReceipt } from '../actions/model-change-commit.js';
 import type { ClashGroupApplication } from '../clash/group-applications.js';
+import type { ReviewWorkspace } from '../review/workspace.js';
 import type { SavedValidationReport } from '../validation/reports/history.js';
 import type { SavedComparison } from '../compare/savedComparisonSchema.js';
 import type { DocumentSpec } from '../document/types.js';
@@ -36,6 +37,8 @@ export interface ContentLibraries {
   modelChanges?: ModelChangeReceipt[];
   /** Optional for backups written before AI clash group apply receipts existed. */
   clashGroupApplications?: ClashGroupApplication[];
+  /** Optional for backups written before coordination review decisions existed. */
+  reviewWorkspaces?: ReviewWorkspace[];
 }
 export interface ContentBackup {
   version: 1;
@@ -68,6 +71,7 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
     ...(copied.bcfOutbox ? { bcfOutbox: partition('bcfOutbox', copied.bcfOutbox, CONTENT_DEFINITIONS.bcfOutbox.decode) } : {}),
     ...(copied.modelChanges ? { modelChanges: partition('modelChanges', copied.modelChanges, CONTENT_DEFINITIONS.modelChanges.decode) } : {}),
     ...(copied.clashGroupApplications ? { clashGroupApplications: partition('clashGroupApplications', copied.clashGroupApplications, CONTENT_DEFINITIONS.clashGroupApplications.decode) } : {}),
+    ...(copied.reviewWorkspaces ? { reviewWorkspaces: partition('reviewWorkspaces', copied.reviewWorkspaces, CONTENT_DEFINITIONS.reviewWorkspaces.decode) } : {}),
   }, drafts: mergeContentDrafts(parseContentDrafts(preservedDrafts), pendingContentDrafts(), drafts) };
 }
 
@@ -101,6 +105,7 @@ export function parseContentBackup(text: string): ContentBackup {
     ...(libraries.bcfOutbox !== undefined ? { bcfOutbox: parse('bcfOutbox', CONTENT_DEFINITIONS.bcfOutbox.decode) } : {}),
     ...(libraries.modelChanges !== undefined ? { modelChanges: parse('modelChanges', CONTENT_DEFINITIONS.modelChanges.decode) } : {}),
     ...(libraries.clashGroupApplications !== undefined ? { clashGroupApplications: parse('clashGroupApplications', CONTENT_DEFINITIONS.clashGroupApplications.decode) } : {}),
+    ...(libraries.reviewWorkspaces !== undefined ? { reviewWorkspaces: parse('reviewWorkspaces', CONTENT_DEFINITIONS.reviewWorkspaces.decode) } : {}),
   }, drafts: parseContentDrafts(backup.drafts) };
 }
 
@@ -152,7 +157,8 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
       ...(parsed.libraries.assistant ? { assistant: [] } : {}), ...(parsed.libraries.clashGroups ? { clashGroups: [] } : {}),
       ...(parsed.libraries.bcfDrafts ? { bcfDrafts: [] } : {}), ...(parsed.libraries.bcfOutbox ? { bcfOutbox: [] } : {}),
       ...(parsed.libraries.modelChanges ? { modelChanges: [] } : {}),
-      ...(parsed.libraries.clashGroupApplications ? { clashGroupApplications: [] } : {}) };
+      ...(parsed.libraries.clashGroupApplications ? { clashGroupApplications: [] } : {}),
+      ...(parsed.libraries.reviewWorkspaces ? { reviewWorkspaces: [] } : {}) };
     for (const row of planned) {
       // Keep newer edits to an already-staged identity. Reimport is not an undo.
       const current = visible?.[row.kind]?.find(entry => entry.id === row.id);
@@ -163,6 +169,7 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
       if (row.kind === 'bcfOutbox') { const entry = CONTENT_DEFINITIONS.bcfOutbox.decode(row.payload); if (entry) (entries.bcfOutbox ??= []).push(entry); }
       if (row.kind === 'modelChanges') { const entry = CONTENT_DEFINITIONS.modelChanges.decode(row.payload); if (entry) (entries.modelChanges ??= []).push(entry); }
       if (row.kind === 'clashGroupApplications') { const entry = CONTENT_DEFINITIONS.clashGroupApplications.decode(row.payload); if (entry) (entries.clashGroupApplications ??= []).push(entry); }
+      if (row.kind === 'reviewWorkspaces') { const entry = CONTENT_DEFINITIONS.reviewWorkspaces.decode(row.payload); if (entry) (entries.reviewWorkspaces ??= []).push(entry); }
       if (row.kind === 'document') { const entry = CONTENT_DEFINITIONS.document.decode(row.payload); if (entry) entries.document.push(entry); }
       if (row.kind === 'comparison') { const entry = CONTENT_DEFINITIONS.comparison.decode(row.payload); if (entry) entries.comparison.push(entry); }
       if (row.kind === 'validation') { const entry = CONTENT_DEFINITIONS.validation.decode(row.payload); if (entry) entries.validation.push(entry); }

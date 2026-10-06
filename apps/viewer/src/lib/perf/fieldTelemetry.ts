@@ -117,7 +117,9 @@ export function fieldLoadProps(trace: LoadTrace, payload: FieldProps, at: number
     longest_long_frame_ms: frames?.longestMs,
     long_frame_count: frames?.count,
     long_frame_source: frames?.source,
-    worker_transfer_bytes: workerBytes > 0 ? workerBytes : undefined,
+    // A pool that ran states its bytes even when it moved none; without one,
+    // nothing measured them (cache, server): absent.
+    worker_transfer_bytes: workerBytes > 0 || typeof attrs.workerCount === 'number' ? workerBytes : undefined,
     perf_flags: perfFlagArm(),
   };
   // The path's own measured values win; its unmeasured (undefined) ones do not.

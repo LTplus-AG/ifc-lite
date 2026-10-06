@@ -2122,7 +2122,7 @@ health, worker bytes, the journey and the perf-flag arm. Absent always means
 | `main_thread_blocked_ms` | sum of long-animation-frame `blockingDuration` (or long-task time over 50 ms where LoAF is missing) for frames starting between load start and capture. |
 | `longest_long_frame_ms`, `long_frame_count` | the longest such frame and how many there were. |
 | `long_frame_source` | `loaf` or `longtask`; compare rows of the same source only. All four main-thread fields are absent where the engine has neither (Firefox, Safari). |
-| `worker_transfer_bytes` | mesh bytes the geometry workers handed the main thread plus the parser's transport bytes, from `memoryAccounting` (already on every load). Absent when no worker carried geometry (cache, server). It counts payload bytes, not the clone estimate `?perfTrace=1` records per message. |
+| `worker_transfer_bytes` | mesh bytes the geometry workers handed the main thread plus the parser's transport bytes, from `memoryAccounting` (already on every load). 0 when a pool ran and moved nothing; absent when no pool ran (cache, server). It counts payload bytes, not the clone estimate `?perfTrace=1` records per message. |
 | `perf_flags` | the M7 arm: `default`, or the non-default flags as sorted `id=value` pairs joined by `,` (read at capture). |
 | `load_path` | now actually arrives. The scrubber deleted it until #6961 (the key matches the `path` word); the closed vocabulary `wasm`/`cache`/`server`/`point-cloud`/`landxml` is now kept. Rows before that have no `load_path` and no `journey`, so a pre-#6961 cache hit reads as `J1`: judge `J1` against `J2` only on a baseline captured entirely after this change. |
 

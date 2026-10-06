@@ -161,6 +161,14 @@ describe('fieldLoadProps: ifc_model_loaded on every path', () => {
     assert.equal(props.worker_transfer_bytes, 4_500);
   });
 
+  it('a pool that ran but moved no geometry reports 0 bytes, not "not measured"', async () => {
+    const field = await loadField();
+    const trace = loadTracer.startLoad('m', {}, 0);
+    trace.setAttrs({ workerCount: 3 });
+    const props = field.fieldLoadProps(trace, { total_elapsed_ms: 1 }, 1);
+    assert.equal(props.worker_transfer_bytes, 0);
+  });
+
   it('main-thread health over the load window only, from long animation frames', async () => {
     const field = await loadField();
     const entries: FakeEntry[] = [

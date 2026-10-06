@@ -273,17 +273,16 @@ export class PointCloudRenderer {
   }
 
   /**
-   * Reassign a streamed asset's `expressId` after upload — used by
-   * `useIfcFederation` when the FederationRegistry hands out an
-   * `idOffset` for the model. The shader reads expressId from a
-   * per-asset uniform (flags.x), so this is just a metadata update;
-   * the next frame writes the new value into the GPU uniform without
-   * touching the per-vertex attributes.
+   * Reassign a streamed asset's identity after upload: the federated
+   * `expressId` (the shader reads it from a per-asset uniform, flags.x, so
+   * the next frame picks it up without touching per-vertex attributes) and,
+   * when given, the `modelIndex` picks and deviation readback report (#6887).
    */
-  relabelAsset(handle: PointCloudAssetHandle, newExpressId: number): void {
+  relabelAsset(handle: PointCloudAssetHandle, newExpressId: number, modelIndex?: number): void {
     const node = this.nodes.get(handle.id);
     if (!node) return;
     node.meta.expressId = newExpressId >>> 0;
+    if (modelIndex !== undefined) node.meta.modelIndex = modelIndex;
   }
 
   /** Import alignment composes with manual placement without reuploading points. */

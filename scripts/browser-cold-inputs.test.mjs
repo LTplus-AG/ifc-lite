@@ -46,8 +46,16 @@ test('#3978 shared benchmark setup navigates to the selected server and keeps th
     on() {}, async addInitScript() {}, async goto(url) { visits.push(url); },
     async waitForSelector() {}, async waitForLoadState() {},
   };
-  await new ViewerBenchmarkPage(page, 'http://localhost:3162').setup();
-  await new ViewerBenchmarkPage(page).setup();
+  // Server selection only: `auto` turns off the #6957 worker pin (covered by
+  // viewer-benchmark-load-counters.test.mjs) so the visited URL is the bare origin.
+  const saved = process.env.VIEWER_BENCHMARK_GEOM_WORKERS;
+  process.env.VIEWER_BENCHMARK_GEOM_WORKERS = 'auto';
+  try {
+    await new ViewerBenchmarkPage(page, 'http://localhost:3162').setup();
+    await new ViewerBenchmarkPage(page).setup();
+  } finally {
+    if (saved === undefined) delete process.env.VIEWER_BENCHMARK_GEOM_WORKERS; else process.env.VIEWER_BENCHMARK_GEOM_WORKERS = saved;
+  }
   assert.deepEqual(visits, ['http://localhost:3162', 'http://localhost:3000']);
 });
 

@@ -3,21 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo } from 'react';
-import { useTranslation, type TranslationKey } from '@/i18n';
-import { panelTitleKey } from '@/lib/panels/registry';
+import { useTranslation } from '@/i18n';
+import { adapterFor } from '@/lib/assistant/adapters/registry';
 import type { SavedConversation } from '@/lib/assistant/persistence';
-import type { AssistantSource } from '@/lib/assistant/sources';
 
 type PortableEvidence = SavedConversation['evidence'];
-const ROW_MEANING: Record<AssistantSource, TranslationKey> = {
-  clash: 'assistant.evidenceRowsClash', validation: 'assistant.evidenceRowsValidation',
-  compare: 'assistant.evidenceRowsCompare', flow: 'assistant.evidenceRowsFlow', loadReport: 'assistant.evidenceRowsLoadReport',
-};
-export const UNAVAILABLE: Record<AssistantSource, TranslationKey> = {
-  clash: 'assistant.evidenceUnavailableClash', validation: 'assistant.evidenceUnavailableValidation',
-  compare: 'assistant.evidenceUnavailableCompare', flow: 'assistant.evidenceUnavailableFlow',
-  loadReport: 'assistant.evidenceUnavailableLoadReport',
-};
+
 export function sourceAvailability(payload: string): 'available' | 'unavailable' | 'unknown' {
   if (payload.length > 48_000) return 'unknown';
   try {
@@ -60,19 +51,20 @@ export function EvidenceView({ evidence, state }: {
   const { t } = useTranslation();
   const availability = useMemo(() => sourceAvailability(evidence.payload), [evidence.payload]);
   const metadata = useMemo(() => capturedModels(evidence.payload), [evidence.payload]);
+  const adapter = adapterFor(evidence.source);
   return <section aria-label={t('assistant.evidenceContext')} className="space-y-2 rounded border border-border p-2 text-xs">
     <div className="flex flex-wrap items-baseline justify-between gap-2">
-      <span className="font-semibold">{t(panelTitleKey(evidence.source))}</span>
+      <span className="font-semibold">{t(adapter.titleKey)}</span>
       <span className="text-muted-foreground">{t(state === 'historical' ? 'assistant.evidenceHistorical' : state === 'stale'
         ? 'assistant.evidenceStale' : 'assistant.evidenceCaptured')}</span>
     </div>
-    {availability === 'unavailable' ? <p>{t(UNAVAILABLE[evidence.source])}</p> : <>
+    {availability === 'unavailable' ? <p>{t(adapter.unavailableKey)}</p> : <>
       {availability === 'unknown' && <p>{t('assistant.evidenceAvailabilityUnknown')}</p>}
       {availability === 'available' && evidence.totalRows === 0
         ? <p>{t('assistant.evidenceEmpty')}</p>
         : <p>{t('assistant.scope', { included: evidence.includedRows, total: evidence.totalRows })}</p>}
     </>}
-    <p className="text-muted-foreground">{t(ROW_MEANING[evidence.source])}</p>
+    <p className="text-muted-foreground">{t(adapter.rowMeaningKey)}</p>
     {evidence.includedRows < evidence.totalRows && <p className="text-muted-foreground">{t('assistant.evidenceSample')}</p>}
     {evidence.projectionTruncated && <p className="text-muted-foreground">{t('assistant.evidenceTruncated')}</p>}
     <time className="block text-2xs text-muted-foreground" dateTime={evidence.capturedAt}>{evidence.capturedAt}</time>

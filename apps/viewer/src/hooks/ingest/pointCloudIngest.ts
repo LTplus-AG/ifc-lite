@@ -95,10 +95,10 @@ export interface PointCloudIngestOptions {
   fileSize: number;
   /** Renderer to push chunks into. Streaming starts immediately. */
   renderer: Renderer;
-  /** Express ID assigned to this asset (for picking + federation). */
+  /** Express ID assigned to this asset (for picking + federation). The
+   *  global id and model index are bound after registration (#6887,
+   *  `pointCloudIdentity.ts`), since neither exists while streaming starts. */
   expressId?: number;
-  /** Federation index (set when the model registry is multi-model). */
-  modelIndex?: number;
   /** Soft cap on points held on the GPU. Default: 25M. */
   maxPointsInMemory?: number;
   /** Hard cap on file size in bytes. Default: 4 GB. */
@@ -318,7 +318,6 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   const handle = opts.renderer.beginPointCloudStream({
     expressId,
     ifcType: 'IfcGeographicElement',
-    modelIndex: opts.modelIndex,
   });
   const onCountChange = opts.onAssetCountDelta ?? (() => {});
   onCountChange(+1);
@@ -474,15 +473,14 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
     min: { x: 0, y: 0, z: 0 },
     max: { x: 0, y: 0, z: 0 },
   });
-  // Synthetic pointcloud descriptor. Federation (`useIfcFederation`)
-  // folds `idOffset` into every entry's `expressId` and then calls
-  // `relabelPointCloudAsset` on the renderer; without an entry here
-  // streamed assets keep their local synthetic id and pick collisions
-  // appear once a second model is added.
+  // Synthetic pointcloud descriptor. `finalizeModel` folds `idOffset` into
+  // every entry's `expressId`, and `bindPointCloudIdentity` then relabels the
+  // renderer asset with it (#6887); without an entry here streamed assets
+  // keep their local synthetic id and pick collisions appear once a second
+  // model is added.
   const pointClouds: PointCloudAsset[] = [{
     expressId,
     ifcType: 'IfcGeographicElement',
-    modelIndex: opts.modelIndex,
     chunk: {
       // Empty placeholder — actual point data is GPU-resident, never
       // re-uploaded from JS.

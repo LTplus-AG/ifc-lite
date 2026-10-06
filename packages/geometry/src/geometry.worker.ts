@@ -35,6 +35,7 @@ import {
   type BatchSizingConfig,
 } from './batch-sizing.js';
 import { takeWasmPanicStash } from './wasm-panic-forward.js';
+import { traceGeometryWorkerMessage, meterTypedArrayArgs, countCopy, postPrepassEvent } from './worker-trace.js'; // #6956 spans, #6957 counters
 import { isColumnLengthRefusal } from './wasm-column-refusal.js';
 
 export interface GeometryWorkerInitMessage {
@@ -500,7 +501,7 @@ async function ensureInit(): Promise<IfcAPI> {
   if (api) return api;
   await initWasmWithRetry(() => init(cachedWasmUrl), { label: 'geometry.worker' });
   installInCallHeartbeat(wasmBindings, inCallHeartbeat);
-  api = new IfcAPI();
+  api = meterTypedArrayArgs(new IfcAPI(), 'wasm'); // #6957: bytes copied into wasm (identity unless traced)
   mergeLayersApplied = false;
   applyMergeLayersToApi();
   geometryHashApplied = false;
@@ -734,7 +735,7 @@ function viewSharedBytes(sharedBuffer: SharedArrayBuffer): Uint8Array {
 /** Fallback path: copy SAB into a fresh ArrayBuffer-backed Uint8Array. */
 function materialiseSharedBytes(sharedBuffer: SharedArrayBuffer): Uint8Array {
   const local = new Uint8Array(sharedBuffer.byteLength);
-  local.set(new Uint8Array(sharedBuffer));
+  local.set(countCopy('source.materialise', new Uint8Array(sharedBuffer)));
   return local;
 }
 
@@ -1341,7 +1342,7 @@ function emitSessionEnd(session: ProcessingSession): void {
 let messageTail: Promise<void> = Promise.resolve();
 
 self.onmessage = (rawEvent: MessageEvent<GeometryWorkerRequest>) => {
-  messageTail = messageTail.then(() => handleMessage(rawEvent)).catch((err) => {
+  messageTail = messageTail.then(() => traceGeometryWorkerMessage(rawEvent.data, () => handleMessage(rawEvent))).catch((err) => {
     // #2527 follow-up: forward this realm's panic-location stash (if the
     // failure was a wasm trap) so the main thread can re-plant it on ITS
     // global for `attachWasmPanicLocation`. Read AFTER the throw, so a panic
@@ -1415,7 +1416,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       const skipTypeGeometry = e.data.skipTypeGeometry === true;
       const onEvent = (event: unknown) => {
         publishPrepassFingerprint(sourceFingerprint, sharedBuffer.byteLength, event);
-        (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
+        postPrepassEvent(event);
       };
       const run = (
         bytes: Uint8Array,
@@ -1496,7 +1497,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // wasm-bindgen rejects the view.
       const onEvent = (event: unknown) => {
         publishPrepassFingerprint(sourceFingerprint, sharedBuffer.byteLength, event);
-        (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
+        postPrepassEvent(event);
       };
       const runPrepass = (bytes: Uint8Array) =>
         runPrepassWithFingerprint(ifcApi, [bytes, onEvent, chunkSize, disabledTypes, skipTypeGeometry], sourceFingerprint);
@@ -1580,7 +1581,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         // why the shared-module path was never actually taken.
         initSync({ module: e.data.wasmModule });
         installInCallHeartbeat(wasmBindings, inCallHeartbeat);
-        api = new IfcAPI();
+        api = meterTypedArrayArgs(new IfcAPI(), 'wasm'); // #6957: bytes copied into wasm (identity unless traced)
         mergeLayersApplied = false;
         applyMergeLayersToApi();
         geometryHashApplied = false;

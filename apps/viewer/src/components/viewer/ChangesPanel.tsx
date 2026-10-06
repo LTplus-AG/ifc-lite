@@ -16,6 +16,7 @@ import { changeOperations, type ChangeOperation } from '@/lib/changes/change-ope
 import { revertChangeOperation, type RevertRefusal } from '@/lib/changes/revert-change-operation';
 import { ExportChangesButton } from './ExportChangesButton';
 import { ExportDialog } from './ExportDialog';
+import { AssistantAction } from './assistant/AssistantAction';
 import { useChangedModels } from '@/hooks/useUnexportedChanges';
 import { totalChangeCount } from '@/lib/export/model-changes';
 
@@ -63,6 +64,7 @@ export function ChangesPanel({ onClose }: { onClose?: () => void }) {
       <History className="h-4 w-4" aria-hidden="true" />
       <h2 className="flex-1 text-sm font-medium">{t('changesPanel.title')}</h2>
       <span className="text-xs text-muted-foreground">{t('changesPanel.rowCount', { count: rows.length })}</span>
+      <AssistantAction />
       {onClose && <IconButton label={t('changesPanel.close')} className="h-6 w-6" onClick={onClose}><X className="h-3.5 w-3.5" /></IconButton>}
     </div>
     {error && <p role="alert" className="px-3 pt-2 text-xs text-destructive">{t(error)}</p>}

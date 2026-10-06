@@ -21,7 +21,8 @@ import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo, DecodedInstance } from '@ifc-lite/geometry';
-import { decodeInstancedShard, NORMAL_COORD_THRESHOLD_M } from '@ifc-lite/geometry';
+import { decodeInstancedShard } from '@ifc-lite/geometry';
+import { NOOP_LOAD_TRACE } from '@ifc-lite/load-trace';
 import { toast } from '../ui/toast.js';
 import { reshapeSceneKeepingPresentInstanced } from './geometry-rebuild';
 import { runGpuUpload } from './gpu-upload-guard';
@@ -31,6 +32,8 @@ import { liftNewInstancedOccurrences, placeNewMeshesAtCurrentLevel } from '@/lib
 import { useColorOverlaySync } from './useColorOverlaySync.js';
 import { useMeshEditDrain } from './useMeshEditDrain.js';
 import { invalidateLandXmlGpuOwnershipAfterSceneClear, takeLandXmlGpuUploaded } from '../../hooks/ingest/landXmlGpuOwnership.js';
+import { computeBounds, userMovedCamera, type Bounds } from './streamingBounds.js';
+import { activeLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
 
 let linearFitHintShown = false;
 
@@ -175,11 +178,6 @@ const DEFAULT_BOUNDS = {
   min: { x: -100, y: -100, z: -100 },
   max: { x: 100, y: 100, z: 100 },
 };
-
-// The per-vertex corruption filter `computeBounds` applies before fitting the
-// camera. Shared with `CoordinateHandler`, `localParsingUtils` and
-// `viewportUtils` — see `NORMAL_COORD_THRESHOLD_M`.
-const MAX_VALID_COORD = NORMAL_COORD_THRESHOLD_M;
 
 // Outlier-robust camera-fit bounds (issue #1394). A handful of far-flung
 // meshes (a stray covering 600 m off, a detached out-building) blow the raw
@@ -431,8 +429,13 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         return;
       }
       // Otherwise fall through so the camera-fit block at the bottom of
-      // the effect gets a chance to run.
+      // the effect gets a chance to run. ONLY the camera fit: an unchanged
+      // length carries no new mesh, and the streaming fast path never records
+      // the keys the rebuild scan below consults, so that scan would upload
+      // every streamed mesh a second time (a mesh-less scan joining a streamed
+      // IFC, or the #859 streaming-complete fit; #6953).
     }
+    const unchangedLength = currentLength === lastLength;
 
     // Visibility toggle while NOT streaming — array rebuilt from scratch
     if (isIncremental && !isStreaming && !prevIsStreamingRef.current) {
@@ -453,7 +456,9 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     let newMeshes: MeshData[];
     const claimedMeshKeys: string[] = [];
     let appendFailed = false;
-    if (isStreaming || isIncremental) {
+    if (unchangedLength) {
+      newMeshes = [];
+    } else if (isStreaming || isIncremental) {
       // Fast path: new meshes are always appended at end
       const start = lastGeometryLengthRef.current;
       newMeshes = geometry.slice(start);
@@ -480,12 +485,16 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // one-shot marker so normal scene rebuilds still own later re-uploads.
     newMeshes = newMeshes.filter((mesh) => !takeLandXmlGpuUploaded(mesh));
     if (newMeshes.length > 0) {
-      newMeshes = placeNewMeshesAtCurrentLevel(newMeshes, currentLevelY ?? new Map());
+      // #6979: per-batch spans on the streaming load (no-op when not streaming or untraced).
+      const trace = isStreaming ? activeLoadTrace() : NOOP_LOAD_TRACE;
+      const arrived = newMeshes;
+      newMeshes = trace.span('stream.place', () => placeNewMeshesAtCurrentLevel(arrived, currentLevelY ?? new Map()));
       const pipeline = renderer.getPipeline();
       if (pipeline) {
         if (isStreaming) {
           // Queue for the animation loop — zero GPU work here.
-          scene.queueMeshes(newMeshes);
+          const queued = newMeshes;
+          trace.span('stream.queue', () => scene.queueMeshes(queued));
           // Desktop benchmark windows can become background-throttled, which
           // stalls requestAnimationFrame-based draining. Keep a timer-based
           // pump active so large native loads still finish offscreen.
@@ -536,6 +545,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // whether the data is actually usable, not just whether the
     // property exists.
     if (!cameraFittedRef.current) {
+      const fitStart = performance.now();
       // The adaptive fit picks an SE-isometric pose for compact models
       // (today's behaviour) but switches to a side-on-along-the-alignment
       // pose for high-aspect-ratio bboxes (railway / road corridors).
@@ -599,6 +609,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       }
       if (fitted) {
         cameraFittedRef.current = true;
+        tracePhaseOnce(activeLoadTrace(), 'camera.fit').record('camera.fit', fitStart, performance.now(), { policy: lastFitPolicyKindRef.current ?? 'none', robust: robustEarly !== null });
         // Populate the camera's cached scene bounds. The viewer streams meshes
         // directly (not via Renderer.loadGeometry), so this is the only place
         // the camera learns the bounds — consumers like the orbit-pivot
@@ -648,6 +659,9 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       renderer.requestRender();
 
       const capturedGeometry = geometry;
+      // #6979: the stream that just ended belongs to the newest load.
+      const trace = activeLoadTrace();
+      const drainStart = performance.now();
       let timeoutId: ReturnType<typeof globalThis.setTimeout> | null = null;
       let rafId: number | null = null;
 
@@ -656,6 +670,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
           const r = rendererRef.current;
           if (!r) return;
 
+          tracePhaseOnce(trace, 'stream.queueDrain').record('stream.queueDrain', drainStart, performance.now());
           console.log('[GeomStream] Streaming ended — starting finalize');
           traceGeometrySync(
             `finalize start geometryLength=${capturedGeometry?.length ?? 0} releaseAfterFinalize=${releaseGeometryAfterFinalize}`
@@ -709,12 +724,13 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
               // (issues #1107 / #1394).
               r.getCamera().setSceneBounds(fullBounds ?? exactBounds);
               finalBoundsRefittedRef.current = true;
+              tracePhaseOnce(trace, 'camera.refit').record('camera.refit', t0, performance.now(), { robust: robust !== null });
             }
           }
 
           // Time-sliced finalize: rebuild proper batches in ~8ms chunks
           if (releaseGeometryAfterFinalize) {
-            r.getScene().finishEphemeralStreaming();
+            tracePhaseOnce(trace, 'scene.finalize').span('scene.finalize', () => r.getScene().finishEphemeralStreaming(), { ephemeral: true });
             onGeometryReleased?.();
             r.clearCaches();
             r.requestRender();
@@ -726,7 +742,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
           const pipe = r.getPipeline();
           if (dev && pipe) {
             const t0 = performance.now();
-            r.getScene().finalizeStreamingAsync(dev, pipe).then(() => {
+            r.getScene().finalizeStreamingAsync(dev, pipe, undefined, tracePhaseOnce(trace, 'scene.finalize')).then(() => {
               const batchCount = r.getScene().getBatchedMeshes().length;
               let totalIdx = 0;
               for (const b of r.getScene().getBatchedMeshes()) totalIdx += b.indexCount;
@@ -795,6 +811,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     if (!device) return;
 
     if (pendingInstancedShards.length > 0) {
+      const trace = activeLoadTrace(); // #6979: shards only arrive while a load streams
       for (const { modelId, bytes } of pendingInstancedShards) {
         // CRITICAL: never let a shard decode/upload throw OUT of this effect.
         // addInstancedShard creates GPU buffers; on a degraded
@@ -804,12 +821,12 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         // overlays are non-essential, so swallow per-shard failures: the flat geometry
         // still renders.
         try {
-          const shard = decodeInstancedShard(new Uint8Array(bytes));
+          const shard = trace.span('instanced.decode', () => decodeInstancedShard(new Uint8Array(bytes)));
           if (!shard) continue;
           applyFederationOffsetToShard(shard, modelIdToOffset?.get(modelId) ?? 0);
           liftNewInstancedOccurrences(shard, currentLevelY ?? new Map());
           const modelIndex = modelIdToIndex?.get(modelId) ?? 0;
-          scene.addInstancedShard(device, shard, modelIndex);
+          trace.span('instanced.upload', () => scene.addInstancedShard(device, shard, modelIndex));
         } catch (err) {
           console.warn('[useGeometryStreaming] instanced shard upload failed (device lost?), skipping:', err);
         }
@@ -904,47 +921,6 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     clearPendingColorUpdates,
     geometryVersion,
   });
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────
-
-type Bounds = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
-
-function computeBounds(meshes: MeshData[]): Bounds | null {
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  for (let gi = 0; gi < meshes.length; gi++) {
-    const positions = meshes[gi].positions;
-    // world = origin + position (per-element local frame); without folding the
-    // origin every element's local positions cluster near 0, so the camera fits
-    // to the origin while geometry draws at its true world coords → blank view.
-    const o = meshes[gi].origin;
-    const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
-    for (let i = 0; i < positions.length; i += 3) {
-      const x = positions[i] + ox, y = positions[i + 1] + oy, z = positions[i + 2] + oz;
-      if (Math.abs(x) < MAX_VALID_COORD && Math.abs(y) < MAX_VALID_COORD && Math.abs(z) < MAX_VALID_COORD) {
-        if (x < minX) minX = x; if (y < minY) minY = y; if (z < minZ) minZ = z;
-        if (x > maxX) maxX = x; if (y > maxY) maxY = y; if (z > maxZ) maxZ = z;
-      }
-    }
-  }
-  const maxSize = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
-  if (minX === Infinity || maxSize <= 0 || !Number.isFinite(maxSize)) return null;
-  return { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } };
-}
-
-function userMovedCamera(
-  renderer: Renderer,
-  snapshot: { px: number; py: number; pz: number; tx: number; ty: number; tz: number } | null,
-): boolean {
-  if (!snapshot) return false;
-  const pos = renderer.getCamera().getPosition();
-  const tgt = renderer.getCamera().getTarget();
-  const EPS = 0.5;
-  return (
-    Math.abs(pos.x - snapshot.px) > EPS || Math.abs(pos.y - snapshot.py) > EPS || Math.abs(pos.z - snapshot.pz) > EPS ||
-    Math.abs(tgt.x - snapshot.tx) > EPS || Math.abs(tgt.y - snapshot.ty) > EPS || Math.abs(tgt.z - snapshot.tz) > EPS
-  );
 }
 
 export default useGeometryStreaming;

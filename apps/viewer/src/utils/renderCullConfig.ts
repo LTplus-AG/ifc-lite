@@ -21,6 +21,7 @@
  */
 
 import type { ContributionCullOptions } from '@ifc-lite/renderer';
+import { readPerfFlag } from '../lib/perf/flags.js';
 
 export const DEFAULT_CONTRIBUTION_CULL: ContributionCullOptions = {
   pixelRadius: 0.5,
@@ -36,7 +37,7 @@ const INTERACTING_FACTOR = 4;
  * disabled (renderer treats absent options as off).
  */
 export function getContributionCullConfig(): ContributionCullOptions | undefined {
-  const raw = (globalThis as { __IFC_LITE_CONTRIB_CULL?: unknown }).__IFC_LITE_CONTRIB_CULL;
+  const raw = readPerfFlag('contribCull');
   if (raw === undefined || raw === null) return DEFAULT_CONTRIBUTION_CULL;
   if (raw === false || raw === 0) return undefined;
   // Only finite positive thresholds are meaningful — Infinity/NaN would cull

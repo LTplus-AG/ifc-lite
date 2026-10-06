@@ -24,6 +24,7 @@ import { CLASH_COLOR_A, CLASH_COLOR_B, clashColorToBcfArgb } from '@/lib/clash/c
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { sortClashes, type Clash, type ClashSeverity, type ClashSortBy } from '@ifc-lite/clash';
 import { useTranslation } from '@/i18n';
+import { useResultSelection } from './result/useResultSelection';
 
 const SEVERITY_ORDER: ClashSeverity[] = ['critical', 'major', 'minor', 'info'];
 const SEVERITY_COLOR: Record<ClashSeverity, string> = {
@@ -79,7 +80,21 @@ export function useManualClashGroups({
 }: UseManualClashGroupsOptions) {
   const definitions = useClashGroupLibrary(state => state.entries.find(entry => entry.id === state.activeId)?.groups ?? EMPTY_MANUAL_GROUPS);
   const workspaceId = useClashGroupLibrary(state => state.activeId);
-  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  // Checked findings on the shared result selection (U02, #6925): the whole
+  // filtered population is loaded, so "select all" is authoritative at once,
+  // and a filter change drops a select-all that no longer means what it said.
+  // `visibleClashes` is rebuilt on a re-sort or a review decision too, which
+  // change no membership, so the population is keyed by its id SET, not by
+  // the array instance or its order.
+  const visibleIds = useMemo(() => visibleClashes.map((clash) => clash.id), [visibleClashes]);
+  const populationKey = useMemo(() => [...visibleIds].sort().join('\n'), [visibleIds]);
+  const selection = useResultSelection({
+    populationTotal: visibleIds.length,
+    resolvePopulation: useCallback(async () => visibleIds, [visibleIds]),
+    populationKey,
+  });
+  const { dispatch: dispatchSelection } = selection;
+  const checkedIds = selection.state.selected;
   const [dialog, setDialog] = useState<ManualGroupDialog | null>(null);
   const { createViewpointFromState, headerFilesForViewpoints } = useBCF();
   const bcfAuthor = useViewerStore((state) => state.bcfAuthor);
@@ -89,9 +104,9 @@ export function useManualClashGroups({
   const setBcfPanelVisible = useViewerStore((state) => state.setBcfPanelVisible);
   const { t } = useTranslation();
 
-  useEffect(() => setCheckedIds(new Set()), [clashes]);
+  useEffect(() => dispatchSelection({ type: 'clear' }), [clashes, dispatchSelection]);
   useEffect(() => { void clashGroupLibrary.initialize(); }, []);
-  useEffect(() => { setCheckedIds(new Set()); setDialog(null); }, [workspaceId]);
+  useEffect(() => { dispatchSelection({ type: 'clear' }); setDialog(null); }, [workspaceId, dispatchSelection]);
 
   const resolved = useMemo(
     () => resolveManualClashGroups(definitions, clashes ?? []),
@@ -171,7 +186,7 @@ export function useManualClashGroups({
         ? { ...group, members: [...group.members, ...selected.map(manualClashMember)] }
         : group);
       if (commit(next)) {
-        setCheckedIds(new Set());
+        dispatchSelection({ type: 'clear' });
         showGroups();
         return true;
       }
@@ -183,12 +198,12 @@ export function useManualClashGroups({
       members: selected.map(manualClashMember),
     }];
     if (commit(next)) {
-      setCheckedIds(new Set());
+      dispatchSelection({ type: 'clear' });
       showGroups();
       return true;
     }
     return false;
-  }, [dialog, definitions, selected, commit, showGroups]);
+  }, [dialog, definitions, selected, commit, showGroups, dispatchSelection]);
 
   const removeGroup = useCallback((groupId: string): void => {
     commit(definitions.filter((group) => group.id !== groupId));
@@ -278,7 +293,8 @@ export function useManualClashGroups({
     membersById,
     selected,
     checkedIds,
-    setCheckedIds,
+    selection,
+    visibleIds,
     dialog,
     setDialog,
     dialogProps,

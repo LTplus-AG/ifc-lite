@@ -25,6 +25,7 @@ import { commitModelAuthoring, writableRows } from '@/lib/actions/model-authorin
 import { authoringGhosts } from '@/lib/actions/model-authoring-ghost';
 import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import { modelChangeLibrary } from '@/lib/actions/receipts';
+import { captureValidationBefore } from '@/lib/actions/validation-verdicts';
 import { authoringRowSummary } from './authoring-row-summary';
 import { ReceiptSummary, STATUS } from './ModelChangeReview';
 
@@ -85,12 +86,15 @@ export function ModelAuthoringReview({ batch, origin }: { batch: ModelAuthoringB
   }, [showGhosts, preview, excluded]);
 
   const apply = () => {
+    // As for reviewed changes: the loaded check's counts first, so Re-run validation can show what the apply changed.
+    const validation = captureValidationBefore(useViewerStore.getState());
     const outcome = commitModelAuthoring(useViewerStore, preview, approved, origin);
     if (!outcome.ok) { setError(outcome.detail ?? t(`modelChanges.refused.${outcome.reason}`)); return; }
     setError(null);
     setGhosts(false);
-    setReceipt(outcome.receipt);
-    void modelChangeLibrary.put(outcome.receipt.id, outcome.receipt);
+    const applied = validation ? { ...outcome.receipt, validation } : outcome.receipt;
+    setReceipt(applied);
+    void modelChangeLibrary.put(applied.id, applied);
   };
   const toggle = (row: AuthoringRow, on: boolean) => setExcluded((current) => {
     const next = new Set(current);

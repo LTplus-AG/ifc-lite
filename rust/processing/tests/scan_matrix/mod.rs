@@ -10,6 +10,8 @@
 //! it), for the asserted table (`Size::Compact`).
 #![allow(dead_code)]
 
+pub mod columns;
+
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 struct Rng(u64);
@@ -89,7 +91,11 @@ pub fn facing_scanner(c: [f64; 2]) -> f64 {
 
 impl Scene {
     pub fn new(seed: u64, sigma: f64) -> Self {
-        Self { rng: Rng(seed), points: Vec::new(), density: 4_000., sigma }
+        Self::new_with_density(seed, sigma, 4_000.)
+    }
+    /// A scene sampled at `density` points per m^2.
+    pub fn new_with_density(seed: u64, sigma: f64, density: f64) -> Self {
+        Self { rng: Rng(seed), points: Vec::new(), density, sigma }
     }
     fn push(&mut self, p: [f64; 3]) {
         for v in p {

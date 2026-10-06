@@ -271,6 +271,7 @@ export function FlowPanel() {
               {lastRun.log.filter((l) => l.level === 'error').slice(0, 3).map((l, i) => <span key={i} className="text-red-400">{l.nodeId}{l.laneKey ? `[${l.laneKey}]` : ''}: {l.message}</span>)}
             </>
           )}
+          {!flowRunning && <span className="ml-auto"><AssistantAction source="flowRun" labelKey="assistantSources.flowRun.discussRun" /></span>}
         </div>
       )}
     </div>

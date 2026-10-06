@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { readPerfFlag } from '../lib/perf/flags.js';
+
 /**
  * LOD1 config (issue #1682, phase 5). DEFAULT 48 px since the #1682 sweep
  * (0.163% pixels differ >8/255 at the far more aggressive 120 px threshold;
@@ -15,7 +17,7 @@
 const DEFAULT_LOD_PX = 48;
 
 export function getLodScreenPx(): number | null {
-  const raw = (globalThis as { __IFC_LITE_LOD_PX?: unknown }).__IFC_LITE_LOD_PX;
+  const raw = readPerfFlag('lodPx');
   if (raw === undefined || raw === null) return DEFAULT_LOD_PX;
   if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return null;
   return raw;

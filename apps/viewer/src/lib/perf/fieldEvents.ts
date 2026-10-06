@@ -73,8 +73,11 @@ export function noteInspectSelection(globalId: number | null): void {
 /** The properties panel committed `globalId`'s properties; the event is sent on the next paint. */
 export function noteInspectPopulated(globalId: number): void {
   const pending = armed;
-  if (!pending || pending.globalId !== globalId) return;
+  // The panel showing anything else ends this click's measurement: a later
+  // re-selection of the same entity (a related-entity link, the hierarchy)
+  // must not be timed from the original click.
   armed = null;
+  if (!pending || pending.globalId !== globalId) return;
   nextPaint(() => {
     const ms = now() - pending.at;
     if (ms > INSPECT_WINDOW_MS) return;

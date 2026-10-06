@@ -220,8 +220,6 @@ describe('ifc_inspect: sampled click -> properties panel populated', () => {
     const clickAt = performance.now() - 30;
     field.noteInspectClick(clickAt);
     field.noteInspectSelection(7);
-    field.noteInspectPopulated(8); // a different entity: not this click's panel
-    assert.equal(received('ifc_inspect').length, 0);
     field.noteInspectPopulated(7);
     const [sent] = received('ifc_inspect');
     assert.ok(sent, 'one ifc_inspect');
@@ -230,6 +228,16 @@ describe('ifc_inspect: sampled click -> properties panel populated', () => {
     assert.equal(sent.file_size_mb, 12.35);
     assert.equal(sent.perf_flags, 'default');
     assert.equal(typeof sent.was_hidden, 'boolean');
+  });
+
+  it('the panel showing another entity ends the measurement, so a later re-selection is not timed from the click', async () => {
+    const field = await loadField();
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => { cb(0); return 0; }) as typeof requestAnimationFrame;
+    field.noteInspectClick(performance.now());
+    field.noteInspectSelection(7);
+    field.noteInspectPopulated(8); // the panel moved on before showing 7
+    field.noteInspectPopulated(7); // e.g. a related-entity link back to 7, with no click
+    assert.equal(received('ifc_inspect').length, 0);
   });
 
   it('an unsampled click, a miss, and the per-session cap send nothing', async () => {

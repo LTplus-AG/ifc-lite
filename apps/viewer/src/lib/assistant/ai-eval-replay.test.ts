@@ -23,7 +23,12 @@ import { comparableEvidence, seedScene } from '@/test/ai-eval-scenes';
 const initial = useViewerStore.getState();
 afterEach(() => { cancelAssistant(); useViewerStore.setState(initial, true); });
 
-const KIND = { clash: 'clash.groups', flow: 'flow.patch', changes: 'model.changes', authoring: 'model.authoring' } as const satisfies Record<string, ProposalKind>;
+/** The typed proposal kinds the recorded corpus must cover. */
+const RECORDED_KINDS: readonly ProposalKind[] = ['clash.groups', 'flow.patch', 'model.changes', 'model.authoring'];
+/** Every proposal kind the conversation classifies, by its declared \`kind\` (recordings may name any of them). */
+const KIND: Record<string, string> = { clash: 'clash.groups', flow: 'flow.patch', changes: 'model.changes', authoring: 'model.authoring',
+  scene: 'scene.actions', mapping: 'table.mapping', filter: 'filter.proposal', list: 'list.proposal', lens: 'lens.proposal',
+  chart: 'chart.proposal', ids: 'ids.specifications', rules: 'rules.proposal', document: 'document.outline' } satisfies Record<string, string>;
 const recordings = loadRecordings();
 
 /** Every field named in `expected` must equal the same field of `actual` (subset comparison). */
@@ -38,7 +43,7 @@ function assertSubset(actual: unknown, expected: Record<string, unknown>, at: st
 test('the recorded corpus is not empty and covers every typed proposal kind', () => {
   assert.ok(recordings.length >= 20, `only ${recordings.length} recordings`);
   const kinds = new Set(recordings.map(recording => recording.expect.proposal?.kind));
-  for (const kind of Object.values(KIND)) assert.ok(kinds.has(kind), `no recording exercises ${kind}`);
+  for (const kind of RECORDED_KINDS) assert.ok(kinds.has(kind), `no recording exercises ${kind}`);
   assert.ok(recordings.some(recording => recording.expect.outcome === 'error'));
   assert.ok(recordings.some(recording => recording.expect.outcome === 'truncated'));
   for (const route of ['proxy', 'anthropic', 'openai']) assert.ok(recordings.some(recording => recording.route.kind === route), `no ${route} route`);
@@ -90,7 +95,7 @@ for (const recording of recordings) {
     } else {
       assert.ok(replay.proposal, 'a typed proposal was classified');
       const invalid = replay.proposal.kind === 'invalid';
-      const kind = replay.proposal.kind === 'invalid' ? replay.proposal.declared : replay.proposal.kind;
+      const kind = replay.proposal.kind === 'invalid' || replay.proposal.kind === 'checks' ? replay.proposal.declared : replay.proposal.kind;
       assert.equal(KIND[kind], expected.proposal.kind);
       assert.equal(!invalid, expected.proposal.valid);
     }

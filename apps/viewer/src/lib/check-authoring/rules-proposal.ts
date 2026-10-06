@@ -11,6 +11,7 @@
  */
 
 import { parseRuleSetFile, type RuleSetFile } from '@ifc-lite/rules';
+import { unknownFilterRuleKeys } from './filter-rule-keys';
 import { isRecord, onlyKeys, optionalText, parseProposalEnvelope, parseUnsupported, requiredText, TEXT_LIMIT, unsupportedNote, type UnsupportedRequirement } from './proposal-json';
 
 export const RULE_LIMIT = 100;
@@ -22,11 +23,18 @@ export interface RulesProposal {
   unsupported: UnsupportedRequirement[];
 }
 
-/** JSON paths present in `input` but absent from what the native parser kept. */
-function droppedPaths(input: unknown, kept: unknown, path: string, out: string[]): void {
+/** A filter rule inside a rule block's `groups[i].rules[j]`. */
+const FILTER_RULE_PATH = /\.groups\[\d+\]\.rules\[\d+\]$/;
+
+/** JSON paths present in `input` but absent from what the native parser kept (or not carried by a kept filter rule's kind). */
+export function droppedPaths(input: unknown, kept: unknown, path: string, out: string[]): void {
   if (Array.isArray(input) && Array.isArray(kept)) {
-    input.forEach((item, index) => droppedPaths(item, kept[index], `${path}[${index}]`, out));
+    input.forEach((item, index) => {
+      if (index >= kept.length) out.push(`${path}[${index}]`);
+      else droppedPaths(item, kept[index], `${path}[${index}]`, out);
+    });
   } else if (isRecord(input) && isRecord(kept)) {
+    if (FILTER_RULE_PATH.test(path)) out.push(...unknownFilterRuleKeys(kept).map(key => `${path}.${key}`));
     for (const [key, value] of Object.entries(input)) {
       if (!(key in kept)) out.push(`${path}.${key}`);
       else droppedPaths(value, kept[key], `${path}.${key}`, out);

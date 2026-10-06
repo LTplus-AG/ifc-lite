@@ -68,10 +68,20 @@ export function noteInspectSelection(globalId: number | null): void {
   const at = clickAt;
   clickAt = null;
   armed = at !== null && globalId !== null && now() - at < INSPECT_WINDOW_MS ? { at, globalId, hidden: visibilityWitness() } : null;
+  // Clicking the entity the panel already shows re-renders nothing, so no
+  // populated notice follows: the panel is already showing it at this paint.
+  if (armed && armed.globalId === shownGlobalId) noteInspectPopulated(armed.globalId);
 }
+
+/** The entity the open properties panel currently shows (null: panel closed or showing something else). */
+let shownGlobalId: number | null = null;
+
+/** The properties panel stopped showing an entity's properties (unmounted, or moved to another view). */
+export function noteInspectHidden(): void { shownGlobalId = null; }
 
 /** The properties panel committed `globalId`'s properties; the event is sent on the next paint. */
 export function noteInspectPopulated(globalId: number): void {
+  shownGlobalId = globalId;
   const pending = armed;
   // The panel showing anything else ends this click's measurement: a later
   // re-selection of the same entity (a related-entity link, the hierarchy)
@@ -185,7 +195,7 @@ export function flushViewerBootForTests(): void { sendBoot(); }
 /** Test seam: fresh per-session latches and an injectable sampler. */
 export function resetFieldEventsForTests(sampler: () => number = Math.random): void {
   random = sampler;
-  clickAt = null; armed = null; inspectsSent = 0;
+  clickAt = null; armed = null; inspectsSent = 0; shownGlobalId = null;
   frameCount = 0; interacting = false; navigateSent = false;
   for (const key of Object.keys(boot) as Array<keyof typeof boot>) delete boot[key];
   bootSent = false; firstLoadAt = null;

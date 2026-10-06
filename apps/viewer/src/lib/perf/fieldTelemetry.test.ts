@@ -248,6 +248,19 @@ describe('ifc_inspect: sampled click -> properties panel populated', () => {
     assert.equal(received('ifc_inspect').length, 0);
   });
 
+  it('a click on the entity the panel already shows is answered on the next paint', async () => {
+    const field = await loadField();
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => { cb(0); return 0; }) as typeof requestAnimationFrame;
+    field.noteInspectPopulated(7); // the panel shows 7 (no click yet)
+    field.noteInspectClick(performance.now());
+    field.noteInspectSelection(7); // clicking 7 again re-renders nothing
+    assert.equal(received('ifc_inspect').length, 1);
+    field.noteInspectHidden(); // panel closed
+    field.noteInspectClick(performance.now());
+    field.noteInspectSelection(7);
+    assert.equal(received('ifc_inspect').length, 1, 'a closed panel shows nothing to time');
+  });
+
   it('an unsampled click, a miss, and the per-session cap send nothing', async () => {
     const field = await loadField();
     globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => { cb(0); return 0; }) as typeof requestAnimationFrame;

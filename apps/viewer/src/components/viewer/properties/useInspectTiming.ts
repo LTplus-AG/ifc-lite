@@ -12,6 +12,10 @@ import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
  */
 export function useInspectTiming(populatedGlobalId: number | null): void {
   useEffect(() => {
-    if (populatedGlobalId !== null) fieldTelemetry?.noteInspectPopulated(populatedGlobalId);
+    if (populatedGlobalId === null) return undefined;
+    fieldTelemetry?.noteInspectPopulated(populatedGlobalId);
+    // A click on the entity already shown re-renders nothing; the module
+    // answers that click itself as long as it knows what is on screen.
+    return () => fieldTelemetry?.noteInspectHidden();
   }, [populatedGlobalId]);
 }

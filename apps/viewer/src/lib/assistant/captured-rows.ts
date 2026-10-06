@@ -7,6 +7,9 @@
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
+/** Captured payloads are bounded well below this (a request carries at most 90k characters); larger input is refused before parsing. */
+const MAX_CAPTURED_PAYLOAD = 200_000;
+
 export interface CapturedEvidence {
   summary: unknown;
   rows: Map<string, unknown>;
@@ -14,7 +17,7 @@ export interface CapturedEvidence {
 
 /** Captured rows by citation; null when the payload is not a bounded evidence envelope. */
 export function capturedEvidence(payload: string): CapturedEvidence | null {
-  if (payload.length > 200_000) return null;
+  if (payload.length > MAX_CAPTURED_PAYLOAD) return null;
   let parsed: unknown;
   try { parsed = JSON.parse(payload); }
   catch (error) { console.warn('[Assistant] Captured evidence is not JSON', error); return null; }
@@ -31,6 +34,7 @@ export function capturedEvidence(payload: string): CapturedEvidence | null {
  * must carry a unique `E<n>` citation, or the payload is refused.
  */
 export function parseCapturedEvidence(payload: string): CapturedEvidence {
+  if (payload.length > MAX_CAPTURED_PAYLOAD) throw new Error('The report evidence is too large.');
   const parsed: unknown = JSON.parse(payload);
   if (!record(parsed) || !record(parsed.evidence) || !Array.isArray(parsed.evidence.rows)) throw new Error('The report evidence rows are invalid.');
   const rows = new Map<string, unknown>();

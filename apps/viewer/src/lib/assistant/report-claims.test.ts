@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { typedReport } from '@/test/ai-report-fixture';
-import type { CapturedEvidence } from './captured-rows';
+import { parseCapturedEvidence, type CapturedEvidence } from './captured-rows';
 import { checkClaim, checkProposedClaims, editClaim, splitReportAnswer } from './report-claims';
 
 const captured: CapturedEvidence = {
@@ -88,4 +88,9 @@ test('a cited row outside a sampled capture leaves the claim unverifiable, a gon
   assert.match(sampled.results[0].check.kind === 'unverifiable' ? sampled.results[0].check.reason : '', /outside the captured sample/);
   const listedOnly = checkClaim({ ...claim, citations: ['E1', 'E2'] }, captured, { resolve: c => c === 'E2' ? null : c, partial: true });
   assert.equal(listedOnly.status, 'unverifiable', 'an unsampled listed row withholds support');
+});
+
+test('strict evidence parsing refuses an oversized payload before parsing it', () => {
+  assert.throws(() => parseCapturedEvidence(' '.repeat(200_001)), /too large/);
+  assert.equal(parseCapturedEvidence(JSON.stringify({ evidence: { summary: null, rows: [{ citation: 'E1', data: 1 }] } })).rows.get('E1'), 1);
 });

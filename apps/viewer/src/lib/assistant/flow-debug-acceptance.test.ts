@@ -48,14 +48,19 @@ test('#6919 lane errors are diagnosed from the native run and a cited debug patc
   assert.equal(pt.laneErrors, 3);
   assert.match(pt.errorMessages[0], /"x" must be a finite number/);
 
-  const evidence = captureEvidence('flow');
-  const rows = JSON.parse(evidence.payload).evidence.rows as Array<{ data: { lastRun?: { verdict: string; nodes: Array<{ nodeId: string; params?: unknown }> } } }>;
-  const lastRun = rows.find(row => row.data.lastRun)!.data.lastRun!;
-  assert.equal(lastRun.verdict, 'lane-errors');
-  assert.deepEqual(lastRun.nodes.find(node => node.nodeId === 'xs')?.params, { items: ['0', '4', '8'] }, 'inputs of the failing node are visible');
-  assert.equal(lastRun.nodes.find(node => node.nodeId === 'column')?.params, undefined, 'unrelated parameters stay out of the prompt');
-
+  // The run is discussed through the `flowRun` adapter; graph-structure evidence cannot support a diagnosis.
   const fix = [{ op: 'setParam', node: 'xs', param: 'items', value: [0, 4, 8] }];
+  assert.throws(() => prepareFlowProposal(patch(fix, { nodes: ['pt'], explanation: 'strings' }), captureEvidence('flow')), /need a captured Flow run/);
+  const evidence = captureEvidence('flowRun');
+  const payload = JSON.parse(evidence.payload).evidence as { summary: { verdict: string; failingNodeIds: string[] };
+    rows: Array<{ data: { kind: string; nodeId?: string; params?: unknown; inputs?: unknown } }> };
+  assert.equal(payload.summary.verdict, 'lane-errors');
+  assert.deepEqual(payload.summary.failingNodeIds, ['pt']);
+  const nodeRow = (id: string) => payload.rows.find(row => row.data.kind === 'nodeResult' && row.data.nodeId === id)!.data;
+  assert.deepEqual(nodeRow('xs').params, { items: ['0', '4', '8'] }, 'inputs of the failing node are visible');
+  assert.deepEqual(nodeRow('pt').inputs, [{ port: 'x', from: ['xs', 'items'] }, { port: 'y', from: ['y', 'value'] }], 'the failing node names what feeds it');
+  assert.equal(nodeRow('column').params, undefined, 'unrelated parameters stay out of the prompt');
+
   assert.throws(() => prepareFlowProposal(patch(fix, { nodes: ['y'], explanation: 'y is wrong' }), evidence), /did not fail/);
   assert.throws(() => prepareFlowProposal(patch([{ op: 'setParam', node: 'column', param: 'width', value: 0.4 }],
     { nodes: ['pt'], explanation: 'wider columns' }), evidence), /does not change the failing nodes/);
@@ -75,7 +80,7 @@ test('#6919 lane errors are diagnosed from the native run and a cited debug patc
   assert.equal(sampleColumns(model).length, 3);
   assert.ok(!['failed', 'lane-errors'].includes(flowRunDiagnostics(useViewerStore.getState())!.verdict));
   // Run evidence is stale once another run of the same, unchanged graph replaces it.
-  const ofPassedRun = captureEvidence('flow');
+  const ofPassedRun = captureEvidence('flowRun');
   await runOpenFlow(model, cache);
   assert.throws(() => prepareFlowProposal(patch([{ op: 'rename', name: 'Columns' }]), ofPassedRun), /stale/);
 });

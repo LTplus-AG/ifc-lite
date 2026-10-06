@@ -21,6 +21,8 @@ export {
   type WorkerTraceHostOptions,
 } from './worker.js';
 
+export { createWorkerPhaseTrace, type WorkerPhaseTrace } from './worker-phases.js';
+
 export { toChromeTrace, type ChromeTrace, type ChromeTraceEvent } from './chrome-trace.js';
 export { buildSpanTree, type SpanTreeNode } from './tree.js';
 

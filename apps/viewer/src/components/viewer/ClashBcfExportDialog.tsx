@@ -40,12 +40,22 @@ import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
 import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { useClash, type ClashBcfConfig, type ClashBcfGroupBy } from '@/hooks/useClash';
-import type { ClashSeverity } from '@ifc-lite/clash';
+import { summarizeClashes, type ClashSeverity } from '@ifc-lite/clash';
+import { ScopeControl, type ResultScope } from '@/components/viewer/result/ScopeControl';
+
+/** The findings each scope names, pinned when the dialog opened (#6925). */
+export interface ClashBcfScopeIds {
+  selected: ReadonlySet<string>;
+  filtered: ReadonlySet<string>;
+}
 
 interface ClashBcfExportDialogProps {
   /** Opened from the Clash export split button (#5834). */
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  scope: ResultScope;
+  onScopeChange: (scope: ResultScope) => void;
+  scopeIds: ClashBcfScopeIds;
 }
 
 const SEVERITIES: { key: ClashSeverity; labelKey: TranslationKey; color: string }[] = [
@@ -69,16 +79,22 @@ const DEFAULT_CONFIG: ClashBcfConfig = {
   maxTopics: 500,
 };
 
-export function ClashBcfExportDialog({ open, onOpenChange: setOpen }: ClashBcfExportDialogProps) {
+export function ClashBcfExportDialog({ open, onOpenChange: setOpen, scope, onScopeChange, scopeIds }: ClashBcfExportDialogProps) {
   const { t } = useTranslation();
   const maxTopicsId = useId();
   const { result, exportBcf, bcfPreview } = useClash();
 
-  const [config, setConfig] = useState<ClashBcfConfig>(DEFAULT_CONFIG);
+  const [settings, setConfig] = useState<ClashBcfConfig>(DEFAULT_CONFIG);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
-  const bySeverity = result?.summary.bySeverity;
+  // The scope narrows which findings become topics; `all` exports every clash, as before.
+  const clashIds = scope === 'all' ? undefined : scopeIds[scope];
+  const config = useMemo<ClashBcfConfig>(() => (clashIds ? { ...settings, clashIds } : settings), [settings, clashIds]);
+  const bySeverity = useMemo(
+    () => (result && clashIds ? summarizeClashes(result.clashes.filter((clash) => clashIds.has(clash.id))) : result?.summary)?.bySeverity,
+    [result, clashIds],
+  );
   const preview = useMemo(() => bcfPreview(config), [bcfPreview, config, result]);
 
   const toggleSeverity = useCallback((sev: ClashSeverity) => {
@@ -126,6 +142,13 @@ export function ClashBcfExportDialog({ open, onOpenChange: setOpen }: ClashBcfEx
         </DialogHeader>
 
         <div className="grid gap-4 py-1 max-h-[62vh] overflow-y-auto pr-1">
+          {/* Which findings: pinned at open, so a later filter change cannot alter this export. */}
+          <ScopeControl
+            value={scope}
+            onValueChange={onScopeChange}
+            counts={{ selected: scopeIds.selected.size, filtered: scopeIds.filtered.size, all: result?.clashes.length ?? 0 }}
+          />
+
           {/* Grouping */}
           <div className="space-y-1.5">
             <Label className="text-2xs uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">

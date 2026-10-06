@@ -47,6 +47,7 @@ import {
   DEFAULT_HUNG_JOB_TIMEOUT_MS,
 } from '@ifc-lite/geometry';
 import { resolveResourceRetryTier } from '../lib/resource-retry.js';
+import { publishLoadTrace } from '../lib/perf/activeLoadTrace.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
@@ -336,6 +337,7 @@ export function useIfcLoader() {
     // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();
     const trace = loadTracer.startLoad(modelId, { journey: target.kind === 'federated' ? 'J4' : 'J1', modelKind: target.kind }, totalStartTime); // #6956
+    publishLoadTrace(modelId, trace); // #6979: streaming upload, finalize, BVH and search spans land on this load
 
     // Device-loss telemetry (#2624), fail-safe half: a primary load REPLACES
     // the model, so the previous model's last-load snapshot is wrong the
@@ -1416,10 +1418,10 @@ export function useIfcLoader() {
         // the geometry processor's WASM instance with the parser without
         // risking corruption.
         const parserWasmApi = geometryProcessor.getApi();
-        return new IfcParser().parseColumnar(buffer, {
+        return trace.span('parser.mainThread', () => new IfcParser().parseColumnar(buffer, {
           wasmApi: parserWasmApi ?? undefined,
           onSpatialReady: onPartialDataStore,
-        });
+        }));
       };
 
       // Hoisted so the geometry pre-pass's `onEntityIndex` callback can
@@ -1463,6 +1465,7 @@ export function useIfcLoader() {
           workerParserInstance = worker;
           return worker.parseColumnar(sharedSource, {
             signal: metadataAbort.signal,
+            trace, // #6979: parser-worker phase spans
             sourceFingerprint,
             onSpatialReady: onPartialDataStore,
             // Hold the parser's WASM scan until the pre-pass hands over

@@ -11,20 +11,18 @@
 
 import { useEffect, useMemo } from 'react';
 import { GitCompareArrows, ChevronLeft } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { useCompare } from '@/hooks/useCompare';
 import { useCompareOverlay } from '@/hooks/useCompareOverlay';
-import { COMPARE_COLORS } from '@/lib/compare/overlay';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
 import { modelsAsCompared } from '@/lib/compare/comparedModels';
 import { describeChange, type ChangeDetail } from '@/lib/compare/describeChange';
 import { ChangeDetailView } from './compare/ChangeDetailView';
 import { BcfFromChange } from './compare/BcfFromChange';
 import { useBcfFromChange } from './compare/useBcfFromChange';
-import { CompareResultsList, CountBadge, LISTED_STATES, type CompareBucket } from './compare/CompareResultsList';
+import { CompareResultsList, LISTED_STATES, type CompareBucket } from './compare/CompareResultsList';
+import { CompareResultView } from './compare/CompareResultView';
 import { CompareSetupControls } from './compare/CompareSetupControls';
 import { CompareRunControls } from './compare/CompareRunControls';
 import { SavedComparisonLibrary } from './compare/SavedComparisonLibrary';
@@ -36,7 +34,7 @@ import { useCompareSuggestions } from './compare/useCompareSuggestions';
 import { focusRefs } from './compare/focusRefs';
 import { changedTypeCounts, contentMatchRows, hasReportableChanges, type CompareMatchRow, type CompareRow } from './compare/changeRow';
 import { contentMatchCounts, contentMatchingRan } from '@/lib/compare/contentMatches';
-import { productTypeSplit, typeObjectHint } from '@/lib/compare/productTypeCounts';
+import { productTypeSplit } from '@/lib/compare/productTypeCounts';
 import { duplicateAuthoredKeyInfo } from '@/lib/compare/authoredKeys';
 import type { DiffState, DiffEntry } from '@ifc-lite/diff';
 
@@ -275,72 +273,35 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
               />
 
               <AnalysisStaleRegion className="flex-1 min-h-0 flex flex-col">
-
-              {/* Counts. The Matched badge appears when the content pass RAN, not
-                  when it found something (#1891) — added/deleted are lower BECAUSE
-                  of it, so the number explaining the drop sits next to them. */}
-              {counts && (
-                <div
-                  className={cn(
-                    'grid gap-1 p-3 border-b border-border text-center',
-                    contentMatchingRan(result?.diff.contentMatches) ? 'grid-cols-5' : 'grid-cols-4',
+                <CompareResultView
+                  result={result}
+                  split={split}
+                  matchedElements={contentMatchingRan(result?.diff.contentMatches) ? matchCounts.matchedElements : null}
+                  // Export the full change report (#1202): the report bar is the exact negation of the
+                  // results list's empty state; the sidecar bar (#4955) is always offered.
+                  exportBar={result && counts ? <CompareExportBar result={result} reportable={hasReportableChanges(counts, matchRows)} /> : null}
+                  list={(
+                    <CompareResultsList
+                      result={result}
+                      groups={groups}
+                      counts={counts}
+                      split={split}
+                      matchRows={matchRows}
+                      selectedKey={selectedKey}
+                      onFocus={focusEntry}
+                      onFocusGroup={focusGroup}
+                      onFocusMatch={focusMatch}
+                      onFocusMatchGroup={focusMatchGroup}
+                      suggestions={suggest.suggestions}
+                      suggestionDecisions={suggest.decisions}
+                      onFocusSuggestion={(row) => focusRefs(row.refs, row.key)}
+                      onFocusSuggestionGroup={(rows) => focusRefs(rows.flatMap((row) => row.refs), null)}
+                      onAcceptSuggestion={suggest.accept}
+                      onRejectSuggestion={suggest.reject}
+                    />
                   )}
-                  {...tourAnchor(TOUR_ANCHORS.compareCounts)}
-                >
-                  <CountBadge
-                    label={t('comparePanel.resultsList.stateChanged')}
-                    value={split?.products.modified ?? counts.modified}
-                    color={COMPARE_COLORS.modified}
-                    hint={typeObjectHint(split?.typeObjects.modified ?? 0)}
-                  />
-                  <CountBadge
-                    label={t('comparePanel.resultsList.stateAdded')}
-                    value={split?.products.added ?? counts.added}
-                    color={COMPARE_COLORS.added}
-                    hint={typeObjectHint(split?.typeObjects.added ?? 0)}
-                  />
-                  <CountBadge
-                    label={t('comparePanel.resultsList.stateDeleted')}
-                    value={split?.products.deleted ?? counts.deleted}
-                    color={COMPARE_COLORS.deleted}
-                    hint={typeObjectHint(split?.typeObjects.deleted ?? 0)}
-                  />
-                  {contentMatchingRan(result?.diff.contentMatches) && (
-                    <CountBadge label={t('comparePanel.matchGroups.matchedLabel')} value={matchCounts.matchedElements} color={COMPARE_COLORS.matched} />
-                  )}
-                  <CountBadge label={t('comparePanel.panel.countUnchanged')} value={counts.unchanged} color={COMPARE_COLORS.unchanged} />
-                </div>
-              )}
-
-              {/* Export the full change report (#1202) — the report bar is the exact
-                  negation of the results list's empty state; the sidecar bar (#4955)
-                  is always offered, an identity map can be imported before any change. */}
-              {result && counts && (
-                <CompareExportBar result={result} reportable={hasReportableChanges(counts, matchRows)} />
-              )}
-
-              {/* Results list */}
-              <CompareResultsList
-                result={result}
-                groups={groups}
-                counts={counts}
-                split={split}
-                matchRows={matchRows}
-                selectedKey={selectedKey}
-                onFocus={focusEntry}
-                onFocusGroup={focusGroup}
-                onFocusMatch={focusMatch}
-                onFocusMatchGroup={focusMatchGroup}
-                suggestions={suggest.suggestions}
-                suggestionDecisions={suggest.decisions}
-                onFocusSuggestion={(row) => focusRefs(row.refs, row.key)}
-                onFocusSuggestionGroup={(rows) => focusRefs(rows.flatMap((row) => row.refs), null)}
-                onAcceptSuggestion={suggest.accept}
-                onRejectSuggestion={suggest.reject}
-              />
-
-              {/* What-changed detail for the selected element */}
-              {detail && selectedRow && <ChangeDetailView row={selectedRow} detail={detail} />}
+                  detail={detail && selectedRow ? <ChangeDetailView row={selectedRow} detail={detail} /> : null}
+                />
               </AnalysisStaleRegion>
             </>
           )}

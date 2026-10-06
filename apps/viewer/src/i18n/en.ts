@@ -11,6 +11,7 @@ import { flowStartupEn } from './catalogues/flow-startup.en';
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { analysisPanelEn } from './catalogues/analysis-panel.en';
+import { resultViewEn } from './catalogues/result-view.en';
 import { panelNoModelEn } from './catalogues/panel-no-model.en';
 import { annotationsEn } from './catalogues/annotations.en';
 import { anonymizedExportEn } from './catalogues/anonymized-export.en';
@@ -136,6 +137,7 @@ export const en = {
   ...semanticResultsEn,
   ...semanticIdentityEn,
   ...analysisPanelEn,
+  ...resultViewEn,
   ...panelNoModelEn,
   ...annotationsEn,
   ...anonymizedExportEn,

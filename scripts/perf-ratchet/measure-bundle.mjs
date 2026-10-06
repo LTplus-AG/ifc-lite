@@ -15,8 +15,11 @@
  * Metrics:
  *   engine-wasm-brotli      brotli bytes of packages/wasm/pkg/ifc-lite_bg.wasm
  *   viewer-entry-js-brotli  brotli bytes of the viewer's main entry chunk
- *   viewer-eager-js-chunks  JS files index.html makes the browser fetch before
- *                           first paint (module <script src> + modulepreload)
+ *   viewer-eager-js-brotli  summed brotli bytes of every JS file index.html makes
+ *                           the browser fetch before first paint (module
+ *                           <script src> + modulepreload) (#7002)
+ *
+ * Eager file counts and names remain diagnostic detail on the byte metric.
  *
  * WHY BROTLI, NOT RAW. The perf ledger (scripts/perf/README.md) records that
  * wasm-opt passes can SHRINK raw bytes while GROWING the brotli transfer size,
@@ -71,13 +74,21 @@ export function eagerScripts(html) {
   const text = html.replace(/<!--[\s\S]*?-->/g, '');
   const entries = [];
   const eager = [];
-  for (const m of text.matchAll(/<script\b([^>]*)>/gi)) {
-    const a = parseAttributes(m[1]);
-    if (a.src === undefined || a.src === '') continue;
+  // Script elements are read whole, so markup that only appears inside an
+  // inline script body (a string that spells out a <link>) is not a load, and
+  // the link scan below runs over what is left of the document.
+  const JS_TYPES = new Set(['', 'module', 'text/javascript', 'application/javascript', 'text/ecmascript', 'application/ecmascript']);
+  const markup = text.replace(/<script\b([^>]*)>[\s\S]*?<\/script\s*>/gi, (_, attrText) => {
+    const a = parseAttributes(attrText);
+    const type = (a.type ?? '').trim().toLowerCase();
+    // nomodule scripts are fetched only by browsers that cannot run modules;
+    // importmap/json and the like are not JavaScript.
+    if (a.src === undefined || a.src === '' || a.nomodule !== undefined || !JS_TYPES.has(type)) return '';
     eager.push(a.src);
-    if ((a.type ?? '').toLowerCase() === 'module') entries.push(a.src);
-  }
-  for (const m of text.matchAll(/<link\b([^>]*)>/gi)) {
+    if (type === 'module') entries.push(a.src);
+    return '';
+  });
+  for (const m of markup.matchAll(/<link\b([^>]*)>/gi)) {
     const a = parseAttributes(m[1]);
     const rel = (a.rel ?? '').toLowerCase().split(/\s+/);
     if (rel.includes('modulepreload') && a.href) eager.push(a.href);
@@ -101,6 +112,32 @@ export function resolveAsset(dist, urlPath) {
 }
 
 /**
+ * The discovery behind the eager-JS byte metric: every JS file index.html
+ * loads before first paint, as distinct files inside `dist`. Preloads of
+ * non-JS assets (stylesheets, fonts) are not eager JS and are left out; two
+ * links that name the same file count once, however they are spelled.
+ *
+ * @param {string} dist
+ * @param {string} html contents of dist/index.html
+ * @returns {{ entry: string, files: { url: string, file: string }[] }}
+ */
+export function eagerJsFiles(dist, html) {
+  const { entry, eager } = eagerScripts(html);
+  const files = [];
+  const seen = new Set();
+  for (const url of eager) {
+    if (!/\.m?js$/i.test(url.split(/[?#]/)[0])) continue;
+    const file = resolveAsset(dist, url);
+    if (seen.has(file)) continue;
+    seen.add(file);
+    files.push({ url, file });
+  }
+  // A measurement of zero files would make the byte ceiling vacuous.
+  if (files.length === 0) throw new Error(`index.html lists no eager JS files (entry ${entry}); is this a built index.html?`);
+  return { entry, files };
+}
+
+/**
  * @param {{ wasm: string, dist: string, commit: string, measuredAt?: string }} opts
  */
 export function measureBundle({ wasm, dist, commit, measuredAt = new Date().toISOString() }) {
@@ -109,9 +146,9 @@ export function measureBundle({ wasm, dist, commit, measuredAt = new Date().toIS
   if (!existsSync(indexHtml)) throw new Error(`viewer build not found: no ${indexHtml} (build it: pnpm build:e2e)`);
 
   const wasmBytes = readFileSync(wasm);
-  const { entry, eager } = eagerScripts(readFileSync(indexHtml, 'utf8'));
-  const jsEager = eager.filter((u) => /\.m?js$/i.test(u.split(/[?#]/)[0]));
-  for (const u of jsEager) resolveAsset(dist, u);
+  const { entry, files: jsEager } = eagerJsFiles(dist, readFileSync(indexHtml, 'utf8'));
+  const eagerBytes = jsEager.map(({ file }) => readFileSync(file));
+  const eagerRaw = eagerBytes.reduce((n, b) => n + b.length, 0);
   const entryBytes = readFileSync(resolveAsset(dist, entry));
 
   return {
@@ -121,7 +158,7 @@ export function measureBundle({ wasm, dist, commit, measuredAt = new Date().toIS
     metrics: [
       { id: 'engine-wasm-brotli', value: brotliSize(wasmBytes), detail: `raw ${wasmBytes.length} bytes` },
       { id: 'viewer-entry-js-brotli', value: brotliSize(entryBytes), detail: `${entry.split(/[?#]/)[0].replace(/^.*\//, '')}, raw ${entryBytes.length} bytes` },
-      { id: 'viewer-eager-js-chunks', value: jsEager.length, detail: jsEager.map((u) => u.replace(/^.*\//, '')).join(' ') },
+      { id: 'viewer-eager-js-brotli', value: eagerBytes.reduce((n, b) => n + brotliSize(b), 0), detail: `${jsEager.length} files, raw ${eagerRaw} bytes, each file compressed on its own; ${jsEager.map(({ url }) => url.replace(/^.*\//, '')).join(' ')}` },
     ],
   };
 }

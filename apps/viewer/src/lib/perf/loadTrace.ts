@@ -64,8 +64,14 @@ const DISABLED_TRACER: LoadTracer = {
  * the benchmark's pre-boot flag) still captures every load.
  */
 export let loadTracer: LoadTracer = DISABLED_TRACER;
-if (PERF_TRACE_ENABLED) {
-  void import('./loadTraceEnabled.js')
+
+/**
+ * Settles once `loadTracer` is final: at once when tracing is off, after the
+ * on-demand import when it is on. `mountViewer` awaits it in trace mode so no
+ * load entry point exists before the recording tracer does.
+ */
+export const loadTracerReady: Promise<void> = PERF_TRACE_ENABLED
+  ? import('./loadTraceEnabled.js')
     .then((mod) => { loadTracer = mod.enableLoadTracing(); })
-    .catch((error: unknown) => console.warn('[perf] load tracing could not be enabled', error));
-}
+    .catch((error: unknown) => console.warn('[perf] load tracing could not be enabled', error))
+  : Promise.resolve();

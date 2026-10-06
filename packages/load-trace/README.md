@@ -67,8 +67,10 @@ next load started (or the snapshot was taken), plus everything its workers
 posted back (`workerCounters`, per worker thread).
 
 ```ts
-import { accountWorkerMessages, countCopy, meterTypedArrayArgs, perfTally, startFrameMonitor } from '@ifc-lite/load-trace';
+import { accountWorkerMessages, countCopy, createLoadTracer, meterTypedArrayArgs, perfTally, startFrameMonitor } from '@ifc-lite/load-trace';
 
+declare const url: URL;        // the worker script
+declare const vertices: number; // merged vertex count
 const tracer = createLoadTracer({ enabled: true, frames: startFrameMonitor() });
 const worker = accountWorkerMessages(new Worker(url), 'geometry'); // msg.geometry.{out,in}.*
 const copy = countCopy('source.zip', bytes.slice().buffer);           // copy.source.zip.{count,bytes}

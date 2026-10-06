@@ -38,8 +38,12 @@
  *     "family": "bundle",
  *     "commit": "<sha the measurement was taken at>",
  *     "measuredAt": "<ISO-8601>",
- *     "metrics": [ { "id": "engine-wasm-brotli", "value": 1290000, "detail": "..." } ]
+ *     "metrics": [ { "id": "engine-wasm-brotli", "value": 1290000, "detail": "..." } ],
+ *     "informational": [ { "id": "viewer-entry-js-brotli", "value": 984000, "unit": "bytes" } ]
  *   }
+ *
+ * `informational` is optional: values the report shows but nothing compares,
+ * for numbers too noisy to gate (#7007). An id may not appear in both lists.
  *
  * Validation fails closed: a file that parses to no entries, a duplicate id or
  * a non-finite value is an error, never an empty (and therefore passing) check.
@@ -134,6 +138,22 @@ export function validateMeasuredFile(data) {
     else seen.add(m.id);
     if (!isNonNegativeFinite(m.value)) problems.push(`${at}: \`value\` must be a finite number >= 0`);
   });
+  if (data.informational !== undefined) {
+    if (!Array.isArray(data.informational)) {
+      problems.push('`informational`, when present, must be an array');
+      return problems;
+    }
+    const infoSeen = new Set();
+    data.informational.forEach((m, i) => {
+      const at = `informational[${i}]${m && typeof m.id === 'string' ? ` (${m.id})` : ''}`;
+      if (!m || typeof m !== 'object') { problems.push(`${at}: not an object`); return; }
+      if (typeof m.id !== 'string' || !ID_RE.test(m.id)) problems.push(`${at}: \`id\` must match ${ID_RE}`);
+      else if (seen.has(m.id)) problems.push(`${at}: also a gated metric; a value is gated or informational, not both`);
+      else if (infoSeen.has(m.id)) problems.push(`${at}: duplicate id`);
+      else infoSeen.add(m.id);
+      if (!isNonNegativeFinite(m.value)) problems.push(`${at}: \`value\` must be a finite number >= 0`);
+    });
+  }
   return problems;
 }
 

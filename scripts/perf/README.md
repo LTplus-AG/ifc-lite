@@ -68,6 +68,20 @@ rendered vs idle frames (a frame that called `getCurrentTexture`), and
   read the paired ratio. Serialise timed runs:
   `flock /tmp/ifclite-perf.lock npx tsx scripts/perf/frame-gpu-rig.mts tests/models/ara3d/AC20-FZK-Haus.ifc --pairs 3`.
 
+## Viewer JS is gated on raw bytes, not brotli (#7007)
+
+The viewer build is byte-reproducible apart from `__BUILD_DATE__` (the build
+timestamp `vite.config.ts` bakes into the entry chunk and `analytics`). Module
+order was NOT the cause: three clean builds of one tree kept all 304 JS files'
+raw sizes and, chunk hashes stripped, every file's content except those two;
+both CI attempts of one commit kept the entry's raw size and the eager file
+order. Brotli-11 of the entry chunk is still noisy, because a
+same-length timestamp swap alone is enough to jump it by ~0.5% (bimodal over
+48 dates, matching the 4.3 KB CI re-run swing). Pinning the timestamp would
+only make one tree repeat; every other edit perturbs the compressor the same
+way. **Lesson:** gate the JS on raw bytes, report brotli, and don't try to
+make a brotli number on a multi-megabyte JS chunk stable to better than ~0.5%.
+
 ## Instruction counts track kernel and parse work, not scheduling (#6958)
 
 Replay before any gate: `instructions-replay.mjs` rebuilt both sides of 12

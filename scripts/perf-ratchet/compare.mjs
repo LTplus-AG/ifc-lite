@@ -67,7 +67,7 @@ export function relativeDelta(value, ceiling) {
  *
  * @param {{ family: string, entries: Array<object> }} ceilings validated ceiling file
  * @param {{ family: string, metrics: Array<{ id: string, value: number, detail?: string }> }} measured validated measured file
- * @returns {{ family: string, rows: Array<object>, failed: boolean }}
+ * @returns {{ family: string, rows: Array<object>, informational: Array<object>, failed: boolean }}
  */
 export function compareFamily(ceilings, measured) {
   if (ceilings.family !== measured.family) {
@@ -101,5 +101,7 @@ export function compareFamily(ceilings, measured) {
   for (const m of byId.values()) {
     rows.push({ id: m.id, metric: null, ceiling: null, allowed: null, value: m.value, detail: m.detail, status: UNRATCHETED, lowerable: false });
   }
-  return { family: ceilings.family, rows, failed: rows.some((r) => FAILING_STATUSES.has(r.status)) };
+  // Informational values ride along to the report and never affect `failed` (#7007).
+  const informational = measured.informational ?? [];
+  return { family: ceilings.family, rows, informational, failed: rows.some((r) => FAILING_STATUSES.has(r.status)) };
 }

@@ -45,13 +45,17 @@ test('droppedPaths reports array entries missing from the kept array', () => {
 
 // #6915 review: filter rules are kept verbatim by the native parser, so unknown extra keys must be refused here.
 test('unknown fields inside applicability and requirement filter rules are refused with the path', () => {
-  const applicability = rules[0].applicability.groups[0].rules[0];
-  const withApplicability = { ...rules[0], applicability: { ...rules[0].applicability, groups: [{ ...rules[0].applicability.groups[0], rules: [{ ...applicability, note: 'x' }] }] } };
-  assert.throws(() => parseRulesProposal(withRules([withApplicability])), /Unsupported rule field\(s\) ruleSet\.rules\[0\]\.applicability\.groups\[0\]\.rules\[0\]\.note/);
-  const block = rules[0].requirement.block;
-  const withRequirement = { ...rules[0], requirement: { ...rules[0].requirement, block: { ...block, groups: [{ ...block.groups[0], rules: [{ ...block.groups[0].rules[0], bogus: true }] }] } } };
-  assert.throws(() => parseRulesProposal(withRules([withRequirement])), /requirement\.block\.groups\[0\]\.rules\[0\]\.bogus/);
+  interface Block { groups: Array<{ rules: Array<Record<string, unknown>> }> }
+  interface RuleDraft { applicability: Block; requirement: { block: Block } }
+  const edited = (edit: (rule: RuleDraft) => void) => {
+    const rule: RuleDraft = JSON.parse(JSON.stringify(rules[0]));
+    edit(rule);
+    return withRules([rule]);
+  };
+  assert.throws(() => parseRulesProposal(edited(rule => { rule.applicability.groups[0].rules[0].note = 'x'; })),
+    /Unsupported rule field\(s\) ruleSet\.rules\[0\]\.applicability\.groups\[0\]\.rules\[0\]\.note/);
+  assert.throws(() => parseRulesProposal(edited(rule => { rule.requirement.block.groups[0].rules[0].bogus = true; })),
+    /requirement\.block\.groups\[0\]\.rules\[0\]\.bogus/);
   // Every field a native filter rule really carries stays accepted.
-  const full = { ...applicability, kind: 'ifcType', values: ['IfcWall'], op: 'in', exactClass: true };
-  assert.ok(parseRulesProposal(withRules([{ ...rules[0], applicability: { ...rules[0].applicability, groups: [{ ...rules[0].applicability.groups[0], rules: [full] }] } }])));
+  assert.ok(parseRulesProposal(edited(rule => { rule.applicability.groups[0].rules[0].exactClass = true; })));
 });

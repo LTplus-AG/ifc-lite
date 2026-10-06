@@ -15,6 +15,7 @@
 
 import test, { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { NOOP_LOAD_TRACE } from '@ifc-lite/load-trace';
 import { posthog } from '@/lib/analytics';
 import {
   buildModelLoadedPayload,
@@ -151,11 +152,15 @@ describe('last-load snapshot for the device-loss report (#2624)', () => {
   });
 
   describe('captureModelLoaded: the one ifc_model_loaded seam', () => {
-    it('emits the event AND retains that load\'s snapshot in one call', () => {
-      captureModelLoaded(
+    it('emits the event AND retains that load\'s snapshot in one call', async () => {
+      const sent = captureModelLoaded(
         { format: 'ifc', load_path: 'server', file_size_mb: 12.34 },
         { fileSizeMB: 12.34, totalTriangles: 250_000, meshCount: 1_200 },
+        NOOP_LOAD_TRACE,
       );
+      // The snapshot is synchronous; the event follows the field chunk (#6961).
+      assert.equal(getModelLoadedSnapshot()?.fileSizeMB, 12.34);
+      await sent;
       assert.equal(events.length, 1);
       assert.equal(events[0].event, 'ifc_model_loaded');
       assert.equal(events[0].props.load_path, 'server');
@@ -166,9 +171,22 @@ describe('last-load snapshot for the device-loss report (#2624)', () => {
       );
     });
 
+    it('adds the #6961 field properties without overwriting what the path measured', async () => {
+      // A single-step path (no streamed milestones): every milestone is the
+      // commit time, and the row says so. The flag arm is always present.
+      await captureModelLoaded({ load_path: 'server', total_elapsed_ms: 900, first_visible_geometry_ms: 700 }, { fileSizeMB: 2 }, NOOP_LOAD_TRACE);
+      const props = events[0].props;
+      assert.equal(props.perf_flags, 'default');
+      assert.equal(props.milestone_source, 'commit');
+      assert.equal(props.stream_complete_ms, 900);
+      assert.equal(props.spatial_ready_ms, 900);
+      assert.equal(props.metadata_complete_ms, 900);
+      assert.equal(props.first_visible_geometry_ms, 700, 'a value the path measured is never replaced');
+    });
+
     it('a later capture replaces the previous model\'s numbers wholesale', () => {
-      captureModelLoaded({ load_path: 'wasm' }, { fileSizeMB: 900, totalTriangles: 9_000_000, meshCount: 90_000 });
-      captureModelLoaded({ load_path: 'cache' }, { fileSizeMB: 1.5, totalTriangles: 300, meshCount: 12 });
+      captureModelLoaded({ load_path: 'wasm' }, { fileSizeMB: 900, totalTriangles: 9_000_000, meshCount: 90_000 }, NOOP_LOAD_TRACE);
+      captureModelLoaded({ load_path: 'cache' }, { fileSizeMB: 1.5, totalTriangles: 300, meshCount: 12 }, NOOP_LOAD_TRACE);
       assert.deepEqual(getModelLoadedSnapshot(), { fileSizeMB: 1.5, totalTriangles: 300, meshCount: 12 });
     });
 
@@ -176,7 +194,7 @@ describe('last-load snapshot for the device-loss report (#2624)', () => {
       // The point-cloud path's GeometryResult zeros are placeholders, so it
       // states only the file size; the retained snapshot must not grow a
       // fabricated 0 for the figures the path did not state.
-      captureModelLoaded({ load_path: 'point-cloud' }, { fileSizeMB: 40.5 });
+      captureModelLoaded({ load_path: 'point-cloud' }, { fileSizeMB: 40.5 }, NOOP_LOAD_TRACE);
       const snapshot = getModelLoadedSnapshot();
       assert.ok(snapshot, 'the size-only capture still records a snapshot');
       assert.equal(snapshot.fileSizeMB, 40.5);
@@ -190,7 +208,7 @@ describe('last-load snapshot for the device-loss report (#2624)', () => {
       // The pre-fix failure, in miniature: model A loads via wasm (records),
       // model B starts loading. If B's path never records, the loss report
       // must say NOTHING about the last load - not describe model A.
-      captureModelLoaded({ load_path: 'wasm' }, { fileSizeMB: 900, totalTriangles: 9_000_000, meshCount: 90_000 });
+      captureModelLoaded({ load_path: 'wasm' }, { fileSizeMB: 900, totalTriangles: 9_000_000, meshCount: 90_000 }, NOOP_LOAD_TRACE);
       clearModelLoadedSnapshot();
       assert.equal(
         getModelLoadedSnapshot(),

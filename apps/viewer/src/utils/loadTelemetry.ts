@@ -23,7 +23,9 @@
  * `IS NOT NULL` filters.
  */
 
+import type { LoadTrace } from '@ifc-lite/load-trace';
 import { posthog } from '@/lib/analytics';
+import { loadFieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
 
 export interface ModelLoadedInputs {
   format: string;
@@ -173,13 +175,26 @@ export function snapshotFromGeometry(
  * other code spells `'ifc_model_loaded'` in a capture call - so this function
  * is the only thing in the codebase that can emit the event, and its
  * mandatory `snapshot` argument means no path, present or future, can emit it
- * without stating what it knows about the model's size. Keep it that way:
+ * without stating what it knows about the model's size. The mandatory
+ * `trace` (the load's own) is the same guarantee for the #6961 field
+ * properties: no path can emit the event without its milestones. Keep it that way:
  * never export the event name, never add a bare capture elsewhere.
  */
 export function captureModelLoaded(
   payload: Record<string, string | number | boolean | undefined>,
   snapshot: ModelLoadedSnapshot,
-): void {
+  trace: LoadTrace,
+): Promise<void> {
   recordModelLoadedSnapshot(snapshot);
-  posthog.capture('ifc_model_loaded', payload);
+  // #6961: the field properties (milestones on every path, main-thread
+  // health, worker bytes, journey, flags) come from an on-demand chunk the
+  // load's start already requested. Never awaited by a load path; if the
+  // chunk cannot load, the event still goes out with the path's own payload.
+  const at = performance.now();
+  return loadFieldTelemetry()
+    .then((field) => field.fieldLoadProps(trace, payload, at), (error: unknown) => {
+      console.warn('[telemetry] ifc_model_loaded sent without field properties', error);
+      return payload;
+    })
+    .then((properties) => { posthog.capture('ifc_model_loaded', properties); });
 }

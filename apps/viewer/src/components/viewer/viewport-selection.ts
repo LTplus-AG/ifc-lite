@@ -14,9 +14,11 @@
 
 import { useViewerStore, resolveEntityRef } from '@/store';
 import { selectLandXmlViewportPick } from './landXmlViewportSelection.js';
+import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
 
 /** A plain click: select `globalId` alone, or clear the selection on a miss (null). */
 export function selectPickedGlobalId(globalId: number | null): void {
+  fieldTelemetry?.noteInspectSelection(globalId); // #6961: a sampled click's pick landed
   const state = useViewerStore.getState();
   // Gate on EITHER set: `selectedEntityIds` is the legacy global-id set that
   // drives the renderer highlight, and some features populate it WITHOUT the

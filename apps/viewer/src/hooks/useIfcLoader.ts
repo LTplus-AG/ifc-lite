@@ -709,7 +709,7 @@ export function useIfcLoader() {
           sourceFingerprint: modelSourceIdentity,
           sourceContentHash: placementIdentity,
         });
-        await loadLandXmlModel({ file, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(),
+        await loadLandXmlModel({ file, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(), trace,
           assumedLinearUnit: options?.assumedLinearUnit,
           isCurrent: () => isCurrent(), setProgress, setGeometryStreamingActive, setLoading,
           openProvisional: target.kind === 'primary' ? (preflight) => openPrimaryLandXmlProvisional(modelId, preflight) : undefined,
@@ -969,7 +969,7 @@ export function useIfcLoader() {
         // Snapshot: points, not meshes - the ingest GeometryResult's zero
         // triangle/mesh totals are placeholders, not measurements, so only the
         // file size is recorded (absent != 0, see ModelLoadedSnapshot).
-        captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'point-cloud', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, { fileSizeMB });
+        captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'point-cloud', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, { fileSizeMB }, trace);
         setLoading(false);
         return;
       }
@@ -1001,7 +1001,7 @@ export function useIfcLoader() {
           await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion, { loadPath: 'wasm' });
 
           setProgress({ phase: 'Complete', percent: 100 });
-          captureModelLoaded({ format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, result.geometryResult));
+          captureModelLoaded({ format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, result.geometryResult), trace);
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -1052,7 +1052,7 @@ export function useIfcLoader() {
           if (isStale()) return;
           appearanceLoad?.finish(useViewerStore.getState().models.has(modelId));
           setProgress({ phase: 'Complete', percent: 100 });
-          captureModelLoaded({ format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, result.geometryResult));
+          captureModelLoaded({ format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, result.geometryResult), trace);
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -1205,7 +1205,7 @@ export function useIfcLoader() {
               // reporting `loadDiagnostics` here would attribute a PRIOR load's
               // counters (or a fabricated 0) to this one. The builder already
               // turns an undefined/null diagnostics into absent CSG fields.
-              captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), ...buildModelLoadedGeometryProps({ diagnostics: undefined, tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad, isResourceRetry: isResourceRetryLoad }) }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
+              captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), ...buildModelLoadedGeometryProps({ diagnostics: undefined, tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad, isResourceRetry: isResourceRetryLoad }) }, snapshotFromGeometry(fileSizeMB, state.geometryResult), trace);
               // Steady-state draw-call/GPU telemetry — same reporter as the
               // fresh path so warm (cache) loads are comparable (issue #1682).
               void reportRenderStats({
@@ -1282,7 +1282,7 @@ export function useIfcLoader() {
           // fabricated attribution of exactly the kind #2388 exists to
           // prevent. Absent stays absent; `is_resource_retry` is the one fact
           // that is true on this path.
-          captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), is_resource_retry: isResourceRetryLoad }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
+          captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), is_resource_retry: isResourceRetryLoad }, snapshotFromGeometry(fileSizeMB, state.geometryResult), trace);
           setLoading(false);
           return;
         }
@@ -2151,7 +2151,7 @@ export function useIfcLoader() {
             isResourceRetry: isResourceRetryLoad,
           }),
         },
-        { fileSizeMB, totalTriangles, meshCount: allMeshes.length },
+        { fileSizeMB, totalTriangles, meshCount: allMeshes.length }, trace,
       );
       // Steady-state draw-call/GPU-memory telemetry (issue #1682) — fired
       // separately from ifc_model_loaded because it must wait for the scene

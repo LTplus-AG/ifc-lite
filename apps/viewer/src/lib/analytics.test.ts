@@ -192,6 +192,18 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
     assert.equal(out, null);
   });
 
+  it('keeps ifc_model_loaded\'s closed load_path vocabulary, which the `path` word rule used to delete (#6961)', () => {
+    // Field verdicts split by load path; before #6961 the property never
+    // reached PostHog at all, because `load_path` matches the `path` word.
+    for (const loadPath of ['wasm', 'cache', 'server', 'point-cloud', 'landxml']) {
+      const out = scrubEvent({ event: 'ifc_model_loaded', properties: { load_path: loadPath } });
+      assert.equal(out?.properties?.load_path, loadPath);
+    }
+    // Anything outside the vocabulary is still a path-shaped key and goes.
+    const leaked = scrubEvent({ event: 'ifc_model_loaded', properties: { load_path: '/Users/me/Tower.ifc' } });
+    assert.ok(!('load_path' in (leaked?.properties ?? {})));
+  });
+
   it('strips a confidential file name and path from event properties', () => {
     const out = scrubEvent({
       event: 'custom',

@@ -2102,6 +2102,54 @@ The existing prepass can publish the exact full-byte source key through a fresh 
   initial Holter browser cohort confirmed frame progress and no 14-second load,
   but concurrent host jobs made its small timing delta inconclusive.
 
+#### Field properties on every load and journey (#6961)
+
+`ifc_model_loaded` now carries the same milestones on every load path (wasm
+streaming, cache, server, IFCX, GLB, point cloud, LandXML), plus main-thread
+health, worker bytes, the journey and the perf-flag arm. Absent always means
+"not measured", never 0; a value the load path measured itself always wins.
+
+| property | meaning |
+|---|---|
+| `first_visible_geometry_ms` | first pixel: the paint after the first geometry append (`geometry.firstVisible`). Was wasm-only; now also cache. |
+| `spatial_ready_ms` | spatial tree usable (`parser.spatialReady`; on a cache hit, the store restore `cache.storeReady`). New. |
+| `metadata_complete_ms` | properties usable (`parser.complete`; cache: `cache.storeReady`). Was wasm-only. |
+| `stream_complete_ms` | last geometry batch appended (`geometry.streamComplete`). Was wasm-only; now also cache. |
+| `milestone_source` | `trace`: the four come from the load's streamed milestones. `commit`: a single-step path (server, IFCX, GLB, point cloud, LandXML) committed the model at once, so all four are its `total_elapsed_ms`. Never compare a `commit` row's first pixel with a `trace` row's. |
+| `journey` | charter journey: `J1` cold open, `J2` cache hit, `J4` federated add. |
+| `cache_tier` | `source`, `mesh-only` or `none` (the cache plan for this load). |
+| `worker_count` | geometry workers the pool started (absent on paths without a pool). |
+| `main_thread_blocked_ms` | sum of long-animation-frame `blockingDuration` (or long-task time over 50 ms where LoAF is missing) for frames starting between load start and capture. |
+| `longest_long_frame_ms`, `long_frame_count` | the longest such frame and how many there were. |
+| `long_frame_source` | `loaf` or `longtask`; compare rows of the same source only. All four main-thread fields are absent where the engine has neither (Firefox, Safari). |
+| `worker_transfer_bytes` | mesh bytes the geometry workers handed the main thread plus the parser's transport bytes, from `memoryAccounting` (already on every load). Absent when no worker carried geometry (cache, server). It counts payload bytes, not the clone estimate `?perfTrace=1` records per message. |
+| `perf_flags` | the M7 arm: `default`, or the non-default flags as sorted `id=value` pairs joined by `,` (read at capture). |
+| `load_path` | now actually arrives. The scrubber deleted it until #6961 (the key matches the `path` word); the closed vocabulary `wasm`/`cache`/`server`/`point-cloud`/`landxml` is now kept. Rows before that have no `load_path` and no `journey`, so a pre-#6961 cache hit reads as `J1`: judge `J1` against `J2` only on a baseline captured entirely after this change. |
+
+How it is measured without the tracer. With `?perfTrace=1` off, every load
+gets a `FieldLoadTrace` (`apps/viewer/src/lib/perf/fieldLoadTrace.ts`) in place
+of the old no-op trace: it records the first time of each milestone and the
+load attributes that the instrumented call sites already pass, and nothing
+else (spans, records and worker merges stay no-ops). Main-thread health comes
+from one `PerformanceObserver` on `long-animation-frame` (and `longtask`),
+created when the first load starts and reading back missed frames through its
+`buffered` replay; it only fires on frames over 50 ms and keeps at most 2,000.
+Both, and the three events below, live in an on-demand chunk
+(`lib/perf/fieldTelemetry.ts`), so the entry chunk grows by about 600 raw
+bytes. The recording tracer was not an option: it keeps every span, a counter
+registry and a 20k-entry frame log, and counting message bytes walks every
+worker payload.
+
+Sampled events. All carry `journey`, `perf_flags`, `was_hidden` and, where a model is
+loaded, `file_size_mb`/`mesh_count` from the last load (the same model key as
+`ifc_model_loaded`); nothing else identifies the model.
+
+| event | journey | what | sample rate, and why |
+|---|---|---|---|
+| `ifc_inspect` | J5 | `inspect_ms`: viewport click to the paint after the properties panel committed that entity | 10% of selection clicks, at most 10 per page session. Clicks outnumber loads by an order of magnitude; the paired ratio needs a few samples per person per window, not every click. Sent only when the panel is open. |
+| `ifc_navigate` | J6 | `frame_p50_ms`, `frame_p95_ms`, `frame_max_ms` over 120 camera-interaction frames (orbit, pan, zoom), excluding each interaction's first frame, frames while geometry streams and hidden-tab frames | once per page session, every session: one row per session is already the cap. Frame intervals include the adaptive render throttle, which is what the user sees. |
+| `viewer_boot` | J0 | `drop_target_ms` (navigation to the empty viewer's drop target enabled), `engine_wasm_compiled_ms` (navigation to the prewarmed engine compiled), `engine_wasm_compile_ms` (the prewarm's own fetch + compile), `engine_wasm_compiled` | once per page load, every page load. Sent when both are known, or 30 s after the field chunk loads. `drop_target_ms` is absent when a load started first; `engine_wasm_compile_ms` is absent when a load joined the compile; both are absent when the prewarm was skipped (Save-Data, 2G). |
+
 ### Source and buffer ownership during WASM prepass (#3989)
 
 Source-session reuse, binding-owned index adoption and direct transfer of already-owned mesh getter arrays preserve byte-taking compatibility and source-replacement resets. The standalone own-layer native subset was slower in full-load timing, while Holter's measured peak memory fell; the cause remains unestablished and favorable memory does not waive the timing concern. The intended integrated merge parent differs from that standalone comparison, and its proposed comparison remains unrun; results with different parents must not be pooled. Combined native/browser results do not isolate a gain for this layer, and invalid Firefox cohorts provide no throughput evidence. Real WASM contracts verify returned buffers survive handle free, memory growth and transfer, including textures. Establish ownership at the binding: a JavaScript view does not remove the WASM input copy, and borrowed WASM-memory views must not be transferred as owned output.

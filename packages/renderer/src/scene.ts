@@ -50,7 +50,7 @@ import { unionInstancedWorldAabb as unionInstanceBounds } from './scene-instance
 import { DerivedMeshProvenance } from './scene-derived-mesh-provenance.js';
 import { rebuildSceneBatches } from './scene-batch-rebuild.js';
 import { regroupStreamedBuckets, type FinalizeRegroup } from './scene-finalize-regroup.js';
-import { perfCount, perfTally } from '@ifc-lite/load-trace';
+import { perfCount, perfCounters, perfTally } from '@ifc-lite/load-trace';
 import {
   dropAllPartialCaches as dropAllPartialCachesIn,
   dropPartialCacheForBatch as dropPartialCacheForBatchIn,
@@ -2108,6 +2108,8 @@ export class Scene {
     // already retired by rebuildPendingBatches.
     this.retireFinalizedBatches(oldFragments);
     this.retireFinalizedBatches(regroup?.retired ?? []);
+    // #6957: same batch tally as the time-sliced path (only reached when the rebuild succeeded).
+    if (perfCounters.enabled) perfCount('render.finalize.batches', this.batchedMeshes.filter((b) => !oldBatchSet.has(b)).length);
   }
 
   /**

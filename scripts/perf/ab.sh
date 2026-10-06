@@ -108,20 +108,17 @@ cargo build --profile profiling -p ifc-lite-processing --example perf_probe >&2
 BRANCH_BIN="$ROOT/target/profiling/examples/perf_probe"
 
 # --- Build the base probe in a throwaway worktree -------------------------
-# Its own CARGO_TARGET_DIR so the base build never clobbers the branch's target
-# (which would silently make the two sides share a binary — a classic false A/B).
+# build-at-ref.sh gives it its own CARGO_TARGET_DIR so the base build never
+# clobbers the branch's target (which would silently make the two sides share
+# a binary — a classic false A/B), and copies the binary out of it.
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/ifc-ab.XXXXXX")"
-BASE_WT="$TMP_ROOT/base-wt"
 cleanup() {
-  git worktree remove --force "$BASE_WT" >/dev/null 2>&1 || true
   rm -rf "$TMP_ROOT" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 echo "ab.sh: building base perf_probe @ $BASE_SHA in a throwaway worktree…" >&2
-git worktree add --detach "$BASE_WT" "$BASE_REF" >&2
-( cd "$BASE_WT" && CARGO_TARGET_DIR="$TMP_ROOT/target" \
-    cargo build --profile profiling -p ifc-lite-processing --example perf_probe >&2 )
-BASE_BIN="$TMP_ROOT/target/profiling/examples/perf_probe"
+BASE_BIN="$TMP_ROOT/perf_probe-base"
+"$ROOT/scripts/perf/build-at-ref.sh" --ref "$BASE_REF" --out "$BASE_BIN" --worktree-root "$TMP_ROOT"
 
 if [ ! -x "$BASE_BIN" ] || [ ! -x "$BRANCH_BIN" ]; then
   echo "ab.sh: a probe binary is missing — build failed above." >&2

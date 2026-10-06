@@ -68,6 +68,68 @@ rendered vs idle frames (a frame that called `getCurrentTexture`), and
   read the paired ratio. Serialise timed runs:
   `flock /tmp/ifclite-perf.lock npx tsx scripts/perf/frame-gpu-rig.mts tests/models/ara3d/AC20-FZK-Haus.ifc --pairs 3`.
 
+## Instruction counts track kernel and parse work, not scheduling (#6958)
+
+Replay before any gate: `instructions-replay.mjs` rebuilt both sides of 12
+ledger entries in throwaway worktrees (every side built and ran on today's pinned
+toolchain; none had to be skipped) and counted one single-threaded `process_geometry` call per fixture
+under callgrind, 3 runs per side. A direction is read only outside a flat band
+of max(0.01%, combined run-to-run spread of the two sides). Raw runs:
+`evidence/instruction-replay-6958/results.json`. Inputs, refs and claims:
+`candidates.json`.
+
+| entry | ledger end-to-end verdict | fixture (claimed) | Ir delta | flat band | verdict |
+|---|---|---|---:|---:|---|
+| CDT scan kill (46dcdeec2) | ISSUE_129 geometry 991 -> 651 ms | ISSUE_129 | -47.12% | ±0.011% | tracks |
+| #1916 squash (seam conform + CDT) | 979 -> 646 ms | ISSUE_129 | -27.17% | ±0.040% | tracks (output changed) |
+| #1568 point-cache hoist | win on shared-point steel models | #1572 shared-point fixture | -3.17% | ±0.017% | tracks |
+| #1572 cache across chunks/splits | win on shared-point steel models | #1572 shared-point fixture | -0.34% | ±0.021% | tracks |
+| #1184 cheap-hash BREP dedup | win on steel/Tekla | #1572 shared-point fixture | -2.46% | ±0.010% | tracks |
+| #1130 content dedup | 20-30% slower net | FZK / ISSUE_129 / shared-point | +9.98% / +0.33% / +87.0% | <= ±0.031% | tracks |
+| #1177 dedup off | revert of that loss | FZK / ISSUE_129 / shared-point | -12.31% / -0.51% / -43.45% | <= ±0.017% | tracks |
+| #4061 vertex reuse (rejected) | native -1.17% / -1.27%; rejected in the browser | FZK / ISSUE_129 | -0.11% / -1.08% | ±0.010% | tracks the native direction |
+| #1909 dedup gate | no corpus fixture crosses the gate; A/B was noise | FZK / ISSUE_129 | +0.22% / +0.03% | ±0.045% / ±0.076% | FZK does not track: real cost |
+| #1431 worker sizing (TS only) | -21% peak memory, 0 regression | FZK | +0.01% | ±0.058% | tracks (flat) |
+| #1255 threads bundle (feature off) | #1429 dead end | FZK / ISSUE_129 | -0.00% / -0.00% | <= ±0.036% | tracks (flat) |
+| #4054 parity BVH (rejected) | no native number recorded | FZK / ISSUE_129 | -0.21% / -5.74% | ±0.010% | no claim to compare |
+
+Not every fixture had a ledger claim; unclaimed ones are recorded as context
+in `results.json`. Notable ones: #1184 and #1568 cost +1.3% / -0.12% on FZK,
+and #1572 is flat on FZK and ISSUE_129. The #1916 squash costs +1.5% on FZK,
+with changed output.
+
+- **Where counts apply.** Every claimed direction for a kernel, decode or
+  memoization change came back with the ledger's sign, with one exception:
+  #1909 on FZK-Haus, where the ledger expected flat and the count rose +0.22%
+  (see below). The agreeing set includes both
+  content-dedup flips and the CDT kill, which the ledger measured only by
+  instrumented slot counts and wall time. Magnitudes are not wall-clock
+  proportional: the CDT kill is -47% Ir against -34% geometry ms, the #1916
+  squash -27% against -34%. Use counts to detect and size a change in work, not
+  to predict milliseconds.
+- **Where they do not.** Scheduling, threading and memory policy are invisible
+  by construction: the run is one thread and counts no stalls. #1431 and #1255
+  are flat because they do not change the native work, and #1572's multi-thread
+  amplification fix shows only its small single-thread part (-0.34%). Browser
+  verdicts are invisible too. #4061's native direction tracks, but it was
+  rejected on browser readiness and output gates, and #4054's -5.7% on ISSUE_129
+  says nothing about the browser screen that rejected it. A count win is not a
+  ship verdict.
+- **What counts saw that wall-clock missed.** #1909's gate decodes the shell's
+  face list for every faceted BREP. On FZK-Haus, where no BREP crosses the
+  gate, that is +0.22% work, about 5x outside the band. The wall-clock A/B
+  recorded for it swung ±10% with run order.
+- **Determinism caveat for history.** Today's code repeats to ~1e-6.
+  Historical binaries repeat only to ~1e-3 on a single run, because glibc
+  `_int_malloc`/`unlink_chunk` path lengths vary between runs. The first
+  single-run replay (`results-single-run.json`) produced false "flat/more" reads
+  inside that spread. Always run several times per side and take the band from
+  the measured spread.
+- **Verdict for #6958.** Counts track kernel and parse work, so per-phase
+  FZK-Haus and ISSUE_129 counts are now M4 ceilings (seeded by #6995 for
+  #6982, FZK-Haus per PR and ISSUE_129 daily). Scheduling-only and
+  browser-only levers still need the end-to-end harnesses.
+
 ## Load-trace spans replace console scraping (#6956)
 
 Viewer load milestones are now named spans (`@ifc-lite/load-trace`): one tree
@@ -1098,6 +1160,13 @@ identical with the feature off, on, and with `--single-thread`).
 - **Cost.** ~60-100x a native run: FZK-Haus ~6 s, ISSUE_129 ~2.5 min.
 - `perf stat -e instructions:u` is not wired in: it is unavailable under WSL and
   counts from different tools are not comparable with each other.
+
+For historical commits, which have no markers,
+`instructions-replay.mjs` injects `rust/processing/examples/instructions_driver.rs`
+(one `process_geometry` call between `--dump-before`/`--dump-after` dumps) into
+a throwaway worktree per ref via `build-at-ref.sh`, the same worktree builder
+`ab.sh` uses for its base side. It counts whole calls only. See the replay
+verdict in the ledger below.
 
 ## Flamegraph (`flame.sh`)
 

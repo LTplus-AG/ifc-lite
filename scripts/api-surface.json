@@ -8921,6 +8921,7 @@
     "unionByStorey: function",
     "unresolvedModelTagIds: function",
     "valueOpMatches: function",
+    "writeIdsXml: function",
     "yieldToEventLoop: function"
   ],
   "@ifc-lite/sandbox": [

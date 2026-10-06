@@ -112,6 +112,7 @@
     "publish:dry": "pnpm -r publish --access public --dry-run",
     "test:benchmark:viewer": "playwright test tests/benchmark/viewer-benchmark.spec.ts --project=viewer-benchmark",
     "test:benchmark:viewer:ci": "playwright test tests/benchmark/viewer-benchmark.spec.ts --project=viewer-benchmark-ci --reporter=json",
+    "test:benchmark:frames": "playwright test --project=viewer-frames-ci",
     "benchmark:check": "node scripts/check-benchmark-regression.js",
     "benchmark:baseline": "pnpm --filter viewer build && pnpm test:benchmark:viewer",
     "generate:bim-globals": "pnpm turbo build --filter=@ifc-lite/sandbox && node scripts/generate-bim-globals.mjs",

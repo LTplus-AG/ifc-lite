@@ -43,6 +43,7 @@ export function reportDeviceRecovery(result: DeviceRecoveryResult, onRecovered: 
       ...(legacyGeometry ? { geometryResult: legacyGeometry } : {}),
       pointCloudAssetCount: 0,
       pointCloudDeviationComputed: false,
+      pointCloudDeviationStatistics: null,
     });
   }
   // A successful replacement owns a new loss lifecycle. Re-arm the report so

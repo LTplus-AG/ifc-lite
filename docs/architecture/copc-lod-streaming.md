@@ -62,11 +62,16 @@ LAS/LAZ behaviour, because COPC is LAZ.
   coarse node (levels 0-2), an even subsample of the whole cloud.
 - **Class histogram**: each node counted once, scaled by its stride: an
   estimate of the whole file's classes.
-- **Deviation**: when a deviation run is live, each settled pass re-runs it
-  (the triangle BVH is cached, so this is the per-chunk dispatch). A completed
+- **Deviation**: when a deviation run is live, each settled pass that changed
+  the resident chunks re-runs it (the triangle BVH is cached, so this is the
+  per-chunk dispatch). "Settled" is the controller's `onPassSettled`, after
+  the pass has retired the old view, and it fires for a pass that only
+  evicts too: when the scan leaves the view, its statistics drop to the nodes
+  still resident instead of describing chunks that were freed. A completed
   re-run bumps `pointCloudDeviationRevision`, and the Deviation panel then
   drops its held readback and reads the new run back, so its statistics and
-  CSV describe the chunks on screen.
+  CSV describe the chunks on screen. A panel readback that such a re-run
+  interrupts is not reported as an error; the refresh replaces it.
 
 ## Snapping cost
 

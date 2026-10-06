@@ -269,8 +269,11 @@ Percentiles are exact nearest-rank values of |d|, not estimates, found by a
 radix select over the readback without copying it. Every figure takes at most
 two linear passes, run in short slices so the viewer stays responsive at the
 25-million-point cap. The readback holds 4 bytes per point in memory until
-the next run or until the result is invalidated. When a streamed COPC scan
-re-runs deviation for a new view, the statistics are read back again.
+the next run or until the result is invalidated. A streamed COPC scan keeps
+only the octree nodes the view needs, so its statistics and CSV describe the
+points resident now: when the view adds or drops nodes, including when the
+scan leaves the view entirely, deviation re-runs and the statistics are read
+back again.
 
 ![Deviation statistics for a synthetic scan sampled from a real Archicad IFC with 4 mm noise and 25 mm offsets on some faces](../assets/deviation-statistics-panel.png)
 

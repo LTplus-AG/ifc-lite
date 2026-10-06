@@ -1433,6 +1433,13 @@ jobs:
       - name: Check RTC frame gate regressions
         run: node --test scripts/check-rtc-frame-copies.test.mjs
 
+      # No two tracked paths may differ only in case: such a pair collapses on
+      # Windows/macOS/WSL-/mnt/c checkouts and breaks typecheck and build (#6978).
+      - name: Check for case-colliding tracked paths
+        run: node scripts/check-path-case-collisions.mjs
+      - name: Check case-collision gate regressions
+        run: node --test scripts/check-path-case-collisions.test.mjs
+
       # `scripts/lib/vitest-timeout-audit.mjs` (#2948) replaced
       # `audit-test-timeouts.mjs`, which was deleted in the same change rather
       # than left beside it: two hand-written JS/TS lexers for one question is

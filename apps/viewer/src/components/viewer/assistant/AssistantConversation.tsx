@@ -7,9 +7,10 @@ import { Bot, Crosshair, GitBranch, Hammer, Layers, PencilLine, User, X } from '
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { useTranslation } from '@/i18n';
 import type { AssistantMessage } from '@/lib/assistant/persistence';
 import type { AssistantSource } from '@/lib/assistant/sources';
+import { adapterFor } from '@/lib/assistant/adapters/registry';
 import { parseClashGroupPatch } from '@/lib/assistant/clash-group-proposal';
 import { parseFlowPatch } from '@/lib/assistant/flow-patch';
 import { parseModelChangeBatch } from '@/lib/actions/model-change';
@@ -17,14 +18,6 @@ import { parseModelAuthoringBatch } from '@/lib/actions/model-authoring';
 import { markdownHtml } from '@/lib/assistant/markdown';
 import { capturedEvidence, rowFields } from '@/lib/assistant/captured-rows';
 import { ReceiptFooter } from './AssistantUsage';
-
-const SUGGESTIONS: Record<AssistantSource, TranslationKey[]> = {
-  clash: ['assistant.suggestClashSummary', 'assistant.suggestClashGroups'],
-  validation: ['assistant.suggestValidationSummary', 'assistant.suggestValidationRequirements', 'assistant.suggestValidationCorrections'],
-  compare: ['assistant.suggestCompareSummary'],
-  flow: ['assistant.suggestFlowExplain', 'assistant.suggestFlowPatch'],
-  loadReport: ['assistant.suggestLoadReport', 'assistant.suggestAuthoring'],
-};
 
 type Declared = 'clash' | 'flow' | 'changes' | 'authoring';
 type Proposal = { kind: 'clash'; groups: number; findings: number } | { kind: 'flow'; operations: number }
@@ -169,7 +162,7 @@ export function AssistantConversation({ source, messages, pendingPrompt, output,
       <p className="font-semibold">{t('assistant.conversationTitle')}</p>
       <p className="text-muted-foreground">{t('assistant.conversationHint')}</p>
       {canAsk && <fieldset aria-label={t('assistant.suggestions')} className="flex flex-col items-start gap-1.5 pt-1">
-        {SUGGESTIONS[source].map(key => <button key={key} type="button" onClick={() => onSuggest(t(key))}
+        {adapterFor(source).suggestionKeys.map(key => <button key={key} type="button" onClick={() => onSuggest(t(key))}
           className="max-w-full rounded-full border border-border px-2.5 py-1 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           {t(key)}
         </button>)}

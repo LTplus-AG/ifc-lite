@@ -15,6 +15,7 @@ import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoCache } from '@ifc-lite/flow';
 import { useViewerStore } from '@/store';
+import { resolveEnglish } from '@/i18n/registry';
 import { columnGraph, openFlowSample, runOpenFlow, sampleColumns } from '@/test/flow-sample-fixture';
 import { newFlowDocument } from '../flow/persistence';
 import { flowRegistry } from '../flow/runner';
@@ -76,7 +77,8 @@ test('#6919 lane errors are diagnosed from the native run and a cited debug patc
   applyFlowProposal(debug, debug.digest, { trackingAcknowledged: true });
 
   useViewerStore.setState({ editEnabled: false });
-  assert.deepEqual(await preflightOpenFlow().then(result => result.problems), ['add edits the model: Turn on Edit mode before changing a model']);
+  assert.deepEqual(await preflightOpenFlow().then(result => result.problems.map(problem => resolveEnglish(problem.labelKey, problem.params))),
+    ['add edits the model: Turn on Edit mode before changing a model']);
   useViewerStore.setState({ editEnabled: true });
   assert.deepEqual(await preflightOpenFlow().then(result => result.problems), []);
   const passed = await runOpenFlow(model, cache);

@@ -24,7 +24,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 export async function preflightWorkflow(run: WorkflowRun, doc: FlowDocument, values: Readonly<Record<string, unknown>>, features: HostFeatures): Promise<Record<string, unknown>> {
   run.check();
   const registry = flowRegistry();
-  if (doc.nodes.some((node) => /^(session\.|validation\.|comparison\.|report\.)/.test(node.type))) {
+  if (isAutomationGraph(doc)) {
     const modelWrite = (capability: string) => /^model\.(create|delete|mutate)(:|$)/.test(capability);
     const scriptsCanWrite = doc.capabilities.some(modelWrite);
     const writers = doc.nodes.filter((node) => {

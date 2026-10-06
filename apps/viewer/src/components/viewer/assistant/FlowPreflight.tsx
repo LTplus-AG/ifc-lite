@@ -40,7 +40,7 @@ export function FlowPreflight() {
       ? <p aria-live="polite" className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2">{t('flowAssistant.preflightOk', { name: graph.name })}</p>
       : <div role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 space-y-1">
         <p>{t('flowAssistant.preflightFailed')}</p>
-        <ul className="list-disc pl-4">{result.problems.map(problem => <li key={problem} className="break-words">{problem}</li>)}</ul>
+        <ul className="list-disc pl-4">{result.problems.map((problem, index) => <li key={index} className="break-words">{t(problem.labelKey, problem.params)}</li>)}</ul>
         {result.editDenial === 'edit-mode' && <Button size="sm" variant="outline" className="h-7" disabled={checking} onClick={() => {
           // Edit mode enters the Model workspace; keep this review in view to show the new check.
           useViewerStore.getState().setEditEnabled(true); panels.openInHome('assistant'); void check();

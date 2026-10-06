@@ -15,6 +15,7 @@ import { MemoCache } from '@ifc-lite/flow';
 import { useBim } from '@/sdk/BimProvider';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
+import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
 import type { FlowRunWindow } from '@/store/slices/flowSlice';
 import { invalidateForExternalChange, runFlowInViewer, viewerFlowFeatures } from '@/lib/flow/runner';
 import { viewerTableAccess } from '@/lib/flow/viewer-tables';
@@ -93,12 +94,14 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
     const record = (): FlowRunWindow => {
       capture.close();
       const pending = pendingMutationIds();
-      return {
+      // Stamped after the run's own writes: an edit made after the run makes
+      // its result stale for the assistant's evidence (#6833).
+      return stampAnalysisReport({
         start,
         end: Date.now(),
         doc,
         mutationIds: new Set([...capture.ids].filter((id) => pending.has(id))),
-      };
+      }, captureAnalysisStamp());
     };
     // Another graph opened while this one ran: its panel must not show, or
     // publish, this run (#5380 review). `openFlow` already cleared the result.

@@ -156,6 +156,7 @@ apps/*/tsconfig.tests.json
 # multi-GB models) and must never be committed; see browser-corpus.example.json
 # for the shape.
 scripts/perf/.browser-cold-ab-results/
+scripts/perf/.frame-gpu-rig-results/
 scripts/perf/browser-corpus.local.json
 
 # Autodesk SDK worker build outputs (proprietary SDK/native dependencies).

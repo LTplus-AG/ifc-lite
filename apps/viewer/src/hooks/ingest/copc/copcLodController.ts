@@ -64,6 +64,12 @@ export interface CopcLodControllerOptions {
   onError?: (err: unknown) => void;
   /** A pass finished loading (`added` nodes arrived); called before a `replaced` pass retires the old view. */
   onPassComplete?: (pass: { viewEpoch: number; budget: number; points: number; added: number; replaced: boolean }) => void;
+  /**
+   * A pass is fully applied: its nodes are added AND the old view it replaced
+   * is evicted, so the sink holds exactly what will stay on screen. Called for
+   * every pass, including one that only evicts (the scan left the view).
+   */
+  onPassSettled?: () => void;
 }
 
 interface Resident {
@@ -177,6 +183,7 @@ export class CopcLodController {
         this.displayed = candidate;
         for (const r of this.resident.values()) if (!this.keep.has(r.node.id)) this.evict(r);
       }
+      this.options.onPassSettled?.();
     }
     return complete;
   }

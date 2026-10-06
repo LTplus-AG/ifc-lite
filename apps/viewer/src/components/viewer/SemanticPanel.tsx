@@ -20,6 +20,13 @@ import { useSemanticPilot } from '@/lib/semantic/useSemanticPilot';
 import { relatedResources, resolveResource, selectionTargets } from '@/lib/semantic/resolver';
 import { liveEntities, selectResources } from '@/lib/semantic/viewer';
 import type { SemanticResource } from '@/lib/semantic/types';
+import { useSemanticSession } from '@/lib/semantic/session';
+import { provideSemanticEvidence } from '@/lib/assistant/adapters/semantic-access';
+import { AssistantAction } from './assistant/AssistantAction';
+
+// The eager evidence register reads this session only once this lazy chunk has loaded (#6833).
+provideSemanticEvidence({ session: useSemanticSession, liveEntities: () => liveEntities(),
+  resolve: (resource, entities, revisions) => resolveResource(resource, entities, revisions) });
 
 const control = 'w-full rounded border border-border bg-background p-2 text-sm';
 const button = 'rounded border border-border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50';
@@ -77,7 +84,10 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
     selectResources(resolution(resource).status === 'resolved' ? [resource] : selectionTargets(resources, resource), pilot.revisions, scope || undefined);
   }
   return <section className="h-full overflow-auto p-3 space-y-3" aria-label={t('semantic.title')}>
-    <p className="text-sm text-muted-foreground">{t('semantic.description')}</p>
+    <div className="flex items-start gap-2">
+      <p className="flex-1 text-sm text-muted-foreground">{t('semantic.description')}</p>
+      <AssistantAction />
+    </div>
     <div className="flex flex-wrap gap-2">
       <button className={button} disabled={pilot.busy} onClick={() => void pilot.demo(true)}>{t('semantic.demo')}</button>
       <button className={button} disabled={pilot.busy} onClick={() => void pilot.demo(false)}>{t('semantic.recordsOnly')}</button>

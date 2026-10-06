@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { brotliCompressSync, brotliDecompressSync, constants } from 'node:zlib';
 import test from 'node:test';
@@ -58,7 +59,7 @@ rt('resolveAsset refuses paths outside dist and external URLs', () => {
   }
 });
 
-rt('measureBundle reports brotli sizes that round-trip and counts eager JS only', () => {
+rt('measureBundle gates raw JS bytes, reports JS brotli as informational, and brotli of the wasm round-trips', () => {
   const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-bundle-'));
   try {
     const dist = join(root, 'dist');
@@ -75,9 +76,16 @@ rt('measureBundle reports brotli sizes that round-trip and counts eager JS only'
     const out = measure.measureBundle({ wasm, dist, commit: 'abc1234', measuredAt: '2026-10-05T00:00:00.000Z' });
     assert.deepEqual(ceilings.validateMeasuredFile(out), []);
     const v = Object.fromEntries(out.metrics.map((m) => [m.id, m]));
-    assert.match(v['viewer-eager-js-brotli'].detail, /^3 files,/);
-    assert.ok(v['viewer-entry-js-brotli'].value < entryJs.length, 'repetitive JS compresses');
-    assert.match(v['viewer-entry-js-brotli'].detail, /^index-AbC123\.js, raw 10000 bytes$/);
+    const info = Object.fromEntries(out.informational.map((m) => [m.id, m]));
+    assert.equal(v['viewer-entry-js-bytes'].value, entryJs.length);
+    assert.equal(v['viewer-entry-js-bytes'].detail, 'index-AbC123.js');
+    assert.equal(v['viewer-eager-js-bytes'].value, entryJs.length + 2 * 'export {}'.length);
+    assert.match(v['viewer-eager-js-bytes'].detail, /^3 files;/);
+    // #7007: JS brotli is reported, never gated.
+    assert.equal(v['viewer-entry-js-brotli'], undefined);
+    assert.equal(v['viewer-eager-js-brotli'], undefined);
+    assert.equal(info['viewer-entry-js-brotli'].value, measure.brotliSize(Buffer.from(entryJs)));
+    assert.ok(info['viewer-entry-js-brotli'].value < entryJs.length, 'repetitive JS compresses');
     assert.match(v['engine-wasm-brotli'].detail, /raw 4096 bytes/);
     // The number is a real brotli stream's length, not an estimate.
     const stream = brotliCompressSync(wasmBytes, { params: { [constants.BROTLI_PARAM_QUALITY]: 11, [constants.BROTLI_PARAM_SIZE_HINT]: wasmBytes.length } });
@@ -110,7 +118,7 @@ const EAGER_HTML = `<!DOCTYPE html><html><head>
   <link rel="stylesheet" href="/assets/index.css">
 </head><body></body></html>`;
 
-rt('viewer-eager-js-brotli sums the brotli size of each eager JS file, once, and nothing else', () => {
+rt('viewer-eager-js-bytes sums the raw size of each eager JS file, once, and nothing else', () => {
   const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-eager-'));
   try {
     const dist = join(root, 'dist');
@@ -129,13 +137,14 @@ rt('viewer-eager-js-brotli sums the brotli size of each eager JS file, once, and
     const out = measure.measureBundle({ wasm, dist, commit: 'abc1234', measuredAt: '2026-10-06T00:00:00.000Z' });
     assert.deepEqual(ceilings.validateMeasuredFile(out), []);
     const v = Object.fromEntries(out.metrics.map((m) => [m.id, m]));
-    assert.ok(v['viewer-eager-js-brotli'], 'the eager-bytes metric is emitted');
+    assert.ok(v['viewer-eager-js-bytes'], 'the eager-bytes metric is emitted');
+    // 3000 + 2000 + 1500 + 1000: the lazy chunk (9000) and the non-JS preloads add nothing.
+    assert.equal(v['viewer-eager-js-bytes'].value, 7500);
+    assert.equal(v['viewer-eager-js-bytes'].detail, '4 files; index-entry.js vendor-a.js vendor-b.mjs vendor-c.js');
+    const info = Object.fromEntries(out.informational.map((m) => [m.id, m]));
     const expected = Object.values(eagerFiles).reduce((n, body) => n + measure.brotliSize(Buffer.from(body)), 0);
-    assert.equal(v['viewer-eager-js-brotli'].value, expected);
-    assert.match(v['viewer-eager-js-brotli'].detail, /^4 files, raw 7500 bytes/);
-    // The lazy chunk is large and incompressible: counting it would show.
-    assert.ok(measure.brotliSize(Buffer.from(jsOf(5, 9000))) > 4000);
-    assert.match(v['viewer-eager-js-brotli'].detail, /; index-entry\.js vendor-a\.js vendor-b\.mjs vendor-c\.js$/);
+    assert.equal(info['viewer-eager-js-brotli'].value, expected);
+    assert.match(info['viewer-eager-js-brotli'].detail, /^4 files, each compressed on its own$/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -175,10 +184,16 @@ rt('every committed ceiling file is valid, and bundle.json ratchets exactly what
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
-  // #7002: bytes are the blocking ceiling, at the same 0.5% as the other byte metrics.
-  const bytes = bundle.entries.find((e) => e.id === 'viewer-eager-js-brotli');
-  assert.deepEqual(bytes.tolerance, { kind: 'relative', value: 0.005 });
-  assert.equal(bytes.metric, 'brotli-bytes');
+  // #7007: viewer JS is gated on raw bytes, which repeat exactly, at 0.1%;
+  // the engine wasm stays on brotli at 0.5%.
+  for (const id of ['viewer-entry-js-bytes', 'viewer-eager-js-bytes']) {
+    const e = bundle.entries.find((x) => x.id === id);
+    assert.deepEqual(e.tolerance, { kind: 'relative', value: 0.001 }, id);
+    assert.equal(e.metric, 'raw-bytes', id);
+  }
+  const wasm = bundle.entries.find((e) => e.id === 'engine-wasm-brotli');
+  assert.deepEqual(wasm.tolerance, { kind: 'relative', value: 0.005 });
+  assert.equal(wasm.metric, 'brotli-bytes');
 });
 
 // #7002 review: shapes of index.html that must not change what counts as eager.
@@ -204,8 +219,8 @@ rt('markup that only appears inside an inline script body is not an eager load',
       <link rel="modulepreload" href="/assets/real.js">`;
   inShape(['entry.js', 'real.js'], html, (run) => {
     const v = metricsOf(run());
-    assert.ok(v['viewer-eager-js-brotli'], 'the eager-bytes metric is emitted');
-    assert.match(v['viewer-eager-js-brotli'].detail, /^2 files,.*; entry\.js real\.js$/);
+    assert.ok(v['viewer-eager-js-bytes'], 'the eager-bytes metric is emitted');
+    assert.equal(v['viewer-eager-js-bytes'].detail, '2 files; entry.js real.js');
   });
 });
 
@@ -215,8 +230,8 @@ rt('nomodule scripts and non-JavaScript script types are not eager', () => {
       <script type="importmap" src="/assets/map.js"></script>`;
   inShape(['entry.js', 'legacy.js'], html, (run) => {
     const v = metricsOf(run());
-    assert.ok(v['viewer-eager-js-brotli'], 'the eager-bytes metric is emitted');
-    assert.match(v['viewer-eager-js-brotli'].detail, /^1 files,.*; entry\.js$/);
+    assert.ok(v['viewer-eager-js-bytes'], 'the eager-bytes metric is emitted');
+    assert.equal(v['viewer-eager-js-bytes'].detail, '1 files; entry.js');
   });
 });
 
@@ -228,4 +243,61 @@ rt('measureBundle throws on a preload that is not in dist and on an entry that i
   inShape(['entry.js'], '<script type="module" src="/src/main.tsx"></script>', (run) => {
     assert.throws(run, /no eager JS/);
   });
+});
+
+// #7007: the gate end to end, both CLIs spawned as child processes. Brotli of
+// the viewer JS moves while raw bytes stay put (a same-length timestamp swap
+// did exactly that in CI); only raw growth past 0.1% may fail the check.
+const MEASURER = fileURLToPath(new URL('./measure-bundle.mjs', import.meta.url));
+const CHECK_CLI = fileURLToPath(new URL('./perf-ratchet.mjs', import.meta.url));
+rt('check ignores a brotli-only change of the viewer JS and fails on raw growth past 0.1%', () => {
+  assert.ok(existsSync(MEASURER) && existsSync(CHECK_CLI), 'the perf-ratchet CLIs are absent');
+  const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-7007-'));
+  try {
+    const dist = join(root, 'dist');
+    mkdirSync(join(dist, 'assets'), { recursive: true });
+    mkdirSync(join(root, 'ceilings'));
+    writeFileSync(join(dist, 'index.html'), '<script type="module" src="/assets/main.js"></script><link rel="modulepreload" href="/assets/dep.js">');
+    writeFileSync(join(root, 'w.wasm'), Buffer.alloc(2048, 7));
+    writeFileSync(join(dist, 'assets/dep.js'), jsOf(9, 5000));
+    const stamp = (date) => writeFileSync(join(dist, 'assets/main.js'), `const BUILD_DATE = "${date}";\n${'export const x = 1;\n'.repeat(2000)}`);
+    const measureTo = (name) => {
+      const out = join(root, name);
+      const r = spawnSync(process.execPath, [MEASURER, '--wasm', join(root, 'w.wasm'), '--dist', dist, '--out', out, '--commit', 'abc1234'], { encoding: 'utf8', timeout: 20_000 });
+      assert.equal(r.status, 0, r.stderr);
+      return { out, data: JSON.parse(r.stdout) };
+    };
+    const check = (measured) => spawnSync(process.execPath, [CHECK_CLI, 'check', '--measured', measured, '--ceilings-dir', join(root, 'ceilings')], { encoding: 'utf8', timeout: 20_000 });
+
+    stamp('2026-10-06T14:23:54.677Z');
+    const first = measureTo('a.json').data;
+    const prov = { commit: 'abc1234', measuredAt: '2026-10-06T00:00:00.000Z' };
+    writeFileSync(join(root, 'ceilings/bundle.json'), JSON.stringify({
+      family: 'bundle',
+      entries: first.metrics.map((m) => ({
+        id: m.id, metric: m.id.endsWith('-brotli') ? 'brotli-bytes' : 'raw-bytes', ceiling: m.value,
+        tolerance: { kind: 'relative', value: m.id.endsWith('-brotli') ? 0.005 : 0.001 }, provenance: prov,
+      })),
+    }));
+    let r = check(join(root, 'a.json'));
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /Informational, not gated:/);
+    assert.match(r.stdout, /`bundle\/viewer-entry-js-brotli`: [\d,]+ bytes \(main\.js\)/);
+
+    // Same length, different bytes: brotli may move, raw does not, check passes.
+    stamp('1999-01-01T00:00:00.000Z');
+    const second = measureTo('b.json').data;
+    assert.deepEqual(second.metrics.map((m) => m.value), first.metrics.map((m) => m.value));
+    r = check(join(root, 'b.json'));
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+
+    // Raw growth just past 0.1% of the eager total fails, and names the metric.
+    const eager = first.metrics.find((m) => m.id === 'viewer-eager-js-bytes').value;
+    writeFileSync(join(dist, 'assets/dep.js'), jsOf(9, 5000 + Math.floor(eager * 0.001) + 1));
+    r = check(measureTo('c.json').out);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /`bundle\/viewer-eager-js-bytes`.*FAIL: above ceiling \+ tolerance/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

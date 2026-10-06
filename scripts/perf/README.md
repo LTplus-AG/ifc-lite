@@ -53,8 +53,8 @@ pins 4 geometry workers (`VIEWER_BENCHMARK_GEOM_WORKERS`) and records them in
 `loadCounters`, split in two. `structural` (copies, messages, wasm ingress)
 repeated exactly across runs on FZK and Snowdon, except for a few bytes of
 parser diagnostic strings that carry elapsed times, so a diff there means
-the load did different work. `scheduling` (GPU uploads and merges, store
-churn) moves with frame timing. `flushPending` slices its
+the load did different work. `scheduling` (GPU uploads and merges, React
+commits, store churn) moves with frame timing. `flushPending` slices its
 upload queue by a time budget, and SwiftShader loses and re-creates the
 device mid-load, which re-uploads everything, so compare those as a spread.
 Lesson: the benchmark's old 2D canvas probe could claim the viewport canvas
@@ -62,6 +62,14 @@ before the renderer did. After that `getContext('webgpu')` returns null, the
 renderer logs "Failed to get WebGPU context", and the run measures no GPU work
 at all. The probe now checks only the canvas size, and the counters are read
 once they stop moving, not when the load root ends.
+
+React commits per load are the `react.commits` counter, taken from the
+DevTools global hook's `onCommitFiberRoot`: React's production build compiles
+`<Profiler onRender>` out, so a root Profiler would count zero in the build
+the benchmark and users run. `node scripts/perf/hook-census.mjs` counts hook
+call sites and `useViewerStore` subscriptions on the viewport, properties,
+hierarchy and streaming paths statically (minified component names make a
+runtime fiber census unattributable, and mounted counts move with UI state).
 
 ## Frame-time rigs (#6960)
 
@@ -91,6 +99,20 @@ rendered vs idle frames (a frame that called `getCurrentTexture`), and
   so pass `--dist-base <base build>` for counterbalanced base/branch pairs and
   read the paired ratio. Serialise timed runs:
   `flock /tmp/ifclite-perf.lock npx tsx scripts/perf/frame-gpu-rig.mts tests/models/ara3d/AC20-FZK-Haus.ifc --pairs 3`.
+
+## Viewer JS is gated on raw bytes, not brotli (#7007)
+
+The viewer build is byte-reproducible apart from `__BUILD_DATE__` (the build
+timestamp `vite.config.ts` bakes into the entry chunk and `analytics`). Module
+order was NOT the cause: three clean builds of one tree kept all 304 JS files'
+raw sizes and, chunk hashes stripped, every file's content except those two;
+both CI attempts of one commit kept the entry's raw size and the eager file
+order. Brotli-11 of the entry chunk is still noisy, because a
+same-length timestamp swap alone is enough to jump it by ~0.5% (bimodal over
+48 dates, matching the 4.3 KB CI re-run swing). Pinning the timestamp would
+only make one tree repeat; every other edit perturbs the compressor the same
+way. **Lesson:** gate the JS on raw bytes, report brotli, and don't try to
+make a brotli number on a multi-megabyte JS chunk stable to better than ~0.5%.
 
 ## Instruction counts track kernel and parse work, not scheduling (#6958)
 

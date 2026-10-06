@@ -45,6 +45,7 @@ import { assistantUsageEn } from './catalogues/assistant-usage.en';
 import { modelAuthoringEn } from './catalogues/model-authoring.en';
 import { sceneActionsEn } from './catalogues/scene-actions.en';
 import { checkAuthoringEn } from './catalogues/check-authoring.en';
+import { assistantArtifactsEn } from './catalogues/assistant-artifacts.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { commandsEn } from './catalogues/commands.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
@@ -239,6 +240,7 @@ export const en = {
   ...modelAuthoringEn,
   ...sceneActionsEn,
   ...checkAuthoringEn,
+  ...assistantArtifactsEn,
   ...clashPanelEn,
   ...clashToolsEn,
   ...bcfEn,

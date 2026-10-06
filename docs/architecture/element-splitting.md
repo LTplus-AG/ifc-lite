@@ -2,13 +2,16 @@
 
 **Status:** largely implemented. Wall, slab, and linear
 (beam / column / member) split ship via
-`apps/viewer/src/store/slices/splitToolSlice.ts`, `SplitOverlay.tsx` /
-`SplitNumericInput.tsx`, the `splitWallAtDistance` / `splitSlabByLine` /
-`splitLinearElementAtDistance` store actions, and helpers in
+the `element.split` command
+(`apps/viewer/src/lib/commands/modeling/commands/element-split.ts`),
+`SplitOverlay.tsx` / `SplitCursorInput.tsx`, the `splitWallAtDistance` / `splitSlabByLine` /
+`splitLinearElementAtDistance` `MutationSlice` store actions
+(`apps/viewer/src/store/slices/mutationSlice.ts`), and helpers in
 `wall-edit.ts`, `slab-edit.ts`, `linear-element-edit.ts`,
 `metadata-clone.ts`, and `polygon-clip.ts`. The multi-element plane
-split (Phase 6) is not yet wired, and some shipped names differ from the
-sketches below.
+split (Phase 6) ships as the `split.multi` command
+(`apps/viewer/src/lib/commands/modeling/commands/multi-split.ts`), and some
+shipped names differ from the sketches below.
 
 Splitting a wall (or slab, beam, column, space, roof, plate) into
 two coherent pieces is the single most-requested authoring gesture
@@ -392,8 +395,9 @@ interface SplitToolSlice {
 }
 ```
 
-Goes in a new `splitToolSlice.ts`, same shape as the other tool slices
-(mode + anchor + hover + parameters).
+The sketch placed this in a new `splitToolSlice.ts`, same shape as the other
+tool slices (mode + anchor + hover + parameters). No file of that name exists
+today: the tool runs as the `element.split` command (see Status above).
 
 ## Store actions
 

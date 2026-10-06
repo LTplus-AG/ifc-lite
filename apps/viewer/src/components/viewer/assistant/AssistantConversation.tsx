@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { memo, useEffect, useMemo, useState, type MouseEvent } from 'react';
-import { Bot, ClipboardCheck, Crosshair, Eye, FileText, GitBranch, Hammer, Layers, ListChecks, PencilLine, Table2, User, X } from 'lucide-react';
+import { BarChart3, Bot, ClipboardCheck, Crosshair, Eye, FileText, Filter, GitBranch, Hammer, Layers, ListChecks, Palette, PencilLine, Table, Table2, User, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
@@ -18,24 +18,33 @@ import { parseModelAuthoringBatch } from '@/lib/actions/model-authoring';
 import { parseSceneActions } from '@/lib/actions/scene-actions';
 import { parseTableMapping } from '@/lib/actions/table-mapping';
 import { checkProposalOf, type CheckDeclared } from '@/lib/check-authoring/proposal-summary';
+import { artifactParts, declaredArtifactKind, parseArtifactProposal, type ArtifactKind } from '@/lib/assistant/artifacts/proposal-kinds';
 import { markdownHtml } from '@/lib/assistant/markdown';
 import { capturedEvidence, rowFields } from '@/lib/assistant/captured-rows';
 import { ReceiptFooter } from './AssistantUsage';
 
-type Declared = 'clash' | 'flow' | 'changes' | 'authoring' | 'scene' | 'mapping' | CheckDeclared;
+type Artifact = 'filter' | 'list' | 'lens' | 'chart';
+type Declared = 'clash' | 'flow' | 'changes' | 'authoring' | 'scene' | 'mapping' | CheckDeclared | Artifact;
 type Proposal = { kind: 'clash'; groups: number; findings: number } | { kind: 'flow'; operations: number }
   | { kind: 'changes'; changes: number } | { kind: 'authoring'; operations: number } | { kind: 'scene'; actions: number }
-  | { kind: 'mapping'; columns: number; key: string } | { kind: 'invalid'; declared: Declared; reason: string }
+  | { kind: 'mapping'; columns: number; key: string } | { kind: Artifact; parts: number } | { kind: 'invalid'; declared: Declared; reason: string }
   | { kind: 'checks'; declared: CheckDeclared; items: number; unsupported: number };
 const DECLARED: Record<string, Declared> = { 'clash.groups': 'clash', 'flow.patch': 'flow', 'model.changes': 'changes',
-  'model.authoring': 'authoring', 'scene.actions': 'scene', 'table.mapping': 'mapping' };
+  'model.authoring': 'authoring', 'scene.actions': 'scene', 'table.mapping': 'mapping',
+  'filter.proposal': 'filter', 'list.proposal': 'list', 'lens.proposal': 'lens', 'chart.proposal': 'chart' };
 const PROPOSAL_TITLE = { clash: 'assistant.proposalClash', flow: 'assistant.proposalFlow', changes: 'assistant.proposalChanges',
   authoring: 'assistant.proposalAuthoring', scene: 'sceneActions.proposal', mapping: 'assistant.proposalMapping',
-  ids: 'checkAuthoring.proposalIds', rules: 'checkAuthoring.proposalRules', document: 'checkAuthoring.proposalDocument' } as const;
+  ids: 'checkAuthoring.proposalIds', rules: 'checkAuthoring.proposalRules', document: 'checkAuthoring.proposalDocument',
+  filter: 'assistantArtifacts.proposal.filter', list: 'assistantArtifacts.proposal.list',
+  lens: 'assistantArtifacts.proposal.lens', chart: 'assistantArtifacts.proposal.chart' } as const;
 const PROPOSAL_ICON = { clash: Layers, flow: GitBranch, changes: PencilLine, authoring: Hammer, scene: Eye, mapping: Table2,
-  ids: ClipboardCheck, rules: ListChecks, document: FileText } as const;
+  ids: ClipboardCheck, rules: ListChecks, document: FileText,
+  filter: Filter, list: Table, lens: Palette, chart: BarChart3 } as const;
 const CHECK_SUMMARY = { ids: 'checkAuthoring.proposalIdsSummary', rules: 'checkAuthoring.proposalRulesSummary',
   document: 'checkAuthoring.proposalDocumentSummary' } as const;
+const ARTIFACT_OF: Record<ArtifactKind, Artifact> = { 'filter.proposal': 'filter', 'list.proposal': 'list', 'lens.proposal': 'lens', 'chart.proposal': 'chart' };
+const ARTIFACT_SUMMARY = { filter: 'assistantArtifacts.summary.filter', list: 'assistantArtifacts.summary.list',
+  lens: 'assistantArtifacts.summary.lens', chart: 'assistantArtifacts.summary.chart' } as const;
 
 /** Typed proposals are reviewed natively below the conversation; raw JSON is secondary. */
 export function proposalOf(content: string): Proposal | null {
@@ -50,9 +59,11 @@ export function proposalOf(content: string): Proposal | null {
     }
   }
   // Only a reply that declares a typed kind is parsed; prose never reaches the strict parsers.
-  const kind = /"kind"\s*:\s*"(clash\.groups|flow\.patch|model\.changes|model\.authoring|scene\.actions|table\.mapping)"/.exec(content)?.[1];
+  const artifact = declaredArtifactKind(content);
+  const kind = /"kind"\s*:\s*"(clash\.groups|flow\.patch|model\.changes|model\.authoring|scene\.actions|table\.mapping)"/.exec(content)?.[1] ?? artifact;
   if (!kind) return null;
   try {
+    if (artifact && kind === artifact) return { kind: ARTIFACT_OF[artifact], parts: artifactParts(parseArtifactProposal(content, artifact)) };
     if (kind === 'flow.patch') return { kind: 'flow', operations: parseFlowPatch(content).operations.length };
     if (kind === 'scene.actions') return { kind: 'scene', actions: parseSceneActions(content).actions.length };
     if (kind === 'model.changes') return { kind: 'changes', changes: parseModelChangeBatch(content).changes.length };
@@ -93,7 +104,8 @@ function ProposalCard({ content, proposal, onRepair }: { content: string; propos
           : proposal.kind === 'authoring' ? t('assistant.proposalAuthoringSummary', { count: proposal.operations })
           : proposal.kind === 'scene' ? t('sceneActions.proposalSummary', { count: proposal.actions })
           : proposal.kind === 'mapping' ? t('assistant.proposalMappingSummary', { count: proposal.columns, key: proposal.key })
-            : t('assistant.proposalChangesSummary', { count: proposal.changes })}</p>
+          : proposal.kind === 'changes' ? t('assistant.proposalChangesSummary', { count: proposal.changes })
+            : t(ARTIFACT_SUMMARY[proposal.kind], { count: proposal.parts })}</p>
       <p>{t(proposal.kind === 'mapping' ? 'assistant.proposalMappingNext' : 'assistant.proposalNext')}</p>
     </>}
     <details><summary className="cursor-pointer text-muted-foreground hover:text-foreground">{t('assistant.proposalJson')}</summary>

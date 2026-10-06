@@ -4,8 +4,8 @@
 
 /**
  * The `?perfTrace=1` switch (#6956/#6957), kept dependency-light on purpose:
- * `bootstrap.tsx` imports it before React, so nothing here may pull React (or
- * anything that does) into the module graph.
+ * `reactCommits.ts` reads it before react-dom loads (bootstrap.tsx imports it
+ * first), so nothing here may pull React (or anything that does) into the graph.
  */
 
 import { perfCounters } from '@ifc-lite/load-trace';

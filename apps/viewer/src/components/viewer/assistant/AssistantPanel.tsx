@@ -32,6 +32,7 @@ const SceneActionReview = lazy(() => import('./SceneActionReview').then(m => ({ 
 const SceneRestoreBar = lazy(() => import('./SceneActionReview').then(m => ({ default: m.SceneRestoreBar })));
 const ClashGroupReview = lazy(() => import('./ClashGroupReview').then(m => ({ default: m.ClashGroupReview })));
 const CheckAuthoringProposal = lazy(() => import('./CheckAuthoringProposal').then(m => ({ default: m.CheckAuthoringProposal })));
+const ArtifactProposalReview = lazy(() => import('./ArtifactProposalReview').then(m => ({ default: m.ArtifactProposalReview })));
 
 export function AssistantPanel() {
   const { t } = useTranslation();
@@ -118,6 +119,7 @@ export function AssistantPanel() {
       {(evidence?.source === 'validation' || evidence?.source === 'loadReport') && <Suspense fallback={null}><CheckAuthoringProposal /></Suspense>}
       {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><ReportDraftReview /></Suspense>}
       {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><SceneActionReview /></Suspense>}
+      {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><ArtifactProposalReview onAsk={canAsk ? suggest : null} /></Suspense>}
       </>}
       <Suspense fallback={null}><SceneRestoreBar /></Suspense>
       <div ref={endRef} />

@@ -1,6 +1,6 @@
 {
   "family": "bundle",
-  "description": "Transfer size of what the viewer ships, measured by scripts/perf-ratchet/measure-bundle.mjs from the build job's artifacts: brotli (quality 11, node zlib) of the engine WASM, of the viewer's main entry chunk, and of every JS file dist/index.html loads eagerly (eager bytes are the blocking ceiling, #7002). Raising a ceiling is a human PR with a justification (docs/guide/performance.md, 'Perf ratchet ceilings'); lowering is the daily perf-ratchet-lower.yml job (Refs #6955).",
+  "description": "Transfer and boot size of what the viewer ships, measured by scripts/perf-ratchet/measure-bundle.mjs from the build job's artifacts: brotli (quality 11, node zlib) of the engine WASM, and raw bytes of the viewer's main entry chunk and of every JS file dist/index.html loads eagerly (eager bytes are the blocking ceiling, #7002). Viewer JS is gated raw because brotli-11 of it jumps by ~0.5% on a same-length timestamp change; its brotli sizes are reported, not gated (#7007). Raising a ceiling is a human PR with a justification (docs/guide/performance.md, 'Perf ratchet ceilings'); lowering is the daily perf-ratchet-lower.yml job (Refs #6955).",
   "entries": [
     {
       "id": "engine-wasm-brotli",
@@ -18,33 +18,33 @@
       }
     },
     {
-      "id": "viewer-entry-js-brotli",
-      "metric": "brotli-bytes",
+      "id": "viewer-entry-js-bytes",
+      "metric": "raw-bytes",
       "unit": "bytes",
-      "description": "the single <script type=\"module\" src> chunk of apps/viewer/dist/index.html",
-      "ceiling": 981310,
+      "description": "raw size of the single <script type=\"module\" src> chunk of apps/viewer/dist/index.html",
+      "ceiling": 4362788,
       "tolerance": {
         "kind": "relative",
-        "value": 0.005
+        "value": 0.001
       },
       "provenance": {
-        "commit": "17e3f195f52586529539c3cb9bef844dcd82b5fa",
-        "measuredAt": "2026-10-05T17:11:27.266Z"
+        "commit": "9a559500c01eb8d33bbd26e1a413d271c7eff8d4",
+        "measuredAt": "2026-10-06T19:37:14.814Z"
       }
     },
     {
-      "id": "viewer-eager-js-brotli",
-      "metric": "brotli-bytes",
+      "id": "viewer-eager-js-bytes",
+      "metric": "raw-bytes",
       "unit": "bytes",
-      "description": "summed brotli size, each file compressed on its own, of every JS file dist/index.html loads eagerly: the module <script src> plus <link rel=modulepreload>",
-      "ceiling": 3198929,
+      "description": "summed raw size of every JS file dist/index.html loads eagerly: the module <script src> plus <link rel=modulepreload>",
+      "ceiling": 19670058,
       "tolerance": {
         "kind": "relative",
-        "value": 0.005
+        "value": 0.001
       },
       "provenance": {
-        "commit": "68c7d0fdc977bc87320e7cfe5fabbb21f8fcdcaf",
-        "measuredAt": "2026-10-06T09:23:25Z"
+        "commit": "9a559500c01eb8d33bbd26e1a413d271c7eff8d4",
+        "measuredAt": "2026-10-06T19:37:14.814Z"
       }
     }
   ]

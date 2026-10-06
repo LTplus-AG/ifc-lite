@@ -17,6 +17,7 @@ import { ByokKeyModal } from '../chat/ByokKeyModal';
 import { useAssistant, cancelAssistant, replaceEvidence } from '@/lib/assistant/conversation';
 import { captureEvidence, evidenceIsCurrent, type AssistantSource } from '@/lib/assistant/evidence';
 import { sendAssistant } from '@/lib/assistant/request';
+import { adapterFor } from '@/lib/assistant/adapters/registry';
 import { resolveCapturedClash } from '@/lib/assistant/clash-group-proposal';
 import { useClash } from '@/hooks/useClash';
 import { EvidenceSummary } from './EvidenceSummary';
@@ -89,7 +90,7 @@ export function AssistantPanel() {
       {showPicker ? <SourcePicker current={evidence?.source ?? null} onAttach={source => void attach(source)}
         onCancel={evidence ? () => setPicking(false) : null} />
         : <EvidenceSummary evidence={evidence} state={state.archived ? 'historical' : stale ? 'stale' : 'captured'}
-          onReturn={() => panels.openInHome(evidence.source)} onRefresh={refresh} onChange={() => setPicking(true)} />}
+          onReturn={() => panels.openInHome(adapterFor(evidence.source).panelIds[0])} onRefresh={refresh} onChange={() => setPicking(true)} />}
       {!showPicker && <>
       {state.archived && <div aria-live="polite" className="mx-3 mt-2 rounded bg-muted p-2 text-xs space-y-2">
         <p className="text-muted-foreground">{t('assistant.archived')}</p>

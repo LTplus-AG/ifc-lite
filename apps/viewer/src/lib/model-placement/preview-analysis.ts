@@ -40,7 +40,8 @@ export function createPreviewAnalysis() {
           clashExclusionCounts: base.clashExclusionCounts, clashSuppressedCount: base.clashSuppressedCount,
           clashError: base.clashError,
           ...(writesUnchanged ? { pointCloudDeviationComputed: base.pointCloudDeviationComputed,
-            pointCloudColorMode: base.pointCloudColorMode } : { pointCloudDeviationComputed: false,
+            pointCloudDeviationStatistics: base.pointCloudDeviationStatistics,
+            pointCloudColorMode: base.pointCloudColorMode } : { pointCloudDeviationComputed: false, pointCloudDeviationStatistics: null,
             pointCloudColorMode: state.pointCloudColorMode === 'deviation' ? 'rgb' : state.pointCloudColorMode }),
         };
       }

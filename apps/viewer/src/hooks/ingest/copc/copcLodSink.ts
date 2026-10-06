@@ -15,10 +15,15 @@
  *   estimate of the whole file's classes (an exact count would mean
  *   decoding every point).
  * - Deviation: a run only colours the chunks that existed at the time, so
- *   when one is live, each settled pass re-runs it (the BVH is cached by
- *   the renderer, so this is the per-chunk dispatch only). A completed
- *   refresh bumps `pointCloudDeviationRevision`, so the Deviation panel's
- *   statistics re-read the new run instead of describing the old chunks.
+ *   when one is live, each settled pass that changed the resident chunks
+ *   re-runs it (the BVH is cached by the renderer, so this is the per-chunk
+ *   dispatch only). That includes a pass that only REMOVED nodes: the scan
+ *   left the view, and the statistics must stop counting points that are no
+ *   longer drawn. A completed refresh bumps `pointCloudDeviationRevision`, so
+ *   the Deviation panel's statistics re-read the new run instead of
+ *   describing the old chunks. `passSettled` must run after a pass's
+ *   evictions (`CopcLodController`'s `onPassSettled`), so the re-run measures
+ *   the settled set.
  */
 
 import type { CopcLodNode, DecodedPointChunk } from '@ifc-lite/pointcloud';
@@ -38,6 +43,8 @@ export function createCopcLodSink(ctx: CopcIngestContext): CopcLodSink & { passS
   let sawClasses = false;
   let deviationRun: Promise<unknown> | null = null;
   let deviationAgain = false;
+  /** Chunks were appended or removed since the last settled pass. */
+  let changed = false;
 
   const rerunDeviation = () => {
     if (deviationRun) {
@@ -60,6 +67,7 @@ export function createCopcLodSink(ctx: CopcIngestContext): CopcLodSink & { passS
     append(node: CopcLodNode, chunk: DecodedPointChunk) {
       const yUp = swapZupChunkToYup(chunk);
       ctx.renderer.appendPointCloudChunk(ctx.handle, yUp, node.id);
+      changed = true;
       if (node.entry.key.d <= SCAN_CACHE_MAX_LEVEL && !fedToScanCache.has(node.id)) {
         fedToScanCache.add(node.id);
         addPointsToScanCache(ctx.handle.id, yUp);
@@ -73,6 +81,7 @@ export function createCopcLodSink(ctx: CopcIngestContext): CopcLodSink & { passS
     },
     remove(node: CopcLodNode) {
       ctx.renderer.removePointCloudChunk(ctx.handle, node.id);
+      changed = true;
     },
     passSettled() {
       if (sawClasses && ctx.onClassCounts) {
@@ -82,7 +91,8 @@ export function createCopcLodSink(ctx: CopcIngestContext): CopcLodSink & { passS
         });
         ctx.onClassCounts(counts);
       }
-      if (useViewerStore.getState().pointCloudDeviationComputed) rerunDeviation();
+      if (changed && useViewerStore.getState().pointCloudDeviationComputed) rerunDeviation();
+      changed = false;
     },
   };
 }

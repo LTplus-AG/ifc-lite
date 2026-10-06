@@ -22,8 +22,8 @@ import {
   type MeasureMode,
 } from '@/store/types';
 import { formatDistance } from '../formatDistance';
-import { formatThreePointAngle, threePointAngle } from './three-point-angle';
-import { edgePairAngle, facePairAngle, formatAnglePair } from './edge-face-angle';
+import { formatThreePointAngle, threePointAngle, type ThreePointAngle } from './three-point-angle';
+import { edgePairAngle, facePairAngle, formatAnglePair, type AnglePairOutcome } from './edge-face-angle';
 import { fitRadius, formatRadius, type Point3 as RadiusPoint3 } from './radius';
 
 export { ANGLE_REQUIRED_PICKS };
@@ -92,26 +92,33 @@ export function measureHintKey(s: MeasureHintState): TranslationKey {
 }
 
 /**
- * Readout for a stored angle. Switches on `kind` rather than pick COUNT:
- * edges take four picks and a future kind could collide on count, and the
- * kind is the thing that is actually true.
+ * The measured outcome of a stored angle. Switches on `kind` rather than pick
+ * COUNT: edges take four picks and a future kind could collide on count, and
+ * the kind is the thing that is actually true. Shared by the readout below
+ * and the assistant's measurement evidence (#6833), so both report one maths.
  */
-export function formatAngleMeasurement(a: AngleMeasurement): string {
+export type AngleMeasurementOutcome =
+  | { family: 'apex'; outcome: ThreePointAngle }
+  | { family: 'pair'; outcome: AnglePairOutcome };
+
+export function angleMeasurementOutcome(a: AngleMeasurement): AngleMeasurementOutcome {
   switch (a.kind) {
     case 'points':
-      return formatThreePointAngle(
-        threePointAngle(a.picks[0].point, a.picks[1].point, a.picks[2].point),
-      );
+      return { family: 'apex', outcome: threePointAngle(a.picks[0].point, a.picks[1].point, a.picks[2].point) };
     case 'edges':
-      return formatAnglePair(
-        edgePairAngle(a.picks[0].point, a.picks[1].point, a.picks[2].point, a.picks[3].point),
-      );
+      return { family: 'pair', outcome: edgePairAngle(a.picks[0].point, a.picks[1].point, a.picks[2].point, a.picks[3].point) };
     case 'faces':
       // Pass the absence through rather than substituting a zero vector: a
       // missing normal is an upstream bug and must not render as a
       // measurement error the user could have caused.
-      return formatAnglePair(facePairAngle(a.picks[0].normal, a.picks[1].normal));
+      return { family: 'pair', outcome: facePairAngle(a.picks[0].normal, a.picks[1].normal) };
   }
+}
+
+/** Readout for a stored angle. */
+export function formatAngleMeasurement(a: AngleMeasurement): string {
+  const measured = angleMeasurementOutcome(a);
+  return measured.family === 'apex' ? formatThreePointAngle(measured.outcome) : formatAnglePair(measured.outcome);
 }
 
 /**

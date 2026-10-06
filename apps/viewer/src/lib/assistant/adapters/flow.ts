@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { evidenceJson } from '../projection';
-import { unavailableCapture, type EvidenceAdapter } from './types';
+import type { EvidenceAdapter } from './types';
 
 /** Graph structure only: parameters, inputs/outputs and run state are excluded (see `flowRun`). */
 export const flowAdapter: EvidenceAdapter = {
@@ -18,7 +18,9 @@ export const flowAdapter: EvidenceAdapter = {
   identity: s => s.flowDoc,
   capture: s => {
     const doc = s.flowDoc;
-    if (!doc) return unavailableCapture();
+    // No graph open is a captured native state, not a missing result: the user may describe a new graph (#6919).
+    if (!doc) return { summary: { kind: 'no-graph', note: 'No Flow graph is open. Nothing exists to explain or patch; a new graph can only be proposed as a flow.create envelope.' },
+      rows: [], totalRows: 0, availability: 'available' };
     const graph = evidenceJson({ id: doc.id, name: doc.name, description: doc.description,
       nodes: doc.nodes.slice(0, 100).map(node => ({ id: node.id, type: node.type, label: node.label })),
       edges: doc.edges.slice(0, 100), nodeCount: doc.nodes.length, edgeCount: doc.edges.length,

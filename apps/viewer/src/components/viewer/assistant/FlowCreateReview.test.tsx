@@ -79,7 +79,8 @@ test('mounted debug review cites native errors and requires acknowledging owned 
   const run: RunResult = { ok: false, writes: 0, outputs: new Map(), graphOutputs: [], log: [], reports: [
     { nodeId: 'add', status: 'error', durationMs: 1, lanes: 0, laneErrors: 0, missing: { spec: ['spec'] }, warnings: [], error: 'missing required input "spec"' }] };
   useViewerStore.getState().setFlowLastRun(run, null, null);
-  replaceEvidence(captureEvidence('flow'));
+  // The run bar's source (`flowRun`) pins the run a diagnosis cites.
+  replaceEvidence(captureEvidence('flowRun'));
   reply({ version: 1, kind: 'flow.patch', operations: [{ op: 'removeNode', node: 'add' }],
     diagnosis: { nodes: ['add'], explanation: 'The column node has no spec; remove it.' } });
   const ui = render(<FlowProposalReview />);
@@ -94,6 +95,9 @@ test('mounted debug review cites native errors and requires acknowledging owned 
   click(button(ui, 'Apply graph changes'));
   assert.deepEqual(useViewerStore.getState().flowDoc?.nodes, []);
   assert.equal(localStorage.getItem(`ifc-lite-flow-tracking:${doc.id}`) !== null, true, 'applying never runs the orphan sweep');
+  assert.equal(button(ui, 'Undo graph changes').disabled, false, 'applying cleared the run; the graph alone guards undo');
+  click(button(ui, 'Undo graph changes'));
+  assert.equal(useViewerStore.getState().flowDoc, doc);
 });
 
 // #6919: a graph that edits the model is refused before Run while Edit mode is off, and can be fixed in place.

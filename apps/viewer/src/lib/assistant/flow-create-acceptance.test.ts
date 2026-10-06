@@ -61,7 +61,7 @@ test('#6919 a created graph with text positions fails natively and a cited debug
   assert.equal(flowRunDiagnostics(useViewerStore.getState())!.verdict, 'lane-errors');
   const fix = JSON.stringify({ version: 1, kind: 'flow.patch', operations: [{ op: 'setParam', node: 'xs', param: 'items', value: [0, 4, 8] }],
     diagnosis: { nodes: ['pt'], explanation: 'The X positions are text.' } });
-  const debug = prepareFlowProposal(fix, captureEvidence('flow'));
+  const debug = prepareFlowProposal(fix, captureEvidence('flowRun'));
   applyFlowProposal(debug, debug.digest, { trackingAcknowledged: true });
   const passed = await runOpenFlow(model, cache);
   assert.equal(passed.ok, true);

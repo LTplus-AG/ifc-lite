@@ -94,4 +94,7 @@ if ! ( cd "$WT" && CARGO_TARGET_DIR="$TARGET_DIR" \
   exit 1
 fi
 mkdir -p "$(dirname "$OUT")"
-cp "$TARGET_DIR/profiling/examples/$EXAMPLE" "$OUT"
+# Copy then rename: an interrupted copy must never leave a truncated binary
+# at $OUT, because callers treat an existing $OUT as a finished build.
+cp "$TARGET_DIR/profiling/examples/$EXAMPLE" "$OUT.partial.$$"
+mv -f "$OUT.partial.$$" "$OUT"

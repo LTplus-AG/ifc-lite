@@ -118,3 +118,19 @@ test('a delta inside the two sides\' measured run-to-run spread is flat', () => 
   assert.ok(row.includes('±0.080%'), 'the flat band must be the combined spread');
   assert.ok(/\| fewer \| flat \| does-not-track \|$/.test(row), 'a delta inside the spread must be flat');
 });
+
+test('a replay that could not measure a fixture exits nonzero; a measured disagreement does not', () => {
+  const failed = report([candidate('broken', 'win', 'fewer', { error: 'build failed' }, side(900))]);
+  assert.equal(failed.status, 3, 'a not-replayed fixture must not read as success');
+  const disagrees = report([candidate('dead', 'dead-end', 'more', side(1000), side(900))]);
+  assert.equal(disagrees.status, 0, 'does-not-track is a verdict, not a tool failure');
+});
+
+test('--jobs and --runs reject non-positive or non-numeric values instead of hanging', () => {
+  for (const [flag, value] of [['--jobs', '0'], ['--runs', '0'], ['--runs', 'many']]) {
+    const r = spawnSync(process.execPath, [CLI, '--candidates', 'unused.json', '--out', 'unused.json', flag, value],
+      { encoding: 'utf8', timeout: 10_000 });
+    assert.equal(r.status, 2, `${flag} ${value} must be rejected`);
+    assert.ok(r.stderr.includes(`${flag} must be a positive integer`), `${flag} ${value} must say why`);
+  }
+});

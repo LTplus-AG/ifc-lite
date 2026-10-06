@@ -274,7 +274,7 @@ async function main(argv) {
       writeFileSync(reportPath, JSON.stringify({ ...doc, candidates: judged }, null, 2) + '\n');
     }
     console.log(formatTable(judged));
-    return 0;
+    return exitCodeFor(judged);
   }
   const candidatesPath = opt('--candidates');
   const outPath = opt('--out');
@@ -284,11 +284,31 @@ async function main(argv) {
   }
   const only = argv.flatMap((a, i) => (a === '--only' ? [argv[i + 1]] : []));
   const work = resolve(opt('--work') ?? join(process.env.TMPDIR ?? '/tmp', 'ifc-instructions-replay'));
-  const jobs = Number(opt('--jobs') ?? 4);
-  const runs = Number(opt('--runs') ?? 3);
+  const jobs = positiveInt(opt('--jobs') ?? '4', '--jobs');
+  const runs = positiveInt(opt('--runs') ?? '3', '--runs');
+  if (jobs === null || runs === null) return 2;
   const results = await replay({ candidatesPath, outPath: resolve(outPath), work, only, jobs, runs });
-  console.log(formatTable(judgeAll(results)));
-  return 0;
+  const judged = judgeAll(results);
+  console.log(formatTable(judged));
+  return exitCodeFor(judged);
+}
+
+/** `--jobs`/`--runs` must be positive integers: 0 would hang the limiter, NaN would empty the runs. */
+function positiveInt(raw, flag) {
+  const n = Number(raw);
+  if (Number.isInteger(n) && n > 0) return n;
+  console.error(`${flag} must be a positive integer, got ${JSON.stringify(raw)}`);
+  return null;
+}
+
+/**
+ * A replay that could not measure something must not read as success: exit 3
+ * when any fixture is `not-replayed` (build or valgrind failure). A measured
+ * `does-not-track` is a verdict, not a tool failure, so it still exits 0.
+ */
+export function exitCodeFor(judged) {
+  const fixtures = judged.flatMap((c) => c.fixtures ?? []);
+  return fixtures.some((f) => f.verdict === 'not-replayed') ? 3 : 0;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

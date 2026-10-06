@@ -17,6 +17,7 @@ export {
   enableWorkerTrace,
   isTraceSpansMessage,
   type TraceSpansMessage,
+  type WorkerTraceHost,
   type WorkerTraceHostOptions,
 } from './worker.js';
 
@@ -34,3 +35,28 @@ export type {
   WorkerSpan,
   WorkerTracePayload,
 } from './types.js';
+
+export {
+  addCounters,
+  countCopy,
+  createPerfCounters,
+  diffCounters,
+  perfCount,
+  perfCounters,
+  perfTally,
+  type CounterValues,
+  type PerfCounterRegistry,
+} from './counters.js';
+export {
+  startFrameMonitor,
+  summarizeFrames,
+  type FrameEntry,
+  type FrameEntryType,
+  type FrameMonitor,
+  type FrameStats,
+  type FrameSummary,
+  type ObserverCtor,
+  type SpanFrameStats,
+} from './frames.js';
+export { accountWorkerMessages, estimateCloneBytes, type CloneEstimate, type MessageEndpoint } from './messages.js';
+export { meterTypedArrayArgs } from './call-meter.js';

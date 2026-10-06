@@ -9,7 +9,8 @@
  * set before boot, which is how the Playwright benchmark enables it) turns it
  * on and publishes `window.__IFC_LITE_LOAD_TRACE__`:
  *
- *   loads()                every retained load's span tree (JSON-safe)
+ *   loads()                every retained load's span tree (JSON-safe), with
+ *                          its structural counters and long-frame summary (#6957)
  *   latest()               the most recent load, or null
  *   tree()                 the latest load nested by parent span
  *   chromeTrace()          Chrome-trace JSON for DevTools / Perfetto
@@ -19,19 +20,9 @@
  */
 
 import { NOOP_LOAD_TRACE, type LoadTrace, type LoadTracer } from '@ifc-lite/load-trace';
-import { readPerfFlag } from './flags.js';
+import { isPerfTraceRequested, PERF_TRACE_ENABLED } from './perfTraceFlag.js';
 
-export function isPerfTraceRequested(
-  search: string = globalThis.location?.search ?? '',
-  flag: unknown = readPerfFlag('perfTrace'),
-): boolean {
-  // A defined flag value is authoritative: `__IFC_LITE_PERF_TRACE = 0` must
-  // keep tracing off even when the URL asks for it. The URL decides only when
-  // the flag is unset.
-  if (flag !== undefined && flag !== null) return flag === 1 || flag === true || flag === '1';
-  return new URLSearchParams(search).get('perfTrace') === '1';
-}
-
+export { isPerfTraceRequested };
 
 /**
  * Resolve on the next animation frame, or after `fallbackMs` when rAF stalls
@@ -73,8 +64,14 @@ const DISABLED_TRACER: LoadTracer = {
  * the benchmark's pre-boot flag) still captures every load.
  */
 export let loadTracer: LoadTracer = DISABLED_TRACER;
-if (isPerfTraceRequested()) {
-  void import('./loadTraceEnabled.js')
+
+/**
+ * Settles once `loadTracer` is final: at once when tracing is off, after the
+ * on-demand import when it is on. `mountViewer` awaits it in trace mode so no
+ * load entry point exists before the recording tracer does.
+ */
+export const loadTracerReady: Promise<void> = PERF_TRACE_ENABLED
+  ? import('./loadTraceEnabled.js')
     .then((mod) => { loadTracer = mod.enableLoadTracing(); })
-    .catch((error: unknown) => console.warn('[perf] load tracing could not be enabled', error));
-}
+    .catch((error: unknown) => console.warn('[perf] load tracing could not be enabled', error))
+  : Promise.resolve();

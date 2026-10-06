@@ -839,6 +839,9 @@ importers:
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../geometry
+      '@ifc-lite/load-trace':
+        specifier: workspace:^
+        version: link:../load-trace
     devDependencies:
       '@ifc-lite/parser':
         specifier: workspace:^

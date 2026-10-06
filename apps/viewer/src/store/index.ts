@@ -69,6 +69,7 @@ import { createZonesSlice, type ZonesSlice } from './slices/zonesSlice.js';
 import { createModelTagsSlice, type ModelTagsSlice } from './slices/modelTagsSlice.js';
 import { withPlacementHistory } from './placement-history.js';
 import { withVisibilityOwnershipInvalidation } from './visibility-invalidation.js';
+import { withStoreChurnCounters } from './perf-churn.js';
 import { registerSidebarExclusivity, registerHierarchyLeftSync, registerDrawingInspectorSheetSync, reconcileInitialStoreSync } from './store-sync.js';
 import { registerOverlayThemeSync } from '@/lib/viewport-ui/overlay-theme-sync';
 
@@ -190,9 +191,10 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
  * `isolatedEntities` / `ghostExceptEntities` without dropping the
  * visibility-ownership records that write makes stale. See
  * `store/visibility-invalidation.ts` for why that is a middleware rather than a
- * helper each writing action remembers to call.
+ * helper each writing action remembers to call. `withStoreChurnCounters`
+ * (outermost) counts writes and subscriber notifications under ?perfTrace=1 (#6957).
  */
-const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInvalidation(withPlacementHistory((...args) => ({
+const createViewerStore = () => create<ViewerState>()(withStoreChurnCounters(withVisibilityOwnershipInvalidation(withPlacementHistory((...args) => ({
   // Spread all slices
   ...createLoadingSlice(...args),
   ...createSelectionSlice(...args),
@@ -249,7 +251,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createAppearanceSlice(...args),
 
   ...createViewerActions(...args),
-}))));
+})))));
 
 const STORE_SINGLETON_KEY = '__ifc_lite_viewer_store__';
 const globalStoreRegistry = globalThis as typeof globalThis & {

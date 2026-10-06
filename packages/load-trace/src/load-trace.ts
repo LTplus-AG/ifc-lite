@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { addCounters, diffCounters, perfCounters, type CounterValues, type PerfCounterRegistry } from './counters.js';
+import { summarizeFrames, type FrameMonitor } from './frames.js';
 import { createPerfSink, MEASURE_PREFIX, type PerfSink } from './perf-sink.js';
 import type {
   LoadTraceAttributes,
@@ -51,6 +53,14 @@ export interface LoadTracerOptions {
   sink?: PerfSink | null;
   /** Most recent loads retained; older ones are dropped. Default 16. */
   maxLoads?: number;
+  /**
+   * Structural counters attributed to each load (#6957). Defaults to the
+   * realm-wide `perfCounters`, which an enabled tracer switches on; `null`
+   * records none.
+   */
+  counters?: PerfCounterRegistry | null;
+  /** Long-frame log summarised per load (#6957); omitted = no `mainThread`. */
+  frames?: FrameMonitor | null;
 }
 
 export interface LoadTracer {
@@ -83,6 +93,10 @@ class RecordingLoadTrace implements LoadTrace {
   private readonly milestones = new Set<string>();
   private readonly attrs: LoadTraceAttributes;
   private end_: number | null = null;
+  private readonly counterBase: CounterValues | null;
+  private counterEnd: CounterValues | null = null;
+  private windowEnd: number | null = null;
+  private readonly workerCounters: Record<string, CounterValues> = {};
 
   constructor(
     readonly loadId: string,
@@ -91,8 +105,18 @@ class RecordingLoadTrace implements LoadTrace {
     private readonly now: () => number,
     private readonly timeOrigin: number,
     private readonly sink: PerfSink | null,
+    private readonly counters: PerfCounterRegistry | null = null,
+    private readonly frames: FrameMonitor | null = null,
   ) {
     this.attrs = { ...attrs };
+    this.counterBase = counters?.read() ?? null;
+  }
+
+  /** A newer load started: freeze this load's counter and frame window. */
+  closeWindow(at: number): void {
+    if (this.windowEnd !== null) return;
+    this.windowEnd = at;
+    this.counterEnd = this.counters?.read() ?? null;
   }
 
   setAttrs(attrs: LoadTraceAttributes): void {
@@ -146,6 +170,7 @@ class RecordingLoadTrace implements LoadTrace {
   }
 
   merge(payload: WorkerTracePayload, parent?: number): void {
+    if (payload.counters) addCounters(this.workerCounters[payload.thread] ??= {}, payload.counters);
     const shift = payload.timeOrigin - this.timeOrigin;
     for (const s of payload.spans) {
       this.emit(this.spans[this.push(s.name, payload.thread, s.start + shift, s.end + shift, s.attrs, parent)]);
@@ -169,7 +194,22 @@ class RecordingLoadTrace implements LoadTrace {
       start: this.start,
       end: this.end_,
       spans: this.spans.map((s) => ({ ...s, ...(s.attrs ? { attrs: { ...s.attrs } } : {}) })),
+      ...this.counterSnapshot(),
+      ...(this.frames
+        ? { mainThread: summarizeFrames(this.frames.entries(), this.frames.supported, this.start, this.windowEnd ?? this.now(), this.spans) }
+        : {}),
     };
+  }
+
+  private counterSnapshot(): Pick<LoadTraceSnapshot, 'counters' | 'workerCounters'> {
+    if (!this.counters || !this.counterBase) return {};
+    const counters = diffCounters(this.counterEnd ?? this.counters.read(), this.counterBase);
+    const workerCounters: Record<string, CounterValues> = {};
+    for (const [thread, values] of Object.entries(this.workerCounters)) {
+      workerCounters[thread] = { ...values };
+      addCounters(counters, values);
+    }
+    return { counters, workerCounters };
   }
 
   private push(
@@ -199,12 +239,16 @@ export function createLoadTracer(options: LoadTracerOptions): LoadTracer {
   const enabled = options.enabled;
   const timeOrigin = options.timeOrigin ?? defaultTimeOrigin();
   const sink = options.sink === undefined ? (enabled ? createPerfSink() : null) : options.sink;
+  const counters = enabled ? (options.counters === undefined ? perfCounters : options.counters) : null;
+  counters?.enable();
+  const frames = enabled ? options.frames ?? null : null;
   const loads: RecordingLoadTrace[] = [];
   return {
     enabled,
     startLoad(loadId, attrs = {}, start = now()) {
       if (!enabled) return new DisabledLoadTrace(loadId, start, now);
-      const trace = new RecordingLoadTrace(loadId, start, attrs, now, timeOrigin, sink);
+      loads[loads.length - 1]?.closeWindow(start);
+      const trace = new RecordingLoadTrace(loadId, start, attrs, now, timeOrigin, sink, counters, frames);
       loads.push(trace);
       if (loads.length > maxLoads) loads.splice(0, loads.length - maxLoads);
       return trace;

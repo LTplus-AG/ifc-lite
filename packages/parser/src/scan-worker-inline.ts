@@ -11,6 +11,7 @@
  */
 
 import { WORKER_CODE } from './scan-worker-source.js';
+import { accountWorkerMessages } from '@ifc-lite/load-trace';
 
 export interface EntityRefWorkerResult {
   expressId: number;
@@ -62,7 +63,7 @@ export function scanEntitiesInWorker(
     // worker — construct-then-fail with no handle to dispose it.
     let worker: Worker | undefined;
     try {
-      worker = new Worker(getWorkerBlobUrl());
+      worker = accountWorkerMessages(new Worker(getWorkerBlobUrl()), 'scan'); // #6957
       // TS loses the `worker` narrowing inside these closures (a captured
       // `let` is re-widened to `Worker | undefined` at the point the
       // callback body reads it), even though it is definitely assigned by

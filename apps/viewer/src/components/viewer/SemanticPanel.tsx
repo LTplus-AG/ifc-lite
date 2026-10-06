@@ -25,9 +25,10 @@ import type { SemanticResource } from '@/lib/semantic/types';
 import { useSemanticSession } from '@/lib/semantic/session';
 import { provideSemanticEvidence } from '@/lib/assistant/adapters/semantic-access';
 import { AssistantAction } from './assistant/AssistantAction';
+import { assistProvider } from '@/lib/semantic/assist/evidence';
 
 // The eager evidence register reads this session only once this lazy chunk has loaded (#6833).
-provideSemanticEvidence({ session: useSemanticSession, liveEntities: () => liveEntities(), projectionMappings: () => PROJECTION_MAPPINGS,
+provideSemanticEvidence({ session: useSemanticSession, liveEntities: () => liveEntities(), projectionMappings: () => PROJECTION_MAPPINGS, assist: assistProvider,
   resolve: (resource, entities, revisions) => resolveResource(resource, entities, revisions) });
 
 const control = 'w-full rounded border border-border bg-background p-2 text-sm';

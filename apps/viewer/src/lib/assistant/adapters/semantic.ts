@@ -18,7 +18,6 @@
 import type { LiveEntity, Resolution, SemanticDocument, ValidationFinding } from '@ifc-lite/semantic';
 import { evidenceRow, unavailableCapture, type AdapterReadiness, type EvidenceAdapter } from './types';
 import { semanticEvidenceAccess, subscribeSemanticEvidence, type SemanticSessionView } from './semantic-access';
-import { assistIdentity, attachedTextCount, captureAssist, subscribeAssistInputs } from '@/lib/semantic/assist/evidence';
 
 const LABEL_CHARS = 200;
 const MESSAGE_CHARS = 400;
@@ -42,6 +41,8 @@ export function safeIri(value: string): string {
   url.username = ''; url.password = ''; url.search = ''; url.hash = '';
   return bounded(url.href, LABEL_CHARS);
 }
+
+const NO_ASSIST = { summary: {}, passageRows: [], passageTotal: 0, limitation: '' };
 
 function sessionView(): SemanticSessionView | null {
   return semanticEvidenceAccess()?.session.getState() ?? null;
@@ -84,11 +85,11 @@ export const semanticAdapter: EvidenceAdapter = {
   suggestionKeys: ['assistantSources.semantic.suggestUnresolved', 'assistantSources.semantic.suggestFindings',
     'semanticAssist.suggestRequirements', 'semanticAssist.suggestMapping', 'semanticAssist.suggestQuery', 'semanticAssist.suggestProjection'],
   // Attached texts and the endpoint grant (never its content) are part of what the assistant is shown.
-  subscribe: listener => { const offSession = subscribeSemanticEvidence(listener); const offAssist = subscribeAssistInputs(listener); return () => { offSession(); offAssist(); }; },
+  subscribe: subscribeSemanticEvidence,
   readiness: (): AdapterReadiness => {
     const view = sessionView();
     if (!hasEvidence(view)) {
-      const texts = attachedTextCount();
+      const texts = semanticEvidenceAccess()?.assist.count() ?? 0;
       return texts ? { status: { labelKey: 'semanticAssist.pickTexts', params: { count: texts } }, ready: true }
         : { status: { labelKey: 'assistantSources.semantic.none' }, ready: false };
     }
@@ -99,12 +100,12 @@ export const semanticAdapter: EvidenceAdapter = {
   identity: () => {
     const view = sessionView();
     return [...(view ? [view.document, view.findings, view.report, view.results, view.revisions, view.strategy,
-      view.links, view.uriConfig, view.identityFields] : []), ...assistIdentity()];
+      view.links, view.uriConfig, view.identityFields] : []), ...(semanticEvidenceAccess()?.assist.identity() ?? [])];
   },
   capture: (_s, limit) => {
     const access = semanticEvidenceAccess();
     const session = sessionView();
-    const assist = captureAssist({ view: session, mappings: access?.projectionMappings() ?? [], safeIri });
+    const assist = access?.assist.capture({ view: session, mappings: access.projectionMappings(), safeIri }) ?? NO_ASSIST;
     const view = hasEvidence(session) ? session : null;
     if (!view && !assist.passageTotal) return unavailableCapture();
     const resources = view?.document?.resources ?? [];

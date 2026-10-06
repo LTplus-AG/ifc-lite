@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { onlyKeys, parseEnvelope, parseSpan, parseUnsupported, record, text, type SourceSpan, type UnsupportedItem } from './proposal-common';
-import { verifySpan, type Passage, type SpanCheck } from './spans';
 
 export const REQUIREMENT_OPERATORS = ['equals', 'notEquals', 'atLeast', 'atMost', 'exists', 'oneOf', 'matches'] as const;
 export type RequirementOperator = typeof REQUIREMENT_OPERATORS[number];
@@ -63,16 +62,4 @@ export function parseSemanticRequirements(answer: string): SemanticRequirementPr
   const unsupported = parseUnsupported(value.unsupported);
   if (!requirements.length && !unsupported.length) throw new Error('Extract at least one requirement or retain an unsupported passage');
   return { version: 1, kind: 'semantic.requirements', title: (value.title as string).trim(), requirements, unsupported };
-}
-
-export interface RequirementReview {
-  requirements: Array<{ requirement: ExtractedRequirement; check: SpanCheck }>;
-  unsupported: Array<{ item: UnsupportedItem; check: SpanCheck | null }>;
-  verified: number;
-}
-/** Every span is checked against the passages frozen in the conversation's evidence. */
-export function reviewRequirements(proposal: SemanticRequirementProposal, passages: readonly Passage[]): RequirementReview {
-  const requirements = proposal.requirements.map(item => ({ requirement: item, check: verifySpan(item.span, passages) }));
-  return { requirements, verified: requirements.filter(row => row.check.status === 'verified').length,
-    unsupported: proposal.unsupported.map(item => ({ item, check: item.span ? verifySpan(item.span, passages) : null })) };
 }

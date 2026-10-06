@@ -23,16 +23,16 @@ export const PASSAGE_ROW_LIMIT = 40;
 export interface ProjectionMappingView { id: string; field: string; classes: readonly string[]; pset: string; property: string; unit?: string }
 
 /** Identity parts: a new or removed text, or a changed grant, makes captured evidence stale. */
-export function assistIdentity(): unknown[] {
+function assistIdentity(): unknown[] {
   return [useSemanticSourceTexts.getState().sources, useSemanticEndpointGrant.getState().grant !== null];
 }
 
-export function attachedTextCount(): number {
+function attachedTextCount(): number {
   return useSemanticSourceTexts.getState().sources.length;
 }
 
 /** Follow attached texts and grant changes, for the picker's live readiness. */
-export function subscribeAssistInputs(listener: () => void): () => void {
+function subscribeAssistInputs(listener: () => void): () => void {
   const offTexts = useSemanticSourceTexts.subscribe(listener);
   const offGrant = useSemanticEndpointGrant.subscribe(listener);
   return () => { offTexts(); offGrant(); };
@@ -63,3 +63,12 @@ export function captureAssist(input: { view: SemanticSessionView | null; mapping
       + 'The assistant cannot run queries, contact endpoints or change data; only whether an endpoint grant exists is disclosed, never the endpoint or credentials.',
   };
 }
+
+/** What the Linked records chunk hands the eager evidence register (see `semantic-access.ts`). */
+export interface AssistProvider {
+  identity: () => unknown[];
+  count: () => number;
+  subscribe: (listener: () => void) => () => void;
+  capture: typeof captureAssist;
+}
+export const assistProvider: AssistProvider = { identity: assistIdentity, count: attachedTextCount, subscribe: subscribeAssistInputs, capture: captureAssist };

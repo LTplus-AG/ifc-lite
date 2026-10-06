@@ -5,7 +5,8 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
-import { reviewRequirements, type ExtractedRequirement, type SemanticRequirementProposal } from '@/lib/semantic/assist/requirement-proposal';
+import type { ExtractedRequirement, SemanticRequirementProposal } from '@/lib/semantic/assist/requirement-proposal';
+import { reviewRequirements } from '@/lib/semantic/assist/requirement-review';
 import { saveSemanticReview, semanticReviewLibrary, useSemanticReviews } from '@/lib/semantic/assist/library';
 import type { Passage } from '@/lib/semantic/assist/spans';
 import { ContentStorageNotice } from '../ContentStorageNotice';

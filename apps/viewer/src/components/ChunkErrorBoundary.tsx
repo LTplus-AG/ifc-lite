@@ -53,6 +53,7 @@ const CHUNK_LABEL_KEYS = {
   'Document panel': 'viewerShell.chunkLabel.documentPanel',
   'Presentation panel': 'viewerShell.chunkLabel.presentationPanel',
   'Layers panel': 'viewerShell.chunkLabel.layersPanel',
+  'Activity tray': 'activityTray.title',
   'MCP page': 'viewerShell.chunkLabel.mcpPage',
   'MCP playground': 'viewerShell.chunkLabel.mcpPlayground',
   'RTE GPU witness': 'viewerShell.chunkLabel.rteGpuWitness',

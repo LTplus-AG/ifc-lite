@@ -19,32 +19,30 @@ import {
 } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { useTranslation } from '@/i18n';
+import { statusLabelKey, type ResultStatus } from './status-labels';
 
-export type ResultStatus =
-  | 'complete' | 'partial' | 'failed' | 'running' | 'stale' | 'cancelled' | 'interrupted'
-  | 'queued' | 'uncertain' | 'blocked' | 'unsupported'
-  | 'draft' | 'ready' | 'applying' | 'applied';
+export { statusLabelKey, type ResultStatus };
 
 type Tone = 'neutral' | 'progress' | 'good' | 'warn' | 'bad';
 
 /** `null`: the shared spinner (running work). */
-const STATUS: Record<ResultStatus, { labelKey: TranslationKey; icon: ComponentType<{ className?: string }> | null; tone: Tone }> = {
-  complete: { labelKey: 'resultStatus.complete', icon: CheckCircle2, tone: 'good' },
-  partial: { labelKey: 'resultStatus.partial', icon: AlertTriangle, tone: 'warn' },
-  failed: { labelKey: 'resultStatus.failed', icon: XCircle, tone: 'bad' },
-  running: { labelKey: 'resultStatus.running', icon: null, tone: 'progress' },
-  stale: { labelKey: 'resultStatus.stale', icon: Clock, tone: 'warn' },
-  cancelled: { labelKey: 'resultStatus.cancelled', icon: CircleMinus, tone: 'neutral' },
-  interrupted: { labelKey: 'resultStatus.interrupted', icon: PauseCircle, tone: 'warn' },
-  queued: { labelKey: 'resultStatus.queued', icon: CircleDashed, tone: 'neutral' },
-  uncertain: { labelKey: 'resultStatus.uncertain', icon: HelpCircle, tone: 'warn' },
-  blocked: { labelKey: 'resultStatus.blocked', icon: ShieldAlert, tone: 'bad' },
-  unsupported: { labelKey: 'resultStatus.unsupported', icon: Ban, tone: 'neutral' },
-  draft: { labelKey: 'resultStatus.draft', icon: FilePen, tone: 'neutral' },
-  ready: { labelKey: 'resultStatus.ready', icon: Sparkles, tone: 'progress' },
-  applying: { labelKey: 'resultStatus.applying', icon: null, tone: 'progress' },
-  applied: { labelKey: 'resultStatus.applied', icon: CheckCircle2, tone: 'good' },
+const STATUS: Record<ResultStatus, { icon: ComponentType<{ className?: string }> | null; tone: Tone }> = {
+  complete: { icon: CheckCircle2, tone: 'good' },
+  partial: { icon: AlertTriangle, tone: 'warn' },
+  failed: { icon: XCircle, tone: 'bad' },
+  running: { icon: null, tone: 'progress' },
+  stale: { icon: Clock, tone: 'warn' },
+  cancelled: { icon: CircleMinus, tone: 'neutral' },
+  interrupted: { icon: PauseCircle, tone: 'warn' },
+  queued: { icon: CircleDashed, tone: 'neutral' },
+  uncertain: { icon: HelpCircle, tone: 'warn' },
+  blocked: { icon: ShieldAlert, tone: 'bad' },
+  unsupported: { icon: Ban, tone: 'neutral' },
+  draft: { icon: FilePen, tone: 'neutral' },
+  ready: { icon: Sparkles, tone: 'progress' },
+  applying: { icon: null, tone: 'progress' },
+  applied: { icon: CheckCircle2, tone: 'good' },
 };
 
 const TONE: Record<Tone, string> = {
@@ -55,21 +53,16 @@ const TONE: Record<Tone, string> = {
   bad: 'border-destructive/50 text-destructive',
 };
 
-/** The word a status is shown with, for text that names it outside a chip (an announcement). */
-export function statusLabelKey(status: ResultStatus): TranslationKey {
-  return STATUS[status].labelKey;
-}
-
 export function StatusChip({ status, className }: { status: ResultStatus; className?: string }) {
   const { t } = useTranslation();
-  const { labelKey, icon: Icon, tone } = STATUS[status];
+  const { icon: Icon, tone } = STATUS[status];
   return (
     <span
       data-status={status}
       className={cn('inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px text-2xs font-medium', TONE[tone], className)}
     >
       {Icon ? <Icon className="h-3 w-3" aria-hidden="true" /> : <Spinner size="xs" />}
-      {t(labelKey)}
+      {t(statusLabelKey(status))}
     </span>
   );
 }

@@ -11,68 +11,28 @@
  * say so; ephemeral jobs cut off by a reload show as interrupted.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+/**
+ * The one activity tray (U02, #6925; charter "Shared artifact editing"):
+ * every user-initiated job in one list, opened from the status bar. This
+ * module is the eager trigger: the button with its running count and the
+ * always-mounted live region that announces finished jobs. The list body
+ * (rows, Cancel, Open) is `ActivityTrayList`, loaded when the tray is opened.
+ */
+
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Activity, Database } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
-import { formatLocaleNumber } from '@/i18n/intlFormat';
-import { useViewerStore } from '@/store';
+import { statusLabelKey, type ResultStatus } from '../result/status-labels';
+import { StatusChip } from '../result/StatusChip';
 import { clearFinishedActivity } from '@/lib/activity/activity-journal';
-import { StatusChip, statusLabelKey, type ResultStatus } from '../result/StatusChip';
-import { useActivityRows, type ActivityRow } from './useActivityRows';
+import { useActivityRows } from './useActivityRows';
 
-function JobRow({ row, onOpen }: { row: ActivityRow; onOpen: (row: ActivityRow) => void }) {
-  const { t, locale } = useTranslation();
-  const title = t(row.titleKey);
-  const number = (value: number) => formatLocaleNumber(locale, value);
-  const time = row.at > 0 ? new Intl.DateTimeFormat(locale, { timeStyle: 'short' }).format(row.at) : null;
-  return (
-    <li className="space-y-0.5 border-b border-border px-3 py-2 last:border-b-0">
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-xs font-medium">{title}</div>
-          {row.subject && <div className="truncate text-2xs text-muted-foreground">{row.subject}</div>}
-        </div>
-        <StatusChip status={row.status} />
-      </div>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-muted-foreground">
-        {time && <time dateTime={new Date(row.at).toISOString()}>{time}</time>}
-        {row.phase && <span className="truncate">{row.phase}</span>}
-        {row.progress && <span className="tabular-nums">{t('activityTray.progress', { done: number(row.progress.done), total: number(row.progress.total) })}</span>}
-        {row.publication && (
-          <span className="tabular-nums">{t('activityTray.publication.effects', { done: number(row.publication.done), total: number(row.publication.total) })}</span>
-        )}
-        {row.persistent && (
-          <span className="inline-flex items-center gap-0.5"><Database className="h-3 w-3" aria-hidden="true" />{t('activityTray.persistent')}</span>
-        )}
-        {(row.cancel || row.panel) && (
-          <span className="ml-auto flex gap-1">
-            {row.cancel && (
-              <Button variant="outline" size="sm" className="h-6 px-2 text-2xs" aria-label={t('activityTray.cancelLabel', { title })}
-                onClick={row.cancel}>
-                {t('activityTray.cancel')}
-              </Button>
-            )}
-            {row.panel && (
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-2xs" aria-label={t('activityTray.openLabel', { title })}
-                onClick={() => onOpen(row)}>
-                {t('activityTray.open')}
-              </Button>
-            )}
-          </span>
-        )}
-      </div>
-      {(row.detailKey || row.detail) && (
-        <p className={cn('text-2xs', row.status === 'failed' ? 'text-destructive' : 'text-muted-foreground')}>
-          {row.detailKey ? t(row.detailKey, { count: row.detailCount ?? 0 }) : row.detail}
-        </p>
-      )}
-    </li>
-  );
-}
+// Lazy: the list body is only needed once the tray is opened.
+const ActivityTrayList = lazy(() => import('./ActivityTrayList'));
 
 /**
  * Announces a session job that finishes while the viewer is open ("Export
@@ -109,35 +69,28 @@ function ActivityAnnouncer() {
   );
 }
 
-/** The tray's list, usable on its own (a popover on desktop, a dialog on phones). */
-function ActivityTrayList({ onOpened, title }: { onOpened?: () => void; title?: ReactNode }) {
+/**
+ * The list body behind the lazy chunk. While it loads (or if it cannot) the
+ * same title and section label are shown, so the dialog keeps its accessible
+ * name and the popover does not jump.
+ */
+function TrayBody({ onOpened, title }: { onOpened: () => void; title?: ReactNode }) {
   const { t } = useTranslation();
+  // Read here, not in the lazy chunk, so the journal and outbox stay with the always-loaded recorders.
   const rows = useActivityRows();
-  const open = (row: ActivityRow) => {
-    if (!row.panel) return;
-    useViewerStore.getState().openWorkspacePanel(row.panel);
-    onOpened?.();
-  };
-  const finished = rows.some((row) => !row.persistent && row.status !== 'running');
-  return (
-    <section aria-label={t('activityTray.title')} className="flex max-h-96 flex-col">
-      {/* In the phone dialog, `title` is the dialog's own title; keep clear of its close button. */}
+  const placeholder = (
+    <section aria-label={t('activityTray.title')} aria-busy="true" className="flex flex-col">
       <div className={cn('flex items-center gap-2 border-b border-border px-3 py-2', title && 'pr-10')}>
         {title ?? <h2 className="flex-1 text-xs font-semibold">{t('activityTray.title')}</h2>}
-        {finished && (
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-2xs" onClick={clearFinishedActivity}>
-            {t('activityTray.clearFinished')}
-          </Button>
-        )}
       </div>
-      {rows.length === 0
-        ? <p className="px-3 py-4 text-xs text-muted-foreground">{t('activityTray.empty')}</p>
-        : (
-          <ul aria-label={t('activityTray.list')} className="overflow-y-auto">
-            {rows.map((row) => <JobRow key={row.id} row={row} onOpen={open} />)}
-          </ul>
-        )}
     </section>
+  );
+  return (
+    <ChunkErrorBoundary label="Activity tray">
+      <Suspense fallback={placeholder}>
+        <ActivityTrayList rows={rows} StatusChip={StatusChip} PersistentIcon={Database} onClearFinished={clearFinishedActivity} onOpened={onOpened} title={title} />
+      </Suspense>
+    </ChunkErrorBoundary>
   );
 }
 
@@ -165,7 +118,7 @@ export function ActivityTrayButton() {
           </button>
         </PopoverTrigger>
         <PopoverContent align="end" side="top" className="w-80 p-0">
-          <ActivityTrayList onOpened={() => setOpen(false)} />
+          <TrayBody onOpened={() => setOpen(false)} />
         </PopoverContent>
       </Popover>
     </>
@@ -181,7 +134,7 @@ export function ActivityTrayDialog({ open, onOpenChange }: { open: boolean; onOp
       <ActivityAnnouncer />
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent aria-describedby={undefined} className="max-w-sm gap-0 p-0">
-          <ActivityTrayList
+          <TrayBody
             onOpened={() => onOpenChange(false)}
             title={<DialogTitle className="flex-1 text-xs font-semibold">{t('activityTray.title')}</DialogTitle>}
           />

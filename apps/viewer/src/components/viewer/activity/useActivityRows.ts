@@ -14,7 +14,7 @@ import { publicationActivity, type PublicationOutcome } from '@/lib/activity/pub
 import { useBcfOutbox } from '@/lib/bcf-publication/outbox-store';
 import type { AnalysisPanelId } from '@/lib/panels/registry';
 import type { TranslationKey } from '@/i18n';
-import type { ResultStatus } from '../result/StatusChip';
+import type { ResultStatus } from '../result/status-labels';
 
 export interface ActivityRow {
   id: string;

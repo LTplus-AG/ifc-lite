@@ -6,7 +6,7 @@ import { existsSync, writeFileSync } from 'node:fs';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import type { SceneOwnerSnapshot } from '../../apps/viewer/src/lib/viewport-debug-hooks';
 import { snapshotRenderedPointCloud } from './federation-control-triplet.rendering';
-import { DEVICE_LOST_SIGNAL, GPU_STRICT, skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss';
+import { DEVICE_LOST_SIGNAL, GPU_STRICT, skipForGpuDeviceLoss, watchGpuDeviceLoss, type GpuDeviceLossWatch } from './gpu-device-loss';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
@@ -56,7 +56,7 @@ test('GLB imports preserve valid triangles that a bounding-box frame would colla
   const errors: string[] = [];
   captureDiagnostics(page, errors);
   await page.goto('/');
-  await load(page, { name: 'precision-invariant-6515.glb', mimeType: 'model/gltf-binary', buffer: widePrecisionGlb() }, 1);
+  await load(page, { name: 'precision-invariant-6515.glb', mimeType: 'model/gltf-binary', buffer: widePrecisionGlb() }, 1, gpu);
   await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_scene_owner__(19).flat?.reduce((count, part) => count + part.triangles, 0))).toBe(2);
   const owner = await page.evaluate(() => globalThis.__ifc_lite_scene_owner__(19));
   expect(owner.corners).toHaveLength(18);
@@ -100,7 +100,12 @@ const DEVICE_LOST_ERROR = /graphics device was lost during the load/;
 // after whenReady() resolves but before stream creation.
 const DEVICE_LOST_CONSOLE = new RegExp(`${DEVICE_LOST_SIGNAL.source}|CONTEXT_LOST_WEBGL|Renderer not initialized\\. Call init\\(\\) first\\.`);
 
-async function load(page: Page, file: string | { name: string; mimeType: string; buffer: Buffer }, count: number) {
+/**
+ * `gpu`, when given, skips the moment the console reports a device loss rather
+ * than after the 120 s settle wait (#7008); load()'s own verdict still covers
+ * the callers that pass none.
+ */
+async function load(page: Page, file: string | { name: string; mimeType: string; buffer: Buffer }, count: number, gpu?: GpuDeviceLossWatch) {
   const consoleStart = consoleLines.length;
   const pageErrorStart = pageErrorLines.length;
   let inputFailure: unknown;
@@ -112,22 +117,26 @@ async function load(page: Page, file: string | { name: string; mimeType: string;
   } catch (error) {
     inputFailure = error;
   }
-  let outcome: 'ok' | 'device-lost' | 'timeout';
-  try {
-    if (inputFailure !== undefined) throw inputFailure;
-    const handle = await page.waitForFunction(({ n, deviceLost }) => {
-      const state = globalThis.__ifc_lite_viewer_store__?.getState();
-      if (!state) return false;
-      // The loader gives up (models.size never reaches n) when the GPU device
-      // was lost mid-load; surface that instead of waiting out the timeout.
-      if (new RegExp(deviceLost).test(String((state as { error?: unknown }).error ?? ''))) return 'device-lost';
-      const settled = !state.loading && !state.geometryStreamingActive && state.models.size === n && [...state.models.values()].every((m) => m.pointCloudHandleId !== undefined || m.geometryResult?.meshes.length > 0);
-      return settled ? 'ok' : false;
-    }, { n: count, deviceLost: DEVICE_LOST_ERROR.source }, { timeout: 120_000 });
-    outcome = (await handle.jsonValue()) as 'ok' | 'device-lost';
-  } catch {
-    outcome = 'timeout';
-  }
+  // Never rejects, so anything raceLoss throws is its device-loss skip.
+  const settle = async (): Promise<'ok' | 'device-lost' | 'timeout'> => {
+    try {
+      if (inputFailure !== undefined) throw inputFailure;
+      const handle = await page.waitForFunction(({ n, deviceLost }) => {
+        const state = globalThis.__ifc_lite_viewer_store__?.getState();
+        if (!state) return false;
+        // The loader gives up (models.size never reaches n) when the GPU device
+        // was lost mid-load; surface that instead of waiting out the timeout.
+        if (new RegExp(deviceLost).test(String((state as { error?: unknown }).error ?? ''))) return 'device-lost';
+        const settled = !state.loading && !state.geometryStreamingActive && state.models.size === n && [...state.models.values()].every((m) => m.pointCloudHandleId !== undefined || m.geometryResult?.meshes.length > 0);
+        return settled ? 'ok' : false;
+      }, { n: count, deviceLost: DEVICE_LOST_ERROR.source }, { timeout: 120_000 });
+      return (await handle.jsonValue()) as 'ok' | 'device-lost';
+    } catch {
+      return 'timeout';
+    }
+  };
+  const name0 = typeof file === 'string' ? file : file.name;
+  const outcome = gpu ? await gpu.raceLoss(`load(${name0}, ${count})`, settle) : await settle();
   if (outcome === 'ok') return;
   const snapshot = await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__?.getState();
@@ -273,13 +282,13 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
     consoleLines = [];
     pageErrorLines = [];
     await page.goto('/');
-    await load(page, scan, 1);
-    await load(page, IFC, 2);
+    await load(page, scan, 1, gpu);
+    await load(page, IFC, 2, gpu);
   } else {
     await page.goto('/');
-    await load(page, IFC, 1);
+    await load(page, IFC, 1, gpu);
     scan = { name: 'known-offset.xyz', mimeType: 'text/plain', buffer: await diagnosticScan(page) };
-    await load(page, scan, 2);
+    await load(page, scan, 2, gpu);
   }
   await gpu.requireLiveGpu('the reposition dialog', async () => {
     await openScanMove(page);

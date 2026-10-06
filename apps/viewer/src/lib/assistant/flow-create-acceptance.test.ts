@@ -13,6 +13,7 @@ import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoCache, countItems } from '@ifc-lite/flow';
+import { resolveEnglish } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
 import { columnGraph, openFlowSample, runOpenFlow, sampleColumns } from '@/test/flow-sample-fixture';
 import { captureEvidence } from './evidence';
@@ -41,7 +42,8 @@ test('#6919 a created graph is saved beside the existing one, preflighted and ru
   assert.equal(state.flowLastRun, null, 'creating never runs the graph');
 
   useViewerStore.setState({ editEnabled: false });
-  assert.deepEqual(await preflightOpenFlow().then(result => result.problems), ['add edits the model: Turn on Edit mode before changing a model']);
+  assert.deepEqual(await preflightOpenFlow().then(result => result.problems.map(problem => resolveEnglish(problem.labelKey, problem.params))),
+    ['add edits the model: Turn on Edit mode before changing a model']);
   useViewerStore.setState({ editEnabled: true });
   assert.deepEqual(await preflightOpenFlow().then(result => result.problems), []);
   const first = await runOpenFlow(model, new MemoCache());

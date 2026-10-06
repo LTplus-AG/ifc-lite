@@ -106,14 +106,9 @@ export async function saveCardDecision(cardKey: string, decision: { status: Huma
       : others };
   };
   const imported = entries.filter(entry => entry.id !== DEFAULT_REVIEW_WORKSPACE);
-  const folded = edit(currentReviewWorkspace(entries));
-  if (decodeReviewWorkspace(folded)) {
-    if (!await reviewWorkspaceLibrary.put(folded.id, folded)) return false;
-    return (await Promise.all(imported.map(entry => reviewWorkspaceLibrary.put(entry.id, null)))).every(Boolean);
-  }
-  const local = edit(currentReviewWorkspace(entries.filter(entry => entry.id === DEFAULT_REVIEW_WORKSPACE)));
-  if (!decodeReviewWorkspace(local) || !await reviewWorkspaceLibrary.put(local.id, local)) return false;
-  const holding = imported.filter(entry => entry.decisions.some(held => held.cardKey === cardKey));
-  return (await Promise.all(holding.map(entry => reviewWorkspaceLibrary.put(entry.id,
-    { ...entry, decisions: entry.decisions.filter(held => held.cardKey !== cardKey) })))).every(Boolean);
+  const fits = !!decodeReviewWorkspace(edit(currentReviewWorkspace(entries)));
+  const next = edit(currentReviewWorkspace(fits ? entries : entries.filter(entry => !imported.includes(entry))));
+  if (!decodeReviewWorkspace(next) || !await reviewWorkspaceLibrary.put(next.id, next)) return false;
+  return (await Promise.all(imported.map(entry => reviewWorkspaceLibrary.put(entry.id,
+    fits ? null : { ...entry, decisions: entry.decisions.filter(held => held.cardKey !== cardKey) })))).every(Boolean);
 }

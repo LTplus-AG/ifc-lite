@@ -586,6 +586,9 @@ importers:
       '@ifc-lite/lists':
         specifier: workspace:^
         version: link:../../packages/lists
+      '@ifc-lite/load-trace':
+        specifier: workspace:^
+        version: link:../../packages/load-trace
       '@ifc-lite/mcp':
         specifier: workspace:^
         version: link:../../packages/mcp

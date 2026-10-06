@@ -5,26 +5,32 @@
 /**
  * A websocket client talks first: y-websocket sends sync step 1 the moment the
  * socket opens. On a cold room the server is still awaiting authentication and
- * the room's log read, so the frame has to be held, not dropped.
+ * the room's log read, so the frame has to be held, not dropped (#6965).
+ *
+ * Everything here goes through a real server (`startCollabServer`) and a real
+ * `ws` socket or y-websocket client.
  */
 
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { WebSocket } from 'ws';
 import { WebsocketProvider } from 'y-websocket';
-import {
-  holdFramesUntilAttached,
-  MAX_PENDING_BYTES,
-  MAX_PENDING_FRAMES,
-} from '../src/connection.js';
 import { FilePersistence, startCollabServer, type CollabServerHandle } from '../src/server.js';
 import { MetricsRegistry } from '../src/metrics.js';
 
 const LOAD_DELAY_MS = 400;
+/**
+ * The documented cap on frames held before a peer is registered (the
+ * changeset and `MAX_PENDING_FRAMES` state 64). Written out here rather than
+ * imported so this file enters only through `startCollabServer`. The exact
+ * boundary is tested against the constant itself in
+ * `hold-frames-until-attached.test.ts`; raising the cap fails the overflow
+ * test below until this number follows.
+ */
+const DOCUMENTED_FRAME_CAP = 64;
 const SYNC_BUDGET_MS = 3000;
 
 /** A file-backed store whose log read takes `delayMs`, standing in for a large log. */
@@ -139,67 +145,8 @@ describe('pre-ready buffer overflow through a real server', () => {
       ws.once('error', reject);
     });
     const closed = new Promise<number>((r) => ws.once('close', (code: number) => r(code)));
-    for (let i = 0; i <= MAX_PENDING_FRAMES; i++) ws.send(new Uint8Array([9, 9]));
+    for (let i = 0; i <= DOCUMENTED_FRAME_CAP; i++) ws.send(new Uint8Array([9, 9]));
     expect(await closed).toBe(1009);
     expect(metrics.render()).toMatch(/collab_rejects_total\{reason="hydration-buffer"\} 1/);
   }, 15_000);
-});
-
-describe('holdFramesUntilAttached', () => {
-  function fakeSocket() {
-    const ee = new EventEmitter() as EventEmitter & { close: (code: number, reason: string) => void };
-    const closed: Array<[number, string]> = [];
-    ee.close = (code, reason) => { closed.push([code, reason]); };
-    return { ws: ee as unknown as WebSocket, ee, closed };
-  }
-  const frame = (n: number, size = 1) => new Uint8Array(size).fill(n).buffer;
-
-  it('replays held frames in arrival order, then delivers later ones directly', () => {
-    const { ws, ee } = fakeSocket();
-    const inbox = holdFramesUntilAttached(ws, () => { throw new Error('unexpected overflow'); });
-    ee.emit('message', frame(1));
-    ee.emit('message', frame(2));
-    const seen: number[] = [];
-    inbox.attach((b) => seen.push(b[0]));
-    ee.emit('message', frame(3));
-    expect(seen).toEqual([1, 2, 3]);
-  });
-
-  it('closes 1009 and counts once when the frame cap is exceeded', () => {
-    const { ws, ee, closed } = fakeSocket();
-    let overflows = 0;
-    const inbox = holdFramesUntilAttached(ws, () => { overflows++; });
-    for (let i = 0; i <= MAX_PENDING_FRAMES + 3; i++) ee.emit('message', frame(i));
-    expect(overflows).toBe(1);
-    expect(closed).toEqual([[1009, 'hydration-buffer-overflow']]);
-    const seen: number[] = [];
-    inbox.attach((b) => seen.push(b[0]));
-    expect(seen).toEqual([]);
-  });
-
-  it('closes 1009 when the byte cap is exceeded', () => {
-    const { ws, ee, closed } = fakeSocket();
-    let overflows = 0;
-    holdFramesUntilAttached(ws, () => { overflows++; });
-    ee.emit('message', frame(1, MAX_PENDING_BYTES));
-    expect(overflows).toBe(0);
-    ee.emit('message', frame(2));
-    expect(overflows).toBe(1);
-    expect(closed).toHaveLength(1);
-  });
-
-  it('holds exactly MAX_PENDING_FRAMES frames and refuses the next', () => {
-    const { ws, ee, closed } = fakeSocket();
-    const inbox = holdFramesUntilAttached(ws, () => {});
-    for (let i = 0; i < MAX_PENDING_FRAMES; i++) ee.emit('message', frame(i));
-    expect(closed).toEqual([]);
-    const seen: number[] = [];
-    inbox.attach((b) => seen.push(b[0]));
-    expect(seen).toHaveLength(MAX_PENDING_FRAMES);
-
-    const second = fakeSocket();
-    holdFramesUntilAttached(second.ws, () => {});
-    for (let i = 0; i <= MAX_PENDING_FRAMES; i++) second.ee.emit('message', frame(i));
-    expect(second.closed).toHaveLength(1);
-  });
 });

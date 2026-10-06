@@ -56,6 +56,11 @@ jobs:
         run: |
           if [ -z "$POSTHOG_PERSONAL_API_KEY" ]; then
             echo "::notice::POSTHOG_PERSONAL_API_KEY is not configured; skipping the field verdict (see the header of field-verdict.yml)."
+            # Deliberately not a failure: an unconfigured secret is the
+            # expected state until a maintainer adds it, and a red nightly
+            # would open a scheduled-failure issue every day. The run summary
+            # says SKIPPED so a green run is never mistaken for a verdict.
+            echo "### Field verdict: SKIPPED, POSTHOG_PERSONAL_API_KEY is not configured" >> "$GITHUB_STEP_SUMMARY"
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=true" >> "$GITHUB_OUTPUT"

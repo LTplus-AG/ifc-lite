@@ -57,24 +57,26 @@ export function parseHostHeader(raw: string | undefined): string | undefined {
 
 export interface SessionCapacityOptions {
   /**
-   * Most concurrent sessions. `initialize` is the only request that creates one
-   * and nothing but a `DELETE` removed it, so a client that never ends its
-   * sessions (or a loop of `initialize` calls) grew the map, and the per-session
-   * `MCPServer` and layer workspace behind it, without limit. At the cap, idle
-   * sessions are reclaimed (see `sessionIdleMs`); if none are idle the new
-   * `initialize` is refused with 503. Default 1000, the session allowance the
-   * cloud and Autodesk services in this repo already use.
+   * Most concurrent sessions, counting sessions whose `sessionFactory.build`
+   * is still pending. `initialize` is the only request that creates one and
+   * nothing but a `DELETE` removed it, so a client that never ends its
+   * sessions (or a loop of `initialize` calls) grew the map, and the
+   * per-session `MCPServer` and layer workspace behind it, without limit. At
+   * the cap one reclaimable session (see `sessionIdleMs`) is ended to make
+   * room; if there is none the new `initialize` is refused with 503
+   * `session-capacity`. Default 1000, the session allowance the cloud and
+   * Autodesk services in this repo already use.
    */
   maxSessions?: number;
   /**
-   * A session with no request for this long, and no open SSE stream, may be
-   * reclaimed to make room for a new one. Reclaiming disposes its unpublished
-   * layer drafts, exactly as `DELETE` does, so it happens only under pressure
-   * (when `maxSessions` is reached), never on a timer, and takes only as many
-   * sessions as the new one needs: oldest first, sessions with no unpublished
-   * drafts before sessions that hold some. A session with a request in flight
-   * or an open SSE stream is never idle. Default 30 minutes, the idle window
-   * those same services use.
+   * How long a session must have been inactive before it may be reclaimed to
+   * make room at `maxSessions`. Reclaiming happens only under that pressure,
+   * never on a timer, and only for a session that also holds no unpublished
+   * layer drafts, has no request in flight and has no open SSE stream. The
+   * clock restarts when a request settles and when a stream closes. A session
+   * holding drafts is never ended for another client, however long it has
+   * been inactive: only its owner's `DELETE` (or `close()`) disposes drafts.
+   * Default 30 minutes, the idle window those same services use.
    */
   sessionIdleMs?: number;
 }
@@ -93,11 +95,11 @@ export interface ReclaimableSession {
 }
 
 /**
- * Pick up to `need` sessions to end: idle for `idleMs` (nothing in flight, no
- * open SSE stream), sessions without unpublished drafts first, then oldest
- * `lastSeen` first. Sessions holding drafts are chosen only when too few
- * draft-free idle ones exist, because ending one destroys work that cannot be
- * recovered. Single O(n) scan; allocates only for sessions that qualify.
+ * Pick up to `need` sessions that are safe to end, oldest `lastSeen` first.
+ * Safe means all four hold: no open SSE stream, no request in flight, inactive
+ * for at least `idleMs`, and no unpublished layer drafts. Ending a session
+ * destroys its drafts and they cannot be recovered, so one that holds any is
+ * never a candidate. Single O(n) scan; allocates only for sessions that qualify.
  */
 export function pickReclaimable(
   sessions: ReadonlyMap<string, ReclaimableSession>,
@@ -107,14 +109,26 @@ export function pickReclaimable(
   now: number = Date.now(),
 ): string[] {
   if (need <= 0) return [];
-  const idle: Array<{ id: string; drafts: boolean; lastSeen: number }> = [];
+  const safe: Array<{ id: string; lastSeen: number }> = [];
   for (const [id, s] of sessions) {
-    if (s.sseClients.size === 0 && s.inFlight === 0 && now - s.lastSeen >= idleMs) {
-      idle.push({ id, drafts: draftCount(id) > 0, lastSeen: s.lastSeen });
-    }
+    if (s.sseClients.size > 0) continue;
+    if (s.inFlight > 0) continue;
+    if (now - s.lastSeen < idleMs) continue;
+    if (draftCount(id) > 0) continue;
+    safe.push({ id, lastSeen: s.lastSeen });
   }
-  idle.sort((a, b) => Number(a.drafts) - Number(b.drafts) || a.lastSeen - b.lastSeen);
-  return idle.slice(0, need).map((c) => c.id);
+  safe.sort((x, y) => x.lastSeen - y.lastSeen);
+  return safe.slice(0, need).map((c) => c.id);
+}
+
+/** 503 for an `initialize` at the session limit when no session can be ended safely. */
+export function sendSessionCapacity(res: ServerResponse): void {
+  res.statusCode = 503;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify({
+    error: 'session-capacity',
+    message: 'The server is at its session limit and no session can be ended safely: every one is recently active, has a request in flight or an open event stream, or holds unpublished layer drafts. No session was ended. End a session you no longer need with DELETE, or retry later.',
+  }));
 }
 
 /** 404 for a session id we do not hold; tells the client why it may be gone and what to do. */
@@ -123,7 +137,7 @@ export function sendUnknownSession(res: ServerResponse): void {
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify({
     error: 'unknown-session',
-    message: 'Unknown session. It was ended with DELETE, or the server ended it after it sat idle while the server was at its session limit (its unpublished layer drafts were disposed). Send initialize without Mcp-Session-Id to start a new session.',
+    message: 'Unknown session. It was ended with DELETE, or the server ended it after it sat idle, holding no unpublished layer drafts, while the server was at its session limit. Send initialize without Mcp-Session-Id to start a new session.',
   }));
 }
 

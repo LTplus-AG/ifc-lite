@@ -29,7 +29,7 @@ import { JsonRpcErrorCode } from '../protocol/index.js';
 import { MCPServer, OutgoingMessageSink } from '../server.js';
 import { AuthScope } from '../auth/scope.js';
 import { draftCount } from '../tools/layer-store.js';
-import { parseHostHeader, pickReclaimable, readBody, sameScope, sendUnknownSession, writeSse, setCors, DEFAULT_MAX_SESSIONS, DEFAULT_SESSION_IDLE_MS, type SessionCapacityOptions } from './http-helpers.js';
+import { parseHostHeader, pickReclaimable, readBody, sameScope, sendSessionCapacity, sendUnknownSession, writeSse, setCors, DEFAULT_MAX_SESSIONS, DEFAULT_SESSION_IDLE_MS, type SessionCapacityOptions } from './http-helpers.js';
 
 export interface HttpAuthenticator {
   /**
@@ -182,11 +182,9 @@ export class HttpTransport {
       // Open an SSE channel for an existing session. Same identity rule as
       // POST: a leaked Mcp-Session-Id must not let a differently-scoped
       // token attach to the victim's event stream.
-      if (!sessionId || !this.sessions.has(sessionId)) {
-        sendUnknownSession(res);
-        return;
-      }
-      const session = this.sessions.get(sessionId) as Session;
+      if (!sessionId) { res.statusCode = 400; res.end('Mcp-Session-Id required'); return; }
+      const session = this.sessions.get(sessionId);
+      if (!session) return sendUnknownSession(res);
       if (!sameScope(session.scope, scope)) {
         res.statusCode = 403;
         res.end('session scope mismatch');
@@ -261,12 +259,7 @@ export class HttpTransport {
         res.end('Mcp-Session-Id required');
         return;
       }
-      if (!this.makeRoomForSession()) {
-        res.statusCode = 503;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: 'session-capacity' }));
-        return;
-      }
+      if (!this.makeRoomForSession()) return sendSessionCapacity(res);
       const newId = randomUUID();
       // The factory may await, so concurrent initializes would each pass the
       // capacity check above; count the ones still building.
@@ -301,12 +294,12 @@ export class HttpTransport {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache, no-transform');
       res.setHeader('Connection', 'keep-alive');
-      session.sseClients.add(res);
-      const response = await this.dispatch(session, message);
-      if (response) writeSse(res, response);
       // Keep the connection open until client closes; progress notifications
-      // arrive via the session's sink.
-      req.on('close', () => session.sseClients.delete(res));
+      // arrive via the session's sink. Tracked before the dispatch so a client
+      // that leaves mid-call is still removed.
+      this.trackSse(session, res);
+      const response = await this.dispatch(session, message);
+      if (response && !res.writableEnded) writeSse(res, response);
       return;
     }
 
@@ -334,28 +327,31 @@ export class HttpTransport {
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.write(': connected\n\n');
-    session.sseClients.add(res);
+    this.trackSse(session, res);
     const ka = setInterval(() => res.write(': keepalive\n\n'), 15_000);
+    res.on('close', () => clearInterval(ka));
+  }
+
+  /** An open stream keeps its session from being reclaimed; idle time starts when it closes. */
+  private trackSse(session: Session, res: ServerResponse): void {
+    session.sseClients.add(res);
     res.on('close', () => {
       session.sseClients.delete(res);
-      // A stream that ran for hours was activity; idle time starts when it ends.
       session.lastSeen = Date.now();
-      clearInterval(ka);
     });
   }
 
-  /** Whether a new session fits; at the cap, idle sessions are ended first. */
+  /**
+   * Whether a new session fits. Live sessions and pending builds both count.
+   * At the cap, only a session that is safe to end (see `pickReclaimable`)
+   * makes room; with none, the answer is no and nothing is ended.
+   */
   private makeRoomForSession(): boolean {
     const max = this.opts.maxSessions ?? DEFAULT_MAX_SESSIONS;
     const need = this.sessions.size + this.building - max + 1;
     if (need <= 0) return true;
     const idleMs = this.opts.sessionIdleMs ?? DEFAULT_SESSION_IDLE_MS;
-    for (const id of pickReclaimable(this.sessions, idleMs, need, draftCount)) {
-      const drafts = draftCount(id);
-      this.endSession(id);
-      // eslint-disable-next-line no-console
-      console.warn(`[ifc-lite-mcp http] ended session ${id}: idle >= ${idleMs} ms at the ${max}-session limit, ${drafts} unpublished layer draft(s) disposed`);
-    }
+    for (const id of pickReclaimable(this.sessions, idleMs, need, draftCount)) this.endSession(id);
     return this.sessions.size + this.building < max;
   }
 

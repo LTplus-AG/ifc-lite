@@ -133,6 +133,7 @@ const order = (a, b) => byText(a.event, b.event) || byText(a.metric, b.metric) |
  * below the threshold with enough cells to say so.
  */
 export function fieldVerdict(rows, { threshold = 0.95, minCells = 5, baselineArm = 'default' } = {}) {
+  if (!(threshold > 0 && threshold < 1) || !Number.isInteger(minCells) || minCells < 1) throw new Error('field-verdict: threshold must be in (0, 1) and minCells a positive integer');
   const cells = pairCells(rows, { baselineArm });
   const opts = { threshold, minCells };
   const perJourney = groupBy(cells, (c) => ({ event: c.event, metric: c.metric, journey: c.journey, arm: c.arm }))
@@ -211,6 +212,8 @@ function parseArgs(argv) {
     else if (a.startsWith('--')) throw new Error(`field-verdict: unknown option ${a}`);
     else rest.push(a);
   }
+  if (!(args.threshold > 0 && args.threshold < 1)) throw new Error('field-verdict: --threshold must be a number in (0, 1)');
+  if (!Number.isInteger(args.minCells) || args.minCells < 1) throw new Error('field-verdict: --min-cells must be a positive integer');
   args.input = rest[0];
   return args;
 }

@@ -90,6 +90,12 @@ test('#6961 the CLI exits 2 on a regression only when asked to', async () => {
   await load(VERDICT);
   const run = (...args) => spawnSync(process.execPath, [fileURLToPath(VERDICT), fileURLToPath(FIXTURE), ...args], { encoding: 'utf8' });
   assert.equal(run().status, 0);
+  // A malformed bound would turn "insufficient" into a verdict; it is refused instead.
+  for (const bad of [['--min-cells', '5x'], ['--min-cells', '0'], ['--threshold', 'abc'], ['--threshold', '1.5']]) {
+    const refused = run(...bad);
+    assert.equal(refused.status, 1, bad.join(' '));
+    assert.match(refused.stderr, /must be/);
+  }
   const failing = run('--fail-on-regression', '--json');
   assert.equal(failing.status, 2, failing.stderr);
   assert.equal(JSON.parse(failing.stdout).regressed.length, 1);

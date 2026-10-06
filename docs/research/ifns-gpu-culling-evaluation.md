@@ -121,8 +121,8 @@ All of these are required before production rollout is discussed:
 Historical: the corpus runner, its `test:instanced-culling:corpus` script and
 the `CULL_CORPUS_*` variables were removed with the implementation (#4819),
 so the commands below no longer run. They are kept as a record of how the
-evaluation was produced. Fetch fixtures and build the viewer before running
-the corpus:
+evaluation was produced. The original evaluation fetched fixtures and built
+the viewer before running the corpus:
 
 ```bash
 pnpm fixtures
@@ -130,7 +130,7 @@ pnpm --filter @ifc-lite/viewer build
 pnpm test:instanced-culling:corpus
 ```
 
-The runner supports `CULL_CORPUS_FILTER`, `CULL_CORPUS_OFFSET`,
+The runner supported `CULL_CORPUS_FILTER`, `CULL_CORPUS_OFFSET`,
 `CULL_CORPUS_LIMIT`, and `CULL_CORPUS_OUTPUT`. Per-model JSON and mismatch PNGs
 default to `.codex-artifacts/instanced-culling-corpus/`. The local decision
 bundle also contains `instanced-culling-decision-data.json`, raw Blackwell

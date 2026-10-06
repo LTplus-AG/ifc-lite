@@ -395,8 +395,9 @@ interface SplitToolSlice {
 }
 ```
 
-Goes in a new `splitToolSlice.ts`, same shape as the other tool slices
-(mode + anchor + hover + parameters).
+The sketch placed this in a new `splitToolSlice.ts`, same shape as the other
+tool slices (mode + anchor + hover + parameters). No file of that name exists
+today: the tool runs as the `element.split` command (see Status above).
 
 ## Store actions
 

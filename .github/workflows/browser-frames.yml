@@ -1,0 +1,138 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Nightly deterministic frame-cost rig (#6960, perf charter #6954).
+#
+# chrome-headless-shell driven at 120 Hz over CDP HeadlessExperimental.beginFrame
+# (tests/benchmark/frames/frame-rig.spec.ts): streaming load, scripted orbit
+# and hover sweep on AC20-FZK-Haus and Snowdon. Uploads `browser-frames` rows
+# ({fixture, scenario, metric, value}) for the future M4 ratchet (#6959).
+# Main-thread cost and encoded GPU work only: WebGPU runs on SwiftShader here,
+# so no number from this lane is a GPU time. Not a PR gate; a red scheduled
+# run opens or updates the scheduled-lane issue.
+
+name: Browser frames (deterministic rig)
+
+on:
+  schedule:
+    - cron: '41 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  frames:
+    name: BeginFrame 120 Hz rig (FZK + Snowdon)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Resolve prebuilt-WASM eligibility
+        id: wasm
+        run: echo "eligible=$(bash scripts/ci-wasm-prebuilt-eligible.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup WASM build toolchain
+        if: steps.wasm.outputs.eligible != 'true'
+        uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: browser-frames
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Fetch prebuilt WASM
+        if: steps.wasm.outputs.eligible == 'true'
+        run: |
+          for attempt in 1 2 3; do
+            if node scripts/fetch-prebuilt-wasm.mjs; then exit 0; fi
+            echo "::warning::prebuilt WASM fetch attempt ${attempt} failed; retrying…"
+            sleep $((attempt * 5))
+          done
+          echo "::error::Could not fetch the prebuilt @ifc-lite/wasm bundle after 3 attempts."
+          exit 1
+
+      - name: Build WASM
+        if: steps.wasm.outputs.eligible != 'true'
+        run: bash scripts/build-wasm.sh
+
+      - name: Cache frame-rig fixtures
+        id: fixtures-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: browser-frames-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+
+      - name: Fetch frame-rig fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: node scripts/fixtures/fetch-fixtures.mjs "ara3d/AC20-FZK-Haus.ifc" "various/01_Snowdon_Towers_Sample_Structural(1).ifc"
+
+      # A missing fixture makes the spec SKIP, which would upload an empty
+      # result as a green run; fail here instead.
+      - name: Verify frame-rig fixtures
+        run: node scripts/fixtures/fetch-fixtures.mjs --check "ara3d/AC20-FZK-Haus.ifc" "various/01_Snowdon_Towers_Sample_Structural(1).ifc"
+
+      - name: Build viewer app
+        run: pnpm turbo build --filter=@ifc-lite/viewer
+
+      # BeginFrame control exists only in chrome-headless-shell, not in the
+      # runner's preinstalled Chrome (new headless).
+      - name: Install chrome-headless-shell
+        run: pnpm exec playwright install --with-deps chromium-headless-shell
+
+      - name: Run deterministic frame rig
+        env:
+          FRAME_RIG_OUT: test-results/browser-frames.json
+        run: pnpm test:benchmark:frames
+
+      - name: Require a result for every fixture and scenario
+        run: |
+          node -e "
+            const r = require('./test-results/browser-frames.json');
+            const keys = new Set(r.rows.map((x) => x.fixture + '/' + x.scenario));
+            if (keys.size !== 6) { console.error('expected 6 fixture/scenario groups, got', [...keys]); process.exit(1); }
+            console.log('browser-frames:', r.rows.length, 'rows,', keys.size, 'groups');
+          "
+
+      - name: Upload frame-rig results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: browser-frames
+          # The rows JSON on success, Playwright's error contexts on failure.
+          path: test-results/
+          if-no-files-found: error
+          retention-days: 90
+
+  report-scheduled-failure:
+    needs: [frames]
+    if: always() && github.event_name == 'schedule' && needs.frames.result != 'success'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: Browser frames (deterministic rig)
+      jobs: frames
+      result: frames=${{ needs.frames.result }}
+    permissions:
+      contents: read
+      issues: write

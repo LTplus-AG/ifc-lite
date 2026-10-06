@@ -62,6 +62,7 @@ import { PromoteToolDialog } from '@/components/extensions/PromoteToolDialog';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import type { LogEntry } from '@/store/slices/scriptSlice';
 import { useScriptState, formatLogArgs } from './scriptPanelState';
+import { AssistantAction } from './assistant/AssistantAction';
 
 export function ScriptPanel() {
   const { t } = useTranslation();
@@ -411,6 +412,8 @@ export function ScriptPanel() {
           >
             <RotateCcw className="h-3.5 w-3.5" />
           </IconButton>
+
+          <AssistantAction />
 
           {/* Status indicator */}
           <div className="flex-1" />

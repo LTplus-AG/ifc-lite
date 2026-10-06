@@ -431,8 +431,13 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         return;
       }
       // Otherwise fall through so the camera-fit block at the bottom of
-      // the effect gets a chance to run.
+      // the effect gets a chance to run. ONLY the camera fit: an unchanged
+      // length carries no new mesh, and the streaming fast path never records
+      // the keys the rebuild scan below consults, so that scan would upload
+      // every streamed mesh a second time (a mesh-less scan joining a streamed
+      // IFC, or the #859 streaming-complete fit; #6953).
     }
+    const unchangedLength = currentLength === lastLength;
 
     // Visibility toggle while NOT streaming — array rebuilt from scratch
     if (isIncremental && !isStreaming && !prevIsStreamingRef.current) {
@@ -453,7 +458,9 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     let newMeshes: MeshData[];
     const claimedMeshKeys: string[] = [];
     let appendFailed = false;
-    if (isStreaming || isIncremental) {
+    if (unchangedLength) {
+      newMeshes = [];
+    } else if (isStreaming || isIncremental) {
       // Fast path: new meshes are always appended at end
       const start = lastGeometryLengthRef.current;
       newMeshes = geometry.slice(start);

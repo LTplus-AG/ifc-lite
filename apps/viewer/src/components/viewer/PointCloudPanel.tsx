@@ -21,6 +21,7 @@ import type { TranslationKey } from '@/i18n';
 import { PointCloudLegend } from './PointCloudLegend';
 import { PointCloudClasses } from './PointCloudClasses';
 import { DeviationPanel } from './DeviationPanel';
+import { AssistantAction } from './assistant/AssistantAction';
 import { applyPointCloudAlignmentToggle } from '@/hooks/ingest/pointCloudAlignment';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 
@@ -81,6 +82,7 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
         </span>
       )}
       <span className="flex-1" />
+      <AssistantAction />
       {onClose && (
         <IconButton label={t('pointCloudPanel.close')} variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
           <X className="h-3.5 w-3.5" />

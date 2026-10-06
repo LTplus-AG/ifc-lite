@@ -29,6 +29,7 @@ import { largestBucketIds } from '@/lib/charts/buckets';
 import { listCopyForDocument, TABLE_ROWS_DEFAULT, type DocumentBlock, type DocumentSpec } from '@/lib/document/types';
 import { type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
 import { exportPreparedDocument } from '@/lib/document/export-prepared-document';
+import { AssistantAction } from '../assistant/AssistantAction';
 import { BlockEditor } from './BlockEditor';
 import { DocumentMenu } from './DocumentMenu';
 import { DocumentPreview } from './DocumentPreview';
@@ -236,6 +237,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={busy || tablesResolving || !document || document.blocks.length === 0} aria-busy={tablesResolving || undefined} onClick={() => void exportPdf()} title={t('document.panel.exportTitle')} data-document-export>
           <FileText className="mr-1 h-3.5 w-3.5" />{busy ? t('document.panel.exportBusy') : tablesResolving ? t('document.panel.exportPreparingTables') : t('document.panel.exportIdle')}
         </Button>
+        <AssistantAction />
       </div>
 
       {document && (

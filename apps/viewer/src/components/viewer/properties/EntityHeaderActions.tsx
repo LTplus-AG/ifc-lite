@@ -23,6 +23,7 @@ import { Focus, EyeOff, Eye, Ghost } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
+import { AssistantAction } from '@/components/viewer/assistant/AssistantAction';
 
 /**
  * The fade this control installed, and the isolation as it stood BEFORE it.
@@ -97,6 +98,7 @@ export function EntityHeaderActions() {
 
   return (
     <>
+      <AssistantAction />
       <IconButton
         label={t('properties.entityHeaderActions.zoomTo')}
         size="icon-xs"

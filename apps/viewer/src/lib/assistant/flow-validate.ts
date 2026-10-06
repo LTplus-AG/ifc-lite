@@ -18,6 +18,19 @@ export function isNativeParamValue(definition: ParamDef, value: unknown): boolea
   return typeof value === 'string' && (definition.kind !== 'enum' || (definition.options?.includes(value) ?? false));
 }
 
+/** A `code` parameter (script source) a proposal writes: it runs on the next Run, so review shows it verbatim. */
+export interface FlowCodeParam { readonly nodeId: string; readonly param: string; readonly language: string | null; readonly code: string }
+
+/** Code parameters of `after` that are new or changed relative to `before` (every one for a new graph). */
+export function changedCodeParams(before: FlowDocument | null, after: FlowDocument): FlowCodeParam[] {
+  const registry = flowRegistry();
+  const previous = new Map(before?.nodes.map(node => [node.id, node]));
+  return after.nodes.flatMap(node => (registry.get(node.type)?.params ?? [])
+    .filter(def => def.kind === 'code' && typeof node.params?.[def.name] === 'string'
+      && previous.get(node.id)?.params?.[def.name] !== node.params[def.name])
+    .map(def => ({ nodeId: node.id, param: def.name, language: def.language ?? null, code: node.params![def.name] as string })));
+}
+
 /**
  * Native document, registry wiring (types, ports, port types, required inputs),
  * capability grammar and cycle checks. Throws the first problems verbatim.

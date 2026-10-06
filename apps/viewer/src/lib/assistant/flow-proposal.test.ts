@@ -115,3 +115,17 @@ test('additional native capabilities are visible and extension-owned or running 
   useViewerStore.setState({ flowRunning: false, flowDoc: extension, activeFlowId: null });
   assert.throws(() => prepareFlowProposal(patch([{ op: 'rename', name: 'Forbidden edit' }]), captureEvidence('flow')), /read-only/);
 });
+
+// #6919: script source the model writes is listed in review, not only inside the collapsed graph JSON.
+test('script code a patch sets is listed for review and pinned by the digest', () => {
+  const evidence = open();
+  const code = 'const factor = 2;\ninputs.a * factor';
+  const proposal = prepareFlowProposal(patch([{ op: 'addNode', alias: 'calc', type: 'script.run', pos: [0, 0] },
+    { op: 'setParam', node: 'calc', param: 'code', value: code }]), evidence);
+  assert.deepEqual(proposal.code.map(entry => [entry.param, entry.language, entry.code]), [['code', 'javascript', code]]);
+  assert.throws(() => applyFlowProposal({ ...proposal, code: [] }, proposal.digest), /proposal has changed/);
+  const receipt = applyFlowProposal(proposal, proposal.digest);
+  // Changing another parameter of the script node sets no code.
+  const retime = prepareFlowProposal(patch([{ op: 'setParam', node: receipt.applied.nodes[0].id, param: 'timeoutMs', value: 500 }]), captureEvidence('flow'));
+  assert.deepEqual(retime.code, []);
+});

@@ -14,6 +14,7 @@ import { proposalOf } from './AssistantConversation';
 import { prepareFlowProposal, applyFlowProposal, undoFlowProposal, isFlowProposalCurrent, isFlowReceiptCurrent,
   type FlowProposal, type FlowApplyReceipt } from '@/lib/assistant/flow-proposal';
 import { FlowTrackingImpacts } from './FlowTrackingImpacts';
+import { FlowCodeParams } from './FlowCodeParams';
 import { FlowPreflight } from './FlowPreflight';
 
 // Review survives a panel switch; every effect stays pinned to its original target.
@@ -58,6 +59,7 @@ export function FlowProposalReview() {
           </li>)}</ul>
           <p className="whitespace-pre-wrap break-words">{review.proposal.diagnosis.explanation}</p>
         </div>}
+        <FlowCodeParams code={review.proposal.code} />
         {review.proposal.tracking.length > 0 && <>
           <FlowTrackingImpacts impacts={review.proposal.tracking} />
           <label className="flex items-start gap-2"><input type="checkbox" checked={review.trackingAcknowledged}

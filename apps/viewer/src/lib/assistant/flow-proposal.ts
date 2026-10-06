@@ -9,7 +9,7 @@ import { flowRegistry } from '../flow/runner';
 import { addNode, removeNode, moveNode, setParam, updateNode, connect, disconnect, requiredCapabilities } from '../flow/editor-ops';
 import { evidenceIsCurrent, type EvidenceSnapshot } from './evidence';
 import { parseFlowPatch, isBoundedFlowJson, type FlowPatch } from './flow-patch';
-import { isNativeParamValue, validateProposedGraph } from './flow-validate';
+import { changedCodeParams, isNativeParamValue, validateProposedGraph, type FlowCodeParam } from './flow-validate';
 import { trackingImpacts, type TrackingImpact } from './flow-tracking';
 import { flowRunDiagnostics, isFailingNode } from './flow-run-evidence';
 import { pinnedFlowRun } from './adapters/flow-run';
@@ -32,6 +32,8 @@ export interface FlowProposal {
   /** Tracked nodes this edit affects; non-empty requires explicit acknowledgement before apply. */
   readonly tracking: readonly TrackingImpact[];
   readonly diagnosis: FlowProposalDiagnosis | null;
+  /** Script source this patch writes, listed verbatim in review. */
+  readonly code: readonly FlowCodeParam[];
   readonly digest: string;
 }
 export interface FlowApplyReceipt { readonly proposal: FlowProposal; readonly applied: FlowDocument }
@@ -89,7 +91,7 @@ function proposalDigest(proposal: Omit<FlowProposal, 'digest'>): string {
     graphId: proposal.target.id, activeFlowId: proposal.activeFlowId,
     patch: proposal.patchJson, before: proposal.beforeJson, after: proposal.afterJson,
     addedCapabilities: JSON.stringify(proposal.addedCapabilities), tracking: JSON.stringify(proposal.tracking),
-    diagnosis: JSON.stringify(proposal.diagnosis) });
+    diagnosis: JSON.stringify(proposal.diagnosis), code: JSON.stringify(proposal.code) });
 }
 
 /** Nodes whose evaluation an operation changes; positions, labels and the graph name change none. */
@@ -125,7 +127,7 @@ export function prepareFlowProposal(text: string, evidence: EvidenceSnapshot): F
   const proposal = { evidence, target: before, activeFlowId: state.activeFlowId,
     patchJson: JSON.stringify(patch), beforeJson: JSON.stringify(before), afterJson: JSON.stringify(after),
     addedCapabilities: after.capabilities.filter(cap => !before.capabilities.includes(cap)),
-    tracking: trackingImpacts(before, after), diagnosis: diagnose(patch, before, evidence) };
+    tracking: trackingImpacts(before, after), diagnosis: diagnose(patch, before, evidence), code: changedCodeParams(before, after) };
   return { ...proposal, digest: proposalDigest(proposal) };
 }
 

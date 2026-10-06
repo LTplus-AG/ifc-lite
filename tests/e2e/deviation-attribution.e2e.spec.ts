@@ -15,7 +15,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { ViewerState } from '../../apps/viewer/src/store';
-import { DEVICE_LOST_SIGNAL, skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss';
+import { DEVICE_LOST_STATE_ERROR, skipForGpuDeviceLoss, watchGpuDeviceLoss, type GpuDeviceLossWatch } from './gpu-device-loss';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
@@ -41,7 +41,7 @@ function lasFile(name: string, z = 100) {
   return { name, mimeType: 'application/octet-stream', buffer };
 }
 
-async function load(page: Page, file: { name: string; mimeType: string; buffer: Buffer }, count: number) {
+async function load(page: Page, gpu: GpuDeviceLossWatch, file: { name: string; mimeType: string; buffer: Buffer }, count: number) {
   await page.locator(count === 1 ? '#file-input-open' : '#file-input-add').setInputFiles(file);
   const outcome = await page.waitForFunction(({ n, deviceLost }) => {
     const state = globalThis.__ifc_lite_viewer_store__?.getState();
@@ -53,7 +53,12 @@ async function load(page: Page, file: { name: string; mimeType: string; buffer: 
     // its stream is registered, an IFC once it has meshes.
     return !state.loading && !state.geometryStreamingActive && models.length === n
       && models.every((m) => m.pointCloudHandleId !== undefined || (m.geometryResult?.meshes.length ?? 0) > 0) ? 'ok' : false;
-  }, { n: count, deviceLost: DEVICE_LOST_SIGNAL.source }, { timeout: 120_000 }).then((h) => h.jsonValue());
+  }, { n: count, deviceLost: DEVICE_LOST_STATE_ERROR.source }, { timeout: 120_000 }).then((h) => h.jsonValue(), async (error) => {
+    // A load that never settles after the software device died is the loss, not a regression.
+    const found = await gpu.lost(500);
+    if (found !== null) skipForGpuDeviceLoss(`load ${file.name}`, found);
+    throw error;
+  });
   if (outcome === 'device-lost') skipForGpuDeviceLoss(`load ${file.name}`, String(outcome));
   expect(outcome, `load ${file.name}`).toBe('ok');
 }
@@ -80,9 +85,9 @@ function scanRow(rows: Array<Record<string, string>>, name: string) {
 test('Deviation CSV names each scan row after its own model, IFC first (#6887)', async ({ page }, info) => {
   const gpu = await watchGpuDeviceLoss(page);
   await page.goto('/');
-  await load(page, IFC, 1);
-  await load(page, lasFile('survey.las'), 2);
-  await load(page, lasFile('second.las', 150), 3);
+  await load(page, gpu, IFC, 1);
+  await load(page, gpu, lasFile('survey.las'), 2);
+  await load(page, gpu, lasFile('second.las', 150), 3);
   await gpu.skipIfLost('IFC + scans load');
 
   const rows = await gpu.requireLiveGpu('deviation compute and CSV', () => deviationCsv(page));
@@ -99,8 +104,8 @@ test('Deviation CSV names each scan row after its own model, IFC first (#6887)',
 test('Deviation CSV names the scan row after the scan model, scan first (#6887)', async ({ page }, info) => {
   const gpu = await watchGpuDeviceLoss(page);
   await page.goto('/');
-  await load(page, lasFile('survey.las'), 1);
-  await load(page, IFC, 2);
+  await load(page, gpu, lasFile('survey.las'), 1);
+  await load(page, gpu, IFC, 2);
   await gpu.skipIfLost('scan + IFC load');
 
   const rows = await gpu.requireLiveGpu('deviation compute and CSV', () => deviationCsv(page));

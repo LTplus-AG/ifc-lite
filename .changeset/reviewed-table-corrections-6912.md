@@ -1,0 +1,5 @@
+---
+"@ifc-lite/viewer": minor
+---
+
+Reviewed table, bulk and IDS corrections (#6912). The Data Connector, Bulk Property Editor and IDS correction dialog now offer **Review as changes** as their primary action: the edit becomes a reviewed model change batch with each element's current value expected, keyed by GlobalId (Tag and Name keys resolved exactly; empty, duplicate, unmatched and ambiguous keys are listed, never guessed), units converted into the model's stored frame, split into numbered parts of 500 changes and refused above 10,000. A value edited after the table was read shows as a conflict and is never overwritten. The Data Connector can match by Tag and **Suggest mapping** drafts an editable table mapping (identity column plus property, quantity or attribute targets with value types and units) with a live sample of the first rows. Receipts record the IDS or rule-set verdict counts at apply, and **Re-run validation** shows the per-specification change. The direct paths remain as secondary buttons.

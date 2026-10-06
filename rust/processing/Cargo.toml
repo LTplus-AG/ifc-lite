@@ -27,6 +27,10 @@ csg-capture = ["ifc-lite-geometry/csg_capture"]
 # Enabled by the native server; default OFF keeps wasm/default builds
 # byte-identical.
 observability = ["ifc-lite-geometry/observability"]
+# Measurement-only: one never-inlined marker call per ProcessingStats timer
+# edge, so `scripts/perf/instructions.sh` can split callgrind instruction
+# counts by phase (#6958). Default OFF compiles the markers to nothing.
+phase-markers = []
 
 [[example]]
 name = "csg_scaling_bench"

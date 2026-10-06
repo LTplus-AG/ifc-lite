@@ -17,9 +17,10 @@
  */
 
 import { DEFAULT_CHUNK_CELL_SIZE, type SpatialChunkingConfig } from '@ifc-lite/renderer';
+import { readPerfFlag } from '../lib/perf/flags.js';
 
 export function getSpatialChunkingConfig(): SpatialChunkingConfig | null {
-  const raw = (globalThis as { __IFC_LITE_CHUNKS?: unknown }).__IFC_LITE_CHUNKS;
+  const raw = readPerfFlag('chunks');
   if (raw === undefined || raw === null) return { cellSize: DEFAULT_CHUNK_CELL_SIZE };
   if (raw === false || raw === 0) return null;
   if (raw === true || raw === 1) return { cellSize: DEFAULT_CHUNK_CELL_SIZE };

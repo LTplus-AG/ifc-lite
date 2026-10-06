@@ -1035,6 +1035,87 @@ noise level, small rooms); after changing a threshold, run the full matrix
 with
 `cargo test -p ifc-lite-processing --test scan_cylinder_acceptance -- --ignored --nocapture`.
 
+### Scan element proposals
+
+`IfcAPI.proposeScanElements(reportJson, optionsJson)` turns a
+`segmentScanPoints` report into proposed IFC elements, as UTF-8 JSON, from
+the canonical Rust `ifc_lite_processing::scan_proposals` (#6894). It creates
+nothing: the viewer reviews the proposals and creates the accepted ones
+through its modelling commands. The typed wrapper is `proposeScanElements` in
+`@ifc-lite/geometry/scan-proposals`. Options are camelCase, `{}` for the
+defaults; unknown fields are refused. The report is bounded to 20,000 planes
+and 20,000 cylinders (64 MiB of JSON).
+
+Everything is measured in the IFC model frame: Z up, metres. `scanToModel` is
+a row-major 4x4 similarity (rotation, one uniform scale, translation) from
+the report's frame into it, identity by default; reflections, shears and
+projective rows are refused. The viewer's scan sample is Y-up and relative to
+its decode origin, so its `scanToModel` composes the point cloud's placement,
+the Y-up to Z-up swap and the model's world offset. Planes are reclassified
+in the model frame (`classificationAngleDegrees`, 10).
+
+- **Walls** (`IfcWall`): two vertical faces pair when they are parallel within
+  `pairingAngleDegrees` (5), `minWallThicknessMetres`..`maxWallThicknessMetres`
+  (0.05..0.6) apart, overlap along the wall by `minWallOverlapFraction` (0.5)
+  of the shorter face, and share some height. When both normals face the
+  scanner and point into the gap between them, the gap was seen from inside
+  (a niche) and they do not pair. Pairs are taken nearest first, each face
+  once. The axis lies halfway between the faces and spans the union of both.
+  A face without a partner gets `defaultWallThicknessMetres` (0.2) behind its
+  scanned side: opposite a scanner-facing normal, otherwise away from
+  `interiorPoint` (default: the area-weighted mean of the plane centroids).
+  Faces shorter than `minWallLengthMetres` (0.5) or lower than
+  `minWallHeightMetres` (1) are skipped.
+- **Floors and ceilings**: a horizontal plane is a floor when the walls that
+  reach its outline stand on it, and a ceiling when they end under it (within
+  half of `levelSnapMetres`, weighted by area). With no such wall, a
+  scanner-facing normal decides, and otherwise the plane's height relative to
+  the interior point.
+- **Slabs** (`IfcSlab`): the outline is the plane's extent rectangle. A
+  ceiling and the floor above it pair into one slab, with measured thickness,
+  when they are at least `minWallThicknessMetres` (0.05) and at most
+  `maxSlabThicknessMetres` (0.6) apart and half of the
+  smaller outline lies over the larger. A single floor gets
+  `defaultSlabThicknessMetres` (0.2) below it, a single ceiling the same above
+  it. Planes under `minSlabAreaSquareMetres` (1) are skipped. Sloped planes
+  propose nothing.
+- **Columns** (`IfcColumn`): cylinders whose axis is within the
+  classification angle of vertical, with a circular profile. A polygonal
+  column (a cylinder reported with `faceted`) gets the circle of the
+  polygon's cross-section area, not its circumradius: an octagon's radius is
+  0.949 of its circumradius. A polygonal profile is not proposed.
+- **Pipes**: other cylinders, `IfcPipeSegment` for `schema` `IFC4` (default)
+  or `IFC4X3`, and `IfcFlowSegment` for `IFC2X3`, which has no
+  `IfcPipeSegment`.
+
+Wall and column ends within `levelSnapMetres` (0.3) of a floor or ceiling
+whose outline reaches them extend to it, because segmented walls stop a voxel
+or two short of the junction. For a column, "reaches" means its axis lies
+within `levelSnapMetres` plus its radius of the outline, since a slab's
+extent can stop at the column's face.
+
+Each proposal has an `id` (`wall-0`, `slab-1`, `column-0`, `pipe-0`), its
+`ifcClass`, a `basis` (`pairedFaces`, `singleFace`, `floorCeilingPair`,
+`floor`, `ceiling`, `cylinder`), its `sources` (indices into the report's
+`planes` or `cylinders`), `fit` (inlier-weighted `rmsMetres`, inlier counts,
+area) and `geometry`:
+
+- a wall's axis `start` and `end` at its base, with `thicknessMetres` and
+  `heightMetres`;
+- a slab's top-face `outline`, counter-clockwise from above, with
+  `thicknessMetres` below it;
+- a column's `base`, `heightMetres` and `radiusMetres`;
+- a pipe's axis `start`, `end` and `radiusMetres`.
+
+`confidence` is `prior x quality x coverage`. The prior is 0.95 for a
+measured thickness (paired faces, floor and ceiling pairs), 0.9 for a
+cylinder, 0.75 for a single floor or ceiling and 0.7 for a single wall face.
+Quality is `1 / (1 + (rms / 1 cm)^2)`. Coverage is the share of the proposed
+surface the inliers cover; for a cylinder it is `0.5 + 0.5 * arc / 360`.
+`stats` counts the planes by orientation, the paired and single walls and
+slabs, the planes too small to propose, and the columns and pipes.
+`transformScale` reports the scale of `scanToModel`.
+
 `requestSha256` hashes the algorithm ID `ifclite-rigid-correspondence-v1`, one
 zero byte, and compact typed request JSON in Rust field order. It binds all frame
 identities, coordinates, observation identities and the ordered fit/check partition.

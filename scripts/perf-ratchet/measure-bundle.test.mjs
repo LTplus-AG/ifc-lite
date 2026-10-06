@@ -88,6 +88,58 @@ rt('measureBundle reports brotli sizes that round-trip and counts eager JS only'
   }
 });
 
+// The ratchet gates a byte budget at 0.5%, so two builds of IDENTICAL sources
+// must measure identically. They differ in the build timestamp and in every
+// content hash the entry spells out; Brotli q11 maps that same-length noise to
+// size swings of up to 0.5% on a real viewer build (measured on the viewer
+// entry: 4,358,569 raw bytes, 982,095 to 987,104 compressed across re-hashes).
+function writeViewerDist(dist, { seed, stamp, extra = '' }) {
+  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
+  let s = seed;
+  const hash = () => Array.from({ length: 8 }, () => B64[(s = (Math.imul(s, 1103515245) + 12345) >>> 0) >>> 26]).join('');
+  mkdirSync(join(dist, 'assets'), { recursive: true });
+  const refs = [];
+  for (let i = 0; i < 300; i++) {
+    const name = `chunk${i}-${hash()}.js`;
+    writeFileSync(join(dist, 'assets', name), 'export {}');
+    refs.push(`import(\`./${name}\`)`);
+  }
+  const entryName = `main-${hash()}.js`;
+  writeFileSync(join(dist, 'assets', entryName),
+    `const built=\`${stamp}\`;\n${refs.join(';\n')};\n${'export const x = 1;\n'.repeat(200)}${extra}`);
+  writeFileSync(join(dist, 'index.html'), `<html><script type="module" src="/assets/${entryName}"></script></html>`);
+}
+
+rt('the entry measures the same for two builds that differ only in content hashes and build time', () => {
+  const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-noise-'));
+  try {
+    writeFileSync(join(root, 'w.wasm'), 'x');
+    const sizes = [];
+    for (const [seed, stamp, extra] of [
+      [1, '2026-10-06T09:50:57.315Z', ''],
+      [2, '2026-10-06T09:54:58.613Z', ''],
+      [3, '2026-10-06T09:52:59.628Z', ''],
+      [3, '2026-10-06T09:52:59.628Z', 'export const real = "an actual code change that must still count";\n'.repeat(40)],
+    ]) {
+      const dist = join(root, `dist-${sizes.length}`);
+      writeViewerDist(dist, { seed, stamp, extra });
+      const m = measure.measureBundle({ wasm: join(root, 'w.wasm'), dist, commit: 'a' }).metrics.find((x) => x.id === 'viewer-entry-js-brotli');
+      sizes.push(m.value);
+    }
+    assert.equal(sizes[1], sizes[0], 'new hashes and a new timestamp must not move the metric');
+    assert.equal(sizes[2], sizes[0]);
+    assert.ok(sizes[3] > sizes[0], 'a real code change still moves it');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+rt('stripBuildNoise rewrites only hashed names that exist in dist, and timestamps', () => {
+  const out = measure.stripBuildNoise(
+    Buffer.from('a "x-AbCdEfGh.js" b "not-a-file-ZZZZZZZZ.js" 2026-10-06T09:54:58.613Z'), ['x-AbCdEfGh.js']).toString();
+  assert.equal(out, 'a "x-########.js" b "not-a-file-ZZZZZZZZ.js" 0000-00-00T00:00:00.000Z');
+});
+
 rt('measureBundle names the missing build instead of measuring nothing', () => {
   const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-empty-'));
   try {

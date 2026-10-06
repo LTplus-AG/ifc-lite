@@ -12,7 +12,8 @@
  *   node scripts/perf-ratchet/measure-bundle.mjs [--wasm <file>] [--dist <dir>]
  *        [--out <file>] [--commit <sha>]
  *
- * Metrics:
+ * Metrics (the entry is compressed with per-build hashes and the build
+ * timestamp rewritten out, see stripBuildNoise):
  *   engine-wasm-brotli      brotli bytes of packages/wasm/pkg/ifc-lite_bg.wasm
  *   viewer-entry-js-brotli  brotli bytes of the viewer's main entry chunk
  *   viewer-eager-js-chunks  JS files index.html makes the browser fetch before
@@ -31,7 +32,7 @@
  * guess, so a template change cannot silently measure the wrong file.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, readdirSync } from 'node:fs';
 import { brotliCompressSync, constants as zlibConstants } from 'node:zlib';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, relative, resolve, sep } from 'node:path';
@@ -49,6 +50,53 @@ export function brotliSize(buf) {
       [zlibConstants.BROTLI_PARAM_SIZE_HINT]: buf.length,
     },
   }).length;
+}
+
+/** Placeholder every content hash in a built file name is rewritten to before compression. */
+const HASH_PLACEHOLDER = '########';
+const ISO_STAMP = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g;
+const ISO_PLACEHOLDER = '0000-00-00T00:00:00.000Z';
+const HASHED_NAME = /^(.+)-([A-Za-z0-9_-]{8})(\.[A-Za-z0-9]+)$/;
+
+/** File names under `dist` that carry a content hash (`<stem>-<8 chars>.<ext>`). */
+export function hashedAssetNames(dist) {
+  const names = [];
+  const walk = (dir) => {
+    for (const ent of readdirSync(dir, { withFileTypes: true })) {
+      if (ent.isDirectory()) walk(join(dir, ent.name));
+      else if (HASHED_NAME.test(ent.name)) names.push(ent.name);
+    }
+  };
+  walk(dist);
+  return names;
+}
+
+/**
+ * Rewrites build noise out of a chunk before it is compressed.
+ *
+ * Two things in a Vite build change on EVERY build of identical sources, so
+ * they make the brotli size a function of the build rather than of the code:
+ * the `__BUILD_DATE__` timestamp (it changes the entry's own hash and,
+ * through the import graph, the hash of every chunk importing it), and the
+ * 8-character content hashes in the file names the entry spells out. Both
+ * keep the raw length, yet brotli q11 is chaotic in its input: re-hashing
+ * one and the same entry moved its size by +0.5% in about 1 of 20 samples.
+ *
+ * Only names that exist in `dist` and ISO-8601 millisecond timestamps are
+ * rewritten, so real code and string content still count.
+ *
+ * @param {Buffer} buf  chunk bytes
+ * @param {string[]} assetNames  from {@link hashedAssetNames}
+ * @returns {Buffer}
+ */
+export function stripBuildNoise(buf, assetNames) {
+  // latin1 round-trips every byte, and the tokens are ASCII.
+  let text = buf.toString('latin1').replace(ISO_STAMP, ISO_PLACEHOLDER);
+  for (const name of new Set(assetNames)) {
+    const m = HASHED_NAME.exec(name);
+    if (m) text = text.split(name).join(`${m[1]}-${HASH_PLACEHOLDER}${m[3]}`);
+  }
+  return Buffer.from(text, 'latin1');
 }
 
 /** Attribute map of one start tag's attribute text. Valueless attributes map to ''. */
@@ -113,6 +161,9 @@ export function measureBundle({ wasm, dist, commit, measuredAt = new Date().toIS
   const jsEager = eager.filter((u) => /\.m?js$/i.test(u.split(/[?#]/)[0]));
   for (const u of jsEager) resolveAsset(dist, u);
   const entryBytes = readFileSync(resolveAsset(dist, entry));
+  // Compressed WITHOUT the per-build stamps (see stripBuildNoise); `raw` in
+  // the detail stays the real byte count.
+  const entryStable = stripBuildNoise(entryBytes, hashedAssetNames(dist));
 
   return {
     family: FAMILY,
@@ -120,7 +171,7 @@ export function measureBundle({ wasm, dist, commit, measuredAt = new Date().toIS
     measuredAt,
     metrics: [
       { id: 'engine-wasm-brotli', value: brotliSize(wasmBytes), detail: `raw ${wasmBytes.length} bytes` },
-      { id: 'viewer-entry-js-brotli', value: brotliSize(entryBytes), detail: `${entry.split(/[?#]/)[0].replace(/^.*\//, '')}, raw ${entryBytes.length} bytes` },
+      { id: 'viewer-entry-js-brotli', value: brotliSize(entryStable), detail: `${entry.split(/[?#]/)[0].replace(/^.*\//, '')}, raw ${entryBytes.length} bytes` },
       { id: 'viewer-eager-js-chunks', value: jsEager.length, detail: jsEager.map((u) => u.replace(/^.*\//, '')).join(' ') },
     ],
   };

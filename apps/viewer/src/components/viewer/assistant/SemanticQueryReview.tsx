@@ -9,9 +9,10 @@ import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { useSemanticSession } from '@/lib/semantic/session';
-import { lintSemanticQuery, type SemanticQueryProposal } from '@/lib/semantic/assist/query-proposal';
-import { discloseGrant, useSemanticEndpointGrant, type EndpointGrant } from '@/lib/semantic/assist/endpoint-grant';
-import { runReviewedQuery, type QueryRun } from '@/lib/semantic/assist/query-run';
+import type { SemanticQueryProposal } from '@/lib/semantic/assist/query-proposal';
+import { effectiveMapping, lintSemanticQuery } from '@/lib/semantic/assist/query-lint';
+import { useSemanticEndpointGrant, type EndpointGrant } from '@/lib/semantic/assist/endpoint-grant';
+import { discloseGrant, runReviewedQuery, type QueryRun } from '@/lib/semantic/assist/query-run';
 import { revisionPinIsCurrent } from '@/lib/semantic/assist/revision-pin';
 import { SemanticResults } from '../SemanticResults';
 import { ReviewFrame } from './SemanticReviewParts';
@@ -79,7 +80,7 @@ export function SemanticQueryReview({ proposal }: { proposal: SemanticQueryPropo
         <p>{t('semanticAssist.queryStatements', { count: run.result.quadCount })}</p>
         <details><summary className="cursor-pointer text-muted-foreground">{t('semanticAssist.queryGraph')}</summary>
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{run.result.value.slice(0, 20_000)}</pre></details>
-      </> : current ? <SemanticResults results={run.result.value} mapping={proposal.mapping} revisions={revisions} onError={failure => setError(String(failure))} />
+      </> : current ? <SemanticResults results={run.result.value} mapping={effectiveMapping(proposal)} revisions={revisions} onError={failure => setError(String(failure))} />
         : <HistoricalRows statuses={run.result.statuses} capturedAt={run.pin.capturedAt} />}
     </div>}
   </ReviewFrame>;

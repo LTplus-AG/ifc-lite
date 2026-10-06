@@ -7,7 +7,7 @@ import { BarChart3, Bot, ClipboardCheck, Crosshair, Eye, FileText, Filter, GitBr
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import type { AssistantMessage } from '@/lib/assistant/persistence';
 import type { AssistantSource } from '@/lib/assistant/sources';
 import { adapterFor } from '@/lib/assistant/adapters/registry';

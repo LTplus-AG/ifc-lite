@@ -3,13 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { create } from 'zustand';
-import { sanitizeSource } from '@ifc-lite/semantic';
 
 /**
  * The endpoint authority the user last exercised in the Linked records panel:
  * endpoint, hostname grant, optional loopback grant, relay and credential.
  * Session memory only. It is never persisted, never part of assistant
  * evidence or prompts, and any change of source in the panel revokes it.
+ * This module stays free of the semantic package so the eager evidence
+ * register can read whether a grant exists.
  */
 export interface EndpointGrant {
   endpoint: string; host: string; loopbackHttpOrigin?: string; relayProvider?: string; bearer?: string; grantedAt: string;
@@ -21,11 +22,4 @@ export function recordEndpointGrant(grant: Omit<EndpointGrant, 'grantedAt'>): vo
 }
 export function revokeEndpointGrant(): void {
   if (useSemanticEndpointGrant.getState().grant) useSemanticEndpointGrant.setState({ grant: null });
-}
-
-/** What a reviewer may see: where the query goes and which grants apply, never the credential value. */
-export interface GrantDisclosure { endpoint: string; host: string; loopback: boolean; relay: string | null; credential: boolean }
-export function discloseGrant(grant: EndpointGrant): GrantDisclosure {
-  return { endpoint: sanitizeSource(grant.endpoint), host: grant.host, loopback: !!grant.loopbackHttpOrigin,
-    relay: grant.relayProvider ?? null, credential: !!grant.bearer };
 }

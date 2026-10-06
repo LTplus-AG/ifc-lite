@@ -13,9 +13,10 @@
  * Type-only imports below are erased and pull nothing into the eager bundle.
  */
 
-import type { IdentityRecord, LiveEntity, Resolution, ResourceIdentityLink, ResourceUriIdentityConfig, SemanticDocument,
-  SparqlResults, ValidationFinding, ValidationReport } from '@ifc-lite/semantic';
+import type { IdentityRecord, LiveEntity, ProfileDefinition, Resolution, ResourceIdentityLink, ResourceUriIdentityConfig, SemanticDocument,
+  SemanticWorkspace, SparqlResults, ValidationFinding, ValidationReport } from '@ifc-lite/semantic';
 import type { IdentityFields } from '@/lib/semantic/resolver-context';
+import type { ProjectionMappingView } from '@/lib/semantic/assist/evidence';
 
 /** The session fields evidence reads; credentials, endpoints and grants are not in the session at all. */
 export interface SemanticSessionView {
@@ -29,6 +30,9 @@ export interface SemanticSessionView {
   findings: ValidationFinding[];
   report?: ValidationReport;
   revisions: Map<string, string>;
+  /** Revision links entered but not yet associated with a loaded model. */
+  pendingRevisions: SemanticWorkspace['revisions'];
+  profile: ProfileDefinition;
 }
 
 export interface SemanticEvidenceAccess {
@@ -37,6 +41,8 @@ export interface SemanticEvidenceAccess {
   resolve: (resource: IdentityRecord, entities: readonly LiveEntity[], revisions: ReadonlyMap<string, string>) => Resolution;
   /** Effective IfcRoot GlobalIds of every loaded model (edits, created entities and tombstones applied). */
   liveEntities: () => LiveEntity[];
+  /** Native projection mappings, for assistant proposals that name a field to project. */
+  projectionMappings: () => ReadonlyArray<ProjectionMappingView>;
 }
 
 let access: SemanticEvidenceAccess | null = null;

@@ -11,15 +11,18 @@ import { captureEvidence, evidenceIsCurrent } from '@/lib/assistant/evidence';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { DEMO_REVISIONS } from '../demo';
 import { useSemanticSession } from '../session';
-import { useSemanticEndpointGrant, recordEndpointGrant, discloseGrant, revokeEndpointGrant } from './endpoint-grant';
+import { useSemanticEndpointGrant, recordEndpointGrant, revokeEndpointGrant } from './endpoint-grant';
 import { attachSourceText, useSemanticSourceTexts } from './source-texts';
 import { capturedPassages, passagesOf } from './spans';
-import { runReviewedQuery } from './query-run';
+import { discloseGrant, runReviewedQuery } from './query-run';
 import { parseSemanticQuery } from './query-proposal';
-import { parseSemanticMapping, reviewSemanticMapping } from './mapping-proposal';
-import { applySemanticProjections, parseSemanticProjection, previewSemanticProjection } from './projection-proposal';
+import { parseSemanticMapping } from './mapping-proposal';
+import { reviewSemanticMapping } from './mapping-review';
+import { parseSemanticProjection } from './projection-proposal';
+import { applySemanticProjections, previewSemanticProjection } from './projection-review';
 import { captureRevisionPin, revisionPinIsCurrent } from './revision-pin';
 import { PROFILE_ID } from '../types';
+import { semanticAdapter } from '@/lib/assistant/adapters/semantic';
 
 const original = useViewerStore.getState();
 const session = useSemanticSession.getState();
@@ -175,4 +178,22 @@ test('#6920 projection rows go through the native service: refusals verbatim, st
   // With editing off the native service denies every row instead of the card writing around it.
   useViewerStore.setState({ editEnabled: false });
   assert.ok(rows([{ resource: one.id, field: 'fireRating' }]).every(row => row.status === 'refused' && /denied/i.test(row.reason)));
+});
+
+test('#6920 an attached text alone is attachable evidence, with revisions and profile terms but no records', async () => {
+  await seedSemanticModels(1);
+  useSemanticSession.setState({ document: undefined });
+  const state = useViewerStore.getState();
+  assert.deepEqual(semanticAdapter.readiness(state), { status: { labelKey: 'assistantSources.semantic.none' }, ready: false });
+  assert.equal(semanticAdapter.capture(state, 100).availability, 'unavailable');
+  attachSourceText('Specification', SPEC);
+  assert.deepEqual(semanticAdapter.readiness(state), { status: { labelKey: 'semanticAssist.pickTexts', params: { count: 1 } }, ready: true });
+  const capture = semanticAdapter.capture(state, 100);
+  assert.equal(capture.availability, 'available');
+  assert.deepEqual(capture.rows, passagesOf('S1', SPEC));
+  assert.equal(capture.totalRows, 3);
+  const assist = (capture.summary as { assist: { revisions: unknown[]; profile: { fields: Array<{ key: string }> }; projectionMappings: Array<{ field: string }> } }).assist;
+  assert.deepEqual(assist.revisions, [{ revision: DEMO_REVISIONS[0], associatedWithLoadedModel: true }]);
+  assert.ok(assist.profile.fields.some(field => field.key === 'fireRating'));
+  assert.ok(assist.projectionMappings.some(mapping => mapping.field === 'fireRating'));
 });

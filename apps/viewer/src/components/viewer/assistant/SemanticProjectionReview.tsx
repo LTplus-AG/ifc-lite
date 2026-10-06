@@ -8,7 +8,8 @@ import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
 import { useSemanticSession } from '@/lib/semantic/session';
-import { applySemanticProjections, previewSemanticProjection, type SemanticProjectionProposal } from '@/lib/semantic/assist/projection-proposal';
+import type { SemanticProjectionProposal } from '@/lib/semantic/assist/projection-proposal';
+import { applySemanticProjections, previewSemanticProjection } from '@/lib/semantic/assist/projection-review';
 import { ReviewFrame } from './SemanticReviewParts';
 
 const show = (value: unknown) => value === undefined || value === null ? '—' : String(value);

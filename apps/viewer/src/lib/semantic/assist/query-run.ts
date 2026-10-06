@@ -8,8 +8,9 @@ import { useSemanticSession } from '../session';
 import { identityFromRow } from '../resolver-context';
 import { resolveResource } from '../resolver';
 import { liveEntities } from '../viewer';
-import { lintSemanticQuery, type SemanticQueryProposal } from './query-proposal';
+import type { SemanticQueryProposal } from './query-proposal';
 import type { EndpointGrant } from './endpoint-grant';
+import { effectiveMapping, lintSemanticQuery } from './query-lint';
 import { captureRevisionPin, type RevisionPin } from './revision-pin';
 
 /** One reviewed execution: rows plus the resolution each row had against the model revision at that moment. */
@@ -31,8 +32,15 @@ export async function runReviewedQuery(proposal: SemanticQueryProposal, grant: E
   if (response.kind !== 'select') throw new Error('The endpoint did not return query results');
   const entities = liveEntities();
   const statuses = response.value.rows.map(row => {
-    const identity = identityFromRow(row, proposal.mapping, settings);
+    const identity = identityFromRow(row, effectiveMapping(proposal), settings);
     return identity ? resolveResource(identity, entities, settings.revisions).status : 'invalid' as const;
   });
   return { ...base, result: { form: 'select', value: response.value, statuses } };
+}
+
+/** What a reviewer may see: where the query goes and which grants apply, never the credential value. */
+export interface GrantDisclosure { endpoint: string; host: string; loopback: boolean; relay: string | null; credential: boolean }
+export function discloseGrant(grant: EndpointGrant): GrantDisclosure {
+  return { endpoint: sanitizeSource(grant.endpoint), host: grant.host, loopback: !!grant.loopbackHttpOrigin,
+    relay: grant.relayProvider ?? null, credential: !!grant.bearer };
 }

@@ -27,7 +27,7 @@ import { provideSemanticEvidence } from '@/lib/assistant/adapters/semantic-acces
 import { AssistantAction } from './assistant/AssistantAction';
 
 // The eager evidence register reads this session only once this lazy chunk has loaded (#6833).
-provideSemanticEvidence({ session: useSemanticSession, liveEntities: () => liveEntities(),
+provideSemanticEvidence({ session: useSemanticSession, liveEntities: () => liveEntities(), projectionMappings: () => PROJECTION_MAPPINGS,
   resolve: (resource, entities, revisions) => resolveResource(resource, entities, revisions) });
 
 const control = 'w-full rounded border border-border bg-background p-2 text-sm';

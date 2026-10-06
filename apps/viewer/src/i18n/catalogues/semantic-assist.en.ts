@@ -6,11 +6,7 @@ import type { TranslationValue } from '../types';
 
 /** Linked-records assistance (viewer AI P16): `components/viewer/assistant/Semantic*Review.tsx`, `SemanticAssistControls.tsx`. */
 export const semanticAssistEn = {
-  'semanticAssist.pickDescription': 'Linked records, query results and attached specification texts.',
-  'semanticAssist.pickStatus': '{records} records · {texts} attached texts',
-  'semanticAssist.pickNone': 'No records or attached texts',
-  'semanticAssist.evidenceRows': 'Rows are attached text passages with exact offsets, then validation findings, records and query rows. Endpoints, grants and credentials are never included.',
-  'semanticAssist.evidenceUnavailable': 'No linked records or attached texts were available when this was captured.',
+  'semanticAssist.pickTexts': { one: '{count} attached text', other: '{count} attached texts' },
   'semanticAssist.suggestRequirements': 'Extract the requirements in the attached text, each with its exact source passage',
   'semanticAssist.suggestMapping': 'Propose mappings between IFC classes/properties and the profile, with sources',
   'semanticAssist.suggestQuery': 'Draft a bounded read query for: ',

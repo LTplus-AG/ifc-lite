@@ -16,7 +16,7 @@ import { createContentLibrary, initialContentStatus, type ContentStatus } from '
 import type { ContentDefinition } from '@/lib/storage/content-migration';
 import { parseSemanticMapping, type SemanticMappingProposal } from './mapping-proposal';
 import { parseSemanticRequirements, type SemanticRequirementProposal } from './requirement-proposal';
-import { decodeRevisionPin, type RevisionPin } from './revision-pin';
+import { decodeRevisionPin, type RevisionPin } from './revision-pin-schema';
 import type { SpanCheck } from './spans';
 
 interface ReviewBase { version: 1; id: string; createdAt: string; origin: string }

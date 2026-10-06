@@ -2150,6 +2150,120 @@ loaded, `file_size_mb`/`mesh_count` from the last load (the same model key as
 | `ifc_navigate` | J6 | `frame_p50_ms`, `frame_p95_ms`, `frame_max_ms` over 120 camera-interaction frames (orbit, pan, zoom), excluding each interaction's first frame, frames while geometry streams and hidden-tab frames | once per page session, every session: one row per session is already the cap. Frame intervals include the adaptive render throttle, which is what the user sees. |
 | `viewer_boot` | J0 | `drop_target_ms` (navigation to the empty viewer's drop target enabled), `engine_wasm_compiled_ms` (navigation to the prewarmed engine compiled), `engine_wasm_compile_ms` (the prewarm's own fetch + compile), `engine_wasm_compiled` | once per page load, every page load. Sent when both are known, or 30 s after the field chunk loads. `drop_target_ms` is absent when a load started first; `engine_wasm_compile_ms` is absent when a load joined the compile; both are absent when the prewarm was skipped (Save-Data, 2G). |
 
+#### The field verdict (#6961)
+
+`scripts/perf/field-verdict.mjs` applies the paired-ratio method above to one
+deployed build: per (event, metric, journey, person, model) cell,
+`median(recent) / median(baseline)`, where recent is the judged build's rows
+and the divisor comes from the baseline window (the 14 days before that build
+first appeared) and from the `default` arm only. A group's pooled ratio is the
+median of its cell ratios, reported per journey and pooled across journeys,
+each per `perf_flags` arm. The threshold is on speed (1 / ratio): pooled speed
+below 0.95 with at least 5 paired cells is `regressed`; fewer cells is
+`insufficient`, which is the common case at current volume and is not a
+pass. `was_hidden = true` rows and bot traffic are excluded in the query.
+
+```bash
+node scripts/perf/field-verdict.mjs --print-sql --build <sha> > verdict.sql   # the HogQL below, filled in
+POSTHOG_PERSONAL_API_KEY=... node scripts/perf/field-verdict-fetch.mjs --build <sha> --out result.json
+node scripts/perf/field-verdict.mjs result.json --build <sha>                  # markdown; --json for data
+```
+
+`.github/workflows/field-verdict.yml` runs this daily at 05:15 UTC, before the
+05:45 deploy, against the build production has served since the previous
+deploy, and posts the markdown on the PR that build's commit came from (once
+per build). It needs one repository secret, `POSTHOG_PERSONAL_API_KEY`: a
+PostHog personal API key with only `query:read`, scoped to project 199147
+(EU cloud). Without it every run skips with a notice. Opening a thread when a
+pooled group regresses is the next step and is not wired yet.
+
+The HogQL the script expects (`__BUILD__` is the 12-character
+`app_build_sha`, `__BASELINE_DAYS__` the baseline length; the script reads it
+from this block):
+
+<!-- field-verdict-hogql -->
+```sql
+SELECT
+  event,
+  journey,
+  arm,
+  person,
+  model,
+  metric,
+  window,
+  quantile(0.5)(value) AS median,
+  count() AS n
+FROM (
+  SELECT
+    event,
+    -- Rows before #6961 carry no `journey` (and no `load_path`: the scrubber
+    -- deleted it), so they fall back to load_target; a pre-#6961 cache hit
+    -- therefore reads as J1.
+    coalesce(
+      toString(properties.journey),
+      multiIf(
+        event = 'ifc_model_loaded' AND properties.load_target = 'federated', 'J4',
+        event = 'ifc_model_loaded' AND properties.load_path = 'cache', 'J2',
+        event = 'ifc_model_loaded', 'J1',
+        event = 'ifc_inspect', 'J5',
+        event = 'ifc_navigate', 'J6',
+        'J0'
+      )
+    ) AS journey,
+    coalesce(toString(properties.perf_flags), 'default') AS arm,
+    toString(person_id) AS person,
+    -- The model is its format plus size to 10 KB: no name ever leaves the browser.
+    if(event = 'viewer_boot', '-', concat(coalesce(toString(properties.format), '?'), ':', toString(round(toFloat(properties.file_size_mb), 2)))) AS model,
+    if(toString(properties.app_build_sha) = '__BUILD__', 'recent', 'baseline') AS window,
+    arrayJoin(arrayFilter(m -> isNotNull(m.2), [
+      tuple('total_elapsed_ms', toFloat(properties.total_elapsed_ms)),
+      tuple('first_visible_geometry_ms', toFloat(properties.first_visible_geometry_ms)),
+      tuple('spatial_ready_ms', toFloat(properties.spatial_ready_ms)),
+      tuple('metadata_complete_ms', toFloat(properties.metadata_complete_ms)),
+      tuple('stream_complete_ms', toFloat(properties.stream_complete_ms)),
+      tuple('main_thread_blocked_ms', toFloat(properties.main_thread_blocked_ms)),
+      tuple('inspect_ms', toFloat(properties.inspect_ms)),
+      tuple('frame_p95_ms', toFloat(properties.frame_p95_ms)),
+      tuple('drop_target_ms', toFloat(properties.drop_target_ms)),
+      tuple('engine_wasm_compile_ms', toFloat(properties.engine_wasm_compile_ms))
+    ])) AS pair,
+    pair.1 AS metric,
+    pair.2 AS value
+  FROM events
+  WHERE event IN ('ifc_model_loaded', 'ifc_inspect', 'ifc_navigate', 'viewer_boot')
+    AND timestamp >= now() - INTERVAL 90 DAY
+    -- Baseline: the __BASELINE_DAYS__ days before the judged build first appeared.
+    AND timestamp >= (
+      SELECT min(timestamp) FROM events
+      WHERE event = 'ifc_model_loaded' AND timestamp >= now() - INTERVAL 60 DAY
+        AND toString(properties.app_build_sha) = '__BUILD__'
+    ) - INTERVAL __BASELINE_DAYS__ DAY
+    AND (
+      toString(properties.app_build_sha) = '__BUILD__'
+      OR (
+        timestamp < (
+          SELECT min(timestamp) FROM events
+          WHERE event = 'ifc_model_loaded' AND timestamp >= now() - INTERVAL 60 DAY
+            AND toString(properties.app_build_sha) = '__BUILD__'
+        )
+        -- Only people who also used the judged build can form a pair.
+        AND person_id IN (
+          SELECT person_id FROM events
+          WHERE event IN ('ifc_model_loaded', 'ifc_inspect', 'ifc_navigate', 'viewer_boot')
+            AND timestamp >= now() - INTERVAL 60 DAY
+            AND toString(properties.app_build_sha) = '__BUILD__'
+        )
+      )
+    )
+    -- A load spanning a tab switch timed the user's absence (#2385).
+    AND NOT ifNull(toString(properties.was_hidden) = 'true', false)
+    AND NOT ifNull(toString(properties.$virt_is_bot) = 'true', false)
+)
+GROUP BY event, journey, arm, person, model, metric, window
+ORDER BY event, journey, metric, person, model, window
+LIMIT 50000
+```
+
 ### Source and buffer ownership during WASM prepass (#3989)
 
 Source-session reuse, binding-owned index adoption and direct transfer of already-owned mesh getter arrays preserve byte-taking compatibility and source-replacement resets. The standalone own-layer native subset was slower in full-load timing, while Holter's measured peak memory fell; the cause remains unestablished and favorable memory does not waive the timing concern. The intended integrated merge parent differs from that standalone comparison, and its proposed comparison remains unrun; results with different parents must not be pooled. Combined native/browser results do not isolate a gain for this layer, and invalid Firefox cohorts provide no throughput evidence. Real WASM contracts verify returned buffers survive handle free, memory growth and transfer, including textures. Establish ownership at the binding: a JavaScript view does not remove the WASM input copy, and borrowed WASM-memory views must not be transferred as owned output.

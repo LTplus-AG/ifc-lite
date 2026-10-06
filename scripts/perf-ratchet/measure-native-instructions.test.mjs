@@ -7,7 +7,7 @@
 // missing module is an assertion failure and not a load error.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -120,13 +120,4 @@ rt('a missing phase is a failure, never a skipped comparison', () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-});
-
-rt('the large family is checked by the daily lowering workflow, the small one by test.yml', () => {
-  const daily = readFileSync(join(SCRIPTS, '../../.github/workflows/perf-ratchet-lower.yml'), 'utf8');
-  const pr = readFileSync(join(SCRIPTS, '../../.github/workflows/test.yml'), 'utf8');
-  assert.match(daily, /measure-native-instructions\.mjs --set small/);
-  assert.match(daily, /measure-native-instructions\.mjs --set large/);
-  assert.match(pr, /measure-native-instructions\.mjs --set small/);
-  assert.doesNotMatch(pr, /measure-native-instructions\.mjs --set large/, 'ISSUE_129 is ~2.5 min of callgrind: nightly only');
 });

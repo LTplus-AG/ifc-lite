@@ -183,7 +183,35 @@ try {
     console.log(plane.orientation, plane.normal, plane.d, plane.areaSquareMetres);
   }
   for (const cylinder of report.cylinders) {
-    console.log(cylinder.orientation, cylinder.axisStart, cylinder.radius, cylinder.length);
+    // `faceted` is set for a polygonal column (radius is then the circumradius).
+    console.log(cylinder.orientation, cylinder.axisStart, cylinder.radius, cylinder.length, cylinder.faceted?.faces);
+  }
+} finally {
+  api.free();
+}
+```
+
+## Scan element proposals
+
+`@ifc-lite/geometry/scan-proposals` turns a segmentation report into proposed
+`IfcWall`, `IfcSlab`, `IfcColumn` and pipe elements in the IFC model frame (Z
+up, metres): opposite wall faces pair into walls of measured thickness, floors
+and ceilings into slabs, vertical cylinders into columns. See the
+[proposal contract](https://ifclite.dev/docs/api/wasm/#scan-element-proposals).
+
+```ts
+import { segmentScan } from '@ifc-lite/geometry/scan-segmentation';
+import { proposeScanElements } from '@ifc-lite/geometry/scan-proposals';
+
+const api = new IfcAPI(); // after the wasm module is initialised
+const positions = new Float32Array([/* x, y, z, ... Y-up metres */]);
+try {
+  const report = segmentScan(api, { positions }, { upAxis: [0, 1, 0] });
+  // Y-up (x, y, z) -> IFC Z-up (x, -z, y), row-major.
+  const scanToModel = [1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1];
+  const { proposals } = proposeScanElements(api, report, { scanToModel, schema: 'IFC4' });
+  for (const p of proposals) {
+    console.log(p.id, p.ifcClass, p.basis, p.confidence.toFixed(2), p.geometry);
   }
 } finally {
   api.free();

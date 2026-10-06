@@ -56,7 +56,7 @@ export interface ZoneTableExportResult {
  * Missing pieces are left EMPTY rather than guessed: a wrong IfcType in a
  * column people filter on is worse than a blank one.
  */
-function describeElement(globalId: number, modelNames: Map<string, string>): ZoneTableElement {
+export function describeElement(globalId: number, modelNames: ReadonlyMap<string, string>): ZoneTableElement {
   const state = useViewerStore.getState();
   const ref = resolveEntityRef(globalId);
   const store = (ref.modelId === 'legacy'

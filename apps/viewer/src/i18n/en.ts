@@ -11,6 +11,7 @@ import { flowStartupEn } from './catalogues/flow-startup.en';
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { analysisPanelEn } from './catalogues/analysis-panel.en';
+import { resultViewEn } from './catalogues/result-view.en';
 import { panelNoModelEn } from './catalogues/panel-no-model.en';
 import { annotationsEn } from './catalogues/annotations.en';
 import { anonymizedExportEn } from './catalogues/anonymized-export.en';
@@ -29,10 +30,22 @@ import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
 import { ionUploadEn } from './catalogues/ion-upload.en';
 import { cesiumGeoEn } from './catalogues/cesium-geo.en';
 import { chatEn } from './catalogues/chat.en';
+import { assistantSourcesEn } from './catalogues/assistant-sources.en';
+import { assistantPackChecksEn } from './catalogues/assistant-pack-checks.en';
+import { assistantPackCoordinationEn } from './catalogues/assistant-pack-coordination.en';
+import { assistantPackSiteEn } from './catalogues/assistant-pack-site.en';
+import { assistantPackTablesEn } from './catalogues/assistant-pack-tables.en';
+import { assistantPackMeasureEn } from './catalogues/assistant-pack-measure.en';
+import { assistantPackAutomationEn } from './catalogues/assistant-pack-automation.en';
 import { chatByokEn } from './catalogues/chat-byok.en';
 import { modelChangesEn } from './catalogues/model-changes.en';
+import { clashGroupApplyEn } from './catalogues/clash-group-apply.en';
+import { tableCorrectionsEn } from './catalogues/table-corrections.en';
 import { assistantUsageEn } from './catalogues/assistant-usage.en';
 import { modelAuthoringEn } from './catalogues/model-authoring.en';
+import { sceneActionsEn } from './catalogues/scene-actions.en';
+import { checkAuthoringEn } from './catalogues/check-authoring.en';
+import { assistantArtifactsEn } from './catalogues/assistant-artifacts.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { commandsEn } from './catalogues/commands.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
@@ -125,6 +138,7 @@ export const en = {
   ...semanticResultsEn,
   ...semanticIdentityEn,
   ...analysisPanelEn,
+  ...resultViewEn,
   ...panelNoModelEn,
   ...annotationsEn,
   ...anonymizedExportEn,
@@ -211,10 +225,22 @@ export const en = {
   ...automationEditorEn,
   ...flowPanelEn,
   ...chatEn,
+  ...assistantSourcesEn,
+  ...assistantPackChecksEn,
+  ...assistantPackCoordinationEn,
+  ...assistantPackSiteEn,
+  ...assistantPackTablesEn,
+  ...assistantPackMeasureEn,
+  ...assistantPackAutomationEn,
   ...chatByokEn,
   ...modelChangesEn,
+  ...clashGroupApplyEn,
+  ...tableCorrectionsEn,
   ...assistantUsageEn,
   ...modelAuthoringEn,
+  ...sceneActionsEn,
+  ...checkAuthoringEn,
+  ...assistantArtifactsEn,
   ...clashPanelEn,
   ...clashToolsEn,
   ...bcfEn,

@@ -50,13 +50,14 @@ import type { BoundingBox } from './scene-raycaster.js';
 import type { ResidentGpuBytes } from './render-stats.js';
 import type { ColdGeometryProvider } from './residency.js';
 import type { SpatialChunkingConfig } from './chunk-grid.js';
+import type { LoadTrace } from '@ifc-lite/load-trace';
 
 /** The measured external scene surface. See the module doc before widening. */
 export interface SceneContents {
   // ─── Streaming queue and GPU upload ──────────────────────────────────
   queueMeshes(meshes: MeshData[]): void;
   hasQueuedMeshes(): boolean;
-  flushPending(device: GPUDevice, pipeline: RenderPipeline, budgetMs?: number): boolean;
+  flushPending(device: GPUDevice, pipeline: RenderPipeline, budgetMs?: number, trace?: LoadTrace): boolean;
   appendToBatches(
     meshDataArray: MeshData[],
     device: GPUDevice,
@@ -71,6 +72,7 @@ export interface SceneContents {
     device: GPUDevice,
     pipeline: RenderPipeline,
     budgetMs?: number,
+    trace?: LoadTrace,
   ): Promise<void>;
   isFinalizeInProgress(): boolean;
   setEphemeralStreamingMode(enabled: boolean): void;

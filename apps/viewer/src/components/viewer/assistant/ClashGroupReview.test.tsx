@@ -34,15 +34,16 @@ test('mounted group preview shows full accounting, escapes output and refuses st
   const stats = ui.querySelector('dl')!;
   assert.match(stats.getAttribute('aria-label') ?? '', /Native findings: 1\. Proposed: 1\. Unclassified: 0/);
   assert.deepEqual([...stats.querySelectorAll('dd')].map(value => value.textContent), ['1', '1', '0', '0']);
-  assert.match(ui.textContent ?? '', /Preview only/);
+  assert.match(ui.textContent ?? '', /Edits stay in this review until you apply them/);
   assert.match(ui.textContent ?? '', /<script>bad/);
   assert.equal(ui.querySelector('script, img'), null);
   assert.ok(ui.querySelector('section[aria-label="Captured evidence context"]'));
   assert.equal(useViewerStore.getState(), native);
-  // Beyond Preview, the only controls show native occurrences in the model: no apply/BCF action.
-  const focus = [...ui.querySelectorAll('button')].filter(button => button !== preview);
+  // Showing occurrences in the model is inert; applying is a separate reviewed step and no BCF action exists.
+  const focus = [...ui.querySelectorAll('button')].filter(button => /in the model/.test(button.getAttribute('aria-label') ?? button.title));
   assert.deepEqual(focus.map(button => button.getAttribute('aria-label') ?? button.title),
     ['Show <script>bad()</script> in the model', 'Show this clash in the model']);
+  assert.ok(![...ui.querySelectorAll('button')].some(button => /BCF/.test(button.textContent ?? '')));
   assert.ok(focus.every(button => !button.disabled), 'cited occurrences resolve against the live native report');
   focus.forEach(button => click(button));
   const focused = useViewerStore.getState();

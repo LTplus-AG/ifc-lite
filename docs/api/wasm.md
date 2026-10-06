@@ -859,14 +859,27 @@ carries the spacing). Subtract a local origin before narrowing to f32 and pass
 it as `origin`.
 
 A PCA over the 26 neighbouring voxel means gives each voxel a normal and a curvature. Regions
-grow from the flattest voxels (curvature at most `maxSeedCurvature`, 0.02)
-while a voxel's normal stays within `maxNormalAngleDegrees` (10) of the
+grow from the flattest voxels (curvature at most `maxSeedCurvature`, 0.02, or
+at most the curvature of the flattest 5 % of voxels when that is larger;
+`stats.seedCurvature` reports the gate used) while a voxel's normal stays within `maxNormalAngleDegrees` (10) of the
 refitted plane and its mean within `maxPlaneDistanceMetres` (0.02). Each
 region then gets a median/MAD refit. Coplanar regions within two voxels of
 each other merge, so a one-voxel scan gap does not split a wall.
 Regions whose normals turn faster than `maxBendPerMetre` (1, i.e. a radius of
 curvature under 1 m: column faces) are refused. So are regions smaller than
-`minPlaneAreaSquareMetres` (0.25).
+`minPlaneAreaSquareMetres` (0.25). A wider round column grows as vertical
+strips of planes (each turning less than the angle tolerance); see wide and
+polygonal columns below.
+
+The seed floor matters on fine, noisy voxels. Noise lifts the curvature of
+even a flat surface in proportion to (noise / voxel edge)^2, because the 26
+neighbours cannot tell a slab of noisy means from a bend: at 8 mm noise on
+2 cm voxels under 2 % of a room's voxels passed 0.02, and nothing grew. With
+the floor, columns at a 2 cm voxel and 8 mm noise are found at 9,000 points
+per m^2 (3.6 points per voxel, as the 3 cm rows have at 4,000). At 4,000
+points per m^2 (1.6 per voxel) each voxel mean is little more than one noisy
+point, and the normals themselves are the floor: pass
+`normalNeighborRings: 2`, or a coarser voxel.
 
 Each plane reports `normal` and `d` (`normal . x + d = 0`), `centroid`,
 `inlierPoints`, `inlierVoxels`, `areaSquareMetres` (occupied voxel columns),
@@ -918,7 +931,7 @@ least `minCylinderInlierFraction` (0.6) of the group, and it is refused when:
   corner, fail this; when nothing can be measured the candidate passes;
 - the radius falls outside `minCylinderRadiusMetres`..`maxCylinderRadiusMetres`.
   The minimum defaults to two voxel edges (0.06 m at the default voxel; below
-  that a circumference cannot carry its curvature), the maximum to 1.5 m.
+  that a circumference cannot carry its curvature), the maximum to 2 m.
   When that default minimum exceeds the maximum (a small maximum, or a voxel
   coarsened by the budget), no radius is acceptable and every group counts
   in `cylindersRejectedForRadius`.
@@ -932,9 +945,71 @@ column on a wider plinth stays two cylinders.
 
 Each cylinder reports `axisStart`, `axisEnd`, `axisDirection` (up, unless
 horizontal), `radius`, `length`, `heightRange` along `upAxis`, `arcDegrees`,
-inlier counts, `rmsMetres` and `orientation` (`vertical` for a column,
-`horizontal` for a pipe or beam, or `sloped`). `stats` counts each refusal;
+inlier counts, `rmsMetres`, `orientation` (`vertical` for a column,
+`horizontal` for a pipe or beam, or `sloped`) and `faceted` (below; `null` for
+a round surface). `stats` counts each refusal;
 `limits.cylinderGroupLimitHit` reports a group budget that acted.
+
+#### Wide and polygonal columns
+
+A round column wider than about 0.8 m (at the default voxel) is claimed by
+region growing as vertical strips: each strip turns by less than the angle
+tolerance, and their bend (1 / r) is too small, and on noisy scans too
+attenuated, to tell from a noisy wall (measured 0.04..0.49 per metre on r 1.5
+strips at 8 mm noise, up to 0.65 on small wall planes), so no curvature gate
+on the planes can separate them. A polygonal column is, correctly, one plane
+per face. Both are recovered from the planes (#6893):
+
+- **Rings.** Seen from above, each vertical plane is a segment. Two are
+  linked when their nearest ends lie within four voxels plus the distance
+  tolerance plus half the narrower segment, their heights overlap by half the
+  shorter, their faces turn by 3..65° (a polygon of six or more faces turns at
+  most 60°, a wall corner 90°), and the perpendiculars through their middles
+  (on a circle the chord bisectors, on a regular polygon the apothems) meet
+  behind both faces at distances that agree within 15 % plus twice the
+  distance tolerance. Linked planes form rings; members whose distance from
+  the ring's centre disagrees leave it, and rings about one centre at one
+  distance (one column seen in pieces) join.
+- **Solid.** A ring whose footprint (inside the apothem less two voxels and
+  the tolerance, from just below to just above its faces) holds scanned
+  voxels over more than a tenth of its cells is hollow and stays planes: a bay
+  window, a niche or a polygonal or round apse seen from the room, whose floor
+  runs inside it (`stats.planeRingsRejectedAsHollow`).
+- **Round first.** The ring's planes are searched like a cylinder group, starting from the ring's
+  vertical axis and median radius (two noisy normals cross too imprecisely on
+  a wide column to seed RANSAC well), under every refusal above; the ring's
+  own planes do not count as piercing it. A candidate refused only for its arc
+  is pooled with the coaxial refused candidates of a similar radius and the
+  planes lying on it, and searched again: at low noise an r 0.8 column grows a
+  few isolated strips that cut its other voxels into arcs too narrow to pass
+  alone.
+- **Precedence.** A column wins over the planes it is made of. Every plane
+  with at least 80 % of its voxels within the tolerance of a round cylinder's
+  surface, normals radial, leaves `planes` and joins the cylinder (its arc,
+  extent and RMS are measured again over them); `stats.planesAbsorbedIntoCylinders`
+  counts them. A surface is reported once.
+- **Faceted.** A ring that yielded no round cylinder is a faceted column when
+  it has at least three faces turning by one step of a regular polygon (each
+  turn within 15 % of the step, at least 2°; links turn at most 65°, so six
+  or more sides) through at least 120° in all; every face lies at one distance from a common axis
+  (least-squares fit of axis and apothem, within the distance tolerance; equal
+  turns about one apothem make equal sides); and its circumradius is within
+  the radius range. It is reported as a
+  cylinder with `radius` the circumradius and `faceted: { faces, faceNormal,
+  apothem }`: `faceNormal` is one face's outward normal (the face nearest +x,
+  or +y when the axis runs along x), the others following at multiples of
+  360° / `faces`. Its faces leave `planes`. Rings that are neither round nor
+  regular stay planes (`stats.planeRingsRejectedAsIrregular`).
+
+A rectangular column, a staircase core and an outside wall corner (faces
+turning 90°) stay planes, and so do a pilaster and a 135° bay of three faces
+(turning 90° in all). Faces narrower than about ten voxels may come out round,
+with a radius between the apothem and the circumradius (the facet guard cannot
+see them through 8 mm noise), and faces of two to three voxels are the
+resolution limit below. A convex polygonal bay of six or more sides seen from
+outside, its floor unscanned, cannot be told from a column. Rings are formed
+from vertical planes only, so a wide horizontal cylinder (a culvert) stays
+strips.
 
 Resolution limit: flat faces two to three voxels wide (a pier of 0.1 m faces
 spans about 3.3 voxels at 3 cm and 2 at 5 cm) deviate from their best-fit
@@ -949,11 +1024,97 @@ less reliably, because a refit just under the minimum is refused.
 Every threshold above is guarded by the cylinder acceptance table
 (`rust/processing/tests/scan_cylinder_acceptance.rs`): real pipes and columns
 (thin half-visible pipes at two voxels of radius, grazing ceiling pipes,
-occluded, out-of-round and strapped columns) must be found, and flat-facet
-decoys must not be. Every `cargo test` runs a compact tier (one seed per
+occluded, out-of-round and strapped columns, round columns of r 0.8 to 1.5 m,
+8-, 12- and 16-gon columns, columns at a 2 cm voxel with 8 mm noise) must be
+found, with no plane left on their surface, and flat-facet and wall decoys
+(bays, a niche, apses, pilasters, outside corners, a rectangular column, a
+staircase core) must not be. The convex corner of a pilaster with 0.15 m
+chamfers is found as a round cylinder in about half the runs, as in #6870 (its
+normals' turning straddles the 0.6 bar); it is printed, not asserted. Every `cargo test` runs a compact tier (one seed per
 noise level, small rooms); after changing a threshold, run the full matrix
 with
 `cargo test -p ifc-lite-processing --test scan_cylinder_acceptance -- --ignored --nocapture`.
+
+### Scan element proposals
+
+`IfcAPI.proposeScanElements(reportJson, optionsJson)` turns a
+`segmentScanPoints` report into proposed IFC elements, as UTF-8 JSON, from
+the canonical Rust `ifc_lite_processing::scan_proposals` (#6894). It creates
+nothing: the viewer reviews the proposals and creates the accepted ones
+through its modelling commands. The typed wrapper is `proposeScanElements` in
+`@ifc-lite/geometry/scan-proposals`. Options are camelCase, `{}` for the
+defaults; unknown fields are refused. The report is bounded to 20,000 planes
+and 20,000 cylinders (64 MiB of JSON).
+
+Everything is measured in the IFC model frame: Z up, metres. `scanToModel` is
+a row-major 4x4 similarity (rotation, one uniform scale, translation) from
+the report's frame into it, identity by default; reflections, shears and
+projective rows are refused. The viewer's scan sample is Y-up and relative to
+its decode origin, so its `scanToModel` composes the point cloud's placement,
+the Y-up to Z-up swap and the model's world offset. Planes are reclassified
+in the model frame (`classificationAngleDegrees`, 10).
+
+- **Walls** (`IfcWall`): two vertical faces pair when they are parallel within
+  `pairingAngleDegrees` (5), `minWallThicknessMetres`..`maxWallThicknessMetres`
+  (0.05..0.6) apart, overlap along the wall by `minWallOverlapFraction` (0.5)
+  of the shorter face, and share some height. When both normals face the
+  scanner and point into the gap between them, the gap was seen from inside
+  (a niche) and they do not pair. Pairs are taken nearest first, each face
+  once. The axis lies halfway between the faces and spans the union of both.
+  A face without a partner gets `defaultWallThicknessMetres` (0.2) behind its
+  scanned side: opposite a scanner-facing normal, otherwise away from
+  `interiorPoint` (default: the area-weighted mean of the plane centroids).
+  Faces shorter than `minWallLengthMetres` (0.5) or lower than
+  `minWallHeightMetres` (1) are skipped.
+- **Floors and ceilings**: a horizontal plane is a floor when the walls that
+  reach its outline stand on it, and a ceiling when they end under it (within
+  half of `levelSnapMetres`, weighted by area). With no such wall, a
+  scanner-facing normal decides, and otherwise the plane's height relative to
+  the interior point.
+- **Slabs** (`IfcSlab`): the outline is the plane's extent rectangle. A
+  ceiling and the floor above it pair into one slab, with measured thickness,
+  when they are at least `minWallThicknessMetres` (0.05) and at most
+  `maxSlabThicknessMetres` (0.6) apart and half of the
+  smaller outline lies over the larger. A single floor gets
+  `defaultSlabThicknessMetres` (0.2) below it, a single ceiling the same above
+  it. Planes under `minSlabAreaSquareMetres` (1) are skipped. Sloped planes
+  propose nothing.
+- **Columns** (`IfcColumn`): cylinders whose axis is within the
+  classification angle of vertical, with a circular profile. A polygonal
+  column (a cylinder reported with `faceted`) gets the circle of the
+  polygon's cross-section area, not its circumradius: an octagon's radius is
+  0.949 of its circumradius. A polygonal profile is not proposed.
+- **Pipes**: other cylinders, `IfcPipeSegment` for `schema` `IFC4` (default)
+  or `IFC4X3`, and `IfcFlowSegment` for `IFC2X3`, which has no
+  `IfcPipeSegment`.
+
+Wall and column ends within `levelSnapMetres` (0.3) of a floor or ceiling
+whose outline reaches them extend to it, because segmented walls stop a voxel
+or two short of the junction. For a column, "reaches" means its axis lies
+within `levelSnapMetres` plus its radius of the outline, since a slab's
+extent can stop at the column's face.
+
+Each proposal has an `id` (`wall-0`, `slab-1`, `column-0`, `pipe-0`), its
+`ifcClass`, a `basis` (`pairedFaces`, `singleFace`, `floorCeilingPair`,
+`floor`, `ceiling`, `cylinder`), its `sources` (indices into the report's
+`planes` or `cylinders`), `fit` (inlier-weighted `rmsMetres`, inlier counts,
+area) and `geometry`:
+
+- a wall's axis `start` and `end` at its base, with `thicknessMetres` and
+  `heightMetres`;
+- a slab's top-face `outline`, counter-clockwise from above, with
+  `thicknessMetres` below it;
+- a column's `base`, `heightMetres` and `radiusMetres`;
+- a pipe's axis `start`, `end` and `radiusMetres`.
+
+`confidence` is `prior x quality x coverage`. The prior is 0.95 for a
+measured thickness (paired faces, floor and ceiling pairs), 0.9 for a
+cylinder, 0.75 for a single floor or ceiling and 0.7 for a single wall face.
+Quality is `1 / (1 + (rms / 1 cm)^2)`. Coverage is the share of the proposed
+surface the inliers cover; for a cylinder it is `0.5 + 0.5 * arc / 360`.
+`stats` counts the planes by orientation, the paired and single walls and
+slabs, the planes too small to propose, and the columns and pipes.
+`transformScale` reports the scale of `scanToModel`.
 
 `requestSha256` hashes the algorithm ID `ifclite-rigid-correspondence-v1`, one
 zero byte, and compact typed request JSON in Rust field order. It binds all frame

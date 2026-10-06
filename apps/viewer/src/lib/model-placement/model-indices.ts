@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { GeometryResult } from '@ifc-lite/geometry';
+import { perfTally } from '@ifc-lite/load-trace';
 
 /** Retained GPU instance templates must keep their owner index after another
  * model is removed. Never compact indices in a live federation. */
@@ -18,6 +19,9 @@ export function createModelIndexAllocator() {
 export const modelIndices = createModelIndexAllocator();
 
 export function geometryWithModelIndex(geometry: GeometryResult | null, index: number): GeometryResult | null {
+  // #6957: every call re-spreads ALL meshes, so `.meshes` summed over a load
+  // shows the per-append O(n) re-spread (O(n^2) per load) under ?perfTrace=1.
+  if (geometry) perfTally('viewer.modelIndexRespread', geometry.meshes.length, 'meshes');
   return geometry ? { ...geometry, meshes: geometry.meshes.map((mesh) => ({ ...mesh, modelIndex: index })),
     pointClouds: geometry.pointClouds?.map((asset) => ({ ...asset, modelIndex: index })) } : null;
 }

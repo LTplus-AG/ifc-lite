@@ -21,6 +21,7 @@ import { useViewerStore } from '@/store';
 import { chartElementFields } from '@/lib/charts/chart-fields';
 import type { ChartFocusMode } from '@/store/slices/chartSlice';
 import { DASHBOARD_PRESETS, duplicateChart, modelOverviewDashboard, newChartSpec } from '@/lib/charts/presets';
+import { AssistantAction } from '@/components/viewer/assistant/AssistantAction';
 import { ChartCard } from './ChartCard';
 import { ChartEditor, type ClashRuleOption } from './ChartEditor';
 import { isSavedComparisonChart } from '@/lib/charts/comparison-source';
@@ -250,6 +251,7 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
             {t('chartsPanel.addChartButton')}
           </Button>
           <ReportExportDialog dashboard={dashboard} aggregations={aggregations} onSaveReportSetup={upsertDashboard} seams={reportSeams} />
+          <AssistantAction />
         </div>
       </div>
 

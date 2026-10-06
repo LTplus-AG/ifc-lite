@@ -43,7 +43,9 @@ pub struct ScanSegmentationOptions {
     /// Occupied voxels (including the voxel itself) a normal needs. Default 6.
     pub min_neighbors: u32,
     /// Seeds are voxels whose curvature (smallest eigenvalue / eigenvalue sum
-    /// of the neighbourhood scatter) is at most this. Default 0.02.
+    /// of the neighbourhood scatter) is at most this, or at most the curvature
+    /// of the flattest 5 % of voxels when that is larger (noise of 0.4 voxel
+    /// edges lifts even flat surfaces above 0.02). Default 0.02.
     pub max_seed_curvature: f64,
     /// A voxel joins a region when its normal is within this of the region's
     /// plane; also the coplanar-merge angle. Default 10 degrees; (0, 45].
@@ -57,7 +59,8 @@ pub struct ScanSegmentationOptions {
     pub mad_scale: f64,
     /// A region whose voxel normals turn faster than this across it (1 /
     /// radius of curvature) is a curved surface such as a column, not a plane.
-    /// Default 1.0 per metre.
+    /// Default 1.0 per metre. Wider columns grow as strips of planes, which
+    /// rings of planes about a common axis reassemble (#6893).
     pub max_bend_per_metre: f64,
     /// Planes with a smaller estimated area are dropped. Default 0.25 m^2.
     pub min_plane_area_square_metres: f64,
@@ -82,7 +85,8 @@ pub struct ScanSegmentationOptions {
     /// any coarsening; 0.06 m at the default voxel): below that a
     /// circumference has too few voxels to carry its curvature and radii come
     /// out biased (a half-visible r 0.05 m pipe fitted r 0.0685). The maximum
-    /// defaults to 1.5 m.
+    /// defaults to 2 m (1.5 m before #6893, which refused about half the fits
+    /// of a column of exactly 1.5 m for a millimetre over the bound).
     pub min_cylinder_radius_metres: Option<f64>,
     pub max_cylinder_radius_metres: f64,
     /// A group must fit a candidate with at least this share of its voxels.
@@ -123,7 +127,7 @@ impl Default for ScanSegmentationOptions {
             max_planes: 10_000,
             detect_cylinders: true,
             min_cylinder_radius_metres: None,
-            max_cylinder_radius_metres: 1.5,
+            max_cylinder_radius_metres: 2.,
             min_cylinder_inlier_fraction: 0.6,
             min_cylinder_arc_degrees: 90.,
             min_cylinder_length_metres: 0.3,

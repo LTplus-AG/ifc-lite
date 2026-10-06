@@ -227,6 +227,22 @@ export function consentAwareAnalyticsClient(target: AnalyticsClient): AnalyticsC
 
 export const posthog: AnalyticsClient = consentAwareAnalyticsClient(client ?? noopAnalytics);
 
+/**
+ * A PostHog feature flag's value for a perf-flag ramp (#6962), or `undefined`
+ * when PostHog is not initialised, the user opted out, or flags have not
+ * loaded yet. Synchronous and never awaited: a ramp falls back to its default
+ * rather than blocking startup on the flags request.
+ */
+export function readAnalyticsFeatureFlag(key: string): boolean | string | undefined {
+  if (!enabled || !client || isAnalyticsOptedOut()) return undefined;
+  try {
+    return posthogClient.getFeatureFlag(key) ?? undefined;
+  } catch (error) {
+    console.warn('[analytics] feature flag read failed; using default', error);
+    return undefined;
+  }
+}
+
 /** Persist the preference and update PostHog's automatic capture policy. */
 export function setAnalyticsOptOut(value: boolean): void {
   persistAnalyticsOptOut(value);

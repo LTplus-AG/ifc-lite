@@ -6,6 +6,8 @@ import { test, expect } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';
+import { watchGpuDeviceLoss } from './gpu-device-loss';
+import { recordViewportWitness } from './viewport-acceptance';
 
 const fixture = join(process.cwd(), 'tests/models/ara3d/AC20-FZK-Haus.ifc');
 
@@ -17,6 +19,7 @@ test.use({ video: 'on' });
 // Only the paid provider response is intercepted; evidence must come from the model.
 test('native clash evidence reaches the assistant without executing model output', async ({ page }, testInfo) => {
   test.skip(!existsSync(fixture), 'AC20-FZK-Haus.ifc missing — run pnpm fixtures');
+  const gpu = await watchGpuDeviceLoss(page);
   const viewer = new ViewerBenchmarkPage(page);
   await viewer.setup();
   await viewer.loadFile(fixture);
@@ -28,6 +31,8 @@ test('native clash evidence reaches the assistant without executing model output
     return state?.models.size === 1 && !state.loading && !state.geometryStreamingActive
       && (state.ifcDataStore?.entityCount ?? 0) > 100;
   }), { timeout: 120_000 }).toBe(true);
+  // #6858: the footage is geometry acceptance only if the renderer drew the model.
+  await recordViewportWitness(page, gpu, testInfo, 'after-load');
   await page.evaluate(() => {
     const store = (globalThis as unknown as { __ifc_lite_viewer_store__: {
       getState(): { openPanelInHome(panel: 'clash'): void };
@@ -70,7 +75,7 @@ test('native clash evidence reaches the assistant without executing model output
   await assistant.getByText('Evidence details', { exact: true }).click();
   await assistant.getByText('Inspect evidence sent to the model', { exact: true }).click();
   await expect(assistant.locator('pre')).toContainText('AC20-FZK-Haus');
-  await expect(assistant.locator('pre')).toContainText('"source":"clash"');
+  await expect(assistant.locator('pre')).toContainText('"source":"duplicates"');
   await expect(assistant.locator('pre')).toContainText('"sourceAvailability":"available"');
   await assistant.getByText('Evidence details', { exact: true }).click();
   await assistant.getByLabel('Ask about these results').fill('Explain the native duplicate scan and its limitations.');
@@ -164,4 +169,5 @@ test('native clash evidence reaches the assistant without executing model output
       && captured.diagnostics?.totalCsgFailures === native?.totalCsgFailures;
   })).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('assistant-load-report.png') });
+  await recordViewportWitness(page, gpu, testInfo, 'final');
 });

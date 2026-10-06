@@ -189,6 +189,30 @@ impl VoxelSet {
         self.index.get(&key).copied()
     }
 
+    /// Calls `visit` for every occupied voxel whose key lies in the box
+    /// spanning `ends` widened by `margin` (plus one voxel), in key order; or
+    /// for every voxel, in index order, when the box holds more keys than
+    /// there are voxels. Callers test the exact shape themselves.
+    pub fn for_each_in_box(&self, ends: [[f64; 3]; 2], margin: f64, mut visit: impl FnMut(u32)) {
+        let key = |v: f64| (v / self.size).floor();
+        let lo: [f64; 3] = std::array::from_fn(|a| key(ends[0][a].min(ends[1][a]) - margin) - 1.);
+        let hi: [f64; 3] = std::array::from_fn(|a| key(ends[0][a].max(ends[1][a]) + margin) + 1.);
+        let cells: f64 = (0..3).map(|a| hi[a] - lo[a] + 1.).product();
+        if cells > self.len() as f64 {
+            (0..self.len() as u32).for_each(visit);
+            return;
+        }
+        for x in lo[0] as i32..=hi[0] as i32 {
+            for y in lo[1] as i32..=hi[1] as i32 {
+                for z in lo[2] as i32..=hi[2] as i32 {
+                    if let Some(k) = self.lookup([x, y, z]) {
+                        visit(k);
+                    }
+                }
+            }
+        }
+    }
+
     /// Calls `visit` for every occupied voxel within `rings` of voxel `i`
     /// (excluding `i`), in a fixed z-y-x order.
     pub fn for_each_neighbor(&self, i: u32, rings: i32, mut visit: impl FnMut(u32)) {

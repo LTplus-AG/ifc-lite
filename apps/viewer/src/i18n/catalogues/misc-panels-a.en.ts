@@ -90,6 +90,7 @@ export const miscPanelsAEn = {
   'deviationPanel.rendererNotReadyError': 'Renderer not initialised yet.',
   'deviationPanel.positionsChangedError': 'Model positions changed during computation. Compute deviation again.',
   'deviationPanel.noPointsError': 'No points processed — load a point cloud first.',
+  'deviationPanel.exportNoPointsNotice': 'No scan points are loaded in the current view. Frame the scan and recompute.',
   'deviationPanel.noMeshError': 'No mesh geometry in the scene — load an IFC first.',
 
   // ExportChangesReviewDialog

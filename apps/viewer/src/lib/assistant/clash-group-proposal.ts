@@ -139,11 +139,16 @@ export interface NormalizedClashAnswer {
  * Null when nothing would remain or the envelope itself is invalid.
  */
 export function normalizeClashGroupAnswer(answer: string, evidence: EvidenceSnapshot): NormalizedClashAnswer | null {
-  if (answer.length > 48_000 || evidence.source !== 'clash' || evidence.payload.length > 200_000) return null;
+  return evidence.source === 'clash' ? normalizeClashGroupRows(answer, evidence.payload) : null;
+}
+
+/** The same disclosed normalization over any captured clash row envelope, e.g. one full-run chunk. */
+export function normalizeClashGroupRows(answer: string, evidencePayload: string): NormalizedClashAnswer | null {
+  if (answer.length > 48_000 || evidencePayload.length > 200_000) return null;
   const trimmed = answer.trim();
   const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```$/.exec(trimmed);
   let value: unknown, payload: unknown;
-  try { value = JSON.parse(fenced ? fenced[1] : trimmed); payload = JSON.parse(evidence.payload); }
+  try { value = JSON.parse(fenced ? fenced[1] : trimmed); payload = JSON.parse(evidencePayload); }
   catch (error) { console.warn('[Assistant] Clash proposal cannot be normalized', error); return null; }
   if (!record(value) || value.kind !== 'clash.groups' || value.version !== 1 || !Array.isArray(value.groups)
     || !value.groups.length || value.groups.length > 30) return null;

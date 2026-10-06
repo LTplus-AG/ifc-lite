@@ -67,6 +67,7 @@ import { listTeardown } from './slices/listSlice.js';
 import { pinboardTeardown } from './slices/pinboardSlice.teardown.js';
 import { lensTeardown } from './slices/lensSlice.js';
 import { compareTeardown } from './slices/compareSlice.js';
+import { compareRunsTeardown } from './slices/compareRunsSlice.js';
 import { scriptTeardown } from './slices/scriptSlice.teardown.js';
 import { chatTeardown } from './slices/chatSlice.teardown.js';
 import { cesiumTeardown } from './slices/cesiumSlice.teardown.js';
@@ -110,6 +111,7 @@ export const viewerTeardownRegistry: readonly AnySliceTeardown[] = createTeardow
   pinboardTeardown,
   lensTeardown,
   compareTeardown,
+  compareRunsTeardown,
   scriptTeardown,
   chatTeardown,
   cesiumTeardown,

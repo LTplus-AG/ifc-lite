@@ -25,6 +25,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
+import { AssistantAction } from '../assistant/AssistantAction';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Select,
@@ -361,6 +362,10 @@ export function GanttToolbar({ onOpenGenerate, onOpenImport, canGenerate }: Gant
           {t('schedule.toolbar.noDates')}
         </span>
       )}
+
+      <div className="ml-auto">
+        <AssistantAction />
+      </div>
     </div>
   );
 }

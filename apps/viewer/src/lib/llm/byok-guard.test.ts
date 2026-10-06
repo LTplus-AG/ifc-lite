@@ -93,7 +93,7 @@ test('resolveStreamRoute sends canonical model IDs for saved selections (#6097)'
 
   const openai = resolveStreamRoute('gpt-5.6-sol', keys);
   assert.equal(openai.kind, 'openai');
-  if (openai.kind === 'openai') assert.equal(openai.model, 'gpt-6-sol');
+  if (openai.kind === 'openai') assert.equal(openai.model, 'gpt-6.1-sol');
 });
 
 test('resolveStreamRoute returns missing-key when openai model selected without key', () => {

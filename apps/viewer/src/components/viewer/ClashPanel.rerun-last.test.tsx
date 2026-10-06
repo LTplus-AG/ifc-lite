@@ -80,13 +80,15 @@ for (const modelCount of [1, 2] as const) {
 
       await act(async () => useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 }));
       assert.equal(useViewerStore.getState().clashResult, previous);
-      const banner = container!.querySelector('output');
+      // The panel has other live regions (the select-all status stays mounted); find the stale banner.
+      const staleBanner = () => [...container!.querySelectorAll('output')].find((o) => /model changed/i.test(o.textContent ?? ''));
+      const banner = staleBanner();
       assert.match(banner?.textContent ?? '', /model changed/i);
       const rerun = banner?.querySelector('button');
       assert.ok(rerun);
       await clickAndSettle(rerun);
       assert.notEqual(useViewerStore.getState().clashResult, previous);
-      assert.equal(container!.querySelector('output'), null, 'fresh result clears the stale banner');
+      assert.equal(staleBanner(), undefined, 'fresh result clears the stale banner');
     });
 
     it('repeats the duplicate scan after "Find duplicates"', async () => {

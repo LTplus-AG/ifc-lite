@@ -37,6 +37,12 @@
       "@ifc-lite/wasm-lifecycle/*": [
         "packages/wasm-lifecycle/dist/*"
       ],
+      "@ifc-lite/load-trace": [
+        "packages/load-trace/dist/index.d.ts"
+      ],
+      "@ifc-lite/load-trace/*": [
+        "packages/load-trace/dist/*"
+      ],
       "@ifc-lite/geometry": [
         "packages/geometry/dist/index.d.ts"
       ],

@@ -18,12 +18,8 @@
  *   viewer-eager-js-brotli  summed brotli bytes of every JS file index.html makes
  *                           the browser fetch before first paint (module
  *                           <script src> + modulepreload) (#7002)
- *   viewer-eager-js-chunks  how many JS files that is; a looser companion to the
- *                           byte metric, because a count moves with Vite's
- *                           chunk splitting even when the shipped bytes do not
  *
- * Both eager metrics read one list, `eagerJsFiles`, so they cannot disagree
- * about which files are eager.
+ * Eager file counts and names remain diagnostic detail on the byte metric.
  *
  * WHY BROTLI, NOT RAW. The perf ledger (scripts/perf/README.md) records that
  * wasm-opt passes can SHRINK raw bytes while GROWING the brotli transfer size,
@@ -116,7 +112,7 @@ export function resolveAsset(dist, urlPath) {
 }
 
 /**
- * The one discovery behind both eager-JS metrics: every JS file index.html
+ * The discovery behind the eager-JS byte metric: every JS file index.html
  * loads before first paint, as distinct files inside `dist`. Preloads of
  * non-JS assets (stylesheets, fonts) are not eager JS and are left out; two
  * links that name the same file count once, however they are spelled.
@@ -162,8 +158,7 @@ export function measureBundle({ wasm, dist, commit, measuredAt = new Date().toIS
     metrics: [
       { id: 'engine-wasm-brotli', value: brotliSize(wasmBytes), detail: `raw ${wasmBytes.length} bytes` },
       { id: 'viewer-entry-js-brotli', value: brotliSize(entryBytes), detail: `${entry.split(/[?#]/)[0].replace(/^.*\//, '')}, raw ${entryBytes.length} bytes` },
-      { id: 'viewer-eager-js-brotli', value: eagerBytes.reduce((n, b) => n + brotliSize(b), 0), detail: `${jsEager.length} files, raw ${eagerRaw} bytes, each file compressed on its own` },
-      { id: 'viewer-eager-js-chunks', value: jsEager.length, detail: jsEager.map(({ url }) => url.replace(/^.*\//, '')).join(' ') },
+      { id: 'viewer-eager-js-brotli', value: eagerBytes.reduce((n, b) => n + brotliSize(b), 0), detail: `${jsEager.length} files, raw ${eagerRaw} bytes, each file compressed on its own; ${jsEager.map(({ url }) => url.replace(/^.*\//, '')).join(' ')}` },
     ],
   };
 }

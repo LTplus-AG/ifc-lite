@@ -17,7 +17,6 @@ async function load(rel) {
 }
 const measure = await load('./measure-bundle.mjs');
 const ceilings = await load('./ceilings.mjs');
-const compare = await load('./compare.mjs');
 function rt(name, body) {
   test(name, () => {
     assert.ok(measure && ceilings, 'the perf-ratchet modules are absent');
@@ -76,7 +75,7 @@ rt('measureBundle reports brotli sizes that round-trip and counts eager JS only'
     const out = measure.measureBundle({ wasm, dist, commit: 'abc1234', measuredAt: '2026-10-05T00:00:00.000Z' });
     assert.deepEqual(ceilings.validateMeasuredFile(out), []);
     const v = Object.fromEntries(out.metrics.map((m) => [m.id, m]));
-    assert.equal(v['viewer-eager-js-chunks'].value, 3);
+    assert.match(v['viewer-eager-js-brotli'].detail, /^3 files,/);
     assert.ok(v['viewer-entry-js-brotli'].value < entryJs.length, 'repetitive JS compresses');
     assert.match(v['viewer-entry-js-brotli'].detail, /^index-AbC123\.js, raw 10000 bytes$/);
     assert.match(v['engine-wasm-brotli'].detail, /raw 4096 bytes/);
@@ -133,13 +132,10 @@ rt('viewer-eager-js-brotli sums the brotli size of each eager JS file, once, and
     assert.ok(v['viewer-eager-js-brotli'], 'the eager-bytes metric is emitted');
     const expected = Object.values(eagerFiles).reduce((n, body) => n + measure.brotliSize(Buffer.from(body)), 0);
     assert.equal(v['viewer-eager-js-brotli'].value, expected);
-    assert.equal(v['viewer-eager-js-chunks'].value, 4);
     assert.match(v['viewer-eager-js-brotli'].detail, /^4 files, raw 7500 bytes/);
     // The lazy chunk is large and incompressible: counting it would show.
     assert.ok(measure.brotliSize(Buffer.from(jsOf(5, 9000))) > 4000);
-    // One discovery: the chunk count and its detail list exactly the files whose bytes were summed.
-    assert.ok(v['viewer-eager-js-brotli'], 'the eager-bytes metric is emitted');
-    assert.deepEqual(v['viewer-eager-js-chunks'].detail.split(' '), ['index-entry.js', 'vendor-a.js', 'vendor-b.mjs', 'vendor-c.js']);
+    assert.match(v['viewer-eager-js-brotli'].detail, /; index-entry\.js vendor-a\.js vendor-b\.mjs vendor-c\.js$/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -183,11 +179,6 @@ rt('every committed ceiling file is valid, and bundle.json ratchets exactly what
   const bytes = bundle.entries.find((e) => e.id === 'viewer-eager-js-brotli');
   assert.deepEqual(bytes.tolerance, { kind: 'relative', value: 0.005 });
   assert.equal(bytes.metric, 'brotli-bytes');
-  // The count is a looser companion: headroom of a few chunks, not an exact match.
-  const chunks = bundle.entries.find((e) => e.id === 'viewer-eager-js-chunks');
-  assert.equal(chunks.tolerance.kind, 'relative');
-  const headroom = compare.allowedMax(chunks) - chunks.ceiling;
-  assert.ok(headroom >= 3 && headroom <= 8, `chunk-count headroom is ${headroom}; it should be a few chunks`);
 });
 
 // #7002 review: shapes of index.html that must not change what counts as eager.
@@ -214,8 +205,7 @@ rt('markup that only appears inside an inline script body is not an eager load',
   inShape(['entry.js', 'real.js'], html, (run) => {
     const v = metricsOf(run());
     assert.ok(v['viewer-eager-js-brotli'], 'the eager-bytes metric is emitted');
-    assert.equal(v['viewer-eager-js-chunks'].value, 2);
-    assert.equal(v['viewer-eager-js-chunks'].detail, 'entry.js real.js');
+    assert.match(v['viewer-eager-js-brotli'].detail, /^2 files,.*; entry\.js real\.js$/);
   });
 });
 
@@ -226,8 +216,7 @@ rt('nomodule scripts and non-JavaScript script types are not eager', () => {
   inShape(['entry.js', 'legacy.js'], html, (run) => {
     const v = metricsOf(run());
     assert.ok(v['viewer-eager-js-brotli'], 'the eager-bytes metric is emitted');
-    assert.equal(v['viewer-eager-js-chunks'].value, 1);
-    assert.equal(v['viewer-eager-js-chunks'].detail, 'entry.js');
+    assert.match(v['viewer-eager-js-brotli'].detail, /^1 files,.*; entry\.js$/);
   });
 });
 

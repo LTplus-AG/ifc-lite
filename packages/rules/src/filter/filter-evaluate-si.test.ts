@@ -17,8 +17,10 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { evaluateFilterRules } from './filter-evaluate.js';
+import { IfcParser, extractPropertiesOnDemand, extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { PropertyValueType, QuantityType } from '@ifc-lite/data';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { evaluateFilterRules, evaluateFilterRulesFederated } from './filter-evaluate.js';
 import { isFilterRule, type FilterRule } from './filter-rules.js';
 
 const IFC = `ISO-10303-21;
@@ -85,5 +87,34 @@ describe('valueUnit: si in search (#5225)', () => {
   it('only "si" is a valid valueUnit', () => {
     assert.equal(isFilterRule({ kind: 'quantity', setName: 'Q', quantityName: 'W', op: 'gt', value: 1, valueUnit: 'si' }), true);
     assert.equal(isFilterRule({ kind: 'quantity', setName: 'Q', quantityName: 'W', op: 'gt', value: 1, valueUnit: 'mm' }), false);
+  });
+});
+
+describe('valueUnit: si reads live in-session edits (#6914 review)', () => {
+  /** The view as the viewer configures it: base reads from the parsed store. */
+  async function edited(edit: (view: MutablePropertyView) => void) {
+    const store = await parse();
+    const mutationView = new MutablePropertyView(null, 'm');
+    mutationView.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
+    mutationView.setQuantityExtractor((id) => extractQuantitiesOnDemand(store, id));
+    edit(mutationView);
+    return async (rule: FilterRule) => (await evaluateFilterRulesFederated([{ id: 'm', store, mutationView }], [rule], 'AND'))
+      .map((e) => e.name).sort();
+  }
+
+  it('compares an edited quantity, still converted with its unit', async () => {
+    // Wall A Width 300 mm edited to 150 mm: 0.15 m is no longer >= 0.25 m.
+    const names = await edited((view) => { view.setQuantity(101, 'Qto_WallBaseQuantities', 'Width', 150, QuantityType.Length); });
+    const width = { kind: 'quantity', setName: 'Qto_WallBaseQuantities', quantityName: 'Width' } as const;
+    assert.deepEqual(await names({ ...width, op: 'gte', value: 0.25, valueUnit: 'si' }), []);
+    assert.deepEqual(await names({ ...width, op: 'gte', value: 0.15, valueUnit: 'si' }), ['Wall A', 'Wall B']);
+  });
+
+  it('compares an edited length property, and leaves unedited elements on their file values', async () => {
+    // Wall A Height 2500 mm edited to 1500 mm; Wall C (label) and Wall D (type, explicit metres) are untouched.
+    const names = await edited((view) => { view.setProperty(101, 'Pset_Dims', 'Height', 1500, PropertyValueType.Real, undefined, false, 'IFCLENGTHMEASURE'); });
+    const height = { kind: 'property', setName: 'Pset_Dims', propertyName: 'Height' } as const;
+    assert.deepEqual(await names({ ...height, op: 'gte', value: '2', valueUnit: 'si' }), ['Wall C', 'Wall D']);
+    assert.deepEqual(await names({ ...height, op: 'lt', value: '2', valueUnit: 'si' }), ['Wall A']);
   });
 });

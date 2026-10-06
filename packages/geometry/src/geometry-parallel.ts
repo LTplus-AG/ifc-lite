@@ -32,6 +32,8 @@ import type { MeshData } from './types.js';
 import type { StreamingGeometryEvent } from './index.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import { computeWorkerCount } from './worker-count.js';
+import { readPerfFlagRaw } from '@ifc-lite/data';
+import { GEOMETRY_PERF_FLAG_BINDINGS } from './perf-flags.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 import { mergeShardStyleSlices, type MergedShardStyles, type StylesSlice } from './shard-style-merge.js';
@@ -164,9 +166,8 @@ export function planAffinityRouting(
  * Validation/merge happens in the worker via `resolveBatchSizing`.
  */
 function readBatchSizingOverride(): Partial<BatchSizingConfig> | undefined {
-  const g = globalThis as unknown as { __IFC_LITE_BATCH_SIZING?: Partial<BatchSizingConfig> };
-  const v = g.__IFC_LITE_BATCH_SIZING;
-  return v && typeof v === 'object' ? v : undefined;
+  const v = readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.batchSizing);
+  return v && typeof v === 'object' ? (v as Partial<BatchSizingConfig>) : undefined;
 }
 
 /**
@@ -176,11 +177,8 @@ function readBatchSizingOverride(): Partial<BatchSizingConfig> | undefined {
  * never decoded/meshed/uploaded. Unset ⇒ load everything.
  */
 function readVisibilityFilterOverride(): { disabledTypes?: string[]; skipTypeGeometry?: boolean } | undefined {
-  const g = globalThis as unknown as {
-    __IFC_LITE_VISIBILITY_FILTER?: { disabledTypes?: string[]; skipTypeGeometry?: boolean };
-  };
-  const v = g.__IFC_LITE_VISIBILITY_FILTER;
-  return v && typeof v === 'object' ? v : undefined;
+  const v = readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.visibilityFilter);
+  return v && typeof v === 'object' ? (v as { disabledTypes?: string[]; skipTypeGeometry?: boolean }) : undefined;
 }
 
 /**
@@ -190,8 +188,7 @@ function readVisibilityFilterOverride(): { disabledTypes?: string[]; skipTypeGeo
  * `globalThis.__IFC_LITE_SHARD_SCAN` (benchmark A/B knob). Truthy ⇒ on.
  */
 function readShardScanFlag(): boolean {
-  const g = globalThis as unknown as { __IFC_LITE_SHARD_SCAN?: unknown };
-  const v = g.__IFC_LITE_SHARD_SCAN;
+  const v = readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.shardScan);
   // ON by default; 0/'0'/false is the kill switch (same convention as the
   // other #1682 load/render knobs).
   if (v === 0 || v === '0' || v === false) return false;

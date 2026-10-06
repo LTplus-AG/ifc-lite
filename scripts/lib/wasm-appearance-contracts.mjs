@@ -10,6 +10,7 @@ import { checkMeshTransferSurfacesContract } from './wasm-mesh-transfer-surfaces
 import { checkPointTransferContract } from './wasm-point-transfer-contract.mjs';
 import { checkScanRegistrationContract } from './wasm-scan-registration-contract.mjs';
 import { checkScanSegmentationContract } from './wasm-scan-segmentation-contract.mjs';
+import { checkScanProposalContract } from './wasm-scan-proposals-contract.mjs';
 import { checkBareStyleReferenceContract } from './wasm-bare-style-reference-contract.mjs';
 
 export function runAppearanceContracts(IfcAPI, test) {
@@ -21,5 +22,6 @@ export function runAppearanceContracts(IfcAPI, test) {
   test('RGB point-cloud source keeps thin-wall faces apart under every orientation source (#4381)', () => checkPointTransferContract(IfcAPI));
   test('proper rigid scan registration preserves held-out independence and frame binding (#4381)', () => checkScanRegistrationContract(IfcAPI));
   test('scan segmentation recovers a seeded room, a round and a faceted column, order-invariantly, with strict options (#6870, #6893)', () => checkScanSegmentationContract(IfcAPI));
+  test('scan proposals turn a segmented room into walls, slabs and a column in the model frame (#6894)', () => checkScanProposalContract(IfcAPI));
   test('bare style references cross the real WASM boundary (#4694)', () => checkBareStyleReferenceContract(IfcAPI));
 }

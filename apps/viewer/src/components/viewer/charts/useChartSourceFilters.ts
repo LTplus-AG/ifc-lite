@@ -23,12 +23,10 @@ import { useViewerStore, type ViewerState } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { evaluatorModelsFromState, definedModelTagIdsOf } from '@/lib/model-tags/evaluator-models';
 import { chartElementFilterKey, resolveChartFilter } from '@/lib/charts/source-filter';
+import type { ChartFilterResolution } from '@/lib/charts/card-aggregation';
 import { useActiveSchemaVersion } from '../SearchModal.filter.selector.js';
 
-export type ChartSourceFilterState =
-  | { status: 'resolving' }
-  | { status: 'ok'; ids: ReadonlySet<number> }
-  | { status: 'error'; message: string };
+export type ChartSourceFilterState = ChartFilterResolution;
 
 /** Keyed by the canonical element-filter identity, not chart id: identical
  *  selectors or rule groups share one scan. */

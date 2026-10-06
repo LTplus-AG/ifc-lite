@@ -30,6 +30,7 @@ import { AXIS_INFO, presetViewForAxis } from '../tools/sectionConstants';
 import { TitleBlockEditor } from '../TitleBlockEditor';
 import { useDrawingViewModel } from './useDrawingViewModel';
 import { useDrawingLayers } from './useDrawingLayers';
+import { AssistantAction } from '../assistant/AssistantAction';
 import { DrawingToolbar, type DrawingWidthTier } from './DrawingToolbar';
 import { DrawingExportMenu } from './DrawingExportMenu';
 import { DrawingCanvasView } from './DrawingCanvasView';
@@ -152,6 +153,7 @@ export function DrawingPanel(): React.ReactElement {
             visibleRasterReferenceCount={vm.visibleRasterReferenceCount}
             visibleUnderlayCount={layers.dxfUnderlayData.filter((underlay) => underlay.opacity > 0).length}
           />
+          <AssistantAction />
         </div>
       </div>
 

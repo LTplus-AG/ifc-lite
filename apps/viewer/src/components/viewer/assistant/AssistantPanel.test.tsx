@@ -57,8 +57,12 @@ test('registered Clash and Data validation headers expose the actual contextual 
   const validation = render(renderPanelBody('validation', () => undefined));
   // No report is attached yet, so the source mismatch hides discussion.
   assert.equal(validation.querySelector('button[aria-label="Discuss with AI"]'), null);
+  // #6833: the manual side discusses the manual checklist (human verdicts), not the IDS report.
   act(() => setValidationSourceChoice('manual'));
-  assert.equal(validation.querySelector('button[aria-label="Discuss with AI"]'), null);
+  const manual = validation.querySelector('button[aria-label="Discuss with AI"]');
+  assert.ok(manual, 'the manual side offers its own source');
+  click(manual);
+  assert.equal(useAssistant.getState().snapshot?.source, 'manualChecklist');
 });
 
 test('fingerprint replacement renders stale evidence and disables sending through the canonical guard (#6839)', () => {

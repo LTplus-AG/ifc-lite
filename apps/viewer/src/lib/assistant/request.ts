@@ -7,6 +7,7 @@ import { runModelRequest } from '@/lib/llm/request-service';
 import { getApiKeys } from '@/services/api-keys';
 import { UNCONFIGURED_MODEL_ID } from '@/lib/llm/models';
 import { evidenceIsCurrent } from './evidence';
+import { adapterFor } from './adapters/registry';
 import { CLASH_GROUP_OUTPUT_GUIDANCE } from './clash-taxonomy';
 import { MODEL_CHANGE_OUTPUT_GUIDANCE } from '../actions/model-change';
 import { useViewerStore } from '@/store';
@@ -47,12 +48,15 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
   const controller = new AbortController();
   const budget = state.budget;
   useAssistant.setState({ controller, status: 'streaming', error: null, output: '', pendingPrompt: prompt.trim() });
-  const unsubscribe = useViewerStore.subscribe(() => {
+  const staleCheck = () => {
     if (useAssistant.getState().controller === controller && !evidenceIsCurrent(state.snapshot!)) {
       controller.abort();
       useAssistant.setState({ controller: null, pendingPrompt: null, status: 'error', error: 'stale-evidence', output: '' });
     }
-  });
+  };
+  const unsubscribe = useViewerStore.subscribe(staleCheck);
+  // Sources whose native state lives outside the viewer store (Linked records) notify through their adapter.
+  const detachSource = adapterFor(state.snapshot.source).subscribe?.(staleCheck);
   const ownsRequest = () => useAssistant.getState().controller === controller && !controller.signal.aborted;
   const fail = (error: string) => {
     if (ownsRequest()) useAssistant.setState({ error, pendingPrompt: null, output: '', status: 'error', controller: null });
@@ -94,6 +98,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     return false;
   } finally {
     unsubscribe();
+    detachSource?.();
     if (ownsRequest()) useAssistant.setState({ controller: null, pendingPrompt: null, status: 'idle' });
   }
 }

@@ -366,3 +366,47 @@ it('DeviationPanel #6880 Export CSV with no measured points says why instead of 
   await computeWith(container, stub, ladder(10, 0.01));
   await waitFor(() => container.querySelector('[data-testid="deviation-export-notice"]')?.textContent === '', 'notice cleared');
 });
+
+it('DeviationPanel #6833 reads the statistics back on mount when a re-run dropped them while it was closed', async () => {
+  const stub = stubRenderer();
+  const first = render(<DeviationPanel triangleCount={1} />);
+  await computeWith(first, stub, ladder(1000, 0.04));
+  cleanup();
+  // COPC streaming settles while the panel is closed: the stored statistics describe chunks no longer drawn.
+  act(() => { useViewerStore.getState().bumpPointCloudDeviationRevision(); });
+  assert.equal(useViewerStore.getState().pointCloudDeviationStatistics, null);
+  const container = render(<DeviationPanel triangleCount={1} />);
+  await waitFor(() => stub.readbacks.length === 2, 'readback started on mount');
+  await act(async () => { stub.readbacks[1](ladder(400, 0.004)); });
+  await waitFor(() => stat(container, 'maxAbs') === '4.0 mm', 'statistics rendered after remount');
+  assert.equal(useViewerStore.getState().pointCloudDeviationStatistics?.overall.maxAbs, ladder(400, 0.004).values.reduce((m, v) => Math.max(m, Math.abs(v)), 0));
+  assert.equal(stub.computeCalls(), 1, 'remount reads back; it does not recompute');
+});
+
+it('DeviationPanel #6833 re-reads after a COPC re-run when it mounted with statistics already stored', async () => {
+  const stub = stubRenderer();
+  const first = render(<DeviationPanel triangleCount={1} />);
+  await computeWith(first, stub, ladder(1000, 0.04));
+  cleanup();
+  const container = render(<DeviationPanel triangleCount={1} />);
+  assert.equal(stat(container, 'maxAbs'), '40.0 mm', 'the stored statistics show on remount');
+  assert.equal(stub.readbacks.length, 1, 'stored statistics are not read again on mount');
+  act(() => { useViewerStore.getState().bumpPointCloudDeviationRevision(); });
+  await waitFor(() => stub.readbacks.length === 2, 'refresh readback started');
+  await act(async () => { stub.readbacks[1](ladder(400, 0.004)); });
+  await waitFor(() => stat(container, 'maxAbs') === '4.0 mm', 'refreshed statistics rendered');
+});
+
+it('DeviationPanel #6833 a summary stored without its tolerance count (closed mid-pass) is read back on remount', async () => {
+  const stub = stubRenderer();
+  const first = render(<DeviationPanel triangleCount={1} />);
+  await computeWith(first, stub, ladder(1000, 0.04));
+  cleanup();
+  // The pooled summary was adopted, then the panel closed before the tolerance count finished.
+  const stored = useViewerStore.getState().pointCloudDeviationStatistics!;
+  act(() => { useViewerStore.getState().setPointCloudDeviationStatistics({ ...stored, withinTolerance: null }); });
+  render(<DeviationPanel triangleCount={1} />);
+  await waitFor(() => stub.readbacks.length === 2, 'readback started on mount');
+  await act(async () => { stub.readbacks[1](ladder(1000, 0.04)); });
+  await waitFor(() => useViewerStore.getState().pointCloudDeviationStatistics?.withinTolerance != null, 'tolerance count completed');
+});

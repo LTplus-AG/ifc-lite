@@ -14,6 +14,7 @@ import { loadDocuments } from '@/lib/document/persistence';
 import { createContentBackup, parseContentBackup, readBackupDrafts, readContentRecovery } from '@/lib/storage/content-backup';
 import '@/test/download-capture';
 import { Toaster } from '@/components/ui/toast';
+import { useClashGroupApplications } from '@/lib/clash/group-applications';
 import { ContentStorageNotice } from './ContentStorageNotice';
 
 afterEach(cleanup);
@@ -277,4 +278,17 @@ it('#6695 a refused raw-draft import stays downloadable during unreadable storag
   assert.ok(!originals[0].key.includes('session:'), 'Retry all commits raw evidence into IndexedDB');
   assert.equal((await loadDocuments()).length, 1);
   assert.equal(await useViewerStore.getState().retryDocumentsSave(), true);
+});
+
+it('#6906 whole-library export waits for the clash group apply receipts too', async () => {
+  const status = useClashGroupApplications.getState().status;
+  useClashGroupApplications.setState({ status: { ...status, phase: 'loading' } });
+  try {
+    const ui = render(<Notice />);
+    const button = [...ui.querySelectorAll('button')].find(value => value.textContent === 'Download library backup');
+    assert.ok(button);
+    assert.equal(button.disabled, true, 'a backup taken now would omit the receipts');
+    await act(async () => { useClashGroupApplications.setState({ status: { ...status, phase: 'ready' } }); });
+    assert.equal(button.disabled, false);
+  } finally { useClashGroupApplications.setState({ status }); }
 });

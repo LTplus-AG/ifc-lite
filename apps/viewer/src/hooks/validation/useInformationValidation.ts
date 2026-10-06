@@ -17,6 +17,7 @@ import { runInformationCheck } from '@/lib/validation/run-information-check';
 import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { captureAnalysisStamp, stampAnalysisReport } from '../useAnalysisStaleness';
 import { useTranslation } from '@/i18n';
 import { resolveTargetModels, type RuleEngineProgress } from '@ifc-lite/rules';
 import type { RuleSetFile } from '@ifc-lite/rules';
@@ -239,6 +240,9 @@ export function useInformationValidation(): UseInformationValidationResult {
       // live store state is turned into that shape here, the one place the
       // adapter (`lib/model-tags/evaluator-models.ts`) is called from.
       const state = useViewerStore.getState();
+      // The run's model versions, taken before the engine reads them: an edit
+      // during or after the run marks this report stale, like IDS (#6833).
+      const stamp = captureAnalysisStamp();
       const { report, snapshot } = await runInformationCheck({
         ruleSet: file,
         models: evaluatorModelsFromState(state),
@@ -251,7 +255,7 @@ export function useInformationValidation(): UseInformationValidationResult {
       // AFTER the (possibly long) engine run completes, mirroring
       // `useIDS.runValidation`'s `stillWantedValidation` guard (#2802).
       if (!stillWanted(myEpoch)) return;
-      setIdsValidationReport(report, snapshot);
+      setIdsValidationReport(stampAnalysisReport(report, stamp), snapshot);
       setEditing(false);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;

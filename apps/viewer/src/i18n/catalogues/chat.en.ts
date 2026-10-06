@@ -229,7 +229,6 @@ export const chatEn = {
   'assistant.clashGroupHint': 'Preview how the proposed groups map onto native findings. Every finding is accounted for as grouped or unclassified.',
   'assistant.previewClashGroups': 'Preview groups',
   'assistant.clashGroupCounts': 'Native findings: {total}. Proposed: {proposed}. Unclassified: {unclassified}. Omitted from evidence: {omitted}.',
-  'assistant.clashGroupInert': 'Preview only. Native groups, review decisions and BCF topics are unchanged. The preview is not saved; saving the conversation keeps the answer.',
   'assistant.clashGroupAdjustHint': 'The proposal repeats or invents citations, so it does not partition the findings. You can preview it with the first group keeping each repeated finding and unknown citations removed.',
   'assistant.previewAdjusted': 'Preview with repeats removed',
   'assistant.clashGroupAdjusted': 'Adjusted preview: {repeats} repeated and {unknown} unknown citations removed, {groups} emptied or duplicate groups dropped. The AI answer itself is unchanged.',

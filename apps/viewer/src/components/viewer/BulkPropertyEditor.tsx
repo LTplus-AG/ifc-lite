@@ -8,7 +8,7 @@
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef, useId } from 'react';
-import { Play, Eye, Filter, Tag } from 'lucide-react';
+import { Play, Eye, Filter, Tag, ListChecks } from 'lucide-react';
 
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
@@ -48,7 +48,7 @@ import {
   type BulkQueryPreview,
   type BulkQueryResult,
 } from '@ifc-lite/mutations';
-import { extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { FilterGroupEditor, type FilterGroupEditorState } from './FilterGroupEditor';
@@ -65,6 +65,10 @@ import { Field } from '@/components/ui/field';
 import { useBulkTargets } from './useBulkTargets';
 import type { BulkTargetSource } from './bulk-targets';
 import { runBulkTargetBatches } from './bulk-target-run';
+import { useBulkPropertySuggestions } from './useBulkPropertySuggestions';
+import { bulkActionToModelChanges } from '@/lib/actions/bulk-changes';
+import type { ChangeConversion } from '@/lib/actions/change-conversion';
+import { ChangeReviewDialog } from './actions/ChangeReviewDialog';
 
 export { parseBulkSetPropertyValue } from './bulk-property-value';
 
@@ -238,60 +242,12 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const { ids: queryIds, computing: isComputing, error: queryError } = useBulkQueryTargets(
     open && targetSource === 'query', isExecuting, selectedModelId, queryGroups,
   );
-  const [discoveredProperties, setDiscoveredProperties] = useState<{
-    psets: Map<string, Set<string>>; allProps: Set<string>;
-  }>({ psets: new Map(), allProps: new Set() });
-
-  // Property suggestions are display-only; evaluate the query once via Rules,
-  // then sample its matches without re-running the old property predicate.
-  useEffect(() => {
-    const psets = new Map<string, Set<string>>();
-    const allProps = new Set<string>();
-    const dataStore = selectedModel?.ifcDataStore;
-    if (targetSource === 'query' && dataStore && queryIds.length > 0) {
-      // Re-parsing the source is costly; use one sample for lazy stores and
-      // the cached columnar table for the rest of the suggestions.
-      let firstProperties: Array<{ name: string; properties: Array<{ name: string }> }> =
-        dataStore.properties?.getForEntity(queryIds[0]) ?? [];
-      if (dataStore.onDemandPropertyMap && dataStore.source?.length > 0) {
-        try {
-          firstProperties = extractPropertiesOnDemand(dataStore as IfcDataStore, queryIds[0]);
-        } catch (error) {
-          console.warn('[bulk-edit] property suggestions unavailable', error);
-        }
-      }
-      for (const [index, entityId] of queryIds.slice(0, 100).entries()) {
-        const properties = index === 0 ? firstProperties : dataStore.properties?.getForEntity(entityId) ?? [];
-        for (const pset of properties) {
-          const propSet = psets.get(pset.name) ?? new Set<string>();
-          for (const prop of pset.properties) {
-            propSet.add(prop.name);
-            allProps.add(prop.name);
-          }
-          psets.set(pset.name, propSet);
-        }
-      }
-    }
-    setDiscoveredProperties({ psets, allProps });
-  }, [targetSource, selectedModel, queryIds]);
+  const { psetOptions, propOptions } = useBulkPropertySuggestions(targetSource, selectedModel, queryIds, targetPset);
 
   const liveMatchCount = targetSource === 'query' ? queryIds.length
     : [...targetGroups.values()].reduce((count, ids) => count + ids.length, 0);
   const targetsReady = targetSource === 'query' ? !!queryEngine && !isComputing && !queryError : targetEngines.size === targetGroups.size;
 
-  // Flatten discovered properties for selectors
-  const psetOptions = useMemo(() => {
-    return Array.from(discoveredProperties.psets.keys()).sort();
-  }, [discoveredProperties]);
-
-  const propOptions = useMemo(() => {
-    // If a property set is selected, show only properties from that set
-    if (targetPset && discoveredProperties.psets.has(targetPset)) {
-      return Array.from(discoveredProperties.psets.get(targetPset)!).sort();
-    }
-    // Otherwise show all properties
-    return Array.from(discoveredProperties.allProps).sort();
-  }, [discoveredProperties, targetPset]);
 
   // Build action for the query engine; returns a failure (parseBulkSetPropertyValue)
   // instead of a fabricated-value action — callers must refuse the whole operation.
@@ -407,6 +363,25 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     }
   }, [queryEngine, targetEngines, targetGroups, targetSource, targetsReady,
     liveMatchCount, canEditInSession, queryGroups, buildAction, selectedModelId, t]);
+
+  // Review as changes (P15): the same targets and action as a checked batch with current values expected.
+  const [review, setReview] = useState<ChangeConversion | null>(null);
+  const handleReview = useCallback(async () => {
+    const built = buildAction();
+    if (!built.ok) { setValidationFailure(built); return setExecuteResult({ mutations: [], affectedEntityCount: 0, success: false }); }
+    let ids: number[] | null = null;
+    try {
+      ids = targetSource === 'query' ? await resolveBulkQueryIds(useViewerStore.getState(), selectedModelId, queryGroups) : null;
+    } catch (error) {
+      console.error('[bulk-edit] review targets failed', error);
+      setRuntimeFailures([{ kind: 'execute', detail: error instanceof Error ? error.message : undefined }]);
+      return setExecuteResult({ mutations: [], affectedEntityCount: 0, success: false });
+    }
+    const targets = ids ? ids.map((expressId) => ({ modelId: selectedModelId, expressId }))
+      : [...targetGroups].flatMap(([modelId, group]) => group.map((expressId) => ({ modelId, expressId })));
+    const field = actionType === 'SET_ATTRIBUTE' ? targetProp : `${targetPset}.${targetProp}`;
+    setReview(bulkActionToModelChanges(useViewerStore.getState(), targets, built.action, t('tableChanges.bulkTitle', { field })));
+  }, [buildAction, targetSource, selectedModelId, queryGroups, targetGroups, actionType, targetPset, targetProp, t]);
 
   // Reset form
   const handleReset = useCallback(() => {
@@ -603,7 +578,12 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
                 <Eye className="h-4 w-4 mr-2" />
                 {t('bulkPropertyEditor.preview')}
               </Button>
+              <Button disabled={!targetsReady || liveMatchCount === 0 || !targetProp || (actionType !== 'SET_ATTRIBUTE' && !targetPset)}
+                onClick={() => void handleReview()}>
+                <ListChecks className="h-4 w-4 mr-2" />{t('tableChanges.reviewButton')}
+              </Button>
               <Button
+                variant="outline"
                 onClick={handleExecute}
                 disabled={!canEditInSession || !targetsReady || liveMatchCount === 0 || !targetProp || (actionType !== 'SET_ATTRIBUTE' && !targetPset) || !executeDirty}
                 aria-describedby={editDenialReason ? denialId : undefined}
@@ -617,6 +597,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
             </>
           )}
         </DialogFooter>
+        <ChangeReviewDialog conversion={review} origin="bulk-editor" onClose={() => setReview(null)} />
       </DialogContent>
     </Dialog>
   );

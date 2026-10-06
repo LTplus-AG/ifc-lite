@@ -14,6 +14,7 @@ import { createContentLibrary, initialContentStatus, type ContentStatus } from '
 import type { ContentDefinition } from '../storage/content-migration';
 import type { AppliedChange, ModelChangeReceipt } from './model-change-commit';
 import { AUTHORING_OPS } from './model-authoring';
+import { VERDICT_SPEC_LIMIT, type ReceiptValidation } from './validation-verdicts';
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
@@ -23,6 +24,19 @@ const OPS = new Set<string>(['property.set', 'property.delete', 'quantity.set', 
 function applied(value: unknown): value is AppliedChange {
   return record(value) && Number.isInteger(value.index) && OPS.has(String(value.op)) && typeof value.globalId === 'string'
     && typeof value.modelId === 'string' && typeof value.field === 'string' && scalar(value.before) && scalar(value.after);
+}
+
+const count = (value: unknown) => Number.isInteger(value) && (value as number) >= 0;
+function verdicts(value: unknown): boolean {
+  return Array.isArray(value) && value.length <= VERDICT_SPEC_LIMIT && value.every((item) => record(item)
+    && typeof item.id === 'string' && typeof item.name === 'string' && count(item.passed) && count(item.failed));
+}
+
+/** Optional since P15; receipts written before it have no validation block. */
+function validation(value: unknown): value is ReceiptValidation {
+  return record(value) && (value.source === 'ids' || value.source === 'rules') && typeof value.title === 'string'
+    && ['current', 'stale', 'unknown'].includes(String(value.beforeFreshness)) && verdicts(value.before)
+    && (value.after === undefined || verdicts(value.after)) && (value.rerunAt === undefined || typeof value.rerunAt === 'string');
 }
 
 export function decodeModelChangeReceipt(value: unknown): ModelChangeReceipt | null {
@@ -36,6 +50,7 @@ export function decodeModelChangeReceipt(value: unknown): ModelChangeReceipt | n
   if (!value.skipped.every((skip) => record(skip) && Number.isInteger(skip.index) && typeof skip.status === 'string')) return null;
   if (value.undoneAt !== undefined && typeof value.undoneAt !== 'string') return null;
   if (value.kind !== undefined && value.kind !== 'model.authoring') return null;
+  if (value.validation !== undefined && !validation(value.validation)) return null;
   return structuredClone(value) as unknown as ModelChangeReceipt;
 }
 

@@ -17,6 +17,7 @@ async function load(rel) {
 }
 const measure = await load('./measure-bundle.mjs');
 const ceilings = await load('./ceilings.mjs');
+const compare = await load('./compare.mjs');
 function rt(name, body) {
   test(name, () => {
     assert.ok(measure && ceilings, 'the perf-ratchet modules are absent');
@@ -88,6 +89,62 @@ rt('measureBundle reports brotli sizes that round-trip and counts eager JS only'
   }
 });
 
+// #7002: a dist whose eager set and non-eager files are all distinguishable by size.
+function jsOf(seed, n) {
+  let x = seed;
+  let out = '';
+  for (let i = 0; i < n; i++) {
+    x = (x * 1103515245 + 12345) % 2147483648;
+    out += String.fromCharCode(97 + (x % 26));
+  }
+  return out;
+}
+const EAGER_HTML = `<!DOCTYPE html><html><head>
+  <script type="module" crossorigin src="/assets/index-entry.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/vendor-a.js">
+  <link rel=modulepreload href='/assets/vendor-b.mjs'>
+  <link rel="modulepreload" href="/assets/vendor-a.js">
+  <link rel="modulepreload" href="/assets/vendor-b.mjs?v=2">
+  <link rel="modulepreload" href="/assets/vendor-c.js">
+  <link rel="modulepreload" href="/assets/style-preloaded.css">
+  <link rel="preload" as="font" href="/assets/font.woff2">
+  <link rel="stylesheet" href="/assets/index.css">
+</head><body></body></html>`;
+
+rt('viewer-eager-js-brotli sums the brotli size of each eager JS file, once, and nothing else', () => {
+  const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-eager-'));
+  try {
+    const dist = join(root, 'dist');
+    mkdirSync(join(dist, 'assets'), { recursive: true });
+    writeFileSync(join(dist, 'index.html'), EAGER_HTML);
+    const eagerFiles = { 'index-entry.js': jsOf(1, 3000), 'vendor-a.js': jsOf(2, 2000), 'vendor-b.mjs': jsOf(3, 1500), 'vendor-c.js': jsOf(4, 1000) };
+    for (const [name, body] of Object.entries(eagerFiles)) writeFileSync(join(dist, 'assets', name), body);
+    // Present in dist but never loaded eagerly: must add nothing.
+    writeFileSync(join(dist, 'assets/lazy-chunk.js'), jsOf(5, 9000));
+    writeFileSync(join(dist, 'assets/style-preloaded.css'), jsOf(6, 7000));
+    writeFileSync(join(dist, 'assets/font.woff2'), jsOf(7, 7000));
+    writeFileSync(join(dist, 'assets/index.css'), jsOf(8, 7000));
+    const wasm = join(root, 'engine.wasm');
+    writeFileSync(wasm, 'x');
+
+    const out = measure.measureBundle({ wasm, dist, commit: 'abc1234', measuredAt: '2026-10-06T00:00:00.000Z' });
+    assert.deepEqual(ceilings.validateMeasuredFile(out), []);
+    const v = Object.fromEntries(out.metrics.map((m) => [m.id, m]));
+    const expected = Object.values(eagerFiles).reduce((n, body) => n + measure.brotliSize(Buffer.from(body)), 0);
+    assert.equal(v['viewer-eager-js-brotli'].value, expected);
+    assert.equal(v['viewer-eager-js-chunks'].value, 4);
+    assert.match(v['viewer-eager-js-brotli'].detail, /^4 files, raw 7500 bytes/);
+    // The lazy chunk is large and incompressible: counting it would show.
+    assert.ok(measure.brotliSize(Buffer.from(jsOf(5, 9000))) > 4000);
+    // One discovery: the count is the number of files whose bytes were summed.
+    const found = measure.eagerJsFiles(dist, EAGER_HTML);
+    assert.deepEqual(found.files.map((f) => f.url.replace(/^.*\//, '')), ['index-entry.js', 'vendor-a.js', 'vendor-b.mjs', 'vendor-c.js']);
+    assert.equal(found.files.length, v['viewer-eager-js-chunks'].value);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 rt('measureBundle names the missing build instead of measuring nothing', () => {
   const root = mkdtempSync(join(tmpdir(), 'perf-ratchet-empty-'));
   try {
@@ -122,6 +179,13 @@ rt('every committed ceiling file is valid, and bundle.json ratchets exactly what
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+  // #7002: bytes are the blocking ceiling, at the same 0.5% as the other byte metrics.
+  const bytes = bundle.entries.find((e) => e.id === 'viewer-eager-js-brotli');
+  assert.deepEqual(bytes.tolerance, { kind: 'relative', value: 0.005 });
+  assert.equal(bytes.metric, 'brotli-bytes');
+  // The count is a looser companion: headroom of a few chunks, not an exact match.
   const chunks = bundle.entries.find((e) => e.id === 'viewer-eager-js-chunks');
-  assert.equal(chunks.tolerance.kind, 'exact', 'a structural count has no tolerance band');
+  assert.equal(chunks.tolerance.kind, 'relative');
+  const headroom = compare.allowedMax(chunks) - chunks.ceiling;
+  assert.ok(headroom >= 3 && headroom <= 8, `chunk-count headroom is ${headroom}; it should be a few chunks`);
 });

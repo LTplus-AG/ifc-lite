@@ -18,11 +18,8 @@
  * With tracing off every instrumented call site is a no-op method call.
  */
 
-import { buildSpanTree, createLoadTracer, toChromeTrace, type LoadTrace, type LoadTracer } from '@ifc-lite/load-trace';
-import { downloadBlob } from '../export/download.js';
+import { NOOP_LOAD_TRACE, type LoadTrace, type LoadTracer } from '@ifc-lite/load-trace';
 import { readPerfFlag } from './flags.js';
-
-const GLOBAL_KEY = '__IFC_LITE_LOAD_TRACE__';
 
 export function isPerfTraceRequested(
   search: string = globalThis.location?.search ?? '',
@@ -35,21 +32,6 @@ export function isPerfTraceRequested(
   return new URLSearchParams(search).get('perfTrace') === '1';
 }
 
-export function exposeLoadTrace(tracer: LoadTracer, target: Record<string, unknown> = globalThis as Record<string, unknown>): void {
-  target[GLOBAL_KEY] = {
-    loads: () => tracer.snapshots(),
-    latest: () => tracer.latest(),
-    tree: () => {
-      const latest = tracer.latest();
-      return latest ? buildSpanTree(latest) : [];
-    },
-    chromeTrace: () => toChromeTrace(tracer.snapshots()),
-    downloadChromeTrace: () => {
-      const json = JSON.stringify(toChromeTrace(tracer.snapshots()));
-      downloadBlob(new Blob([json], { type: 'application/json' }), `ifc-lite-load-trace-${Date.now()}.json`);
-    },
-  };
-}
 
 /**
  * Resolve on the next animation frame, or after `fallbackMs` when rAF stalls
@@ -76,5 +58,23 @@ export function recordFirstVisible(trace: Pick<LoadTrace, 'milestone'>, appended
   });
 }
 
-export const loadTracer: LoadTracer = createLoadTracer({ enabled: isPerfTraceRequested() });
-if (loadTracer.enabled) exposeLoadTrace(loadTracer);
+const DISABLED_TRACER: LoadTracer = {
+  enabled: false,
+  startLoad: () => NOOP_LOAD_TRACE,
+  snapshots: () => [],
+  latest: () => null,
+};
+
+/**
+ * The viewer's shared tracer: a no-op until tracing is requested. The real
+ * tracer, its span tree and the Chrome-trace export live in
+ * `loadTraceEnabled.ts`, imported on demand, so a default boot ships none of
+ * it in the entry chunk. Loads start long after boot, so `?perfTrace=1` (or
+ * the benchmark's pre-boot flag) still captures every load.
+ */
+export let loadTracer: LoadTracer = DISABLED_TRACER;
+if (isPerfTraceRequested()) {
+  void import('./loadTraceEnabled.js')
+    .then((mod) => { loadTracer = mod.enableLoadTracing(); })
+    .catch((error: unknown) => console.warn('[perf] load tracing could not be enabled', error));
+}

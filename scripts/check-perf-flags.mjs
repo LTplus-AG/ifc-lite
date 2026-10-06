@@ -35,7 +35,7 @@ export const ALLOWED_READERS = new Set([
  * not flags it reads. They are not perf flags, so they are not registry entries.
  */
 export const PUBLISHED_GLOBALS = new Set([
-  '__IFC_LITE_LOAD_TRACE__', // load-trace span API, apps/viewer/src/lib/perf/loadTrace.ts (#6956)
+  '__IFC_LITE_LOAD_TRACE__', // load-trace span API, apps/viewer/src/lib/perf/loadTraceEnabled.ts (#6956)
 ]);
 // Production sources only: the viewer and every package's src/ (other apps
 // and package tooling never read these flags).

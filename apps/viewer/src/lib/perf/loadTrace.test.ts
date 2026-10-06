@@ -5,7 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createLoadTracer } from '@ifc-lite/load-trace';
-import { exposeLoadTrace, isPerfTraceRequested, loadTracer } from './loadTrace.js';
+import { isPerfTraceRequested, loadTracer } from './loadTrace.js';
+import { exposeLoadTrace } from './loadTraceEnabled.js';
 
 interface ExposedTrace {
   latest(): { loadId: string; spans: Array<{ name: string }> } | null;

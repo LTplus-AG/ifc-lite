@@ -28,7 +28,9 @@ import { ContentStorageNotice } from '@/components/viewer/ContentStorageNotice';
 import { assistantLibrary } from '@/lib/assistant/library';
 import { cleanup, click, render, type, waitFor } from '@/test/render';
 import { detectCoincidentWalls, mountClashPanel, openSavedReports, saveCurrentResultAs, savedClashReports } from '@/test/clash-report-fixture';
-import { contentTransaction, readContentRows, transactionDone, writeContent } from './content-database';
+import { contentTransaction, readContentRows, transactionDone, writeContent, type ContentRow } from './content-database';
+import { rebindCommittedDocument } from './content-backup-references';
+import { forgetContentImports, planContentImport, prepareContentImport, rememberContentImports } from './content-import-plan';
 import type { ContentKind } from './content-kinds';
 import { createContentBackup, importContentBackup, parseContentBackup, type ContentLibraries } from './content-backup';
 
@@ -140,6 +142,36 @@ describe('Saved clash reports in the library backup (#6947)', () => {
     assert.ok(restoredDocument);
     assert.deepEqual(bindings(restoredDocument), [copy.id], 'the imported chart reads the evidence it was exported with, not the local report');
     assert.deepEqual(await totals(restoredDocument), [3]);
+  });
+
+  it('a retried import that has to give a report a new id takes the document staged by the first attempt with it', async () => {
+    const backedUp = documentOf(clashChart('of-a', a.id));
+    const prepared = await prepareContentImport(libraries({ clashReports: [a], document: [backedUp] }));
+    // First attempt, refused by storage: planned against an empty library, remembered, and its entries staged in this tab.
+    const first = planContentImport(prepared, []);
+    assert.deepEqual(first.map((row) => [row.kind, row.id]), [['clashReports', a.id], ['document', backedUp.id]], 'control: nothing conflicts yet, so the ids are kept');
+    rememberContentImports(first);
+    try {
+      // Before the retry another tab stores a different run under the same id.
+      const peer: ContentRow = { kind: 'clashReports' as ContentKind, id: a.id, version: 1, revision: 1, createdAt: 1, modifiedAt: 1, deleted: false, payload: { ...b, id: a.id } };
+      const second = planContentImport(prepared, [peer], libraries({ clashReports: [a], document: [backedUp] }));
+      const report = second.find((row) => row.kind === 'clashReports'), staged = second.find((row) => row.kind === 'document');
+      assert.ok(report && staged);
+      assert.notEqual(report.id, a.id, 'the imported report becomes a copy: the id now belongs to the other run');
+      assert.equal((report.payload as SavedClashReport).clashes.length, a.clashes.length);
+      assert.deepEqual(bindings(staged.payload as DocumentSpec), [report.id], 'the staged document follows the copy; left on the old id it would chart the other run');
+    } finally { forgetContentImports(first); }
+  });
+
+  it('a newer draft follows the id an own import gave its saved clash report, and keeps the author edit', () => {
+    // What the document content kind does when an import this tab made is acknowledged while a newer draft is waiting.
+    const staged = documentOf(clashChart('of-a', a.id));
+    const committed: DocumentSpec = { ...staged, blocks: documentOf(clashChart('of-a', 'copy-of-a')).blocks };
+    const merged = rebindCommittedDocument({ ...staged, name: 'Edited since the import' }, staged, committed);
+    assert.deepEqual([merged.name, bindings(merged)], ['Edited since the import', ['copy-of-a']]);
+    // Control: a chart the author has pointed at another report since is not pulled back.
+    const repointed: DocumentSpec = { ...staged, blocks: documentOf(clashChart('of-a', b.id)).blocks };
+    assert.deepEqual(bindings(rebindCommittedDocument(repointed, staged, committed)), [b.id]);
   });
 
   it('saved evidence is immutable: only the name can change', async () => {

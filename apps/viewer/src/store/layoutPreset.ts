@@ -32,6 +32,7 @@ export interface WorkspaceLayoutSnapshot {
   secondary: WorkspacePanelId | null;
   splitRatio: number;
   assistantPlacement: AssistantPlacement;
+  assistantDisplacedSecondary?: WorkspacePanelId | null;
 }
 
 interface PresetRecord {
@@ -60,7 +61,8 @@ function decodeRecord(value: unknown): PresetRecord | null {
     active: record.active as LayoutPresetId,
     // The sidebar blob goes through `applySidebarLayout`, which normalises any stale or foreign shape.
     previous: { sidebar: previous.sidebar as SidebarLayoutSnapshot, primary, secondary, splitRatio: previous.splitRatio,
-      assistantPlacement: previous.assistantPlacement },
+      assistantPlacement: previous.assistantPlacement,
+      assistantDisplacedSecondary: panelId(previous.assistantDisplacedSecondary) },
   };
 }
 
@@ -104,6 +106,7 @@ export function captureWorkspaceLayout(store: ViewerStoreApi = getViewerStoreApi
     secondary: state.sidebarSecondaryPanel,
     splitRatio: state.sidebarSplitRatio,
     assistantPlacement: useAssistantPlacement.getState().placement,
+    assistantDisplacedSecondary: useAssistantPlacement.getState().displacedSecondary,
   };
 }
 
@@ -160,7 +163,7 @@ export function restoreLayoutBeforePreset(store: ViewerStoreApi = getViewerStore
   // Opening the previous panel expands the dock; restore the captured mode and rail afterwards.
   store.getState().applySidebarLayout(previous.sidebar);
   setAssistantPlacement(previous.assistantPlacement);
+  useAssistantPlacement.setState({ displacedSecondary: previous.assistantDisplacedSecondary ?? null });
   setRecord(null);
   return true;
 }
-

@@ -204,6 +204,17 @@ async function fetchProj4Def(epsgCode: string): Promise<string | null> {
   }
 }
 
+/** Skip blank or invalid zone metadata before trying the next source. */
+function utmDefinitionFromMetadata(crs: ProjectedCRS): string | null {
+  const candidates = [crs.mapZone, ...[crs.name, crs.description, crs.mapProjection]
+    .map(value => value?.match(/UTM\s+zone\s+(\d{1,2}[NS])/i)?.[1])];
+  for (const zone of candidates) {
+    const definition = zone ? utmProj4String(zone) : null;
+    if (definition) return definition;
+  }
+  return null;
+}
+
 /**
  * Resolve a proj4 definition for the given ProjectedCRS.
  *
@@ -223,13 +234,11 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
   // that metadata interpretation local; caching it under EPSG:4326 would
   // corrupt subsequent geographic resolutions and make results load-order dependent.
   if (aliasCode && ['4326', '4269', '4267', '4258'].includes(aliasCode)) {
-    const zone = crs.mapZone ?? crs.description?.match(/UTM\s+zone\s+(\d{1,2}[NS])/i)?.[1]
-      ?? crs.mapProjection?.match(/UTM\s+zone\s+(\d{1,2}[NS])/i)?.[1];
-    const utm = zone ? utmProj4String(zone) : null;
+    const utm = utmDefinitionFromMetadata(crs);
     if (utm) {
       // Retain the declared datum rather than changing NAD27/NAD83/ETRS89
       // coordinates into WGS84 UTM. Cache only the native geographic CRS.
-      const geographic = await resolveProjection({ ...crs, name: `EPSG:${aliasCode}` });
+      const geographic = await resolveProjection({ id: crs.id, name: `EPSG:${aliasCode}` });
       if (!geographic || !isGeographicProj4(geographic)) return null;
       const zoneParameters = utm.match(/\+zone=\d+(?: \+south)?/)?.[0];
       if (!zoneParameters) return null;
@@ -286,23 +295,10 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
   }
 
   // 4. UTM zone heuristic — check mapZone, name, description, AND mapProjection
-  if (crs.mapZone) {
-    const def = utmProj4String(crs.mapZone);
-    if (def) {
-      if (code) projDefCache.set(code, def);
-      return def;
-    }
-  }
-  const name = crs.name?.toUpperCase() ?? '';
-  const utmMatch = name.match(/UTM\s+ZONE\s+(\d{1,2}[NS])/i)
-    ?? crs.description?.match(/UTM\s+zone\s+(\d{1,2}[NS])/i)
-    ?? crs.mapProjection?.match(/UTM\s+zone\s+(\d{1,2}[NS])/i);
-  if (utmMatch) {
-    const def = utmProj4String(utmMatch[1]);
-    if (def) {
-      if (code) projDefCache.set(code, def);
-      return def;
-    }
+  const utm = utmDefinitionFromMetadata(crs);
+  if (utm) {
+    if (code) projDefCache.set(code, utm);
+    return utm;
   }
 
   // 5. Network fallback — fetch from epsg.io

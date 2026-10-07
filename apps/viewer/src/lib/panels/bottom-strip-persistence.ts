@@ -28,7 +28,7 @@ export const BOTTOM_STRIP_DEFAULT_HEIGHT = 300;
 export const BOTTOM_STRIP_MAX_RATIO = 0.7;
 
 /** Tab ids this build does not know (a newer build's panel), written back on
- *  every persist so a release rollback does not erase them (#6927). */
+ *  every persist by this preservation-aware build (#6927). */
 let preservedTabs: string[] = [];
 
 /** The persisted tab order, filtered to ids the current build still knows —

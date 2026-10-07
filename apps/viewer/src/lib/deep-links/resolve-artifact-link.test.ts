@@ -10,6 +10,7 @@ import { captureEvidence } from '@/lib/assistant/evidence';
 import { assistantLibrary, openConversation } from '@/lib/assistant/library';
 import { useAssistant } from '@/lib/assistant/conversation';
 import type { SavedConversation } from '@/lib/assistant/persistence';
+import { parseDeepLink } from './artifact-link';
 import { resolveDeepLink } from './resolve-artifact-link';
 
 const initial = useViewerStore.getState();
@@ -55,4 +56,15 @@ test('#6927 missing saved artifacts open their owner without changing the conver
   assert.equal(result.status, 'missing');
   assert.equal(useAssistant.getState().archived?.id, held.id);
   assert.equal(useViewerStore.getState().sidebarActivePanel, 'assistant');
+});
+
+
+test('#6927 conflicting panel parameters never open either destination', async () => {
+  useViewerStore.getState().showWorkspacePanel('bcf', 'programmatic');
+  for (const query of ['?panel=assistant&panel=clash', '?panel=clash&panel=assistant']) {
+    const parsed = parseDeepLink(query);
+    assert.ok(parsed);
+    assert.deepEqual(await resolveDeepLink(useViewerStore, parsed), { status: 'refused', reason: 'conflicting-target' });
+    assert.equal(useViewerStore.getState().sidebarActivePanel, 'bcf');
+  }
 });

@@ -255,8 +255,11 @@ export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice
       for (const kept of get().sidebarPreserved) {
         if (!next.preserved.some((p) => p.id === kept.id)) next.preserved.push(kept);
       }
-      // Capture the pre-import value before queuing this import's review notice.
-      writeSidebarLayout(next, changes.length > 0);
+      // Save the current layout before queuing the import notice: the first
+      // pending review must retain the actual pre-import state (#6927).
+      if (!writeSidebarLayout(next, changes.length > 0) && changes.length > 0) {
+        throw new Error('Cannot import the layout without preserving the current stored layout');
+      }
       set({
         sidebarMode: next.mode,
         sidebarWidthPct: next.widthPct,

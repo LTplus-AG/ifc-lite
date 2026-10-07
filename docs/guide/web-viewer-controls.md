@@ -197,7 +197,9 @@ The hosted service includes a Rust Forma proposal importer and a Windows Autodes
 
 ## Layout migration and saved-artifact links
 
-When an older saved layout is upgraded, **Review your updated layout** lists renamed, added and unavailable panels. **Show changes** keeps that list scrollable so **Keep layout** and **Reset layout** remain reachable. Keep acknowledges the migrated layout; Reset uses the workspace's normal reset. Both retain unavailable extension placements, their anchors and hidden state, and the original stored layout in a local rollback backup. If that backup cannot be written, the original layout is not overwritten.
+When an older saved layout is upgraded, **Review your updated layout** lists renamed, added and unavailable panels. **Show changes** keeps that list scrollable so **Keep layout** and **Reset layout** remain reachable. Keep acknowledges the migrated layout; Reset uses the workspace's normal reset. Both retain unavailable extension placements, their anchors and hidden state, and the original stored layout in a local rollback backup. Importing a legacy layout also backs up the current layout before replacing it. If that backup cannot be written, the original stored layout is not overwritten. These controls are available on desktop and mobile.
+
+Older builds can read the common mode, width, order and hidden fields. A separate local placement record preserves panels omitted by an older sidebar writer, including their anchors and hidden state; the older writer’s current order and widths still take precedence. Portable layout captures include unavailable placements. The local backup retains the pre-migration or pre-import value for recovery.
 
 Review controls remain visible on mobile and with a collapsed sidebar. Importing a legacy profile captures the current layout before queuing its review. A separate placement record survives saves by older builds, so re-upgrading restores unavailable panels and their anchors while retaining the older build's width and ordering changes. Portable profile captures include those preserved placements.
 

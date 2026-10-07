@@ -45,7 +45,7 @@ function defaultRect(index: number): { x: number; y: number; w: number; h: numbe
 }
 
 /** Floating entries for a panel this build does not know (a newer build's or
- *  an extension's), written back verbatim so a rollback never loses them (#6927). */
+ *  an extension's), retained on saves by this preservation-aware build (#6927). */
 let preservedFloating: Array<Omit<FloatingPanelState, 'id'> & { id: string }> = [];
 
 function loadPersisted(): FloatingPanelState[] {

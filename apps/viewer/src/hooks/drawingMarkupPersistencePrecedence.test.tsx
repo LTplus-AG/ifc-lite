@@ -240,7 +240,7 @@ describe('localStorage (#4159) vs IFC-embedded (#4170) markup restore precedence
     // bounds, so wait for the decision itself: while it is still pending the
     // assertions below would pass without the precedence ever being decided.
     await settleUntil(() => hasPersistedMarkupEntryFor(model.id) !== 'pending');
-    assert.equal(hasPersistedMarkupEntryFor(model.id), true, 'setup sanity: localStorage\'s decision is settled, and it found the saved entry');
+    const decidedBeforeParse = hasPersistedMarkupEntryFor(model.id);
     assert.deepEqual(
       useViewerStore.getState().measure2DResults,
       [],
@@ -251,6 +251,9 @@ describe('localStorage (#4159) vs IFC-embedded (#4170) markup restore precedence
     await act(async () => { release(); });
     await flush();
 
+    // Checked after the held parse is released, so a failure here cannot
+    // leave the fake worker's reply pending.
+    assert.equal(decidedBeforeParse, true, 'localStorage\'s decision was settled before the parse landed, and it found the saved entry');
     assert.deepEqual(
       useViewerStore.getState().measure2DResults,
       [],

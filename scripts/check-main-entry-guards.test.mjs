@@ -66,3 +66,14 @@ test('argv use far from any self-location comparison is not flagged', () => {
   const src = "const [, , cmd] = process.argv;\nconst x = process.argv[1];\nlet a;\nlet b;\nlet c;\nif (import.meta.url === other) {}";
   assert.deepEqual(scan(src), []);
 });
+
+test('a commented-out guard next to live code that compares a location is not flagged', () => {
+  // The argv mention is prose; the live line beside it compares import.meta.url with something else.
+  const src = "// was: process.argv[1] === fileURLToPath(import.meta.url)\nif (import.meta.url === expectedUrl) register();";
+  assert.deepEqual(scan(src), []);
+});
+
+test('comparing argv[1] with something that is not the module location is not flagged', () => {
+  assert.deepEqual(scan("if (process.argv[1] === '--help') usage();"), []);
+  assert.deepEqual(scan("const same = process.argv[1] === other.path;"), []);
+});

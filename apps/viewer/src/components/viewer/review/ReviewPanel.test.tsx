@@ -4,7 +4,7 @@
 
 import '@/test/setup-dom.js';
 import '@/test/content-backup-fixture.js';
-import '@/test/content-fixture';
+import { refuseContentWrites } from '@/test/content-fixture';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import type { BCFProject, BCFTopic } from '@ifc-lite/bcf';
@@ -14,6 +14,7 @@ import { useViewerStore } from '@/store';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { clash, clashResult } from '@/lib/review/test-support';
 import { useReviewAssistantCard } from '@/lib/review/assistant';
+import { Toaster } from '@/components/ui/toast';
 import { currentReviewWorkspace, useReviewWorkspaces } from '@/lib/review/workspace';
 
 const initial = useViewerStore.getState();
@@ -99,4 +100,19 @@ test('a saved decision shows on the card and never touches the native statuses',
   await waitFor(() => /Accepted/.test(ui.querySelector('[data-review-card]')?.textContent ?? ''), 'badge');
   assert.equal(useViewerStore.getState().clashResult?.clashes[0].status, 'hard');
   assert.equal(useViewerStore.getState().bcfProject?.topics.get('T1')?.topicStatus, 'Open');
+});
+
+// PR #7015: a computed batch is not a successful save when the database refuses it.
+test('a refused draft save stays visibly unsaved without a success toast or Open drafts action', async () => {
+  setup();
+  useViewerStore.setState({ bcfProject: null });
+  const ui = mount();
+  const notifications = render(<Toaster />);
+  await waitFor(() => ui.querySelector('[data-review-card]') !== null, 'card');
+  const refusal = refuseContentWrites();
+  try {
+    click(button(ui, 'Draft BCF topic for 1 card'));
+    await waitFor(() => /Drafted, but not saved/.test(ui.textContent ?? ''), 'unsaved draft notice');
+    assert.doesNotMatch(notifications.textContent ?? '', /Drafted, but not saved|Open drafts/);
+  } finally { refusal.mock.restore(); }
 });

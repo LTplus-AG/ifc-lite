@@ -38,7 +38,7 @@ export function useCardActions(): CardActions {
         ...(notCurrent ? [t('reviewWorkspace.actions.excludedNotCurrent', { count: notCurrent })] : []),
       ];
       setNotes(next);
-      if (result.batch) toast.success(next[0], { label: t('reviewWorkspace.actions.openDrafts'), onClick: () => {
+      if (result.saved) toast.success(next[0], { label: t('reviewWorkspace.actions.openDrafts'), onClick: () => {
         useBcfDraftLibrary.setState({ dialogOpen: true });
         useViewerStore.getState().setBcfPanelVisible(true);
       } });

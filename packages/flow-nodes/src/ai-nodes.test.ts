@@ -325,3 +325,13 @@ it('#7039 a missing extraction records array is a failed batch, not a successful
   expect(warnings).toContain('passages 1-1: reply must contain a records array');
   expect(model.calls).toHaveLength(1);
 });
+
+it('#7039 a user AI grant cannot substitute for the graph declaration', async () => {
+  const model = standIn(classifyBy);
+  for (const networkGrants of [undefined, []]) {
+    const result = await runFlow(classifyGraph({}), { host: { ...host(model.service), grants: aiGrants.value, networkGrants }, registry, features });
+    expect(result.ok).toBe(false);
+    expect(result.reports.find(r => r.nodeId === 'ai')?.error).toMatch(/network\.ai/);
+  }
+  expect(model.calls).toHaveLength(0);
+});

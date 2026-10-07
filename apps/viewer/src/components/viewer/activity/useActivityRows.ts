@@ -9,12 +9,13 @@
  */
 
 import { useMemo } from 'react';
-import { useActivityJournal, activityCanceller, type ActivityJob, type ActivityOutcome } from '@/lib/activity/activity-journal';
+import { useActivityJournal, activityCanceller, type ActivityJob } from '@/lib/activity/activity-journal';
 import { publicationActivity, type PublicationOutcome } from '@/lib/activity/publication-activity';
 import { useBcfOutbox } from '@/lib/bcf-publication/outbox-store';
 import type { AnalysisPanelId } from '@/lib/panels/registry';
 import type { TranslationKey } from '@/i18n';
 import type { ResultStatus } from '../result/StatusChip';
+import { JOB_STATUS } from './activity-status';
 
 export interface ActivityRow {
   id: string;
@@ -35,9 +36,6 @@ export interface ActivityRow {
   publication?: { done: number; total: number };
 }
 
-const JOB_STATUS: Record<ActivityOutcome, ResultStatus> = {
-  running: 'running', completed: 'complete', partial: 'partial', failed: 'failed', cancelled: 'cancelled', interrupted: 'interrupted',
-};
 const PUBLICATION_STATUS: Record<PublicationOutcome, ResultStatus> = {
   running: 'running', queued: 'queued', completed: 'complete', partial: 'partial', failed: 'failed', uncertain: 'uncertain', blocked: 'blocked',
 };

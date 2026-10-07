@@ -59,6 +59,7 @@ export function remainingBudget(budget: RootBudget): RootBudgetLimits {
 
 /** Reserve one request; null when the root is exhausted. */
 export function reserveRequest(budget: RootBudget, requestedOutputTokens: number): BudgetGrant | null {
+  if (!positive(requestedOutputTokens)) return null;
   const remaining = remainingBudget(budget);
   const maxOutputTokens = Math.min(requestedOutputTokens, remaining.maxOutputTokens);
   if (remaining.maxRequests < 1 || maxOutputTokens < 1) return null;

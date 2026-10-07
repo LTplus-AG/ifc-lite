@@ -5,7 +5,6 @@
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { runModelRequest, type ModelRequest, type SendableRoute } from './request-service.js';
-import { remainingBudget } from '@ifc-lite/ai';
 import { createRootBudget } from './root-budget.js';
 import { useRequestReceipts, RECEIPT_LIMIT, recordReceipt } from './request-receipts.js';
 import { modelCapabilities } from './model-capabilities.js';
@@ -30,6 +29,16 @@ const proxy: SendableRoute = { kind: 'proxy', model: 'openai/gpt-free' };
 const request = (overrides: Partial<ModelRequest> = {}): ModelRequest => ({
   route: proxy, proxyUrl: '/api/chat', messages: [{ role: 'user', content: 'SECRET_PROMPT_TEXT' }],
   maxOutputTokens: 4096, budget: createRootBudget(), timeoutMs: 10_000, ...overrides,
+});
+
+test('#7037: a NaN output ceiling refuses before sending and leaves the budget usable', async () => {
+  const sent = serve(data([{ choices: [{ delta: { content: 'Ok' }, finish_reason: 'stop' }] }]));
+  const budget = createRootBudget({ maxRequests: 1, maxOutputTokens: 100 });
+  assert.deepEqual(await runModelRequest(request({ budget, maxOutputTokens: NaN })), { kind: 'refused', reason: 'budget-exhausted' });
+  assert.equal(sent.length, 0);
+  assert.equal(useRequestReceipts.getState().receipts.length, 0);
+  assert.equal((await runModelRequest(request({ budget, maxOutputTokens: 100 }))).kind, 'completed');
+  assert.equal(sent.length, 1);
 });
 
 // Proxy: OpenRouter's final chunk carries `usage`; the proxy forwards it and appends its quota event.
@@ -146,11 +155,11 @@ test('root budget: retries draw on one root, exhaustion refuses before any reque
   ]));
   assert.equal((await runModelRequest(request({ budget }))).kind, 'completed');
   // Reported output is charged exactly: 100 of the 4,096 reservation.
-  assert.deepEqual(remainingBudget(budget), { maxRequests: 1, maxOutputTokens: 9_900 });
+  assert.deepEqual({ requests: budget.requests, outputTokens: budget.outputTokens }, { requests: 1, outputTokens: 100 });
   serve(JSON.stringify({ error: 'Busy' }), { status: 503 });
   assert.equal((await runModelRequest(request({ budget }))).kind, 'error');
   // A request that streamed nothing is charged as a request but no output.
-  assert.deepEqual(remainingBudget(budget), { maxRequests: 0, maxOutputTokens: 9_900 });
+  assert.deepEqual({ requests: budget.requests, outputTokens: budget.outputTokens }, { requests: 2, outputTokens: 100 });
   const refusedSent = serve(data([]));
   const refused = await runModelRequest(request({ budget }));
   assert.deepEqual(refused, { kind: 'refused', reason: 'budget-exhausted' });
@@ -164,7 +173,7 @@ test('root budget clamps the last request to the remaining output and charges un
   let sent = serve(data([{ choices: [{ delta: { content: 'A' }, finish_reason: 'stop' }] }]));
   await runModelRequest(request({ budget }));
   assert.equal(sent[0]?.body.maxOutputTokens, 4096);
-  assert.equal(remainingBudget(budget).maxOutputTokens, 904, 'unreported usage is charged at the reservation');
+  assert.equal(budget.outputTokens, 4096, 'unreported usage is charged at the reservation');
   sent = serve(data([{ choices: [{ delta: { content: 'B' }, finish_reason: 'stop' }] }]));
   await runModelRequest(request({ budget }));
   assert.equal(sent[0]?.body.maxOutputTokens, 904);

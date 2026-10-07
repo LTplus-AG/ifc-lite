@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { createRootBudget, remainingBudget, restoreRootBudget } from './budget.js';
+import { createRootBudget, remainingBudget, reserveRequest, restoreRootBudget } from './budget.js';
 import { runModelRequest, type AiTransport, type ModelRequest, type RequestStart, type TransportCall } from './request.js';
 import type { UsageReceipt } from './receipt.js';
 
@@ -49,7 +49,9 @@ describe('runModelRequest', () => {
     const { transport } = scripted(reply('text'));
     const budget = createRootBudget({ maxRequests: 3, maxOutputTokens: 2000 });
     const outcome = await runModelRequest(request(transport, { budget }));
-    expect(outcome.kind === 'completed' && outcome.receipt.usageReported).toBe(false);
+    expect(outcome.kind).toBe('completed');
+    if (outcome.kind !== 'completed') throw new Error('Expected a completed request');
+    expect(outcome.receipt.usageReported).toBe(false);
     expect(budget.outputTokens).toBe(800);
   });
 
@@ -110,6 +112,21 @@ describe('runModelRequest', () => {
 });
 
 describe('request start hook', () => {
+  it('#7037: settles an announced request and emits its error receipt when the start hook throws', async () => {
+    const { transport, calls } = scripted(reply('ok'));
+    const budget = createRootBudget({ maxRequests: 3, maxOutputTokens: 2000 });
+    const started: RequestStart<'stub'>[] = [];
+    const receipts: UsageReceipt<'stub'>[] = [];
+    const outcome = await runModelRequest(request(transport, { budget }), {
+      onStart: start => { started.push(start); throw new Error('start hook failed'); },
+      onReceipt: receipt => receipts.push(receipt),
+    });
+    expect(outcome).toMatchObject({ kind: 'error', code: 'request-failed', message: 'start hook failed' });
+    expect(calls).toHaveLength(0);
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]).toMatchObject({ id: started[0].id, outcome: 'error' });
+    expect(remainingBudget(budget)).toEqual({ maxRequests: 2, maxOutputTokens: 2000 });
+  });
   it('announces a dispatched request with the id its receipt will carry, and its cancel aborts the request', async () => {
     const hang = scripted((call) => new Promise<void>((resolve) => call.signal.addEventListener('abort', () => resolve())));
     const started: RequestStart<'stub'>[] = [];
@@ -133,6 +150,16 @@ describe('request start hook', () => {
     controller.abort();
     await runModelRequest(request(transport, { signal: controller.signal }), { onStart: (s) => started.push(s) });
     expect(started).toEqual([]);
+  });
+});
+
+describe('reserveRequest', () => {
+  it.each([NaN, Infinity, -Infinity, 1.5, 0, -1])('#7037: refuses invalid token ceiling %s without corrupting the next request', ceiling => {
+    const budget = createRootBudget({ maxRequests: 2, maxOutputTokens: 100 });
+    expect(reserveRequest(budget, ceiling)).toBeNull();
+    expect(reserveRequest(budget, 80)).toEqual({ maxOutputTokens: 80 });
+    expect(reserveRequest(budget, 80)).toEqual({ maxOutputTokens: 20 });
+    expect(reserveRequest(budget, 1)).toBeNull();
   });
 });
 

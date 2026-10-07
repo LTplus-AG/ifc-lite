@@ -129,7 +129,6 @@ export async function runModelRequest<Message, Route extends string>(
   startedAt = Date.now();
   id = `req-${startedAt}-${receiptSequence}`;
   const controller = new AbortController();
-  hooks.onStart?.({ id, model: request.model, route: request.route, startedAt, cancel: () => controller.abort() });
   let timedOut = false;
   const abortFromCaller = () => controller.abort(signal?.reason);
   signal?.addEventListener('abort', abortFromCaller, { once: true });
@@ -137,6 +136,7 @@ export async function runModelRequest<Message, Route extends string>(
 
   const seen: Seen = { streamed: false, finishReason: null, text: null, failure: null, usage: null };
   try {
+    hooks.onStart?.({ id, model: request.model, route: request.route, startedAt, cancel: () => controller.abort() });
     await request.transport({
       model: request.model,
       messages: request.messages,

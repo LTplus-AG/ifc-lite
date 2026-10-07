@@ -34,6 +34,10 @@ export function protocolErrors(protocol, { root, manifest, panelIds = null }) {
   unique(protocol.roles.map(role => role.id), 'roles', errors);
   const roles = new Set(protocol.roles.map(role => role.id));
   const journeys = new Set(manifest.journeys.map(journey => journey.id));
+  // #6928: an entirely omitted journey must not disappear from acceptance
+  // scoring just because every remaining task has a complete cohort.
+  const covered = new Set(protocol.tasks.map(task => task.journey));
+  for (const journey of journeys) if (!covered.has(journey)) errors.push(`journey ${journey}: no study task is assigned to it`);
   const scenes = new Set(manifest.scenes.map(scene => scene.id));
   for (const variant of ['current', 'assisted']) if (!protocol.variants.some(item => item.id === variant)) errors.push(`variants: missing ${variant}`);
   for (const task of protocol.tasks) {

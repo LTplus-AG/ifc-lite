@@ -43,9 +43,9 @@ export function GeoreferenceTab(props: GeoreferenceTabProps) {
       </div>
 
       {!c.canEdit && (
-        <p role="status" className="text-2xs leading-snug text-muted-foreground">
+        <output className="text-2xs leading-snug text-muted-foreground">
           {t('cesiumGeo.placement.requiresProjectedCrs')}
-        </p>
+        </output>
       )}
 
       {c.canEdit && !c.editMode && (

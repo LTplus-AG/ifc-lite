@@ -12,10 +12,14 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanup, render } from '@/test/render.js';
+import { act } from 'react';
+import { advance, cleanup, click, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types.js';
 import { ComparePanel } from './ComparePanel.js';
+import { fixtureModels } from '@/test/store-fixture.js';
+import { revisionPair, runClash } from '@/lib/compare/revision-pair.test-support.js';
+import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness.js';
 
 function model(id: string): FederatedModel {
   return {
@@ -33,7 +37,9 @@ function model(id: string): FederatedModel {
   } as FederatedModel;
 }
 
+const initial = useViewerStore.getState();
 const RESET_STATE = {
+  ...initial,
   models: new Map(),
   compareBaseModelId: null,
   compareHeadModelId: null,
@@ -45,15 +51,33 @@ const RESET_STATE = {
 };
 
 beforeEach(() => {
-  useViewerStore.setState(RESET_STATE);
+  useViewerStore.setState(RESET_STATE, true);
 });
 
 afterEach(() => {
   cleanup();
-  useViewerStore.setState(RESET_STATE);
+  useViewerStore.setState(RESET_STATE, true);
 });
 
 describe('ComparePanel with unsaved edits (#5606)', () => {
+  it('#6970: opens native impact rows through the actual Compare panel', async t => {
+    const pair = await revisionPair(t);
+    if (!pair) return;
+    useViewerStore.setState({ ...fixtureModels(pair.base, pair.head),
+      compareBaseModelId: pair.base.id, compareHeadModelId: pair.head.id,
+      compareResult: pair.compare, compareRunCaptures: [], compareReconciliation: null });
+    const clash = stampAnalysisReport(await runClash(pair, ['A', 'B']), captureAnalysisStamp());
+    useViewerStore.setState({ clashResult: clash, clashRawResult: clash });
+    const container = render(<ComparePanel onClose={() => {}} />);
+    for (let attempt = 0; attempt < 200 && !container.textContent?.includes('Impact on other analyses'); attempt++) await advance(20);
+    const toggle = [...container.querySelectorAll('button')].find(button => /Impact on other analyses/.test(button.textContent ?? ''));
+    assert.ok(toggle, 'the panel exposes impact review for its comparison');
+    act(() => click(toggle));
+    assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+    assert.match(container.textContent ?? '', /Clashes2 touched/);
+    assert.match(container.textContent ?? '', /3GwpRmJBf7fhCP8KgMyfOD · Added/);
+  });
+
   it('does not claim Compare ignores the edits when a compared model is dirty', () => {
     useViewerStore.setState({
       models: new Map([

@@ -21,12 +21,12 @@ export interface FlowPublishEligibility {
 
 /** Disabled before a successful run, or after a run that wrote nothing. */
 export function flowPublishEligibility(
-  lastRun: RunResult | null, lastError: string | null, pendingOutsideRun = 0, pendingInRun = 1,
+  lastRun: RunResult | null, lastError: string | null, pendingOutsideRun = 0, pendingInRun = 1, priorWriteCount = 0,
 ): FlowPublishEligibility {
   if (!lastRun) return { canPublish: false, reason: lastError ? 'flowPanel.publish.reason.failed' : 'flowPanel.publish.reason.noRun' };
-  if (lastRun.review.length > 0) return { canPublish: false, reason: 'flowPanel.publish.reason.review' };
   if (!lastRun.ok) return { canPublish: false, reason: 'flowPanel.publish.reason.failed' };
-  if (lastRun.writes === 0) return { canPublish: false, reason: 'flowPanel.publish.reason.noWrites' };
+  if (lastRun.review.length > 0) return { canPublish: false, reason: 'flowPanel.publish.reason.review' };
+  if (lastRun.writes + priorWriteCount === 0) return { canPublish: false, reason: 'flowPanel.publish.reason.noWrites' };
   // The run wrote, but none of its edits is still pending: they were already
   // published (the publish clears them) or undone. Publishing again would
   // send an empty layer (#5380 review).
@@ -64,14 +64,14 @@ export interface WritingNode {
  * registry (`def.writes === 'model'`) the same way the scheduler decides to
  * bump `writesThisRun`.
  */
-export function writingNodes(doc: FlowDocument, registry: NodeRegistry<unknown>, lastRun: RunResult): WritingNode[] {
+export function writingNodes(doc: FlowDocument, registry: NodeRegistry<unknown>, lastRun: RunResult, prior: readonly WritingNode[] = []): WritingNode[] {
   const reportByNode = new Map(lastRun.reports.map((r) => [r.nodeId, r]));
-  const out: WritingNode[] = [];
+  const out: WritingNode[] = [...prior];
   for (const node of doc.nodes) {
     const def = registry.get(node.type);
     if (!def?.writes) continue;
     const report = reportByNode.get(node.id);
-    if (!report || report.status !== 'ok') continue;
+    if (!report || report.status !== 'ok' || out.some(writer => writer.nodeId === node.id)) continue;
     out.push({ nodeId: node.id, trackingKey: node.trackingKey ?? node.label ?? node.id });
   }
   return out;

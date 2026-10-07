@@ -151,7 +151,7 @@ it('blocks native paused writes until the required checkpoint is reviewed and th
       outputs: [{ name: 'value', type: scalar }], params: [], capabilities: [], review: 'required',
       run: (_ctx, inputs) => ({ value: inputs.value }) },
     { type: 'test.finish', title: 'Finish', category: 'test', inputs: [{ name: 'value', type: scalar }],
-      outputs: [], params: [], capabilities: [], writes: 'model', run: () => { writes++; return {}; } },
+      outputs: [], params: [], capabilities: [], run: () => ({}) },
   ]);
   const doc: FlowDocument = { flowVersion: FLOW_VERSION, id: 'review-publish', name: 'Review before publish',
     capabilities: [], inputs: [], outputs: [], nodes: [
@@ -179,6 +179,15 @@ it('blocks native paused writes until the required checkpoint is reviewed and th
   const resumed = await runFlow(doc, { registry: native, host: {}, resume: resumeOutputs(claimed) });
   assert.equal(resumed.ok, true);
   assert.deepEqual(resumed.review, []);
-  assert.equal(writes, 2, 'the upstream write and reviewed downstream write each run once');
-  assert.deepEqual(flowPublishEligibility(resumed, null), { canPublish: true });
+  assert.equal(writes, 1, 'resume does not repeat the upstream write');
+  assert.equal(resumed.writes, 0, 'the resumed tail is read-only');
+  const earlierWriters = writingNodes(doc, native, paused);
+  assert.deepEqual(earlierWriters, [{ nodeId: 'write', trackingKey: 'write' }]);
+  assert.deepEqual(flowPublishEligibility(resumed, null, 0, 1, earlierWriters.length), { canPublish: true });
+  assert.deepEqual(writingNodes(doc, native, resumed, earlierWriters), earlierWriters, 'publish retains the completed writer provenance');
+});
+
+it('#7038 failure takes precedence over an independent pending review', () => {
+  assert.deepEqual(flowPublishEligibility(runResult({ ok: false, writes: 1, review: ['proposal'] }), null),
+    { canPublish: false, reason: 'flowPanel.publish.reason.failed' });
 });

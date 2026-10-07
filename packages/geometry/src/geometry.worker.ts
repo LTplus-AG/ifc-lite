@@ -500,7 +500,15 @@ let cachedWasmUrl: string | undefined = undefined;
 async function ensureInit(): Promise<IfcAPI> {
   if (api) return api;
   await initWasmWithRetry(() => init(cachedWasmUrl), { label: 'geometry.worker' });
+  return installFreshApi();
+}
+
+/** Build a fresh IfcAPI on the instantiated engine and replay every cached setting onto it. */
+function installFreshApi(): IfcAPI {
   installInCallHeartbeat(wasmBindings, inCallHeartbeat);
+  // A prewarmed worker (#7036) is sent `init` again by the load that leases it:
+  // free the previous handle rather than leak it in the wasm heap.
+  freeWasmInstanceQuietly(api);
   api = meterTypedArrayArgs(new IfcAPI(), 'wasm'); // #6957: bytes copied into wasm (identity unless traced)
   mergeLayersApplied = false;
   applyMergeLayersToApi();
@@ -1580,22 +1588,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         // `undefined` and threw `new WebAssembly.Module(undefined)`, which is
         // why the shared-module path was never actually taken.
         initSync({ module: e.data.wasmModule });
-        installInCallHeartbeat(wasmBindings, inCallHeartbeat);
-        api = meterTypedArrayArgs(new IfcAPI(), 'wasm'); // #6957: bytes copied into wasm (identity unless traced)
-        mergeLayersApplied = false;
-        applyMergeLayersToApi();
-        geometryHashApplied = false;
-        applyComputeGeometryHashesToApi();
-        tessellationQualityApplied = false;
-        applyTessellationQualityToApi();
-        skipSmallCutsApplied = false;
-        applySkipSmallCutsToApi();
-        entityIndexApplied = false;
-        applyEntityIndexToApi();
-        prepassColumnsApplied = false;
-        applyPrepassColumnsToApi();
-        sourceBytesApplied = false;
-        applySourceBytesToApi();
+        installFreshApi();
       } else {
         await ensureInit();
       }

@@ -119,7 +119,7 @@ describe('drag and atomic import invariants (#4226)', () => {
 });
 
 import type { MeshData } from '@ifc-lite/geometry';
-import { createModelIndexAllocator, geometryWithModelIndex, stampModelIndex } from './model-indices.js';
+import { createModelIndexAllocator, geometryWithModelIndex } from './model-indices.js';
 
 it('shares one index map until an assignment changes (#7021)', () => {
   const indices = createModelIndexAllocator();
@@ -133,21 +133,24 @@ it('shares one index map until an assignment changes (#7021)', () => {
   assert.notEqual(indices(new Map([['scan', {}]])), grown);
 });
 
-it('stamps a mesh array in place and restarts for a new index (#7021)', () => {
+it('stamps one model\'s meshes in place and restarts for a new index (#7021)', () => {
   const part = (id: number): MeshData => ({ expressId: id, positions: new Float32Array(0), normals: new Float32Array(0),
     indices: new Uint32Array(0), color: [1, 1, 1, 1] });
+  const zero = { x: 0, y: 0, z: 0 };
   const meshes = [part(1), part(2)];
   const firstMesh = meshes[0];
-  assert.equal(stampModelIndex(meshes, 0), meshes);
+  const geometry = { meshes, totalTriangles: 0, totalVertices: 0,
+    coordinateInfo: { originShift: zero, originalBounds: { min: zero, max: zero }, shiftedBounds: { min: zero, max: zero }, hasLargeCoordinates: false } };
+  const stamped = geometryWithModelIndex(geometry, 0)!;
+  assert.equal(stamped, geometry, 'no point clouds to restamp: the model geometry itself');
+  assert.equal(stamped.meshes, meshes, 'the model\'s own array, not a copy');
+  assert.equal(stamped.meshes[0], firstMesh, 'stamped in place, not copied');
   assert.deepEqual(meshes.map((m) => m.modelIndex), [0, 0]);
-  assert.equal(meshes[0], firstMesh, 'stamped in place, not copied');
   meshes.push(part(3));
-  stampModelIndex(meshes, 0);
+  geometryWithModelIndex(geometry, 0);
   assert.deepEqual(meshes.map((m) => m.modelIndex), [0, 0, 0]);
-  stampModelIndex(meshes, 2);
+  geometryWithModelIndex(geometry, 2);
   assert.deepEqual(meshes.map((m) => m.modelIndex), [2, 2, 2]);
-  const geometry = { meshes, totalTriangles: 0, totalVertices: 0, coordinateInfo: undefined as never };
-  assert.equal(geometryWithModelIndex(geometry, 2), geometry, 'no point clouds to restamp: the model geometry itself');
 });
 
 it('keeps retained instance ownership stable after removal, addition, and single-model fallback (#4226)', () => {

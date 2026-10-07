@@ -21,6 +21,7 @@ import { createRootBudget } from '@/lib/llm/root-budget';
 import { useRequestReceipts } from '@/lib/llm/request-receipts';
 import { cancelWorkflowRun, startWorkflowRun, type WorkflowRun } from '@/lib/flow/run-session';
 import { installModelLoadCanceller } from '@/hooks/modelLoadCanceller';
+import { fixtureModel } from '@/test/store-fixture';
 import { selectLoadCanceller } from '@/store/slices/loadingSlice';
 import { ACTIVITY_STORAGE_KEY, activityCanceller, useActivityJournal, type ActivityJob } from './activity-journal.js';
 import { resetActivityRecordersForTest, startActivityRecorders } from './activity-recorders.js';
@@ -129,10 +130,25 @@ describe('validation, Flow and load recorders', () => {
     assert.deepEqual([only().outcome, only().detail], ['failed', 'Unsupported schema']);
   });
 
-  it('a load that ends without an error or a cancel is completed', () => {
+  it('#6952 a load that stops without a new result is cancelled', () => {
     useViewerStore.setState({ loading: true });
     useViewerStore.setState({ loading: false });
-    assert.equal(only().outcome, 'completed');
+    assert.equal(only().outcome, 'cancelled');
+  });
+
+  it('#6952 a newly published model completes a load and a late canceller reaches the tray', () => {
+    useViewerStore.setState({ loading: true });
+    assert.equal(activityCanceller(only().id), null);
+    let cancels = 0;
+    installModelLoadCanceller('primary', () => { cancels++; });
+    assert.ok(activityCanceller(only().id));
+    activityCanceller(only().id)!();
+    assert.equal(cancels, 1);
+    assert.equal(only().outcome, 'cancelled');
+    useViewerStore.setState({ loading: true });
+    const model = fixtureModel('new');
+    useViewerStore.setState({ loading: false, models: new Map([[model.id, model]]) });
+    assert.equal(jobs()[1].outcome, 'completed');
   });
 
   for (const kind of ['primary', 'federated'] as const) {

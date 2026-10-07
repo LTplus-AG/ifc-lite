@@ -136,13 +136,16 @@ export function beginActivity(input: BeginActivity, now = Date.now()): string {
  * subject that becomes known late (the file name) is, so the interrupted
  * row still says what it was.
  */
-export function updateActivity(id: string, patch: Pick<ActivityJob, 'phase' | 'progress' | 'subject'>): void {
+export function updateActivity(id: string, patch: Pick<ActivityJob, 'phase' | 'progress' | 'subject'> & { cancel?: (() => void) | null }): void {
   const job = useActivityJournal.getState().jobs.find((candidate) => candidate.id === id);
   if (!job || job.outcome !== 'running') return;
+  const { cancel, ...values } = patch;
+  if (cancel) cancellers.set(id, cancel);
+  else if (cancel === null) cancellers.delete(id);
   const subject = patch.subject ?? job.subject;
   if (job.phase === patch.phase && job.subject === subject
     && job.progress?.done === patch.progress?.done && job.progress?.total === patch.progress?.total) return;
-  commit((jobs) => jobs.map((candidate) => candidate === job ? { ...job, ...patch, subject } : candidate), subject !== job.subject);
+  commit((jobs) => jobs.map((candidate) => candidate === job ? { ...job, ...values, subject } : candidate), subject !== job.subject);
 }
 
 export function finishActivity(

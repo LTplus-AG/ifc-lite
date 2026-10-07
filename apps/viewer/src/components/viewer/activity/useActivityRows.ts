@@ -50,7 +50,7 @@ function jobRow(job: ActivityJob): ActivityRow {
     ...(job.progress ? { progress: job.progress } : {}),
     ...(job.detail ? { detail: job.detail } : {}),
     ...(job.outcome === 'interrupted' ? { detailKey: 'activityTray.interruptedHint' as const }
-      : job.outcome === 'failed' && !job.detail?.trim() ? { detailKey: 'activityTray.failureNoDetail' as const }
+      : job.outcome === 'failed' && !job.detail?.trim() && !job.detailKey ? { detailKey: 'activityTray.failureNoDetail' as const }
         : job.detailKey ? { detailKey: job.detailKey } : {}),
     ...(job.panel ? { panel: job.panel } : {}),
   };
@@ -75,7 +75,7 @@ export function useActivityRows(): ActivityRow[] {
         persistent: true, cancel: null, panel: 'bcf', publication: { done: activity.done, total: activity.total }, ...detail,
       });
     }
-    const live = (row: ActivityRow) => row.status === 'running' || row.status === 'queued';
-    return rows.sort((a, b) => Number(live(b)) - Number(live(a)) || b.at - a.at);
+    const rank = (row: ActivityRow) => row.status === 'running' ? 2 : row.status === 'queued' ? 1 : 0;
+    return rows.sort((a, b) => rank(b) - rank(a) || b.at - a.at);
   }, [jobs, publications]);
 }

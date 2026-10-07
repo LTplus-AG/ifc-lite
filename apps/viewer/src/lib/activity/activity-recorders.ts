@@ -43,7 +43,7 @@ export function isCataloguedKey(key: string): key is TranslationKey {
 interface Watch<B> {
   running: (state: ViewerState) => boolean;
   start: (state: ViewerState) => { job: Parameters<typeof beginActivity>[0]; baseline: B };
-  tick?: (state: ViewerState) => Pick<ActivityJob, 'phase' | 'progress' | 'subject'>;
+  tick?: (state: ViewerState) => Pick<ActivityJob, 'phase' | 'progress' | 'subject'> & { cancel?: (() => void) | null };
   end: (state: ViewerState, baseline: B) =>
     { outcome: 'completed' | 'partial' | 'failed' | 'cancelled'; detail?: string };
 }
@@ -79,15 +79,21 @@ function watchLoads(store: ViewerStoreLike): () => void {
           // Read the CURRENT canceller at click time; a later load phase may replace it.
           ...(canceller ? { cancel: () => selectLoadCanceller(store.getState())?.() } : {}),
         },
-        baseline: s.loadCancelSeq,
+        baseline: { cancels: s.loadCancelSeq, geometry: s.geometryResult, store: s.ifcDataStore,
+          models: new Map([...s.models].map(([id, model]) => [id, model.ifcDataStore])) },
       };
     },
     // The file name can land after the loading flag; pick it up while running.
-    tick: (s) => ({ phase: selectActiveLoadProgress(s)?.phase, ...(s.loadingFileName ? { subject: s.loadingFileName } : {}) }),
+    tick: (s) => ({ phase: selectActiveLoadProgress(s)?.phase, ...(s.loadingFileName ? { subject: s.loadingFileName } : {}),
+      cancel: selectLoadCanceller(s) ? () => selectLoadCanceller(store.getState())?.() : null }),
     // A cancel from any button bumps the counter before the loading flags drop.
-    end: (s, cancelsBefore) => {
-      if (s.loadCancelSeq > cancelsBefore) return { outcome: 'cancelled' };
-      return s.error ? { outcome: 'failed', detail: s.error } : { outcome: 'completed' };
+    end: (s, before) => {
+      if (s.loadCancelSeq > before.cancels) return { outcome: 'cancelled' };
+      if (s.error) return { outcome: 'failed', detail: s.error };
+      const published = (s.geometryResult !== null && s.geometryResult !== before.geometry)
+        || (s.ifcDataStore !== null && s.ifcDataStore !== before.store)
+        || [...s.models].some(([id, model]) => model.ifcDataStore && model.ifcDataStore !== before.models.get(id));
+      return { outcome: published ? 'completed' : 'cancelled' };
     },
   });
 }

@@ -226,3 +226,22 @@ it('a failed job with an empty source message has an explanation after reload (#
   await openTray(ui.querySelector('button')!);
   assert.match(text(rows()[0]), /Failed.*The job failed without an explanation from its source/);
 });
+
+
+it('#6952 preserves the native timeout explanation instead of substituting missing detail', async () => {
+  const job = beginActivity({ kind: 'ai', title: 'activityTray.job.ai' });
+  finishActivity(job, 'failed', { detailKey: 'activityTray.ai.timeout' });
+  const ui = render(<ActivityTrayButton />);
+  await openTray(ui.querySelector('button')!);
+  assert.match(text(rows()[0]), /Timed out/);
+  assert.doesNotMatch(text(rows()[0]), /without an explanation/);
+});
+
+it('#6952 running jobs sort above newer queued publications', async () => {
+  beginActivity({ kind: 'load', title: 'activityTray.job.load' }, T0);
+  useBcfOutbox.setState({ entries: [publication('queued', ['queued'])] });
+  const ui = render(<ActivityTrayButton />);
+  await openTray(ui.querySelector('button')!);
+  assert.match(text(rows()[0]), /Load model.*Running/);
+  assert.match(text(rows()[1]), /BCF publication.*Queued/);
+});

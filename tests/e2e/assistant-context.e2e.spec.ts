@@ -82,7 +82,7 @@ test('native clash evidence reaches the assistant without executing model output
   await assistant.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(assistant).toContainText('<script>globalThis.assistantExecuted = true</script>');
   await expect(assistant.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
-  const completedReply = assistant.locator('[aria-live="polite"] > div').filter({ hasText: '<script>globalThis.assistantExecuted = true</script>' });
+  const completedReply = assistant.getByRole('article', { name: 'Answer 1', exact: true }).filter({ hasText: '<script>globalThis.assistantExecuted = true</script>' });
   await expect(completedReply).toHaveCount(1);
   await completedReply.scrollIntoViewIfNeeded();
   expect(outbound?.maxOutputTokens).toBe(4096);

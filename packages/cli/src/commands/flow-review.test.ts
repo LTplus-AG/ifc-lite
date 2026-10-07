@@ -384,7 +384,8 @@ it('#7039 JSON review preserves every grouped proposal branch and nested value',
     capabilities: ['network.ai'], inputs: [], outputs: [], nodes: [{ id: 'proposal', type: 'test.grouped-review' }], edges: [] };
   const table = { key: 'key', columns: [{ name: 'key', type: 'identifier' }, { name: 'label', type: 'label' }],
     rows: [{ key: 'source-key', label: 'Recorded review value' }] };
-  const branches: Array<[string, unknown[]]> = [['branch-A', [table]], ['branch-B', [table]]];
+  const secondTable = { ...table, rows: [{ key: 'different-source-key', label: 'Distinct branch B value' }] };
+  const branches: Array<[string, unknown[]]> = [['branch-A', [table]], ['branch-B', [secondTable]]];
   const registry = new NodeRegistry().register({ type: 'test.grouped-review', title: 'Grouped review', category: 'test',
     inputs: [], outputs: [{ name: 'table', type: { kind: 'table', access: 'group' } }], params: [], capabilities: [],
     review: 'required', run: () => ({ table: new Map(branches) }) });

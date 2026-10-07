@@ -179,13 +179,15 @@ describe('ai.summarize', () => {
 });
 
 describe('ai.extract', () => {
-  it('keeps a record as supported only when its span is verbatim in its passage and its values are typed', async () => {
+  // #7039: quote-and-type validation does not prove that a quoted passage entails a candidate value.
+  it('marks structural support without claiming semantic entailment of typed values', async () => {
     const passages = ['Door D1 has a fire rating of 30 minutes.', 'Wall W2 is 240 mm thick.'];
     const model = standIn(() => ({
       records: [
         { passage: 0, span: 'fire rating of 30 minutes', values: { element: 'D1', minutes: 30 } },
         { passage: 1, span: '240 mm thick', values: { element: 'W2', minutes: '240' } },
         { passage: 1, span: 'rated 90 minutes', values: { element: 'W2', minutes: 90 } },
+        { passage: 0, span: 'fire rating of 30 minutes', values: { element: 'D1', minutes: 999 } },
         { passage: 7, span: 'Door', values: { element: 'X', minutes: 1 } },
       ],
     }));
@@ -199,8 +201,9 @@ describe('ai.extract', () => {
       { passage: 0, span: 'fire rating of 30 minutes', element: 'D1', minutes: 30, outcome: 'supported' },
       { passage: 1, span: '240 mm thick', element: 'W2', minutes: null, outcome: 'unsupported' },
       { passage: 1, span: 'rated 90 minutes', element: 'W2', minutes: 90, outcome: 'unsupported' },
+      { passage: 0, span: 'fire rating of 30 minutes', element: 'D1', minutes: 999, outcome: 'supported' },
     ]);
-    expect(out.coverage).toMatchObject({ passages: 2, sent: 2, records: 3, unsupported: 2 });
+    expect(out.coverage).toMatchObject({ passages: 2, sent: 2, records: 4, unsupported: 2 });
   });
 });
 

@@ -23,6 +23,7 @@
  * the graph again as a new root.
  */
 
+import { digest } from './digest.js';
 import { CHECKPOINT_VERSION, registerOwnedClaim, nonPortable, proposalDigestOf, validPortableOutputs, type CheckpointState, type FlowCheckpoint } from './checkpoint-record.js';
 
 export type CheckpointErrorCode =
@@ -115,6 +116,8 @@ export interface ClaimInput {
   readonly now?: number;
 }
 
+const validatedClaims = new WeakMap<FlowCheckpoint, { before: string; after: string }>();
+
 /** Take single ownership of a reviewed checkpoint for one resume. */
 export function claimCheckpoint(checkpoint: FlowCheckpoint, input: ClaimInput): FlowCheckpoint {
   requireState(checkpoint, 'reviewed', 'not-reviewed');
@@ -134,7 +137,9 @@ export function claimCheckpoint(checkpoint: FlowCheckpoint, input: ClaimInput): 
     || !Number.isFinite(now + input.leaseMs) || now + input.leaseMs <= now) {
     throw new CheckpointError('invalid', 'the claim needs a finite positive lease and timestamp');
   }
-  return { ...checkpoint, state: 'applying', updatedAt: now, claim: { owner: input.owner, leaseUntil: now + input.leaseMs, at: now } };
+  const next: FlowCheckpoint = { ...checkpoint, state: 'applying', updatedAt: now, claim: { owner: input.owner, leaseUntil: now + input.leaseMs, at: now } };
+  validatedClaims.set(next, { before: digest(checkpoint), after: digest(next) });
+  return next;
 }
 
 /** Record how the owner's resume ended. A failed resume may have committed some effects. */
@@ -181,9 +186,14 @@ export async function updateCheckpoint(store: CheckpointStore, id: string, chang
   for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt++) {
     const stored = await store.read(id);
     if (!stored) throw new CheckpointError('invalid', `no checkpoint ${id}`);
+    const before = digest(stored.checkpoint);
     const next = change(stored.checkpoint);
     if (await store.write(next, stored.revision)) {
-      if (stored.checkpoint.state === 'reviewed' && next.state === 'applying') registerOwnedClaim(next);
+      const validated = validatedClaims.get(next);
+      if (validated?.before === before && validated.after === digest(next)) {
+        validatedClaims.delete(next);
+        registerOwnedClaim(next);
+      }
       return next;
     }
   }

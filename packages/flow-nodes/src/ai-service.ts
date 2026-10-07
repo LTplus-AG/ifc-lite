@@ -52,7 +52,9 @@ export type JsonReply =
   | { readonly kind: 'budget' };
 
 export function aiService(ctx: Ctx): FlowAiService {
-  requireCapability(ctx, AI_CAPABILITY, ctx.host.grants ?? ctx.host.networkGrants ?? []);
+  // The graph declaration and the user grant are independent permissions.
+  requireCapability(ctx, AI_CAPABILITY, ctx.host.networkGrants ?? []);
+  requireCapability(ctx, AI_CAPABILITY);
   ctx.signal?.throwIfAborted();
   if (!ctx.host.ai) throw new Error('This host does not provide an AI model service');
   return ctx.host.ai;

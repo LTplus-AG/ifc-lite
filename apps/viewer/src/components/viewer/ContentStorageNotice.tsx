@@ -21,6 +21,7 @@ import type { ContentStatus } from '@/lib/storage/content-library';
 import { cleanupContentLegacy, ContentImportFailure, createContentBackup, importContentBackup, parseContentBackup, readBackupDrafts,
   readContentRecovery, retryContentDrafts, retryContentImports } from '@/lib/storage/content-backup';
 import { stageContentDrafts } from '@/lib/storage/content-backup-drafts';
+import { loadClashReportLibrary } from '@/lib/clash/saved-report-persistence';
 
 const messages = {
   quota: 'contentStorage.quota', unavailable: 'contentStorage.unavailable',
@@ -83,6 +84,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     if (!preserved.complete) toast.info(t('contentStorage.draftReadUnavailable'));
   };
   const importFile = async (file: File) => {
+    await loadClashReportLibrary();
     const parsed = parseContentBackup(await file.text());
     const drafts = parsed.drafts ?? [];
     stageContentDrafts(drafts);
@@ -98,7 +100,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
       console.warn('[User content] Import remains in memory', error);
       for (const entry of error.entries.validation) state.stageValidationReport(entry);
       for (const entry of error.entries.comparison) state.stageComparison(entry);
-      for (const entry of error.entries.clashReports ?? []) state.stageClashReport(entry);
+      for (const entry of error.entries.clashReports ?? []) void state.stageClashReport(entry);
       for (const entry of error.entries.assistant ?? []) assistantLibrary.stage(entry.id, entry);
       for (const entry of error.entries.clashGroups ?? []) clashGroupLibrary.stage(entry.id, entry);
       for (const entry of error.entries.bcfDrafts ?? []) bcfDraftLibrary.stage(entry.id, entry);

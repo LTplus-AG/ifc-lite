@@ -11,7 +11,8 @@
 
 import type { ChartDataset, ChartDatasetRow, ChartSpec } from '@ifc-lite/charts';
 import type { UseTranslationResult } from '@/i18n/useTranslation';
-import { clashReportRevision, isSavedClashReport, type ClashReportRevision, type LoadedModelIdentity, type SavedClashReport } from '@/lib/clash/saved-report-schema';
+import { clashReportRevision, type ClashReportRevision, type LoadedModelIdentity } from '@/lib/clash/saved-report-revision';
+import type { SavedClashReport } from '@/lib/clash/saved-report-schema';
 import { CLASH_DATASET_COLUMNS, clashDatasetRow } from './datasets/clash';
 
 type SourceBinding = Pick<ChartSpec, 'source' | 'clashReportId'>;
@@ -48,7 +49,8 @@ function reportRows(report: SavedClashReport): { rows: ChartDatasetRow[]; finger
 export function resolveClashReportChartSource(spec: SourceBinding, live: ChartDataset, reports: readonly SavedClashReport[],
   loaded: Iterable<LoadedModelIdentity>, mutationVersion: number): ClashReportChartSource {
   if (!isSavedClashReportChart(spec)) return { status: 'live', dataset: live };
-  const report = reports.find((candidate) => candidate.id === spec.clashReportId && isSavedClashReport(candidate));
+  // Entries reach the store through the library's validator, so they are not validated again per render.
+  const report = reports.find((candidate) => candidate.id === spec.clashReportId);
   if (!report) return { status: 'missing', dataset: { source: 'clash', columns: CLASH_DATASET_COLUMNS, rows: [], fingerprint: `saved-clash:missing:${spec.clashReportId}` } };
   const projected = reportRows(report);
   return { status: 'saved', report, revision: clashReportRevision(report, [...loaded], mutationVersion),
@@ -58,7 +60,7 @@ export function resolveClashReportChartSource(spec: SourceBinding, live: ChartDa
 type Translate = UseTranslationResult['t'];
 
 /** What limits a saved report as evidence: a partial run, models that changed before saving, another model revision.
- * One list for the chart card and the Clash panel's saved-report list. */
+ * One list for every chart surface and the Clash panel's saved-report list. */
 export function clashReportLimitBadges(report: SavedClashReport, revision: ClashReportRevision, t: Translate): string[] {
   return [
     ...(report.completeness.truncated ? [t('chartClashReport.badgePartial')] : []),
@@ -68,19 +70,11 @@ export function clashReportLimitBadges(report: SavedClashReport, revision: Clash
 }
 
 /**
- * Short labels for a chart card. The limits come before the name: the card
- * cuts a long subtitle off at its right edge, and a cut-off line must lose the
- * report's name before it loses the warning.
- */
-export function clashReportChartBadges(source: ClashReportChartSource, t: Translate): string[] {
-  if (source.status !== 'saved') return [];
-  return [...clashReportLimitBadges(source.report, source.revision, t), t('chartClashReport.badgeSaved', { name: source.report.name })];
-}
-
-/**
- * The one-line caption under a document chart, or why a bound report is
- * unavailable. Limits first for the same reason as the card: the document
- * fits the caption to the chart's column and truncates the rest.
+ * The one-line statement of a saved source, or why a bound report is
+ * unavailable: it leads a card's subtitle, captions a document chart and is
+ * the note in the chart editor. Limits come before the name because a card
+ * and a document both cut a long line off at its end, and a cut-off line must
+ * lose the report's name before it loses the warning.
  */
 export function clashReportChartMessage(source: ClashReportChartSource, t: Translate): string | undefined {
   if (source.status === 'live') return undefined;
@@ -88,17 +82,4 @@ export function clashReportChartMessage(source: ClashReportChartSource, t: Trans
   const { report } = source;
   return [...clashReportLimitBadges(report, source.revision, t),
     t('chartClashReport.caption', { name: report.name, date: new Date(report.savedAt).toLocaleDateString() })].join(' · ');
-}
-
-/** The full statement in sentences, for the chart editor and the card's tooltip, where nothing is cut off. */
-export function clashReportChartDetail(source: ClashReportChartSource, t: Translate): string | undefined {
-  if (source.status !== 'saved') return clashReportChartMessage(source, t);
-  const { report } = source;
-  return [
-    t('chartClashReport.recorded', { name: report.name, date: new Date(report.savedAt).toLocaleDateString() }),
-    ...(report.completeness.truncated ? [t('chartClashReport.partial', { count: report.completeness.truncated.droppedPairs })] : []),
-    ...(report.completeness.stale ? [t('chartClashReport.stale')] : []),
-    ...(source.revision === 'same' ? [] : [t(`chartClashReport.revision.${source.revision}`)]),
-    t('chartClashReport.recordedLimits'),
-  ].join(' ');
 }

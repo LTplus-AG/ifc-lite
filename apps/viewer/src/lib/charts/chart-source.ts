@@ -14,9 +14,10 @@
 import type { ChartDataset, ChartSpec } from '@ifc-lite/charts';
 import type { UseTranslationResult } from '@/i18n/useTranslation';
 import type { SavedComparison } from '@/lib/compare/savedComparisons';
-import type { LoadedModelIdentity, SavedClashReport } from '@/lib/clash/saved-report-schema';
+import type { LoadedModelIdentity } from '@/lib/clash/saved-report-revision';
+import type { SavedClashReport } from '@/lib/clash/saved-report-schema';
 import { comparisonChartMessage, isSavedComparisonChart, resolveComparisonChartSource, type ComparisonChartSource } from './comparison-source';
-import { clashReportChartBadges, clashReportChartDetail, clashReportChartMessage, isSavedClashReportChart, resolveClashReportChartSource, type ClashReportChartSource } from './clash-report-source';
+import { clashReportChartMessage, isSavedClashReportChart, resolveClashReportChartSource, type ClashReportChartSource } from './clash-report-source';
 
 /** The saved content and loaded models a binding is resolved against. */
 export interface ChartSourceContext {
@@ -60,17 +61,7 @@ export function chartSourceMessage(source: ResolvedChartSource, t: Translate): s
   return source.saved === 'clashReport' ? clashReportChartMessage(source, t) : comparisonChartMessage(source, t);
 }
 
-/** The same provenance in full sentences, where nothing truncates it: the chart editor and the card's tooltip. */
-export function chartSourceDetail(source: ResolvedChartSource, t: Translate): string | undefined {
-  return source.saved === 'clashReport' ? clashReportChartDetail(source, t) : comparisonChartMessage(source, t);
-}
-
 /** The short "source unavailable" label of a bound chart whose saved content is gone. */
 export function chartSourceUnavailable(source: ResolvedChartSource, t: Translate): string {
   return t(source.saved === 'clashReport' ? 'chartClashReport.unavailable' : 'chartComparison.unavailable');
-}
-
-/** Short card labels for a saved clash report (what limits it, then what it is); none for other sources. */
-export function chartSourceBadges(source: ResolvedChartSource, t: Translate): string[] {
-  return source.saved === 'clashReport' ? clashReportChartBadges(source, t) : [];
 }

@@ -21,7 +21,7 @@ import { DOCS_URL, useActiveSchemaVersion } from '../SearchModal.filter.selector
 import { SelectorFeedbackList, type SelectorFeedback } from '../SearchModal.filter.feedback';
 import { ElementFieldPicker } from './ElementFieldPicker';
 import { ChartSourcePicker, SOURCE_LABELS } from './ChartSourcePicker';
-import { chartSourceDetail, resolveChartSource } from '@/lib/charts/chart-source';
+import { chartSourceMessage, resolveChartSource } from '@/lib/charts/chart-source';
 import { useChartSourceContext } from './useChartSourceContext';
 import { isSavedComparison } from '@/lib/compare/savedComparisons';
 import { dimensionColumns, draftToSpec, editorColumns, specToDraft, type ChartDraft } from './chart-editor-draft';
@@ -232,7 +232,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
       <div className="grid grid-cols-2 gap-2">
         <ChartSourcePicker source={draft.source} rowCount={rowCount} comparisonId={draft.comparisonId} history={history}
           allowLegacy={allowLegacy} className={field} onSource={setSource} onComparison={(comparisonId) => setDraft({ ...draft, comparisonId })}
-          clashReport={{ id: draft.clashReportId, reports: savedContent.clashReports, note: source.saved === 'clashReport' ? chartSourceDetail(source, t) : undefined,
+          clashReport={{ id: draft.clashReportId, reports: savedContent.clashReports, note: source.saved === 'clashReport' ? chartSourceMessage(source, t) : undefined,
             onChange: (clashReportId) => { setDraft({ ...draft, clashReportId }); setClashRuleId(''); } }} />
         {draft.source === 'elements' && (
           <ElementFieldPicker value={draft.elementField} catalog={elementFieldCatalog} loading={elementFieldCatalogLoading} className={field} onChange={setElementField} />
@@ -301,7 +301,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
             </>
           ) : (
             <span className="text-2xs text-muted-foreground">
-              {savedClashReport ? t('chartClashReport.filterNotApplicable') : t('chartEditor.sourceFilterNotApplicable', { source: SOURCE_LABELS[draft.source] })}
+              {t('chartEditor.sourceFilterNotApplicable', { source: savedClashReport ? t('chartClashReport.savedSource') : SOURCE_LABELS[draft.source] })}
             </span>
           )}
         </div>

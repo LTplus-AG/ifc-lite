@@ -16,7 +16,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
 import { chartCardAggregation, chartCardDataset, chartCardSlice, chartClashRule, chartFilterSelector } from '@/lib/charts/card-aggregation';
 import { countRows } from '@/lib/charts/row-noun';
-import { chartSourceBadges, chartSourceDetail, chartSourceMessage, chartSourceUnavailable, isRecordedChart, resolveChartSource } from '@/lib/charts/chart-source';
+import { chartSourceMessage, chartSourceUnavailable, isRecordedChart, resolveChartSource } from '@/lib/charts/chart-source';
 import { useChartSourceContext } from './useChartSourceContext';
 import { readChartTheme, useEChart, type ChartRenderer, type ChartSize, type ChartSelectEvent } from './useEChart';
 import { GRID_DRAG_HANDLE_CLASS } from './DashboardGrid';
@@ -159,12 +159,12 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
   }, [aggregation, selection.full, link, recorded]);
 
   const sourceMessage = chartSourceMessage(source, t);
-  const badges = chartSourceBadges(source, t);
+  const savedReport = source.saved === 'clashReport' && source.status === 'saved';
   const summary = subtitleFor(spec, aggregation, filterSelector, filterState, clashRuleLabel || clashRule);
-  // A saved clash report leads with what limits it (partial, another revision) and then its
-  // name, so a narrow card cannot truncate the warning away behind the bucket count.
+  // A saved clash report leads with its own statement (what limits it, then which report it
+  // is), so a narrow card cannot truncate the warning away behind the bucket count.
   const subtitle = source.status === 'missing' ? chartSourceUnavailable(source, t)
-    : badges.length > 0 ? [...badges, summary].join(' · ')
+    : savedReport ? `${sourceMessage} · ${summary}`
     : sourceMessage && aggregation && aggregation.categories.length > 0 ? `${summary} · ${sourceMessage}` : summary;
 
   return (
@@ -172,7 +172,7 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
       <div className="flex items-center gap-1 px-2 py-1 border-b border-border/60 text-xs">
         <div className={`min-w-0 flex-1 cursor-grab active:cursor-grabbing select-none ${GRID_DRAG_HANDLE_CLASS}`} title={t('chartCard.dragToMoveTitle')}>
           <div className="font-medium truncate" title={spec.title}>{spec.title}</div>
-          <div className="text-2xs text-muted-foreground truncate" data-chart-subtitle title={badges.length > 0 ? chartSourceDetail(source, t) : undefined}>{subtitle}</div>
+          <div className="text-2xs text-muted-foreground truncate" data-chart-subtitle title={savedReport ? subtitle : undefined}>{subtitle}</div>
         </div>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={recorded} title={t('chartCard.frameTitle')} onClick={frame} aria-label={t('chartCard.frameAriaLabel', { title: spec.title })}>
           <Crosshair className="h-3.5 w-3.5" />

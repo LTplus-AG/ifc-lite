@@ -81,17 +81,17 @@ The card names its source and anything that limits it as evidence:
 
 | Label | Meaning |
 |-------|---------|
-| **Saved: name** | The chart shows this saved report, not the current result. |
+| **Saved clash report: name, saved date** | The chart shows this saved report, not the current result. |
 | **Partial run** | The run stopped at its candidate-pair limit, so some pairs were never checked. Absent clashes are not evidence that they are gone. |
 | **Models changed before saving** | The model was edited or moved after the run finished and before it was saved. |
 | **Different model revision** | A loaded model has the same name as a recorded one but different content. The chart still shows the recorded results. |
 | **Models not loaded** | The models the report ran on are not open. |
 | **Revision not confirmed** | The viewer cannot tell whether the loaded models are the recorded revision: no source identity was recorded, or the model was edited in the viewer. |
 
-These labels come first on the card, before the report's name, so a narrow
-card cannot cut them off. Hover the subtitle, or open the chart editor, for
-the full statement. A document prints the same labels under the chart, in the
-preview and the PDF.
+The limiting labels come first on the card, before the report's name, so a
+narrow card cannot cut them off; hover the subtitle for the whole line. The
+chart editor shows the same line under **Clash report**, and a document prints
+it under the chart in the preview and the PDF.
 Saved results are never matched to a different revision of the model: to see
 what changed, run the check again and use **Compare clash runs**.
 

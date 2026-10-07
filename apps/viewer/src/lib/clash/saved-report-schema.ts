@@ -18,7 +18,7 @@
  * historical run there without a schema change.
  */
 
-import { CLASH_REVIEW_STATUSES, type ClashDistanceKind, type ClashMode, type ClashReviewStatus, type ClashSeverity, type ClashStatus } from '@ifc-lite/clash';
+import type { ClashDistanceKind, ClashMode, ClashReviewStatus, ClashSeverity, ClashStatus } from '@ifc-lite/clash';
 
 /** One model the run drew elements from. `id` is the per-load id the rows refer to; it is a join key inside this report, never a live model id. */
 export interface SavedClashModel {
@@ -107,10 +107,13 @@ export interface SavedClashReport {
 
 export const CLASH_REPORT_LIMITS = { clashes: 100_000, rules: 2_000, models: 1_000, text: 2_000, name: 200 } as const;
 
-const STATUSES: readonly ClashStatus[] = ['hard', 'clearance', 'touch'];
-const SEVERITIES: readonly ClashSeverity[] = ['critical', 'major', 'minor', 'info'];
-const MODES: readonly ClashMode[] = ['hard', 'clearance'];
-const DISTANCE_KINDS: readonly ClashDistanceKind[] = ['mesh', 'estimate'];
+// Each list is checked against its union at compile time: a value the engine adds must be added here, and none can be misspelt.
+const values = <T extends string>(all: Record<T, true>): readonly T[] => Object.keys(all) as T[];
+const STATUSES = values<ClashStatus>({ hard: true, clearance: true, touch: true });
+const SEVERITIES = values<ClashSeverity>({ critical: true, major: true, minor: true, info: true });
+const MODES = values<ClashMode>({ hard: true, clearance: true });
+const DISTANCE_KINDS = values<ClashDistanceKind>({ mesh: true, estimate: true });
+const REVIEWS = values<ClashReviewStatus>({ open: true, resolved: true, accepted: true });
 
 const record = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const text = (v: unknown, allowEmpty = false, max: number = CLASH_REPORT_LIMITS.text): v is string =>
@@ -140,7 +143,7 @@ function isElement(v: unknown, models: ReadonlySet<string>): v is SavedClashElem
 function isClash(v: unknown, models: ReadonlySet<string>): v is SavedClash {
   return record(v) && text(v.id) && text(v.rule) && oneOf(v.status, STATUSES) && oneOf(v.severity, SEVERITIES)
     && (v.distance === null || finite(v.distance)) && optional(v.distanceKind, (k) => oneOf(k, DISTANCE_KINDS))
-    && isElement(v.a, models) && isElement(v.b, models) && text(v.storey, true) && oneOf(v.review, CLASH_REVIEW_STATUSES)
+    && isElement(v.a, models) && isElement(v.b, models) && text(v.storey, true) && oneOf(v.review, REVIEWS)
     && optional(v.comment, (c) => text(c, true, 16_384)) && text(v.group, true);
 }
 
@@ -159,40 +162,4 @@ export function isSavedClashReport(v: unknown): v is SavedClashReport {
   if (completeness.truncated !== undefined && (!record(completeness.truncated) || !text(completeness.truncated.reason, true) || !finite(completeness.truncated.droppedPairs) || completeness.truncated.droppedPairs < 0)) return false;
   if (v.grouping !== null && v.grouping !== 'derived' && v.grouping !== 'manual') return false;
   return Array.isArray(v.clashes) && v.clashes.length <= CLASH_REPORT_LIMITS.clashes && v.clashes.every((clash) => isClash(clash, models));
-}
-
-/**
- * How the loaded models relate to the ones a report was recorded on.
- * `same`: every recorded model is loaded with an identical source identity and
- *   neither side carries in-session edits.
- * `different`: a recorded model's name is loaded with another source identity.
- * `not-loaded`: a recorded model is not loaded at all.
- * `unverified`: nothing above could be established (no source identity was
- *   recorded, or one side was edited in the viewer).
- * This only labels the report. A report is never resolved against the loaded
- * models, whichever answer this gives.
- */
-export type ClashReportRevision = 'same' | 'different' | 'not-loaded' | 'unverified';
-
-export interface LoadedModelIdentity { name: string; sourceFingerprint?: string; sourceContentHash?: string }
-
-function sameSource(saved: SavedClashModel, loaded: LoadedModelIdentity): boolean {
-  // The full-content hash decides whenever both sides have it; the sampled fingerprint only when one side lacks it.
-  if (saved.sourceContentHash && loaded.sourceContentHash) return saved.sourceContentHash === loaded.sourceContentHash;
-  return !!saved.sourceFingerprint && saved.sourceFingerprint === loaded.sourceFingerprint;
-}
-
-export function clashReportRevision(report: Pick<SavedClashReport, 'models' | 'run'>, loaded: readonly LoadedModelIdentity[], mutationVersion: number): ClashReportRevision {
-  if (report.models.length === 0) return 'unverified';
-  let unverified = report.run.mutationRevision !== 0 || mutationVersion !== 0;
-  let notLoaded = false;
-  for (const model of report.models) {
-    if (loaded.some((candidate) => sameSource(model, candidate))) continue;
-    if (!model.sourceFingerprint && !model.sourceContentHash) {
-      if (loaded.some((candidate) => candidate.name === model.name)) unverified = true;
-      else notLoaded = true;
-    } else if (loaded.some((candidate) => candidate.name === model.name)) return 'different';
-    else notLoaded = true;
-  }
-  return notLoaded ? 'not-loaded' : unverified ? 'unverified' : 'same';
 }

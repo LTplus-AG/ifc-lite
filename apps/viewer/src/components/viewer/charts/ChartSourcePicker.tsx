@@ -53,7 +53,6 @@ export function ChartSourcePicker({ source, rowCount, comparisonId, history, all
         {clashReport.reports.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
       </select>
       {clashReport.note && <span className="text-muted-foreground" role={clashReportMissing ? 'alert' : 'status'} data-chart-source-note>{clashReport.note}</span>}
-      {clashReport.reports.length === 0 && !clashReportMissing && <span className="text-muted-foreground">{t('chartClashReport.none')}</span>}
     </label>}
   </>;
 }

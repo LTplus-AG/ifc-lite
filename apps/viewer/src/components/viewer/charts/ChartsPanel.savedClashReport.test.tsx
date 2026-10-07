@@ -127,8 +127,8 @@ describe('Saved clash reports as a chart source (#6947)', () => {
     assert.equal(useViewerStore.getState().clashResult?.clashes.length, 6);
     assert.deepEqual([population(ui, 'Chart of A'), population(ui, 'Chart of B'), population(ui, 'Current chart')], [1, 3, 6],
       'run C moves only the chart that reads the current result');
-    assert.match(subtitle(ui, 'Chart of A'), / · Saved: Run A · 1 bucket · 1 clash$/, 'a saved source is named on its card');
-    assert.doesNotMatch(subtitle(ui, 'Current chart'), /Saved:/);
+    assert.match(subtitle(ui, 'Chart of A'), /Saved clash report: Run A, saved [^·]+ · 1 bucket · 1 clash$/, 'a saved source is named on its card');
+    assert.doesNotMatch(subtitle(ui, 'Current chart'), /Saved clash report/);
     // The assistant cites the same populations and is told which of them is a saved past run.
     assert.deepEqual([cited('Chart of A').total, cited('Chart of B').total, cited('Current chart').total], [1, 3, 6]);
     assert.equal(cited('Chart of A').savedClashReport?.name, 'Run A');
@@ -198,7 +198,7 @@ describe('Saved clash reports as a chart source (#6947)', () => {
     const ui = render(<ChartsPanel renderer={renderer} />); await settle();
     await addClashChart(ui, 'Revision chart', report.id);
     // Control: on the very revision it was recorded on, the chart carries no historical marker.
-    assert.match(subtitle(ui, 'Revision chart'), /^Saved: First issue · /, 'no limit precedes the name on the recorded revision');
+    assert.match(subtitle(ui, 'Revision chart'), /^Saved clash report: First issue, saved /, 'no limit precedes the name on the recorded revision');
     assert.equal(population(ui, 'Revision chart'), 1);
 
     // Revision 2 of the same file name: three walls now, and the same GlobalIds for the first two.
@@ -207,8 +207,8 @@ describe('Saved clash reports as a chart source (#6947)', () => {
       useViewerStore.setState({ models: new Map([...useViewerStore.getState().models].map(([id, model]) => [id, { ...model, sourceFingerprint: 'revision-2' }])) });
     });
     await settle();
-    assert.match(subtitle(ui, 'Revision chart'), /^Different model revision · Saved: First issue · /, 'the warning leads, so a narrow card cannot cut it off');
-    assert.match(card(ui, 'Revision chart').querySelector('[data-chart-subtitle]')?.getAttribute('title') ?? '', /Historical: recorded on a different revision of the loaded model\./);
+    assert.match(subtitle(ui, 'Revision chart'), /^Different model revision · Saved clash report: First issue, saved /, 'the warning leads, so a narrow card cannot cut it off');
+    assert.match(card(ui, 'Revision chart').querySelector('[data-chart-subtitle]')?.getAttribute('title') ?? '', /^Different model revision · Saved clash report: First issue, saved /, 'the tooltip holds the whole line');
     assert.equal(population(ui, 'Revision chart'), 1, 'the recorded population is shown as recorded');
     const buckets = [...card(ui, 'Revision chart').querySelectorAll<HTMLButtonElement>('[data-chart-legend] button')];
     assert.ok(buckets.length > 0 && buckets.every((bucket) => bucket.disabled), 'a recorded bucket cannot select elements of the loaded revision');
@@ -218,7 +218,7 @@ describe('Saved clash reports as a chart source (#6947)', () => {
 
     act(() => useViewerStore.setState({ models: new Map(), activeModelId: null }));
     await settle();
-    assert.match(subtitle(ui, 'Revision chart'), /^Models not loaded · Saved: First issue · /);
+    assert.match(subtitle(ui, 'Revision chart'), /^Models not loaded · Saved clash report: First issue, saved /);
     assert.equal(population(ui, 'Revision chart'), 1);
   });
 
@@ -226,8 +226,8 @@ describe('Saved clash reports as a chart source (#6947)', () => {
     mountClashPanel();
     await detectCoincidentWalls(2);
     const dropped = (await publishCappedRun()).truncated.droppedPairs;
-    openSavedReports();
-    assert.match(document.body.querySelector('[data-clash-report-current]')?.textContent ?? '', /will be saved as a partial run/, 'the dialog says so before saving');
+    await openSavedReports();
+    assert.match(document.body.querySelector('[data-clash-report-current]')?.textContent ?? '', /It will be saved as: Partial run\./, 'the dialog says so before saving');
     const saved = await saveCurrentResultAs('Capped run');
     assert.deepEqual(saved.completeness.truncated, { reason: 'maxCandidatePairs', droppedPairs: dropped });
     assert.match(document.body.querySelector(`[data-clash-report="${saved.id}"] [data-clash-report-limits]`)?.textContent ?? '', /Partial run/);
@@ -235,14 +235,14 @@ describe('Saved clash reports as a chart source (#6947)', () => {
     const ui = render(<ChartsPanel renderer={renderer} />); await settle();
     await addClashChart(ui, 'Capped chart', saved.id);
     assert.match(subtitle(ui, 'Capped chart'), /^Partial run · /);
-    assert.match(editorNote(ui, 'Capped chart'), new RegExp(`Partial run: ${dropped} candidate pairs? (was|were) not checked\\.`));
+    assert.match(editorNote(ui, 'Capped chart'), /^Partial run · .*Saved clash report: Capped run, saved /, 'the chart editor states the same limits');
 
     // A complete run, then an edit to the model before it is saved.
     await detectCoincidentWalls(2);
     const complete = await saveCurrentResultAs('Complete run');
     assert.deepEqual([complete.completeness.truncated, complete.completeness.stale], [undefined, false]);
     act(() => useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 }));
-    assert.match(document.body.querySelector('[data-clash-report-current]')?.textContent ?? '', /The models changed after this run/);
+    assert.match(document.body.querySelector('[data-clash-report-current]')?.textContent ?? '', /It will be saved as: Models changed before saving\./);
     const stale = await saveCurrentResultAs('Edited before saving');
     assert.equal(stale.completeness.stale, true);
     await addClashChart(ui, 'Complete chart', complete.id);

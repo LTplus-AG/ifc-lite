@@ -77,16 +77,18 @@ export async function publishCappedRun(): Promise<ClashResult & { truncated: Non
   return { ...result, truncated };
 }
 
-export function openSavedReports(): void {
+/** Open the saved-report dialog from the panel header; it loads on first open. */
+export async function openSavedReports(): Promise<void> {
   if (document.body.querySelector('input[aria-label="Report name"]')) return;
   const trigger = bodyButton('Saved clash reports');
   assert.ok(trigger, 'the Clash panel header offers saved clash reports (#6947)');
   click(trigger);
+  await waitFor(() => document.body.querySelector('input[aria-label="Report name"]') !== null, 'the saved-report dialog opens');
 }
 
 /** Save the current result under `name` through the dialog and wait for the durable write. */
 export async function saveCurrentResultAs(name: string): Promise<SavedClashReport> {
-  openSavedReports();
+  await openSavedReports();
   const input = document.body.querySelector<HTMLInputElement>('input[aria-label="Report name"]');
   assert.ok(input, 'the saved-report dialog has a name field');
   type(input, name);
@@ -104,7 +106,7 @@ export async function saveCurrentResultAs(name: string): Promise<SavedClashRepor
 
 /** Delete a saved report through the dialog: Delete, then the confirmation. */
 export async function deleteSavedReport(report: SavedClashReport): Promise<void> {
-  openSavedReports();
+  await openSavedReports();
   const row = document.body.querySelector(`[data-clash-report="${report.id}"]`);
   assert.ok(row, `the dialog lists "${report.name}"`);
   const remove = [...row.querySelectorAll('button')].find((button) => button.textContent === 'Delete');

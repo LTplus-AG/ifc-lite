@@ -19,6 +19,7 @@ import { clashReviewKey } from '@ifc-lite/clash';
 import type { SavedClash, SavedClashElement, SavedClashModel, SavedClashReport, SavedClashRule } from './saved-report-schema';
 
 export * from './saved-report-schema';
+export * from './saved-report-revision';
 
 export type ClashReportCaptureState = ClashDatasetState
   & Pick<ViewerState, 'clashRawResult' | 'clashGroupsKind' | 'clashSuppressedCount' | 'mutationVersion' | 'geometryContentVersion' | 'modelPlacement'>;

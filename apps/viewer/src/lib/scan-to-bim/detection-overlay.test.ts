@@ -26,8 +26,9 @@ const all = { classes: SCAN_PROPOSAL_CLASSES, minConfidence: 0 };
 
 function run(cloudMatrix: number[] | null): ScanDetectionRun {
   const positions = scanRoomSample();
-  const result = runScanDetectJob({ positions, count: positions.length / 3, region: null, scanToModel: [1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1], schema: 'IFC4' });
-  return { sourceModelId: 'scan', targetModelId: 'ifc', cropped: false, pointCount: positions.length / 3, cloudMatrix, result };
+  const scanToModel = [1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1];
+  const result = runScanDetectJob({ positions, count: positions.length / 3, region: null, scanToModel, schema: 'IFC4' });
+  return { sourceModelId: 'scan', targetModelId: 'ifc', cropped: false, pointCount: positions.length / 3, cloudMatrix, scanToModel, result };
 }
 
 const triangles = (meshes: ReturnType<typeof detectionOverlayMeshes>) => meshes.reduce((n, m) => n + m.indices.length / 3, 0);

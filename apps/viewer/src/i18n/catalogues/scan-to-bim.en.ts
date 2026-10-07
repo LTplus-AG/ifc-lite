@@ -62,5 +62,30 @@ export const scanToBimEn = {
   'scanToBim.size.slab': '{area} m², {thickness} m thick',
   'scanToBim.size.column': 'Ø {diameter} m, {height} m high',
   'scanToBim.size.pipe': 'Ø {diameter} m, {length} m long',
+  'scanToBim.create': 'Create accepted elements',
+  'scanToBim.createCount': {
+    one: 'Create {count} accepted element in {model}',
+    other: 'Create {count} accepted elements in {model}',
+  },
+  'scanToBim.createNone': 'Accept proposals to create them as IFC elements.',
+  'scanToBim.acceptedHidden': {
+    one: '{count} accepted proposal is hidden by the filter and will not be created.',
+    other: '{count} accepted proposals are hidden by the filter and will not be created.',
+  },
+  'scanToBim.createdEarlier': {
+    one: '{count} element created from {scan} earlier in this session is in {model}; creating again may duplicate it.',
+    other: '{count} elements created from {scan} earlier in this session are in {model}; creating again may duplicate them.',
+  },
+  'scanToBim.needsModel': 'Creating elements needs an IFC model to hold them.',
+  'scanToBim.createBlank': 'Create a blank IFC model',
+  'scanToBim.creatingBlank': 'Creating a blank IFC model…',
+  'scanToBim.blankFailed': 'The blank IFC model could not be created.',
+  'scanToBim.created': {
+    one: '{count} element created in {model}, one undo step.',
+    other: '{count} elements created in {model}, one undo step.',
+  },
+  'scanToBim.createFailed': 'Could not create the elements: {message}',
+  'scanToBim.frameMoved': 'The scan has moved since it was detected, so the proposals no longer sit on it. Detect again, then create.',
+  'scanToBim.createdBadge': 'Created',
   'scanToBim.fit': 'RMS {rms} mm, {points} points',
 } as const satisfies Record<string, TranslationValue>;

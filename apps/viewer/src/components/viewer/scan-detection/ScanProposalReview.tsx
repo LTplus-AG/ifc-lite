@@ -13,7 +13,8 @@ import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
 import { formatLocaleNumber, useTranslation, type TranslationKey } from '@/i18n';
 import type { ProposalClass, ScanElementProposal } from '@ifc-lite/geometry/scan-proposals';
-import { SCAN_PROPOSAL_CLASSES, visibleScanProposals, type ScanDetectionRun } from '@/store/slices/scanDetectionSlice';
+import { proposalTargetModel } from '@/lib/scan-to-bim/run-detection';
+import { liveCreatedProposalIds, SCAN_PROPOSAL_CLASSES, visibleScanProposals, type ScanDetectionRun } from '@/store/slices/scanDetectionSlice';
 import { SCAN_PROPOSAL_COLORS } from '@/lib/scan-to-bim/detection-overlay';
 import { cn } from '@/lib/utils';
 
@@ -74,6 +75,12 @@ export function ScanProposalReview({ run }: { run: ScanDetectionRun }) {
   const filter = useViewerStore((s) => s.scanProposalFilter);
   const decide = useViewerStore((s) => s.decideScanProposals);
   const setFilter = useViewerStore((s) => s.setScanProposalFilter);
+  const createdRecords = useViewerStore((s) => s.scanProposalCreated);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const models = useViewerStore((s) => s.models);
+  const activeModelId = useViewerStore((s) => s.activeModelId);
+  const live = liveCreatedProposalIds(createdRecords, proposalTargetModel(models, activeModelId), mutationViews, mutationVersion);
   const size = useSize();
   const all = run.result.proposals.proposals;
   const present = SCAN_PROPOSAL_CLASSES.filter((c) => all.some((p) => p.ifcClass === c));
@@ -129,6 +136,7 @@ export function ScanProposalReview({ run }: { run: ScanDetectionRun }) {
                   <span aria-hidden="true" className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: swatch(p.ifcClass) }} />
                   <span className="font-medium">{p.ifcClass}</span>
                   <span className="text-muted-foreground">{p.id}</span>
+                  {live.has(p.id) && <span className="rounded bg-teal-600 px-1 text-2xs text-white">{t('scanToBim.createdBadge')}</span>}
                   <span className="ml-auto tabular-nums">{t('scanToBim.confidence', { value: percent(p.confidence) })}</span>
                 </div>
                 <span className="text-2xs text-muted-foreground">{size(p)}</span>

@@ -42,7 +42,7 @@ function seed(t: TestContext) {
     },
   });
   useViewerStore.getState().finishScanDetection({
-    sourceModelId: 'scan', targetModelId: null, cropped: false, pointCount: positions.length / 3, cloudMatrix: null, result,
+    sourceModelId: 'scan', targetModelId: null, cropped: false, pointCount: positions.length / 3, cloudMatrix: null, scanToModel: SWAP, result,
   });
   const triangles = () => (scanMeshes.at(-1) ?? []).reduce((n, m) => n + m.indices.length / 3, 0);
   return { result, scanMeshes, triangles, cleared: () => cleared };

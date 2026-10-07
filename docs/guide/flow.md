@@ -222,6 +222,63 @@ on a headless host and pass their entities through, so a graph that
 colorizes failures runs unchanged in CI. `ifc-lite flow validate` and the
 editor show the same per-node report.
 
+## Review checkpoints
+
+A node that declares `review: 'required'` produces a proposal; the run stops downstream of it (status
+`review`, dependants `paused`) and `RunResult.review` names it. Independent
+branches still run. To continue, the host saves a checkpoint, a reviewer
+approves the proposal by its digest, and the run is resumed with
+`RunOptions.resume`: every node that completed before the pause is restored
+(status `restored`) and never executed again, so a write before the pause is
+not repeated and the reviewed proposal is replayed without a model request.
+
+A checkpoint (`createCheckpoint` from `@ifc-lite/flow/checkpoint`, a separate entry so a host that only runs graphs does not load it) is plain JSON, so the viewer and the CLI
+read the same record. It holds the restored outputs, a digest of the graph
+and its Player inputs, a host digest of the sources the run read, the
+proposal digest and the AI budget state. Its lifecycle is `prepared` →
+`reviewed` (or `rejected`) → `applying` → `completed`, or
+`partially-committed` when a resume failed or its owner disappeared
+mid-resume; a partially committed checkpoint can never be resumed again.
+`claimCheckpoint` re-checks the graph and source digests and goes through a
+compare-and-swap store (`updateCheckpoint`), so two tabs or processes cannot
+consume the same approval. `resumeOutputs` refuses prepared, rejected, completed,
+partially committed and expired checkpoints; proposal inspection uses
+`checkpointProposal` and grants no permission to resume. The scheduler accepts only the unchanged, single-use map returned by `resumeOutputs` for an approved checkpoint with a live claim; raw paused outputs, edited maps and reused maps are refused before any node executes. A value that is not plain JSON (a viewer-only
+handle) makes the run uncheckpointable, named by node and port.
+
+```ts
+import { runFlow, type FlowDocument, type NodeRegistry } from '@ifc-lite/flow';
+import { approveCheckpoint, claimCheckpoint, createCheckpoint, finishCheckpoint, graphDigest, resumeOutputs, updateCheckpoint, type CheckpointStore } from '@ifc-lite/flow/checkpoint';
+import type { FlowHost } from '@ifc-lite/flow-nodes';
+
+async function reviewedRun(doc: FlowDocument, host: FlowHost, registry: NodeRegistry<FlowHost>, sourceDigest: string, store: CheckpointStore) {
+  const paused = await runFlow(doc, { host, registry });
+  if (paused.review.length === 0) return paused;
+  const checkpoint = createCheckpoint({ doc, registry, result: paused, sourceDigest });
+  // ...show the proposal (checkpointProposal) and collect the reviewer's approval...
+  const approved = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
+  if (!await store.write(approved, null)) throw new Error('Checkpoint already exists');
+  let claimed = await updateCheckpoint(store, approved.id, current => claimCheckpoint(current,
+    { owner: 'me', graphDigest: graphDigest(doc, {}, registry), sourceDigest, leaseMs: 60_000 }));
+  const resumed = await runFlow(doc, { host, registry, resume: resumeOutputs(claimed) });
+  claimed = await updateCheckpoint(store, claimed.id, current => finishCheckpoint(current, 'me', { ok: resumed.ok }));
+  return resumed;
+}
+```
+
+Checkpoint creation checks Player inputs against the actual paused run;
+pass the same `inputs` used by `runFlow` when creating a checkpoint. A resume takes a
+detached copy of the approved values before any asynchronous downstream work.
+Every resume uses the original claim returned by a successful `updateCheckpoint`
+compare-and-swap. A persisted `applying` record is not an ownership receipt: another
+tab or process cannot resume it, and a lost owner is recovered as partially committed.
+A host that persists checkpoints supplies a durable store. This runtime layer supplies the checkpoint API; CLI commands
+and viewer approval controls ship in the subsequent P19 host layer. Pass the effective
+node registry when creating a checkpoint and computing its claim digest so a changed
+review policy refuses the resume. Graph identities, names and node labels also bind the digest,
+because they determine default write tracking keys. Cached proposals still pause
+for review on every new run; only an approved checkpoint restores them for resume.
+
 ## Programmatic use
 
 ```ts

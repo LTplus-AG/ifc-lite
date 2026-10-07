@@ -13,7 +13,7 @@ import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { Play } from 'lucide-react';
-import { parseFlowDocument, type FlowDocument, type NodeReport } from '@ifc-lite/flow';
+import { parseFlowDocument, type FlowDocument, type NodeReport, type NodeStatus } from '@ifc-lite/flow';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useDialogs } from '@/components/ui/confirm-dialog';
 import { useViewerStore } from '@/store';
@@ -174,7 +174,7 @@ export function FlowPanel() {
   };
 
   const statusCounts = useMemo(() => {
-    const c = { ok: 0, memo: 0, noop: 0, error: 0, skipped: 0 };
+    const c: Record<NodeStatus, number> = { ok: 0, memo: 0, noop: 0, error: 0, skipped: 0, review: 0, paused: 0, restored: 0 };
     for (const r of lastRun?.reports ?? []) c[r.status] += 1;
     return c;
   }, [lastRun]);
@@ -265,7 +265,7 @@ export function FlowPanel() {
           {lastError && <span className="text-red-400">{t('flowPanel.run.failed')}: {lastError}</span>}
           {lastRun && (
             <>
-              <span className={lastRun.ok ? 'text-emerald-300' : 'text-red-400'}>{lastRun.ok ? t('flowPanel.run.ok') : t('flowPanel.run.failed')}</span>
+              <span className={lastRun.ok ? 'text-emerald-300' : 'text-red-400'}>{!lastRun.ok ? t('flowPanel.run.failed') : lastRun.review.length ? t('flowPanel.run.awaitingReview') : t('flowPanel.run.ok')}</span>
               <span className="text-muted-foreground">{t('flowPanel.run.summary', statusCounts)}</span>
               {lastRun.writes > 0 && <span className="text-muted-foreground">{t('flowPanel.run.writes', { count: lastRun.writes })}</span>}
               {lastRun.log.filter((l) => l.level === 'error').slice(0, 3).map((l, i) => <span key={i} className="text-red-400">{l.nodeId}{l.laneKey ? `[${l.laneKey}]` : ''}: {l.message}</span>)}

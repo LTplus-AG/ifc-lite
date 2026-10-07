@@ -269,7 +269,7 @@ describe('FlowPanel — Player mode and Publish button (#5167)', () => {
 
     act(() => {
       useViewerStore.getState().setFlowLastRun(
-        { ok: true, writes: 0, outputs: new Map(), graphOutputs: [], reports: [{ nodeId: 'number-1', status: 'ok', durationMs: 0, lanes: 1, laneErrors: 0, missing: {}, warnings: [] }], log: [] },
+        { ok: true, writes: 0, outputs: new Map(), graphOutputs: [], reports: [{ nodeId: 'number-1', status: 'ok', durationMs: 0, lanes: 1, laneErrors: 0, missing: {}, warnings: [] }], log: [], review: [] },
         undefined,
         { start: Date.now(), end: Date.now(), doc, mutationIds: new Set() },
       );
@@ -283,7 +283,7 @@ describe('FlowPanel — Player mode and Publish button (#5167)', () => {
     act(() => {
       useViewerStore.setState({ undoStacks: new Map([['model-1', [{ id: 'run-1', timestamp: at } as never]]]) });
       useViewerStore.getState().setFlowLastRun(
-        { ok: true, writes: 1, outputs: new Map(), graphOutputs: [], reports: [{ nodeId: 'number-1', status: 'ok', durationMs: 0, lanes: 1, laneErrors: 0, missing: {}, warnings: [] }], log: [] },
+        { ok: true, writes: 1, outputs: new Map(), graphOutputs: [], reports: [{ nodeId: 'number-1', status: 'ok', durationMs: 0, lanes: 1, laneErrors: 0, missing: {}, warnings: [] }], log: [], review: [] },
         undefined,
         { start: at, end: at, doc, mutationIds: new Set(['run-1']) },
       );
@@ -302,4 +302,17 @@ describe('FlowPanel — Player mode and Publish button (#5167)', () => {
     assert.equal(byText<HTMLButtonElement>(container, 'button', 'Publish').disabled, true);
     assert.match(container.textContent ?? '', /no longer pending/);
   });
+  it('#7038 labels a paused successful run as awaiting review and names the blocked work', () => {
+    const doc = numberGraph('Review pending');
+    useViewerStore.setState({ flowDoc: doc, flowLastRun: { ok: true, review: ['proposal'],
+      reports: [{ nodeId: 'proposal', status: 'review', durationMs: 0, lanes: 1, laneErrors: 0, missing: {}, warnings: [] }, { nodeId: 'apply', status: 'paused', durationMs: 0, lanes: 0, laneErrors: 0, missing: {}, warnings: [] }],
+      outputs: new Map(), graphOutputs: [], log: [], writes: 0 } });
+    const ui = mountFlowPanel();
+    const bar = ui.querySelector('[data-flow-run-bar]');
+    assert.ok(bar);
+    assert.match(bar.textContent ?? '', /Awaiting review/);
+    assert.match(bar.textContent ?? '', /1 awaiting review.*1 paused/);
+    assert.doesNotMatch(bar.textContent ?? '', /Run finished/);
+  });
+
 });

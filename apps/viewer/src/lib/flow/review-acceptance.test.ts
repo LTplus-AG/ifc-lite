@@ -153,8 +153,10 @@ test('#6923 the same file reloaded under a new model id is the same source; anot
   await approveReview(useFlowReview.getState().checkpoint!.proposalDigest);
   const loaded = useViewerStore.getState().models.get('arch')!;
   useViewerStore.setState({ models: new Map([['arch-other', { ...loaded, id: 'arch-other', sourceContentHash: 'another-file' }]]) });
+  useViewerStore.getState().setActiveModel('arch-other');
   assert.equal(await claimReview(doc, {}), null);
   useViewerStore.setState({ models: new Map([['arch-reloaded', { ...loaded, id: 'arch-reloaded' }]]) });
+  useViewerStore.getState().setActiveModel('arch-reloaded');
   assert.equal((await claimReview(doc, {}))?.state, 'applying');
 });
 
@@ -181,4 +183,22 @@ test('#6923 without a chosen model the AI nodes have no service and the run refu
   assert.equal(viewerFlowAi(), null);
   await assert.rejects(runFlowInViewer({ doc: example(), bim: model.bim, pin: activeTrackingPin()!, cache: new MemoCache() }), /roles: backend feature "ai" is not available/);
   assert.equal(requests, 0);
+});
+
+
+test('#7040 switching the active source among already loaded models invalidates the reviewed tracking pin', async () => {
+  const model = await openFlowSample();
+  const state = useViewerStore.getState();
+  const loaded = state.models.get('arch')!;
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini', models: new Map([
+    ...state.models, ['second', { ...loaded, id: 'second', sourceContentHash: 'second-source-content' }],
+  ]) });
+  const doc = example();
+  await pausedRun(model, doc);
+  await approveReview(useFlowReview.getState().checkpoint!.proposalDigest);
+  useViewerStore.getState().setActiveModel('second');
+  assert.equal(await claimReview(doc, {}), null);
+  const problem = useFlowReview.getState().problem;
+  assert.equal(problem?.kind === 'refused' ? problem.code : null, 'sources-changed');
+  assert.equal(useFlowReview.getState().checkpoint?.state, 'reviewed', 'a refused source switch does not consume approval');
 });

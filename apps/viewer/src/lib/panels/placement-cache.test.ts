@@ -3,13 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import test, { afterEach } from 'node:test';
+import test, { beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createStore } from 'zustand/vanilla';
 import { createDockSlice } from '@/store/slices/dockSlice';
 import { loadBottomStripTabs, persistBottomStripTabs } from './bottom-strip-persistence';
 
-afterEach(() => localStorage.clear());
+const warn = console.warn;
+let warnings: unknown[][] = [];
+beforeEach(() => { warnings = []; console.warn = (...args: unknown[]) => { warnings.push(args); }; });
+afterEach(() => { console.warn = warn; localStorage.clear(); });
 
 for (const replacement of [null, 'not-json', '{}']) {
   test(`#6927 bottom strip reload forgets removed unknown tabs (${replacement})`, () => {
@@ -23,6 +26,7 @@ for (const replacement of [null, 'not-json', '{}']) {
     assert.deepEqual(loadBottomStripTabs(), []);
     persistBottomStripTabs(['script']);
     assert.deepEqual(JSON.parse(localStorage.getItem(key)!), ['script']);
+    assert.equal(warnings.length, replacement === 'not-json' ? 1 : 0);
   });
 
   test(`#6927 floating reload forgets removed unknown placements (${replacement})`, () => {
@@ -36,5 +40,6 @@ for (const replacement of [null, 'not-json', '{}']) {
     const reloaded = createStore(createDockSlice);
     reloaded.getState().floatPanel('bcf');
     assert.deepEqual(JSON.parse(localStorage.getItem(key)!).map((entry: { id: string }) => entry.id), ['bcf']);
+    assert.equal(warnings.length, replacement === 'not-json' ? 1 : 0);
   });
 }

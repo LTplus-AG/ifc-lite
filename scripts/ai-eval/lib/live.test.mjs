@@ -118,3 +118,13 @@ test('callProvider reports a network failure by class only', async () => {
   assert.equal(call.receipt.outcome, 'error');
   assert.ok(!JSON.stringify(call).includes(provider.key));
 });
+
+test('a run refuses non-positive or non-numeric repeats and tasks the capture does not contain, before any request', async () => {
+  let calls = 0;
+  const fetchImpl = async () => { calls += 1; throw new Error('no request expected'); };
+  for (const repeats of [0, -1, Number.NaN, 1.5]) {
+    await assert.rejects(runLive({ ...common, repeats, fetchImpl }), /--repeats must be a whole number/);
+  }
+  await assert.rejects(runLive({ ...common, tasks: ['clash-summary', 'not-captured-task'], fetchImpl }), /no entry for: not-captured-task/);
+  assert.equal(calls, 0);
+});

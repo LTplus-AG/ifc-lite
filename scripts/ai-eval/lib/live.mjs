@@ -99,12 +99,16 @@ export async function callProvider({ provider, task, request, settings, fetchImp
 export async function runLive({ manifest, captured, providers, tasks, repeats, fetchImpl, now = Date.now, runId }) {
   const settings = { ...FIXED_SETTINGS, maxOutputTokens: manifest.liveEvaluation.maxOutputTokens, timeoutMs: manifest.liveEvaluation.timeoutMs };
   const budget = manifest.liveEvaluation.budget;
+  if (!Number.isInteger(repeats) || repeats < 1) throw new Error(`--repeats must be a whole number of at least 1, got ${repeats}`);
   if (repeats > manifest.liveEvaluation.maxRepeats) throw new Error(`--repeats ${repeats} exceeds the manifest limit of ${manifest.liveEvaluation.maxRepeats}`);
   const recordings = [];
   const receipts = [];
   const results = [];
   let stopped = null;
   const byId = new Map(manifest.tasks.map(task => [task.id, task]));
+  // A requested task the capture does not contain is refused up front, never silently dropped from the counts.
+  const missing = tasks.filter(id => !captured.tasks.some(item => item.taskId === id));
+  if (missing.length) throw new Error(`The captured requests file has no entry for: ${missing.join(', ')}. Recapture with pnpm ai-eval requests.`);
   for (const entry of captured.tasks.filter(item => tasks.includes(item.taskId))) {
     if (entry.skipped) { results.push({ task: entry.taskId, skipped: entry.skipped }); continue; }
     const task = byId.get(entry.taskId);

@@ -266,7 +266,7 @@ A host that persists checkpoints applies transitions through `updateCheckpoint`
 with a durable store. This runtime layer supplies the checkpoint API; CLI commands
 and viewer approval controls ship in the subsequent P19 host layer. Pass the effective
 node registry when creating a checkpoint and computing its claim digest so a changed
-review policy refuses the resume. Graph names and node labels also bind the digest,
+review policy refuses the resume. Graph identities, names and node labels also bind the digest,
 because they determine default write tracking keys. Cached proposals still pause
 for review on every new run; only an approved checkpoint restores them for resume.
 

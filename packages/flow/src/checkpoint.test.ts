@@ -174,10 +174,27 @@ it('#7038 renaming a graph or node invalidates approval for its default write ta
   const reviewed = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
   const changedGraphs: FlowDocument[] = [
     { ...doc, name: 'different-target' },
+    { ...doc, id: 'different-graph' },
     { ...doc, nodes: doc.nodes.map(node => node.id === 'sink' ? { ...node, label: 'different-target' } : node) },
   ];
   for (const changed of changedGraphs) {
     expect(() => claimCheckpoint(reviewed, { ...claim('owner'), graphDigest: graphDigest(changed, {}, registry) }))
       .toThrow(expect.objectContaining({ code: 'graph-changed' }));
   }
+});
+
+
+it('#7038 distinct runs at the same millisecond retain independent approvals', async () => {
+  const first = await paused();
+  const second = await paused();
+  expect(first.createdAt).toBe(second.createdAt);
+  expect(first.graphDigest).toBe(second.graphDigest);
+  expect(first.proposalDigest).toBe(second.proposalDigest);
+  expect(first.id).not.toBe(second.id);
+  const store = new MemoryCheckpointStore();
+  expect(await store.write(first, null)).toBe(true);
+  expect(await store.write(second, null)).toBe(true);
+  await updateCheckpoint(store, first.id, checkpoint => approveCheckpoint(checkpoint, first.proposalDigest));
+  expect((await store.read(first.id))?.checkpoint.state).toBe('reviewed');
+  expect((await store.read(second.id))?.checkpoint.state).toBe('prepared');
 });

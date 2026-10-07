@@ -78,6 +78,7 @@ interface ReviewRegistry { get(type: string): { readonly review?: 'required' } |
 /** What a resume must match: the graph minus layout, plus the Player inputs it runs with. */
 export function graphDigest(doc: FlowDocument, inputs: Readonly<Record<string, unknown>> = {}, registry?: ReviewRegistry): string {
   return digest({
+    id: doc.id,
     name: doc.name,
     capabilities: doc.capabilities,
     edges: doc.edges,
@@ -181,7 +182,7 @@ export function createCheckpoint(input: CreateCheckpointInput): FlowCheckpoint {
   const now = input.now ?? Date.now();
   return {
     version: CHECKPOINT_VERSION,
-    id: digest({ graph, source: input.sourceDigest, proposal, now }).slice(0, 32),
+    id: globalThis.crypto.randomUUID(),
     graphId: doc.id,
     graphName: doc.name,
     graphDigest: graph,

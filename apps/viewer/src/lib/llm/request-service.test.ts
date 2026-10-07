@@ -5,7 +5,8 @@
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { runModelRequest, type ModelRequest, type SendableRoute } from './request-service.js';
-import { createRootBudget, remainingBudget } from './root-budget.js';
+import { remainingBudget } from '@ifc-lite/ai';
+import { createRootBudget } from './root-budget.js';
 import { useRequestReceipts, RECEIPT_LIMIT, recordReceipt } from './request-receipts.js';
 import { modelCapabilities } from './model-capabilities.js';
 

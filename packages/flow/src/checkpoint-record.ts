@@ -182,8 +182,8 @@ export function createCheckpoint(input: CreateCheckpointInput): FlowCheckpoint {
   if (problems.length) throw new CheckpointNotPortableError(problems);
   const outputs = portableOutputs(result.outputs);
   const graph = graphDigest(doc, input.inputs, input.registry);
-  if (pausedRunDigests.get(result) !== graph) {
-    throw new Error('the checkpoint graph and Player inputs must match the actual paused run');
+  if (pausedRunInputs.get(result) !== digest(input.inputs ?? {})) {
+    throw new Error('the checkpoint Player inputs must match the actual paused run');
   }
   const proposal = proposalDigestOf(outputs, result.review);
   const now = input.now ?? Date.now();
@@ -219,11 +219,11 @@ function restoreMap(checkpoint: FlowCheckpoint): Map<string, Map<string, FlowDat
   return out;
 }
 
-const pausedRunDigests = new WeakMap<object, string>();
+const pausedRunInputs = new WeakMap<object, string>();
 
-/** Internal: bind checkpoint creation to the graph and inputs used at run entry. */
-export function registerPausedRun(result: RunResult, graph: string): void {
-  pausedRunDigests.set(result, graph);
+/** Internal: bind checkpoint creation to the Player inputs used at run entry. */
+export function registerPausedRun(result: RunResult, inputsDigest: string): void {
+  pausedRunInputs.set(result, inputsDigest);
 }
 
 const authorizedResumes = new WeakMap<object, { graph: string; outputs: string; expires: number }>();

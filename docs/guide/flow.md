@@ -266,7 +266,7 @@ async function reviewedRun(doc: FlowDocument, host: FlowHost, registry: NodeRegi
 }
 ```
 
-Checkpoint creation checks the graph and Player inputs against the actual paused run;
+Checkpoint creation checks Player inputs against the actual paused run;
 pass the same `inputs` used by `runFlow` when creating a checkpoint. A resume takes a
 detached copy of the approved values before any asynchronous downstream work.
 Every resume uses the original claim returned by a successful `updateCheckpoint`

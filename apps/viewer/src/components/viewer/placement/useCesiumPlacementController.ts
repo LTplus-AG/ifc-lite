@@ -42,7 +42,8 @@ export function useCesiumPlacementController({
   lengthUnitScale = 1,
 }: CesiumPlacementControllerProps) {
   const { t } = useTranslation();
-  const canEdit = useProjectionKind(projectedCRS) === 'projected';
+  const projectionKind = useProjectionKind(projectedCRS);
+  const canEdit = projectionKind === 'projected';
   const editMode = useViewerStore((s) => s.cesiumPlacementEditMode);
   const draftModelId = useViewerStore((s) => s.cesiumPlacementDraftModelId);
   const draft = useViewerStore((s) => s.cesiumPlacementDraft);
@@ -52,6 +53,14 @@ export function useCesiumPlacementController({
   const setEditMode = useViewerStore((s) => s.setCesiumPlacementEditMode);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const setGeorefFields = useViewerStore((s) => s.setGeorefFields);
+
+  // A projected draft cannot remain a live preview after its source CRS
+  // becomes angular (#7060). Closing through the store also clears the draft;
+  // leave valid projected sessions intact while classification is pending.
+  useEffect(() => {
+    if (projectionKind === 'geographic' && editMode
+      && (!draftModelId || draftModelId === modelId)) setEditMode(false);
+  }, [projectionKind, editMode, draftModelId, modelId, setEditMode]);
 
   // Bootstrap a real draft in the store as soon as editing starts. Without
   // this, `activeDraft` below falls into its ELSE branch (a fresh object

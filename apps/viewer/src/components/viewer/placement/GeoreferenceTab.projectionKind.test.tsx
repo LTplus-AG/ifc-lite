@@ -4,7 +4,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, it } from 'node:test';
-import { useState } from 'react';
+import { act, useState } from 'react';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { Renderer } from '@ifc-lite/renderer';
@@ -39,8 +39,11 @@ function seed(dirty = false) {
     georefMutations: new Map(), editEnabled: true, collabRoomId: null,
     undoStacks: new Map(), redoStacks: new Map(), changeSets: new Map(), activeChangeSetId: null,
   });
-  const camera = { projectToScreen: () => ({ x: 50, y: 50 }) };
-  const canvas = { clientWidth: 100, clientHeight: 100,
+  const camera = { projectToScreen: () => ({ x: 50, y: 50 }),
+    unprojectToRay: (_x: number, y: number) => ({
+      origin: { x: 10, y: -y / 10, z: 0 }, direction: { x: -1, y: 0, z: 0 },
+    }) };
+  const canvas = { width: 100, height: 100, clientWidth: 100, clientHeight: 100,
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) };
   setGlobalRendererRef({ current: { getCamera: () => camera, getCanvas: () => canvas } as unknown as Renderer });
 }
@@ -59,6 +62,7 @@ function Probe({ initialCRS }: { initialCRS?: ProjectedCRS }) {
       c.nudgeRotation(1); c.updateDraft({ eastings: 77 }); c.handleApply(); c.handleReset();
     }}>Invoke edit actions</button>
     <button onClick={() => setCRS(geographic)}>Switch to geographic</button>
+    <button onClick={() => setCRS(projected)}>Switch to projected</button>
     <GeoreferenceTab {...props} />
     <CesiumPlacementGizmo {...props} />
   </>;
@@ -102,4 +106,26 @@ it('preserves projected one-metre nudge/apply and immediately disables on CRS ch
   assert.equal(useViewerStore.getState().cesiumPlacementDraft, draftBefore);
   assert.equal(useViewerStore.getState().getGeorefMutations('m'), sourceBefore);
   await advance(0);
+});
+
+
+it('abandons a captured gesture when geographic capability aborts editing (#7060)', async () => {
+  seed();
+  const ui = render(<Probe initialCRS={projected} />);
+  const heightHandle = () => ui.querySelector('[aria-label="Drag OrthogonalHeight"]');
+  await waitFor(() => Boolean(heightHandle()), 'projected height handle is available');
+  const pointer = (type: string, clientY: number) => new PointerEvent(type, {
+    bubbles: true, cancelable: true, pointerId: 1, clientX: 50, clientY,
+  });
+  act(() => heightHandle()!.dispatchEvent(pointer('pointerdown', 50)));
+  click(Array.from(ui.querySelectorAll('button')).find(button => button.textContent === 'Switch to geographic')!);
+  await waitFor(() => !useViewerStore.getState().cesiumPlacementEditMode, 'geographic session aborts');
+  click(Array.from(ui.querySelectorAll('button')).find(button => button.textContent === 'Switch to projected')!);
+  await waitFor(() => ui.querySelector('[data-testid="capability"]')?.textContent === 'true', 'projected capability resolves again');
+  click(ui.querySelector('[role="switch"]')!);
+  await waitFor(() => Boolean(heightHandle()), 'new projected session has a height handle');
+  const draftBefore = useViewerStore.getState().cesiumPlacementDraft;
+  act(() => heightHandle()!.dispatchEvent(pointer('pointermove', 30)));
+  assert.equal(useViewerStore.getState().cesiumPlacementDraft, draftBefore,
+    'hovering the new handle cannot resume the old captured drag');
 });

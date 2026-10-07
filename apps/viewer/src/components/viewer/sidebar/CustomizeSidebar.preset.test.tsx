@@ -37,4 +37,11 @@ it('#6926 Customize previews, applies and restores a coordinator layout through 
   assert.equal(useViewerStore.getState().sidebarSplitRatio, 0.63);
   assert.match(ui.querySelector('output[aria-live="polite"]')?.textContent ?? '', /previous layout is restored/);
   assert.equal(document.activeElement, button('Apply Coordinator review'), 'removing Restore keeps keyboard focus in the customizer');
+  click(button('Apply Coordinator review'));
+  assert.ok([...ui.querySelectorAll('button')].some(value => value.textContent?.trim() === 'Restore my layout'));
+  const reset = ui.querySelector('button[title="Reset workspace layout"]') ?? [...ui.querySelectorAll('button')].find(value => value.textContent?.trim() === 'Reset');
+  assert.ok(reset);
+  click(reset);
+  await waitFor(() => ![...ui.querySelectorAll('button')].some(value => value.textContent?.trim() === 'Restore my layout'), 'Reset retires the native preset record');
+  assert.equal(localStorage.getItem('ifc-lite:layout-preset-v1'), null, 'the prior layout cannot return after Reset and reload');
 });

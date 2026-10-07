@@ -15,6 +15,7 @@
  */
 
 import { create } from 'zustand';
+import { LAYOUT_PRESET_STORAGE_KEY as STORAGE_KEY, layoutPresetResetEpoch, subscribeLayoutPresetReset } from './layout-preset-reset';
 import { getViewerStoreApi } from './index.js';
 import type { SidebarLayoutSnapshot } from './slices/sidebarSlice.js';
 import { getLayoutPreset, planLayoutPreset, type LayoutPresetId, type LayoutPresetPlan, type WorkspaceLayoutState } from '@/lib/panels/layout-presets';
@@ -39,7 +40,7 @@ interface PresetRecord {
   previous: WorkspaceLayoutSnapshot;
 }
 
-const STORAGE_KEY = 'ifc-lite:layout-preset-v1';
+
 
 function panelId(value: unknown): WorkspacePanelId | null {
   return typeof value === 'string' ? migratePanelId(value) ?? null : null;
@@ -64,7 +65,7 @@ function decodeRecord(value: unknown): PresetRecord | null {
 }
 
 function loadRecord(): PresetRecord | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined' || layoutPresetResetEpoch() > 0) return null;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     return raw ? decodeRecord(JSON.parse(raw)) : null;
@@ -84,6 +85,7 @@ function persistRecord(record: PresetRecord | null): void {
 }
 
 export const useLayoutPreset = create<{ record: PresetRecord | null }>(() => ({ record: loadRecord() }));
+subscribeLayoutPresetReset(() => useLayoutPreset.setState({ record: null }));
 
 function setRecord(record: PresetRecord | null): void {
   persistRecord(record);
@@ -162,7 +164,3 @@ export function restoreLayoutBeforePreset(store: ViewerStoreApi = getViewerStore
   return true;
 }
 
-/** "Reset layout" replaces everything with the shipped default; there is nothing left to restore. */
-export function forgetLayoutPreset(): void {
-  if (useLayoutPreset.getState().record) setRecord(null);
-}

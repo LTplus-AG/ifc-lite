@@ -17,7 +17,7 @@
 
 import { getViewerStoreApi } from './index.js';
 import { BOTTOM_STRIP_DEFAULT_HEIGHT, persistBottomStripHeight } from '@/lib/panels/bottom-strip-persistence';
-import { forgetLayoutPreset } from './layoutPreset.js';
+import { forgetLayoutPreset } from './layout-preset-reset.js';
 
 /** The hierarchy pane's initial size in percent (`ViewerLayout`), and what a
  *  reset returns it to. The #5873 rail grew by 16px; the extra half point

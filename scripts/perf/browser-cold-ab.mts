@@ -163,6 +163,7 @@ const sides: Side[] = DIST_BASE ? ['base', 'branch'] : ['branch', 'branch'];
 const labelOf = (s: Side, slot: number) => (DIST_BASE ? (s === 'base' ? BASE_LABEL : BRANCH_LABEL) : slot === 0 ? BASE_LABEL : BRANCH_LABEL);
 const rootOf = (s: Side) => (s === 'base' ? DIST_BASE! : DIST_BRANCH);
 
+let warnedSoftwareAdapter = false;
 let failures = 0;
 let ok = 0;
 
@@ -214,6 +215,18 @@ for (let iter = 1; iter <= ITERS; iter++) {
           sharedArrayBufferAvailable: typeof SharedArrayBuffer !== 'undefined',
         }));
         record = { ...record, ...isolation };
+        // A software adapter (SwiftShader: the only WebGPU headless Chromium has in
+        // WSL/CI) initialises the renderer slowly enough to measure a different
+        // load than a real GPU does. Say so once, and archive it with the sample.
+        const adapter = await page.evaluate(async () => {
+          const a = await navigator.gpu?.requestAdapter();
+          return a ? { architecture: a.info?.architecture ?? '', fallback: Boolean(a.isFallbackAdapter ?? a.info?.isFallbackAdapter) } : null;
+        }).catch(() => null);
+        record.gpuAdapter = adapter;
+        if (!warnedSoftwareAdapter && (!adapter || adapter.fallback || adapter.architecture === 'swiftshader')) {
+          warnedSoftwareAdapter = true;
+          console.warn(`browser-cold-ab: WARNING ${adapter ? `software WebGPU adapter (${adapter.architecture || 'fallback'})` : 'no WebGPU adapter'}; timings are not real-GPU numbers. For a real GPU from WSL use a Windows Chrome launcher (see scripts/perf/frame-gpu-chrome.ts).`);
+        }
         if (!isolation.crossOriginIsolated || !isolation.sharedArrayBufferAvailable) {
           throw new Error('Viewer is not cross-origin isolated; worker-pool sample invalid');
         }

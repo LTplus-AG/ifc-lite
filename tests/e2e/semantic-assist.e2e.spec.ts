@@ -107,8 +107,8 @@ test('linked-records assistant: spans, grants, revision pins and reviewed apply 
   const outbound: string[] = [];
   await page.route('**/api/chat', async route => {
     const body = route.request().postDataJSON() as { system: string | Array<{ text: string }>; messages: Array<{ content: string }> };
-    const system = typeof body.system === 'string' ? body.system : body.system.map(block => block.text).join('\n');
-    outbound.push(system);
+    // #7000: inspect the complete provider payload, including evidence-bearing messages.
+    outbound.push(route.request().postData() ?? '');
     const prompt = body.messages.at(-1)?.content ?? '';
     const key = Object.keys(ANSWERS).find(candidate => prompt.includes(candidate)) ?? 'REQUIREMENTS';
     await route.fulfill({ contentType: 'text/event-stream', body: `data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify(ANSWERS[key]) } }] })}\n\ndata: [DONE]\n\n` });
@@ -153,7 +153,7 @@ test('linked-records assistant: spans, grants, revision pins and reviewed apply 
   await expect(grant).toContainText(ENDPOINT);
   await expect(grant).toContainText('Supplied (not shown, never sent to the assistant)');
   expect(await page.locator('body').innerText()).not.toContain(SECRET);
-  expect(outbound.every(system => !system.includes(SECRET) && !system.includes('graph.example.org'))).toBe(true);
+  expect(outbound.every(payload => !payload.includes(SECRET) && !payload.includes('graph.example.org'))).toBe(true);
   expect(requests.length).toBe(1);
   await query.getByRole('button', { name: 'Run query', exact: true }).click();
   await expect(query).toContainText('Ran against https://graph.example.org/records');

@@ -15,7 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { copyFile, mkdtemp, readFile, utimes, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, symlink, link, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -106,12 +106,13 @@ describe('ifc-lite flow: reviewed AI pause and resume', () => {
     const loser = candidates.find(candidate => candidate.id !== winner.checkpoint.id)!;
     expect(await new FileCheckpointStore(racePath).write(loser, null)).toBe(false);
     expect((await new FileCheckpointStore(racePath).load()).checkpoint).toEqual(winner.checkpoint);
-    // #7039 A dead writer's stale lock is reclaimed within this first write.
+    // #7039 Age cannot establish that a writer died; concurrent contenders must leave its lock alone.
     const stalePath = join(dir, 'stale.json');
     await writeFile(`${stalePath}.lock`, '');
     await utimes(`${stalePath}.lock`, new Date(0), new Date(0));
-    expect(await new FileCheckpointStore(stalePath).write(candidates[0], null)).toBe(true);
-    expect((await new FileCheckpointStore(stalePath).load()).checkpoint.id).toBe(candidates[0].id);
+    const contenders = await Promise.all(candidates.map(candidate => new FileCheckpointStore(stalePath).write(candidate, null)));
+    expect(contenders).toEqual([false, false]);
+    expect(await readFile(`${stalePath}.lock`, 'utf-8')).toBe('');
 
 
     vi.restoreAllMocks();
@@ -406,6 +407,15 @@ it('#7039 malformed resume flags leave the approved checkpoint unclaimed for ret
   const digest = (c.json() as { checkpoint: { proposalDigest: string } }).checkpoint.proposalDigest;
   await flowCommand(['review', checkpoint, '--approve', digest]);
   const requestCount = model.calls.length;
+  const symlinkPath = join(dir, 'linked.json');
+  const hardlinkPath = join(dir, 'hardlinked.json');
+  await symlink(checkpoint, symlinkPath);
+  await link(checkpoint, hardlinkPath);
+  for (const flags of [['--out', symlinkPath], ['--out', hardlinkPath], ['--out', checkpoint], ['--tracking', checkpoint], ['--next-checkpoint', checkpoint]]) {
+    await expect(flowCommand(['resume', AI_FLOW, SAMPLE_IFC, '--checkpoint', checkpoint, ...flags])).rejects.toThrow('exit 1');
+    expect((await new FileCheckpointStore(checkpoint).load()).checkpoint.state).toBe('reviewed');
+    expect(model.calls).toHaveLength(requestCount);
+  }
   for (const flag of ['--tracking', '--out', '--ai-max-requests', '--ai-max-output-tokens']) {
     await expect(flowCommand(['resume', AI_FLOW, SAMPLE_IFC, '--checkpoint', checkpoint, '--no-tracking', flag])).rejects.toThrow('exit 1');
     expect((await new FileCheckpointStore(checkpoint).read(JSON.parse(await readFile(checkpoint, 'utf-8')).checkpoint.id))?.checkpoint.state).toBe('reviewed');

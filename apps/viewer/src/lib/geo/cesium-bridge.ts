@@ -42,6 +42,7 @@ import { ecefCameraFrame } from './ecef-camera-frame';
 import { viewBasis } from '@ifc-lite/renderer';
 import { ifcToViewerAxes } from './coordinate-frame';
 import { resolveMapAxisDirection } from './map-axis-direction';
+import { buildViewerToEcefMatrix } from './cesium-viewer-frame';
 
 // Re-exported so existing importers keep resolving it from the bridge; the
 // definitions now live in the dependency-free `viewer-enu-rotation` and
@@ -272,11 +273,6 @@ export async function createCesiumBridge(
   const { a: absc, b: ordi } = axis; // scalars: narrowing is lost inside `viewerToGeodetic`
   const rotAngle = Math.atan2(ordi, absc);
 
-  const bounds = coordinateInfo?.originalBounds;
-  const modelVX = bounds ? (bounds.min.x + bounds.max.x) / 2 : 0;
-  const modelVY = bounds ? (bounds.min.y + bounds.max.y) / 2 : 0;
-  const modelVZ = bounds ? (bounds.min.z + bounds.max.z) / 2 : 0;
-
   const shift = coordinateInfo?.originShift ?? { x: 0, y: 0, z: 0 };
   const rtcYup = ifcToViewerAxes(coordinateInfo?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 });
   const origin = await computeCesiumModelOrigin(
@@ -305,16 +301,6 @@ export async function createCesiumBridge(
   // (up = vy). The model-placement matrix reuses the very same `rot` via
   // `bridge.viewerRotation` so the two never drift. Viewer deltas are metres.
   const rot = viewerToEnuRotation(originScaleX, absc, ordi, origin.gamma, originScaleY);
-  const m00 = rot.eastFromVx;      // east  from vx
-  const m01 = 0;                   // east  from vy
-  const m02 = rot.eastFromVz;      // east  from vz
-  const m10 = rot.northFromVx;     // north from vx
-  const m11 = 0;                   // north from vy
-  const m12 = rot.northFromVz;     // north from vz
-  const m20 = 0;                   // up    from vx
-  const m21 = originScaleZ;         // up    from vy (Scale x FactorZ)
-  const m22 = 0;                   // up    from vz
-
   // ── Cache for ECEF objects ──
   let viewerToEcefMatrix: InstanceType<typeof import('cesium').Matrix4> | null = null;
   let cachedClampUp: number | null = null;
@@ -323,36 +309,12 @@ export async function createCesiumBridge(
     if (cachedClampUp === clampUp && viewerToEcefMatrix !== null) return;
     cachedClampUp = clampUp;
 
-    const originWithClamp = Cesium.Cartesian3.fromDegrees(
-      originLon, originLat, oHeight + clampUp,
-    );
-    // Get ENU→ECEF 4x4 matrix at model origin
-    const enuToEcef = Cesium.Transforms.eastNorthUpToFixedFrame(originWithClamp);
-
-    // Build viewer→ECEF = enuToEcef * viewerToENU
-    // viewerToENU is: translate(-modelCenter) then rotate by M
-    // As a 4x4: columns are the ENU directions of viewer axes, translation is -modelCenter in ENU
-    //
-    // viewerToENU_4x4 = [ m00  m01  m02  tx ]
-    //                    [ m10  m11  m12  ty ]
-    //                    [ m20  m21  m22  tz ]
-    //                    [ 0    0    0    1  ]
-    // where (tx, ty, tz) = M * (-modelVX, -modelVY, -modelVZ)
-    const tx = m00 * (-modelVX) + m01 * (-modelVY) + m02 * (-modelVZ);
-    const ty = m10 * (-modelVX) + m11 * (-modelVY) + m12 * (-modelVZ);
-    const tz = m20 * (-modelVX) + m21 * (-modelVY) + m22 * (-modelVZ);
-
-    // Cesium Matrix4 is column-major
-    const viewerToEnu = new Cesium.Matrix4(
-      m00, m01, m02, tx,
-      m10, m11, m12, ty,
-      m20, m21, m22, tz,
-      0,   0,   0,   1,
-    );
-
-    // Compose: viewerToEcef = enuToEcef * viewerToEnu
-    viewerToEcefMatrix = Cesium.Matrix4.multiply(
-      enuToEcef, viewerToEnu, new Cesium.Matrix4(),
+    viewerToEcefMatrix = buildViewerToEcefMatrix(
+      Cesium,
+      { longitude: originLon, latitude: originLat, height: oHeight + clampUp },
+      rot,
+      originScaleZ,
+      coordinateInfo,
     );
   }
 

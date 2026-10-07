@@ -240,9 +240,13 @@ a request. Model-facing row keys remain distinct even when a source row has no k
 or its literal key collides with a generated one. Requests come out of **one root budget per run**: every
 AI node, lane and batch draws from it, so list lacing cannot multiply the
 spend, and a budget stop keeps a partial result whose coverage counts the
-rows that were not sent. Nothing the model invents survives as evidence:
-unknown keys, labels outside the set, uncited claims and spans that are not
-in the passage are dropped or marked.
+rows that were not sent. Unknown row keys, labels outside the allowed set,
+missing citations and quotes absent from the passage are dropped or marked.
+These checks do not establish that a cited row or quote entails the generated
+claim. For `ai.extract`, `supported` means the quote occurs verbatim and field
+values have the declared types. A reply quoting “30 minutes” with a typed
+value of `999` still passes that structural check; the reviewer must compare
+all candidate values with the captured passage before approval.
 
 **Review checkpoints.** A node that declares `review: 'required'` (every AI
 node does) produces a proposal; the run stops downstream of it (status

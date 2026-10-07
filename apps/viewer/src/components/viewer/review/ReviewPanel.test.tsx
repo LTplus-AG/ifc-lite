@@ -164,6 +164,7 @@ test('#7015 changed baseline refuses the original jump instead of opening unrela
   click(open);
   assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /saved baseline changed/);
   assert.equal(useOriginalClashBaseline.getState().finding, null);
+  assert.equal(useReviewAssistantCard.getState().card, null, '#7015 replacing the native baseline invalidates its pinned card');
 });
 
 // #7015: replacing the native run makes a removed pinned finding unavailable.
@@ -189,6 +190,8 @@ test('saving a replacement native baseline clears an open original finding', asy
   const ui = render(<>{renderPanelBody('review', () => {})}<ClashRevisionCompareDialog /></>);
   await waitFor(() => ui.querySelector('[data-review-card]') !== null, 'historical card');
   click(button(ui, 'Show findings of'));
+  click(button(ui, 'Ask about this card'));
+  assert.ok(useReviewAssistantCard.getState().card, 'the historical card is pinned');
   click(ui.querySelector<HTMLButtonElement>('[data-run-temporal="historical"] button')!);
   await waitFor(() => document.querySelector('[data-original-baseline]') !== null, 'native original finding');
   const save = [...document.querySelectorAll<HTMLButtonElement>('button')].find(element => /Save current as baseline/.test(element.textContent ?? ''));
@@ -196,4 +199,5 @@ test('saving a replacement native baseline clears an open original finding', asy
   click(save);
   await waitFor(() => document.querySelector('[data-original-baseline]') === null, 'original finding cleared');
   assert.equal(useOriginalClashBaseline.getState().finding, null);
+  assert.equal(useReviewAssistantCard.getState().card, null, '#7015 replacing the native baseline invalidates its pinned card');
 });

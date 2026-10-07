@@ -58,7 +58,7 @@ export function SourcePicker({ current, onAttach, onCancel }: {
   return <div className="p-3 space-y-2 text-xs">
     <div className="flex items-baseline justify-between gap-2">
       <p className="font-semibold">{t('assistant.pickTitle')}</p>
-      {onCancel && <Button variant="ghost" size="sm" className="h-6 px-2" onClick={onCancel}>{t('assistant.cancel')}</Button>}
+      {onCancel && <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onCancel}>{t('assistant.cancel')}</Button>}
     </div>
     <p className="text-muted-foreground">{t('assistant.pickHint')}</p>
     {ADAPTER_GROUPS.map(group => {

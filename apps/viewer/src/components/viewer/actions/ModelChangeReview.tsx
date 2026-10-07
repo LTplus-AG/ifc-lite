@@ -24,13 +24,13 @@ import { captureValidationBefore } from '@/lib/actions/validation-verdicts';
 import { ReceiptValidation } from './ReceiptValidation';
 
 export const STATUS: Record<RowStatus, { key: TranslationKey; tone: string }> = {
-  ready: { key: 'modelChanges.status.ready', tone: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' },
-  unchanged: { key: 'modelChanges.status.unchanged', tone: 'bg-muted text-muted-foreground' },
-  conflict: { key: 'modelChanges.status.conflict', tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-400' },
-  'missing-target': { key: 'modelChanges.status.missing', tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-400' },
-  'ambiguous-target': { key: 'modelChanges.status.ambiguous', tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-400' },
-  denied: { key: 'modelChanges.status.denied', tone: 'bg-muted text-muted-foreground' },
-  unsupported: { key: 'modelChanges.status.unsupported', tone: 'bg-muted text-muted-foreground' },
+  ready: { key: 'modelChanges.status.ready', tone: 'border border-transparent bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' },
+  unchanged: { key: 'modelChanges.status.unchanged', tone: 'border border-transparent bg-muted text-muted-foreground' },
+  conflict: { key: 'modelChanges.status.conflict', tone: 'border border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400' },
+  'missing-target': { key: 'modelChanges.status.missing', tone: 'border border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400' },
+  'ambiguous-target': { key: 'modelChanges.status.ambiguous', tone: 'border border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400' },
+  denied: { key: 'modelChanges.status.denied', tone: 'border border-transparent bg-muted text-muted-foreground' },
+  unsupported: { key: 'modelChanges.status.unsupported', tone: 'border border-transparent bg-muted text-muted-foreground' },
 };
 
 function shown(value: ChangeScalar | undefined, empty: string): string {
@@ -44,9 +44,9 @@ function Row({ row, checked, onToggle }: { row: PreviewRow; checked: boolean; on
   const after = row.change.op === 'property.delete' ? null : row.change.value;
   const status = STATUS[row.status];
   return <li className="grid grid-cols-[auto_1fr_auto] items-start gap-x-2 gap-y-0.5 border-b border-border/60 py-1.5 last:border-0">
-    <input type="checkbox" className="mt-0.5" checked={checked} disabled={row.status !== 'ready'}
+    <label className="-mt-0.5 inline-flex h-6 w-6 cursor-pointer items-center justify-center"><input type="checkbox" className="h-4 w-4" checked={checked} disabled={row.status !== 'ready'}
       aria-label={t('modelChanges.approveRow', { field: changeField(row.change), element: name || row.change.target.globalId })}
-      onChange={(event) => onToggle(event.target.checked)} />
+      onChange={(event) => onToggle(event.target.checked)} /></label>
     <div className="min-w-0">
       <p className="truncate font-medium">{name || row.change.target.globalId}</p>
       <p className="text-muted-foreground break-words">{changeField(row.change)}</p>

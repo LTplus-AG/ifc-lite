@@ -20,6 +20,7 @@ import { SEMANTIC_OUTPUT_GUIDANCE } from '../semantic/assist/guidance';
 import { useViewerStore } from '@/store';
 import { useAssistant } from './conversation';
 import { ensureFlowAiNodes } from '../flow/runner';
+import { generationLanguageInstruction } from './language';
 
 /** Output ceiling per Assistant answer; the route ceiling and root budget may lower it. */
 export const ASSISTANT_OUTPUT_TOKENS = 4096;
@@ -47,7 +48,7 @@ export interface AssistantAttachments {
  * Every send draws on the conversation's root budget (`useAssistant().budget`),
  * which Refresh or switching source replaces.
  */
-export async function sendAssistant(prompt: string, model: string, proxyUrl: string, attachments: AssistantAttachments = {}): Promise<boolean> {
+export async function sendAssistant(prompt: string, model: string, proxyUrl: string, attachments: AssistantAttachments = {}, options: { generationLanguage?: string } = {}): Promise<boolean> {
   const state = useAssistant.getState();
   if (!state.snapshot || state.status === 'streaming' || !prompt.trim()) return false;
   if (model === UNCONFIGURED_MODEL_ID) {
@@ -116,6 +117,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
       if (!ownsRequest()) return false;
       system = `${system}\n${guidance}`;
     }
+    system = `${system}\n${generationLanguageInstruction({ ...state.language, generation: options.generationLanguage ?? state.language.generation })}`;
     // Every source now carries guidance, so the full system prompt is re-bounded.
     if (JSON.stringify(messages).length + system.length > 90_000) { fail('context-limit'); return false; }
     if (attachments.screenshot) {

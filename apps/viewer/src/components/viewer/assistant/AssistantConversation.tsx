@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { memo, useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { BarChart3, Bot, ClipboardCheck, Crosshair, Eye, FileText, Filter, GitBranch, Hammer, Layers, ListChecks, Network, Palette, PencilLine, Table, Table2, User, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -25,6 +25,7 @@ import '@/i18n/catalogues/semantic-assist.register';
 import { markdownHtml } from '@/lib/assistant/markdown';
 import { capturedEvidence, rowFields } from '@/lib/assistant/captured-rows';
 import { ReceiptFooter } from './AssistantUsage';
+import { useTransientSurface } from './useTransientSurface';
 
 type Artifact = 'filter' | 'list' | 'lens' | 'chart';
 type Declared = 'clash' | 'flow' | 'flowCreate' | 'changes' | 'authoring' | 'scene' | 'mapping' | CheckDeclared | Artifact | 'semantic';
@@ -122,19 +123,23 @@ function ProposalCard({ content, proposal, onRepair }: { content: string; propos
             : t(ARTIFACT_SUMMARY[proposal.kind], { count: proposal.parts })}</p>
       <p>{t(proposal.kind === 'mapping' ? 'assistant.proposalMappingNext' : 'assistant.proposalNext')}</p>
     </>}
-    <details><summary className="cursor-pointer text-muted-foreground hover:text-foreground">{t('assistant.proposalJson')}</summary>
+    <details><summary className="cursor-pointer py-1 text-muted-foreground hover:text-foreground">{t('assistant.proposalJson')}</summary>
       <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{content}</pre>
     </details>
   </div>;
 }
 
 /** A captured row behind a citation; clash rows can be shown in the model. */
-function CitationPeek({ citation, data, onFocus, onClose }: {
+function CitationPeek({ citation, data, onFocus, onClose, restoreTo }: {
   citation: string; data: unknown; onFocus: (() => void) | null; onClose: () => void;
+  /** Focus target after closing when the chip that opened the peek was replaced. */
+  restoreTo: string;
 }) {
   const { t } = useTranslation();
   const fields = useMemo(() => data === undefined ? [] : rowFields(data), [data]);
-  return <section className="ml-11 mr-3 mb-2 rounded border border-primary/30 bg-background p-2 text-xs space-y-1.5" aria-label={t('assistant.citationPeek', { citation })}>
+  const ref = useRef<HTMLElement>(null);
+  useTransientSurface(ref, onClose, { fallback: restoreTo });
+  return <section ref={ref} tabIndex={-1} className="ml-11 mr-3 mb-2 rounded border border-primary/30 bg-background p-2 text-xs space-y-1.5 outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label={t('assistant.citationPeek', { citation })}>
     <div className="flex items-center gap-1">
       <span className="font-mono font-semibold text-primary">{citation}</span>
       <span className="text-muted-foreground">{t('assistant.citationCaptured')}</span>
@@ -159,11 +164,13 @@ function Waiting() {
     const timer = setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
     return () => clearInterval(timer);
   }, []);
-  return <p className="px-3 py-2 text-xs text-muted-foreground animate-pulse">{seconds >= 3 ? t('assistant.thinkingElapsed', { seconds }) : t('assistant.thinking')}</p>;
+  return <p className="px-3 py-2 text-xs text-muted-foreground motion-safe:animate-pulse">{seconds >= 3 ? t('assistant.thinkingElapsed', { seconds }) : t('assistant.thinking')}</p>;
 }
 
-const Message = memo(function Message({ message: { role, content, model, receipt }, streaming, onCitation, onRepair }: {
+const Message = memo(function Message({ message: { role, content, model, receipt }, streaming, onCitation, onRepair, answerIndex }: {
   message: AssistantMessage; streaming?: boolean; onCitation?: (citation: string) => void; onRepair?: (prompt: string) => void;
+  /** 1-based position of a completed answer; it can then receive focus when it arrives. */
+  answerIndex?: number;
 }) {
   const { t } = useTranslation();
   const user = role === 'user';
@@ -175,7 +182,9 @@ const Message = memo(function Message({ message: { role, content, model, receipt
     const citation = chip?.getAttribute('data-citation');
     if (citation && onCitation) onCitation(citation);
   };
-  return <div className={cn('flex gap-2 px-3 py-2', user && 'bg-muted/30')}>
+  const answer = !user && !streaming && answerIndex !== undefined;
+  return <div className={cn('flex gap-2 px-3 py-2 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring', user && 'bg-muted/30')}
+    {...(answer ? { 'data-assistant-answer': '', role: 'article', tabIndex: -1, 'aria-label': t('assistantA11y.answer', { index: answerIndex }) } : {})}>
     <div aria-hidden="true" className={cn('shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-0.5',
       user ? 'bg-primary/10 text-primary' : 'bg-blue-500/10 text-blue-500')}>
       {user ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
@@ -186,7 +195,7 @@ const Message = memo(function Message({ message: { role, content, model, receipt
         : proposal ? <ProposalCard content={content} proposal={proposal} onRepair={onRepair} />
           // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- delegates to the native citation <button>s inside
           : <div className="break-words leading-relaxed" onClick={citationClick} dangerouslySetInnerHTML={{ __html: html }} />}
-      {streaming && <span className="inline-block w-1.5 h-3.5 bg-blue-500 animate-pulse ml-0.5 align-text-bottom rounded-sm" aria-hidden="true" />}
+      {streaming && <span className="inline-block w-1.5 h-3.5 bg-blue-500 motion-safe:animate-pulse ml-0.5 align-text-bottom rounded-sm" aria-hidden="true" />}
       {receipt && !streaming && <ReceiptFooter receipt={receipt} />}
     </div>
   </div>;
@@ -210,7 +219,8 @@ export function AssistantConversation({ source, messages, pendingPrompt, output,
   const empty = !messages.length && !pendingPrompt;
   const [peek, setPeek] = useState<{ index: number; citation: string } | null>(null);
   const captured = useMemo(() => evidencePayload ? capturedEvidence(evidencePayload) : null, [evidencePayload]);
-  return <div className="py-1" aria-live="polite">
+  // Deliberately not a live region: streamed tokens are not announced (AssistantAnnouncer reports completion).
+  return <div className="py-1" aria-busy={streaming}>
     {empty && source && <div className="p-3 space-y-2 text-xs">
       <p className="font-semibold">{t('assistant.conversationTitle')}</p>
       <p className="text-muted-foreground">{t('assistant.conversationHint')}</p>
@@ -221,11 +231,13 @@ export function AssistantConversation({ source, messages, pendingPrompt, output,
         </button>)}
       </fieldset>}
     </div>}
-    {messages.map((message, index) => <div key={index}>
+    {messages.map((message, index) => <div key={index} data-message-index={index}>
       <Message message={message} onRepair={canAsk && index === messages.length - 1 ? onSuggest : undefined}
+        answerIndex={message.role === 'assistant' ? Math.ceil((index + 1) / 2) : undefined}
         onCitation={citation => setPeek(current => current?.index === index && current.citation === citation ? null : { index, citation })} />
       {peek?.index === index && <CitationPeek citation={peek.citation} data={captured?.rows.get(peek.citation)}
-        onFocus={focusCitation(peek.citation)} onClose={() => setPeek(null)} />}
+        onFocus={focusCitation(peek.citation)} onClose={() => setPeek(null)}
+        restoreTo={`[data-message-index="${index}"] [data-citation="${peek.citation}"]`} />}
     </div>)}
     {pendingPrompt && <Message message={{ role: 'user', content: pendingPrompt }} />}
     {streaming && (output

@@ -617,6 +617,19 @@ hash also keyed the sheet and the DXF underlays, and re-keying only the markup
 would have kept the whole-file hash alive for the other two. Before removing a
 derived value, list every store keyed by it.
 
+Bundle: the key resolver, the legacy-key move and the IndexedDB underlay store
+are imported on demand, so the change lowers the eager bytes instead of adding
+to them. Two things cost more than the code they moved. A first dynamic import
+in a chunk brings a preload table that lists every file the imported chunk
+depends on. And the bundler groups modules by the set of entries that reach
+them, so an on-demand entry that reaches only part of an eager chunk splits
+that chunk: importing the underlay store alone (it reaches
+`dxfReferencePlane` but not the rest of the store chunk) cut the store chunk
+in two. One entry for both, with the eager functions it needs handed over
+rather than imported, left every eager chunk as it was. Lesson: after moving
+code behind a dynamic import, compare the per-chunk sizes and the eager file
+count against the base build, not just the total.
+
 ## Placement identity from memory (#6431)
 
 Before parsing, the loader awaited a full-content SHA-256 identity (1 MiB chunks)

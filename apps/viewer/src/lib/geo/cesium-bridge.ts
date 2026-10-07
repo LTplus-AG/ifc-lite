@@ -26,11 +26,11 @@
  */
 
 import proj4 from 'proj4';
-import { computeGridConvergence, projectedDefinitionInMetres } from './proj4-utils';
+import { computeGridConvergence, isGeographicProj4, projectedDefinitionInMetres } from './proj4-utils';
 export { computeGridConvergence } from './proj4-utils';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
-import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry, resolveProjection } from './reproject';
+import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry, reprojectPointToLatLon, resolveProjection } from './reproject';
 import {
   resolveTerrainElevationDetailed,
   type ResolveTerrainElevationOptions,
@@ -45,6 +45,7 @@ import { viewBasis } from '@ifc-lite/renderer';
 import { ifcToViewerAxes } from './coordinate-frame';
 import { resolveMapAxisDirection } from './map-axis-direction';
 import { buildViewerToEcefMatrix } from './cesium-viewer-frame';
+import { loadCesium } from '@/components/viewer/cesium/cesium-module';
 
 // Re-exported so existing importers keep resolving it from the bridge; the
 // definitions now live in the dependency-free `viewer-enu-rotation` and
@@ -94,6 +95,7 @@ export interface CesiumBridge {
     options?: ResolveTerrainElevationOptions,
   ): Promise<TerrainElevationSample | null>;
 
+  /** WGS84 XY with physical IFC-authored orthometric height (no geoid/placement override). */
   viewerToGeodetic(vx: number, vy: number, vz: number): GeodesicPosition | null;
 }
 
@@ -136,24 +138,28 @@ export async function computeCesiumModelOrigin(
   const projDef = await resolveProjection(projectedCRS);
   if (!projDef) return null;
 
+  const geographic = isGeographicProj4(projDef);
   const mapScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
   // Map-absolute geometry (#2526): neutralise a conversion the geometry
   // already carries, or the offsets/rotation get applied twice.
-  mapConversion = effectiveMapConversionForGeometry(mapConversion, mapScale, coordinateInfo);
+  if (!geographic) mapConversion = effectiveMapConversionForGeometry(mapConversion, mapScale, coordinateInfo);
   const axis = resolveMapAxisDirection(mapConversion.xAxisAbscissa, mapConversion.xAxisOrdinate);
   if (!axis) return null;
   const center = computeModelCenterInIfcMeters(coordinateInfo);
   const { x: scaleX, y: scaleY, z: scaleZ } = getEffectiveAxisScales(mapConversion, mapScale, lengthUnitScale);
-  const easting = mapConversion.eastings * mapScale
+  // Geographic XY is the center anchor in source-datum degrees. Geometry
+  // remains physical ENU metres around that anchor, never angular offsets.
+  const easting = geographic ? mapConversion.eastings : mapConversion.eastings * mapScale
     + axis.a * scaleX * center.ifcX - axis.b * scaleY * center.ifcY;
-  const northing = mapConversion.northings * mapScale
+  const northing = geographic ? mapConversion.northings : mapConversion.northings * mapScale
     + axis.b * scaleX * center.ifcX + axis.a * scaleY * center.ifcY;
   const ifcOriginHeight = mapConversion.orthogonalHeight * mapScale + scaleZ * center.ifcZ;
   const height = placementHeightOverride ?? ifcOriginHeight;
 
   try {
-    const [lon, lat] = proj4(projectedDefinitionInMetres(projDef), 'WGS84', [easting, northing]);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    const point = await reprojectPointToLatLon(easting, northing, { ...projectedCRS, mapUnitScale: 1 });
+    if (!point) return null;
+    const { lon, lat } = point;
     // IFC OrthogonalHeight is orthometric (above the vertical datum); Cesium
     // places geometry by ellipsoidal height. Add the geoid undulation N so the
     // model isn't buried ~N below the world terrain (≈ +45 m in Czechia,
@@ -177,7 +183,8 @@ export async function computeCesiumModelOrigin(
       scaleZ,
       gamma: computeGridConvergence(projDef, easting, northing, lon, lat),
     };
-  } catch {
+  } catch (error) {
+    console.warn('[cesium] model origin transformation failed', error);
     return null;
   }
 }
@@ -208,7 +215,8 @@ export async function createCesiumBridge(
   // Map-absolute geometry (#2526): the Helmert rotation below must use the
   // same neutralised conversion as `computeCesiumModelOrigin`, or the model
   // spins by the double-applied XAxis rotation around a correct origin.
-  mapConversion = effectiveMapConversionForGeometry(
+  const geographic = isGeographicProj4(projDef);
+  if (!geographic) mapConversion = effectiveMapConversionForGeometry(
     mapConversion,
     resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale),
     coordinateInfo,
@@ -374,19 +382,32 @@ export async function createCesiumBridge(
     return resolveTerrainElevationDetailed(Cesium, viewer, originLat, originLon, options);
   }
 
+  // Geographic XY uses the exact rendered ENU/ECEF geometry. Heights retain
+  // the authored IFC contract shared with projected picks, before geoid/override.
+  const geographicCesium = geographic ? await loadCesium() : null;
+  if (geographicCesium) ensureEcefCache(geographicCesium, 0);
   function viewerToGeodetic(vx: number, vy: number, vz: number): GeodesicPosition | null {
+    if (![vx, vy, vz].every(Number.isFinite)) return null;
     const wx = vx + shift.x + rtcYup.x;
     const wy = vy + shift.y + rtcYup.y;
     const wz = vz + shift.z + rtcYup.z;
     const ifcX = wx;
     const ifcY = -wz;
     const ifcZ = wy;
+    const height = mapConversion.orthogonalHeight * mapScale + originScaleZ * ifcZ;
+    if (geographicCesium && viewerToEcefMatrix) {
+      const ecef = geographicCesium.Matrix4.multiplyByPoint(viewerToEcefMatrix,
+        new geographicCesium.Cartesian3(vx, vy, vz), new geographicCesium.Cartesian3());
+      const point = geographicCesium.Cartographic.fromCartesian(ecef);
+      if (!point) return null;
+      return { longitude: geographicCesium.Math.toDegrees(point.longitude),
+        latitude: geographicCesium.Math.toDegrees(point.latitude), height };
+    }
     // Viewer coords (ifcX/Y/Z) are already in metres; only MapConversion values need scaling
     const easting = mapConversion.eastings * mapScale
       + absc * originScaleX * ifcX - ordi * originScaleY * ifcY;
     const northing = mapConversion.northings * mapScale
       + ordi * originScaleX * ifcX + absc * originScaleY * ifcY;
-    const height = mapConversion.orthogonalHeight * mapScale + originScaleZ * ifcZ;
     try {
       const [lon, lat] = proj4(projectedDefinitionInMetres(projDef!), 'WGS84', [easting, northing]);
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;

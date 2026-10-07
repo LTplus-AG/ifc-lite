@@ -41,6 +41,17 @@
 //! combination with no offset and a local frame reproduces the mesh the wasm
 //! bundle emitted for these slabs before the reconcile (416 triangles, 12
 //! open edges through `buildPrePassOnce` and `processGeometryBatch`).
+//!
+//! # Without the fixture
+//!
+//! Fixtures are not committed, and by the repository's rule a test whose
+//! fixture is absent skips: both tests here then print why and return, which
+//! the harness counts as a pass (`IFC_LITE_REQUIRE_FIXTURES=1` turns the skip
+//! into a failure on the lanes that fetch fixtures). A lane without fixtures
+//! therefore learns nothing from this file. The witnesses that need no
+//! fixture are `rust/geometry/tests/issue_6940_hole_wall_cutter_weld.rs` for
+//! the weld guard and `rust/geometry/tests/issue_6940_opening_corner_one_step_off.rs`
+//! for the corner reconcile.
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::GeometryRouter;

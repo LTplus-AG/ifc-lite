@@ -2,32 +2,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Issue #6940: a cutter that exactly fills an existing through-hole must leave
-//! the host watertight and unchanged.
+//! Issue #6940: the subtract-weld guard is for opening cutters only. The
+//! second operand of an `IfcBooleanResult` DIFFERENCE keeps the weld it had.
 //!
-//! The router extends an opening cutter past the host along the extrusion axis,
-//! so its corners are no longer bit-identical host vertices (the exemption in
-//! `promote_cutter_verts_onto_host_faces` for exact host vertices no longer
-//! applies), but they still lie EXACTLY on the hole's own wall planes.
-//! When ANOTHER host wall plane passes within the weld band of such a corner
-//! (two holes whose walls are nearly collinear), the weld used to pull the
-//! corner onto that other plane, which moved it off the hole's own wall planes.
-//! The cutter wall then stopped being coplanar with the hole wall by a few
-//! micrometres and the boolean tore the result open.
-//!
-//! Fixture-free: a slab with two holes extruded by the crate's own extruder and
-//! an extended box cutter. No model, no ids.
-//!
-//! Everything here goes through `kernel::mesh_bridge::subtract`, an entry point
-//! that predates the fix, so this file still compiles with the fix taken out
-//! and its assertion is what fails then. The companion test that needs the new
-//! `subtract_operand` entry point is in `issue_6940_operand_keeps_the_plain_weld.rs`
-//! for that reason: a file that stops compiling without the fix proves nothing
-//! by going red.
+//! Split from `issue_6940_hole_wall_cutter_weld.rs`, whose slab and cutter it
+//! repeats: this file calls `ClippingProcessor::subtract_operand`, which the
+//! fix introduced, so it cannot compile without the fix. Kept apart, it does
+//! not take the kernel reproduction down with it when the fix is reverted.
 
-use ifc_lite_geometry::kernel::mesh_bridge::subtract;
-use ifc_lite_geometry::kernel::mesh_volume::mesh_volume;
-use ifc_lite_geometry::{extrude_profile, Mesh, Point2, Profile2D};
+use ifc_lite_geometry::{extrude_profile, ClippingProcessor, Mesh, Point2, Profile2D};
 use std::collections::HashMap;
 
 /// Directed-edge balance on a 1 mm position snap: every undirected edge must be
@@ -112,35 +95,32 @@ fn slab_with_two_holes(skew: f64) -> Mesh {
     extrude_profile(&profile, 0.25, None).expect("slab with two holes extrudes")
 }
 
+/// The guard is scoped to OPENING cutters. The second operand of an
+/// `IfcBooleanResult` DIFFERENCE goes through `subtract_operand` and keeps the
+/// weld it had before #6940, so on the same slab and cutter the two forms give
+/// different meshes: the opening form closed, the operand form what the
+/// unguarded weld produces.
 #[test]
-fn issue_6940_a_cutter_filling_a_hole_leaves_the_slab_watertight_and_unchanged() {
-    // Skews of 1, 2, 3 grid steps (15, 31, 46 micrometres): all inside the weld
-    // band (8 grid steps), none exactly on hole A's corner.
-    for skew_steps in [1.0, 2.0, 3.0] {
-        let host = slab_with_two_holes(skew_steps * G);
-        assert_eq!(
-            open_edges(&host),
-            0,
-            "skew {skew_steps}: the host itself must be watertight"
-        );
-        let host_volume = mesh_volume(&host);
-
-        // The hole A footprint, in the host's own corner coordinates. The
-        // cutter is pushed past both caps, as the router's extension does.
-        let corners = [[1.0f32, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]];
-        for (z0, z1) in [(-0.1f32, 0.35f32), (-0.001, 0.251), (-0.25, 0.5)] {
-            let cutter = box_cutter(corners, z0, z1);
-            let cut = subtract(&host, &cutter);
-            assert_eq!(
-                open_edges(&cut),
-                0,
-                "skew {skew_steps}, cutter z [{z0}, {z1}]: a cutter filling an existing hole tore the slab open"
-            );
-            let dv = (mesh_volume(&cut) - host_volume).abs();
-            assert!(
-                dv < 1.0e-6,
-                "skew {skew_steps}, cutter z [{z0}, {z1}]: the cutter is outside the solid, volume moved by {dv}"
-            );
-        }
-    }
+fn issue_6940_the_guard_is_for_opening_cutters_not_boolean_operands() {
+    let host = slab_with_two_holes(2.0 * G);
+    let cutter = box_cutter([[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]], -0.1, 0.35);
+    let clipper = ClippingProcessor::new();
+    let opening = clipper
+        .subtract_mesh(&host, &cutter)
+        .into_mesh()
+        .expect("the opening form produces a mesh");
+    let operand = clipper
+        .subtract_operand(&host, &cutter)
+        .into_mesh()
+        .expect("the operand form produces a mesh");
+    assert_eq!(
+        open_edges(&opening),
+        0,
+        "the opening form must leave the slab closed"
+    );
+    assert_ne!(
+        (&opening.positions, &opening.indices),
+        (&operand.positions, &operand.indices),
+        "the operand form took the guarded weld"
+    );
 }

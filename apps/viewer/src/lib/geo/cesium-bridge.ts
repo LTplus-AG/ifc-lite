@@ -26,7 +26,8 @@
  */
 
 import proj4 from 'proj4';
-import { projectedDefinitionInMetres } from './proj4-utils';
+import { computeGridConvergence, projectedDefinitionInMetres } from './proj4-utils';
+export { computeGridConvergence } from './proj4-utils';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry, resolveProjection } from './reproject';
@@ -178,63 +179,6 @@ export async function computeCesiumModelOrigin(
   } catch {
     return null;
   }
-}
-
-/**
- * Grid (meridian) convergence at a point in a projected CRS: the angle between
- * grid north (the projected CRS's +N axis) and true north (the geographic ENU
- * +N axis). Returned in radians, counter-clockwise positive, such that the grid
- * frame equals the true-ENU frame rotated by +gamma.
- *
- * WHY THIS EXISTS: `IfcMapConversion` aligns the model to GRID north (its
- * XAxisAbscissa/Ordinate are expressed in the projected grid), but Cesium's
- * `eastNorthUpToFixedFrame()` builds a TRUE-north ENU frame. Feeding the
- * grid-aligned model straight into that frame rotates it by the convergence —
- * up to ~3° for UTM near a zone edge, ~7-8° for oblique projections like
- * Krovak (EPSG:2065, S-JTSK / Czech Republic). See issue #1408.
- *
- * Computed by finite difference through proj4 so it works for any projection
- * (TM, LCC, Krovak, ...) without per-projection convergence formulae. A
- * geographic (longlat) def has zero convergence by definition.
- */
-export function computeGridConvergence(
-  projDef: string,
-  easting: number,
-  northing: number,
-  lon: number,
-  lat: number,
-): number {
-  // Geographic CRS: lat/lon is already true-north aligned.
-  if (/\+proj=longlat\b/.test(projDef)) return 0;
-  // Near the poles the local east/metre scale degenerates; skip.
-  if (Math.abs(lat) > 89.9) return 0;
-
-  const step = 1.0; // one projected-metre step along grid north
-  let lon2: number, lat2: number;
-  try {
-    [lon2, lat2] = proj4(projectedDefinitionInMetres(projDef), 'WGS84', [easting, northing + step]);
-  } catch (err) {
-    // Zero is not a neutral answer here: it is indistinguishable from a
-    // genuinely zero convergence, so the model silently keeps its GRID
-    // alignment inside Cesium's TRUE-north ENU frame — a rotation of up to ~3°
-    // (UTM zone edge) or ~7-8° (Krovak). Called once per model, so logging it
-    // costs nothing and names the cause if it ever happens.
-    console.warn(
-      `[cesium] grid convergence unavailable for ${projDef}; the model is placed `
-      + 'grid-aligned in a true-north frame (rotation up to a few degrees).',
-      err,
-    );
-    return 0;
-  }
-  if (!Number.isFinite(lon2) || !Number.isFinite(lat2)) return 0;
-
-  // True-ENU components of the grid-north step (small-angle local metres).
-  const mPerDegLat = 111320;
-  const mPerDegLon = 111320 * Math.cos((lat * Math.PI) / 180);
-  const east = (lon2 - lon) * mPerDegLon;
-  const north = (lat2 - lat) * mPerDegLat;
-  // grid-north's bearing measured from true north is atan2(east, north) = -gamma.
-  return Math.atan2(-east, north);
 }
 
 export async function createCesiumBridge(

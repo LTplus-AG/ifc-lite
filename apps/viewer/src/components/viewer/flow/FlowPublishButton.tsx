@@ -67,14 +67,14 @@ export function FlowPublishButton({ registry, lastRun, lastError }: FlowPublishB
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mutationVersion is the change signal for the store read above
   }, [runWindow, mutationVersion]);
   const eligibility = useMemo(
-    () => flowPublishEligibility(lastRun, lastError, pendingOutsideRun, pendingInRun),
-    [lastRun, lastError, pendingOutsideRun, pendingInRun],
+    () => flowPublishEligibility(lastRun, lastError, pendingOutsideRun, pendingInRun, runWindow?.writingNodes?.length ?? 0),
+    [lastRun, lastError, pendingOutsideRun, pendingInRun, runWindow],
   );
   // Provenance comes from the graph AS RUN (`runWindow.doc`), never the working
   // copy: an edit after the run, such as a changed tracking key, must not be
   // credited with writes the previous version made (#5380 review).
   const runDoc = runWindow?.doc ?? null;
-  const nodes = useMemo(() => (lastRun && runDoc && eligibility.canPublish ? writingNodes(runDoc, registry, lastRun) : []), [runDoc, registry, lastRun, eligibility.canPublish]);
+  const nodes = useMemo(() => (lastRun && runDoc && eligibility.canPublish ? writingNodes(runDoc, registry, lastRun, runWindow?.writingNodes) : []), [runDoc, registry, lastRun, eligibility.canPublish, runWindow]);
 
   const publish = useCallback(async () => {
     if (!eligibility.canPublish || runWindow === null) return;

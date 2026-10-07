@@ -15,6 +15,11 @@ import { findHandRolledMainGuards } from './lib/main-entry-guards.mjs';
 
 const scan = (src, file = 'scripts/x.mjs') => findHandRolledMainGuards([file], () => src);
 
+// The template-literal spelling of the bad guard, as SOURCE TEXT for the
+// scanner. Assembled so that no string in this file carries a literal
+// placeholder, which the linter rightly reads as a forgotten template string.
+const FILE_URL_OF = (argv) => 'file://$' + `{${argv}}`;
+
 test('flags every hand-rolled shape that this repo actually carried', () => {
   const shapes = [
     "if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();",
@@ -22,7 +27,7 @@ test('flags every hand-rolled shape that this repo actually carried', () => {
     "if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {",
     "if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {",
     "if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {",
-    "const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;",
+    'const isMain = process.argv[1] && import.meta.url === `' + FILE_URL_OF('process.argv[1]') + '`;',
   ];
   for (const shape of shapes) assert.equal(scan(shape).length, 1, shape);
 });
@@ -30,8 +35,8 @@ test('flags every hand-rolled shape that this repo actually carried', () => {
 test('accepts isMainEntry, an endsWith guard, and comments that quote the bad shape', () => {
   assert.deepEqual(scan("if (isMainEntry(import.meta.url)) main();"), []);
   assert.deepEqual(scan("if (process.argv[1] && process.argv[1].endsWith('x.mjs')) main();"), []);
-  assert.deepEqual(scan("// not `import.meta.url === `file://${process.argv[1]}``, see is-main-entry"), []);
-  assert.deepEqual(scan(" * `import.meta.url === file://${argv[1]}` is wrong"), []);
+  assert.deepEqual(scan('// not `import.meta.url === `' + FILE_URL_OF('process.argv[1]') + '``, see is-main-entry'), []);
+  assert.deepEqual(scan(' * `import.meta.url === ' + FILE_URL_OF('argv[1]') + '` is wrong'), []);
 });
 
 test('accepts a comparison that realpaths both sides', () => {

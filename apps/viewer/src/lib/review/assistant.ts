@@ -13,7 +13,7 @@
 import { take } from '../assistant/adapters/types';
 import { useReviewAssistantCard } from './assistant-state';
 import type { CoordinationCard } from './cards';
-import type { CardDecision } from './workspace';
+import { currentReviewWorkspace, decisionFor, useReviewWorkspaces, type CardDecision } from './workspace';
 
 /** Pin one card (and the person's decision on it) for the next assistant attachment. */
 export function pinReviewCard(card: CoordinationCard, decision: CardDecision | null): void {
@@ -22,6 +22,16 @@ export function pinReviewCard(card: CoordinationCard, decision: CardDecision | n
     totalRows: card.findings.length, availability: 'available',
   }) });
 }
+
+// The pin outlives the Review panel. Native decision edits invalidate captured evidence
+// and replace the projector, including a cleared decision, without requiring a re-pin.
+useReviewWorkspaces.subscribe((next, previous) => {
+  const card = useReviewAssistantCard.getState().card;
+  if (!card || next.entries === previous.entries) return;
+  const latest = decisionFor(currentReviewWorkspace(next.entries), card.key);
+  const held = decisionFor(currentReviewWorkspace(previous.entries), card.key);
+  if (JSON.stringify(latest) !== JSON.stringify(held)) pinReviewCard({ ...card }, latest);
+});
 
 export const REVIEW_EVIDENCE_LIMITATIONS =
   'One coordination card from the review workspace. Findings were grouped only because they name exactly the same validated elements; '

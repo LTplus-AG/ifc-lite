@@ -48,10 +48,10 @@ export function useCardActions(): CardActions {
     } finally { setBusy(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t, locale]);
-  const report = useCallback(async (cards: readonly CoordinationCard[], totals: ReviewTotals) => {
+  const report = useCallback(async (cards: readonly CoordinationCard[]) => {
     setBusy(true);
     try {
-      const result = await addCardsToReport(name(), cards, totals);
+      const result = await addCardsToReport(name(), cards);
       const count = cards.length;
       setNotes([t(result.saved ? 'reviewWorkspace.actions.reportSaved' : 'reviewWorkspace.actions.reportUnsaved', { count })]);
       if (result.saved) toast.success(t('reviewWorkspace.actions.reportSaved', { count }),

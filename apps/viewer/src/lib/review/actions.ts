@@ -11,7 +11,7 @@
 import { useViewerStore } from '@/store';
 import { bcfWorldOffset } from '@/hooks/bcf/viewpoint-world-frame';
 import { saveDraftBatch, useBcfDraftLibrary } from '../bcf-drafts/draft-library';
-import type { CoordinationCard, ReviewTotals } from './cards';
+import { totalsForCards, type CoordinationCard } from './cards';
 import { draftBatchFromCards, type CardDraftResult } from './bcf-draft';
 import { reviewDocument } from './report';
 import { currentReviewWorkspace, useReviewWorkspaces } from './workspace';
@@ -30,9 +30,9 @@ export async function draftTopicsFromCards(name: string, cards: readonly Coordin
 }
 
 /** A new native document of the selected cards; never overwrites an existing document. */
-export async function addCardsToReport(name: string, cards: readonly CoordinationCard[], totals: ReviewTotals): Promise<{ id: string; saved: boolean }> {
+export async function addCardsToReport(name: string, cards: readonly CoordinationCard[]): Promise<{ id: string; saved: boolean }> {
   const state = useViewerStore.getState();
   await state.initializeDocuments();
-  const document = reviewDocument(name, cards, totals, currentReviewWorkspace(useReviewWorkspaces.getState().entries));
+  const document = reviewDocument(name, cards, totalsForCards(cards), currentReviewWorkspace(useReviewWorkspaces.getState().entries));
   return { id: document.id, saved: await useViewerStore.getState().upsertDocument(document) };
 }

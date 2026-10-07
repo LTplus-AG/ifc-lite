@@ -222,9 +222,41 @@ on a headless host and pass their entities through, so a graph that
 colorizes failures runs unchanged in CI. `ifc-lite flow validate` and the
 editor show the same per-node report.
 
-## Review checkpoints
+## AI nodes and review checkpoints
 
-A node that declares `review: 'required'` produces a proposal; the run stops downstream of it (status
+`@ifc-lite/flow-nodes/ai` adds three nodes that call the host's AI model
+service (`FlowHost.ai`); they never call a provider themselves:
+
+| Node | Input | Output |
+|---|---|---|
+| `ai.classify` | a table and versioned category definitions | one row per input row: allowed `label`, cited `evidence` columns, `outcome` (`classified`, `unknown`, `failed`, `not-sent`), plus `coverage` |
+| `ai.summarize` | a table of evidence rows, audience, language | narrative `sections` citing row keys; a section without a valid citation is kept as `uncited` |
+| `ai.extract` | text passages and a field schema | typed `records`, each quoting its source span; a span not found verbatim in its passage, or a value of the wrong type, makes the record `unsupported` |
+
+Every AI node declares `network.ai` (graph data goes to the host's model
+provider), requires the `ai` backend feature, is volatile, and sends only
+the columns you list. Table nodes refuse an empty column selection before making
+a request. Model-facing row keys remain distinct even when a source row has no key
+or its literal key collides with a generated one. Requests come out of **one root budget per run**: every
+AI node, lane and batch draws from it, so list lacing cannot multiply the
+spend, and a budget stop keeps a partial result whose coverage counts the
+rows that were not sent. Unknown row keys, labels outside the allowed set,
+missing citations and quotes absent from the passage are dropped or marked.
+Rows omitted from a classification reply count as `failed`; an explicit
+`unknown` answer remains distinct in the per-row outcome and coverage counts.
+Hosts save the original root budget in `createCheckpoint({ ...input, budget })`.
+CLI resume refuses a missing or malformed budget receipt before claiming a
+checkpoint when downstream AI nodes remain; it never grants a fresh allowance.
+When a paused CLI run exports with `--out`, resume uses that exported IFC file,
+whose exact bytes are bound into the checkpoint even for a read-only run.
+These checks do not establish that a cited row or quote entails the generated
+claim. For `ai.extract`, `supported` means the quote occurs verbatim and field
+values have the declared types. A reply quoting “30 minutes” with a typed
+value of `999` still passes that structural check; the reviewer must compare
+all candidate values with the captured passage before approval.
+
+**Review checkpoints.** A node that declares `review: 'required'` (every AI
+node does) produces a proposal; the run stops downstream of it (status
 `review`, dependants `paused`) and `RunResult.review` names it. Independent
 branches still run. To continue, the host saves a checkpoint, a reviewer
 approves the proposal by its digest, and the run is resumed with
@@ -272,8 +304,8 @@ detached copy of the approved values before any asynchronous downstream work.
 Every resume uses the original claim returned by a successful `updateCheckpoint`
 compare-and-swap. A persisted `applying` record is not an ownership receipt: another
 tab or process cannot resume it, and a lost owner is recovered as partially committed.
-A host that persists checkpoints supplies a durable store. This runtime layer supplies the checkpoint API; CLI commands
-and viewer approval controls ship in the subsequent P19 host layer. Pass the effective
+A host that persists checkpoints supplies a durable store. This layer supplies the checkpoint API and CLI review commands. Native viewer
+approval controls ship in the subsequent P19 viewer layer. MCP currently reports AI nodes unavailable. Pass the effective
 node registry when creating a checkpoint and computing its claim digest so a changed
 review policy refuses the resume. Graph identities, names and node labels also bind the digest,
 because they determine default write tracking keys. Cached proposals still pause
@@ -838,3 +870,17 @@ or mutating it. Custom hosts can implement `SessionAutomationHost`; advertise
 only services actually supplied. Files, native report bodies and PDF blobs stay
 outside persistable graph values. PDF generation produces a session artifact;
 Download can be retried without rerunning checks while that artifact is valid.
+
+AI review checkpoints require an explicit `network.ai` grant, including trusted CLI runs. Selected source columns are sent inside each row’s `values` object; the outer `key` is the host-assigned review identity. A summary stopped by the shared budget remains a reviewable empty draft with all rows counted as not sent.
+
+CLI approval also binds the effective tracking sidecar and its canonical destination. Changing that sidecar, selecting another tracking file or disabling tracking refuses resume before consuming approval. The CLI refuses to save or display a checkpoint if any restored output contains a declared secret. It checks the next checkpoint destination before consuming approval, validates pause output requirements before flushing tracking, and completes the previous checkpoint only after saving a subsequent proposal. A persistence failure after a claim is recorded as partially committed.
+
+`ifc-lite flow review <checkpoint> --json` includes the exact proposal values by review node and output port, alongside their approval digest. Extraction replies without the required `records` array count as failed passages and emit a warning; they never count as a successful empty extraction.
+
+CLI checkpoint, next-checkpoint, output and tracking destinations must be distinct.
+Checkpoint file locks are never reclaimed automatically based on age. If a process
+crashes while holding a `.lock`, confirm that its writer has stopped before removing
+that lock and retrying; an old lock alone does not establish that a writer stopped.
+Checkpoint compatibility uses the executed graph, including resolved secret parameters;
+the checkpoint stores its digest, not those credentials. Changing the execution parameters
+requires a new run and review.

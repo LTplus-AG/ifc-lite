@@ -935,6 +935,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@ifc-lite/ai':
+        specifier: workspace:^
+        version: link:../ai
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../bcf
@@ -1352,6 +1355,9 @@ importers:
 
   packages/flow-nodes:
     dependencies:
+      '@ifc-lite/ai':
+        specifier: workspace:^
+        version: link:../ai
       '@ifc-lite/bcf-api':
         specifier: workspace:^
         version: link:../bcf-api

@@ -74,6 +74,9 @@ import {
   usableSecretNames,
   validateSecretReferences,
 } from '@ifc-lite/flow-nodes';
+// AI nodes are registered so a graph using them reports the AI model service
+// this host does not offer, instead of an unknown node type (#6923).
+import { aiNodes } from '@ifc-lite/flow-nodes/ai';
 import { createMcpFlowHost } from './flow-host.js';
 import type { Tool } from './types.js';
 import { okResult, paginate, resolveModel } from './util.js';
@@ -133,7 +136,7 @@ const describeFlow: Tool = {
         diagnostics: parsed.problems,
       });
     }
-    const registry = createStandardRegistry();
+    const registry = createStandardRegistry().registerAll(aiNodes);
     const doc = parsed.doc;
     // Registry-aware: `validateFlowDocument` alone cannot see a declared
     // output naming a port no node has (#5167) — it never looks at a
@@ -222,7 +225,7 @@ const runFlowTool: Tool = {
         details: { diagnostics: parsed.problems },
       });
     }
-    const registry = createStandardRegistry();
+    const registry = createStandardRegistry().registerAll(aiNodes);
     const doc = parsed.doc;
     const wiring = validateFlowWiring(doc, registry);
     if (wiring.length > 0) {

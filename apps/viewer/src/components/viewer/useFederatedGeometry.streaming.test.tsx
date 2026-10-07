@@ -24,6 +24,7 @@ import { modelIndices } from '@/lib/model-placement/model-indices.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { cleanup, render } from '@/test/render.js';
 import { useFederatedGeometry } from './useFederatedGeometry.js';
+import { useFilteredGeometry } from './useFilteredGeometry.js';
 
 const coordinateInfo = {
   originShift: { x: 0, y: 0, z: 0 },
@@ -32,13 +33,15 @@ const coordinateInfo = {
   hasLargeCoordinates: false,
 };
 
-let seen: { merged: MeshData[]; indices: ReadonlyMap<string, number> } | null = null;
+let seen: { merged: MeshData[]; filtered: MeshData[]; replacement: number; indices: ReadonlyMap<string, number> } | null = null;
 
 function Probe() {
   const s = useViewerStore();
   const indices = useMemo(() => modelIndices(s.models), [s.models]);
   const merged = useFederatedGeometry(s.models, s.geometryResult, indices, s.geometryContentVersion);
-  seen = { merged: merged?.meshes ?? [], indices };
+  const filtered = useFilteredGeometry(merged, s.geometryContentVersion, s.typeVisibility, s.typeViewMode);
+  seen = { merged: merged?.meshes ?? [], filtered: filtered.filteredGeometry ?? [],
+    replacement: filtered.geometryReplacementVersion, indices };
   return null;
 }
 
@@ -144,6 +147,9 @@ it('costs O(appended meshes) per streamed append on a single model (#7021)', () 
     assert.equal(seen!.merged.length, total);
     assert.equal(delta(after, before, 'viewer.modelIndexRespread.meshes'), 0, 'no mesh is copied to stamp its model index');
     assert.equal(delta(after, before, 'viewer.modelIndexStamp.meshes'), size, 'only the appended meshes are stamped');
+    assert.equal(delta(after, before, 'viewer.filterScan.meshes'), size, 'the replacement detector never rescans the old prefix (#7047)');
+    assert.deepEqual(ids(seen!.filtered), ids(seen!.merged), 'all streamed occurrence meshes reach the viewport filter');
+    assert.equal(seen!.replacement, 0, 'streaming appends do not request replacement uploads');
     assert.equal(seen!.merged, mergedArray, 'the merged array keeps its identity');
     assert.equal(seen!.indices, indexMap, 'the model-index map keeps its identity');
   }

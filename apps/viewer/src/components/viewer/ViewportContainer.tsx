@@ -600,12 +600,10 @@ export function ViewportContainer() {
       window.location.reload();
     }
   }, [loadFile]);
-
-
   // Check if any models are loaded (even if hidden) - used to show empty 3D vs starting UI
   const hasLoadedModels = storeModels.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
 
-  const { hasTypeGeometry, filteredGeometry, geometryVersion } = useFilteredGeometry(
+  const { hasTypeGeometry, filteredGeometry, geometryVersion, geometryReplacementVersion } = useFilteredGeometry(
     mergedGeometryResult, geometryContentVersion, typeVisibility, typeViewMode);
 
   // Publish to the store so the toolbar can hide the Model/Types switch when
@@ -844,6 +842,7 @@ export function ViewportContainer() {
       <Viewport
         geometry={filteredGeometry}
         geometryVersion={geometryVersion}
+        geometryReplacementVersion={geometryReplacementVersion}
         geometryContentVersion={geometryContentVersion}
         pointClouds={mergedPointClouds}
         coordinateInfo={mergedGeometryResult?.coordinateInfo}

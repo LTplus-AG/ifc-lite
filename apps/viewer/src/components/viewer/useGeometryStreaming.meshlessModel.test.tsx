@@ -32,9 +32,10 @@ import { Camera } from '../../../../../packages/renderer/src/camera.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { modelIndices } from '@/lib/model-placement/model-indices.js';
 import { appearanceInstanceScene } from '@/test/appearance-instance-scene.js';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, waitFor } from '@/test/render.js';
 import { useFederatedGeometry } from './useFederatedGeometry.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
+import { useFilteredGeometry } from './useFilteredGeometry.js';
 
 let setStreaming: (streaming: boolean) => void = () => {};
 
@@ -44,12 +45,14 @@ function Viewport({ renderer }: { renderer: Renderer }) {
   setStreaming = set;
   const indices = useMemo(() => modelIndices(s.models), [s.models]);
   const geometry = useFederatedGeometry(s.models, s.geometryResult, indices, s.geometryContentVersion);
+  const filtered = useFilteredGeometry(geometry, s.geometryContentVersion, s.typeVisibility, s.typeViewMode);
   const rendererRef = useRef<Renderer | null>(renderer);
   const geometryBoundsRef = useRef({ min: { x: -100, y: -100, z: -100 }, max: { x: 100, y: 100, z: 100 } });
   const clearColorRef = useRef<[number, number, number, number]>([0, 0, 0, 1]);
-  useGeometryStreaming({ rendererRef, geometry: geometry?.meshes ?? null,
+  useGeometryStreaming({ rendererRef, geometry: filtered.filteredGeometry,
     appearanceSourceGeometry: geometry?.meshes, coordinateInfo: geometry?.coordinateInfo,
-    geometryVersion: s.geometryUpdateTick, geometryContentVersion: s.geometryContentVersion,
+    geometryVersion: filtered.geometryVersion, geometryContentVersion: s.geometryContentVersion,
+    geometryReplacementVersion: filtered.geometryReplacementVersion,
     modelCount: s.models.size, modelIdToIndex: indices,
     presentInstancedModelIndices: new Set(indices.values()), isInitialized: true, isStreaming,
     geometryBoundsRef, clearColorRef, pendingMeshColorUpdates: null, pendingColorUpdates: null,
@@ -115,11 +118,40 @@ function mount() {
     getCamera: () => camera, getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }),
     clearCaches() {}, requestRender() {} } as unknown as Renderer;
   render(<Viewport renderer={renderer} />);
-  return native;
+  return { ...native, camera };
 }
 
 type Native = ReturnType<typeof mount>;
 const flush = (native: Native) => native.scene.flushPending(native.device, native.pipeline, Infinity);
+
+// #7047: renderer vertices must follow immutable replacement, even with the
+// same IDs and count. Growing replacements must not be mistaken for appends.
+for (const federated of [false, true]) {
+  for (const growth of [0, 1]) {
+  it(`${growth ? 'growing' : 'same-count'} replacement uploads new vertices (${federated ? 'federated' : 'single model'}, #7047)`, async () => {
+    const native = mount();
+    const others = federated ? [model('other', ifcMeshes(1))] : [];
+    await streamIfc(native, others);
+    await waitFor(() => !native.scene.hasStreamingFragments(), 'initial streamed geometry finalized');
+    assert.equal(sceneTriangles(native.scene), IFC_TRIANGLES + others.length * 2);
+    const pose = { position: { ...native.camera.getPosition() }, target: { ...native.camera.getTarget() } };
+    const replacement = ifcMeshes(IFC_ELEMENTS + growth).map(mesh => ({ ...mesh,
+      positions: Float32Array.from(mesh.positions, (v, i) => i % 3 === 0 ? v + 50 : v) }));
+    await act(async () => {
+      useViewerStore.getState().updateModel('ifc', { geometryResult: model('ifc', replacement).geometryResult });
+    });
+    flush(native);
+    const positions: number[] = [];
+    native.scene.forEachMeshData(mesh => { positions.push(mesh.positions[0]); });
+    assert.equal(positions.filter(x => x >= 50).length, IFC_ELEMENTS + growth,
+      'all replacement meshes must reach the real renderer Scene');
+    assert.equal(sceneTriangles(native.scene), (IFC_ELEMENTS + growth + others.length) * 2,
+      'the replacement must not leave the old meshes resident');
+    assert.deepEqual({ position: native.camera.getPosition(), target: native.camera.getTarget() }, pose,
+      'replacing an existing model preserves the fitted camera');
+  });
+  }
+}
 
 /** Stream the IFC into the store two meshes per batch, as the loader does,
  * alongside any models already open, then end streaming. */

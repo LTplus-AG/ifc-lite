@@ -21,6 +21,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { buildSheet, answerSha256, scoreSheets, sheetErrors } from './lib/labels.mjs';
 import { decodeRecording, loadRecordingDir, REPO_ROOT, RECORDINGS_DIR } from './lib/recording.mjs';
+import { privacyFindings } from './lib/manifest.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 const SCHEMA = JSON.parse(readFileSync(join(REPO_ROOT, 'tests', 'ai-eval', 'label-sheet.schema.json'), 'utf8'));
@@ -32,6 +33,9 @@ export function sheetFileErrors(files, recordings, schema = SCHEMA) {
   const errors = [];
   for (const { name, sheet } of files) {
     for (const error of sheetErrors(sheet, schema)) errors.push(`label ${name}: ${error}`);
+    // Notes and group names are free text a reviewer typed: scanned like study sessions and live output before committing.
+    const findings = privacyFindings(JSON.stringify(sheet), 'json');
+    if (findings.length) errors.push(`label ${name}: privacy scan: ${findings.join('; ')}`);
     const recording = byId.get(sheet.recording);
     if (!recording) { errors.push(`label ${name}: unknown recording ${sheet.recording}`); continue; }
     if (recording.task !== sheet.task) errors.push(`label ${name}: task ${sheet.task} differs from the recording's ${recording.task}`);

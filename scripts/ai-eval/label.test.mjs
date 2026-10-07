@@ -48,6 +48,12 @@ test('a reviewer id that looks like a name or e-mail address is rejected by the 
   assert.match(sheetFileErrors([{ name: 's', sheet }], recordings).join(), /reviewer\.id/);
 });
 
+test('free-text notes are privacy-scanned like study sessions', () => {
+  const sheet = sheetOf('clash-summary-release', 'claims');
+  sheet.claims[0].note = 'checked with jane.doe@example.com on site';
+  assert.match(sheetFileErrors([{ name: 's', sheet }], recordings).join(), /privacy scan: e-mail address/);
+});
+
 test('negative recordings and unknown tasks are not label material', () => {
   const sheet = sheetOf('clash-summary-release', 'claims');
   const negative = recordings.find(({ recording }) => recording.corpus === 'negative').recording;

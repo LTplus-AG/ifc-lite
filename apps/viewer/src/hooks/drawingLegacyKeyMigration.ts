@@ -23,11 +23,15 @@
  *
  * ## The merge rule
  * An entry already under the identity key was written by a viewer that has
- * identity keys, so it is at least as new as the legacy one. Markup items and
- * DXF underlays are independent records with their own `id`, so the two sets
- * are united and, for an `id` in both, the identity-key item is kept. Values
- * that cannot be united (display options, section plane, the sheet) come from
- * the identity-key entry when it has one and from the legacy entry otherwise.
+ * identity keys, so it is normally the newer of the two (the exception is a
+ * legacy entry written afterwards by a tab still on the previous viewer).
+ * Markup items and DXF underlays are independent records with their own `id`,
+ * so the two sets are united and, for an `id` in both, the identity-key item
+ * is kept. Values that cannot be united come from the identity-key entry when
+ * there is one: its display options, and its sheet. Its section plane too,
+ * unless it records none: a stored `null` means that session saved before it
+ * generated a drawing (the viewer never saves a plane as cleared), so the
+ * legacy entry's plane is carried over then.
  */
 // TODO(remove-by: browsers no longer hold drawing entries under a bare SHA-256 key, maintainers): delete this module and its two callers in `drawingPersistenceKey.ts` (#7035).
 

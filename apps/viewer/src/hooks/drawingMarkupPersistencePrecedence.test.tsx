@@ -235,9 +235,12 @@ describe('localStorage (#4159) vs IFC-embedded (#4170) markup restore precedence
     await mount();
     await act(async () => { useViewerStore.getState().setActiveModel('model-precedence'); });
 
-    // Let localStorage's restore resolve FIRST — its hash is a fast,
-    // in-memory computation over a 256-byte file, well within these ticks.
-    await flush();
+    // Let localStorage's restore resolve FIRST. The key is derived from a
+    // slice read and two digests (#7035), which no fixed number of ticks
+    // bounds, so wait for the decision itself: while it is still pending the
+    // assertions below would pass without the precedence ever being decided.
+    await settleUntil(() => hasPersistedMarkupEntryFor(model.id) !== 'pending');
+    assert.equal(hasPersistedMarkupEntryFor(model.id), true, 'setup sanity: localStorage\'s decision is settled, and it found the saved entry');
     assert.deepEqual(
       useViewerStore.getState().measure2DResults,
       [],

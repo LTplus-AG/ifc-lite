@@ -26,6 +26,7 @@ import type { FederatedModel } from '@/store';
 import type { Measure2DResult } from '@/store/slices/drawing2DSlice.js';
 import { keyFor, loadDrawing2DEntry, saveDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
 import { sheetStorageKey } from '@/store/slices/sheetSlice.persistence';
+import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
 import { hasPersistedMarkupEntryFor, useDrawing2DPersistence } from './useDrawing2DPersistence.js';
 
 const MIB = 1024 * 1024;
@@ -153,6 +154,21 @@ describe('drawing persistence is keyed by the placement identity (#7035)', () =>
     assert.deepEqual(storedMeasures(identityOf(bytes)), ['drawn']);
     assert.equal(useViewerStore.getState().models.get('m1')?.sourceContentHash, identityOf(bytes), 'the record now carries the identity');
     assert.equal(wholeFileReads, 0, 'the identity reads slices, never the whole file at once');
+  });
+
+  it('the shared identity pass writes to a record re-created under the same id and File, without another pass', async () => {
+    const bytes = bytesOf(4);
+    const file = sourceFile(bytes);
+    const bare = () => loadedModel('m1', file, bytes, { sourceContentHash: undefined, loadState: undefined });
+    await open(bare());
+    assert.equal(useViewerStore.getState().models.get('m1')?.sourceContentHash, identityOf(bytes), 'setup: the hook had the record identified');
+
+    const before = fullSourcePasses();
+    await act(async () => { useViewerStore.setState({ models: new Map([['m1', bare()]]) }); });
+    assert.equal(useViewerStore.getState().models.get('m1')?.sourceContentHash, undefined, 'setup: the new record has no identity yet');
+    await act(async () => { await identifyLoadedPlacementSource('m1', file); });
+    assert.equal(useViewerStore.getState().models.get('m1')?.sourceContentHash, identityOf(bytes), 'a settled pass still identifies the record that holds the file now');
+    assert.equal(fullSourcePasses() - before, 0, 'from the pass already made for this model and file');
   });
 
   it('a model still loading waits for the loader\'s identity instead of hashing', async () => {

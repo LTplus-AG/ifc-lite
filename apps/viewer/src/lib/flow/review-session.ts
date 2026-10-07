@@ -24,6 +24,8 @@
  */
 
 import { create } from 'zustand';
+import { restoreRootBudget } from '@ifc-lite/ai';
+import { AI_FEATURE } from '@ifc-lite/flow-nodes/ai';
 import { digest, type FlowDocument, type RunResult } from '@ifc-lite/flow';
 import {
   approveCheckpoint, CheckpointError, claimCheckpoint, createCheckpoint, finishCheckpoint, graphDigest,
@@ -38,7 +40,7 @@ export const REVIEW_LEASE_MS = 10 * 60_000;
 const TAB_OWNER = `tab:${crypto.randomUUID()}`;
 
 export type ReviewProblem =
-  | { readonly kind: 'refused'; readonly code: CheckpointError['code']; readonly message: string }
+  | { readonly kind: 'refused'; readonly code: CheckpointError['code'] | 'budget-missing'; readonly message: string }
   | { readonly kind: 'not-saved'; readonly message: string };
 
 export interface FlowReviewState {
@@ -59,7 +61,10 @@ export interface FlowReviewState {
 
 export const useFlowReview = create<FlowReviewState>(() => ({ checkpoint: null, values: {}, busy: false, problem: null }));
 
+class BudgetReceiptError extends Error {}
+
 function problemOf(error: unknown): ReviewProblem {
+  if (error instanceof BudgetReceiptError) return { kind: 'refused', code: 'budget-missing', message: error.message };
   if (error instanceof CheckpointError) return { kind: 'refused', code: error.code, message: error.message };
   return { kind: 'not-saved', message: error instanceof Error ? error.message : String(error) };
 }
@@ -136,7 +141,12 @@ export function rejectReview(): Promise<FlowCheckpoint | null> {
 
 /** Claim the approved checkpoint for this tab's resume, against the graph and inputs it will run with. */
 export function claimReview(doc: FlowDocument, inputs: Record<string, unknown>): Promise<FlowCheckpoint | null> {
-  return transition((c) => claimCheckpoint(c, { owner: TAB_OWNER, graphDigest: graphDigest(doc, inputs, flowRegistry()), sourceDigest: viewerSourceDigest(), leaseMs: REVIEW_LEASE_MS }));
+  return transition((c) => {
+    const registry = flowRegistry();
+    const aiAhead = doc.nodes.some(node => !Object.hasOwn(c.outputs, node.id) && registry.get(node.type)?.requires?.backend?.includes(AI_FEATURE));
+    if (aiAhead && !restoreRootBudget(c.budget)) throw new BudgetReceiptError('Resuming downstream AI nodes requires the original root budget receipt. Run the graph again.');
+    return claimCheckpoint(c, { owner: TAB_OWNER, graphDigest: graphDigest(doc, inputs, registry), sourceDigest: viewerSourceDigest(), leaseMs: REVIEW_LEASE_MS });
+  });
 }
 
 export function finishReview(result: RunResult | null, failure?: string): Promise<FlowCheckpoint | null> {

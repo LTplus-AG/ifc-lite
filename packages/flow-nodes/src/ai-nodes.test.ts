@@ -144,7 +144,7 @@ describe('ai.classify', () => {
     const cut = await classify({ batchSize: 2 }, truncating);
     expect(cut.table!.value.rows.every((r) => r.outcome === 'failed')).toBe(true);
     const { table } = await classify({ batchSize: 2 }, model);
-    expect(table!.value.rows.map((r) => r.outcome)).toEqual(['unknown', 'unknown', 'classified', 'classified']);
+    expect(table!.value.rows.map((r) => r.outcome)).toEqual(['failed', 'failed', 'classified', 'classified']);
     expect(cut.coverage).toMatchObject({ failed: 4, requests: 2 });
   });
 
@@ -287,6 +287,16 @@ it('marks a missing classification items array as a failed batch', async () => {
   expect(result.review).toEqual(['ai']);
   expect(coverage).toMatchObject({ failed: 4, unknown: 0 });
   expect(table!.value.rows.every(row => row.outcome === 'failed')).toBe(true);
+});
+
+it('#7040 omitted classifications count as failures separately from explicit unknown answers', async () => {
+  const { table, coverage, result } = await classify({}, standIn(rows => ({ items: [
+    { key: rows[0].key, label: 'unknown', evidence: [] },
+    { key: rows[1].key, label: 'structure', evidence: ['Type'] },
+  ] })));
+  expect(result.review).toEqual(['ai']);
+  expect(table!.value.rows.map(row => row.outcome)).toEqual(['unknown', 'classified', 'failed', 'failed']);
+  expect(coverage).toMatchObject({ rows: 4, classified: 1, unknown: 1, failed: 2, notSent: 0 });
 });
 
 it('keeps a budget-stopped second summary as a reviewable not-sent draft', async () => {

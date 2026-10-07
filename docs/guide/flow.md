@@ -859,3 +859,7 @@ or mutating it. Custom hosts can implement `SessionAutomationHost`; advertise
 only services actually supplied. Files, native report bodies and PDF blobs stay
 outside persistable graph values. PDF generation produces a session artifact;
 Download can be retried without rerunning checks while that artifact is valid.
+
+AI review checkpoints require an explicit `network.ai` grant, including trusted CLI runs. Selected source columns are sent inside each row’s `values` object; the outer `key` is the host-assigned review identity. A summary stopped by the shared budget remains a reviewable empty draft with all rows counted as not sent.
+
+The CLI refuses to save or display a checkpoint if any restored output contains a declared secret. It checks the next checkpoint destination before consuming approval, validates pause output requirements before flushing tracking, and completes the previous checkpoint only after saving a subsequent proposal. A persistence failure after a claim is recorded as partially committed.

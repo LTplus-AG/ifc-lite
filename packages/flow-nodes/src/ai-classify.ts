@@ -103,8 +103,8 @@ export const aiClassifyNode: FlowNodeDef = {
         break;
       }
       requests += 1;
-      if (reply.kind === 'failed') {
-        ctx.log('warn', `rows ${start + 1}-${start + batch.length}: ${reply.message}`);
+      if (reply.kind === 'failed' || !Array.isArray(reply.value.items)) {
+        ctx.log('warn', `rows ${start + 1}-${start + batch.length}: ${reply.kind === 'failed' ? reply.message : 'the reply has no items array'}`);
         for (const i of batch) outcome[i] = 'failed';
         continue;
       }

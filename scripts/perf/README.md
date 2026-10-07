@@ -86,6 +86,23 @@ call sites and `useViewerStore` subscriptions on the viewport, properties,
 hierarchy and streaming paths statically (minified component names make a
 runtime fiber census unattributable, and mounted counts move with UI state).
 
+## Worker warm-up candidate held (#7036)
+
+The resumed [cold-load captures](evidence/worker-warmup-7036/README.md) show
+earlier worker readiness but mixed first-visible and total-load results. No
+end-to-end speedup is accepted. The candidate creates fresh workers beside the
+file read and still terminates them after each load; it does not satisfy the
+original persistent-reuse requirement. Geometry counts match, but an ordered
+geometry hash was not collected. Repeat/federation measurements during takeover
+overlapped validation builds and need an idle-machine repeat. Lesson: moving
+worker initialization earlier is an opportunity screen, not a performance
+verdict. Keep the measurement and memory constraints before changing the rollout.
+
+The experiment defaults off on both the viewer and worker paths. Repeated cache
+hits cannot extend an unused worker's expiry, and memory-pressure retries drain
+the pool without refilling it. These are lifecycle corrections, not an accepted
+performance win; the end-to-end verdict above remains held.
+
 ## Single-model appends cost O(new meshes) in the viewport (#7021)
 
 **Shipped.** While one model streamed in, `geometryWithModelIndex` copied

@@ -106,6 +106,7 @@ export function createWorkerTraceHost(options: WorkerTraceHostOptions): WorkerTr
     if (type === TRACE_ENABLE_MESSAGE) {
       const thread = (data as { thread?: unknown }).thread;
       recorder = createWorkerSpanRecorder(typeof thread === 'string' ? thread : 'worker', options.now, options.timeOrigin);
+      seenOnce.clear(); // a pooled worker (#7036) serves several loads: each gets its first-chunk span
       counters.enable();
       counters.drain(); // only what happens from here on belongs to a load
       return;

@@ -154,3 +154,34 @@ describe('typed-array call meter (#6957)', () => {
     expect(meterTypedArrayArgs(api, 'wasm', createPerfCounters())).toBe(api);
   });
 });
+
+describe('pooled workers (#7036)', () => {
+  it('counts a worker\'s messages under the role it serves now', () => {
+    const registry = createPerfCounters();
+    registry.enable();
+    let role = 'geometry';
+    const endpoint = { postMessage: (_m: unknown) => {} };
+    accountWorkerMessages(endpoint, () => role, registry);
+    endpoint.postMessage({ type: 'init' });
+    role = 'prepass';
+    endpoint.postMessage({ type: 'prepass-streaming' });
+    const counts = registry.drain() ?? {};
+    expect(counts['msg.geometry.out.count']).toBe(1);
+    expect(counts['msg.prepass.out.count']).toBe(1);
+  });
+
+  it('records the first-chunk span again for each load that re-enables a reused worker', async () => {
+    const posted: TraceSpansMessage[] = [];
+    const host = createWorkerTraceHost({
+      spanNames: { 'stream-chunk': 'geometry.firstChunk' }, onceTypes: ['stream-chunk'],
+      post: (m) => posted.push(m), counters: createPerfCounters(), now: () => 0, timeOrigin: 0,
+    });
+    for (const thread of ['geom-0', 'geom-0']) {
+      await host({ type: 'load-trace:enable', thread }, async () => {});
+      await host({ type: 'stream-chunk' }, async () => {});
+      await host({ type: 'stream-chunk' }, async () => {});
+    }
+    const spans = posted.flatMap((m) => m.payload.spans.map((s) => s.name));
+    expect(spans).toEqual(['geometry.firstChunk', 'geometry.firstChunk']);
+  });
+});

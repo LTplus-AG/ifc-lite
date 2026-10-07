@@ -87,7 +87,7 @@ export const chartsAdapter: EvidenceAdapter = {
         recordedComparison: source.saved === 'comparison' ? source.name ?? null : null,
         // A saved clash report is past evidence: its gaps and its relation to the loaded models travel with every citation.
         savedClashReport: source.saved === 'clashReport' && source.status === 'saved' ? { name: source.report.name, savedAt: source.report.savedAt,
-          truncated: !!source.report.completeness.truncated, stale: source.report.completeness.stale, loadedModelRevision: source.revision } : null,
+          truncated: !!source.report.completeness.truncated, stale: source.report.completeness.stale, excluded: source.report.completeness.excluded, loadedModelRevision: source.revision } : null,
         sliced: !!aggregation && chartCardSlice(chart, recorded, s.chartSlice, s.chartSliceSource) !== null,
         datasetRows: source.dataset.rows.length,
         bucketCount: aggregation?.categories.length ?? 0, seriesCount: aggregation?.series.length ?? 0,

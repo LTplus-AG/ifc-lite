@@ -46,6 +46,7 @@ export const chartsEn = {
   'clashChart.caption': 'Saved clash report: {name}, saved {date}',
   'clashChart.badgePartial': 'Partial run',
   'clashChart.badgeStale': 'Models changed before saving',
+  'clashChart.badgeExcluded': '{count} hidden by exclusions',
   'clashChart.badgeRevision.different': 'Different model revision',
   'clashChart.badgeRevision.not-loaded': 'Models not loaded',
   'clashChart.badgeRevision.unverified': 'Revision not confirmed',

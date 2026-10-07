@@ -146,9 +146,12 @@ its name can be edited.
 
 The dialog says before you save when the result is not a complete, current
 run, and the report keeps that fact: a run that stopped at its candidate-pair
-limit is saved as a **Partial run**, and a result whose model was edited or
-moved after the run is saved as **Models changed before saving**. Run the
-check again first if you want a current result.
+limit is saved as a **Partial run**, a result whose model was edited or
+moved after the run is saved as **Models changed before saving**, and a
+result your exclusion rules are narrowing is saved as **N hidden by
+exclusions**, with the number of clashes they hide. Run the check again
+first if you want a current result, and switch the exclusions off first if
+you want the whole run.
 
 Saved reports are stored in this browser's saved content library with saved
 validation reports and comparisons. They survive a reload and are part of

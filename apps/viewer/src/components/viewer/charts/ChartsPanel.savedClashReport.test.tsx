@@ -20,6 +20,7 @@ import { act } from 'react';
 import { validateChartSpec } from '@ifc-lite/charts';
 import { captureEvidence } from '@/lib/assistant/evidence';
 import { loadDashboards } from '@/lib/charts/persistence';
+import { elementPairExclusion } from '@/lib/clash/exclusions';
 import { readContentRows } from '@/lib/storage/content-database';
 import type { ContentKind } from '@/lib/storage/content-kinds';
 import { useViewerStore } from '@/store';
@@ -91,7 +92,7 @@ const boundReport = (title: string): string | undefined =>
   useViewerStore.getState().dashboards.find((dashboard) => dashboard.id === DASHBOARD.id)?.charts.find((chart) => chart.title === title)?.clashReportId;
 
 /** The assistant's charts evidence for one chart: what a conversation would cite. */
-function cited(title: string): { status: string; total: number | null; savedClashReport: { name: string; truncated: boolean; loadedModelRevision: string } | null } {
+function cited(title: string): { status: string; total: number | null; savedClashReport: { name: string; truncated: boolean; excluded: number; loadedModelRevision: string } | null } {
   const charts = JSON.parse(captureEvidence('charts').payload).evidence.summary?.charts as Array<{ chartTitle: string } & ReturnType<typeof cited>>;
   const chart = charts.find((entry) => entry.chartTitle === title);
   assert.ok(chart, `the charts evidence covers "${title}"`);
@@ -307,6 +308,35 @@ describe('Saved clash reports as a chart source (#6947)', () => {
     await addClashChart(ui, 'Stale chart', stale.id);
     assert.match(subtitle(ui, 'Stale chart'), /^Models changed before saving · /);
     assert.doesNotMatch(subtitle(ui, 'Complete chart'), /Partial run|Models changed before saving/, 'a complete run carries neither marker');
+  });
+
+  it('says how many clashes the exclusion rules were hiding when the report was saved', async () => {
+    mountClashPanel();
+    await detectCoincidentWalls(3, 1, () => ({ sourceFingerprint: 'revision-1' }));
+    const complete = await saveCurrentResultAs('All three');
+    // Exclude one pair the way the panel does: the result drops to two clashes and the panel counts one hidden.
+    const [hidden] = useViewerStore.getState().clashResult?.clashes ?? [];
+    assert.ok(hidden);
+    act(() => { assert.equal(useViewerStore.getState().addClashExclusion(elementPairExclusion(hidden.a, hidden.b)).ok, true); });
+    assert.deepEqual([useViewerStore.getState().clashResult?.clashes.length, useViewerStore.getState().clashSuppressedCount], [2, 1]);
+    await openSavedReports();
+    assert.match(document.body.querySelector('[data-clash-report-current]')?.textContent ?? '', /It will be saved as: 1 hidden by exclusions\./, 'the dialog says so before saving');
+    const narrowed = await saveCurrentResultAs('One pair excluded');
+    assert.deepEqual([narrowed.clashes.length, narrowed.completeness.excluded], [2, 1]);
+    assert.match(document.body.querySelector(`[data-clash-report="${narrowed.id}"] [data-clash-report-limits]`)?.textContent ?? '', /1 hidden by exclusions/);
+    assert.doesNotMatch(document.body.querySelector(`[data-clash-report="${complete.id}"]`)?.textContent ?? '', /hidden by exclusions/, 'control: a run saved with nothing excluded says no such thing');
+
+    // The exclusion is removed afterwards: nothing on screen says the saved population was a subset, except the report.
+    act(() => { useViewerStore.getState().clearClashExclusions(); });
+    const ui = render(<ChartsPanel renderer={renderer} />); await settle();
+    await addClashChart(ui, 'Narrowed chart', narrowed.id);
+    await addClashChart(ui, 'Whole chart', complete.id);
+    assert.equal(population(ui, 'Narrowed chart'), 2);
+    assert.match(subtitle(ui, 'Narrowed chart'), /^1 hidden by exclusions · Saved clash report: One pair excluded, saved /, 'the card leads with it, like the other limits');
+    assert.match(editorNote(ui, 'Narrowed chart'), /^1 hidden by exclusions · /, 'the chart editor states it');
+    assert.equal(cited('Narrowed chart').savedClashReport?.excluded, 1, 'and the assistant is told the population is a subset');
+    assert.doesNotMatch(subtitle(ui, 'Whole chart'), /hidden by exclusions/, 'control: a report saved with nothing excluded carries no such label');
+    assert.equal(cited('Whole chart').savedClashReport?.excluded, 0);
   });
 });
 

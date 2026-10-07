@@ -59,12 +59,14 @@ export function resolveClashReportChartSource(spec: SourceBinding, live: ChartDa
 
 type Translate = UseTranslationResult['t'];
 
-/** What limits a saved report as evidence: a partial run, models that changed before saving, another model revision.
+/** What limits a saved report as evidence: a partial run, models that changed before saving,
+ * clashes the exclusion rules were hiding, another model revision.
  * One list for every chart surface and the Clash panel's saved-report list. */
 export function clashReportLimitBadges(report: SavedClashReport, revision: ClashReportRevision, t: Translate): string[] {
   return [
     ...(report.completeness.truncated ? [t('clashChart.badgePartial')] : []),
     ...(report.completeness.stale ? [t('clashChart.badgeStale')] : []),
+    ...(report.completeness.excluded > 0 ? [t('clashChart.badgeExcluded', { count: report.completeness.excluded })] : []),
     ...(revision === 'same' ? [] : [t(`clashChart.badgeRevision.${revision}`)]),
   ];
 }

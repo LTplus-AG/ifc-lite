@@ -213,12 +213,30 @@ async function fetchProj4Def(epsgCode: string): Promise<string | null> {
  *      (RD/NL, OSGB/UK, BD72/BE) — fetched once from cdn.proj.org, gives
  *      sub-decimeter accuracy. Falls through to (3) if the fetch fails.
  *   3. Bundled EPSG index (7000+ codes with proj4 strings)
- *   4. Well-known CRS name lookup (e.g. "WGS 84" → EPSG:4326)
- *   5. UTM zone heuristic (from CRS metadata — mapZone, name, description, mapProjection)
- *   6. Fetch from epsg.io (network fallback)
+ *   4. UTM zone heuristic (from CRS metadata — mapZone, name, description, mapProjection)
+ *   5. Fetch from epsg.io (network fallback)
  */
 export async function resolveProjection(crs: ProjectedCRS): Promise<string | null> {
-  let code = extractEpsgCode(crs);
+  const explicitCode = extractEpsgCode(crs);
+  const aliasCode = explicitCode ? undefined : wellKnownCrsCode(crs.name ?? '');
+  // A datum-only geographic label may accompany an explicit UTM zone. Keep
+  // that metadata interpretation local; caching it under EPSG:4326 would
+  // corrupt subsequent geographic resolutions and make results load-order dependent.
+  if (aliasCode && ['4326', '4269', '4267', '4258'].includes(aliasCode)) {
+    const zone = crs.mapZone ?? crs.description?.match(/UTM\s+zone\s+(\d{1,2}[NS])/i)?.[1]
+      ?? crs.mapProjection?.match(/UTM\s+zone\s+(\d{1,2}[NS])/i)?.[1];
+    const utm = zone ? utmProj4String(zone) : null;
+    if (utm) {
+      // Retain the declared datum rather than changing NAD27/NAD83/ETRS89
+      // coordinates into WGS84 UTM. Cache only the native geographic CRS.
+      const geographic = await resolveProjection({ ...crs, name: `EPSG:${aliasCode}` });
+      if (!geographic || !isGeographicProj4(geographic)) return null;
+      const zoneParameters = utm.match(/\+zone=\d+(?: \+south)?/)?.[0];
+      if (!zoneParameters) return null;
+      return projectedDefinitionInMetres(geographic.replace(/\+proj=longlat\b/, `+proj=utm ${zoneParameters}`));
+    }
+  }
+  const code = explicitCode ?? aliasCode ?? null;
 
   // 1. Check cache
   // A cached approximate/refused fallback is not terminal for a CRS with a
@@ -267,29 +285,6 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
     }
   }
 
-  // 3. Well-known CRS name → EPSG code (handles "WGS 84", "NAD83", "RD New", etc.)
-  if (!code) {
-    const wellKnownCode = wellKnownCrsCode(crs.name ?? '');
-    if (wellKnownCode) {
-      code = wellKnownCode;
-      if (projDefCache.has(code)) {
-        return projDefCache.get(code) ?? null;
-      }
-      try {
-        const entry = await lookupEpsgByCode(code);
-        if (entry?.proj4) {
-          const sanitized = sanitizeProj4(entry.proj4, code, entry.datum);
-          projDefCache.set(code, sanitized);
-          // For geographic CRS (longlat), check if we can infer a projected CRS
-          // from the UTM zone metadata — a projected CRS is much more useful.
-          // If we can't, fall through and return the geographic def below.
-        }
-      } catch {
-        // continue
-      }
-    }
-  }
-
   // 4. UTM zone heuristic — check mapZone, name, description, AND mapProjection
   if (crs.mapZone) {
     const def = utmProj4String(crs.mapZone);
@@ -308,13 +303,6 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
       if (code) projDefCache.set(code, def);
       return def;
     }
-  }
-
-  // If step 3 resolved a geographic CRS (e.g. EPSG:4326) and we couldn't
-  // upgrade it to a projected CRS via the UTM heuristic, still return it —
-  // reprojectToLatLon will handle the longlat identity case.
-  if (code && projDefCache.has(code)) {
-    return projDefCache.get(code) ?? null;
   }
 
   // 5. Network fallback — fetch from epsg.io

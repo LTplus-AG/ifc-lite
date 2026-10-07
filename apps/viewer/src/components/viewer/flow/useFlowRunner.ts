@@ -11,21 +11,22 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { MemoCache } from '@ifc-lite/flow';
+import { MemoCache, type RunResult } from '@ifc-lite/flow';
 import { resumeOutputs, type FlowCheckpoint } from '@ifc-lite/flow/checkpoint';
 import { useBim } from '@/sdk/BimProvider';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
 import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
 import type { FlowRunWindow } from '@/store/slices/flowSlice';
-import { invalidateForExternalChange, runFlowInViewer, viewerFlowFeatures } from '@/lib/flow/runner';
+import { invalidateForExternalChange, runFlowInViewer, viewerFlowFeatures, flowRegistry } from '@/lib/flow/runner';
 import { viewerTableAccess } from '@/lib/flow/viewer-tables';
 import { openBackendWriteCapture } from '@/sdk/adapters/backend-write-capture';
 import { createViewerOpenModel } from '@/lib/flow/open-model';
 import { createAutomationHost } from '@/lib/flow/automation-host';
 import { preflightWorkflow, isAutomationGraph } from '@/lib/flow/preflight';
 import { startWorkflowRun, cancelWorkflowRun } from '@/lib/flow/run-session';
-import { claimReview, finishReview, pauseForReview } from '@/lib/flow/review-session';
+import { writingNodes } from '@/lib/flow/publish-provenance';
+import { claimReview, finishReview, pauseForReview, useFlowReview } from '@/lib/flow/review-session';
 
 export interface FlowRunOptions {
   /** Resume from this approved review checkpoint (#6923): its completed nodes are restored, not run again. */
@@ -82,6 +83,7 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>, optio
       }
     });
     session.onProgress = (phase) => useViewerStore.getState().setFlowProgress(phase);
+    const heldWindow = useViewerStore.getState().flowLastRunWindow;
     useViewerStore.setState({ flowProgress: 'Checking workflow inputs', flowRunWarnings: [], flowArtifacts: [], flowLastRun: null, flowLastError: null, flowLastRunWindow: null });
     const model = activeModelId ? models.get(activeModelId) : undefined;
     const pin = model?.sourceContentHash ? `content:${model.sourceContentHash}` : `model:${activeModelId}`;
@@ -96,9 +98,10 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>, optio
     // pending when it ends, so Publish takes exactly those: never an edit
     // made by hand after the run, nor one made WHILE it was in flight, which
     // goes to the store without passing the SDK backend (#5634).
-    const start = Date.now();
+    const previousWindow = options.resume && heldWindow?.checkpointId === options.resume.id ? heldWindow : null;
+    const start = previousWindow?.start ?? Date.now();
     const capture = openBackendWriteCapture();
-    const record = (): FlowRunWindow => {
+    const record = (result?: RunResult): FlowRunWindow => {
       capture.close();
       const pending = pendingMutationIds();
       // Stamped after the run's own writes: an edit made after the run makes
@@ -107,7 +110,9 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>, optio
         start,
         end: Date.now(),
         doc,
-        mutationIds: new Set([...capture.ids].filter((id) => pending.has(id))),
+        mutationIds: new Set([...(previousWindow?.mutationIds ?? []), ...capture.ids].filter((id) => pending.has(id))),
+        writingNodes: result ? writingNodes(doc, flowRegistry(), result, previousWindow?.writingNodes) : previousWindow?.writingNodes ?? [],
+        ...(result && result.review.length > 0 && useFlowReview.getState().checkpoint?.state === 'prepared' ? { checkpointId: useFlowReview.getState().checkpoint!.id } : {}),
       }, captureAnalysisStamp());
     };
     // Another graph opened while this one ran: its panel must not show, or
@@ -144,7 +149,7 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>, optio
       // A proposal awaits review: nothing downstream ran. Save it before showing the run.
       if (result.ok && result.review.length > 0) await pauseForReview({ doc, result, inputs: preparedInputs, values: inputs ?? {}, budget: ai ? { ...ai.budget } : resume?.budget });
       session.check();
-      if (stillOpen()) setFlowLastRun(result, undefined, record());
+      if (stillOpen()) setFlowLastRun(result, undefined, record(result));
       else setFlowRunning(false);
     } catch (err) {
       if (claimed) await finishReview(null, err instanceof Error ? err.message : String(err));

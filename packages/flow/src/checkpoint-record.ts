@@ -217,6 +217,7 @@ function restoreMap(checkpoint: FlowCheckpoint): Map<string, Map<string, FlowDat
 }
 
 const authorizedResumes = new WeakMap<object, { graph: string; outputs: string; expires: number }>();
+const issuedClaims = new Map<string, number>();
 
 /** Scheduler-only boundary: raw, changed, expired or reused maps cannot bypass review. */
 export function consumeReviewedResume(outputs: ReadonlyMap<string, ReadonlyMap<string, FlowData>>, doc: FlowDocument,
@@ -238,6 +239,11 @@ export function resumeOutputs(checkpoint: FlowCheckpoint, now = Date.now()): Map
     throw new Error('only an actively claimed, approved checkpoint can supply resume outputs');
   }
   const outputs = restoreMap(checkpoint);
+  const issuedAt = Date.now();
+  for (const [key, until] of issuedClaims) if (until <= issuedAt) issuedClaims.delete(key);
+  const claimKey = digest({ id: checkpoint.id, claim: checkpoint.claim });
+  if (issuedClaims.has(claimKey)) throw new Error('this checkpoint claim already supplied resume outputs');
+  issuedClaims.set(claimKey, issuedAt + (checkpoint.claim.leaseUntil - now));
   authorizedResumes.set(outputs, { graph: checkpoint.graphDigest, outputs: digest(portableOutputs(outputs)),
     expires: Date.now() + (checkpoint.claim.leaseUntil - now) });
   return outputs;

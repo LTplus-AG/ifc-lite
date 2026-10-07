@@ -147,3 +147,16 @@ it('#7038 cached non-volatile proposals still require review before downstream w
   expect(statuses(repeated)).toMatchObject({ src: 'memo', p: 'review', sink: 'paused' });
   expect(host.sunk).toEqual([]);
 });
+
+it('#7038 one claim cannot issue multiple maps to replay downstream effects', async () => {
+  const host: Host = { executed: [], sunk: [] };
+  const paused = await runFlow(doc, { host, registry });
+  const checkpoint = createCheckpoint({ doc, registry, result: paused, sourceDigest: 'test-source' });
+  const claimed = claimCheckpoint(approveCheckpoint(checkpoint, checkpoint.proposalDigest), {
+    owner: 'one-map', graphDigest: graphDigest(doc, {}, registry), sourceDigest: 'test-source', leaseMs: 60_000,
+  });
+  const approved = resumeOutputs(claimed);
+  expect(() => resumeOutputs(JSON.parse(JSON.stringify(claimed)))).toThrow(/already supplied/);
+  await runFlow(doc, { host, registry, resume: approved });
+  expect(host.sunk).toEqual([2, 'label-for-7']);
+});

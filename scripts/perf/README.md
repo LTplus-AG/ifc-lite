@@ -40,6 +40,18 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Workbench preset controls load on demand (#6926)
+
+The U03 preset controls initially exceeded the eager bundle allowance when
+combined with the U02 activity tray, although each branch fit separately.
+Loading the sidebar customizer only when opened brought the combined bundle
+inside the approved allowance without changing its ceiling or tolerance.
+The real activity-bar regression opens the customizer, previews and applies
+the coordinator preset, then restores the original layout and keyboard focus.
+This is a bundle-size verdict; it makes no model-load speed claim.
+Lesson: measure queued viewer features together, and keep optional editor
+surfaces behind their actual entry point.
+
 ## Structural counters and long frames per load (#6957)
 
 Under `?perfTrace=1` and in every benchmark run, each load's span tree also

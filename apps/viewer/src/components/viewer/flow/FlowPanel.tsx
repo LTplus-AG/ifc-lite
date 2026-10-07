@@ -265,7 +265,7 @@ export function FlowPanel() {
           {lastError && <span className="text-red-400">{t('flowPanel.run.failed')}: {lastError}</span>}
           {lastRun && (
             <>
-              <span className={lastRun.ok ? 'text-emerald-300' : 'text-red-400'}>{lastRun.ok ? t('flowPanel.run.ok') : t('flowPanel.run.failed')}</span>
+              <span className={lastRun.ok ? 'text-emerald-300' : 'text-red-400'}>{!lastRun.ok ? t('flowPanel.run.failed') : lastRun.review.length ? t('flowPanel.run.awaitingReview') : t('flowPanel.run.ok')}</span>
               <span className="text-muted-foreground">{t('flowPanel.run.summary', statusCounts)}</span>
               {lastRun.writes > 0 && <span className="text-muted-foreground">{t('flowPanel.run.writes', { count: lastRun.writes })}</span>}
               {lastRun.log.filter((l) => l.level === 'error').slice(0, 3).map((l, i) => <span key={i} className="text-red-400">{l.nodeId}{l.laneKey ? `[${l.laneKey}]` : ''}: {l.message}</span>)}

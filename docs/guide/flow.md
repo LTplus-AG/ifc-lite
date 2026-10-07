@@ -252,20 +252,21 @@ import type { FlowHost } from '@ifc-lite/flow-nodes';
 async function reviewedRun(doc: FlowDocument, host: FlowHost, registry: NodeRegistry<FlowHost>, sourceDigest: string) {
   const paused = await runFlow(doc, { host, registry });
   if (paused.review.length === 0) return paused;
-  const checkpoint = createCheckpoint({ doc, result: paused, sourceDigest });
+  const checkpoint = createCheckpoint({ doc, registry, result: paused, sourceDigest });
   // ...show the proposal (checkpointProposal) and collect the reviewer's approval...
   const approved = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
-  const claimed = claimCheckpoint(approved, { owner: 'me', graphDigest: graphDigest(doc), sourceDigest, leaseMs: 60_000 });
+  let claimed = claimCheckpoint(approved, { owner: 'me', graphDigest: graphDigest(doc, {}, registry), sourceDigest, leaseMs: 60_000 });
   const resumed = await runFlow(doc, { host, registry, resume: resumeOutputs(claimed) });
-  finishCheckpoint(claimed, 'me', { ok: resumed.ok });
+  claimed = finishCheckpoint(claimed, 'me', { ok: resumed.ok });
   return resumed;
 }
 ```
 
-In a real host the transitions go through `updateCheckpoint` with a durable
-store; the CLI's `flow run --checkpoint` / `flow review` / `flow resume`
-(see the [CLI guide](cli.md)) and the viewer's Flow
-panel do exactly that.
+A host that persists checkpoints applies transitions through `updateCheckpoint`
+with a durable store. This runtime layer supplies the checkpoint API; CLI commands
+and viewer approval controls ship in the subsequent P19 host layer. Pass the effective
+node registry when creating a checkpoint and computing its claim digest so a changed
+review policy refuses the resume.
 
 ## Programmatic use
 

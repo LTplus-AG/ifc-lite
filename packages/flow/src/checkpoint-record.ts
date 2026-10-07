@@ -73,8 +73,10 @@ export class CheckpointNotPortableError extends Error {
   }
 }
 
+interface ReviewRegistry { get(type: string): { readonly review?: 'required' } | undefined }
+
 /** What a resume must match: the graph minus layout, plus the Player inputs it runs with. */
-export function graphDigest(doc: FlowDocument, inputs: Readonly<Record<string, unknown>> = {}): string {
+export function graphDigest(doc: FlowDocument, inputs: Readonly<Record<string, unknown>> = {}, registry?: ReviewRegistry): string {
   return digest({
     capabilities: doc.capabilities,
     edges: doc.edges,
@@ -83,22 +85,31 @@ export function graphDigest(doc: FlowDocument, inputs: Readonly<Record<string, u
     maxCross: doc.maxCross,
     nodes: doc.nodes.map(({ id, type, params, lacing, tracking, trackingKey }) => ({ id, type, params, lacing, tracking, trackingKey })),
     player: inputs,
+    reviewPolicy: registry ? doc.nodes.map(node => [node.id, registry.get(node.type)?.review ?? null]) : null,
   });
 }
 
 function nonPortable(value: unknown, path: string, out: string[]): void {
-  const pending: Array<[unknown, string]> = [[value, path]];
+  const pending: Array<[unknown, string, number, boolean?]> = [[value, path, 0]];
+  const active = new Set<object>();
+  let work = 0;
   while (pending.length > 0 && out.length < 20) {
-    const [v, p] = pending.pop()!;
+    const [v, p, depth, exiting] = pending.pop()!;
+    if (exiting) { active.delete(v as object); continue; }
+    if (++work > 100_000 || depth > 256) { out.push(`${p} (JSON traversal limit)`); break; }
+    if (v !== null && typeof v === 'object') {
+      if (active.has(v)) { out.push(`${p} (cycle)`); continue; }
+      active.add(v); pending.push([v, p, depth, true]);
+    }
     if (v === null || typeof v === 'string' || typeof v === 'boolean') continue;
     if (typeof v === 'number') { if (!Number.isFinite(v)) out.push(p); continue; }
-    if (Array.isArray(v)) { v.forEach((child, i) => pending.push([child, `${p}[${i}]`])); continue; }
+    if (Array.isArray(v)) { v.forEach((child, i) => pending.push([child, `${p}[${i}]`, depth + 1])); continue; }
     // Plain objects only, from any realm: a class instance, Map, Date or function is not data.
     const proto: unknown = typeof v === 'object' ? Object.getPrototypeOf(v) : undefined;
     const plain = Object.prototype.toString.call(v) === '[object Object]' && (proto === null || (typeof proto === 'object' && Object.getPrototypeOf(proto) === null));
     if (!plain) { out.push(p); continue; }
     // An undefined property is absent in JSON, which is what it means here too.
-    for (const [key, child] of Object.entries(v as Record<string, unknown>)) if (child !== undefined) pending.push([child, `${p}.${key}`]);
+    for (const [key, child] of Object.entries(v as Record<string, unknown>)) if (child !== undefined) pending.push([child, `${p}.${key}`, depth + 1]);
   }
 }
 
@@ -108,6 +119,23 @@ function toPortable(data: FlowData, path: string, problems: string[]): PortableF
   const branches = [...data.branches.entries()];
   nonPortable(branches, path, problems);
   return { kind: 'group', branches };
+}
+
+/** Every saved port is a portable container, including outputs outside the reviewed proposal. */
+export function validPortableOutputs(outputs: Readonly<Record<string, Readonly<Record<string, unknown>>>>): boolean {
+  const problems: string[] = [];
+  for (const [node, ports] of Object.entries(outputs)) for (const [port, value] of Object.entries(ports)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const data = value as Record<string, unknown>;
+    if (data.kind === 'item') { if (!Object.hasOwn(data, 'value')) return false; nonPortable(data.value, `${node}.${port}`, problems); }
+    else if (data.kind === 'list') { if (!Array.isArray(data.items)) return false; nonPortable(data.items, `${node}.${port}`, problems); }
+    else if (data.kind === 'group') {
+      if (!Array.isArray(data.branches) || !data.branches.every(branch => Array.isArray(branch) && branch.length === 2 && typeof branch[0] === 'string' && Array.isArray(branch[1]))) return false;
+      nonPortable(data.branches, `${node}.${port}`, problems);
+    } else return false;
+    if (problems.length) return false;
+  }
+  return true;
 }
 
 export function fromPortable(data: PortableFlowData): FlowData {
@@ -133,6 +161,7 @@ export function proposalDigestOf(outputs: PortableOutputs, reviewNodes: readonly
 
 export interface CreateCheckpointInput {
   readonly doc: FlowDocument;
+  readonly registry: ReviewRegistry;
   /** A run that paused for review (`result.review` non-empty) without failures. */
   readonly result: RunResult;
   readonly sourceDigest: string;
@@ -146,7 +175,7 @@ export function createCheckpoint(input: CreateCheckpointInput): FlowCheckpoint {
   if (result.review.length === 0) throw new Error('the run did not pause for review');
   if (!result.ok) throw new Error('a run with failed nodes cannot be resumed; fix the graph and run it again');
   const outputs = portableOutputs(result.outputs);
-  const graph = graphDigest(doc, input.inputs);
+  const graph = graphDigest(doc, input.inputs, input.registry);
   const proposal = proposalDigestOf(outputs, result.review);
   const now = input.now ?? Date.now();
   return {

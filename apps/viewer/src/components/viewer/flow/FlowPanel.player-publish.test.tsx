@@ -302,4 +302,17 @@ describe('FlowPanel — Player mode and Publish button (#5167)', () => {
     assert.equal(byText<HTMLButtonElement>(container, 'button', 'Publish').disabled, true);
     assert.match(container.textContent ?? '', /no longer pending/);
   });
+  it('#7038 labels a paused successful run as awaiting review and names the blocked work', () => {
+    const doc = numberGraph('Review pending');
+    useViewerStore.setState({ flowDoc: doc, flowLastRun: { ok: true, review: ['proposal'],
+      reports: [{ nodeId: 'proposal', status: 'review', durationMs: 0, lanes: 1, laneErrors: 0, missing: {}, warnings: [] }, { nodeId: 'apply', status: 'paused', durationMs: 0, lanes: 0, laneErrors: 0, missing: {}, warnings: [] }],
+      outputs: new Map(), graphOutputs: [], log: [], writes: 0 } });
+    const ui = mountFlowPanel();
+    const bar = ui.querySelector('[data-flow-run-bar]');
+    assert.ok(bar);
+    assert.match(bar.textContent ?? '', /Awaiting review/);
+    assert.match(bar.textContent ?? '', /1 awaiting review.*1 paused/);
+    assert.doesNotMatch(bar.textContent ?? '', /Run finished/);
+  });
+
 });

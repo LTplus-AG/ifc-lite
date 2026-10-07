@@ -40,7 +40,8 @@ export const flowPanelEn = {
 
   'flowPanel.run.ok': 'Run finished',
   'flowPanel.run.failed': 'Run failed',
-  'flowPanel.run.summary': '{ok} ok · {memo} cached · {noop} no-op · {error} failed · {skipped} skipped',
+  'flowPanel.run.awaitingReview': 'Awaiting review',
+  'flowPanel.run.summary': '{ok} ok · {memo} cached · {noop} no-op · {error} failed · {skipped} skipped · {review} awaiting review · {paused} paused · {restored} restored',
   'flowPanel.run.writes': '{count} write node(s) — undo reverts the whole run',
   'flowPanel.run.errors': 'Errors',
   'flowPanel.run.warnings': 'Warnings',

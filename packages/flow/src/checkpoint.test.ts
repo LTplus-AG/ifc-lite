@@ -46,10 +46,10 @@ const doc: FlowDocument = {
 
 async function paused(host: Host = { sunk: [] }): Promise<FlowCheckpoint> {
   const result = await runFlow(doc, { host, registry });
-  return createCheckpoint({ doc, result, sourceDigest: 'model-hash-1', budget: { requests: 2 }, now: 1_000 });
+  return createCheckpoint({ doc, registry, result, sourceDigest: 'model-hash-1', budget: { requests: 2 }, now: 1_000 });
 }
 
-const claim = (owner: string, now = 2_000) => ({ owner, graphDigest: graphDigest(doc), sourceDigest: 'model-hash-1', leaseMs: 60_000, now });
+const claim = (owner: string, now = 2_000) => ({ owner, graphDigest: graphDigest(doc, {}, registry), sourceDigest: 'model-hash-1', leaseMs: 60_000, now });
 
 describe('createCheckpoint', () => {
   it('is plain JSON that round-trips and resumes the downstream node once with the reviewed value', async () => {
@@ -74,10 +74,10 @@ describe('createCheckpoint', () => {
 
   it('ignores layout but not params or Player inputs in the graph digest', () => {
     const moved = { ...doc, nodes: doc.nodes.map((n) => ({ ...n, pos: [9, 9] as const, label: 'x' })) };
-    expect(graphDigest(moved)).toBe(graphDigest(doc));
+    expect(graphDigest(moved, {}, registry)).toBe(graphDigest(doc, {}, registry));
     const edited = { ...doc, nodes: doc.nodes.map((n) => (n.id === 'ai' ? { ...n, params: { categories: ['x'] } } : n)) };
-    expect(graphDigest(edited)).not.toBe(graphDigest(doc));
-    expect(graphDigest(doc, { 'rows.limit': 3 })).not.toBe(graphDigest(doc));
+    expect(graphDigest(edited, {}, registry)).not.toBe(graphDigest(doc, {}, registry));
+    expect(graphDigest(doc, { 'rows.limit': 3 }, registry)).not.toBe(graphDigest(doc, {}, registry));
   });
 });
 
@@ -138,4 +138,32 @@ describe('checkpoint lifecycle', () => {
     expect(recoverCheckpoint(reviewed, 1e12)).toBeNull();
     expect(claimCheckpoint(reviewed, claim('tab-b')).state).toBe('applying');
   });
+});
+
+it('#7038 refuses a resume when a previously completed node now requires review', async () => {
+  const checkpoint = await paused();
+  const changed = new NodeRegistry<Host>().registerAll(registry.list().map(def =>
+    def.type === 't.rows' ? { ...def, review: 'required' as const } : def));
+  const reviewed = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
+  expect(() => claimCheckpoint(reviewed, { ...claim('owner'), graphDigest: graphDigest(doc, {}, changed) }))
+    .toThrow(expect.objectContaining({ code: 'graph-changed' }));
+});
+
+it('#7038 rejects malformed ports outside the proposal and invalid claim metadata', async () => {
+  const checkpoint = await paused();
+  for (const data of [{ kind: 'group', branches: 5 }, { kind: 'list', items: 5 }, { kind: 'item' }, { kind: 'unknown', value: 1 }]) {
+    expect(() => parseCheckpoint({ ...checkpoint, outputs: { ...checkpoint.outputs, rows: { t: data } } }))
+      .toThrow(/malformed or non-portable/);
+  }
+  for (const claim of [{ owner: 42, leaseUntil: 3, at: 2 }, { owner: 'me', leaseUntil: '3', at: 2 }, { owner: 'me', leaseUntil: Infinity, at: 2 }]) {
+    expect(() => parseCheckpoint({ ...checkpoint, claim })).toThrow(/invalid claim/);
+  }
+});
+
+it('#7038 rejects cyclic checkpoint values instead of hanging during portability validation', async () => {
+  const checkpoint = await paused();
+  const value: { again?: unknown } = {};
+  value.again = value;
+  expect(() => parseCheckpoint({ ...checkpoint, outputs: { ...checkpoint.outputs, rows: { t: { kind: 'item', value } } } }))
+    .toThrow(/malformed or non-portable/);
 });

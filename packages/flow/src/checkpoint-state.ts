@@ -23,7 +23,7 @@
  * the graph again as a new root.
  */
 
-import { CHECKPOINT_VERSION, proposalDigestOf, type CheckpointState, type FlowCheckpoint } from './checkpoint-record.js';
+import { CHECKPOINT_VERSION, proposalDigestOf, validPortableOutputs, type CheckpointState, type FlowCheckpoint } from './checkpoint-record.js';
 
 export type CheckpointErrorCode =
   | 'invalid'
@@ -65,6 +65,12 @@ export function parseCheckpoint(value: unknown): FlowCheckpoint {
   if (!Array.isArray(value.reviewNodes) || value.reviewNodes.length === 0 || !value.reviewNodes.every((n) => typeof n === 'string')) bad('"reviewNodes" must list node ids');
   if (!isRecord(value.outputs) || !Object.values(value.outputs).every(isRecord)) bad('"outputs" must map node ids to ports');
   if (typeof value.createdAt !== 'number' || typeof value.updatedAt !== 'number') bad('timestamps must be numbers');
+  if (!validPortableOutputs(value.outputs as Record<string, Record<string, unknown>>)) bad('outputs contain malformed or non-portable flow data');
+  if (!Number.isFinite(value.createdAt) || !Number.isFinite(value.updatedAt)) bad('timestamps must be finite');
+  if (value.claim !== undefined && (!isRecord(value.claim) || typeof value.claim.owner !== 'string'
+    || !Number.isFinite(value.claim.leaseUntil) || !Number.isFinite(value.claim.at))) bad('invalid claim');
+  if (value.review !== undefined && (!isRecord(value.review) || !['approved', 'rejected'].includes(String(value.review.decision))
+    || typeof value.review.proposalDigest !== 'string' || !Number.isFinite(value.review.at))) bad('invalid review');
   const checkpoint = value as unknown as FlowCheckpoint;
   if (proposalDigestOf(checkpoint.outputs, checkpoint.reviewNodes) !== checkpoint.proposalDigest) {
     bad('the proposal values do not match the proposal digest');

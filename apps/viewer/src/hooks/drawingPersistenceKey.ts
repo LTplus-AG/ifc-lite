@@ -58,6 +58,7 @@ export function unionById<T extends { id: string }>(older: T[], newer: T[]): T[]
   const ids = new Set(newer.map((item) => item.id));
   return [...older.filter((item) => !ids.has(item.id)), ...newer];
 }
+export type UnionById = typeof unionById;
 
 const loading = (model: FederatedModel) =>
   model.loadState === 'pending' || model.loadState === 'streaming-geometry' || model.loadState === 'hydrating-metadata';

@@ -102,9 +102,16 @@ function markChecked(store: LegacyStore, key: string, present: string[]): void {
   }
 }
 
-/** Returns whether the entry is gone. One that could not be removed must not be recorded as checked: the next load removes it. */
-function removeLocal(storageKey: string): boolean {
+/**
+ * Removes a legacy entry once its content is confirmed under the identity key,
+ * provided it still holds `moved`, the value that was read for the move. A tab
+ * on the previous viewer may have rewritten it since; that entry stays, and so
+ * does one that cannot be removed. Returns whether the entry is gone: one that
+ * is not must not be recorded as checked, so that the next load handles it.
+ */
+function removeLocal(storageKey: string, moved: string | null): boolean {
   try {
+    if (localStorage.getItem(storageKey) !== moved) return false;
     localStorage.removeItem(storageKey);
     return localStorage.getItem(storageKey) === null;
   } catch (err) {
@@ -131,6 +138,7 @@ const holdsAll = (stored: { id: string }[], moved: { id: string }[]) => {
 /** Returns `false` when the legacy markup could not be confirmed under `key` (the legacy entry is then untouched) or could not be removed afterwards. */
 function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveContext['unionById']): boolean {
   const defaults = getDefaultDrawing2DState().drawing2DDisplayOptions;
+  const raw = localStorage.getItem(keyFor(legacy));
   const old = loadDrawing2DEntry(legacy, defaults);
   if (!old) return true;
   const current = loadDrawing2DEntry(key, defaults);
@@ -149,38 +157,19 @@ function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveCont
   const written = loadDrawing2DEntry(key, defaults);
   if (!written || !MARKUP_LISTS.every((list) => holdsAll(written[list], old[list]))
     || JSON.stringify(written.sectionConfig) !== JSON.stringify(merged.sectionConfig)) return false;
-  return removeLocal(keyFor(legacy));
+  return removeLocal(keyFor(legacy), raw);
 }
 
 /** Returns `false` when the legacy sheet could not be confirmed under `key` (the legacy entry is then untouched) or could not be removed afterwards. */
 function moveLegacySheet(key: string, legacy: string): boolean {
+  const raw = localStorage.getItem(sheetStorageKey(legacy));
   const old = loadSheet(legacy);
   if (!old) return true;
   if (!loadSheet(key)) {
     saveSheet(key, old);
     if (!loadSheet(key)) return false;
   }
-  return removeLocal(sheetStorageKey(legacy));
-}
-
-/**
- * The restore that follows the move replaces the markup in the store with the
- * entry under `key`. The move can hold that restore until the load has ended,
- * and what was drawn meanwhile exists only in the store, so it is added to the
- * entry first (drawn items win on a shared `id`: they are the newest).
- */
-function storeMarkupDrawnMeanwhile(key: string, ctx: LegacyMoveContext): void {
-  const state = useViewerStore.getState();
-  if (state.activeModelId !== ctx.modelId || state.models.get(ctx.modelId)?.sourceFile !== ctx.file) return;
-  const entry = loadDrawing2DEntry(key, getDefaultDrawing2DState().drawing2DDisplayOptions);
-  if (!entry || !MARKUP_LISTS.some((list) => state[list].length > 0)) return;
-  saveDrawing2DEntry(key, {
-    ...entry,
-    measure2DResults: ctx.unionById(entry.measure2DResults, state.measure2DResults),
-    polygonArea2DResults: ctx.unionById(entry.polygonArea2DResults, state.polygonArea2DResults),
-    textAnnotations2D: ctx.unionById(entry.textAnnotations2D, state.textAnnotations2D),
-    cloudAnnotations2D: ctx.unionById(entry.cloudAnnotations2D, state.cloudAnnotations2D),
-  });
+  return removeLocal(sheetStorageKey(legacy), raw);
 }
 
 /**
@@ -193,13 +182,18 @@ export async function migrateLegacyLocalEntries(key: string, present: string[], 
   if (!legacy) return;
   const markup = moveLegacyMarkup(key, legacy, ctx.unionById);
   const sheet = moveLegacySheet(key, legacy);
-  storeMarkupDrawnMeanwhile(key, ctx);
   // Checked against what is left: an entry that reappears under a removed key is new.
   const removed = [keyFor(legacy), sheetStorageKey(legacy)].filter((moved) => localStorage.getItem(moved) === null);
   if (markup && sheet) markChecked('local', key, present.filter((other) => !removed.includes(other)));
 }
 
 // ── DXF underlays (IndexedDB) ────────────────────────────────────────
+
+/** The ids of a raw stored entry's underlays, in order, as one comparable string. */
+function underlayIds(entry: unknown): string {
+  const underlays = (entry as { dxfUnderlays?: unknown } | undefined)?.dxfUnderlays;
+  return JSON.stringify(Array.isArray(underlays) ? underlays.map((underlay) => (underlay as { id?: unknown } | null)?.id ?? null) : null);
+}
 
 /**
  * Moves the file's DXF underlays from its legacy key to `key`. Runs after
@@ -213,11 +207,13 @@ export async function migrateLegacyDxfEntry(key: string, present: string[], ctx:
   let left = present;
   const { dxf } = ctx;
   const hasLegacy = present.includes(legacy);
+  // The underlay ids as stored now, to tell at removal time whether a tab on
+  // the previous viewer rewrote the entry meanwhile. This read also rejects
+  // when the entry cannot be read, which leaves the identity unmarked for the
+  // next load: `load` below answers `null` for a failed read and for an
+  // unreadable value alike, and only the second may be recorded as checked.
+  const seen = hasLegacy ? underlayIds(await dxf.request('readonly', (store) => store.get(legacy))) : '';
   const old = hasLegacy ? await dxf.load(legacy) : null;
-  // `load` answers `null` for an unreadable value and for a failed read
-  // alike. Only the first may be recorded as checked: this read rejects on
-  // the second, which leaves the identity unmarked for the next load.
-  if (hasLegacy && !old) await dxf.request('readonly', (store) => store.get(legacy));
   if (old) {
     const moved = old.dxfUnderlays;
     if (stillCurrent()) {
@@ -235,7 +231,19 @@ export async function migrateLegacyDxfEntry(key: string, present: string[], ctx:
       now = await stored();
     }
     if (!holdsAll(now, moved)) return; // not confirmed: the legacy entry stays for the next load
-    await dxf.request('readwrite', (store) => store.delete(legacy));
+    // Read and delete in ONE transaction, so nothing can be added to the
+    // legacy entry between the comparison and the removal.
+    let removed = false;
+    await dxf.request('readwrite', (store) => {
+      const read = store.get(legacy);
+      read.addEventListener('success', () => {
+        if (underlayIds(read.result) !== seen) return;
+        store.delete(legacy);
+        removed = true;
+      });
+      return read;
+    });
+    if (!removed) return; // rewritten meanwhile: it stays for the next load
     left = present.filter((other) => other !== legacy);
   }
   markChecked('dxf', key, left);

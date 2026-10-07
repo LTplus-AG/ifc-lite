@@ -516,6 +516,42 @@ describe('dxfUnderlays saved under the legacy whole-file key (#7035)', () => {
     assert.deepStrictEqual((await rawGet(identity))?.dxfUnderlays.map((u) => u.id).sort(), ['identity-u', 'legacy-u']);
   });
 
+  it('a legacy entry rewritten by the previous viewer during the move is kept, and a later load moves the rest', async () => {
+    const { file, legacy, identity } = await legacyFixture(65, 'rewritten-dxf.ifc');
+    await rawPut(legacy, [sampleUnderlay('legacy-u')]);
+    const realPut = IDBObjectStore.prototype.put;
+    let rewritten = false;
+    IDBObjectStore.prototype.put = function put(this: IDBObjectStore, value: unknown, storeKey?: IDBValidKey) {
+      const request = realPut.call(this, value, storeKey);
+      // When the move stores the underlays under the identity key, a tab on
+      // the previous viewer adds one more underlay to the legacy entry.
+      if (storeKey === identity && !rewritten) {
+        rewritten = true;
+        realPut.call(this, { dxfUnderlays: [sampleUnderlay('legacy-u'), sampleUnderlay('added-meanwhile')], savedAt: Date.now() }, legacy);
+      }
+      return request;
+    };
+    try {
+      useViewerStore.setState({ models: new Map([['rewritten-first', stubModel('rewritten-first', file)]]) });
+      await mount();
+      useViewerStore.getState().setActiveModel('rewritten-first');
+      await until(async () => rewritten, 'the move to store the underlays');
+      await flushDeep();
+    } finally {
+      IDBObjectStore.prototype.put = realPut;
+    }
+    assert.deepStrictEqual((await rawGet(legacy))?.dxfUnderlays.map((u) => u.id), ['legacy-u', 'added-meanwhile'], 'the rewritten entry is not removed');
+
+    const again = fileWithBytes(65, 'rewritten-dxf.ifc');
+    await act(async () => {
+      useViewerStore.setState({ models: new Map([['rewritten-second', stubModel('rewritten-second', again)]]) });
+      useViewerStore.getState().setActiveModel('rewritten-second');
+    });
+    await until(async () => (await rawGet(legacy)) === undefined, 'the legacy entry to be moved on the later load');
+    await flushDeep();
+    assert.deepStrictEqual((await rawGet(identity))?.dxfUnderlays.map((u) => u.id).sort(), ['added-meanwhile', 'legacy-u']);
+  });
+
   it('a legacy entry whose read fails is not recorded as checked, and a later load moves it', async () => {
     const { file, legacy, identity } = await legacyFixture(63, 'read-failure-dxf.ifc');
     await rawPut(legacy, [sampleUnderlay('legacy-u')]);

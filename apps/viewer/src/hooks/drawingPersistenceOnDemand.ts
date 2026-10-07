@@ -16,7 +16,7 @@
  * eager bytes than the move saved.
  */
 
-export { migrateLegacyDxfUnderlays, resolveDrawingPersistenceKey } from './drawingPersistenceKey.js';
+export { migrateLegacyDxfUnderlays, resolveDrawingPersistenceKey, unionById } from './drawingPersistenceKey.js';
 export {
   loadDxfUnderlaysEntry,
   mergeDxfUnderlays,

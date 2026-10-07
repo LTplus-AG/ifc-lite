@@ -336,6 +336,35 @@ describe('markup saved under the legacy key is moved to the identity key (#7035)
     assert.equal(localStorage.getItem(keyFor(legacyKeyOf(bytes))), null);
   });
 
+  it('a legacy entry rewritten by the previous viewer during the move is kept, and the next load moves the rest', async () => {
+    const bytes = bytesOf(43);
+    saveDrawing2DEntry(legacyKeyOf(bytes), entryWith([measure('legacy-1')]));
+    const identityKey = keyFor(identityOf(bytes));
+    const legacyStorageKey = keyFor(legacyKeyOf(bytes));
+    const realSetItem = localStorage.setItem.bind(localStorage);
+    let rewritten = false;
+    const otherTab = mock.method(localStorage, 'setItem', (key: string, value: string) => {
+      realSetItem(key, value);
+      // Between the move's write and its removal of the legacy entry, a tab on
+      // the previous viewer saves one more item under the legacy key.
+      if (key === identityKey && !rewritten) {
+        rewritten = true;
+        realSetItem(legacyStorageKey, JSON.stringify({ ...entryWith([measure('legacy-1'), measure('added-meanwhile')]), savedAt: 2 }));
+      }
+    });
+    try {
+      await open(loadedModel('first', sourceFile(bytes), bytes));
+    } finally {
+      otherTab.mock.restore();
+    }
+    assert.ok(rewritten, 'setup: the rewrite happened during the move');
+    assert.deepEqual(storedMeasures(legacyKeyOf(bytes)), ['added-meanwhile', 'legacy-1'], 'the rewritten entry is not removed');
+
+    await open(loadedModel('second', sourceFile(bytes), bytes));
+    assert.deepEqual(liveMeasures(), ['added-meanwhile', 'legacy-1']);
+    assert.equal(localStorage.getItem(legacyStorageKey), null);
+  });
+
   it('an interrupted move (both entries present) recovers without loss, duplication or older-over-newer', async () => {
     const bytes = bytesOf(50);
     // The tab closed after the identity entry was written and before the

@@ -47,7 +47,7 @@ import {
   settleDxfUnderlayHash,
   waitForPendingDxfUnderlaySave,
 } from './dxfUnderlaySave.js';
-import type { DrawingKeyHost } from './drawingPersistenceKey.js';
+import type { DrawingKeyHost, UnionById } from './drawingPersistenceKey.js';
 
 export { hasPersistedMarkupEntryFor, onLocalStorageDecidedFor } from './drawingMarkupRestorePrecedence.js';
 export { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './drawingMarkupSave.js';
@@ -151,7 +151,12 @@ export function useDrawing2DPersistence(): void {
     suppressNextSaveFor(activeModelId);
     useViewerStore.setState(defaultMarkupPatch());
 
-    const applyHash = (hash: string | null, skipDxfRestore = false) => {
+    // `drawnMeanwhile` unites a stored list with the live one. The fields were
+    // cleared when this model became active, so what the live lists hold at
+    // restore time was drawn while the key was resolving (#7035: that can
+    // last until the load ends when a legacy entry is being moved). Only the
+    // asynchronous path passes it; the cached path restores at once.
+    const applyHash = (hash: string | null, skipDxfRestore = false, drawnMeanwhile: UnionById = (stored) => stored) => {
       if (!stillCurrent()) return;
       endRestore(activeModelId);
       if (!hash) return;
@@ -180,11 +185,12 @@ export function useDrawing2DPersistence(): void {
       if (!entry) return;
 
       setRestoredSectionConfig(activeModelId, entry.sectionConfig);
+      const live = useViewerStore.getState();
       useViewerStore.setState({
-        measure2DResults: entry.measure2DResults,
-        polygonArea2DResults: entry.polygonArea2DResults,
-        textAnnotations2D: entry.textAnnotations2D,
-        cloudAnnotations2D: entry.cloudAnnotations2D,
+        measure2DResults: drawnMeanwhile(entry.measure2DResults, live.measure2DResults),
+        polygonArea2DResults: drawnMeanwhile(entry.polygonArea2DResults, live.polygonArea2DResults),
+        textAnnotations2D: drawnMeanwhile(entry.textAnnotations2D, live.textAnnotations2D),
+        cloudAnnotations2D: drawnMeanwhile(entry.cloudAnnotations2D, live.cloudAnnotations2D),
         drawing2DDisplayOptions: entry.drawing2DDisplayOptions,
       });
     };
@@ -220,10 +226,11 @@ export function useDrawing2DPersistence(): void {
       return;
     }
 
-    drawingKey().then((key) => key.resolveDrawingPersistenceKey(activeModelId, sourceFile, keyHost))
-      .then((hash) => {
+    drawingKey()
+      .then(async (key) => {
+        const hash = await key.resolveDrawingPersistenceKey(activeModelId, sourceFile, keyHost);
         if (!cacheHash(hash)) { settleSheetHash(activeModelId, hash, sourceFile); return; }
-        applyHash(hash, settleHash(hash));
+        applyHash(hash, settleHash(hash), key.unionById);
         notifyDecided(activeModelId);
       })
       .catch((err) => {

@@ -969,7 +969,7 @@ ara3d/tested_sample_project.ifc	186	SweptSolid	0	192	0	0	0	-	0	2995683
 ara3d/tested_sample_project.ifc	294	SweptSolid	0	28	0	0	0	-	0	2022122
 buildingsmart/wall-with-opening-and-window.ifc	45	unknown	0	32	0	0	0	-	0	1500015
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	135719	Tessellation	0	334	0	0	0	-	0	18548173
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	135923	SweptSolid	160	826	0	0	110	28	160	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	135923	SweptSolid	27	1084	1	0	27	28	27	-
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	136462	Tessellation	0	76	0	0	0	-	0	1074993
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	136970	Tessellation	0	78	0	0	0	-	0	630934
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	137017	Tessellation	0	64	0	0	0	-	0	1497205
@@ -1056,7 +1056,7 @@ georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150455	Tessellation	0	78	0	0	0	-	0	6309
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150502	Tessellation	0	64	0	0	0	-	0	1497197
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150695	Tessellation	0	126	0	0	0	-	0	28660641
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150794	Tessellation	0	120	0	0	0	-	0	28660376
-georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150890	SweptSolid	17	381	0	0	17	0	17	-
+georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	150890	SweptSolid	0	388	0	0	0	-	0	158302783
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151287	Tessellation	0	84	0	0	0	-	0	191272
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151334	Tessellation	0	46	0	0	0	-	0	5998797
 georeferencer/MiniBIM-3.1-DO_01_VORM.ifc	151425	Tessellation	0	250	0	0	0	-	0	24865520

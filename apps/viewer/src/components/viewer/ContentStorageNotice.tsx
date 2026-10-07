@@ -54,7 +54,8 @@ export function ContentStorageNotice({ status, retry, restore }: {
   const groupReceiptsLoading = useClashGroupApplications(s => s.status.phase === 'loading');
   // Review decisions are exported too; an export while they load would carry an empty review.
   const reviewsLoading = useReviewWorkspaces(s => s.status.phase === 'loading');
-  const receiptsLoading = changeReceiptsLoading || groupReceiptsLoading || reviewsLoading;
+  const semanticReviewsLoading = useSemanticReviews(s => s.status.phase === 'loading');
+  const receiptsLoading = changeReceiptsLoading || groupReceiptsLoading || reviewsLoading || semanticReviewsLoading;
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const states = Object.values(status.items);

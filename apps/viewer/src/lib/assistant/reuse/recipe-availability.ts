@@ -24,7 +24,7 @@ import type { AssistantRecipe, RecipeStep } from './recipe';
 
 export type HostRequirement =
   | 'evidence' | 'models' | 'twoModels' | 'clashResult' | 'validationReport' | 'compareResult' | 'flowGraph'
-  | 'assistantModel' | 'bcfServer' | 'savedFlow';
+  | 'assistantModel' | 'bcfServer' | 'savedFlow' | 'flowClean';
 export const GRANT_REQUIREMENTS: ReadonlySet<HostRequirement> = new Set(['assistantModel', 'bcfServer', 'savedFlow']);
 
 export interface HostSnapshot {
@@ -37,6 +37,7 @@ export interface HostSnapshot {
   assistantModel: boolean;
   bcfServer: boolean;
   savedFlowIds: ReadonlySet<string>;
+  flowClean: boolean;
 }
 
 /** Reads what the host offers now. The BCF connection is read from its native storage. */
@@ -51,6 +52,7 @@ export function readHostSnapshot(state: ViewerState, bcfConfigured = loadBcfServ
     assistantModel: !!state.chatActiveModel && state.chatActiveModel !== UNCONFIGURED_MODEL_ID,
     bcfServer: bcfConfigured,
     savedFlowIds: new Set(state.savedFlows.map(flow => flow.doc.id)),
+    flowClean: !state.flowDirty,
   };
 }
 
@@ -65,7 +67,7 @@ export function stepRequirements(step: RecipeStep): HostRequirement[] {
       if (step.action === 'report.draft') return [];
       return ['models'];
     case 'publish': return ['bcfServer'];
-    case 'flow': return ['savedFlow'];
+    case 'flow': return ['savedFlow', 'flowClean'];
   }
 }
 

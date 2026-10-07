@@ -4,7 +4,7 @@
 
 import type { TranslationValue } from '../types';
 
-/** Viewer AI P20: task recipes, save-to-Flow and project preferences (`components/viewer/assistant/*`, Ideas). */
+/** Viewer AI P20: task recipes and project preferences (`components/viewer/assistant/*`, Ideas). */
 export const assistantReuseEn = {
   'assistantRecipes.need.evidence': 'Capture the native evidence for this source first',
   'assistantRecipes.title': 'Task recipes',
@@ -61,20 +61,7 @@ export const assistantReuseEn = {
   'assistantRecipes.curated.revision.description': 'Compare two model revisions, summarize what changed and draft a report.',
   'assistantRecipes.curated.load.title': 'Model load diagnosis',
   'assistantRecipes.curated.load.description': 'Explain load warnings and their likely causes.',
-  'assistantReuse.saveTitle': 'Save as a reusable workflow',
-  'assistantReuse.saveHint': 'Saves the analysis to run, your questions and the kinds of proposals you reviewed as a Flow graph and a recipe. Answers, model data and captured results are not saved. Assistant steps stay placeholders until Flow AI nodes are available.',
-  'assistantReuse.workflowName': 'Workflow name',
-  'assistantReuse.defaultName': '{source} workflow',
-  'assistantReuse.savedDescription': 'Saved from an assistant conversation about {source}.',
-  'assistantReuse.includeReport': 'Add a report document step',
-  'assistantReuse.save': 'Save workflow',
-  'assistantReuse.saved': { one: 'Saved to Flow and Task recipes. {count} assistant step is a placeholder and will not run yet.', other: 'Saved to Flow and Task recipes. {count} assistant steps are placeholders and will not run yet.' },
-  'assistantReuse.openGraph': 'Open graph',
-  'assistantReuse.saveRefusedFlowSource': 'This conversation is about a Flow graph; save the graph itself in Flow.',
-  'assistantReuse.saveRefusedNoPrompts': 'Ask at least one question before saving a workflow.',
-  'assistantReuse.saveRefusedCredential': 'Refused: the name or a question contains something that looks like a key, token or password.',
-  'assistantReuse.saveRefusedTooLarge': 'This workflow is too large to save.',
-  'assistantReuse.saveRefusedLibraryFull': 'The Flow library is full. Delete a graph and try again.',
+  'assistantReuse.openGraph': 'Open in Flow',
   'assistantReuse.prefsTitle': 'Project preferences',
   'assistantReuse.prefsScope': { one: 'For the {count} loaded model, recognised by its file content.', other: 'For this set of {count} loaded models, recognised by their file content.' },
   'assistantReuse.prefsNoScope': 'Load a model to save preferences for its project.',

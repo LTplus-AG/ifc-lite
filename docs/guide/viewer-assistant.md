@@ -220,3 +220,11 @@ Four typed answers appear as a native review card. Nothing runs, saves or change
 - **Requirements.** Each extracted requirement carries the exact span it came from. The card checks every span against the passages the assistant was shown: **Quote matches** only when the text at those offsets equals the quote character for character, **Quote differs** (it shows what the source says there) or **Not in captured text**. Ambiguous, conditional or unsupported statements stay in the list with a reason instead of being dropped. **Save** keeps the requirements and each span's verification result.
 
 The records in the Linked records panel stay independent of the IFC model: reviewing, saving a mapping or extracting requirements never rewrites them, and a record keeps its own source and revision even when it resolves to an element. See the [linked-records assistance notes](../architecture/viewer-ai-semantic.md) for the contract and its tests.
+
+## Task recipes and project preferences
+
+**Task recipes** walks through native checks, evidence capture, questions and proposal review. Starting a recipe shows its step card; **Do this step** opens the native tool or attaches evidence and prefills a question. Sending a request, running a check, applying changes and publishing BCF topics remain separate native actions. Availability names the models, results, saved graphs or connections a step needs.
+
+Saved recipes can be exported and imported as JSON together with the native Flow graphs they reference. Import assigns fresh graph identities so a missing graph never attaches to an unrelated existing graph with the same ID. Import reports unsaved library writes. The portable bundle carries prompts and parameters, not credentials or captured analysis results. Importing grants no network or publish authority; each run uses this host's native preflight and review.
+
+**Project preferences** stores terminology, severity wording, expected property sets, naming guidance and report audience against the exact set of loaded-model fingerprints. Another revision or federation uses a different scope. Preferences are advisory guidance in subsequent Assistant requests; they do not change native check verdicts. Credential-like text is refused.

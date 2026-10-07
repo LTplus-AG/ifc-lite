@@ -25,7 +25,7 @@ test('#6924 imported steps cannot carry evidence or declare away their host requ
 
 test('#6924 missing grants refuse a recipe while missing analysis state only disables its step', () => {
   const host: HostSnapshot = { modelCount: 0, readySources: new Set(), clashResult: false, validationReport: false,
-    compareResult: false, flowGraph: false, assistantModel: false, bcfServer: false, savedFlowIds: new Set() };
+    compareResult: false, flowGraph: false, assistantModel: false, bcfServer: false, savedFlowIds: new Set(), flowClean: true };
   assert.deepEqual(recipeRefusals(recipe, host), [
     { stepIndex: 1, requirement: 'assistantModel' }, { stepIndex: 2, requirement: 'bcfServer' },
   ]);

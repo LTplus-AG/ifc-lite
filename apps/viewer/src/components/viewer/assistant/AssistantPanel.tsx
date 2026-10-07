@@ -27,7 +27,6 @@ import { AssistantConversation } from './AssistantConversation';
 import { FreeQuotaNote } from './AssistantUsage';
 import { attachmentsForSend, ComposerAttachments, NO_ATTACHMENTS } from './ComposerAttachments';
 import { RecipeRunCard } from './RecipeRunCard';
-import { SaveToFlow } from './SaveToFlow';
 import { usePreferredModel } from './ProjectPreferences';
 import { takeDraftPrompt, useRecipeRun } from '@/lib/assistant/reuse/recipe-run';
 
@@ -145,7 +144,6 @@ export function AssistantPanel() {
       {evidence && isReportSource(evidence.source) && <Suspense fallback={null}><ReportDraftReview /></Suspense>}
       {evidence && !isFlowSource(evidence.source) && <Suspense fallback={null}><SceneActionReview /></Suspense>}
       {evidence && !isFlowSource(evidence.source) && <Suspense fallback={null}><ArtifactProposalReview onAsk={canAsk ? suggest : null} /></Suspense>}
-      <SaveToFlow />
       </>}
       <Suspense fallback={null}><SceneRestoreBar /></Suspense>
       <div ref={endRef} />

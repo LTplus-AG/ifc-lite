@@ -65,7 +65,9 @@ export function useRunStep(): (step: RecipeStep) => Promise<void> {
     const action = stepAction(step);
     if (action.kind === 'panel') { panels.openInHome(action.panel); return; }
     if (action.kind === 'flow') {
-      useViewerStore.getState().openFlow(action.flowId);
+      const state = useViewerStore.getState();
+      if (state.flowDirty || state.flowRunning || !state.savedFlows.some(flow => flow.doc.id === action.flowId)) return;
+      state.openFlow(action.flowId);
       panels.openInHome('flow');
       return;
     }

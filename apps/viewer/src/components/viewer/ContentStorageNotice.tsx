@@ -57,6 +57,8 @@ export function ContentStorageNotice({ status, retry, restore }: {
   // Review decisions are exported too; an export while they load would carry an empty review.
   const reviewsLoading = useReviewWorkspaces(s => s.status.phase === 'loading');
   const semanticReviewsLoading = useSemanticReviews(s => s.status.phase === 'loading');
+  const recipesLoading = useAssistantRecipes(s => s.status.phase === 'loading');
+  const preferencesLoading = useAssistantPreferences(s => s.status.phase === 'loading');
   const receiptsLoading = changeReceiptsLoading || groupReceiptsLoading || reviewsLoading || semanticReviewsLoading;
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -144,7 +146,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     <details>
       <summary className="cursor-pointer">{t('contentStorage.controls')}</summary>
       <div className="flex flex-wrap gap-1 py-1">
-        <Button size="sm" variant="outline" disabled={busy || librariesLoading || assistantLoading || clashGroupsLoading || bcfLoading || receiptsLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
+        <Button size="sm" variant="outline" disabled={busy || librariesLoading || assistantLoading || clashGroupsLoading || bcfLoading || receiptsLoading || recipesLoading || preferencesLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
         {problem && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           if (await confirmDialog({ description: t('contentStorage.restoreConfirm'), destructive: true })) await restore();
         })}>{t('contentStorage.restore')}</Button>}

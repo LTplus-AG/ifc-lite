@@ -88,14 +88,16 @@ export function parseRecipeBundle(text: string): { ok: true; bundle: RecipeBundl
  */
 export async function importRecipeBundle(bundle: RecipeBundle, importFlow: (doc: FlowDocument) => string | null): Promise<{ recipes: AssistantRecipe[]; saved: boolean }> {
   const ids = new Map<string, string>([...flowIdsOf(bundle.recipes)].map(id => [id, crypto.randomUUID()]));
+  let flowsSaved = true;
   for (const doc of bundle.flows) {
     const id = importFlow(doc);
     if (id) ids.set(doc.id, id);
+    else flowsSaved = false;
   }
   const imported = bundle.recipes.map((recipe): AssistantRecipe => ({
     ...structuredClone(recipe), id: crypto.randomUUID(), origin: 'imported',
     steps: recipe.steps.map(step => step.kind === 'flow' ? { kind: 'flow', flowId: ids.get(step.flowId)! } : step),
   }));
   const saved = await Promise.all(imported.map(recipe => assistantRecipeLibrary.put(recipe.id, recipe)));
-  return { recipes: imported, saved: saved.every(Boolean) };
+  return { recipes: imported, saved: flowsSaved && saved.every(Boolean) };
 }

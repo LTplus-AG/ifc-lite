@@ -36,7 +36,8 @@ export function ProjectPreferences() {
     setModel(preferences?.model ?? ''); setLanguage(preferences?.language ?? '');
     setOutputTokens(preferences?.outputTokens?.toString() ?? ''); setMaxRequests(preferences?.maxRequests?.toString() ?? '');
     setHouseRules(preferences?.houseRules ?? '');
-  }, [preferences]);
+    setMessage(null);
+  }, [scope?.id, preferences]);
   const names = useMemo(() => {
     try { return new Intl.DisplayNames([locale], { type: 'language' }); }
     catch (error) { console.debug('[Assistant] Language names unavailable', error); return null; }

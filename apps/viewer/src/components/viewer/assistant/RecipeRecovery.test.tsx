@@ -1,0 +1,109 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import '@/test/setup-dom.js';
+import '@/test/content-backup-fixture.js';
+import test, { afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { act } from 'react';
+import { FLOW_VERSION } from '@ifc-lite/flow';
+import { cleanup, click, render, type, waitFor } from '@/test/render';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { useViewerStore } from '@/store';
+import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
+import { AssistantRecipeIdeas } from '@/components/extensions/AssistantRecipeIdeas';
+import { ContentStorageNotice } from '../ContentStorageNotice';
+import { AssistantPanel } from './AssistantPanel';
+import { ProjectPreferences } from './ProjectPreferences';
+import { initialContentStatus } from '@/lib/storage/content-library';
+import { useAssistantRecipes } from '@/lib/assistant/reuse/recipe-library';
+import { useAssistantPreferences, projectScope, preferencesFor } from '@/lib/assistant/reuse/preferences';
+import { useRecipeRun, stopRecipe } from '@/lib/assistant/reuse/recipe-run';
+import { useAssistantDraft, setAssistantDraft } from '@/lib/assistant/composer-draft';
+import { useAssistant } from '@/lib/assistant/conversation';
+
+const initial = useViewerStore.getState();
+const assistantInitial = useAssistant.getState();
+afterEach(() => {
+  cleanup(); stopRecipe(); setAssistantDraft('');
+  useViewerStore.setState(initial, true); useAssistant.setState(assistantInitial, true);
+});
+const button = (text: string) => {
+  const found = [...document.querySelectorAll<HTMLButtonElement>('button')].find(element => element.textContent === text);
+  assert.ok(found, `button ${text}`); return found;
+};
+
+test('#7055 Ideas cannot discard a dirty or running graph through its saved-workflow shortcut', () => {
+  const saved = { flowVersion: FLOW_VERSION, id: 'saved', name: 'Saved', nodes: [], edges: [], inputs: [], outputs: [], capabilities: [] };
+  const edited = { ...saved, id: 'edited', name: 'Unsaved edits' };
+  useViewerStore.setState({ flowDoc: edited, activeFlowId: edited.id, flowDirty: true, savedFlows: [{ doc: saved, updatedAt: 1 }] });
+  useAssistantRecipes.setState({ entries: [{ version: 1, id: 'recipe', origin: 'imported', revision: 1,
+    title: 'Saved workflow', description: '', createdAt: '2026-10-07T00:00:00Z', steps: [{ kind: 'flow', flowId: saved.id }] }] });
+  render(<AssistantRecipeIdeas />);
+  assert.equal(button('Open in Flow').disabled, true);
+  click(button('Open in Flow'));
+  assert.equal(useViewerStore.getState().flowDoc, edited);
+  act(() => useViewerStore.setState({ flowDirty: false, flowRunning: true }));
+  assert.equal(button('Open in Flow').disabled, true);
+  act(() => useViewerStore.setState({ flowRunning: false }));
+  assert.equal(button('Open in Flow').disabled, false);
+  click(button('Open in Flow'));
+  assert.equal(useViewerStore.getState().flowDoc?.id, saved.id);
+});
+
+test('#7055 backup waits for both new libraries instead of exporting an apparently empty library', () => {
+  useAssistantRecipes.setState({ status: { ...initialContentStatus(), phase: 'loading' } });
+  useAssistantPreferences.setState({ status: { ...initialContentStatus(), phase: 'ready' } });
+  render(<ContentStorageNotice status={{ ...initialContentStatus(), phase: 'ready' }} retry={async () => true} restore={async () => true} />);
+  const backup = [...document.querySelectorAll<HTMLButtonElement>('button')].find(element => element.textContent === 'Download library backup');
+  assert.ok(backup); assert.equal(backup.disabled, true);
+  act(() => {
+    useAssistantRecipes.setState({ status: { ...initialContentStatus(), phase: 'ready' } });
+    useAssistantPreferences.setState({ status: { ...initialContentStatus(), phase: 'loading' } });
+  });
+  assert.equal(backup.disabled, true);
+  act(() => useAssistantPreferences.setState({ status: { ...initialContentStatus(), phase: 'ready' } }));
+  assert.equal(backup.disabled, false);
+});
+
+test('#7055 changing between unsaved project scopes clears edits before a native preference save', async () => {
+  const first = { ...fixtureModel('first'), sourceFingerprint: 'first-source' };
+  const second = { ...fixtureModel('second'), sourceFingerprint: 'second-source' };
+  useViewerStore.setState(fixtureModels(first));
+  render(<ProjectPreferences />);
+  const field = document.querySelector<HTMLTextAreaElement>('textarea'); assert.ok(field);
+  type(field, 'Terminology for the first project only');
+  assert.equal(field.value, 'Terminology for the first project only');
+  act(() => useViewerStore.setState(fixtureModels(second)));
+  assert.equal(field.value, '');
+  click(button('Save preferences'));
+  const scope = projectScope([second]); assert.ok(scope);
+  await waitFor(() => preferencesFor(scope) !== null, 'second scope saved natively');
+  assert.equal(preferencesFor(scope)?.houseRules, undefined);
+  assert.equal(preferencesFor(projectScope([first])), null);
+});
+
+test('#7055 a recipe prompt asks before replacing an unsent question and cancellation preserves it', async () => {
+  setAssistantDraft('My unsent question');
+  useRecipeRun.setState({ draftPrompt: 'Recipe prompt' });
+  render(<><ConfirmDialogHost /><AssistantPanel /></>);
+  await waitFor(() => document.querySelector('[role="alertdialog"]') !== null, 'replace composer confirmation');
+  assert.equal(useAssistantDraft.getState().text, 'My unsent question');
+  click(button('Cancel'));
+  assert.equal(useAssistantDraft.getState().text, 'My unsent question');
+  act(() => useRecipeRun.setState({ draftPrompt: 'Approved recipe prompt' }));
+  await waitFor(() => document.querySelector('[role="alertdialog"]') !== null, 'second confirmation');
+  click(button('Confirm'));
+  await waitFor(() => useAssistantDraft.getState().text === 'Approved recipe prompt', 'approved composer replacement');
+});
+
+test('#7055 confirming an earlier recipe prompt cannot overwrite a newer composer edit', async () => {
+  setAssistantDraft('Original unsent question');
+  useRecipeRun.setState({ draftPrompt: 'Earlier recipe prompt' });
+  render(<><ConfirmDialogHost /><AssistantPanel /></>);
+  await waitFor(() => document.querySelector('[role="alertdialog"]') !== null, 'composer confirmation');
+  act(() => setAssistantDraft('Newer composer edit'));
+  click(button('Confirm'));
+  await act(async () => { await Promise.resolve(); });
+  assert.equal(useAssistantDraft.getState().text, 'Newer composer edit');
+});

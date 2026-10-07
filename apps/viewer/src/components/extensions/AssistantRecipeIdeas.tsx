@@ -54,9 +54,13 @@ export function AssistantRecipeIdeas() {
           <Button size="sm" aria-label={t('assistantRecipes.startLabel', { title: recipe.title })} onClick={() => open(recipe)}>
             {t('assistantRecipes.start')}
           </Button>
-          {graph?.kind === 'flow' && <Button size="sm" variant="outline" disabled={!graphSaved}
-            title={graphSaved ? undefined : t(REQUIREMENT_KEY.savedFlow)}
-            onClick={() => { useViewerStore.getState().openFlow(graph.flowId); panels.openInHome('flow'); }}>
+          {graph?.kind === 'flow' && <Button size="sm" variant="outline" disabled={!graphSaved || !host.flowClean}
+            title={!graphSaved ? t(REQUIREMENT_KEY.savedFlow) : !host.flowClean ? t(REQUIREMENT_KEY.flowClean) : undefined}
+            onClick={() => {
+              const state = useViewerStore.getState();
+              if (state.flowDirty || state.flowRunning) { setRefusal(t(REQUIREMENT_KEY.flowClean)); return; }
+              state.openFlow(graph.flowId); panels.openInHome('flow');
+            }}>
             <GitBranch className="mr-1 h-3.5 w-3.5" />{t('assistantReuse.openGraph')}
           </Button>}
         </div>

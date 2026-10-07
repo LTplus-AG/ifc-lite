@@ -18,7 +18,7 @@ test('#6924 an import refusal cannot bind a recipe to an unrelated same-id desti
   const exported = exportRecipeBundle(bundle.recipes, bundle.flows); assert.ok(exported.ok);
   const parsed = parseRecipeBundle(exported.json); assert.ok(parsed.ok);
   const result = await importRecipeBundle(parsed.bundle, () => null);
-  assert.equal(result.saved, true);
+  assert.equal(result.saved, false);
   const imported = result.recipes[0];
   assert.notEqual(imported.id, recipe.id);
   assert.equal(imported.steps[0].kind, 'flow');

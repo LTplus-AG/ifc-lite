@@ -64,13 +64,20 @@ export function AssistantPanel() {
   const [recipesOpen, setRecipesOpen] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
   usePreferredModel();
-  // A recipe step may place its prompt in the composer; the user still sends it.
+  const { confirmDialog } = useDialogs();
+  // Recipe prompts are taken once, but an unsent question requires approval.
   const recipeDraft = useRecipeRun(s => s.draftPrompt);
   useEffect(() => {
     const draft = recipeDraft === null ? null : takeDraftPrompt();
-    if (draft !== null) { setAssistantDraft(draft); promptRef.current?.focus(); }
-  }, [recipeDraft]);
-  const { confirmDialog } = useDialogs();
+    if (draft === null) return;
+    const previous = useAssistantDraft.getState().text;
+    const apply = () => {
+      if (useAssistantDraft.getState().text !== previous) return;
+      setAssistantDraft(draft); promptRef.current?.focus();
+    };
+    if (!previous.trim() || previous === draft) { apply(); return; }
+    void confirmDialog({ description: t('assistantRecipes.replaceDraft') }).then(approved => { if (approved) apply(); });
+  }, [recipeDraft, confirmDialog, t]);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);

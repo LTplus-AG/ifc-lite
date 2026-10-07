@@ -52,7 +52,7 @@ export function readHostSnapshot(state: ViewerState, bcfConfigured = loadBcfServ
     assistantModel: !!state.chatActiveModel && state.chatActiveModel !== UNCONFIGURED_MODEL_ID,
     bcfServer: bcfConfigured,
     savedFlowIds: new Set(state.savedFlows.map(flow => flow.doc.id)),
-    flowClean: !state.flowDirty,
+    flowClean: !state.flowDirty && !state.flowRunning,
   };
 }
 

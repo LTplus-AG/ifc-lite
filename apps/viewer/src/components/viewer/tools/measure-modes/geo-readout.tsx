@@ -23,6 +23,7 @@ import {
 import { useTranslation } from '@/i18n/useTranslation';
 import { createCesiumBridge } from '@/lib/geo/cesium-bridge';
 import { isGeographicProj4 } from '@/lib/geo/proj4-utils';
+import { useViewerStore } from '@/store';
 // Side-effect import: merges the measure catalogue into the runtime `en`
 // object so `t('measure.*')` resolves under the real 'en' locale (see that
 // module's own doc comment).
@@ -76,18 +77,22 @@ export function useProjectedLatLon(
   anchor: AnchorGeoreference | null,
 ): LatLon | null {
   const [latLon, setLatLon] = useState<LatLon | null>(null);
+  const heightsAreEllipsoidal = useViewerStore((s) => s.cesiumHeightsAreEllipsoidal);
   const coordinateInfo = anchor?.eff.coordinateInfo ?? anchor?.coordinateInfo;
   // A frame depends on every conversion coefficient and the actual geometry
   // center, origin shift and RTC. Point motion reuses this promise; changing
   // any frame input constructs a new bridge, including height-only edits.
   const frameKey = anchor ? JSON.stringify([
     anchor.eff.mapConversion, anchor.eff.projectedCRS, coordinateInfo, anchor.eff.lengthUnitScale,
+    // Projected XY never depends on height mode. Geographic XY is derived
+    // from the physical ECEF model matrix, including its ellipsoidal altitude.
+    anchor.geographic === false ? undefined : heightsAreEllipsoidal,
   ]) : '';
   const frame = useMemo(() => anchor ? resolveProjection(anchor.eff.projectedCRS).then(async (definition) => {
     if (!definition) return null;
     if (!isGeographicProj4(definition)) return { geographic: false as const, bridge: null };
     const bridge = await createCesiumBridge(anchor.eff.mapConversion, anchor.eff.projectedCRS,
-      coordinateInfo, anchor.eff.lengthUnitScale);
+      coordinateInfo, anchor.eff.lengthUnitScale, undefined, heightsAreEllipsoidal);
     return { geographic: true as const, bridge };
   }).catch((error: unknown) => {
     console.warn('[measure] geographic frame resolution failed', error);

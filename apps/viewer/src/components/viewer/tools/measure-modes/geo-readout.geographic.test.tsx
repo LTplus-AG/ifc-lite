@@ -125,3 +125,44 @@ it('projected measurements retain metre E/N and real UTM latitude/longitude (#70
     assert.match(host.querySelector('[data-testid="enh"]')?.textContent ?? '', /500000\.000/);
   } finally { act(() => root.unmount()); host.remove(); }
 });
+
+it('geographic readout follows the model when authored heights switch to ellipsoidal (#7060)', async () => {
+  const crs: ProjectedCRS = { id: 3, name: 'EPSG:4326', mapUnitScale: 1 };
+  const mapConversion: MapConversion = { ...conversion, eastings: 5, northings: 52,
+    orthogonalHeight: 100, xAxisAbscissa: 1, xAxisOrdinate: 0,
+    factorX: 1, factorY: 1, factorZ: 1 };
+  const zero = { x: 0, y: 0, z: 0 };
+  const bounds = { min: { x: -30000, y: -10, z: -30000 }, max: { x: 30000, y: 10, z: 30000 } };
+  const coordinateInfo: CoordinateInfo = { originShift: zero, originalBounds: bounds,
+    shiftedBounds: bounds, hasLargeCoordinates: false };
+  seed(crs, mapConversion, coordinateInfo);
+  useViewerStore.setState({ cesiumHeightsAreEllipsoidal: false });
+  const point = { x: 10000, y: 0, z: -20000 };
+  const Cesium = await loadCesium();
+  const host = document.createElement('div'); document.body.appendChild(host);
+  const root = createRoot(host);
+  let previous: { lon: number; lat: number } | undefined;
+  try {
+    for (const ellipsoidal of [false, true, false]) {
+      const bridge = await createCesiumBridge(mapConversion, crs, coordinateInfo, 0.001, undefined, ellipsoidal);
+      assert.ok(bridge);
+      const rendered = Cesium.Matrix4.multiplyByPoint(buildCesiumModelMatrix(Cesium, bridge, coordinateInfo),
+        new Cesium.Cartesian3(point.x, point.y, point.z), new Cesium.Cartesian3());
+      const expected = Cesium.Cartographic.fromCartesian(rendered);
+      act(() => {
+        useViewerStore.setState({ cesiumHeightsAreEllipsoidal: ellipsoidal });
+        root.render(<Probe point={point} />);
+      });
+      await waitFor(() => {
+        const text = host.querySelector('[data-testid="lat-lon"]')?.textContent;
+        if (!text) return false;
+        const actual: { lon: number; lat: number } = JSON.parse(text);
+        return Math.abs(actual.lon - Cesium.Math.toDegrees(expected.longitude)) < 1e-10
+          && Math.abs(actual.lat - Cesium.Math.toDegrees(expected.latitude)) < 1e-10;
+      }, 'height-mode changes must rebuild the readout in the actual model frame');
+      const current = { lon: Cesium.Math.toDegrees(expected.longitude), lat: Cesium.Math.toDegrees(expected.latitude) };
+      if (previous) assert.notDeepEqual(current, previous, 'the control must distinguish the two physical altitude frames');
+      previous = current;
+    }
+  } finally { act(() => root.unmount()); host.remove(); }
+});

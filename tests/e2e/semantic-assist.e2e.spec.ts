@@ -113,6 +113,8 @@ test('linked-records assistant: spans, grants, revision pins and reviewed apply 
     const key = Object.keys(ANSWERS).find(candidate => prompt.includes(candidate)) ?? 'REQUIREMENTS';
     await route.fulfill({ contentType: 'text/event-stream', body: `data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify(ANSWERS[key]) } }] })}\n\ndata: [DONE]\n\n` });
   });
+  // #7000: recorded provider answers also run in builds without a configured default model.
+  await page.evaluate(key => (globalThis as unknown as Record<string, { setState(next: object): void }>)[key].setState({ chatActiveModel: 'openai/gpt-free' }), STORE);
   await panel.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
   const assistant = page.getByRole('region', { name: 'Assistant', exact: true });
   const ask = async (prompt: string) => {
@@ -193,6 +195,8 @@ test('linked-records assistant: projections apply through the native service as 
   await page.route('**/api/chat', async route => route.fulfill({ contentType: 'text/event-stream',
     body: `data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify(ANSWERS.PROJECTION) } }] })}\n\ndata: [DONE]\n\n` }));
   await openPanel(page, 'semantic');
+  // #7000: recorded provider answers also run in builds without a configured default model.
+  await page.evaluate(key => (globalThis as unknown as Record<string, { setState(next: object): void }>)[key].setState({ chatActiveModel: 'openai/gpt-free' }), STORE);
   await panel.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
   const assistant = page.getByRole('region', { name: 'Assistant', exact: true });
   await assistant.getByLabel('Ask about these results').fill('Which fields could be projected?');

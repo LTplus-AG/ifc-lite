@@ -141,3 +141,20 @@ it('#7040 unloading the active source refuses approval before marking the propos
     assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /model|source/i);
   } finally { useViewerStore.setState(initial, true); }
 });
+
+
+it('#7040 a changed graph stays prepared and rejectable when approval is refused', async () => {
+  const graph = doc('card-changed-graph');
+  const checkpoint = await saved(graph);
+  const changed = { ...graph, nodes: graph.nodes.map(node => node.id === 'roles' ? { ...node, params: { labels: ['Changed'] } } : node) };
+  let resumed = false;
+  const ui = render(<FlowReviewCheckpoint doc={changed} onResume={async () => { resumed = true; }} />);
+  await settle();
+  click([...ui.querySelectorAll('button')].find(button => button.textContent === 'Approve and resume')!);
+  await settle();
+  assert.equal(resumed, false);
+  assert.equal((await browserCheckpointStore.read(checkpoint.id))?.checkpoint.state, 'prepared');
+  assert.equal(useFlowReview.getState().problem?.kind, 'refused');
+  assert.ok([...ui.querySelectorAll('button')].some(button => button.textContent === 'Reject'));
+  assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /graph|inputs/i);
+});

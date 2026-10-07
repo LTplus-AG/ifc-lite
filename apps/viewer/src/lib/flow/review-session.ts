@@ -51,6 +51,8 @@ export interface FlowReviewState {
    * some is refused as changed rather than resumed with different inputs.
    */
   values: Record<string, unknown>;
+  /** Prepared execution inputs, retained with this tab's paused run. */
+  executionInputs?: Readonly<Record<string, unknown>>;
   busy: boolean;
   problem: ReviewProblem | null;
 }
@@ -85,7 +87,7 @@ export async function pauseForReview(input: {
     const { values, ...rest } = input;
     const checkpoint = createCheckpoint({ ...rest, registry: flowRegistry(), sourceDigest: viewerSourceDigest() });
     if (!(await browserCheckpointStore.write(checkpoint, null))) throw new Error('a checkpoint with this id already exists');
-    useFlowReview.setState({ checkpoint, values, problem: null });
+    useFlowReview.setState({ checkpoint, values, executionInputs: structuredClone(input.inputs), problem: null });
   } catch (error) {
     useFlowReview.setState({ checkpoint: null, problem: problemOf(error) });
   }
@@ -99,7 +101,8 @@ export async function loadGraphReview(graphId: string): Promise<void> {
   }
   const latest = (await checkpointsOfGraph(graphId))[0] ?? null;
   const current = useFlowReview.getState();
-  useFlowReview.setState({ checkpoint: latest, values: current.checkpoint?.id === latest?.id ? current.values : {}, problem: null });
+  const same = current.checkpoint?.id === latest?.id;
+  useFlowReview.setState({ checkpoint: latest, values: same ? current.values : {}, executionInputs: same ? current.executionInputs : {}, problem: null });
 }
 
 async function transition(change: (checkpoint: FlowCheckpoint) => FlowCheckpoint): Promise<FlowCheckpoint | null> {
@@ -117,8 +120,14 @@ async function transition(change: (checkpoint: FlowCheckpoint) => FlowCheckpoint
 }
 
 /** Approve the proposal the reviewer saw, named by its digest. */
-export function approveReview(shownDigest: string): Promise<FlowCheckpoint | null> {
-  return transition((c) => approveCheckpoint(c, shownDigest));
+export function approveReview(shownDigest: string, doc: FlowDocument): Promise<FlowCheckpoint | null> {
+  return transition((c) => {
+    if (c.graphDigest !== graphDigest(doc, useFlowReview.getState().executionInputs ?? {}, flowRegistry())) {
+      throw new CheckpointError('graph-changed', 'The graph or Player inputs changed. Run the graph again.');
+    }
+    if (c.sourceDigest !== viewerSourceDigest()) throw new CheckpointError('sources-changed', 'The loaded sources changed. Run the graph again.');
+    return approveCheckpoint(c, shownDigest);
+  });
 }
 
 export function rejectReview(): Promise<FlowCheckpoint | null> {

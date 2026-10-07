@@ -100,9 +100,9 @@ test('#6923 the AI example pauses, writes nothing until approved, then resumes f
   const proposal = (stored!.checkpoint.outputs.roles.table as { value: Table }).value;
   assert.equal(proposal.rows.length, 4);
 
-  assert.equal(await approveReview('not-what-was-shown'), null);
+  assert.equal(await approveReview('not-what-was-shown', doc), null);
   assert.deepEqual(useFlowReview.getState().problem, { kind: 'refused', code: 'digest-mismatch', message: useFlowReview.getState().problem!.message });
-  const approved = await approveReview(pending.proposalDigest);
+  const approved = await approveReview(pending.proposalDigest, doc);
   assert.equal(approved?.state, 'reviewed');
   const claimed = await claimReview(doc, {});
   assert.equal(claimed?.state, 'applying');
@@ -127,7 +127,7 @@ test('#6923 an edit after review refuses the resume, and a rejected proposal end
   useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini' });
   const doc = example();
   await pausedRun(model, doc);
-  await approveReview(useFlowReview.getState().checkpoint!.proposalDigest);
+  await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
   // A later edit (any pending mutation) changes the model state the proposal was made for.
   useViewerStore.setState({ undoStacks: new Map([['arch', [{ id: 'later-edit' } as never]]]) });
   assert.equal(await claimReview(doc, {}), null);
@@ -150,7 +150,7 @@ test('#6923 the same file reloaded under a new model id is the same source; anot
   useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini' });
   const doc = example();
   await pausedRun(model, doc);
-  await approveReview(useFlowReview.getState().checkpoint!.proposalDigest);
+  await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
   const loaded = useViewerStore.getState().models.get('arch')!;
   useViewerStore.setState({ models: new Map([['arch-other', { ...loaded, id: 'arch-other', sourceContentHash: 'another-file' }]]) });
   useViewerStore.getState().setActiveModel('arch-other');
@@ -165,7 +165,7 @@ test('#6923 a tab lost mid-resume leaves its checkpoint partially committed afte
   useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini' });
   const doc = example();
   await pausedRun(model, doc);
-  const reviewed = (await approveReview(useFlowReview.getState().checkpoint!.proposalDigest))!;
+  const reviewed = (await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc))!;
   // Another tab claimed it an hour ago and vanished.
   const stored = await browserCheckpointStore.read(reviewed.id);
   const lost = claimCheckpoint(reviewed, { owner: 'tab:gone', graphDigest: graphDigest(doc, {}, flowRegistry()), sourceDigest: reviewed.sourceDigest, leaseMs: 1, now: Date.now() - 3_600_000 });
@@ -195,7 +195,7 @@ test('#7040 switching the active source among already loaded models invalidates 
   ]) });
   const doc = example();
   await pausedRun(model, doc);
-  await approveReview(useFlowReview.getState().checkpoint!.proposalDigest);
+  await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
   useViewerStore.getState().setActiveModel('second');
   assert.equal(await claimReview(doc, {}), null);
   const problem = useFlowReview.getState().problem;
@@ -209,7 +209,7 @@ test('#7040 switching the Assistant model after review refuses the continuing AI
   useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini' });
   const doc = example();
   await pausedRun(model, doc);
-  await approveReview(useFlowReview.getState().checkpoint!.proposalDigest);
+  await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
   useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o' });
   assert.equal(await claimReview(doc, {}), null);
   const problem = useFlowReview.getState().problem;
@@ -227,7 +227,7 @@ test('#7040 switching between two loaded instances of identical IFC bytes refuse
   ]) });
   const doc = example();
   await pausedRun(model, doc);
-  await approveReview(useFlowReview.getState().checkpoint!.proposalDigest);
+  await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
   useViewerStore.getState().setActiveModel('duplicate');
   assert.equal(await claimReview(doc, {}), null);
   const problem = useFlowReview.getState().problem;

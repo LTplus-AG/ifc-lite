@@ -17,7 +17,7 @@ import {
 } from '@ifc-lite/ai';
 import type { StreamRoute } from './byok-guard.js';
 import { modelCapabilities } from './model-capabilities.js';
-import { recordReceipt } from './request-receipts.js';
+import { recordReceipt, recordRequestStart } from './request-receipts.js';
 import { streamChat, type StreamMessage, type StreamOptions } from './stream-client.js';
 import { streamAnthropicChat, streamOpenAiChat } from './stream-direct.js';
 
@@ -65,5 +65,5 @@ export function runModelRequest(request: ModelRequest): Promise<RequestOutcome> 
     signal: request.signal,
     timeoutMs: request.timeoutMs,
     onChunk: request.onChunk,
-  }, { onReceipt: recordReceipt });
+  }, { onStart: recordRequestStart, onReceipt: recordReceipt });
 }

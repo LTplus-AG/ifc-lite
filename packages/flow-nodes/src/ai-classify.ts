@@ -113,7 +113,7 @@ export const aiClassifyNode: FlowNodeDef = {
         const r = read.get(keys[i]);
         label[i] = r?.label ?? null;
         evidence[i] = r?.evidence ?? [];
-        outcome[i] = r?.label ? 'classified' : 'unknown';
+        outcome[i] = r === undefined ? 'failed' : r.label ? 'classified' : 'unknown';
       }
     }
     if (keys.length > maxRows) ctx.log('warn', `${keys.length - maxRows} row(s) beyond maxRows ${maxRows} were not sent`);

@@ -242,6 +242,8 @@ AI node, lane and batch draws from it, so list lacing cannot multiply the
 spend, and a budget stop keeps a partial result whose coverage counts the
 rows that were not sent. Unknown row keys, labels outside the allowed set,
 missing citations and quotes absent from the passage are dropped or marked.
+Rows omitted from a classification reply count as `failed`; an explicit
+`unknown` answer remains distinct in the per-row outcome and coverage counts.
 Hosts save the original root budget in `createCheckpoint({ ...input, budget })`.
 CLI resume refuses a missing or malformed budget receipt before claiming a
 checkpoint when downstream AI nodes remain; it never grants a fresh allowance.

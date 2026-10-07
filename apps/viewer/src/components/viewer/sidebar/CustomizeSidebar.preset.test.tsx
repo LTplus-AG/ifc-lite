@@ -7,9 +7,26 @@ import assert from 'node:assert/strict';
 import { cleanup, click, render, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { ActivityBar } from './ActivityBar';
+import { openAssistant, useAssistantPlacement } from '@/lib/assistant/placement';
+import { applyLayoutPreset, restoreLayoutBeforePreset, useLayoutPreset } from '@/store/layoutPreset';
 
 const initial = useViewerStore.getState();
-afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
+const placement = useAssistantPlacement.getState();
+afterEach(() => { cleanup(); useViewerStore.setState(initial, true); useAssistantPlacement.setState(placement); useLayoutPreset.setState({ record: null }); });
+
+it('#6926 Coordinator restore retains the panel displaced by a split Assistant', () => {
+  useViewerStore.setState({ sidebarActivePanel: 'properties', sidebarSecondaryPanel: 'bcf', isMobile: false, floatingPanels: [], poppedOutIds: [] });
+  useAssistantPlacement.setState({ placement: 'split', displacedSecondary: null });
+  openAssistant('properties');
+  assert.equal(useViewerStore.getState().sidebarSecondaryPanel, 'assistant');
+  assert.equal(useAssistantPlacement.getState().displacedSecondary, 'bcf');
+  applyLayoutPreset('coordinator');
+  assert.equal(useViewerStore.getState().sidebarSecondaryPanel, 'bcf');
+  assert.equal(restoreLayoutBeforePreset(), true);
+  assert.equal(useViewerStore.getState().sidebarSecondaryPanel, 'assistant');
+  useViewerStore.getState().setSidebarSecondaryPanel(null);
+  assert.equal(useViewerStore.getState().sidebarSecondaryPanel, 'bcf', 'leaving the restored Assistant returns its original displaced panel');
+});
 
 it('#6926 Customize previews, applies and restores a coordinator layout through its existing controls', async () => {
   useViewerStore.setState({ sidebarActivePanel: 'properties', sidebarSecondaryPanel: null,

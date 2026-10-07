@@ -44,8 +44,9 @@ A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it
 
 The U03 preset controls initially exceeded the eager bundle allowance when
 combined with the U02 activity tray, although each branch fit separately.
-Loading the sidebar customizer only when opened brought the combined bundle
-inside the approved allowance without changing its ceiling or tolerance.
+Loading the sidebar customizer only when opened reduced eager startup code,
+but the current combined bundle still exceeds the approved allowance.
+Its ceiling and tolerance remain unchanged pending a measured human decision.
 The real activity-bar regression opens the customizer, previews and applies
 the coordinator preset, then restores the original layout and keyboard focus.
 Reset also retires the saved preset through a small startup gateway instead

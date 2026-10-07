@@ -243,7 +243,7 @@ mid-resume; a partially committed checkpoint can never be resumed again.
 compare-and-swap store (`updateCheckpoint`), so two tabs or processes cannot
 consume the same approval. `resumeOutputs` refuses prepared, rejected, completed,
 partially committed and expired checkpoints; proposal inspection uses
-`checkpointProposal` and grants no permission to resume. A value that is not plain JSON (a viewer-only
+`checkpointProposal` and grants no permission to resume. The scheduler accepts only the unchanged, single-use map returned by `resumeOutputs` for an approved checkpoint with a live claim; raw paused outputs, edited maps and reused maps are refused before any node executes. A value that is not plain JSON (a viewer-only
 handle) makes the run uncheckpointable, named by node and port.
 
 ```ts

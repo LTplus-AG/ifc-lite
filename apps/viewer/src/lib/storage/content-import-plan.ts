@@ -84,9 +84,12 @@ export function planContentImport(prepared: PreparedContentImport, existing: Con
     add('validation', entry, () => newSavedReport(entry.snapshot, entry.name, entry.automation))]));
   const comparison = new Map(libraries.comparison.map(entry => [entry.id,
     add('comparison', entry, () => ({ ...entry, id: crypto.randomUUID() }))]));
-  const oldReferences = (kind: 'comparison' | 'validation', selected: Map<string, string>): Map<string, string> => {
+  // A saved clash report keeps its evidence; a conflicting ID becomes a copy and the charts bound to it follow the copy.
+  const clashReports = new Map((libraries.clashReports ?? []).map(entry => [entry.id,
+    add('clashReports', entry, () => ({ ...entry, id: crypto.randomUUID() }))]));
+  const oldReferences = (kind: 'comparison' | 'validation' | 'clashReports', selected: Map<string, string>): Map<string, string> => {
     const references = new Map(selected);
-    for (const entry of libraries[kind]) {
+    for (const entry of libraries[kind] ?? []) {
       const fingerprint = prepared.fingerprints.get(entry), old = fingerprint ? pending.get(fingerprint) : undefined;
       const current = selected.get(entry.id);
       if (old && current) references.set(old.id, current);
@@ -94,10 +97,11 @@ export function planContentImport(prepared: PreparedContentImport, existing: Con
     return references;
   };
   const comparisonReferences = oldReferences('comparison', comparison), validationReferences = oldReferences('validation', validation);
+  const clashReportReferences = oldReferences('clashReports', clashReports);
   for (const entry of libraries.document) {
-    const rebound = rebindContentDocument(entry, comparison, validation);
+    const rebound = rebindContentDocument(entry, comparison, validation, clashReports);
     add('document', entry, () => parseDocumentFile(JSON.stringify(rebound)), rebound,
-      previous => rebindContentDocument(previous as DocumentSpec, comparisonReferences, validationReferences));
+      previous => rebindContentDocument(previous as DocumentSpec, comparisonReferences, validationReferences, clashReportReferences));
   }
   for (const entry of libraries.assistant ?? []) add('assistant', entry, () => ({ ...entry, id: crypto.randomUUID() }));
   const workspaceIds = new Map((libraries.clashGroups ?? []).map(entry =>

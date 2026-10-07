@@ -14,6 +14,7 @@ export const CONTENT_POLICIES = {
   modelChanges: { immutableEvidence: false },
   clashGroupApplications: { immutableEvidence: false },
   reviewWorkspaces: { immutableEvidence: false },
+  clashReports: { immutableEvidence: true },
 } as const;
 export type ContentKind = keyof typeof CONTENT_POLICIES;
 export const CONTENT_KINDS: readonly ContentKind[] = Object.keys(CONTENT_POLICIES) as ContentKind[];

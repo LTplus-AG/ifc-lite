@@ -59,7 +59,11 @@ beforeEach(async () => {
   await act(async () => {
     const previous = useViewerStore.getState();
     await Promise.all([previous.retryDocumentsSave(), previous.retryValidationReportsSave(), previous.retrySaveComparisons()]);
+    // Saved clash reports (#6947) are reached through the store only, never by importing their slice:
+    // this fixture is shared by tests that must still load when that slice is absent.
+    await previous.retrySaveClashReports?.();
     await clearContentDatabase();
+    await useViewerStore.getState().restoreSavedClashReports?.();
     localStorage.removeItem('ifc-lite-documents');
     localStorage.removeItem('ifc-lite-validation-reports-v1');
     localStorage.removeItem('ifc-lite-saved-comparisons');

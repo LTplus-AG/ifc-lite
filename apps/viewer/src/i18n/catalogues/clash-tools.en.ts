@@ -81,6 +81,29 @@ export const clashToolsEn = {
   'clashTools.bcfExport.exportFailedToast': 'BCF export failed: {reason}',
 
   // ClashRevisionCompareDialog.tsx
+  // ClashSavedReportsDialog.tsx (#6947)
+  'clashTools.savedReports.triggerTooltip': 'Saved clash reports',
+  'clashTools.savedReports.dialogTitle': 'Saved clash reports',
+  'clashTools.savedReports.dialogDescription':
+    'Save the current result under a name. Each chart can then read the current result or one saved report, and a saved report keeps its results when another check runs.',
+  'clashTools.savedReports.nameLabel': 'Report name',
+  'clashTools.savedReports.saveButton': 'Save current result',
+  'clashTools.savedReports.runDetectionFirst': 'Run clash detection first.',
+  'clashTools.savedReports.currentSummary': { one: 'Current result: {count} clash.', other: 'Current result: {count} clashes.' },
+  'clashTools.savedReports.currentTruncated': 'This run stopped at its pair limit, so it will be saved as a partial run.',
+  'clashTools.savedReports.currentStale': 'The models changed after this run. It will be saved with that noted; run the check again for a current result.',
+  'clashTools.savedReports.savedToast': 'Saved clash report “{name}”.',
+  'clashTools.savedReports.storageFailed': 'The clash report could not be saved in this browser.',
+  'clashTools.savedReports.tooLarge': 'This result is too large to save as a report.',
+  'clashTools.savedReports.empty': 'No saved clash reports yet.',
+  'clashTools.savedReports.listLabel': 'Saved clash reports',
+  'clashTools.savedReports.entrySummary': { one: '{count} clash · saved {when} · {models}', other: '{count} clashes · saved {when} · {models}' },
+  'clashTools.savedReports.renameLabel': 'Name of “{name}”',
+  'clashTools.savedReports.renameButton': 'Rename',
+  'clashTools.savedReports.deleteButton': 'Delete',
+  'clashTools.savedReports.deleteWarning': 'Charts that read “{name}” will show it as unavailable.',
+  'clashTools.savedReports.confirmDeleteButton': 'Delete report',
+  'clashTools.savedReports.cancelDeleteButton': 'Keep',
   'clashTools.revisionCompare.triggerTooltip': 'Compare clash runs across revisions',
   'clashTools.revisionCompare.dialogTitle': 'Compare clash runs',
   'clashTools.revisionCompare.dialogDescription':

@@ -4,8 +4,7 @@
 import { aggregate, type Aggregation, type ChartDataset, type ChartSource } from '@ifc-lite/charts';
 import type { DocumentSpec } from './types';
 import { applyChartFilter, applyClashRuleFilter, chartElementFilterKey } from '../charts/source-filter';
-import { comparisonChartMessage, resolveComparisonChartSource } from '../charts/comparison-source';
-import type { SavedComparison } from '../compare/savedComparisonSchema';
+import { chartSourceMessage, NO_SAVED_CHART_CONTENT, resolveChartSource, type ChartSourceContext } from '../charts/chart-source';
 import { resolve } from '@/i18n/registry';
 
 export type DocumentChartFilterState =
@@ -17,7 +16,7 @@ export type DocumentChartFilterState =
 export function prepareDocumentCharts(document: DocumentSpec | null,
   datasets: Record<ChartSource, ChartDataset>,
   sourceFilters: ReadonlyMap<string, DocumentChartFilterState>,
-  savedComparisons: readonly SavedComparison[] = [],
+  savedContent: ChartSourceContext = NO_SAVED_CHART_CONTENT,
 ): { aggregations: Map<string, Aggregation | null>; chartMessages: Map<string, string>; chartErrors?: ReadonlySet<string> } {
     const aggs = new Map<string, Aggregation | null>();
     const messages = new Map<string, string>();
@@ -29,8 +28,8 @@ export function prepareDocumentCharts(document: DocumentSpec | null,
         // Trimmed-empty is no filter, consistent with ChartCard (review finding).
         const filterKey = chartElementFilterKey(spec.filter);
         const filterState = filterKey ? sourceFilters.get(filterKey) : undefined;
-        const source = resolveComparisonChartSource(spec, datasets[spec.source], savedComparisons);
-        const sourceMessage = comparisonChartMessage(source, resolve);
+        const source = resolveChartSource(spec, datasets[spec.source], savedContent);
+        const sourceMessage = chartSourceMessage(source, resolve);
         if (sourceMessage) {
           messages.set(block.id, sourceMessage);
           if (source.status === 'missing') errors.add(block.id);

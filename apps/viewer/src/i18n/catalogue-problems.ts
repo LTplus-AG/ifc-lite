@@ -10,9 +10,9 @@
  * activator logs them and drops the broken messages, so those keys fall back
  * to English instead of rendering `{modelName}` literally.
  */
-import { englishCatalogue as english, type TranslationKey } from './en';
+import { en, type TranslationKey } from './en';
+import { englishMessage, type Catalogue } from './registry';
 import { lazyMessageParameters } from './lazy-catalogue-shape';
-import type { Catalogue } from './registry';
 import type { TranslationValue } from './types';
 
 const PLACEHOLDER = /\{([A-Za-z][A-Za-z0-9_]*)\}/g;
@@ -32,7 +32,7 @@ function placeholders(value: TranslationValue): Set<string> {
 }
 
 function isTranslationKey(key: string): key is TranslationKey {
-  return Object.hasOwn(english, key) || lazyMessageParameters(key) !== null;
+  return Object.hasOwn(en, key) || lazyMessageParameters(key) !== null;
 }
 
 function shapeProblem(value: unknown): string | null {
@@ -70,8 +70,8 @@ export function checkCatalogue(raw: Readonly<Record<string, unknown>>): CheckedC
       continue;
     }
     const message = value;
-    const lazyParameters = lazyMessageParameters(key);
-    const expected = lazyParameters ? new Set(lazyParameters) : placeholders(english[key] ?? '');
+    const english = englishMessage(key);
+    const expected = english === undefined ? new Set(lazyMessageParameters(key) ?? []) : placeholders(english);
     const actual = placeholders(message);
     const before = problems.length;
     for (const name of actual) {

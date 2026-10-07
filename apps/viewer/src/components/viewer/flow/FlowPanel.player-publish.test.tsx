@@ -325,24 +325,32 @@ describe('FlowPanel — Player mode and Publish button (#5167)', () => {
 afterEach(() => { cleanup(); useViewerStore.setState(initialState); });
 
 // #7038: exercise the caller, not only eligibility, with real IFC + SDK mutations.
-it('#7038 a mounted paused writer retains its exact pending edit and provenance through a read-only resume', async () => {
+for (const reviewOnWriter of [false, true]) it(`#7038 mounted paused writes remain publishable when review is ${reviewOnWriter ? 'on the writer' : 'downstream'}`, async () => {
   const model = await openFlowSample();
   assert.ok(model.bim.query().byType('IfcWall').count() > 0, 'the committed IFC sample supplies the targets');
   const registry = flowRegistry();
+  const writerType = reviewOnWriter ? 'test.publish-reviewed-writer' : 'model.setProperty';
+  if (reviewOnWriter) {
+    const writer = registry.get('model.setProperty');
+    assert.ok(writer);
+    registry.register({ ...writer, type: writerType, review: 'required' });
+  }
+  const reviewType = `test.publish-review-${reviewOnWriter}`;
+  const finishType = `test.publish-finish-${reviewOnWriter}`;
   registry.registerAll([
-    { type: 'test.publish-review', title: 'Review upstream edits', category: 'test',
+    { type: reviewType, title: 'Review upstream edits', category: 'test',
       inputs: [{ name: 'entity', type: { kind: 'entity', access: 'item' } }],
       outputs: [{ name: 'proposal', type: { kind: 'scalar', access: 'item' } }], params: [], capabilities: [],
-      review: 'required', run: () => ({ proposal: 'Review the pending upstream property change' }) },
-    { type: 'test.publish-finish', title: 'Finish', category: 'test',
+      ...(!reviewOnWriter ? { review: 'required' as const } : {}), run: () => ({ proposal: 'Review the pending upstream property change' }) },
+    { type: finishType, title: 'Finish', category: 'test',
       inputs: [{ name: 'proposal', type: { kind: 'scalar', access: 'item' } }], outputs: [], params: [], capabilities: [], run: () => ({}) },
   ]);
-  const doc: FlowDocument = { flowVersion: FLOW_VERSION, id: 'mounted-review-publish', name: 'Review before publish',
+  const doc: FlowDocument = { flowVersion: FLOW_VERSION, id: `mounted-review-publish-${reviewOnWriter}`, name: 'Review before publish',
     capabilities: ['model.read', 'model.mutate:Pset_ReviewTest'], inputs: [], outputs: [], nodes: [
       { id: 'walls', type: 'model.byType', params: { type: 'IfcWall' } }, { id: 'first', type: 'core.first' },
       { id: 'value', type: 'core.string', params: { value: 'reviewed' } },
-      { id: 'writer', type: 'model.setProperty', params: { pset: 'Pset_ReviewTest', property: 'Status' } },
-      { id: 'proposal', type: 'test.publish-review' }, { id: 'finish', type: 'test.publish-finish' },
+      { id: 'writer', type: writerType, params: { pset: 'Pset_ReviewTest', property: 'Status' } },
+      { id: 'proposal', type: reviewType }, { id: 'finish', type: finishType },
     ], edges: [
       { from: ['walls', 'entities'], to: ['first', 'items'] }, { from: ['first', 'item'], to: ['writer', 'entity'] },
       { from: ['value', 'value'], to: ['writer', 'value'] }, { from: ['writer', 'entity'], to: ['proposal', 'entity'] },
@@ -354,7 +362,7 @@ it('#7038 a mounted paused writer retains its exact pending edit and provenance 
   await waitFor(() => !!useViewerStore.getState().flowLastRun && !useViewerStore.getState().flowRunning, 'paused run completes');
   const paused = useViewerStore.getState().flowLastRun!;
   assert.equal(paused.ok, true, useViewerStore.getState().flowLastError ?? JSON.stringify(paused.log));
-  assert.deepEqual(paused.review, ['proposal']);
+  assert.deepEqual(paused.review, [reviewOnWriter ? 'writer' : 'proposal']);
   const before = useViewerStore.getState().flowLastRunWindow!;
   assert.equal(before.mutationIds.size, 1, 'one real SDK property mutation is pending');
   assert.equal(before.checkpointId, useFlowReview.getState().checkpoint?.id);

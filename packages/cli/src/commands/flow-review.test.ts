@@ -14,12 +14,13 @@
  * without an AI provider refuses the graph before opening the model.
  */
 
+import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { copyFile, mkdtemp, readFile, symlink, link, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FLOW_VERSION, NodeRegistry, runFlow, type FlowDocument } from '@ifc-lite/flow';
+import { TRACKING_SIDECAR_VERSION, FLOW_VERSION, NodeRegistry, runFlow, type FlowDocument } from '@ifc-lite/flow';
 import { createCheckpoint } from '@ifc-lite/flow/checkpoint';
 import { flowCommand } from './flow.js';
 import { FileCheckpointStore } from './flow-checkpoint.js';
@@ -423,4 +424,42 @@ it('#7039 malformed resume flags leave the approved checkpoint unclaimed for ret
     expect((await new FileCheckpointStore(checkpoint).read(JSON.parse(await readFile(checkpoint, 'utf-8')).checkpoint.id))?.checkpoint.state).toBe('reviewed');
     expect(model.calls).toHaveLength(requestCount);
   }
+});
+
+
+it('#7040 binds CLI resume to tracking state and canonical destination before consuming review', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-tracking-review-'));
+  const checkpoint = join(dir, 'review.json');
+  const tracking = join(dir, 'original.tracking.json');
+  const alternate = join(dir, 'alternate.tracking.json');
+  const out = join(dir, 'done.ifc');
+  const sidecar = { version: TRACKING_SIDECAR_VERSION,
+    pinnedTo: `file:${createHash('sha256').update(await readFile(SAMPLE_IFC)).digest('hex')}`, sets: {} };
+  const original = JSON.stringify(sidecar);
+  await writeFile(tracking, original); await writeFile(alternate, original);
+  provider(); let c = capture(); exits();
+  await expect(flowCommand(['run', AI_FLOW, SAMPLE_IFC, '--checkpoint', checkpoint, '--tracking', tracking, '--json'])).rejects.toThrow('exit 3');
+  const digest = (c.json() as { checkpoint: { proposalDigest: string } }).checkpoint.proposalDigest;
+  vi.restoreAllMocks(); capture();
+  await flowCommand(['review', checkpoint, '--approve', digest]);
+  vi.restoreAllMocks();
+  for (const mode of ['different destination', 'disabled', 'changed contents']) {
+    if (mode === 'changed contents') await writeFile(tracking, JSON.stringify({ ...sidecar, pinnedTo: 'different-model-pin' }));
+    const flags = mode === 'disabled' ? ['--no-tracking'] : ['--tracking', mode === 'different destination' ? alternate : tracking];
+    const replay = provider(); c = capture(); exits();
+    await expect(flowCommand(['resume', AI_FLOW, SAMPLE_IFC, '--checkpoint', checkpoint, '--out', out, ...flags])).rejects.toThrow('exit 1');
+    expect(c.err.join('')).toMatch(/models or files.*changed after review/i);
+    expect((await new FileCheckpointStore(checkpoint).load()).checkpoint.state).toBe('reviewed');
+    await expect(readFile(out)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(replay.calls).toHaveLength(0);
+    vi.restoreAllMocks();
+  }
+  await writeFile(tracking, original);
+  const alias = join(dir, 'original-alias.json'); await symlink(tracking, alias);
+  const replay = provider(); capture();
+  await flowCommand(['resume', AI_FLOW, SAMPLE_IFC, '--checkpoint', checkpoint, '--out', out, '--tracking', alias]);
+  expect((await new FileCheckpointStore(checkpoint).load()).checkpoint.state).toBe('completed');
+  expect(replay.calls).toHaveLength(0);
+  const written = await roles(out);
+  expect(written.Facade + written.Partition).toBe(4);
 });

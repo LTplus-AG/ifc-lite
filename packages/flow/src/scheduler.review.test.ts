@@ -215,3 +215,23 @@ it('#7038 review-required headless no-op still pauses writes until its owned che
   expect(host.sunk).toEqual([7]);
   expect(resumed.writes).toBe(1);
 });
+
+for (const forged of ['manual transition', 'edited validated claim'] as const) {
+  it(`#7038 ${forged} cannot mint a resume receipt through generic CAS`, async () => {
+    const host: Host = { executed: [], sunk: [] };
+    const paused = await runFlow(doc, { host, registry });
+    const checkpoint = createCheckpoint({ doc, registry, result: paused, sourceDigest: 'test-source' });
+    const store = new MemoryCheckpointStore();
+    await store.write(approveCheckpoint(checkpoint, checkpoint.proposalDigest), null);
+    const applied = await updateCheckpoint(store, checkpoint.id, current => {
+      if (forged === 'manual transition') return { ...current, state: 'applying',
+        claim: { owner: 'forged', at: Date.now(), leaseUntil: Date.now() + 60_000 } };
+      const valid = claimCheckpoint(current, { owner: 'edited', graphDigest: graphDigest(doc, {}, registry),
+        sourceDigest: 'test-source', leaseMs: 60_000 });
+      Object.assign(valid, { sourceDigest: 'changed-after-validation' });
+      return valid;
+    });
+    expect(() => resumeOutputs(applied)).toThrow(/successful store claim/);
+    expect(host.sunk).toEqual([2]);
+  });
+}

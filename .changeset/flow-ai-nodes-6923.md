@@ -5,7 +5,7 @@
 "@ifc-lite/mcp": patch
 ---
 
-Flow AI nodes with reviewed pause/resume on every host (#6923).
+Flow AI nodes with native CLI reviewed pause/resume (#6923). Viewer approval controls ship in the next layer; MCP reports AI nodes as unavailable.
 
 - `@ifc-lite/flow-nodes`: new `@ifc-lite/flow-nodes/ai` entry with `ai.classify`, `ai.summarize` and `ai.extract`, which call the host's `FlowHost.ai` service, spend the run's root budget, validate every key, label, citation and span the model returns, report coverage, and pause the run for review.
 - `@ifc-lite/extensions`: the capability catalogue lists `network.ai` (send graph data to the host's AI model provider, red).

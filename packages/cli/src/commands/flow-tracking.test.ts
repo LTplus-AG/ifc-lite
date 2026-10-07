@@ -34,9 +34,12 @@ describe('FileTrackingStore', () => {
     expect(fresh.loadedPin).toBeUndefined();
     expect(await fresh.flush()).toBe(false);
     fresh.save(SET);
+    const pausedSource = fresh.fingerprint(); // #7040: approval precedes the planned sidecar flush.
     expect(await fresh.flush()).toBe(true);
 
     const again = await FileTrackingStore.open(path, 'file:b');
+    // #7040: reading the flushed sidecar under a new model pin preserves its approved identity.
+    expect(again.fingerprint()).toBe(pausedSource);
     expect(again.loadedPin).toBe('file:a');
     expect(again.load('g/n')).toEqual(SET);
     expect(again.keys()).toEqual(['g/n']);

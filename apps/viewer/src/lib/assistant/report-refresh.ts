@@ -61,7 +61,7 @@ function resolver(record: AiReportRecord, rows: CapturedEvidence): (citation: st
   return citation => {
     const key = record.citedRows[citation];
     if (key === SUMMARY_CITATION) return SUMMARY_CITATION;
-    return key ? index.get(key) ?? null : null;
+    return key === null || key === undefined ? null : index.get(key) ?? null;
   };
 }
 
@@ -86,7 +86,9 @@ export function planReportRefresh(document: DocumentSpec, snapshot: EvidenceSnap
   }
   const originModels = record.originModels
     ?? modelFingerprints((JSON.parse(record.evidence.payload) as { models?: Array<{ fingerprint?: unknown }> }).models ?? []);
-  const modelsChanged = JSON.stringify(originModels) !== JSON.stringify(modelFingerprints(snapshot.models));
+  const currentModels = modelFingerprints(snapshot.models);
+  // A model without a fingerprint cannot be shown to be the same one, so it never suppresses the warning.
+  const modelsChanged = originModels.includes('') || currentModels.includes('') || JSON.stringify(originModels) !== JSON.stringify(currentModels);
   const previous = parseCapturedEvidence(record.evidence.payload);
   const next = parseCapturedEvidence(snapshot.payload);
   const partial = snapshot.includedRows < snapshot.totalRows;

@@ -158,6 +158,14 @@ test('refresh refuses an out-of-date native result and warns while the loaded mo
   assert.equal(planReportRefresh(once, captureEvidence('clash')).modelsChanged, true, 'compared with the original capture, not the last refresh');
 });
 
+test('models without a fingerprint never count as the same models', () => {
+  useViewerStore.setState(fixtureModels({ ...fixtureModel('m1'), sourceFingerprint: undefined }));
+  const saved = savedReport();
+  useViewerStore.setState(fixtureModels({ ...fixtureModel('m2'), sourceFingerprint: undefined }));
+  seedClashResult([-0.02, -0.035, -0.05]);
+  assert.equal(planReportRefresh(saved, captureEvidence('clash')).modelsChanged, true);
+});
+
 // Review of #6972: a claim rewritten during review stays the reviewer's text through refreshes.
 test('a claim rewritten before saving stays human-edited through a refresh and is not a conflict', () => {
   clashDiscussion(typedReport('Hard clash [E1].', [{ text: 'c0 overlaps by 2 cm.', facts: [{ citation: 'E1', field: 'distance', value: -2, unit: 'cm' }] }]));

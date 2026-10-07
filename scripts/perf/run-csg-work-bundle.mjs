@@ -8,6 +8,7 @@ import { lstat, readFile, readdir, realpath, mkdir, writeFile } from 'node:fs/pr
 import { spawn } from 'node:child_process';
 import { join, resolve, relative, isAbsolute, sep, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 const ROLES = ['release6-stock', 'release6-on', 'release7-stock', 'release7-on'];
 const SHA = /^[a-f0-9]{64}$/;
@@ -267,6 +268,6 @@ async function main() {
   process.stdout.write(JSON.stringify({ status: summary.status, completedControls: summary.results.length,
     ...(summary.refusal ? { refusal: summary.refusal } : {}) }) + '\n');
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainEntry(import.meta.url)) {
   main().catch(() => { process.stderr.write('REFUSE LAUNCHER_SETUP\n'); process.exitCode = 1; });
 }

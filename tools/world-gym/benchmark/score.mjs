@@ -47,7 +47,6 @@
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import {
   BENCHMARK_NAME, SPEC_VERSION, DEFECT_TYPES, QUANTITY_KEYS, seedsForSplit,
   saltForSplit, REPORTING_SPLIT, SALT_ENV_VAR,
@@ -55,6 +54,7 @@ import {
 import { groundTruthForSeed } from './ground-truth.mjs';
 import { parseSubmission } from './submission.mjs';
 import { saltFingerprint, redactSalt, SaltFormatError } from '../lib/salt.mjs';
+import { isMainEntry } from '../../../scripts/lib/is-main-entry.mjs';
 
 /** Hidden tag naming the universe a regenerated truth map belongs to. */
 const TRUTH_SALT_ID = Symbol.for('world-gym.truthSaltId');
@@ -314,7 +314,7 @@ async function main() {
   process.stdout.write(`${json}\n`);
 }
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+const isMain = isMainEntry(import.meta.url);
 if (isMain) {
   main().catch((err) => {
     // THIS is the process that holds the live reporting salt (it is in the

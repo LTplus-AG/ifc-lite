@@ -12,6 +12,7 @@
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -46,4 +47,4 @@ function main() {
   process.exit(1);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();
+if (isMainEntry(import.meta.url)) main();

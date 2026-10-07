@@ -317,6 +317,8 @@ test.describe('Viewer Performance Benchmarks', () => {
         expect(counters?.structural['msg.geometry.out.count'] ?? 0, 'no geometry worker messages counted').toBeGreaterThan(0);
         expect(counters?.scheduling['store.setState'] ?? 0, 'no store writes counted').toBeGreaterThan(0);
         expect(counters?.mainThread, 'no long-frame summary recorded').not.toBeNull();
+        // #7022: one full-source hash per load (placement, cache and revalidation share it).
+        expect(counters?.structural['hash.fullSource.count'], 'full-source hash passes per load').toBe(1);
       }
 
       // Geometry correctness validation: Check mesh count matches expected (within 5% tolerance)

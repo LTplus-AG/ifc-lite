@@ -105,7 +105,7 @@ it('keeps the identity value for every reader: Blob, in-memory and shared bytes 
 });
 
 it('digests in-memory chunks in place and counts one full-source pass (#7022)', async () => {
-  const bytes = new Uint8Array(3 * MIB + 17).fill(5);
+  const bytes = new Uint8Array(3 * MIB + 5000).fill(5);
   const subtle = globalThis.crypto.subtle;
   const realDigest = subtle.digest.bind(subtle);
   const inputs: BufferSource[] = [];

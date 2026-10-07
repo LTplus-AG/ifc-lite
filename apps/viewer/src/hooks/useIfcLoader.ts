@@ -17,11 +17,9 @@ import { installModelLoadCanceller } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
 import { assertWorkflowOwner } from '@/lib/flow/run-session';
 import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
-import { planCacheWrite, decideMeshOnlyCacheHit, decideSourceTierCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
+import { planCacheWrite, decideCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
-import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
-import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
-import { computeFullSourceHash } from '../utils/sourceContentHash.js';
+import { identifyLoadedPlacementSource, startLoadSourceIdentity } from '@/lib/model-placement/loaded-source-identity';
 import { IfcParser, detectFormat, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
 import { attachTextureBitmaps, type TextureBitmapStore } from '../utils/textureResources.js';
 import { modelAppearanceAssets } from '../lib/appearance/model-assets.js';
@@ -240,27 +238,28 @@ export function useIfcLoader() {
 
   /**
    * Background revalidation for a SERVED cache hit (either tier, #4269):
-   * confirm the TRUE full-file hash of the FRESH buffer matches what was stored
-   * at write. The mtime guard already rejected any normal on-disk edit before
-   * serving; this closes the deliberate mtime-PRESERVED in-place edit (a GUID or
-   * same-width coordinate patch the O(1) spread key can't see) that the mtime
-   * guard alone would miss. On mismatch: purge the stale entry and auto-reload
-   * (a full reparse) with a notice. Runs off the main thread (Web Crypto), so it
-   * never blocks the instant hit it follows.
+   * confirm the full-content hash of the FRESH source (the load's own identity
+   * pass, #7022, not a second hash) matches what was stored at write. The mtime
+   * guard already rejected any normal on-disk edit before serving; this closes
+   * the deliberate mtime-PRESERVED in-place edit (a GUID or same-width
+   * coordinate patch the O(1) spread key can't see) that the mtime guard alone
+   * would miss. On mismatch: purge the stale entry and auto-reload
+   * (a full reparse) with a notice. It only awaits that identity, so it never
+   * blocks the instant hit it follows.
    */
   const revalidateServedCacheHit = useCallback(async (args: {
     file: File;
     target: LoadTarget;
-    buffer: ArrayBufferLike;
+    identity: Promise<string | undefined>;
     cacheKey: string;
     expectedHash: string;
     session: number;
   }): Promise<void> => {
     try {
-      const freshHash = await computeFullSourceHash(args.buffer);
-      // Web Crypto unavailable → can't revalidate; the mtime guard already vetted
-      // this hit, so leave it served rather than churning a reload.
-      if (freshHash === null) return;
+      const freshHash = await args.identity;
+      // Web Crypto unavailable (or a newer load cancelled the pass) → can't
+      // revalidate; the mtime guard already vetted this hit, so leave it served.
+      if (!freshHash) return;
       if (freshHash === args.expectedHash) return; // validated: byte-identical source
 
       console.warn(`[useIfc] source-decoupled cache was stale (full-hash mismatch) — reloading "${args.file.name}"`);
@@ -484,7 +483,9 @@ export function useIfcLoader() {
         : 'unknown';
       let loadedBufferByteLength = fileSize;
       let modelSourceIdentity = '';
-      let placementIdentity: string | undefined;
+      // The load's one full-source hash (#7022): started once the bytes are in
+      // hand, awaited only by finalize, the cache write and warm revalidation.
+      let placementIdentity: Promise<string | undefined> = Promise.resolve(undefined);
 
       // PRIMARY owns the active-model slots + top-level UI/memory flags and
       // creates the model record. A federated add leaves all of that untouched
@@ -544,6 +545,9 @@ export function useIfcLoader() {
         // their path is simply "none" — the default below.
         instancedShards: ArrayBuffer[] = [],
       ): Promise<void> => {
+        // A complete model carries its identity (#7022); the pass ran beside the load.
+        const sourceContentHash = await placementIdentity;
+        if (isStale()) return;
         // Ordering notice (issue #1804): alignment is baked into a scan at
         // ITS load time (an f64 decode-time offset — it cannot be applied
         // retroactively to already-quantised f32 GPU positions). If this
@@ -620,7 +624,7 @@ export function useIfcLoader() {
           const federatedModel: FederatedModel = {
             id: modelId,
             name: target.name ?? file.name,
-            sourceFingerprint: modelSourceIdentity, sourceContentHash: placementIdentity,
+            sourceFingerprint: modelSourceIdentity, sourceContentHash,
             ifcDataStore: dataStore,
             landXmlDocument: patch?.landXmlDocument,
             sourceSchema: patch?.sourceSchema,
@@ -703,12 +707,8 @@ export function useIfcLoader() {
         // long XML prologs from forcing a whole-file detection read.
         const sourceKeyFingerprint = await computeSourceFingerprintFromBlob(file);
         modelSourceIdentity = `${file.name}:${sourceKeyFingerprint.hex}`;
-        placementIdentity = await placementSourceIdentity(file, () => isStale());
-        if (isStale()) return;
-        if (target.kind === 'primary') updateModel(modelId, {
-          sourceFingerprint: modelSourceIdentity,
-          sourceContentHash: placementIdentity,
-        });
+        placementIdentity = startLoadSourceIdentity(modelId, file, () => isStale());
+        if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity });
         await loadLandXmlModel({ file, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(), trace,
           assumedLinearUnit: options?.assumedLinearUnit,
           isCurrent: () => isCurrent(), setProgress, setGeometryStreamingActive, setLoading,
@@ -737,6 +737,9 @@ export function useIfcLoader() {
       let buffer: ArrayBuffer | SharedArrayBuffer = acquired.buffer;
       const fileReadMs = performance.now() - fileReadStart;
       trace.record('file.read', fileReadStart, fileReadStart + fileReadMs);
+      // Raw pre-unwrap bytes, no Blob re-read (#6431); not awaited here (#7022).
+      if (!pointCloudFormat) placementIdentity = startLoadSourceIdentity(modelId, file, () => isStale(), acquired.view)
+        .finally(() => trace.milestone('placement.identityReady'));
       console.log(
         `[useIfc] File: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB` +
           (pointCloudFormat
@@ -759,9 +762,7 @@ export function useIfcLoader() {
       loadedBufferByteLength = buffer.byteLength;
       const sourceKeyFingerprint = trace.span('source.fingerprint', () => computeSourceFingerprint(new Uint8Array(buffer)));
       modelSourceIdentity = `${file.name}:${sourceKeyFingerprint.hex}`;
-      placementIdentity = pointCloudFormat ? undefined : await trace.span('placement.identity', () => placementSourceIdentity(file, () => isStale(), acquired.view)); // raw pre-unwrap bytes: no Blob re-read (#6431)
-      if (isStale()) return;
-      if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity, sourceContentHash: placementIdentity });
+      if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity });
       format = pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : countCopy('source.detectFormat', new Uint8Array(buffer).slice().buffer));
 
       const arrayBuffer = buffer instanceof ArrayBuffer ? buffer : countCopy('source.arrayBuffer', new Uint8Array(buffer).slice().buffer); buffer = arrayBuffer;
@@ -999,7 +1000,7 @@ export function useIfcLoader() {
             setIfcDataStore(result.dataStore);
           }
           await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion, { loadPath: 'wasm' });
-
+          if (isStale()) return;
           setProgress({ phase: 'Complete', percent: 100 });
           captureModelLoaded({ format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, result.geometryResult), trace);
           setLoading(false);
@@ -1145,12 +1146,10 @@ export function useIfcLoader() {
           // chimera risk) is strict: unvalidatable (no mtime AND no full
           // hash) → MISS. Source-persisting is softer: unknown mtime serves
           // (worst case stale-but-consistent; legacy entries lack the field).
-          // A served hit with a stored full hash is revalidated after finalize.
-          const isSourceDecoupled = !cacheResult.sourceBuffer;
-          const mtimes = { storedMtime: cacheResult.lastModified, freshMtime: file.lastModified };
-          const mayServe = (isSourceDecoupled
-            ? decideMeshOnlyCacheHit({ ...mtimes, hasFullHash: !!cacheResult.fullSourceHash })
-            : decideSourceTierCacheHit(mtimes)) === 'serve';
+          // A served hit with a stored full hash is revalidated after finalize;
+          // a hash from before #7022 cannot be compared, so that entry misses.
+          const { serve: mayServe, revalidateAgainst } = decideCacheHit({ sourceDecoupled: !cacheResult.sourceBuffer,
+            storedMtime: cacheResult.lastModified, freshMtime: file.lastModified, fullSourceHash: cacheResult.fullSourceHash });
 
           if (!mayServe) {
             console.warn(`[useIfc] cache MISS (source changed / unvalidatable) — reparsing "${file.name}"`);
@@ -1193,6 +1192,7 @@ export function useIfcLoader() {
                 loadState: 'complete', cacheState: 'hit',
                 loadPath: 'cache', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
               });
+              if (isStale()) return; // finalize awaited the identity pass (#7022)
               const cacheTotalMs = trace.finish({ journey: 'J2', loadPath: 'cache', cacheTier: cachePlan.tier });
               console.log(`[useIfc] TOTAL LOAD TIME (from cache): ${cacheTotalMs.toFixed(0)}ms`);
               // Geometry attribution (#2388) on a cache HIT: `loadTessellationTier`/
@@ -1215,16 +1215,16 @@ export function useIfcLoader() {
               });
               setLoading(false);
               // Belt-and-suspenders for BOTH tiers (#4269): revalidate the
-              // TRUE full-file hash off the main thread and, if the source changed
-              // with its mtime preserved, purge + auto-reload. Fire-and-forget so
-              // the instant hit above is never delayed.
-              if (cacheResult.fullSourceHash) {
+              // full-content hash (this load's identity pass) and, if the source
+              // changed with its mtime preserved, purge + auto-reload.
+              // Fire-and-forget so the instant hit above is never delayed.
+              if (revalidateAgainst) {
                 void revalidateServedCacheHit({
                   file,
                   target,
-                  buffer,
+                  identity: placementIdentity,
                   cacheKey,
-                  expectedHash: cacheResult.fullSourceHash,
+                  expectedHash: revalidateAgainst,
                   session: currentSession,
                 });
               }
@@ -1265,6 +1265,7 @@ export function useIfcLoader() {
         if (serverSuccess) {
           const state = useViewerStore.getState();
           await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
+          if (isStale()) return;
           const serverTotalMs = trace.finish({ loadPath: 'server' });
           console.log(`[useIfc] TOTAL LOAD TIME (server): ${serverTotalMs.toFixed(0)}ms`);
           // Geometry attribution (#2388), server row: `is_resource_retry` and
@@ -1955,6 +1956,7 @@ export function useIfcLoader() {
                   // under the current plan (respects the size bands + kill switch).
                   cacheState: cachePlan.shouldCache ? 'writing' : 'none', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                 }, allInstancedShards));
+                if (isStale()) return; // finalize awaited the identity pass (#7022)
 
                 // Cache the result in the background, reusing the `cachePlan`
                 // decided once above (single source of truth for read + write).
@@ -1999,9 +2001,9 @@ export function useIfcLoader() {
                   };
                   await trace.span('cache.write', () => saveToCache(cacheKey, dataStore, geometryData, arrayBuffer, file.name, {
                     persistSource: cachePlan.persistSource,
-                    // mtime guard for a source-decoupled hit (the full-file
-                    // validation hash is computed off-thread inside saveToCache).
-                    lastModified: file.lastModified,
+                    // mtime guard plus the load's identity as the full-content
+                    // validation hash (#7022: no second pass in the write).
+                    lastModified: file.lastModified, fullSourceHash: placementIdentity,
                   }));
                 }
 

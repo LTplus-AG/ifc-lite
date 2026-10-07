@@ -157,3 +157,34 @@ test('#6927 a denied import backup leaves the current layout active through late
     assert.ok(warnings.length > 0);
   } finally { Object.defineProperty(localStorage, 'setItem', { configurable: true, value: original }); console.warn = warn; }
 });
+
+
+for (const retainCompanion of [false, true]) {
+  test(`#7054 a rejected import cannot seed future rollback placements (companion=${retainCompanion})`, () => {
+    const companionKey = 'ifc-lite:sidebar-layout-placements-v2';
+    const store = createStore(createSidebarSlice);
+    store.getState().setSidebarWidthPct(41);
+    if (!retainCompanion) localStorage.removeItem(companionKey);
+    const originalLayout = localStorage.getItem(layoutKey);
+    const originalCompanion = localStorage.getItem(companionKey);
+    const setItem = localStorage.setItem.bind(localStorage);
+    const warn = console.warn;
+    const warnings: unknown[] = [];
+    Object.defineProperty(localStorage, 'setItem', { configurable: true, value: (key: string, value: string) => {
+      if (key === layoutKey) throw new DOMException('Full', 'QuotaExceededError');
+      setItem(key, value);
+    } });
+    console.warn = (...args: unknown[]) => { warnings.push(args); };
+    try {
+      assert.throws(() => store.getState().applySidebarLayout({ order: ['bcf', 'extension:failed-import', 'properties'] }), /Cannot import/);
+      assert.equal(localStorage.getItem(layoutKey), originalLayout);
+      assert.equal(localStorage.getItem(companionKey), originalCompanion);
+      assert.ok(warnings.length > 0);
+    } finally { Object.defineProperty(localStorage, 'setItem', { configurable: true, value: setItem }); console.warn = warn; }
+    // Simulate the already-released four-field writer, then return to this build.
+    localStorage.setItem(layoutKey, JSON.stringify({ mode: 'collapsed', widthPct: 44, order: ['bcf', 'properties'], hiddenIds: [] }));
+    const recovered = createStore(createSidebarSlice).getState();
+    assert.equal(recovered.sidebarWidthPct, 44);
+    assert.ok(!recovered.sidebarPreserved.some(placement => placement.id === 'extension:failed-import'));
+  });
+}

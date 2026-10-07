@@ -39,6 +39,8 @@ function readItem(key: string): string | null {
 export function writeSidebarLayout(layout: StoredSidebarLayout, beforeImport = false): boolean {
   const store = storage();
   if (!store) return true;
+  let previousCompanion: string | null = null;
+  let companionWritten = false;
   try {
     const original = store.getItem(SIDEBAR_LAYOUT_KEY);
     if (original !== null) {
@@ -47,12 +49,23 @@ export function writeSidebarLayout(layout: StoredSidebarLayout, beforeImport = f
       catch (error) { console.warn('[sidebar] Preserving unreadable original layout:', error); parsed = ''; }
       if ((beforeImport || migrateSidebarLayout(parsed).changes.length > 0) && !backupOriginal(original)) return false;
     }
-    store.setItem(LAYOUT_COMPAT_KEY, JSON.stringify(layout));
-    store.setItem(SIDEBAR_LAYOUT_KEY, JSON.stringify(layout));
+    previousCompanion = store.getItem(LAYOUT_COMPAT_KEY);
+    const serialized = JSON.stringify(layout);
+    store.setItem(LAYOUT_COMPAT_KEY, serialized);
+    companionWritten = true;
+    store.setItem(SIDEBAR_LAYOUT_KEY, serialized);
     return true;
   } catch (error) {
     // Quota / private mode: the layout just won't persist this session.
     console.warn('[sidebar] failed to persist layout:', error);
+    if (companionWritten) {
+      try {
+        if (previousCompanion === null) store.removeItem(LAYOUT_COMPAT_KEY);
+        else store.setItem(LAYOUT_COMPAT_KEY, previousCompanion);
+      } catch (rollbackError) {
+        console.warn('[sidebar] failed to restore rollback placements:', rollbackError);
+      }
+    }
     return false;
   }
 }

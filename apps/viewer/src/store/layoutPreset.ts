@@ -150,12 +150,13 @@ export function restoreLayoutBeforePreset(store: ViewerStoreApi = getViewerStore
   if (!record) return false;
   const { previous } = record;
   const state = store.getState();
-  state.applySidebarLayout(previous.sidebar);
   const detached = detachedIds(store.getState());
   if (!detached.has(previous.primary)) state.showWorkspacePanel(previous.primary, 'programmatic');
   const secondary = previous.secondary && isWorkspacePanelId(previous.secondary) && !detached.has(previous.secondary) ? previous.secondary : null;
   store.getState().setSidebarSecondaryPanel(secondary);
   store.getState().setSidebarSplitRatio(previous.splitRatio);
+  // Opening the previous panel expands the dock; restore the captured mode and rail afterwards.
+  store.getState().applySidebarLayout(previous.sidebar);
   setAssistantPlacement(previous.assistantPlacement);
   setRecord(null);
   return true;

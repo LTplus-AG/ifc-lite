@@ -27,6 +27,8 @@ import { forgetLayoutPreset } from './layout-preset-reset.js';
 export const LEFT_PANEL_DEFAULT_SIZE = 22.5;
 
 export function resetLayout(store = getViewerStoreApi()): void {
+  // Retire displaced panels before sidebar subscriptions observe the reset.
+  forgetLayoutPreset();
   const state = store.getState();
   state.resetSidebarLayout();
   state.resetDockLayout();
@@ -38,7 +40,5 @@ export function resetLayout(store = getViewerStoreApi()): void {
   // a strip that is not mounted (the mobile layout) would otherwise reopen at
   // the height the reset was meant to discard (#5957).
   persistBottomStripHeight(BOTTOM_STRIP_DEFAULT_HEIGHT);
-  // The shipped default replaces any preset, and with it the layout a preset would restore (#6926).
-  forgetLayoutPreset();
   state.bumpLayoutResetEpoch();
 }

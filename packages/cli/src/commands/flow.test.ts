@@ -9,6 +9,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseFlowDocument, checkAvailability } from '@ifc-lite/flow';
 import { createStandardRegistry, headlessFeatures } from '@ifc-lite/flow-nodes';
+import { aiNodes } from '@ifc-lite/flow-nodes/ai';
 import { flowCommand } from './flow.js';
 import { createHeadlessContext } from '../loader.js';
 
@@ -188,14 +189,15 @@ describe('ifc-lite flow', () => {
     for (const file of files) {
       const c = capture();
       const graph = parseFlowDocument(await readFile(join(EXAMPLES, file), 'utf8'));
-      const unavailable = checkAvailability(graph, createStandardRegistry(), headlessFeatures()).filter((node) => node.status === 'unavailable');
+      const unavailable = checkAvailability(graph, createStandardRegistry().registerAll(aiNodes), headlessFeatures()).filter((node) => node.status === 'unavailable');
       if (unavailable.length) {
-        // Browser session services must be refused before trying to open even the CLI model.
+        // Browser session services, and an AI model service the environment does
+        // not configure, must be refused before trying to open even the CLI model.
         const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
         await expect(flowCommand(['run', join(EXAMPLES, file), '/missing-model-proves-preflight.ifc', '--no-tracking', '--json'])).rejects.toThrow('exit');
         expect(exit).toHaveBeenCalledWith(1);
         expect(c.err.join('')).toMatch(/Flow cannot run on this host/);
-        expect(c.err.join('')).toMatch(/sessionModels/);
+        expect(c.err.join('')).toMatch(/sessionModels|"ai"/);
         vi.restoreAllMocks();
         continue;
       }

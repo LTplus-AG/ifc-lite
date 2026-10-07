@@ -27,7 +27,8 @@ import { createHeadlessContext } from '../loader.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SAMPLE_IFC = resolve(here, '../../../../apps/viewer/public/samples/building-architecture.ifc');
-const AI_FLOW = resolve(here, '../__fixtures__/flows/ai-wall-roles.flow.json');
+// The viewer's shipped AI example: what the panel offers is what runs headlessly.
+const AI_FLOW = resolve(here, '../../../../apps/viewer/src/lib/flow/examples/10-ai-wall-roles.flow.json');
 
 function capture() {
   const out: string[] = [];

@@ -63,9 +63,9 @@ type Translate = UseTranslationResult['t'];
  * One list for every chart surface and the Clash panel's saved-report list. */
 export function clashReportLimitBadges(report: SavedClashReport, revision: ClashReportRevision, t: Translate): string[] {
   return [
-    ...(report.completeness.truncated ? [t('chartClashReport.badgePartial')] : []),
-    ...(report.completeness.stale ? [t('chartClashReport.badgeStale')] : []),
-    ...(revision === 'same' ? [] : [t(`chartClashReport.badgeRevision.${revision}`)]),
+    ...(report.completeness.truncated ? [t('clashChart.badgePartial')] : []),
+    ...(report.completeness.stale ? [t('clashChart.badgeStale')] : []),
+    ...(revision === 'same' ? [] : [t(`clashChart.badgeRevision.${revision}`)]),
   ];
 }
 
@@ -78,8 +78,8 @@ export function clashReportLimitBadges(report: SavedClashReport, revision: Clash
  */
 export function clashReportChartMessage(source: ClashReportChartSource, t: Translate): string | undefined {
   if (source.status === 'live') return undefined;
-  if (source.status === 'missing') return t('chartClashReport.missing');
+  if (source.status === 'missing') return t('clashChart.missing');
   const { report } = source;
   return [...clashReportLimitBadges(report, source.revision, t),
-    t('chartClashReport.caption', { name: report.name, date: new Date(report.savedAt).toLocaleDateString() })].join(' · ');
+    t('clashChart.caption', { name: report.name, date: new Date(report.savedAt).toLocaleDateString() })].join(' · ');
 }

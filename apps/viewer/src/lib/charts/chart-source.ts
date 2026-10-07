@@ -63,5 +63,5 @@ export function chartSourceMessage(source: ResolvedChartSource, t: Translate): s
 
 /** The short "source unavailable" label of a bound chart whose saved content is gone. */
 export function chartSourceUnavailable(source: ResolvedChartSource, t: Translate): string {
-  return t(source.saved === 'clashReport' ? 'chartClashReport.unavailable' : 'chartComparison.unavailable');
+  return t(source.saved === 'clashReport' ? 'clashChart.unavailable' : 'chartComparison.unavailable');
 }

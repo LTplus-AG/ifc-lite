@@ -84,7 +84,7 @@ export const clashToolsEn = {
   // ClashSavedReportsDialog.tsx (#6947)
   'clashTools.savedReports.triggerTooltip': 'Saved clash reports',
   'clashTools.savedReports.dialogDescription':
-    'Save the current result under a name. A chart can read it instead of the current result, and it keeps its results when another check runs.',
+    'Save the current result under a name. A chart can then keep showing it whatever is checked next.',
   'clashTools.savedReports.nameLabel': 'Report name',
   'clashTools.savedReports.saveButton': 'Save current result',
   'clashTools.savedReports.currentSummary': 'Current result: {clashes}.',

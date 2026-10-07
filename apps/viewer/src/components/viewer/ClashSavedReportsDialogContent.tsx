@@ -66,7 +66,7 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
   const stale = useAnalysisStaleness(analysisStampOf(rawResult ?? result));
   const [name, setName] = useState('');
   // What the saved report will be labelled with, in the words its charts will use.
-  const limits = [...(result?.truncated ? [t('chartClashReport.badgePartial')] : []), ...(result && stale ? [t('chartClashReport.badgeStale')] : [])];
+  const limits = [...(result?.truncated ? [t('clashChart.badgePartial')] : []), ...(result && stale ? [t('clashChart.badgeStale')] : [])];
 
   const saveCurrent = async (): Promise<void> => {
     const state = useViewerStore.getState();

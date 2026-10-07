@@ -46,10 +46,10 @@ export function ChartSourcePicker({ source, rowCount, comparisonId, history, all
       {history.length === 0 && <span className="text-muted-foreground">{t('chartComparison.none')}</span>}
     </label>}
     {source === 'clash' && <label className="flex flex-col gap-0.5">
-      <span className="text-muted-foreground">{t('chartClashReport.label')}</span>
-      <select className={className} aria-label={t('chartClashReport.label')} value={clashReport.id ?? ''} onChange={(event) => clashReport.onChange(event.target.value || undefined)}>
-        <option value="">{t('chartClashReport.current')}</option>
-        {clashReportMissing && <option value={clashReport.id}>{t('chartClashReport.unavailable')}</option>}
+      <span className="text-muted-foreground">{t('clashChart.label')}</span>
+      <select className={className} aria-label={t('clashChart.label')} value={clashReport.id ?? ''} onChange={(event) => clashReport.onChange(event.target.value || undefined)}>
+        <option value="">{t('clashChart.current')}</option>
+        {clashReportMissing && <option value={clashReport.id}>{t('clashChart.unavailable')}</option>}
         {clashReport.reports.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
       </select>
       {clashReport.note && <span className="text-muted-foreground" role={clashReportMissing ? 'alert' : 'status'} data-chart-source-note>{clashReport.note}</span>}

@@ -301,7 +301,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
             </>
           ) : (
             <span className="text-2xs text-muted-foreground">
-              {t('chartEditor.sourceFilterNotApplicable', { source: savedClashReport ? t('chartClashReport.savedSource') : SOURCE_LABELS[draft.source] })}
+              {t('chartEditor.sourceFilterNotApplicable', { source: savedClashReport ? t('clashChart.savedSource') : SOURCE_LABELS[draft.source] })}
             </span>
           )}
         </div>

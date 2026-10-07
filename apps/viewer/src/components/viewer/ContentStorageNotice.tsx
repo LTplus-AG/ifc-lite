@@ -21,7 +21,6 @@ import type { ContentStatus } from '@/lib/storage/content-library';
 import { cleanupContentLegacy, ContentImportFailure, createContentBackup, importContentBackup, parseContentBackup, readBackupDrafts,
   readContentRecovery, retryContentDrafts, retryContentImports } from '@/lib/storage/content-backup';
 import { stageContentDrafts } from '@/lib/storage/content-backup-drafts';
-import { loadClashReportLibrary } from '@/lib/clash/saved-report-persistence';
 
 const messages = {
   quota: 'contentStorage.quota', unavailable: 'contentStorage.unavailable',
@@ -84,13 +83,14 @@ export function ContentStorageNotice({ status, retry, restore }: {
     if (!preserved.complete) toast.info(t('contentStorage.draftReadUnavailable'));
   };
   const importFile = async (file: File) => {
-    await loadClashReportLibrary();
+    const state = useViewerStore.getState();
+    // Opening the clash report library loads its validator, which parsing a backup needs.
+    const clashReportsReady = await state.initializeSavedClashReports();
     const parsed = parseContentBackup(await file.text());
     const drafts = parsed.drafts ?? [];
     stageContentDrafts(drafts);
-    const state = useViewerStore.getState();
     const initialized = await Promise.all([assistantLibrary.initialize(), clashGroupLibrary.initialize(), bcfDraftLibrary.initialize(), modelChangeLibrary.initialize(), clashGroupApplicationLibrary.initialize(), reviewWorkspaceLibrary.initialize(),
-      initializeBcfOutbox(), state.initializeValidationReports(), state.initializeSavedComparisons(), state.initializeSavedClashReports(), state.initializeDocuments()]);
+      initializeBcfOutbox(), state.initializeValidationReports(), state.initializeSavedComparisons(), clashReportsReady, state.initializeDocuments()]);
     let count: number, committed: readonly ContentCommitReceipt[] = [];
     try {
       count = await importContentBackup(parsed, visibleLibraries, initialized.every(Boolean), rows => { committed = rows; });

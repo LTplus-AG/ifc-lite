@@ -199,7 +199,7 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
                   : EMPTY_HINTS[spec.source]
                 : t('chartCard.nothingToBucket'))}
             {source.saved === 'clashReport' && source.status === 'missing' && (
-              <Button variant="outline" size="sm" className="ml-2 h-6 shrink-0 px-2 text-xs" onClick={onEdit}>{t('chartClashReport.chooseSource')}</Button>
+              <Button variant="outline" size="sm" className="ml-2 h-6 shrink-0 px-2 text-xs" onClick={onEdit}>{t('clashChart.chooseSource')}</Button>
             )}
           </div>
         )}

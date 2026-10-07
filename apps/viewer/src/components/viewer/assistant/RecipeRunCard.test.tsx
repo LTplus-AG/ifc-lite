@@ -20,7 +20,10 @@ try {
   recipeRun = await import('@/lib/assistant/reuse/recipe-run');
   availability = await import('@/lib/assistant/reuse/recipe-availability');
   RecipeRunCard = component.RecipeRunCard;
-} catch (error) { console.error('[RecipeRunCard.test] native recipe entry point unavailable', error); }
+} catch (error) {
+  if ((error as { code?: string }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
+  console.warn('[RecipeRunCard.test] native recipe entry point absent; behavioral assertions follow');
+}
 
 const initial = useViewerStore.getState();
 const assistantInitial = useAssistant.getState();

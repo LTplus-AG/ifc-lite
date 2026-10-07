@@ -38,7 +38,7 @@ function readItem(key: string): string | null {
 
 export function writeSidebarLayout(layout: StoredSidebarLayout, beforeImport = false): boolean {
   const store = storage();
-  if (!store) return true;
+  if (!store) return typeof window === 'undefined';
   let previousCompanion: string | null = null;
   let companionWritten = false;
   try {

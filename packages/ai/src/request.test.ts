@@ -112,6 +112,20 @@ describe('runModelRequest', () => {
 });
 
 describe('request start hook', () => {
+  it('honors cancellation inside the start hook before entering the transport (#7037)', async () => {
+    const { transport, calls } = scripted(reply('ok'));
+    const receipts: UsageReceipt<'stub'>[] = [];
+    const budget = createRootBudget({ maxRequests: 2, maxOutputTokens: 1000 });
+    const outcome = await runModelRequest(request(transport, { budget }), {
+      onStart: start => start.cancel(), onReceipt: receipt => receipts.push(receipt),
+    });
+    expect(outcome.kind).toBe('cancelled');
+    expect(calls).toHaveLength(0);
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0].outcome).toBe('cancelled');
+    expect(remainingBudget(budget)).toEqual({ maxRequests: 1, maxOutputTokens: 1000 });
+  });
+
   it('#7037: settles an announced request and emits its error receipt when the start hook throws', async () => {
     const { transport, calls } = scripted(reply('ok'));
     const budget = createRootBudget({ maxRequests: 3, maxOutputTokens: 2000 });

@@ -137,7 +137,7 @@ export async function runModelRequest<Message, Route extends string>(
   const seen: Seen = { streamed: false, finishReason: null, text: null, failure: null, usage: null };
   try {
     hooks.onStart?.({ id, model: request.model, route: request.route, startedAt, cancel: () => controller.abort() });
-    await request.transport({
+    if (!controller.signal.aborted) await request.transport({
       model: request.model,
       messages: request.messages,
       system: request.system,

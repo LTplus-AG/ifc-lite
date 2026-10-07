@@ -43,7 +43,7 @@ function serveProxy(): void {
     requests += 1;
     const body = JSON.parse(String(init?.body)) as { messages: { content: string }[] };
     const data = /<data>\n([\s\S]*)\n<\/data>/.exec(body.messages.at(-1)!.content)![1].split('\n').map((l) => JSON.parse(l) as Record<string, unknown>);
-    const items = data.map((row) => ({ key: row.key, label: row['Pset_WallCommon.IsExternal'] === true ? 'Facade' : 'Partition', evidence: ['Pset_WallCommon.IsExternal'] }));
+    const items = data.map((row) => ({ key: row.key, label: (row.values as Record<string, unknown>)['Pset_WallCommon.IsExternal'] === true ? 'Facade' : 'Partition', evidence: ['Pset_WallCommon.IsExternal'] }));
     const frames = [
       { choices: [{ delta: { content: JSON.stringify({ items }) }, finish_reason: null }] },
       { choices: [{ delta: { content: '' }, finish_reason: 'stop' }], usage: { prompt_tokens: 300, completion_tokens: 60 } },

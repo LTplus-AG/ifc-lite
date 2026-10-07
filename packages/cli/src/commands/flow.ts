@@ -275,7 +275,8 @@ export async function flowCommand(args: string[]): Promise<void> {
   }
 
   // Bind approval to the exact execution graph, including resolved secret parameters.
-  const resume: Resume | undefined = sub === 'resume' ? await claimForResume(checkpointPath!, runDoc, inputs, sourceDigestOf(modelBytes, tracking?.fingerprint()), registry) : undefined;
+  const aiAhead = doc.nodes.some(n => !restored.has(n.id) && registry.get(n.type)?.requires?.backend?.includes(AI_FEATURE));
+  const resume: Resume | undefined = sub === 'resume' ? await claimForResume(checkpointPath!, runDoc, inputs, sourceDigestOf(modelBytes, tracking?.fingerprint()), registry, aiAhead) : undefined;
 
   // The host follows the model the graph works on: `model.openFromSource`
   // can replace the command-line model mid-run (see `flow-host.ts`).
@@ -314,7 +315,7 @@ export async function flowCommand(args: string[]): Promise<void> {
       written = typeof content === 'string' ? content : Buffer.from(content);
     }
     // Refuse secrets in every restored output before either durable side effect.
-    const proposal = paused ? preparePause({ registry, doc: runDoc, result, inputs, sourceDigest: sourceDigestOf((result.writes > 0 || activeModelChanged) && written !== undefined ? written : modelBytes, tracking?.fingerprint()), budget: { ...budget } }, redaction) : undefined;
+    const proposal = paused ? preparePause({ registry, doc: runDoc, result, inputs, sourceDigest: sourceDigestOf(written ?? modelBytes, tracking?.fingerprint()), budget: { ...budget } }, redaction) : undefined;
     if (written !== undefined) await writeFile(out!, written);
     trackingWritten = tracking ? await tracking.flush() : false;
     if (proposal) pause = await savePause(nextCheckpoint!, proposal);

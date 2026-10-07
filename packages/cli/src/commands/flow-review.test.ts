@@ -25,6 +25,13 @@ import { createCheckpoint } from '@ifc-lite/flow/checkpoint';
 import { flowCommand } from './flow.js';
 import { FileCheckpointStore } from './flow-checkpoint.js';
 import { createHeadlessContext } from '../loader.js';
+import { createRootBudget } from '@ifc-lite/ai';
+import { createStandardRegistry, headlessFeatures } from '@ifc-lite/flow-nodes';
+import { aiNodes } from '@ifc-lite/flow-nodes/ai';
+import { createCliAiService, flowAiConfig } from './flow-ai.js';
+import { createCliFlowSession } from './flow-host.js';
+import { sourceDigestOf } from './flow-checkpoint.js';
+import { parseCapabilities } from '@ifc-lite/extensions';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SAMPLE_IFC = resolve(here, '../../../../apps/viewer/public/samples/building-architecture.ifc');
@@ -76,6 +83,67 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 describe('ifc-lite flow: reviewed AI pause and resume', () => {
+  it('#7039 a read-only pause exported with --out resumes from those exact bytes', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-exported-pause-'));
+    const checkpoint = join(dir, 'cp.json');
+    const pausedModel = join(dir, 'paused.ifc');
+    const done = join(dir, 'done.ifc');
+    const model = provider();
+    capture();
+    exits();
+    await expect(flowCommand(['run', AI_FLOW, SAMPLE_IFC, '--checkpoint', checkpoint, '--out', pausedModel, '--no-tracking'])).rejects.toThrow('exit 3');
+    expect(await readFile(pausedModel, 'utf-8')).not.toBe(await readFile(SAMPLE_IFC, 'utf-8'));
+    const stored = (await new FileCheckpointStore(checkpoint).load()).checkpoint;
+    expect(stored.sourceDigest).toBe(sourceDigestOf(await readFile(pausedModel)));
+    await flowCommand(['review', checkpoint, '--approve', stored.proposalDigest]);
+    await flowCommand(['resume', AI_FLOW, pausedModel, '--checkpoint', checkpoint, '--out', done, '--no-tracking']);
+    const written = await roles(done);
+    expect(written.Facade).toBe(written.external);
+    expect(written.Facade + written.Partition).toBe(4);
+    expect(model.calls).toHaveLength(1);
+  });
+
+  it('#7039 downstream AI refuses missing budget receipts and preserves an exhausted allowance', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-budget-receipt-'));
+    const original = JSON.parse(await readFile(AI_FLOW, 'utf-8')) as FlowDocument;
+    const doc: FlowDocument = { ...original, outputs: [], nodes: original.nodes.map(node => node.id === 'apply'
+      ? { ...node, type: 'ai.classify', params: { ...original.nodes.find(n => n.id === 'roles')!.params, columns: ['label'] } }
+      : node) };
+    const graphPath = join(dir, 'graph.json');
+    await writeFile(graphPath, JSON.stringify(doc));
+    const model = provider();
+    const budget = createRootBudget({ maxRequests: 1, maxOutputTokens: 8192 });
+    const registry = createStandardRegistry().registerAll(aiNodes);
+    const caps = parseCapabilities(doc.capabilities);
+    if (!caps.ok) throw new Error('the fixture must declare valid capabilities');
+    const session = createCliFlowSession(await createHeadlessContext(SAMPLE_IFC), caps.value, createCliAiService(flowAiConfig(process.env)!, budget));
+    const features = { ...headlessFeatures(), backend: new Set([...headlessFeatures().backend, 'ai']) };
+    const result = await runFlow(doc, { host: session.host, registry, features });
+    expect(result.review).toEqual(['roles']);
+    expect(budget.requests).toBe(1);
+    const sourceDigest = sourceDigestOf(await readFile(SAMPLE_IFC));
+    for (const [index, receipt] of [undefined, { maxRequests: 1 }, { ...budget }].entries()) {
+      const checkpointPath = join(dir, `cp-${index}.json`);
+      const next = join(dir, `next-${index}.json`);
+      const checkpoint = createCheckpoint({ doc, registry, result, sourceDigest, budget: receipt });
+      await new FileCheckpointStore(checkpointPath).write(checkpoint, null);
+      capture();
+      await flowCommand(['review', checkpointPath, '--approve', checkpoint.proposalDigest]);
+      const c = capture();
+      exits();
+      const resume = flowCommand(['resume', graphPath, SAMPLE_IFC, '--checkpoint', checkpointPath, '--next-checkpoint', next, '--no-tracking']);
+      await expect(resume).rejects.toThrow(receipt === undefined || index === 1 ? 'exit 1' : 'exit 3');
+      if (index < 2) {
+        expect(c.err.join('')).toContain('requires the original root budget receipt');
+        expect((await new FileCheckpointStore(checkpointPath).load()).checkpoint.state).toBe('reviewed');
+        await expect(readFile(next)).rejects.toMatchObject({ code: 'ENOENT' });
+      } else {
+        expect((await new FileCheckpointStore(next).load()).checkpoint.budget).toEqual(budget);
+      }
+      expect(model.calls).toHaveLength(1);
+    }
+  });
+
   it('pauses with a checkpoint, writes only after approval, and resumes without a model request', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-review-'));
     const checkpoint = join(dir, 'roles.checkpoint.json');

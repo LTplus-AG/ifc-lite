@@ -14,14 +14,21 @@ import { useAssistantRecipes } from '@/lib/assistant/reuse/recipe-library';
 import { useRequestReceipts } from '@/lib/llm/request-receipts';
 import { loadSavedFlows } from '@/lib/flow/persistence';
 import { ConversationLibrary } from './ConversationLibrary';
-import { WorkflowFlowSave, useWorkflowFlowSave } from './WorkflowFlowSave';
+let workflowUi: typeof import('./WorkflowFlowSave') | undefined;
+try { workflowUi = await import('./WorkflowFlowSave'); }
+catch (error) {
+  if ((error as { code?: string }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
+  console.warn('[WorkflowFlowSave.test] Native workflow review is absent');
+}
+const WorkflowFlowSave = workflowUi?.WorkflowFlowSave ?? ((_props: { name: string }) => assert.fail('Native workflow review must render'));
+function reviewState() { assert.ok(workflowUi, 'Native workflow review must be available'); return workflowUi.useWorkflowFlowSave; }
 
 const initial = useViewerStore.getState();
 const assistantInitial = useAssistant.getState();
 const originalFetch = globalThis.fetch;
 afterEach(() => {
   cleanup(); globalThis.fetch = originalFetch; localStorage.clear();
-  useWorkflowFlowSave.setState({ intent: null, proposal: null, receipt: null, error: null });
+  workflowUi?.useWorkflowFlowSave.setState({ intent: null, proposal: null, receipt: null, error: null });
   useViewerStore.setState(initial, true); useAssistant.setState(assistantInitial, true);
 });
 const graph = (left = 7) => ({ version: 1, kind: 'flow.create', name: 'Sum', nodes: [
@@ -100,7 +107,7 @@ test('#6924 cancelling a workflow request leaves no graph or late review candida
   click(button('Cancel'));
   await waitFor(() => document.body.textContent?.includes('Workflow generation cancelled.') === true, 'cancelled request');
   await act(async () => { await Promise.resolve(); });
-  assert.equal(useWorkflowFlowSave.getState().proposal, null);
+  assert.equal(reviewState().getState().proposal, null);
   assert.equal(useViewerStore.getState().savedFlows.length, initial.savedFlows.length);
 });
 
@@ -114,7 +121,7 @@ test('#6924 a refused Ideas recipe write remains recoverable while its native gr
     click(button('Save reviewed workflow'));
     await waitFor(() => document.body.textContent?.includes('recipe for Ideas remains in memory') === true, 'refused recipe status');
   } finally { refusal.mock.restore(); }
-  const id = useWorkflowFlowSave.getState().recipeId; assert.ok(id);
+  const id = reviewState().getState().recipeId; assert.ok(id);
   assert.equal(useAssistantRecipes.getState().status.items[id], 'unavailable');
   assert.ok(loadSavedFlows().some(flow => flow.doc.name === 'Recipe recovery'), 'graph storage is independently durable');
   click(button('Retry recipe save'));
@@ -136,11 +143,11 @@ test('#6924 a cancelled request from an earlier host cannot overwrite a later wo
   await waitFor(() => resolveFirst !== undefined, 'earlier request started');
   cleanup();
   render(<WorkflowFlowSave name="Later host" />); click(button('Draft workflow graph'));
-  await waitFor(() => useWorkflowFlowSave.getState().proposal !== null, 'later graph review');
-  const later = useWorkflowFlowSave.getState().proposal;
+  await waitFor(() => reviewState().getState().proposal !== null, 'later graph review');
+  const later = reviewState().getState().proposal;
   await act(async () => { resolveFirst!(response(7)); });
   await waitFor(() => useRequestReceipts.getState().inFlight.length === 0, 'both requests settled');
-  assert.equal(useWorkflowFlowSave.getState().proposal, later);
-  assert.equal(useWorkflowFlowSave.getState().error, null);
+  assert.equal(reviewState().getState().proposal, later);
+  assert.equal(reviewState().getState().error, null);
   assert.equal(JSON.parse(later!.docJson).name, 'Later host');
 });

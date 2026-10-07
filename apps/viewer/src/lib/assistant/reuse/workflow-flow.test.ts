@@ -15,7 +15,17 @@ import { preflightOpenFlow } from '../flow-preflight';
 import { flowToJson, loadSavedFlows } from '@/lib/flow/persistence';
 import { assistantRecipeLibrary, useAssistantRecipes, exportRecipeBundle, parseRecipeBundle, importRecipeBundle } from './recipe-library';
 import { projectScope, savePreferences } from './preferences';
-import { captureWorkflowIntent, proposeWorkflowFlow, saveWorkflowRecipe } from './workflow-flow';
+// Production reverts must fail behavioral assertions rather than module loading.
+let workflowApi: typeof import('./workflow-flow') | undefined;
+try { workflowApi = await import('./workflow-flow'); }
+catch (error) {
+  if ((error as { code?: string }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
+  console.warn('[workflow-flow.test] Native workflow authoring is absent');
+}
+function nativeWorkflow() { assert.ok(workflowApi, 'Native workflow authoring must be available'); return workflowApi; }
+const captureWorkflowIntent = (...args: Parameters<typeof import('./workflow-flow')['captureWorkflowIntent']>) => nativeWorkflow().captureWorkflowIntent(...args);
+const proposeWorkflowFlow = (...args: Parameters<typeof import('./workflow-flow')['proposeWorkflowFlow']>) => nativeWorkflow().proposeWorkflowFlow(...args);
+const saveWorkflowRecipe = (...args: Parameters<typeof import('./workflow-flow')['saveWorkflowRecipe']>) => nativeWorkflow().saveWorkflowRecipe(...args);
 
 const initial = useViewerStore.getState();
 const assistantInitial = useAssistant.getState();

@@ -16,12 +16,14 @@ import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useMemo } from 'react';
 import type { MeshData } from '@ifc-lite/geometry';
+import { perfCounters } from '@ifc-lite/load-trace';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { modelIndices } from '@/lib/model-placement/model-indices.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { cleanup, render } from '@/test/render.js';
 import { useFederatedGeometry } from './useFederatedGeometry.js';
 import { useFilteredGeometry } from './useFilteredGeometry.js';
+import { useAppearanceSourceGeometry } from './useAppearanceSourceGeometry.js';
 
 const coordinateInfo = {
   originShift: { x: 0, y: 0, z: 0 },
@@ -30,7 +32,7 @@ const coordinateInfo = {
   hasLargeCoordinates: false,
 };
 
-let seen: { merged: MeshData[]; filtered: MeshData[]; hasType: boolean; version: number } | null = null;
+let seen: { merged: MeshData[]; filtered: MeshData[]; hasType: boolean; version: number; appearance: MeshData[] } | null = null;
 
 function Probe() {
   const s = useViewerStore();
@@ -38,7 +40,8 @@ function Probe() {
   const merged = useFederatedGeometry(s.models, s.geometryResult, indices, s.geometryContentVersion);
   const { filteredGeometry, hasTypeGeometry, geometryVersion } = useFilteredGeometry(
     merged, s.geometryContentVersion, s.typeVisibility, s.typeViewMode);
-  seen = { merged: merged?.meshes ?? [], filtered: [...(filteredGeometry ?? [])], hasType: hasTypeGeometry, version: geometryVersion };
+  const appearance = useAppearanceSourceGeometry(s.models, indices, s.geometryContentVersion);
+  seen = { merged: merged?.meshes ?? [], filtered: [...(filteredGeometry ?? [])], hasType: hasTypeGeometry, version: geometryVersion, appearance };
   return null;
 }
 
@@ -138,4 +141,35 @@ it('stamps each model its own index once a second model joins (#7021)', () => {
   const byIndex = seen!.merged.map((m) => m.modelIndex);
   assert.deepEqual(byIndex, [0, 0, 1, 1]);
   assert.equal(seen!.filtered.length, 4);
+});
+
+/**
+ * The regression guard (#7021): a streamed append must cost the viewport work
+ * in the appended meshes only. Before the fix every append copied every mesh
+ * accumulated so far (`viewer.modelIndexRespread`), which gave the merged
+ * array a new identity, so the filter (`viewer.filterScan`) and the appearance
+ * list (`viewer.appearanceSource`) rescanned everything too.
+ */
+it('costs O(appended meshes) per streamed append on a single model (#7021)', () => {
+  perfCounters.enable();
+  const read = () => perfCounters.read();
+  const delta = (after: Record<string, number>, before: Record<string, number>, key: string) => (after[key] ?? 0) - (before[key] ?? 0);
+  startLoad('m');
+  render(<Probe />);
+  append('m', [mesh(), mesh()]);
+  const mergedArray = seen!.merged, appearanceArray = seen!.appearance;
+  let total = 2;
+  for (const size of [3, 5, 8, 13, 21]) {
+    const before = read();
+    append('m', Array.from({ length: size }, () => mesh()));
+    total += size;
+    const after = read();
+    assert.equal(seen!.merged.length, total);
+    assert.equal(delta(after, before, 'viewer.modelIndexRespread.meshes'), 0, 'no mesh is copied to stamp its model index');
+    assert.equal(delta(after, before, 'viewer.modelIndexStamp.meshes'), size, 'only the appended meshes are stamped');
+    assert.equal(delta(after, before, 'viewer.filterScan.meshes'), size, 'the filter visits only the appended meshes');
+    assert.equal(delta(after, before, 'viewer.appearanceSource.meshes'), 0, 'the appearance list is not rebuilt');
+    assert.equal(seen!.merged, mergedArray, 'the merged array keeps its identity');
+    assert.equal(seen!.appearance, appearanceArray, 'the appearance list keeps its identity');
+  }
 });

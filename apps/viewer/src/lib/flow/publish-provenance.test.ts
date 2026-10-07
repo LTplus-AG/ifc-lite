@@ -141,14 +141,14 @@ describe('flowPublishEligibility — other pending edits (#5380 review)', () => 
 });
 
 // #7038: a successful paused run may have upstream writes, but cannot publish them yet.
-it('blocks native paused writes until the required checkpoint is reviewed and the graph finishes', async () => {
+for (const reviewOnWriter of [false, true]) it(`#7038 retains paused writer provenance when review is ${reviewOnWriter ? 'on the writer' : 'downstream'}`, async () => {
   let writes = 0;
   const scalar = { kind: 'scalar', access: 'item' } as const;
   const native = new NodeRegistry().registerAll([
     { type: 'test.write', title: 'Write', category: 'test', inputs: [], outputs: [{ name: 'value', type: scalar }],
-      params: [], capabilities: [], writes: 'model', run: () => { writes++; return { value: 7 }; } },
+      params: [], capabilities: [], writes: 'model', ...(reviewOnWriter ? { review: 'required' as const } : {}), run: () => { writes++; return { value: 7 }; } },
     { type: 'test.review', title: 'Review', category: 'test', inputs: [{ name: 'value', type: scalar }],
-      outputs: [{ name: 'value', type: scalar }], params: [], capabilities: [], review: 'required',
+      outputs: [{ name: 'value', type: scalar }], params: [], capabilities: [], ...(!reviewOnWriter ? { review: 'required' as const } : {}),
       run: (_ctx, inputs) => ({ value: inputs.value }) },
     { type: 'test.finish', title: 'Finish', category: 'test', inputs: [{ name: 'value', type: scalar }],
       outputs: [], params: [], capabilities: [], run: () => ({}) },

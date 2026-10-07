@@ -71,7 +71,7 @@ export function writingNodes(doc: FlowDocument, registry: NodeRegistry<unknown>,
     const def = registry.get(node.type);
     if (!def?.writes) continue;
     const report = reportByNode.get(node.id);
-    if (!report || report.status !== 'ok' || out.some(writer => writer.nodeId === node.id)) continue;
+    if (!report || (report.status !== 'ok' && report.status !== 'review') || out.some(writer => writer.nodeId === node.id)) continue;
     out.push({ nodeId: node.id, trackingKey: node.trackingKey ?? node.label ?? node.id });
   }
   return out;

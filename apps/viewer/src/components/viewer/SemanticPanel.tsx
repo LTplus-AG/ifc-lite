@@ -115,13 +115,13 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
     {(mode === 'sparql' || mode === 'construct') && <><label className="block text-sm">{t('semantic.query')}<textarea className={control} rows={7} value={query} onChange={e => setQuery(e.target.value)} /></label>
       <details><summary>{t('semantic.mapping')}</summary>{Object.entries(mapping).map(([key, value]) => <label key={key} className="block text-sm">{key}
         <input className={control} value={value} onChange={e => setMapping({ ...mapping, [key]: e.target.value })} /></label>)}</details></>}
-    <div className="flex gap-2"><button className={button} disabled={pilot.busy} onClick={() => { exercise(); void pilot.load(sourceInput); }}>{t('semantic.run')}</button>
+    <div className="flex gap-2"><button className={button} disabled={pilot.busy} onClick={() => { void pilot.load(sourceInput, exercise); }}>{t('semantic.run')}</button>
       {pilot.busy && <button className={button} onClick={pilot.cancel}>{t('semantic.cancel')}</button>}</div>
     {['json', 'sparql', 'construct'].includes(mode) && <details><summary>{t('semantic.authentication')}</summary>
       <label className="block text-sm">{t('semantic.bearer')}<input type="password" autoComplete="off" className={control} value={bearer} onChange={e => { pilot.cancel(); revokeEndpointGrant(); setBearer(e.target.value); }} /></label>
       <label className="block text-sm">{t('semantic.relay')}<input className={control} value={relayProvider} onChange={e => { revokeSource(); setRelayProvider(e.target.value); }} /></label>
     </details>}
-    {['json', 'sparql', 'construct'].includes(mode) && <button className={button} disabled={pilot.busy || !host || !endpoint} onClick={() => { exercise(); void pilot.related(sourceInput); }}>{t('semantic.querySelected')}</button>}
+    {['json', 'sparql', 'construct'].includes(mode) && <button className={button} disabled={pilot.busy || !host || !endpoint} onClick={() => { void pilot.related(sourceInput, exercise); }}>{t('semantic.querySelected')}</button>}
     <SemanticIdentityControls uriConfig={pilot.uriConfig} onUriConfig={pilot.setUriConfig} strategy={pilot.strategy} onStrategy={pilot.setStrategy} links={pilot.links} onLinks={pilot.setLinks} profile={pilot.profile} identityFields={pilot.identityFields} onIdentityFields={pilot.setIdentityFields} onError={pilot.setError} />
     <SemanticProfileControls profile={pilot.profile} onProfile={pilot.setProfile} onError={pilot.setError} />
     <SemanticAssistControls onError={pilot.setError} />

@@ -227,3 +227,27 @@ test('#7000 a real CONSTRUCT response becomes Historical when its revision assoc
     assert.match(text(ui), /Door D1/, 'the captured graph remains inspectable as historical evidence');
   } finally { globalThis.fetch = originalFetch; }
 });
+
+
+test('#7000 an endpoint grant revoked while a response resolves cannot retain that result', async () => {
+  await converse(QUERY, 1);
+  const ui = render(<SemanticProposalReview />);
+  let release!: (response: Response) => void;
+  let requested = false;
+  const response = new Promise<Response>(resolve => { release = resolve; });
+  const previous = globalThis.fetch;
+  globalThis.fetch = (async () => { requested = true; return response; }) as typeof globalThis.fetch;
+  try {
+    act(() => recordEndpointGrant({ endpoint: 'https://graph.example.org/sparql', host: 'graph.example.org' }));
+    click(buttonLabelled(ui, /Run query/i));
+    await waitFor(() => requested, 'native query request');
+    await act(async () => {
+      revokeEndpointGrant();
+      release(new Response(JSON.stringify({ head: { vars: ['id'] }, results: { bindings: [] } }),
+        { headers: { 'content-type': 'application/sparql-results+json' } }));
+      await response;
+    });
+    await waitFor(() => /cancelled/i.test(ui.querySelector('[role="alert"]')?.textContent ?? ''), 'revoked response refused');
+    assert.doesNotMatch(text(ui), /Ran against/);
+  } finally { globalThis.fetch = previous; }
+});

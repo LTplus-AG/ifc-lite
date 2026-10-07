@@ -40,9 +40,13 @@ export function SemanticQueryReview({ proposal }: { proposal: SemanticQueryPropo
     setRunning(true); setError(null);
     try {
       const result = await runReviewedQuery(proposal, grant, controller.signal);
-      if (!controller.signal.aborted) setRun(result);
+      if (controller.signal.aborted || useSemanticEndpointGrant.getState().grant !== grant) {
+        setError(t('semanticAssist.queryCancelled'));
+        return;
+      }
+      setRun(result);
     } catch (failure) {
-      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : String(failure));
+      if (!controller.signal.aborted && useSemanticEndpointGrant.getState().grant === grant) setError(failure instanceof Error ? failure.message : String(failure));
       else setError(t('semanticAssist.queryCancelled'));
     } finally {
       if (pending.current?.controller === controller) pending.current = null;

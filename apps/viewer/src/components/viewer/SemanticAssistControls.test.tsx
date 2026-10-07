@@ -91,7 +91,7 @@ for (const change of ['endpoint', 'host', 'bearer', 'relay', 'mode', 'restore', 
       input(find(ui, 'label', 'Bearer').querySelector('input')!, 'PANEL-SECRET');
       assert.equal(useSemanticEndpointGrant.getState().grant, null, 'typing is not exercising');
       click(find(ui, 'button', 'Load records'));
-      await waitFor(() => stub.sent.length === 1, 'the request was made');
+      await waitFor(() => useSemanticEndpointGrant.getState().grant !== null, 'a successful native retrieval grants authority');
       const grant = useSemanticEndpointGrant.getState().grant;
       assert.deepEqual([grant?.endpoint, grant?.host, grant?.bearer], ['https://graph.example.org/records', 'graph.example.org', 'PANEL-SECRET']);
       if (change === 'endpoint') input(field(ui, 'Endpoint URL'), 'https://other.example.org/records');
@@ -149,5 +149,22 @@ test('#7000 changing a credential cancels pending retrieval before it can publis
     await act(async () => { release(new Response(JSON.stringify(pilotDocument()), { headers: { 'content-type': 'application/json' } })); await pending; });
     assert.equal(useSemanticSession.getState().document, before, 'old-credential response never publishes');
     assert.equal(useSemanticEndpointGrant.getState().grant, null);
+  } finally { stub.restore(); }
+});
+
+
+test('#7000 a refused write query never grants assistant authority or reaches the endpoint', async () => {
+  const stub = captureFetch(() => { throw new Error('a write query must never reach fetch'); });
+  try {
+    const ui = render(<SemanticPanel validationExecutor={executeValidation} />);
+    const select = find(ui, 'label', 'Data source').querySelector('select')!;
+    act(() => { select.value = 'sparql'; select.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    input(field(ui, 'Endpoint URL'), 'https://graph.example.org/records');
+    input(field(ui, 'Allow requests to hostname'), 'graph.example.org');
+    input(find(ui, 'label', 'Read query').querySelector('textarea')!, 'DELETE WHERE { ?s ?p ?o }');
+    click(find(ui, 'button', 'Load records'));
+    await waitFor(() => ui.querySelector('[role="alert"]') !== null, 'native read-only refusal');
+    assert.equal(useSemanticEndpointGrant.getState().grant, null);
+    assert.equal(stub.sent.length, 0);
   } finally { stub.restore(); }
 });

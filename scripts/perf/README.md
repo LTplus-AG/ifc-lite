@@ -533,6 +533,34 @@ budget is the default whenever geometry streams. Lesson: a time slice sized
 for one phase silently carries into the next. Timestamp phase boundaries
 (`Stream complete`, `Streaming ended`, `finalizeStreamingAsync complete`)
 before assuming the tail is finalize work.
+## One full-source hash per load, beside the critical path (#7022)
+
+The loader awaited the placement identity (SHA-256 in 1 MiB chunks) before the
+cache lookup, then hashed the same bytes again for the cache write or for a
+warm hit's background revalidation. The identity now starts once the bytes are
+in hand and is awaited only by finalize (so a complete model still carries it),
+the cache write (which stores it) and the revalidation (which compares against
+it). A cache entry holding a bare whole-file hash from an older viewer is a
+miss, purged and rewritten by the reparse. Each full-source pass now counts as
+`hash.fullSource` in the structural counters.
+
+Interleaved real-GPU pairs (Windows Chrome over CDP, five rounds, FZK, Snowdon,
+a 54 MB and a 327 MB model, cold and warm) gave identical mesh counts and
+identity values. The cache lookup now starts up to ~0.4 s earlier on the 327 MB
+model, but first geometry, first visible and load total stayed within the base
+spread on every fixture. The pass was never the gate: engine init (cold) and
+the IndexedDB read (warm) end at the same time either way. Verdict: structural
+win (one loader pass instead of two, none on the critical path), no end-to-end
+speed claim.
+
+Lesson: count passes before timing them. The counter showed a second pass per
+primary load that the issue never listed: the drawing-markup restore
+(`useDrawing2DPersistence`) re-reads the whole Blob and hashes it, because its
+localStorage key is a bare SHA-256. Sharing it needs a key migration, so it is
+the next lever, not part of this change. Freeing a span from the critical path
+only helps if nothing parallel ends at the same moment; check the next span's
+end, not just this one's start.
+
 ## Placement identity from memory (#6431)
 
 Before parsing, the loader awaited a full-content SHA-256 identity (1 MiB chunks)

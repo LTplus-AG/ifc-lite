@@ -23,7 +23,7 @@ import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale'
 import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
 import { ifcToViewerAxes } from './coordinate-frame';
 import { wellKnownCrsCode } from './well-known-crs';
-import { isGeographicProj4, utmProj4String } from './proj4-utils';
+import { isGeographicProj4, projectedDefinitionInMetres, utmProj4String } from './proj4-utils';
 import { resolveMapAxisDirection } from './map-axis-direction';
 
 export { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
@@ -473,7 +473,7 @@ export async function reprojectToLatLon(
   const { easting, northing } = center;
 
   try {
-    const [lon, lat] = proj4(projDef, 'WGS84', [easting, northing]);
+    const [lon, lat] = proj4(projectedDefinitionInMetres(projDef), 'WGS84', [easting, northing]);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
     if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
     return { lat, lon };
@@ -516,7 +516,7 @@ export async function reprojectPointToLatLon(
   const eastingM = eastings * mapScale;
   const northingM = northings * mapScale;
   try {
-    const [lon, lat] = proj4(projDef, 'WGS84', [eastingM, northingM]);
+    const [lon, lat] = proj4(projectedDefinitionInMetres(projDef), 'WGS84', [eastingM, northingM]);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
     if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
     return { lat, lon };
@@ -588,7 +588,7 @@ export async function reprojectFromLatLon(
   }
 
   try {
-    const [projE, projN] = proj4('WGS84', projDef, [latLon.lon, latLon.lat]);
+    const [projE, projN] = proj4('WGS84', projectedDefinitionInMetres(projDef), [latLon.lon, latLon.lat]);
     if (!Number.isFinite(projE) || !Number.isFinite(projN)) return null;
 
     const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
@@ -672,7 +672,7 @@ export async function computeFootprintGeoJSON(
 
     // Projected CRS → WGS84
     try {
-      const [lon, lat] = proj4(projDef, 'WGS84', [easting, northing]);
+      const [lon, lat] = proj4(projectedDefinitionInMetres(projDef), 'WGS84', [easting, northing]);
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
       ring.push([lon, lat]);
     } catch {

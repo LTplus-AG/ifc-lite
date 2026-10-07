@@ -43,8 +43,10 @@ import {
   type StallPhaseHandle,
   type ModelSpatialReference,
   DEFAULT_HUNG_JOB_TIMEOUT_MS,
+  releaseWarmGeometryWorkers,
 } from '@ifc-lite/geometry';
 import { resolveResourceRetryTier } from '../lib/resource-retry.js';
+import { warmEngineForLoad } from '../lib/engine-warmup.js';
 import { publishLoadTrace } from '../lib/perf/activeLoadTrace.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
@@ -281,6 +283,7 @@ export function useIfcLoader() {
   ) => {
     assertWorkflowOwner(options?.workflowOwner);
     const draping = drapeIfGeoRaster(file, setLoading); if (draping) return draping; // #5942: imagery, never a model
+    warmEngineForLoad(file); // #7036: engine init + this load's workers start beside the file read
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // A primary supersedes every outstanding hook owner via the shared canceller.
     // Federated additions capture this hook's session and remain independent.
@@ -433,6 +436,7 @@ export function useIfcLoader() {
         // Best-effort notice; a failed chunk load must never turn into an
         // unhandled rejection that masks the retry itself.
         .catch(() => { /* no toast — the retry still proceeds */ });
+      releaseWarmGeometryWorkers('resource-retry'); // #7036: memory pressure empties the idle pool
       setGeometryStreamingActive(false);
       // Awaited, not fire-and-forget: callers await loadFile to know the load
       // finished, so the original promise must stay pending until the

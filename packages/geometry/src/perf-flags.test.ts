@@ -19,7 +19,21 @@ describe('GEOMETRY_PERF_FLAG_BINDINGS', () => {
       '__IFC_LITE_BATCH_SIZING',
       '__IFC_LITE_SHARD_SCAN',
       '__IFC_LITE_VISIBILITY_FILTER',
+      '__IFC_LITE_WARM_POOL',
     ]);
+  });
+
+  it('keep the warm pool on unless the kill switch is set (#7036)', async () => {
+    const { readWarmPoolFlag } = await import('./perf-flags.js') as { readWarmPoolFlag?: () => boolean };
+    expect(typeof readWarmPoolFlag).toBe('function');
+    expect(readWarmPoolFlag!()).toBe(true);
+    for (const off of [0, '0', false]) {
+      g.__IFC_LITE_WARM_POOL = off;
+      expect(readWarmPoolFlag!()).toBe(false);
+    }
+    delete g.__IFC_LITE_WARM_POOL;
+    Object.defineProperty(globalThis, 'location', { value: { search: '?perf.warmPool=0' }, configurable: true });
+    expect(readWarmPoolFlag!()).toBe(false);
   });
 
   it('resolve the legacy global first, then the URL param', () => {

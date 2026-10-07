@@ -90,6 +90,15 @@ export const PERF_FLAGS = [
     bindings: { ...GEOMETRY_PERF_FLAG_BINDINGS.shardScan, benchmarkEnv: 'VIEWER_BENCHMARK_SHARD_SCAN' },
   },
   {
+    id: 'warmPool',
+    kind: 'kill-switch',
+    owner: '@louistrue',
+    removalCondition: 'Delete the kill switch once starting the engine and workers at load request has shipped two releases with no field memory or load-failure report (#7036).',
+    introducedAt: '2026-10-07',
+    default: true,
+    bindings: { ...GEOMETRY_PERF_FLAG_BINDINGS.warmPool },
+  },
+  {
     id: 'contribCull',
     kind: 'kill-switch',
     owner: '@louistrue',

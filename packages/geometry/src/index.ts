@@ -57,6 +57,9 @@ export { type StallPhase, type StallPhaseHandle } from './stall-phase.js';
 // opened so the download overlaps think time instead of blocking first
 // geometry. The host app decides when (idle / intent) and affordability.
 export { prewarmSharedWasmModule } from './wasm-shared-module.js';
+export { prewarmGeometryWorkers, releaseWarmGeometryWorkers, warmGeometryWorkerPoolStats } from './warm-pool.js'; // #7036
+export { prewarmMainThreadEngine } from './main-engine-init.js';
+export type { GeometryWorkerPoolStats } from './geometry-worker-pool.js';
 // `__IFC_LITE_*` flag bindings the host reads; the viewer registry spreads these (#6962).
 export { GEOMETRY_PERF_FLAG_BINDINGS } from './perf-flags.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
@@ -106,6 +109,7 @@ import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotati
 import { resolveRtcFrame, type RtcFrame } from './rtc-frame.js';
 import { streamNativeGeometry } from './geometry-native.js';
 import { processParallel, type ProcessParallelOptions } from './geometry-parallel.js';
+import { getWarmGeometryWorkerPool } from './warm-pool.js';
 import { acquireWasmStreamingOperation } from './wasm-streaming-guard.js';
 import type { StallPhaseHandle } from './stall-phase.js';
 import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
@@ -787,6 +791,8 @@ export class GeometryProcessor {
       skipSmallCuts: this.skipSmallCuts,
       wasmUrls,
       workerCountOverride,
+      // #7036: lease warm workers unless the `warmPool` kill switch is set.
+      workerPool: getWarmGeometryWorkerPool() ?? undefined,
     });
   }
 

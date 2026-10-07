@@ -12,10 +12,9 @@ import type { ViewerState } from '@/store';
 import { analysisStampOf, isAnalysisStale, type AnalysisStamp } from '@/hooks/useAnalysisStaleness';
 import { gatheredModelIds } from '@/lib/clash/federation-identity';
 import { computeCompareImpact, type CompareImpact } from './impact';
-import { reconcileRuns } from './run-reconcile';
-import type { CapturedRun, ReconcileContext, ReconcileOutcome, SavedReconciliation } from './run-reconcile-types';
+import type { CapturedRun, ReconcileContext, ReconcileOutcome } from './run-reconcile-types';
 
-type State = Pick<ViewerState, 'compareResult' | 'models' | 'clashResult' | 'clashRawResult' | 'idsValidationReport'
+export type State = Pick<ViewerState, 'compareResult' | 'models' | 'clashResult' | 'clashRawResult' | 'idsValidationReport'
   | 'listResult' | 'listDefinitions' | 'activeListId' | 'bcfProject' | 'mutationVersion' | 'geometryContentVersion' | 'modelPlacement'>;
 type ReconciliationState = State & Pick<ViewerState, 'compareReconciliation'>;
 
@@ -93,13 +92,6 @@ export function reconcileContextOf(state: State): ReconcileContext | null {
     },
     isStale: (run) => isAnalysisStale(run.stamp, staleness(state)),
   };
-}
-
-/** Reconcile two captured runs against the current comparison, keeping what a later staleness check needs. */
-export function savedReconciliationOf(state: State, base: CapturedRun, head: CapturedRun): SavedReconciliation | null {
-  if (!state.compareResult) return null;
-  return { outcome: reconcileRuns(base, head, reconcileContextOf(state)), comparison: state.compareResult,
-    stamps: base === head ? [base.stamp] : [base.stamp, head.stamp] };
 }
 
 /**

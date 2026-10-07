@@ -269,7 +269,7 @@ describe('FlowPanel — Player mode and Publish button (#5167)', () => {
 
     act(() => {
       useViewerStore.getState().setFlowLastRun(
-        { ok: true, writes: 0, outputs: new Map(), graphOutputs: [], reports: [{ nodeId: 'number-1', status: 'ok', durationMs: 0, lanes: 1, laneErrors: 0, missing: {}, warnings: [] }], log: [] },
+        { ok: true, writes: 0, outputs: new Map(), graphOutputs: [], reports: [{ nodeId: 'number-1', status: 'ok', durationMs: 0, lanes: 1, laneErrors: 0, missing: {}, warnings: [] }], log: [], review: [] },
         undefined,
         { start: Date.now(), end: Date.now(), doc, mutationIds: new Set() },
       );
@@ -283,7 +283,7 @@ describe('FlowPanel — Player mode and Publish button (#5167)', () => {
     act(() => {
       useViewerStore.setState({ undoStacks: new Map([['model-1', [{ id: 'run-1', timestamp: at } as never]]]) });
       useViewerStore.getState().setFlowLastRun(
-        { ok: true, writes: 1, outputs: new Map(), graphOutputs: [], reports: [{ nodeId: 'number-1', status: 'ok', durationMs: 0, lanes: 1, laneErrors: 0, missing: {}, warnings: [] }], log: [] },
+        { ok: true, writes: 1, outputs: new Map(), graphOutputs: [], reports: [{ nodeId: 'number-1', status: 'ok', durationMs: 0, lanes: 1, laneErrors: 0, missing: {}, warnings: [] }], log: [], review: [] },
         undefined,
         { start: at, end: at, doc, mutationIds: new Set(['run-1']) },
       );

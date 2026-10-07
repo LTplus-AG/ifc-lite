@@ -1,0 +1,141 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Review checkpoints (#6923). Invariants: a checkpoint is plain JSON and
+ * survives a JSON round trip unchanged; only the proposal a reviewer approved
+ * (by digest) can be claimed; it is claimed at most once, also under
+ * concurrent claims; a graph or source change after review refuses the
+ * claim; an owner lost mid-resume never hands the checkpoint to a second
+ * owner.
+ */
+
+import { describe, expect, it } from 'vitest';
+import { CheckpointNotPortableError, checkpointProposal, createCheckpoint, graphDigest, resumeOutputs, type FlowCheckpoint } from './checkpoint-record.js';
+import {
+  approveCheckpoint, CheckpointError, claimCheckpoint, finishCheckpoint, MemoryCheckpointStore, parseCheckpoint,
+  recoverCheckpoint, rejectCheckpoint, updateCheckpoint,
+} from './checkpoint-state.js';
+import { FLOW_VERSION, type FlowDocument } from './document.js';
+import { NodeRegistry } from './registry.js';
+import { runFlow } from './scheduler.js';
+
+const table = { kind: 'table', access: 'item' } as const;
+interface Host { sunk: unknown[]; handle?: unknown }
+const registry = new NodeRegistry<Host>().registerAll([
+  {
+    type: 't.rows', title: 'Rows', category: 't', inputs: [], outputs: [{ name: 't', type: table }], params: [], capabilities: [],
+    run: (ctx) => ({ t: ctx.host.handle ?? { columns: [{ name: 'GlobalId', type: 'identifier' }], rows: [{ GlobalId: 'a' }, { GlobalId: 'b' }], key: 'GlobalId' } }),
+  },
+  {
+    type: 't.classify', title: 'Classify', category: 't', inputs: [{ name: 't', type: table }], outputs: [{ name: 'labels', type: { kind: 'scalar', access: 'list' } }],
+    params: [], capabilities: [], volatile: true, review: 'required',
+    run: () => ({ labels: ['wall', 'unknown'] }),
+  },
+  {
+    type: 't.sink', title: 'Sink', category: 't', inputs: [{ name: 'v', type: { kind: 'scalar', access: 'list' } }], outputs: [], params: [], capabilities: [], writes: 'model',
+    run: (ctx, i) => { ctx.host.sunk.push(i.v); return {}; },
+  },
+]);
+const doc: FlowDocument = {
+  flowVersion: FLOW_VERSION, id: 'g', name: 'classify', capabilities: [], inputs: [], outputs: [],
+  nodes: [{ id: 'rows', type: 't.rows', pos: [0, 0] }, { id: 'ai', type: 't.classify' }, { id: 'sink', type: 't.sink' }],
+  edges: [{ from: ['rows', 't'], to: ['ai', 't'] }, { from: ['ai', 'labels'], to: ['sink', 'v'] }],
+};
+
+async function paused(host: Host = { sunk: [] }): Promise<FlowCheckpoint> {
+  const result = await runFlow(doc, { host, registry });
+  return createCheckpoint({ doc, result, sourceDigest: 'model-hash-1', budget: { requests: 2 }, now: 1_000 });
+}
+
+const claim = (owner: string, now = 2_000) => ({ owner, graphDigest: graphDigest(doc), sourceDigest: 'model-hash-1', leaseMs: 60_000, now });
+
+describe('createCheckpoint', () => {
+  it('is plain JSON that round-trips and resumes the downstream node once with the reviewed value', async () => {
+    const checkpoint = await paused();
+    const revived = parseCheckpoint(JSON.parse(JSON.stringify(checkpoint)));
+    expect(revived).toEqual(checkpoint);
+    expect(checkpoint).toMatchObject({ state: 'prepared', reviewNodes: ['ai'], budget: { requests: 2 } });
+    expect([...checkpointProposal(revived).keys()]).toEqual(['ai']);
+    const host: Host = { sunk: [] };
+    const resumed = await runFlow(doc, { host, registry, resume: resumeOutputs(revived) });
+    expect(host.sunk).toEqual([['wall', 'unknown']]);
+    expect(resumed.reports.find((r) => r.nodeId === 'ai')?.status).toBe('restored');
+  });
+
+  it('names the node and port of a value that is not plain JSON', async () => {
+    const host: Host = { sunk: [], handle: new Map([['opaque', 1]]) };
+    await expect(paused(host)).rejects.toThrow(CheckpointNotPortableError);
+    await expect(paused(host)).rejects.toThrow(/rows\.t/);
+    class Handle { readonly token = 'viewer-only'; }
+    await expect(paused({ sunk: [], handle: { key: 'GlobalId', columns: [], rows: [], extra: new Handle() } })).rejects.toThrow(/rows\.t\.extra/);
+  });
+
+  it('ignores layout but not params or Player inputs in the graph digest', () => {
+    const moved = { ...doc, nodes: doc.nodes.map((n) => ({ ...n, pos: [9, 9] as const, label: 'x' })) };
+    expect(graphDigest(moved)).toBe(graphDigest(doc));
+    const edited = { ...doc, nodes: doc.nodes.map((n) => (n.id === 'ai' ? { ...n, params: { categories: ['x'] } } : n)) };
+    expect(graphDigest(edited)).not.toBe(graphDigest(doc));
+    expect(graphDigest(doc, { 'rows.limit': 3 })).not.toBe(graphDigest(doc));
+  });
+});
+
+describe('checkpoint lifecycle', () => {
+  it('approves only the digest the reviewer saw', async () => {
+    const checkpoint = await paused();
+    expect(() => approveCheckpoint(checkpoint, 'other-digest')).toThrow(/different proposal/);
+    expect(approveCheckpoint(checkpoint, checkpoint.proposalDigest).state).toBe('reviewed');
+    expect(() => claimCheckpoint(checkpoint, claim('tab-a'))).toThrow(CheckpointError);
+    expect(rejectCheckpoint(checkpoint).state).toBe('rejected');
+  });
+
+  it('refuses a proposal edited after approval', async () => {
+    const reviewed = approveCheckpoint(await paused(), (await paused()).proposalDigest);
+    const tampered = JSON.parse(JSON.stringify(reviewed)) as { outputs: Record<string, Record<string, { items: string[] }>> };
+    tampered.outputs.ai.labels.items = ['door', 'door'];
+    expect(() => parseCheckpoint(tampered)).toThrow(/do not match the proposal digest/);
+  });
+
+  it('refuses a claim after the graph or the sources changed', async () => {
+    const checkpoint = await paused();
+    const reviewed = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
+    expect(() => claimCheckpoint(reviewed, { ...claim('a'), graphDigest: 'changed' })).toThrow(expect.objectContaining({ code: 'graph-changed' }));
+    expect(() => claimCheckpoint(reviewed, { ...claim('a'), sourceDigest: 'model-hash-2' })).toThrow(expect.objectContaining({ code: 'sources-changed' }));
+  });
+
+  it('lets exactly one of two concurrent claimers consume a reviewed checkpoint', async () => {
+    const store = new MemoryCheckpointStore();
+    const checkpoint = await paused();
+    await store.write(approveCheckpoint(checkpoint, checkpoint.proposalDigest), null);
+    const results = await Promise.allSettled([
+      updateCheckpoint(store, checkpoint.id, (c) => claimCheckpoint(c, claim('tab-a'))),
+      updateCheckpoint(store, checkpoint.id, (c) => claimCheckpoint(c, claim('tab-b'))),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const loser = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+    expect(loser.reason).toMatchObject({ code: 'not-reviewed' });
+    const owner = (await store.read(checkpoint.id))!.checkpoint.claim!.owner;
+    const other = owner === 'tab-a' ? 'tab-b' : 'tab-a';
+    expect(() => finishCheckpoint((results.find((r) => r.status === 'fulfilled') as PromiseFulfilledResult<FlowCheckpoint>).value, other, { ok: true }))
+      .toThrow(expect.objectContaining({ code: 'not-owner' }));
+    const done = await updateCheckpoint(store, checkpoint.id, (c) => finishCheckpoint(c, owner, { ok: true }));
+    expect(done.state).toBe('completed');
+    await expect(updateCheckpoint(store, checkpoint.id, (c) => claimCheckpoint(c, claim('tab-c')))).rejects.toMatchObject({ code: 'not-reviewed' });
+  });
+
+  it('marks a failed resume and a lost owner as partially committed, never claimable again', async () => {
+    const checkpoint = await paused();
+    const applying = claimCheckpoint(approveCheckpoint(checkpoint, checkpoint.proposalDigest), claim('tab-a', 2_000));
+    expect(finishCheckpoint(applying, 'tab-a', { ok: false, message: 'sink failed' })).toMatchObject({ state: 'partially-committed', outcome: { ok: false, message: 'sink failed' } });
+    // Crash after claiming: before the lease runs out nothing changes; after it, the checkpoint is blocked.
+    expect(recoverCheckpoint(applying, 2_000 + 30_000)).toBeNull();
+    const recovered = recoverCheckpoint(applying, 2_000 + 60_001)!;
+    expect(recovered.state).toBe('partially-committed');
+    expect(() => claimCheckpoint(recovered, claim('tab-b', 70_000))).toThrow(expect.objectContaining({ code: 'not-reviewed' }));
+    // Crash before claiming: a reviewed checkpoint is untouched by recovery and still claimable.
+    const reviewed = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
+    expect(recoverCheckpoint(reviewed, 1e12)).toBeNull();
+    expect(claimCheckpoint(reviewed, claim('tab-b')).state).toBe('applying');
+  });
+});

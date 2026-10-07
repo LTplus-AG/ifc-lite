@@ -17,7 +17,7 @@ function report(nodeId: string, status: NodeReport['status']): NodeReport {
 }
 
 function runResult(overrides: Partial<RunResult>): RunResult {
-  return { ok: true, writes: 0, outputs: new Map(), graphOutputs: [], reports: [], log: [], ...overrides };
+  return { ok: true, writes: 0, outputs: new Map(), graphOutputs: [], reports: [], log: [], review: [], ...overrides };
 }
 
 describe('flowPublishEligibility', () => {

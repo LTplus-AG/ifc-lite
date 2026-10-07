@@ -13,7 +13,7 @@ import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { Play } from 'lucide-react';
-import { parseFlowDocument, type FlowDocument, type NodeReport } from '@ifc-lite/flow';
+import { parseFlowDocument, type FlowDocument, type NodeReport, type NodeStatus } from '@ifc-lite/flow';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useDialogs } from '@/components/ui/confirm-dialog';
 import { useViewerStore } from '@/store';
@@ -174,7 +174,7 @@ export function FlowPanel() {
   };
 
   const statusCounts = useMemo(() => {
-    const c = { ok: 0, memo: 0, noop: 0, error: 0, skipped: 0 };
+    const c: Record<NodeStatus, number> = { ok: 0, memo: 0, noop: 0, error: 0, skipped: 0, review: 0, paused: 0, restored: 0 };
     for (const r of lastRun?.reports ?? []) c[r.status] += 1;
     return c;
   }, [lastRun]);

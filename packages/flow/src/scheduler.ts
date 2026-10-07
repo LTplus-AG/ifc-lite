@@ -18,6 +18,7 @@
 import { nodeAvailability, type HostFeatures } from './availability.js';
 import { digest, digestFlowData } from './digest.js';
 import type { FlowDocument } from './document.js';
+import { topologicalOrder } from './order.js';
 import { assemble, planLift, type LiftPlan } from './lift.js';
 import { resolveParams, type LaneTracking, type LogLevel, type NodeOutputs, type NodeRegistry } from './registry.js';
 import { ORPHAN_NODE_ID, removeOrphanedSets, removeSet, trackingKeyOf } from './orphans.js';
@@ -36,7 +37,12 @@ export interface RunLogEntry {
   readonly message: string;
 }
 
-export type NodeStatus = 'ok' | 'memo' | 'noop' | 'skipped' | 'error';
+/**
+ * `review`: the node produced a proposal that awaits review; `paused`: not run
+ * because an upstream proposal awaits review; `restored`: not run, its outputs
+ * came from `RunOptions.resume`.
+ */
+export type NodeStatus = 'ok' | 'memo' | 'noop' | 'skipped' | 'error' | 'review' | 'paused' | 'restored';
 
 export interface NodeReport {
   readonly nodeId: string;
@@ -68,6 +74,8 @@ export interface RunResult {
   readonly graphOutputs: readonly GraphOutputValue[];
   readonly reports: readonly NodeReport[];
   readonly log: readonly RunLogEntry[];
+  /** Nodes whose proposals await review (`NodeDef.review`); everything downstream of them is `paused`. */
+  readonly review: readonly string[];
 }
 
 /** Reusable across runs of the same document; keyed by node id. */
@@ -106,38 +114,13 @@ export interface RunOptions<H> {
   /** Where tracked nodes read and persist their element sets; absent = every lane is a fresh create. */
   readonly tracking?: TrackingStore;
   readonly signal?: AbortSignal;
-}
-
-export class FlowCycleError extends Error {
-  constructor(readonly nodeIds: readonly string[]) {
-    super(`flow has a cycle through ${nodeIds.join(' → ')}`);
-    this.name = 'FlowCycleError';
-  }
-}
-
-/** Kahn's algorithm; stable with respect to document node order. */
-export function topologicalOrder(doc: FlowDocument): string[] {
-  const indegree = new Map<string, number>(doc.nodes.map((n) => [n.id, 0]));
-  const out = new Map<string, string[]>(doc.nodes.map((n) => [n.id, []]));
-  for (const e of doc.edges) {
-    out.get(e.from[0])!.push(e.to[0]);
-    indegree.set(e.to[0], (indegree.get(e.to[0]) ?? 0) + 1);
-  }
-  const ready = doc.nodes.filter((n) => indegree.get(n.id) === 0).map((n) => n.id);
-  const order: string[] = [];
-  while (ready.length > 0) {
-    const id = ready.shift()!;
-    order.push(id);
-    for (const next of out.get(id)!) {
-      const d = indegree.get(next)! - 1;
-      indegree.set(next, d);
-      if (d === 0) ready.push(next);
-    }
-  }
-  if (order.length !== doc.nodes.length) {
-    throw new FlowCycleError(doc.nodes.map((n) => n.id).filter((id) => !order.includes(id)));
-  }
-  return order;
+  /**
+   * Resume after a review: outputs of the nodes that completed before the
+   * pause (a paused run's `outputs`), with each reviewed node's entry holding
+   * its approved proposal. These nodes are not executed again, so an effect
+   * that ran before the pause is never repeated.
+   */
+  readonly resume?: ReadonlyMap<string, ReadonlyMap<string, FlowData>>;
 }
 
 export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promise<RunResult> {
@@ -147,6 +130,7 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
   const reports: NodeReport[] = [];
   const log: RunLogEntry[] = [];
   const failed = new Set<string>();
+  const paused = new Set<string>();
   const nodesById = new Map(doc.nodes.map((n) => [n.id, n]));
   const maxCross = doc.maxCross ?? DEFAULT_MAX_CROSS;
   let writesThisRun = 0;
@@ -162,6 +146,18 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
     };
 
     if (opts.signal?.aborted) { fail('aborted'); continue; }
+    const quiet = { lanes: 0, laneErrors: 0, missing: {}, warnings: [] };
+    const restored = opts.resume?.get(nodeId);
+    if (restored) {
+      outputs.set(nodeId, new Map(restored));
+      report({ status: 'restored', ...quiet });
+      continue;
+    }
+    if (doc.edges.some((e) => e.to[0] === nodeId && paused.has(e.from[0]))) {
+      paused.add(nodeId);
+      report({ status: 'paused', ...quiet });
+      continue;
+    }
     const def = registry.get(node.type);
     if (!def) {
       fail(`unknown node type "${node.type}"`);
@@ -365,8 +361,9 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       if (markedVolatile) opts.cache.invalidate(nodeId);
       else opts.cache.set(nodeId, memoKey, assembled);
     }
+    if (def.review) paused.add(nodeId);
     report({
-      status: 'ok',
+      status: def.review ? 'review' : 'ok',
       lanes: plan.lanes.length,
       laneErrors: laneErrors + removeErrors,
       missing: plan.missing,
@@ -385,5 +382,6 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
   }
 
   const graphOutputs = doc.outputs.map((o) => ({ label: o.label, nodeId: o.nodeId, port: o.port, data: outputs.get(o.nodeId)?.get(o.port) }));
-  return { ok: failed.size === 0 && !opts.signal?.aborted, writes: writesThisRun, outputs, graphOutputs, reports, log };
+  const review = reports.filter((r) => r.status === 'review').map((r) => r.nodeId);
+  return { ok: failed.size === 0 && !opts.signal?.aborted, writes: writesThisRun, outputs, graphOutputs, reports, log, review };
 }

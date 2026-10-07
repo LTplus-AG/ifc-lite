@@ -89,6 +89,9 @@ export const flowPanelEn = {
   'flowPanel.status.noop': 'no-op',
   'flowPanel.status.skipped': 'skipped',
   'flowPanel.status.error': 'error',
+  'flowPanel.status.review': 'awaiting review',
+  'flowPanel.status.paused': 'paused',
+  'flowPanel.status.restored': 'restored',
 
   'flowPanel.view.editor': 'Editor',
   'flowPanel.view.player': 'Player',

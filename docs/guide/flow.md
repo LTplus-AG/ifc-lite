@@ -222,6 +222,51 @@ on a headless host and pass their entities through, so a graph that
 colorizes failures runs unchanged in CI. `ifc-lite flow validate` and the
 editor show the same per-node report.
 
+## Review checkpoints
+
+A node that declares `review: 'required'` produces a proposal; the run stops downstream of it (status
+`review`, dependants `paused`) and `RunResult.review` names it. Independent
+branches still run. To continue, the host saves a checkpoint, a reviewer
+approves the proposal by its digest, and the run is resumed with
+`RunOptions.resume`: every node that completed before the pause is restored
+(status `restored`) and never executed again, so a write before the pause is
+not repeated and the reviewed proposal is replayed without a model request.
+
+A checkpoint (`createCheckpoint` from `@ifc-lite/flow/checkpoint`, a separate entry so a host that only runs graphs does not load it) is plain JSON, so the viewer and the CLI
+read the same record. It holds the restored outputs, a digest of the graph
+and its Player inputs, a host digest of the sources the run read, the
+proposal digest and the AI budget state. Its lifecycle is `prepared` →
+`reviewed` (or `rejected`) → `applying` → `completed`, or
+`partially-committed` when a resume failed or its owner disappeared
+mid-resume; a partially committed checkpoint can never be resumed again.
+`claimCheckpoint` re-checks the graph and source digests and goes through a
+compare-and-swap store (`updateCheckpoint`), so two tabs or processes cannot
+consume the same approval. A value that is not plain JSON (a viewer-only
+handle) makes the run uncheckpointable, named by node and port.
+
+```ts
+import { runFlow, type FlowDocument, type NodeRegistry } from '@ifc-lite/flow';
+import { approveCheckpoint, claimCheckpoint, createCheckpoint, finishCheckpoint, graphDigest, resumeOutputs } from '@ifc-lite/flow/checkpoint';
+import type { FlowHost } from '@ifc-lite/flow-nodes';
+
+async function reviewedRun(doc: FlowDocument, host: FlowHost, registry: NodeRegistry<FlowHost>, sourceDigest: string) {
+  const paused = await runFlow(doc, { host, registry });
+  if (paused.review.length === 0) return paused;
+  const checkpoint = createCheckpoint({ doc, result: paused, sourceDigest });
+  // ...show the proposal (checkpointProposal) and collect the reviewer's approval...
+  const approved = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
+  const claimed = claimCheckpoint(approved, { owner: 'me', graphDigest: graphDigest(doc), sourceDigest, leaseMs: 60_000 });
+  const resumed = await runFlow(doc, { host, registry, resume: resumeOutputs(claimed) });
+  finishCheckpoint(claimed, 'me', { ok: resumed.ok });
+  return resumed;
+}
+```
+
+In a real host the transitions go through `updateCheckpoint` with a durable
+store; the CLI's `flow run --checkpoint` / `flow review` / `flow resume`
+(see the [CLI guide](cli.md)) and the viewer's Flow
+panel do exactly that.
+
 ## Programmatic use
 
 ```ts

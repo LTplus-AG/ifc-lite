@@ -88,6 +88,12 @@ describe('ifc-lite flow: reviewed AI pause and resume', () => {
     const file = await readFile(checkpoint, 'utf-8');
     expect(file).not.toContain('test-key-never-printed');
     expect(JSON.parse(file).checkpoint.budget).toMatchObject({ requests: 1, maxRequests: 12 });
+    // #7039 JSON review includes the exact proposal values, not only their digest.
+    c = capture();
+    await flowCommand(['review', checkpoint, '--json']);
+    const storedProposal = JSON.parse(file).checkpoint;
+    expect(c.json()).toMatchObject({ proposalDigest: storedProposal.proposalDigest,
+      proposal: Object.fromEntries(storedProposal.reviewNodes.map((id: string) => [id, storedProposal.outputs[id]])) });
     // #7039 Different ids must contend for the same file, never overwrite each other.
     const stored = await new FileCheckpointStore(checkpoint).load();
     const racePath = join(dir, 'race.json');

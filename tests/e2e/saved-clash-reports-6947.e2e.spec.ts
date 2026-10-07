@@ -4,8 +4,10 @@
 
 /**
  * #6947 in a real browser, on a real model: three clash runs over the sample
- * architecture model, two of them saved as reports, three charts (one per
- * report, one on the current result), then a page reload.
+ * revision B (the demo model with an injected clash), two of them saved as
+ * reports, three charts (one per report, one on the current result), then a
+ * page reload. The runs differ by their settings: hard clashes, hard clashes
+ * with touching pairs reported, and a 0.5 m clearance check.
  *
  * The component tests cover the rules; this covers what they cannot: the real
  * IndexedDB across a real reload, and the real layout the screenshots show.
@@ -44,8 +46,8 @@ const clashCount = (page: Page): Promise<number | null> =>
   page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().clashResult?.clashes.length ?? null);
 
 async function loadModel(page: Page): Promise<void> {
-  const loaded = page.waitForEvent('console', { predicate: (message) => message.text().includes('[ifc-lite] Added model building-architecture.ifc'), timeout: 180_000 });
-  await page.goto(`${viewerUrl}?model=/samples/building-architecture.ifc`);
+  const loaded = page.waitForEvent('console', { predicate: (message) => message.text().includes('[ifc-lite] Added model building-architecture-rev-b.ifc'), timeout: 180_000 });
+  await page.goto(`${viewerUrl}?model=/samples/building-architecture-rev-b.ifc`);
   await loaded;
   await page.waitForFunction(() => (globalThis.__ifc_lite_viewer_store__.getState().geometryResult?.meshes.length ?? 0) > 0, undefined, { timeout: 180_000 });
 }
@@ -60,10 +62,22 @@ async function openPanels(page: Page): Promise<void> {
   await expect(page.locator('[data-charts-panel]').first()).toBeVisible();
 }
 
-/** Start one run from the Clash panel and wait until a new result is published. */
-async function run(page: Page, button: string): Promise<number> {
-  const before = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().clashRunSeq);
-  await page.getByRole('button', { name: button, exact: true }).first().click();
+type RunSettings = { mode: 'hard' | 'clearance'; reportTouch: boolean; clearance?: number };
+
+/** Set the detection settings, start "Detect all clashes" from the Clash panel and wait for the new result. */
+async function run(page: Page, settings: RunSettings): Promise<number> {
+  const button = 'Detect all clashes';
+  const before = await page.evaluate((next) => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    state.setClashMode(next.mode);
+    state.setClashReportTouch(next.reportTouch);
+    if (next.clearance !== undefined) state.setClashClearance(next.clearance);
+    return state.clashRunSeq;
+  }, settings);
+  const start = page.getByRole('button', { name: button, exact: true }).first();
+  // With a result on screen the Detection section is collapsed; open it to reach the run buttons.
+  if (!(await start.isVisible())) await page.getByRole('button', { name: /^Detection/i }).first().click();
+  await start.click();
   await page.waitForFunction((seq) => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     return !state.clashRunning && state.clashRunSeq > seq;
@@ -105,7 +119,7 @@ async function population(page: Page, title: string): Promise<number> {
 
 test('#6947 two saved clash reports and the current result chart side by side, and survive a reload', async ({ page }, info) => {
   test.setTimeout(480_000);
-  await page.setViewportSize({ width: 1700, height: 1100 });
+  await page.setViewportSize({ width: 1700, height: 1250 });
   await loadModel(page);
   await openPanels(page);
   // A fresh dashboard, so the three charts are the only cards.
@@ -115,51 +129,63 @@ test('#6947 two saved clash reports and the current result chart side by side, a
     state.setActiveDashboardId('clash-runs-6947');
   });
 
-  const a = await run(page, 'Detect all clashes');
-  await saveAs(page, 'Run A: all clashes');
+  const a = await run(page, { mode: 'hard', reportTouch: false });
+  await saveAs(page, 'Run A: hard');
   await page.screenshot({ path: info.outputPath('1-save-dialog.png') });
   await page.keyboard.press('Escape');
 
-  const b = await run(page, 'Find duplicates');
-  await saveAs(page, 'Run B: duplicates');
+  const b = await run(page, { mode: 'hard', reportTouch: true });
+  await saveAs(page, 'Run B: with touching');
   await page.keyboard.press('Escape');
   expect(a, 'the sample model has clashes for run A').toBeGreaterThan(0);
   expect(b, 'runs A and B must differ for the charts to be told apart').not.toBe(a);
 
-  await addClashChart(page, 'Chart of run A', 'Run A: all clashes');
-  await addClashChart(page, 'Chart of run B', 'Run B: duplicates');
+  await addClashChart(page, 'Chart of run A', 'Run A: hard');
+  await addClashChart(page, 'Chart of run B', 'Run B: with touching');
   await addClashChart(page, 'Current result', null);
+  // Lay the three cards out side by side; new charts are stacked below one another.
+  await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    const dashboard = state.dashboards.find((entry) => entry.id === 'clash-runs-6947');
+    if (dashboard) state.upsertDashboard({ ...dashboard, layout: dashboard.charts.map((chart, index) => ({ chartId: chart.id, x: index * 4, y: 0, w: 4, h: 4 })) });
+  });
   await page.screenshot({ path: info.outputPath('2-chart-editor-and-cards.png') });
 
-  // Run C replaces the current result (here: back to all clashes, after run B was current).
-  const c = await run(page, 'Detect all clashes');
-  expect(c).not.toBe(b);
+  // Run C replaces the current result.
+  const c = await run(page, { mode: 'clearance', reportTouch: false, clearance: 0.5 });
+  expect(c, 'run C must differ from the saved runs for the charts to be told apart').not.toBe(b);
   await expect.poll(() => population(page, 'Current result')).toBe(c);
   expect(await population(page, 'Chart of run A')).toBe(a);
   expect(await population(page, 'Chart of run B')).toBe(b);
   await page.screenshot({ path: info.outputPath('3-after-run-c.png') });
 
-  // Reload without a model: no current result, the reports come back from IndexedDB.
-  await page.goto(viewerUrl);
-  await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__?.getState().savedClashReportsStorage.phase === 'ready');
+  // Reload the page with the same model: no current result, and the reports come back from IndexedDB.
+  await loadModel(page);
+  await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__.getState().savedClashReportsStorage.phase === 'ready');
+  expect(await clashCount(page), 'a reload keeps no current result').toBeNull();
   expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().savedClashReports.map((report) => report.name).sort()))
-    .toEqual(['Run A: all clashes', 'Run B: duplicates']);
+    .toEqual(['Run A: hard', 'Run B: with touching']);
   await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     state.setActiveDashboardId('clash-runs-6947');
     state.showWorkspacePanel('charts');
   });
-  await expect(page.locator('[data-chart-id]', { hasText: 'Chart of run A' }).first()).toBeVisible();
+  const chartA = page.locator('[data-chart-id]', { hasText: 'Chart of run A' }).first();
+  await expect(chartA).toBeVisible();
   await expect.poll(() => population(page, 'Chart of run A')).toBe(a);
   expect(await population(page, 'Chart of run B')).toBe(b);
   expect(await population(page, 'Current result')).toBe(0);
-  await expect(page.locator('[data-chart-id]', { hasText: 'Chart of run A' }).first().locator('[data-chart-subtitle]')).toContainText('Models not loaded');
-  await page.screenshot({ path: info.outputPath('4-after-reload.png') });
+  // The same file is loaded again, unedited: the report is on its recorded revision and carries no warning.
+  await expect(chartA.locator('[data-chart-subtitle]')).toHaveText(/^Saved clash report: Run A: hard, saved /);
+  await chartA.getByRole('button', { name: 'Edit Chart of run A', exact: true }).click();
+  await expect(page.locator('[data-chart-editor]').getByLabel('Clash report', { exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath('4-after-reload-editor.png') });
+  await page.locator('[data-chart-editor]').getByRole('button', { name: 'Cancel', exact: true }).click();
 
   // Delete report A: its chart is unavailable and offers the way out; it does not show another run.
   await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
-    const report = state.savedClashReports.find((entry) => entry.name === 'Run A: all clashes');
+    const report = state.savedClashReports.find((entry) => entry.name === 'Run A: hard');
     return report ? state.deleteSavedClashReport(report.id) : false;
   });
   const orphan = page.locator('[data-chart-id]', { hasText: 'Chart of run A' }).first();

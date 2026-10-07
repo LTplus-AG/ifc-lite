@@ -26,8 +26,6 @@ import { FlowValuePreview } from './FlowValuePreview';
 registerEnglish(flowReviewEn);
 
 const button = 'rounded border border-border px-2 py-0.5 hover:bg-muted disabled:opacity-50';
-/** Every row of a proposal is reviewable; past this the card scrolls rather than truncating. */
-const REVIEW_ROWS = 500;
 
 const STATE_KEY: Record<FlowCheckpoint['state'], TranslationKey> = {
   prepared: 'flowReview.state.prepared', reviewed: 'flowReview.state.reviewed', applying: 'flowReview.state.applying',
@@ -92,7 +90,7 @@ export function FlowReviewCheckpoint({ doc, onResume }: {
               <p className="text-muted-foreground">{t(coverageKey, coverage.value as Record<string, string | number>)}</p>
             )}
             {[...ports].filter(([port]) => port !== 'coverage').map(([port, data]) => (
-              <FlowValuePreview key={port} data={data} limit={REVIEW_ROWS} />
+              <FlowValuePreview key={port} data={data} full />
             ))}
           </div>
         );

@@ -11,7 +11,7 @@ import 'fake-indexeddb/auto';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { type FlowDocument, type RunResult } from '@ifc-lite/flow';
+import { type FlowData, type FlowDocument, type RunResult } from '@ifc-lite/flow';
 import { createCheckpoint, type FlowCheckpoint } from '@ifc-lite/flow/checkpoint';
 import { render, cleanup, click } from '@/test/render';
 import { ensureFlowAiNodes, flowRegistry } from '@/lib/flow/runner';
@@ -28,13 +28,13 @@ const doc = (id: string): FlowDocument => ({
 });
 const rows = Array.from({ length: 30 }, (_, i) => ({ key: `g${i}`, label: i % 2 ? 'Partition' : 'Facade', evidence: 'Pset_WallCommon.IsExternal', outcome: 'classified' }));
 
-async function saved(graph: FlowDocument): Promise<FlowCheckpoint> {
+async function saved(graph: FlowDocument, proposalRows = rows, proposalData?: FlowData): Promise<FlowCheckpoint> {
   const result: RunResult = {
     ok: true, writes: 0, graphOutputs: [], log: [], review: ['roles'],
     reports: [{ nodeId: 'roles', status: 'review', durationMs: 1, lanes: 1, laneErrors: 0, missing: {}, warnings: [] }],
     outputs: new Map([['roles', new Map([
-      ['table', { kind: 'item', value: { key: 'key', columns: [{ name: 'key', type: 'identifier' }, { name: 'label', type: 'label' }, { name: 'evidence', type: 'text' }, { name: 'outcome', type: 'enum' }], rows } }],
-      ['coverage', { kind: 'item', value: { model: 'stand-in', rows: 30, requests: 2, classified: 30, unknown: 0, failed: 0, notSent: 0 } }],
+      ['table', proposalData ?? { kind: 'item', value: { key: 'key', columns: [{ name: 'key', type: 'identifier' }, { name: 'label', type: 'label' }, { name: 'evidence', type: 'text' }, { name: 'outcome', type: 'enum' }], rows: proposalRows } }],
+      ['coverage', { kind: 'item', value: { model: 'stand-in', rows: proposalRows.length, requests: 2, classified: proposalRows.length, unknown: 0, failed: 0, notSent: 0 } }],
     ])]]),
   };
   await ensureFlowAiNodes();
@@ -79,4 +79,36 @@ it('rejects without resuming, and announces the outcome', async () => {
   assert.equal(resumed.length, 0);
   assert.equal(container.querySelector('output')?.textContent, 'Rejected. Nothing downstream of the proposal ran.');
   assert.equal([...container.querySelectorAll('button')].some((b) => b.textContent === 'Approve and resume'), false);
+});
+
+
+it('#7040 exposes row 501 of a saved proposal before approving its full digest', async () => {
+  const graph = doc('card-large');
+  const proposalRows = Array.from({ length: 501 }, (_, i) => ({ ...rows[0], key: `g${i}` }));
+  const checkpoint = await saved(graph, proposalRows);
+  const resumed: FlowCheckpoint[] = [];
+  const container = render(<FlowReviewCheckpoint doc={graph} onResume={async c => { resumed.push(c); }} />);
+  await settle();
+  assert.equal(container.querySelectorAll('tbody tr').length, 501);
+  assert.equal(container.querySelector('tbody tr:last-child td')?.textContent, 'g500');
+  click([...container.querySelectorAll('button')].find(button => button.textContent === 'Approve and resume')!);
+  await settle();
+  assert.equal(resumed[0]?.review?.proposalDigest, checkpoint.proposalDigest);
+});
+
+
+it('#7040 grouped proposals show every branch and the full nested table evidence', async () => {
+  const graph = doc('card-grouped');
+  const longEvidence = 'Complete evidence beyond the old forty character object preview';
+  const groups = new Map(Array.from({ length: 9 }, (_, i) => [`branch-${i}`, [{
+    key: 'key', columns: [{ name: 'key', type: 'identifier' }, { name: 'evidence', type: 'text' }],
+    rows: [{ key: `nested-${i}`, evidence: longEvidence }],
+  }]]));
+  await saved(graph, rows, { kind: 'group', branches: groups });
+  const container = render(<FlowReviewCheckpoint doc={graph} onResume={async () => undefined} />);
+  await settle();
+  assert.equal(container.querySelectorAll('tbody tr').length, 9);
+  assert.match(container.textContent ?? '', /branch-8/);
+  assert.match(container.textContent ?? '', /nested-8/);
+  assert.match(container.textContent ?? '', new RegExp(longEvidence));
 });

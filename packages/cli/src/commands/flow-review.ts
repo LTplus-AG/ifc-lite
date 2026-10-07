@@ -18,7 +18,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { stat } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
+import { dirname, basename, join, resolve } from 'node:path';
 import { type FlowDocument, type RunResult } from '@ifc-lite/flow';
 import {
   approveCheckpoint, checkpointProposal, claimCheckpoint, createCheckpoint, finishCheckpoint, graphDigest,
@@ -128,4 +129,27 @@ export async function finishResume(resume: Resume, result: RunResult): Promise<F
 /** A failed persistence step must not turn a consumed claim into completed. */
 export async function failResume(resume: Resume, message: string): Promise<FlowCheckpoint> {
   return updateCheckpoint(resume.store, resume.checkpoint.id, c => finishCheckpoint(c, resume.owner, { ok: false, message }));
+}
+
+/** #7039: checkpoint writes must not alias model outputs or another journal. */
+export async function checkDistinctDestinations(paths: readonly string[]): Promise<void> {
+  const names = new Set<string>();
+  const files = new Set<string>();
+  for (const path of paths) {
+    const absolute = resolve(path);
+    const canonical = await realpath(absolute).catch(async (error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      return join(await realpath(dirname(absolute)), basename(absolute));
+    });
+    const info = await stat(absolute).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      return null;
+    });
+    const identity = info ? `${info.dev}:${info.ino}` : undefined;
+    if (names.has(canonical) || (identity !== undefined && files.has(identity))) {
+      throw new Error('checkpoint, next checkpoint, output and tracking destinations must be distinct');
+    }
+    names.add(canonical);
+    if (identity !== undefined) files.add(identity);
+  }
 }

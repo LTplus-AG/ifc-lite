@@ -64,7 +64,7 @@ import { createRootBudget, restoreRootBudget } from '@ifc-lite/ai';
 import { createHeadlessContext } from '../loader.js';
 import { createCliAiService, flowAiConfig } from './flow-ai.js';
 import { sourceDigestOf } from './flow-checkpoint.js';
-import { checkPauseDestination, checkpointNodes, claimForResume, failResume, finishResume, PAUSED_FOR_REVIEW, preparePause, reportPause, reviewCommand, savePause, type Resume } from './flow-review.js';
+import { checkDistinctDestinations, checkPauseDestination, checkpointNodes, claimForResume, failResume, finishResume, PAUSED_FOR_REVIEW, preparePause, reportPause, reviewCommand, savePause, type Resume } from './flow-review.js';
 import { createCliFlowSession } from './flow-host.js';
 import { fatal, getAllFlags, hasFlag, printJson } from '../output.js';
 import { defaultTrackingPath, FileTrackingStore } from './flow-tracking.js';
@@ -256,13 +256,14 @@ export async function flowCommand(args: string[]): Promise<void> {
   if (reviewsAhead && nextCheckpoint) {
     try { await checkPauseDestination(nextCheckpoint); } catch (error) { fatal((error as Error).message); }
   }
-  const modelBytes = await readFile(modelPath);
-  // The claim is taken before anything runs, against the model this resume starts from.
-  const resume: Resume | undefined = sub === 'resume' ? await claimForResume(checkpointPath!, doc, inputs, sourceDigestOf(modelBytes), registry) : undefined;
-
+  const destinations = [checkpointPath, sub === 'resume' ? nextCheckpoint : undefined, out, hasFlag(args, '--no-tracking') ? undefined : trackingPath].filter((path): path is string => path !== undefined);
+  try { await checkDistinctDestinations(destinations); } catch (error) { fatal((error as Error).message); }
   const secretValues = resolveSecretValues(doc, process.env);
   const redaction = buildRedactionMap(secretValues);
   const runDoc = interpolateSecrets(doc, secretValues);
+  const modelBytes = await readFile(modelPath);
+  // Bind approval to the exact execution graph, including resolved secret parameters.
+  const resume: Resume | undefined = sub === 'resume' ? await claimForResume(checkpointPath!, runDoc, inputs, sourceDigestOf(modelBytes), registry) : undefined;
 
   // The host follows the model the graph works on: `model.openFromSource`
   // can replace the command-line model mid-run (see `flow-host.ts`).
@@ -312,7 +313,7 @@ export async function flowCommand(args: string[]): Promise<void> {
       written = typeof content === 'string' ? content : Buffer.from(content);
     }
     // Refuse secrets in every restored output before either durable side effect.
-    const proposal = paused ? preparePause({ registry, doc, result, inputs, sourceDigest: sourceDigestOf((result.writes > 0 || activeModelChanged) && written !== undefined ? written : modelBytes), budget: { ...budget } }, redaction) : undefined;
+    const proposal = paused ? preparePause({ registry, doc: runDoc, result, inputs, sourceDigest: sourceDigestOf((result.writes > 0 || activeModelChanged) && written !== undefined ? written : modelBytes), budget: { ...budget } }, redaction) : undefined;
     if (written !== undefined) await writeFile(out!, written);
     trackingWritten = tracking ? await tracking.flush() : false;
     if (proposal) pause = await savePause(nextCheckpoint!, proposal);

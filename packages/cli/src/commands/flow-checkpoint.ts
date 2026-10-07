@@ -9,16 +9,13 @@
  * from `@ifc-lite/flow`) plus a revision. Writes are compare-and-swap under
  * an exclusive lock file (`<file>.lock`, created with `wx`), so two
  * processes resuming the same reviewed checkpoint cannot both claim it: the
- * loser re-reads `applying` and is refused. A lock older than
- * `STALE_LOCK_MS` belongs to a process that died inside a write and is
- * taken over.
+ * loser re-reads `applying` and is refused. Existing locks are never
+ * reclaimed by age: an old lock can still belong to a live writer.
  */
 
 import { createHash } from 'node:crypto';
-import { open, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { open, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { parseCheckpoint, type CheckpointStore, type FlowCheckpoint, type StoredCheckpoint } from '@ifc-lite/flow/checkpoint';
-
-const STALE_LOCK_MS = 30_000;
 
 export class FileCheckpointStore implements CheckpointStore {
   constructor(readonly path: string) {}
@@ -73,18 +70,7 @@ export class FileCheckpointStore implements CheckpointStore {
       return true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      const age = await stat(lock).then((s) => Date.now() - s.mtimeMs, () => 0);
-      if (age < STALE_LOCK_MS) return false;
-      await unlink(lock).catch((error: unknown) => {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      });
-      try {
-        await (await open(lock, 'wx')).close();
-        return true;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-        return false;
-      }
+      return false;
     }
   }
 }

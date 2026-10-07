@@ -22,6 +22,7 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { ActivityBar } from './ActivityBar';
 import { SidebarPanelHost } from './SidebarPanelHost';
+import { LayoutMigrationNotice } from './LayoutMigrationNotice';
 
 const ACTIVITY_BAR_PX = 48; // w-12
 // Mirrors the clamp in sidebarSlice so the live drag matches what is persisted.
@@ -107,10 +108,11 @@ export function SidebarDock() {
             aria-label={t('shellChrome.sidebarDock.resizeAriaLabel')}
           />
           <div
-            className="h-full min-w-0 overflow-hidden panel-container"
+            className="h-full min-w-0 overflow-hidden panel-container flex flex-col"
             style={{ width: contentPx ?? `${effectivePct}%` }}
           >
-            <SidebarPanelHost />
+            <LayoutMigrationNotice />
+            <div className="min-h-0 flex-1"><SidebarPanelHost /></div>
           </div>
         </>
       )}

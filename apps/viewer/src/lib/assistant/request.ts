@@ -20,6 +20,7 @@ import { SEMANTIC_OUTPUT_GUIDANCE } from '../semantic/assist/guidance';
 import { useViewerStore } from '@/store';
 import { useAssistant } from './conversation';
 import { ensureFlowAiNodes } from '../flow/runner';
+import { preferenceGuidance, preferencesFor, projectScope } from './reuse/preferences';
 
 /** Output ceiling per Assistant answer; the route ceiling and root budget may lower it. */
 export const ASSISTANT_OUTPUT_TOKENS = 4096;
@@ -78,6 +79,12 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     useAssistant.setState({ error: 'context-limit', status: 'error' });
     return false;
   }
+  // Project preferences (P20) may lower the per-answer ceiling and the requests per capture; never raise them.
+  const preferences = preferencesFor(projectScope(useViewerStore.getState().models.values()));
+  if (preferences?.maxRequests !== undefined && state.budget.requests >= preferences.maxRequests) {
+    useAssistant.setState({ error: 'budget-exhausted', status: 'error' });
+    return false;
+  }
   const controller = new AbortController();
   const budget = state.budget;
   useAssistant.setState({ controller, status: 'streaming', error: null, output: '', pendingPrompt: prompt.trim() });
@@ -116,13 +123,14 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
       if (!ownsRequest()) return false;
       system = `${system}\n${guidance}`;
     }
+    system += preferenceGuidance(preferences);
     // Every source now carries guidance, so the full system prompt is re-bounded.
     if (JSON.stringify(messages).length + system.length > 90_000) { fail('context-limit'); return false; }
     if (attachments.screenshot) {
       messages[messages.length - 1] = { role: 'user', content: [{ type: 'image_url', image_url: { url: attachments.screenshot } }, { type: 'text', text: userText }] };
     }
     const outcome = await runModelRequest({
-      route, proxyUrl, messages, system, maxOutputTokens: ASSISTANT_OUTPUT_TOKENS, budget, signal: controller.signal,
+      route, proxyUrl, messages, system, maxOutputTokens: Math.min(ASSISTANT_OUTPUT_TOKENS, preferences?.outputTokens ?? ASSISTANT_OUTPUT_TOKENS), budget, signal: controller.signal,
       timeoutMs: ASSISTANT_TIMEOUT_MS,
       onChunk: chunk => { if (ownsRequest()) useAssistant.setState(s => ({ output: s.output + chunk })); },
     });

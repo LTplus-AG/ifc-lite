@@ -10,6 +10,8 @@ import { modelChangeLibrary } from '../actions/receipts.js';
 import { clashGroupApplicationLibrary } from '../clash/group-applications.js';
 import { reviewWorkspaceLibrary } from '../review/workspace.js';
 import { semanticReviewLibrary } from '../semantic/assist/library.js';
+import { assistantRecipeLibrary } from '../assistant/reuse/recipe-library.js';
+import { assistantPreferencesLibrary } from '../assistant/reuse/preferences.js';
 import { useViewerStore } from '../../store/index.js';
 import { subscribeContentChanges } from './content-events.js';
 import { preserveLegacyChange } from './content-backup.js';
@@ -28,6 +30,8 @@ function contentHosts() {
     clashGroupApplications: { initialize: clashGroupApplicationLibrary.initialize, refresh: clashGroupApplicationLibrary.refresh },
     reviewWorkspaces: { initialize: reviewWorkspaceLibrary.initialize, refresh: reviewWorkspaceLibrary.refresh },
     semanticReviews: { initialize: semanticReviewLibrary.initialize, refresh: semanticReviewLibrary.refresh },
+    assistantRecipes: { initialize: assistantRecipeLibrary.initialize, refresh: assistantRecipeLibrary.refresh },
+    assistantPreferences: { initialize: assistantPreferencesLibrary.initialize, refresh: assistantPreferencesLibrary.refresh },
     document: { initialize: state.initializeDocuments, refresh: state.refreshDocuments },
     validation: { initialize: state.initializeValidationReports, refresh: state.refreshValidationReports },
     comparison: { initialize: state.initializeSavedComparisons, refresh: state.refreshSavedComparisons },

@@ -4,7 +4,7 @@
 
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import '@/i18n/catalogues/semantic-assist.register';
-import { History, Key, RefreshCw, Send, Sparkles, Square } from 'lucide-react';
+import { History, Key, ListChecks, RefreshCw, Send, SlidersHorizontal, Sparkles, Square } from 'lucide-react';
 import { ConversationLibrary } from './ConversationLibrary';
 import { SourcePicker } from './SourcePicker';
 import { useDialogs } from '@/components/ui/confirm-dialog';
@@ -26,6 +26,10 @@ import { EvidenceSummary } from './EvidenceSummary';
 import { AssistantConversation } from './AssistantConversation';
 import { FreeQuotaNote } from './AssistantUsage';
 import { attachmentsForSend, ComposerAttachments, NO_ATTACHMENTS } from './ComposerAttachments';
+import { RecipeRunCard } from './RecipeRunCard';
+import { SaveToFlow } from './SaveToFlow';
+import { usePreferredModel } from './ProjectPreferences';
+import { takeDraftPrompt, useRecipeRun } from '@/lib/assistant/reuse/recipe-run';
 
 const FlowProposalReview = lazy(() => import('./FlowProposalReview').then(m => ({ default: m.FlowProposalReview })));
 const ReportDraftReview = lazy(() => import('./ReportDraftReview').then(m => ({ default: m.ReportDraftReview })));
@@ -36,6 +40,8 @@ const ClashGroupReview = lazy(() => import('./ClashGroupReview').then(m => ({ de
 const CheckAuthoringProposal = lazy(() => import('./CheckAuthoringProposal').then(m => ({ default: m.CheckAuthoringProposal })));
 const ArtifactProposalReview = lazy(() => import('./ArtifactProposalReview').then(m => ({ default: m.ArtifactProposalReview })));
 const SemanticProposalReview = lazy(() => import('./SemanticProposalReview').then(m => ({ default: m.SemanticProposalReview })));
+const RecipeLibrary = lazy(() => import('./RecipeLibrary').then(m => ({ default: m.RecipeLibrary })));
+const ProjectPreferences = lazy(() => import('./ProjectPreferences').then(m => ({ default: m.ProjectPreferences })));
 
 export function AssistantPanel() {
   const { t } = useTranslation();
@@ -50,6 +56,15 @@ export function AssistantPanel() {
   const [picking, setPicking] = useState(false);
   const [attachments, setAttachments] = useState(NO_ATTACHMENTS);
   const [sent, setSent] = useState(0);
+  const [recipesOpen, setRecipesOpen] = useState(false);
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  usePreferredModel();
+  // A recipe step may place its prompt in the composer; the user still sends it.
+  const recipeDraft = useRecipeRun(s => s.draftPrompt);
+  useEffect(() => {
+    const draft = recipeDraft === null ? null : takeDraftPrompt();
+    if (draft !== null) { setPrompt(draft); promptRef.current?.focus(); }
+  }, [recipeDraft]);
   const { confirmDialog } = useDialogs();
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -97,12 +112,19 @@ export function AssistantPanel() {
       <div className="ml-auto flex items-center">
         <IconButton label={t('assistant.savedConversations')} className="h-7 w-7" aria-pressed={libraryOpen}
           onClick={() => setLibraryOpen(open => !open)}><History className="h-4 w-4" /></IconButton>
+        <IconButton label={t('assistantRecipes.title')} className="h-7 w-7" aria-pressed={recipesOpen}
+          onClick={() => setRecipesOpen(open => !open)}><ListChecks className="h-4 w-4" /></IconButton>
+        <IconButton label={t('assistantReuse.prefsTitle')} className="h-7 w-7" aria-pressed={prefsOpen}
+          onClick={() => setPrefsOpen(open => !open)}><SlidersHorizontal className="h-4 w-4" /></IconButton>
         <IconButton label={t('assistant.keys')} className="h-7 w-7" onClick={() => setKeysOpen(true)}><Key className="h-4 w-4" /></IconButton>
       </div>
     </div>
     {/* One scroll region: short docked panels keep the header and composer reachable. */}
     <div className="flex-1 min-h-0 overflow-auto">
       {libraryOpen && <ConversationLibrary />}
+      {recipesOpen && <Suspense fallback={null}><RecipeLibrary /></Suspense>}
+      {prefsOpen && <Suspense fallback={null}><ProjectPreferences /></Suspense>}
+      <RecipeRunCard />
       {showPicker ? <SourcePicker current={evidence?.source ?? null} onAttach={source => void attach(source)}
         onCancel={evidence ? () => setPicking(false) : null} />
         : <EvidenceSummary evidence={evidence} state={state.archived ? 'historical' : stale ? 'stale' : 'captured'}
@@ -123,6 +145,7 @@ export function AssistantPanel() {
       {evidence && isReportSource(evidence.source) && <Suspense fallback={null}><ReportDraftReview /></Suspense>}
       {evidence && !isFlowSource(evidence.source) && <Suspense fallback={null}><SceneActionReview /></Suspense>}
       {evidence && !isFlowSource(evidence.source) && <Suspense fallback={null}><ArtifactProposalReview onAsk={canAsk ? suggest : null} /></Suspense>}
+      <SaveToFlow />
       </>}
       <Suspense fallback={null}><SceneRestoreBar /></Suspense>
       <div ref={endRef} />

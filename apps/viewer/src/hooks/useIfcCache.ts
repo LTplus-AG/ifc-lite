@@ -28,7 +28,6 @@ import {
 import { SpatialHierarchyBuilder, StepTokenizer, CompactEntityIndex, CompactEntityIndexBuilder, extractLengthUnitScale, attachDataStoreAccessors, type IfcDataStore, type IfcStoreData } from '@ifc-lite/parser';
 import { makeColdGeometryProvider } from '../utils/coldGeometryProvider.js';
 import { getGlobalRenderer } from './useBCF.js';
-import { computeFullSourceHash } from '../utils/sourceContentHash.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { NOOP_LOAD_TRACE, type LoadTrace } from '@ifc-lite/load-trace';
 
@@ -518,7 +517,7 @@ export function useIfcCache() {
     geometry: GeometryData,
     sourceBuffer: ArrayBuffer,
     fileName: string,
-    options: { persistSource?: boolean; lastModified?: number } = {}
+    options: { persistSource?: boolean; lastModified?: number; fullSourceHash?: Promise<string | undefined> } = {}
   ): Promise<void> => {
     // `persistSource` (default true) is the classic <=150MB tier: the raw source
     // is stored alongside the cache so lazy property/quantity accessors + re-export
@@ -529,10 +528,10 @@ export function useIfcCache() {
     // The header's full-file `xxhash64` is OMITTED (`omitSourceHash`) so a 400MB
     // cold-load write pays no full-file main-thread hash. The source-decoupled hit
     // is instead validated by the source File's `lastModified` (mtime guard) plus
-    // a TRUE full-file SHA-256 computed OFF the main thread (`computeFullSourceHash`,
-    // via Web Crypto), both stored in the IndexedDB record — distinct from the
-    // header hash and the key's spread fingerprint. This whole block is
-    // backgrounded on a cold load, so the off-thread hash costs the user nothing.
+    // a full-content SHA-256 (`fullSourceHash`: the load's own placement identity,
+    // #7022, so the write never hashes the source a second time), both stored in
+    // the IndexedDB record — distinct from the header hash and the key's spread
+    // fingerprint. The loader re-validates a served hit against it (#4269).
     const { persistSource = true, lastModified } = options;
     try {
       console.log(`[useIfcCache] Starting cache write for: ${fileName} (persistSource=${persistSource})`);
@@ -545,13 +544,6 @@ export function useIfcCache() {
       // It carries the same entityCount fallback the inline copy had.
       const cacheDataStore: CacheDataStore = toCacheDataStore(dataStore);
 
-      // Compute the true full-file validation hash off the main thread (runs in
-      // parallel with the cache-buffer serialization below) for BOTH tiers
-      // (#4269): the loader background-revalidates a served hit against it and
-      // purges + reloads on mismatch — the only gate that catches an
-      // mtime-preserved, byte-length-preserving in-place edit.
-      const fullHashPromise = computeFullSourceHash(sourceBuffer);
-
       console.log('[useIfcCache] Writing cache buffer...');
       const cacheBuffer = await writer.write(cacheDataStore, geometry, sourceBuffer, {
         includeGeometry: true, compressGeometryChunksInWorker: true,
@@ -559,7 +551,8 @@ export function useIfcCache() {
       });
       console.log('[useIfcCache] Cache buffer written:', cacheBuffer.byteLength, 'bytes');
 
-      const fullSourceHash = (await fullHashPromise) ?? undefined;
+      // BOTH tiers (#4269): the only gate for an mtime-preserved, length-preserving edit.
+      const fullSourceHash = await options.fullSourceHash;
 
       console.log('[useIfcCache] Saving to cache storage...');
       await setCached(

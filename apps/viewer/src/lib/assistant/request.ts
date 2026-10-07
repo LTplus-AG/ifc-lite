@@ -16,6 +16,7 @@ import { CHECK_AUTHORING_GUIDANCE } from '../check-authoring/guidance';
 import { artifactGuidance } from './artifacts/artifact-guidance';
 import { REPORT_CLAIMS_OUTPUT_GUIDANCE } from './report-claims';
 import { isFlowSource, isReportSource } from './sources';
+import { SEMANTIC_OUTPUT_GUIDANCE } from '../semantic/assist/guidance';
 import { useViewerStore } from '@/store';
 import { useAssistant } from './conversation';
 import { generationLanguageInstruction } from './language';
@@ -101,6 +102,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
       system = `${system}\n${flowPatchGuidance({ run: state.snapshot.source === 'flowRun' })}`;
     }
     if (state.snapshot.source === 'clash') system = `${system}\n${CLASH_GROUP_OUTPUT_GUIDANCE}`;
+    if (state.snapshot.source === 'semantic') system = `${system}\n${SEMANTIC_OUTPUT_GUIDANCE}`;
     // Corrections are proposals only: the user reviews each change before anything is applied.
     if (isReportSource(state.snapshot.source)) system = `${system}\n${MODEL_CHANGE_OUTPUT_GUIDANCE}\n${REPORT_CLAIMS_OUTPUT_GUIDANCE}`;
     // Scene actions are proposals too: nothing changes the view until the user applies them.

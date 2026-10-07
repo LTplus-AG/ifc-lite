@@ -45,7 +45,7 @@ export function createModelLoadActivity(subject: string) {
 
 // Hook instances are independent; a replacement primary invalidates every
 // unfinished load, while concurrent federated additions remain independent.
-const pendingLoads = new Set<() => void>();
+const pendingLoads = new Map<() => void, () => void>();
 
 /**
  * Publish a canceller for the load that `supersede` belongs to. Returns the
@@ -60,7 +60,7 @@ export function installModelLoadCanceller(
 ): () => void {
   const store = getViewerStoreApi();
   if (kind === 'primary') {
-    for (const abandon of [...pendingLoads]) abandon();
+    for (const abandon of [...pendingLoads.keys()]) abandon();
   }
   let released = false;
   let abandoned = false;
@@ -75,7 +75,9 @@ export function installModelLoadCanceller(
       finishActivity(jobId, result.outcome, result.detail ? { detail: result.detail } : {});
     }
     pendingLoads.delete(abandon);
-    if (store.getState().activeLoadCanceller === cancel) store.getState().setActiveLoadCanceller(null);
+    if (store.getState().activeLoadCanceller === cancel) {
+      store.getState().setActiveLoadCanceller([...pendingLoads.values()].at(-1) ?? null);
+    }
   };
   const abandon = () => {
     if (released) return;
@@ -132,7 +134,7 @@ export function installModelLoadCanceller(
       }
     });
   }
-  pendingLoads.add(abandon);
+  pendingLoads.set(abandon, cancel);
   store.getState().setActiveLoadCanceller(cancel);
   return release;
 }

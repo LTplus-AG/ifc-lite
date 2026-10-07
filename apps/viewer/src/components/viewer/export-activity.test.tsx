@@ -85,7 +85,7 @@ const REPORT: ValidationReport = {
   summary: { totalSpecifications: 0, passedSpecifications: 0, failedSpecifications: 0, totalEntitiesChecked: 0, totalEntitiesPassed: 0, totalEntitiesFailed: 0, overallPassRate: 100 },
 } as unknown as ValidationReport;
 
-describe('IDS BCF export in the activity tray', () => {
+describe('rules BCF export in the activity tray (#6952)', () => {
   async function exportIdsBcf(): Promise<void> {
     let api!: ValidationExportsApi;
     function Harness() { api = useValidationExports(REPORT, 'en'); return null; }
@@ -97,7 +97,7 @@ describe('IDS BCF export in the activity tray', () => {
 
   it('records a completed export', async () => {
     await exportIdsBcf();
-    assert.deepEqual([jobs()[0].subject, jobs()[0].outcome], ['Export IDS Report as BCF', 'completed']);
+    assert.deepEqual([jobs()[0].subject, jobs()[0].outcome], ['Export validation report as BCF', 'completed']);
   });
 
   it('records the failure the hook otherwise only shows as the panel error', async () => {

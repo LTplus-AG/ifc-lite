@@ -54,7 +54,7 @@ export function useValidationExports(report: ValidationReport | null, locale: Su
     try {
       // The IDS dialog runs outside ExportDialogShell; this hook knows the
       // outcome (it reports a failure through `idsError`), so it records the job (#6925).
-      await recordActivity({ kind: 'export', title: 'activityTray.job.export', subject: t('idsPanel.export.title') }, () => runIdsBcfExport({
+      await recordActivity({ kind: 'export', title: 'activityTray.job.export', subject: t('activityTray.job.validationBcf') }, () => runIdsBcfExport({
         report, settings, models,
         legacyGeometryResult: geometryResult,
         toViewerGlobalId, bcfAuthor,

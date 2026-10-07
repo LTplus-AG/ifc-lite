@@ -61,7 +61,7 @@ Completed sheets go under `tests/ai-eval/labels/` and are validated by the manif
 
 ## U01 coordinator study
 
-`tests/ai-eval/study/protocol.json` (status **proposed**) defines six tasks (find a check, trace a failure to 3D evidence, review a clash group, draft a BCF topic, author a Flow, locate the saved output), three roles, the `current` and `assisted` variants, a within-subject design, the measures and time caps. Each task names the verbatim participant prompt, start state, observable success criteria and its expected entry group and workspace panels; the viewer suite checks those are real registry panels in the registry's group. `node scripts/ai-eval/study.mjs script` prints the facilitator script.
+`tests/ai-eval/study/protocol.json` (status **proposed**) defines twelve tasks spanning all ten charter journeys: the original discovery, evidence, clash, BCF, Flow and saved-output tasks, plus correction with concurrent conflict, native authoring/export, paused Flow AI, revision-aware review, universal analysis coverage and artifact/view restoration, three roles, the `current` and `assisted` variants, a within-subject design, the measures and time caps. Each task names the verbatim participant prompt, start state, observable success criteria and its expected entry group and workspace panels; the viewer suite checks those are real registry panels in the registry's group. `node scripts/ai-eval/study.mjs script` prints the facilitator script. Protocol validation rejects a missing charter journey before sessions can be scored. The expanded set is scheduled in counterbalanced blocks with breaks; facilitators independently prepare and verify the native inputs and oracles described in each start state. Unprepared or unavailable inputs are blocked attempts, not successes. These scripts define work still to perform, not observed end-to-end acceptance.
 
 Facilitators write one `tests/ai-eval/study/sessions/<id>.json` per participant, task and variant (schema `session.schema.json`; participants are `p01`-style pseudonyms; the identity key stays outside the repository). `study.mjs check` validates them and `study.mjs summary` reports completion, unaided completion, median time, backtracks, panel switches and scope errors per task and variant. Thresholds are the plan's proposed pilot targets (90% unaided completion, assisted not below current, no wrong-target effects). The verdict is `insufficient-data` until every role has three participants, and `met` carries the caveat that the thresholds are not yet ratified. No sessions are committed.
 
@@ -69,6 +69,6 @@ Facilitators write one `tests/ai-eval/study/sessions/<id>.json` per participant,
 
 - Independent claim and grouping labels and a privacy and licence review of every corpus fixture.
 - A live evaluation run against a configured provider, reviewed, with promoted recordings.
-- The six-task study with coordinator, author and occasional participants, and ratifying the thresholds from the pilot.
+- The twelve-task study with coordinator, author and occasional participants, and ratifying the thresholds from the pilot.
 - Evaluation tasks for the five journeys that have none, and a viewport screenshot for the authoring and Flow tasks.
 - The full-program acceptance that closes P21 and U01.

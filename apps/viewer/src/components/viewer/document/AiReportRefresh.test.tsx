@@ -44,6 +44,7 @@ test('mounted refresh lists the conflicting human edit, keeps it by default and 
   click(button('Refresh evidence'));
   const tick = section.querySelector<HTMLInputElement>('[data-conflict="claim-facts:C1"] input[type="checkbox"]')!;
   assert.equal(tick.closest('label')?.textContent, 'Replace my edit with the regenerated text');
+  assert.equal(section.querySelector(`[id="${tick.getAttribute('aria-describedby')}"]`)?.textContent, 'Checked on site.', 'each choice names the edit it replaces');
   act(() => tick.click());
   click(button('Apply refresh'));
   assert.match((applied[1].blocks.find(block => block.id === caption.id) as TextBlock).text, /captured -0\.04 m/);

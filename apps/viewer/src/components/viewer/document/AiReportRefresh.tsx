@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation, type TranslationKey } from '@/i18n';
@@ -20,6 +20,7 @@ const STATUS: Record<AiClaimStatus, TranslationKey> = {
 /** Saved AI report: provenance, claim status and evidence refresh that keeps human edits by default. */
 export function AiReportRefresh({ document, onChange }: { document: DocumentSpec; onChange: (next: DocumentSpec) => void }) {
   const { t, locale } = useTranslation();
+  const conflictId = useId();
   const [plan, setPlan] = useState<ReportRefreshPlan | null>(null);
   const [replace, setReplace] = useState<ReadonlySet<string>>(new Set());
   const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
@@ -73,12 +74,12 @@ export function AiReportRefresh({ document, onChange }: { document: DocumentSpec
       {!plan.conflicts.length && <p className="text-muted-foreground">{t('aiReports.noConflicts')}</p>}
       {plan.conflicts.map(conflict => <div key={conflict.blockId} className="rounded border border-amber-500/40 bg-amber-500/10 p-1.5 space-y-1" data-conflict={conflict.slot}>
         <p className="text-2xs text-muted-foreground">{t('aiReports.yourText')}</p>
-        <p className="whitespace-pre-wrap break-words">{conflict.current}</p>
+        <p id={`${conflictId}-${conflict.blockId}`} className="whitespace-pre-wrap break-words">{conflict.current}</p>
         {conflict.regenerated !== null && <>
           <p className="text-2xs text-muted-foreground">{t('aiReports.regeneratedText')}</p>
           <p className="whitespace-pre-wrap break-words">{conflict.regenerated}</p>
         </>}
-        <label className="flex items-start gap-2"><input type="checkbox" checked={replace.has(conflict.blockId)}
+        <label className="flex items-start gap-2"><input type="checkbox" aria-describedby={`${conflictId}-${conflict.blockId}`} checked={replace.has(conflict.blockId)}
           onChange={event => toggle(conflict.blockId, event.target.checked)} />
           {t(conflict.regenerated === null ? 'aiReports.removeEdit' : 'aiReports.replaceEdit')}</label>
       </div>)}

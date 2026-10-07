@@ -25,7 +25,8 @@ import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { browserReportSeams, generateReportPdf, type ReportPdfSeams } from '@/lib/export/report/generate-report-pdf';
 import { createSnapshotCapture } from '@/lib/export/report/snapshots';
 import { largestBucketIds } from '@/lib/charts/buckets';
-import { chartSourceMessage, isRecordedChart, resolveChartSource } from '@/lib/charts/chart-source';
+import { isRecordedChart, resolveChartSource } from '@/lib/charts/chart-source';
+import { chartSourceMessage } from '@/lib/charts/chart-source-message';
 import { useChartSourceContext } from './useChartSourceContext';
 
 /** Title-block fields offered, in order; values seeded from the drawing sheet's title block when present. */

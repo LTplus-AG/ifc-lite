@@ -20,7 +20,7 @@ import { ContentStorageNotice } from '@/components/viewer/ContentStorageNotice';
 import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import { useTranslation } from '@/i18n';
 import { CLASH_REPORT_LIMITS, clashReportRevision, defaultClashReportName, snapshotClashReport, type SavedClashReport } from '@/lib/clash/saved-report';
-import { clashReportLimitBadges } from '@/lib/charts/clash-report-source';
+import { clashReportLimitBadges } from '@/lib/charts/chart-source-message';
 import { useViewerStore } from '@/store';
 
 function ReportRow({ report }: { report: SavedClashReport }) {

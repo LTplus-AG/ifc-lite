@@ -10,7 +10,6 @@
  */
 
 import type { ChartDataset, ChartDatasetRow, ChartSpec } from '@ifc-lite/charts';
-import type { UseTranslationResult } from '@/i18n/useTranslation';
 import { clashReportRevision, type ClashReportRevision, type LoadedModelIdentity } from '@/lib/clash/saved-report-revision';
 import type { SavedClashReport } from '@/lib/clash/saved-report-schema';
 import { CLASH_DATASET_COLUMNS, clashDatasetRow } from './datasets/clash';
@@ -55,33 +54,4 @@ export function resolveClashReportChartSource(spec: SourceBinding, live: ChartDa
   const projected = reportRows(report);
   return { status: 'saved', report, revision: clashReportRevision(report, [...loaded], mutationVersion),
     dataset: { source: 'clash', columns: CLASH_DATASET_COLUMNS, rows: projected.rows, fingerprint: `saved-clash:${report.id}:${projected.fingerprint}` } };
-}
-
-type Translate = UseTranslationResult['t'];
-
-/** What limits a saved report as evidence: a partial run, models that changed before saving,
- * clashes the exclusion rules were hiding, another model revision.
- * One list for every chart surface and the Clash panel's saved-report list. */
-export function clashReportLimitBadges(report: SavedClashReport, revision: ClashReportRevision, t: Translate): string[] {
-  return [
-    ...(report.completeness.truncated ? [t('clashChart.badgePartial')] : []),
-    ...(report.completeness.stale ? [t('clashChart.badgeStale')] : []),
-    ...(report.completeness.excluded > 0 ? [t('clashChart.badgeExcluded', { count: report.completeness.excluded })] : []),
-    ...(revision === 'same' ? [] : [t(`clashChart.badgeRevision.${revision}`)]),
-  ];
-}
-
-/**
- * The one-line statement of a saved source, or why a bound report is
- * unavailable: it leads a card's subtitle, captions a document chart and is
- * the note in the chart editor. Limits come before the name because a card
- * and a document both cut a long line off at its end, and a cut-off line must
- * lose the report's name before it loses the warning.
- */
-export function clashReportChartMessage(source: ClashReportChartSource, t: Translate): string | undefined {
-  if (source.status === 'live') return undefined;
-  if (source.status === 'missing') return t('clashChart.missing');
-  const { report } = source;
-  return [...clashReportLimitBadges(report, source.revision, t),
-    t('clashChart.caption', { name: report.name, date: new Date(report.savedAt).toLocaleDateString() })].join(' · ');
 }

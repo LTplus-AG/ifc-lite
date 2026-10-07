@@ -4,7 +4,8 @@
 import { aggregate, type Aggregation, type ChartDataset, type ChartSource } from '@ifc-lite/charts';
 import type { DocumentSpec } from './types';
 import { applyChartFilter, applyClashRuleFilter, chartElementFilterKey } from '../charts/source-filter';
-import { chartSourceMessage, NO_SAVED_CHART_CONTENT, resolveChartSource, type ChartSourceContext } from '../charts/chart-source';
+import { NO_SAVED_CHART_CONTENT, resolveChartSource, type ChartSourceContext } from '../charts/chart-source';
+import { chartSourceMessage } from '../charts/chart-source-message';
 import { withoutBuckets } from '../charts/unavailable-aggregation';
 import { resolve } from '@/i18n/registry';
 

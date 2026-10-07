@@ -21,7 +21,8 @@ import { DOCS_URL, useActiveSchemaVersion } from '../SearchModal.filter.selector
 import { SelectorFeedbackList, type SelectorFeedback } from '../SearchModal.filter.feedback';
 import { ElementFieldPicker } from './ElementFieldPicker';
 import { ChartSourcePicker, SOURCE_LABELS } from './ChartSourcePicker';
-import { chartSourceMessage, resolveChartSource } from '@/lib/charts/chart-source';
+import { resolveChartSource } from '@/lib/charts/chart-source';
+import { chartSourceMessage } from '@/lib/charts/chart-source-message';
 import { useChartSourceContext } from './useChartSourceContext';
 import { isSavedComparison } from '@/lib/compare/savedComparisons';
 import { dimensionColumns, draftToSpec, editorColumns, specToDraft, type ChartDraft } from './chart-editor-draft';

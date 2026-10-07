@@ -12,12 +12,11 @@
  */
 
 import type { ChartDataset, ChartSpec } from '@ifc-lite/charts';
-import type { UseTranslationResult } from '@/i18n/useTranslation';
 import type { SavedComparison } from '@/lib/compare/savedComparisons';
 import type { LoadedModelIdentity } from '@/lib/clash/saved-report-revision';
 import type { SavedClashReport } from '@/lib/clash/saved-report-schema';
-import { comparisonChartMessage, isSavedComparisonChart, resolveComparisonChartSource, type ComparisonChartSource } from './comparison-source';
-import { clashReportChartMessage, isSavedClashReportChart, resolveClashReportChartSource, type ClashReportChartSource } from './clash-report-source';
+import { isSavedComparisonChart, resolveComparisonChartSource, type ComparisonChartSource } from './comparison-source';
+import { isSavedClashReportChart, resolveClashReportChartSource, type ClashReportChartSource } from './clash-report-source';
 
 /** The saved content and loaded models a binding is resolved against. */
 export interface ChartSourceContext {
@@ -52,16 +51,4 @@ export function resolveChartSource(spec: SourceBinding, live: ChartDataset, cont
   }
   const source = resolveComparisonChartSource(spec, live, context.comparisons);
   return { ...source, saved: source.status === 'live' ? null : 'comparison' };
-}
-
-type Translate = UseTranslationResult['t'];
-
-/** Provenance of a recorded source, or why a bound source is unavailable; undefined for a live chart. */
-export function chartSourceMessage(source: ResolvedChartSource, t: Translate): string | undefined {
-  return source.saved === 'clashReport' ? clashReportChartMessage(source, t) : comparisonChartMessage(source, t);
-}
-
-/** The short "source unavailable" label of a bound chart whose saved content is gone. */
-export function chartSourceUnavailable(source: ResolvedChartSource, t: Translate): string {
-  return t(source.saved === 'clashReport' ? 'clashChart.unavailable' : 'chartComparison.unavailable');
 }

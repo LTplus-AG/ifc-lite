@@ -139,7 +139,7 @@ describe('Document chart bound to a saved clash report (#6947)', () => {
 
     await deleteSavedReport(saved); await settle();
     assert.equal(data?.aggregations.get('clash-block')?.categories.length, 0, 'a missing report has no total to draw');
-    assert.equal(ui.querySelector('[data-chart-svg]'), null, 'so the preview draws no number');
+    assert.ok(ui.querySelector('[data-chart-svg]') === null, 'so the preview draws no number');
     assert.match(ui.querySelector('[data-chart-empty]')?.textContent ?? '', /Saved clash report unavailable in this browser\./);
     const prepared = await prepareDocument(document, useViewerStore.getState());
     assert.equal(prepared.aggregations.get('clash-block')?.categories.length, 0, 'the export reads the same empty result as the preview');

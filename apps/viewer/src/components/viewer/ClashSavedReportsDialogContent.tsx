@@ -59,7 +59,8 @@ function ReportRow({ report }: { report: SavedClashReport }) {
 
 export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { t } = useTranslation();
-  useEffect(() => { void useViewerStore.getState().initializeSavedClashReports(); }, []);
+  // Every open, not only the first: a library that could not be read (or whose rules could not be fetched) is tried again.
+  useEffect(() => { if (open) void useViewerStore.getState().initializeSavedClashReports(); }, [open]);
   const result = useViewerStore((s) => s.clashResult);
   const rawResult = useViewerStore((s) => s.clashRawResult);
   const running = useViewerStore((s) => s.clashRunning);

@@ -208,7 +208,7 @@ describe('Saved clash reports as a chart source (#6947)', () => {
     const ui = render(<ChartsPanel renderer={recording} />); await settle();
     const legend = () => [...card(ui, 'Total clashes').querySelectorAll('[data-chart-legend] li')].map((item) => item.textContent?.trim());
     assert.deepEqual(legend(), ['Total: 3'], 'control: the saved run counts its three clashes');
-    assert.equal(card(ui, 'Total clashes').querySelector('[data-chart-empty]'), null);
+    assert.ok(card(ui, 'Total clashes').querySelector('[data-chart-empty]') === null, 'control: and shows no empty state');
     assert.match(JSON.stringify(drawn.at(-1)), /"text":"3"/, 'control: the card draws the saved total');
 
     await deleteSavedReport(report); await settle();

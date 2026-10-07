@@ -279,6 +279,18 @@ describe('Saved clash reports in the library backup (#6947)', () => {
     assert.doesNotMatch(text, /No saved clash reports yet/, 'two readable reports are stored: the list is unread, not empty');
     assert.match(text, /Browser storage is unavailable\./, 'the dialog says the saved reports could not be read');
     assert.deepEqual((await readContentRows('clashReports' as ContentKind)).map((row) => row.id).sort(), [a.id, b.id, 'newer'].sort(), 'and nothing stored was touched');
+
+    // Once the library can be read (here the row is removed), closing and reopening the dialog reads it: no reload needed.
+    const repair = await contentTransaction('items', 'readwrite'), repaired = transactionDone(repair);
+    repair.objectStore('items').delete(['clashReports', 'newer']);
+    await repaired;
+    const close = [...document.body.querySelectorAll('[role="dialog"] button')].find((button) => button.textContent?.trim() === 'Close'); assert.ok(close);
+    click(close);
+    await waitFor(() => document.body.querySelector('input[aria-label="Report name"]') === null, 'the dialog closes');
+    assert.deepEqual(savedClashReports(), [], 'control: closing alone reads nothing');
+    await openSavedReports();
+    await waitFor(() => savedClashReports().length === 2, 'reopening the dialog opens the library again');
+    assert.deepEqual(savedClashReports().map((entry) => entry.name).sort(), ['Run A', 'Run B']);
   });
 
   it('refuses a backup whose clash report is not a valid report', async () => {

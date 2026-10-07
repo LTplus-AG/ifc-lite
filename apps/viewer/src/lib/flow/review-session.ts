@@ -71,7 +71,10 @@ export function viewerSourceDigest(): string {
   const active = state.activeModelId
     ? state.models.get(state.activeModelId)?.sourceContentHash ?? `model:${state.activeModelId}`
     : null;
-  return digest({ models, mutations, active });
+  // Identical files may be loaded twice; their active occurrence is still a different source.
+  const sameSource = [...state.models].filter(([id, model]) => (model.sourceContentHash ?? `model:${id}`) === active);
+  const activeOccurrence = sameSource.findIndex(([id]) => id === state.activeModelId);
+  return digest({ models, mutations, active, activeOccurrence, assistantModel: state.chatActiveModel });
 }
 
 /** Save a paused run's proposal as a `prepared` checkpoint and show it. Nothing downstream has run. */

@@ -13,7 +13,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { advance, cleanup, click, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types.js';
 import { ComparePanel } from './ComparePanel.js';
@@ -67,6 +67,7 @@ describe('ComparePanel with unsaved edits (#5606)', () => {
     const clash = stampAnalysisReport(await runClash(pair, ['A', 'B']), captureAnalysisStamp());
     useViewerStore.setState({ clashResult: clash, clashRawResult: clash });
     const container = render(<ComparePanel onClose={() => {}} />);
+    for (let attempt = 0; attempt < 200 && !container.textContent?.includes('Impact on other analyses'); attempt++) await advance(20);
     const toggle = [...container.querySelectorAll('button')].find(button => /Impact on other analyses/.test(button.textContent ?? ''));
     assert.ok(toggle, 'the panel exposes impact review for its comparison');
     act(() => click(toggle));

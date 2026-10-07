@@ -219,8 +219,7 @@ for (let iter = 1; iter <= ITERS; iter++) {
         }
         const sizeMB = statSync(fixture.path).size / (1024 * 1024);
         const timeoutMs = Math.max(TIMEOUT_MS, sizeMB > 200 ? 600000 : sizeMB > 50 ? 300000 : TIMEOUT_MS);
-        await bp.loadFile(fixture.path, false);
-        await bp.waitForCompletion(timeoutMs, true);
+        await bp.loadUntilReady(fixture.path, timeoutMs);
         const metrics = bp.getMetrics();
         if (metrics.streamCompleteMs == null || !metrics.totalMeshes) {
           throw new Error('load did not reach streamCompleteMs / produced 0 meshes');

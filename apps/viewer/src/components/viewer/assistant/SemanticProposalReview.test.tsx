@@ -209,3 +209,21 @@ test('#7000 reassociation clears mapping approval and unloading its target block
   assert.equal(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled, true);
   assert.equal((buttonLabelled(ui, /Save 0 approved/) as HTMLButtonElement).disabled, true);
 });
+
+test('#7000 a real CONSTRUCT response becomes Historical when its revision association changes', async () => {
+  await converse({ ...QUERY, expected: { form: 'construct' }, query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o } LIMIT 20' }, 1);
+  const ui = render(<SemanticProposalReview />);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('<https://example.org/door> <https://example.org/name> "Door D1" .',
+    { status: 200, headers: { 'content-type': 'text/turtle' } });
+  try {
+    act(() => recordEndpointGrant({ endpoint: 'https://graph.example.org/sparql', host: 'graph.example.org' }));
+    click(buttonLabelled(ui, /Run query/i));
+    await waitFor(() => /Ran against/.test(text(ui)), 'native CONSTRUCT transport result');
+    assert.match(text(ui), /Door D1/);
+    assert.ok(!text(ui).includes('Historical'));
+    act(() => useSemanticSession.setState({ revisions: new Map() }));
+    assert.match(text(ui), /Historical/);
+    assert.match(text(ui), /Door D1/, 'the captured graph remains inspectable as historical evidence');
+  } finally { globalThis.fetch = originalFetch; }
+});

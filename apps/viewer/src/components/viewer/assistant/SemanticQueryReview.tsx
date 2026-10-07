@@ -77,6 +77,7 @@ export function SemanticQueryReview({ proposal }: { proposal: SemanticQueryPropo
     {run && <div aria-live="polite" className="space-y-1 overflow-x-auto">
       <p className="text-muted-foreground break-all">{t('semanticAssist.queryRan', { source: run.source, time: run.retrievedAt })}</p>
       {run.result.form === 'construct' ? <>
+        {!current && <p className="font-medium">{t('semanticAssist.historical')}</p>}
         <p>{t('semanticAssist.queryStatements', { count: run.result.quadCount })}</p>
         <details><summary className="cursor-pointer text-muted-foreground">{t('semanticAssist.queryGraph')}</summary>
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{run.result.value.slice(0, 20_000)}</pre></details>

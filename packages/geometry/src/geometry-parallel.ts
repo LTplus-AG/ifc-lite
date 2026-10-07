@@ -40,7 +40,7 @@ import { mergeShardStyleSlices, type MergedShardStyles, type StylesSlice } from 
 // (and vice versa) instead of fetching the same binary a second time.
 import { compileSharedWasmModule } from './wasm-shared-module.js';
 import { stitchShards, type ShardColumns } from './shard-stitch.js';
-import { NOOP_LOAD_TRACE, enableWorkerTrace, isTraceSpansMessage } from '@ifc-lite/load-trace';
+import { NOOP_LOAD_TRACE, accountWorkerMessages, countCopy, enableWorkerTrace, isTraceSpansMessage } from '@ifc-lite/load-trace';
 import { resolveRtcFrame } from './rtc-frame.js';
 import {
   emptyStylesPrepassEvent,
@@ -245,20 +245,21 @@ export async function* processParallel(
     sharedBuffer = inputBuffer;
   } else {
     sharedBuffer = new SharedArrayBuffer(buffer.byteLength);
-    new Uint8Array(sharedBuffer).set(buffer);
+    new Uint8Array(sharedBuffer).set(countCopy('source.geometrySab', buffer));
   }
 
   // N independent WASM-instance workers, each running
   // `geometry.worker.ts` (one `@ifc-lite/wasm` instance per worker).
-  const makeGeometryWorker = () => enableWorkerTrace(
+  // #6957: `accountWorkerMessages` counts each pool's messages per direction (identity when counters are off).
+  const makeGeometryWorker = () => enableWorkerTrace(accountWorkerMessages(
     new Worker(
       new URL('./geometry.worker.ts', import.meta.url),
       { type: 'module' },
-    ), trace, `geom-${tracedWorkers++}`);
-  const makePrepassWorker = () => enableWorkerTrace(new Worker(
+    ), 'geometry'), trace, `geom-${tracedWorkers++}`);
+  const makePrepassWorker = () => enableWorkerTrace(accountWorkerMessages(new Worker(
     new URL('./geometry.worker.ts', import.meta.url),
     { type: 'module' },
-  ), trace, 'prepass');
+  ), 'prepass'), trace, 'prepass');
 
   // Shared aggregator state used by every worker callback below.
   const eventQueue: StreamingGeometryEvent[] = [];

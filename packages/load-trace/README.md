@@ -77,3 +77,37 @@ self.onmessage = (e) => {
 On the main thread, `enableWorkerTrace(worker, trace, 'geom-0')` turns
 recording on (it sends nothing when tracing is off), and `isTraceSpansMessage`
 recognises the replies to pass to `trace.merge`.
+
+## Structural counters and main-thread health (#6957)
+
+`perfCounters` is one counter registry per JS realm (kept on `globalThis`, so
+two bundled copies of the package share it). It is off until a recording
+tracer switches it on; until then `perfCount(name, n)` is one boolean test.
+Each load's snapshot carries `counters`: what moved from its start until the
+next load started (or the snapshot was taken), plus everything its workers
+posted back (`workerCounters`, per worker thread).
+
+```ts
+import { accountWorkerMessages, countCopy, createLoadTracer, meterTypedArrayArgs, perfTally, startFrameMonitor } from '@ifc-lite/load-trace';
+
+declare const url: URL;        // the worker script
+declare const vertices: number; // merged vertex count
+const tracer = createLoadTracer({ enabled: true, frames: startFrameMonitor() });
+const worker = accountWorkerMessages(new Worker(url), 'geometry'); // msg.geometry.{out,in}.*
+const copy = countCopy('source.zip', bytes.slice().buffer);           // copy.source.zip.{count,bytes}
+const api = meterTypedArrayArgs(new IfcAPI(), 'wasm');                // wasm.<method>.{calls,bytes}
+perfTally('render.mergeGeometry', vertices, 'vertices');              // render.mergeGeometry.{count,vertices}
+```
+
+- `accountWorkerMessages` patches `postMessage` and listens for replies:
+  message counts, estimated structured-clone bytes, transferred bytes
+  (outbound), received ArrayBuffer bytes (inbound: the receiver cannot tell a
+  transfer from a clone) and SharedArrayBuffer bytes, per direction.
+- In a worker, `createWorkerTraceHost` switches the worker's registry on with
+  tracing and posts its increments after every handler; `host.flush()` posts
+  them early when the main thread is about to terminate the worker.
+- `startFrameMonitor` observes `long-animation-frame` and `longtask`
+  (feature-detected). `snapshot().mainThread` sums each type over the load
+  window and attributes LoAF blocking time to the innermost main-thread span
+  open when each frame started.
+- With counters off, every wrapper returns its target unchanged.

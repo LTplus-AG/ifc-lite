@@ -79,6 +79,7 @@ import { authoringSessionTeardown } from './slices/authoringSessionSlice.js';
 import { authoringDefaultsTeardown } from './slices/authoringDefaultsSlice.js';
 import { modelPlacementTeardown } from './slices/modelPlacementSlice.js';
 import { pointCloudTeardown } from './slices/pointCloudSlice.js';
+import { scanDetectionTeardown } from './slices/scanDetectionSlice.js';
 import { zonesTeardown } from './slices/zonesSlice.js';
 import { layerStackTeardown } from './slices/layerStackSlice.teardown.js';
 import { modelTagsTeardown } from './slices/modelTagsSlice.teardown.js';
@@ -122,6 +123,7 @@ export const viewerTeardownRegistry: readonly AnySliceTeardown[] = createTeardow
   authoringSessionTeardown,
   authoringDefaultsTeardown,
   pointCloudTeardown,
+  scanDetectionTeardown,
   modelPlacementTeardown,
   appearanceReferenceTeardown,
   zonesTeardown,

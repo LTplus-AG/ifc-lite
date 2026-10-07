@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { LoadTrace } from '@ifc-lite/load-trace';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult, ModelSpatialReference } from '@ifc-lite/geometry';
 import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
@@ -24,6 +25,8 @@ interface LandXmlLoadOptions {
   targetKind: 'primary' | 'federated';
   totalStartTime: number;
   wasHidden: boolean;
+  /** The load's trace: `ifc_model_loaded` reads its field properties off it (#6961). */
+  trace: LoadTrace;
   /**
    * #5175: opt-in linear unit for a source with no declared `<Units>`. Absent
    * by default, so a unitless source refuses exactly as it did before this
@@ -337,7 +340,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
       load_path: 'landxml',
       total_elapsed_ms: Math.round(performance.now() - options.totalStartTime),
       was_hidden: options.wasHidden,
-    }, snapshotFromGeometry(options.fileSizeMB, result.geometryResult));
+    }, snapshotFromGeometry(options.fileSizeMB, result.geometryResult), options.trace);
     options.setLoading(false);
   } catch (error) {
     provisional.value?.rollback();

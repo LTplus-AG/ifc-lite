@@ -1129,6 +1129,10 @@ export class Renderer {
     getPointCloudTransform(handle: { id: number }): Float32Array | undefined {
         return this.pointCloudRenderer?.getAssetTransform(handle);
     }
+    /** Exact float64 placement copy for CPU math; the f32 transform rounds map-grid origins (#6894). */
+    getPointCloudPlacement(handle: { id: number }): Float64Array | undefined {
+        return this.pointCloudRenderer?.getAssetPlacement(handle);
+    }
 
     /**
      * Set/clear a streamed cloud's column-major model matrix (16 floats) for

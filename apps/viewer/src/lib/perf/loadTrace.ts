@@ -9,29 +9,24 @@
  * set before boot, which is how the Playwright benchmark enables it) turns it
  * on and publishes `window.__IFC_LITE_LOAD_TRACE__`:
  *
- *   loads()                every retained load's span tree (JSON-safe)
+ *   loads()                every retained load's span tree (JSON-safe), with
+ *                          its structural counters and long-frame summary (#6957)
  *   latest()               the most recent load, or null
  *   tree()                 the latest load nested by parent span
  *   chromeTrace()          Chrome-trace JSON for DevTools / Perfetto
  *   downloadChromeTrace()  save that JSON as a file
  *
- * With tracing off every instrumented call site is a no-op method call.
+ * With tracing off every instrumented call site is a no-op method call,
+ * except that each load still keeps its milestones and attributes for the
+ * `ifc_model_loaded` field properties (#6961, `fieldLoadTrace.ts`).
  */
 
-import { NOOP_LOAD_TRACE, type LoadTrace, type LoadTracer } from '@ifc-lite/load-trace';
-import { readPerfFlag } from './flags.js';
+import type { LoadTrace, LoadTracer } from '@ifc-lite/load-trace';
+import { isPerfTraceRequested, PERF_TRACE_ENABLED } from './perfTraceFlag.js';
+import { FieldLoadTrace } from './fieldLoadTrace.js';
+import { onFieldTelemetry } from './fieldTelemetryLoader.js';
 
-export function isPerfTraceRequested(
-  search: string = globalThis.location?.search ?? '',
-  flag: unknown = readPerfFlag('perfTrace'),
-): boolean {
-  // A defined flag value is authoritative: `__IFC_LITE_PERF_TRACE = 0` must
-  // keep tracing off even when the URL asks for it. The URL decides only when
-  // the flag is unset.
-  if (flag !== undefined && flag !== null) return flag === 1 || flag === true || flag === '1';
-  return new URLSearchParams(search).get('perfTrace') === '1';
-}
-
+export { isPerfTraceRequested };
 
 /**
  * Resolve on the next animation frame, or after `fallbackMs` when rAF stalls
@@ -60,10 +55,24 @@ export function recordFirstVisible(trace: Pick<LoadTrace, 'milestone'>, appended
 
 const DISABLED_TRACER: LoadTracer = {
   enabled: false,
-  startLoad: () => NOOP_LOAD_TRACE,
+  // #6961: production loads keep their milestones and attributes for
+  // `ifc_model_loaded`; everything else on the trace stays a no-op.
+  startLoad: (loadId, attrs, start = performance.now()) => new FieldLoadTrace(loadId, start, attrs),
   snapshots: () => [],
   latest: () => null,
 };
+
+/** Every load, traced or not, opens the field long-frame log first (#6961). */
+function withFieldTelemetry(tracer: LoadTracer): LoadTracer {
+  return {
+    ...tracer,
+    startLoad(loadId, attrs, start) {
+      const trace = tracer.startLoad(loadId, attrs, start);
+      onFieldTelemetry((field) => field.noteLoadStarted(trace.start));
+      return trace;
+    },
+  };
+}
 
 /**
  * The viewer's shared tracer: a no-op until tracing is requested. The real
@@ -72,9 +81,15 @@ const DISABLED_TRACER: LoadTracer = {
  * it in the entry chunk. Loads start long after boot, so `?perfTrace=1` (or
  * the benchmark's pre-boot flag) still captures every load.
  */
-export let loadTracer: LoadTracer = DISABLED_TRACER;
-if (isPerfTraceRequested()) {
-  void import('./loadTraceEnabled.js')
-    .then((mod) => { loadTracer = mod.enableLoadTracing(); })
-    .catch((error: unknown) => console.warn('[perf] load tracing could not be enabled', error));
-}
+export let loadTracer: LoadTracer = withFieldTelemetry(DISABLED_TRACER);
+
+/**
+ * Settles once `loadTracer` is final: at once when tracing is off, after the
+ * on-demand import when it is on. `mountViewer` awaits it in trace mode so no
+ * load entry point exists before the recording tracer does.
+ */
+export const loadTracerReady: Promise<void> = PERF_TRACE_ENABLED
+  ? import('./loadTraceEnabled.js')
+    .then((mod) => { loadTracer = withFieldTelemetry(mod.enableLoadTracing()); })
+    .catch((error: unknown) => console.warn('[perf] load tracing could not be enabled', error))
+  : Promise.resolve();

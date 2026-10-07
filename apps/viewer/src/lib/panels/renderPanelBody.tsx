@@ -33,7 +33,6 @@ import { ChangesPanel } from '@/components/viewer/ChangesPanel';
 import { ChangeSetPanel } from '@/components/viewer/change-sets/ChangeSetPanel';
 import { CostPanel } from '@/components/viewer/CostPanel';
 import { EnvironmentPanel } from '@/components/viewer/EnvironmentPanel';
-import { PointCloudPanel } from '@/components/viewer/PointCloudPanel';
 import { MeasurementsPanel } from '@/components/viewer/MeasurementsPanel';
 import { PlacementPanel } from '@/components/viewer/placement/PlacementPanel';
 import { ModelInspectorPanel } from '@/components/viewer/model-inspector/ModelInspectorPanel';
@@ -51,6 +50,9 @@ const SourcesPanel = lazy(() =>
   import('@/components/sources/SourcesPanel').then((m) => ({ default: m.SourcesPanel })),
 );
 
+// Lazy: the Point Clouds panel carries scan-to-BIM detection, review and creation (#6894);
+// it stays out of the first-paint bundle until first opened.
+const PointCloudPanel = lazy(() => import('@/components/viewer/PointCloudPanel').then((m) => ({ default: m.PointCloudPanel })));
 // Lazy: the Charts panel pulls in ECharts; it stays out of the first-paint bundle.
 const ChartsPanel = lazy(() => import('@/components/viewer/charts/ChartsPanel').then((m) => ({ default: m.ChartsPanel })));
 const DocumentPanel = lazy(() => import('@/components/viewer/document/DocumentPanel').then((m) => ({ default: m.DocumentPanel })));
@@ -126,7 +128,11 @@ function PointCloudPanelBody({ onClose }: { onClose: () => void }) {
     for (const m of s.models.values()) total += m.geometryResult?.totalTriangles ?? 0;
     return total;
   });
-  return <PointCloudPanel assetCount={assetCount} triangleCount={triangleCount} onClose={onClose} />;
+  return (
+    <ChunkErrorBoundary label="Point cloud panel">
+      <Suspense fallback={null}><PointCloudPanel assetCount={assetCount} triangleCount={triangleCount} onClose={onClose} /></Suspense>
+    </ChunkErrorBoundary>
+  );
 }
 
 /**

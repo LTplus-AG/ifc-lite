@@ -8,7 +8,7 @@
  * default entry chunk. Publishes `window.__IFC_LITE_LOAD_TRACE__`.
  */
 
-import { buildSpanTree, createLoadTracer, toChromeTrace, type LoadTracer } from '@ifc-lite/load-trace';
+import { buildSpanTree, createLoadTracer, startFrameMonitor, toChromeTrace, type LoadTracer } from '@ifc-lite/load-trace';
 import { downloadBlob } from '../export/download.js';
 
 const GLOBAL_KEY = '__IFC_LITE_LOAD_TRACE__';
@@ -31,7 +31,9 @@ export function exposeLoadTrace(tracer: LoadTracer, target: Record<string, unkno
 
 /** Create the recording tracer and publish its API on the global. */
 export function enableLoadTracing(): LoadTracer {
-  const tracer = createLoadTracer({ enabled: true });
+  // #6957: each load also carries its structural counters and a long-frame
+  // (LoAF / longtask) summary; see `LoadTraceSnapshot.counters` / `.mainThread`.
+  const tracer = createLoadTracer({ enabled: true, frames: startFrameMonitor() });
   exposeLoadTrace(tracer);
   return tracer;
 }

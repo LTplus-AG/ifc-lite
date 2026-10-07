@@ -24,7 +24,9 @@ export const clashAdapter: EvidenceAdapter = {
     const result = s.clashResult;
     if (!result) return unavailableCapture();
     return {
-      summary: { ...result.summary, truncated: result.truncated, settings: result.settings, taxonomyLimitations: CLASH_TAXONOMY_LIMITATIONS },
+      // Declared units let report claims compare distances (#6918); clash geometry is in metres.
+      summary: { ...result.summary, truncated: result.truncated, settings: result.settings,
+        units: { distance: 'm', tolerance: 'm' }, taxonomyLimitations: CLASH_TAXONOMY_LIMITATIONS },
       totalRows: result.clashes.length,
       availability: 'available',
       rows: result.clashes.slice(0, limit).map(c => ({ id: c.id, a: c.a, b: c.b, rule: c.rule,

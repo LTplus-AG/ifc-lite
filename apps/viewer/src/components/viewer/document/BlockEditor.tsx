@@ -30,6 +30,7 @@ import { TableBlockEditor } from './TableBlockEditor';
 import { ManualReportBlockEditor, ManualReportPresentation } from './ManualReportBlockEditor';
 import { TextColorEditor } from './TextColorEditor';
 import { FieldPicker } from './FieldPicker';
+import { AiOriginBadge } from './AiOriginBadge';
 
 export interface BlockEditorProps {
   block: DocumentBlock;
@@ -224,6 +225,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
       <div className="flex items-center gap-1">
         <span className="font-medium">{t(block.kind === 'ids-report' && reportBlockSourceKind(block) === 'rules' ? 'document.block.kindRulesReport' : KIND_LABEL_KEY[block.kind])}</span>
         <span className="text-muted-foreground">#{index + 1}</span>
+        {block.kind === 'text' && <AiOriginBadge block={block} />}
         <span className="flex-1" />
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={index === 0} onClick={() => onMove(-1)} aria-label={t('document.block.moveUpAriaLabel')}><ArrowUp className="h-3.5 w-3.5" /></Button>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={index === count - 1} onClick={() => onMove(1)} aria-label={t('document.block.moveDownAriaLabel')}><ArrowDown className="h-3.5 w-3.5" /></Button>

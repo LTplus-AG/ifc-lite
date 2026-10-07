@@ -53,6 +53,7 @@ function origin(value: unknown): DraftOrigin | null {
   if (value.kind === 'group' && isText(value.workspaceId, 200) && isText(value.groupId, 200)) {
     return { kind: 'group', workspaceId: value.workspaceId, groupId: value.groupId };
   }
+  if (value.kind === 'review' && isText(value.card, 100)) return { kind: 'review', card: value.card };
   return null;
 }
 
@@ -146,7 +147,7 @@ export function decodeTopic(value: unknown): DraftTopic | null {
 }
 
 function decodeSource(value: unknown): DraftSource | null {
-  if (!isRecord(value) || (value.kind !== 'clash' && value.kind !== 'archive') || !isText(value.runDigest, 100)
+  if (!isRecord(value) || (value.kind !== 'clash' && value.kind !== 'archive' && value.kind !== 'review') || !isText(value.runDigest, 100)
     || !Array.isArray(value.rules) || !value.rules.every(rule => isText(rule, 500)) || !Number.isSafeInteger(value.findingCount)
     || !isText(value.capturedAt, 40)) return null;
   const offset = value.worldOffset === undefined ? undefined : bcfPoint(value.worldOffset);

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { CompressionRequest, CompressionResponse } from './geometry-compression-protocol.js';
+import { accountWorkerMessages } from '@ifc-lite/load-trace';
 
 type StoredChunk = { bytes: Uint8Array<ArrayBuffer>; compressed: boolean };
 export interface CompressionWorkerPort {
@@ -35,7 +36,7 @@ export class GeometryCompressionSession {
       this.pending.set(id, { length: raw.byteLength, resolve, reject });
       try {
         if (!this.worker) {
-          this.worker = this.createWorker();
+          this.worker = accountWorkerMessages(this.createWorker(), 'cacheCompression'); // #6957
           this.worker.onmessage = event => this.receive(event.data);
           this.worker.onerror = event => {
             event.preventDefault();

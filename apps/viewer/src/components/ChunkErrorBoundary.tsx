@@ -48,6 +48,7 @@ const CHUNK_LABEL_KEYS = {
   'Appearance panel': 'viewerShell.chunkLabel.appearancePanel',
   'Charts panel': 'viewerShell.chunkLabel.chartsPanel',
   'Assistant panel': 'assistant.title',
+  'Point cloud panel': 'pointCloudPanel.title',
   'Flow panel': 'viewerShell.chunkLabel.flowPanel',
   'Drawing panel': 'viewerShell.chunkLabel.drawingPanel',
   'Document panel': 'viewerShell.chunkLabel.documentPanel',

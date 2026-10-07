@@ -56,3 +56,14 @@ export function rebuildSceneBatches<Bucket extends RebuildableBucket>(options: {
   }
   options.pendingKeys.clear();
 }
+
+/**
+ * A model (other than 0) left with no batches forgets its shared frame, so
+ * geometry drawn for it later is framed where it is, not where its last batch
+ * was: a second scan-to-BIM overlay run far from the first (#6894). Bucket
+ * keys of model `n > 0` start with `model<n>~`.
+ */
+export function forgetEmptyModelFrames(buckets: ReadonlyMap<string, unknown>, frames: Map<number, unknown>): void {
+  const live = new Set([...buckets.keys()].map((key) => /^model(\d+)~/.exec(key)?.[1]));
+  for (const index of frames.keys()) if (index !== 0 && !live.has(String(index))) frames.delete(index);
+}

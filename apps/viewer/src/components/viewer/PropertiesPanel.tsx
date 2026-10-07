@@ -42,6 +42,7 @@ import { QuantitySetCard } from './properties/QuantitySetCard';
 import { SweptDiskInspection } from './properties/SweptDiskInspection';
 import { ExtrusionInspection } from './properties/ExtrusionInspection';
 import { ModelMetadataPanel } from './properties/ModelMetadataPanel';
+import { useInspectTiming } from './properties/useInspectTiming';
 import { useLandXmlSourceInspector } from './properties/useLandXmlSourceInspector';
 import { ClassificationCard } from './properties/ClassificationCard';
 import { MaterialCard } from './properties/MaterialCard';
@@ -1156,9 +1157,9 @@ export function PropertiesPanel() {
     }
     return names;
   }, [renderedAttributes]);
-
   // Model metadata display (when clicking top-level model in hierarchy)
   const landXmlInspector = useLandXmlSourceInspector(models);
+  useInspectTiming(!landXmlInspector && !selectedModelId && selectedMaterialId === null && selectedEntities.length <= 1 && selectedEntityId !== null && modelQuery && (entityNode || overlayEntity) ? selectedEntityId : null); // #6961 ifc_inspect: the single-entity view only
   if (landXmlInspector) return landXmlInspector;
 
   if (selectedModelId) {

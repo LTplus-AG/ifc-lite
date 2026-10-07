@@ -24,3 +24,12 @@ export type AssistantSource = typeof ASSISTANT_SOURCES[number];
 export function isAssistantSource(value: unknown): value is AssistantSource {
   return typeof value === 'string' && ASSISTANT_SOURCES.some(source => source === value);
 }
+
+/**
+ * Sources an AI report can be drafted from (#6918): every registered source
+ * through one generic path, except Flow, whose evidence is a graph definition
+ * rather than an analysis result (Flow conversations yield graph proposals).
+ */
+export function isReportSource(source: AssistantSource): boolean {
+  return source !== 'flow';
+}

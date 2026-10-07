@@ -48,9 +48,9 @@ import { translateSceneModel, rotateSceneModelInstances, releaseInstanceVertices
 import { ModelTranslations, type ModelYaw } from './model-translation.js';
 import { unionInstancedWorldAabb as unionInstanceBounds } from './scene-instance-bounds.js';
 import { DerivedMeshProvenance } from './scene-derived-mesh-provenance.js';
-import { rebuildSceneBatches } from './scene-batch-rebuild.js';
+import { forgetEmptyModelFrames, rebuildSceneBatches } from './scene-batch-rebuild.js';
 import { regroupStreamedBuckets, type FinalizeRegroup } from './scene-finalize-regroup.js';
-import type { LoadTrace } from '@ifc-lite/load-trace';
+import { perfCount, perfCounters, perfTally, type LoadTrace } from '@ifc-lite/load-trace';
 import {
   dropAllPartialCaches as dropAllPartialCachesIn,
   dropPartialCacheForBatch as dropPartialCacheForBatchIn,
@@ -1314,6 +1314,7 @@ export class Scene {
 
     this.batchedMeshes = [...this.buckets.values()].flatMap(bucket => bucket.batchedMesh ? [bucket.batchedMesh] : []);
     this.pendingBatchKeys.clear();
+    forgetEmptyModelFrames(this.buckets, this.sharedFrameOrigins);
   }
 
   /**
@@ -2073,6 +2074,7 @@ export class Scene {
     // Save references to old fragments/batches — keep them rendering
     // until the new proper batches are fully built (no visual gap).
     const oldFragments = this.streamingFragments;
+    perfTally('render.finalize', oldFragments.length, 'fragments'); // #6957 fragment rebuilds
     const oldBatches = this.batchedMeshes;
     const fragmentSet = new Set(oldFragments);
     const oldBatchSet = new Set(oldBatches);
@@ -2110,6 +2112,8 @@ export class Scene {
     // already retired by rebuildPendingBatches.
     this.retireFinalizedBatches(oldFragments);
     this.retireFinalizedBatches(regroup?.retired ?? []);
+    // #6957: same batch tally as the time-sliced path (only reached when the rebuild succeeded).
+    if (perfCounters.enabled) perfCount('render.finalize.batches', this.batchedMeshes.filter((b) => !oldBatchSet.has(b)).length);
   }
 
   /**
@@ -2147,6 +2151,7 @@ export class Scene {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const scene = this;
     const oldFragments = this.streamingFragments;
+    perfTally('render.finalize', oldFragments.length, 'fragments'); // #6957 fragment rebuilds
     const oldBatches = this.batchedMeshes;
     const fragmentSet = new Set(oldFragments);
     const oldBatchSet = new Set(oldBatches);
@@ -2240,6 +2245,7 @@ export class Scene {
             ...scene.streamingFragments,
           ];
           scene.retireFinalizedBatches(retired);
+          perfCount('render.finalize.batches', createdOwned.length);
           scene.finalizeInProgress = false;
           trace?.end(span, { batches: createdOwned.length, chunks });
           resolve();

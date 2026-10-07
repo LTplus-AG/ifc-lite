@@ -137,6 +137,7 @@ const REQUIRED_STEP_RUN = new Map([
 const REPORTER_NEEDS = new Map([
   ['determinism.yml', ['arm64-determinism', 'wasm32-mesh-determinism']],
   ['export-schema-conformance.yml', ['validate', 'terrain-imagery']],
+  ['field-verdict.yml', ['verdict']],
   ['ifcopenshell-parity.yml', ['full', 'cost-full']],
   ['perf-ratchet-lower.yml', ['lower']],
   ['wide-arithmetic.yml', ['wide-arithmetic-tripwire']],

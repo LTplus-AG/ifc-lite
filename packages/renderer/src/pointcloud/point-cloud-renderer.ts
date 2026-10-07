@@ -18,7 +18,7 @@ import { assertModelTranslation } from '../model-translation.js';
 
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { PointCloudHandleIds } from './point-cloud-handle-ids.js';
-import { PointCloudPlacements, unionPointCloudBounds } from './point-cloud-placement.js';
+import { exactPlacement, PointCloudPlacements, unionPointCloudBounds } from './point-cloud-placement.js';
 import { PointCloudVisibility } from './point-cloud-visibility.js';
 import { PointRenderPipeline, POINT_QUAD_VERTS, POINT_UNIFORM_SIZE } from './point-pipeline.js';
 import {
@@ -318,6 +318,7 @@ export class PointCloudRenderer {
   }
 
   getAssetTransform(handle: PointCloudAssetHandle): Float32Array | undefined { const matrix = this.nodes.get(handle.id)?.model; return matrix ? new Float32Array(matrix) : undefined; }
+  getAssetPlacement(handle: PointCloudAssetHandle): Float64Array | undefined { return exactPlacement(this.nodes.get(handle.id)); }
 
   getPlacementBounds(modelIndex: number, handle?: PointCloudAssetHandle) {
     // Model-specific framing must obey whole-scene visibility: a hidden scan cannot move the camera.

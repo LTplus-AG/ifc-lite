@@ -13,6 +13,9 @@ import { CLASH_GROUP_OUTPUT_GUIDANCE } from './clash-taxonomy';
 import { MODEL_CHANGE_OUTPUT_GUIDANCE } from '../actions/model-change';
 import { SCENE_ACTION_OUTPUT_GUIDANCE } from '../actions/scene-actions';
 import { CHECK_AUTHORING_GUIDANCE } from '../check-authoring/guidance';
+import { artifactGuidance } from './artifacts/artifact-guidance';
+import { REPORT_CLAIMS_OUTPUT_GUIDANCE } from './report-claims';
+import { isReportSource } from './sources';
 import { useViewerStore } from '@/store';
 import { useAssistant } from './conversation';
 
@@ -20,6 +23,8 @@ import { useAssistant } from './conversation';
 export const ASSISTANT_OUTPUT_TOKENS = 4096;
 /** Overall deadline per Assistant request, from send to last byte. */
 export const ASSISTANT_TIMEOUT_MS = 120_000;
+/** The one LLM proxy every Assistant send uses. */
+export const ASSISTANT_PROXY_URL: string = import.meta.env.VITE_LLM_PROXY_URL || '/api/chat';
 
 /** Largest viewport screenshot (data URL characters) an Assistant send carries. */
 const ASSISTANT_IMAGE_LIMIT = 1_200_000;
@@ -96,11 +101,17 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     }
     if (state.snapshot.source === 'clash') system = `${system}\n${CLASH_GROUP_OUTPUT_GUIDANCE}`;
     // Corrections are proposals only: the user reviews each change before anything is applied.
-    if (state.snapshot.source !== 'flow') system = `${system}\n${MODEL_CHANGE_OUTPUT_GUIDANCE}`;
+    if (isReportSource(state.snapshot.source)) system = `${system}\n${MODEL_CHANGE_OUTPUT_GUIDANCE}\n${REPORT_CLAIMS_OUTPUT_GUIDANCE}`;
     // Scene actions are proposals too: nothing changes the view until the user applies them.
     if (state.snapshot.source !== 'flow') system = `${system}\n${SCENE_ACTION_OUTPUT_GUIDANCE}`;
     // IDS, information rules and report outlines are drafted from validation results or any loaded model (P07).
     if (state.snapshot.source === 'validation' || state.snapshot.source === 'loadReport') system = `${system}\n${CHECK_AUTHORING_GUIDANCE}`;
+    // Filters, lists, lenses and charts (P13) are proposals reviewed against the loaded models; only a bounded schema digest is sent.
+    if (state.snapshot.source !== 'flow') {
+      const guidance = await artifactGuidance(useViewerStore.getState(), controller.signal);
+      if (!ownsRequest()) return false;
+      system = `${system}\n${guidance}`;
+    }
     // Every source now carries guidance, so the full system prompt is re-bounded.
     if (JSON.stringify(messages).length + system.length > 90_000) { fail('context-limit'); return false; }
     if (attachments.screenshot) {

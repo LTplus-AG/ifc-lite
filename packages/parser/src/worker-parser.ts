@@ -31,7 +31,7 @@ import type {
 } from './parser.worker.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 import { makeAbortError } from './abort-error.js';
-import { NOOP_LOAD_TRACE, enableWorkerTrace, isTraceSpansMessage, type LoadTrace } from '@ifc-lite/load-trace';
+import { NOOP_LOAD_TRACE, accountWorkerMessages, enableWorkerTrace, isTraceSpansMessage, type LoadTrace } from '@ifc-lite/load-trace';
 
 export interface WorkerParserOptions extends ParseOptions {
   /** Fresh per-request 16-byte prepass fingerprint cell; never awaited. */
@@ -142,7 +142,7 @@ export class WorkerParser {
       // `this.worker` is only the `setEntityIndex` target: the most recently
       // spawned worker. Every path below clears it only while it still points
       // at THIS request's worker, so settling one request never detaches another.
-      this.worker = worker;
+      this.worker = accountWorkerMessages(worker, 'parser'); // #6957 message counters (no-op unless traced)
 
       // Reject + terminate THIS request on demand, invoked by terminate() and by
       // this request's own 'abort' listener. Removed from `activeCancels` in

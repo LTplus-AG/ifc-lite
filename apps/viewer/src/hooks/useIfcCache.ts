@@ -399,15 +399,14 @@ export function useIfcCache() {
             }
             allMeshes.push(...chunkMeshes);
             appendGeometryBatch(modelId, chunkMeshes, open.coordinateInfo);
-            if (i === 0 && trace.enabled) firstVisible = recordFirstVisible(trace, trace.milestone('geometry.firstAppend'));
+            if (i === 0) firstVisible = recordFirstVisible(trace, trace.milestone('geometry.firstAppend')); // every load: ifc_model_loaded reads it (#6961)
             if ((i & 3) === 3 || i === open.chunks.length - 1) {
               setProgress({
                 phase: 'Loading geometry from cache',
                 percent: 20 + Math.round((70 * (i + 1)) / open.chunks.length),
               });
             }
-            // Yield so the animation loop can drain the mesh queue between
-            // chunks (paint progresses during the load, like a fresh stream).
+            // Yield so the animation loop drains the mesh queue between chunks (paint progresses, like a fresh stream).
             await new Promise<void>((resolve) => setTimeout(resolve, 0));
           }
         } catch (chunkErr) {
@@ -479,6 +478,7 @@ export function useIfcCache() {
         setIfcDataStore(dataStore);
       }
 
+      trace.milestone('cache.storeReady'); // #6961: spatial tree and properties are queryable from here
       setProgress({ phase: 'Complete (from cache)', percent: 100 });
       const totalCacheTime = performance.now() - cacheLoadStart;
       console.log(`[useIfcCache] ✓ ${fileName} (cached) → ${meshCount} meshes | ${totalCacheTime.toFixed(0)}ms`);

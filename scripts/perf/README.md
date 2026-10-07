@@ -39,7 +39,39 @@ so it does not see scheduling, threading, WASM or browser-only effects (worker
 fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
-### Frame-time rigs (#6960)
+
+## Structural counters and long frames per load (#6957)
+
+Under `?perfTrace=1` and in every benchmark run, each load's span tree also
+carries counters (`LoadTraceSnapshot.counters`): full source copies, worker
+messages and their clone/transfer/shared bytes per direction, typed-array
+bytes handed to wasm per worker and method, GPU buffers and uploaded bytes,
+`mergeGeometry` calls and vertices, finalize rebuilds, store writes and
+subscriber notifications, the per-append model-index re-spread, and a
+LoAF/longtask summary attributed to the innermost open span. The benchmark
+pins 4 geometry workers (`VIEWER_BENCHMARK_GEOM_WORKERS`) and records them in
+`loadCounters`, split in two. `structural` (copies, messages, wasm ingress)
+repeated exactly across runs on FZK and Snowdon, except for a few bytes of
+parser diagnostic strings that carry elapsed times, so a diff there means
+the load did different work. `scheduling` (GPU uploads and merges, React
+commits, store churn) moves with frame timing. `flushPending` slices its
+upload queue by a time budget, and SwiftShader loses and re-creates the
+device mid-load, which re-uploads everything, so compare those as a spread.
+Lesson: the benchmark's old 2D canvas probe could claim the viewport canvas
+before the renderer did. After that `getContext('webgpu')` returns null, the
+renderer logs "Failed to get WebGPU context", and the run measures no GPU work
+at all. The probe now checks only the canvas size, and the counters are read
+once they stop moving, not when the load root ends.
+
+React commits per load are the `react.commits` counter, taken from the
+DevTools global hook's `onCommitFiberRoot`: React's production build compiles
+`<Profiler onRender>` out, so a root Profiler would count zero in the build
+the benchmark and users run. `node scripts/perf/hook-census.mjs` counts hook
+call sites and `useViewerStore` subscriptions on the viewport, properties,
+hierarchy and streaming paths statically (minified component names make a
+runtime fiber census unattributable, and mounted counts move with UI state).
+
+## Frame-time rigs (#6960)
 
 Two rigs measure viewer frames; neither is a PR gate. Both inject the same
 in-page probe (`tests/benchmark/frames/frame-probe.ts`): rAF callback time,
@@ -67,6 +99,20 @@ rendered vs idle frames (a frame that called `getCurrentTexture`), and
   so pass `--dist-base <base build>` for counterbalanced base/branch pairs and
   read the paired ratio. Serialise timed runs:
   `flock /tmp/ifclite-perf.lock npx tsx scripts/perf/frame-gpu-rig.mts tests/models/ara3d/AC20-FZK-Haus.ifc --pairs 3`.
+
+## Viewer JS is gated on raw bytes, not brotli (#7007)
+
+The viewer build is byte-reproducible apart from `__BUILD_DATE__` (the build
+timestamp `vite.config.ts` bakes into the entry chunk and `analytics`). Module
+order was NOT the cause: three clean builds of one tree kept all 304 JS files'
+raw sizes and, chunk hashes stripped, every file's content except those two;
+both CI attempts of one commit kept the entry's raw size and the eager file
+order. Brotli-11 of the entry chunk is still noisy, because a
+same-length timestamp swap alone is enough to jump it by ~0.5% (bimodal over
+48 dates, matching the 4.3 KB CI re-run swing). Pinning the timestamp would
+only make one tree repeat; every other edit perturbs the compressor the same
+way. **Lesson:** gate the JS on raw bytes, report brotli, and don't try to
+make a brotli number on a multi-megabyte JS chunk stable to better than ~0.5%.
 
 ## Instruction counts track kernel and parse work, not scheduling (#6958)
 
@@ -2055,6 +2101,170 @@ The existing prepass can publish the exact full-byte source key through a fresh 
   spatial readiness, total load, mesh counts and visible-frame progress. The
   initial Holter browser cohort confirmed frame progress and no 14-second load,
   but concurrent host jobs made its small timing delta inconclusive.
+
+#### Field properties on every load and journey (#6961)
+
+`ifc_model_loaded` now carries the same milestones on every load path (wasm
+streaming, cache, server, IFCX, GLB, point cloud, LandXML), plus main-thread
+health, worker bytes, the journey and the perf-flag arm. Absent always means
+"not measured", never 0; a value the load path measured itself always wins.
+
+| property | meaning |
+|---|---|
+| `first_visible_geometry_ms` | first pixel: the paint after the first geometry append (`geometry.firstVisible`). Was wasm-only; now also cache. |
+| `spatial_ready_ms` | spatial tree usable (`parser.spatialReady`; on a cache hit, the store restore `cache.storeReady`). New. |
+| `metadata_complete_ms` | properties usable (`parser.complete`; cache: `cache.storeReady`). Was wasm-only. |
+| `stream_complete_ms` | last geometry batch appended (`geometry.streamComplete`). Was wasm-only; now also cache. |
+| `milestone_source` | `trace`: the four come from the load's streamed milestones. `commit`: a single-step path (server, IFCX, GLB, point cloud, LandXML) committed the model at once, so all four are its `total_elapsed_ms`. Never compare a `commit` row's first pixel with a `trace` row's. |
+| `journey` | charter journey: `J1` cold open, `J2` cache hit, `J4` federated add. |
+| `cache_tier` | `source`, `mesh-only` or `none` (the cache plan for this load). |
+| `worker_count` | geometry workers the pool started (absent on paths without a pool). |
+| `main_thread_blocked_ms` | sum of long-animation-frame `blockingDuration` (or long-task time over 50 ms where LoAF is missing) for frames starting between load start and capture. |
+| `longest_long_frame_ms`, `long_frame_count` | the longest such frame and how many there were. |
+| `long_frame_source` | `loaf` or `longtask`; compare rows of the same source only. All four main-thread fields are absent where the engine has neither (Firefox, Safari). |
+| `worker_transfer_bytes` | mesh bytes the geometry workers handed the main thread plus the parser's transport bytes, from `memoryAccounting` (already on every load). 0 when a pool ran and moved nothing; absent when no pool ran (cache, server). It counts payload bytes, not the clone estimate `?perfTrace=1` records per message. |
+| `perf_flags` | the M7 arm: `default`, or the non-default flags as sorted `id=value` pairs joined by `,` (read at capture). |
+| `load_path` | now actually arrives. The scrubber deleted it until #6961 (the key matches the `path` word); the closed vocabulary `wasm`/`cache`/`server`/`point-cloud`/`landxml` is now kept. Rows before that have no `load_path` and no `journey`, so a pre-#6961 cache hit reads as `J1`: judge `J1` against `J2` only on a baseline captured entirely after this change. |
+
+How it is measured without the tracer. With `?perfTrace=1` off, every load
+gets a `FieldLoadTrace` (`apps/viewer/src/lib/perf/fieldLoadTrace.ts`) in place
+of the old no-op trace: it records the first time of each milestone and the
+load attributes that the instrumented call sites already pass, and nothing
+else (spans, records and worker merges stay no-ops). Main-thread health comes
+from one `PerformanceObserver` on `long-animation-frame` (and `longtask`),
+created when the first load starts and reading back missed frames through its
+`buffered` replay; it only fires on frames over 50 ms and keeps at most 2,000.
+Both, and the three events below, live in an on-demand chunk
+(`lib/perf/fieldTelemetry.ts`), so the entry chunk grows by about 600 raw
+bytes. The recording tracer was not an option: it keeps every span, a counter
+registry and a 20k-entry frame log, and counting message bytes walks every
+worker payload.
+
+Sampled events. All carry `journey`, `perf_flags`, `was_hidden` and, where a model is
+loaded, `file_size_mb`/`mesh_count` from the last load (the same model key as
+`ifc_model_loaded`); nothing else identifies the model.
+
+| event | journey | what | sample rate, and why |
+|---|---|---|---|
+| `ifc_inspect` | J5 | `inspect_ms`: viewport click to the paint after the properties panel committed that entity | 10% of selection clicks, at most 10 per page session. Clicks outnumber loads by an order of magnitude; the paired ratio needs a few samples per person per window, not every click. Sent only when the panel is open. |
+| `ifc_navigate` | J6 | `frame_p50_ms`, `frame_p95_ms`, `frame_max_ms` over 120 camera-interaction frames (orbit, pan, zoom), excluding each interaction's first frame, frames while geometry streams and hidden-tab frames | once per page session, every session: one row per session is already the cap. Frame intervals include the adaptive render throttle, which is what the user sees. |
+| `viewer_boot` | J0 | `drop_target_ms` (navigation to the empty viewer's drop target enabled), `engine_wasm_compiled_ms` (navigation to the prewarmed engine compiled), `engine_wasm_compile_ms` (the prewarm's own fetch + compile), `engine_wasm_compiled` | once per page load, every page load. Sent when both are known, or 30 s after the field chunk loads. `drop_target_ms` is absent when a load started first; `engine_wasm_compile_ms` is absent when a load joined the compile; both are absent when the prewarm was skipped (Save-Data, 2G). |
+
+#### The field verdict (#6961)
+
+`scripts/perf/field-verdict.mjs` applies the paired-ratio method above to one
+deployed build: per (event, metric, journey, person, model) cell,
+`median(recent) / median(baseline)`, where recent is the judged build's rows
+and the divisor comes from the baseline window (the 14 days before that build
+first appeared) and from the `default` arm only. A group's pooled ratio is the
+median of its cell ratios, reported per journey and pooled across journeys,
+each per `perf_flags` arm. The threshold is on speed (1 / ratio): pooled speed
+below 0.95 with at least 5 paired cells is `regressed`; fewer cells is
+`insufficient`, which is the common case at current volume and is not a
+pass. `was_hidden = true` rows and bot traffic are excluded in the query.
+
+```bash
+node scripts/perf/field-verdict.mjs --print-sql --build <sha> > verdict.sql   # the HogQL below, filled in
+POSTHOG_PERSONAL_API_KEY=... node scripts/perf/field-verdict-fetch.mjs --build <sha> --out result.json
+node scripts/perf/field-verdict.mjs result.json --build <sha>                  # markdown; --json for data
+```
+
+`.github/workflows/field-verdict.yml` runs this daily at 05:15 UTC, before the
+05:45 deploy, against the build production has served since the previous
+deploy, and posts the markdown on the PR that build's commit came from (once
+per build). It needs one repository secret, `POSTHOG_PERSONAL_API_KEY`: a
+PostHog personal API key with only `query:read`, scoped to project 199147
+(EU cloud). Without it every run skips with a notice. Opening a thread when a
+pooled group regresses is the next step and is not wired yet.
+
+The HogQL the script expects (`__BUILD__` is the 12-character
+`app_build_sha`, `__BASELINE_DAYS__` the baseline length; the script reads it
+from this block). It already aggregates to one row per (person, model,
+journey, arm, metric, window) cell, not per load; `field-verdict-fetch.mjs`
+appends `LIMIT`/`OFFSET` and pages over the fully ordered result until it is
+complete, and fails rather than judge a partial one:
+
+<!-- field-verdict-hogql -->
+```sql
+SELECT
+  event,
+  journey,
+  arm,
+  person,
+  model,
+  metric,
+  window,
+  quantile(0.5)(value) AS median,
+  count() AS n
+FROM (
+  SELECT
+    event,
+    -- Rows before #6961 carry no `journey` (and no `load_path`: the scrubber
+    -- deleted it), so they fall back to load_target; a pre-#6961 cache hit
+    -- therefore reads as J1.
+    coalesce(
+      toString(properties.journey),
+      multiIf(
+        event = 'ifc_model_loaded' AND properties.load_target = 'federated', 'J4',
+        event = 'ifc_model_loaded' AND properties.load_path = 'cache', 'J2',
+        event = 'ifc_model_loaded', 'J1',
+        event = 'ifc_inspect', 'J5',
+        event = 'ifc_navigate', 'J6',
+        'J0'
+      )
+    ) AS journey,
+    coalesce(toString(properties.perf_flags), 'default') AS arm,
+    toString(person_id) AS person,
+    -- The model is its format plus size to 10 KB: no name ever leaves the browser.
+    if(event = 'viewer_boot', '-', concat(coalesce(toString(properties.format), '?'), ':', toString(round(toFloat(properties.file_size_mb), 2)))) AS model,
+    if(toString(properties.app_build_sha) = '__BUILD__', 'recent', 'baseline') AS window,
+    arrayJoin(arrayFilter(m -> isNotNull(m.2), [
+      tuple('total_elapsed_ms', toFloat(properties.total_elapsed_ms)),
+      tuple('first_visible_geometry_ms', toFloat(properties.first_visible_geometry_ms)),
+      tuple('spatial_ready_ms', toFloat(properties.spatial_ready_ms)),
+      tuple('metadata_complete_ms', toFloat(properties.metadata_complete_ms)),
+      tuple('stream_complete_ms', toFloat(properties.stream_complete_ms)),
+      tuple('main_thread_blocked_ms', toFloat(properties.main_thread_blocked_ms)),
+      tuple('inspect_ms', toFloat(properties.inspect_ms)),
+      tuple('frame_p95_ms', toFloat(properties.frame_p95_ms)),
+      tuple('drop_target_ms', toFloat(properties.drop_target_ms)),
+      tuple('engine_wasm_compile_ms', toFloat(properties.engine_wasm_compile_ms))
+    ])) AS pair,
+    pair.1 AS metric,
+    pair.2 AS value
+  FROM events
+  WHERE event IN ('ifc_model_loaded', 'ifc_inspect', 'ifc_navigate', 'viewer_boot')
+    AND timestamp >= now() - INTERVAL 90 DAY
+    -- Baseline: the __BASELINE_DAYS__ days before the judged build first appeared.
+    AND timestamp >= (
+      SELECT min(timestamp) FROM events
+      WHERE event = 'ifc_model_loaded' AND timestamp >= now() - INTERVAL 60 DAY
+        AND toString(properties.app_build_sha) = '__BUILD__'
+    ) - INTERVAL __BASELINE_DAYS__ DAY
+    AND (
+      toString(properties.app_build_sha) = '__BUILD__'
+      OR (
+        timestamp < (
+          SELECT min(timestamp) FROM events
+          WHERE event = 'ifc_model_loaded' AND timestamp >= now() - INTERVAL 60 DAY
+            AND toString(properties.app_build_sha) = '__BUILD__'
+        )
+        -- Only people who also used the judged build can form a pair.
+        AND person_id IN (
+          SELECT person_id FROM events
+          WHERE event IN ('ifc_model_loaded', 'ifc_inspect', 'ifc_navigate', 'viewer_boot')
+            AND timestamp >= now() - INTERVAL 60 DAY
+            AND toString(properties.app_build_sha) = '__BUILD__'
+        )
+      )
+    )
+    -- A load spanning a tab switch timed the user's absence (#2385).
+    AND NOT ifNull(toString(properties.was_hidden) = 'true', false)
+    AND NOT ifNull(toString(properties.$virt_is_bot) = 'true', false)
+)
+GROUP BY event, journey, arm, person, model, metric, window
+ORDER BY event, journey, metric, person, model, window
+```
 
 ### Source and buffer ownership during WASM prepass (#3989)
 

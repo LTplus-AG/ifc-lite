@@ -16,8 +16,9 @@ import { ModelSelector } from '../chat/ModelSelector';
 import { ByokKeyModal } from '../chat/ByokKeyModal';
 import { useAssistant, cancelAssistant, replaceEvidence } from '@/lib/assistant/conversation';
 import { captureEvidence, evidenceIsCurrent, type AssistantSource } from '@/lib/assistant/evidence';
-import { sendAssistant } from '@/lib/assistant/request';
+import { ASSISTANT_PROXY_URL, sendAssistant } from '@/lib/assistant/request';
 import { adapterFor } from '@/lib/assistant/adapters/registry';
+import { isReportSource } from '@/lib/assistant/sources';
 import { resolveCapturedClash } from '@/lib/assistant/clash-group-proposal';
 import { useClash } from '@/hooks/useClash';
 import { EvidenceSummary } from './EvidenceSummary';
@@ -32,6 +33,7 @@ const SceneActionReview = lazy(() => import('./SceneActionReview').then(m => ({ 
 const SceneRestoreBar = lazy(() => import('./SceneActionReview').then(m => ({ default: m.SceneRestoreBar })));
 const ClashGroupReview = lazy(() => import('./ClashGroupReview').then(m => ({ default: m.ClashGroupReview })));
 const CheckAuthoringProposal = lazy(() => import('./CheckAuthoringProposal').then(m => ({ default: m.CheckAuthoringProposal })));
+const ArtifactProposalReview = lazy(() => import('./ArtifactProposalReview').then(m => ({ default: m.ArtifactProposalReview })));
 
 export function AssistantPanel() {
   const { t } = useTranslation();
@@ -50,7 +52,6 @@ export function AssistantPanel() {
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const busy = state.status === 'streaming';
-  const proxyUrl = import.meta.env.VITE_LLM_PROXY_URL || '/api/chat';
   const canAsk = !!state.snapshot && !busy && !stale;
   const errors = { 'missing-model': t('assistant.missingModel'), 'missing-key': t('assistant.missingKey'), 'context-limit': t('assistant.contextLimit'),
     'stale-evidence': t('assistant.stale'), 'truncated-output': t('assistant.truncated'), 'empty-output': t('assistant.emptyOutput'), 'request-timeout': t('assistant.timeout'),
@@ -65,7 +66,7 @@ export function AssistantPanel() {
     // Attachments go with this one message only, and only because the user attached them. A sent message
     // clears them and counts the send, so a capture still running then is dropped (one that landed meanwhile
     // is cleared with the rest); a refused send keeps the attachments, and a late capture, for the retry.
-    void sendAssistant(text, model, proxyUrl, attachmentsForSend(attachments)).then(success => {
+    void sendAssistant(text, model, ASSISTANT_PROXY_URL, attachmentsForSend(attachments)).then(success => {
       if (!success) return;
       setPrompt(current => current === text ? '' : current);
       setAttachments(NO_ATTACHMENTS);
@@ -114,10 +115,11 @@ export function AssistantPanel() {
         evidencePayload={evidence?.payload ?? null} focusCitation={focusCitation} />
       {evidence?.source === 'clash' && <Suspense fallback={null}><ClashGroupReview /></Suspense>}
       {evidence?.source === 'flow' && <Suspense fallback={null}><FlowProposalReview /></Suspense>}
-      {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><ModelChangeProposal /></Suspense>}
+      {evidence && isReportSource(evidence.source) && <Suspense fallback={null}><ModelChangeProposal /></Suspense>}
       {(evidence?.source === 'validation' || evidence?.source === 'loadReport') && <Suspense fallback={null}><CheckAuthoringProposal /></Suspense>}
-      {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><ReportDraftReview /></Suspense>}
+      {evidence && isReportSource(evidence.source) && <Suspense fallback={null}><ReportDraftReview /></Suspense>}
       {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><SceneActionReview /></Suspense>}
+      {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><ArtifactProposalReview onAsk={canAsk ? suggest : null} /></Suspense>}
       </>}
       <Suspense fallback={null}><SceneRestoreBar /></Suspense>
       <div ref={endRef} />
@@ -138,7 +140,7 @@ export function AssistantPanel() {
         {busy ? <Button type="button" size="sm" variant="outline" className="h-7 shrink-0" onClick={cancelAssistant}><Square className="h-3 w-3 mr-1" />{t('assistant.cancel')}</Button>
           : <Button type="submit" size="sm" className="h-7 shrink-0" disabled={!canAsk || !prompt.trim()}><Send className="h-3 w-3 mr-1" />{t('assistant.send')}</Button>}
       </div>
-      <FreeQuotaNote model={model} proxyUrl={proxyUrl} />
+      <FreeQuotaNote model={model} proxyUrl={ASSISTANT_PROXY_URL} />
     </form>
     <ByokKeyModal open={keysOpen} onOpenChange={setKeysOpen} />
   </section>;

@@ -42,15 +42,18 @@ import { modelChangesEn } from './catalogues/model-changes.en';
 import { clashGroupApplyEn } from './catalogues/clash-group-apply.en';
 import { tableCorrectionsEn } from './catalogues/table-corrections.en';
 import { assistantUsageEn } from './catalogues/assistant-usage.en';
+import { aiReportsEn } from './catalogues/ai-reports.en';
 import { modelAuthoringEn } from './catalogues/model-authoring.en';
 import { sceneActionsEn } from './catalogues/scene-actions.en';
 import { checkAuthoringEn } from './catalogues/check-authoring.en';
+import { assistantArtifactsEn } from './catalogues/assistant-artifacts.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { commandsEn } from './catalogues/commands.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { comparePanelEn } from './catalogues/compare-panel.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
 import { deviationStatsEn } from './catalogues/deviation-stats.en';
+import { scanToBimEn } from './catalogues/scan-to-bim.en';
 import { exportDialogEn } from './catalogues/export-dialog.en';
 import { dataConnectorEn } from './catalogues/data-connector.en';
 import { extensionsFlavorsEn } from './catalogues/extensions-flavors.en';
@@ -236,9 +239,11 @@ export const en = {
   ...clashGroupApplyEn,
   ...tableCorrectionsEn,
   ...assistantUsageEn,
+  ...aiReportsEn,
   ...modelAuthoringEn,
   ...sceneActionsEn,
   ...checkAuthoringEn,
+  ...assistantArtifactsEn,
   ...clashPanelEn,
   ...clashToolsEn,
   ...bcfEn,
@@ -259,6 +264,7 @@ export const en = {
   ...viewportLightingEn,
   ...miscPanelsAEn,
   ...deviationStatsEn,
+  ...scanToBimEn,
   ...sheetsPdfEn,
   ...spaceEnvelopeEn,
 } as const;

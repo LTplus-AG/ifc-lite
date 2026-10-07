@@ -20,6 +20,50 @@ export interface LoadTraceSnapshotJson {
   start: number;
   end: number | null;
   spans: Array<{ name: string; thread: string; start: number; end: number | null; milestone?: boolean }>;
+  /** #6957 structural counters for this load (see LoadTraceSnapshot.counters). */
+  counters?: Record<string, number>;
+  workerCounters?: Record<string, Record<string, number>>;
+  /** #6957 long-animation-frame / longtask summary (see FrameSummary). */
+  mainThread?: Record<string, unknown>;
+}
+
+/**
+ * #6957 counter families whose totals follow scheduling rather than the
+ * model, measured run-to-run on FZK and Snowdon: GPU uploads and merges
+ * (`flushPending` slices its queue by a per-frame time budget, and a lost
+ * device re-uploads everything), store writes and React commits (progress
+ * updates and batching follow frame timing). They are recorded with their
+ * spread; `structural` keeps the families that repeat exactly (copies, worker
+ * messages, wasm ingress), so a diff there means the load did different work.
+ */
+export const SCHEDULING_DEPENDENT_PREFIXES: readonly string[] = ['gpu.', 'render.', 'react.', 'store.', 'viewer.'];
+/** Grows with every rendered frame, so it is ignored when waiting for counters to settle. */
+export const PER_FRAME_COUNTERS: readonly string[] = ['gpu.uniformWriteBytes'];
+
+export interface LoadCounters {
+  structural: Record<string, number>;
+  scheduling: Record<string, number>;
+  workerCounters: Record<string, Record<string, number>>;
+  mainThread: Record<string, unknown> | null;
+}
+
+/** Split a snapshot's counters for the result JSON; null when the viewer recorded none. */
+export function countersFromLoadTrace(snapshot: LoadTraceSnapshotJson | null): LoadCounters | null {
+  if (!snapshot?.counters) return null;
+  const structural: Record<string, number> = {};
+  const scheduling: Record<string, number> = {};
+  for (const name of Object.keys(snapshot.counters).sort()) {
+    const bucket = SCHEDULING_DEPENDENT_PREFIXES.some((p) => name.startsWith(p)) ? scheduling : structural;
+    bucket[name] = snapshot.counters[name];
+  }
+  return { structural, scheduling, workerCounters: snapshot.workerCounters ?? {}, mainThread: snapshot.mainThread ?? null };
+}
+
+/** The counters that must stop moving before a load's counters are recorded. */
+export function settleKey(snapshot: LoadTraceSnapshotJson | null): string {
+  const counters = { ...(snapshot?.counters ?? {}) };
+  for (const name of PER_FRAME_COUNTERS) delete counters[name];
+  return JSON.stringify(counters);
 }
 
 export const SPAN_METRIC_KEYS = [

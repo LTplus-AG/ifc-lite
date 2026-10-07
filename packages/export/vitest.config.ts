@@ -21,6 +21,10 @@ export default defineConfig({
       '@ifc-lite/encoding': path.resolve(__dirname, '../encoding/src/index.ts'),
       '@ifc-lite/geometry': path.resolve(__dirname, '../geometry/src/index.ts'),
       '@ifc-lite/ifcx': path.resolve(__dirname, '../ifcx/src/index.ts'),
+      // The parser's scan worker and worker-parser import it for message
+      // accounting (#6957); dependency-free, publishes only `./dist`, and this
+      // suite runs with nothing built.
+      '@ifc-lite/load-trace': path.resolve(__dirname, '../load-trace/src/index.ts'),
       '@ifc-lite/mutations': path.resolve(__dirname, '../mutations/src/index.ts'),
       '@ifc-lite/parser': path.resolve(__dirname, '../parser/src/index.ts'),
       // ifcx's entity-extractor imports @ifc-lite/pointcloud; alias it to src so

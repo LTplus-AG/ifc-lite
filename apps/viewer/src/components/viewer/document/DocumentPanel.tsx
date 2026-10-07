@@ -34,6 +34,8 @@ import { BlockEditor } from './BlockEditor';
 import { DocumentMenu } from './DocumentMenu';
 import { DocumentPreview } from './DocumentPreview';
 import { PageHeadingEditor } from './PageHeadingEditor';
+import { AiReportRefresh } from './AiReportRefresh';
+import { detachAiProvenance } from '@/lib/document/ai-report-types';
 import { useDocumentData } from './useDocumentData';
 import { useReportSources } from './useReportSources';
 
@@ -97,7 +99,8 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     const current = live.documents.find((entry) => entry.id === live.activeDocumentId);
     const index = current?.blocks.findIndex((block) => block.id === id) ?? -1;
     if (!current || index < 0) return;
-    const copy = copyDocumentBlock(current.blocks[index]);
+    // The duplicate is the reviewer's own text; refresh only regenerates the original (#6918).
+    const copy = detachAiProvenance(copyDocumentBlock(current.blocks[index]));
     // Read current content so consecutive copies keep each other's staged durable writes.
     void update({ ...current, blocks: [...current.blocks.slice(0, index + 1), copy, ...current.blocks.slice(index + 1)] });
     setSelectedBlockId(copy.id);
@@ -244,6 +247,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         <div className="flex min-h-0 flex-1">
           <div className="flex w-[420px] shrink-0 flex-col gap-2 overflow-y-auto overflow-x-hidden border-r border-border p-2" data-document-blocks>
             <PageHeadingEditor document={document} onChange={update} />
+            {document.aiReport && <AiReportRefresh key={document.id} document={document} onChange={update} />}
             {document.blocks.map((block, index) => (
               <div key={block.id} className={selectedBlockId === block.id ? 'rounded-md ring-1 ring-sky-500' : undefined} onFocusCapture={() => setSelectedBlockId(block.id)}>
                 <BlockEditor

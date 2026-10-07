@@ -167,7 +167,7 @@ interface ClashResult {
 }
 ```
 
-**Frame convention.** The geometry pipeline emits meshes already converted to **viewer Y-up, RTC-shifted world coordinates** (`rust/wasm-bindings/src/zero_copy.rs` swaps Z-up→Y-up). The clash core works in that exact frame — so it can run zero-copy on the same buffers and its `point`/`bounds` line up with selection, coloring, and camera framing. The BCF bridge (§6) performs the documented Y-up → IFC Z-up flip (`x, -z, y`) that `packages/bcf/src/viewpoint.ts` already implements for cameras.
+**Frame convention.** The geometry pipeline emits meshes already converted to **viewer Y-up, RTC-shifted world coordinates** (`MeshDataJs::new` in `rust/wasm-bindings/src/zero_copy/mesh.rs` swaps Z-up→Y-up). The clash core works in that exact frame — so it can run zero-copy on the same buffers and its `point`/`bounds` line up with selection, coloring, and camera framing. The BCF bridge (§6) performs the documented Y-up → IFC Z-up flip (`x, -z, y`) that `packages/bcf/src/viewpoint.ts` already implements for cameras.
 
 **Federation.** For cross-model clash every element must be in one common world frame. The step adapter applies each model's alignment (RTC offset + `buildingRotation` from `CoordinateInfo`, via `geometry-coordinate.ts`) before producing `ClashElement.positions`/`bounds`. The engine asserts a single frame and refuses to mix unaligned models (a guard the desktop prototype lacks).
 
@@ -310,7 +310,7 @@ BCF status persists via the deterministic topic GUID. This is the Navisworks "cl
 - Highlight via existing actions: `addEntitiesToSelection`, the shared `isolatedEntities` / `ghostExceptEntities` channels under a `clashVisibilityOwned` record (isolate / X-ray), renderer `setColorOverrides` (A=red, B=orange), `cameraCallbacks.frameSelection`, and `SectionPlane` for slicing to a clash. "Export to BCF" uses §6 with a viewer snapshot provider; "Open BCF" round-trips status back.
 
 ### 9.2 MCP (`packages/mcp`)
-- `clash_check` (`tools/clash.ts`): resolve A/B GlobalId selections via `entityIndex.byType` + `EntityNode`, run the engine (WASM-in-Node), return structured + grouped results honoring `scope:'read'`, `progress`, `signal`.
+- `clash_check` (`packages/mcp/src/tools/clash.ts`): resolve A/B GlobalId selections via `entityIndex.byType` + `EntityNode`, run the engine (WASM-in-Node), return structured + grouped results honoring `scope:'read'`, `progress`, `signal`.
 - `clash_matrix` (run discipline presets). The `clash_review` prompt (`prompts/templates.ts:133`) already orchestrates this. (A separate `clash_report` grouped-summary tool is not implemented; grouped summaries ride the `clash_check`/`clash_matrix` results.)
 
 ### 9.3 Scripts / CLI / sandbox

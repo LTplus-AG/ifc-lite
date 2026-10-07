@@ -108,7 +108,7 @@ cargo fuzz run parse_entity -- -max_total_time=60
 ```
 
 The contract under fuzz is that `parse_entity` never panics, hangs, or overflows
-on arbitrary bytes (only returns `Ok`/`Err`). `tests/malformed_input.rs` pins the
+on arbitrary bytes (only returns `Ok`/`Err`). `rust/core/tests/malformed_input.rs` pins the
 same contract for specific inputs in normal CI.
 
 ## Writing Tests

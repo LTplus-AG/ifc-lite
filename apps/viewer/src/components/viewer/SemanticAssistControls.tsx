@@ -47,7 +47,7 @@ export function SemanticAssistControls({ onError }: { onError: (message: string)
     </li>)}</ul>
     <h4 className="font-medium">{t('semanticAssist.savedTitle')}</h4>
     {!stored.length && <p className="text-sm text-muted-foreground">{t('semanticAssist.savedNone')}</p>}
-    {unreadable > 0 && <p role="status" className="text-sm text-muted-foreground">{t('semanticAssist.savedUnreadable', { count: unreadable })}</p>}
+    {unreadable > 0 && <output className="block text-sm text-muted-foreground">{t('semanticAssist.savedUnreadable', { count: unreadable })}</output>}
     <ul className="space-y-1 text-sm">{reviews.map(entry => {
       const historical = entry.type === 'mapping' && !revisionPinIsCurrent(entry.pin, revisions, models);
       return <li key={entry.id} className="flex items-start justify-between gap-2">

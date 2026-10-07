@@ -6,17 +6,19 @@ import { useViewerStore } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 
 /** Select and frame an edited element, from the Changes and Change sets panels. */
-export function selectChangedEntity(modelId: string, entityId: number): void {
+export function selectChangedEntity(modelId: string, entityId: number): boolean {
   const state = useViewerStore.getState();
+  if (!state.models.has(modelId) && !(modelId === 'legacy' && state.ifcDataStore)) return false;
   const globalId = state.toGlobalId(modelId, entityId);
   const ref = resolveEntityRef(globalId);
   // A removed or replaced model may reuse an old express id. Do not select
   // an unrelated entity just because its renderer-space number now matches.
-  if (ref.modelId !== modelId || ref.expressId !== entityId) return;
+  if (ref.modelId !== modelId || ref.expressId !== entityId) return false;
   state.setSelectedEntityIds([]);
   state.setSelectedEntityId(globalId);
   state.setSelectedEntity(ref);
   if (state.cameraCallbacks.frameSelection) {
     window.setTimeout(() => useViewerStore.getState().cameraCallbacks.frameSelection?.(), 50);
   }
+  return true;
 }

@@ -5,7 +5,8 @@
 /** Completed reports remain reviewable without reattaching historical renderer ids (#6506). */
 import { SavedComparisonHistoryNotice } from './SavedComparisonHistoryNotice';
 import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSavedComparisonFocus } from '@/lib/panels/evidence-focus';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { Button } from '@/components/ui/button';
@@ -28,7 +29,24 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
   const [name, setName] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const [renamed, setRenamed] = useState('');
+  const requested = useSavedComparisonFocus(s => s.record);
+  const consumed = useRef<typeof requested>(null);
+  useEffect(() => {
+    const entry = saved.find(item => item.id === requested?.comparisonId);
+    if (entry && requested !== consumed.current) {
+      consumed.current = requested; setSelectedId(entry.id); setRenamed(entry.name);
+    }
+  }, [requested, saved]);
   const selected = saved.find((c) => c.id === selectedId);
+  const visibleRows = selected?.report.rows.slice(0, 100) ?? [];
+  const requestedRow = requested?.comparisonId === selected?.id
+    ? selected?.report.rows.find(row => (row.key ?? row.globalId) === requested?.key) : undefined;
+  // The requested evidence is visible immediately, including rows beyond the display cap.
+  if (requestedRow) {
+    const prior = visibleRows.indexOf(requestedRow);
+    if (prior >= 0) visibleRows.splice(prior, 1);
+    visibleRows.unshift(requestedRow);
+  }
   const canSave = !!result && !running && !stale && models.has(result.baseModelId) && models.has(result.headModelId)
     && (result.mutationVersion === undefined || result.mutationVersion === mutationVersion);
   const persisted = (ok: boolean): void => { if (!ok) toast.error(t('comparePanel.saved.storageFailed')); };
@@ -73,7 +91,7 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
         <p className="text-muted-foreground">{t('comparePanel.saved.hint', { count: selected.report.rows.length })}</p>
         <div className="max-h-48 overflow-auto">
           <table className="w-full text-left"><thead><tr><th>{t('document.table.column.globalId')}</th><th>{t('document.table.column.name')}</th><th>IfcType</th><th>{t('comparePanel.saved.change')}</th></tr></thead>
-            <tbody>{selected.report.rows.slice(0, 100).map((row, i) => <tr key={i}><td>{row.globalId}</td><td>{row.name}</td><td>{row.ifcType}</td><td>{row.change}</td></tr>)}</tbody>
+            <tbody>{visibleRows.map((row, i) => <tr key={i} data-original-comparison={row === requestedRow ? requested?.key : undefined} className={row === requestedRow ? 'bg-muted' : undefined}><td>{row.globalId}</td><td>{row.name}</td><td>{row.ifcType}</td><td>{row.change}</td></tr>)}</tbody>
           </table>
         </div>
       </>}

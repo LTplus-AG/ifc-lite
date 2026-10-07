@@ -12,6 +12,7 @@ import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale'
 import { divideByAxisScale, viewerUpScaleForGeometry } from './viewer-up-scale';
 import { ifcToViewerAxes } from './coordinate-frame';
 import { refusedAxisDelta, resolveMapAxisDirection } from './map-axis-direction';
+import { viewerFrameCenter } from './cesium-viewer-frame';
 
 export function getMapUnitScale(
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
@@ -118,9 +119,12 @@ export function computeCesiumPlacement({
   viewerUpScale,
 }: CesiumPlacementInput): CesiumPlacementResult {
   const bounds = coordinateInfo?.originalBounds;
-  const modelCenterY = bounds ? (bounds.min.y + bounds.max.y) / 2 : 0;
-  const minY = bounds?.min.y ?? 0;
-  const clampAnchorY = findClampAnchorY(bounds, storeyElevations);
+  const modelCenterY = viewerFrameCenter(coordinateInfo).y;
+  const shiftY = coordinateInfo?.originShift.y ?? 0;
+  const minY = (bounds?.min.y ?? 0) - shiftY;
+  // Storey elevations and originalBounds share the pre-shift frame; convert
+  // the selected anchor once to the renderer frame used by the camera.
+  const clampAnchorY = findClampAnchorY(bounds, storeyElevations) - shiftY;
   const anchorOffset = modelCenterY - clampAnchorY;
   // Model placement = authored IFC altitude. No clamp. No auto-adjust.
   const placementHeight = ifcOriginHeight;

@@ -290,9 +290,13 @@ it('#7038 rejected, partial and expired checkpoints cannot supply downstream wri
   const applying = claimCheckpoint(reviewed, claim('owner'));
   const partial = finishCheckpoint(applying, 'owner', { ok: false }, 3_000);
   for (const checkpoint of [prepared, reviewed, rejectCheckpoint(prepared, 1_500), partial,
-    finishCheckpoint(applying, 'owner', { ok: true }, 3_000)]) {
+    finishCheckpoint(applying, 'owner', { ok: true }, 3_000), applying]) {
     const host: Host = { sunk: [] };
-    expect(() => runFlow(doc, { host, registry, resume: resumeOutputs(checkpoint, 3_001) })).toThrow(/actively claimed/);
+    expect(() => resumeOutputs(checkpoint, 3_001)).toThrow(/actively claimed/);
+    // Inspection remains possible, but its raw proposal map must reach and fail
+    // the scheduler boundary before a sink can write (#7038).
+    await expect(runFlow(doc, { host, registry, resume: checkpointProposal(checkpoint) }))
+      .rejects.toThrow(/resume requires/);
     expect(host.sunk).toEqual([]);
   }
   expect(() => resumeOutputs(applying, 62_000)).toThrow(/actively claimed/);

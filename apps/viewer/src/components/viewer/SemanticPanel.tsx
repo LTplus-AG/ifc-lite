@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSemanticRecordFocus } from '@/lib/panels/evidence-focus';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { mutationPermission, mutationDenialKey } from '@/store/mutation-permission';
@@ -50,6 +51,7 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
   const [onlySelected, setOnlySelected] = useState(false);
   const [recordPage, setRecordPage] = useState(0);
   const [active, setActive] = useState('');
+  const requested = useSemanticRecordFocus(s => s.record);
   const [message, setMessage] = useState('');
   const [bearer, setBearer] = useState('');
   const [relayProvider, setRelayProvider] = useState('');
@@ -77,6 +79,12 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
   const editDenial = useViewerStore(s => { const permission = mutationPermission(s); return permission.allowed ? null : permission.reason; });
   const entities = useMemo(() => liveEntities(), [models, mutationVersion]);
   const resources = pilot.document?.resources ?? [];
+  useEffect(() => {
+    const index = pilot.document?.resources.findIndex(resource => resource.id === requested?.resourceId) ?? -1;
+    if (index >= 0 && requested) {
+      setOnlySelected(false); setActive(requested.resourceId); setRecordPage(Math.floor(index / 50));
+    }
+  }, [requested, pilot.document]);
   const resolution = (resource: SemanticResource) => resolveResource(resource, entities, pilot.revisions, scope || undefined);
   const selection = createSelectionAdapter(useViewerStore).get();
   // Subscribe to both numeric selection channels used by viewport and hierarchy.

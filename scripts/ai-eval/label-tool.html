@@ -97,6 +97,9 @@ function refresh() {
 function problems() {
   const found = [];
   if (!/^[a-z0-9][a-z0-9-]{1,31}$/.test(sheet.reviewer.id)) found.push('Reviewer id must be a lower-case pseudonym (letters, digits, dashes).');
+  // The same completeness rules as lib/labels.mjs sheetErrors: an empty sheet is never complete.
+  if (sheet.kind === 'claims' && !(Array.isArray(sheet.claims) && sheet.claims.length)) found.push('This claims sheet lists no claims; rebuild it with label.mjs sheet.');
+  if (sheet.kind === 'grouping' && !(Array.isArray(sheet.findings) && sheet.findings.length && sheet.proposal)) found.push('This grouping sheet has no findings or no proposal; rebuild it with label.mjs sheet.');
   for (const claim of sheet.claims ?? []) if (!claim.verdict) found.push(`${claim.id} has no verdict.`);
   for (const finding of sheet.findings ?? []) if (!finding.group) found.push(`${finding.citation} has no group.`);
   for (const group of sheet.proposal?.groups ?? []) if (!group.verdict) found.push(`Group ${group.name} is not rated.`);

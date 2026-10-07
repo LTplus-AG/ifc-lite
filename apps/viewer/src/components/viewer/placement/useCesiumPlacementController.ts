@@ -55,10 +55,10 @@ export function useCesiumPlacementController({
   const setGeorefFields = useViewerStore((s) => s.setGeorefFields);
 
   // A projected draft cannot remain a live preview after its source CRS
-  // becomes angular (#7060). Closing through the store also clears the draft;
+  // becomes angular or unavailable (#7060). Closing through the store also clears the draft;
   // leave valid projected sessions intact while classification is pending.
   useEffect(() => {
-    if (projectionKind === 'geographic' && editMode
+    if ((projectionKind === 'geographic' || projectionKind === 'unresolved') && editMode
       && (!draftModelId || draftModelId === modelId)) setEditMode(false);
   }, [projectionKind, editMode, draftModelId, modelId, setEditMode]);
 

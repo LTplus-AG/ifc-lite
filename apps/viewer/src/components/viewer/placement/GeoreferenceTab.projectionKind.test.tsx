@@ -63,6 +63,9 @@ function Probe({ initialCRS }: { initialCRS?: ProjectedCRS }) {
     }}>Invoke edit actions</button>
     <button onClick={() => setCRS(geographic)}>Switch to geographic</button>
     <button onClick={() => setCRS(projected)}>Switch to projected</button>
+    <button onClick={() => setCRS(undefined)}>Remove CRS</button>
+    <button onClick={() => setCRS({ id: 3, name: 'unrecognised coordinate system' })}>Unresolved CRS</button>
+    <button onClick={() => setCRS({ ...projected, name: 'EPSG:32631' })}>Other projected CRS</button>
     <GeoreferenceTab {...props} />
     <CesiumPlacementGizmo {...props} />
   </>;
@@ -128,4 +131,37 @@ it('abandons a captured gesture when geographic capability aborts editing (#7060
   act(() => heightHandle()!.dispatchEvent(pointer('pointermove', 30)));
   assert.equal(useViewerStore.getState().cesiumPlacementDraft, draftBefore,
     'hovering the new handle cannot resume the old captured drag');
+});
+
+
+for (const action of ['Remove CRS', 'Unresolved CRS']) {
+  it(`aborts a dirty projected session after ${action} without reviving its draft (#7060)`, async () => {
+    seed(true);
+    const ui = render(<Probe initialCRS={projected} />);
+    await waitFor(() => Boolean(ui.querySelector('[aria-label="Nudge east"]')), 'dirty projected session is ready');
+    assert.match(ui.textContent ?? '', /6\.00 m/);
+    click(Array.from(ui.querySelectorAll('button')).find(button => button.textContent === action)!);
+    await waitFor(() => !useViewerStore.getState().cesiumPlacementEditMode, 'unavailable CRS aborts editing');
+    click(Array.from(ui.querySelectorAll('button')).find(button => button.textContent === 'Switch to projected')!);
+    await waitFor(() => ui.querySelector('[data-testid="capability"]')?.textContent === 'true', 'projected CRS returns');
+    assert.equal(ui.querySelector('[aria-label="Nudge east"]'), null, 'the aborted session does not revive');
+    click(ui.querySelector('[role="switch"]')!);
+    await waitFor(() => Boolean(ui.querySelector('[aria-label="Nudge east"]')), 'a fresh edit session is available');
+    assert.match(ui.textContent ?? '', /5\.00 m/, 'new session displays the saved anchor');
+    assert.doesNotMatch(ui.textContent ?? '', /6\.00 m/, 'old draft does not shadow the saved anchor');
+    assert.equal(useViewerStore.getState().georefMutations.size, 0, 'aborting does not persist source edits');
+  });
+}
+
+it('preserves an active dirty draft while another valid projected CRS is pending (#7060)', async () => {
+  seed(true);
+  const ui = render(<Probe initialCRS={projected} />);
+  await waitFor(() => Boolean(ui.querySelector('[aria-label="Nudge east"]')), 'first projected CRS is ready');
+  const before = useViewerStore.getState().cesiumPlacementDraft;
+  click(Array.from(ui.querySelectorAll('button')).find(button => button.textContent === 'Other projected CRS')!);
+  assert.equal(ui.querySelector('[data-testid="capability"]')?.textContent, 'false', 'new classification is pending');
+  assert.equal(useViewerStore.getState().cesiumPlacementDraft, before, 'pending classification preserves the active draft');
+  await waitFor(() => Boolean(ui.querySelector('[aria-label="Nudge east"]')), 'second projected CRS is ready');
+  assert.match(ui.textContent ?? '', /6\.00 m/, 'resolved projected controls retain the live preview');
+  assert.equal(useViewerStore.getState().cesiumPlacementDraft, before);
 });

@@ -70,5 +70,5 @@ export function useAnchorGeoreference(): AnchorGeoreference | null {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [models, ifcDataStore, geometryResult, anchorModelIdOverride, georefMutations, mutationVersion]);
   const kind = useProjectionKind(anchor?.eff.projectedCRS);
-  return useMemo(() => anchor && kind ? { ...anchor, geographic: kind === 'geographic' } : null, [anchor, kind]);
+  return useMemo(() => anchor && (kind === 'projected' || kind === 'geographic') ? { ...anchor, geographic: kind === 'geographic' } : null, [anchor, kind]);
 }

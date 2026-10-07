@@ -8,9 +8,10 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import { advance, cleanup, waitFor } from '@/test/render.js';
+import { advance, cleanup, render, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
+import { useProjectionKind } from '@/lib/geo/use-projection-kind';
 import { useAnchorGeoreference } from '@/lib/geo/useAnchorGeoreference';
 import { createCesiumBridge } from '@/lib/geo/cesium-bridge';
 import { loadCesium } from '@/components/viewer/cesium/cesium-module';
@@ -165,4 +166,18 @@ it('geographic readout follows the model when authored heights switch to ellipso
       previous = current;
     }
   } finally { act(() => root.unmount()); host.remove(); }
+});
+
+
+it('does not present unresolved anchor coordinates as projected metre readouts (#7060)', async () => {
+  const crs: ProjectedCRS = { id: 3, name: 'unrecognised coordinate system' };
+  seed(crs, conversion);
+  function Classification() {
+    return <output data-testid="classification">{useProjectionKind(crs)}</output>;
+  }
+  const ui = render(<><Classification /><Probe point={{ x: 20, y: 10, z: 0 }} /></>);
+  await waitFor(() => ui.querySelector('[data-testid="classification"]')?.textContent === 'unresolved',
+    'anchor CRS classification is confirmed unresolved');
+  assert.equal(ui.querySelector('[data-testid="enh"]'), null, 'unresolved anchors expose no metre coordinates');
+  assert.equal(ui.querySelector('[data-testid="lat-lon"]')?.textContent, '', 'unresolved anchors expose no geographic coordinate');
 });

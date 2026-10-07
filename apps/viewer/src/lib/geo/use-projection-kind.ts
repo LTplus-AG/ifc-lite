@@ -7,13 +7,13 @@ import type { ProjectedCRS } from '@ifc-lite/parser';
 import { resolveProjection } from './reproject';
 import { isGeographicProj4 } from './proj4-utils';
 
-export type ProjectionKind = 'projected' | 'geographic';
+export type ProjectionKind = 'projected' | 'geographic' | 'unresolved';
 
-/** Pending, absent and unresolved metadata fail closed. The primitive key also
- * invalidates a previous result during render, before the effect runs. */
+/** Null means pending; absent or refused metadata is explicitly unresolved.
+ * The primitive key invalidates previous results during render. */
 export function useProjectionKind(crs: ProjectedCRS | undefined): ProjectionKind | null {
   const key = crs ? JSON.stringify(crs) : null;
-  const [resolved, setResolved] = useState<{ key: string; kind: ProjectionKind | null } | null>(null);
+  const [resolved, setResolved] = useState<{ key: string; kind: ProjectionKind } | null>(null);
   useEffect(() => {
     if (!key) return;
     let cancelled = false;
@@ -21,12 +21,13 @@ export function useProjectionKind(crs: ProjectedCRS | undefined): ProjectionKind
     resolveProjection(source).then(definition => {
       if (!cancelled) setResolved({ key, kind: definition
         ? isGeographicProj4(definition) ? 'geographic' : 'projected'
-        : null });
+        : 'unresolved' });
     }).catch(error => {
       console.warn('[georeference] projection classification failed', error);
-      if (!cancelled) setResolved({ key, kind: null });
+      if (!cancelled) setResolved({ key, kind: 'unresolved' });
     });
     return () => { cancelled = true; };
   }, [key]);
+  if (!key) return 'unresolved';
   return resolved?.key === key ? resolved.kind : null;
 }

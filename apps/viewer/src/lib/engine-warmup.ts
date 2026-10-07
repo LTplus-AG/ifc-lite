@@ -18,7 +18,7 @@
  * switches all of it off.
  */
 
-import { prewarmGeometryWorkers, prewarmMainThreadEngine } from '@ifc-lite/geometry';
+import { prewarmGeometryWorkers, prewarmMainThreadEngine, releaseWarmGeometryWorkers } from '@ifc-lite/geometry';
 import { peekGeomWorkerOverride } from '../store/geomWorkerOverride.js';
 import { readPerfFlag } from './perf/flags.js';
 
@@ -42,4 +42,12 @@ export function warmEngineForLoad(file: { name: string; size: number }): void {
   if (file.size < PARALLEL_MIN_BYTES) return;
   prewarmGeometryWorkers({ fileSizeMB: file.size / MB, workerCountOverride: peekGeomWorkerOverride() })
     .catch((error: unknown) => console.warn('[engine-warmup] worker prewarm failed; the load spawns its own:', error));
+}
+
+/** Drain idle workers before a resource retry and issue its best-effort notice. */
+export function prepareResourceRetry(fileName: string): void {
+  releaseWarmGeometryWorkers('resource-retry');
+  void import('@/components/ui/toast')
+    .then(({ toast }) => toast.info(`"${fileName}" was too detailed for this device — retrying at lower detail…`))
+    .catch((error: unknown) => console.warn('[engine-warmup] resource retry notice unavailable:', error));
 }

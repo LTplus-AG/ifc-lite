@@ -72,7 +72,9 @@
       "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d", "size": 2526544, "schema": "IFC4",
       "source": { "authoringTool": "ARCHICAD", "description": "KIT FZK-Haus reference house, the real ArchiCAD export already used by the Assistant IDS oracle test." },
       "license": { "status": "unrecorded", "note": "Repository fixture from the ara3d corpus; record the publisher's terms before external publication of results." },
-      "privacy": { "automated": "not-fetched", "human": { "status": "pending", "reviewers": [] } }
+      "privacy": { "automated": "not-fetched", "human": { "status": "pending", "reviewers": [] },
+        "stepHeaderAllowance": { "author": "('Architect')", "organisation": "('Building Designer Office')",
+          "reason": "The published FZK-Haus sample carries generic role names (Architect, Building Designer Office), not a person or client; checked against the fetched file header. Human privacy review still pending." } }
     }
   ],
   "liveEvaluation": {

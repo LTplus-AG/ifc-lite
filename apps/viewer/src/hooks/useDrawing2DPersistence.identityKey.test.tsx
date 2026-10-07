@@ -314,6 +314,28 @@ describe('markup saved under the legacy key is moved to the identity key (#7035)
     assert.deepEqual(liveMeasures(), ['legacy-1'], 'without duplicating what was already moved');
   });
 
+  it('keeps the legacy entry when its section plane is all that is left to move and the write fails', async () => {
+    const bytes = bytesOf(42);
+    saveDrawing2DEntry(legacyKeyOf(bytes), entryWith([measure('shared')], SECTION));
+    saveDrawing2DEntry(identityOf(bytes), entryWith([measure('shared')])); // every item already there, no plane
+    const identityKey = keyFor(identityOf(bytes));
+    const realSetItem = localStorage.setItem.bind(localStorage);
+    const quota = mock.method(localStorage, 'setItem', (key: string, value: string) => {
+      if (key === identityKey) throw new Error('simulated quota exceeded');
+      realSetItem(key, value);
+    });
+    try {
+      await open(loadedModel('first', sourceFile(bytes), bytes));
+    } finally {
+      quota.mock.restore();
+    }
+    assert.deepEqual(loadDrawing2DEntry(legacyKeyOf(bytes), DEFAULTS)?.sectionConfig, SECTION, 'the only copy of the plane is not removed');
+
+    await open(loadedModel('second', sourceFile(bytes), bytes));
+    assert.deepEqual(loadDrawing2DEntry(identityOf(bytes), DEFAULTS)?.sectionConfig, SECTION, 'and the next load carries it over');
+    assert.equal(localStorage.getItem(keyFor(legacyKeyOf(bytes))), null);
+  });
+
   it('an interrupted move (both entries present) recovers without loss, duplication or older-over-newer', async () => {
     const bytes = bytesOf(50);
     // The tab closed after the identity entry was written and before the

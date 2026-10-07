@@ -134,16 +134,21 @@ function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveCont
   const old = loadDrawing2DEntry(legacy, defaults);
   if (!old) return true;
   const current = loadDrawing2DEntry(key, defaults);
-  saveDrawing2DEntry(key, current ? {
+  const merged = current ? {
     ...current,
     measure2DResults: unionById(old.measure2DResults, current.measure2DResults),
     polygonArea2DResults: unionById(old.polygonArea2DResults, current.polygonArea2DResults),
     textAnnotations2D: unionById(old.textAnnotations2D, current.textAnnotations2D),
     cloudAnnotations2D: unionById(old.cloudAnnotations2D, current.cloudAnnotations2D),
     sectionConfig: current.sectionConfig ?? old.sectionConfig,
-  } : old);
+  } : old;
+  saveDrawing2DEntry(key, merged);
+  // The entry read back must hold everything the legacy one contributed. The
+  // plane is compared too: when only the plane was missing, an entry whose
+  // write failed still holds every item.
   const written = loadDrawing2DEntry(key, defaults);
-  if (!written || !MARKUP_LISTS.every((list) => holdsAll(written[list], old[list]))) return false;
+  if (!written || !MARKUP_LISTS.every((list) => holdsAll(written[list], old[list]))
+    || JSON.stringify(written.sectionConfig) !== JSON.stringify(merged.sectionConfig)) return false;
   return removeLocal(keyFor(legacy));
 }
 

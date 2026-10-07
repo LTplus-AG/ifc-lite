@@ -482,6 +482,40 @@ describe('dxfUnderlays saved under the legacy whole-file key (#7035)', () => {
     assert.equal(reads.count, 0);
   });
 
+  it('starts the legacy move only after the identity key\'s own underlays have been read for the restore', async () => {
+    // The move adds to the live list and the save that follows writes that
+    // list. Started before the restore, it would save the legacy underlays
+    // alone and replace the identity key's own.
+    const { file, legacy, identity } = await legacyFixture(64, 'ordered-dxf.ifc');
+    await rawPut(legacy, [sampleUnderlay('legacy-u')]);
+    await rawPut(identity, [sampleUnderlay('identity-u')]);
+    const events: string[] = [];
+    const realGet = IDBObjectStore.prototype.get;
+    const realGetAllKeys = IDBObjectStore.prototype.getAllKeys;
+    IDBObjectStore.prototype.get = function get(this: IDBObjectStore, query: IDBValidKey | IDBKeyRange) {
+      const request = realGet.call(this, query);
+      if (query === identity) request.addEventListener('success', () => events.push('identity underlays read'));
+      return request;
+    };
+    IDBObjectStore.prototype.getAllKeys = function getAllKeys(this: IDBObjectStore, ...args: Parameters<IDBObjectStore['getAllKeys']>) {
+      events.push('legacy keys listed');
+      return realGetAllKeys.apply(this, args);
+    };
+    try {
+      useViewerStore.setState({ models: new Map([['ordered-dxf-model', stubModel('ordered-dxf-model', file)]]) });
+      await mount();
+      useViewerStore.getState().setActiveModel('ordered-dxf-model');
+      await until(async () => events.includes('legacy keys listed'), 'the legacy move to start');
+    } finally {
+      IDBObjectStore.prototype.get = realGet;
+      IDBObjectStore.prototype.getAllKeys = realGetAllKeys;
+    }
+    assert.deepStrictEqual(events.slice(0, 2), ['identity underlays read', 'legacy keys listed']);
+    await until(async () => (await rawGet(legacy)) === undefined, 'the legacy entry to be removed');
+    await flushDeep();
+    assert.deepStrictEqual((await rawGet(identity))?.dxfUnderlays.map((u) => u.id).sort(), ['identity-u', 'legacy-u']);
+  });
+
   it('a legacy entry whose read fails is not recorded as checked, and a later load moves it', async () => {
     const { file, legacy, identity } = await legacyFixture(63, 'read-failure-dxf.ifc');
     await rawPut(legacy, [sampleUnderlay('legacy-u')]);

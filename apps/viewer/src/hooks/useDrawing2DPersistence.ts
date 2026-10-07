@@ -151,8 +151,12 @@ export function useDrawing2DPersistence(): void {
       // `dxfUnderlaySave.ts`'s `restoreDxfUnderlaysFor`/`mergeDxfUnderlays`)
       // rather than a replace. Not awaited: it guards its own staleness via
       // `stillCurrent`, the same closure every other async step here uses.
-      if (!skipDxfRestore) void restoreDxfUnderlaysFor(hash, stillCurrent);
-      if (activeSourceFile) migrateLegacyDxfUnderlays(hash, activeModelId, activeSourceFile, stillCurrent);
+      // The legacy-key move (#7035) starts only once that restore is done: it
+      // adds to the live list, and the save that follows would replace the
+      // identity key's own underlays if they were not in the list yet.
+      const moveLegacy = () => { if (activeSourceFile) migrateLegacyDxfUnderlays(hash, activeModelId, activeSourceFile, stillCurrent); };
+      if (skipDxfRestore) moveLegacy();
+      else void restoreDxfUnderlaysFor(hash, stillCurrent).then(moveLegacy, moveLegacy);
 
       const defaults = getDefaultDrawing2DState().drawing2DDisplayOptions;
       const entry = loadDrawing2DEntry(hash, defaults);

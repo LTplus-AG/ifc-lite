@@ -89,7 +89,7 @@ allocator returns one shared map until an assignment changes. After the
 fix, `viewer.modelIndexStamp` and `viewer.filterScan` each equal the JS
 mesh count, and `viewer.modelIndexRespread` and `viewer.appearanceSource`
 are 0 on single-model loads. Mesh and draw counts are unchanged.
-`useFilteredGeometry.streaming.test.tsx` guards the per-append counts.
+`useFederatedGeometry.streaming.test.tsx` guards the per-append cost.
 
 **Kept, deliberately:** the store still clones `models` per append. About
 125 selectors read `s.models`, and its identity is how they hear about an

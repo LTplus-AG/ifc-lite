@@ -266,6 +266,9 @@ async function reviewedRun(doc: FlowDocument, host: FlowHost, registry: NodeRegi
 }
 ```
 
+Checkpoint creation checks the graph and Player inputs against the actual paused run;
+pass the same `inputs` used by `runFlow` when creating a checkpoint. A resume takes a
+detached copy of the approved values before any asynchronous downstream work.
 Every resume uses the original claim returned by a successful `updateCheckpoint`
 compare-and-swap. A persisted `applying` record is not an ownership receipt: another
 tab or process cannot resume it, and a lost owner is recovered as partially committed.

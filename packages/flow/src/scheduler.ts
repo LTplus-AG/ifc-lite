@@ -15,7 +15,7 @@
  * volatile ones, nor a run in which any lane called `ctx.markVolatile()`.
  */
 
-import { consumeReviewedResume } from './checkpoint-record.js';
+import { consumeReviewedResume, graphDigest, registerPausedRun } from './checkpoint-record.js';
 import { nodeAvailability, type HostFeatures } from './availability.js';
 import { digest, digestFlowData } from './digest.js';
 import type { FlowDocument } from './document.js';
@@ -126,7 +126,8 @@ export interface RunOptions<H> {
 
 export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promise<RunResult> {
   const registry = opts.registry as NodeRegistry<unknown>;
-  if (opts.resume) consumeReviewedResume(opts.resume, doc, opts.inputs ?? {}, registry);
+  const runDigest = graphDigest(doc, opts.inputs ?? {}, registry);
+  const resume = opts.resume ? consumeReviewedResume(opts.resume, doc, opts.inputs ?? {}, registry) : undefined;
   const order = topologicalOrder(doc);
   const outputs = new Map<string, Map<string, FlowData>>();
   const reports: NodeReport[] = [];
@@ -149,7 +150,7 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
 
     if (opts.signal?.aborted) { fail('aborted'); continue; }
     const quiet = { lanes: 0, laneErrors: 0, missing: {}, warnings: [] };
-    const restored = opts.resume?.get(nodeId);
+    const restored = resume?.get(nodeId);
     if (restored) {
       outputs.set(nodeId, new Map(restored));
       report({ status: 'restored', ...quiet });
@@ -386,5 +387,7 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
 
   const graphOutputs = doc.outputs.map((o) => ({ label: o.label, nodeId: o.nodeId, port: o.port, data: outputs.get(o.nodeId)?.get(o.port) }));
   const review = reports.filter((r) => r.status === 'review').map((r) => r.nodeId);
-  return { ok: failed.size === 0 && !opts.signal?.aborted, writes: writesThisRun, outputs, graphOutputs, reports, log, review };
+  const result = { ok: failed.size === 0 && !opts.signal?.aborted, writes: writesThisRun, outputs, graphOutputs, reports, log, review };
+  registerPausedRun(result, runDigest);
+  return result;
 }

@@ -67,7 +67,7 @@ export function parseCheckpoint(value: unknown): FlowCheckpoint {
   if (typeof value.createdAt !== 'number' || typeof value.updatedAt !== 'number') bad('timestamps must be numbers');
   if (!validPortableOutputs(value.outputs as Record<string, Record<string, unknown>>)) bad('outputs contain malformed or non-portable flow data');
   if (!Number.isFinite(value.createdAt) || !Number.isFinite(value.updatedAt)) bad('timestamps must be finite');
-  if (value.claim !== undefined && (!isRecord(value.claim) || typeof value.claim.owner !== 'string'
+  if (value.claim !== undefined && (!isRecord(value.claim) || typeof value.claim.owner !== 'string' || !value.claim.owner.trim()
     || !Number.isFinite(value.claim.leaseUntil) || !Number.isFinite(value.claim.at))) bad('invalid claim');
   if (value.review !== undefined && (!isRecord(value.review) || !['approved', 'rejected'].includes(String(value.review.decision))
     || typeof value.review.proposalDigest !== 'string' || !Number.isFinite(value.review.at))) bad('invalid review');
@@ -118,6 +118,7 @@ export interface ClaimInput {
 /** Take single ownership of a reviewed checkpoint for one resume. */
 export function claimCheckpoint(checkpoint: FlowCheckpoint, input: ClaimInput): FlowCheckpoint {
   requireState(checkpoint, 'reviewed', 'not-reviewed');
+  if (!input.owner.trim()) throw new CheckpointError('invalid', 'the claim owner must be nonempty');
   parseCheckpoint(checkpoint);
   if (checkpoint.review?.decision !== 'approved' || checkpoint.review.proposalDigest !== checkpoint.proposalDigest) {
     throw new CheckpointError('digest-mismatch', 'the approval does not name this proposal');

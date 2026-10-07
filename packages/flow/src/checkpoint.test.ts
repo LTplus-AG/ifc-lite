@@ -329,3 +329,57 @@ it('#7038 prototype-named completed nodes and ports survive checkpoints without 
     expect(host.sunk).toEqual([['wall', 'unknown']]);
   }
 });
+
+it('#7038 checkpoint creation cannot omit or replace the actual paused Player inputs', async () => {
+  const inputs = { factor: 7 };
+  const result = await runFlow(doc, { host: { sunk: [] }, registry, inputs });
+  expect(() => createCheckpoint({ doc, registry, result, sourceDigest: 'source' })).toThrow(/actual paused run/);
+  expect(() => createCheckpoint({ doc, registry, result, sourceDigest: 'source', inputs: { factor: 1 } })).toThrow(/actual paused run/);
+  const checkpoint = createCheckpoint({ doc, registry, result, sourceDigest: 'source', inputs });
+  expect(checkpoint.graphDigest).toBe(graphDigest(doc, { factor: 7 }, registry));
+  inputs.factor = 1;
+  expect(() => createCheckpoint({ doc, registry, result, sourceDigest: 'source', inputs })).toThrow(/actual paused run/);
+});
+
+it('#7038 empty owners are refused before persisting a claim', async () => {
+  const checkpoint = await paused();
+  const reviewed = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
+  for (const owner of ['', '   ']) {
+    expect(() => claimCheckpoint(reviewed, claim(owner))).toThrow(/owner must be nonempty/);
+    expect(() => parseCheckpoint({ ...claimCheckpoint(reviewed, claim('owner')), claim: { owner, leaseUntil: 10, at: 1 } })).toThrow(/invalid claim/);
+  }
+  expect(reviewed.state).toBe('reviewed');
+});
+
+it('#7038 async resumed children cannot change another restored proposal or its nested values', async () => {
+  let release!: () => void;
+  let entered!: () => void;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const ownRegistry = new NodeRegistry<Host>().registerAll([
+    registry.get('t.rows')!, registry.get('t.classify')!, registry.get('t.sink')!,
+    { type: 't.await', title: 'Await', category: 't', inputs: [{ name: 'v', type: { kind: 'scalar', access: 'list' } }],
+      outputs: [], params: [], capabilities: [], run: async () => { entered(); await blocked; return {}; } },
+  ]);
+  const graph: FlowDocument = { ...doc, nodes: [doc.nodes[0], { id: 'a', type: 't.classify' },
+    { id: 'wait', type: 't.await' }, { id: 'z', type: 't.classify' }, { id: 'sink', type: 't.sink' }],
+    edges: [{ from: ['rows', 't'], to: ['a', 't'] }, { from: ['a', 'labels'], to: ['wait', 'v'] },
+      { from: ['rows', 't'], to: ['z', 't'] }, { from: ['z', 'labels'], to: ['sink', 'v'] }],
+  };
+  const host: Host = { sunk: [] };
+  const result = await runFlow(graph, { host, registry: ownRegistry });
+  const prepared = createCheckpoint({ doc: graph, registry: ownRegistry, result, sourceDigest: 'source' });
+  const owned = await ownedClaim(approveCheckpoint(prepared, prepared.proposalDigest), {
+    owner: 'owner', graphDigest: graphDigest(graph, {}, ownRegistry), sourceDigest: 'source', leaseMs: 60_000,
+  });
+  const resume = resumeOutputs(owned);
+  const completed = runFlow(graph, { host, registry: ownRegistry, resume });
+  await started;
+  const proposal = resume.get('z')!.get('labels')!;
+  if (proposal.kind !== 'list') throw new Error('expected list');
+  (proposal.items as string[])[0] = 'unreviewed nested value';
+  resume.set('z', new Map([['labels', { kind: 'list', items: ['unreviewed replacement'] }]]));
+  release();
+  expect((await completed).ok).toBe(true);
+  expect(host.sunk).toEqual([['wall', 'unknown']]);
+});

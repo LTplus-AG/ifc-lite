@@ -68,8 +68,8 @@ const doc: FlowDocument = {
   ],
 };
 
-async function reviewedOutputs(paused: Awaited<ReturnType<typeof runFlow>>, outputs = paused.outputs) {
-  const checkpoint = createCheckpoint({ doc, registry, result: { ...paused, outputs }, sourceDigest: 'test-source' });
+async function reviewedOutputs(paused: Awaited<ReturnType<typeof runFlow>>) {
+  const checkpoint = createCheckpoint({ doc, registry, result: paused, sourceDigest: 'test-source' });
   const store = new MemoryCheckpointStore();
   await store.write(approveCheckpoint(checkpoint, checkpoint.proposalDigest), null);
   return resumeOutputs(await updateCheckpoint(store, checkpoint.id, current => claimCheckpoint(current, {
@@ -106,9 +106,9 @@ describe('review checkpoints', () => {
   it('feeds downstream nodes the reviewed value, not a fresh evaluation', async () => {
     const host: Host = { executed: [], sunk: [] };
     const paused = await runFlow(doc, { host, registry });
-    const reviewed = new Map(paused.outputs);
-    reviewed.set('p', new Map<string, FlowData>([['proposal', { kind: 'item', value: 'edited-by-reviewer' }]]));
-    await runFlow(doc, { host, registry, resume: await reviewedOutputs(paused, reviewed) });
+    const proposal = paused.outputs.get('p') as Map<string, FlowData>;
+    proposal.set('proposal', { kind: 'item', value: 'edited-by-reviewer' });
+    await runFlow(doc, { host, registry, resume: await reviewedOutputs(paused) });
     expect(host.sunk).toEqual([2, 'edited-by-reviewer']);
     expect(host.executed.filter((n) => n === 'propose')).toHaveLength(1);
   });

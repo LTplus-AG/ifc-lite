@@ -182,6 +182,9 @@ export function createCheckpoint(input: CreateCheckpointInput): FlowCheckpoint {
   if (problems.length) throw new CheckpointNotPortableError(problems);
   const outputs = portableOutputs(result.outputs);
   const graph = graphDigest(doc, input.inputs, input.registry);
+  if (pausedRunDigests.get(result) !== graph) {
+    throw new Error('the checkpoint graph and Player inputs must match the actual paused run');
+  }
   const proposal = proposalDigestOf(outputs, result.review);
   const now = input.now ?? Date.now();
   if (!Number.isFinite(now)) throw new Error('the checkpoint timestamp must be finite');
@@ -216,6 +219,13 @@ function restoreMap(checkpoint: FlowCheckpoint): Map<string, Map<string, FlowDat
   return out;
 }
 
+const pausedRunDigests = new WeakMap<object, string>();
+
+/** Internal: bind checkpoint creation to the graph and inputs used at run entry. */
+export function registerPausedRun(result: RunResult, graph: string): void {
+  pausedRunDigests.set(result, graph);
+}
+
 const authorizedResumes = new WeakMap<object, { graph: string; outputs: string; expires: number }>();
 const ownedClaims = new WeakMap<object, string>();
 
@@ -227,7 +237,7 @@ export function registerOwnedClaim(checkpoint: FlowCheckpoint): void {
 
 /** Scheduler-only boundary: raw, changed, expired or reused maps cannot bypass review. */
 export function consumeReviewedResume(outputs: ReadonlyMap<string, ReadonlyMap<string, FlowData>>, doc: FlowDocument,
-  inputs: Readonly<Record<string, unknown>>, registry: ReviewRegistry): void {
+  inputs: Readonly<Record<string, unknown>>, registry: ReviewRegistry): Map<string, Map<string, FlowData>> {
   const authorization = authorizedResumes.get(outputs);
   if (!authorization || authorization.expires <= Date.now()
     || authorization.graph !== graphDigest(doc, inputs, registry)
@@ -235,6 +245,10 @@ export function consumeReviewedResume(outputs: ReadonlyMap<string, ReadonlyMap<s
     throw new Error('resume requires unchanged outputs from an actively claimed, approved checkpoint');
   }
   authorizedResumes.delete(outputs);
+  // Own a detached snapshot before any node can await or mutate caller-owned data.
+  const snapshot = JSON.parse(JSON.stringify(portableOutputs(outputs))) as PortableOutputs;
+  return new Map(Object.entries(snapshot).map(([node, ports]) =>
+    [node, new Map(Object.entries(ports).map(([port, data]) => [port, fromPortable(data)]))]));
 }
 
 /** The `RunOptions.resume` map, only for a reviewed checkpoint with a live claim. */

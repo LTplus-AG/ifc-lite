@@ -41,6 +41,14 @@ test('privacyFindings: STEP author/organisation must be empty; credential-like t
   assert.match(privacyFindings('no header here', 'ifc').join(), /FILE_NAME/);
 });
 
+test('#7046 a legacy exact-match header allowance cannot bypass privacy findings', () => {
+  const allowance = { author: "('Jane Doe')", organisation: "('Example Organisation')" };
+  const header = `ISO-10303-21;\nHEADER;\nFILE_NAME('a.ifc','2024-01-01',${allowance.author},${allowance.organisation},'x','y','');\n`;
+  // JavaScript callers may still pass the removed third argument. It must not
+  // grant a privacy exemption, even when both fields match exactly.
+  assert.match(privacyFindings(header, 'ifc', allowance).join(), /author\/organisation present/);
+});
+
 test('a task naming an unknown scene, journey or invariant is refused', () => withRoot(root => {
   const manifest = readJson(manifestPath(root));
   manifest.tasks[0].scene = 'nowhere';
@@ -91,21 +99,12 @@ test('an unfetched fixture-mechanism model is a stated note, not an error or a p
   assert.ok(run(root).errors.length > 0, 'an invalid recording file is an error');
 }));
 
-const FZK_ALLOWANCE = { author: "('Architect')", organisation: "('Building Designer Office')", reason: 'Generic role names in a published sample.' };
 const header = (author, organisation) => `ISO-10303-21;\nHEADER;\nFILE_NAME('a.ifc','2016-12-21T17:54:06',${author},${organisation},'x','y','z');\nENDSEC;\n`;
 
-test('privacyFindings: a reviewed header allowance excuses only that exact author/organisation pair', () => {
-  const allowed = header(FZK_ALLOWANCE.author, FZK_ALLOWANCE.organisation);
-  assert.match(privacyFindings(allowed, 'ifc')[0], /author\/organisation present/, 'without the allowance the header is refused');
-  assert.deepEqual(privacyFindings(allowed, 'ifc', FZK_ALLOWANCE), []);
-  assert.match(privacyFindings(header("('Jane Doe')", FZK_ALLOWANCE.organisation), 'ifc', FZK_ALLOWANCE)[0], /author\/organisation present/);
-  assert.match(privacyFindings(`${allowed}/* me@example.com */`, 'ifc', FZK_ALLOWANCE).join(), /e-mail address/, 'e-mail still fails under an allowance');
-});
-
-/** A root whose fetched fixture (origin "fixtures") is present with a STEP header that names an author, as on CI after pnpm fixtures. */
-function withFetchedFixture(author, edit, fn) {
+/** A root with a fetched fixture (origin "fixtures") and the supplied STEP header, as on CI after pnpm fixtures. */
+function withFetchedFixture(author, organisation, fn) {
   return withRoot(root => {
-    const body = header(author, "('Building Designer Office')");
+    const body = header(author, organisation);
     const path = join(root, 'tests', 'models', 'ara3d', 'AC20-FZK-Haus.ifc');
     mkdirSync(join(root, 'tests', 'models', 'ara3d'), { recursive: true });
     writeFileSync(path, body);
@@ -116,24 +115,24 @@ function withFetchedFixture(author, edit, fn) {
     const manifest = readJson(manifestPath(root));
     const fixture = manifest.fixtures.find(item => item.id === 'fzk-haus');
     Object.assign(fixture, { sha256: entry.sha256, size: entry.size });
-    edit?.(fixture);
     writeJson(manifestPath(root), manifest);
     return fn(root);
   });
 }
 
-test('a fetched fixture whose STEP header names an author passes only through its recorded allowance (main went red without it)', () =>
-  withFetchedFixture("('Architect')", null, root => {
+// #6928 / #7043: fetched fixtures must pass without a STEP header exemption.
+test('a fetched fixture with scrubbed STEP author and organisation passes the privacy scan', () =>
+  withFetchedFixture("('')", "('')", root => {
     const { errors, notes } = run(root);
     assert.deepEqual(errors, []);
     assert.ok(!notes.some(note => /fzk-haus: not fetched/.test(note)), 'the fixture was scanned, not skipped');
   }));
 
-test('the same fetched fixture is refused when its allowance is removed or its header changes', async () => {
-  await withFetchedFixture("('Architect')", fixture => { delete fixture.privacy.stepHeaderAllowance; },
-    root => assert.ok(run(root).errors.some(error => /fixture fzk-haus: privacy scan: STEP author\/organisation present/.test(error))));
-  await withFetchedFixture("('Someone Else')", null,
-    root => assert.ok(run(root).errors.some(error => /fixture fzk-haus: privacy scan: STEP author/.test(error))));
+test('a fetched fixture is refused if either STEP author or organisation is restored', async () => {
+  for (const [author, organisation] of [["('Architect')", "('')"], ["('')", "('Building Designer Office')"]]) {
+    await withFetchedFixture(author, organisation,
+      root => assert.ok(run(root).errors.some(error => /fixture fzk-haus: privacy scan: STEP author\/organisation present/.test(error))));
+  }
 });
 
 for (const path of ['label-sheet.schema.json', 'study/protocol.json', 'study/protocol.schema.json', 'study/session.schema.json']) {

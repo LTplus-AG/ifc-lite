@@ -13,7 +13,7 @@ afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
 
 it('#6926 Customize previews, applies and restores a coordinator layout through its existing controls', () => {
   useViewerStore.setState({ sidebarActivePanel: 'properties', sidebarSecondaryPanel: null,
-    sidebarMode: 'collapsed', sidebarWidth: 417, sidebarSplitRatio: 0.63, floatingPanels: [], poppedOutIds: [] });
+    sidebarMode: 'collapsed', sidebarWidthPct: 31, sidebarSplitRatio: 0.63, floatingPanels: [], poppedOutIds: [] });
   const before = useViewerStore.getState().serializeSidebarLayout();
   const ui = render(<CustomizeSidebar onClose={() => {}} />);
   const button = (label: string) => {

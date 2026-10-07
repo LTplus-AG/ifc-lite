@@ -40,6 +40,21 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Workbench preset controls load on demand (#6926)
+
+The U03 preset controls initially exceeded the eager bundle allowance when
+combined with the U02 activity tray, although each branch fit separately.
+Loading the sidebar customizer only when opened brought the combined bundle
+inside the approved allowance without changing its ceiling or tolerance.
+The real activity-bar regression opens the customizer, previews and applies
+the coordinator preset, then restores the original layout and keyboard focus.
+Reset also retires the saved preset through a small startup gateway instead
+of importing the optional preview and placement controls. The mounted
+regression reopens customization after Reset and confirms Restore is gone.
+This is a bundle-size verdict; it makes no model-load speed claim.
+Lesson: measure queued viewer features together, and keep optional editor
+surfaces behind their actual entry point.
+
 ## Structural counters and long frames per load (#6957)
 
 Under `?perfTrace=1` and in every benchmark run, each load's span tree also
@@ -3557,4 +3572,4 @@ extracting a module can increase shared imports even when its entry chunk shrink
 
 ### Viewer preferences editor imports (P20, #6924)
 
-A hook used by the Assistant must live separately from the optional preferences editor: importing the hook from the editor makes its dynamic import ineffective. Keep the live project/model hook in a small module and load the form through its native lazy boundary. The remaining content-library registration and recipe run state still participate in startup, so the combined bundle must be measured before claiming a size win.
+A hook used by the Assistant must live separately from the optional preferences editor: importing the hook from the editor makes its dynamic import ineffective. Keep the live project/model hook in a small module and load the form through its native lazy boundary. The combined production measurement showed no meaningful size improvement from the hook split. The remaining content-library registration and recipe run state still participate in startup; keep the split for the lazy editor boundary, without claiming a bundle reduction.

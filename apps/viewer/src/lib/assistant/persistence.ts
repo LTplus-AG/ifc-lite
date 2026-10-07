@@ -6,6 +6,7 @@ import type { ContentDefinition } from '../storage/content-migration';
 import type { AssistantSource } from './evidence';
 import { isAssistantSource } from './sources';
 import type { UsageReceipt } from '../llm/request-receipts';
+import { decodeConversationLanguage, type ConversationLanguage } from './language';
 
 /** `receipt` is session-only: `decodeConversation` never saves or revives it. */
 export interface AssistantMessage { role: 'user' | 'assistant'; content: string; model?: string; receipt?: UsageReceipt }
@@ -17,6 +18,8 @@ export interface SavedConversation {
   model: string;
   evidence: { source: AssistantSource; capturedAt: string; payload: string; totalRows: number; includedRows: number; projectionTruncated: boolean };
   messages: AssistantMessage[];
+  /** Optional (#6926): conversations saved before it follow the current UI locale. */
+  language?: ConversationLanguage;
 }
 const string = (value: unknown, max: number): value is string => typeof value === 'string' && value.length > 0 && value.length <= max;
 const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -51,9 +54,12 @@ export function decodeConversation(value: unknown): SavedConversation | null {
     messages.push({ role, content: m.content, ...(role === 'assistant' ? { model: m.model as string } : {}) });
   }
   if (JSON.stringify(messages).length + e.payload.length > 150_000) return null;
+  const language = decodeConversationLanguage(item.language);
+  if (item.language !== undefined && !language) return null;
   return { version: 1, id: item.id, name: item.name, model: item.model, savedAt: item.savedAt,
     evidence: { source: e.source as AssistantSource, capturedAt: e.capturedAt, payload: e.payload,
-      totalRows: e.totalRows, includedRows: e.includedRows, projectionTruncated: e.projectionTruncated }, messages };
+      totalRows: e.totalRows, includedRows: e.includedRows, projectionTruncated: e.projectionTruncated }, messages,
+    ...(language ? { language } : {}) };
 }
 export const assistantContent: ContentDefinition<SavedConversation> = {
   kind: 'assistant', legacyKey: 'ifc-lite-assistant-conversations-v1', decode: decodeConversation,

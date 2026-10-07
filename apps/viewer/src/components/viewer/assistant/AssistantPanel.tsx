@@ -29,6 +29,11 @@ import { attachmentsForSend, ComposerAttachments, NO_ATTACHMENTS } from './Compo
 import { RecipeRunCard } from './RecipeRunCard';
 import { usePreferredModel } from '@/lib/assistant/reuse/preference-hooks';
 import { takeDraftPrompt, useRecipeRun } from '@/lib/assistant/reuse/recipe-run';
+import { AssistantAnnouncer, useAnswerFocus } from './AssistantAnnouncer';
+import { AssistantPlacementMenu, AssistantReturnButton } from './AssistantPlacementMenu';
+import { GenerationLanguagePicker } from './GenerationLanguagePicker';
+import { TransientSurface } from './TransientSurface';
+import { setAssistantDraft, useAssistantDraft } from '@/lib/assistant/composer-draft';
 
 const FlowProposalReview = lazy(() => import('./FlowProposalReview').then(m => ({ default: m.FlowProposalReview })));
 const ReportDraftReview = lazy(() => import('./ReportDraftReview').then(m => ({ default: m.ReportDraftReview })));
@@ -49,7 +54,8 @@ export function AssistantPanel() {
   const evidence = state.snapshot ?? state.archived?.evidence;
   const model = useViewerStore(s => s.chatActiveModel);
   const stale = useViewerStore(() => state.snapshot ? !evidenceIsCurrent(state.snapshot) : true);
-  const [prompt, setPrompt] = useState('');
+  // Held outside the panel so a draft survives the narrow-layout sheet and host switches.
+  const prompt = useAssistantDraft(s => s.text);
   const [keysOpen, setKeysOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -62,11 +68,13 @@ export function AssistantPanel() {
   const recipeDraft = useRecipeRun(s => s.draftPrompt);
   useEffect(() => {
     const draft = recipeDraft === null ? null : takeDraftPrompt();
-    if (draft !== null) { setPrompt(draft); promptRef.current?.focus(); }
+    if (draft !== null) { setAssistantDraft(draft); promptRef.current?.focus(); }
   }, [recipeDraft]);
   const { confirmDialog } = useDialogs();
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useAnswerFocus(scrollRef);
   const busy = state.status === 'streaming';
   const canAsk = !!state.snapshot && !busy && !stale;
   const errors = { 'missing-model': t('assistant.missingModel'), 'missing-key': t('assistant.missingKey'), 'context-limit': t('assistant.contextLimit'),
@@ -84,13 +92,13 @@ export function AssistantPanel() {
     // is cleared with the rest); a refused send keeps the attachments, and a late capture, for the retry.
     void sendAssistant(text, model, ASSISTANT_PROXY_URL, attachmentsForSend(attachments)).then(success => {
       if (!success) return;
-      setPrompt(current => current === text ? '' : current);
+      if (useAssistantDraft.getState().text === text) setAssistantDraft('');
       setAttachments(NO_ATTACHMENTS);
       setSent(count => count + 1);
     });
   };
   const refresh = () => { if (evidence) replaceEvidence(captureEvidence(evidence.source)); };
-  const suggest = (text: string) => { setPrompt(text); promptRef.current?.focus(); };
+  const suggest = (text: string) => { setAssistantDraft(text); promptRef.current?.focus(); };
   const attach = async (source: AssistantSource) => {
     if (state.messages.length && !await confirmDialog({ description: t('assistant.switchConfirm') })) return;
     replaceEvidence(captureEvidence(source));
@@ -106,10 +114,12 @@ export function AssistantPanel() {
   };
   return <section className="h-full min-h-0 min-w-0 flex flex-col bg-background text-foreground" aria-label={t('assistant.title')}>
     <div className="shrink-0 flex items-center gap-1 border-b border-border px-3 py-2">
-      <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+      <Sparkles className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
       <h2 className="text-sm font-semibold">{t('assistant.title')}</h2>
-      <div className="ml-auto flex items-center">
-        <IconButton label={t('assistant.savedConversations')} className="h-7 w-7" aria-pressed={libraryOpen}
+      <AssistantReturnButton />
+      <div className="ml-auto flex shrink-0 items-center">
+        <AssistantPlacementMenu />
+        <IconButton label={t('assistant.savedConversations')} className="h-7 w-7" aria-pressed={libraryOpen} data-assistant-library-toggle=""
           onClick={() => setLibraryOpen(open => !open)}><History className="h-4 w-4" /></IconButton>
         <IconButton label={t('assistantRecipes.title')} className="h-7 w-7" aria-pressed={recipesOpen}
           onClick={() => setRecipesOpen(open => !open)}><ListChecks className="h-4 w-4" /></IconButton>
@@ -119,13 +129,17 @@ export function AssistantPanel() {
       </div>
     </div>
     {/* One scroll region: short docked panels keep the header and composer reachable. */}
-    <div className="flex-1 min-h-0 overflow-auto">
-      {libraryOpen && <ConversationLibrary />}
+    <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto">
+      {libraryOpen && <TransientSurface label={t('assistant.savedConversations')} onClose={() => setLibraryOpen(false)}
+        fallback="[data-assistant-library-toggle]"><ConversationLibrary /></TransientSurface>}
       {recipesOpen && <Suspense fallback={null}><RecipeLibrary /></Suspense>}
       {prefsOpen && <Suspense fallback={null}><ProjectPreferences /></Suspense>}
       <RecipeRunCard />
-      {showPicker ? <SourcePicker current={evidence?.source ?? null} onAttach={source => void attach(source)}
-        onCancel={evidence ? () => setPicking(false) : null} />
+      {showPicker && evidence ? <TransientSurface label={t('assistant.pickTitle')} onClose={() => setPicking(false)}
+        fallback="[data-assistant-change-source]">
+        <SourcePicker current={evidence.source} onAttach={source => void attach(source)} onCancel={() => setPicking(false)} />
+      </TransientSurface>
+        : showPicker ? <SourcePicker current={null} onAttach={source => void attach(source)} onCancel={null} />
         : <EvidenceSummary evidence={evidence} state={state.archived ? 'historical' : stale ? 'stale' : 'captured'}
           onReturn={() => panels.openInHome(adapterFor(evidence.source).panelIds[0])} onRefresh={refresh} onChange={() => setPicking(true)} />}
       {!showPicker && <>
@@ -149,12 +163,14 @@ export function AssistantPanel() {
       <div ref={endRef} />
     </div>
     <form className="shrink-0 border-t border-border p-2 space-y-1" onSubmit={event => { event.preventDefault(); submit(); }}>
+      <GenerationLanguagePicker disabled={busy} />
       <ComposerAttachments model={model} value={attachments} onChange={setAttachments} disabled={!canAsk} sent={sent} />
       <label className="sr-only" htmlFor="assistant-prompt">{t('assistant.prompt')}</label>
-      <textarea id="assistant-prompt" ref={promptRef} rows={2} maxLength={8000} disabled={!canAsk} value={prompt}
+      {/* Stays editable while an answer streams, so typing the next question never loses focus; sending waits for canAsk. */}
+      <textarea id="assistant-prompt" ref={promptRef} rows={2} maxLength={8000} disabled={!state.snapshot || stale} value={prompt}
         placeholder={t('assistant.placeholder')}
         className="w-full resize-none rounded border border-input bg-background p-2 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60"
-        onChange={event => setPrompt(event.target.value)}
+        onChange={event => setAssistantDraft(event.target.value)}
         onKeyDown={event => {
           if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
           event.preventDefault(); submit();
@@ -166,6 +182,7 @@ export function AssistantPanel() {
       </div>
       <FreeQuotaNote model={model} proxyUrl={ASSISTANT_PROXY_URL} />
     </form>
+    <AssistantAnnouncer />
     <ByokKeyModal open={keysOpen} onOpenChange={setKeysOpen} />
   </section>;
 }

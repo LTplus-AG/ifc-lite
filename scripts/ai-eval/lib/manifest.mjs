@@ -25,14 +25,20 @@ const CREDENTIAL = /\b(?:sk-(?:ant-)?[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16}|gh[pous
 const STEP_FILE_NAME = /FILE_NAME\(\s*'(?:[^']|'')*'\s*,\s*'(?:[^']|'')*'\s*,\s*(\([^)]*\)|\$)\s*,\s*(\([^)]*\)|\$)/;
 const hasText = list => /'(?:[^']|'')+'/.test(list);
 
-/** Automated privacy findings for one file's text; empty means the scan passed. */
-export function privacyFindings(text, kind) {
+/**
+ * Automated privacy findings for one file's text; empty means the scan passed.
+ * `allowance` is a fixture's reviewed `privacy.stepHeaderAllowance`: it excuses
+ * ONLY an author/organisation pair that equals its recorded values exactly, so
+ * any other header text (or an e-mail or credential anywhere) still fails.
+ */
+export function privacyFindings(text, kind, allowance = null) {
   const findings = [];
   if (EMAIL.test(text)) findings.push(`e-mail address ${EMAIL.exec(text)[0]}`);
   if (CREDENTIAL.test(text)) findings.push('credential-like token');
   if (kind === 'ifc') {
     const header = STEP_FILE_NAME.exec(text.slice(0, 20_000));
     if (!header) findings.push('no parseable STEP FILE_NAME header');
+    else if (allowance && header[1] === allowance.author && header[2] === allowance.organisation) { /* reviewed, exact header values */ }
     else if (hasText(header[1]) || hasText(header[2])) findings.push(`STEP author/organisation present: ${header[1]} ${header[2]}`);
   }
   return findings;
@@ -81,7 +87,7 @@ export function checkManifest(manifest, { root, recordings = [] }) {
     if (sha256(bytes) !== fixture.sha256 || bytes.length !== fixture.size) {
       errors.push(`${at}: ${fixture.path} is ${bytes.length} bytes with sha256 ${sha256(bytes)}; the manifest records ${fixture.size} / ${fixture.sha256}`);
     }
-    const findings = privacyFindings(bytes.toString('latin1'), fixture.kind);
+    const findings = privacyFindings(bytes.toString('latin1'), fixture.kind, fixture.privacy.stepHeaderAllowance);
     if (findings.length) errors.push(`${at}: privacy scan: ${findings.join('; ')}`);
     if (fixture.source.derivedFrom && !fixtures.has(fixture.source.derivedFrom)) errors.push(`${at}: derivedFrom ${fixture.source.derivedFrom} is not a fixture`);
     if (fixture.kind === 'native-result') {

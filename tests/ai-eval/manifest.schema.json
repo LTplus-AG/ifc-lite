@@ -87,7 +87,18 @@
             "additionalProperties": false,
             "properties": {
               "automated": { "enum": ["pass", "not-fetched"], "description": "Recomputed by the gate; a committed fixture must pass." },
-              "human": { "$ref": "#/$defs/review" }
+              "human": { "$ref": "#/$defs/review" },
+              "stepHeaderAllowance": {
+                "type": "object",
+                "required": ["author", "organisation", "reason"],
+                "additionalProperties": false,
+                "description": "Reviewed exception for a published sample whose STEP FILE_NAME carries an author/organisation. Matches the header's exact text, so a changed header fails the scan again.",
+                "properties": {
+                  "author": { "type": "string", "minLength": 1 },
+                  "organisation": { "type": "string", "minLength": 1 },
+                  "reason": { "type": "string", "minLength": 20 }
+                }
+              }
             }
           }
         }

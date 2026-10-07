@@ -222,9 +222,28 @@ on a headless host and pass their entities through, so a graph that
 colorizes failures runs unchanged in CI. `ifc-lite flow validate` and the
 editor show the same per-node report.
 
-## Review checkpoints
+## AI nodes and review checkpoints
 
-A node that declares `review: 'required'` produces a proposal; the run stops downstream of it (status
+`@ifc-lite/flow-nodes/ai` adds three nodes that call the host's AI model
+service (`FlowHost.ai`); they never call a provider themselves:
+
+| Node | Input | Output |
+|---|---|---|
+| `ai.classify` | a table and versioned category definitions | one row per input row: allowed `label`, cited `evidence` columns, `outcome` (`classified`, `unknown`, `failed`, `not-sent`), plus `coverage` |
+| `ai.summarize` | a table of evidence rows, audience, language | narrative `sections` citing row keys; a section without a valid citation is kept as `uncited` |
+| `ai.extract` | text passages and a field schema | typed `records`, each quoting its source span; a span not found verbatim in its passage, or a value of the wrong type, makes the record `unsupported` |
+
+Every AI node declares `network.ai` (graph data goes to the host's model
+provider), requires the `ai` backend feature, is volatile, and sends only
+the columns you list. Requests come out of **one root budget per run**: every
+AI node, lane and batch draws from it, so list lacing cannot multiply the
+spend, and a budget stop keeps a partial result whose coverage counts the
+rows that were not sent. Nothing the model invents survives as evidence:
+unknown keys, labels outside the set, uncited claims and spans that are not
+in the passage are dropped or marked.
+
+**Review checkpoints.** A node that declares `review: 'required'` (every AI
+node does) produces a proposal; the run stops downstream of it (status
 `review`, dependants `paused`) and `RunResult.review` names it. Independent
 branches still run. To continue, the host saves a checkpoint, a reviewer
 approves the proposal by its digest, and the run is resumed with

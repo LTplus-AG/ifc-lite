@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { isFlowSource } from '@/lib/assistant/sources';
 import { useMemo } from 'react';
 import { GitBranch } from 'lucide-react';
 import { create } from 'zustand';
@@ -31,7 +32,7 @@ export function FlowProposalReview() {
   const lastReply = assistant.messages.at(-1);
   const proposed = useMemo(() => lastReply?.role === 'assistant' && proposalOf(lastReply.content)?.kind === 'flow', [lastReply]);
   // Graph evidence drafts patches; run evidence (#6919) drafts patches with a diagnosis of that run.
-  const eligible = (assistant.snapshot?.source === 'flow' || assistant.snapshot?.source === 'flowRun') && proposed
+  const eligible = (!!assistant.snapshot && isFlowSource(assistant.snapshot.source)) && proposed
     && assistant.status !== 'streaming' && assistant.error !== 'truncated-output';
   if (!proposed && !review.proposal && !receipt && !review.error) return null;
   const run = (action: () => void) => {

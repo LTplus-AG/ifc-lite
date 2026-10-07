@@ -8,6 +8,7 @@ import { isContributedFlowId } from '@/services/extensions/host-flows';
 import { flowRegistry } from '../flow/runner';
 import { addNode, removeNode, moveNode, setParam, updateNode, connect, disconnect, requiredCapabilities } from '../flow/editor-ops';
 import { evidenceIsCurrent, type EvidenceSnapshot } from './evidence';
+import { isFlowSource } from './sources';
 import { parseFlowPatch, isBoundedFlowJson, type FlowPatch } from './flow-patch';
 import { changedCodeParams, isNativeParamValue, validateProposedGraph, type FlowCodeParam } from './flow-validate';
 import { trackingImpacts, type TrackingImpact } from './flow-tracking';
@@ -119,7 +120,7 @@ function diagnose(patch: FlowPatch, before: FlowDocument, evidence: EvidenceSnap
 }
 
 export function prepareFlowProposal(text: string, evidence: EvidenceSnapshot): FlowProposal {
-  if ((evidence.source !== 'flow' && evidence.source !== 'flowRun') || !evidenceIsCurrent(evidence)) throw new Error('Flow evidence is stale');
+  if (!isFlowSource(evidence.source) || !evidenceIsCurrent(evidence)) throw new Error('Flow evidence is stale');
   const state = useViewerStore.getState(), before = state.flowDoc;
   if (!before || !editable(before)) throw new Error('Graph is running or read-only');
   if (!isBoundedFlowJson(before)) throw new Error('Graph exceeds the proposal review limits');

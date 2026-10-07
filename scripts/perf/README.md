@@ -3527,3 +3527,13 @@ prototype removing unused nested value trees on this evidence or revisit the
 rejected general constructor. A different worker capture must first establish
 substantial unused materialization on the critical path. This native opportunity
 screen is not a browser speedup or a measurement of indirect style decoding.
+
+## Activity tray startup budget (#6952, U02)
+
+The maintainer approved the measured eager-JavaScript ceiling for U02 while
+keeping its existing tolerance. Job recording, the running badge and completion
+announcements must work before the detail tray opens; detail rows remain lazy.
+Deferring popup initialization and journal restoration increased eager bytes in
+the production bundle and was discarded. The verdict is a deliberately approved
+startup cost, not a speed improvement. Measure the complete eager chunk graph:
+extracting a module can increase shared imports even when its entry chunk shrinks.

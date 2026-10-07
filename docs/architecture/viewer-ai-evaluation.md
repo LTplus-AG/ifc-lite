@@ -40,7 +40,7 @@ The remaining release invariants in the plan (concurrent-edit conflicts, undo an
 `scripts/ai-eval/run-live-eval.mjs` is **opt-in and never run by CI**. It needs `IFCLITE_AI_EVAL_LIVE=1`, a provider URL and model per provider (`IFCLITE_AI_EVAL_{PROXY,ANTHROPIC,OPENAI}_{URL,MODEL}`) and, for BYOK providers, the standard key variable. A provider missing any of these is skipped with the reason. The runner:
 
 1. asks the viewer (`pnpm --dir apps/viewer ai-eval requests`) for the exact request the Assistant would send for each task, so live runs see the production system prompt and frozen evidence;
-2. sends it with fixed settings (temperature 0, the manifest's 4096-token ceiling, the manifest timeout, at most three repeats) inside the manifest's root budget (24 requests, 98,304 reported output tokens), stopping before the next request once exhausted;
+2. sends it with fixed settings (temperature 0 on the direct provider routes, while the viewer proxy applies its own server-side sampling, so proxy receipts record `temperature: null`; the manifest's 4096-token ceiling, the manifest timeout, at most three repeats) inside the manifest's root budget (24 requests, 98,304 reported output tokens), stopping before the next request once exhausted;
 3. writes unreviewed `corpus: "live"` recordings, usage receipts (provider-reported counts only; unreported usage stays unreported) and a per-answer invariant summary to the gitignored `tests/ai-eval/results/<run>/`;
 4. refuses to write anything containing a credential-like token or e-mail address. The key goes into one request header and nowhere else.
 

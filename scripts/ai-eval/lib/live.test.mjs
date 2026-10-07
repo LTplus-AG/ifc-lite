@@ -128,3 +128,19 @@ test('a run refuses non-positive or non-numeric repeats and tasks the capture do
   await assert.rejects(runLive({ ...common, tasks: ['clash-summary', 'not-captured-task'], fetchImpl }), /no entry for: not-captured-task/);
   assert.equal(calls, 0);
 });
+
+test('receipts record the temperature actually sent, and redirects are never followed', async () => {
+  const inits = [];
+  const fetchImpl = async (url, init) => { inits.push(init); return new Response(chatStream('See [E1].')); };
+  const settings = { temperature: 0, maxOutputTokens: 100, timeoutMs: 1000 };
+  const direct = await callProvider({ provider, task: { id: 't' }, request: captured.tasks[0].request, settings, fetchImpl, now: Date.now });
+  assert.equal(direct.receipt.settings.temperature, 0);
+  const proxy = { kind: 'proxy', url: 'http://localhost:1/api/chat', model: 'free-model', key: null };
+  const viaProxy = await callProvider({ provider: proxy, task: { id: 't' }, request: captured.tasks[0].request, settings,
+    fetchImpl: async (url, init) => { inits.push(init); return new Response('{}', { status: 500 }); }, now: Date.now });
+  assert.equal(viaProxy.receipt.settings.temperature, null, 'the proxy takes no temperature, so none is claimed');
+  assert.ok(inits.every(init => init.redirect === 'manual'));
+  const redirected = await callProvider({ provider, task: { id: 't' }, request: captured.tasks[0].request, settings,
+    fetchImpl: async () => new Response(null, { status: 307, headers: { location: 'https://elsewhere.invalid/' } }), now: Date.now });
+  assert.equal(redirected.outcome, 'error', 'a redirect is a failure, not a hop');
+});

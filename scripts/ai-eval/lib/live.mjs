@@ -4,8 +4,10 @@
 
 /**
  * Live provider calls for the AI evaluation (#6928). Opt-in only: nothing in
- * CI imports a network path. Settings are fixed (temperature 0, the manifest's
- * output ceiling and timeout) and every call leaves a usage receipt; usage is
+ * CI imports a network path. Settings are fixed (temperature 0 for direct
+ * provider routes; the viewer proxy applies its own server-side sampling and
+ * takes no temperature, so its receipts record `null`; the manifest's output
+ * ceiling and timeout everywhere) and every call leaves a usage receipt; usage is
  * recorded only when the provider streamed it, never estimated. Credentials
  * come from the environment, are used for one header, and never reach a
  * recording, receipt or log (`assertNoSecrets` refuses to write if one does).
@@ -70,7 +72,8 @@ export async function callProvider({ provider, task, request, settings, fetchImp
   let text = '';
   let failure = null;
   try {
-    const response = await fetchImpl(provider.url, { method: 'POST', signal: controller.signal,
+    // No redirects: a 3xx would re-send the credential header (Anthropic's x-api-key survives cross-origin); it is recorded as an error.
+    const response = await fetchImpl(provider.url, { method: 'POST', signal: controller.signal, redirect: 'manual',
       headers: { 'Content-Type': 'application/json', ...wire.headers, ...authHeaders(provider.kind, provider.key) }, body: JSON.stringify(wire.body) });
     status = response.status;
     text = await response.text();
@@ -83,7 +86,8 @@ export async function callProvider({ provider, task, request, settings, fetchImp
   const folded = events ? foldEvents(provider.kind, events) : { text: '', finishReason: null, usage: null };
   const outcome = failure === 'timeout' ? 'timeout' : failure ? 'error' : outcomeOf(status, folded);
   const receipt = { task: task.id, route: provider.kind, model: provider.model, status, outcome, startedAt, durationMs: finishedAt - startedAt,
-    settings: { temperature: settings.temperature, maxOutputTokens: wire.body.max_tokens ?? wire.body.max_completion_tokens ?? wire.body.maxOutputTokens, timeoutMs: settings.timeoutMs },
+    // What was actually sent, not what was intended: the proxy route sends no temperature.
+    settings: { temperature: wire.body.temperature ?? null, maxOutputTokens: wire.body.max_tokens ?? wire.body.max_completion_tokens ?? wire.body.maxOutputTokens, timeoutMs: settings.timeoutMs },
     finishReason: folded.finishReason, usageReported: folded.usage !== null,
     ...(folded.usage ? { inputTokens: folded.usage.inputTokens, outputTokens: folded.usage.outputTokens } : {}) };
   const response = ok ? { status, events, done: /data:\s*\[DONE\]/.test(text) }

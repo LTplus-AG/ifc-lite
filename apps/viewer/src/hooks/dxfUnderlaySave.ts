@@ -41,12 +41,14 @@ import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice.js';
 import { getCachedHash } from './drawingMarkupRestorePrecedence.js';
 
 /**
- * The IndexedDB store module, imported on first use (#7035). This file is in
- * the viewer's eager bundle; the store (open, validation, eviction) is only
- * needed once a model has a resolved key, and every call into it is already
- * asynchronous.
+ * The on-demand half of the drawing persistence bridge, imported on first use
+ * (#7035). This file is in the viewer's eager bundle; the IndexedDB store
+ * (open, validation, eviction) is only needed once a model has a resolved
+ * key, and every call into it is already asynchronous. See
+ * `drawingPersistenceOnDemand.ts` for why there is a single entry.
  */
-const dxfStore = () => import('@/store/slices/drawing2DSlice.dxfPersistence.js');
+export const drawingPersistenceOnDemand = () => import('./drawingPersistenceOnDemand.js');
+const dxfStore = drawingPersistenceOnDemand;
 
 // ── Save ─────────────────────────────────────────────────────────────
 

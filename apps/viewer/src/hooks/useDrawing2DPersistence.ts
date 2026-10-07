@@ -41,6 +41,7 @@ import { setCachedHash, notifyDecided } from './drawingMarkupRestorePrecedence.j
 import { resetSaveState, beginRestore, endRestore, setRestoredSectionConfig, ensureSaveSubscription } from './drawingMarkupSave.js';
 import { ensureSheetPersistence, hasUnsavedSheetEdit, settleSheetHash } from './sheetPersistence.js';
 import {
+  drawingPersistenceOnDemand as drawingKey,
   ensureDxfUnderlaySaveSubscription,
   restoreDxfUnderlaysFor,
   settleDxfUnderlayHash,
@@ -52,12 +53,11 @@ export { hasPersistedMarkupEntryFor, onLocalStorageDecidedFor } from './drawingM
 export { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './drawingMarkupSave.js';
 
 /**
- * The key resolver and the legacy-key move (#7035) are imported on demand:
- * this hook is in the viewer's eager bundle and they need not be. What they
- * use from modules that ARE eager is handed over, so importing them does not
- * pull those modules into chunks of their own.
+ * The key resolver and the legacy-key move (#7035) are imported on demand
+ * (`drawingKey`): this hook is in the viewer's eager bundle and they need not
+ * be. What they use from modules that ARE eager is handed over, so importing
+ * them does not pull those modules into chunks of their own.
  */
-const drawingKey = () => import('./drawingPersistenceKey.js');
 const keyHost: DrawingKeyHost = { identifyLoadedPlacementSource, placementSourceIdentity, hasUnsavedSheetEdit, waitForPendingDxfUnderlaySave };
 
 /** A model id may be reused for replacement bytes; cached hashes belong to a source. */

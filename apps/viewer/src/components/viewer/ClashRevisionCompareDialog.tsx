@@ -138,6 +138,7 @@ export function ClashRevisionCompareDialog() {
     };
     const outcome = saveRevisionBaseline(next);
     if (outcome.ok) {
+      useOriginalClashBaseline.setState({ finding: null });
       setBaseline(next);
       setComparison(null);
       toast.success(t('clashTools.revisionCompare.baselineSavedToast', { count: clashResult.clashes.length }));

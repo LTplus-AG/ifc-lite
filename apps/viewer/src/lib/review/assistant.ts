@@ -10,6 +10,8 @@
  * identity, so pinning another card makes earlier evidence stale.
  */
 
+import { useViewerStore } from '@/store';
+import { useSemanticSession } from '../semantic/session';
 import { take } from '../assistant/adapters/types';
 import { useReviewAssistantCard } from './assistant-state';
 import type { CoordinationCard } from './cards';
@@ -31,6 +33,21 @@ useReviewWorkspaces.subscribe((next, previous) => {
   const latest = decisionFor(currentReviewWorkspace(next.entries), card.key);
   const held = decisionFor(currentReviewWorkspace(previous.entries), card.key);
   if (JSON.stringify(latest) !== JSON.stringify(held)) pinReviewCard({ ...card }, latest);
+});
+
+const clearSourcePin = () => {
+  if (useReviewAssistantCard.getState().card) useReviewAssistantCard.setState({ card: null, project: null });
+};
+useViewerStore.subscribe((next, previous) => {
+  if (next.clashResult !== previous.clashResult || next.clashRawResult !== previous.clashRawResult
+    || next.idsValidationReport !== previous.idsValidationReport || next.compareResult !== previous.compareResult
+    || next.savedComparisons !== previous.savedComparisons || next.bcfProject !== previous.bcfProject
+    || next.models !== previous.models || next.mutationVersion !== previous.mutationVersion
+    || next.geometryContentVersion !== previous.geometryContentVersion || next.modelPlacement !== previous.modelPlacement) clearSourcePin();
+});
+useSemanticSession.subscribe((next, previous) => {
+  if (next.document !== previous.document || next.findings !== previous.findings || next.report !== previous.report
+    || next.revisions !== previous.revisions || next.retrievedAt !== previous.retrievedAt) clearSourcePin();
 });
 
 export const REVIEW_EVIDENCE_LIMITATIONS =

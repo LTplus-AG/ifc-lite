@@ -4,6 +4,7 @@
 
 import '@/test/setup-dom.js';
 import '@/test/content-backup-fixture.js';
+import { useBcfDraftLibrary } from '@/lib/bcf-drafts/draft-library';
 import { refuseContentWrites } from '@/test/content-fixture';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
@@ -112,11 +113,18 @@ test('a refused draft save stays visibly unsaved without a success toast or Open
   const ui = mount();
   const notifications = render(<Toaster />);
   await waitFor(() => ui.querySelector('[data-review-card]') !== null, 'card');
+  const { draftTopicsFromCards } = await import('@/lib/review/actions');
+  const { captureReviewSnapshot } = await import('@/lib/review/collect');
+  const saved = await draftTopicsFromCards('Existing saved draft', captureReviewSnapshot().cards);
+  assert.equal(saved.saved, true);
+  const priorActive = useBcfDraftLibrary.getState().activeId;
+  assert.ok(priorActive);
   const refusal = refuseContentWrites();
   try {
     click(button(ui, 'Draft BCF topic for 1 card'));
     await waitFor(() => /Drafted, but not saved/.test(ui.textContent ?? ''), 'unsaved draft notice');
     assert.doesNotMatch(notifications.textContent ?? '', /Drafted, but not saved|Open drafts/);
+    assert.equal(useBcfDraftLibrary.getState().activeId, priorActive, 'a refused batch cannot replace the existing saved selection');
   } finally { refusal.mock.restore(); }
 });
 
@@ -155,5 +163,37 @@ test('#7015 changed baseline refuses the original jump instead of opening unrela
   assert.ok(open);
   click(open);
   assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /saved baseline changed/);
+  assert.equal(useOriginalClashBaseline.getState().finding, null);
+});
+
+// #7015: replacing the native run makes a removed pinned finding unavailable.
+test('a pinned card is invalidated when the native clash run is replaced', async () => {
+  setup();
+  const ui = mount();
+  await waitFor(() => ui.querySelector('[data-review-card]') !== null, 'card');
+  click(button(ui, 'Show findings of'));
+  click(button(ui, 'Ask about this card'));
+  assert.ok(useReviewAssistantCard.getState().card);
+  const { reviewAdapter } = await import('@/lib/assistant/adapters/review');
+  useViewerStore.getState().setClashResult(clashResult([]));
+  assert.equal(useReviewAssistantCard.getState().card, null);
+  assert.equal(reviewAdapter.capture(useViewerStore.getState(), 10).availability, 'unavailable');
+});
+
+test('saving a replacement native baseline clears an open original finding', async () => {
+  setup();
+  const original = useViewerStore.getState().clashResult!;
+  assert.equal(saveRevisionBaseline({ result: original, modelNames: { A: 'arch.ifc', B: 'mep.ifc' }, takenAt: 1_760_000_000_000 }).ok, true);
+  const current = clashResult([]);
+  useViewerStore.setState({ clashResult: current, clashRawResult: current });
+  const ui = render(<>{renderPanelBody('review', () => {})}<ClashRevisionCompareDialog /></>);
+  await waitFor(() => ui.querySelector('[data-review-card]') !== null, 'historical card');
+  click(button(ui, 'Show findings of'));
+  click(ui.querySelector<HTMLButtonElement>('[data-run-temporal="historical"] button')!);
+  await waitFor(() => document.querySelector('[data-original-baseline]') !== null, 'native original finding');
+  const save = [...document.querySelectorAll<HTMLButtonElement>('button')].find(element => /Save current as baseline/.test(element.textContent ?? ''));
+  assert.ok(save);
+  click(save);
+  await waitFor(() => document.querySelector('[data-original-baseline]') === null, 'original finding cleared');
   assert.equal(useOriginalClashBaseline.getState().finding, null);
 });

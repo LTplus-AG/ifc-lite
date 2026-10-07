@@ -25,7 +25,7 @@ export async function draftTopicsFromCards(name: string, cards: readonly Coordin
     { worldOffset: bcfWorldOffset(state.models, state.geometryResult) });
   if (!result.batch) return { ...result, saved: false };
   const saved = await saveDraftBatch(result.batch);
-  useBcfDraftLibrary.setState({ activeId: result.batch.id });
+  if (saved) useBcfDraftLibrary.setState({ activeId: result.batch.id });
   return { ...result, saved };
 }
 

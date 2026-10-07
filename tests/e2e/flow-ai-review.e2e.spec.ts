@@ -70,7 +70,7 @@ test('#6923 a Flow AI proposal pauses the run, survives a reload, and only an ap
     const prompt = body.messages.at(-1)?.content ?? '';
     sent.push(prompt);
     const rows = (/<data>\n([\s\S]*)\n<\/data>/.exec(prompt)?.[1] ?? '').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>);
-    const items = rows.map((r) => ({ key: r.key, label: r['Pset_WallCommon.IsExternal'] === true ? 'Facade' : 'Partition', evidence: ['Pset_WallCommon.IsExternal'] }));
+    const items = rows.map((r) => ({ key: r.key, label: (r.values as Record<string, unknown>)['Pset_WallCommon.IsExternal'] === true ? 'Facade' : 'Partition', evidence: ['Pset_WallCommon.IsExternal'] }));
     await route.fulfill({ contentType: 'text/event-stream', body:
       `data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify({ items }) }, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n` });
   });

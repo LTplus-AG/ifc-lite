@@ -15,7 +15,7 @@
  * volatile ones, nor a run in which any lane called `ctx.markVolatile()`.
  */
 
-import { consumeReviewedResume, registerPausedRun } from './checkpoint-record.js';
+import { consumeReviewedResume, graphDigest, registerPausedRun } from './checkpoint-record.js';
 import { nodeAvailability, type HostFeatures } from './availability.js';
 import { digest, digestFlowData } from './digest.js';
 import type { FlowDocument } from './document.js';
@@ -126,7 +126,7 @@ export interface RunOptions<H> {
 
 export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promise<RunResult> {
   const registry = opts.registry as NodeRegistry<unknown>;
-  const runInputsDigest = digest(opts.inputs ?? {});
+  const runGraphDigest = graphDigest(doc, opts.inputs ?? {}, registry);
   const resume = opts.resume ? consumeReviewedResume(opts.resume, doc, opts.inputs ?? {}, registry) : undefined;
   const order = topologicalOrder(doc);
   const outputs = new Map<string, Map<string, FlowData>>();
@@ -388,6 +388,6 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
   const graphOutputs = doc.outputs.map((o) => ({ label: o.label, nodeId: o.nodeId, port: o.port, data: outputs.get(o.nodeId)?.get(o.port) }));
   const review = reports.filter((r) => r.status === 'review').map((r) => r.nodeId);
   const result = { ok: failed.size === 0 && !opts.signal?.aborted, writes: writesThisRun, outputs, graphOutputs, reports, log, review };
-  registerPausedRun(result, runInputsDigest);
+  registerPausedRun(result, runGraphDigest);
   return result;
 }

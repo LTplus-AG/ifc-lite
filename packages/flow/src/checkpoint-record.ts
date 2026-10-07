@@ -182,8 +182,8 @@ export function createCheckpoint(input: CreateCheckpointInput): FlowCheckpoint {
   if (problems.length) throw new CheckpointNotPortableError(problems);
   const outputs = portableOutputs(result.outputs);
   const graph = graphDigest(doc, input.inputs, input.registry);
-  if (pausedRunInputs.get(result) !== digest(input.inputs ?? {})) {
-    throw new Error('the checkpoint Player inputs must match the actual paused run');
+  if (pausedRunGraphs.get(result) !== graph) {
+    throw new Error('the checkpoint graph and Player inputs must match the actual paused run');
   }
   const proposal = proposalDigestOf(outputs, result.review);
   const now = input.now ?? Date.now();
@@ -219,11 +219,11 @@ function restoreMap(checkpoint: FlowCheckpoint): Map<string, Map<string, FlowDat
   return out;
 }
 
-const pausedRunInputs = new WeakMap<object, string>();
+const pausedRunGraphs = new WeakMap<object, string>();
 
-/** Internal: bind checkpoint creation to the Player inputs used at run entry. */
-export function registerPausedRun(result: RunResult, inputsDigest: string): void {
-  pausedRunInputs.set(result, inputsDigest);
+/** Internal: bind checkpoint creation to the graph and Player inputs used at run entry. */
+export function registerPausedRun(result: RunResult, graphDigestAtEntry: string): void {
+  pausedRunGraphs.set(result, graphDigestAtEntry);
 }
 
 const authorizedResumes = new WeakMap<object, { graph: string; outputs: string; expires: number }>();
@@ -255,7 +255,7 @@ export function consumeReviewedResume(outputs: ReadonlyMap<string, ReadonlyMap<s
 export function resumeOutputs(checkpoint: FlowCheckpoint, now = Date.now()): Map<string, Map<string, FlowData>> {
   if (checkpoint.state !== 'applying' || checkpoint.review?.decision !== 'approved'
     || checkpoint.review.proposalDigest !== checkpoint.proposalDigest || !checkpoint.claim?.owner
-    || !Number.isFinite(now) || !Number.isFinite(checkpoint.claim.leaseUntil) || checkpoint.claim.leaseUntil <= now) {
+    || !Number.isFinite(now) || !Number.isFinite(checkpoint.claim.leaseUntil) || checkpoint.claim.leaseUntil <= Math.max(now, Date.now())) {
     throw new Error('only an actively claimed, approved checkpoint can supply resume outputs');
   }
   const outputs = restoreMap(checkpoint);
@@ -266,7 +266,7 @@ export function resumeOutputs(checkpoint: FlowCheckpoint, now = Date.now()): Map
   }
   ownedClaims.delete(checkpoint);
   authorizedResumes.set(outputs, { graph: checkpoint.graphDigest, outputs: digest(portableOutputs(outputs)),
-    expires: Date.now() + (checkpoint.claim.leaseUntil - now) });
+    expires: checkpoint.claim.leaseUntil });
   return outputs;
 }
 

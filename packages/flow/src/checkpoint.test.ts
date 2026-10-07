@@ -65,7 +65,7 @@ describe('createCheckpoint', () => {
     expect(checkpoint).toMatchObject({ state: 'prepared', reviewNodes: ['ai'], budget: { requests: 2 } });
     expect([...checkpointProposal(revived).keys()]).toEqual(['ai']);
     const host: Host = { sunk: [] };
-    const resumed = await runFlow(doc, { host, registry, resume: resumeOutputs(await ownedClaim(approveCheckpoint(revived, revived.proposalDigest, 1_500), claim('owner')), 2_001) });
+    const resumed = await runFlow(doc, { host, registry, resume: resumeOutputs(await ownedClaim(approveCheckpoint(revived, revived.proposalDigest, 1_500), claim('owner', Date.now()))) });
     expect(host.sunk).toEqual([['wall', 'unknown']]);
     expect(resumed.reports.find((r) => r.nodeId === 'ai')?.status).toBe('restored');
   });
@@ -382,4 +382,17 @@ it('#7038 async resumed children cannot change another restored proposal or its 
   release();
   expect((await completed).ok).toBe(true);
   expect(host.sunk).toEqual([['wall', 'unknown']]);
+});
+
+// #7038: completed outputs must belong to the graph actually executed.
+it('#7038 refuses an edited graph supplied with an original paused result', async () => {
+  const result = await runFlow(doc, { host: { sunk: [] }, registry });
+  const changed = { ...doc, nodes: doc.nodes.map(n => n.id === 'rows' ? { ...n, params: { revision: 'edited' } } : n) };
+  expect(() => createCheckpoint({ doc: changed, registry, result, sourceDigest: 'source' })).toThrow(/actual paused run/);
+});
+
+it('#7038 cannot renew an expired real lease with its historical claim timestamp', async () => {
+  const checkpoint = await paused();
+  const owned = await ownedClaim(approveCheckpoint(checkpoint, checkpoint.proposalDigest), claim('owner', Date.now() - 60_001));
+  expect(() => resumeOutputs(owned, owned.claim!.at)).toThrow(/actively claimed/);
 });

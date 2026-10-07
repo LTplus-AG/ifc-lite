@@ -52,17 +52,25 @@ function EffectiveReadout() {
     eastings: context.mapConversion.eastings, northings: context.mapConversion.northings }) : 'absent'}</output>;
 }
 
-async function mountProjectedPreview() {
+async function mountProjectedPreview(secondCRS?: string) {
   const bytes = new TextEncoder().encode(source);
   const dataStore = await new IfcParser().parseColumnar(bytes.buffer, {});
+  const models = [{ ...fixtureModel('m'), ifcDataStore: dataStore, geometryResult: geometry }];
+  if (secondCRS) {
+    const secondSource = source.replace('EPSG:32632', secondCRS)
+      .replace('500000.,5500000.,10.', '5.,52.,10.');
+    const secondBytes = new TextEncoder().encode(secondSource);
+    const secondStore = await new IfcParser().parseColumnar(secondBytes.buffer, {});
+    models.push({ ...fixtureModel('other'), ifcDataStore: secondStore, geometryResult: geometry });
+  }
   useViewerStore.setState({
-    ...fixtureModels({ ...fixtureModel('m'), ifcDataStore: dataStore, geometryResult: geometry }),
+    ...fixtureModels(...models),
     ifcDataStore: null, geometryResult: geometry, cesiumEnabled: false, solarEnabled: false,
     cesiumPlacementEditMode: true, cesiumPlacementDraftModelId: 'm',
     cesiumPlacementDraft: { eastings: 500001, northings: 5500000,
       orthogonalHeight: 10, xAxisAbscissa: 1, xAxisOrdinate: 0 },
     georefMutations: new Map(), mutationViews: new Map([['m', new MutablePropertyView(null, 'm')]]),
-    editEnabled: true, collabRoomId: null, anchorModelIdOverride: null, repositionOpen: false,
+    editEnabled: true, collabRoomId: null, anchorModelIdOverride: 'm', repositionOpen: false,
   });
   Object.defineProperty(navigator, 'gpu', { configurable: true,
     value: { requestAdapter: async () => ({ features: new Set(), limits: {} }) } });
@@ -110,4 +118,44 @@ it('hides a projected draft while another projected CRS is pending, then restore
   await waitFor(() => readout.textContent === JSON.stringify({ crs: 'EPSG:32631', eastings: 500001, northings: 5500000 }),
     'a confirmed projected CRS restores the existing preview');
   assert.equal(useViewerStore.getState().cesiumPlacementDraft, draft);
+});
+
+
+it('pinning a geographic model aborts the global projected draft and does not revive it (#7060)', async () => {
+  const readout = await mountProjectedPreview('EPSG:4326');
+  const sourceEdits = useViewerStore.getState().georefMutations;
+  act(() => useViewerStore.getState().setAnchorModelIdOverride('other'));
+  await waitFor(() => readout.textContent === JSON.stringify({ crs: 'EPSG:4326', eastings: 5, northings: 52 })
+    && !useViewerStore.getState().cesiumPlacementEditMode, 'geographic pinned anchor aborts the global session');
+  act(() => useViewerStore.getState().setAnchorModelIdOverride('m'));
+  await waitFor(() => readout.textContent === JSON.stringify({ crs: 'EPSG:32632', eastings: 500000, northings: 5500000 }),
+    'returning to the projected anchor exposes its authored coordinates');
+  assert.equal(useViewerStore.getState().cesiumPlacementEditMode, false);
+  assert.equal(useViewerStore.getState().georefMutations, sourceEdits, 'anchor pinning does not persist source changes');
+});
+
+it('pinning another projected model preserves the global editor and starts its own draft (#7060)', async () => {
+  const readout = await mountProjectedPreview('EPSG:32631');
+  act(() => useViewerStore.getState().setAnchorModelIdOverride('other'));
+  await waitFor(() => readout.textContent === JSON.stringify({ crs: 'EPSG:32631', eastings: 5, northings: 52 })
+    && useViewerStore.getState().cesiumPlacementDraftModelId === 'other', 'projected pinned anchor starts its own session');
+  assert.equal(useViewerStore.getState().cesiumPlacementEditMode, true);
+  act(() => useViewerStore.getState().setAnchorModelIdOverride('m'));
+  await waitFor(() => readout.textContent === JSON.stringify({ crs: 'EPSG:32632', eastings: 500000, northings: 5500000 }),
+    'returning to the first projected model uses a fresh authored draft');
+  assert.equal(useViewerStore.getState().cesiumPlacementEditMode, true);
+});
+
+
+it('removing the last CRS aborts editing even after the gizmo unmounts (#7060)', async () => {
+  const readout = await mountProjectedPreview();
+  act(() => useViewerStore.getState().setGeorefFields('m', 'projectedCRS', [{ field: 'name', value: '' }]));
+  await waitFor(() => readout.textContent === 'absent' && !useViewerStore.getState().cesiumPlacementEditMode,
+    'missing source aborts the global session without a mounted gizmo');
+  act(() => useViewerStore.getState().setGeorefFields('m', 'projectedCRS', [{ field: 'name', value: 'EPSG:32632' }]));
+  await waitFor(() => readout.textContent === JSON.stringify({ crs: 'EPSG:32632', eastings: 500000, northings: 5500000 }),
+    'restoring the CRS exposes the authored anchor, without its abandoned draft');
+  assert.equal(useViewerStore.getState().cesiumPlacementEditMode, false);
+  assert.equal(useViewerStore.getState().getGeorefMutations('m')?.mapConversion, undefined,
+    'removing and restoring the CRS never persists the transient coordinate draft');
 });

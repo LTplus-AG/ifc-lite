@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import { useProjectionKind } from '@/lib/geo/use-projection-kind';
+import { usePlacementProjectionKind } from '@/lib/geo/use-placement-projection-kind';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { getMapUnitScale, metersToMapUnits } from '@/lib/geo/cesium-placement';
@@ -42,7 +42,7 @@ export function useCesiumPlacementController({
   lengthUnitScale = 1,
 }: CesiumPlacementControllerProps) {
   const { t } = useTranslation();
-  const projectionKind = useProjectionKind(projectedCRS);
+  const projectionKind = usePlacementProjectionKind(projectedCRS);
   const canEdit = projectionKind === 'projected';
   const editMode = useViewerStore((s) => s.cesiumPlacementEditMode);
   const draftModelId = useViewerStore((s) => s.cesiumPlacementDraftModelId);
@@ -53,14 +53,6 @@ export function useCesiumPlacementController({
   const setEditMode = useViewerStore((s) => s.setCesiumPlacementEditMode);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const setGeorefFields = useViewerStore((s) => s.setGeorefFields);
-
-  // A projected draft cannot remain a live preview after its source CRS
-  // becomes angular or unavailable (#7060). Closing through the store also clears the draft;
-  // leave valid projected sessions intact while classification is pending.
-  useEffect(() => {
-    if ((projectionKind === 'geographic' || projectionKind === 'unresolved') && editMode
-      && (!draftModelId || draftModelId === modelId)) setEditMode(false);
-  }, [projectionKind, editMode, draftModelId, modelId, setEditMode]);
 
   // Bootstrap a real draft in the store as soon as editing starts. Without
   // this, `activeDraft` below falls into its ELSE branch (a fresh object

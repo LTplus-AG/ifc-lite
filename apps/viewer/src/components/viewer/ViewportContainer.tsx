@@ -70,7 +70,7 @@ import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
-import { useProjectionKind } from '@/lib/geo/use-projection-kind';
+import { usePlacementProjectionKind } from '@/lib/geo/use-placement-projection-kind';
 
 /**
  * The primary container for the 3D viewport, managing IFC model loading,
@@ -252,7 +252,7 @@ export function ViewportContainer() {
     mergedGeometryResult?.coordinateInfo,
     anchorModelIdOverride,
   ]);
-  const projectionKind = useProjectionKind(sourceGeoref?.projectedCRS);
+  const projectionKind = usePlacementProjectionKind(sourceGeoref?.projectedCRS);
   const georef = useMemo(() => {
     if (!sourceGeoref) return null;
     // Pending classification must expose the authored anchor, while retaining

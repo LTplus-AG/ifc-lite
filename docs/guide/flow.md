@@ -248,17 +248,16 @@ handle) makes the run uncheckpointable, named by node and port.
 
 ```ts
 import { runFlow, type FlowDocument, type NodeRegistry } from '@ifc-lite/flow';
-import { approveCheckpoint, claimCheckpoint, createCheckpoint, finishCheckpoint, graphDigest, resumeOutputs, MemoryCheckpointStore, updateCheckpoint } from '@ifc-lite/flow/checkpoint';
+import { approveCheckpoint, claimCheckpoint, createCheckpoint, finishCheckpoint, graphDigest, resumeOutputs, updateCheckpoint, type CheckpointStore } from '@ifc-lite/flow/checkpoint';
 import type { FlowHost } from '@ifc-lite/flow-nodes';
 
-async function reviewedRun(doc: FlowDocument, host: FlowHost, registry: NodeRegistry<FlowHost>, sourceDigest: string) {
+async function reviewedRun(doc: FlowDocument, host: FlowHost, registry: NodeRegistry<FlowHost>, sourceDigest: string, store: CheckpointStore) {
   const paused = await runFlow(doc, { host, registry });
   if (paused.review.length === 0) return paused;
   const checkpoint = createCheckpoint({ doc, registry, result: paused, sourceDigest });
   // ...show the proposal (checkpointProposal) and collect the reviewer's approval...
   const approved = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
-  const store = new MemoryCheckpointStore(); // use a durable CAS store across tabs/processes
-  await store.write(approved, null);
+  if (!await store.write(approved, null)) throw new Error('Checkpoint already exists');
   let claimed = await updateCheckpoint(store, approved.id, current => claimCheckpoint(current,
     { owner: 'me', graphDigest: graphDigest(doc, {}, registry), sourceDigest, leaseMs: 60_000 }));
   const resumed = await runFlow(doc, { host, registry, resume: resumeOutputs(claimed) });

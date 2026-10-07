@@ -594,6 +594,37 @@ describe('dxfUnderlays saved under the legacy whole-file key (#7035)', () => {
     assert.equal((await rawGet(legacy))?.dxfUnderlays[0]?.opacity, 0.25, 'the edited legacy entry is still stored');
   });
 
+  it('does not write over the identity key\'s underlays when reading them for the move fails', async () => {
+    const { file, legacy, identity } = await legacyFixture(67, 'identity-read-failure-dxf.ifc');
+    await rawPut(legacy, [sampleUnderlay('legacy-u')]);
+    await rawPut(identity, [sampleUnderlay('identity-u')]);
+    // The restore reads the identity key before the move starts; the move
+    // reads the legacy key first. So every read of the identity key after the
+    // first read of the legacy key belongs to the move, and those fail here.
+    const realGet = IDBObjectStore.prototype.get;
+    let legacyRead = false;
+    let failedReads = 0;
+    IDBObjectStore.prototype.get = function get(this: IDBObjectStore, query: IDBValidKey | IDBKeyRange) {
+      if (query === legacy) legacyRead = true;
+      if (query === identity && legacyRead) {
+        failedReads += 1;
+        throw new DOMException('simulated read failure', 'UnknownError');
+      }
+      return realGet.call(this, query);
+    };
+    try {
+      useViewerStore.setState({ models: new Map([['identity-read-failure-model', stubModel('identity-read-failure-model', file)]]) });
+      await mount();
+      useViewerStore.getState().setActiveModel('identity-read-failure-model');
+      await until(async () => failedReads > 0, 'the move to read the identity key');
+      await flushDeep();
+    } finally {
+      IDBObjectStore.prototype.get = realGet;
+    }
+    assert.ok((await rawGet(identity))?.dxfUnderlays.some((u) => u.id === 'identity-u'), 'the identity key still holds its own underlay');
+    assert.deepStrictEqual((await rawGet(legacy))?.dxfUnderlays.map((u) => u.id), ['legacy-u'], 'and the legacy entry is not removed');
+  });
+
   it('a legacy entry whose read fails is not recorded as checked, and a later load moves it', async () => {
     const { file, legacy, identity } = await legacyFixture(63, 'read-failure-dxf.ifc');
     await rawPut(legacy, [sampleUnderlay('legacy-u')]);

@@ -236,9 +236,16 @@ export async function migrateLegacyDxfEntry(key: string, present: string[], ctx:
       const merged = dxf.merge(live, moved);
       if (merged !== live) useViewerStore.setState({ dxfUnderlays: merged });
     }
+    // What is read here may be written back with the legacy underlays added,
+    // so "nothing stored" must be true and not a read that failed. `load`
+    // answers `null` for both; the plain read rejects on a failure, and an
+    // entry that is stored but does not load stops the move as well.
     const stored = async () => {
       await dxf.saved(key);
-      return (await dxf.load(key))?.dxfUnderlays ?? [];
+      const raw = await dxf.request('readonly', (store) => store.get(key));
+      const entry = await dxf.load(key);
+      if (raw !== undefined && !entry) throw new Error('the identity-key underlays could not be read');
+      return entry?.dxfUnderlays ?? [];
     };
     let now = await stored();
     if (!holdsAll(now, moved)) {

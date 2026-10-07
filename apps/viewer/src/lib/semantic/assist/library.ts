@@ -20,7 +20,7 @@ import { decodeRevisionPin, type RevisionPin } from './revision-pin-schema';
 import type { SpanCheck } from './spans';
 
 interface ReviewBase { version: 1; id: string; createdAt: string; origin: string }
-type MappingFields = { type: 'mapping'; profile: { id: string; version: string }; pin: RevisionPin; approved: number[] };
+type MappingFields = { type: 'mapping'; profile: { id: string; version: string; identity?: string }; pin: RevisionPin; approved: number[] };
 type RequirementFields = { type: 'requirements'; spans: Array<SpanCheck['status']>; unsupportedSpans: Array<SpanCheck['status'] | null> };
 /**
  * What the content library holds: the envelope and the review decisions are
@@ -47,9 +47,10 @@ export function decodeSemanticReview(value: unknown): StoredSemanticReview | nul
   if (value.type === 'mapping') {
     const pin = decodeRevisionPin(value.pin);
     if (!pin || !record(value.profile) || typeof value.profile.id !== 'string' || typeof value.profile.version !== 'string'
+      || (value.profile.identity !== undefined && typeof value.profile.identity !== 'string')
       || !Array.isArray(value.approved) || !value.approved.length || value.approved.length > 200
       || !value.approved.every(index => Number.isInteger(index) && index >= 0) || new Set(value.approved).size !== value.approved.length) return null;
-    return { ...base, type: 'mapping', profile: { id: value.profile.id, version: value.profile.version }, pin, proposal, approved: [...value.approved] as number[] };
+    return { ...base, type: 'mapping', profile: { id: value.profile.id, version: value.profile.version, ...(typeof value.profile.identity === 'string' ? { identity: value.profile.identity } : {}) }, pin, proposal, approved: [...value.approved] as number[] };
   }
   if (value.type === 'requirements') {
     if (!Array.isArray(value.spans) || value.spans.length > 200 || !value.spans.every(status => SPAN_STATUSES.has(String(status)))

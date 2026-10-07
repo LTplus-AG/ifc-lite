@@ -99,8 +99,8 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
       <AssistantAction />
     </div>
     <div className="flex flex-wrap gap-2">
-      <button className={button} disabled={pilot.busy} onClick={() => void pilot.demo(true)}>{t('semantic.demo')}</button>
-      <button className={button} disabled={pilot.busy} onClick={() => void pilot.demo(false)}>{t('semantic.recordsOnly')}</button>
+      <button className={button} disabled={pilot.busy} onClick={() => { revokeSource(); void pilot.demo(true); }}>{t('semantic.demo')}</button>
+      <button className={button} disabled={pilot.busy} onClick={() => { revokeSource(); void pilot.demo(false); }}>{t('semantic.recordsOnly')}</button>
     </div>
     <label className="block text-sm">{t('semantic.mode')}<select className={control} value={mode} onChange={e => { revokeSource(); setMode(e.target.value); }}>
       {(['local', 'turtle', 'nquads', 'jsonld', 'json', 'sparql', 'construct'] as const).map(value => <option key={value} value={value}>{t(`semantic.${value}`)}</option>)}

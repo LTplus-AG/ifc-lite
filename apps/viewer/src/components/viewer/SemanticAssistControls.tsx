@@ -20,6 +20,7 @@ export function SemanticAssistControls({ onError }: { onError: (message: string)
   const { t } = useTranslation();
   const sources = useSemanticSourceTexts(s => s.sources);
   const document = useSemanticSession(s => s.document);
+  const profile = useSemanticSession(s => s.profile);
   const revisions = useSemanticSession(s => s.revisions);
   const models = useViewerStore(s => s.models);
   const stored = useSemanticReviews(s => s.entries);
@@ -49,7 +50,7 @@ export function SemanticAssistControls({ onError }: { onError: (message: string)
     {!stored.length && <p className="text-sm text-muted-foreground">{t('semanticAssist.savedNone')}</p>}
     {unreadable > 0 && <output className="block text-sm text-muted-foreground">{t('semanticAssist.savedUnreadable', { count: unreadable })}</output>}
     <ul className="space-y-1 text-sm">{reviews.map(entry => {
-      const historical = entry.type === 'mapping' && !revisionPinIsCurrent(entry.pin, revisions, models);
+      const historical = entry.type === 'mapping' && (!revisionPinIsCurrent(entry.pin, revisions, models) || entry.profile.identity !== JSON.stringify(profile));
       return <li key={entry.id} className="flex items-start justify-between gap-2">
         <span className="min-w-0 break-words">
           {entry.proposal.title} · {entry.type === 'mapping'

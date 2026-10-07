@@ -42,15 +42,17 @@ export function SemanticMappingReview({ proposal, origin, passages }: { proposal
     // Model or edit changes re-count classes against the current revision.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [proposal, profile, revisions, passages, models, mutationVersion]);
-  const [approved, setApproved] = useState<ReadonlySet<number>>(new Set());
-  const [saved, setSaved] = useState(false);
+  const [approval, setApproval] = useState<{ view: typeof review; indices: ReadonlySet<number> } | null>(null);
+  const approved = approval?.view === review ? approval.indices : new Set<number>();
+  const [savedReview, setSavedReview] = useState<typeof review | null>(null);
+  const saved = savedReview === review;
   const [error, setError] = useState<string | null>(null);
   const chosen = [...approved].filter(index => review.rows[index]?.approvable).sort((a, b) => a - b);
   const save = async () => {
     setError(null);
     try {
-      setSaved(await saveSemanticReview({ version: 1, id: crypto.randomUUID(), type: 'mapping', createdAt: new Date().toISOString(), origin,
-        profile: { id: profile.id, version: profile.version }, pin: captureRevisionPin(revisions), proposal, approved: chosen }));
+      if (await saveSemanticReview({ version: 1, id: crypto.randomUUID(), type: 'mapping', createdAt: new Date().toISOString(), origin,
+        profile: { id: profile.id, version: profile.version, identity: JSON.stringify(profile) }, pin: captureRevisionPin(revisions), proposal, approved: chosen })) setSavedReview(review);
     } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
   };
   return <ReviewFrame label={t('semanticAssist.mappingTitle')} title={proposal.title}>
@@ -59,7 +61,7 @@ export function SemanticMappingReview({ proposal, origin, passages }: { proposal
     <ol className="space-y-2">{review.rows.map((row, index) => <li key={index} className="rounded border border-border p-1.5 space-y-1">
       <div className="flex items-start gap-2">
         <input id={`${id}-${index}`} type="checkbox" checked={approved.has(index)} disabled={!row.approvable || saved}
-          onChange={event => setApproved(current => { const next = new Set(current); if (event.target.checked) next.add(index); else next.delete(index); return next; })} />
+          onChange={event => { const next = new Set(approved); if (event.target.checked) next.add(index); else next.delete(index); setApproval({ view: review, indices: next }); }} />
         <div className="min-w-0 space-y-0.5">
           <label htmlFor={`${id}-${index}`} className="block font-mono text-2xs break-all">{[row.mapping.ifc.class, row.mapping.ifc.pset && `${row.mapping.ifc.pset}.${row.mapping.ifc.property}`].filter(Boolean).join(' · ')}</label>
           <span className="block">→ <Term match={row.classTerm} value={row.mapping.ontology.class} /> <Term match={row.propertyTerm} value={row.mapping.ontology.property} /></span>

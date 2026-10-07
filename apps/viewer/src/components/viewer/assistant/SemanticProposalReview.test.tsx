@@ -176,3 +176,36 @@ test('#6920 a malformed or unsafe semantic reply is a refused proposal with its 
   const ui = render(<SemanticProposalReview />);
   assert.equal(ui.querySelector('section'), null);
 });
+
+
+test('#7000 reassociating a projection requires approval of the new native target', async () => {
+  const { document } = await seedSemanticModels(2);
+  useViewerStore.setState({ editEnabled: true });
+  const resource = document.resources.find(row => row.id.endsWith('installation/1'))!;
+  replaceEvidence(captureEvidence('semantic'));
+  useAssistant.setState({ messages: [{ role: 'assistant', content: JSON.stringify({ version: 1, kind: 'semantic.projection',
+    title: 'Project', projections: [{ resource: resource.id, field: 'fireRating', policy: 'overwrite' }] }) }] });
+  const ui = render(<SemanticProposalReview />);
+  click(ui.querySelector('input[type="checkbox"]')!);
+  assert.equal((buttonLabelled(ui, /Apply 1 projection/) as HTMLButtonElement).disabled, false);
+  const before = useViewerStore.getState().mutationVersion;
+  act(() => useSemanticSession.setState({ revisions: new Map([[DEMO_REVISIONS[0], 'm1']]) }));
+  assert.equal(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked, false);
+  const apply = buttonLabelled(ui, /Apply 0 projections/) as HTMLButtonElement;
+  assert.equal(apply.disabled, true);
+  click(apply);
+  assert.equal(useViewerStore.getState().mutationVersion, before, 'reassociation cannot reuse an old approval');
+});
+
+test('#7000 reassociation clears mapping approval and unloading its target blocks saving', async () => {
+  await converse(MAPPINGS, 2);
+  const ui = render(<SemanticProposalReview />);
+  click(ui.querySelector('input[type="checkbox"]')!);
+  act(() => useSemanticSession.setState({ revisions: new Map([[DEMO_REVISIONS[0], 'm1']]) }));
+  assert.equal(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked, false);
+  assert.equal((buttonLabelled(ui, /Save 0 approved/) as HTMLButtonElement).disabled, true);
+  click(ui.querySelector('input[type="checkbox"]')!);
+  act(() => useViewerStore.setState({ models: new Map([...useViewerStore.getState().models].filter(([id]) => id !== 'm1')) }));
+  assert.equal(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled, true);
+  assert.equal((buttonLabelled(ui, /Save 0 approved/) as HTMLButtonElement).disabled, true);
+});

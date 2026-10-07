@@ -78,7 +78,14 @@ function assertCurrentProjection(plan: ProjectionPlan, revisions: ReadonlyMap<st
 
 /** Validate every plan before writing; the complete reviewed batch is one native undo step. */
 export function applyProjections(plans: readonly ProjectionPlan[], revisions: ReadonlyMap<string, string>, scope?: string): void {
-  for (const plan of plans) assertCurrentProjection(plan, revisions, scope);
+  const targets = new Set<string>();
+  for (const plan of plans) {
+    assertCurrentProjection(plan, revisions, scope);
+    if (plan.skip) continue;
+    const target = JSON.stringify([plan.ref.modelId, plan.ref.expressId, plan.mapping.pset, plan.mapping.property]);
+    if (targets.has(target)) throw new Error('Multiple projections target the same IFC property; choose one');
+    targets.add(target);
+  }
   const mutation = createMutateAdapter(useViewerStore); const label = 'Semantic property projection';
   mutation.batchBegin(label);
   try {

@@ -49,9 +49,15 @@ test('#6920 attached texts are session-only, numbered S1..S9 and removable; save
   const proposal = parseSemanticMapping(JSON.stringify({ version: 1, kind: 'semantic.mapping', title: 'Saved doors', modelRevision: DEMO_REVISIONS[0],
     mappings: [{ ifc: { class: 'IfcDoor' }, ontology: { class: 'Installation' }, confidence: 0.7 }] }));
   await act(async () => { await saveSemanticReview({ version: 1, id: 'review-1', type: 'mapping', createdAt: '2026-01-01T00:00:00.000Z', origin: 'test',
-    profile: { id: 'p', version: '1' }, pin: captureRevisionPin(), proposal, approved: [0] }); });
+    profile: { id: useSemanticSession.getState().profile.id, version: useSemanticSession.getState().profile.version, identity: JSON.stringify(useSemanticSession.getState().profile) }, pin: captureRevisionPin(), proposal, approved: [0] }); });
   await waitFor(() => /Saved doors/.test(ui.textContent ?? ''), 'saved review listed');
   assert.match(ui.textContent ?? '', /1 mapping for .*revision\/1/);
+  assert.match(ui.textContent ?? '', /Current/);
+  const reviewedProfile = useSemanticSession.getState().profile;
+  act(() => useSemanticSession.setState({ profile: { ...reviewedProfile, fields: {} } }));
+  assert.match(ui.textContent ?? '', /Historical/);
+  assert.doesNotMatch(ui.textContent ?? '', /Current/);
+  act(() => useSemanticSession.setState({ profile: reviewedProfile }));
   assert.match(ui.textContent ?? '', /Current/);
   act(() => useSemanticSession.setState({ revisions: new Map([[DEMO_REVISIONS[0], 'm1']]) }));
   assert.match(ui.textContent ?? '', /Historical/);
@@ -72,7 +78,7 @@ test('#6920 attached texts are session-only, numbered S1..S9 and removable; save
 
 function field(ui: HTMLElement, text: string) { const element = find(ui, 'label', text).querySelector('input'); assert.ok(element); return element; }
 
-for (const change of ['endpoint', 'host', 'bearer', 'relay', 'mode', 'restore', 'unmount'] as const) {
+for (const change of ['endpoint', 'host', 'bearer', 'relay', 'mode', 'restore', 'demoRecords', 'unmount'] as const) {
   test(`#6920 the assistant keeps the endpoint authority only until ${change} changes it`, async () => {
     const stub = captureFetch(() => new Response(JSON.stringify(pilotDocument()), { status: 200, headers: { 'content-type': 'application/json' } }));
     try {
@@ -93,6 +99,11 @@ for (const change of ['endpoint', 'host', 'bearer', 'relay', 'mode', 'restore', 
       else if (change === 'bearer') input(find(ui, 'label', 'Bearer').querySelector('input')!, 'ANOTHER');
       else if (change === 'relay') input(find(ui, 'label', 'Authorized relay').querySelector('input')!, 'relay-1');
       else if (change === 'mode') act(() => { select.value = 'sparql'; select.dispatchEvent(new window.Event('change', { bubbles: true })); });
+      else if (change === 'demoRecords') {
+        const demo = find(ui, 'button', 'Use example records') as HTMLButtonElement;
+        await waitFor(() => !demo.disabled, 'endpoint load finished');
+        click(demo);
+      }
       else if (change === 'restore') click(find(ui, 'button', 'Restore saved workspace'));
       else cleanup();
       assert.equal(useSemanticEndpointGrant.getState().grant, null);

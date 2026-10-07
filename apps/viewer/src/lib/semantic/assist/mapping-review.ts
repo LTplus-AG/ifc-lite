@@ -30,7 +30,9 @@ export interface MappingReview { modelId: string | null; rows: MappingRow[] }
 export function reviewSemanticMapping(proposal: SemanticMappingProposal, input: {
   profile: ProfileDefinition; revisions: ReadonlyMap<string, string>; passages: readonly Passage[]; store?: StoreApi;
 }): MappingReview {
-  const modelId = input.revisions.get(proposal.modelRevision) ?? null;
+  const store = input.store ?? useViewerStore;
+  const associated = input.revisions.get(proposal.modelRevision);
+  const modelId = associated && store.getState().models.has(associated) ? associated : null;
   const query = createQueryAdapter(input.store ?? useViewerStore);
   const counts = new Map<string, number>();
   const rows = proposal.mappings.map((mapping): MappingRow => {

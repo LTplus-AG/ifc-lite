@@ -29,13 +29,14 @@ export function SemanticProjectionReview({ proposal }: { proposal: SemanticProje
     // The native preview reads live model state; re-preview after edits, reloads and edit-mode changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [proposal, document, profile, revisions, retrievedAt, models, mutationVersion, denial]);
-  const [approved, setApproved] = useState<ReadonlySet<number>>(new Set());
+  const [approval, setApproval] = useState<{ view: typeof rows; indices: ReadonlySet<number> } | null>(null);
+  const approved = approval?.view === rows ? approval.indices : new Set<number>();
   const [outcome, setOutcome] = useState<{ applied: number; errors: string[] } | null>(null);
   const plans = [...approved].flatMap(index => { const row = rows[index]; return row?.status === 'ready' && !row.plan.skip ? [row.plan] : []; });
   const apply = () => {
     const results = applySemanticProjections(plans, revisions);
     setOutcome({ applied: results.filter(result => !result.error).length, errors: results.flatMap(result => result.error ? [result.error] : []) });
-    setApproved(new Set());
+    setApproval(null);
   };
   return <ReviewFrame label={t('semanticAssist.projectionTitle')} title={proposal.title}>
     {proposal.rationale && <p className="text-muted-foreground break-words">{proposal.rationale}</p>}
@@ -44,7 +45,7 @@ export function SemanticProjectionReview({ proposal }: { proposal: SemanticProje
       <p className="break-all"><span className="font-mono text-2xs">{row.projection.field}</span> · {row.projection.resource}</p>
       {row.status === 'ready' ? <div className="flex items-start gap-2">
         <input id={`${id}-${index}`} type="checkbox" checked={approved.has(index)} disabled={row.plan.skip}
-          onChange={event => setApproved(current => { const next = new Set(current); if (event.target.checked) next.add(index); else next.delete(index); return next; })} />
+          onChange={event => { const next = new Set(approved); if (event.target.checked) next.add(index); else next.delete(index); setApproval({ view: rows, indices: next }); }} />
         <div className="min-w-0">
           <label htmlFor={`${id}-${index}`} className="block font-mono text-2xs break-all">{row.plan.targetGlobalId} · {row.plan.mapping.pset}.{row.plan.mapping.property}</label>
           <span className="block">{t('semanticAssist.projectionValues', { previous: show(row.plan.previous), value: show(row.plan.value), unit: row.plan.mapping.unit ?? '' })}</span>

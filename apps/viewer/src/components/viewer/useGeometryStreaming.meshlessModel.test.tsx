@@ -23,7 +23,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { afterEach, it } from 'node:test';
+import { afterEach, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useMemo, useRef, useState } from 'react';
 import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
@@ -55,7 +55,7 @@ function Viewport({ renderer }: { renderer: Renderer }) {
     geometryReplacementVersion: filtered.geometryReplacementVersion,
     modelCount: s.models.size, modelIdToIndex: indices,
     presentInstancedModelIndices: new Set(indices.values()), isInitialized: true, isStreaming,
-    geometryBoundsRef, clearColorRef, pendingMeshColorUpdates: null, pendingColorUpdates: null,
+    geometryBoundsRef, clearColorRef, pendingMeshColorUpdates: s.pendingMeshColorUpdates, pendingColorUpdates: null,
     pendingMeshRemovals: null, pendingMeshTranslations: null, pendingMeshRotations: null, pendingInstancedShards: null,
     clearPendingMeshColorUpdates: s.clearPendingMeshColorUpdates, clearPendingColorUpdates: s.clearPendingColorUpdates,
     clearPendingMeshRemovals: s.clearPendingMeshRemovals, pruneGeometryMeshes: s.pruneGeometryMeshes,
@@ -68,6 +68,7 @@ afterEach(() => {
   cleanup();
   useViewerStore.getState().clearAllModels();
   modelIndices(new Map());
+  mock.restoreAll();
 });
 
 const IFC_ELEMENTS = 6;
@@ -123,6 +124,22 @@ function mount() {
 
 type Native = ReturnType<typeof mount>;
 const flush = (native: Native) => native.scene.flushPending(native.device, native.pipeline, Infinity);
+
+it('completion recolouring drains colours without re-uploading geometry (#7047)', async () => {
+  const native = mount();
+  await streamIfc(native);
+  await waitFor(() => !native.scene.hasStreamingFragments(), 'initial streamed geometry finalized');
+  await act(async () => { useViewerStore.getState().setActiveModel('ifc'); });
+  const rebuild = mock.method(native.scene, 'clearFlatGeometryForRebuild');
+  const append = mock.method(native.scene, 'appendToBatches');
+  await act(async () => {
+    useViewerStore.getState().updateMeshColors(new Map([[10, [0, 1, 0, 1]]]));
+  });
+  assert.deepEqual(native.scene.getMeshDataPieces(10)?.[0].color, [0, 1, 0, 1], 'the Scene receives the actual colour change');
+  assert.equal(rebuild.mock.callCount(), 0, 'a colour wrapper replacement must not clear geometry');
+  assert.equal(append.mock.callCount(), 0, 'the existing colour drain needs no geometry upload');
+  assert.equal(sceneTriangles(native.scene), IFC_TRIANGLES);
+});
 
 // #7047: renderer vertices must follow immutable replacement, even with the
 // same IDs and count. Growing replacements must not be mistaken for appends.

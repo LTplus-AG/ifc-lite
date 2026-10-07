@@ -112,6 +112,7 @@ it('shows the replacement after a completion recolour swaps the mesh array (#702
   assert.deepEqual(ids(seen!.merged), [a.expressId, b.expressId]);
   assert.deepEqual(seen!.merged[1].color, [0, 1, 0, 1]);
   assert.equal(seen!.merged[1].modelIndex, 0);
+  assert.equal(seen!.replacement, 0, 'completion recolouring uses the colour drain, not a geometry rebuild (#7047)');
 });
 
 it('stamps each model its own index once a second model joins (#7021)', () => {

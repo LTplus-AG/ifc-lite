@@ -34,19 +34,31 @@
 import { useEffect, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice.js';
-import { migrateLegacyDxfUnderlays, resolveDrawingPersistenceKey, unionById } from './drawingPersistenceKey.js';
+import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
+import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { loadDrawing2DEntry, defaultMarkupPatch, suppressNextSaveFor } from '@/store/slices/drawing2DSlice.persistence.js';
 import { setCachedHash, notifyDecided } from './drawingMarkupRestorePrecedence.js';
 import { resetSaveState, beginRestore, endRestore, setRestoredSectionConfig, ensureSaveSubscription } from './drawingMarkupSave.js';
-import { ensureSheetPersistence, settleSheetHash } from './sheetPersistence.js';
+import { ensureSheetPersistence, hasUnsavedSheetEdit, settleSheetHash } from './sheetPersistence.js';
 import {
   ensureDxfUnderlaySaveSubscription,
   restoreDxfUnderlaysFor,
   settleDxfUnderlayHash,
+  waitForPendingDxfUnderlaySave,
 } from './dxfUnderlaySave.js';
+import type { DrawingKeyHost } from './drawingPersistenceKey.js';
 
 export { hasPersistedMarkupEntryFor, onLocalStorageDecidedFor } from './drawingMarkupRestorePrecedence.js';
 export { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './drawingMarkupSave.js';
+
+/**
+ * The key resolver and the legacy-key move (#7035) are imported on demand:
+ * this hook is in the viewer's eager bundle and they need not be. What they
+ * use from modules that ARE eager is handed over, so importing them does not
+ * pull those modules into chunks of their own.
+ */
+const drawingKey = () => import('./drawingPersistenceKey.js');
+const keyHost: DrawingKeyHost = { identifyLoadedPlacementSource, placementSourceIdentity, hasUnsavedSheetEdit, waitForPendingDxfUnderlaySave };
 
 /** A model id may be reused for replacement bytes; cached hashes belong to a source. */
 const sourceHashes = new WeakMap<File, string | null>();
@@ -154,7 +166,12 @@ export function useDrawing2DPersistence(): void {
       // The legacy-key move (#7035) starts only once that restore is done: it
       // adds to the live list, and the save that follows would replace the
       // identity key's own underlays if they were not in the list yet.
-      const moveLegacy = () => { if (activeSourceFile) migrateLegacyDxfUnderlays(hash, activeModelId, activeSourceFile, stillCurrent); };
+      const moveLegacy = () => {
+        if (!activeSourceFile) return;
+        drawingKey().then((key) => key.migrateLegacyDxfUnderlays(hash, activeModelId, activeSourceFile, stillCurrent, keyHost))
+          // eslint-disable-next-line no-console
+          .catch((err) => console.warn('[drawing2D] legacy DXF underlays not moved', err));
+      };
       if (skipDxfRestore) moveLegacy();
       else void restoreDxfUnderlaysFor(hash, stillCurrent).then(moveLegacy, moveLegacy);
 
@@ -163,16 +180,11 @@ export function useDrawing2DPersistence(): void {
       if (!entry) return;
 
       setRestoredSectionConfig(activeModelId, entry.sectionConfig);
-      // The fields were cleared when this model became active, so anything in
-      // them now was drawn while the key was resolving (#7035: that can last
-      // until the load ends when a legacy entry is being moved). Keep it
-      // beside the saved items; the save this patch triggers stores both.
-      const live = useViewerStore.getState();
       useViewerStore.setState({
-        measure2DResults: unionById(entry.measure2DResults, live.measure2DResults),
-        polygonArea2DResults: unionById(entry.polygonArea2DResults, live.polygonArea2DResults),
-        textAnnotations2D: unionById(entry.textAnnotations2D, live.textAnnotations2D),
-        cloudAnnotations2D: unionById(entry.cloudAnnotations2D, live.cloudAnnotations2D),
+        measure2DResults: entry.measure2DResults,
+        polygonArea2DResults: entry.polygonArea2DResults,
+        textAnnotations2D: entry.textAnnotations2D,
+        cloudAnnotations2D: entry.cloudAnnotations2D,
         drawing2DDisplayOptions: entry.drawing2DDisplayOptions,
       });
     };
@@ -208,7 +220,7 @@ export function useDrawing2DPersistence(): void {
       return;
     }
 
-    resolveDrawingPersistenceKey(activeModelId, sourceFile)
+    drawingKey().then((key) => key.resolveDrawingPersistenceKey(activeModelId, sourceFile, keyHost))
       .then((hash) => {
         if (!cacheHash(hash)) { settleSheetHash(activeModelId, hash, sourceFile); return; }
         applyHash(hash, settleHash(hash));

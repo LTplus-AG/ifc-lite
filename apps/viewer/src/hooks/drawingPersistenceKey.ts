@@ -13,8 +13,12 @@
  * change is a bare `<64 hex>`. The two shapes cannot collide, and the bare
  * shape is how an entry that still needs moving is recognised without hashing
  * anything. The move itself lives in `drawingLegacyKeyMigration.ts`, imported
- * only when such an entry exists. This module is part of the viewer's eager
- * bundle, so it hands that one what it needs instead of being imported by it.
+ * only when such an entry exists.
+ *
+ * `useDrawing2DPersistence.ts` imports this module on demand, to keep it out
+ * of the viewer's eager bundle. For the same reason it does not import the
+ * eager modules it calls into; the hook hands those functions over as a
+ * {@link DrawingKeyHost}.
  *
  * The identity on a record belongs to the record's `sourceFile`: the loader
  * creates a record per load and writes the identity only while the record
@@ -23,8 +27,6 @@
 
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store';
-import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
-import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { keyFor } from '@/store/slices/drawing2DSlice.persistence.js';
 import { sheetStorageKey } from '@/store/slices/sheetSlice.persistence';
 import {
@@ -33,8 +35,18 @@ import {
   requestDxfUnderlayStore,
   saveDxfUnderlaysEntry,
 } from '@/store/slices/drawing2DSlice.dxfPersistence.js';
-import { hasUnsavedSheetEdit } from './sheetPersistence.js';
-import { waitForPendingDxfUnderlaySave } from './dxfUnderlaySave.js';
+
+/** What this module uses from modules of the eager bundle. */
+export interface DrawingKeyHost {
+  /** `lib/model-placement/loaded-source-identity.ts` */
+  identifyLoadedPlacementSource: (modelId: string, file: File) => Promise<void>;
+  /** `lib/model-placement/source-identity.ts` */
+  placementSourceIdentity: (file: File) => Promise<string | undefined>;
+  /** `hooks/sheetPersistence.ts` */
+  hasUnsavedSheetEdit: (modelId: string, file: File) => boolean;
+  /** `hooks/dxfUnderlaySave.ts` */
+  waitForPendingDxfUnderlaySave: (key: string) => Promise<void>;
+}
 
 const LEGACY_KEY = /^[0-9a-f]{64}$/;
 /** `true` for a key written before #7035: a bare whole-file SHA-256. */
@@ -69,27 +81,27 @@ function whenModel<T>(modelId: string, file: File, pick: (model: FederatedModel)
   });
 }
 
-/** What the legacy-key move needs from the eager bundle. */
+/** What the legacy-key move works with. */
 export interface LegacyMoveContext {
   modelId: string;
   file: File;
   /** Resolves `true` once the model has finished loading `file`, `false` if it was closed or replaced first. */
   loaded: () => Promise<boolean>;
   unionById: typeof unionById;
-  /** The DXF underlay store and its save queue, which live in an eager chunk of their own. */
+  /** The DXF underlay store and its save queue. */
   dxf: {
     load: typeof loadDxfUnderlaysEntry;
     save: typeof saveDxfUnderlaysEntry;
     merge: typeof mergeDxfUnderlays;
     request: typeof requestDxfUnderlayStore;
-    saved: typeof waitForPendingDxfUnderlaySave;
+    saved: DrawingKeyHost['waitForPendingDxfUnderlaySave'];
   };
 }
 
 const legacyMove = () => import('./drawingLegacyKeyMigration.js');
-const moveContext = (modelId: string, file: File): LegacyMoveContext => ({
+const moveContext = (modelId: string, file: File, host: DrawingKeyHost): LegacyMoveContext => ({
   modelId, file, unionById,
-  dxf: { load: loadDxfUnderlaysEntry, save: saveDxfUnderlaysEntry, merge: mergeDxfUnderlays, request: requestDxfUnderlayStore, saved: waitForPendingDxfUnderlaySave },
+  dxf: { load: loadDxfUnderlaysEntry, save: saveDxfUnderlaysEntry, merge: mergeDxfUnderlays, request: requestDxfUnderlayStore, saved: host.waitForPendingDxfUnderlaySave },
   loaded: () => whenModel(modelId, file, (model) => (loading(model) ? undefined : true)).then((loaded) => loaded === true),
 });
 
@@ -99,16 +111,16 @@ const moveContext = (modelId: string, file: File): LegacyMoveContext => ({
  * cases have no identity on the record when asked. A model that finished
  * loading without one (a point cloud is identified after its scan is
  * finalized; a record created outside the loader never is) gets it from the
- * shared {@link identifyLoadedPlacementSource} pass. A load that was closed
- * first is hashed only if a sheet edit made during it still needs a key to be
- * saved under.
+ * shared `identifyLoadedPlacementSource` pass. A load that was closed first is
+ * hashed only if a sheet edit made during it still needs a key to be saved
+ * under.
  */
-async function identityOf(modelId: string, file: File): Promise<string | null> {
+async function identityOf(modelId: string, file: File, host: DrawingKeyHost): Promise<string | null> {
   const known = await whenModel(modelId, file, (model) => model.sourceContentHash ?? (loading(model) ? undefined : ''));
   if (known) return known;
   if (!globalThis.crypto?.subtle) return null; // no digest in this context, so nothing was ever keyed either
-  if (known === null) return hasUnsavedSheetEdit(modelId, file) ? await placementSourceIdentity(file) ?? null : null;
-  await identifyLoadedPlacementSource(modelId, file);
+  if (known === null) return host.hasUnsavedSheetEdit(modelId, file) ? await host.placementSourceIdentity(file) ?? null : null;
+  await host.identifyLoadedPlacementSource(modelId, file);
   const model = useViewerStore.getState().models.get(modelId);
   return model?.sourceFile === file ? model.sourceContentHash ?? null : null;
 }
@@ -137,12 +149,12 @@ function legacyLocalKeys(): string[] {
  * entry is found on the load that migrates it and still outranks IFC-embedded
  * markup.
  */
-export async function resolveDrawingPersistenceKey(modelId: string, file: File): Promise<string | null> {
-  const key = await identityOf(modelId, file);
+export async function resolveDrawingPersistenceKey(modelId: string, file: File, host: DrawingKeyHost): Promise<string | null> {
+  const key = await identityOf(modelId, file, host);
   const legacy = key ? legacyLocalKeys() : [];
   if (key && legacy.length) {
     try {
-      await (await legacyMove()).migrateLegacyLocalEntries(key, legacy, moveContext(modelId, file));
+      await (await legacyMove()).migrateLegacyLocalEntries(key, legacy, moveContext(modelId, file, host));
     } catch (err) {
       // The legacy entry is untouched; the next load moves it and merges it
       // with whatever this session saves under `key`.
@@ -153,11 +165,7 @@ export async function resolveDrawingPersistenceKey(modelId: string, file: File):
 }
 
 /** After `key`'s restore has settled: move DXF underlays still stored under a legacy key. They merge additively, so they never hold the restore. */
-export function migrateLegacyDxfUnderlays(key: string, modelId: string, file: File, stillCurrent: () => boolean): void {
-  void requestDxfUnderlayStore('readonly', (store) => store.getAllKeys()).then(async (keys) => {
-    const legacy = keys?.filter(isLegacyKey);
-    if (legacy?.length) await (await legacyMove()).migrateLegacyDxfEntry(key, legacy, moveContext(modelId, file), stillCurrent);
-  }).catch((err) => {
-    console.warn('[drawing2D] legacy DXF underlays not moved', err);
-  });
+export async function migrateLegacyDxfUnderlays(key: string, modelId: string, file: File, stillCurrent: () => boolean, host: DrawingKeyHost): Promise<void> {
+  const legacy = (await requestDxfUnderlayStore('readonly', (store) => store.getAllKeys()))?.filter(isLegacyKey);
+  if (legacy?.length) await (await legacyMove()).migrateLegacyDxfEntry(key, legacy, moveContext(modelId, file, host), stillCurrent);
 }

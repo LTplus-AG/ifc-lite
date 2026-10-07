@@ -164,6 +164,26 @@ function moveLegacySheet(key: string, legacy: string): boolean {
 }
 
 /**
+ * The restore that follows the move replaces the markup in the store with the
+ * entry under `key`. The move can hold that restore until the load has ended,
+ * and what was drawn meanwhile exists only in the store, so it is added to the
+ * entry first (drawn items win on a shared `id`: they are the newest).
+ */
+function storeMarkupDrawnMeanwhile(key: string, ctx: LegacyMoveContext): void {
+  const state = useViewerStore.getState();
+  if (state.activeModelId !== ctx.modelId || state.models.get(ctx.modelId)?.sourceFile !== ctx.file) return;
+  const entry = loadDrawing2DEntry(key, getDefaultDrawing2DState().drawing2DDisplayOptions);
+  if (!entry || !MARKUP_LISTS.some((list) => state[list].length > 0)) return;
+  saveDrawing2DEntry(key, {
+    ...entry,
+    measure2DResults: ctx.unionById(entry.measure2DResults, state.measure2DResults),
+    polygonArea2DResults: ctx.unionById(entry.polygonArea2DResults, state.polygonArea2DResults),
+    textAnnotations2D: ctx.unionById(entry.textAnnotations2D, state.textAnnotations2D),
+    cloudAnnotations2D: ctx.unionById(entry.cloudAnnotations2D, state.cloudAnnotations2D),
+  });
+}
+
+/**
  * Moves the file's markup and sheet from its legacy key to `key`, unless `key`
  * was already checked or the model closed first. `present` are the localStorage
  * keys of the legacy entries stored right now.
@@ -173,6 +193,7 @@ export async function migrateLegacyLocalEntries(key: string, present: string[], 
   if (!legacy) return;
   const markup = moveLegacyMarkup(key, legacy, ctx.unionById);
   const sheet = moveLegacySheet(key, legacy);
+  storeMarkupDrawnMeanwhile(key, ctx);
   // Checked against what is left: an entry that reappears under a removed key is new.
   const removed = [keyFor(legacy), sheetStorageKey(legacy)].filter((moved) => localStorage.getItem(moved) === null);
   if (markup && sheet) markChecked('local', key, present.filter((other) => !removed.includes(other)));

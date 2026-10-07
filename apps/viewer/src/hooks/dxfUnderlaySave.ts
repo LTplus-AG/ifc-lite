@@ -38,12 +38,15 @@
 
 import { useViewerStore } from '@/store';
 import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice.js';
-import {
-  loadDxfUnderlaysEntry,
-  saveDxfUnderlaysEntry,
-  mergeDxfUnderlays,
-} from '@/store/slices/drawing2DSlice.dxfPersistence.js';
 import { getCachedHash } from './drawingMarkupRestorePrecedence.js';
+
+/**
+ * The IndexedDB store module, imported on first use (#7035). This file is in
+ * the viewer's eager bundle; the store (open, validation, eviction) is only
+ * needed once a model has a resolved key, and every call into it is already
+ * asynchronous.
+ */
+const dxfStore = () => import('@/store/slices/drawing2DSlice.dxfPersistence.js');
 
 // ── Save ─────────────────────────────────────────────────────────────
 
@@ -65,8 +68,12 @@ function drain(hash: string): Promise<void> {
         const value = pendingByHash.get(hash);
         if (value === undefined) break;
         pendingByHash.delete(hash);
-        await saveDxfUnderlaysEntry(hash, value);
+        await (await dxfStore()).saveDxfUnderlaysEntry(hash, value);
       }
+    } catch (err) {
+      // Only the import can throw here; the store itself warns and resolves.
+      // eslint-disable-next-line no-console
+      console.warn('[drawing2D] failed to load the dxfUnderlays store', err);
     } finally {
       drainsByHash.delete(hash);
     }
@@ -136,7 +143,7 @@ export function settleDxfUnderlayHash(modelId: string, hash: string | null): boo
  * A `null` load result (nothing saved for `hash`, or a corrupt stored
  * value) leaves the store's `dxfUnderlays` completely untouched — no
  * `setState` call at all — which is what "restores as absent, not as an
- * explicit empty array" means at this layer: {@link mergeDxfUnderlays}'s own
+ * explicit empty array" means at this layer: `mergeDxfUnderlays`'s own
  * `saved.length === 0` branch would already no-op on an explicit `[]`, but
  * this function does not even reach that branch for `null`.
  */
@@ -144,6 +151,9 @@ export async function restoreDxfUnderlaysFor(
   hash: string,
   stillCurrent: () => boolean,
 ): Promise<void> {
+  // Imported before the wait below, so nothing is awaited between that wait
+  // and the read it protects.
+  const { loadDxfUnderlaysEntry, mergeDxfUnderlays } = await dxfStore();
   // A cached A→B→A switch can arrive while A's latest removal is coalesced
   // behind an in-flight write. Reading before that drain commits would merge
   // the older saved underlay back into the live workspace.

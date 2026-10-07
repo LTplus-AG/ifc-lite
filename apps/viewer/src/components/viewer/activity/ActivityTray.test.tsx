@@ -19,7 +19,7 @@ import { advance, cleanup, click, press, render } from '@/test/render.js';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { MobileToolbar } from '../MobileToolbar';
-import { beginActivity, finishActivity, restoreActivityJournal, useActivityJournal } from '@/lib/activity/activity-journal';
+import { beginActivity, finishActivity, restoreActivityJournal, useActivityJournal, updateActivity, ACTIVITY_STORAGE_KEY } from '@/lib/activity/activity-journal';
 import { isCataloguedKey } from '@/lib/activity/activity-recorders';
 import { useBcfOutbox } from '@/lib/bcf-publication/outbox-store';
 import type { BcfPublication, OutboxState } from '@/lib/bcf-publication/outbox-types';
@@ -244,4 +244,17 @@ it('#6952 running jobs sort above newer queued publications', async () => {
   await openTray(ui.querySelector('button')!);
   assert.match(text(rows()[0]), /Load model.*Running/);
   assert.match(text(rows()[1]), /BCF publication.*Queued/);
+});
+
+
+it('#6952 a cancel handle arriving after the row mounts becomes actionable immediately', async () => {
+  const job = beginActivity({ kind: 'load', title: 'activityTray.job.load' });
+  const ui = render(<ActivityTrayButton />);
+  await openTray(ui.querySelector('button')!);
+  assert.equal(rows()[0].querySelector('button[aria-label^="Cancel"]'), null);
+  let cancelled = false;
+  await act(async () => updateActivity(job, { cancel: () => { cancelled = true; } }));
+  const cancel = rows()[0].querySelector<HTMLButtonElement>('button[aria-label^="Cancel"]');
+  assert.ok(cancel); click(cancel); assert.equal(cancelled, true);
+  assert.ok(!(sessionStorage.getItem(ACTIVITY_STORAGE_KEY) ?? '').includes('cancel'), 'the runtime handle is never persisted');
 });

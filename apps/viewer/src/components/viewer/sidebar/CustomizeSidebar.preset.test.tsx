@@ -4,18 +4,19 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
-import { CustomizeSidebar } from './CustomizeSidebar';
+import { ActivityBar } from './ActivityBar';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
 
-it('#6926 Customize previews, applies and restores a coordinator layout through its existing controls', () => {
+it('#6926 Customize previews, applies and restores a coordinator layout through its existing controls', async () => {
   useViewerStore.setState({ sidebarActivePanel: 'properties', sidebarSecondaryPanel: null,
-    sidebarMode: 'collapsed', sidebarWidthPct: 31, sidebarSplitRatio: 0.63, floatingPanels: [], poppedOutIds: [] });
+    sidebarCustomizing: true, sidebarMode: 'collapsed', sidebarWidthPct: 31, sidebarSplitRatio: 0.63, floatingPanels: [], poppedOutIds: [] });
   const before = useViewerStore.getState().serializeSidebarLayout();
-  const ui = render(<CustomizeSidebar onClose={() => {}} />);
+  const ui = render(<ActivityBar />);
+  await waitFor(() => [...ui.querySelectorAll('button')].some(button => button.getAttribute('aria-label') === 'Preview Coordinator review'), 'customizer and preset controls load on demand');
   const button = (label: string) => {
     const found = [...ui.querySelectorAll('button')].find(value => value.getAttribute('aria-label') === label || value.textContent?.trim() === label);
     assert.ok(found, `the existing customizer offers ${label}`);

@@ -101,6 +101,7 @@ function problems() {
   for (const finding of sheet.findings ?? []) if (!finding.group) found.push(`${finding.citation} has no group.`);
   for (const group of sheet.proposal?.groups ?? []) if (!group.verdict) found.push(`Group ${group.name} is not rated.`);
   if (sheet.proposal && sheet.proposal.corrections === null) found.push('Corrections needed is empty.');
+  else if (sheet.proposal && !(Number.isInteger(sheet.proposal.corrections) && sheet.proposal.corrections >= 0)) found.push('Corrections needed must be a whole number of at least 0.');
   return found;
 }
 function saveSheet() {

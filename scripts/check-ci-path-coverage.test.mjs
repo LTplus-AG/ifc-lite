@@ -379,6 +379,28 @@ test('deriveInputs keeps only literals that resolve, and never escapes the repo'
   assert.ok(!got.includes('this is not a path'));
 });
 
+test('deriveInputs: a literal that only resolves because the filesystem folds case is not an input (#7026)', () => {
+  // The repo tracks `ops/`, `NOTES.md` and `fixtures/bench/data.json`.
+  // `onDisk` answers the way a case-insensitive filesystem does (default
+  // macOS, Windows): yes to any casing. That is simulated, so this test means
+  // the same on Linux, where the real filesystem would simply say no.
+  const tracked = ['ops', 'NOTES.md', 'fixtures/bench/data.json'];
+  const onDisk = (p) => tracked.some((t) => t.toLowerCase() === p.toLowerCase());
+  const spelledExactly = (p) => tracked.includes(p);
+  const src = `
+    const check = 'Ops';
+    const dir = 'ops';
+    const lower = 'notes.md';
+    const doc = 'NOTES.md';
+    const base = join(ROOT, 'Fixtures', 'Bench', 'data.json');
+    const real = join(ROOT, 'fixtures', 'bench', 'data.json');
+  `;
+  assert.deepEqual(deriveInputs(src, onDisk, spelledExactly).sort(), ['NOTES.md', 'fixtures/bench/data.json', 'ops']);
+  // Without the spelling predicate the folding filesystem lets all six through:
+  // the defect, and the reason the predicate is not optional in the gate.
+  assert.equal(deriveInputs(src, onDisk).length, 6);
+});
+
 test('dropSubsumed keeps the parent, which is the safe direction', () => {
   // Preferring the most specific literal would have dropped `apps` in favour of
   // `apps/viewer`, and `apps/landing` -- the real defect -- would never surface.

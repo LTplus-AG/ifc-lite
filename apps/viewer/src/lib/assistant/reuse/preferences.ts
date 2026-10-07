@@ -55,7 +55,9 @@ function hash(text: string): string {
 }
 
 export function projectScope(models: Iterable<{ sourceFingerprint?: string }>): ProjectScope | null {
-  const fingerprints = [...new Set([...models].flatMap(model => model.sourceFingerprint ? [model.sourceFingerprint] : []))].sort();
+  const members = [...models];
+  if (members.some(model => !model.sourceFingerprint)) return null;
+  const fingerprints = [...new Set(members.map(model => model.sourceFingerprint!))].sort();
   if (!fingerprints.length || fingerprints.length > PREFERENCE_LIMITS.fingerprints) return null;
   return { id: `project:${hash(fingerprints.join('\n'))}:${fingerprints.length}`, fingerprints };
 }

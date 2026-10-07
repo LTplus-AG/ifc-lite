@@ -23,6 +23,10 @@ An attached text is cut into passages of at most 500 UTF-16 code units, paragrap
 
 The Linked records panel records the authority a load or **Query selected** exercised (endpoint, hostname, optional loopback origin, relay, credential) in session memory (`endpoint-grant.ts`). Changing the source, hostname, relay, credential or mode, restoring or importing a workspace, unchecking the loopback grant, or unmounting the panel revokes it, which also aborts a pending assistant query. The assistant evidence carries only `endpointGrant: "available" | "none"`. The review card shows the endpoint and grants but never the credential, and the credential is used only as the request `Authorization` header by the existing provider, which also enforces the hostname grant.
 
+## Storage and bundle
+
+`semanticReviews` is a registered content kind, so reload, backup and import work. Its eager decoder checks only the envelope and the review decisions; the proposal is stored as opaque JSON and the strict proposal decoders (`review-validate.ts`) run when the Linked records panel lists a review. A review that no longer passes is kept unchanged and counted as unreadable, never dropped. The English strings register through `registerEnglish` when the Linked records or Assistant chunk loads (their keys are typed in `en.ts`). Both keep P16 out of the eager bundle that the perf-ratchet gate measures.
+
 ## Revisions and independent records
 
 A mapping or a query result carries a revision pin: the revision associations in force and each loaded model's source fingerprint. It is current only while the same revisions map to the same loaded sources; otherwise it is labelled historical and is not re-resolved silently. Linked records stay independent of IFC: nothing here writes the session's records, and projection writes only the declared property plus its provenance property set, as before.

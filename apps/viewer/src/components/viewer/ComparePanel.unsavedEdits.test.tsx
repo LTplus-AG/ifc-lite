@@ -37,7 +37,9 @@ function model(id: string): FederatedModel {
   } as FederatedModel;
 }
 
+const initial = useViewerStore.getState();
 const RESET_STATE = {
+  ...initial,
   models: new Map(),
   compareBaseModelId: null,
   compareHeadModelId: null,
@@ -49,12 +51,12 @@ const RESET_STATE = {
 };
 
 beforeEach(() => {
-  useViewerStore.setState(RESET_STATE);
+  useViewerStore.setState(RESET_STATE, true);
 });
 
 afterEach(() => {
   cleanup();
-  useViewerStore.setState(RESET_STATE);
+  useViewerStore.setState(RESET_STATE, true);
 });
 
 describe('ComparePanel with unsaved edits (#5606)', () => {

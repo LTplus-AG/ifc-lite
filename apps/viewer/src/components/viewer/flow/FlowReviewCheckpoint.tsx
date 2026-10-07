@@ -69,7 +69,7 @@ export function FlowReviewCheckpoint({ doc, onResume }: {
         message: 'The loaded sources changed after the proposal was prepared. Run the graph again.' } });
       return;
     }
-    const approved = shown.state === 'reviewed' ? shown : await approveReview(shown.proposalDigest);
+    const approved = shown.state === 'reviewed' ? shown : await approveReview(shown.proposalDigest, doc);
     if (approved) await onResume(approved, values);
   };
   const typeOf = (nodeId: string) => doc.nodes.find((n) => n.id === nodeId)?.type ?? '';

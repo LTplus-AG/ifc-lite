@@ -13,6 +13,8 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { type FlowData, type FlowDocument, type RunResult } from '@ifc-lite/flow';
 import { createCheckpoint, type FlowCheckpoint } from '@ifc-lite/flow/checkpoint';
+import { useViewerStore } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { render, cleanup, click } from '@/test/render';
 import { ensureFlowAiNodes, flowRegistry } from '@/lib/flow/runner';
 import { browserCheckpointStore } from '@/lib/flow/checkpoint-store';
@@ -111,4 +113,23 @@ it('#7040 grouped proposals show every branch and the full nested table evidence
   assert.match(container.textContent ?? '', /branch-8/);
   assert.match(container.textContent ?? '', /nested-8/);
   assert.match(container.textContent ?? '', new RegExp(longEvidence));
+});
+
+it('#7040 unloading the active source refuses approval before marking the proposal reviewed', async () => {
+  const initial = useViewerStore.getState();
+  try {
+    useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('source'), sourceContentHash: 'source-hash' }), activeModelId: 'source' });
+    const graph = doc('card-unloaded-source');
+    const checkpoint = await saved(graph);
+    const resumed: FlowCheckpoint[] = [];
+    const ui = render(<FlowReviewCheckpoint doc={graph} onResume={async c => { resumed.push(c); }} />);
+    await settle();
+    await act(async () => { useViewerStore.getState().clearAllModels(); useViewerStore.setState({ activeModelId: null }); });
+    click([...ui.querySelectorAll('button')].find(b => b.textContent === 'Approve and resume')!);
+    await settle();
+    assert.equal(resumed.length, 0);
+    assert.equal((await browserCheckpointStore.read(checkpoint.id))?.checkpoint.state, 'prepared');
+    assert.equal(useFlowReview.getState().problem?.kind, 'refused');
+    assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /model|source/i);
+  } finally { useViewerStore.setState(initial, true); }
 });

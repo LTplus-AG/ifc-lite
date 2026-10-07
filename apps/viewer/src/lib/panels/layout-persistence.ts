@@ -10,11 +10,14 @@
  * reload until the user keeps or resets the layout.
  */
 
-import { migrateSidebarLayout, readLayoutChanges, layoutChangeKey, type LayoutChange, type StoredSidebarLayout } from './layout-migration';
+import { migrateSidebarLayout, readLayoutChanges, layoutChangeKey, type LayoutChange, type StoredSidebarLayout, type PreservedPlacement } from './layout-migration';
+import { migratePanelId } from './registry';
 
 export const SIDEBAR_LAYOUT_KEY = 'ifc-lite:sidebar-layout-v1';
 export const LAYOUT_BACKUP_KEY = 'ifc-lite:sidebar-layout-backup-v1';
 export const LAYOUT_NOTICE_KEY = 'ifc-lite:layout-migration-notice-v1';
+/** Older builds never write this key, so their four-field saves cannot erase placements. */
+export const LAYOUT_COMPAT_KEY = 'ifc-lite:sidebar-layout-placements-v2';
 
 export interface LayoutBackup {
   reason: 'migration';
@@ -33,7 +36,7 @@ function readItem(key: string): string | null {
   catch (error) { console.warn('[sidebar] Failed to read layout storage:', error); return null; }
 }
 
-export function writeSidebarLayout(layout: StoredSidebarLayout): void {
+export function writeSidebarLayout(layout: StoredSidebarLayout, importedMigration = false): void {
   const store = storage();
   if (!store) return;
   try {
@@ -42,12 +45,36 @@ export function writeSidebarLayout(layout: StoredSidebarLayout): void {
       let parsed: unknown;
       try { parsed = JSON.parse(original); }
       catch (error) { console.warn('[sidebar] Preserving unreadable original layout:', error); parsed = ''; }
-      if (migrateSidebarLayout(parsed).changes.length > 0 && !backupOriginal(original)) return;
+      if ((importedMigration || migrateSidebarLayout(parsed).changes.length > 0) && !backupOriginal(original)) return;
     }
+    store.setItem(LAYOUT_COMPAT_KEY, JSON.stringify(layout));
     store.setItem(SIDEBAR_LAYOUT_KEY, JSON.stringify(layout));
   } catch (error) {
     // Quota / private mode: the layout just won't persist this session.
     console.warn('[sidebar] failed to persist layout:', error);
+  }
+}
+
+/** Recover only placements omitted by an older writer; its current order and widths win. */
+function withRollbackPlacements(parsed: unknown): unknown {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return parsed;
+  const value = parsed as Record<string, unknown>;
+  if (value.version === 2) return value;
+  const raw = readItem(LAYOUT_COMPAT_KEY);
+  if (!raw) return value;
+  try {
+    const previous = migrateSidebarLayout(JSON.parse(raw)).layout;
+    const seen = new Set((Array.isArray(value.order) ? value.order : [])
+      .filter((id): id is string => typeof id === 'string').map(id => migratePanelId(id) ?? id));
+    const placements: PreservedPlacement[] = previous.order.map((id, index) => ({
+      id, after: previous.order[index - 1] ?? null, hidden: previous.hiddenIds.includes(id),
+    }));
+    placements.push(...previous.preserved);
+    return { ...value, preserved: [...(Array.isArray(value.preserved) ? value.preserved : []),
+      ...placements.filter(placement => !seen.has(placement.id))] };
+  } catch (error) {
+    console.warn('[sidebar] ignoring unreadable rollback placements:', error);
+    return value;
   }
 }
 
@@ -121,12 +148,13 @@ export function loadSidebarLayout(): { layout: StoredSidebarLayout; pending: Lay
     console.warn('[sidebar] keeping a backup of an unreadable layout:', error);
     parsed = '';
   }
-  const migration = migrateSidebarLayout(parsed);
+  const migration = migrateSidebarLayout(withRollbackPlacements(parsed));
   if (migration.changes.length > 0) {
     // Never overwrite the rollback source when the backup could not be saved.
     writeSidebarLayout(migration.layout);
     return { layout: migration.layout, pending: queueLayoutChanges(migration.changes) };
   }
-  if (migration.fromVersion === 1) writeSidebarLayout(migration.layout);
+  // Prime the companion before a user rolls back to a four-field writer.
+  writeSidebarLayout(migration.layout);
   return { layout: migration.layout, pending: readPendingLayoutChanges() };
 }

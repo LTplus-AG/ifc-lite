@@ -49,6 +49,7 @@ import { SearchModal } from './SearchModal';
 import { FlowStartupPrompt } from './flow/FlowStartupPrompt';
 import { TourHost } from '@/components/tours/TourHost';
 import { SidebarDock } from './sidebar/SidebarDock';
+import { WorkspaceMigrationNotice } from './WorkspaceMigrationNotice';
 import { FloatingPanelHost } from './dock/FloatingPanelHost';
 import { PanelWindowHost } from './dock/PanelWindowHost';
 import {
@@ -263,6 +264,7 @@ export function ViewerLayout() {
         {isMobile
           ? <MobileToolbar />
           : <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />}
+        <WorkspaceMigrationNotice />
 
         {/* Main Content Area - Desktop Layout */}
         {!isMobile && (

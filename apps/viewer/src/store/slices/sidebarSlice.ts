@@ -30,6 +30,7 @@ import {
   type LayoutChange,
   type PreservedPlacement,
   type SidebarLayoutSnapshot,
+  type StoredSidebarLayout,
   type SidebarMode,
 } from '@/lib/panels/layout-migration';
 import { clearLayoutNotice, loadSidebarLayout, queueLayoutChanges, writeSidebarLayout } from '@/lib/panels/layout-persistence';
@@ -105,7 +106,7 @@ export interface SidebarSlice {
   setPanelPoppedOut: (id: WorkspacePanelId, on: boolean) => void;
 
   /** Capture the customizable layout (for a Flavor's `layout.state.sidebar`). */
-  serializeSidebarLayout: () => SidebarLayoutSnapshot;
+  serializeSidebarLayout: () => StoredSidebarLayout;
   /** Apply a captured layout (from a Flavor). Persists + tolerates garbage.
    *  Returns what the migration changed, which also joins the review notice. */
   applySidebarLayout: (snap: unknown) => LayoutChange[];
@@ -235,10 +236,12 @@ export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice
     serializeSidebarLayout: () => {
       const s = get();
       return {
+        version: SIDEBAR_LAYOUT_VERSION,
         mode: s.sidebarMode,
         widthPct: s.sidebarWidthPct,
         order: [...s.sidebarOrder],
         hiddenIds: [...s.sidebarHiddenIds],
+        preserved: s.sidebarPreserved.map(placement => ({ ...placement })),
       };
     },
 
@@ -252,6 +255,8 @@ export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice
       for (const kept of get().sidebarPreserved) {
         if (!next.preserved.some((p) => p.id === kept.id)) next.preserved.push(kept);
       }
+      // Capture the pre-import value before queuing this import's review notice.
+      writeSidebarLayout(next, changes.length > 0);
       set({
         sidebarMode: next.mode,
         sidebarWidthPct: next.widthPct,
@@ -260,7 +265,6 @@ export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice
         sidebarPreserved: next.preserved,
         ...(changes.length > 0 ? { layoutMigrationChanges: queueLayoutChanges(changes) } : {}),
       });
-      writeSidebarLayout(next);
       return changes;
     },
 

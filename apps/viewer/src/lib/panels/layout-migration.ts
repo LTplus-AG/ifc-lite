@@ -8,8 +8,8 @@
  * Version 1 is the unversioned `ifc-lite:sidebar-layout-v1` value written
  * since #1208: `{ mode, widthPct, order, hiddenIds }`. Version 2 adds a
  * `version` field and `preserved` placements. Both stay readable by every
- * build: a v1 build reads the four v1 fields and ignores the rest, so rolling
- * a release back never loses the layout.
+ * build: a v1 build reads and writes only the four v1 fields. The persistence
+ * adapter keeps a separate placement companion through those writes.
  *
  * Rules, each reported as a {@link LayoutChange} so the user can preview what
  * moved and reset if they disagree:
@@ -97,7 +97,7 @@ export function clampSidebarWidth(pct: number): number {
 function readPreserved(value: unknown): PreservedPlacement[] {
   if (!Array.isArray(value)) return [];
   const out: PreservedPlacement[] = [];
-  for (const raw of value.slice(0, MAX_PRESERVED)) {
+  for (const raw of value.slice(0, MAX_PRESERVED + WORKSPACE_PANELS.length)) {
     if (!raw || typeof raw !== 'object') continue;
     const item = raw as Record<string, unknown>;
     if (typeof item.id !== 'string' || item.id.length === 0 || item.id.length > 200) continue;

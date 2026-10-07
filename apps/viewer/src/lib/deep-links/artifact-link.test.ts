@@ -24,7 +24,11 @@ test('#6927 an artifact-only link implies its owner and retired panel names migr
 });
 
 test('#6927 malformed and ambiguous links refuse a destination instead of picking one', () => {
-  for (const query of ['?panel=clash&conversation=c1', '?conversation=c1&receipt=r1', '?conversation=c1&conversation=c2', '?receipt=../private', '?panel=unknown']) {
+  for (const query of ['?panel=clash&conversation=c1', '?conversation=c1&receipt=r1', '?conversation=c1&conversation=c2', '?receipt=../private', '?panel=unknown', '?panel=assistant&panel=clash', '?panel=clash&panel=assistant']) {
     assert.equal(parseDeepLink(query)?.ok, false, query);
   }
+});
+
+test('#7054 repeated identical panel destinations remain unambiguous', () => {
+  assert.deepEqual(parseDeepLink('?panel=clash&panel=clash'), { ok: true, panel: 'clash', artifact: null });
 });

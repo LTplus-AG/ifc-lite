@@ -199,6 +199,8 @@ The hosted service includes a Rust Forma proposal importer and a Windows Autodes
 
 When an older saved layout is upgraded, **Review your updated layout** lists renamed, added and unavailable panels. **Show changes** keeps that list scrollable so **Keep layout** and **Reset layout** remain reachable. Keep acknowledges the migrated layout; Reset uses the workspace's normal reset. Both retain unavailable extension placements, their anchors and hidden state, and the original stored layout in a local rollback backup. If that backup cannot be written, the original layout is not overwritten.
 
+Review controls remain visible on mobile and with a collapsed sidebar. Importing a legacy profile captures the current layout before queuing its review. A separate placement record survives saves by older builds, so re-upgrading restores unavailable panels and their anchors while retaining the older build's width and ordering changes. Portable profile captures include those preserved placements.
+
 Panel links use `?panel=<panel id>`; retired panel IDs resolve to their current panel. Saved artifacts can be opened with `?conversation=<id>`, `?receipt=<id>` or `?bcfDraft=<id>`. These refer to saved Assistant conversations, reviewed model-change receipts and BCF draft batches in this browser's own library. A link does not transfer the artifact to another browser. Missing or unreadable artifacts open their owning panel with an explanation. Conflicting destinations and invalid IDs are refused.
 
 A saved conversation opens read-only, without turning its archived evidence into permission to act. Another archive can replace the displayed archive; an unsaved conversation or active request is preserved. Links created by the viewer omit collaboration room invites and tokens.

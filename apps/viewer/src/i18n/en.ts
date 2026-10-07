@@ -52,6 +52,7 @@ import { commandPaletteEn } from './catalogues/command-palette.en';
 import { commandsEn } from './catalogues/commands.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { comparePanelEn } from './catalogues/compare-panel.en';
+import { compareAnalysisEn } from './catalogues/compare-analysis.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
 import { deviationStatsEn } from './catalogues/deviation-stats.en';
 import { scanToBimEn } from './catalogues/scan-to-bim.en';
@@ -218,6 +219,7 @@ export const en = {
   ...appearanceWorkflowsEn,
   ...compareKeyPropertyEn,
   ...comparePanelEn,
+  ...compareAnalysisEn,
   ...extensionsFlavorsEn,
   ...extensionsPanelsEn,
   ...idsPanelEn,

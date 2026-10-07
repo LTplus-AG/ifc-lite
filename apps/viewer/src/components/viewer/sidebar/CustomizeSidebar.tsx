@@ -88,7 +88,7 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
       ref={ref}
       tabIndex={-1}
       aria-label={t('shellChrome.customizeSidebar.ariaLabel')}
-      className="absolute bottom-2 right-14 z-40 min-w-0 w-64 rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl overflow-hidden outline-none"
+      className="absolute bottom-2 right-14 z-40 min-w-0 w-64 max-h-[calc(100dvh-12rem)] flex flex-col rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl overflow-hidden outline-none"
     >
       <div className="flex items-center justify-between px-3 h-9 border-b border-border bg-muted/40">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -106,7 +106,7 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
 
       <LayoutPresetSection />
 
-      <div className="max-h-[60vh] overflow-y-auto py-1">
+      <div className="min-h-0 overflow-y-auto py-1">
         {/* Shown: the panels in the rail, reorderable, each with a Hide control. */}
         {shownIds.map((id, index) => {
           const def = getPanelDef(id);

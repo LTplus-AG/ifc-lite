@@ -29,11 +29,18 @@
 #   scripts/perf/ab.sh a.ifc b.ifc --iters 5      # several fixtures
 #
 # Flags:
-#   --base <ref>   git ref to treat as "before" (default: merge-base with
-#                  origin/main, else HEAD~1). The working tree — INCLUDING
-#                  uncommitted changes — is "after".
+#   --base <ref>   git ref to treat as "before" (default: merge-base with the
+#                  canonical main, else HEAD~1). The canonical main is the
+#                  `main` of the remote whose URL is LTplus-AG/ifc-lite, so a
+#                  clone whose `origin` is a fork is not measured against the
+#                  fork's main; it is `origin/main` when `origin` is that
+#                  repository or when no remote is (see
+#                  scripts/lib/canonical-remote.mjs). The working tree —
+#                  INCLUDING uncommitted changes — is "after".
 #   --iters <N>    interleaved rounds per side (default 5). Higher = less noise.
 #   --json <path>  also write the machine-readable report to <path>.
+#   --print-base   print the base this run would build and exit, building
+#                  nothing. What a test (or you) can ask before a long A/B.
 #
 # Notes:
 #   - Fixture paths are resolved to ABSOLUTE and both binaries run from the repo
@@ -49,13 +56,15 @@ cd "$ROOT"
 BASE_REF=""
 ITERS=5
 JSON_OUT=""
+PRINT_BASE=0
 FIXTURES=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --base) BASE_REF="${2:?--base needs a ref}"; shift 2;;
     --iters) ITERS="${2:?--iters needs a number}"; shift 2;;
     --json) JSON_OUT="${2:?--json needs a path}"; shift 2;;
-    -h|--help) sed -n '2,40p' "$0"; exit 0;;
+    --print-base) PRINT_BASE=1; shift;;
+    -h|--help) sed -n '2,47p' "$0"; exit 0;;
     -*) echo "ab.sh: unknown flag $1" >&2; exit 2;;
     *) FIXTURES+=("$1"); shift;;
   esac
@@ -89,7 +98,14 @@ for f in "${FIXTURES[@]}"; do
 done
 
 if [ -z "$BASE_REF" ]; then
-  BASE_REF="$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD~1)"
+  # The canonical remote's main, found by URL (#7031). If node or the helper is
+  # unavailable the name falls back to origin/main, the default it always was.
+  MAIN_REF="$(node "$ROOT/scripts/lib/canonical-main-ref.mjs" 2>/dev/null || echo origin/main)"
+  BASE_REF="$(git merge-base HEAD "$MAIN_REF" 2>/dev/null || git rev-parse HEAD~1)"
+fi
+if [ "$PRINT_BASE" -eq 1 ]; then
+  echo "$BASE_REF"
+  exit 0
 fi
 BASE_SHA="$(git rev-parse --short "$BASE_REF")"
 # `+dirty` must reflect BOTH unstaged (worktree) and staged (index) edits — the

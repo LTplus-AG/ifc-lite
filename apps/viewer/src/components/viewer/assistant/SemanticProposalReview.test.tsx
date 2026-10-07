@@ -17,6 +17,7 @@ import { DEMO_REVISIONS } from '@/lib/semantic/demo';
 import { attachSourceText, useSemanticSourceTexts } from '@/lib/semantic/assist/source-texts';
 import { recordEndpointGrant, revokeEndpointGrant } from '@/lib/semantic/assist/endpoint-grant';
 import { useSemanticReviews, semanticReviewLibrary } from '@/lib/semantic/assist/library';
+import { validateStoredReview } from '@/lib/semantic/assist/review-validate';
 import { createContentBackup, parseContentBackup } from '@/lib/storage/content-backup';
 import { proposalOf } from './AssistantConversation';
 import { SemanticProposalReview } from './SemanticProposalReview';
@@ -102,8 +103,15 @@ test('#6920 only verified, resolvable mappings can be approved; the saved mappin
   const backup = parseContentBackup(JSON.stringify(createContentBackup({ validation: [], comparison: [], document: [], semanticReviews: useSemanticReviews.getState().entries })));
   assert.equal(backup.libraries.semanticReviews?.length, 1);
   assert.deepEqual(backup.libraries.semanticReviews?.[0], saved);
+  // The eager storage decoder checks the envelope only; the strict proposal decoders run when a review is read (#6920).
+  const tampered = (override: object) => parseContentBackup(JSON.stringify({ version: 1, libraries: { validation: [], comparison: [], document: [],
+    semanticReviews: [{ ...saved, ...override }] } })).libraries.semanticReviews?.[0];
+  assert.deepEqual(validateStoredReview(saved), saved);
+  assert.equal(validateStoredReview(tampered({ approved: [7] })!), null, 'an approved index outside the mappings is refused');
+  assert.equal(validateStoredReview(tampered({ proposal: { ...(saved.proposal as object), mappings: [] } })!), null);
+  assert.equal(validateStoredReview(tampered({ proposal: { ...(saved.proposal as object), bearer: 'x' } })!), null);
   assert.throws(() => parseContentBackup(JSON.stringify({ version: 1, libraries: { validation: [], comparison: [], document: [],
-    semanticReviews: [{ ...saved, approved: [7] }] } })), /semanticReviews|invalid|unsupported/i);
+    semanticReviews: [{ ...saved, type: 'other' }] } })), /semanticReviews|invalid|unsupported/i);
   assert.equal(await semanticReviewLibrary.put(saved.id, null), true);
 });
 

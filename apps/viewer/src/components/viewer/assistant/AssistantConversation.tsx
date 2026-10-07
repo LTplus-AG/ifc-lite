@@ -21,6 +21,7 @@ import { parseTableMapping } from '@/lib/actions/table-mapping';
 import { checkProposalOf, type CheckDeclared } from '@/lib/check-authoring/proposal-summary';
 import { artifactParts, declaredArtifactKind, parseArtifactProposal, type ArtifactKind } from '@/lib/assistant/artifacts/proposal-kinds';
 import { declaredSemanticKind, parseSemanticProposal, semanticProposalCount, type SemanticProposalKind } from '@/lib/semantic/assist/proposals';
+import '@/i18n/catalogues/semantic-assist.register';
 import { markdownHtml } from '@/lib/assistant/markdown';
 import { capturedEvidence, rowFields } from '@/lib/assistant/captured-rows';
 import { ReceiptFooter } from './AssistantUsage';

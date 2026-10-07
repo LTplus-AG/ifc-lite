@@ -49,7 +49,8 @@ import { modelAuthoringEn } from './catalogues/model-authoring.en';
 import { sceneActionsEn } from './catalogues/scene-actions.en';
 import { checkAuthoringEn } from './catalogues/check-authoring.en';
 import { assistantArtifactsEn } from './catalogues/assistant-artifacts.en';
-import { semanticAssistEn } from './catalogues/semantic-assist.en';
+import type { TranslationValue } from './types';
+import type { semanticAssistEn } from './catalogues/semantic-assist.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { commandsEn } from './catalogues/commands.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
@@ -251,7 +252,6 @@ export const en = {
   ...sceneActionsEn,
   ...checkAuthoringEn,
   ...assistantArtifactsEn,
-  ...semanticAssistEn,
   ...clashPanelEn,
   ...clashToolsEn,
   ...bcfEn,
@@ -277,4 +277,8 @@ export const en = {
   ...spaceEnvelopeEn,
 } as const;
 
-export type TranslationKey = keyof typeof en;
+/** Strings that load with the panels that use them (see `registerEnglish`); their keys are typed here, their text is not in the eager bundle. */
+type LazyEnglish = typeof semanticAssistEn;
+export type TranslationKey = keyof typeof en | keyof LazyEnglish;
+/** The live English catalogue: `en` plus whatever lazy catalogues have registered. */
+export const englishCatalogue: Partial<Record<TranslationKey, TranslationValue>> = en;

@@ -2,13 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { useSemanticSession } from '@/lib/semantic/session';
 import { attachSourceText, detachSourceText, useSemanticSourceTexts } from '@/lib/semantic/assist/source-texts';
 import { semanticReviewLibrary, useSemanticReviews } from '@/lib/semantic/assist/library';
 import { revisionPinIsCurrent } from '@/lib/semantic/assist/revision-pin';
+import { validateStoredReview } from '@/lib/semantic/assist/review-validate';
+import '@/i18n/catalogues/semantic-assist.register';
 
 const control = 'w-full rounded border border-border bg-background p-2 text-sm';
 const button = 'rounded border border-border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50';
@@ -20,7 +22,10 @@ export function SemanticAssistControls({ onError }: { onError: (message: string)
   const document = useSemanticSession(s => s.document);
   const revisions = useSemanticSession(s => s.revisions);
   const models = useViewerStore(s => s.models);
-  const reviews = useSemanticReviews(s => s.entries);
+  const stored = useSemanticReviews(s => s.entries);
+  // Stored proposals are opaque until read: the strict decoders decide what is listed, the rest is kept and counted.
+  const reviews = useMemo(() => stored.flatMap(entry => validateStoredReview(entry) ?? []), [stored]);
+  const unreadable = stored.length - reviews.length;
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const attach = (name: string, value: string) => {
@@ -41,7 +46,8 @@ export function SemanticAssistControls({ onError }: { onError: (message: string)
       <button className={button} aria-label={t('semanticAssist.detachLabel', { id: source.id })} onClick={() => detachSourceText(source.id)}>{t('semanticAssist.detach')}</button>
     </li>)}</ul>
     <h4 className="font-medium">{t('semanticAssist.savedTitle')}</h4>
-    {!reviews.length && <p className="text-sm text-muted-foreground">{t('semanticAssist.savedNone')}</p>}
+    {!stored.length && <p className="text-sm text-muted-foreground">{t('semanticAssist.savedNone')}</p>}
+    {unreadable > 0 && <p role="status" className="text-sm text-muted-foreground">{t('semanticAssist.savedUnreadable', { count: unreadable })}</p>}
     <ul className="space-y-1 text-sm">{reviews.map(entry => {
       const historical = entry.type === 'mapping' && !revisionPinIsCurrent(entry.pin, revisions, models);
       return <li key={entry.id} className="flex items-start justify-between gap-2">

@@ -10,7 +10,7 @@
  * activator logs them and drops the broken messages, so those keys fall back
  * to English instead of rendering `{modelName}` literally.
  */
-import { en, type TranslationKey } from './en';
+import { englishCatalogue as english, type TranslationKey } from './en';
 import type { Catalogue } from './registry';
 import type { TranslationValue } from './types';
 
@@ -31,7 +31,7 @@ function placeholders(value: TranslationValue): Set<string> {
 }
 
 function isTranslationKey(key: string): key is TranslationKey {
-  return Object.hasOwn(en, key);
+  return Object.hasOwn(english, key);
 }
 
 function shapeProblem(value: unknown): string | null {
@@ -69,7 +69,7 @@ export function checkCatalogue(raw: Readonly<Record<string, unknown>>): CheckedC
       continue;
     }
     const message = value;
-    const expected = placeholders(en[key]);
+    const expected = placeholders(english[key] ?? '');
     const actual = placeholders(message);
     const before = problems.length;
     for (const name of actual) {

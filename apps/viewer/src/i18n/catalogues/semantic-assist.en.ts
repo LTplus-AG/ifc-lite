@@ -89,6 +89,7 @@ export const semanticAssistEn = {
   'semanticAssist.detach': 'Remove',
   'semanticAssist.detachLabel': 'Remove attached text {id}',
   'semanticAssist.savedTitle': 'Saved mappings and requirements',
+  'semanticAssist.savedUnreadable': { one: '{count} saved review could not be read and is kept unchanged.', other: '{count} saved reviews could not be read and are kept unchanged.' },
   'semanticAssist.savedNone': 'Nothing saved yet.',
   'semanticAssist.savedMapping': { one: '{count} mapping for {revision}', other: '{count} mappings for {revision}' },
   'semanticAssist.savedRequirements': '{verified} of {count} requirements verified · {unsupported} unsupported',

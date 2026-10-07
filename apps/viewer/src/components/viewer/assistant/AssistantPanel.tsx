@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import '@/i18n/catalogues/semantic-assist.register';
 import { History, Key, RefreshCw, Send, Sparkles, Square } from 'lucide-react';
 import { ConversationLibrary } from './ConversationLibrary';
 import { SourcePicker } from './SourcePicker';

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import '@/i18n/catalogues/semantic-assist.register';
 import type { ReactNode } from 'react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { SpanCheck } from '@/lib/semantic/assist/spans';

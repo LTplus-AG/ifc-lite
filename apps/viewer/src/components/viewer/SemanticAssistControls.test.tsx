@@ -59,6 +59,11 @@ test('#6920 attached texts are session-only, numbered S1..S9 and removable; save
   // The saved entry itself is not rewritten by becoming historical: it keeps the pin it was approved against.
   const kept = useSemanticReviews.getState().entries[0];
   assert.deepEqual(kept.type === 'mapping' && kept.pin.associations.map(item => item.modelId), ['m0', 'm1']);
+  // A stored review whose proposal no longer passes the strict decoders is kept, counted and never listed as valid.
+  await act(async () => { await semanticReviewLibrary.put('review-bad', { ...kept, id: 'review-bad', proposal: { kind: 'semantic.mapping', version: 1 } }); });
+  await waitFor(() => /1 saved review could not be read/.test(ui.textContent ?? ''), 'unreadable review counted');
+  assert.equal(useSemanticReviews.getState().entries.length, 2, 'the unreadable entry is preserved, not dropped');
+  await act(async () => { await semanticReviewLibrary.put('review-bad', null); });
   click(ui.querySelector('button[aria-label="Delete saved review Saved doors"]')!);
   await waitFor(() => useSemanticReviews.getState().entries.length === 0, 'deleted');
   assert.equal(await semanticReviewLibrary.put('review-1', null), true);

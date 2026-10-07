@@ -9,7 +9,7 @@ import type { BcfPublication } from '../bcf-publication/outbox-types.js';
 import type { ModelChangeReceipt } from '../actions/model-change-commit.js';
 import type { ClashGroupApplication } from '../clash/group-applications.js';
 import type { ReviewWorkspace } from '../review/workspace.js';
-import type { SavedSemanticReview } from '../semantic/assist/library.js';
+import type { StoredSemanticReview } from '../semantic/assist/library.js';
 import type { SavedValidationReport } from '../validation/reports/history.js';
 import type { SavedComparison } from '../compare/savedComparisonSchema.js';
 import type { DocumentSpec } from '../document/types.js';
@@ -41,7 +41,7 @@ export interface ContentLibraries {
   /** Optional for backups written before coordination review decisions existed. */
   reviewWorkspaces?: ReviewWorkspace[];
   /** Optional for backups written before reviewed semantic mappings/requirements existed. */
-  semanticReviews?: SavedSemanticReview[];
+  semanticReviews?: StoredSemanticReview[];
 }
 export interface ContentBackup {
   version: 1;

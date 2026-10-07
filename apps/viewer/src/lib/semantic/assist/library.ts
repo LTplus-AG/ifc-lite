@@ -14,43 +14,46 @@
 import { create } from 'zustand';
 import { createContentLibrary, initialContentStatus, type ContentStatus } from '@/lib/storage/content-library';
 import type { ContentDefinition } from '@/lib/storage/content-migration';
-import { parseSemanticMapping, type SemanticMappingProposal } from './mapping-proposal';
-import { parseSemanticRequirements, type SemanticRequirementProposal } from './requirement-proposal';
+import type { SemanticMappingProposal } from './mapping-proposal';
+import type { SemanticRequirementProposal } from './requirement-proposal';
 import { decodeRevisionPin, type RevisionPin } from './revision-pin-schema';
 import type { SpanCheck } from './spans';
 
 interface ReviewBase { version: 1; id: string; createdAt: string; origin: string }
+type MappingFields = { type: 'mapping'; profile: { id: string; version: string }; pin: RevisionPin; approved: number[] };
+type RequirementFields = { type: 'requirements'; spans: Array<SpanCheck['status']>; unsupportedSpans: Array<SpanCheck['status'] | null> };
+/**
+ * What the content library holds: the envelope and the review decisions are
+ * checked on every read, the proposal itself stays opaque JSON. The strict
+ * proposal decoders live in `review-validate.ts` and load with the cards that
+ * need them, so the eager storage chunk carries none of that parsing.
+ */
+export type StoredSemanticReview =
+  | ReviewBase & MappingFields & { proposal: unknown }
+  | ReviewBase & RequirementFields & { proposal: unknown };
+/** A stored review whose proposal passed the strict decoders. */
 export type SavedSemanticReview =
-  | ReviewBase & { type: 'mapping'; profile: { id: string; version: string }; pin: RevisionPin; proposal: SemanticMappingProposal; approved: number[] }
-  | ReviewBase & { type: 'requirements'; proposal: SemanticRequirementProposal;
-    spans: Array<SpanCheck['status']>; unsupportedSpans: Array<SpanCheck['status'] | null> };
+  | ReviewBase & MappingFields & { proposal: SemanticMappingProposal }
+  | ReviewBase & RequirementFields & { proposal: SemanticRequirementProposal };
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const SPAN_STATUSES = new Set(['verified', 'mismatch', 'not-captured']);
 
-function proposalOf<T>(value: unknown, parse: (answer: string) => T): T | null {
-  try { return parse(JSON.stringify(value)); }
-  catch (error) { console.warn('[Semantic reviews] Stored proposal failed validation', error); return null; }
-}
-
-export function decodeSemanticReview(value: unknown): SavedSemanticReview | null {
+export function decodeSemanticReview(value: unknown): StoredSemanticReview | null {
   if (!record(value) || value.version !== 1 || typeof value.id !== 'string' || !value.id || typeof value.createdAt !== 'string'
-    || typeof value.origin !== 'string') return null;
+    || typeof value.origin !== 'string' || !record(value.proposal)) return null;
   const base: ReviewBase = { version: 1, id: value.id, createdAt: value.createdAt, origin: value.origin };
+  const proposal = structuredClone(value.proposal);
   if (value.type === 'mapping') {
-    const proposal = proposalOf(value.proposal, parseSemanticMapping);
     const pin = decodeRevisionPin(value.pin);
-    if (!proposal || !pin || !record(value.profile) || typeof value.profile.id !== 'string' || typeof value.profile.version !== 'string'
-      || !Array.isArray(value.approved) || !value.approved.length
-      || !value.approved.every(index => Number.isInteger(index) && index >= 0 && index < proposal.mappings.length)
-      || new Set(value.approved).size !== value.approved.length) return null;
+    if (!pin || !record(value.profile) || typeof value.profile.id !== 'string' || typeof value.profile.version !== 'string'
+      || !Array.isArray(value.approved) || !value.approved.length || value.approved.length > 200
+      || !value.approved.every(index => Number.isInteger(index) && index >= 0) || new Set(value.approved).size !== value.approved.length) return null;
     return { ...base, type: 'mapping', profile: { id: value.profile.id, version: value.profile.version }, pin, proposal, approved: [...value.approved] as number[] };
   }
   if (value.type === 'requirements') {
-    const proposal = proposalOf(value.proposal, parseSemanticRequirements);
-    if (!proposal || !Array.isArray(value.spans) || value.spans.length !== proposal.requirements.length
-      || !value.spans.every(status => SPAN_STATUSES.has(String(status)))
-      || !Array.isArray(value.unsupportedSpans) || value.unsupportedSpans.length !== proposal.unsupported.length
+    if (!Array.isArray(value.spans) || value.spans.length > 200 || !value.spans.every(status => SPAN_STATUSES.has(String(status)))
+      || !Array.isArray(value.unsupportedSpans) || value.unsupportedSpans.length > 100
       || !value.unsupportedSpans.every(status => status === null || SPAN_STATUSES.has(String(status)))) return null;
     return { ...base, type: 'requirements', proposal, spans: [...value.spans] as Array<SpanCheck['status']>,
       unsupportedSpans: [...value.unsupportedSpans] as Array<SpanCheck['status'] | null> };
@@ -58,11 +61,11 @@ export function decodeSemanticReview(value: unknown): SavedSemanticReview | null
   return null;
 }
 
-export const semanticReviewContent: ContentDefinition<SavedSemanticReview> = {
+export const semanticReviewContent: ContentDefinition<StoredSemanticReview> = {
   kind: 'semanticReviews', legacyKey: 'ifc-lite-semantic-reviews-v1', decode: decodeSemanticReview,
 };
 
-export const useSemanticReviews = create<{ entries: SavedSemanticReview[]; status: ContentStatus }>(
+export const useSemanticReviews = create<{ entries: StoredSemanticReview[]; status: ContentStatus }>(
   () => ({ entries: [], status: initialContentStatus() }));
 export const semanticReviewLibrary = createContentLibrary(semanticReviewContent,
   () => useSemanticReviews.getState().entries,

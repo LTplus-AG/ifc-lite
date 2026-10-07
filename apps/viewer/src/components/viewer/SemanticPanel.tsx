@@ -24,6 +24,7 @@ import { liveEntities, selectResources } from '@/lib/semantic/viewer';
 import type { SemanticResource } from '@/lib/semantic/types';
 import { useSemanticSession } from '@/lib/semantic/session';
 import { provideSemanticEvidence } from '@/lib/assistant/adapters/semantic-access';
+import '@/i18n/catalogues/semantic-assist.register';
 import { AssistantAction } from './assistant/AssistantAction';
 import { assistProvider } from '@/lib/semantic/assist/evidence';
 

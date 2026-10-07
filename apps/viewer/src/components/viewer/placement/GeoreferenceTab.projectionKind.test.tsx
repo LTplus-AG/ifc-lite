@@ -18,9 +18,9 @@ import { CesiumPlacementGizmo } from './CesiumPlacementGizmo';
 import { useCesiumPlacementController } from './useCesiumPlacementController';
 
 // #7060: a one-metre nudge must never add one degree to an angular anchor.
-const conversion: MapConversion = { id: 1, sourceCRS: 2, targetCRS: 3,
+const conversion = { id: 1, sourceCRS: 2, targetCRS: 3,
   eastings: 5, northings: 52, orthogonalHeight: 10,
-  xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 };
+  xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 } satisfies MapConversion;
 const geographic: ProjectedCRS = { id: 3, name: 'EPSG:4326' };
 const projected: ProjectedCRS = { id: 3, name: 'EPSG:32632', mapUnitScale: 1 };
 const original = useViewerStore.getState();

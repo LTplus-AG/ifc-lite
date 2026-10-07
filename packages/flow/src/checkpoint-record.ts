@@ -53,7 +53,7 @@ export interface FlowCheckpoint {
   /** Host-supplied digest of what the run read (model content hashes, input files). */
   readonly sourceDigest: string;
   readonly reviewNodes: readonly string[];
-  /** Digest of the review nodes' outputs: an approval must name exactly this. */
+  /** Digest of the proposal and all restored outputs: an approval binds this complete snapshot. */
   readonly proposalDigest: string;
   readonly outputs: PortableOutputs;
   /** Host budget state (e.g. an `@ifc-lite/ai` root budget) a resume continues from. */
@@ -159,7 +159,7 @@ function portableOutputs(outputs: RunResult['outputs']): PortableOutputs {
 }
 
 export function proposalDigestOf(outputs: PortableOutputs, reviewNodes: readonly string[]): string {
-  return digest(reviewNodes.map((id) => [id, outputs[id] ?? null]));
+  return digest({ reviewNodes, outputs });
 }
 
 export interface CreateCheckpointInput {
@@ -184,6 +184,7 @@ export function createCheckpoint(input: CreateCheckpointInput): FlowCheckpoint {
   const graph = graphDigest(doc, input.inputs, input.registry);
   const proposal = proposalDigestOf(outputs, result.review);
   const now = input.now ?? Date.now();
+  if (!Number.isFinite(now)) throw new Error('the checkpoint timestamp must be finite');
   return {
     version: CHECKPOINT_VERSION,
     id: globalThis.crypto.randomUUID(),

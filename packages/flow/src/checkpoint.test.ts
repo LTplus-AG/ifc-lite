@@ -253,3 +253,26 @@ it('#7038 file-slot bindings are already included through Player input definitio
     .toThrow(expect.objectContaining({ code: 'graph-changed' }));
   expect(graphDigest(changed, {}, registry)).not.toBe(graphDigest({ ...changed, inputs: [{ ...changed.inputs[0], nodeId: 'sink' }] }, {}, registry));
 });
+
+
+it('#7038 approval also binds upstream outputs so removing a completed node cannot repeat it', async () => {
+  const checkpoint = await paused();
+  const reviewed = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
+  const outputs = Object.fromEntries(Object.entries(reviewed.outputs).filter(([node]) => node !== 'rows'));
+  const missing = { ...reviewed, outputs };
+  expect(() => parseCheckpoint(missing)).toThrow(/proposal digest/);
+  expect(() => claimCheckpoint(missing, claim('owner'))).toThrow(/proposal digest/);
+});
+
+it('#7038 invalid lifecycle timestamps cannot approve, recover or finish a valid checkpoint', async () => {
+  const checkpoint = await paused();
+  const reviewed = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
+  const applying = claimCheckpoint(reviewed, claim('owner'));
+  for (const now of [NaN, Infinity, -Infinity]) {
+    expect(() => approveCheckpoint(checkpoint, checkpoint.proposalDigest, now)).toThrow(/timestamp must be finite/);
+    expect(() => rejectCheckpoint(checkpoint, now)).toThrow(/timestamp must be finite/);
+    expect(() => finishCheckpoint(applying, 'owner', { ok: true }, now)).toThrow(/timestamp must be finite/);
+    expect(() => recoverCheckpoint(applying, now)).toThrow(/timestamp must be finite/);
+  }
+  expect(recoverCheckpoint(applying, applying.claim!.at)).toBeNull();
+});

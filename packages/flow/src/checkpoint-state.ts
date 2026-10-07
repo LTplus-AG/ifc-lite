@@ -85,8 +85,13 @@ function requireState(checkpoint: FlowCheckpoint, state: CheckpointState, code: 
   if (checkpoint.state !== state) throw new CheckpointError(code, `the checkpoint is ${checkpoint.state}, not ${state}`);
 }
 
+function assertTimestamp(now: number): void {
+  if (!Number.isFinite(now)) throw new CheckpointError('invalid', 'the checkpoint timestamp must be finite');
+}
+
 /** Approve exactly the proposal the reviewer saw, named by its digest. */
 export function approveCheckpoint(checkpoint: FlowCheckpoint, proposalDigest: string, now = Date.now()): FlowCheckpoint {
+  assertTimestamp(now);
   requireState(checkpoint, 'prepared', 'not-prepared');
   if (proposalDigest !== checkpoint.proposalDigest) {
     throw new CheckpointError('digest-mismatch', 'the approval names a different proposal than the one awaiting review');
@@ -95,6 +100,7 @@ export function approveCheckpoint(checkpoint: FlowCheckpoint, proposalDigest: st
 }
 
 export function rejectCheckpoint(checkpoint: FlowCheckpoint, now = Date.now()): FlowCheckpoint {
+  assertTimestamp(now);
   requireState(checkpoint, 'prepared', 'not-prepared');
   return { ...checkpoint, state: 'rejected', updatedAt: now, review: { decision: 'rejected', proposalDigest: checkpoint.proposalDigest, at: now } };
 }
@@ -132,6 +138,7 @@ export function claimCheckpoint(checkpoint: FlowCheckpoint, input: ClaimInput): 
 
 /** Record how the owner's resume ended. A failed resume may have committed some effects. */
 export function finishCheckpoint(checkpoint: FlowCheckpoint, owner: string, outcome: { ok: boolean; message?: string }, now = Date.now()): FlowCheckpoint {
+  assertTimestamp(now);
   requireState(checkpoint, 'applying', 'not-owner');
   if (checkpoint.claim?.owner !== owner) throw new CheckpointError('not-owner', 'another owner holds this checkpoint');
   return {
@@ -144,6 +151,7 @@ export function finishCheckpoint(checkpoint: FlowCheckpoint, owner: string, outc
 
 /** A claim whose lease ran out without a finish: its effects are unknown, so it can never be applied again. */
 export function recoverCheckpoint(checkpoint: FlowCheckpoint, now = Date.now()): FlowCheckpoint | null {
+  assertTimestamp(now);
   if (checkpoint.state !== 'applying' || (checkpoint.claim && checkpoint.claim.leaseUntil > now)) return null;
   return {
     ...checkpoint,

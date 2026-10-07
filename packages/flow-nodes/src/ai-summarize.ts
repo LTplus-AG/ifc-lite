@@ -28,7 +28,7 @@ export const aiSummarizeNode: FlowNodeDef = {
     { name: 'audience', kind: 'string', default: 'BIM coordinator' },
     { name: 'language', kind: 'string', default: 'en', doc: 'BCP 47 language tag for the sections.' },
     { name: 'maxSections', kind: 'number', default: 6 },
-    { name: 'columns', kind: 'json', default: [], doc: 'Columns sent to the model; empty sends all.' },
+    { name: 'columns', kind: 'json', default: [], doc: 'Columns sent to the model; select at least one explicitly.' },
     { name: 'maxRows', kind: 'number', default: 200 },
     { name: 'maxOutputTokens', kind: 'number', default: 2000 },
   ],

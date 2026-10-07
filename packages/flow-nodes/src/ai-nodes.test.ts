@@ -69,7 +69,7 @@ function graph(nodes: FlowDocument['nodes'], edges: FlowDocument['edges']): Flow
   return { flowVersion: 2, id: 'g', name: 'g', capabilities: ['network.ai'], inputs: [], outputs: [], nodes, edges };
 }
 const classifyGraph = (params: Record<string, unknown>, n = 4) => graph(
-  [{ id: 'src', type: 't.table', params: { n } }, { id: 'ai', type: 'ai.classify', params: { categories, ...params } }],
+  [{ id: 'src', type: 't.table', params: { n } }, { id: 'ai', type: 'ai.classify', params: { categories, columns: ['Type'], ...params } }],
   [{ from: ['src', 't'], to: ['ai', 'table'] }],
 );
 const host = (ai?: FlowAiService): FlowHost => ({ bim: createFakeBim().bim, ...(ai ? { ai } : {}) });
@@ -125,7 +125,7 @@ describe('ai.classify', () => {
   it('bounds lifted lanes by one run-wide budget', async () => {
     const model = standIn(classifyBy, { maxRequests: 5, maxOutputTokens: 100_000 });
     const doc = graph(
-      [{ id: 'src', type: 't.tables', params: { n: 4 } }, { id: 'ai', type: 'ai.classify', params: { categories, batchSize: 2 } }],
+      [{ id: 'src', type: 't.tables', params: { n: 4 } }, { id: 'ai', type: 'ai.classify', params: { categories, columns: ['Type'], batchSize: 2 } }],
       [{ from: ['src', 't'], to: ['ai', 'table'] }],
     );
     const result = await runFlow(doc, { host: host(model.service), registry, features });
@@ -226,4 +226,31 @@ describe('AI node host boundary', () => {
     expect(result.ok).toBe(false);
     expect(model.calls).toHaveLength(1);
   });
+});
+
+
+it('#7039 empty and literal fallback row keys keep distinct classification evidence', async () => {
+  const source: NodeDef<FlowHost> = { ...tableNode, run: () => ({ t: {
+    key: 'GlobalId', columns: [{ name: 'GlobalId', type: 'identifier' }, { name: 'Type', type: 'label' }],
+    rows: [{ GlobalId: '', Type: 'IfcWall' }, { GlobalId: '#0', Type: 'IfcDuctSegment' }],
+  } satisfies Table }) };
+  const local = new NodeRegistry<FlowHost>().registerAll([source, ...aiNodes]);
+  const model = standIn(classifyBy);
+  const result = await runFlow(classifyGraph({ columns: ['Type'] }), { host: host(model.service), registry: local, features });
+  const table = result.outputs.get('ai')?.get('table') as { value: Table };
+  expect(table.value.rows.map(row => row.label)).toEqual(['structure', 'services']);
+  const lines = /<data>\n([\s\S]*)\n<\/data>/.exec(model.calls[0].prompt)![1].split('\n').map(line => JSON.parse(line) as { key: string });
+  expect(new Set(lines.map(row => row.key)).size).toBe(2);
+});
+
+it('#7039 table AI nodes refuse omitted columns before sending private data', async () => {
+  for (const type of ['ai.classify', 'ai.summarize']) {
+    const model = standIn(classifyBy);
+    const doc = graph([{ id: 'src', type: 't.table' }, { id: 'ai', type, params: { categories } }],
+      [{ from: ['src', 't'], to: ['ai', 'table'] }]);
+    const result = await runFlow(doc, { host: host(model.service), registry, features });
+    expect(result.ok).toBe(false);
+    expect(result.log.some(entry => entry.message.includes('Select at least one column'))).toBe(true);
+    expect(model.calls).toEqual([]);
+  }
 });

@@ -43,7 +43,7 @@ function describe(checkpoint: FlowCheckpoint): string[] {
 }
 
 /** Save a paused run as a `prepared` checkpoint. Refuses to overwrite an existing checkpoint file. */
-export async function savePause(path: string, input: { doc: FlowDocument; result: RunResult; inputs: Record<string, unknown>; sourceDigest: string; budget?: unknown }): Promise<FlowCheckpoint> {
+export async function savePause(path: string, input: { registry: Parameters<typeof createCheckpoint>[0]['registry']; doc: FlowDocument; result: RunResult; inputs: Record<string, unknown>; sourceDigest: string; budget?: unknown }): Promise<FlowCheckpoint> {
   if (await stat(path).then(() => true, () => false)) fatal(`${path} already exists; a checkpoint is never overwritten`);
   let checkpoint: FlowCheckpoint;
   try {
@@ -93,14 +93,14 @@ export interface Resume {
 }
 
 /** Claim a reviewed checkpoint for this process, after recovering an abandoned claim. */
-export async function claimForResume(path: string, doc: FlowDocument, inputs: Record<string, unknown>, sourceDigest: string): Promise<Resume> {
+export async function claimForResume(path: string, doc: FlowDocument, inputs: Record<string, unknown>, sourceDigest: string, registry: NonNullable<Parameters<typeof graphDigest>[2]>): Promise<Resume> {
   const store = new FileCheckpointStore(path);
   const owner = `cli:${process.pid}:${randomUUID()}`;
   try {
     const { checkpoint } = await store.load();
     if (checkpoint.graphId !== doc.id) fatal(`${path} belongs to graph "${checkpoint.graphId}", not "${doc.id}"`);
     if (recoverCheckpoint(checkpoint)) await updateCheckpoint(store, checkpoint.id, (c) => recoverCheckpoint(c) ?? c);
-    const claimed = await updateCheckpoint(store, checkpoint.id, (c) => claimCheckpoint(c, { owner, graphDigest: graphDigest(doc, inputs), sourceDigest, leaseMs: LEASE_MS }));
+    const claimed = await updateCheckpoint(store, checkpoint.id, (c) => claimCheckpoint(c, { owner, graphDigest: graphDigest(doc, inputs, registry), sourceDigest, leaseMs: LEASE_MS }));
     return { store, checkpoint: claimed, owner };
   } catch (error) {
     fatal((error as Error).message);

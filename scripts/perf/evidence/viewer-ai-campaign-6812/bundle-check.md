@@ -2,7 +2,7 @@
 
 ### Perf ratchet: all metrics within their ceilings
 
-Measured at `28feb5b1e432e3e6de504929fda7397011fc4a85`.
+Measured at `103c37c7f19a7d8e57681e32925d5fbab7e898d7`.
 
 | Metric | Ceiling | Tolerance | Allowed | Measured | Change vs ceiling | Status |
 | --- | ---: | :---: | ---: | ---: | ---: | --- |
@@ -15,5 +15,5 @@ Measured at `28feb5b1e432e3e6de504929fda7397011fc4a85`.
 3 metric(s) improved. 2 of them cleared the tolerance band, so the daily lowering job (`perf-ratchet-lower.yml`) will lower their ceilings once this is on `main`.
 
 Informational, not gated:
-- `bundle/viewer-entry-js-brotli`: 949,947 bytes (main-BIR0E8lx.js)
-- `bundle/viewer-eager-js-brotli`: 3,105,363 bytes (212 files, each compressed on its own)
+- `bundle/viewer-entry-js-brotli`: 950,418 bytes (main-EvKOpIn-.js)
+- `bundle/viewer-eager-js-brotli`: 3,105,777 bytes (212 files, each compressed on its own)

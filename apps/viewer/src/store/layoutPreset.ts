@@ -20,7 +20,7 @@ import { getViewerStoreApi } from './index.js';
 import type { SidebarLayoutSnapshot } from './slices/sidebarSlice.js';
 import { getLayoutPreset, planLayoutPreset, type LayoutPresetId, type LayoutPresetPlan, type WorkspaceLayoutState } from '@/lib/panels/layout-presets';
 import { isWorkspacePanelId, migratePanelId, type WorkspacePanelId } from '@/lib/panels/registry';
-import { isAssistantPlacement, setAssistantPlacement, useAssistantPlacement, type AssistantPlacement } from '@/lib/assistant/placement';
+import { isAssistantPlacement, setAssistantPlacement, useAssistantPlacement, watchSplitRestore, type AssistantPlacement } from '@/lib/assistant/placement';
 import { closePanelWindow } from '@/services/panel-windows';
 
 type ViewerStoreApi = ReturnType<typeof getViewerStoreApi>;
@@ -158,6 +158,7 @@ export function restoreLayoutBeforePreset(store: ViewerStoreApi = getViewerStore
   const detached = detachedIds(store.getState());
   if (!detached.has(previous.primary)) state.showWorkspacePanel(previous.primary, 'programmatic');
   const secondary = previous.secondary && isWorkspacePanelId(previous.secondary) && !detached.has(previous.secondary) ? previous.secondary : null;
+  if (secondary === 'assistant') watchSplitRestore(store);
   store.getState().setSidebarSecondaryPanel(secondary);
   store.getState().setSidebarSplitRatio(previous.splitRatio);
   // Opening the previous panel expands the dock; restore the captured mode and rail afterwards.

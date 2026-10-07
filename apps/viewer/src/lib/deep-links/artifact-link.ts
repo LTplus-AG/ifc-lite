@@ -44,7 +44,7 @@ const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
 /** Parse the deep-link part of a query string; null when it carries none. */
 export function parseDeepLink(search: string | URLSearchParams): ParsedDeepLink | null {
   const params = typeof search === 'string' ? new URLSearchParams(search) : search;
-  if (new Set(params.getAll('panel')).size > 1) return { ok: false, reason: 'conflicting-target' };
+  if (new Set(params.getAll('panel').map(value => migratePanelId(value) ?? value)).size > 1) return { ok: false, reason: 'conflicting-target' };
   const rawPanel = params.get('panel');
   const kinds = ARTIFACT_KINDS.filter((kind) => params.has(kind));
   if (rawPanel === null && kinds.length === 0) return null;

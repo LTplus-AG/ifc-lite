@@ -31,4 +31,7 @@ test('#6927 malformed and ambiguous links refuse a destination instead of pickin
 
 test('#7054 repeated identical panel destinations remain unambiguous', () => {
   assert.deepEqual(parseDeepLink('?panel=clash&panel=clash'), { ok: true, panel: 'clash', artifact: null });
+  for (const query of ['?panel=ids&panel=validation', '?panel=validation&panel=ids']) {
+    assert.deepEqual(parseDeepLink(query), { ok: true, panel: 'validation', artifact: null });
+  }
 });

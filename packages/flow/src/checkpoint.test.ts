@@ -59,7 +59,7 @@ describe('createCheckpoint', () => {
     expect(checkpoint).toMatchObject({ state: 'prepared', reviewNodes: ['ai'], budget: { requests: 2 } });
     expect([...checkpointProposal(revived).keys()]).toEqual(['ai']);
     const host: Host = { sunk: [] };
-    const resumed = await runFlow(doc, { host, registry, resume: resumeOutputs(revived) });
+    const resumed = await runFlow(doc, { host, registry, resume: resumeOutputs(claimCheckpoint(approveCheckpoint(revived, revived.proposalDigest, 1_500), claim('owner')), 2_001) });
     expect(host.sunk).toEqual([['wall', 'unknown']]);
     expect(resumed.reports.find((r) => r.nodeId === 'ai')?.status).toBe('restored');
   });
@@ -275,4 +275,21 @@ it('#7038 invalid lifecycle timestamps cannot approve, recover or finish a valid
     expect(() => recoverCheckpoint(applying, now)).toThrow(/timestamp must be finite/);
   }
   expect(recoverCheckpoint(applying, applying.claim!.at)).toBeNull();
+});
+
+
+it('#7038 rejected, partial and expired checkpoints cannot supply downstream write inputs', async () => {
+  const prepared = await paused();
+  const reviewed = approveCheckpoint(prepared, prepared.proposalDigest, 1_500);
+  const applying = claimCheckpoint(reviewed, claim('owner'));
+  const partial = finishCheckpoint(applying, 'owner', { ok: false }, 3_000);
+  for (const checkpoint of [prepared, reviewed, rejectCheckpoint(prepared, 1_500), partial,
+    finishCheckpoint(applying, 'owner', { ok: true }, 3_000)]) {
+    const host: Host = { sunk: [] };
+    expect(() => runFlow(doc, { host, registry, resume: resumeOutputs(checkpoint, 3_001) })).toThrow(/actively claimed/);
+    expect(host.sunk).toEqual([]);
+  }
+  expect(() => resumeOutputs(applying, 62_000)).toThrow(/actively claimed/);
+  // Review inspection does not authorize a resume.
+  expect([...checkpointProposal(prepared).keys()]).toEqual(['ai']);
 });

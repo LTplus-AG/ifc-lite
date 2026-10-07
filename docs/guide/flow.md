@@ -241,7 +241,9 @@ proposal digest and the AI budget state. Its lifecycle is `prepared` →
 mid-resume; a partially committed checkpoint can never be resumed again.
 `claimCheckpoint` re-checks the graph and source digests and goes through a
 compare-and-swap store (`updateCheckpoint`), so two tabs or processes cannot
-consume the same approval. A value that is not plain JSON (a viewer-only
+consume the same approval. `resumeOutputs` refuses prepared, rejected, completed,
+partially committed and expired checkpoints; proposal inspection uses
+`checkpointProposal` and grants no permission to resume. A value that is not plain JSON (a viewer-only
 handle) makes the run uncheckpointable, named by node and port.
 
 ```ts

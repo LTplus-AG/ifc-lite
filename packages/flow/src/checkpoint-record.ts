@@ -202,17 +202,32 @@ export function createCheckpoint(input: CreateCheckpointInput): FlowCheckpoint {
   };
 }
 
-/** The `RunOptions.resume` map for a checkpoint. */
-export function resumeOutputs(checkpoint: FlowCheckpoint): Map<string, Map<string, FlowData>> {
+/** Decode a detached snapshot for inspection or an owned resume. */
+function restoreMap(checkpoint: FlowCheckpoint): Map<string, Map<string, FlowData>> {
+  if (!validPortableOutputs(checkpoint.outputs)
+    || proposalDigestOf(checkpoint.outputs, checkpoint.reviewNodes) !== checkpoint.proposalDigest) {
+    throw new Error('the checkpoint outputs no longer match their reviewed snapshot');
+  }
+  const outputs = JSON.parse(JSON.stringify(checkpoint.outputs)) as PortableOutputs;
   const out = new Map<string, Map<string, FlowData>>();
-  for (const [nodeId, ports] of Object.entries(checkpoint.outputs)) {
+  for (const [nodeId, ports] of Object.entries(outputs)) {
     out.set(nodeId, new Map(Object.entries(ports).map(([port, data]) => [port, fromPortable(data)])));
   }
   return out;
 }
 
+/** The `RunOptions.resume` map, only for a reviewed checkpoint with a live claim. */
+export function resumeOutputs(checkpoint: FlowCheckpoint, now = Date.now()): Map<string, Map<string, FlowData>> {
+  if (checkpoint.state !== 'applying' || checkpoint.review?.decision !== 'approved'
+    || checkpoint.review.proposalDigest !== checkpoint.proposalDigest || !checkpoint.claim?.owner
+    || !Number.isFinite(now) || !Number.isFinite(checkpoint.claim.leaseUntil) || checkpoint.claim.leaseUntil <= now) {
+    throw new Error('only an actively claimed, approved checkpoint can supply resume outputs');
+  }
+  return restoreMap(checkpoint);
+}
+
 /** The pending proposal's values, by review node and port, for a review UI or CLI summary. */
 export function checkpointProposal(checkpoint: FlowCheckpoint): Map<string, Map<string, FlowData>> {
-  const all = resumeOutputs(checkpoint);
+  const all = restoreMap(checkpoint);
   return new Map(checkpoint.reviewNodes.flatMap((id) => (all.has(id) ? [[id, all.get(id)!] as const] : [])));
 }

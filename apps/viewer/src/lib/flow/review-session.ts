@@ -30,6 +30,7 @@ import {
   recoverCheckpoint, rejectCheckpoint, updateCheckpoint, type FlowCheckpoint
 } from '@ifc-lite/flow/checkpoint';
 import { useViewerStore } from '@/store';
+import { flowRegistry } from './runner';
 import { browserCheckpointStore, checkpointsOfGraph } from './checkpoint-store';
 
 /** How long one tab may hold a claimed checkpoint before recovery treats it as abandoned. */
@@ -76,7 +77,7 @@ export async function pauseForReview(input: {
 }): Promise<void> {
   try {
     const { values, ...rest } = input;
-    const checkpoint = createCheckpoint({ ...rest, sourceDigest: viewerSourceDigest() });
+    const checkpoint = createCheckpoint({ ...rest, registry: flowRegistry(), sourceDigest: viewerSourceDigest() });
     if (!(await browserCheckpointStore.write(checkpoint, null))) throw new Error('a checkpoint with this id already exists');
     useFlowReview.setState({ checkpoint, values, problem: null });
   } catch (error) {
@@ -120,7 +121,7 @@ export function rejectReview(): Promise<FlowCheckpoint | null> {
 
 /** Claim the approved checkpoint for this tab's resume, against the graph and inputs it will run with. */
 export function claimReview(doc: FlowDocument, inputs: Record<string, unknown>): Promise<FlowCheckpoint | null> {
-  return transition((c) => claimCheckpoint(c, { owner: TAB_OWNER, graphDigest: graphDigest(doc, inputs), sourceDigest: viewerSourceDigest(), leaseMs: REVIEW_LEASE_MS }));
+  return transition((c) => claimCheckpoint(c, { owner: TAB_OWNER, graphDigest: graphDigest(doc, inputs, flowRegistry()), sourceDigest: viewerSourceDigest(), leaseMs: REVIEW_LEASE_MS }));
 }
 
 export function finishReview(result: RunResult | null, failure?: string): Promise<FlowCheckpoint | null> {

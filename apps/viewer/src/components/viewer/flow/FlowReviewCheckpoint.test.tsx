@@ -14,6 +14,7 @@ import { act } from 'react';
 import { type FlowDocument, type RunResult } from '@ifc-lite/flow';
 import { createCheckpoint, type FlowCheckpoint } from '@ifc-lite/flow/checkpoint';
 import { render, cleanup, click } from '@/test/render';
+import { ensureFlowAiNodes, flowRegistry } from '@/lib/flow/runner';
 import { browserCheckpointStore } from '@/lib/flow/checkpoint-store';
 import { useFlowReview, viewerSourceDigest } from '@/lib/flow/review-session';
 import { FlowReviewCheckpoint } from './FlowReviewCheckpoint';
@@ -36,7 +37,8 @@ async function saved(graph: FlowDocument): Promise<FlowCheckpoint> {
       ['coverage', { kind: 'item', value: { model: 'stand-in', rows: 30, requests: 2, classified: 30, unknown: 0, failed: 0, notSent: 0 } }],
     ])]]),
   };
-  const checkpoint = createCheckpoint({ doc: graph, result, sourceDigest: viewerSourceDigest() });
+  await ensureFlowAiNodes();
+  const checkpoint = createCheckpoint({ registry: flowRegistry(), doc: graph, result, sourceDigest: viewerSourceDigest() });
   assert.equal(await browserCheckpointStore.write(checkpoint, null), true);
   return checkpoint;
 }

@@ -31,7 +31,7 @@ import { viewerFlowAi } from './ai-host';
 import { browserCheckpointStore } from './checkpoint-store';
 import { flowExamples } from './examples';
 import { approveReview, claimReview, finishReview, loadGraphReview, pauseForReview, rejectReview, useFlowReview } from './review-session';
-import { runFlowInViewer } from './runner';
+import { flowRegistry, runFlowInViewer } from './runner';
 
 const initial = useViewerStore.getState();
 const originalFetch = globalThis.fetch;
@@ -166,7 +166,7 @@ test('#6923 a tab lost mid-resume leaves its checkpoint partially committed afte
   const reviewed = (await approveReview(useFlowReview.getState().checkpoint!.proposalDigest))!;
   // Another tab claimed it an hour ago and vanished.
   const stored = await browserCheckpointStore.read(reviewed.id);
-  const lost = claimCheckpoint(reviewed, { owner: 'tab:gone', graphDigest: graphDigest(doc), sourceDigest: reviewed.sourceDigest, leaseMs: 1, now: Date.now() - 3_600_000 });
+  const lost = claimCheckpoint(reviewed, { owner: 'tab:gone', graphDigest: graphDigest(doc, {}, flowRegistry()), sourceDigest: reviewed.sourceDigest, leaseMs: 1, now: Date.now() - 3_600_000 });
   assert.equal(await browserCheckpointStore.write(lost, stored!.revision), true);
   await loadGraphReview(doc.id);
   const recovered = useFlowReview.getState().checkpoint!;

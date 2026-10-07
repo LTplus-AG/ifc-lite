@@ -17,6 +17,7 @@ import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { captureEvidence } from '@/lib/assistant/evidence';
 import { loadDashboards } from '@/lib/charts/persistence';
 import { readContentRows } from '@/lib/storage/content-database';
 import type { ContentKind } from '@/lib/storage/content-kinds';
@@ -88,6 +89,14 @@ const subtitle = (ui: HTMLElement, title: string): string => card(ui, title).que
 const boundReport = (title: string): string | undefined =>
   useViewerStore.getState().dashboards.find((dashboard) => dashboard.id === DASHBOARD.id)?.charts.find((chart) => chart.title === title)?.clashReportId;
 
+/** The assistant's charts evidence for one chart: what a conversation would cite. */
+function cited(title: string): { status: string; total: number | null; savedClashReport: { name: string; truncated: boolean; loadedModelRevision: string } | null } {
+  const charts = JSON.parse(captureEvidence('charts').payload).evidence.summary?.charts as Array<{ chartTitle: string } & ReturnType<typeof cited>>;
+  const chart = charts.find((entry) => entry.chartTitle === title);
+  assert.ok(chart, `the charts evidence covers "${title}"`);
+  return chart;
+}
+
 /** What a browser reload leaves: nothing in memory, the saved content library and the stored dashboards. */
 async function reload(): Promise<void> {
   cleanup();
@@ -120,6 +129,10 @@ describe('Saved clash reports as a chart source (#6947)', () => {
       'run C moves only the chart that reads the current result');
     assert.match(subtitle(ui, 'Chart of A'), / · Saved: Run A · 1 bucket · 1 clash$/, 'a saved source is named on its card');
     assert.doesNotMatch(subtitle(ui, 'Current chart'), /Saved:/);
+    // The assistant cites the same populations and is told which of them is a saved past run.
+    assert.deepEqual([cited('Chart of A').total, cited('Chart of B').total, cited('Current chart').total], [1, 3, 6]);
+    assert.equal(cited('Chart of A').savedClashReport?.name, 'Run A');
+    assert.equal(cited('Current chart').savedClashReport, null);
 
     const durable = await readContentRows('clashReports' as ContentKind);
     assert.deepEqual(durable.filter((row) => !row.deleted).map((row) => row.id).sort(), [a.id, b.id].sort(), 'both reports are rows of the saved content library');
@@ -149,6 +162,7 @@ describe('Saved clash reports as a chart source (#6947)', () => {
     assert.equal(population(ui, 'Chart of A'), 0, 'the chart does not fall back to the current result (3 clashes)');
     assert.equal(useViewerStore.getState().clashResult?.clashes.length, 3);
     assert.equal(subtitle(ui, 'Chart of A'), 'Saved clash report unavailable');
+    assert.deepEqual([cited('Chart of A').status, cited('Chart of A').total], ['clash-report-missing', null], 'the assistant is given no numbers for it either');
     const empty = card(ui, 'Chart of A').querySelector('[data-chart-empty]');
     assert.match(empty?.textContent ?? '', /the current result is not shown in its place/);
 

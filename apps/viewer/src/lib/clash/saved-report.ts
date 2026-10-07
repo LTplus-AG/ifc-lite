@@ -36,8 +36,9 @@ function savedRules(result: ClashResult): SavedClashRule[] {
       ...(rule.clearance !== undefined ? { clearance: rule.clearance } : {}),
       ...(rule.severity !== undefined ? { severity: rule.severity } : {}),
       ...(rule.reportTouch !== undefined ? { reportTouch: rule.reportTouch } : {}),
-      ...(rule.membersA !== undefined ? { membersA: rule.membersA.length } : {}),
-      ...(rule.membersB !== undefined ? { membersB: rule.membersB.length } : {}),
+      // The engine drops member lists from `rulesRun` and flags them in the coverage; either one marks the side.
+      ...(matched?.fromMembersA || rule.membersA !== undefined ? { fromMembersA: true } : {}),
+      ...(matched?.fromMembersB || rule.membersB !== undefined ? { fromMembersB: true } : {}),
       ...(matched ? { matchedA: matched.matchedA, matchedB: matched.matchedB } : {}),
     };
   });

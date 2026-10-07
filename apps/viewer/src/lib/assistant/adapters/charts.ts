@@ -110,7 +110,7 @@ export const chartsAdapter: EvidenceAdapter = {
         kind: 'chart-dashboard', dashboardId: dashboard.id, dashboardName: dashboard.name, scope: dashboard.scope.kind,
         chartCount: dashboard.charts.length, crossFilterActive: s.chartSlice !== null, crossFilterSourceChart: s.chartSliceSource,
         charts,
-        limitations: 'Each chart has its own measure and unit; values are never comparable or summable across charts. Rows are category buckets (stacked series are folded into their category). Charts with an element filter are reported as filter-unresolved without buckets, because that filter resolves asynchronously in the panel. Unbucketed, unmeasured and unsupported counts are rows the chart could not place or measure, not zero values.',
+        limitations: 'Each chart has its own measure and unit; values are never comparable or summable across charts. Rows are category buckets (stacked series are folded into their category). Charts with an element filter are reported as filter-unresolved without buckets, because that filter resolves asynchronously in the panel. Unbucketed, unmeasured and unsupported counts are rows the chart could not place or measure, not zero values. A chart with savedClashReport shows a saved past clash run, not the current result: report its values as recorded evidence, with truncated, modelsChangedBeforeSaving and loadedModelRevision as given, and never as the state of the loaded model.',
       },
       totalRows,
       availability: 'available',

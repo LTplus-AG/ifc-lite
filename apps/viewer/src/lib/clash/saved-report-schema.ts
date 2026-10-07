@@ -30,7 +30,8 @@ export interface SavedClashModel {
   sourceContentHash?: string;
 }
 
-/** A rule as the run executed it. Explicit member lists are runtime ids, so only their sizes are kept. */
+/** A rule as the run executed it. An explicit member list is a set of per-load ids, so a report keeps only the fact
+ * that a side was chosen that way (`fromMembersA` / `fromMembersB`) and how many elements it matched. */
 export interface SavedClashRule {
   id: string;
   name: string;
@@ -41,8 +42,8 @@ export interface SavedClashRule {
   clearance?: number;
   severity?: ClashSeverity;
   reportTouch?: boolean;
-  membersA?: number;
-  membersB?: number;
+  fromMembersA?: boolean;
+  fromMembersB?: boolean;
   /** Elements the rule matched on each side (`matchedB` is null for a self-clash), when the engine reported coverage. */
   matchedA?: number;
   matchedB?: number | null;
@@ -118,6 +119,7 @@ const optionalText = (v: unknown): boolean => v === undefined || text(v);
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const count = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
 const optional = (v: unknown, check: (value: unknown) => boolean): boolean => v === undefined || check(v);
+const isBoolean = (v: unknown): boolean => typeof v === 'boolean';
 const oneOf = <T extends string>(v: unknown, values: readonly T[]): v is T => typeof v === 'string' && (values as readonly string[]).includes(v);
 
 function isModel(v: unknown): v is SavedClashModel {
@@ -127,7 +129,7 @@ function isModel(v: unknown): v is SavedClashModel {
 function isRule(v: unknown): v is SavedClashRule {
   return record(v) && text(v.id) && text(v.name, true) && text(v.a, true) && optional(v.b, (b) => text(b, true)) && oneOf(v.mode, MODES)
     && optional(v.tolerance, finite) && optional(v.clearance, finite) && optional(v.severity, (s) => oneOf(s, SEVERITIES))
-    && optional(v.reportTouch, (r) => typeof r === 'boolean') && optional(v.membersA, count) && optional(v.membersB, count)
+    && optional(v.reportTouch, isBoolean) && optional(v.fromMembersA, isBoolean) && optional(v.fromMembersB, isBoolean)
     && optional(v.matchedA, count) && optional(v.matchedB, (m) => m === null || count(m));
 }
 

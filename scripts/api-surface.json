@@ -6315,6 +6315,14 @@
     "validateSecretReferences: function",
     "writeXlsxTable: function"
   ],
+  "@ifc-lite/flow-nodes/ai": [
+    "AI_CAPABILITY: const",
+    "AI_FEATURE: const",
+    "FLOW_AI_BUDGET: const",
+    "FlowAiCall: interface",
+    "FlowAiService: interface",
+    "aiNodes: const"
+  ],
   "@ifc-lite/flow/checkpoint": [
     "CheckpointError: class",
     "CheckpointErrorCode: type",

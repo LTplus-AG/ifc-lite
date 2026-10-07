@@ -76,3 +76,33 @@ test('the labelling page refuses to save an incomplete sheet and names what is m
   page.load({ ...groupingSheet(), reviewer: { id: 'Jane Doe', status: 'blank' } });
   assert.match(page.problems().join(' '), /pseudonym/);
 });
+
+// #6990: a schema-valid empty sheet must not be downloadable as a completed review.
+test('the labelling page refuses completed saves of empty claims and grouping sheets', () => {
+  const page = openPage();
+  for (const sheet of [
+    { ...groupingSheet(), kind: 'claims', claims: [], findings: undefined, proposal: undefined },
+    { ...groupingSheet(), findings: [], proposal: undefined },
+  ]) {
+    page.load(sheet);
+    const save = document.querySelector<HTMLButtonElement>('button');
+    assert.ok(save);
+    save.click();
+    assert.equal(page.current().reviewer.status, 'blank');
+    assert.match(document.getElementById('status')?.textContent ?? '', /rebuild it with label.mjs sheet/);
+  }
+});
+
+test('#6990: the labelling page refuses negative and fractional correction counts on save', () => {
+  const page = openPage();
+  for (const corrections of [-5, 1.5]) {
+    const sheet = groupingSheet();
+    page.load({ ...sheet, findings: sheet.findings.map(finding => ({ ...finding, group: 'mine' })),
+      proposal: { groups: [{ ...sheet.proposal.groups[0], verdict: 'useful' }], corrections } });
+    const save = document.querySelector<HTMLButtonElement>('button');
+    assert.ok(save);
+    save.click();
+    assert.equal(page.current().reviewer.status, 'blank');
+    assert.match(document.getElementById('status')?.textContent ?? '', /whole number of at least 0/);
+  }
+});

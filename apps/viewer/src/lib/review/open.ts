@@ -35,8 +35,13 @@ export function openOriginal(finding: ReviewFinding, openPanel: (panel: Workspac
     if (!baseline || finding.run.capturedAt === null || baseline.takenAt !== Date.parse(finding.run.capturedAt) || matches.length !== 1) return false;
     useOriginalClashBaseline.setState({ finding: { clash: matches[0], takenAt: baseline.takenAt, modelNames: baseline.modelNames } });
   }
-  if (evidence.kind === 'clash') state.setClashSelectedId(evidence.clashId);
-  else if (evidence.kind === 'bcf') state.setActiveTopic(evidence.topicGuid);
+  if (evidence.kind === 'clash') {
+    if (!state.clashResult?.clashes.some(clash => clash.id === evidence.clashId)) return false;
+    state.setClashSelectedId(evidence.clashId);
+  } else if (evidence.kind === 'bcf') {
+    if (!state.bcfProject?.topics.has(evidence.topicGuid)) return false;
+    state.setActiveTopic(evidence.topicGuid);
+  }
   else if (evidence.kind === 'validation') {
     const sourceGlobalId = state.models.get(evidence.modelId)?.ifcDataStore?.entities.getGlobalId(evidence.expressId);
     const expected = finding.elements.find(element => element.modelId === evidence.modelId)?.globalId;

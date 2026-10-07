@@ -116,3 +116,15 @@ test('#7015 validation original refuses a replacement when the captured finding 
     assert.equal(useViewerStore.getState().selectedEntityId, 99);
   }
 });
+
+
+test('#7015 removed clash and BCF originals refuse navigation and preserve native selections', () => {
+  useViewerStore.setState({ clashResult: null, bcfProject: null, clashSelectedId: 'existing-clash', activeTopicId: 'existing-topic' });
+  const clash = finding('removed', 'clash', [], { evidence: { kind: 'clash', clashId: 'removed', occurrenceKey: 'removed-occurrence', reviewKey: 'removed-review' } });
+  const topic = finding('removed', 'bcf', [], { evidence: { kind: 'bcf', topicGuid: 'removed' } });
+  for (const original of [clash, topic]) {
+    assert.equal(openOriginal(original, () => assert.fail('missing originals cannot open a panel')), false);
+    assert.equal(useViewerStore.getState().clashSelectedId, 'existing-clash');
+    assert.equal(useViewerStore.getState().activeTopicId, 'existing-topic');
+  }
+});

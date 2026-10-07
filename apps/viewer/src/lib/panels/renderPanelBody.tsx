@@ -23,7 +23,6 @@ import { ValidationPanel } from '@/components/viewer/validation/ValidationPanel'
 import { LensPanel } from '@/components/viewer/LensPanel';
 import { ClashPanel } from '@/components/viewer/ClashPanel';
 import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
-import { ScriptPanel } from '@/components/viewer/ScriptPanel';
 import { GanttPanel } from '@/components/viewer/schedule/GanttPanel';
 import { ListPanel } from '@/components/viewer/lists/ListPanel';
 import { RoomPanel } from '@/components/viewer/RoomPanel';
@@ -63,6 +62,8 @@ const FlowPanel = lazy(() => import('@/components/viewer/flow/FlowPanel').then((
 const DrawingPanel = lazy(() => import('@/components/viewer/drawing/DrawingPanel').then((m) => ({ default: m.DrawingPanel })));
 // Lazy: the filmstrip of saved basket views (#5508), out of the first-paint bundle like the other bottom panels.
 const PresentationPanel = lazy(() => import('@/components/viewer/presentation/PresentationPanel').then((m) => ({ default: m.PresentationPanel })));
+
+const ScriptPanel = lazy(() => import('@/components/viewer/ScriptPanel').then(m => ({ default: m.ScriptPanel })));
 
 const AssistantPanel = lazy(() => import('@/components/viewer/assistant/AssistantPanel').then(m => ({ default: m.AssistantPanel })));
 
@@ -171,7 +172,7 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
     case 'lens': return <LensPanel onClose={onClose} />;
     case 'clash': return <ClashPanel onClose={onClose} />;
     case 'extensions': return <ExtensionsPanel onClose={onClose} />;
-    case 'script': return <ScriptPanel />;
+    case 'script': return <ChunkErrorBoundary label="Script panel"><Suspense fallback={null}><ScriptPanel /></Suspense></ChunkErrorBoundary>;
     case 'gantt': return <GanttPanel />;
     case 'lists': return <ListPanel />;
     case 'collab': return <RoomPanel onClose={onClose} />;

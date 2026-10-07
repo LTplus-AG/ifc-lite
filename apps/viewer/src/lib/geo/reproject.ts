@@ -419,6 +419,25 @@ function computeProjectedCenter(
   return { easting, northing };
 }
 
+/** Geographic input and WGS84 output use finite longitude/latitude degrees. */
+function validLatLon(lon: number, lat: number): boolean {
+  return Number.isFinite(lon) && Number.isFinite(lat)
+    && lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90;
+}
+
+/** Inputs are degrees for geographic CRSs, metres for projected CRSs. */
+function coordinatesToLatLon(definition: string, x: number, y: number): LatLon | null {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (isGeographicProj4(definition) && !validLatLon(x, y)) return null;
+  try {
+    const [lon, lat] = proj4(projectedDefinitionInMetres(definition), 'WGS84', [x, y]);
+    return validLatLon(lon, lat) ? { lat, lon } : null;
+  } catch (error) {
+    console.warn('[reproject] coordinate transformation failed', error);
+    return null;
+  }
+}
+
 /**
  * Reproject the model center from the projected CRS to WGS84 lat/lon.
  *
@@ -439,14 +458,10 @@ export async function reprojectToLatLon(
   const projDef = await resolveProjection(crs);
   if (!projDef) return null;
 
-  // Geographic CRS (e.g. EPSG:4326) — eastings/northings are already lon/lat.
+  // Geographic CRS offsets are source-datum angles, transformed separately.
   // Don't add the model's geometry center (in meters) to degree-based coordinates.
   if (isGeographicProj4(projDef)) {
-    const lon = conversion.eastings;
-    const lat = conversion.northings;
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
-    return { lat, lon };
+    return coordinatesToLatLon(projDef, conversion.eastings, conversion.northings);
   }
 
   // MapConversion values use the unit from IfcProjectedCRS.MapUnit. If MapUnit
@@ -456,14 +471,7 @@ export async function reprojectToLatLon(
   if (!center) return null;
   const { easting, northing } = center;
 
-  try {
-    const [lon, lat] = proj4(projectedDefinitionInMetres(projDef), 'WGS84', [easting, northing]);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
-    return { lat, lon };
-  } catch {
-    return null;
-  }
+  return coordinatesToLatLon(projDef, easting, northing);
 }
 
 /**
@@ -487,26 +495,10 @@ export async function reprojectPointToLatLon(
   const projDef = await resolveProjection(crs);
   if (!projDef) return null;
 
-  // Geographic CRS (e.g. EPSG:4326) — eastings/northings are already lon/lat.
-  if (isGeographicProj4(projDef)) {
-    const lon = eastings;
-    const lat = northings;
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
-    return { lat, lon };
-  }
-
-  const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
-  const eastingM = eastings * mapScale;
-  const northingM = northings * mapScale;
-  try {
-    const [lon, lat] = proj4(projectedDefinitionInMetres(projDef), 'WGS84', [eastingM, northingM]);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
-    return { lat, lon };
-  } catch {
-    return null;
-  }
+  // Geographic coordinates remain degrees; projected coordinates enter proj4 in metres.
+  const mapScale = isGeographicProj4(projDef)
+    ? 1 : resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
+  return coordinatesToLatLon(projDef, eastings * mapScale, northings * mapScale);
 }
 
 /**
@@ -566,18 +558,16 @@ export async function reprojectFromLatLon(
   const projDef = await resolveProjection(crs);
   if (!projDef) return null;
 
-  // Geographic CRS — coordinates are lon/lat in degrees, no projection needed.
-  if (isGeographicProj4(projDef)) {
-    return { easting: latLon.lon, northing: latLon.lat };
-  }
-
+  if (!validLatLon(latLon.lon, latLon.lat)) return null;
   try {
     const [projE, projN] = proj4('WGS84', projectedDefinitionInMetres(projDef), [latLon.lon, latLon.lat]);
     if (!Number.isFinite(projE) || !Number.isFinite(projN)) return null;
 
-    const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
+    const mapScale = isGeographicProj4(projDef)
+      ? 1 : resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
     return { easting: projE / mapScale, northing: projN / mapScale };
-  } catch {
+  } catch (error) {
+    console.warn('[reproject] inverse coordinate transformation failed', error);
     return null;
   }
 }
@@ -655,13 +645,9 @@ export async function computeFootprintGeoJSON(
     const northing = conversion.northings * mapScale + ordinate * scaleX * ifcX + abscissa * scaleY * ifcY;
 
     // Projected CRS → WGS84
-    try {
-      const [lon, lat] = proj4(projectedDefinitionInMetres(projDef), 'WGS84', [easting, northing]);
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-      ring.push([lon, lat]);
-    } catch {
-      return null;
-    }
+    const point = coordinatesToLatLon(projDef, easting, northing);
+    if (!point) return null;
+    ring.push([point.lon, point.lat]);
   }
 
   // Close the ring (GeoJSON requirement)

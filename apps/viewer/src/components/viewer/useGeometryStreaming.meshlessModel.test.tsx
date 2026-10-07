@@ -125,6 +125,30 @@ function mount() {
 type Native = ReturnType<typeof mount>;
 const flush = (native: Native) => native.scene.flushPending(native.device, native.pipeline, Infinity);
 
+it('revealing and hiding middle meshes rebuilds the filtered inventory without moving the camera (#7047)', async () => {
+  const meshes = ifcMeshes().map((mesh, i) => ({ ...mesh, ifcType: i === 1 || i === 3 ? 'IfcSpace' : 'IfcWall' }));
+  useViewerStore.setState({ typeVisibility: { ...useViewerStore.getState().typeVisibility, spaces: false } });
+  useViewerStore.getState().upsertModel(model('ifc', meshes));
+  const native = mount();
+  const pose = { position: { ...native.camera.getPosition() }, target: { ...native.camera.getTarget() } };
+  const residentIds = () => {
+    const ids: number[] = [];
+    native.scene.forEachMeshData(mesh => { ids.push(mesh.expressId); });
+    return ids.sort((a, b) => a - b);
+  };
+  const walls = meshes.filter(mesh => mesh.ifcType === 'IfcWall').map(mesh => mesh.expressId);
+  assert.deepEqual(residentIds(), walls, 'initial filter excludes only spaces');
+  for (const visible of [true, false, true]) {
+    await act(async () => { useViewerStore.getState().toggleTypeVisibility('spaces'); });
+    const expected = visible ? meshes.map(mesh => mesh.expressId) : walls;
+    assert.deepEqual(residentIds(), expected, 'every visible source mesh is resident exactly once');
+    assert.equal(sceneTriangles(native.scene), expected.length * 2);
+    assert.deepEqual({ position: native.camera.getPosition(), target: native.camera.getTarget() }, pose,
+      'a visibility rebuild retains the fitted camera');
+  }
+  await act(async () => { useViewerStore.getState().toggleTypeVisibility('spaces'); });
+});
+
 it('completion recolouring drains colours without re-uploading geometry (#7047)', async () => {
   const native = mount();
   await streamIfc(native);

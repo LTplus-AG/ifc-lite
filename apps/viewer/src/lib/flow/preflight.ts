@@ -66,6 +66,30 @@ export async function preflightWorkflow(
   for (const node of doc.nodes) for (const capability of registry.get(node.type)?.capabilities ?? []) {
     if (!nodeCapabilityGranted(grants.value, capability)) throw new Error(`Workflow capability denied: ${capability}`);
   }
+  // #7040: resolve concrete mutation parameters before any graph node runs.
+  for (const node of doc.nodes) {
+    if (restored.has(node.id)) continue;
+    const definition = registry.get(node.type);
+    const p: Record<string, unknown> = Object.fromEntries((definition?.params ?? []).map(param => [param.name, param.default]));
+    Object.assign(p, node.params);
+    for (const [key, value] of Object.entries(values)) if (key.startsWith(`${node.id}.`)) p[key.slice(node.id.length + 1)] = value;
+    const targets: string[] = [];
+    if (node.type === 'model.setProperty') {
+      if (typeof p.pset !== 'string' || p.pset.length === 0) throw new Error(`Invalid property set for ${node.id}`);
+      targets.push(`model.mutate:${p.pset}`);
+    }
+    if (node.type === 'model.setAttribute') {
+      if (typeof p.attribute !== 'string' || p.attribute.length === 0) throw new Error(`Invalid attribute for ${node.id}`);
+      targets.push(`model.mutate:attr.${p.attribute}`);
+    }
+    if (node.type === 'model.applyTable' && Array.isArray(p.mapping)) {
+      for (const mapping of p.mapping) if (isRecord(mapping) && typeof mapping.pset === 'string') targets.push(`model.mutate:${mapping.pset}`);
+    }
+    for (const target of targets) {
+      const capability = parseCapability(target);
+      if (!capability.ok || !hasCapability(grants.value, capability.value)) throw new Error(`Workflow capability denied: ${target}`);
+    }
+  }
   const inputs = { ...values };
   let modelCount = 0, jobCount = 0;
   const slotsByAlias = new Map<string, string[]>();

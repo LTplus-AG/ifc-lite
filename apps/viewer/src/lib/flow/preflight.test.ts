@@ -167,3 +167,17 @@ describe('static automation preflight prevents partial model writes (#6612)', ()
     await assert.rejects(preflightWorkflow(run, doc(['model.read', 'model.create']), {}, viewerFlowFeatures(true)), /Workflow capability denied: model.mutate:\*/);
   });
 });
+
+it('#7040 refuses a denied later concrete property target before any earlier writer can run', async () => {
+  const doc: FlowDocument = { flowVersion: 2, id: 'scope-preflight', name: 'Scoped writes', capabilities: ['model.read', 'model.mutate:Pset_A'],
+    nodes: [{ id: 'walls', type: 'model.select' }, { id: 'value', type: 'core.string', params: { value: 'Reviewed' } },
+      { id: 'first', type: 'model.setProperty', params: { pset: 'Pset_A', property: 'Role' } },
+      { id: 'later', type: 'model.setProperty', params: { pset: 'Pset_B', property: 'Role' } }],
+    edges: [{ from: ['walls', 'entities'], to: ['first', 'entity'] }, { from: ['value', 'value'], to: ['first', 'value'] },
+      { from: ['first', 'entity'], to: ['later', 'entity'] }, { from: ['value', 'value'], to: ['later', 'value'] }], inputs: [], outputs: [] };
+  const before = useViewerStore.getState();
+  await assert.rejects(preflightWorkflow(run, doc, {}, viewerFlowFeatures(true)), /Workflow capability denied: model.mutate:Pset_B/);
+  await assert.rejects(preflightWorkflow(run, { ...doc, nodes: doc.nodes.slice(0, 3) }, { 'first.pset': 'Pset_B' }, viewerFlowFeatures(true)), /model.mutate:Pset_B/);
+  assertSceneUnchanged(before);
+  assert.deepEqual(await preflightWorkflow(run, { ...doc, capabilities: [...doc.capabilities, 'model.mutate:Pset_B'] }, {}, viewerFlowFeatures(true)), {});
+});

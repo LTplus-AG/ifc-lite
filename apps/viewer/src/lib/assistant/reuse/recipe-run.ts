@@ -54,13 +54,18 @@ export function takeDraftPrompt(): string | null {
 /** The native action behind a step. Review steps open where that proposal or draft is reviewed. */
 export type StepAction =
   | { kind: 'panel'; panel: WorkspacePanelId }
+  | { kind: 'review'; source: AssistantSource }
   | { kind: 'ask'; source: AssistantSource; prompt: string }
   | { kind: 'flow'; flowId: string };
 export function stepAction(step: RecipeStep): StepAction {
   switch (step.kind) {
     case 'analysis': return { kind: 'panel', panel: adapterFor(step.source).panelIds[0] };
     case 'ask': return { kind: 'ask', source: step.source, prompt: step.prompt };
-    case 'review': return { kind: 'panel', panel: step.action === 'bcf.drafts' ? 'clash' : 'assistant' };
+    case 'review':
+      if (step.action === 'bcf.drafts') return { kind: 'panel', panel: 'clash' };
+      if (step.action === 'clash.groups') return { kind: 'review', source: 'clash' };
+      if (step.action === 'flow.patch') return { kind: 'review', source: 'flow' };
+      return { kind: 'panel', panel: 'assistant' };
     case 'publish': return { kind: 'panel', panel: 'bcf' };
     case 'flow': return { kind: 'flow', flowId: step.flowId };
   }

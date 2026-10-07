@@ -77,7 +77,8 @@ export function useRunStep(): (step: RecipeStep) => Promise<void> {
         && !await confirmDialog({ description: t('assistant.switchConfirm') })) return;
       replaceEvidence(captureEvidence(action.source));
     }
-    useRecipeRun.setState({ draftPrompt: action.prompt });
+    // A review cancels any unconsumed recipe prompt; the user's persistent composer stays intact.
+    useRecipeRun.setState({ draftPrompt: action.kind === 'ask' ? action.prompt : null });
     panels.openInHome('assistant');
   };
 }

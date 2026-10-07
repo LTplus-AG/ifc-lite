@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useDialogs } from '@/components/ui/confirm-dialog';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,8 @@ import { ContentStorageNotice } from '../ContentStorageNotice';
 import { toast } from '@/components/ui/toast';
 import { artifactLink } from '@/lib/deep-links/artifact-link';
 
+const WorkflowFlowSave = lazy(() => import('./WorkflowFlowSave').then(module => ({ default: module.WorkflowFlowSave })));
+
 export function ConversationLibrary() {
   const { t } = useTranslation();
   const { confirmDialog } = useDialogs();
@@ -23,6 +25,7 @@ export function ConversationLibrary() {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [invalid, setInvalid] = useState(false);
+  const [workflowOpen, setWorkflowOpen] = useState(false);
   const save = async () => {
     const evidence = state.snapshot ?? state.archived?.evidence;
     if (!evidence || state.status === 'streaming') return;
@@ -51,6 +54,9 @@ export function ConversationLibrary() {
           maxLength={200} placeholder={t('assistant.conversationName')} onChange={event => setName(event.target.value)} />
         <Button size="sm" variant="outline" className="h-7 shrink-0" disabled={busy || state.status === 'streaming' || (!state.snapshot && !state.archived)} onClick={() => void save()}>{t('assistant.saveConversation')}</Button>
       </div>
+      <Button size="sm" variant="outline" disabled={state.status === 'streaming' || !state.messages.length || state.messages.at(-1)?.role !== 'assistant'}
+        aria-expanded={workflowOpen} onClick={() => setWorkflowOpen(open => !open)}>{t('workflowFlow.title')}</Button>
+      {workflowOpen && <Suspense fallback={null}><WorkflowFlowSave name={name.trim() || state.archived?.name || ''} /></Suspense>}
       {invalid && <p role="alert">{t('assistant.invalidConversation')}</p>}
       {entries.map(entry => <div key={entry.id} className="flex items-center gap-1">
         <Button size="sm" variant="ghost" className="min-w-0 flex-1 justify-start truncate" disabled={busy || state.status === 'streaming'} onClick={() => void (async () => {

@@ -22,10 +22,10 @@ export function LayoutMigrationNotice() {
   const acknowledge = useViewerStore((s) => s.acknowledgeLayoutMigration);
   const [open, setOpen] = useState(false);
   if (changes.length === 0) return null;
-  return <section role="status" aria-label={t('workspaceMigration.layout.title')}
+  return <section aria-label={t('workspaceMigration.layout.title')}
     className="shrink-0 border-b border-border bg-muted/40 px-3 py-2 text-xs space-y-2">
     <p className="font-medium">{t('workspaceMigration.layout.title')}</p>
-    <p className="text-muted-foreground">{t('workspaceMigration.layout.summary', { count: changes.length })}</p>
+    <output aria-live="polite" className="block text-muted-foreground">{t('workspaceMigration.layout.summary', { count: changes.length })}</output>
     {open && <LayoutChangeList changes={changes} />}
     <div className="flex flex-wrap gap-1">
       <Button size="sm" variant="ghost" className="h-7" aria-expanded={open} onClick={() => setOpen((v) => !v)}>

@@ -24,13 +24,26 @@ export interface LayoutBackup {
 }
 
 function storage(): Storage | null {
-  return typeof window === 'undefined' ? null : window.localStorage;
+  try { return typeof window === 'undefined' ? null : window.localStorage; }
+  catch (error) { console.warn('[sidebar] Layout storage is unavailable:', error); return null; }
+}
+
+function readItem(key: string): string | null {
+  try { return storage()?.getItem(key) ?? null; }
+  catch (error) { console.warn('[sidebar] Failed to read layout storage:', error); return null; }
 }
 
 export function writeSidebarLayout(layout: StoredSidebarLayout): void {
   const store = storage();
   if (!store) return;
   try {
+    const original = store.getItem(SIDEBAR_LAYOUT_KEY);
+    if (original !== null) {
+      let parsed: unknown;
+      try { parsed = JSON.parse(original); }
+      catch (error) { console.warn('[sidebar] Preserving unreadable original layout:', error); parsed = ''; }
+      if (migrateSidebarLayout(parsed).changes.length > 0 && !backupOriginal(original)) return;
+    }
     store.setItem(SIDEBAR_LAYOUT_KEY, JSON.stringify(layout));
   } catch (error) {
     // Quota / private mode: the layout just won't persist this session.
@@ -39,7 +52,7 @@ export function writeSidebarLayout(layout: StoredSidebarLayout): void {
 }
 
 export function readPendingLayoutChanges(): LayoutChange[] {
-  const raw = storage()?.getItem(LAYOUT_NOTICE_KEY);
+  const raw = readItem(LAYOUT_NOTICE_KEY);
   if (!raw) return [];
   try {
     return readLayoutChanges((JSON.parse(raw) as { changes?: unknown }).changes);
@@ -71,7 +84,7 @@ export function clearLayoutNotice(): void {
 }
 
 export function readLayoutBackup(): LayoutBackup | null {
-  const raw = storage()?.getItem(LAYOUT_BACKUP_KEY);
+  const raw = readItem(LAYOUT_BACKUP_KEY);
   if (!raw) return null;
   try {
     const value = JSON.parse(raw) as Partial<LayoutBackup>;
@@ -83,20 +96,23 @@ export function readLayoutBackup(): LayoutBackup | null {
   }
 }
 
-function backupOriginal(raw: string): void {
+function backupOriginal(raw: string): boolean {
   // The first original of a pending review is the one worth keeping.
-  if (readPendingLayoutChanges().length > 0 && readLayoutBackup()) return;
+  if (readPendingLayoutChanges().length > 0 && readLayoutBackup()) return true;
   try {
-    storage()?.setItem(LAYOUT_BACKUP_KEY, JSON.stringify({ reason: 'migration', savedAt: new Date().toISOString(), raw } satisfies LayoutBackup));
+    const store = storage();
+    if (!store) return false;
+    store.setItem(LAYOUT_BACKUP_KEY, JSON.stringify({ reason: 'migration', savedAt: new Date().toISOString(), raw } satisfies LayoutBackup));
+    return true;
   } catch (error) {
     console.warn('[sidebar] failed to back up the layout before migration:', error);
+    return false;
   }
 }
 
 /** Boot read: migrate, back up the original if anything changed, stamp v2. */
 export function loadSidebarLayout(): { layout: StoredSidebarLayout; pending: LayoutChange[] } {
-  const store = storage();
-  const raw = store?.getItem(SIDEBAR_LAYOUT_KEY) ?? null;
+  const raw = readItem(SIDEBAR_LAYOUT_KEY);
   if (raw === null) return { layout: migrateSidebarLayout(null).layout, pending: readPendingLayoutChanges() };
   let parsed: unknown;
   try {
@@ -107,7 +123,7 @@ export function loadSidebarLayout(): { layout: StoredSidebarLayout; pending: Lay
   }
   const migration = migrateSidebarLayout(parsed);
   if (migration.changes.length > 0) {
-    backupOriginal(raw);
+    // Never overwrite the rollback source when the backup could not be saved.
     writeSidebarLayout(migration.layout);
     return { layout: migration.layout, pending: queueLayoutChanges(migration.changes) };
   }

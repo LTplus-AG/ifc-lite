@@ -9,7 +9,9 @@
  * record is `supported` only when that span occurs verbatim in its passage
  * and every value has its field's type; otherwise it is kept as
  * `unsupported` with the offending values blanked, so a reviewer sees what
- * the model claimed without it passing as evidence. Passages beyond
+ * the model claimed. This is a quote-and-type check, not a semantic check
+ * that the quoted text entails each typed value. All records remain candidates
+ * awaiting human review. Passages beyond
  * `maxPassages`, or past a budget stop, are reported as not sent. The run
  * pauses here for review.
  */

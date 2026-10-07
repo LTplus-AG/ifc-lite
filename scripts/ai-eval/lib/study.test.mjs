@@ -45,6 +45,15 @@ test('protocol errors: unknown scene, role, panel and a role nobody is assigned 
   for (const part of [/unknown scene nowhere/, /unknown role wizard/, /unknown panel not-a-panel/, /role ghost: no task/]) assert.ok(errors.some(error => part.test(error)), `${part} in ${errors}`);
 });
 
+test('#6928 omitting any charter journey refuses the protocol before cohort scoring', () => {
+  for (const journey of manifest.journeys) {
+    const incomplete = clone(protocol);
+    incomplete.tasks = incomplete.tasks.filter(task => task.journey !== journey.id);
+    const errors = protocolErrors(incomplete, { root: REPO_ROOT, manifest });
+    assert.ok(errors.includes(`journey ${journey.id}: no study task is assigned to it`), `${journey.id}: ${errors.join('; ')}`);
+  }
+});
+
 test('session errors: wrong role for a task, contradictions, duplicate ids, a time far over the cap, and identifying text', () => {
   const task = protocol.tasks.find(item => !item.roles.includes('occasional'));
   const bad = [

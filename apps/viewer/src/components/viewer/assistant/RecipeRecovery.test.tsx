@@ -21,6 +21,7 @@ import { useAssistantPreferences, projectScope, preferencesFor } from '@/lib/ass
 import { useRecipeRun, stopRecipe } from '@/lib/assistant/reuse/recipe-run';
 import { useAssistantDraft, setAssistantDraft } from '@/lib/assistant/composer-draft';
 import { useAssistant } from '@/lib/assistant/conversation';
+import { assistantLibrary } from '@/lib/assistant/library';
 
 const initial = useViewerStore.getState();
 const assistantInitial = useAssistant.getState();
@@ -51,7 +52,8 @@ test('#7055 Ideas cannot discard a dirty or running graph through its saved-work
   assert.equal(useViewerStore.getState().flowDoc?.id, saved.id);
 });
 
-test('#7055 backup waits for both new libraries instead of exporting an apparently empty library', () => {
+test('#7055 backup waits for both new libraries instead of exporting an apparently empty library', async () => {
+  await assistantLibrary.initialize();
   useAssistantRecipes.setState({ status: { ...initialContentStatus(), phase: 'loading' } });
   useAssistantPreferences.setState({ status: { ...initialContentStatus(), phase: 'ready' } });
   render(<ContentStorageNotice status={{ ...initialContentStatus(), phase: 'ready' }} retry={async () => true} restore={async () => true} />);

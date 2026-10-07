@@ -22,7 +22,7 @@ import { Toaster } from '@/components/ui/toast';
 import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixture';
 import { snapshotComparison } from '@/lib/compare/savedComparisons';
 import { createSavedComparisonsSlice } from '@/store/slices/savedComparisonsSlice';
-import { currentReviewWorkspace, DEFAULT_REVIEW_WORKSPACE, useReviewWorkspaces } from '@/lib/review/workspace';
+import { currentReviewWorkspace, saveCardDecision, DEFAULT_REVIEW_WORKSPACE, useReviewWorkspaces } from '@/lib/review/workspace';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); useReviewAssistantCard.setState({ card: null, project: null }); useOriginalClashBaseline.setState({ finding: null }); localStorage.removeItem('ifc-lite-clash-revision-baseline'); });
@@ -263,4 +263,21 @@ test('#7015 Review initializes persisted historical comparisons without opening 
   await waitFor(() => useViewerStore.getState().savedComparisons.some(entry => entry.id === saved.id), 'Review loads durable history');
   await waitFor(() => !!ui.querySelector('[data-review-card]'), 'historical comparison card appears');
   assert.match(ui.textContent ?? '', /historical/);
+});
+
+test('#7015 a durable decision clear from another native caller resets the mounted editor', async () => {
+  setup();
+  const ui = mount();
+  await waitFor(() => !!ui.querySelector('[data-review-card]'), 'card');
+  click(button(ui, 'Show findings of'));
+  const comment = ui.querySelector<HTMLTextAreaElement>('textarea')!;
+  const select = ui.querySelector<HTMLSelectElement>('select')!;
+  type(comment, 'Decision that will be cleared elsewhere');
+  click(button(ui, 'Save decision'));
+  await waitFor(() => useReviewWorkspaces.getState().status.items[DEFAULT_REVIEW_WORKSPACE] === 'saved', 'committed');
+  const held = currentReviewWorkspace(useReviewWorkspaces.getState().entries).decisions.find(d => d.comment === comment.value)!;
+  assert.ok(held);
+  assert.equal(await saveCardDecision(held.cardKey, null), true);
+  await waitFor(() => comment.value === '' && select.value === 'open', 'external clear reflected');
+  assert.equal([...ui.querySelectorAll('button')].some(button => button.textContent === 'Clear decision'), false);
 });

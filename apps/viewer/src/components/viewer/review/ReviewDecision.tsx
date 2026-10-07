@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
-import { HUMAN_STATUSES, REVIEW_LIMITS, saveCardDecision, type CardDecision, type HumanStatus } from '@/lib/review/workspace';
+import { HUMAN_STATUSES, REVIEW_LIMITS, DEFAULT_REVIEW_WORKSPACE, useReviewWorkspaces, saveCardDecision, type CardDecision, type HumanStatus } from '@/lib/review/workspace';
 import { HUMAN_STATUS_KEY } from './review-labels';
 
 /** The person's own status and comment for one card; never an analysis result. */
@@ -17,10 +17,13 @@ export function ReviewDecision({ cardKey, decision }: { cardKey: string; decisio
   const [status, setStatus] = useState<HumanStatus>(decision?.status ?? 'open');
   const [comment, setComment] = useState(decision?.comment ?? '');
   const [clearAvailable, setClearAvailable] = useState(decision !== null);
+  const saved = useReviewWorkspaces(state => state.status.items[DEFAULT_REVIEW_WORKSPACE] === 'saved');
+  const previous = useRef(decision);
   useEffect(() => {
     // A staged Clear may remove the prop before its durable write succeeds.
-    if (decision) { setStatus(decision.status); setComment(decision.comment); setClearAvailable(true); }
-  }, [decision]);
+    if (decision) { previous.current = decision; setStatus(decision.status); setComment(decision.comment); setClearAvailable(true); }
+    else if (previous.current && saved) { previous.current = null; setStatus('open'); setComment(''); setClearAvailable(false); }
+  }, [decision, saved]);
   const save = async (next: { status: HumanStatus; comment: string } | null) => {
     const saved = await saveCardDecision(cardKey, next);
     if (saved) {

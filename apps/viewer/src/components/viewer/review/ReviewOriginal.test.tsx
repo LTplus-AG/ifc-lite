@@ -105,3 +105,14 @@ test('#7015 a consumed original request cannot steal a later comparison selectio
   assert.equal(select.value, b.id);
   assert.equal(input.value, 'Renamed B');
 });
+
+test('#7015 validation original refuses a replacement when the captured finding has no verifiable identity', () => {
+  const replacement = fixtureModel('m', { entities: [{ expressId: 1, type: 'IfcWall', globalId: 'NEW_GUID' }] });
+  useViewerStore.setState({ models: new Map([['m', replacement]]), selectedEntityId: 99 });
+  for (const elements of [[], [{ globalId: 'OLD_GUID', modelId: 'other', modelName: 'other.ifc' }]]) {
+    const original = finding('unknown', 'validation', elements,
+      { evidence: { kind: 'validation', specificationId: 'S1', modelId: 'm', expressId: 1 } });
+    assert.equal(openOriginal(original, () => assert.fail('an unknown original cannot select a replacement')), false);
+    assert.equal(useViewerStore.getState().selectedEntityId, 99);
+  }
+});

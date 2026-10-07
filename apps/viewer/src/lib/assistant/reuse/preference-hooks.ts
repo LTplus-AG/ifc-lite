@@ -20,7 +20,8 @@ export function usePreferredModel(): void {
   const { scope, preferences } = useProjectPreferences();
   const applied = useRef<string | null>(null);
   useEffect(() => {
-    if (!scope || !preferences?.model || applied.current === scope.id) return;
+    if (!scope || !preferences?.model) { applied.current = null; return; }
+    if (applied.current === scope.id) return;
     applied.current = scope.id;
     const state = useViewerStore.getState();
     if (getModelById(preferences.model) && state.chatActiveModel !== preferences.model) state.setChatActiveModel(preferences.model);

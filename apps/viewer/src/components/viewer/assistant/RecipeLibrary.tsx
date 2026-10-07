@@ -46,8 +46,9 @@ export function RecipeLibrary() {
   const importFile = async (file: File) => {
     const parsed = parseRecipeBundle(await file.text());
     if (!parsed.ok) { setMessage({ alert: true, text: t(BUNDLE_REFUSAL[parsed.reason]) }); return; }
-    // The native Flow import opens each graph; never replace an unsaved open graph.
-    if (parsed.bundle.flows.length && useViewerStore.getState().flowDirty) { setMessage({ alert: true, text: t(BUNDLE_REFUSAL['flow-dirty']) }); return; }
+    // The native Flow import opens each graph; never replace an unsaved or running graph.
+    const current = useViewerStore.getState();
+    if (parsed.bundle.flows.length && (current.flowDirty || current.flowRunning)) { setMessage({ alert: true, text: t(BUNDLE_REFUSAL['flow-dirty']) }); return; }
     const imported = await importRecipeBundle(parsed.bundle, doc => useViewerStore.getState().importFlow(doc));
     setMessage(imported.saved
       ? { alert: false, text: t('assistantRecipes.imported', { count: imported.recipes.length }) }

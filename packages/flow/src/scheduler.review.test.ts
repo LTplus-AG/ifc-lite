@@ -14,6 +14,8 @@ import { describe, expect, it } from 'vitest';
 import { FLOW_VERSION, type FlowDocument } from './document.js';
 import { NodeRegistry } from './registry.js';
 import { MemoCache, runFlow } from './scheduler.js';
+import { createCheckpoint, resumeOutputs, graphDigest } from './checkpoint-record.js';
+import { approveCheckpoint, claimCheckpoint } from './checkpoint-state.js';
 import type { FlowData } from './values.js';
 
 interface Host {
@@ -66,6 +68,13 @@ const doc: FlowDocument = {
   ],
 };
 
+function reviewedOutputs(paused: Awaited<ReturnType<typeof runFlow>>, outputs = paused.outputs) {
+  const checkpoint = createCheckpoint({ doc, registry, result: { ...paused, outputs }, sourceDigest: 'test-source' });
+  return resumeOutputs(claimCheckpoint(approveCheckpoint(checkpoint, checkpoint.proposalDigest), {
+    owner: 'native-test', graphDigest: graphDigest(doc, {}, registry), sourceDigest: 'test-source', leaseMs: 60_000,
+  }));
+}
+
 const statuses = (result: Awaited<ReturnType<typeof runFlow>>) => Object.fromEntries(result.reports.map((r) => [r.nodeId, r.status]));
 
 describe('review checkpoints', () => {
@@ -82,7 +91,7 @@ describe('review checkpoints', () => {
   it('resumes with the reviewed outputs without running any completed node again', async () => {
     const host: Host = { executed: [], sunk: [] };
     const paused = await runFlow(doc, { host, registry });
-    const resumed = await runFlow(doc, { host, registry, resume: paused.outputs });
+    const resumed = await runFlow(doc, { host, registry, resume: reviewedOutputs(paused) });
     expect(resumed.ok).toBe(true);
     expect(resumed.review).toEqual([]);
     expect(statuses(resumed)).toMatchObject({ src: 'restored', w: 'restored', p: 'restored', sink: 'ok', src2: 'restored', sink2: 'restored' });
@@ -97,20 +106,29 @@ describe('review checkpoints', () => {
     const paused = await runFlow(doc, { host, registry });
     const reviewed = new Map(paused.outputs);
     reviewed.set('p', new Map<string, FlowData>([['proposal', { kind: 'item', value: 'edited-by-reviewer' }]]));
-    await runFlow(doc, { host, registry, resume: reviewed });
+    await runFlow(doc, { host, registry, resume: reviewedOutputs(paused, reviewed) });
     expect(host.sunk).toEqual([2, 'edited-by-reviewer']);
     expect(host.executed.filter((n) => n === 'propose')).toHaveLength(1);
   });
 
-  it('a resumed run without the reviewed node re-proposes instead of applying', async () => {
+  it('#7038 refuses raw paused outputs before any downstream write', async () => {
     const host: Host = { executed: [], sunk: [] };
     const paused = await runFlow(doc, { host, registry });
-    const withoutProposal = new Map(paused.outputs);
-    withoutProposal.delete('p');
-    const again = await runFlow(doc, { host, registry, resume: withoutProposal });
-    expect(again.review).toEqual(['p']);
-    expect(statuses(again).sink).toBe('paused');
+    await expect(runFlow(doc, { host, registry, resume: paused.outputs })).rejects.toThrow(/actively claimed/);
     expect(host.sunk).toEqual([2]);
+  });
+
+  it('#7038 refuses mutated or reused authorized outputs before a downstream write', async () => {
+    const host: Host = { executed: [], sunk: [] };
+    const paused = await runFlow(doc, { host, registry });
+    const changed = reviewedOutputs(paused);
+    changed.delete('p');
+    await expect(runFlow(doc, { host, registry, resume: changed })).rejects.toThrow(/unchanged outputs/);
+    expect(host.sunk).toEqual([2]);
+    const approved = reviewedOutputs(paused);
+    await runFlow(doc, { host, registry, resume: approved });
+    await expect(runFlow(doc, { host, registry, resume: approved })).rejects.toThrow(/actively claimed/);
+    expect(host.sunk).toEqual([2, 'label-for-7']);
   });
 });
 

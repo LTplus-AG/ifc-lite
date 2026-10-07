@@ -216,6 +216,20 @@ function restoreMap(checkpoint: FlowCheckpoint): Map<string, Map<string, FlowDat
   return out;
 }
 
+const authorizedResumes = new WeakMap<object, { graph: string; outputs: string; expires: number }>();
+
+/** Scheduler-only boundary: raw, changed, expired or reused maps cannot bypass review. */
+export function consumeReviewedResume(outputs: ReadonlyMap<string, ReadonlyMap<string, FlowData>>, doc: FlowDocument,
+  inputs: Readonly<Record<string, unknown>>, registry: ReviewRegistry): void {
+  const authorization = authorizedResumes.get(outputs);
+  if (!authorization || authorization.expires <= Date.now()
+    || authorization.graph !== graphDigest(doc, inputs, registry)
+    || authorization.outputs !== digest(portableOutputs(outputs))) {
+    throw new Error('resume requires unchanged outputs from an actively claimed, approved checkpoint');
+  }
+  authorizedResumes.delete(outputs);
+}
+
 /** The `RunOptions.resume` map, only for a reviewed checkpoint with a live claim. */
 export function resumeOutputs(checkpoint: FlowCheckpoint, now = Date.now()): Map<string, Map<string, FlowData>> {
   if (checkpoint.state !== 'applying' || checkpoint.review?.decision !== 'approved'
@@ -223,7 +237,10 @@ export function resumeOutputs(checkpoint: FlowCheckpoint, now = Date.now()): Map
     || !Number.isFinite(now) || !Number.isFinite(checkpoint.claim.leaseUntil) || checkpoint.claim.leaseUntil <= now) {
     throw new Error('only an actively claimed, approved checkpoint can supply resume outputs');
   }
-  return restoreMap(checkpoint);
+  const outputs = restoreMap(checkpoint);
+  authorizedResumes.set(outputs, { graph: checkpoint.graphDigest, outputs: digest(portableOutputs(outputs)),
+    expires: Date.now() + (checkpoint.claim.leaseUntil - now) });
+  return outputs;
 }
 
 /** The pending proposal's values, by review node and port, for a review UI or CLI summary. */

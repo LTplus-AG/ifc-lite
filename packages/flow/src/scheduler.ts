@@ -15,6 +15,7 @@
  * volatile ones, nor a run in which any lane called `ctx.markVolatile()`.
  */
 
+import { consumeReviewedResume } from './checkpoint-record.js';
 import { nodeAvailability, type HostFeatures } from './availability.js';
 import { digest, digestFlowData } from './digest.js';
 import type { FlowDocument } from './document.js';
@@ -116,8 +117,8 @@ export interface RunOptions<H> {
   readonly signal?: AbortSignal;
   /**
    * Resume after a review: outputs of the nodes that completed before the
-   * pause (a paused run's `outputs`), with each reviewed node's entry holding
-   * its approved proposal. These nodes are not executed again, so an effect
+   * pause, obtained only from `resumeOutputs` for an approved, claimed
+   * checkpoint. Raw outputs and altered or reused resume maps are refused. These nodes are not executed again, so an effect
    * that ran before the pause is never repeated.
    */
   readonly resume?: ReadonlyMap<string, ReadonlyMap<string, FlowData>>;
@@ -125,6 +126,7 @@ export interface RunOptions<H> {
 
 export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promise<RunResult> {
   const registry = opts.registry as NodeRegistry<unknown>;
+  if (opts.resume) consumeReviewedResume(opts.resume, doc, opts.inputs ?? {}, registry);
   const order = topologicalOrder(doc);
   const outputs = new Map<string, Map<string, FlowData>>();
   const reports: NodeReport[] = [];

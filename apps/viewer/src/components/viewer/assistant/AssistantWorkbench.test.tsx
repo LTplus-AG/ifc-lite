@@ -12,7 +12,10 @@ import { useViewerStore } from '@/store';
 import { captureEvidence } from '@/lib/assistant/evidence';
 import { cancelAssistant, replaceEvidence, useAssistant } from '@/lib/assistant/conversation';
 import { setAssistantDraft } from '@/lib/assistant/composer-draft';
-import { openAssistant, useAssistantPlacement } from '@/lib/assistant/placement';
+import { openAssistant, useAssistantPlacement, setAssistantPlacement } from '@/lib/assistant/placement';
+import { applyLayoutPreset } from '@/store/layoutPreset';
+import { resetLayout } from '@/store/layoutReset';
+import { ASSISTANT_PLACEMENT_STORAGE_KEY } from '@/store/layout-preset-reset';
 import { MobilePanelSheet } from '../MobilePanelSheet';
 import { TransientSurface } from './TransientSurface';
 
@@ -79,4 +82,17 @@ test('#6926 the narrow Assistant sheet returns to its source and preserves evide
   assert.equal(ui.querySelector('textarea')!.value, 'Explain the captured conflicts');
   assert.equal(useAssistant.getState().snapshot, snapshot);
   assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [42]);
+});
+
+test('#7053 Reset after Coordinator and Floating restores the default contextual split placement', () => {
+  useViewerStore.setState({ isMobile: false, sidebarActivePanel: 'properties', sidebarSecondaryPanel: null, floatingPanels: [] });
+  applyLayoutPreset('coordinator');
+  setAssistantPlacement('floating');
+  openAssistant('clash');
+  assert.ok(useViewerStore.getState().floatingPanels.some(panel => panel.id === 'assistant'));
+  resetLayout();
+  assert.equal(localStorage.getItem(ASSISTANT_PLACEMENT_STORAGE_KEY), null);
+  openAssistant('properties');
+  assert.equal(useViewerStore.getState().sidebarSecondaryPanel, 'assistant');
+  assert.equal(useViewerStore.getState().floatingPanels.some(panel => panel.id === 'assistant'), false);
 });

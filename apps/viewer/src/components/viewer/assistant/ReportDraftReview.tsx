@@ -53,7 +53,7 @@ export function ReportDraftReview() {
   };
   const requestDraft = () => {
     setError(null);
-    void sendAssistant(t('aiReports.requestPrompt', { instruction: reportLanguageInstruction(language) }), store.chatActiveModel, ASSISTANT_PROXY_URL);
+    void sendAssistant(t('aiReports.requestPrompt', { instruction: reportLanguageInstruction(language) }), store.chatActiveModel, ASSISTANT_PROXY_URL, {}, { generationLanguage: language });
   };
   // Stays mounted while a requested draft streams, so the open review keeps its place.
   if (!eligible && !draft && !assistant.snapshot) return null;

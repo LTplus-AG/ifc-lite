@@ -24,6 +24,7 @@
  */
 
 import { create } from 'zustand';
+import { ASSISTANT_PLACEMENT_STORAGE_KEY, layoutPresetResetEpoch, subscribeLayoutPresetReset } from '@/store/layout-preset-reset';
 import { getViewerStoreApi } from '@/store';
 import { bottomPanelFlags, isBottomPanel, isBottomPanelOpen } from '@/lib/panels/bottom-panels';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
@@ -34,14 +35,14 @@ export const ASSISTANT_PLACEMENTS = ['split', 'dock', 'floating'] as const;
 export type AssistantPlacement = (typeof ASSISTANT_PLACEMENTS)[number];
 export const DEFAULT_ASSISTANT_PLACEMENT: AssistantPlacement = 'split';
 
-const STORAGE_KEY = 'ifc-lite:assistant-placement-v1';
+const STORAGE_KEY = ASSISTANT_PLACEMENT_STORAGE_KEY;
 
 export function isAssistantPlacement(value: unknown): value is AssistantPlacement {
   return typeof value === 'string' && (ASSISTANT_PLACEMENTS as readonly string[]).includes(value);
 }
 
 function loadPlacement(): AssistantPlacement {
-  if (typeof window === 'undefined') return DEFAULT_ASSISTANT_PLACEMENT;
+  if (typeof window === 'undefined' || layoutPresetResetEpoch() > 0) return DEFAULT_ASSISTANT_PLACEMENT;
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     return isAssistantPlacement(stored) ? stored : DEFAULT_ASSISTANT_PLACEMENT;
@@ -64,6 +65,8 @@ export const useAssistantPlacement = create<PlacementState>(() => ({
   returnTarget: null,
   displacedSecondary: null,
 }));
+
+subscribeLayoutPresetReset(() => useAssistantPlacement.setState({ placement: DEFAULT_ASSISTANT_PLACEMENT, returnTarget: null, displacedSecondary: null }));
 
 export function setAssistantPlacement(placement: AssistantPlacement): void {
   useAssistantPlacement.setState({ placement });

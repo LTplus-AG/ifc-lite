@@ -17,6 +17,7 @@ import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { validateChartSpec } from '@ifc-lite/charts';
 import { captureEvidence } from '@/lib/assistant/evidence';
 import { loadDashboards } from '@/lib/charts/persistence';
 import { readContentRows } from '@/lib/storage/content-database';
@@ -188,6 +189,38 @@ describe('Saved clash reports as a chart source (#6947)', () => {
     const saveCurrent = buttonNamed(editor(ui), 'Save chart'); assert.ok(saveCurrent && !saveCurrent.disabled); click(saveCurrent); await settle();
     assert.equal(boundReport('Chart of A'), undefined);
     assert.doesNotMatch(subtitle(ui, 'Chart of A'), /Saved/);
+  });
+
+  it('binding a chart to a saved report drops its element filter and keeps its rule filter', async () => {
+    mountClashPanel();
+    await detectCoincidentWalls(3);
+    const report = await saveCurrentResultAs('Run A');
+    const [rule] = report.run.rules;
+    // A chart of the current result, narrowed to the walls by an element filter.
+    act(() => useViewerStore.getState().upsertDashboard({ ...DASHBOARD, layout: [{ chartId: 'filtered', x: 0, y: 0, w: 6, h: 4 }],
+      charts: [{ id: 'filtered', title: 'Filtered chart', source: 'clash', type: 'bar', dimension: 'Rule', measure: { agg: 'count' }, filter: { selector: 'IfcWall' } }] }));
+    const ui = render(<ChartsPanel renderer={renderer} />); await settle();
+    const saved = () => useViewerStore.getState().dashboards.find((dashboard) => dashboard.id === DASHBOARD.id)?.charts[0];
+    const edit = () => { const button = card(ui, 'Filtered chart').querySelector('button[aria-label="Edit Filtered chart"]'); assert.ok(button); click(button); };
+
+    edit();
+    assert.ok(editor(ui).querySelector('input[aria-label="Source filter"]'), 'control: the current result takes an element filter');
+    choose(reportPicker(ui), report.id);
+    assert.equal(editor(ui).querySelector('input[aria-label="Source filter"]'), null, 'saved rows carry no element ids for a selector to match');
+    assert.match(editor(ui).textContent ?? '', /Source filter is not applicable to a saved clash report\./);
+    const save = buttonNamed(editor(ui), 'Save chart'); assert.ok(save && !save.disabled); click(save); await settle();
+    assert.deepEqual([saved()?.clashReportId, saved()?.filter], [report.id, undefined], 'the selector is not carried onto the saved report');
+    assert.deepEqual(validateChartSpec(saved()), [], 'and the saved chart is one the dashboard file format accepts');
+    assert.equal(population(ui, 'Filtered chart'), 3, 'the chart shows the whole saved run, not an empty filter result');
+
+    edit();
+    const rules = editor(ui).querySelector<HTMLSelectElement>('select[aria-label="Clash rule"]'); assert.ok(rules);
+    assert.deepEqual([...rules.options].map((option) => option.value), ['', rule.id], "the rule filter lists the saved report's own rules");
+    choose(rules, rule.id);
+    const saveRule = buttonNamed(editor(ui), 'Save chart'); assert.ok(saveRule); click(saveRule); await settle();
+    assert.deepEqual(saved()?.filter, { selector: '', groups: undefined, clashRule: rule.id });
+    assert.deepEqual(validateChartSpec(saved()), []);
+    assert.equal(population(ui, 'Filtered chart'), 3);
   });
 
   it('marks a report recorded on another model revision as historical and never resolves it against the loaded model', async () => {

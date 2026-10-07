@@ -4,8 +4,9 @@
 
 /**
  * Portable saved clash report contract and boundary validation (#6947). No
- * model or store imports: storage, backup import and the chart source all
- * validate through `isSavedClashReport`.
+ * model, store or other runtime imports: the saved content library and a
+ * backup import both validate through `isSavedClashReport`, which loads on
+ * demand (`saved-report-persistence`).
  *
  * A report is frozen evidence of one run. It keeps no renderer ids, so nothing
  * in it can be resolved against whatever model happens to be loaded later:

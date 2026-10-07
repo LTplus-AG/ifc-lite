@@ -5,7 +5,7 @@
 /**
  * The realm's one pool of prewarmed geometry workers (#7036) and the calls a
  * host uses to fill and empty it. Behind the `warmPool` perf flag: with the
- * kill switch set, `getWarmGeometryWorkerPool()` is null, nothing is prewarmed
+ * experiment disabled, `getWarmGeometryWorkerPool()` is null, nothing is prewarmed
  * and every load spawns its own workers exactly as before.
  */
 

@@ -63,10 +63,10 @@ export function readShardScanFlag(): boolean {
 
 /**
  * Prewarmed workers (#7036): a host starts a load's geometry and pre-pass
- * workers when the load is requested, beside the file read. ON by default;
- * 0/'0'/false is the field kill switch, which restores spawn-at-pool-start.
+ * workers when the load is requested, beside the file read. Opt-in while the
+ * end-to-end verdict is pending; 1/'1'/true enables the experiment.
  */
 export function readWarmPoolFlag(): boolean {
   const v = readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.warmPool);
-  return !(v === 0 || v === '0' || v === false);
+  return v === 1 || v === '1' || v === true;
 }

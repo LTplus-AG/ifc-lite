@@ -7,7 +7,9 @@ load; persistent reuse was rejected by the original session for retained memory.
 
 **Verdict: held for further measurement.** Worker initialization moves earlier,
 but first-visible and total-load results are mixed. Earlier worker readiness
-alone does not establish a user-visible speedup. Issue #7036 remains open.
+alone does not establish a user-visible speedup. Issue #7036 remains open. The candidate now defaults off and is enabled only
+with `?perf.warmPool=1` (or its documented global override). The preserved
+frozen-bundle captures predate this rollout guard.
 
 [`summary.json`](summary.json) records paired medians, unchanged mesh counts,
 capture hashes, identical IFC WASM binary hashes and the evidence limitations.

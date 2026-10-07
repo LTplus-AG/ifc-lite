@@ -91,11 +91,11 @@ export const PERF_FLAGS = [
   },
   {
     id: 'warmPool',
-    kind: 'kill-switch',
+    kind: 'ramp',
     owner: '@louistrue',
-    removalCondition: 'Delete the kill switch once starting the engine and workers at load request has shipped two releases with no field memory or load-failure report (#7036).',
+    removalCondition: 'Remove the candidate if recorded-build real-GPU A/B does not establish an end-to-end win; any rollout requires a reviewed verdict (#7036).',
     introducedAt: '2026-10-07',
-    default: true,
+    default: false,
     bindings: { ...GEOMETRY_PERF_FLAG_BINDINGS.warmPool },
   },
   {

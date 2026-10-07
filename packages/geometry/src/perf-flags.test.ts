@@ -23,17 +23,23 @@ describe('GEOMETRY_PERF_FLAG_BINDINGS', () => {
     ]);
   });
 
-  it('keep the warm pool on unless the kill switch is set (#7036)', async () => {
+  it('keep unaccepted warm-up opt-in (#7036)', async () => {
     const { readWarmPoolFlag } = await import('./perf-flags.js') as { readWarmPoolFlag?: () => boolean };
     expect(typeof readWarmPoolFlag).toBe('function');
-    expect(readWarmPoolFlag!()).toBe(true);
+    expect(readWarmPoolFlag!()).toBe(false);
     for (const off of [0, '0', false]) {
       g.__IFC_LITE_WARM_POOL = off;
       expect(readWarmPoolFlag!()).toBe(false);
     }
+    for (const on of [1, '1', true]) {
+      g.__IFC_LITE_WARM_POOL = on;
+      expect(readWarmPoolFlag!()).toBe(true);
+    }
     delete g.__IFC_LITE_WARM_POOL;
     Object.defineProperty(globalThis, 'location', { value: { search: '?perf.warmPool=0' }, configurable: true });
     expect(readWarmPoolFlag!()).toBe(false);
+    Object.defineProperty(globalThis, 'location', { value: { search: '?perf.warmPool=1' }, configurable: true });
+    expect(readWarmPoolFlag!()).toBe(true);
   });
 
   it('resolve the legacy global first, then the URL param', () => {

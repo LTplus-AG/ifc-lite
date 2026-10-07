@@ -791,7 +791,7 @@ export class GeometryProcessor {
       skipSmallCuts: this.skipSmallCuts,
       wasmUrls,
       workerCountOverride,
-      // #7036: lease warm workers unless the `warmPool` kill switch is set.
+      // #7036: lease warm workers when the `warmPool` experiment is enabled.
       workerPool: getWarmGeometryWorkerPool() ?? undefined,
     });
   }

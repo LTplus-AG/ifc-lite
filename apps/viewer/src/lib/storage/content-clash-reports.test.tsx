@@ -108,6 +108,29 @@ describe('Saved clash reports in the library backup (#6947)', () => {
     } finally { URL.createObjectURL = createObjectURL; }
   });
 
+  it('an import the browser refuses keeps its reports in this tab as unsaved, and Retry all libraries stores them', async () => {
+    const file = JSON.stringify(createContentBackup(libraries({ clashReports: [a, b] })));
+    await emptyBrowser();
+    await act(async () => { await assistantLibrary.initialize(); });
+    const ui = render(<><Notice /><Toaster /></>);
+    const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+    const durable = async () => (await readContentRows('clashReports' as ContentKind)).filter((row) => !row.deleted).map((row) => row.id).sort();
+    const stored = (id: string) => useViewerStore.getState().savedClashReportsStorage.items[id] === 'saved';
+    const refused = refuseContentWrites();
+    try {
+      Object.defineProperty(input, 'files', { value: [new File([file], 'ifc-lite-library-backup.json', { type: 'application/json' })], configurable: true });
+      await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+      await waitFor(() => savedClashReports().length === 2, 'the refused import leaves both reports in this tab instead of dropping them');
+      assert.deepEqual(savedClashReports().map((entry) => entry.id).sort(), [a.id, b.id].sort());
+      assert.deepEqual([stored(a.id), stored(b.id)], [false, false], 'and marks them as not stored');
+      assert.deepEqual(await durable(), []);
+    } finally { refused.mock.restore(); }
+    const retryAll = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Retry all libraries'); assert.ok(retryAll);
+    click(retryAll);
+    await waitFor(() => stored(a.id) && stored(b.id), 'Retry all libraries stores the clash reports too');
+    assert.deepEqual(await durable(), [a.id, b.id].sort());
+  });
+
   it('export then import restores the reports and the chart bindings exactly', async () => {
     const document = documentOf(clashChart('of-a', a.id), clashChart('of-b', b.id), clashChart('current'));
     const exported = JSON.stringify(createContentBackup(libraries({ document: [document], clashReports: savedClashReports() })));

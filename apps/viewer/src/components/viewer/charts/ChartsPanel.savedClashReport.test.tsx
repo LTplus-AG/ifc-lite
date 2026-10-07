@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { validateChartSpec } from '@ifc-lite/charts';
-import { captureEvidence } from '@/lib/assistant/evidence';
+import { captureEvidence, evidenceIsCurrent } from '@/lib/assistant/evidence';
 import { loadDashboards } from '@/lib/charts/persistence';
 import { elementPairExclusion } from '@/lib/clash/exclusions';
 import { readContentRows } from '@/lib/storage/content-database';
@@ -158,8 +158,11 @@ describe('Saved clash reports as a chart source (#6947)', () => {
     const ui = render(<ChartsPanel renderer={renderer} />); await settle();
     await addClashChart(ui, 'Chart of A', a.id);
     assert.equal(population(ui, 'Chart of A'), 1);
+    const attached = captureEvidence('charts');
+    assert.equal(evidenceIsCurrent(attached), true, 'control: evidence attached to a conversation is current while nothing changes');
 
     await deleteSavedReport(a); await settle();
+    assert.equal(evidenceIsCurrent(attached), false, 'evidence attached before the deletion is stale: it still cites the deleted report as one clash');
     assert.equal(boundReport('Chart of A'), a.id, 'the binding is kept: deleting a report does not rewrite charts');
     assert.equal(population(ui, 'Chart of A'), 0, 'the chart does not fall back to the current result (3 clashes)');
     assert.equal(useViewerStore.getState().clashResult?.clashes.length, 3);
@@ -247,6 +250,13 @@ describe('Saved clash reports as a chart source (#6947)', () => {
     assert.deepEqual(saved()?.filter, { selector: '', groups: undefined, clashRule: rule.id });
     assert.deepEqual(validateChartSpec(saved()), []);
     assert.equal(population(ui, 'Filtered chart'), 3);
+
+    // The card names the rule from the report's own rules: the current result may be another run, or gone.
+    assert.notEqual(rule.name, rule.id, 'control: a rule has a name of its own');
+    act(() => useViewerStore.getState().clearClash());
+    await settle();
+    assert.equal(useViewerStore.getState().clashResult, null);
+    assert.ok(subtitle(ui, 'Filtered chart').endsWith(`rule: ${rule.name}`), `the subtitle names the saved rule: ${subtitle(ui, 'Filtered chart')}`);
   });
 
   it('marks a report recorded on another model revision as historical and never resolves it against the loaded model', async () => {

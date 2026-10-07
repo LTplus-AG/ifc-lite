@@ -72,6 +72,31 @@ beforeEach(() => {
   serveProxy();
   useFlowReview.setState({ checkpoint: null, values: {}, busy: false, problem: null });
 });
+
+test('#7039 viewer resume refuses missing budget receipts before claiming downstream AI work', async () => {
+  const model = await openFlowSample();
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini' });
+  const original = example();
+  const doc: FlowDocument = { ...original, outputs: [], nodes: original.nodes.map(node => node.id === 'apply'
+    ? { ...node, type: 'ai.classify', params: { ...original.nodes.find(n => n.id === 'roles')!.params, columns: ['label'] } }
+    : node) };
+  const ai = viewerFlowAi();
+  assert.ok(ai);
+  const result = await runFlowInViewer({ doc, bim: model.bim, pin: activeTrackingPin()!, cache: new MemoCache(), ai: ai.service });
+  assert.deepEqual(result.review, ['roles']);
+  assert.equal(requests, 1);
+  for (const budget of [undefined, { maxRequests: 1 }]) {
+    await pauseForReview({ doc, result, inputs: {}, values: {}, budget });
+    const pending = useFlowReview.getState().checkpoint;
+    assert.ok(pending);
+    assert.equal((await approveReview(pending.proposalDigest, doc))?.state, 'reviewed');
+    assert.equal(await claimReview(doc, {}), null);
+    assert.equal(useFlowReview.getState().problem!.kind, 'refused');
+    assert.match(useFlowReview.getState().problem!.message, /requires the original root budget receipt/);
+    assert.equal((await browserCheckpointStore.read(pending.id))?.checkpoint.state, 'reviewed');
+    assert.equal(requests, 1);
+  }
+});
 afterEach(() => {
   globalThis.fetch = originalFetch;
   useViewerStore.setState(initial, true);

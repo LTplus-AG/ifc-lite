@@ -245,7 +245,7 @@ missing citations and quotes absent from the passage are dropped or marked.
 Rows omitted from a classification reply count as `failed`; an explicit
 `unknown` answer remains distinct in the per-row outcome and coverage counts.
 Hosts save the original root budget in `createCheckpoint({ ...input, budget })`.
-CLI resume refuses a missing or malformed budget receipt before claiming a
+CLI and viewer resume refuse a missing or malformed budget receipt before claiming a
 checkpoint when downstream AI nodes remain; it never grants a fresh allowance.
 When a paused CLI run exports with `--out`, resume uses that exported IFC file,
 whose exact bytes are bound into the checkpoint even for a read-only run.

@@ -344,3 +344,26 @@ it('#7039 validates a second pause destination before consuming approval', async
   expect((await new FileCheckpointStore(checkpoint).load()).checkpoint.state).toBe('reviewed');
   expect(await readFile(next, 'utf-8')).toBe('original');
 });
+
+it('#7039 an upstream tracked creation refused without --out never flushes its sidecar', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-tracking-pause-'));
+  const graph = JSON.parse(await readFile(resolve(here, '../__fixtures__/flows/columns-along-x.flow.json'), 'utf-8')) as { flowVersion: number; capabilities: string[]; nodes: unknown[]; edges: unknown[]; outputs: unknown[] };
+  const ai = JSON.parse(await readFile(AI_FLOW, 'utf-8')) as { nodes: Array<{ id: string; params: Record<string, unknown> }> };
+  const roles = ai.nodes.find(node => node.id === 'roles')!;
+  roles.params.columns = ['Name'];
+  graph.flowVersion = 2;
+  graph.capabilities.push('network.ai');
+  graph.nodes.push({ id: 'table', type: 'table.fromEntities', params: { columns: ['Name'] } }, roles);
+  graph.edges.push({ from: ['add', 'entity'], to: ['table', 'entities'] }, { from: ['table', 'table'], to: ['roles', 'table'] });
+  graph.outputs = [];
+  const path = join(dir, 'graph.json');
+  await writeFile(path, JSON.stringify(graph));
+  const tracking = join(dir, 'tracking.json');
+  const model = provider();
+  const c = capture();
+  exits();
+  await expect(flowCommand(['run', path, SAMPLE_IFC, '--checkpoint', join(dir, 'cp.json'), '--tracking', tracking])).rejects.toThrow('exit 1');
+  expect(model.calls).toHaveLength(1);
+  expect(c.err.join('')).toContain('wrote to the model before pausing');
+  await expect(readFile(tracking)).rejects.toMatchObject({ code: 'ENOENT' });
+});

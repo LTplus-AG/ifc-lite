@@ -191,6 +191,31 @@ describe('Saved clash reports as a chart source (#6947)', () => {
     assert.doesNotMatch(subtitle(ui, 'Chart of A'), /Saved/);
   });
 
+  it('a total chart of a deleted report shows the unavailable state and the way out, not a count of zero', async () => {
+    mountClashPanel();
+    await detectCoincidentWalls(3);
+    const report = await saveCurrentResultAs('Run A');
+    // An Element Count chart draws one number. Over the empty rows of a missing report that number would be 0,
+    // which reads as "this run found no clashes".
+    act(() => useViewerStore.getState().upsertDashboard({ ...DASHBOARD, layout: [{ chartId: 'total', x: 0, y: 0, w: 6, h: 4 }],
+      charts: [{ id: 'total', title: 'Total clashes', source: 'clash', type: 'elementCount', measure: { agg: 'count' }, clashReportId: report.id }] }));
+    const drawn: Array<Record<string, unknown>> = [];
+    const recording: ChartRenderer = async () => () => ({ setOption: (option) => { drawn.push(option as Record<string, unknown>); }, select: () => {}, resize: () => {}, dispose: () => {} });
+    const ui = render(<ChartsPanel renderer={recording} />); await settle();
+    const legend = () => [...card(ui, 'Total clashes').querySelectorAll('[data-chart-legend] li')].map((item) => item.textContent?.trim());
+    assert.deepEqual(legend(), ['Total: 3'], 'control: the saved run counts its three clashes');
+    assert.equal(card(ui, 'Total clashes').querySelector('[data-chart-empty]'), null);
+    assert.match(JSON.stringify(drawn.at(-1)), /"text":"3"/, 'control: the card draws the saved total');
+
+    await deleteSavedReport(report); await settle();
+    assert.deepEqual(legend(), [], 'a missing report has no total, so none is listed');
+    assert.doesNotMatch(JSON.stringify(drawn.at(-1)), /"text":"\d+"/, 'and none is drawn: neither a zero nor the total that was on screen');
+    const empty = card(ui, 'Total clashes').querySelector('[data-chart-empty]');
+    assert.match(empty?.textContent ?? '', /Saved clash report unavailable in this browser\./, 'the card says why it is empty');
+    assert.ok(empty && buttonNamed(empty, 'Choose a source'), 'and offers the way out, as every other chart type does');
+    assert.equal(subtitle(ui, 'Total clashes'), 'Saved clash report unavailable');
+  });
+
   it('binding a chart to a saved report drops its element filter and keeps its rule filter', async () => {
     mountClashPanel();
     await detectCoincidentWalls(3);

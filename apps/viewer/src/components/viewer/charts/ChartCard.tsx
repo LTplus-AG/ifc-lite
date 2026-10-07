@@ -17,6 +17,7 @@ import { useViewerStore } from '@/store';
 import { chartCardAggregation, chartCardDataset, chartCardSlice, chartClashRule, chartFilterSelector } from '@/lib/charts/card-aggregation';
 import { countRows } from '@/lib/charts/row-noun';
 import { chartSourceMessage, chartSourceUnavailable, isRecordedChart, resolveChartSource } from '@/lib/charts/chart-source';
+import { withoutBuckets } from '@/lib/charts/unavailable-aggregation';
 import { useChartSourceContext } from './useChartSourceContext';
 import { readChartTheme, useEChart, type ChartRenderer, type ChartSize, type ChartSelectEvent } from './useEChart';
 import { GRID_DRAG_HANDLE_CLASS } from './DashboardGrid';
@@ -107,8 +108,8 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
   const aggregation = useMemo<Aggregation | null>(() => {
     const result = chartCardAggregation(spec, filteredDataset, chartCardSlice(spec, recorded, chartSlice, chartSliceSource), paletteRef.current);
     if (result) paletteRef.current = result.palette;
-    return result;
-  }, [spec, filteredDataset, chartSlice, chartSliceSource, recorded]);
+    return result && source.status === 'missing' ? withoutBuckets(result) : result;
+  }, [spec, filteredDataset, chartSlice, chartSliceSource, recorded, source.status]);
 
   useEffect(() => { onAggregation?.(spec, aggregation); }, [onAggregation, spec, aggregation]);
 
@@ -126,10 +127,12 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
 
   const option = useCallback(({ width, height }: ChartSize) => {
     if (!aggregation) return null;
+    // An empty option clears the host: a missing source draws nothing, not the chart that was on screen.
+    if (source.status === 'missing') return {};
     // `theme` in the deps re-reads the stylesheet tokens on a light/dark switch.
     void theme;
     return buildEChartsOption({ aggregation, theme: readChartTheme(), selected: selection.full, width: width || undefined, height: height || undefined });
-  }, [aggregation, selection.full, theme]);
+  }, [aggregation, selection.full, theme, source.status]);
 
   const onSelect = useCallback((event: ChartSelectEvent) => {
     if (!aggregation || recorded) return;

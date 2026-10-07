@@ -124,4 +124,27 @@ describe('Document chart bound to a saved clash report (#6947)', () => {
     assert.match(printed.text, /Saved clash report unavailable in this browser\./);
     assert.match(printed.text, /the current result is not shown in its place/);
   });
+
+  it('a total chart of a deleted report prints the unavailable statement, not a total of zero', async () => {
+    mountClashPanel();
+    await detectCoincidentWalls(3);
+    const saved = await saveCurrentResultAs('Run A');
+    // An Element Count chart has one bucket whatever its rows are, so empty rows alone would draw "0".
+    const total: ChartSpec = { id: 'saved-run-total', title: 'Total clashes', source: 'clash', type: 'elementCount', measure: { agg: 'count' }, clashReportId: saved.id };
+    const document = documentFor(total);
+    let data: DocumentData | undefined;
+    const ui = render(<Probe document={document} observe={(value) => { data = value; }} />); await settle();
+    assert.deepEqual([data?.aggregations.get('clash-block')?.total, data?.aggregations.get('clash-block')?.categories.length], [3, 1], 'control: the saved run prints its total');
+    assert.ok(ui.querySelector('[data-chart-svg]'), 'control: as a drawn chart');
+
+    await deleteSavedReport(saved); await settle();
+    assert.equal(data?.aggregations.get('clash-block')?.categories.length, 0, 'a missing report has no total to draw');
+    assert.equal(ui.querySelector('[data-chart-svg]'), null, 'so the preview draws no number');
+    assert.match(ui.querySelector('[data-chart-empty]')?.textContent ?? '', /Saved clash report unavailable in this browser\./);
+    const prepared = await prepareDocument(document, useViewerStore.getState());
+    assert.equal(prepared.aggregations.get('clash-block')?.categories.length, 0, 'the export reads the same empty result as the preview');
+    const printed = await print(document);
+    assert.ok(printed.warnings.some((warning) => warning.includes('Saved clash report unavailable')));
+    assert.match(printed.text, /the current result is not shown in its place/, 'the PDF prints the whole statement where the chart would be');
+  });
 });

@@ -5,6 +5,7 @@ import { aggregate, type Aggregation, type ChartDataset, type ChartSource } from
 import type { DocumentSpec } from './types';
 import { applyChartFilter, applyClashRuleFilter, chartElementFilterKey } from '../charts/source-filter';
 import { chartSourceMessage, NO_SAVED_CHART_CONTENT, resolveChartSource, type ChartSourceContext } from '../charts/chart-source';
+import { withoutBuckets } from '../charts/unavailable-aggregation';
 import { resolve } from '@/i18n/registry';
 
 export type DocumentChartFilterState =
@@ -55,7 +56,8 @@ export function prepareDocumentCharts(document: DocumentSpec | null,
         // or erred — an erred selector already emptied `dataset`, so this is
         // a no-op in that case.
         if (spec.source === 'clash' && spec.filter?.clashRule) dataset = applyClashRuleFilter(dataset, spec.filter.clashRule);
-        aggs.set(block.id, aggregate(spec, dataset));
+        const aggregation = aggregate(spec, dataset);
+        aggs.set(block.id, source.status === 'missing' ? withoutBuckets(aggregation) : aggregation);
       } catch (err) {
         console.warn(`[Documents] chart "${block.chart.title}" cannot aggregate`, err);
         messages.set(block.id, err instanceof Error ? err.message : String(err));

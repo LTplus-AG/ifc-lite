@@ -17,12 +17,12 @@
  * on every mouse move.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { ActivityBar } from './ActivityBar';
 import { SidebarPanelHost } from './SidebarPanelHost';
-import { LayoutMigrationNotice } from './LayoutMigrationNotice';
+const LayoutMigrationNotice = lazy(() => import('./LayoutMigrationNotice').then(module => ({ default: module.LayoutMigrationNotice })));
 
 const ACTIVITY_BAR_PX = 48; // w-12
 // Mirrors the clamp in sidebarSlice so the live drag matches what is persisted.
@@ -32,6 +32,7 @@ const MAX_WIDTH_PCT = 60;
 export function SidebarDock() {
   const { t } = useTranslation();
   const mode = useViewerStore((s) => s.sidebarMode);
+  const hasMigration = useViewerStore((s) => s.layoutMigrationChanges.length > 0);
   const widthPct = useViewerStore((s) => s.sidebarWidthPct);
   const setSidebarWidthPct = useViewerStore((s) => s.setSidebarWidthPct);
 
@@ -111,7 +112,7 @@ export function SidebarDock() {
             className="h-full min-w-0 overflow-hidden panel-container flex flex-col"
             style={{ width: contentPx ?? `${effectivePct}%` }}
           >
-            <LayoutMigrationNotice />
+            {hasMigration && <Suspense fallback={null}><LayoutMigrationNotice /></Suspense>}
             <div className="min-h-0 flex-1"><SidebarPanelHost /></div>
           </div>
         </>

@@ -4,10 +4,11 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { cleanup, click, render } from '@/test/render';
+import { cleanup, click, render, waitFor } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { DEFAULT_SIDEBAR_ORDER } from '@/lib/panels/layout-migration';
 import { LAYOUT_BACKUP_KEY, SIDEBAR_LAYOUT_KEY, loadSidebarLayout } from '@/lib/panels/layout-persistence';
+import { SidebarDock } from './SidebarDock';
 import { LayoutMigrationNotice } from './LayoutMigrationNotice';
 
 const initial = useViewerStore.getState();
@@ -49,5 +50,21 @@ test('#6927 Reset uses the native full-workspace reset and retains unknown place
   assert.equal(state.layoutResetEpoch, epoch + 1);
   assert.deepEqual(state.sidebarOrder, [...DEFAULT_SIDEBAR_ORDER]);
   assert.ok(state.sidebarPreserved.some(placement => placement.id === 'extension:custom'));
+  assert.equal(JSON.parse(localStorage.getItem(LAYOUT_BACKUP_KEY)!).raw, original);
+});
+
+
+test('#6927 the native dock loads migration recovery controls only for a pending migration', async () => {
+  localStorage.setItem(SIDEBAR_LAYOUT_KEY, original);
+  loadSidebarLayout();
+  useViewerStore.getState().applySidebarLayout(legacy);
+  useViewerStore.getState().setSidebarMode('expanded');
+  const ui = render(<SidebarDock />);
+  await waitFor(() => [...ui.querySelectorAll('button')].some(button => button.textContent === 'Show changes'), 'native recovery controls load');
+  press(ui, 'Show changes');
+  assert.match(ui.textContent ?? '', /Renamed ids to Data validation/);
+  press(ui, 'Keep layout');
+  assert.equal([...ui.querySelectorAll('button')].some(button => button.textContent === 'Keep layout'), false);
+  assert.deepEqual(loadSidebarLayout().pending, []);
   assert.equal(JSON.parse(localStorage.getItem(LAYOUT_BACKUP_KEY)!).raw, original);
 });

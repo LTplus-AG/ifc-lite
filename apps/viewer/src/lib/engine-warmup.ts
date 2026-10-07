@@ -15,7 +15,7 @@
  *
  * Everything is fire-and-forget: a failure here only means the load does the
  * same work itself, as before. The `warmPool` perf flag (`?perf.warmPool=0`)
- * switches all of it off.
+ * switches all of it off. The experiment defaults off.
  */
 
 import { prewarmGeometryWorkers, prewarmMainThreadEngine, releaseWarmGeometryWorkers } from '@ifc-lite/geometry';
@@ -28,7 +28,7 @@ const PARALLEL_MIN_BYTES = 2 * MB;
 
 export function isWarmPoolEnabled(): boolean {
   const v = readPerfFlag('warmPool');
-  return !(v === 0 || v === '0' || v === false);
+  return v === 1 || v === '1' || v === true;
 }
 
 function looksLikeIfc(name: string): boolean {

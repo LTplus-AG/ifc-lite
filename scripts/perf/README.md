@@ -83,6 +83,11 @@ overlapped validation builds and need an idle-machine repeat. Lesson: moving
 worker initialization earlier is an opportunity screen, not a performance
 verdict. Keep the measurement and memory constraints before changing the rollout.
 
+The experiment defaults off on both the viewer and worker paths. Repeated cache
+hits cannot extend an unused worker's expiry, and memory-pressure retries drain
+the pool without refilling it. These are lifecycle corrections, not an accepted
+performance win; the end-to-end verdict above remains held.
+
 ## Single-model appends cost O(new meshes) in the viewport (#7021)
 
 **Shipped.** While one model streamed in, `geometryWithModelIndex` copied

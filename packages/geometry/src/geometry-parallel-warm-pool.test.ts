@@ -237,6 +237,17 @@ describe('processParallel with prewarmed workers (#7036)', () => {
     expect(FakeWorker.all.every((w) => w.terminated)).toBe(true);
   });
 
+  it('#7048 repeated prewarm requests cannot extend unused workers beyond their expiry', () => {
+    vi.useFakeTimers();
+    const pool = new (poolCtor())({ limits: { idleReleaseMs: 60_000 } });
+    expect(pool.prewarm(2, 'engine', () => {})).toBe(2);
+    vi.advanceTimersByTime(50_000);
+    expect(pool.prewarm(2, 'engine', () => {})).toBe(0);
+    vi.advanceTimersByTime(10_000);
+    expect(pool.stats().idle).toBe(0);
+    expect(FakeWorker.all.every(worker => worker.terminated)).toBe(true);
+  });
+
   it('terminates idle prewarmed workers after a long idle, and those for another engine binary', () => {
     vi.useFakeTimers();
     const pool = new (poolCtor())({ limits: { idleReleaseMs: 60_000 } });

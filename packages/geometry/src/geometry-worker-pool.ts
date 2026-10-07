@@ -152,7 +152,7 @@ export class GeometryWorkerPool {
       this.counts.prewarmed++;
       started++;
     }
-    if (this.idle.length > 0) this.armIdleTimer();
+    if (this.idle.length > 0 && this.idleTimer === null) this.armIdleTimer();
     return started;
   }
 

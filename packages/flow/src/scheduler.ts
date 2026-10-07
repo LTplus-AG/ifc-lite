@@ -191,7 +191,8 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       }
       if (avail.status === 'noop') {
         outputs.set(nodeId, noopOutputs(def, inputs));
-        report({ status: 'noop', lanes: 0, laneErrors: 0, missing: {}, warnings: avail.reasons });
+        if (def.review) paused.add(nodeId);
+        report({ status: def.review ? 'review' : 'noop', lanes: 0, laneErrors: 0, missing: {}, warnings: avail.reasons });
         continue;
       }
     }

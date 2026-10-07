@@ -187,3 +187,31 @@ it('#7038 another process cannot resume a persisted applying checkpoint', async 
   await runFlow(doc, { host, registry, resume: resumeOutputs(claimed) });
   expect(host.sunk).toEqual([2, 'label-for-7']);
 });
+
+it('#7038 review-required headless no-op still pauses writes until its owned checkpoint resumes', async () => {
+  const own = new NodeRegistry<Host>().registerAll([registry.get('t.source')!, registry.get('t.sink')!, {
+    type: 't.viewer', title: 'Viewer proposal', category: 't', inputs: [{ name: 'v', type: scalar }], outputs: [{ name: 'v', type: scalar }],
+    params: [], capabilities: [], requires: { backend: ['viewer'] }, headless: 'noop', review: 'required',
+    run: () => { throw new Error('headless proposal must use pass-through outputs'); },
+  }]);
+  const graph: FlowDocument = { flowVersion: FLOW_VERSION, id: 'headless-review', name: 'Headless review', capabilities: [], inputs: [], outputs: [],
+    nodes: [{ id: 'source', type: 't.source', params: { value: 7 } }, { id: 'review', type: 't.viewer' }, { id: 'sink', type: 't.sink' }],
+    edges: [{ from: ['source', 'v'], to: ['review', 'v'] }, { from: ['review', 'v'], to: ['sink', 'v'] }] };
+  const host: Host = { executed: [], sunk: [] };
+  const features = { backend: new Set<string>(), network: false, secrets: new Set<string>() };
+  const result = await runFlow(graph, { host, registry: own, features });
+  expect(result.review).toEqual(['review']);
+  expect(result.reports.find(r => r.nodeId === 'sink')?.status).toBe('paused');
+  expect(host.sunk).toEqual([]);
+  expect(result.writes).toBe(0);
+  const checkpoint = createCheckpoint({ doc: graph, registry: own, result, sourceDigest: 'model' });
+  const approved = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
+  const store = new MemoryCheckpointStore();
+  await store.write(approved, null);
+  const claimed = await updateCheckpoint(store, approved.id, c => claimCheckpoint(c, { owner: 'headless',
+    graphDigest: graphDigest(graph, {}, own), sourceDigest: 'model', leaseMs: 60_000 }));
+  const resumed = await runFlow(graph, { host, registry: own, features, resume: resumeOutputs(claimed) });
+  expect(resumed.ok).toBe(true);
+  expect(host.sunk).toEqual([7]);
+  expect(resumed.writes).toBe(1);
+});

@@ -16,19 +16,26 @@ import { AssistantPanel } from './AssistantPanel';
 import { UNCONFIGURED_MODEL_ID } from '@/lib/llm/models';
 import { useAssistant, cancelAssistant, replaceEvidence } from '@/lib/assistant/conversation';
 import { captureEvidence } from '@/lib/assistant/evidence';
+import { setAssistantDraft } from '@/lib/assistant/composer-draft';
+import { useAssistantPlacement } from '@/lib/assistant/placement';
 import { summarizeClashes, type Clash } from '@ifc-lite/clash';
 
 const initial = useViewerStore.getState();
+const initialPlacement = useAssistantPlacement.getState();
 afterEach(() => {
-  cleanup(); cancelAssistant(); setValidationSourceChoice(null); useViewerStore.setState(initial, true);
+  cleanup(); setAssistantDraft(''); cancelAssistant(); setValidationSourceChoice(null); useViewerStore.setState(initial, true);
+  useAssistantPlacement.setState(initialPlacement, true);
   useAssistant.setState({ snapshot: null, archived: null, messages: [], error: null, status: 'idle' });
 });
 
 // #6813: real button wiring and rendered composer state, not source-string assertions.
 test('context action opens the registered assistant with frozen evidence and refresh clears the old conversation', () => {
+  useAssistantPlacement.setState({ placement: 'split' });
+  useViewerStore.setState({ sidebarActivePanel: 'clash' });
   const source = render(<AssistantSourceContext panel="clash"><AssistantAction /></AssistantSourceContext>);
   click(source.querySelector('button')!);
-  assert.equal(useViewerStore.getState().sidebarActivePanel, 'assistant');
+  assert.equal(useViewerStore.getState().sidebarActivePanel, 'clash', 'the source remains visible');
+  assert.equal(useViewerStore.getState().sidebarSecondaryPanel, 'assistant');
   const ui = render(<AssistantPanel />);
   assert.match(ui.textContent ?? '', /No native clash result was available at capture/);
   const textarea = ui.querySelector('textarea')!;
@@ -145,4 +152,18 @@ test('citations open the captured row and clash rows offer the native model focu
   assert.ok([...peek.querySelectorAll('button')].some(b => b.textContent === 'Show this clash in the model'), 'live clash rows can be focused');
   act(() => useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 }));
   assert.equal([...ui.querySelectorAll('button')].some(b => b.textContent === 'Show this clash in the model'), false, 'stale evidence never drives the scene');
+});
+
+
+test('#6926 an unsent composer draft survives a host remount and stays editable', () => {
+  replaceEvidence(captureEvidence('clash'));
+  const first = render(<AssistantPanel />);
+  type(first.querySelector('textarea')!, 'Explain these collisions before publication');
+  cleanup();
+  const second = render(<AssistantPanel />);
+  const prompt = second.querySelector('textarea')!;
+  assert.equal(prompt.value, 'Explain these collisions before publication');
+  assert.equal(prompt.disabled, false);
+  type(prompt, 'Revised request');
+  assert.equal(prompt.value, 'Revised request');
 });

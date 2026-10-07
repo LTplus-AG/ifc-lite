@@ -1,7 +1,7 @@
 {
   "flowVersion": 2,
   "id": "example-ai-wall-roles",
-  "name": "AI wall roles (reviewed)",
+  "name": "10 · AI wall roles (reviewed)",
   "description": "Builds a wall table, asks the host AI model to label each wall as facade or partition with the columns it relied on, and pauses for your review before anything is written. Only after you approve the proposal does the run resume and write the approved labels into Pset_Coordination.WallRole; unknown rows are not written.",
   "capabilities": ["model.read", "network.ai", "model.mutate:Pset_Coordination"],
   "inputs": [],
@@ -26,9 +26,9 @@
         "maxRows": 50,
         "batchSize": 25
       },
-      "pos": [520, 0]
+      "pos": [540, 0]
     },
-    { "id": "apply", "type": "model.applyTable", "params": { "mapping": [{ "column": "label", "pset": "Pset_Coordination", "prop": "WallRole" }] }, "pos": [780, 0] }
+    { "id": "apply", "type": "model.applyTable", "params": { "mapping": [{ "column": "label", "pset": "Pset_Coordination", "prop": "WallRole" }] }, "pos": [1080, 0] }
   ],
   "edges": [
     { "from": ["walls", "entities"], "to": ["table", "entities"] },

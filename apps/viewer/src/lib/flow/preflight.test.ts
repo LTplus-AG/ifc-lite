@@ -153,4 +153,17 @@ describe('static automation preflight prevents partial model writes (#6612)', ()
     const result = await preflightWorkflow(run, doc, {}, viewerFlowFeatures(true));
     assert.deepEqual(result, {});
   });
+
+  // #6923: a property writer declares `model.mutate:*` because the pset is a
+  // parameter; its run-time check (`requireCapability`) enforces the pset the
+  // graph grants. Preflight accepts a same-action grant and nothing broader.
+  it('accepts a pset-specific mutate grant for a node declaring model.mutate:* and refuses a graph without one', async () => {
+    const doc = (capabilities: string[]): FlowDocument => ({ flowVersion: 2, id: 'pset-writer', name: 'Write roles', capabilities,
+      nodes: [{ id: 'walls', type: 'model.select' }, { id: 'set', type: 'model.setProperty', params: { pset: 'Pset_Coordination', property: 'WallRole' } },
+        { id: 'role', type: 'core.string', params: { value: 'Facade' } }],
+      edges: [{ from: ['walls', 'entities'], to: ['set', 'entity'] }, { from: ['role', 'value'], to: ['set', 'value'] }], inputs: [], outputs: [] });
+    assert.deepEqual(await preflightWorkflow(run, doc(['model.read', 'model.mutate:Pset_Coordination']), {}, viewerFlowFeatures(true)), {});
+    await assert.rejects(preflightWorkflow(run, doc(['model.read']), {}, viewerFlowFeatures(true)), /Workflow capability denied: model.mutate:\*/);
+    await assert.rejects(preflightWorkflow(run, doc(['model.read', 'model.create']), {}, viewerFlowFeatures(true)), /Workflow capability denied: model.mutate:\*/);
+  });
 });

@@ -26,9 +26,9 @@ function cell(v: unknown): string {
   return String(v);
 }
 
-function TablePreview({ table }: { table: Table }) {
+function TablePreview({ table, limit }: { table: Table; limit: number }) {
   const { t } = useTranslation();
-  const rows = table.rows.slice(0, LIMIT);
+  const rows = table.rows.slice(0, limit);
   return (
     <div className="overflow-x-auto">
       <table className="text-2xs">
@@ -46,27 +46,28 @@ function TablePreview({ table }: { table: Table }) {
   );
 }
 
-function Items({ items }: { items: readonly unknown[] }) {
+function Items({ items, limit = LIMIT }: { items: readonly unknown[]; limit?: number }) {
   const { t } = useTranslation();
   if (items.length === 0) return <span className="text-muted-foreground">{t('flowPanel.preview.empty')}</span>;
-  const shown = items.slice(0, LIMIT);
+  const shown = items.slice(0, limit);
   return (
     <ul className="font-mono text-2xs">
       {shown.map((v, i) => <li key={i} className="truncate">{cell(v)}</li>)}
-      {items.length > LIMIT && <li className="text-muted-foreground">{t('flowPanel.preview.more', { count: items.length - LIMIT })}</li>}
+      {items.length > limit && <li className="text-muted-foreground">{t('flowPanel.preview.more', { count: items.length - limit })}</li>}
     </ul>
   );
 }
 
-export function FlowValuePreview({ data }: { data: FlowData | undefined }) {
+/** `limit`: rows or items shown; a review shows the whole proposal, an inspector a glimpse. */
+export function FlowValuePreview({ data, limit = LIMIT }: { data: FlowData | undefined; limit?: number }) {
   const { t } = useTranslation();
   if (!data) return <span className="text-muted-foreground">—</span>;
   if (data.kind === 'item') {
     const v = data.value;
-    if (v && typeof v === 'object' && !Array.isArray(v) && validateTable(v).length === 0) return <TablePreview table={v as Table} />;
+    if (v && typeof v === 'object' && !Array.isArray(v) && validateTable(v).length === 0) return <TablePreview table={v as Table} limit={limit} />;
     return <span className="font-mono text-2xs">{cell(v)}</span>;
   }
-  if (data.kind === 'list') return <Items items={data.items} />;
+  if (data.kind === 'list') return <Items items={data.items} limit={limit} />;
   const branches = [...data.branches].slice(0, LIMIT);
   if (branches.length === 0) return <span className="text-muted-foreground">{t('flowPanel.preview.empty')}</span>;
   return (

@@ -49,6 +49,7 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
   const mergedVisibilityRef = useRef<Map<string, boolean>>(new Map());
 
   const mergedSourcesRef = useRef(new Map<string, MeshData[] | undefined>());
+  const mergedIndicesRef = useRef<ReadonlyMap<string, number> | null>(null);
 
   // Multi-model: merge geometries from all visible models
   return useMemo(() => {
@@ -81,6 +82,12 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
       let shouldRebuild = false;
 
       if (mergedLengthsRef.current.size !== storeModels.size) {
+        shouldRebuild = true;
+      }
+
+      // A model removed and re-added keeps its mesh array but gets a new index
+      // from the allocator, which shares one map until an assignment changes.
+      if (mergedIndicesRef.current !== modelIdToIndex) {
         shouldRebuild = true;
       }
 
@@ -136,6 +143,7 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
           mergedLengthsRef.current.set(modelId, modelGeometry.meshes.length);
         }
         mergedCacheRef.current = rebuilt;
+        mergedIndicesRef.current = modelIdToIndex;
       } else {
         for (const [modelId, model] of storeModels) {
           const modelGeometry = model.geometryResult;

@@ -148,3 +148,18 @@ it('costs O(appended meshes) per streamed append on a single model (#7021)', () 
     assert.equal(seen!.indices, indexMap, 'the model-index map keeps its identity');
   }
 });
+
+it('restamps a model that is removed and added back under a new index (#7021 review)', () => {
+  startLoad('a');
+  render(<Probe />);
+  append('a', [mesh()]);
+  startLoad('b');
+  append('b', [mesh()]);
+  const a = useViewerStore.getState().models.get('a')!;
+  act(() => { useViewerStore.getState().removeModel('a'); });
+  assert.deepEqual(seen!.merged.map((m) => m.modelIndex), [1]);
+  act(() => { useViewerStore.getState().upsertModel(a); });
+  const index = seen!.indices.get('a');
+  assert.notEqual(index, 0, 'the allocator never reuses a removed model\'s index');
+  assert.deepEqual(seen!.merged.map((m) => m.modelIndex).sort(), [1, index].sort());
+});

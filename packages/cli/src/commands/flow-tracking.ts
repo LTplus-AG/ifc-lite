@@ -14,26 +14,34 @@
  * viewer, which keeps one model loaded, applies the strict pin check.
  */
 
-import { readFile, writeFile } from 'node:fs/promises';
-import { TRACKING_SIDECAR_VERSION, trackedSetsFrom, type TrackedSet, type TrackingSidecar, type TrackingStore } from '@ifc-lite/flow';
+import { readFile, writeFile, realpath } from 'node:fs/promises';
+import { basename, dirname, join, resolve } from 'node:path';
+import { digest, TRACKING_SIDECAR_VERSION, trackedSetsFrom, type TrackedSet, type TrackingSidecar, type TrackingStore } from '@ifc-lite/flow';
 
 export class FileTrackingStore implements TrackingStore {
   private sets: Record<string, TrackedSet> = {};
   private dirty = false;
+  private exists = false;
+  private writePath: string;
   /** Pin recorded in the file that was loaded, when any. */
   loadedPin: string | undefined;
 
-  constructor(readonly path: string, readonly pinnedTo: string) {}
+  constructor(readonly path: string, readonly pinnedTo: string) { this.writePath = resolve(path); }
 
   static async open(path: string, pinnedTo: string): Promise<FileTrackingStore> {
     const store = new FileTrackingStore(path, pinnedTo);
+    try { store.writePath = await realpath(store.writePath); } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      store.writePath = join(await realpath(dirname(store.writePath)), basename(store.writePath));
+    }
     let text: string | undefined;
     try {
-      text = await readFile(path, 'utf-8');
+      text = await readFile(store.writePath, 'utf-8');
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     }
     if (text !== undefined) {
+      store.exists = true;
       const parsed = JSON.parse(text) as Partial<TrackingSidecar>;
       if (parsed.version !== TRACKING_SIDECAR_VERSION) throw new Error(`${path}: unsupported tracking sidecar version ${String(parsed.version)}`);
       // Every set is shape-checked: `[]` is an object too, and a hand-edited
@@ -47,6 +55,13 @@ export class FileTrackingStore implements TrackingStore {
       store.loadedPin = parsed.pinnedTo;
     }
     return store;
+  }
+
+  /** Bind review to the effective sidecar and its canonical destination, including planned writes. */
+  fingerprint(): string {
+    const sidecar = !this.exists && !this.dirty ? null : { version: TRACKING_SIDECAR_VERSION,
+      pinnedTo: this.dirty ? this.pinnedTo : this.loadedPin ?? this.pinnedTo, sets: this.sets };
+    return digest({ path: this.writePath, sidecar });
   }
 
   load(trackingKey: string): TrackedSet | undefined {
@@ -72,8 +87,10 @@ export class FileTrackingStore implements TrackingStore {
   async flush(): Promise<boolean> {
     if (!this.dirty) return false;
     const sidecar: TrackingSidecar = { version: TRACKING_SIDECAR_VERSION, pinnedTo: this.pinnedTo, sets: this.sets };
-    await writeFile(this.path, `${JSON.stringify(sidecar, null, 2)}\n`, 'utf-8');
+    await writeFile(this.writePath, `${JSON.stringify(sidecar, null, 2)}\n`, 'utf-8');
     this.dirty = false;
+    this.exists = true;
+    this.loadedPin = this.pinnedTo;
     return true;
   }
 }

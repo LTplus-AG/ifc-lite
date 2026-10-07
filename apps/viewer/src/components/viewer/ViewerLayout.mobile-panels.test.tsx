@@ -24,7 +24,7 @@ import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
-import { en } from '@/i18n/en';
+import { englishCatalogue as en } from '@/i18n/en';
 import { activeBottomPanel } from '@/lib/panels/bottom-panels';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { isCollabEnabled } from '@/lib/collab/config';

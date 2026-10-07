@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import '@/i18n/catalogues/semantic-assist.register';
 import { History, Key, RefreshCw, Send, Sparkles, Square } from 'lucide-react';
 import { ConversationLibrary } from './ConversationLibrary';
 import { SourcePicker } from './SourcePicker';
@@ -34,6 +35,7 @@ const SceneRestoreBar = lazy(() => import('./SceneActionReview').then(m => ({ de
 const ClashGroupReview = lazy(() => import('./ClashGroupReview').then(m => ({ default: m.ClashGroupReview })));
 const CheckAuthoringProposal = lazy(() => import('./CheckAuthoringProposal').then(m => ({ default: m.CheckAuthoringProposal })));
 const ArtifactProposalReview = lazy(() => import('./ArtifactProposalReview').then(m => ({ default: m.ArtifactProposalReview })));
+const SemanticProposalReview = lazy(() => import('./SemanticProposalReview').then(m => ({ default: m.SemanticProposalReview })));
 
 export function AssistantPanel() {
   const { t } = useTranslation();
@@ -115,6 +117,7 @@ export function AssistantPanel() {
         evidencePayload={evidence?.payload ?? null} focusCitation={focusCitation} />
       {evidence?.source === 'clash' && <Suspense fallback={null}><ClashGroupReview /></Suspense>}
       {evidence && isFlowSource(evidence.source) && <Suspense fallback={null}><FlowProposalReview /></Suspense>}
+      {evidence?.source === 'semantic' && <Suspense fallback={null}><SemanticProposalReview /></Suspense>}
       {evidence && isReportSource(evidence.source) && <Suspense fallback={null}><ModelChangeProposal /></Suspense>}
       {(evidence?.source === 'validation' || evidence?.source === 'loadReport') && <Suspense fallback={null}><CheckAuthoringProposal /></Suspense>}
       {evidence && isReportSource(evidence.source) && <Suspense fallback={null}><ReportDraftReview /></Suspense>}

@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { en } from './en';
+import './catalogues/semantic-assist.register';
 import type { TranslationValue } from './types';
 
 function messages(value: TranslationValue): string[] {

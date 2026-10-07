@@ -32,7 +32,11 @@ import { reviewReplay } from '../src/test/ai-eval-review.js';
 const [command, ...rest] = process.argv.slice(2);
 const flag = (name: string) => {
   const at = rest.indexOf(`--${name}`);
-  return at >= 0 ? rest[at + 1] : undefined;
+  if (at < 0) return undefined;
+  const value = rest[at + 1];
+  // A missing operand, or the next flag in its place, is an error rather than a value.
+  if (value === undefined || value.startsWith('--')) throw new Error(`--${name} needs a value`);
+  return value;
 };
 const required = (name: string) => {
   const value = flag(name);

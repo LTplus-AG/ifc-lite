@@ -80,6 +80,8 @@ for (const recording of recordings) {
       // The partial text is kept for the coordinator but flagged; it is never presented as a complete answer.
       assert.equal(replay.error, 'truncated-output');
       assert.equal(replay.receipt?.outcome, 'truncated');
+      assert.ok(replay.completed, 'the request itself completed');
+      assert.ok(replay.answer, 'the partial text is kept');
       assert.equal(replay.proposal, null, 'a truncated answer never becomes a reviewable proposal');
       return;
     }

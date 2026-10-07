@@ -18,6 +18,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { restoreRootBudget } from '@ifc-lite/ai';
 import { realpath, stat } from 'node:fs/promises';
 import { dirname, basename, join, resolve } from 'node:path';
 import { type FlowDocument, type RunResult } from '@ifc-lite/flow';
@@ -104,14 +105,17 @@ export interface Resume {
 }
 
 /** Claim a reviewed checkpoint for this process, after recovering an abandoned claim. */
-export async function claimForResume(path: string, doc: FlowDocument, inputs: Record<string, unknown>, sourceDigest: string, registry: NonNullable<Parameters<typeof graphDigest>[2]>): Promise<Resume> {
+export async function claimForResume(path: string, doc: FlowDocument, inputs: Record<string, unknown>, sourceDigest: string, registry: NonNullable<Parameters<typeof graphDigest>[2]>, requiresAiBudget = false): Promise<Resume> {
   const store = new FileCheckpointStore(path);
   const owner = `cli:${process.pid}:${randomUUID()}`;
   try {
     const { checkpoint } = await store.load();
     if (checkpoint.graphId !== doc.id) fatal(`${path} belongs to graph "${checkpoint.graphId}", not "${doc.id}"`);
     if (recoverCheckpoint(checkpoint)) await updateCheckpoint(store, checkpoint.id, (c) => recoverCheckpoint(c) ?? c);
-    const claimed = await updateCheckpoint(store, checkpoint.id, (c) => claimCheckpoint(c, { owner, graphDigest: graphDigest(doc, inputs, registry), sourceDigest, leaseMs: LEASE_MS }));
+    const claimed = await updateCheckpoint(store, checkpoint.id, (c) => {
+      if (requiresAiBudget && !restoreRootBudget(c.budget)) throw new Error('resuming downstream AI nodes requires the original root budget receipt; no new allowance can be granted');
+      return claimCheckpoint(c, { owner, graphDigest: graphDigest(doc, inputs, registry), sourceDigest, leaseMs: LEASE_MS });
+    });
     return { store, checkpoint: claimed, owner };
   } catch (error) {
     fatal((error as Error).message);

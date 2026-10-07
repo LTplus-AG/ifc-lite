@@ -19,7 +19,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, waitFor } from '@/test/render.js';
 import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
@@ -176,4 +176,19 @@ describe('mobile Panels sheet (#5853)', () => {
     click(listItem(container, 'hierarchy')!);
     assert.equal(useViewerStore.getState().leftPanelCollapsed, false);
   });
+});
+
+
+it('#6927 mobile migration review offers Keep and Reset in the mounted viewer', async () => {
+  for (const decision of ['Keep layout', 'Reset layout']) {
+    act(() => useViewerStore.getState().applySidebarLayout({ order: ['ids', 'properties'], widthPct: 30 }));
+    const epoch = useViewerStore.getState().layoutResetEpoch;
+    const viewer = renderViewerLayout();
+    await waitFor(() => !!button(viewer, decision), `mobile ${decision} appears`);
+    assert.ok(viewer.querySelector('section[aria-label="Review your updated layout"]'));
+    click(button(viewer, decision)!);
+    assert.equal(useViewerStore.getState().layoutMigrationChanges.length, 0);
+    assert.equal(useViewerStore.getState().layoutResetEpoch, epoch + (decision === 'Reset layout' ? 1 : 0));
+    cleanup();
+  }
 });

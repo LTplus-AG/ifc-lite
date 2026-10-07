@@ -11,6 +11,8 @@ import { useAssistant } from '@/lib/assistant/conversation';
 import { assistantLibrary, openConversation, useAssistantLibrary } from '@/lib/assistant/library';
 import { decodeConversation } from '@/lib/assistant/persistence';
 import { ContentStorageNotice } from '../ContentStorageNotice';
+import { toast } from '@/components/ui/toast';
+import { artifactLink } from '@/lib/deep-links/artifact-link';
 
 export function ConversationLibrary() {
   const { t } = useTranslation();
@@ -35,6 +37,10 @@ export function ConversationLibrary() {
     try { await assistantLibrary.put(entry.id, entry); }
     finally { setBusy(false); }
   };
+  // Links resolve only in this browser's library (#6927): conversations are personal.
+  const copyLink = (id: string) => navigator.clipboard.writeText(artifactLink(window.location.href, { kind: 'conversation', id }))
+    .then(() => toast.success(t('workspaceMigration.deepLink.copied')))
+    .catch((error: unknown) => { console.warn('[Assistant] Copying the link failed', error); toast.error(t('workspaceMigration.deepLink.copyFailed')); });
   return <section aria-label={t('assistant.savedConversations')} className="border-b border-border bg-muted/20 text-xs shrink-0">
     <div className="p-3 space-y-2">
       <h3 className="font-semibold">{t('assistant.savedConversations')}</h3>
@@ -51,6 +57,7 @@ export function ConversationLibrary() {
           if (state.messages.length && !await confirmDialog({ description: t('assistant.openConfirm') })) return;
           openConversation(entry);
         })()}>{entry.name}</Button>
+        <Button size="sm" variant="ghost" aria-label={t('workspaceMigration.deepLink.copyNamed', { name: entry.name })} onClick={() => void copyLink(entry.id)}>{t('workspaceMigration.deepLink.copy')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void assistantLibrary.put(entry.id, null)}>{t('assistant.deleteConversation')}</Button>
       </div>)}
     </div>

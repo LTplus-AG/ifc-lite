@@ -45,6 +45,7 @@ import { modelChangesEn } from './catalogues/model-changes.en';
 import { clashGroupApplyEn } from './catalogues/clash-group-apply.en';
 import { tableCorrectionsEn } from './catalogues/table-corrections.en';
 import { assistantWorkbenchEn } from './catalogues/assistant-workbench.en';
+import { workspaceMigrationEn } from './catalogues/workspace-migration.en';
 import { assistantUsageEn } from './catalogues/assistant-usage.en';
 import { aiReportsEn } from './catalogues/ai-reports.en';
 import { flowAssistantEn } from './catalogues/flow-assistant.en';
@@ -251,6 +252,7 @@ export const en = {
   ...tableCorrectionsEn,
   ...assistantUsageEn,
   ...assistantWorkbenchEn,
+  ...workspaceMigrationEn,
   ...aiReportsEn,
   ...flowAssistantEn,
   ...modelAuthoringEn,

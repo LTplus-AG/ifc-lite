@@ -27,9 +27,12 @@ import { useViewerStore } from '@/store';
 import { totalYupOffset } from './coordinate-frame';
 import type { Vec3 } from './pick-to-geo';
 import { selectAnchorGeoref, type AnchorGeorefSelection } from './select-anchor-georef';
+import { useProjectionKind } from './use-projection-kind';
 export { selectAnchorGeoref, type AnchorGeorefSelection, type SelectAnchorGeorefParams } from './select-anchor-georef';
 
 export interface AnchorGeoreference extends AnchorGeorefSelection {
+  /** Geographic anchors have angular XY; projected metre readouts do not apply. */
+  geographic?: boolean;
   /** Viewer-space (Y-up) position of the anchor model's IFC (0,0,0). */
   originViewer: Vec3;
 }
@@ -50,7 +53,7 @@ export function useAnchorGeoreference(): AnchorGeoreference | null {
   // makes the dependency explicit and matches BasepointOverlay).
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
-  return useMemo(() => {
+  const anchor = useMemo(() => {
     const selection = selectAnchorGeoref({
       models,
       legacyDataStore: ifcDataStore as IfcDataStore | null,
@@ -66,4 +69,6 @@ export function useAnchorGeoreference(): AnchorGeoreference | null {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [models, ifcDataStore, geometryResult, anchorModelIdOverride, georefMutations, mutationVersion]);
+  const kind = useProjectionKind(anchor?.eff.projectedCRS);
+  return useMemo(() => anchor && kind ? { ...anchor, geographic: kind === 'geographic' } : null, [anchor, kind]);
 }

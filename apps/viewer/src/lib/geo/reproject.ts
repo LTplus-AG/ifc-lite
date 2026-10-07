@@ -502,47 +502,6 @@ export async function reprojectPointToLatLon(
 }
 
 /**
- * Derive a primitive cache key for a {@link reprojectPointToLatLon} call.
- *
- * The key must fold **every** input the reprojection reads, or an effect keyed
- * by it would leave a rendered lat/lon stale when a georef edit changes the
- * projection while the CRS name and E/N stay put. `resolveProjection`
- * reads `name`, `mapZone`, `description` and `mapProjection`;
- * `reprojectPointToLatLon` additionally reads `mapUnitScale` and
- * `lengthUnitScale`. Preserve exact source coordinates: resolving their unit
- * requires an asynchronous projection lookup, and rounding degrees as metres
- * can collapse points kilometres apart. Identical inputs still share a key
- * across unrelated renders without guessing the coordinate unit.
- *
- * @param eastings        Easting in the CRS map unit (as fed to reprojectPointToLatLon).
- * @param northings       Northing in the CRS map unit.
- * @param crs             IfcProjectedCRS.
- * @param lengthUnitScale IFC project length unit to metres.
- */
-export function reprojectionInputKey(
-  eastings: number,
-  northings: number,
-  crs: ProjectedCRS,
-  lengthUnitScale = 1,
-): string {
-  // JSON-encode rather than join with a delimiter: the free-text CRS fields
-  // (name, mapZone, description, mapProjection) can legally contain any
-  // character, and a delimiter that also appears in a field lets two different
-  // georefs collide to one key, freezing the async lat/lon effect on a stale
-  // value. JSON escaping keeps the key injective.
-  return JSON.stringify([
-    crs.name ?? '',
-    crs.mapZone ?? '',
-    crs.description ?? '',
-    crs.mapProjection ?? '',
-    crs.mapUnitScale ?? '',
-    lengthUnitScale,
-    eastings,
-    northings,
-  ]);
-}
-
-/**
  * Reverse-project a WGS84 point to the declared origin's map-unit coordinates.
  * This is the inverse of reprojectPointToLatLon, independent of mesh placement
  * (#6677). Geometry-aware inverse placement lives in the shared spatial reference.

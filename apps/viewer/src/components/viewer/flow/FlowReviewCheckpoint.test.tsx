@@ -11,7 +11,7 @@ import 'fake-indexeddb/auto';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { type FlowData, type FlowDocument, type RunResult } from '@ifc-lite/flow';
+import { NodeRegistry, runFlow, type FlowData, type FlowDocument } from '@ifc-lite/flow';
 import { createCheckpoint, type FlowCheckpoint } from '@ifc-lite/flow/checkpoint';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
@@ -31,14 +31,22 @@ const doc = (id: string): FlowDocument => ({
 const rows = Array.from({ length: 30 }, (_, i) => ({ key: `g${i}`, label: i % 2 ? 'Partition' : 'Facade', evidence: 'Pset_WallCommon.IsExternal', outcome: 'classified' }));
 
 async function saved(graph: FlowDocument, proposalRows = rows, proposalData?: FlowData): Promise<FlowCheckpoint> {
-  const result: RunResult = {
-    ok: true, writes: 0, graphOutputs: [], log: [], review: ['roles'],
-    reports: [{ nodeId: 'roles', status: 'review', durationMs: 1, lanes: 1, laneErrors: 0, missing: {}, warnings: [] }],
-    outputs: new Map([['roles', new Map([
-      ['table', proposalData ?? { kind: 'item', value: { key: 'key', columns: [{ name: 'key', type: 'identifier' }, { name: 'label', type: 'label' }, { name: 'evidence', type: 'text' }, { name: 'outcome', type: 'enum' }], rows: proposalRows } }],
-      ['coverage', { kind: 'item', value: { model: 'stand-in', rows: proposalRows.length, requests: 2, classified: proposalRows.length, unknown: 0, failed: 0, notSent: 0 } }],
-    ])]]),
-  };
+  const proposal = proposalData ?? { kind: 'item' as const, value: { key: 'key',
+    columns: [{ name: 'key', type: 'identifier' }, { name: 'label', type: 'label' }, { name: 'evidence', type: 'text' }, { name: 'outcome', type: 'enum' }], rows: proposalRows } };
+  // Recorded proposal data passes through a real paused scheduler and the real durable store.
+  const registry = new NodeRegistry().registerAll([
+    { type: 'ai.classify', title: 'Recorded classification', category: 'test', inputs: [],
+      outputs: [{ name: 'table', type: { kind: 'table', access: proposal.kind === 'item' ? 'item' : proposal.kind } }, { name: 'coverage', type: { kind: 'scalar', access: 'item' } }],
+      params: [], capabilities: [], review: 'required', run: () => ({
+        table: proposal.kind === 'item' ? proposal.value : proposal.kind === 'list' ? proposal.items : proposal.branches,
+        coverage: { model: 'stand-in', rows: proposalRows.length, requests: 2, classified: proposalRows.length, unknown: 0, failed: 0, notSent: 0 },
+      }) },
+    { type: 'model.applyTable', title: 'Paused write', category: 'test', inputs: [{ name: 'table', type: { kind: 'table', access: 'item' } }],
+      outputs: [], params: [], capabilities: [], writes: 'model', run: () => assert.fail('the write must remain paused before approval') },
+  ]);
+  const result = await runFlow(graph, { registry, host: {} });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.review, ['roles']);
   await ensureFlowAiNodes();
   const checkpoint = createCheckpoint({ registry: flowRegistry(), doc: graph, result, sourceDigest: viewerSourceDigest() });
   assert.equal(await browserCheckpointStore.write(checkpoint, null), true);

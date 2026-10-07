@@ -40,7 +40,7 @@ export function openOriginal(finding: ReviewFinding, openPanel: (panel: Workspac
   else if (evidence.kind === 'validation') {
     const sourceGlobalId = state.models.get(evidence.modelId)?.ifcDataStore?.entities.getGlobalId(evidence.expressId);
     const expected = finding.elements.find(element => element.modelId === evidence.modelId)?.globalId;
-    if (sourceGlobalId && expected && sourceGlobalId !== expected) return false;
+    if (!sourceGlobalId || !expected || sourceGlobalId !== expected) return false;
     if (!selectChangedEntity(evidence.modelId, evidence.expressId)) return false;
   } else if (evidence.kind === 'comparison') {
     if (!state.compareResult?.diff.entries.some(entry => entry.key === evidence.key)) return false;

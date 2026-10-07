@@ -8,7 +8,7 @@ import { Field } from '@/components/ui/field';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
-import { HUMAN_STATUSES, REVIEW_LIMITS, saveCardDecision, type CardDecision, type HumanStatus } from '@/lib/review/workspace';
+import { HUMAN_STATUSES, REVIEW_LIMITS, saveCardDecision, useReviewWorkspaces, type CardDecision, type HumanStatus } from '@/lib/review/workspace';
 import { HUMAN_STATUS_KEY } from './review-labels';
 
 /** The person's own status and comment for one card; never an analysis result. */
@@ -17,10 +17,13 @@ export function ReviewDecision({ cardKey, decision }: { cardKey: string; decisio
   const [status, setStatus] = useState<HumanStatus>(decision?.status ?? 'open');
   const [comment, setComment] = useState(decision?.comment ?? '');
   const [clearAvailable, setClearAvailable] = useState(decision !== null);
+  const committed = useReviewWorkspaces(state => state.status.phase === 'ready'
+    && Object.values(state.status.items).every(value => value === 'saved'));
   useEffect(() => {
     // A staged Clear may remove the prop before its durable write succeeds.
     if (decision) { setStatus(decision.status); setComment(decision.comment); setClearAvailable(true); }
-  }, [decision]);
+    else if (committed) { setStatus('open'); setComment(''); setClearAvailable(false); }
+  }, [decision, committed]);
   const save = async (next: { status: HumanStatus; comment: string } | null) => {
     const saved = await saveCardDecision(cardKey, next);
     if (saved) {

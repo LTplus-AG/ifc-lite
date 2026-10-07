@@ -8,6 +8,7 @@ import { useBcfDraftLibrary } from '@/lib/bcf-drafts/draft-library';
 import { refuseContentWrites } from '@/test/content-fixture';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
+import { act } from 'react';
 import type { BCFProject, BCFTopic } from '@ifc-lite/bcf';
 import { cleanup, click, render, type, waitFor } from '@/test/render';
 import { fixtureModel } from '@/test/store-fixture';
@@ -22,7 +23,7 @@ import { Toaster } from '@/components/ui/toast';
 import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixture';
 import { snapshotComparison } from '@/lib/compare/savedComparisons';
 import { createSavedComparisonsSlice } from '@/store/slices/savedComparisonsSlice';
-import { currentReviewWorkspace, DEFAULT_REVIEW_WORKSPACE, useReviewWorkspaces } from '@/lib/review/workspace';
+import { currentReviewWorkspace, DEFAULT_REVIEW_WORKSPACE, saveCardDecision, useReviewWorkspaces } from '@/lib/review/workspace';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); useReviewAssistantCard.setState({ card: null, project: null }); useOriginalClashBaseline.setState({ finding: null }); localStorage.removeItem('ifc-lite-clash-revision-baseline'); });
@@ -250,6 +251,23 @@ test('#7015 refused decision Clear preserves the comment and status until storag
   } finally { refusal.mock.restore(); }
   click(button(ui, 'Clear decision'));
   await waitFor(() => comment.value === '' && select.value === 'open', 'successful clear');
+});
+
+test('#7015 clearing a decision elsewhere resets its mounted editor after durable commit', async () => {
+  setup();
+  const ui = mount();
+  await waitFor(() => ui.querySelector('[data-review-card]') !== null, 'card');
+  click(button(ui, 'Show findings of'));
+  const select = ui.querySelector<HTMLSelectElement>('select')!;
+  act(() => { select.value = 'accepted'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+  const comment = ui.querySelector<HTMLTextAreaElement>('textarea')!;
+  type(comment, 'Decision cleared elsewhere');
+  click(button(ui, 'Save decision'));
+  await waitFor(() => useReviewWorkspaces.getState().status.items[DEFAULT_REVIEW_WORKSPACE] === 'saved', 'decision committed');
+  const key = currentReviewWorkspace(useReviewWorkspaces.getState().entries).decisions[0].cardKey;
+  await act(async () => { assert.equal(await saveCardDecision(key, null), true); });
+  await waitFor(() => comment.value === '' && select.value === 'open', 'cleared editor');
+  assert.equal([...ui.querySelectorAll('button')].some(element => element.textContent === 'Clear decision'), false);
 });
 
 test('#7015 Review initializes persisted historical comparisons without opening Compare', async () => {

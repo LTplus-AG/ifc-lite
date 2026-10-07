@@ -380,6 +380,29 @@ describe('markup saved under the legacy key is moved to the identity key (#7035)
     assert.equal(localStorage.getItem(keyFor(legacyKeyOf(bytes))), null);
   });
 
+  it('keeps a later legacy edit of a shared item when the write that would carry it fails', async () => {
+    const bytes = bytesOf(45);
+    // Same id, same plane: only the value differs, and the legacy one is the later save.
+    localStorage.setItem(keyFor(identityOf(bytes)), JSON.stringify({ ...entryWith([measure('shared', 5)], SECTION), savedAt: 1000 }));
+    localStorage.setItem(keyFor(legacyKeyOf(bytes)), JSON.stringify({ ...entryWith([measure('shared', 99)], SECTION), savedAt: 2000 }));
+    const identityKey = keyFor(identityOf(bytes));
+    const realSetItem = localStorage.setItem.bind(localStorage);
+    const quota = mock.method(localStorage, 'setItem', (key: string, value: string) => {
+      if (key === identityKey) throw new Error('simulated quota exceeded');
+      realSetItem(key, value);
+    });
+    try {
+      await open(loadedModel('first', sourceFile(bytes), bytes));
+    } finally {
+      quota.mock.restore();
+    }
+    assert.equal(loadDrawing2DEntry(legacyKeyOf(bytes), DEFAULTS)?.measure2DResults[0]?.distance, 99, 'the only copy of the later edit is not removed');
+
+    await open(loadedModel('second', sourceFile(bytes), bytes));
+    assert.equal(loadDrawing2DEntry(identityOf(bytes), DEFAULTS)?.measure2DResults[0]?.distance, 99);
+    assert.equal(localStorage.getItem(keyFor(legacyKeyOf(bytes))), null);
+  });
+
   it('an interrupted move (both entries present) recovers without loss, duplication or older-over-newer', async () => {
     const bytes = bytesOf(50);
     // The tab closed after the identity entry was written and before the

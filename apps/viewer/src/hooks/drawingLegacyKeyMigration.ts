@@ -160,12 +160,14 @@ function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveCont
     sectionConfig: later.sectionConfig ?? earlier.sectionConfig,
   } : later;
   saveDrawing2DEntry(key, merged);
-  // The entry read back must hold everything the legacy one contributed. The
-  // plane is compared too: when only the plane was missing, an entry whose
-  // write failed still holds every item.
+  // The entry read back must BE the merged one, value for value. Comparing
+  // ids is not enough: an entry whose write failed still holds every id when
+  // the legacy entry only contributed a newer version of an item, or the
+  // section plane.
   const written = loadDrawing2DEntry(key, defaults);
-  if (!written || !MARKUP_LISTS.every((list) => holdsAll(written[list], old[list]))
-    || JSON.stringify(written.sectionConfig) !== JSON.stringify(merged.sectionConfig)) return false;
+  const same = (pick: (entry: typeof merged) => unknown) => !!written && JSON.stringify(pick(written)) === JSON.stringify(pick(merged));
+  if (!MARKUP_LISTS.every((list) => same((entry) => entry[list]))
+    || !same((entry) => entry.sectionConfig) || !same((entry) => entry.drawing2DDisplayOptions)) return false;
   return removeLocal(keyFor(legacy), raw);
 }
 
@@ -199,13 +201,13 @@ export async function migrateLegacyLocalEntries(key: string, present: string[], 
 // ── DXF underlays (IndexedDB) ────────────────────────────────────────
 
 /**
- * What identifies one write of a raw stored entry: its save time and the ids
- * of its underlays, in order. Every save stamps a new time, so this also
- * changes when an underlay is edited in place.
+ * A raw stored entry as one comparable string: the whole value, so that an
+ * underlay edited in place is seen as a different write even when it was
+ * saved within the same millisecond. Serialised twice per moved file, after
+ * its load.
  */
 function writeStamp(entry: unknown): string {
-  const { dxfUnderlays, savedAt } = (entry ?? {}) as { dxfUnderlays?: unknown; savedAt?: unknown };
-  return JSON.stringify([savedAt ?? null, Array.isArray(dxfUnderlays) ? dxfUnderlays.map((underlay) => (underlay as { id?: unknown } | null)?.id ?? null) : null]);
+  return JSON.stringify(entry ?? null);
 }
 
 /**

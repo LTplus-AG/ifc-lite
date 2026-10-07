@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { useState } from 'react';
 import { ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -25,6 +26,7 @@ const CHIP = 'inline-flex items-center rounded border border-border px-1.5 py-px
 function FindingItem({ finding, openPanel }: { finding: ReviewFinding; openPanel: (panel: WorkspacePanelId) => void }) {
   const { t } = useTranslation();
   const historical = finding.run.temporal === 'historical';
+  const [originalUnavailable, setOriginalUnavailable] = useState(false);
   return (
     <li className="space-y-0.5 rounded border border-border p-1.5 text-2xs" data-finding-source={finding.source} data-run-temporal={finding.run.temporal}>
       <div className="flex flex-wrap items-center gap-1">
@@ -37,7 +39,8 @@ function FindingItem({ finding, openPanel }: { finding: ReviewFinding; openPanel
       {finding.run.incomplete.length > 0 && <p className="text-amber-600 dark:text-amber-400">{t('reviewWorkspace.incompleteRun', { reasons: gapText(t, finding.run.incomplete) })}</p>}
       {finding.detail.map((line, index) => <p key={index} className="text-muted-foreground break-words">{line}</p>)}
       <Button size="sm" variant="outline" aria-label={t('reviewWorkspace.openLabel', { source: t(SOURCE_KEY[finding.source]), title: finding.title })}
-        onClick={() => openOriginal(finding, openPanel)}>{t('reviewWorkspace.open')}</Button>
+        onClick={() => setOriginalUnavailable(!openOriginal(finding, openPanel))}>{t('reviewWorkspace.open')}</Button>
+      {originalUnavailable && <p role="alert">{t('reviewWorkspace.originalUnavailable')}</p>}
     </li>
   );
 }

@@ -9,6 +9,9 @@
  * shows a second copy of the evidence as if it were the original.
  */
 
+import { clashReviewKey } from '@ifc-lite/clash';
+import { loadRevisionBaseline } from '../clash/revision-baseline';
+import { useOriginalClashBaseline } from '../clash/original-baseline';
 import { useViewerStore } from '@/store';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
 import { selectChangedEntity } from '../changes/select-changed-entity';
@@ -21,13 +24,20 @@ export const EVIDENCE_PANEL: Record<FindingEvidence['kind'], WorkspacePanelId> =
 };
 
 /** Whether the original can still be reached: a historical clash baseline has no row in the live clash list. */
-export function openOriginal(finding: ReviewFinding, openPanel: (panel: WorkspacePanelId) => void): void {
+export function openOriginal(finding: ReviewFinding, openPanel: (panel: WorkspacePanelId) => void): boolean {
   const state = useViewerStore.getState();
   const { evidence } = finding;
+  if (evidence.kind === 'clash-baseline') {
+    const baseline = loadRevisionBaseline();
+    const matches = baseline?.result.clashes.filter(clash => clashReviewKey(clash) === evidence.reviewKey) ?? [];
+    if (!baseline || finding.run.capturedAt === null || baseline.takenAt !== Date.parse(finding.run.capturedAt) || matches.length !== 1) return false;
+    useOriginalClashBaseline.setState({ finding: { clash: matches[0], takenAt: baseline.takenAt, modelNames: baseline.modelNames } });
+  }
   if (evidence.kind === 'clash') state.setClashSelectedId(evidence.clashId);
   else if (evidence.kind === 'bcf') state.setActiveTopic(evidence.topicGuid);
   else if (evidence.kind === 'validation') selectChangedEntity(evidence.modelId, evidence.expressId);
   openPanel(EVIDENCE_PANEL[evidence.kind]);
+  return true;
 }
 
 /** Select every validated element of a card in the 3D view; unvalidated elements are never selected by guess. */

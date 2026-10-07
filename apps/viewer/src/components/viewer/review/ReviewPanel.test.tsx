@@ -14,11 +14,14 @@ import { useViewerStore } from '@/store';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { clash, clashResult } from '@/lib/review/test-support';
 import { useReviewAssistantCard } from '@/lib/review/assistant-state';
+import { saveRevisionBaseline } from '@/lib/clash/revision-baseline';
+import { useOriginalClashBaseline } from '@/lib/clash/original-baseline';
+import { ClashRevisionCompareDialog } from '../ClashRevisionCompareDialog';
 import { Toaster } from '@/components/ui/toast';
 import { currentReviewWorkspace, useReviewWorkspaces } from '@/lib/review/workspace';
 
 const initial = useViewerStore.getState();
-afterEach(() => { cleanup(); useViewerStore.setState(initial, true); useReviewAssistantCard.setState({ card: null, project: null }); });
+afterEach(() => { cleanup(); useViewerStore.setState(initial, true); useReviewAssistantCard.setState({ card: null, project: null }); useOriginalClashBaseline.setState({ finding: null }); localStorage.removeItem('ifc-lite-clash-revision-baseline'); });
 
 const GW = '0wall000000000000000001';
 const GP = '0pipe000000000000000001';
@@ -115,4 +118,42 @@ test('a refused draft save stays visibly unsaved without a success toast or Open
     await waitFor(() => /Drafted, but not saved/.test(ui.textContent ?? ''), 'unsaved draft notice');
     assert.doesNotMatch(notifications.textContent ?? '', /Drafted, but not saved|Open drafts/);
   } finally { refusal.mock.restore(); }
+});
+
+test('#7015 Open original reaches a saved baseline clash absent from the live run', async () => {
+  setup();
+  const original = useViewerStore.getState().clashResult!;
+  assert.equal(saveRevisionBaseline({ result: original, modelNames: { A: 'arch.ifc', B: 'mep.ifc' }, takenAt: 1_760_000_000_000 }).ok, true);
+  const current = clashResult([]);
+  useViewerStore.setState({ clashResult: current, clashRawResult: current });
+  const ui = render(<>{renderPanelBody('review', () => {})}<ClashRevisionCompareDialog /></>);
+  await waitFor(() => ui.querySelector('[data-review-card]') !== null, 'historical card');
+  click(button(ui, 'Show findings of'));
+  const open = ui.querySelector<HTMLButtonElement>('[data-run-temporal="historical"] button');
+  assert.ok(open);
+  click(open);
+  await waitFor(() => document.querySelector('[data-original-baseline]') !== null, 'native original baseline evidence');
+  const evidence = document.querySelector('[data-original-baseline]');
+  assert.match(evidence?.textContent ?? '', /Original saved baseline finding/);
+  assert.match(evidence?.textContent ?? '', new RegExp(GW));
+  assert.match(evidence?.textContent ?? '', new RegExp(GP));
+  assert.equal(useViewerStore.getState().clashResult, current, 'opening historical evidence never replaces the current run');
+});
+
+test('#7015 changed baseline refuses the original jump instead of opening unrelated current results', async () => {
+  setup();
+  const original = useViewerStore.getState().clashResult!;
+  const baseline = { result: original, modelNames: { A: 'arch.ifc', B: 'mep.ifc' }, takenAt: 1_760_000_000_000 };
+  assert.equal(saveRevisionBaseline(baseline).ok, true);
+  const current = clashResult([]);
+  useViewerStore.setState({ clashResult: current, clashRawResult: current });
+  const ui = mount();
+  await waitFor(() => ui.querySelector('[data-review-card]') !== null, 'historical card');
+  click(button(ui, 'Show findings of'));
+  assert.equal(saveRevisionBaseline({ ...baseline, takenAt: baseline.takenAt + 1 }).ok, true);
+  const open = ui.querySelector<HTMLButtonElement>('[data-run-temporal="historical"] button');
+  assert.ok(open);
+  click(open);
+  assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /saved baseline changed/);
+  assert.equal(useOriginalClashBaseline.getState().finding, null);
 });

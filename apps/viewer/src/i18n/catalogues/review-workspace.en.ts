@@ -80,6 +80,7 @@ export const reviewWorkspaceEn = {
   'reviewWorkspace.card.openRelated': 'Open related card {title}',
   'reviewWorkspace.card.findingsHeading': 'Findings',
 
+  'reviewWorkspace.originalUnavailable': 'The saved baseline changed or its original finding cannot be identified uniquely. Refresh the review before opening it.',
   'reviewWorkspace.open': 'Open original',
   'reviewWorkspace.openLabel': 'Open the original {source} evidence: {title}',
   'reviewWorkspace.selectIn3d': 'Select in 3D',

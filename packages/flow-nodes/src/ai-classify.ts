@@ -68,7 +68,7 @@ export const aiClassifyNode: FlowNodeDef = {
   params: [
     { name: 'categories', kind: 'json', default: [], doc: '[{ "label": "...", "definition": "..." }]' },
     { name: 'version', kind: 'string', default: '1', doc: 'Version of the category definitions, kept with the result.' },
-    { name: 'columns', kind: 'json', default: [], doc: 'Columns sent to the model; empty sends all.' },
+    { name: 'columns', kind: 'json', default: [], doc: 'Columns sent to the model; select at least one explicitly.' },
     { name: 'maxRows', kind: 'number', default: 200 },
     { name: 'batchSize', kind: 'number', default: 25 },
     { name: 'maxOutputTokens', kind: 'number', default: 2000, doc: 'Output ceiling per request.' },

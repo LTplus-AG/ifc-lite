@@ -94,15 +94,27 @@ export function stringList(value: unknown, name: string): string[] {
   return value;
 }
 
-/** Row keys as the model sees them: the table's key cell, or `#<index>` when a row has none. */
+/** Unique model-facing keys: real keys retain their spelling when unambiguous. */
 export function rowKeys(table: Table): string[] {
-  return table.rows.map((row, i) => {
+  const real = table.rows.map(row => {
     const key = row[table.key];
-    return key === null || key === undefined || key === '' ? `#${i}` : String(key);
+    return key === null || key === undefined || key === '' ? null : String(key);
+  });
+  const reserved = new Set(real.filter((key): key is string => key !== null));
+  const used = new Set<string>();
+  return real.map((key, i) => {
+    let candidate = key;
+    if (candidate === null || used.has(candidate)) {
+      candidate = `#${i}`;
+      let suffix = 0;
+      while (reserved.has(candidate) || used.has(candidate)) candidate = `#${i}:${++suffix}`;
+    }
+    used.add(candidate);
+    return candidate;
   });
 }
 
-/** The rows sent to the model, restricted to `columns` (all when empty), as compact JSON lines inside <data>. */
+/** The rows sent to the model, restricted to explicitly selected `columns`, as compact JSON lines inside <data>. */
 export function dataBlock(table: Table, keys: readonly string[], indices: readonly number[], columns: readonly string[]): string {
   const lines = indices.map((i) => JSON.stringify({ key: keys[i], ...Object.fromEntries(columns.map((c) => [c, table.rows[i][c] ?? null])) }));
   return `<data>\n${lines.join('\n')}\n</data>`;
@@ -110,7 +122,7 @@ export function dataBlock(table: Table, keys: readonly string[], indices: readon
 
 export function sentColumns(table: Table, requested: readonly string[]): string[] {
   const names = table.columns.map((c) => c.name);
-  if (requested.length === 0) return names;
+  if (requested.length === 0) throw new Error('Select at least one column before sending table data to the AI model');
   const unknown = requested.filter((c) => !names.includes(c));
   if (unknown.length > 0) throw new Error(`unknown column(s): ${unknown.join(', ')}`);
   return [...requested];

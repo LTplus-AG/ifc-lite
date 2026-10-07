@@ -245,7 +245,7 @@ export async function flowCommand(args: string[]): Promise<void> {
   if (unavailable.length) fatal(`Flow cannot run on this host: ${unavailable.map((node) => `${node.nodeId}: ${node.reasons.join('; ')}`).join(' | ')}`);
   const modelBytes = await readFile(modelPath);
   // The claim is taken before anything runs, against the model this resume starts from.
-  const resume: Resume | undefined = sub === 'resume' ? await claimForResume(checkpointPath!, doc, inputs, sourceDigestOf(modelBytes)) : undefined;
+  const resume: Resume | undefined = sub === 'resume' ? await claimForResume(checkpointPath!, doc, inputs, sourceDigestOf(modelBytes), registry) : undefined;
 
   const secretValues = resolveSecretValues(doc, process.env);
   const redaction = buildRedactionMap(secretValues);
@@ -263,7 +263,8 @@ export async function flowCommand(args: string[]): Promise<void> {
   if (reviewsAhead && !nextCheckpoint) {
     fatal(sub === 'resume' ? 'this graph pauses for review again after the checkpoint; pass --next-checkpoint <file>' : 'this graph pauses for review; pass --checkpoint <file> to save the proposal');
   }
-  const session = createCliFlowSession(await createHeadlessContext(modelPath), capsResult.value, aiConfig ? createCliAiService(aiConfig, budget) : undefined);
+  const initialModel = await createHeadlessContext(modelPath);
+  const session = createCliFlowSession(initialModel, capsResult.value, aiConfig ? createCliAiService(aiConfig, budget) : undefined);
   const host = session.host;
 
   let tracking: FileTrackingStore | undefined;
@@ -300,6 +301,8 @@ export async function flowCommand(args: string[]): Promise<void> {
   const paused = result.ok && result.review.length > 0;
   // A pause after a write must hand the resume the model state it wrote: the
   // checkpoint pins the bytes the resume has to start from.
+  const activeModelChanged = session.active() !== initialModel;
+  if (paused && activeModelChanged && out === undefined) fatal('the run opened a different model before pausing for review; pass --out so the resume starts from that model');
   if (paused && result.writes > 0 && out === undefined) fatal('the run wrote to the model before pausing for review; pass --out so the resume can start from that model');
   const wrote = out !== undefined && result.ok;
   let written: string | Uint8Array | undefined;
@@ -312,7 +315,7 @@ export async function flowCommand(args: string[]): Promise<void> {
   if (resume) await finishResume(resume, result);
   if (paused && !nextCheckpoint) fatal(`the run paused for review at ${result.review.join(', ')} with no checkpoint file to save it to`);
   const pause = paused
-    ? await savePause(nextCheckpoint!, { doc, result, inputs, sourceDigest: sourceDigestOf(result.writes > 0 && written !== undefined ? written : modelBytes), budget: { ...budget } })
+    ? await savePause(nextCheckpoint!, { registry, doc, result, inputs, sourceDigest: sourceDigestOf((result.writes > 0 || activeModelChanged) && written !== undefined ? written : modelBytes), budget: { ...budget } })
     : undefined;
 
   // Redaction runs at the OUTER boundary, right before anything leaves this

@@ -19,6 +19,9 @@ import { saveRevisionBaseline } from '@/lib/clash/revision-baseline';
 import { useOriginalClashBaseline } from '@/lib/clash/original-baseline';
 import { ClashRevisionCompareDialog } from '../ClashRevisionCompareDialog';
 import { Toaster } from '@/components/ui/toast';
+import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixture';
+import { snapshotComparison } from '@/lib/compare/savedComparisons';
+import { createSavedComparisonsSlice } from '@/store/slices/savedComparisonsSlice';
 import { currentReviewWorkspace, DEFAULT_REVIEW_WORKSPACE, useReviewWorkspaces } from '@/lib/review/workspace';
 
 const initial = useViewerStore.getState();
@@ -247,4 +250,17 @@ test('#7015 refused decision Clear preserves the comment and status until storag
   } finally { refusal.mock.restore(); }
   click(button(ui, 'Clear decision'));
   await waitFor(() => comment.value === '' && select.value === 'open', 'successful clear');
+});
+
+test('#7015 Review initializes persisted historical comparisons without opening Compare', async () => {
+  const models = comparisonModels();
+  const saved = snapshotComparison(comparisonResult('A', 'B'), models, 'Persisted history');
+  assert.equal(await useViewerStore.getState().saveComparison(saved), true);
+  useViewerStore.setState({ ...createSavedComparisonsSlice(useViewerStore.setState, useViewerStore.getState, useViewerStore),
+    models, compareResult: null, clashResult: null, clashRawResult: null, bcfProject: null, idsValidationReport: null });
+  assert.equal(useViewerStore.getState().savedComparisons.length, 0, 'fresh controller has not read storage');
+  const ui = mount();
+  await waitFor(() => useViewerStore.getState().savedComparisons.some(entry => entry.id === saved.id), 'Review loads durable history');
+  await waitFor(() => !!ui.querySelector('[data-review-card]'), 'historical comparison card appears');
+  assert.match(ui.textContent ?? '', /historical/);
 });

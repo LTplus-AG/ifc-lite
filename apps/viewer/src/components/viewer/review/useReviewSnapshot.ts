@@ -15,6 +15,7 @@ import { captureReviewSnapshot, type ReviewSnapshot } from '@/lib/review/collect
  * the snapshot, including changes received from another tab.
  */
 export function useReviewSnapshot(): { snapshot: ReviewSnapshot; refresh: () => void } {
+  useEffect(() => { void useViewerStore.getState().initializeSavedComparisons(); }, []);
   const [tick, setTick] = useState(0);
   useEffect(() => subscribeRevisionBaseline(() => setTick(value => value + 1)), []);
   const native = useViewerStore(useShallow(s => [s.clashResult, s.clashRawResult, s.idsValidationReport, s.compareResult,

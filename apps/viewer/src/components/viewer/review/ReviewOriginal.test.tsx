@@ -6,7 +6,7 @@ import '@/test/content-backup-fixture.js';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, cleanup, waitFor } from '@/test/render';
+import { render, cleanup, waitFor, click, type } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixture';
 import { fixtureModel } from '@/test/store-fixture';
@@ -82,4 +82,26 @@ test('#7015 validation original refuses an express id reused by a replacement mo
     { evidence: { kind: 'validation', specificationId: 'S1', modelId: 'm', expressId: 1 } });
   assert.equal(openOriginal(original, () => assert.fail('replacement is not the original element')), false);
   assert.equal(useViewerStore.getState().selectedEntityId, 99);
+});
+
+test('#7015 a consumed original request cannot steal a later comparison selection after rename', async () => {
+  await useViewerStore.getState().initializeSavedComparisons();
+  const models = comparisonModels();
+  const a = snapshotComparison(comparisonResult('A', 'B'), models, 'Original A');
+  const b = snapshotComparison(comparisonResult('B', 'C'), models, 'Chosen B');
+  assert.equal(await useViewerStore.getState().saveComparison(a), true);
+  assert.equal(await useViewerStore.getState().saveComparison(b), true);
+  const ui = render(<SavedComparisonLibrary result={null} running={false} />);
+  act(() => useSavedComparisonFocus.setState({ record: { comparisonId: a.id, key: a.report.rows[0].key ?? a.report.rows[0].globalId } }));
+  await waitFor(() => ui.querySelector('select')?.value === a.id, 'original A opened');
+  const select = ui.querySelector('select')!;
+  act(() => { select.value = b.id; select.dispatchEvent(new window.Event('change', { bubbles: true })); });
+  const input = ui.querySelector<HTMLInputElement>('input[aria-label="Rename saved comparison"]') ?? ui.querySelector<HTMLInputElement>('input[value="Chosen B"]');
+  assert.ok(input);
+  type(input, 'Renamed B');
+  const rename = [...ui.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Rename');
+  assert.ok(rename); click(rename);
+  await waitFor(() => useViewerStore.getState().savedComparisons.some(entry => entry.id === b.id && entry.name === 'Renamed B'), 'rename B committed');
+  assert.equal(select.value, b.id);
+  assert.equal(input.value, 'Renamed B');
 });

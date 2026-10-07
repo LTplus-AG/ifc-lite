@@ -5,7 +5,7 @@
 /** Completed reports remain reviewable without reattaching historical renderer ids (#6506). */
 import { SavedComparisonHistoryNotice } from './SavedComparisonHistoryNotice';
 import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSavedComparisonFocus } from '@/lib/panels/evidence-focus';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -30,9 +30,12 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
   const [selectedId, setSelectedId] = useState('');
   const [renamed, setRenamed] = useState('');
   const requested = useSavedComparisonFocus(s => s.record);
+  const consumed = useRef<typeof requested>(null);
   useEffect(() => {
     const entry = saved.find(item => item.id === requested?.comparisonId);
-    if (entry) { setSelectedId(entry.id); setRenamed(entry.name); }
+    if (entry && requested !== consumed.current) {
+      consumed.current = requested; setSelectedId(entry.id); setRenamed(entry.name);
+    }
   }, [requested, saved]);
   const selected = saved.find((c) => c.id === selectedId);
   const visibleRows = selected?.report.rows.slice(0, 100) ?? [];

@@ -64,7 +64,7 @@ export interface FlowHost {
    */
   readonly grants?: readonly Capability[];
   /**
-   * The graph's own declared `network.fetch:<host>` (and `secret.read:<NAME>`)
+   * The graph's own declared `network.ai`, `network.fetch:<host>` and `secret.read:<NAME>`
    * capabilities — ALWAYS populated by every caller (CLI, MCP, viewer),
    * independent of `grants`/the trust gate above. Real network access and
    * secret reads are the one place "trusted local caller" does not mean

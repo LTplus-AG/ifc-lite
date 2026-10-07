@@ -12,11 +12,11 @@ import { CapabilityDeniedError, hasCapability, parseCapability } from '@ifc-lite
 import type { Ctx } from './host.js';
 
 /** Throws `CapabilityDeniedError` unless the host's grants cover `raw`. */
-export function requireCapability(ctx: Ctx, raw: string): void {
-  if (!ctx.host.grants) return;
+export function requireCapability(ctx: Ctx, raw: string, grants = ctx.host.grants): void {
+  if (!grants) return;
   const parsed = parseCapability(raw);
   if (!parsed.ok) throw new Error(`node requested a malformed capability "${raw}": ${parsed.errors.map((e) => e.message).join('; ')}`);
-  if (!hasCapability(ctx.host.grants, parsed.value)) {
-    throw new CapabilityDeniedError(`flow node (${raw})`, [raw], ctx.host.grants.map((g) => g.raw));
+  if (!hasCapability(grants, parsed.value)) {
+    throw new CapabilityDeniedError(`flow node (${raw})`, [raw], grants.map((g) => g.raw));
   }
 }

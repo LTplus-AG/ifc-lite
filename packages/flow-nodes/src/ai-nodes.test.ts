@@ -62,7 +62,7 @@ const registry = new NodeRegistry<FlowHost>().registerAll([tableNode, tablesNode
 
 const categories = [{ label: 'structure', definition: 'load-bearing building elements' }, { label: 'services', definition: 'MEP distribution' }];
 const classifyBy = (rows: Record<string, unknown>[]) => ({
-  items: rows.map((r) => ({ key: r.key, label: r.Type === 'IfcWall' ? 'structure' : 'services', evidence: ['Type'] })),
+  items: rows.map((r) => ({ key: r.key, label: (r.values as Record<string, unknown>).Type === 'IfcWall' ? 'structure' : 'services', evidence: ['Type'] })),
 });
 
 function graph(nodes: FlowDocument['nodes'], edges: FlowDocument['edges']): FlowDocument {
@@ -72,7 +72,9 @@ const classifyGraph = (params: Record<string, unknown>, n = 4) => graph(
   [{ id: 'src', type: 't.table', params: { n } }, { id: 'ai', type: 'ai.classify', params: { categories, columns: ['Type'], ...params } }],
   [{ from: ['src', 't'], to: ['ai', 'table'] }],
 );
-const host = (ai?: FlowAiService): FlowHost => ({ bim: createFakeBim().bim, ...(ai ? { ai } : {}) });
+const aiGrants = parseCapabilities(['network.ai']);
+if (!aiGrants.ok) throw new Error('invalid test grant');
+const host = (ai?: FlowAiService): FlowHost => ({ bim: createFakeBim().bim, networkGrants: aiGrants.value, ...(ai ? { ai } : {}) });
 const features = { ...headlessFeatures(), backend: new Set([...headlessFeatures().backend, AI_FEATURE]) };
 
 async function classify(params: Record<string, unknown>, model: StandIn, n = 4) {
@@ -253,4 +255,60 @@ it('#7039 table AI nodes refuse omitted columns before sending private data', as
     expect(result.log.some(entry => entry.message.includes('Select at least one column'))).toBe(true);
     expect(model.calls).toEqual([]);
   }
+});
+
+// #7039: review inputs preserve identity, grant boundaries and honest incomplete coverage.
+it('refuses AI without explicit grants even on a trusted local host', async () => {
+  const model = standIn(classifyBy);
+  const result = await runFlow(classifyGraph({}), { host: { bim: createFakeBim().bim, ai: model.service }, registry, features });
+  expect(result.ok).toBe(false);
+  expect(model.calls).toHaveLength(0);
+});
+
+it('keeps source key values separate from generated row identifiers', async () => {
+  const source: NodeDef<FlowHost> = { ...tableNode, run: () => ({ t: {
+    key: 'key', columns: [{ name: 'key', type: 'text' }, { name: 'Type', type: 'text' }],
+    rows: [{ key: '', Type: 'IfcWall' }, { key: '', Type: 'IfcWall' }, { key: '#0', Type: 'IfcWall' }],
+  } satisfies Table }) };
+  const model = standIn(classifyBy);
+  const result = await runFlow(classifyGraph({ columns: ['key', 'Type'] }), { host: host(model.service), registry: new NodeRegistry<FlowHost>().registerAll([source, ...aiNodes]), features });
+  const table = result.outputs.get('ai')?.get('table');
+  expect(table?.kind).toBe('item');
+  if (table?.kind !== 'item') throw new Error('missing classified table');
+  expect((table.value as Table).rows.map(row => [row.key, row.outcome])).toEqual([['#0:1', 'classified'], ['#1', 'classified'], ['#0', 'classified']]);
+  expect(model.calls[0].prompt).toContain('"values":{"key":""');
+});
+
+it('marks a missing classification items array as a failed batch', async () => {
+  const { table, coverage, result } = await classify({}, standIn(() => ({})));
+  expect(result.review).toEqual(['ai']);
+  expect(coverage).toMatchObject({ failed: 4, unknown: 0 });
+  expect(table!.value.rows.every(row => row.outcome === 'failed')).toBe(true);
+});
+
+it('keeps a budget-stopped second summary as a reviewable not-sent draft', async () => {
+  const model = standIn(rows => ({ sections: [{ heading: 'Evidence', text: 'Wall evidence', citations: [rows[0].key] }] }), { maxRequests: 1, maxOutputTokens: 100_000 });
+  const doc = graph([
+    { id: 'src', type: 't.table', params: {} },
+    { id: 'first', type: 'ai.summarize', params: { columns: ['Type'] } },
+    { id: 'second', type: 'ai.summarize', params: { columns: ['Type'] } },
+  ], [{ from: ['src', 't'], to: ['first', 'table'] }, { from: ['src', 't'], to: ['second', 'table'] }]);
+  const result = await runFlow(doc, { host: host(model.service), registry, features });
+  expect(result.ok).toBe(true);
+  expect(result.review).toContain('second');
+  const coverage = result.outputs.get('second')?.get('coverage');
+  if (coverage?.kind !== 'item') throw new Error('missing coverage');
+  expect(coverage.value).toMatchObject({ requests: 0, sent: 0, notSent: 4, budgetStopped: true });
+  expect(model.calls).toHaveLength(1);
+});
+
+it('does not certify a fabricated suffix by truncating the claimed quote', async () => {
+  const span = 'a'.repeat(1000);
+  const model = standIn(() => ({ records: [{ passage: 0, span: `${span}invented`, values: { Name: 'claimed' } }] }));
+  const source: NodeDef<FlowHost> = { ...tableNode, type: 't.passages', outputs: [{ name: 'passages', type: { kind: 'scalar', access: 'list' } }], run: () => ({ passages: [span] }) };
+  const doc = graph([{ id: 'src', type: source.type, params: {} }, { id: 'ai', type: 'ai.extract', params: { fields: [{ name: 'Name', type: 'string' }] } }], [{ from: ['src', 'passages'], to: ['ai', 'passages'] }]);
+  const result = await runFlow(doc, { host: host(model.service), registry: new NodeRegistry<FlowHost>().registerAll([source, ...aiNodes]), features });
+  const records = result.outputs.get('ai')?.get('records');
+  if (records?.kind !== 'item') throw new Error('missing records');
+  expect((records.value as Table).rows[0].outcome).toBe('unsupported');
 });

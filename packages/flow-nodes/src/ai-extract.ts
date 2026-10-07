@@ -46,9 +46,10 @@ export function readRecords(value: Record<string, unknown>, passages: ReadonlyMa
     const passage = typeof record.passage === 'number' ? record.passage : -1;
     const source = passages.get(passage);
     if (source === undefined) return [];
-    const span = typeof record.span === 'string' ? record.span.slice(0, 1000) : '';
+    const sourceSpan = typeof record.span === 'string' ? record.span : '';
+    const span = sourceSpan.slice(0, 1000);
     const values = record.values && typeof record.values === 'object' ? record.values as Record<string, unknown> : {};
-    let supported = span.length > 0 && source.includes(span);
+    let supported = sourceSpan.length > 0 && sourceSpan.length <= 1000 && source.includes(sourceSpan);
     const row: Record<string, Cell> = { passage, span };
     for (const f of fields) {
       const v = values[f.name];

@@ -44,7 +44,7 @@ export async function resolveDeepLink(store: StoreApi<ViewerState>, link: Parsed
       if (found !== 'found') return { status: found, panel, kind: artifact.kind };
       // Never replace a conversation in progress to follow a link.
       const current = useAssistant.getState();
-      if (current.status === 'streaming' || (current.messages.length > 0 && current.archived?.id !== artifact.id)) {
+      if (current.status === 'streaming' || (current.messages.length > 0 && !current.archived)) {
         return { status: 'busy', panel, kind: 'conversation' };
       }
       const entry = useAssistantLibrary.getState().entries.find((candidate) => candidate.id === artifact.id);

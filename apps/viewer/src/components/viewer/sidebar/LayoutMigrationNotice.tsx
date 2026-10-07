@@ -26,7 +26,7 @@ export function LayoutMigrationNotice() {
     className="shrink-0 border-b border-border bg-muted/40 px-3 py-2 text-xs space-y-2">
     <p className="font-medium">{t('workspaceMigration.layout.title')}</p>
     <output aria-live="polite" className="block text-muted-foreground">{t('workspaceMigration.layout.summary', { count: changes.length })}</output>
-    {open && <LayoutChangeList changes={changes} />}
+    {open && <div className="max-h-48 overflow-y-auto"><LayoutChangeList changes={changes} /></div>}
     <div className="flex flex-wrap gap-1">
       <Button size="sm" variant="ghost" className="h-7" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         {open ? t('workspaceMigration.layout.hideChanges') : t('workspaceMigration.layout.showChanges')}

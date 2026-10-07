@@ -87,7 +87,7 @@ The card names its source and anything that limits it as evidence:
 | **N hidden by exclusions** | Your enabled exclusion rules were hiding N clashes when the report was saved. The report holds the clashes the panel showed, so the chart counts a subset of the run. |
 | **Different model revision** | A loaded model has the same name as a recorded one but different content. The chart still shows the recorded results. |
 | **Models not loaded** | The models the report ran on are not open. |
-| **Revision not confirmed** | The viewer cannot tell whether the loaded models are the recorded revision: no source identity was recorded, or the model was edited in the viewer. |
+| **Revision not confirmed** | The viewer cannot tell whether the loaded models are the recorded revision: no source identity was recorded, the recorded and the loaded model have no kind of source identity in common to compare, or the model was edited in the viewer. |
 
 The limiting labels come first on the card, before the report's name, so a
 narrow card cannot cut them off; hover the subtitle for the whole line. The

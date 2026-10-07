@@ -70,6 +70,19 @@ describe('Saved clash report: loaded model revision (#6947)', () => {
     assert.equal(clashReportRevision(report, [{ name: 'arch.ifc', sourceFingerprint: 'fp-other', sourceContentHash: 'hash-1' }], 0), 'same');
     assert.equal(clashReportRevision(report, [{ name: 'arch.ifc', sourceFingerprint: 'fp-a' }], 0), 'same', 'with the hash unknown on one side the fingerprint decides');
   });
+
+  it('does not call a model another revision when the two sides share no kind of identity to compare', async () => {
+    const { clashReportRevision } = await load();
+    const hashOnly = recorded([{ id: 'a', name: 'arch.ifc', sourceContentHash: 'hash-1' }]);
+    const fingerprintOnly = recorded([{ id: 'a', name: 'arch.ifc', sourceFingerprint: 'fp-a' }]);
+    // Nothing was compared in these three: a hash against a fingerprint, either way round, and an identity against none.
+    assert.equal(clashReportRevision(hashOnly, [{ name: 'arch.ifc', sourceFingerprint: 'fp-a' }], 0), 'unverified');
+    assert.equal(clashReportRevision(fingerprintOnly, [{ name: 'arch.ifc', sourceContentHash: 'hash-1' }], 0), 'unverified');
+    assert.equal(clashReportRevision(fingerprintOnly, [{ name: 'arch.ifc' }], 0), 'unverified');
+    // Control: one comparable same-named model that differs is still another revision, whatever else is loaded.
+    assert.equal(clashReportRevision(hashOnly, [{ name: 'arch.ifc', sourceFingerprint: 'fp-a' }, { name: 'arch.ifc', sourceContentHash: 'hash-2' }], 0), 'different');
+    assert.equal(clashReportRevision(hashOnly, [{ name: 'arch.ifc', sourceContentHash: 'hash-2' }], 0), 'different');
+  });
 });
 
 describe('Saved clash report: what capture keeps of a run (#6947)', () => {

@@ -40,6 +40,14 @@ test('privacyFindings: STEP author/organisation must be empty; credential-like t
   assert.match(privacyFindings('no header here', 'ifc').join(), /FILE_NAME/);
 });
 
+test('#7046 a legacy exact-match header allowance cannot bypass privacy findings', () => {
+  const allowance = { author: "('Jane Doe')", organisation: "('Example Organisation')" };
+  const header = `ISO-10303-21;\nHEADER;\nFILE_NAME('a.ifc','2024-01-01',${allowance.author},${allowance.organisation},'x','y','');\n`;
+  // JavaScript callers may still pass the removed third argument. It must not
+  // grant a privacy exemption, even when both fields match exactly.
+  assert.match(privacyFindings(header, 'ifc', allowance).join(), /author\/organisation present/);
+});
+
 test('a task naming an unknown scene, journey or invariant is refused', () => withRoot(root => {
   const manifest = readJson(manifestPath(root));
   manifest.tasks[0].scene = 'nowhere';

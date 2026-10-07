@@ -27,6 +27,7 @@
     "README.md"
   ],
   "dependencies": {
+    "@ifc-lite/ai": "workspace:^",
     "@ifc-lite/bcf": "workspace:^",
     "@ifc-lite/cache": "workspace:^",
     "@ifc-lite/clash": "workspace:^",
@@ -48,9 +49,9 @@
     "@ifc-lite/rules": "workspace:^",
     "@ifc-lite/sandbox": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
+    "@ifc-lite/semantic": "workspace:^",
     "@ifc-lite/viewer-core": "workspace:^",
-    "@ifc-lite/wasm": "workspace:^",
-    "@ifc-lite/semantic": "workspace:^"
+    "@ifc-lite/wasm": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

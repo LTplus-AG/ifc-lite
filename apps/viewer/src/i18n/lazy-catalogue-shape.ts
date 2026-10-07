@@ -1,6 +1,34 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { flowReviewEn } from './catalogues/flow-review.en';
+type ReviewKey = keyof typeof flowReviewEn extends `flowReview.${infer Key}` ? Key : never;
+/** Exact lazy keys and parameters validate contributed locales before feature code loads. */
+const flowReviewShape = {
+  "title": [],
+  "paused": ["nodes"],
+  "node": ["node", "type"],
+  "digest": ["digest"],
+  "created": ["time"],
+  "coverage.classify": ["classified", "failed", "model", "notSent", "requests", "rows", "unknown"],
+  "coverage.summarize": ["model", "requests", "rows", "sections", "sent", "uncited"],
+  "coverage.extract": ["model", "passages", "records", "requests", "sent", "unsupported"],
+  "approve": [],
+  "resume": [],
+  "reject": [],
+  "dismiss": [],
+  "state.prepared": [],
+  "state.reviewed": [],
+  "state.applying": [],
+  "state.completed": [],
+  "state.partial": ["reason"],
+  "state.rejected": [],
+  "refused.graph-changed": [],
+  "refused.sources-changed": [],
+  "refused.other": ["reason"],
+  "notSaved": ["reason"],
+  "needsModel": [],
+} satisfies Record<ReviewKey, readonly string[]>;
 import type { semanticAssistEn } from './catalogues/semantic-assist.en';
 
 type SemanticKey = keyof typeof semanticAssistEn extends `semanticAssist.${infer Key}` ? Key : never;
@@ -97,9 +125,135 @@ const semanticMessageShape = {
   "deleteLabel": ["title"],
 } as const satisfies Record<SemanticKey, readonly string[]>;
 
+import type { reviewWorkspaceEn } from './catalogues/review-workspace.en';
+
+type WorkspaceReviewKey = keyof typeof reviewWorkspaceEn extends `reviewWorkspace.${infer Key}` ? Key : never;
+/** Startup validation needs keys and parameters, while the panel's prose stays lazy. */
+const reviewMessageShape = {
+  "title": [],
+  "refresh": [],
+  "source": [],
+  "population": ["count"],
+  "counts": ["cards", "current", "elements", "historical", "topics"],
+  "totalsNote": [],
+  "unverified": ["count"],
+  "sourceFailed": ["source"],
+  "runIncomplete": ["reasons", "run"],
+  "cards": [],
+  "showing": ["count"],
+  "empty.title": [],
+  "empty.noModels": [],
+  "empty.noResults": [],
+  "filtered.detail": [],
+  "clearFilters": [],
+  "facet.source": [],
+  "facet.run": [],
+  "facet.model": [],
+  "facet.state": [],
+  "facet.decision": [],
+  "facet.discipline": [],
+  "facet.storey": [],
+  "facetSelected": ["count", "facet"],
+  "facetOption": ["cards", "label"],
+  "filters": [],
+  "sourceKind.clash": [],
+  "sourceKind.validation": [],
+  "sourceKind.comparison": [],
+  "sourceKind.bcf": [],
+  "sourceKind.linked": [],
+  "state.current": [],
+  "state.not-evaluated": [],
+  "state.resolution-candidate": [],
+  "state.record": [],
+  "stateHelp.current": [],
+  "stateHelp.not-evaluated": [],
+  "stateHelp.resolution-candidate": [],
+  "stateHelp.record": [],
+  "unvalidatedCard": [],
+  "temporal.current": [],
+  "temporal.historical": [],
+  "lifecycle.observed": [],
+  "lifecycle.new": [],
+  "lifecycle.persistent": [],
+  "lifecycle.no-longer-observed": [],
+  "lifecycle.not-evaluated": [],
+  "lifecycle.record": [],
+  "gap.truncated": [],
+  "gap.stale": [],
+  "gap.check-error": [],
+  "gap.sets-truncated": [],
+  "gap.partial-source": [],
+  "gap.geometry-unavailable": [],
+  "gap.placement-only": [],
+  "gap.excluded-classes": [],
+  "incompleteRun": ["reasons"],
+  "nativeStatus": ["status"],
+  "noStatus": [],
+  "card.expand": ["title"],
+  "card.collapse": ["title"],
+  "card.select": ["title"],
+  "card.findings": ["count"],
+  "card.elements": [],
+  "card.element": ["globalId", "model", "name", "type"],
+  "card.elementUnvalidated": ["globalId", "identity"],
+  "card.related": [],
+  "card.openRelated": ["title"],
+  "card.findingsHeading": [],
+  "originalUnavailable": [],
+  "open": [],
+  "openLabel": ["source", "title"],
+  "selectIn3d": [],
+  "selectIn3dNone": [],
+  "ask": [],
+  "draftOne": [],
+  "decision.heading": [],
+  "decision.note": [],
+  "decision.status": [],
+  "decision.none": [],
+  "decision.comment": [],
+  "decision.save": [],
+  "decision.clear": [],
+  "decision.saved": [],
+  "decision.cleared": [],
+  "decision.unsaved": [],
+  "decision.updated": ["time"],
+  "humanStatus.open": [],
+  "humanStatus.in-progress": [],
+  "humanStatus.resolved": [],
+  "humanStatus.accepted": [],
+  "humanStatus.dismissed": [],
+  "actions.draftTopics": ["count"],
+  "actions.addToReport": ["count"],
+  "actions.scopeSelected": [],
+  "actions.scopeShown": [],
+  "actions.selectAll": [],
+  "actions.clearSelection": [],
+  "actions.reportName": ["date"],
+  "actions.draftSaved": ["count"],
+  "actions.draftUnsaved": [],
+  "actions.draftNone": [],
+  "actions.draftFailed": [],
+  "actions.excludedHasTopic": ["count"],
+  "actions.excludedNotCurrent": ["count"],
+  "actions.reportSaved": ["count"],
+  "actions.reportUnsaved": [],
+  "actions.reportFailed": [],
+  "actions.openDocument": [],
+  "actions.openDrafts": [],
+} as const satisfies Record<WorkspaceReviewKey, readonly string[]>;
+
 export function lazyMessageParameters(key: string): readonly string[] | null {
-  const prefix = 'semanticAssist.';
-  if (!key.startsWith(prefix)) return null;
-  const name = key.slice(prefix.length);
-  return Object.hasOwn(semanticMessageShape, name) ? semanticMessageShape[name as keyof typeof semanticMessageShape] : null;
+  if (key.startsWith('flowReview.')) {
+    const tail = key.slice('flowReview.'.length);
+    return Object.hasOwn(flowReviewShape, tail) ? flowReviewShape[tail as ReviewKey] : null;
+  }
+  if (key.startsWith('semanticAssist.')) {
+    const tail = key.slice('semanticAssist.'.length);
+    return Object.hasOwn(semanticMessageShape, tail) ? semanticMessageShape[tail as SemanticKey] : null;
+  }
+  if (key.startsWith('reviewWorkspace.')) {
+    const tail = key.slice('reviewWorkspace.'.length);
+    return Object.hasOwn(reviewMessageShape, tail) ? reviewMessageShape[tail as WorkspaceReviewKey] : null;
+  }
+  return null;
 }

@@ -73,7 +73,7 @@ describe('createCheckpoint', () => {
   });
 
   it('ignores layout but not params or Player inputs in the graph digest', () => {
-    const moved = { ...doc, nodes: doc.nodes.map((n) => ({ ...n, pos: [9, 9] as const, label: 'x' })) };
+    const moved = { ...doc, nodes: doc.nodes.map((n) => ({ ...n, pos: [9, 9] as const })) };
     expect(graphDigest(moved, {}, registry)).toBe(graphDigest(doc, {}, registry));
     const edited = { ...doc, nodes: doc.nodes.map((n) => (n.id === 'ai' ? { ...n, params: { categories: ['x'] } } : n)) };
     expect(graphDigest(edited, {}, registry)).not.toBe(graphDigest(doc, {}, registry));
@@ -166,4 +166,18 @@ it('#7038 rejects cyclic checkpoint values instead of hanging during portability
   value.again = value;
   expect(() => parseCheckpoint({ ...checkpoint, outputs: { ...checkpoint.outputs, rows: { t: { kind: 'item', value } } } }))
     .toThrow(/malformed or non-portable/);
+});
+
+
+it('#7038 renaming a graph or node invalidates approval for its default write target', async () => {
+  const checkpoint = await paused();
+  const reviewed = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
+  const changedGraphs: FlowDocument[] = [
+    { ...doc, name: 'different-target' },
+    { ...doc, nodes: doc.nodes.map(node => node.id === 'sink' ? { ...node, label: 'different-target' } : node) },
+  ];
+  for (const changed of changedGraphs) {
+    expect(() => claimCheckpoint(reviewed, { ...claim('owner'), graphDigest: graphDigest(changed, {}, registry) }))
+      .toThrow(expect.objectContaining({ code: 'graph-changed' }));
+  }
 });

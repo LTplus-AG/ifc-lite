@@ -48,7 +48,7 @@ export interface FlowCheckpoint {
   readonly id: string;
   readonly graphId: string;
   readonly graphName: string;
-  /** Graph structure, params, capabilities and Player inputs; layout and labels excluded. */
+  /** Graph structure, params, capabilities and Player inputs; layout excluded; names and labels bind default write targets. */
   readonly graphDigest: string;
   /** Host-supplied digest of what the run read (model content hashes, input files). */
   readonly sourceDigest: string;
@@ -78,12 +78,13 @@ interface ReviewRegistry { get(type: string): { readonly review?: 'required' } |
 /** What a resume must match: the graph minus layout, plus the Player inputs it runs with. */
 export function graphDigest(doc: FlowDocument, inputs: Readonly<Record<string, unknown>> = {}, registry?: ReviewRegistry): string {
   return digest({
+    name: doc.name,
     capabilities: doc.capabilities,
     edges: doc.edges,
     inputs: doc.inputs,
     outputs: doc.outputs,
     maxCross: doc.maxCross,
-    nodes: doc.nodes.map(({ id, type, params, lacing, tracking, trackingKey }) => ({ id, type, params, lacing, tracking, trackingKey })),
+    nodes: doc.nodes.map(({ id, type, label, params, lacing, tracking, trackingKey }) => ({ id, type, label, params, lacing, tracking, trackingKey })),
     player: inputs,
     reviewPolicy: registry ? doc.nodes.map(node => [node.id, registry.get(node.type)?.review ?? null]) : null,
   });

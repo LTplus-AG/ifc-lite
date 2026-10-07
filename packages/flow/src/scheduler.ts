@@ -206,7 +206,8 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       const hit = opts.cache.get(nodeId, memoKey);
       if (hit) {
         outputs.set(nodeId, new Map(hit));
-        report({ status: 'memo', lanes: 0, laneErrors: 0, missing: {}, warnings: [] });
+        if (def.review) paused.add(nodeId);
+        report({ status: def.review ? 'review' : 'memo', lanes: 0, laneErrors: 0, missing: {}, warnings: [] });
         continue;
       }
     }

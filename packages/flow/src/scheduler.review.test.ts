@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest';
 import { FLOW_VERSION, type FlowDocument } from './document.js';
 import { NodeRegistry } from './registry.js';
-import { runFlow } from './scheduler.js';
+import { MemoCache, runFlow } from './scheduler.js';
 import type { FlowData } from './values.js';
 
 interface Host {
@@ -112,4 +112,20 @@ describe('review checkpoints', () => {
     expect(statuses(again).sink).toBe('paused');
     expect(host.sunk).toEqual([2]);
   });
+});
+
+
+it('#7038 cached non-volatile proposals still require review before downstream writes', async () => {
+  const memoRegistry = new NodeRegistry<Host>().registerAll(registry.list().map(def =>
+    def.type === 't.propose' ? { ...def, volatile: false } : def));
+  const graph: FlowDocument = { ...doc, nodes: doc.nodes.filter(node => ['src', 'p', 'sink'].includes(node.id)),
+    edges: [{ from: ['src', 'v'], to: ['p', 'v'] }, { from: ['p', 'proposal'], to: ['sink', 'v'] }] };
+  const host: Host = { executed: [], sunk: [] };
+  const cache = new MemoCache();
+  await runFlow(graph, { host, registry: memoRegistry, cache });
+  const repeated = await runFlow(graph, { host, registry: memoRegistry, cache });
+  expect(host.executed.filter(node => node === 'propose')).toHaveLength(1);
+  expect(repeated.review).toEqual(['p']);
+  expect(statuses(repeated)).toMatchObject({ src: 'memo', p: 'review', sink: 'paused' });
+  expect(host.sunk).toEqual([]);
 });

@@ -34,11 +34,17 @@ export function run(root) {
   const recordings = existsSync(recordingsDir) ? loadRecordingDir(recordingsDir) : [];
   const result = checkManifest(JSON.parse(readFileSync(manifestPath, 'utf8')), { root, recordings });
   if (!recordings.length) result.errors.push('tests/ai-eval/recordings holds no recordings; the replay harness would pass vacuously');
-  const labels = loadLabelDir(root);
-  result.errors.push(...sheetFileErrors(labels, recordings, JSON.parse(readFileSync(join(root, 'tests', 'ai-eval', 'label-sheet.schema.json'), 'utf8'))));
-  const study = loadStudy(root);
-  result.errors.push(...protocolErrors(study.protocol, { root, manifest: study.manifest }), ...sessionErrors(study.sessions, study.protocol, study.schema));
-  result.notes.push(`${labels.length} label sheet(s) and ${study.sessions.length} study session(s) committed; human labelling and the coordinator study stay open until people perform them`);
+  const required = ['label-sheet.schema.json', 'study/protocol.json', 'study/protocol.schema.json', 'study/session.schema.json'];
+  const missing = required.filter(path => !existsSync(join(root, 'tests', 'ai-eval', path)));
+  if (missing.length) {
+    result.errors.push(...missing.map(path => `tests/ai-eval/${path} does not exist`));
+  } else {
+    const labels = loadLabelDir(root);
+    result.errors.push(...sheetFileErrors(labels, recordings, JSON.parse(readFileSync(join(root, 'tests', 'ai-eval', 'label-sheet.schema.json'), 'utf8'))));
+    const study = loadStudy(root);
+    result.errors.push(...protocolErrors(study.protocol, { root, manifest: study.manifest }), ...sessionErrors(study.sessions, study.protocol, study.schema));
+    result.notes.push(`${labels.length} label sheet(s) and ${study.sessions.length} study session(s) committed; human labelling and the coordinator study stay open until people perform them`);
+  }
   return { ...result, recordings: recordings.length };
 }
 

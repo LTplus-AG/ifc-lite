@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { run } from './check-ai-eval-manifest.mjs';
 import { privacyFindings, sha256 } from './lib/manifest.mjs';
@@ -135,3 +135,10 @@ test('the same fetched fixture is refused when its allowance is removed or its h
   await withFetchedFixture("('Someone Else')", null,
     root => assert.ok(run(root).errors.some(error => /fixture fzk-haus: privacy scan: STEP author/.test(error))));
 });
+
+for (const path of ['label-sheet.schema.json', 'study/protocol.json', 'study/protocol.schema.json', 'study/session.schema.json']) {
+  test(`#6990 missing ${path} returns a manifest error instead of throwing`, () => withRoot(root => {
+    rmSync(join(root, 'tests', 'ai-eval', path));
+    assert.ok(run(root).errors.includes(`tests/ai-eval/${path} does not exist`));
+  }));
+}

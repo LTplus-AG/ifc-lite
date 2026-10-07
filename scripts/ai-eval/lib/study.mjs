@@ -49,10 +49,13 @@ export function protocolErrors(protocol, { root, manifest, panelIds = null }) {
   return errors;
 }
 
+const attemptKey = session => JSON.stringify([session.participant, session.task, session.variant]);
+
 /** Session-record errors against the protocol; `sessions` is `[{ name, session }]`. */
 export function sessionErrors(sessions, protocol, schema) {
   const errors = [];
   unique(sessions.map(({ session }) => session.id), 'sessions', errors);
+  unique(sessions.map(({ session }) => attemptKey(session)), 'session attempts', errors);
   const tasks = new Map(protocol.tasks.map(task => [task.id, task]));
   const variants = new Set(protocol.variants.map(variant => variant.id));
   const roleOf = new Map();
@@ -83,6 +86,10 @@ const sum = (list, key) => list.reduce((total, item) => total + item[key], 0);
 
 /** Per task x variant measures and the threshold status. Sessions must already be valid. */
 export function summarize(protocol, sessions) {
+  const attempts = new Map();
+  for (const session of sessions) attempts.set(attemptKey(session), (attempts.get(attemptKey(session)) ?? 0) + 1);
+  const duplicates = [...attempts].filter(([, count]) => count > 1).map(([key]) => key);
+  sessions = sessions.filter(session => attempts.get(attemptKey(session)) === 1);
   const perTask = protocol.tasks.map(task => ({ task: task.id, variants: Object.fromEntries(protocol.variants.map(variant => {
     const rows = sessions.filter(session => session.task === task.id && session.variant === variant.id);
     const completed = rows.filter(row => row.completed);
@@ -95,13 +102,17 @@ export function summarize(protocol, sessions) {
     [role.id, new Set(sessions.filter(session => session.role === role.id).map(session => session.participant)).size]));
   const short = protocol.roles.filter(role => participants[role.id] < protocol.minimumParticipantsPerRole).map(role => role.id);
   const base = { thresholdsStatus: protocol.status, participants, minimumParticipantsPerRole: protocol.minimumParticipantsPerRole, perTask };
+  if (duplicates.length) return { ...base, verdict: 'insufficient-data', reason: `duplicate session attempts excluded: ${duplicates.join(', ')}; no threshold is judged` };
   if (short.length) return { ...base, verdict: 'insufficient-data', reason: `fewer than ${protocol.minimumParticipantsPerRole} participants for: ${short.join(', ')}; no threshold is judged` };
   // Within-subject design: every task x variant cell needs enough distinct participants of each role the task is for,
   // or a missing cell would silently skip its threshold.
-  const thin = protocol.tasks.flatMap(task => protocol.variants.flatMap(variant => (task.roles ?? protocol.roles.map(role => role.id)).flatMap(role => {
-    const seen = new Set(sessions.filter(session => session.task === task.id && session.variant === variant.id && session.role === role).map(session => session.participant)).size;
-    return seen < protocol.minimumParticipantsPerRole ? [`${task.id}/${variant.id}/${role} (${seen})`] : [];
-  })));
+  const thin = protocol.tasks.flatMap(task => (task.roles ?? protocol.roles.map(role => role.id)).flatMap(role => {
+    const sets = protocol.variants.map(variant => new Set(sessions.filter(session =>
+      session.task === task.id && session.variant === variant.id && session.role === role).map(session => session.participant)));
+    const paired = [...sets[0]].filter(participant => sets.every(set => set.has(participant))).length;
+    return paired < protocol.minimumParticipantsPerRole
+      ? protocol.variants.map(variant => `${task.id}/${variant.id}/${role} (${paired})`) : [];
+  }));
   if (thin.length) return { ...base, verdict: 'insufficient-data', reason: `fewer than ${protocol.minimumParticipantsPerRole} participants in: ${thin.join(', ')}; no threshold is judged` };
   const failures = [];
   for (const row of perTask) {

@@ -108,3 +108,20 @@ test('every task x variant cell needs enough participants of each of its roles b
   assert.equal(summarize(protocol, dropped).verdict, 'insufficient-data', 'one missing assisted session leaves that cell short');
   assert.equal(summarize(protocol, cohort(3)).verdict, 'met');
 });
+
+test('#6990 rejects duplicate logical attempts with different session ids and excludes both from scoring', () => {
+  const rows = cohort(3);
+  rows.push({ ...rows[0], id: 'retake', completed: false });
+  assert.match(sessionErrors(rows.map(session => ({ name: session.id, session })), protocol, schema).join(), /session attempts: duplicate/);
+  const result = summarize(protocol, rows);
+  assert.equal(result.verdict, 'insufficient-data');
+  assert.match(result.reason, /duplicate session attempts excluded/);
+  assert.equal(result.perTask[0].variants.current.n, rows.filter(row => row.task === protocol.tasks[0].id && row.variant === 'current').length - 2, 'both conflicting attempts are excluded');
+});
+
+test('#6990 disjoint participants across variants cannot satisfy a within-subject study', () => {
+  const rows = cohort(3, row => { if (row.variant === 'assisted') row.participant += '-other'; });
+  const result = summarize(protocol, rows);
+  assert.equal(result.verdict, 'insufficient-data');
+  assert.match(result.reason, /find-check\/assisted\/coordinator \(0\)/);
+});

@@ -84,6 +84,13 @@ test('a complete claims sheet must have judged claims, and grouping sheets canno
   grouping.proposal.groups[0].citations = ['E1'];
   grouping.findings[0].citation = 'E999';
   const errors = sheetFileErrors([{ name: 'g', sheet: grouping }], recordings).join('\n');
-  assert.match(errors, /finding citations no longer match/);
+  assert.match(errors, /finding citations or summaries no longer match/);
   assert.match(errors, /proposal no longer matches/);
+});
+
+// #6990: human judgements must describe the captured finding, not edited prose.
+test('#6990 rejects grouping summaries changed without changing their citations', () => {
+  const sheet = sheetOf('clash-grouping-release', 'grouping');
+  sheet.findings[0].summary = 'Changed finding';
+  assert.match(sheetFileErrors([{ name: 'edited', sheet }], recordings).join(), /summaries no longer match/);
 });

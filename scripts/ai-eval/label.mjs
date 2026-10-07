@@ -52,7 +52,8 @@ export function sheetFileErrors(files, recordings, schema = SCHEMA) {
       try { rebuilt = buildSheet({ recording, kind: 'grouping', answer, reviewerId: 'x' }); }
       catch (error) { errors.push(`label ${name}: ${error instanceof Error ? error.message : String(error)}`); }
       if (rebuilt) {
-        if (JSON.stringify(rebuilt.findings.map(finding => finding.citation)) !== JSON.stringify(sheet.findings.map(finding => finding.citation))) errors.push(`label ${name}: finding citations no longer match the recording`);
+        const findingContent = findings => JSON.stringify(findings.map(finding => [finding.citation, finding.summary]));
+        if (findingContent(rebuilt.findings) !== findingContent(sheet.findings)) errors.push(`label ${name}: finding citations or summaries no longer match the recording`);
         const proposal = groups => JSON.stringify(groups.map(group => [group.name, group.citations]));
         if (proposal(rebuilt.proposal.groups) !== proposal(sheet.proposal.groups ?? [])) errors.push(`label ${name}: the proposal no longer matches the recorded answer`);
       }

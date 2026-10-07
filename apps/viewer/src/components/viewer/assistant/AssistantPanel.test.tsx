@@ -187,3 +187,33 @@ test('#6926 answer language changes the conversation without replacing evidence 
   assert.equal(language.disabled, true, 'an in-flight request keeps its captured language');
   assert.equal(ui.querySelector('textarea')!.disabled, false, 'the next question stays editable');
 });
+
+
+test('#7053 language extensions survive portable conversation decoding and malformed tags are refused', async () => {
+  const { decodeConversation } = await import('@/lib/assistant/persistence');
+  const evidence = captureEvidence('clash');
+  const entry = { version: 1, id: 'language-record', name: 'Language record', savedAt: new Date().toISOString(), model: 'recorded-model',
+    evidence: { source: evidence.source, capturedAt: evidence.capturedAt, payload: evidence.payload,
+      totalRows: evidence.totalRows, includedRows: evidence.includedRows, projectionTruncated: evidence.projectionTruncated },
+    messages: [], language: { ui: 'en', generation: 'en' } };
+  for (const generation of ['en-u-ca-gregory', 'en-x-private', 'de-CH', 'zh-Hant-TW']) {
+    assert.equal(decodeConversation(JSON.parse(JSON.stringify({ ...entry, language: { ui: 'en', generation } })))?.language?.generation, generation);
+  }
+  for (const generation of ['en-x', 'en-u-a', 'not_a_language']) {
+    assert.equal(decodeConversation({ ...entry, language: { ui: 'en', generation } }), null);
+  }
+});
+
+test('#7053 a floating Assistant keeps Back to Clash when the native sidebar is collapsed', () => {
+  useViewerStore.setState({ sidebarActivePanel: 'clash', sidebarMode: 'expanded', rightPanelCollapsed: false,
+    isMobile: false, floatingPanels: [], poppedOutIds: [] });
+  useAssistantPlacement.setState({ placement: 'floating', returnTarget: 'clash' });
+  replaceEvidence(captureEvidence('clash'));
+  const ui = render(<AssistantPanel />);
+  act(() => useViewerStore.getState().setSidebarMode('collapsed'));
+  const back = [...ui.querySelectorAll('button')].find(button => /Back to Clash/.test(button.textContent ?? ''));
+  assert.ok(back, 'the hidden dock source remains reachable');
+  click(back);
+  assert.equal(useViewerStore.getState().sidebarMode, 'expanded');
+  assert.equal(useViewerStore.getState().sidebarActivePanel, 'clash');
+});

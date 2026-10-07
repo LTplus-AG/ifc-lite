@@ -166,5 +166,6 @@ export function returnTargetHidden(
   if (isDetached(state, target)) return false;
   if (isBottomPanel(target)) return !isBottomPanelOpen(state, target);
   if (target === 'hierarchy') return state.leftPanelCollapsed;
-  return state.sidebarActivePanel !== target && state.sidebarSecondaryPanel !== target;
+  return state.sidebarMode === 'collapsed' || state.rightPanelCollapsed
+    || (state.sidebarActivePanel !== target && state.sidebarSecondaryPanel !== target);
 }

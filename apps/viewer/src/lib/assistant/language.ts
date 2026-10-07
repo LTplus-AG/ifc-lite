@@ -19,7 +19,6 @@ import { getLocale } from '@/i18n';
 /** Languages offered in the picker. Any valid tag already stored is still honoured. */
 export const GENERATION_LANGUAGES = ['en', 'de', 'fr', 'it', 'es', 'nl', 'pt', 'pl', 'cs', 'sv', 'da', 'fi', 'nb', 'ja', 'zh', 'ko'] as const;
 
-const TAG = /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
 const STORAGE_KEY = 'ifc-lite:assistant-generation-language-v1';
 
 export interface ConversationLanguage {
@@ -30,7 +29,13 @@ export interface ConversationLanguage {
 }
 
 export function isLanguageTag(value: unknown): value is string {
-  return typeof value === 'string' && value.length <= 35 && TAG.test(value);
+  if (typeof value !== 'string' || value.length === 0 || value.length > 35) return false;
+  try { return Intl.getCanonicalLocales(value).length === 1; }
+  catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    console.debug('[Assistant] Ignoring an invalid stored language tag');
+    return false;
+  }
 }
 
 /** `de-CH` → `de`; the generation picker works on base languages. */

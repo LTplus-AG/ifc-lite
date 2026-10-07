@@ -44,4 +44,7 @@ it('#6926 Customize previews, applies and restores a coordinator layout through 
   click(reset);
   await waitFor(() => ![...ui.querySelectorAll('button')].some(value => value.textContent?.trim() === 'Restore my layout'), 'Reset retires the native preset record');
   assert.equal(localStorage.getItem('ifc-lite:layout-preset-v1'), null, 'the prior layout cannot return after Reset and reload');
+  click(ui.querySelector('[data-sidebar-customize-toggle]')!);
+  await waitFor(() => [...ui.querySelectorAll('button')].some(value => value.getAttribute('aria-label') === 'Preview Coordinator review'), 'customizer reopened after Reset');
+  assert.equal([...ui.querySelectorAll('button')].some(value => value.textContent?.trim() === 'Restore my layout'), false, 'the warm customizer also retires its previous native record');
 });

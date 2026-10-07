@@ -4,7 +4,7 @@
 
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import '@/i18n/catalogues/semantic-assist.register';
-import { History, Key, RefreshCw, Send, Sparkles, Square } from 'lucide-react';
+import { History, Key, ListChecks, RefreshCw, Send, SlidersHorizontal, Sparkles, Square } from 'lucide-react';
 import { ConversationLibrary } from './ConversationLibrary';
 import { SourcePicker } from './SourcePicker';
 import { useDialogs } from '@/components/ui/confirm-dialog';
@@ -26,6 +26,9 @@ import { EvidenceSummary } from './EvidenceSummary';
 import { AssistantConversation } from './AssistantConversation';
 import { FreeQuotaNote } from './AssistantUsage';
 import { attachmentsForSend, ComposerAttachments, NO_ATTACHMENTS } from './ComposerAttachments';
+import { RecipeRunCard } from './RecipeRunCard';
+import { usePreferredModel } from '@/lib/assistant/reuse/preference-hooks';
+import { takeDraftPrompt, useRecipeRun } from '@/lib/assistant/reuse/recipe-run';
 import { AssistantAnnouncer, useAnswerFocus } from './AssistantAnnouncer';
 import { AssistantPlacementMenu, AssistantReturnButton } from './AssistantPlacementMenu';
 import { GenerationLanguagePicker } from './GenerationLanguagePicker';
@@ -41,6 +44,8 @@ const ClashGroupReview = lazy(() => import('./ClashGroupReview').then(m => ({ de
 const CheckAuthoringProposal = lazy(() => import('./CheckAuthoringProposal').then(m => ({ default: m.CheckAuthoringProposal })));
 const ArtifactProposalReview = lazy(() => import('./ArtifactProposalReview').then(m => ({ default: m.ArtifactProposalReview })));
 const SemanticProposalReview = lazy(() => import('./SemanticProposalReview').then(m => ({ default: m.SemanticProposalReview })));
+const RecipeLibrary = lazy(() => import('./RecipeLibrary').then(m => ({ default: m.RecipeLibrary })));
+const ProjectPreferences = lazy(() => import('./ProjectPreferences').then(m => ({ default: m.ProjectPreferences })));
 
 export function AssistantPanel() {
   const { t } = useTranslation();
@@ -56,7 +61,23 @@ export function AssistantPanel() {
   const [picking, setPicking] = useState(false);
   const [attachments, setAttachments] = useState(NO_ATTACHMENTS);
   const [sent, setSent] = useState(0);
+  const [recipesOpen, setRecipesOpen] = useState(false);
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  usePreferredModel();
   const { confirmDialog } = useDialogs();
+  // Recipe prompts are taken once, but an unsent question requires approval.
+  const recipeDraft = useRecipeRun(s => s.draftPrompt);
+  useEffect(() => {
+    const draft = recipeDraft === null ? null : takeDraftPrompt();
+    if (draft === null) return;
+    const previous = useAssistantDraft.getState().text;
+    const apply = () => {
+      if (useAssistantDraft.getState().text !== previous) return;
+      setAssistantDraft(draft); promptRef.current?.focus();
+    };
+    if (!previous.trim() || previous === draft) { apply(); return; }
+    void confirmDialog({ description: t('assistantRecipes.replaceDraft') }).then(approved => { if (approved) apply(); });
+  }, [recipeDraft, confirmDialog, t]);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -107,6 +128,10 @@ export function AssistantPanel() {
         <AssistantPlacementMenu />
         <IconButton label={t('assistant.savedConversations')} className="h-7 w-7" aria-pressed={libraryOpen} data-assistant-library-toggle=""
           onClick={() => setLibraryOpen(open => !open)}><History className="h-4 w-4" /></IconButton>
+        <IconButton label={t('assistantRecipes.title')} className="h-7 w-7" aria-pressed={recipesOpen}
+          onClick={() => setRecipesOpen(open => !open)}><ListChecks className="h-4 w-4" /></IconButton>
+        <IconButton label={t('assistantReuse.prefsTitle')} className="h-7 w-7" aria-pressed={prefsOpen}
+          onClick={() => setPrefsOpen(open => !open)}><SlidersHorizontal className="h-4 w-4" /></IconButton>
         <IconButton label={t('assistant.keys')} className="h-7 w-7" onClick={() => setKeysOpen(true)}><Key className="h-4 w-4" /></IconButton>
       </div>
     </div>
@@ -114,6 +139,9 @@ export function AssistantPanel() {
     <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto">
       {libraryOpen && <TransientSurface label={t('assistant.savedConversations')} onClose={() => setLibraryOpen(false)}
         fallback="[data-assistant-library-toggle]"><ConversationLibrary /></TransientSurface>}
+      {recipesOpen && <Suspense fallback={null}><RecipeLibrary /></Suspense>}
+      {prefsOpen && <Suspense fallback={null}><ProjectPreferences /></Suspense>}
+      <RecipeRunCard />
       {showPicker && evidence ? <TransientSurface label={t('assistant.pickTitle')} onClose={() => setPicking(false)}
         fallback="[data-assistant-change-source]">
         <SourcePicker current={evidence.source} onAttach={source => void attach(source)} onCancel={() => setPicking(false)} />

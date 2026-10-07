@@ -12,6 +12,8 @@ import { useViewerStore } from '@/store';
 import { captureEvidence } from '@/lib/assistant/evidence';
 import { replaceEvidence, useAssistant, cancelAssistant } from '@/lib/assistant/conversation';
 import { validateDocumentSpec } from '@/lib/document/types';
+import { fixtureModel } from '@/test/store-fixture';
+import { projectScope, savePreferences } from '@/lib/assistant/reuse/preferences';
 import { ReportDraftReview } from './ReportDraftReview';
 
 const originalFetch = globalThis.fetch;
@@ -45,7 +47,9 @@ test('mounted report review requires explicit approval before creating an editab
 });
 
 test('#7053 the report language overrides the conversation language for its one native draft request', async () => {
-  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
+  const model = { ...fixtureModel('report-model'), sourceFingerprint: 'report-language-scope' };
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free', models: new Map([[model.id, model]]) });
+  assert.equal((await savePreferences(projectScope([model]), { language: 'de', houseRules: '' })).ok, true);
   replaceEvidence(captureEvidence('loadReport'));
   useAssistant.setState({ language: { ui: 'en', generation: 'en' } });
   let body = '';
@@ -64,6 +68,6 @@ test('#7053 the report language overrides the conversation language for its one 
   const content = payload.system ?? payload.messages?.find(message => message.role === 'system')?.content ?? '';
   const system = typeof content === 'string' ? content : content.map(part => part.type === 'text' ? part.text ?? '' : '').join('\n');
   assert.match(system, /Write explanations in French \(fr\)/);
-  assert.doesNotMatch(system, /Write explanations in English/);
+  assert.doesNotMatch(system, /Write explanations in English|Answer in the language with BCP 47 tag \"de\"/);
   assert.equal(useAssistant.getState().language.generation, 'en', 'the override does not change the conversation preference');
 });

@@ -9,9 +9,9 @@ import { useViewerStore } from '@/store';
  * Native declarations only; no copied node catalog and no node run functions.
  * `run`: the evidence is the last run (`flowRun`), so a patch may carry a diagnosis (#6919).
  */
-export function flowPatchGuidance(options: { run?: boolean } = {}): string {
+export function flowPatchGuidance(options: { run?: boolean; preferredTypes?: readonly string[] } = {}): string {
   const registry = flowRegistry();
-  const selected = new Set(useViewerStore.getState().flowDoc?.nodes.map(node => node.type));
+  const selected = new Set([...(useViewerStore.getState().flowDoc?.nodes.map(node => node.type) ?? []), ...(options.preferredTypes ?? [])]);
   const definitions = registry.list();
   const contracts: unknown[] = [];
   let bytes = 0;

@@ -6,6 +6,20 @@ import type { TranslationValue } from '../types';
 
 /** Viewer AI P20: task recipes and project preferences (`components/viewer/assistant/*`, Ideas). */
 export const assistantReuseEn = {
+  'workflowFlow.title': 'Save workflow as Flow',
+  'workflowFlow.defaultName': 'Assistant workflow',
+  'workflowFlow.hint': 'Draft a reusable native graph from this conversation. Review its nodes, parameters, scripts and capabilities before saving; Run remains a separate action in Flow.',
+  'workflowFlow.actionKinds': 'Action types to include for review',
+  'workflowFlow.draft': 'Draft workflow graph',
+  'workflowFlow.cancelled': 'Workflow generation cancelled.',
+  'workflowFlow.source': 'Source: {source}; {count} prompts retained in the graph.',
+  'workflowFlow.graphDetails': 'Inspect all parameters and wiring',
+  'workflowFlow.save': 'Save reviewed workflow',
+  'workflowFlow.redraft': 'Redraft',
+  'workflowFlow.memoryOnly': '{name} is open in memory; its durable save was refused.',
+  'workflowFlow.recipeUnsaved': 'The recipe for Ideas remains in memory because its library save was refused.',
+  'workflowFlow.retryRecipe': 'Retry recipe save',
+  'workflowFlow.another': 'Save another workflow',
   'assistantRecipes.need.evidence': 'Capture the native evidence for this source first',
   'assistantRecipes.replaceDraft': 'Replace your unsent question with this recipe prompt?',
   'assistantRecipes.title': 'Task recipes',

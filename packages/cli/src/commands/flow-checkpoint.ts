@@ -50,10 +50,11 @@ export class FileCheckpointStore implements CheckpointStore {
     const lock = `${this.path}.lock`;
     if (!(await this.acquire(lock))) return false;
     try {
-      const current = await this.read(checkpoint.id).catch((error: unknown) => {
-        if (expected === null) return null;
+      const current = await this.load().catch((error: unknown) => {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
         throw error;
       });
+      if (current && current.checkpoint.id !== checkpoint.id) return false;
       if ((current?.revision ?? null) !== expected) return false;
       const temp = `${this.path}.${process.pid}.tmp`;
       await writeFile(temp, `${JSON.stringify({ revision: (current?.revision ?? 0) + 1, checkpoint }, null, 2)}\n`);
@@ -74,7 +75,9 @@ export class FileCheckpointStore implements CheckpointStore {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       const age = await stat(lock).then((s) => Date.now() - s.mtimeMs, () => 0);
       if (age < STALE_LOCK_MS) return false;
-      await unlink(lock).catch(() => undefined);
+      await unlink(lock).catch((error: unknown) => {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      });
       return false;
     }
   }

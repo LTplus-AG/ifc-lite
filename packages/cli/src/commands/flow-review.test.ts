@@ -20,6 +20,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { flowCommand } from './flow.js';
+import { FileCheckpointStore } from './flow-checkpoint.js';
 import { createHeadlessContext } from '../loader.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -87,6 +88,17 @@ describe('ifc-lite flow: reviewed AI pause and resume', () => {
     const file = await readFile(checkpoint, 'utf-8');
     expect(file).not.toContain('test-key-never-printed');
     expect(JSON.parse(file).checkpoint.budget).toMatchObject({ requests: 1, maxRequests: 12 });
+    // #7039 Different ids must contend for the same file, never overwrite each other.
+    const stored = await new FileCheckpointStore(checkpoint).load();
+    const racePath = join(dir, 'race.json');
+    const candidates = [{ ...stored.checkpoint, id: 'first-run' }, { ...stored.checkpoint, id: 'second-run' }];
+    const writes = await Promise.all(candidates.map(candidate => new FileCheckpointStore(racePath).write(candidate, null)));
+    expect(writes.filter(Boolean)).toHaveLength(1);
+    const winner = await new FileCheckpointStore(racePath).load();
+    const loser = candidates.find(candidate => candidate.id !== winner.checkpoint.id)!;
+    expect(await new FileCheckpointStore(racePath).write(loser, null)).toBe(false);
+    expect((await new FileCheckpointStore(racePath).load()).checkpoint).toEqual(winner.checkpoint);
+
     vi.restoreAllMocks();
 
     // Resuming an unreviewed checkpoint is refused and writes nothing.
@@ -209,4 +221,51 @@ describe('ifc-lite flow: reviewed AI pause and resume', () => {
     capture();
     await flowCommand(['resume', writing, pausedModel, '--checkpoint', join(dir, 'b.json'), '--no-tracking', '--json']);
   });
+});
+
+
+it('#7039 an opened model survives reviewed pause and resume through the required output', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-open-review-'));
+  const graph = JSON.parse(await readFile(AI_FLOW, 'utf-8')) as { capabilities: string[]; nodes: unknown[]; edges: Array<{ from: string[]; to: string[] }> };
+  const url = 'https://files.cde.example/hello-wall.ifc';
+  graph.capabilities.push('network.fetch:files.cde.example', 'model.create');
+  graph.nodes.push({ id: 'download', type: 'documents.download', params: { url } }, { id: 'open', type: 'model.openFromSource' });
+  graph.edges.push({ from: ['download', 'data'], to: ['open', 'data'] }, { from: ['download', 'name'], to: ['open', 'name'] },
+    { from: ['open', 'modelId'], to: ['walls', 'modelId'] });
+  const path = join(dir, 'opened.flow.json');
+  await writeFile(path, JSON.stringify(graph));
+  const bytes = await readFile(resolve(here, '../../../../apps/viewer/public/samples/hello-wall.ifc'));
+  const installProvider = () => {
+    const model = provider();
+    const request = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => String(input) === url
+      ? Promise.resolve(new Response(bytes, { headers: { 'Content-Type': 'application/x-step' } })) : request(input, init));
+    return model;
+  };
+  installProvider();
+  let captured = capture();
+  exits();
+  await expect(flowCommand(['run', path, SAMPLE_IFC, '--checkpoint', join(dir, 'refused.json'), '--no-tracking'])).rejects.toThrow('exit 1');
+  expect(captured.err.join('')).toMatch(/opened a different model.*pass --out/);
+  vi.restoreAllMocks();
+  installProvider();
+  captured = capture();
+  exits();
+  const checkpoint = join(dir, 'opened.json');
+  const pausedModel = join(dir, 'paused.ifc');
+  await expect(flowCommand(['run', path, SAMPLE_IFC, '--checkpoint', checkpoint, '--out', pausedModel, '--no-tracking', '--json'])).rejects.toThrow('exit 3');
+  const digest = (captured.json() as { checkpoint: { proposalDigest: string } }).checkpoint.proposalDigest;
+  expect((await createHeadlessContext(pausedModel)).bim.query().byType('IfcWall').count()).toBe(1);
+  vi.restoreAllMocks();
+  capture();
+  await flowCommand(['review', checkpoint, '--approve', digest]);
+  vi.restoreAllMocks();
+  const resumedProvider = provider();
+  capture();
+  const done = join(dir, 'done.ifc');
+  await flowCommand(['resume', path, pausedModel, '--checkpoint', checkpoint, '--out', done, '--no-tracking', '--json']);
+  expect(resumedProvider.calls).toEqual([]);
+  expect((await createHeadlessContext(done)).bim.query().byType('IfcWall').count()).toBe(1);
+  const written = await roles(done);
+  expect(written.Facade + written.Partition).toBe(1);
 });

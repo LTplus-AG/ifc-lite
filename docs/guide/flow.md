@@ -235,7 +235,9 @@ service (`FlowHost.ai`); they never call a provider themselves:
 
 Every AI node declares `network.ai` (graph data goes to the host's model
 provider), requires the `ai` backend feature, is volatile, and sends only
-the columns you list. Requests come out of **one root budget per run**: every
+the columns you list. Table nodes refuse an empty column selection before making
+a request. Model-facing row keys remain distinct even when a source row has no key
+or its literal key collides with a generated one. Requests come out of **one root budget per run**: every
 AI node, lane and batch draws from it, so list lacing cannot multiply the
 spend, and a budget stop keeps a partial result whose coverage counts the
 rows that were not sent. Nothing the model invents survives as evidence:

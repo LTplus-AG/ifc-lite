@@ -649,16 +649,8 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   // ─── Streaming complete: finalize + bounds refit ─────────────────────
   useEffect(() => {
     const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) {
-      // The renderer initialises after the load starts (the viewport mounts
-      // with the first model) and a slow adapter can outlast the whole stream.
-      // Remember that the stream was seen, so the end of it is still a
-      // transition once the renderer is up; otherwise nothing finalizes the
-      // scene and the load's `scene.finalize` span never ends (#7032).
-      if (isStreaming) prevIsStreamingRef.current = true;
-      return;
-    }
-
+    // A slow renderer init can outlast the stream: remember it was seen so its end still finalizes (#7032).
+    if (!renderer || !isInitialized) { if (isStreaming) prevIsStreamingRef.current = true; return; }
     if (prevIsStreamingRef.current && !isStreaming) {
       const scene = renderer.getScene();
       traceGeometrySync(

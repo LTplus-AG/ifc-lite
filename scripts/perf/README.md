@@ -71,6 +71,37 @@ call sites and `useViewerStore` subscriptions on the viewport, properties,
 hierarchy and streaming paths statically (minified component names make a
 runtime fiber census unattributable, and mounted counts move with UI state).
 
+## Single-model appends cost O(new meshes) in the viewport (#7021)
+
+**Shipped.** While one model streamed in, `geometryWithModelIndex` copied
+every accumulated mesh on each viewport render to stamp `modelIndex`. The
+copy gave the merged array a new identity, so the "incremental" type
+filter, the type/occurrence scans and `Viewport`'s appearance-source list
+started over each time, and that list copied every mesh a second time.
+Measured with `loadCounters` (4 pinned workers, viewer-benchmark-ci): on
+Holter each JS-side mesh was copied about 13 times, filtered 13 times and
+copied 13 more times for appearance sources per load. Fix: a single model
+renders its own mesh array, with `modelIndex` stamped in place by
+`stampModelIndex`. It remembers per array how far it has stamped, so the
+array keeps its identity and the existing incremental scans stay
+incremental. One model's appearance list is that same array, and the index
+allocator returns one shared map until an assignment changes. After the
+fix, `viewer.modelIndexStamp` and `viewer.filterScan` each equal the JS
+mesh count, and `viewer.modelIndexRespread` and `viewer.appearanceSource`
+are 0 on single-model loads. Mesh and draw counts are unchanged.
+`useFilteredGeometry.streaming.test.tsx` guards the per-append counts.
+
+**Kept, deliberately:** the store still clones `models` per append. About
+125 selectors read `s.models`, and its identity is how they hear about an
+append to a non-active model, so dropping the clone would freeze them. The
+clone itself is O(models). The cost was in what rescanned downstream.
+**Still open:** several models keep wrapper copies (O(new) per append) and
+build the appearance list in O(total) on every `models` change.
+`store.notifications` (about 680 subscribers per write) is untouched.
+**Lesson:** a cache keyed on array identity is only as incremental as its
+least stable upstream producer. Count the visits (`viewer.filterScan`)
+instead of trusting the "incremental" comment.
+
 ## Frame-time rigs (#6960)
 
 Two rigs measure viewer frames; neither is a PR gate. Both inject the same

@@ -19,7 +19,7 @@ import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import type { ChangeConversion } from '@/lib/actions/change-conversion';
 import { changeField } from '@/lib/actions/model-change-commit';
-import { EDITABLE_ATTRIBUTES, type EditableAttribute } from '@/lib/actions/model-change';
+import { EDITABLE_ATTRIBUTES, type EditableAttribute } from '@ifc-lite/ai/artifacts';
 import { tableToModelChanges } from '@/lib/actions/table-changes';
 import {
   COLUMN_VALUE_TYPES, IDENTITY_KEYS, TABLE_UNITS, validateTableMapping, type ColumnValueType, type IdentityKey,

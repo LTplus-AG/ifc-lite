@@ -16,7 +16,7 @@ import { useViewerStore } from '@/store';
 import { normalizeClashGroupAnswer, prepareClashGroupPreview } from '@/lib/assistant/clash-group-proposal';
 import { prepareFlowProposal } from '@/lib/assistant/flow-proposal';
 import { prepareReportDraft } from '@/lib/assistant/report-draft';
-import { parseModelChangeBatch } from '@/lib/actions/model-change';
+import { parseModelChangeBatch } from '@ifc-lite/ai/artifacts';
 import { previewCounts, previewModelChanges } from '@/lib/actions/model-change-preview';
 import { parseModelAuthoringBatch } from '@/lib/actions/model-authoring';
 import { authoringCounts, previewModelAuthoring } from '@/lib/actions/model-authoring-preview';

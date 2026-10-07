@@ -27,6 +27,17 @@
     "runModelRequest: function",
     "settleRequest: function"
   ],
+  "@ifc-lite/ai/artifacts": [
+    "ChangeScalar: type",
+    "EDITABLE_ATTRIBUTES: const",
+    "EditableAttribute: type",
+    "MODEL_CHANGE_LIMIT: const",
+    "MODEL_DATA_CHANGE_OUTPUT_GUIDANCE: const",
+    "ModelChange: type",
+    "ModelChangeBatch: interface",
+    "changeKey: function",
+    "parseModelChangeBatch: function"
+  ],
   "@ifc-lite/bcf": [
     "BCFBimSnippet: interface",
     "BCFBitmap: interface",

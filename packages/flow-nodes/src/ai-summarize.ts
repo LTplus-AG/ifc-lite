@@ -48,9 +48,11 @@ export const aiSummarizeNode: FlowNodeDef = {
       'Every statement must rest on the cited rows; state only what the rows show.',
     ].join('\n');
     const reply = await requestJson(ctx, service, task, dataBlock(table, keys, sent, columns), positiveInt(p.maxOutputTokens, 'maxOutputTokens', 32_000));
-    if (reply.kind === 'budget') throw new Error('the AI budget for this run is exhausted');
+    const budgetStopped = reply.kind === 'budget';
+    if (budgetStopped) ctx.log('warn', 'the AI budget ran out; all evidence rows remain not sent');
     if (reply.kind === 'failed') throw new Error(reply.message);
-    const raw = Array.isArray(reply.value.sections) ? reply.value.sections : [];
+    if (reply.kind === 'value' && !Array.isArray(reply.value.sections)) throw new Error('the reply has no sections array');
+    const raw = reply.kind === 'value' ? reply.value.sections as unknown[] : [];
     if (raw.length > maxSections) ctx.log('warn', `${raw.length - maxSections} section(s) beyond maxSections were dropped`);
     const rows = raw.slice(0, maxSections).flatMap((s) => {
       if (!s || typeof s !== 'object') return [];
@@ -71,7 +73,7 @@ export const aiSummarizeNode: FlowNodeDef = {
     return {
       sections,
       coverage: {
-        model: service.model, rows: keys.length, sent: sent.length, notSent: keys.length - sent.length, requests: 1,
+        model: service.model, rows: keys.length, sent: budgetStopped ? 0 : sent.length, notSent: budgetStopped ? keys.length : keys.length - sent.length, requests: budgetStopped ? 0 : 1, budgetStopped,
         sections: rows.length, uncited: rows.filter((r) => r.outcome === 'uncited').length,
       },
     };

@@ -24,6 +24,7 @@ import {
   approveCheckpoint, checkpointProposal, claimCheckpoint, createCheckpoint, finishCheckpoint, graphDigest,
   recoverCheckpoint, rejectCheckpoint, updateCheckpoint, type FlowCheckpoint
 } from '@ifc-lite/flow/checkpoint';
+import { redactDeep } from '@ifc-lite/flow-nodes';
 import { fatal, printJson } from '../output.js';
 import { FileCheckpointStore } from './flow-checkpoint.js';
 
@@ -42,16 +43,24 @@ function describe(checkpoint: FlowCheckpoint): string[] {
   return lines;
 }
 
-/** Save a paused run as a `prepared` checkpoint. Refuses to overwrite an existing checkpoint file. */
-export async function savePause(path: string, input: { registry: Parameters<typeof createCheckpoint>[0]['registry']; doc: FlowDocument; result: RunResult; inputs: Record<string, unknown>; sourceDigest: string; budget?: unknown }): Promise<FlowCheckpoint> {
-  if (await stat(path).then(() => true, () => false)) fatal(`${path} already exists; a checkpoint is never overwritten`);
-  let checkpoint: FlowCheckpoint;
-  try {
-    checkpoint = createCheckpoint(input);
-  } catch (error) {
-    fatal((error as Error).message);
+/** Build the exact portable proposal before persisting model or tracking effects. */
+export function preparePause(input: Parameters<typeof createCheckpoint>[0], redaction: ReadonlyMap<string, string>): FlowCheckpoint {
+  const checkpoint = createCheckpoint(input);
+  if (JSON.stringify(checkpoint.outputs) !== JSON.stringify(redactDeep(checkpoint.outputs, redaction))) {
+    throw new Error('the paused outputs contain a secret; no checkpoint can be saved or displayed');
   }
-  if (!(await new FileCheckpointStore(path).write(checkpoint, null))) fatal(`${path} is being written by another process`);
+  return checkpoint;
+}
+
+/** Refuse an existing destination before a resume consumes its approval. */
+export async function checkPauseDestination(path: string): Promise<void> {
+  if (await stat(path).then(() => true, () => false)) throw new Error(`${path} already exists; a checkpoint is never overwritten`);
+}
+
+/** Save the already-validated exact proposal, with atomic collision refusal. */
+export async function savePause(path: string, checkpoint: FlowCheckpoint): Promise<FlowCheckpoint> {
+  await checkPauseDestination(path);
+  if (!(await new FileCheckpointStore(path).write(checkpoint, null))) throw new Error(`${path} is being written by another process`);
   return checkpoint;
 }
 
@@ -113,4 +122,9 @@ export async function finishResume(resume: Resume, result: RunResult): Promise<F
     ok: result.ok,
     ...(failed ? { message: `${failed.nodeId}: ${failed.message}` } : result.review.length ? { message: `paused again at ${result.review.join(', ')}` } : {}),
   }));
+}
+
+/** A failed persistence step must not turn a consumed claim into completed. */
+export async function failResume(resume: Resume, message: string): Promise<FlowCheckpoint> {
+  return updateCheckpoint(resume.store, resume.checkpoint.id, c => finishCheckpoint(c, resume.owner, { ok: false, message }));
 }

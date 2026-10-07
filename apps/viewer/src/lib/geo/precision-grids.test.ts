@@ -5,8 +5,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import proj4 from 'proj4';
+import { writeArrayBuffer } from 'geotiff';
+import { lookupEpsgByCode } from '@ifc-lite/data';
 
-import { PRECISION_GRIDS, isHorizontalOffsetGrid } from './precision-grids.js';
+import { PRECISION_GRIDS, isHorizontalOffsetGrid, resolvePrecisionDef, hasLoadedPrecisionGrid, hasFailedPrecisionGrid } from './precision-grids.js';
 
 describe('precision-grids datum-shift table (#1357)', () => {
   it('treats only >=2-band grids as horizontal datum shifts', () => {
@@ -162,6 +164,81 @@ describe('precision-grid overrides preserve EPSG projection coordinates (#7052)'
       // Testing resolvePrecisionDef returning null would be vacuous in Node,
       // where the loader deliberately skips network access for every grid.
       assert.equal(PRECISION_GRIDS[code], undefined, `EPSG:${code} must keep its own projection and datum`);
+    }
+  });
+});
+
+describe('precision grids validate source datums before registration (#7052)', () => {
+  it('every grid accepts the actual bundled EPSG datum, including documented deprecated exceptions', async () => {
+    // Independent PROJ 9.8 CRS metadata for the only two codes omitted by
+    // the bundled registry. These exceptions must not grow implicitly.
+    const deprecatedDatums: Readonly<Record<string, string>> = {
+      '20248': 'AGD66', '20348': 'AGD84',
+    };
+    const missingCodes: string[] = [];
+    for (const [code, spec] of Object.entries(PRECISION_GRIDS)) {
+      const entry = await lookupEpsgByCode(code);
+      if (!entry) missingCodes.push(code);
+      const datum = entry?.datum ?? deprecatedDatums[code];
+      assert.ok(datum, `EPSG:${code} has no independently audited datum`);
+      // Reflect allows this regression oracle to run against the pre-fix
+      // production module and fail an assertion, rather than a type/import error.
+      const accepted = Reflect.get(spec, 'sourceDatums');
+      assert.ok(Array.isArray(accepted), `${spec.filename} is missing source datum metadata`);
+      assert.ok(accepted.includes(datum), `EPSG:${code} (${datum}) cannot use ${spec.filename}`);
+    }
+    assert.deepEqual(missingCodes.sort(), Object.keys(deprecatedDatums).sort());
+  });
+
+  it('rejects mismatched and unknown EPSG datums even when the grid is already loaded', async () => {
+    // A real decoded and registered zero-shift grid prevents the Node
+    // network-skip fallback from making this guard test pass vacuously.
+    const grid = writeArrayBuffer(new Float32Array(8), {
+      width: 2, height: 2, SamplesPerPixel: [2],
+      ModelPixelScale: [2, 2, 0], ModelTiepoint: [0, 0, 0, 4, 54, 0],
+      GeographicTypeGeoKey: 4326,
+    });
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+    const testContext = process.env.NODE_TEST_CONTEXT;
+    const warnings: string[] = [];
+    let requests = 0;
+    delete process.env.NODE_TEST_CONTEXT;
+    globalThis.fetch = async () => {
+      requests++;
+      return new Response(grid, { status: 200 });
+    };
+    console.warn = (message: unknown) => { warnings.push(String(message)); };
+    try {
+      const valid = PRECISION_GRIDS['28992'];
+      assert.equal(await resolvePrecisionDef('28992'), valid.proj4);
+      assert.equal(hasLoadedPrecisionGrid('28992'), true);
+      assert.equal(requests, 1);
+      // ETRS89 is already the grid's target frame. A legacy-datum shift
+      // would corrupt it, although proj4 can consume the loaded raster.
+      for (const code of ['3763', '999999']) {
+        const previous = PRECISION_GRIDS[code];
+        PRECISION_GRIDS[code] = valid;
+        try {
+          assert.equal(await resolvePrecisionDef(code), null);
+          assert.equal(await resolvePrecisionDef(code), null, 'repeated readouts remain rejected');
+          assert.equal(warnings.filter(message => message.includes(`EPSG:${code}:`)).length, 1);
+          assert.equal(hasLoadedPrecisionGrid(code), false);
+          assert.equal(hasFailedPrecisionGrid(code), true);
+          assert.equal(requests, 1, 'reject before attempting any grid load');
+        } finally {
+          if (previous) PRECISION_GRIDS[code] = previous;
+          else delete PRECISION_GRIDS[code];
+        }
+      }
+      assert.equal(hasLoadedPrecisionGrid('28992'), true, 'bad mapping must not poison a compatible CRS');
+      assert.ok(warnings.some(message => message.includes('EPSG:3763') && message.includes('ETRS89')));
+      assert.ok(warnings.some(message => message.includes('EPSG:999999') && message.includes('(unknown)')));
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+      if (testContext === undefined) delete process.env.NODE_TEST_CONTEXT;
+      else process.env.NODE_TEST_CONTEXT = testContext;
     }
   });
 });

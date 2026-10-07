@@ -24,6 +24,8 @@
  */
 
 import proj4 from 'proj4';
+import { lookupEpsgByCode } from '@ifc-lite/data';
+import { DEPRECATED_SOURCE_DATUMS, GRIDS, type GridMetadata } from './precision-grid-data.js';
 
 export interface PrecisionGridSpec {
   /** Key proj4 references via `+nadgrids={key}` (typically the filename). */
@@ -32,16 +34,20 @@ export interface PrecisionGridSpec {
   filename: string;
   /** Full proj4 string with `+nadgrids` instead of `+towgs84` */
   proj4: string;
+  /** EPSG datum names compatible with the upstream grid source CRS. */
+  sourceDatums: readonly string[];
   /** Human-readable name for diagnostics */
   region: string;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function gridSpec(filename: string, projection: string, region: string): PrecisionGridSpec {
+function gridSpec(grid: GridMetadata, projection: string, region: string): PrecisionGridSpec {
+  const { filename, sourceDatums } = grid;
   return {
     key: filename,
     filename,
+    sourceDatums,
     proj4: `${projection} +nadgrids=${filename} +units=m +no_defs +type=crs`,
     region,
   };
@@ -51,26 +57,6 @@ function gridSpec(filename: string, projection: string, region: string): Precisi
 function utm(zone: number, south: boolean, ellps: string): string {
   return `+proj=utm +zone=${zone}${south ? ' +south' : ''} +ellps=${ellps}`;
 }
-
-// ── Grid filenames (single source of truth) ────────────────────────────────
-
-const GRIDS = {
-  rdtrans2018: 'nl_nsgi_rdtrans2018.tif',       // Netherlands RD → ETRS89
-  ostn15:      'uk_os_OSTN15_NTv2_OSGBtoETRS.tif', // UK OSGB36 → ETRS89
-  bd72:        'be_ign_bd72lb72_etrs89lb08.tif',   // Belgium BD72 → ETRS89
-  beta2007:    'de_adv_BETA2007.tif',              // Germany DHDN → ETRS89
-  atGisGrid:   'at_bev_AT_GIS_GRID.tif',           // Austria MGI → ETRS89
-  ntfR93:      'fr_ign_ntf_r93.tif',               // France NTF → RGF93
-  chENyx06:    'ch_swisstopo_CHENyx06_ETRS.tif',   // Switzerland CH1903 → ETRS89
-  sped2etv2:   'es_ign_SPED2ETV2.tif',             // Spain ED50 → ETRS89
-  d73Etrs89:   'pt_dgt_D73_ETRS89_geo.tif',        // Portugal D73 → ETRS89
-  sad69:       'br_ibge_SAD69_003.tif',            // Brazil SAD69 → SIRGAS2000
-  agd66:       'au_icsm_A66_National_13_09_01.tif',// Australia AGD66 → GDA94
-  agd84:       'au_icsm_National_84_02_07_01.tif', // Australia AGD84 → GDA94
-  nzgd49:      'nz_linz_nzgd2kgrid0005.tif',       // NZ NZGD49 → NZGD2000
-  nadcon5Conus:'us_noaa_nadcon5_nad27_nad83_1986_conus.tif', // US NAD27 → NAD83 (continental)
-  nadcon5Alaska:'us_noaa_nadcon5_nad27_nad83_1986_alaska.tif', // US NAD27 → NAD83 (Alaska)
-} as const;
 
 // ── Coverage table ─────────────────────────────────────────────────────────
 
@@ -309,6 +295,7 @@ function isTestEnvironment(): boolean {
 const loadedGrids = new Set<string>();
 const inflightGrids = new Map<string, Promise<boolean>>();
 const failedGrids = new Set<string>();
+const incompatibleCodes = new Set<string>();
 
 /**
  * Load a GeoTIFF datum-shift grid into proj4js. Idempotent: subsequent
@@ -413,6 +400,18 @@ export async function loadPrecisionGrid(spec: PrecisionGridSpec): Promise<boolea
 export async function resolvePrecisionDef(epsgCode: string): Promise<string | null> {
   const spec = PRECISION_GRIDS[epsgCode];
   if (!spec) return null;
+  const entry = await lookupEpsgByCode(epsgCode);
+  const sourceDatum = entry?.datum ?? DEPRECATED_SOURCE_DATUMS[epsgCode];
+  if (!sourceDatum || !spec.sourceDatums.includes(sourceDatum)) {
+    if (!incompatibleCodes.has(epsgCode)) {
+      console.warn(
+        `[precision-grid] EPSG:${epsgCode}: source datum ${sourceDatum ?? '(unknown)'} is incompatible with ${spec.filename}; keeping bundled definition`,
+      );
+    }
+    incompatibleCodes.add(epsgCode);
+    return null;
+  }
+  incompatibleCodes.delete(epsgCode);
   const loaded = await loadPrecisionGrid(spec);
   if (!loaded) return null;
   return spec.proj4;
@@ -425,7 +424,7 @@ export async function resolvePrecisionDef(epsgCode: string): Promise<string | nu
  */
 export function hasLoadedPrecisionGrid(epsgCode: string): boolean {
   const spec = PRECISION_GRIDS[epsgCode];
-  return spec ? loadedGrids.has(spec.key) : false;
+  return spec ? !incompatibleCodes.has(epsgCode) && loadedGrids.has(spec.key) : false;
 }
 
 /**
@@ -434,5 +433,5 @@ export function hasLoadedPrecisionGrid(epsgCode: string): boolean {
  */
 export function hasFailedPrecisionGrid(epsgCode: string): boolean {
   const spec = PRECISION_GRIDS[epsgCode];
-  return spec ? failedGrids.has(spec.key) : false;
+  return spec ? incompatibleCodes.has(epsgCode) || failedGrids.has(spec.key) : false;
 }

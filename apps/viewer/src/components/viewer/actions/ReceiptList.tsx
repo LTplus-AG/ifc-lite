@@ -4,7 +4,7 @@
 
 import { useTranslation } from '@/i18n';
 import { useModelChangeReceipts } from '@/lib/actions/receipts';
-import { useLinkedReceipt } from '@/lib/deep-links/resolve-artifact-link';
+import { useLinkedReceipt } from '@/lib/deep-links/linked-receipt';
 import { ReceiptSummary } from './ModelChangeReview';
 
 /** Durable receipts of reviewed change batches, newest first, in the Changes panel. */

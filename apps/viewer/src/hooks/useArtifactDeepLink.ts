@@ -13,8 +13,6 @@ import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { getViewerStoreApi } from '@/store';
 import { parseDeepLink, withoutDeepLink } from '@/lib/deep-links/artifact-link';
-import { resolveDeepLink } from '@/lib/deep-links/resolve-artifact-link';
-import { deepLinkMessage } from '@/lib/deep-links/deep-link-message';
 
 export function useArtifactDeepLink(): void {
   const { t } = useTranslation();
@@ -26,10 +24,15 @@ export function useArtifactDeepLink(): void {
     if (!link) return;
     const { pathname, search, hash } = window.location;
     window.history.replaceState(window.history.state, '', `${pathname}${withoutDeepLink(search)}${hash}`);
-    resolveDeepLink(getViewerStoreApi(), link).then((outcome) => {
+    const follow = async () => {
+      const [{ resolveDeepLink }, { deepLinkMessage }] = await Promise.all([
+        import('@/lib/deep-links/resolve-artifact-link'), import('@/lib/deep-links/deep-link-message'),
+      ]);
+      const outcome = await resolveDeepLink(getViewerStoreApi(), link);
       const message = deepLinkMessage(outcome);
       if (message) toast.error(t(message.key, message.params));
-    }).catch((error: unknown) => {
+    };
+    void follow().catch((error: unknown) => {
       console.error('[deep-link] resolving the link failed:', error);
       toast.error(t('workspaceMigration.deepLink.failed'));
     });

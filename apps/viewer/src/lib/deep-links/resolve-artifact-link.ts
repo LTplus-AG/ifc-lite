@@ -9,7 +9,7 @@
  * to "here is where it would have been" instead of failing silently.
  */
 
-import { create } from 'zustand';
+import { useLinkedReceipt } from './linked-receipt';
 import type { StoreApi } from 'zustand';
 import type { ViewerState } from '@/store';
 import { assistantLibrary, openConversation, useAssistantLibrary } from '@/lib/assistant/library';
@@ -23,9 +23,6 @@ export type DeepLinkOutcome =
   | { status: 'missing' | 'unavailable'; panel: ViewerState['sidebarActivePanel']; kind: ArtifactKind }
   | { status: 'busy'; panel: ViewerState['sidebarActivePanel']; kind: 'conversation' }
   | { status: 'refused'; reason: 'unknown-panel' | 'conflicting-target' | 'invalid-id' };
-
-/** The receipt a deep link asked the Changes panel to reveal. Runtime only. */
-export const useLinkedReceipt = create<{ id: string | null }>(() => ({ id: null }));
 
 async function present(initialize: () => Promise<boolean>, has: () => boolean): Promise<'found' | 'missing' | 'unavailable'> {
   if (!(await initialize())) return 'unavailable';

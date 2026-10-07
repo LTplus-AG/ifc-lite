@@ -220,6 +220,11 @@ export async function flowCommand(args: string[]): Promise<void> {
   if (!modelPath) fatal(USAGE);
   const doc = await loadDocument(graphPath);
   const checkpointPath = requireFlagValue(args, '--checkpoint');
+  // Refuse malformed arguments before consuming a reviewed checkpoint.
+  const out = requireFlagValue(args, '--out');
+  const trackingPath = requireFlagValue(args, '--tracking') ?? defaultTrackingPath(graphPath);
+  const requestedBudget = { maxRequests: budgetLimit(args, '--ai-max-requests', FLOW_AI_BUDGET.maxRequests),
+    maxOutputTokens: budgetLimit(args, '--ai-max-output-tokens', FLOW_AI_BUDGET.maxOutputTokens) };
   if (sub === 'resume' && !checkpointPath) fatal('flow resume needs --checkpoint <file>');
 
   // Capabilities first: `declaredSecrets` reads the all-or-nothing parse, so
@@ -262,16 +267,12 @@ export async function flowCommand(args: string[]): Promise<void> {
   // The host follows the model the graph works on: `model.openFromSource`
   // can replace the command-line model mid-run (see `flow-host.ts`).
   const aiConfig = flowAiConfig(process.env);
-  const budget = restoreRootBudget(resume?.checkpoint.budget) ?? createRootBudget({
-    maxRequests: budgetLimit(args, '--ai-max-requests', FLOW_AI_BUDGET.maxRequests),
-    maxOutputTokens: budgetLimit(args, '--ai-max-output-tokens', FLOW_AI_BUDGET.maxOutputTokens),
-  });
+  const budget = restoreRootBudget(resume?.checkpoint.budget) ?? createRootBudget(requestedBudget);
   const initialModel = await createHeadlessContext(modelPath);
   const session = createCliFlowSession(initialModel, capsResult.value, aiConfig ? createCliAiService(aiConfig, budget) : undefined);
   const host = session.host;
 
   let tracking: FileTrackingStore | undefined;
-  const trackingPath = requireFlagValue(args, '--tracking') ?? defaultTrackingPath(graphPath);
   // An existing sidecar is opened even when no node is tracked any more:
   // that is how a set whose node was deleted gets removed from the model.
   const wantsTracking = doc.nodes.some((n) => registry.get(n.type)?.tracked) || (await stat(trackingPath).then(() => true, () => false));
@@ -295,7 +296,6 @@ export async function flowCommand(args: string[]): Promise<void> {
     modelRevisions: { [host.defaultModelId ?? 'model']: 0 },
     tracking,
   });
-  const out = requireFlagValue(args, '--out');
   const paused = result.ok && result.review.length > 0;
   const activeModelChanged = session.active() !== initialModel;
   const wrote = out !== undefined && result.ok;

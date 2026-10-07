@@ -52,7 +52,7 @@ function EffectiveReadout() {
     eastings: context.mapConversion.eastings, northings: context.mapConversion.northings }) : 'absent'}</output>;
 }
 
-it('clears projected preview after a geographic CRS transition without persisting it (#7060)', async () => {
+async function mountProjectedPreview() {
   const bytes = new TextEncoder().encode(source);
   const dataStore = await new IfcParser().parseColumnar(bytes.buffer, {});
   useViewerStore.setState({
@@ -70,6 +70,11 @@ it('clears projected preview after a geographic CRS transition without persistin
   const readout = render(<EffectiveReadout />);
   await waitFor(() => readout.textContent === JSON.stringify({ crs: 'EPSG:32632', eastings: 500001, northings: 5500000 }),
     'projected dirty draft reaches the real viewport preview');
+  return readout;
+}
+
+it('clears projected preview immediately after a geographic CRS transition without persisting it (#7060)', async () => {
+  const readout = await mountProjectedPreview();
   act(() => {
     useViewerStore.getState().setGeorefFields('m', 'projectedCRS', [{ field: 'name', value: 'EPSG:4326' }]);
     useViewerStore.getState().setGeorefFields('m', 'mapConversion', [
@@ -78,7 +83,9 @@ it('clears projected preview after a geographic CRS transition without persistin
   });
   const committedSource = useViewerStore.getState().getGeorefMutations('m');
   const angularOutput = JSON.stringify({ crs: 'EPSG:4326', eastings: 5, northings: 52 });
-  await waitFor(() => readout.textContent === angularOutput,
+  assert.equal(readout.textContent, angularOutput,
+    'pending geographic classification must not overlay metre coordinates onto angles');
+  await waitFor(() => readout.textContent === angularOutput && !useViewerStore.getState().cesiumPlacementEditMode,
     'the angular source must replace the stale projected preview');
   assert.equal(useViewerStore.getState().getGeorefMutations('m'), committedSource,
     'aborting a transient preview preserves the source edits');
@@ -90,4 +97,17 @@ it('clears projected preview after a geographic CRS transition without persistin
     'geographic toolbar activation is aborted');
   assert.equal(readout.textContent, angularOutput);
   assert.equal(useViewerStore.getState().getGeorefMutations('m'), committedSource);
+});
+
+
+it('hides a projected draft while another projected CRS is pending, then restores it (#7060)', async () => {
+  const readout = await mountProjectedPreview();
+  const draft = useViewerStore.getState().cesiumPlacementDraft;
+  act(() => useViewerStore.getState().setGeorefFields('m', 'projectedCRS', [{ field: 'name', value: 'EPSG:32631' }]));
+  assert.equal(readout.textContent, JSON.stringify({ crs: 'EPSG:32631', eastings: 500000, northings: 5500000 }),
+    'pending projected classification exposes the authored anchor');
+  assert.equal(useViewerStore.getState().cesiumPlacementDraft, draft, 'pending classification does not discard the draft');
+  await waitFor(() => readout.textContent === JSON.stringify({ crs: 'EPSG:32631', eastings: 500001, northings: 5500000 }),
+    'a confirmed projected CRS restores the existing preview');
+  assert.equal(useViewerStore.getState().cesiumPlacementDraft, draft);
 });

@@ -55,6 +55,23 @@ for (const control of [
           assert.ok(Cesium.Cartesian3.distance(rendered, pickedEcef) < 1e-7, 'pick XY must match the actual model matrix, including placement override');
           assert.equal(pick.height, origin.ifcOriginHeight + 2 * (point.y - center.y), 'height remains authored orthometric IFC metres, independent of geoid and override');
         }
+        // #7060 camera terrain clamping must not move model-coordinate picks.
+        const offCenter = new Cesium.Cartesian3(center.x + 17, center.y + 9, center.z - 31);
+        const beforeClamp = bridge.viewerToGeodetic(offCenter.x, offCenter.y, offCenter.z);
+        const camera = { position: new Cesium.Cartesian3(), direction: new Cesium.Cartesian3(),
+          up: new Cesium.Cartesian3(), right: new Cesium.Cartesian3(),
+          frustum: new Cesium.PerspectiveFrustum(), lookAtTransform() {} };
+        camera.frustum.aspectRatio = 1;
+        const viewer = { camera, scene: { requestRender() {} }, canvas: { width: 100, height: 100 } } as unknown as InstanceType<typeof Cesium.Viewer>;
+        bridge.syncCamera(Cesium, viewer, center, { x: center.x + 1, y: center.y, z: center.z },
+          { x: 0, y: 1, z: 0 }, Math.PI / 3, 1000);
+        const afterClamp = bridge.viewerToGeodetic(offCenter.x, offCenter.y, offCenter.z);
+        assert.deepEqual(afterClamp, beforeClamp, 'camera clamp must leave model picks and authored height unchanged');
+        assert.ok(afterClamp);
+        const rendered = Cesium.Matrix4.multiplyByPoint(matrix, offCenter, new Cesium.Cartesian3());
+        const renderedGeodetic = Cesium.Cartographic.fromCartesian(rendered);
+        const pickedEcef = Cesium.Cartesian3.fromDegrees(afterClamp.longitude, afterClamp.latitude, renderedGeodetic.height);
+        assert.ok(Cesium.Cartesian3.distance(rendered, pickedEcef) < 1e-7, 'clamped camera picks still match the model frame');
         assert.equal(bridge.viewerToGeodetic(NaN, 0, 0), null);
       }
     }

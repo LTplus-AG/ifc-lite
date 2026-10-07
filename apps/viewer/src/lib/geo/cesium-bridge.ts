@@ -385,7 +385,11 @@ export async function createCesiumBridge(
   // Geographic XY uses the exact rendered ENU/ECEF geometry. Heights retain
   // the authored IFC contract shared with projected picks, before geoid/override.
   const geographicCesium = geographic ? await loadCesium() : null;
-  if (geographicCesium) ensureEcefCache(geographicCesium, 0);
+  // Model picks keep an immutable frame; syncCamera's terrain clamp changes
+  // only its camera cache, never the model's base-origin placement.
+  const geographicModelFrame = geographicCesium
+    ? buildViewerToEcefMatrix(geographicCesium, modelOrigin, rot, originScaleZ, coordinateInfo)
+    : null;
   function viewerToGeodetic(vx: number, vy: number, vz: number): GeodesicPosition | null {
     if (![vx, vy, vz].every(Number.isFinite)) return null;
     const wx = vx + shift.x + rtcYup.x;
@@ -395,8 +399,8 @@ export async function createCesiumBridge(
     const ifcY = -wz;
     const ifcZ = wy;
     const height = mapConversion.orthogonalHeight * mapScale + originScaleZ * ifcZ;
-    if (geographicCesium && viewerToEcefMatrix) {
-      const ecef = geographicCesium.Matrix4.multiplyByPoint(viewerToEcefMatrix,
+    if (geographicCesium && geographicModelFrame) {
+      const ecef = geographicCesium.Matrix4.multiplyByPoint(geographicModelFrame,
         new geographicCesium.Cartesian3(vx, vy, vz), new geographicCesium.Cartesian3());
       const point = geographicCesium.Cartographic.fromCartesian(ecef);
       if (!point) return null;

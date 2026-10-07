@@ -100,11 +100,11 @@
    501 apps/viewer/src/components/viewer/tools/measure-modes/radius.ts
    818 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
    677 apps/viewer/src/components/viewer/tools/MeasureQuantities.tsx
-   926 apps/viewer/src/components/viewer/useGeometryStreaming.ts
+   918 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    893 apps/viewer/src/components/viewer/useMouseControls.ts
    461 apps/viewer/src/components/viewer/ViewerLayout.tsx
-  1632 apps/viewer/src/components/viewer/Viewport.tsx
-   885 apps/viewer/src/components/viewer/ViewportContainer.tsx
+  1630 apps/viewer/src/components/viewer/Viewport.tsx
+   884 apps/viewer/src/components/viewer/ViewportContainer.tsx
    500 apps/viewer/src/components/viewer/ZonesPanel.tsx
    847 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts

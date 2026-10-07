@@ -8,6 +8,7 @@ import { perfTally } from '@ifc-lite/load-trace';
 import type { TypeVisibility } from '@/store/types';
 import { isTypeVisible } from '@/store/typeVisibilityFilter';
 import { isMeshVisibleInViewMode, meshClassIsPlaced, meshIsNonOccurrence, type TypeViewMode } from '@/lib/type-view-visibility';
+import { sameMeshUpload } from './mesh-upload-identity.js';
 
 /**
  * The viewport's type/view-mode filter over the merged geometry, moved out of
@@ -23,7 +24,7 @@ export function useFilteredGeometry(
   geometryContentVersion: number,
   typeVisibility: TypeVisibility,
   typeViewMode: TypeViewMode,
-): { hasTypeGeometry: boolean; hasOccurrenceGeometry: boolean; filteredGeometry: MeshData[] | null; geometryVersion: number } {
+): { hasTypeGeometry: boolean; hasOccurrenceGeometry: boolean; filteredGeometry: MeshData[] | null; geometryVersion: number; geometryReplacementVersion: number } {
   // Does the rendered geometry carry any type-library geometry? geometryClass
   // 1 = orphan type, 2 = instanced type; class 0 = placed occurrence. The
   // Model/Types switch is only meaningful — and "Types" only renders anything —
@@ -104,6 +105,7 @@ export function useFilteredGeometry(
   const filteredTypeModeRef = useRef(effectiveViewMode);
   const filteredHasOccRef = useRef(hasOccurrenceGeometry);
   const filteredVersionRef = useRef(0);
+  const replacementVersionRef = useRef(0);
 
   const filteredGeometry = useMemo(() => {
     if (!mergedGeometryResult?.meshes) {
@@ -116,6 +118,7 @@ export function useFilteredGeometry(
 
     const allMeshes = mergedGeometryResult.meshes;
     const cache = filteredCacheRef.current;
+    const prevCacheLen = cache.length;
 
     // Full rebuild if: type visibility changed, view mode changed, source shrunk
     // (new file), or empty cache
@@ -132,8 +135,8 @@ export function useFilteredGeometry(
       // types) changes whether class-1 orphans render in Model view (#1353).
       filteredHasOccRef.current !== hasOccurrenceGeometry;
     const sourceChanged = filteredSourceRef.current !== allMeshes;
-    if (typeVisChanged || sourceChanged || allMeshes.length < filteredSourceLenRef.current) {
-      cache.length = 0;
+    const rebuilding = typeVisChanged || sourceChanged || allMeshes.length < filteredSourceLenRef.current;
+    if (rebuilding) {
       filteredSourceLenRef.current = 0;
       filteredSourceRef.current = allMeshes;
       filteredTypeVisRef.current = typeVisibility;
@@ -142,7 +145,8 @@ export function useFilteredGeometry(
     }
 
     const needsFilter = !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.virtualElements || !typeVisibility.site || !typeVisibility.ifcAnnotations;
-    const prevCacheLen = cache.length;
+    let writeIndex = rebuilding ? 0 : cache.length;
+    let replaced = false;
 
     // Only process NEW meshes since last run — O(batch_size) not O(total)
     const scanFrom = filteredSourceLenRef.current;
@@ -174,8 +178,13 @@ export function useFilteredGeometry(
       // Defaults still come from styling.rs / default-materials.ts; the
       // renderer promotes overridden entities to the opaque pipeline, the
       // only draws its colour table paints (#6076). See issue #677.
-      cache.push(mesh);
+      // Compare only during the full filtering pass already required by a
+      // rebuild. Streaming appends never revisit the resident prefix (#7047).
+      if (rebuilding && writeIndex < prevCacheLen && !sameMeshUpload(cache[writeIndex], mesh)) replaced = true;
+      cache[writeIndex++] = mesh;
     }
+    cache.length = writeIndex;
+    if (replaced || writeIndex < prevCacheLen) replacementVersionRef.current++;
 
     perfTally('viewer.filterScan', allMeshes.length - scanFrom, 'meshes');
     filteredSourceLenRef.current = allMeshes.length;
@@ -195,5 +204,6 @@ export function useFilteredGeometry(
   // without requiring a new geometry array reference.
   const geometryVersion = filteredVersionRef.current;
 
-  return { hasTypeGeometry, hasOccurrenceGeometry, filteredGeometry, geometryVersion };
+  return { hasTypeGeometry, hasOccurrenceGeometry, filteredGeometry, geometryVersion,
+    geometryReplacementVersion: replacementVersionRef.current };
 }

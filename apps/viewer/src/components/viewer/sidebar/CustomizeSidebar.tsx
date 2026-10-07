@@ -26,6 +26,7 @@ import { useTranslation } from '@/i18n';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
 import { resetLayout } from '@/store/layoutReset';
 import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
+import { LayoutPresetSection } from './LayoutPresetSection';
 
 export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
@@ -102,6 +103,8 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
           <RotateCcw className="h-3 w-3" /> {t('shellChrome.customizeSidebar.resetLabel')}
         </button>
       </div>
+
+      <LayoutPresetSection />
 
       <div className="max-h-[60vh] overflow-y-auto py-1">
         {/* Shown: the panels in the rail, reorderable, each with a Hide control. */}

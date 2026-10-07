@@ -29,7 +29,7 @@ export function ConversationLibrary() {
       model: state.archived?.model ?? model,
       evidence: { source: evidence.source, capturedAt: evidence.capturedAt, payload: evidence.payload,
         totalRows: evidence.totalRows, includedRows: evidence.includedRows, projectionTruncated: evidence.projectionTruncated },
-      messages: state.messages });
+      messages: state.messages, language: state.language });
     if (!entry) { setInvalid(true); return; }
     setInvalid(false); setBusy(true);
     try { await assistantLibrary.put(entry.id, entry); }

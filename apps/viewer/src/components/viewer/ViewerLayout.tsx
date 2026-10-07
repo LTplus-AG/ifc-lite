@@ -26,6 +26,7 @@ import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
 import { isSafeMode } from '@/lib/safe-mode';
 import { MobileBottomSheet, useVisualViewportBottomInset } from './MobileBottomSheet';
 import { MobilePanelLauncher } from './MobilePanelLauncher';
+import { MobilePanelSheet } from './MobilePanelSheet';
 import { ShieldAlert } from 'lucide-react';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { ExtensionKeyboardBindings } from '@/components/extensions/ExtensionKeyboardBindings';
@@ -50,16 +51,12 @@ import { SidebarDock } from './sidebar/SidebarDock';
 import { FloatingPanelHost } from './dock/FloatingPanelHost';
 import { PanelWindowHost } from './dock/PanelWindowHost';
 import {
-  closeActiveAnalysisExtension,
   getAnalysisExtensionById,
   getAnalysisExtensionsSnapshot,
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
-import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { activeBottomPanel } from '@/lib/panels/bottom-panels';
 import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
-import { getPanelDef } from '@/lib/panels/registry';
-import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
 import { useThemeDocumentClass } from './useThemeDocumentClass';
@@ -186,13 +183,8 @@ export function ViewerLayout() {
   }, []);
   const sideBySideDrawing = stripOrientation === 'side' && dockedBottomPanel === 'drawing';
 
-  // ── Mobile bottom sheet ──
-  // Mobile shows exactly ONE panel at a time, so resolve which, then render it
-  // through the shared id → body map every other host uses. The hand-written
-  // chain this replaces knew seven panels and fell through to PropertiesPanel for
-  // the rest, so opening e.g. Compare or the collab Room on a phone showed the
-  // Properties panel titled "Properties" — the wrong panel, not just a wrong label.
-  const sidebarActivePanel = useViewerStore((s) => s.sidebarActivePanel);
+  // The narrow layout's single-panel sheet lives in `MobilePanelSheet`; the
+  // desktop bottom strip below still needs the close action and the extension.
   const { closePanel } = usePanelControls();
   const analysisExtensionState = useSyncExternalStore(
     subscribeAnalysisExtensions,
@@ -200,18 +192,9 @@ export function ViewerLayout() {
     getAnalysisExtensionsSnapshot,
   );
   const activeAnalysisExtension = getAnalysisExtensionById(analysisExtensionState.activeId);
-  const activeRightAnalysisExtension = (activeAnalysisExtension?.placement ?? 'right') === 'right'
-    ? activeAnalysisExtension
-    : null;
   const activeBottomAnalysisExtension = activeAnalysisExtension?.placement === 'bottom'
     ? activeAnalysisExtension
     : null;
-
-  const mobileSheet = useMemo(() => resolveMobileSheet({
-    hasAnalysisExtension: activeAnalysisExtension !== null && activeAnalysisExtension !== undefined,
-    bottomPanel,
-    sidebarActivePanel,
-  }), [activeAnalysisExtension, bottomPanel, sidebarActivePanel]);
 
   // Panel ref for programmatic collapse/expand (command palette, keyboard
   // shortcuts). The right region is the unified sidebar (#1208), which owns its
@@ -406,32 +389,8 @@ export function ViewerLayout() {
               </MobileBottomSheet>
             )}
 
-            {/* Mobile Bottom Sheet — whichever single panel is open.
-                Analysis extensions are not registry
-                panels, so they keep their own branch; everything else routes
-                through `renderPanelBody`, the same map the sidebar, the
-                floating host and the pop-out windows render from. */}
-            {!rightPanelCollapsed && (
-              <MobileBottomSheet
-                title={mobileSheet.kind === 'extension' ? (activeAnalysisExtension?.label ?? t('shellChrome.layout.analysisFallback')) : t(getPanelDef(mobileSheet.id)?.titleKey ?? 'properties.panel.title')}
-                bottomInset={bottomViewportInset}
-                onClose={() => {
-                  setRightPanelCollapsed(true);
-                  // Close ONLY what the sheet is showing.
-                  if (mobileSheet.kind === 'extension') closeActiveAnalysisExtension();
-                  // Clears the dock flag AND float/pop-out channels, so closing
-                  // the sheet can't leave the panel open where the phone has no room to show it.
-                  else closePanel(mobileSheet.id);
-                }}
-              >
-                {mobileSheet.kind === 'extension' ? (
-                  (activeBottomAnalysisExtension ?? activeRightAnalysisExtension)
-                    ?.renderPanel({ onClose: closeActiveAnalysisExtension })
-                ) : (
-                  renderPanelBody(mobileSheet.id, () => closePanel(mobileSheet.id))
-                )}
-              </MobileBottomSheet>
-            )}
+            {/* Mobile Bottom Sheet — whichever single panel is open (`MobilePanelSheet`). */}
+            <MobilePanelSheet bottomInset={bottomViewportInset} analysisExtension={activeAnalysisExtension ?? null} />
 
             {/* Mobile Floating Buttons: Hierarchy, Properties and the Panels list
                 (#5853). Hidden in the empty state so the "Load IFC" card stays unobstructed. */}

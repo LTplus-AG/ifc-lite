@@ -172,6 +172,7 @@ export function migrateSidebarLayout(raw: unknown, fallbackMode: SidebarMode = '
     }
   }
   const restoredHidden: WorkspacePanelId[] = [];
+  const restoredPlacements: Array<{ id: WorkspacePanelId; after: string | null }> = [];
   for (const placement of readPreserved(value.preserved)) {
     const live = migratePanelId(placement.id);
     if (live === undefined) {
@@ -181,6 +182,7 @@ export function migrateSidebarLayout(raw: unknown, fallbackMode: SidebarMode = '
     if (order.includes(live)) continue;
     const anchor = placement.after === null ? null : migratePanelId(placement.after) ?? placement.after;
     insertAfter(order, live, anchor);
+    restoredPlacements.push({ id: live, after: anchor });
     if (placement.hidden) restoredHidden.push(live);
     changes.push({ kind: 'restored', id: live });
   }
@@ -188,6 +190,11 @@ export function migrateSidebarLayout(raw: unknown, fallbackMode: SidebarMode = '
     if (order.includes(id)) continue;
     const after = insertAfter(order, id, anchorForNewPanel(order, id));
     changes.push({ kind: 'added', id, after: after as WorkspacePanelId | null });
+  }
+  // Explicit saved anchors take precedence over newly inserted task-group neighbours.
+  for (const placement of restoredPlacements) {
+    order.splice(order.indexOf(placement.id), 1);
+    insertAfter(order, placement.id, placement.after);
   }
   const hiddenIds = new Set<WorkspacePanelId>(restoredHidden);
   for (const id of hiddenRaw) {

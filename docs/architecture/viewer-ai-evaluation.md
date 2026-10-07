@@ -1,6 +1,6 @@
 # Viewer AI evaluation corpus, live harness, labelling and study tooling
 
-Tooling for P21 and U01 ([#6928](https://github.com/LTplus-AG/ifc-lite/issues/6928), part of [#6812](https://github.com/LTplus-AG/ifc-lite/issues/6812)). It builds the corpus and the recorded-response harness, and the opt-in live runner, with labelling and study tooling following in a stacked change. **It does not perform human judgment.** The independent claim and grouping labels, the privacy and licence review, the live quality evaluation against a provider, and the coordinator study with existing users are still open and need people. Nothing here is a quality, usability or acceptance result.
+Tooling for P21 and U01 ([#6928](https://github.com/LTplus-AG/ifc-lite/issues/6928), part of [#6812](https://github.com/LTplus-AG/ifc-lite/issues/6812)). It builds the corpus, the harnesses and the instruments for human judgment. **It does not perform human judgment.** The independent claim and grouping labels, the privacy and licence review, the live quality evaluation against a provider, and the coordinator study with existing users are still open and need people. Nothing here is a quality, usability or acceptance result.
 
 ## Corpus manifest
 
@@ -14,7 +14,7 @@ Tooling for P21 and U01 ([#6928](https://github.com/LTplus-AG/ifc-lite/issues/69
 | `authoring-sample` | The sample in Edit mode with its native load report |
 | `flow-empty` | A new Flow graph validated against the standard registry |
 
-Every fixture records origin, SHA-256, size, schema, source tool, licence status and privacy review. `node scripts/ai-eval/check-ai-eval-manifest.mjs` recomputes each committed fingerprint, cross-checks catalogued fixtures against `tests/models/manifest.json`, pins native results to the model bytes they came from, scans for e-mail addresses, credential-like tokens and STEP author/organisation fields and ties every recording to a task and scene. Gaps are printed as notes: unfetched fixtures, journeys without tasks (five of ten have none yet), licences recorded as `unrecorded` for the two SketchUp samples and the ara3d house, and **all privacy reviews pending**. The automated scan is not a privacy review.
+Every fixture records origin, SHA-256, size, schema, source tool, licence status and privacy review. `node scripts/ai-eval/check-ai-eval-manifest.mjs` recomputes each committed fingerprint, cross-checks catalogued fixtures against `tests/models/manifest.json`, pins native results to the model bytes they came from, scans for e-mail addresses, credential-like tokens and STEP author/organisation fields, ties every recording to a task and scene, and validates label sheets and study records. Gaps are printed as notes: unfetched fixtures, journeys without tasks (five of ten have none yet), licences recorded as `unrecorded` for the two SketchUp samples and the ara3d house, and **all privacy reviews pending**. The automated scan is not a privacy review.
 
 ## Recorded-response CI harness
 
@@ -46,9 +46,29 @@ The remaining release invariants in the plan (concurrent-edit conflicts, undo an
 
 Run `pnpm --dir apps/viewer ai-eval review --recordings <run>/recordings --out <run>/review.json` to judge live answers with the same native code the CI harness uses. Promoting a live recording into the corpus is a human act: review it, add `expect` from the review output, set `corpus: "release"`, and keep its receipt. **No live run has been performed for this change**: the development machine has no provider configured. The runner is tested end to end against a local OpenAI-compatible server, which proves the plumbing, not any model.
 
+## Human labelling
+
+Label units: **claims** (one verdict per sentence of a prose answer: supported, unsupported, not-factual, cannot-judge) and **grouping** (the reviewer groups the captured clash findings first, then rates each proposed group and counts the corrections the proposal needed).
+
+```sh
+node scripts/ai-eval/label.mjs sheet --recording clash-summary-release --kind claims --reviewer r01 --out sheet.json
+# open scripts/ai-eval/label-tool.html in a browser, load the sheet, label it, save it
+node scripts/ai-eval/label.mjs check sheet.r01.json
+node scripts/ai-eval/label.mjs score a.json b.json   # Cohen's kappa (claims), adjusted Rand index (grouping)
+```
+
+Completed sheets go under `tests/ai-eval/labels/` and are validated by the manifest gate: schema, a pseudonymous reviewer id, the recorded answer's SHA-256 and claim text, no negative recordings. The page keeps the model's proposal hidden until every finding has the reviewer's own group; the JSON itself still contains it, so reviewers should use the page. Scores report denominators and give no agreement figure below two completed reviewers. Kappa excludes not-factual and cannot-judge items. No sheet is committed: the labels are for people to produce.
+
+## U01 coordinator study
+
+`tests/ai-eval/study/protocol.json` (status **proposed**) defines six tasks (find a check, trace a failure to 3D evidence, review a clash group, draft a BCF topic, author a Flow, locate the saved output), three roles, the `current` and `assisted` variants, a within-subject design, the measures and time caps. Each task names the verbatim participant prompt, start state, observable success criteria and its expected entry group and workspace panels; the viewer suite checks those are real registry panels in the registry's group. `node scripts/ai-eval/study.mjs script` prints the facilitator script.
+
+Facilitators write one `tests/ai-eval/study/sessions/<id>.json` per participant, task and variant (schema `session.schema.json`; participants are `p01`-style pseudonyms; the identity key stays outside the repository). `study.mjs check` validates them and `study.mjs summary` reports completion, unaided completion, median time, backtracks, panel switches and scope errors per task and variant. Thresholds are the plan's proposed pilot targets (90% unaided completion, assisted not below current, no wrong-target effects). The verdict is `insufficient-data` until every role has three participants, and `met` carries the caveat that the thresholds are not yet ratified. No sessions are committed.
+
 ## Still open for people
 
 - Independent claim and grouping labels and a privacy and licence review of every corpus fixture.
 - A live evaluation run against a configured provider, reviewed, with promoted recordings.
+- The six-task study with coordinator, author and occasional participants, and ratifying the thresholds from the pilot.
 - Evaluation tasks for the five journeys that have none, and a viewport screenshot for the authoring and Flow tasks.
-- The coordinator study and the full-program acceptance that closes P21 and U01.
+- The full-program acceptance that closes P21 and U01.

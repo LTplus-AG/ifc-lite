@@ -45,6 +45,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/wasm`](#ifc-litewasm) | WebAssembly bindings for IFC-Lite |
 | [`@ifc-lite/codegen`](#ifc-litecodegen) | TypeScript code generator from IFC EXPRESS schemas |
 | [`create-ifc-lite`](#create-ifc-lite) | Create IFC-Lite projects with one command |
+| [`@ifc-lite/ai`](https://www.npmjs.com/package/@ifc-lite/ai) | Provider-independent AI request core: transport contract, typed outcomes, root budgets, usage receipts and bounded JSON output parsing |
 | [`@ifc-lite/bcf-api`](https://www.npmjs.com/package/@ifc-lite/bcf-api) | BCF API (OpenCDE) REST client for connecting to BCF servers |
 | [`@ifc-lite/charts`](https://www.npmjs.com/package/@ifc-lite/charts) | Headless chart data binding for IFC-Lite: aggregate model rows into buckets that keep their element ids, build ECharts options, render SVG |
 | [`@ifc-lite/documents-api`](https://www.npmjs.com/package/@ifc-lite/documents-api) | OpenCDE Documents API 1.0 client: select, download, query and upload documents against a buildingSMART Documents API server |

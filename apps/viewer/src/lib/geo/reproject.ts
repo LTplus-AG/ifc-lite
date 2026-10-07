@@ -506,13 +506,13 @@ export async function reprojectPointToLatLon(
  *
  * The key must fold **every** input the reprojection reads, or an effect keyed
  * by it would leave a rendered lat/lon stale when a georef edit changes the
- * projection while the CRS name and rounded E/N stay put. `resolveProjection`
+ * projection while the CRS name and E/N stay put. `resolveProjection`
  * reads `name`, `mapZone`, `description` and `mapProjection`;
  * `reprojectPointToLatLon` additionally reads `mapUnitScale` and
- * `lengthUnitScale`. The E/N are quantised to ~millimetre in metre-space (unit
- * independent — the raw offsets may be millimetres or metres) so sub-mm hover
- * jitter does not spam proj4. Keeping this a pure function makes the
- * correctness-critical key derivation directly testable.
+ * `lengthUnitScale`. Preserve exact source coordinates: resolving their unit
+ * requires an asynchronous projection lookup, and rounding degrees as metres
+ * can collapse points kilometres apart. Identical inputs still share a key
+ * across unrelated renders without guessing the coordinate unit.
  *
  * @param eastings        Easting in the CRS map unit (as fed to reprojectPointToLatLon).
  * @param northings       Northing in the CRS map unit.
@@ -525,9 +525,6 @@ export function reprojectionInputKey(
   crs: ProjectedCRS,
   lengthUnitScale = 1,
 ): string {
-  const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
-  const eMm = Math.round(eastings * mapScale * 1000);
-  const nMm = Math.round(northings * mapScale * 1000);
   // JSON-encode rather than join with a delimiter: the free-text CRS fields
   // (name, mapZone, description, mapProjection) can legally contain any
   // character, and a delimiter that also appears in a field lets two different
@@ -540,8 +537,8 @@ export function reprojectionInputKey(
     crs.mapProjection ?? '',
     crs.mapUnitScale ?? '',
     lengthUnitScale,
-    eMm,
-    nMm,
+    eastings,
+    northings,
   ]);
 }
 

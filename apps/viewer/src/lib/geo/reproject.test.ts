@@ -542,12 +542,12 @@ describe('reprojectionInputKey (effect dependency correctness)', () => {
     mapProjection: 'UTM',
   };
 
-  it('quantises sub-millimetre E/N jitter to the same key', () => {
-    // mm CRS: eastings are millimetres, so nudges within the same millimetre
-    // bucket round identically (both 729013348.x -> 729013348).
+  it('preserves source-coordinate precision without guessing projected or angular units (#7060)', () => {
     const a = reprojectionInputKey(729013348.1, 9063992684.1, crs, 0.001);
     const b = reprojectionInputKey(729013348.4, 9063992684.4, crs, 0.001);
-    assert.strictEqual(a, b, 'sub-mm changes must not change the key');
+    assert.notStrictEqual(a, b, 'distinct source coordinates must invalidate the reprojection');
+    assert.strictEqual(a, reprojectionInputKey(729013348.1, 9063992684.1, crs, 0.001),
+      'identical inputs retain the same key across unrelated renders');
   });
 
   it('changes the key when E/N moves by more than a millimetre', () => {

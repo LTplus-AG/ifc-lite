@@ -64,7 +64,7 @@ export function EnhLine({ label, enh }: { label?: string; enh: Enh }) {
  * projection resolves and is `null` for a CRS proj4 can't resolve (the line is
  * simply absent). The effect is keyed by a primitive derived from *all* inputs
  * the reprojection consumes (CRS name + projection metadata + unit scales +
- * quantised E/N) so it recomputes on any georef edit but not on unrelated
+ * source E/N) so it recomputes on any georef edit but not on unrelated
  * re-renders — see {@link reprojectionInputKey}.
  */
 export function useProjectedLatLon(

@@ -105,6 +105,11 @@ export const aiExtractNode: FlowNodeDef = {
       requests += 1;
       sent += batch.size;
       if (reply.kind === 'failed') { failed += batch.size; ctx.log('warn', `passages ${start + 1}-${start + batch.size}: ${reply.message}`); continue; }
+      if (!Array.isArray(reply.value.records)) {
+        failed += batch.size;
+        ctx.log('warn', `passages ${start + 1}-${start + batch.size}: reply must contain a records array`);
+        continue;
+      }
       rows.push(...readRecords(reply.value, batch, fields));
     }
     if (rows.length > maxRecords) ctx.log('warn', `${rows.length - maxRecords} record(s) beyond maxRecords were dropped`);

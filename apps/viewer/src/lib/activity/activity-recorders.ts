@@ -9,7 +9,7 @@
  *
  *   load    recorded per canonical load by modelLoadCanceller, independent of shared UI flags
  *   clash   `clashRunning`, `clashProgress`, `clashError`, `clashRunSeq` (bumped only on success)
- *   ids     `idsLoading` with `idsProgress`, `idsError`, `idsValidationReport`
+ *   ids     recorded by useIDS per native run, before its first progress update
  *   flow    `flowRunning`, `flowProgress`, `flowLastRun.ok`, `flowLastError`, the run's abort signal; cancel = `cancelWorkflowRun`
  *   ai      request-service in-flight entries and their receipts; cancel aborts the request
  *
@@ -80,22 +80,6 @@ function watchClash(store: ViewerStoreLike): () => void {
   });
 }
 
-function watchValidation(store: ViewerStoreLike): () => void {
-  return watch(store, {
-    running: (s) => s.idsLoading && s.idsProgress !== null,
-    start: (s) => ({
-      job: { kind: 'check', title: 'activityTray.job.validation', panel: 'validation', subject: s.idsDocument?.info.title },
-      baseline: s.idsValidationReport,
-    }),
-    tick: (s) => (s.idsProgress && s.idsProgress.totalSpecifications > 0
-      ? { progress: { done: Math.min(s.idsProgress.specificationIndex + 1, s.idsProgress.totalSpecifications), total: s.idsProgress.totalSpecifications } }
-      : {}),
-    end: (s, before) => s.idsError
-      ? { outcome: 'failed', ...(typeof s.idsError === 'string' ? { detail: s.idsError } : {}) }
-      : { outcome: s.idsValidationReport && s.idsValidationReport !== before ? 'completed' : 'cancelled' },
-  });
-}
-
 function watchFlow(store: ViewerStoreLike): () => void {
   return watch(store, {
     running: (s) => s.flowRunning,
@@ -155,7 +139,7 @@ export function startActivityRecorders(store: ViewerStoreLike): () => void {
     restored = true;
     restoreActivityJournal(isCataloguedKey);
   }
-  const stops = [watchClash(store), watchValidation(store), watchFlow(store), watchRequests()];
+  const stops = [watchClash(store), watchFlow(store), watchRequests()];
   return () => { for (const stop of stops) stop(); };
 }
 

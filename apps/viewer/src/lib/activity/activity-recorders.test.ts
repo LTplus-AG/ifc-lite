@@ -14,7 +14,6 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { ValidationProgress, ValidationReport } from '@ifc-lite/ids';
 import { useViewerStore } from '@/store';
 import { runModelRequest } from '@/lib/llm/request-service';
 import { createRootBudget } from '@/lib/llm/root-budget';
@@ -80,17 +79,6 @@ describe('clash run recorder', () => {
 });
 
 describe('validation, Flow and load recorders', () => {
-  it('validation completes only with a new report', () => {
-    const progress: ValidationProgress = { phase: 'validating', specificationIndex: 1, totalSpecifications: 4, entitiesProcessed: 0, totalEntities: 9, percentage: 30 };
-    useViewerStore.setState({ idsLoading: true, idsProgress: progress });
-    assert.deepEqual(only().progress, { done: 2, total: 4 });
-    useViewerStore.setState({ idsLoading: false, idsProgress: null });
-    assert.equal(only().outcome, 'cancelled', 'no report was produced');
-    useViewerStore.setState({ idsLoading: true, idsProgress: progress });
-    useViewerStore.setState({ idsLoading: false, idsProgress: null, idsValidationReport: { source: { kind: 'ids' } } as unknown as ValidationReport });
-    assert.equal(jobs()[1].outcome, 'completed');
-  });
-
   it('a Flow run cancelled from the tray is cancelled even though the runner reports an error', () => {
     flowRun = startWorkflowRun(); // as useFlowRunner does before it raises flowRunning
     useViewerStore.setState({ flowRunning: true, flowProgress: 'Running node 2 of 5' });

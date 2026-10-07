@@ -11,7 +11,7 @@
 
 import '@/test/setup-dom.js';
 import '@/test/content-backup-fixture.js';
-import { clearContentDatabase } from '@/test/content-fixture.js';
+import { clearContentDatabase, refuseContentWrites } from '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -26,9 +26,9 @@ import '@/test/download-capture';
 import { Toaster } from '@/components/ui/toast';
 import { ContentStorageNotice } from '@/components/viewer/ContentStorageNotice';
 import { assistantLibrary } from '@/lib/assistant/library';
-import { cleanup, click, render, waitFor } from '@/test/render';
-import { detectCoincidentWalls, mountClashPanel, saveCurrentResultAs, savedClashReports } from '@/test/clash-report-fixture';
-import { readContentRows, writeContent } from './content-database';
+import { cleanup, click, render, type, waitFor } from '@/test/render';
+import { detectCoincidentWalls, mountClashPanel, openSavedReports, saveCurrentResultAs, savedClashReports } from '@/test/clash-report-fixture';
+import { contentTransaction, readContentRows, transactionDone, writeContent } from './content-database';
 import type { ContentKind } from './content-kinds';
 import { createContentBackup, importContentBackup, parseContentBackup, type ContentLibraries } from './content-backup';
 
@@ -154,6 +154,16 @@ describe('Saved clash reports in the library backup (#6947)', () => {
     assert.equal(JSON.stringify(renamed), JSON.stringify({ ...a, name: 'Run A renamed' }));
   });
 
+  it('staging, the path a refused import takes, cannot replace the evidence of a report already in the library', async () => {
+    const state = useViewerStore.getState();
+    await act(async () => { await state.stageClashReport({ ...a, clashes: [] }); });
+    assert.equal(savedClashReports().find((entry) => entry.id === a.id)?.clashes.length, 1, 'the charts of this tab keep reading the saved rows');
+    assert.equal(useViewerStore.getState().savedClashReportsStorage.items[a.id], 'saved', 'and the report is not turned into an unsaved draft');
+    // Control: staging is not refused wholesale. A report under a new id is held in this tab until it can be stored.
+    await act(async () => { await state.stageClashReport({ ...a, id: 'clash-report-staged', name: 'Staged copy' }); });
+    assert.equal(savedClashReports().find((entry) => entry.id === 'clash-report-staged')?.clashes.length, 1);
+  });
+
   it('refuses a name over the 200-character limit without touching the saved report', async () => {
     const state = useViewerStore.getState();
     await act(async () => { assert.equal(await state.renameSavedClashReport(a.id, 'n'.repeat(201)), false, 'a name the report format rejects is refused'); });
@@ -163,9 +173,57 @@ describe('Saved clash reports in the library backup (#6947)', () => {
     // The dialog's two name fields cannot exceed the limit in the first place.
     const open = [...document.body.querySelectorAll('button')].find((button) => button.getAttribute('aria-label') === 'Saved clash reports'); assert.ok(open); click(open);
     await waitFor(() => document.body.querySelector('input[aria-label="Report name"]') !== null, 'the dialog opens');
-    const fields = [...document.body.querySelectorAll<HTMLInputElement>('[role="dialog"] input')];
+    const fields = [...document.body.querySelectorAll<HTMLInputElement>('[role="dialog"] input:not([type="file"])')];
     assert.ok(fields.length >= 3, 'the save field and one rename field per report');
     assert.deepEqual([...new Set(fields.map((field) => field.maxLength))], [200]);
+  });
+
+  it('a report the browser refused to store is shown as unsaved in the dialog, and Retry save stores it', async () => {
+    const dialog = () => document.body.querySelector('[role="dialog"]');
+    const named = (name: string) => [...(dialog()?.querySelectorAll('button') ?? [])].find((button) => button.textContent?.trim() === name);
+    const durable = async () => (await readContentRows('clashReports' as ContentKind)).filter((row) => !row.deleted).map((row) => row.id).sort();
+    assert.doesNotMatch(dialog()?.textContent ?? '', /Browser storage is full/, 'control: with both reports stored the dialog reports no storage problem');
+    const refused = refuseContentWrites();
+    let unsaved: SavedClashReport | undefined;
+    try {
+      const input = dialog()?.querySelector<HTMLInputElement>('input[aria-label="Report name"]'); assert.ok(input);
+      type(input, 'Run C');
+      const save = named('Save current result'); assert.ok(save); click(save);
+      await waitFor(() => {
+        unsaved = savedClashReports().find((entry) => entry.name === 'Run C');
+        return !!unsaved && useViewerStore.getState().savedClashReportsStorage.items[unsaved.id] === 'quota';
+      }, 'the write is refused and the report stays in this tab');
+      assert.ok(unsaved);
+      assert.deepEqual(await durable(), [a.id, b.id].sort(), 'the reports already stored are untouched and the new one is not stored');
+      // The list alone cannot tell the unsaved report from the stored ones; the dialog has to say it.
+      assert.match(dialog()?.textContent ?? '', /Browser storage is full\. Your changes remain in this tab\./, 'the dialog says the report is not stored');
+    } finally { refused.mock.restore(); }
+    const retry = named('Retry save'); assert.ok(retry, 'and offers to store it again');
+    click(retry);
+    await waitFor(() => useViewerStore.getState().savedClashReportsStorage.items[unsaved?.id ?? ''] === 'saved', 'the retry stores the report');
+    assert.deepEqual(await durable(), [a.id, b.id, unsaved.id].sort());
+    assert.doesNotMatch(dialog()?.textContent ?? '', /Browser storage is full/);
+  });
+
+  it('a library that cannot be read says so in the dialog instead of "No saved clash reports yet"', async () => {
+    // A row this build cannot read, as a newer build of the viewer would leave behind: report format 2.
+    const tx = await contentTransaction('items', 'readwrite'), done = transactionDone(tx);
+    tx.objectStore('items').put({ kind: 'clashReports', id: 'newer', version: 1, revision: 1, createdAt: 1, modifiedAt: 1, deleted: false, payload: { ...a, id: 'newer', version: 2 } });
+    await done;
+    cleanup();
+    await act(async () => {
+      useViewerStore.setState({ ...original, mutationVersion: 0 });
+      assert.equal(await useViewerStore.getState().refreshSavedClashReports(), false, 'the library refuses to load around a row it cannot read');
+    });
+    assert.deepEqual(savedClashReports(), []);
+    mountClashPanel();
+    await openSavedReports();
+    const dialog = () => document.body.querySelector('[role="dialog"]')?.textContent ?? '';
+    await waitFor(() => !/Loading saved content/.test(dialog()), 'the dialog finishes its own attempt to open the library');
+    const text = dialog();
+    assert.doesNotMatch(text, /No saved clash reports yet/, 'two readable reports are stored: the list is unread, not empty');
+    assert.match(text, /Browser storage is unavailable\./, 'the dialog says the saved reports could not be read');
+    assert.deepEqual((await readContentRows('clashReports' as ContentKind)).map((row) => row.id).sort(), [a.id, b.id, 'newer'].sort(), 'and nothing stored was touched');
   });
 
   it('refuses a backup whose clash report is not a valid report', async () => {

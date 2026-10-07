@@ -160,6 +160,12 @@ them back, and a report that conflicts with one you already have arrives as a
 separate copy. Deleting a report warns that charts reading it will show it as
 unavailable.
 
+The dialog also says whether the reports are stored. If the browser refuses a
+write (storage full or blocked), the report stays in the list for this tab
+only, the dialog says so and offers **Retry save**; if the saved reports
+cannot be read, it says that instead of showing an empty list. **Storage and
+backup** is in the same dialog.
+
 Each [clash chart](charts.md#saved-clash-report-charts) can read the current
 result or one saved report, which is how two charts show two runs side by
 side. A saved report is evidence of the model it ran on. It is never matched

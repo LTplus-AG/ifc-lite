@@ -16,6 +16,7 @@ import { Archive, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
+import { ContentStorageNotice } from '@/components/viewer/ContentStorageNotice';
 import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import { useTranslation } from '@/i18n';
 import { CLASH_REPORT_LIMITS, clashReportRevision, defaultClashReportName, snapshotClashReport, type SavedClashReport } from '@/lib/clash/saved-report';
@@ -63,6 +64,7 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
   const rawResult = useViewerStore((s) => s.clashRawResult);
   const running = useViewerStore((s) => s.clashRunning);
   const reports = useViewerStore((s) => s.savedClashReports);
+  const storage = useViewerStore((s) => s.savedClashReportsStorage);
   const stale = useAnalysisStaleness(analysisStampOf(rawResult ?? result));
   const [name, setName] = useState('');
   // What the saved report will be labelled with, in the words its charts will use.
@@ -107,8 +109,12 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
               {limits.length > 0 && ` ${t('clashTools.savedReports.currentLimits', { limits: limits.join(', ') })}`}
             </div>
           </div>
+          {/* Whether a report is stored, and why the list may be unread: the same notice every saved content library shows. */}
+          <ContentStorageNotice status={storage} retry={() => useViewerStore.getState().retrySaveClashReports()}
+            restore={() => useViewerStore.getState().restoreSavedClashReports()} />
           {reports.length === 0
-            ? <div className="text-xs text-muted-foreground">{t('clashTools.savedReports.empty')}</div>
+            // Only a library that was read can be called empty; loading or unreadable is the notice's to say.
+            ? storage.phase === 'ready' && <div className="text-xs text-muted-foreground">{t('clashTools.savedReports.empty')}</div>
             : <ul className="max-h-72 space-y-1.5 overflow-y-auto pr-1" aria-label={t('clashTools.savedReports.triggerTooltip')}>
               {reports.map((report) => <ReportRow key={report.id} report={report} />)}
             </ul>}

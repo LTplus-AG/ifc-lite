@@ -32,15 +32,18 @@ export interface ClashReportActions {
 
 export function clashReportActions(library: Controller, reports: () => readonly SavedClashReport[],
   sameEvidence: (left: unknown, right: unknown) => boolean): ClashReportActions {
+  // The one immutability rule of both ways in: under an id the library already holds, only the name may differ.
+  const conflicts = (report: SavedClashReport): boolean => {
+    const existing = reports().find((entry) => entry.id === report.id);
+    if (!existing || sameEvidence({ ...existing, name: report.name }, report)) return false;
+    console.warn('[Clash reports] Refusing conflicting evidence ID', report.id);
+    return true;
+  };
   return {
-    stage: (entry) => { if (isSavedClashReport(entry)) library.stage(entry.id, entry); },
+    stage: (entry) => { if (isSavedClashReport(entry) && !conflicts(entry)) library.stage(entry.id, entry); },
     save: (report) => {
       if (!isSavedClashReport(report)) { console.warn('[Clash reports] Refusing an invalid report'); return Promise.resolve(false); }
-      const existing = reports().find((entry) => entry.id === report.id);
-      if (existing && !sameEvidence({ ...existing, name: report.name }, report)) {
-        console.warn('[Clash reports] Refusing conflicting evidence ID', report.id); return Promise.resolve(false);
-      }
-      return library.put(report.id, report);
+      return conflicts(report) ? Promise.resolve(false) : library.put(report.id, report);
     },
     rename: (id, name) => {
       const entry = reports().find((value) => value.id === id);

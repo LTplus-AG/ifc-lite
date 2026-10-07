@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { MemoCache } from '@ifc-lite/flow';
+import { resumeOutputs, type FlowCheckpoint } from '@ifc-lite/flow/checkpoint';
 import { useBim } from '@/sdk/BimProvider';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
@@ -24,13 +25,19 @@ import { createViewerOpenModel } from '@/lib/flow/open-model';
 import { createAutomationHost } from '@/lib/flow/automation-host';
 import { preflightWorkflow, isAutomationGraph } from '@/lib/flow/preflight';
 import { startWorkflowRun, cancelWorkflowRun } from '@/lib/flow/run-session';
+import { claimReview, finishReview, pauseForReview } from '@/lib/flow/review-session';
+
+export interface FlowRunOptions {
+  /** Resume from this approved review checkpoint (#6923): its completed nodes are restored, not run again. */
+  readonly resume?: FlowCheckpoint;
+}
 
 /** Ids of every pending mutation, on every model. */
 function pendingMutationIds(): Set<string> {
   return new Set([...useViewerStore.getState().undoStacks.values()].flat().map((mutation) => mutation.id));
 }
 
-export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Promise<void>; canRun: boolean; cancel: () => void } {
+export function useFlowRunner(): { run: (inputs?: Record<string, unknown>, options?: FlowRunOptions) => Promise<void>; canRun: boolean; cancel: () => void } {
   const bim = useBim();
   const flowDoc = useViewerStore((s) => s.flowDoc);
   const flowRunning = useViewerStore((s) => s.flowRunning);
@@ -55,7 +62,7 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
   const automationGraph = flowDoc ? isAutomationGraph(flowDoc) : false;
   const canRun = flowDoc !== null && !flowRunning && (activeModelId !== null || automationGraph);
 
-  const run = useCallback(async (inputs?: Record<string, unknown>) => {
+  const run = useCallback(async (inputs?: Record<string, unknown>, options: FlowRunOptions = {}) => {
     if (!flowDoc || (!activeModelId && !automationGraph) || running.current || useViewerStore.getState().flowRunning) return;
     let session;
     try { session = startWorkflowRun(); } catch (error) {
@@ -106,9 +113,20 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
     // Another graph opened while this one ran: its panel must not show, or
     // publish, this run (#5380 review). `openFlow` already cleared the result.
     const stillOpen = (): boolean => useViewerStore.getState().flowDoc === initialDoc;
+    const { resume } = options;
+    let claimed: FlowCheckpoint | null = null;
     try {
-      const preparedInputs = await preflightWorkflow(session, doc, inputs ?? {}, viewerFlowFeatures(true));
+      // AI nodes get the Assistant's model, spending one root budget per run; a
+      // resume continues the paused run's budget, and its restored nodes need no model.
+      const restored = new Set(Object.keys(resume?.outputs ?? {}));
+      const ai = doc.nodes.some((n) => n.type.startsWith('ai.') && !restored.has(n.id))
+        ? (await import('@/lib/flow/ai-host')).viewerFlowAi(resume?.budget) : null;
+      const preparedInputs = await preflightWorkflow(session, doc, inputs ?? {}, viewerFlowFeatures(true, !!ai), restored);
       session.check();
+      if (resume) {
+        claimed = await claimReview(doc, preparedInputs);
+        if (!claimed) throw new Error('the reviewed proposal could not be resumed');
+      }
       const ownedAddModel: typeof addModel = (file, options) => addModel(file, { ...options, workflowOwner: session.id });
       const automation = createAutomationHost(session, doc, ownedAddModel, (artifact) => {
         session.check();
@@ -118,11 +136,18 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
       const result = await runFlowInViewer({
         doc, bim, pin, cache, inputs: preparedInputs, signal: session.controller.signal, automation, tables: viewerTableAccess(useViewerStore),
         openModel: createViewerOpenModel(ownedAddModel, (id) => useViewerStore.getState().models.has(id)),
+        ...(ai ? { ai: ai.service } : {}),
+        ...(claimed ? { resume: resumeOutputs(claimed) } : {}),
       });
+      if (claimed) await finishReview(result);
+      claimed = null;
+      // A proposal awaits review: nothing downstream ran. Save it before showing the run.
+      if (result.ok && result.review.length > 0) await pauseForReview({ doc, result, inputs: preparedInputs, values: inputs ?? {}, budget: ai ? { ...ai.budget } : resume?.budget });
       session.check();
       if (stillOpen()) setFlowLastRun(result, undefined, record());
       else setFlowRunning(false);
     } catch (err) {
+      if (claimed) await finishReview(null, err instanceof Error ? err.message : String(err));
       if (stillOpen()) setFlowLastRun(null, err instanceof Error ? err.message : String(err), record());
       else setFlowRunning(false);
     } finally {

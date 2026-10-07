@@ -395,3 +395,20 @@ it('#7039 JSON review preserves every grouped proposal branch and nested value',
   await flowCommand(['review', path, '--json']);
   expect(c.json()).toMatchObject({ proposal: { proposal: { table: { kind: 'group', branches } } } });
 });
+
+it('#7039 malformed resume flags leave the approved checkpoint unclaimed for retry', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-malformed-resume-'));
+  const checkpoint = join(dir, 'cp.json');
+  const model = provider();
+  const c = capture();
+  exits();
+  await expect(flowCommand(['run', AI_FLOW, SAMPLE_IFC, '--checkpoint', checkpoint, '--no-tracking', '--json'])).rejects.toThrow('exit 3');
+  const digest = (c.json() as { checkpoint: { proposalDigest: string } }).checkpoint.proposalDigest;
+  await flowCommand(['review', checkpoint, '--approve', digest]);
+  const requestCount = model.calls.length;
+  for (const flag of ['--tracking', '--out', '--ai-max-requests', '--ai-max-output-tokens']) {
+    await expect(flowCommand(['resume', AI_FLOW, SAMPLE_IFC, '--checkpoint', checkpoint, '--no-tracking', flag])).rejects.toThrow('exit 1');
+    expect((await new FileCheckpointStore(checkpoint).read(JSON.parse(await readFile(checkpoint, 'utf-8')).checkpoint.id))?.checkpoint.state).toBe('reviewed');
+    expect(model.calls).toHaveLength(requestCount);
+  }
+});

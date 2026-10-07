@@ -33,21 +33,23 @@ function readItem(key: string): string | null {
   catch (error) { console.warn('[sidebar] Failed to read layout storage:', error); return null; }
 }
 
-export function writeSidebarLayout(layout: StoredSidebarLayout): void {
+export function writeSidebarLayout(layout: StoredSidebarLayout, beforeImport = false): boolean {
   const store = storage();
-  if (!store) return;
+  if (!store) return true;
   try {
     const original = store.getItem(SIDEBAR_LAYOUT_KEY);
     if (original !== null) {
       let parsed: unknown;
       try { parsed = JSON.parse(original); }
       catch (error) { console.warn('[sidebar] Preserving unreadable original layout:', error); parsed = ''; }
-      if (migrateSidebarLayout(parsed).changes.length > 0 && !backupOriginal(original)) return;
+      if ((beforeImport || migrateSidebarLayout(parsed).changes.length > 0) && !backupOriginal(original)) return false;
     }
     store.setItem(SIDEBAR_LAYOUT_KEY, JSON.stringify(layout));
+    return true;
   } catch (error) {
     // Quota / private mode: the layout just won't persist this session.
     console.warn('[sidebar] failed to persist layout:', error);
+    return false;
   }
 }
 

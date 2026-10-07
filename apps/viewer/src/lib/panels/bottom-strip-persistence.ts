@@ -28,12 +28,13 @@ export const BOTTOM_STRIP_DEFAULT_HEIGHT = 300;
 export const BOTTOM_STRIP_MAX_RATIO = 0.7;
 
 /** Tab ids this build does not know (a newer build's panel), written back on
- *  every persist so a release rollback does not erase them (#6927). */
+ *  every persist by this preservation-aware build (#6927). */
 let preservedTabs: string[] = [];
 
 /** The persisted tab order, filtered to ids the current build still knows —
  *  a corrupt entry is dropped; an unknown id is kept in storage, not shown. */
 export function loadBottomStripTabs(): BottomPanelId[] {
+  preservedTabs = [];
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(TABS_STORAGE_KEY);
@@ -42,7 +43,6 @@ export function loadBottomStripTabs(): BottomPanelId[] {
     if (!Array.isArray(parsed)) return [];
     const seen = new Set<BottomPanelId>();
     const out: BottomPanelId[] = [];
-    preservedTabs = [];
     for (const entry of parsed) {
       if (typeof entry !== 'string' || entry.length > 200) continue;
       if (!isBottomPanel(entry)) {

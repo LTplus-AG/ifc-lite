@@ -45,10 +45,11 @@ function defaultRect(index: number): { x: number; y: number; w: number; h: numbe
 }
 
 /** Floating entries for a panel this build does not know (a newer build's or
- *  an extension's), written back verbatim so a rollback never loses them (#6927). */
+ *  an extension's), retained on saves by this preservation-aware build (#6927). */
 let preservedFloating: Array<Omit<FloatingPanelState, 'id'> & { id: string }> = [];
 
 function loadPersisted(): FloatingPanelState[] {
+  preservedFloating = [];
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -68,7 +69,6 @@ function loadPersisted(): FloatingPanelState[] {
     // An id that is neither current nor a known legacy alias is not shown but
     // stays in storage (#6927).
     const out: FloatingPanelState[] = [];
-    preservedFloating = [];
     for (const p of valid) {
       const id = migratePanelId(p.id);
       if (id === undefined) preservedFloating.push(p);

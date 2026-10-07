@@ -36,7 +36,7 @@ export interface ArtifactRef { kind: ArtifactKind; id: string }
 export type ParsedDeepLink =
   | { ok: true; panel: WorkspacePanelId; artifact: ArtifactRef | null }
   | { ok: false; reason: 'unknown-panel'; panel: string }
-  | { ok: false; reason: 'conflicting-target'; panel: WorkspacePanelId; artifact: ArtifactRef }
+  | { ok: false; reason: 'conflicting-target'; panel: WorkspacePanelId; artifact: ArtifactRef | null }
   | { ok: false; reason: 'invalid-id'; kind: ArtifactKind };
 
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
@@ -58,6 +58,10 @@ export function parseDeepLink(search: string | URLSearchParams): ParsedDeepLink 
   }
   if (rawPanel === null) return { ok: true, panel: ARTIFACT_PANEL[artifact!.kind], artifact };
   const panel = migratePanelId(rawPanel);
+  if (params.getAll('panel').some(value => migratePanelId(value) !== panel)) {
+    if (panel === undefined) return { ok: false, reason: 'unknown-panel', panel: rawPanel.slice(0, 80) };
+    return { ok: false, reason: 'conflicting-target', panel, artifact };
+  }
   if (panel === undefined) return { ok: false, reason: 'unknown-panel', panel: rawPanel.slice(0, 80) };
   if (artifact && ARTIFACT_PANEL[artifact.kind] !== panel) return { ok: false, reason: 'conflicting-target', panel, artifact };
   return { ok: true, panel, artifact };

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -49,6 +49,7 @@ import { SearchModal } from './SearchModal';
 import { FlowStartupPrompt } from './flow/FlowStartupPrompt';
 import { TourHost } from '@/components/tours/TourHost';
 import { SidebarDock } from './sidebar/SidebarDock';
+const LayoutMigrationNotice = lazy(() => import('./sidebar/LayoutMigrationNotice').then(module => ({ default: module.LayoutMigrationNotice })));
 import { FloatingPanelHost } from './dock/FloatingPanelHost';
 import { PanelWindowHost } from './dock/PanelWindowHost';
 import {
@@ -151,6 +152,7 @@ export function ViewerLayout() {
   }, [shortcutsDialog]);
 
   const isMobile = useViewerStore((s) => s.isMobile);
+  const hasLayoutMigration = useViewerStore((s) => s.layoutMigrationChanges.length > 0);
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
   const rightPanelCollapsed = useViewerStore((s) => s.rightPanelCollapsed);
   const setLeftPanelCollapsed = useViewerStore((s) => s.setLeftPanelCollapsed);
@@ -263,6 +265,8 @@ export function ViewerLayout() {
         {isMobile
           ? <MobileToolbar />
           : <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />}
+
+        {isMobile && hasLayoutMigration && <Suspense fallback={null}><LayoutMigrationNotice /></Suspense>}
 
         {/* Main Content Area - Desktop Layout */}
         {!isMobile && (

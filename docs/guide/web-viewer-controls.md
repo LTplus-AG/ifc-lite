@@ -197,7 +197,9 @@ The hosted service includes a Rust Forma proposal importer and a Windows Autodes
 
 ## Layout migration and saved-artifact links
 
-When an older saved layout is upgraded, **Review your updated layout** lists renamed, added and unavailable panels. **Show changes** keeps that list scrollable so **Keep layout** and **Reset layout** remain reachable. Keep acknowledges the migrated layout; Reset uses the workspace's normal reset. Both retain unavailable extension placements, their anchors and hidden state, and the original stored layout in a local rollback backup. If that backup cannot be written, the original layout is not overwritten.
+When an older saved layout is upgraded, **Review your updated layout** lists renamed, added and unavailable panels. **Show changes** keeps that list scrollable so **Keep layout** and **Reset layout** remain reachable. Keep acknowledges the migrated layout; Reset uses the workspace's normal reset. Both retain unavailable extension placements, their anchors and hidden state, and the original stored layout in a local rollback backup. Importing a legacy layout also backs up the current layout before replacing it. If that backup cannot be written, the original stored layout is not overwritten. These controls are available on desktop and mobile.
+
+Older builds can read the common mode, width, order and hidden fields. Their saves may discard newer placement metadata; automatic preservation across such older writers is not guaranteed. The local backup retains the pre-migration or pre-import value for recovery.
 
 Panel links use `?panel=<panel id>`; retired panel IDs resolve to their current panel. Saved artifacts can be opened with `?conversation=<id>`, `?receipt=<id>` or `?bcfDraft=<id>`. These refer to saved Assistant conversations, reviewed model-change receipts and BCF draft batches in this browser's own library. A link does not transfer the artifact to another browser. Missing or unreadable artifacts open their owning panel with an explanation. Conflicting destinations and invalid IDs are refused.
 

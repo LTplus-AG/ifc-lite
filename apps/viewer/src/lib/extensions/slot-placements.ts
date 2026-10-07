@@ -48,8 +48,8 @@ export const SLOT_PLACEMENTS: Readonly<Record<string, SlotPlacement>> = {
   // EntityContextMenuItems.tsx
   'contextMenu.entity': RENDERED,
   'contextMenu.canvas': RENDERED,
-  // Read from the manifest by host-flows.ts, not through the registry.
-  flowLibrary: RENDERED,
+  // Manifest flows are supported, but registry contributions have no renderer.
+  flowLibrary: NOT_RENDERED,
   'toolbar.left': NOT_RENDERED,
   'toolbar.center': NOT_RENDERED,
   'contextMenu.tree': NOT_RENDERED,

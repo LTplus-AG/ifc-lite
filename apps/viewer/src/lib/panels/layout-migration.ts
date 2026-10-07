@@ -7,9 +7,10 @@
  *
  * Version 1 is the unversioned `ifc-lite:sidebar-layout-v1` value written
  * since #1208: `{ mode, widthPct, order, hiddenIds }`. Version 2 adds a
- * `version` field and `preserved` placements. Both stay readable by every
- * build: a v1 build reads the four v1 fields and ignores the rest, so rolling
- * a release back never loses the layout.
+ * `version` field and `preserved` placements. A v1 build can read the four
+ * common fields, but its next save drops v2 metadata. Unknown placements
+ * survive saves only in builds that implement preservation; the backup
+ * remains a recovery source when returning from an older writer.
  *
  * Rules, each reported as a {@link LayoutChange} so the user can preview what
  * moved and reset if they disagree:

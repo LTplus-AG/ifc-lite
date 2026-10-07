@@ -108,7 +108,8 @@ function redactValue(value: unknown, depth = 0): unknown {
 
 /** `window`: `useFlowRunner` records it once a run started, including one that then threw. */
 export function flowRunVerdict(run: RunResult | null, error: string | null, window: FlowRunWindow | null): FlowRunVerdict {
-  if (!run) return error ? (window ? 'failed' : 'refused') : 'not-run';
+  // An error with an empty message is still an error.
+  if (!run) return error !== null ? (window ? 'failed' : 'refused') : 'not-run';
   if (!run.ok) return 'failed';
   if (run.reports.some(report => report.laneErrors > 0)) return 'lane-errors';
   return run.reports.some(report => report.warnings.length > 0) || run.log.some(entry => entry.level === 'warn') ? 'warnings' : 'passed';
@@ -157,7 +158,7 @@ export function flowRunDiagnostics(state: FlowRunState): FlowRunDiagnostics | nu
   return {
     graphId: doc.id,
     verdict: flowRunVerdict(run, state.flowLastError, state.flowLastRunWindow),
-    refusal: state.flowLastError ? text(state.flowLastError) : null,
+    refusal: state.flowLastError !== null ? text(state.flowLastError) : null,
     durationMs: window ? window.end - window.start : null,
     writes: run?.writes ?? null,
     nodes: run ? run.reports.slice(0, MAX_NODES).map(report => nodeDiagnostic(report, run, doc, branch)) : [],

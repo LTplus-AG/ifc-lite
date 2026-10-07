@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import type { FlowDocument, NodeReport, RunLogEntry, RunResult } from '@ifc-lite/flow';
 import { newFlowDocument } from '../flow/persistence';
 import type { ViewerState } from '@/store';
-import { flowRunDiagnostics, isFailingNode } from './flow-run-evidence';
+import { flowRunDiagnostics, flowRunVerdict, isFailingNode } from './flow-run-evidence';
 import { flowRunAdapter, pinnedFlowRun } from './adapters/flow-run';
 import { sameIdentity } from './adapters/types';
 import { flowRegistry } from '../flow/runner';
@@ -83,4 +83,10 @@ test('#6919 a flowRun snapshot pins its run; another run or refusal replaces the
   assert.equal(sameIdentity(pinned, identity(first)), true);
   assert.equal(sameIdentity(pinned, identity({ ...first, flowLastRun: run(healthy) })), false, 'an identical rerun is a different run');
   assert.equal(sameIdentity(pinned, identity({ ...first, flowLastError: 'refused' })), false);
+});
+
+test('#6919 an error with an empty message is still a refusal or a failure, never "not run"', () => {
+  assert.equal(flowRunVerdict(null, null, null), 'not-run');
+  assert.equal(flowRunVerdict(null, '', null), 'refused');
+  assert.equal(flowRunVerdict(null, '', { start: 0, end: 1, doc: newFlowDocument('Run'), mutationIds: new Set() }), 'failed');
 });

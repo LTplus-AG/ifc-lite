@@ -27,3 +27,11 @@ test('#6927 a versioned layout restores newly available panels at their preserve
   assert.ok(result.layout.hiddenIds.includes('assistant'));
   assert.ok(result.changes.some(change => change.kind === 'restored' && change.id === 'assistant'));
 });
+
+test('#6927 a newly shipped Assistant joins the final captured Coordinate panel instead of the rail tail', () => {
+  const input = { order: [...WORKSPACE_PANELS.map(panel => panel.id).filter(id => id !== 'assistant' && id !== 'properties'), 'properties'],
+    mode: 'expanded', hiddenIds: [] };
+  const result = migrateSidebarLayout(input);
+  assert.equal(result.layout.order[result.layout.order.indexOf('properties') + 1], 'assistant');
+  assert.deepEqual(result.layout.order.filter(id => id !== 'assistant'), input.order);
+});

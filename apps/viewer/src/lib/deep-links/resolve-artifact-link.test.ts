@@ -19,7 +19,7 @@ afterEach(() => { useViewerStore.setState(initial, true); useAssistant.setState(
 async function archive(id: string) {
   const evidence = captureEvidence('selection');
   const entry: SavedConversation = { version: 1, id, name: id, savedAt: new Date().toISOString(), model: 'recorded-test-model',
-    evidence, messages: [{ role: 'user', content: 'Recorded fixture question' }, { role: 'assistant', content: 'Recorded fixture answer', model: 'recorded-test-model' }] };
+    evidence, messages: [{ role: 'user', content: `Recorded question for ${id}` }, { role: 'assistant', content: `Recorded answer for ${id}`, model: 'recorded-test-model' }] };
   assert.equal(await assistantLibrary.put(id, entry), true);
   return entry;
 }

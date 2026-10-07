@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import '@/test/content-backup-fixture.js';
+import { useViewerStore } from '@/store';
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { FLOW_VERSION } from '@ifc-lite/flow';
@@ -50,4 +51,17 @@ test('#7055 recipe export enforces the importable recipe and graph boundaries', 
   const acceptedFlows = exportRecipeBundle(linked.slice(0, 20), flows);
   assert.ok(acceptedFlows.ok); assert.ok(parseRecipeBundle(acceptedFlows.json).ok);
   assert.deepEqual(exportRecipeBundle(linked, flows), { ok: false, reason: 'too-large' });
+});
+
+test('#7055 portable graph import assigns a fresh identity even without a destination collision', async () => {
+  const previous = useViewerStore.getState();
+  try {
+    useViewerStore.setState({ savedFlows: [], flowDoc: null, activeFlowId: null, flowDirty: false, flowRunning: false });
+    const result = await importRecipeBundle(bundle, doc => useViewerStore.getState().importFlow(doc));
+    const native = useViewerStore.getState().flowDoc; assert.ok(native);
+    assert.notEqual(native.id, bundle.flows[0].id);
+    assert.deepEqual(result.recipes[0].steps, [{ kind: 'flow', flowId: native.id }]);
+    assert.equal(native.name, bundle.flows[0].name);
+    assert.equal(await assistantRecipeLibrary.put(result.recipes[0].id, null), true);
+  } finally { useViewerStore.setState(previous, true); }
 });

@@ -19,7 +19,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanup, render } from '@/test/render.js';
 import { WORKSPACE_PANELS, workspacePanelForShortcutCode } from '@/lib/panels/registry';
-import { en } from '@/i18n/en';
+import { englishCatalogue as en } from '@/i18n/en';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog.js';
 import { setPlatform } from '@/test/platform.js';
 

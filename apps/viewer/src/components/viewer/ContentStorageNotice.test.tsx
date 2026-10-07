@@ -15,6 +15,7 @@ import { createContentBackup, parseContentBackup, readBackupDrafts, readContentR
 import '@/test/download-capture';
 import { Toaster } from '@/components/ui/toast';
 import { useClashGroupApplications } from '@/lib/clash/group-applications';
+import { useSemanticReviews } from '@/lib/semantic/assist/library';
 import { ContentStorageNotice } from './ContentStorageNotice';
 
 afterEach(cleanup);
@@ -291,4 +292,17 @@ it('#6906 whole-library export waits for the clash group apply receipts too', as
     await act(async () => { useClashGroupApplications.setState({ status: { ...status, phase: 'ready' } }); });
     assert.equal(button.disabled, false);
   } finally { useClashGroupApplications.setState({ status }); }
+});
+
+it('#7000 whole-library backup waits for semantic review decisions to load', async () => {
+  const status = useSemanticReviews.getState().status;
+  useSemanticReviews.setState({ status: { ...status, phase: 'loading' } });
+  try {
+    const ui = render(<Notice />);
+    const button = [...ui.querySelectorAll('button')].find(value => value.textContent === 'Download library backup');
+    assert.ok(button);
+    assert.equal(button.disabled, true, 'an export during loading would silently omit saved semantic decisions');
+    await act(async () => { useSemanticReviews.setState({ status: { ...status, phase: 'ready' } }); });
+    assert.equal(button.disabled, false, 'the backup becomes available after the library finishes loading');
+  } finally { useSemanticReviews.setState({ status }); }
 });

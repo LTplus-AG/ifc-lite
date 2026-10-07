@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ifclite.dev/schemas/ai-eval/label-sheet-v1.json",
+  "title": "IFClite AI evaluation label sheet (version 1)",
+  "description": "One reviewer's labels for one recording: claims (per-sentence support verdicts) or grouping (independent grouping of the captured clash findings, then ratings of the proposed groups). Built by scripts/ai-eval/label.mjs; reviewer ids are pseudonymous.",
+  "type": "object",
+  "required": ["version", "id", "recording", "task", "kind", "answerSha256", "reviewer"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{2,160}$" },
+    "recording": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,80}$" },
+    "task": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,80}$" },
+    "kind": { "enum": ["claims", "grouping"] },
+    "answerSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "reviewer": {
+      "type": "object",
+      "required": ["id", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,31}$", "description": "Pseudonymous reviewer id; never a name or e-mail address." },
+        "status": { "enum": ["blank", "complete"] }
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "citations", "verdict", "note"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "text": { "type": "string" },
+          "citations": { "type": "array", "items": { "type": "string" } },
+          "verdict": { "type": ["string", "null"] },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["citation", "summary", "group"],
+        "additionalProperties": false,
+        "properties": {
+          "citation": { "type": "string" },
+          "summary": { "type": "string" },
+          "group": { "type": ["string", "null"], "description": "The reviewer's own group label, or __unclassified__." }
+        }
+      }
+    },
+    "proposal": {
+      "type": "object",
+      "required": ["groups", "corrections"],
+      "additionalProperties": false,
+      "properties": {
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "citations", "verdict", "note"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "citations": { "type": "array", "items": { "type": "string" } },
+              "verdict": { "type": ["string", "null"] },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "corrections": { "type": ["integer", "null"], "minimum": 0, "description": "How many moves, merges or splits the reviewer needed to turn the proposal into their grouping." }
+      }
+    }
+  }
+}

@@ -5,7 +5,8 @@
 import type { SavedConversation, AssistantMessage } from './persistence';
 import { create } from 'zustand';
 import type { EvidenceSnapshot } from './evidence';
-import { createRootBudget, type RootBudget } from '../llm/root-budget';
+import type { RootBudget } from '@ifc-lite/ai';
+import { createRootBudget } from '../llm/root-budget';
 
 interface ConversationState {
   snapshot: EvidenceSnapshot | null;

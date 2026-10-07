@@ -15,6 +15,7 @@
  * for `UseIDSResult`'s callers, none of which have changed shape.
  */
 
+import { beginActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
 import { runIdsCheck } from '@/lib/validation/run-ids-check';
 import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
 import { useCallback, useEffect, useRef } from 'react';
@@ -193,6 +194,10 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     const abortController = new AbortController();
     workerAbortRef.current = abortController;
     const stamp = captureAnalysisStamp();
+    const job = beginActivity({ kind: 'check', title: 'activityTray.job.validation', panel: 'validation', subject: document.info.title,
+      cancel: () => { abortController.abort(); if (workerAbortRef.current === abortController) cancelValidation(); } });
+    let outcome: 'completed' | 'failed' | 'cancelled' = 'cancelled';
+    let detail: string | undefined;
 
     try {
       setIdsLoading(true);
@@ -220,6 +225,9 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
         if (p.phase === 'complete' || now - lastProgressUpdate >= 120) {
           lastProgressUpdate = now;
           setIdsProgress(p);
+          if (p.totalSpecifications > 0) updateActivity(job, { progress: {
+            done: Math.min(p.specificationIndex + 1, p.totalSpecifications), total: p.totalSpecifications,
+          } });
         }
       };
 
@@ -232,6 +240,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       // awaited the worker/main-thread validation above (#2802).
       if (!stillWanted(myEpoch)) return null;
       setIdsValidationReport(stampAnalysisReport(validationReport, stamp), snapshot);
+      outcome = 'completed';
 
       posthog.capture('ids_validation_completed', {
         total_specifications: validationReport.summary.totalSpecifications,
@@ -248,11 +257,14 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     } catch (err) {
       if (!stillWanted(myEpoch) || (err instanceof Error && err.name === 'AbortError')) return null;
       const message = err instanceof Error ? err.message : 'Validation failed';
+      outcome = 'failed';
+      detail = message;
       setIdsError(message);
       posthog.captureException(err, { context: 'ids_validation', ...errorCaptureProps(err) });
       console.error('[IDS] Validation error:', err);
       return null;
     } finally {
+      finishActivity(job, outcome, detail ? { detail } : {});
       if (workerAbortRef.current === abortController) workerAbortRef.current = null;
       // A superseded call must not report itself as no-longer-loading — the
       // call that superseded it is the one actually in flight (#2802).
@@ -260,7 +272,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     }
   }, [
     document, ifcDataStore, models, activeModelId, locale, getMutationView,
-    setIdsLoading, setIdsError, setIdsProgress, setIdsValidationReport, bumpEpoch, stillWanted,
+    setIdsLoading, setIdsError, setIdsProgress, setIdsValidationReport, bumpEpoch, stillWanted, cancelValidation,
   ]);
 
   const clearValidation = useCallback(() => {

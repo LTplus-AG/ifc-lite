@@ -1,0 +1,142 @@
+{
+  "$schema": "./manifest.schema.json",
+  "version": 1,
+  "updated": "2026-10-05",
+  "privacy": {
+    "policy": "Only public sample models and repository fixtures are admitted. No client, project or personal data; no credentials in any manifest, recording, receipt or result. Reviewer ids are pseudonymous. Live results stay in the gitignored tests/ai-eval/results folder until a person reviews and promotes a recording.",
+    "automatedScan": "check-ai-eval-manifest.mjs recomputes every committed fixture's SHA-256 and size, and refuses e-mail addresses, credential-like tokens and non-empty STEP author/organisation fields in it.",
+    "humanReview": { "status": "pending", "reviewers": [], "note": "Awaiting a maintainer's privacy review of the corpus; automated checks are not a substitute." }
+  },
+  "journeys": [
+    { "id": "delivery-validation", "name": "Delivery validation" },
+    { "id": "clash-coordination", "name": "Clash coordination" },
+    { "id": "batch-correction", "name": "Batch correction" },
+    { "id": "native-model-authoring", "name": "Native model authoring" },
+    { "id": "flow-authoring", "name": "Flow authoring" },
+    { "id": "flow-ai-execution", "name": "Flow AI execution" },
+    { "id": "cross-analysis-review", "name": "Cross-analysis review" },
+    { "id": "universal-analysis-reporting", "name": "Universal analysis reporting" },
+    { "id": "everyday-exploration", "name": "Everyday exploration" },
+    { "id": "reuse-and-recovery", "name": "Reuse and recovery" }
+  ],
+  "scenes": [
+    { "id": "clash-rev-b", "source": "clash", "fixtures": ["sample-architecture-rev-b", "native-clash-rev-b"],
+      "description": "Committed rev-B sample parsed natively with the CLI clearance clash result (9 findings) pinned to its bytes." },
+    { "id": "validation-sample", "source": "validation", "fixtures": ["sample-architecture", "sample-ids"],
+      "description": "Committed SketchUp sample in Edit mode with a native IDS run of the committed sample IDS." },
+    { "id": "validation-fzk-haus", "source": "validation", "fixtures": ["fzk-haus", "sample-ids"],
+      "description": "ArchiCAD AC20-FZK-Haus (pnpm fixtures) validated natively against the committed sample IDS; read-only." },
+    { "id": "authoring-sample", "source": "loadReport", "fixtures": ["sample-architecture"],
+      "description": "Committed SketchUp sample in Edit mode; native load report as evidence; authoring and changes preview natively." },
+    { "id": "flow-empty", "source": "flow", "fixtures": [],
+      "description": "A new empty Flow graph; patches are validated against the standard node registry." }
+  ],
+  "fixtures": [
+    {
+      "id": "sample-architecture", "origin": "committed", "kind": "ifc",
+      "path": "apps/viewer/public/samples/building-architecture.ifc",
+      "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5", "size": 225635, "schema": "IFC4",
+      "source": { "authoringTool": "SketchUp 2024 (24.0.594), IFC-manager for SketchUp 5.3.3", "description": "Small house with walls, slabs, roof, spaces, furniture and wall types; the viewer demo sample." },
+      "license": { "status": "unrecorded", "note": "Committed viewer sample; redistribution terms are not recorded in the repository. Record them before external publication of results." },
+      "privacy": { "automated": "pass", "human": { "status": "pending", "reviewers": [] } }
+    },
+    {
+      "id": "sample-architecture-rev-b", "origin": "committed", "kind": "ifc",
+      "path": "apps/viewer/public/samples/building-architecture-rev-b.ifc",
+      "sha256": "0dfb7152db0a845747d2f35ee5ba9ba3772744072cb23040353c469c2a05f366", "size": 226971, "schema": "IFC4",
+      "source": { "authoringTool": "SketchUp 2024 (24.0.594), IFC-manager for SketchUp 5.3.3", "description": "Revision B of the sample: one property edit, one moved wall, one deletion and an added duct that hits a wall.",
+        "derivedFrom": "sample-architecture", "derivation": "tools/demo-kit/derive-variants.mts" },
+      "license": { "status": "unrecorded", "note": "Derived from the committed viewer sample; same unrecorded redistribution terms." },
+      "privacy": { "automated": "pass", "human": { "status": "pending", "reviewers": [] } }
+    },
+    {
+      "id": "sample-ids", "origin": "committed", "kind": "ids",
+      "path": "apps/viewer/public/samples/building-architecture.ids",
+      "sha256": "947159b9b1a709ebb178c00a3803dcdb74070608d8df4f99065e889d3c189652", "size": 1917,
+      "source": { "authoringTool": "ifc-lite demo kit", "description": "Three IDS 1.0 specifications: named spaces, external walls, proxy ObjectType." },
+      "license": { "status": "recorded", "spdx": "MPL-2.0", "note": "Authored in this repository for the demo kit." },
+      "privacy": { "automated": "pass", "human": { "status": "pending", "reviewers": [] } }
+    },
+    {
+      "id": "native-clash-rev-b", "origin": "committed", "kind": "native-result",
+      "path": "tests/ai-eval/native/clash-rev-b-clearance.json",
+      "sha256": "aa89fab73667a12fcd456703f532256a11faaec74eb528c9427e3ef8ba992d8e", "size": 11622,
+      "source": { "authoringTool": "@ifc-lite/cli 0.38.2", "description": "Native clearance clash run (0.05 m) of the rev-B sample; engine output, not an independent clash label.",
+        "derivedFrom": "sample-architecture-rev-b", "derivation": "ifc-lite clash apps/viewer/public/samples/building-architecture-rev-b.ifc --mode clearance --clearance 0.05 --json" },
+      "license": { "status": "recorded", "spdx": "MPL-2.0", "note": "Generated in this repository from the committed sample." },
+      "privacy": { "automated": "pass", "human": { "status": "pending", "reviewers": [] } }
+    },
+    {
+      "id": "fzk-haus", "origin": "fixtures", "kind": "ifc",
+      "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d", "size": 2526544, "schema": "IFC4",
+      "source": { "authoringTool": "ARCHICAD", "description": "KIT FZK-Haus reference house, the real ArchiCAD export already used by the Assistant IDS oracle test." },
+      "license": { "status": "unrecorded", "note": "Repository fixture from the ara3d corpus; record the publisher's terms before external publication of results." },
+      "privacy": { "automated": "not-fetched", "human": { "status": "pending", "reviewers": [] },
+        "stepHeaderAllowance": { "author": "('Architect')", "organisation": "('Building Designer Office')",
+          "reason": "The published FZK-Haus sample carries generic role names (Architect, Building Designer Office), not a person or client; checked against the fetched file header. Human privacy review still pending." } }
+    }
+  ],
+  "liveEvaluation": {
+    "maxOutputTokens": 4096,
+    "timeoutMs": 120000,
+    "maxRepeats": 3,
+    "budget": { "maxRequests": 24, "maxOutputTokens": 98304 },
+    "providers": [
+      { "kind": "proxy", "credential": "none" },
+      { "kind": "anthropic", "credential": "ANTHROPIC_API_KEY" },
+      { "kind": "openai", "credential": "OPENAI_API_KEY" }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "clash-summary", "journey": "clash-coordination", "scene": "clash-rev-b",
+      "prompt": "Summarize the most severe clashes and where they occur",
+      "inputScope": "All 9 native findings of one clearance run on one model; every finding is in the evidence.",
+      "expectedOutput": "prose", "invariants": ["citations-valid", "count-claims-match-facts", "no-effect-claims", "budget-respected"],
+      "labels": ["claims"], "reviewers": { "status": "pending", "reviewers": [] }
+    },
+    {
+      "id": "clash-grouping", "journey": "clash-coordination", "scene": "clash-rev-b",
+      "prompt": "Propose clash groups for coordination review",
+      "inputScope": "All 9 native findings; native type/severity and discipline candidates are authoritative.",
+      "expectedOutput": "clash.groups", "invariants": ["citations-valid", "findings-accounted", "no-duplicate-topics", "proposal-kind-allowed", "no-effect-claims", "budget-respected"],
+      "labels": ["grouping", "classification"], "reviewers": { "status": "pending", "reviewers": [] }
+    },
+    {
+      "id": "validation-explain", "journey": "delivery-validation", "scene": "validation-sample",
+      "prompt": "Explain the most frequent failures",
+      "inputScope": "Native IDS report of three specifications on the committed sample; rows are bounded to 100.",
+      "expectedOutput": "prose", "invariants": ["citations-valid", "count-claims-match-facts", "no-effect-claims", "budget-respected"],
+      "labels": ["claims"], "reviewers": { "status": "pending", "reviewers": [] }
+    },
+    {
+      "id": "validation-corrections", "journey": "batch-correction", "scene": "validation-sample",
+      "prompt": "Prepare corrections for the failing requirements",
+      "inputScope": "Failing IDS rows of the committed sample in Edit mode; corrections are previewed, never applied.",
+      "expectedOutput": "model.changes", "invariants": ["citations-valid", "proposal-kind-allowed", "no-effect-claims", "budget-respected"],
+      "labels": [], "reviewers": { "status": "pending", "reviewers": [] }
+    },
+    {
+      "id": "validation-explain-fzk", "journey": "delivery-validation", "scene": "validation-fzk-haus",
+      "prompt": "Explain the most frequent failures",
+      "inputScope": "Native IDS report on the ArchiCAD fixture; skipped when pnpm fixtures has not fetched it.",
+      "expectedOutput": "prose", "invariants": ["citations-valid", "count-claims-match-facts", "no-effect-claims", "budget-respected"],
+      "labels": ["claims"], "reviewers": { "status": "pending", "reviewers": [] }
+    },
+    {
+      "id": "authoring-annex-wall", "journey": "native-model-authoring", "scene": "authoring-sample",
+      "prompt": "Prepare a model authoring proposal for review: add a straight wall named Annex south on storey 1Ano2ZUxnEIvVQ_beukl8b (00 groundfloor) from (10000, 10000, 0) to (14000, 10000, 0) mm, 200 mm thick and 3000 mm high.",
+      "inputScope": "One committed model in Edit mode; the storey GlobalId is supplied in the prompt because proposals do not yet carry storey evidence.",
+      "expectedOutput": "model.authoring", "invariants": ["proposal-kind-allowed", "no-effect-claims", "budget-respected"],
+      "labels": [], "reviewers": { "status": "pending", "reviewers": [] }
+    },
+    {
+      "id": "flow-sum", "journey": "flow-authoring", "scene": "flow-empty",
+      "prompt": "Suggest an improvement to this graph as a Flow patch: two number inputs, 7 and 5, summed by a math node.",
+      "inputScope": "An empty graph; the patch is validated against the standard registry and never executed by the Assistant.",
+      "expectedOutput": "flow.patch", "invariants": ["proposal-kind-allowed", "no-effect-claims", "budget-respected"],
+      "labels": [], "reviewers": { "status": "pending", "reviewers": [] }
+    }
+  ]
+}

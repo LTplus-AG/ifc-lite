@@ -5,8 +5,7 @@
 import { Parser } from '@traqula/parser-sparql-1-1';
 import { LIMITS, assertIri, isObject } from './types.js';
 
-/** Parse the grammar first, then inspect nested AST nodes (including subqueries). */
-export function assertReadOnlyQuery(query: string, authorizedGraphs: readonly string[] = []): 'select' | 'construct' {
+function parseReadOnly(query: string, authorizedGraphs: readonly string[]): Record<string, unknown> & { subType: 'select' | 'construct' } {
   if (query.length > LIMITS.query) throw new Error('SPARQL query exceeds limit');
   const ast: unknown = new Parser().parse(query);
   if (!isObject(ast) || ast.type !== 'query' || (ast.subType !== 'select' && ast.subType !== 'construct')) throw new Error('Only SELECT and CONSTRUCT queries are supported');
@@ -24,7 +23,29 @@ export function assertReadOnlyQuery(query: string, authorizedGraphs: readonly st
       pending.push(...Object.values(current));
     }
   }
-  return ast.subType;
+  return ast as Record<string, unknown> & { subType: 'select' | 'construct' };
+}
+/** Parse the grammar first, then inspect nested AST nodes (including subqueries). */
+export function assertReadOnlyQuery(query: string, authorizedGraphs: readonly string[] = []): 'select' | 'construct' {
+  return parseReadOnly(query, authorizedGraphs).subType;
+}
+/** Top-level shape of a read-only query: its form, projected variables (`'*'` for a wildcard) and outer LIMIT. */
+export interface ReadOnlyQueryShape { form: 'select' | 'construct'; variables: string[] | '*'; limit?: number }
+/** The same read-only checks as {@link assertReadOnlyQuery}, plus the outer projection and LIMIT a reviewer needs. */
+export function inspectReadOnlyQuery(query: string, authorizedGraphs: readonly string[] = []): ReadOnlyQueryShape {
+  const ast = parseReadOnly(query, authorizedGraphs);
+  const modifiers = isObject(ast.solutionModifiers) ? ast.solutionModifiers : {};
+  const limitOffset = isObject(modifiers.limitOffset) ? modifiers.limitOffset : {};
+  const limit = typeof limitOffset.limit === 'number' ? limitOffset.limit : undefined;
+  if (ast.subType === 'construct') return { form: 'construct', variables: [], ...(limit === undefined ? {} : { limit }) };
+  const projected = Array.isArray(ast.variables) ? ast.variables : [];
+  const wildcard = projected.some(item => isObject(item) && item.type === 'wildcard');
+  const variables = projected.flatMap(item => {
+    if (!isObject(item)) return [];
+    const term = item.type === 'term' ? item : isObject(item.variable) ? item.variable : undefined;
+    return term && typeof term.value === 'string' ? [term.value] : [];
+  });
+  return { form: 'select', variables: wildcard ? '*' : variables, ...(limit === undefined ? {} : { limit }) };
 }
 // Bind each branch from its own triple pattern before joining the outer resource constraints.
 const RELATED_PATTERN = '{ ?resource ?predicate ?object BIND(?resource AS ?subject) } UNION { ?subject ?predicate ?resource BIND(?resource AS ?object) }';

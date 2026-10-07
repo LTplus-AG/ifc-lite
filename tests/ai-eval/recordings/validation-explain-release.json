@@ -1,0 +1,692 @@
+{
+  "$schema": "../recording.schema.json",
+  "version": 1,
+  "id": "validation-explain-release",
+  "task": "validation-explain",
+  "scene": "validation-sample",
+  "corpus": "release",
+  "prompt": "Explain the most frequent failures",
+  "route": {
+    "kind": "proxy",
+    "model": "openai/gpt-free"
+  },
+  "provenance": {
+    "kind": "authored",
+    "recordedAt": "2026-10-06",
+    "note": "Authored explanation using only native counts and cited failing rows."
+  },
+  "response": {
+    "status": 200,
+    "events": [
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "2 of the 3 specifications failed. The external-walls specification has 1 failing wall ('plumbing wall', ["
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "E8]) where IsExternal is false, and the proxy specification has 2 failing proxies, [E10] and [E11], with "
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "no ObjectType. These are native IDS results on 11 checked entities; the explanation does not change them."
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {},
+            "finish_reason": "stop"
+          }
+        ]
+      }
+    ],
+    "done": true
+  },
+  "evidence": {
+    "source": "validation",
+    "models": [
+      {
+        "id": "arch",
+        "name": "arch"
+      }
+    ],
+    "totalModels": 1,
+    "modelMetadataTruncated": false,
+    "sourceAvailability": "available",
+    "reportProvenance": "unknown",
+    "totalRows": 14,
+    "includedRows": 14,
+    "sampled": false,
+    "projectionTruncated": false,
+    "evidence": {
+      "summary": {
+        "summary": {
+          "totalSpecifications": 3,
+          "passedSpecifications": 1,
+          "failedSpecifications": 2,
+          "totalEntitiesChecked": 11,
+          "totalEntitiesPassed": 8,
+          "totalEntitiesFailed": 3,
+          "overallPassRate": 72
+        },
+        "source": "ids",
+        "timestamp": "2026-10-05T00:00:00.000Z",
+        "modelInfo": [
+          {
+            "modelId": "arch",
+            "schemaVersion": "IFC4",
+            "entityCount": 97
+          }
+        ]
+      },
+      "rows": [
+        {
+          "citation": "E1",
+          "data": {
+            "specification": {
+              "id": "spec-0",
+              "name": "Spaces are named",
+              "ifcVersions": [
+                "IFC4"
+              ],
+              "ifcVersionRaw": "IFC4",
+              "applicability": {
+                "facets": [
+                  {
+                    "type": "entity",
+                    "name": {
+                      "type": "simpleValue",
+                      "value": "IFCSPACE"
+                    }
+                  }
+                ]
+              },
+              "requirements": [
+                {
+                  "id": "req-0",
+                  "facet": {
+                    "type": "attribute",
+                    "name": {
+                      "type": "simpleValue",
+                      "value": "Name"
+                    }
+                  },
+                  "optionality": "required"
+                }
+              ],
+              "minOccurs": 1
+            },
+            "status": "pass",
+            "applicableCount": 2,
+            "passedCount": 2,
+            "failedCount": 0,
+            "cardinalityResult": {
+              "passed": true,
+              "actualCount": 2,
+              "minExpected": 1,
+              "message": "Cardinality satisfied"
+            }
+          }
+        },
+        {
+          "citation": "E2",
+          "data": {
+            "specificationId": "spec-0",
+            "expressId": 89,
+            "modelId": "arch",
+            "entityType": "IfcSpace",
+            "entityName": "living room",
+            "globalId": "0xY$LvXaDEswJDk_VU74C_",
+            "passed": true,
+            "requirementResults": [
+              {
+                "requirement": {
+                  "id": "req-0",
+                  "facet": {
+                    "type": "attribute",
+                    "name": {
+                      "type": "simpleValue",
+                      "value": "Name"
+                    }
+                  },
+                  "optionality": "required",
+                  "label": "Attribute \"\"Name\"\" must exist"
+                },
+                "status": "pass",
+                "facetType": "attribute",
+                "checkedDescription": "Attribute \"\"Name\"\" must exist",
+                "actualValue": "living room",
+                "expectedValue": "attribute \"Name\" to exist"
+              }
+            ]
+          }
+        },
+        {
+          "citation": "E3",
+          "data": {
+            "specificationId": "spec-0",
+            "expressId": 203,
+            "modelId": "arch",
+            "entityType": "IfcSpace",
+            "entityName": "entry hall",
+            "globalId": "18QhMtUIXBvQktPHXXxs7H",
+            "passed": true,
+            "requirementResults": [
+              {
+                "requirement": {
+                  "id": "req-0",
+                  "facet": {
+                    "type": "attribute",
+                    "name": {
+                      "type": "simpleValue",
+                      "value": "Name"
+                    }
+                  },
+                  "optionality": "required",
+                  "label": "Attribute \"\"Name\"\" must exist"
+                },
+                "status": "pass",
+                "facetType": "attribute",
+                "checkedDescription": "Attribute \"\"Name\"\" must exist",
+                "actualValue": "entry hall",
+                "expectedValue": "attribute \"Name\" to exist"
+              }
+            ]
+          }
+        },
+        {
+          "citation": "E4",
+          "data": {
+            "specification": {
+              "id": "spec-1",
+              "name": "Walls are external",
+              "ifcVersions": [
+                "IFC4"
+              ],
+              "ifcVersionRaw": "IFC4",
+              "applicability": {
+                "facets": [
+                  {
+                    "type": "entity",
+                    "name": {
+                      "type": "simpleValue",
+                      "value": "IFCWALL"
+                    }
+                  }
+                ]
+              },
+              "requirements": [
+                {
+                  "id": "req-0",
+                  "facet": {
+                    "type": "property",
+                    "propertySet": {
+                      "type": "simpleValue",
+                      "value": "Pset_WallCommon"
+                    },
+                    "baseName": {
+                      "type": "simpleValue",
+                      "value": "IsExternal"
+                    },
+                    "dataType": {
+                      "type": "simpleValue",
+                      "value": "IFCBOOLEAN"
+                    },
+                    "value": {
+                      "type": "simpleValue",
+                      "value": "true"
+                    }
+                  },
+                  "optionality": "required"
+                }
+              ],
+              "minOccurs": 1
+            },
+            "status": "fail",
+            "applicableCount": 4,
+            "passedCount": 3,
+            "failedCount": 1,
+            "cardinalityResult": {
+              "passed": true,
+              "actualCount": 4,
+              "minExpected": 1,
+              "message": "Cardinality satisfied"
+            }
+          }
+        },
+        {
+          "citation": "E5",
+          "data": {
+            "specificationId": "spec-1",
+            "expressId": 262,
+            "modelId": "arch",
+            "entityType": "IfcWall",
+            "entityName": "house - outer wall - house right front",
+            "globalId": "1AQAupaRP1txwK1AGiN61V",
+            "passed": true,
+            "requirementResults": [
+              {
+                "requirement": {
+                  "id": "req-0",
+                  "facet": {
+                    "type": "property",
+                    "propertySet": {
+                      "type": "simpleValue",
+                      "value": "Pset_WallCommon"
+                    },
+                    "baseName": {
+                      "type": "simpleValue",
+                      "value": "IsExternal"
+                    },
+                    "dataType": {
+                      "type": "simpleValue",
+                      "value": "IFCBOOLEAN"
+                    },
+                    "value": {
+                      "type": "simpleValue",
+                      "value": "true"
+                    }
+                  },
+                  "optionality": "required",
+                  "label": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\""
+                },
+                "status": "pass",
+                "facetType": "property",
+                "checkedDescription": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\"",
+                "actualValue": "Pset_WallCommon.IsExternal = true",
+                "expectedValue": "\"true\""
+              }
+            ]
+          }
+        },
+        {
+          "citation": "E6",
+          "data": {
+            "specificationId": "spec-1",
+            "expressId": 291,
+            "modelId": "arch",
+            "entityType": "IfcWall",
+            "entityName": "house - outer wall - house right back",
+            "globalId": "3wdauVJT5Fx9drrREiDqA$",
+            "passed": true,
+            "requirementResults": [
+              {
+                "requirement": {
+                  "id": "req-0",
+                  "facet": {
+                    "type": "property",
+                    "propertySet": {
+                      "type": "simpleValue",
+                      "value": "Pset_WallCommon"
+                    },
+                    "baseName": {
+                      "type": "simpleValue",
+                      "value": "IsExternal"
+                    },
+                    "dataType": {
+                      "type": "simpleValue",
+                      "value": "IFCBOOLEAN"
+                    },
+                    "value": {
+                      "type": "simpleValue",
+                      "value": "true"
+                    }
+                  },
+                  "optionality": "required",
+                  "label": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\""
+                },
+                "status": "pass",
+                "facetType": "property",
+                "checkedDescription": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\"",
+                "actualValue": "Pset_WallCommon.IsExternal = true",
+                "expectedValue": "\"true\""
+              }
+            ]
+          }
+        },
+        {
+          "citation": "E7",
+          "data": {
+            "specificationId": "spec-1",
+            "expressId": 315,
+            "modelId": "arch",
+            "entityType": "IfcWall",
+            "entityName": "house - outer wall - house left",
+            "globalId": "0OfZwWc8j9QP5uX8xPTxDH",
+            "passed": true,
+            "requirementResults": [
+              {
+                "requirement": {
+                  "id": "req-0",
+                  "facet": {
+                    "type": "property",
+                    "propertySet": {
+                      "type": "simpleValue",
+                      "value": "Pset_WallCommon"
+                    },
+                    "baseName": {
+                      "type": "simpleValue",
+                      "value": "IsExternal"
+                    },
+                    "dataType": {
+                      "type": "simpleValue",
+                      "value": "IFCBOOLEAN"
+                    },
+                    "value": {
+                      "type": "simpleValue",
+                      "value": "true"
+                    }
+                  },
+                  "optionality": "required",
+                  "label": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\""
+                },
+                "status": "pass",
+                "facetType": "property",
+                "checkedDescription": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\"",
+                "actualValue": "Pset_WallCommon.IsExternal = true",
+                "expectedValue": "\"true\""
+              }
+            ]
+          }
+        },
+        {
+          "citation": "E8",
+          "data": {
+            "specificationId": "spec-1",
+            "expressId": 353,
+            "modelId": "arch",
+            "entityType": "IfcWall",
+            "entityName": "plumbing wall",
+            "globalId": "1uS5vfZPn9R8PlAaVd73on",
+            "passed": false,
+            "requirementResults": [
+              {
+                "requirement": {
+                  "id": "req-0",
+                  "facet": {
+                    "type": "property",
+                    "propertySet": {
+                      "type": "simpleValue",
+                      "value": "Pset_WallCommon"
+                    },
+                    "baseName": {
+                      "type": "simpleValue",
+                      "value": "IsExternal"
+                    },
+                    "dataType": {
+                      "type": "simpleValue",
+                      "value": "IFCBOOLEAN"
+                    },
+                    "value": {
+                      "type": "simpleValue",
+                      "value": "true"
+                    }
+                  },
+                  "optionality": "required",
+                  "label": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\""
+                },
+                "status": "fail",
+                "facetType": "property",
+                "checkedDescription": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\"",
+                "failureReason": "Property \"Pset_WallCommon.IsExternal\" value \"false\" does not match expected \"true\"",
+                "actualValue": "false",
+                "expectedValue": "\"true\"",
+                "failure": {
+                  "type": "PROPERTY_VALUE_MISMATCH",
+                  "field": "Pset_WallCommon.IsExternal",
+                  "actual": "false",
+                  "expected": "\"true\""
+                }
+              }
+            ]
+          }
+        },
+        {
+          "citation": "E9",
+          "data": {
+            "specification": {
+              "id": "spec-2",
+              "name": "Building element proxies declare an ObjectType",
+              "ifcVersions": [
+                "IFC4"
+              ],
+              "ifcVersionRaw": "IFC4",
+              "applicability": {
+                "facets": [
+                  {
+                    "type": "entity",
+                    "name": {
+                      "type": "simpleValue",
+                      "value": "IFCBUILDINGELEMENTPROXY"
+                    }
+                  }
+                ]
+              },
+              "requirements": [
+                {
+                  "id": "req-0",
+                  "facet": {
+                    "type": "attribute",
+                    "name": {
+                      "type": "simpleValue",
+                      "value": "ObjectType"
+                    }
+                  },
+                  "optionality": "required"
+                }
+              ],
+              "minOccurs": 1
+            },
+            "status": "fail",
+            "applicableCount": 5,
+            "passedCount": 3,
+            "failedCount": 2,
+            "cardinalityResult": {
+              "passed": true,
+              "actualCount": 5,
+              "minExpected": 1,
+              "message": "Cardinality satisfied"
+            }
+          }
+        },
+        {
+          "citation": "E10",
+          "data": {
+            "specificationId": "spec-2",
+            "expressId": 193,
+            "modelId": "arch",
+            "entityType": "IfcBuildingElementProxy",
+            "entityName": "Group#18",
+            "globalId": "1wADrO19H3w980h1wUyXLk",
+            "passed": false,
+            "requirementResults": [
+              {
+                "requirement": {
+                  "id": "req-0",
+                  "facet": {
+                    "type": "attribute",
+                    "name": {
+                      "type": "simpleValue",
+                      "value": "ObjectType"
+                    }
+                  },
+                  "optionality": "required",
+                  "label": "Attribute \"\"ObjectType\"\" must exist"
+                },
+                "status": "fail",
+                "facetType": "attribute",
+                "checkedDescription": "Attribute \"\"ObjectType\"\" must exist",
+                "failureReason": "Attribute \"ObjectType\" is missing",
+                "expectedValue": "attribute \"ObjectType\" to exist",
+                "failure": {
+                  "type": "ATTRIBUTE_MISSING",
+                  "field": "ObjectType",
+                  "expected": "any value"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "citation": "E11",
+          "data": {
+            "specificationId": "spec-2",
+            "expressId": 345,
+            "modelId": "arch",
+            "entityType": "IfcBuildingElementProxy",
+            "entityName": "Group#19",
+            "globalId": "0bo7_K6az7AA$4RxkSNVNM",
+            "passed": false,
+            "requirementResults": [
+              {
+                "requirement": {
+                  "id": "req-0",
+                  "facet": {
+                    "type": "attribute",
+                    "name": {
+                      "type": "simpleValue",
+                      "value": "ObjectType"
+                    }
+                  },
+                  "optionality": "required",
+                  "label": "Attribute \"\"ObjectType\"\" must exist"
+                },
+                "status": "fail",
+                "facetType": "attribute",
+                "checkedDescription": "Attribute \"\"ObjectType\"\" must exist",
+                "failureReason": "Attribute \"ObjectType\" is missing",
+                "expectedValue": "attribute \"ObjectType\" to exist",
+                "failure": {
+                  "type": "ATTRIBUTE_MISSING",
+                  "field": "ObjectType",
+                  "expected": "any value"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "citation": "E12",
+          "data": {
+            "specificationId": "spec-2",
+            "expressId": 464,
+            "modelId": "arch",
+            "entityType": "IfcBuildingElementProxy",
+            "entityName": "sand bedding",
+            "globalId": "3_4VN63S96DfWiJjgG8j1C",
+            "passed": true,
+            "requirementResults": [
+              {
+                "requirement": {
+                  "id": "req-0",
+                  "facet": {
+                    "type": "attribute",
+                    "name": {
+                      "type": "simpleValue",
+                      "value": "ObjectType"
+                    }
+                  },
+                  "optionality": "required",
+                  "label": "Attribute \"\"ObjectType\"\" must exist"
+                },
+                "status": "pass",
+                "facetType": "attribute",
+                "checkedDescription": "Attribute \"\"ObjectType\"\" must exist",
+                "actualValue": "subgrade",
+                "expectedValue": "attribute \"ObjectType\" to exist"
+              }
+            ]
+          }
+        },
+        {
+          "citation": "E13",
+          "data": {
+            "specificationId": "spec-2",
+            "expressId": 482,
+            "modelId": "arch",
+            "entityType": "IfcBuildingElementProxy",
+            "entityName": "origin",
+            "globalId": "2F44QMqSH3TOkM$SZoqCBe",
+            "passed": true,
+            "requirementResults": [
+              {
+                "requirement": {
+                  "id": "req-0",
+                  "facet": {
+                    "type": "attribute",
+                    "name": {
+                      "type": "simpleValue",
+                      "value": "ObjectType"
+                    }
+                  },
+                  "optionality": "required",
+                  "label": "Attribute \"\"ObjectType\"\" must exist"
+                },
+                "status": "pass",
+                "facetType": "attribute",
+                "checkedDescription": "Attribute \"\"ObjectType\"\" must exist",
+                "actualValue": "origin",
+                "expectedValue": "attribute \"ObjectType\" to exist"
+              }
+            ]
+          }
+        },
+        {
+          "citation": "E14",
+          "data": {
+            "specificationId": "spec-2",
+            "expressId": 501,
+            "modelId": "arch",
+            "entityType": "IfcBuildingElementProxy",
+            "entityName": "geo-reference",
+            "globalId": "3Fit2Fad92zf2f6aWdJtF5",
+            "passed": true,
+            "requirementResults": [
+              {
+                "requirement": {
+                  "id": "req-0",
+                  "facet": {
+                    "type": "attribute",
+                    "name": {
+                      "type": "simpleValue",
+                      "value": "ObjectType"
+                    }
+                  },
+                  "optionality": "required",
+                  "label": "Attribute \"\"ObjectType\"\" must exist"
+                },
+                "status": "pass",
+                "facetType": "attribute",
+                "checkedDescription": "Attribute \"\"ObjectType\"\" must exist",
+                "actualValue": "origin",
+                "expectedValue": "attribute \"ObjectType\" to exist"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "expect": {
+    "outcome": "completed",
+    "violations": [],
+    "proposal": null,
+    "review": {
+      "kind": "report"
+    }
+  }
+}

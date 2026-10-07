@@ -17,6 +17,8 @@ import { downloadReportJSON, downloadReportHTML } from '../ids/idsExportService'
 import { runIdsBcfExport } from '../ids/idsBcfExport';
 import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewer/IDSExportDialog';
 import { useToViewerGlobalId } from './toViewerGlobalId';
+import { useTranslation } from '@/i18n';
+import { recordActivity } from '@/lib/activity/activity-journal';
 
 export interface ValidationExportsApi {
   exportReportJSON: () => void;
@@ -33,6 +35,7 @@ export function useValidationExports(report: ValidationReport | null, locale: Su
   const setBcfPanelVisible = useViewerStore((s) => s.setBcfPanelVisible);
   const setIdsError = useViewerStore((s) => s.setIdsError);
   const toViewerGlobalId = useToViewerGlobalId();
+  const { t } = useTranslation();
 
   const [bcfExportProgress, setBcfExportProgress] = useState<IDSExportProgress | null>(null);
 
@@ -49,19 +52,21 @@ export function useValidationExports(report: ValidationReport | null, locale: Su
   const exportReportBCF = useCallback(async (settings: IDSBCFExportSettings) => {
     if (!report) { console.warn('[Validation] No report to export'); return; }
     try {
-      await runIdsBcfExport({
+      // The IDS dialog runs outside ExportDialogShell; this hook knows the
+      // outcome (it reports a failure through `idsError`), so it records the job (#6925).
+      await recordActivity({ kind: 'export', title: 'activityTray.job.export', subject: t('activityTray.job.validationBcf') }, () => runIdsBcfExport({
         report, settings, models,
         legacyGeometryResult: geometryResult,
         toViewerGlobalId, bcfAuthor,
         setBcfExportProgress, setBcfProject, setBcfPanelVisible,
-      });
+      }));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'BCF export failed';
       setIdsError(message);
       console.error('[Validation] BCF export error:', err);
       setBcfExportProgress(null);
     }
-  }, [report, models, geometryResult, toViewerGlobalId, bcfAuthor, setIdsError, setBcfProject, setBcfPanelVisible]);
+  }, [report, models, geometryResult, toViewerGlobalId, bcfAuthor, setIdsError, setBcfProject, setBcfPanelVisible, t]);
 
   return { exportReportJSON, exportReportHTML, exportReportBCF, bcfExportProgress };
 }

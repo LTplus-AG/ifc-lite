@@ -99,3 +99,44 @@ for (const change of ['endpoint', 'host', 'bearer', 'relay', 'mode', 'restore', 
     } finally { stub.restore(); }
   });
 }
+
+
+test('#7000 attaching current records excludes the retrieval endpoint from passage text', async () => {
+  const { document } = await seedSemanticModels();
+  const endpoint = 'https://private.example/signed?token=secret';
+  useSemanticSession.setState({ document: { ...document, source: endpoint } });
+  const ui = render(<SemanticAssistControls onError={message => { throw new Error(message); }} />);
+  click(find(ui, 'button', 'Attach current records'));
+  const source = useSemanticSourceTexts.getState().sources[0];
+  assert.ok(source.text.includes('Installed door'));
+  assert.ok(!source.text.includes(endpoint));
+});
+
+test('#7000 a refused blank endpoint load never grants assistant query authority', async () => {
+  const ui = render(<SemanticPanel validationExecutor={executeValidation} />);
+  const select = find(ui, 'label', 'Data source').querySelector('select')!;
+  act(() => { select.value = 'json'; select.dispatchEvent(new window.Event('change', { bubbles: true })); });
+  click(find(ui, 'button', 'Load records'));
+  assert.equal(useSemanticEndpointGrant.getState().grant, null);
+});
+
+
+test('#7000 changing a credential cancels pending retrieval before it can publish old records', async () => {
+  let release!: (response: Response) => void;
+  const pending = new Promise<Response>(resolve => { release = resolve; });
+  const stub = captureFetch(() => pending);
+  try {
+    const ui = render(<SemanticPanel validationExecutor={executeValidation} />);
+    const select = find(ui, 'label', 'Data source').querySelector('select')!;
+    act(() => { select.value = 'json'; select.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    input(field(ui, 'Endpoint URL'), 'https://graph.example.org/records');
+    input(field(ui, 'Allow requests to hostname'), 'graph.example.org');
+    const before = useSemanticSession.getState().document;
+    click(find(ui, 'button', 'Load records'));
+    await waitFor(() => stub.sent.length === 1, 'retrieval began');
+    input(find(ui, 'label', 'Bearer').querySelector('input')!, 'REPLACEMENT');
+    await act(async () => { release(new Response(JSON.stringify(pilotDocument()), { headers: { 'content-type': 'application/json' } })); await pending; });
+    assert.equal(useSemanticSession.getState().document, before, 'old-credential response never publishes');
+    assert.equal(useSemanticEndpointGrant.getState().grant, null);
+  } finally { stub.restore(); }
+});

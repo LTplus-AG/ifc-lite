@@ -75,3 +75,11 @@ test('#6920 query lint enforces native read-only forms, declared columns and a b
   assert.match(issues(lint({ query: 'DELETE WHERE { ?s ?p ?o }' })), /Only SELECT and CONSTRUCT/);
   assert.match(issues(lint({ query: 'SELECT ?id ?GlobalId FROM <https://evil.example/g> WHERE { ?id ?p ?GlobalId } LIMIT 10' })), /graph|FROM/i);
 });
+
+
+test('#7000 distinct native mappings for the same field remain distinct projection targets', () => {
+  const projections = [{ resource: 'r', field: 'fireRating', mapping: 'mapping-a' }, { resource: 'r', field: 'fireRating', mapping: 'mapping-b' }];
+  const bundle = { version: 1, kind: 'semantic.projection', title: 'Mappings', projections };
+  assert.deepEqual(parseSemanticProjection(json(bundle)).projections.map(row => row.mapping), ['mapping-a', 'mapping-b']);
+  assert.throws(() => parseSemanticProjection(json({ ...bundle, projections: [projections[0], projections[0]] })), /repeats/);
+});

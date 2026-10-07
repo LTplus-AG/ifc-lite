@@ -23,7 +23,7 @@ export function parseSemanticProjection(answer: string): SemanticProjectionPropo
     if (item.mapping !== undefined && !text(item.mapping, 120)) throw new Error(`${at} mapping must be a native mapping id`);
     const policy = item.policy ?? 'error';
     if (policy !== 'error' && policy !== 'skip' && policy !== 'overwrite') throw new Error(`${at} policy must be error, skip or overwrite`);
-    const key = `${item.resource}\u0000${item.field}`;
+    const key = `${item.resource}\u0000${item.field}\u0000${item.mapping ?? ""}`;
     if (keys.has(key)) throw new Error(`${at} repeats an earlier projection`);
     keys.add(key);
     return { resource: item.resource, field: item.field, ...(item.mapping === undefined ? {} : { mapping: item.mapping as string }), policy };

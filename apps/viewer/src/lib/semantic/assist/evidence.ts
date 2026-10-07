@@ -24,7 +24,7 @@ export interface ProjectionMappingView { id: string; field: string; classes: rea
 
 /** Identity parts: a new or removed text, or a changed grant, makes captured evidence stale. */
 function assistIdentity(): unknown[] {
-  return [useSemanticSourceTexts.getState().sources, useSemanticEndpointGrant.getState().grant !== null];
+  return [useSemanticSourceTexts.getState().sources, useSemanticEndpointGrant.getState().generation];
 }
 
 function attachedTextCount(): number {

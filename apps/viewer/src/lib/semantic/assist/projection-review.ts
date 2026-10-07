@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { ProfileDefinition, SemanticDocument } from '@ifc-lite/semantic';
-import { PROJECTION_MAPPINGS, applyProjection, previewProjection, type ProjectionPlan } from '../projection';
+import { PROJECTION_MAPPINGS, applyProjections, previewProjection, type ProjectionPlan } from '../projection';
 import type { ProposedProjection, SemanticProjectionProposal } from './projection-proposal';
 
 export type ProjectionRow = { projection: ProposedProjection } & ({ status: 'ready'; plan: ProjectionPlan } | { status: 'refused'; reason: string });
@@ -33,8 +33,11 @@ export function previewSemanticProjection(proposal: SemanticProjectionProposal, 
 
 /** Apply approved plans through the native service; each re-previews and refuses a stale plan. */
 export function applySemanticProjections(plans: readonly ProjectionPlan[], revisions: ReadonlyMap<string, string>): Array<{ plan: ProjectionPlan; error?: string }> {
-  return plans.map(plan => {
-    try { applyProjection(plan, revisions); return { plan }; }
-    catch (error) { return { plan, error: error instanceof Error ? error.message : String(error) }; }
-  });
+  try {
+    applyProjections(plans, revisions);
+    return plans.map(plan => ({ plan }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return plans.map(plan => ({ plan, error: message }));
+  }
 }

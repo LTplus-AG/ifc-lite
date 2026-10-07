@@ -100,7 +100,7 @@ export const semanticAdapter: EvidenceAdapter = {
   identity: () => {
     const view = sessionView();
     return [...(view ? [view.document, view.findings, view.report, view.results, view.revisions, view.strategy,
-      view.links, view.uriConfig, view.identityFields] : []), ...(semanticEvidenceAccess()?.assist.identity() ?? [])];
+      view.links, view.uriConfig, view.identityFields, view.profile, view.pendingRevisions] : []), ...(semanticEvidenceAccess()?.assist.identity() ?? [])];
   },
   capture: (_s, limit) => {
     const access = semanticEvidenceAccess();

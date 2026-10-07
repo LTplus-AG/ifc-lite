@@ -197,3 +197,37 @@ test('#6920 an attached text alone is attachable evidence, with revisions and pr
   assert.ok(assist.profile.fields.some(field => field.key === 'fireRating'));
   assert.ok(assist.projectionMappings.some(mapping => mapping.field === 'fireRating'));
 });
+
+
+test('#7000 grant replacement, profile edits and pending revision links invalidate captured evidence', async () => {
+  await seedSemanticModels(); attachSourceText('Specification', SPEC); recordEndpointGrant(grant);
+  const first = captureEvidence('semantic');
+  recordEndpointGrant({ ...grant, bearer: 'replacement' });
+  assert.equal(evidenceIsCurrent(first), false);
+  const second = captureEvidence('semantic');
+  const profile = useSemanticSession.getState().profile;
+  useSemanticSession.setState({ profile: { ...profile, fields: { ...profile.fields, extra: { ...profile.fields.fireRating, iri: 'https://example.org/new-term' } } } });
+  assert.equal(evidenceIsCurrent(second), false);
+  const third = captureEvidence('semantic');
+  useSemanticSession.setState({ pendingRevisions: [] });
+  assert.equal(evidenceIsCurrent(third), false);
+  for (const forbidden of [SECRET, ENDPOINT, 'replacement']) assert.ok(!captureEvidence('semantic').payload.includes(forbidden));
+});
+
+test('#7000 a reviewed native projection batch applies all plans in one undo step', async () => {
+  const { document, revisions } = await seedSemanticModels(1);
+  useViewerStore.setState({ editEnabled: true });
+  const installations = document.resources.filter(resource => resource.type === 'Installation').slice(0, 2);
+  const rows = previewSemanticProjection(parseSemanticProjection(JSON.stringify({ version: 1, kind: 'semantic.projection', title: 'Batch',
+    projections: installations.map(resource => ({ resource: resource.id, field: 'fireRating', policy: 'overwrite' })) })),
+    { document, profile: useSemanticSession.getState().profile, revisions });
+  const plans = rows.map(row => { if (row.status !== 'ready') throw new Error(row.reason); assert.equal(row.status, 'ready'); return row.plan; });
+  const before = plans.map(plan => createQueryAdapter(useViewerStore).properties(plan.ref));
+  assert.ok(applySemanticProjections([plans[0], { ...plans[1], previous: 'stale' }], revisions).every(result => result.error?.includes('stale')));
+  assert.deepEqual(plans.map(plan => createQueryAdapter(useViewerStore).properties(plan.ref)), before, 'a stale later row refuses before any earlier write');
+  assert.ok(applySemanticProjections(plans, revisions).every(result => result.error === undefined));
+  assert.ok(plans.every(plan => JSON.stringify(createQueryAdapter(useViewerStore).properties(plan.ref)).includes('Pset_SemanticProjection')));
+  const { createMutateAdapter } = await import('@/sdk/adapters/mutate-adapter');
+  assert.equal(createMutateAdapter(useViewerStore).undo('m0'), true);
+  assert.deepEqual(plans.map(plan => createQueryAdapter(useViewerStore).properties(plan.ref)), before);
+});

@@ -67,17 +67,23 @@ export function previewProjection(input: {
     revision: linkedRevision ?? (typeof revisionValue === 'string' ? revisionValue : undefined),
     sourceUnit: input.unit, value, previous, policy, skip: conflict && policy === 'skip', mutationVersion: useViewerStore.getState().mutationVersion };
 }
-export function applyProjection(plan: ProjectionPlan, revisions: ReadonlyMap<string, string>, scope?: string): void {
+function assertCurrentProjection(plan: ProjectionPlan, revisions: ReadonlyMap<string, string>, scope?: string): void {
   const fresh = previewProjection({ mappingId: plan.mapping.id, resource: plan.resource, product: plan.product, revisions,
     source: plan.source, profile: plan.profile, profileVersion: plan.profileVersion, retrievedAt: plan.retrievedAt,
     scope, unit: plan.sourceUnit, policy: plan.policy });
   if (fresh.ref.modelId !== plan.ref.modelId || fresh.ref.expressId !== plan.ref.expressId || fresh.previous !== plan.previous
     || fresh.value !== plan.value || fresh.mutationVersion !== plan.mutationVersion || fresh.modelIdentity !== plan.modelIdentity
     || fresh.targetGlobalId !== plan.targetGlobalId || fresh.revision !== plan.revision || fresh.strategy !== plan.strategy) throw new Error('Projection preview is stale; preview again');
-  if (plan.skip) return;
+ }
+
+/** Validate every plan before writing; the complete reviewed batch is one native undo step. */
+export function applyProjections(plans: readonly ProjectionPlan[], revisions: ReadonlyMap<string, string>, scope?: string): void {
+  for (const plan of plans) assertCurrentProjection(plan, revisions, scope);
   const mutation = createMutateAdapter(useViewerStore); const label = 'Semantic property projection';
   mutation.batchBegin(label);
   try {
+    for (const plan of plans) {
+      if (plan.skip) continue;
     mutation.setProperty(plan.ref, plan.mapping.pset, plan.mapping.property, plan.value, plan.mapping.dataType);
     const provenance = { Source: plan.source, Profile: plan.profile, ProfileVersion: plan.profileVersion,
       ProductId: plan.product.id, InstallationId: plan.resource.id, GlobalId: plan.targetGlobalId, IdentityStrategy: plan.strategy,
@@ -86,5 +92,11 @@ export function applyProjection(plan: ProjectionPlan, revisions: ReadonlyMap<str
       TargetProperty: `${plan.mapping.pset}.${plan.mapping.property}`, Unit: plan.mapping.unit,
       EvidenceKind: 'Source declaration' };
     for (const [key, value] of Object.entries(provenance)) if (value !== undefined) mutation.setProperty(plan.ref, 'Pset_SemanticProjection', key, value, 'IfcText');
+    }
   } finally { mutation.batchEnd(label); }
+}
+
+/** Single-record UI uses the same native batch path. */
+export function applyProjection(plan: ProjectionPlan, revisions: ReadonlyMap<string, string>, scope?: string): void {
+  applyProjections([plan], revisions, scope);
 }

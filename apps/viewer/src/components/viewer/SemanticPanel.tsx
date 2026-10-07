@@ -65,7 +65,7 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
   function revokeSource() { pilot.cancel(); setLoopbackGrant(undefined); revokeEndpointGrant(); }
   // The assistant may reuse only the authority exercised here, for as long as this panel holds it.
   function exercise() {
-    if (['json', 'sparql', 'construct'].includes(mode)) recordEndpointGrant({ endpoint, host, loopbackHttpOrigin: sourceInput.loopbackHttpOrigin,
+    if (['json', 'sparql', 'construct'].includes(mode) && endpoint.trim() && host.trim()) recordEndpointGrant({ endpoint, host, loopbackHttpOrigin: sourceInput.loopbackHttpOrigin,
       relayProvider: sourceInput.relayProvider, bearer: sourceInput.bearer });
   }
   useEffect(() => () => revokeEndpointGrant(), []);
@@ -118,7 +118,7 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
     <div className="flex gap-2"><button className={button} disabled={pilot.busy} onClick={() => { exercise(); void pilot.load(sourceInput); }}>{t('semantic.run')}</button>
       {pilot.busy && <button className={button} onClick={pilot.cancel}>{t('semantic.cancel')}</button>}</div>
     {['json', 'sparql', 'construct'].includes(mode) && <details><summary>{t('semantic.authentication')}</summary>
-      <label className="block text-sm">{t('semantic.bearer')}<input type="password" autoComplete="off" className={control} value={bearer} onChange={e => { revokeEndpointGrant(); setBearer(e.target.value); }} /></label>
+      <label className="block text-sm">{t('semantic.bearer')}<input type="password" autoComplete="off" className={control} value={bearer} onChange={e => { pilot.cancel(); revokeEndpointGrant(); setBearer(e.target.value); }} /></label>
       <label className="block text-sm">{t('semantic.relay')}<input className={control} value={relayProvider} onChange={e => { revokeSource(); setRelayProvider(e.target.value); }} /></label>
     </details>}
     {['json', 'sparql', 'construct'].includes(mode) && <button className={button} disabled={pilot.busy || !host || !endpoint} onClick={() => { exercise(); void pilot.related(sourceInput); }}>{t('semantic.querySelected')}</button>}

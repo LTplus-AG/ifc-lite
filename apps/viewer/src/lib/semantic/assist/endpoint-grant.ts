@@ -15,11 +15,11 @@ import { create } from 'zustand';
 export interface EndpointGrant {
   endpoint: string; host: string; loopbackHttpOrigin?: string; relayProvider?: string; bearer?: string; grantedAt: string;
 }
-export const useSemanticEndpointGrant = create<{ grant: EndpointGrant | null }>(() => ({ grant: null }));
+export const useSemanticEndpointGrant = create<{ grant: EndpointGrant | null; generation: number }>(() => ({ grant: null, generation: 0 }));
 
 export function recordEndpointGrant(grant: Omit<EndpointGrant, 'grantedAt'>): void {
-  useSemanticEndpointGrant.setState({ grant: { ...grant, grantedAt: new Date().toISOString() } });
+  useSemanticEndpointGrant.setState(state => ({ grant: { ...grant, grantedAt: new Date().toISOString() }, generation: state.generation + 1 }));
 }
 export function revokeEndpointGrant(): void {
-  if (useSemanticEndpointGrant.getState().grant) useSemanticEndpointGrant.setState({ grant: null });
+  if (useSemanticEndpointGrant.getState().grant) useSemanticEndpointGrant.setState(state => ({ grant: null, generation: state.generation + 1 }));
 }

@@ -39,7 +39,7 @@ export function SemanticAssistControls({ onError }: { onError: (message: string)
     <label className="block text-sm">{t('semanticAssist.sourceText')}<textarea className={control} rows={5} value={text} onChange={event => setText(event.target.value)} /></label>
     <div className="flex flex-wrap gap-2">
       <button className={button} disabled={!text.trim()} onClick={() => attach(title || t('semanticAssist.pastedSpecification'), text)}>{t('semanticAssist.attachText')}</button>
-      <button className={button} disabled={!document} onClick={() => document && attach(t('semanticAssist.recordsDocument'), JSON.stringify(document, null, 2))}>{t('semanticAssist.attachRecords')}</button>
+      <button className={button} disabled={!document} onClick={() => document && attach(t('semanticAssist.recordsDocument'), JSON.stringify({ ...document, source: undefined }, null, 2))}>{t('semanticAssist.attachRecords')}</button>
     </div>
     <ul className="text-sm">{sources.map(source => <li key={source.id} className="flex items-center justify-between gap-2">
       <span className="min-w-0 break-words">{t('semanticAssist.attached', { id: source.id, title: source.title, characters: source.text.length })}</span>

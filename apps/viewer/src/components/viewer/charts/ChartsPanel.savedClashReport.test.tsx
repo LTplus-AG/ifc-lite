@@ -17,14 +17,13 @@ import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { createClashEngine, type ClashElement } from '@ifc-lite/clash';
 import { loadDashboards } from '@/lib/charts/persistence';
 import { readContentRows } from '@/lib/storage/content-database';
 import type { ContentKind } from '@/lib/storage/content-kinds';
 import { useViewerStore } from '@/store';
 import { cleanup, click, render, type } from '@/test/render';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
-import { deleteSavedReport, detectCoincidentWalls, mountClashPanel, saveCurrentResultAs, savedClashReports } from '@/test/clash-report-fixture';
+import { deleteSavedReport, detectCoincidentWalls, mountClashPanel, openSavedReports, publishCappedRun, saveCurrentResultAs, savedClashReports } from '@/test/clash-report-fixture';
 import { ChartsPanel } from './ChartsPanel';
 import type { ChartRenderer } from './useEChart';
 
@@ -96,12 +95,6 @@ async function reload(): Promise<void> {
     useViewerStore.setState({ ...original, dashboards: loadDashboards(), activeDashboardId: DASHBOARD.id });
     await useViewerStore.getState().restoreSavedClashReports();
   });
-}
-
-function box(key: string, ref: number, dx: number): ClashElement {
-  const positions = new Float32Array([dx, 0, 0, dx + 1, 0, 0, dx + 1, 1, 0, dx, 1, 0, dx, 0, 1, dx + 1, 0, 1, dx + 1, 1, 1, dx, 1, 1]);
-  const indices = new Uint32Array([0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 4, 5, 0, 5, 1, 1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0]);
-  return { key, ref, model: 'A', tag: 'IfcWall', bounds: { min: [dx, 0, 0], max: [dx + 1, 1, 1] }, positions, indices };
 }
 
 describe('Saved clash reports as a chart source (#6947)', () => {
@@ -218,12 +211,9 @@ describe('Saved clash reports as a chart source (#6947)', () => {
   it('marks a run that stopped at its pair limit, and a result whose models changed before saving', async () => {
     mountClashPanel();
     await detectCoincidentWalls(2);
-    // The panel's own runs set no pair limit, so the partial run comes straight from the engine with one.
-    const partial = await createClashEngine({ backend: 'ts' }).run([box('w1', 1, 0), box('w2', 2, 0), box('w3', 3, 0)],
-      [{ id: 'walls', name: 'Walls', a: 'IfcWall', mode: 'hard' }], { maxCandidatePairs: 1 });
-    assert.ok(partial.truncated && partial.truncated.droppedPairs > 0, 'the engine reports the pairs it did not check');
-    act(() => { useViewerStore.getState().setClashResult(partial); useViewerStore.getState().bumpClashRunSeq(); });
-    const dropped = partial.truncated.droppedPairs;
+    const dropped = (await publishCappedRun()).truncated.droppedPairs;
+    openSavedReports();
+    assert.match(document.body.querySelector('[data-clash-report-current]')?.textContent ?? '', /will be saved as a partial run/, 'the dialog says so before saving');
     const saved = await saveCurrentResultAs('Capped run');
     assert.deepEqual(saved.completeness.truncated, { reason: 'maxCandidatePairs', droppedPairs: dropped });
     assert.match(document.body.querySelector(`[data-clash-report="${saved.id}"] [data-clash-report-limits]`)?.textContent ?? '', /Partial run/);

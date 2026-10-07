@@ -12,6 +12,7 @@
 
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { createClashEngine, type ClashElement, type ClashResult } from '@ifc-lite/clash';
 import type { SavedClashReport } from '@/lib/clash/saved-report-schema';
 import { ClashPanel } from '@/components/viewer/ClashPanel';
 import { useViewerStore } from '@/store';
@@ -55,7 +56,28 @@ export async function detectCoincidentWalls(wallCount: number, modelCount: 1 | 2
   assert.equal(useViewerStore.getState().clashResult?.clashes.length, pairs, `${wallCount} coincident walls clash pairwise`);
 }
 
-function openSavedReports(): void {
+function box(key: string, ref: number): ClashElement {
+  const positions = new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1]);
+  const indices = new Uint32Array([0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 4, 5, 0, 5, 1, 1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0]);
+  return { key, ref, model: 'A', tag: 'IfcWall', bounds: { min: [0, 0, 0], max: [1, 1, 1] }, positions, indices };
+}
+
+/**
+ * Make the current result a run the engine cut short. The panel's own runs set
+ * no pair limit, so this one comes straight from the engine with a limit of one
+ * candidate pair over three coincident walls; it is published the way a
+ * finished run is (`setClashResult`, then the run counter).
+ */
+export async function publishCappedRun(): Promise<ClashResult & { truncated: NonNullable<ClashResult['truncated']> }> {
+  const result = await createClashEngine({ backend: 'ts' }).run([box('capped-wall-1', 1), box('capped-wall-2', 2), box('capped-wall-3', 3)],
+    [{ id: 'walls', name: 'Walls', a: 'IfcWall', mode: 'hard' }], { maxCandidatePairs: 1 });
+  const { truncated } = result;
+  assert.ok(truncated && truncated.droppedPairs > 0, 'the engine reports the pairs it did not check');
+  act(() => { useViewerStore.getState().setClashResult(result); useViewerStore.getState().bumpClashRunSeq(); });
+  return { ...result, truncated };
+}
+
+export function openSavedReports(): void {
   if (document.body.querySelector('input[aria-label="Report name"]')) return;
   const trigger = bodyButton('Saved clash reports');
   assert.ok(trigger, 'the Clash panel header offers saved clash reports (#6947)');

@@ -108,3 +108,17 @@ test('#6919 editing the graph clears a refusal, so run evidence never describes 
   assert.equal(flowRunAdapter.readiness(useViewerStore.getState()).ready, false);
   assert.equal(JSON.parse(captureEvidence('flowRun').payload).sourceAvailability, 'unavailable');
 });
+
+test('#6919 credential-like text in run errors, warnings and logs is redacted before it reaches the prompt', () => {
+  const doc: FlowDocument = { ...newFlowDocument('Leaky run'), nodes: [{ id: 'req', type: 'core.math', params: { op: 'add' } }], edges: [] };
+  record(doc, [report('req', { laneErrors: 1, error: 'auth failed: Bearer LEAKEDTOKEN12345', warnings: ['retry with token=WARNSECRET9'] })], [
+    { nodeId: 'req', laneKey: null, level: 'error', message: 'GET https://ops:LOGPASS7@api.example.com failed' },
+    { nodeId: 'req', laneKey: null, level: 'info', message: 'using api_key=INFOSECRET3' },
+    { nodeId: 'host', laneKey: null, level: 'warn', message: 'password=HOSTSECRET5' },
+  ]);
+  const { text } = capture();
+  for (const leaked of ['LEAKEDTOKEN12345', 'WARNSECRET9', 'LOGPASS7', 'INFOSECRET3', 'HOSTSECRET5']) {
+    assert.ok(!text.includes(leaked), `${leaked} stays out of the prompt`);
+  }
+  assert.match(text, /Bearer \[redacted\]/);
+});

@@ -16,7 +16,7 @@
  * Counts come from the graph's native tracking sidecar for the active model.
  */
 
-import { trackingKeyOf, type FlowDocument, type FlowNode, type TrackingMode } from '@ifc-lite/flow';
+import { digest, trackingKeyOf, type FlowDocument, type FlowNode, type TrackingMode } from '@ifc-lite/flow';
 import { useViewerStore } from '@/store';
 import { BrowserTrackingStore } from '../flow/persistence';
 import { flowRegistry } from '../flow/runner';
@@ -39,6 +39,14 @@ export function activeTrackingPin(): string | null {
   if (!activeModelId) return null;
   const hash = models.get(activeModelId)?.sourceContentHash;
   return hash ? `content:${hash}` : `model:${activeModelId}`;
+}
+
+/**
+ * Identity of the graph's whole tracking sidecar (pin, generations, owned element ids). A run in any tab
+ * that rewrites tracked elements changes it, even when the owned element counts stay the same.
+ */
+export function trackingStateDigest(graphId: string): string {
+  return digest(JSON.stringify(BrowserTrackingStore.read(graphId) ?? null));
 }
 
 /** What the scheduler sees of a branch: node types, params, lacing, tracking and wiring; not positions or labels. */

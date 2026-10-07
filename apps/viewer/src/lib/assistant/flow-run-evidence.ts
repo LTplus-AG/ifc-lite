@@ -78,7 +78,8 @@ export interface FlowRunDiagnostics {
 
 const MAX_NODES = 100;
 const MAX_MESSAGES = 5;
-const text = (value: string) => value.slice(0, 600);
+/** Every diagnostic string is redacted before it is bounded: run logs, errors and refusals can carry credential-like text. */
+const text = (value: string) => redactCredentialText(value).slice(0, 600);
 
 /** A node whose own evaluation failed. `skipped` only means an upstream node failed, so it is not a cause. */
 export function isFailingNode(node: Pick<FlowNodeDiagnostic, 'status' | 'laneErrors'>): boolean {
@@ -121,7 +122,7 @@ export function failingBranch(doc: Pick<FlowDocument, 'edges'>, run: RunResult |
 /** The node's native error log lines, lane-tagged and bounded. */
 export function nodeErrorMessages(run: RunResult, nodeId: string): string[] {
   return run.log.filter(entry => entry.nodeId === nodeId && entry.level === 'error')
-    .slice(0, MAX_MESSAGES).map(entry => text(redactCredentialText(entry.laneKey === null ? entry.message : `lane ${entry.laneKey}: ${entry.message}`)));
+    .slice(0, MAX_MESSAGES).map(entry => text(entry.laneKey === null ? entry.message : `lane ${entry.laneKey}: ${entry.message}`));
 }
 
 /** Parameters a node exposes to the prompt: only on the failing branch, under the policy above. */

@@ -17,7 +17,7 @@ import { MemoCache } from '@ifc-lite/flow';
 import { useViewerStore } from '@/store';
 import { resolveEnglish } from '@/i18n/registry';
 import { columnGraph, openFlowSample, runOpenFlow, sampleColumns } from '@/test/flow-sample-fixture';
-import { newFlowDocument } from '../flow/persistence';
+import { BrowserTrackingStore, newFlowDocument } from '../flow/persistence';
 import { flowRegistry } from '../flow/runner';
 import { requiredCapabilities } from '../flow/editor-ops';
 import { captureEvidence } from './evidence';
@@ -107,6 +107,14 @@ test('#6919 reviewed edits of a tracked branch and deletion of the tracked node,
   const shorten = prepareFlowProposal(patch([{ op: 'setParam', node: 'xs', param: 'items', value: [0, 4] }]), captureEvidence('flow'));
   assert.deepEqual(shorten.tracking, [{ nodeId: 'add', trackingKey: 'Columns along X/add', ownedElements: 3, effect: 'branch' }]);
   assert.throws(() => applyFlowProposal(shorten, shorten.digest), /must be acknowledged/);
+  // Another tab rewrites the owned set (same count, new generation): the reviewed proposal no longer applies.
+  const graphId = useViewerStore.getState().flowDoc!.id;
+  const sidecar = BrowserTrackingStore.read(graphId)!;
+  const other = new BrowserTrackingStore(graphId, sidecar.pinnedTo);
+  const reviewed = other.load('Columns along X/add')!;
+  other.save({ ...reviewed, generation: reviewed.generation + 1 });
+  assert.throws(() => applyFlowProposal(shorten, shorten.digest, { trackingAcknowledged: true }), /changed after review/);
+  other.save(reviewed);
   applyFlowProposal(shorten, shorten.digest, { trackingAcknowledged: true });
   const second = await runOpenFlow(model, cache);
   assert.equal(second.ok, true);

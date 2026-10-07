@@ -20,14 +20,18 @@ import { analysisStampOf } from '@/hooks/useAnalysisStaleness';
 import type { ViewerState } from '@/store';
 import type { WorkflowArtifact } from '@/lib/flow/artifact';
 import type { EvidenceSnapshot } from '../evidence';
-import { branchParams, failingBranch, flowRunVerdict, isFailingNode, nodeErrorMessages, type FlowRunPin } from '../flow-run-evidence';
+import { branchParams, failingBranch, flowRunVerdict, isFailingNode, nodeErrorMessages, redactCredentialText, type FlowRunPin } from '../flow-run-evidence';
 import { evidenceRow, take, unavailableCapture, type EvidenceAdapter } from './types';
 
 const TEXT = 500;
 const PREVIEW_ITEMS = 5;
 const NODE_STATUSES = ['ok', 'memo', 'noop', 'skipped', 'error'] as const;
 
-const bounded = (text: string, limit = TEXT): string => text.length > limit ? `${text.slice(0, limit)}…` : text;
+/** Redacted, then bounded: logs, errors, warnings and refusals can carry credential-like text a node logged. */
+const bounded = (raw: string, limit = TEXT): string => {
+  const text = redactCredentialText(raw);
+  return text.length > limit ? `${text.slice(0, limit)}…` : text;
+};
 
 function previewItems(data: FlowData): unknown[] {
   if (data.kind === 'item') return [data.value];

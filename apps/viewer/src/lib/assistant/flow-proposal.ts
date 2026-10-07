@@ -11,7 +11,7 @@ import { evidenceIsCurrent, type EvidenceSnapshot } from './evidence';
 import { isFlowSource } from './sources';
 import { parseFlowPatch, isBoundedFlowJson, type FlowPatch } from './flow-patch';
 import { changedCodeParams, isNativeParamValue, validateProposedGraph, type FlowCodeParam } from './flow-validate';
-import { trackingImpacts, type TrackingImpact } from './flow-tracking';
+import { trackingImpacts, trackingStateDigest, type TrackingImpact } from './flow-tracking';
 import { flowRunDiagnostics, isFailingNode } from './flow-run-evidence';
 import { pinnedFlowRun } from './adapters/flow-run';
 import { withUpstream } from '../flow/upstream';
@@ -32,6 +32,8 @@ export interface FlowProposal {
   readonly addedCapabilities: readonly string[];
   /** Tracked nodes this edit affects; non-empty requires explicit acknowledgement before apply. */
   readonly tracking: readonly TrackingImpact[];
+  /** `trackingStateDigest` at review: the owned elements themselves, not only their counts, must be unchanged to apply. */
+  readonly trackingState: string;
   readonly diagnosis: FlowProposalDiagnosis | null;
   /** Script source this patch writes, listed verbatim in review. */
   readonly code: readonly FlowCodeParam[];
@@ -91,7 +93,7 @@ function proposalDigest(proposal: Omit<FlowProposal, 'digest'>): string {
   return digest({ evidenceId: proposal.evidence.id, evidencePayload: proposal.evidence.payload,
     graphId: proposal.target.id, activeFlowId: proposal.activeFlowId,
     patch: proposal.patchJson, before: proposal.beforeJson, after: proposal.afterJson,
-    addedCapabilities: JSON.stringify(proposal.addedCapabilities), tracking: JSON.stringify(proposal.tracking),
+    addedCapabilities: JSON.stringify(proposal.addedCapabilities), tracking: JSON.stringify(proposal.tracking), trackingState: proposal.trackingState,
     diagnosis: JSON.stringify(proposal.diagnosis), code: JSON.stringify(proposal.code) });
 }
 
@@ -128,14 +130,14 @@ export function prepareFlowProposal(text: string, evidence: EvidenceSnapshot): F
   const proposal = { evidence, target: before, activeFlowId: state.activeFlowId,
     patchJson: JSON.stringify(patch), beforeJson: JSON.stringify(before), afterJson: JSON.stringify(after),
     addedCapabilities: after.capabilities.filter(cap => !before.capabilities.includes(cap)),
-    tracking: trackingImpacts(before, after), diagnosis: diagnose(patch, before, evidence), code: changedCodeParams(before, after) };
+    tracking: trackingImpacts(before, after), trackingState: trackingStateDigest(before.id), diagnosis: diagnose(patch, before, evidence), code: changedCodeParams(before, after) };
   return { ...proposal, digest: proposalDigest(proposal) };
 }
 
 export function isFlowProposalCurrent(proposal: FlowProposal): boolean {
   const state = useViewerStore.getState();
   return editable(proposal.target) && state.activeFlowId === proposal.activeFlowId && evidenceIsCurrent(proposal.evidence)
-    && JSON.stringify(proposal.target) === proposal.beforeJson;
+    && JSON.stringify(proposal.target) === proposal.beforeJson && trackingStateDigest(proposal.target.id) === proposal.trackingState;
 }
 export function isFlowReceiptCurrent(receipt: FlowApplyReceipt): boolean {
   const state = useViewerStore.getState();

@@ -481,4 +481,33 @@ describe('dxfUnderlays saved under the legacy whole-file key (#7035)', () => {
     assert.deepStrictEqual(useViewerStore.getState().dxfUnderlays.map((u) => u.id), ['identity-u']);
     assert.equal(reads.count, 0);
   });
+
+  it('a legacy entry whose read fails is not recorded as checked, and a later load moves it', async () => {
+    const { file, legacy, identity } = await legacyFixture(63, 'read-failure-dxf.ifc');
+    await rawPut(legacy, [sampleUnderlay('legacy-u')]);
+    const realGet = IDBObjectStore.prototype.get;
+    IDBObjectStore.prototype.get = function get(this: IDBObjectStore, query: IDBValidKey | IDBKeyRange) {
+      if (query === legacy) throw new DOMException('simulated read failure', 'UnknownError');
+      return realGet.call(this, query);
+    };
+    try {
+      useViewerStore.setState({ models: new Map([['read-failure-first', stubModel('read-failure-first', file)]]) });
+      await mount();
+      useViewerStore.getState().setActiveModel('read-failure-first');
+      await flushDeep();
+    } finally {
+      IDBObjectStore.prototype.get = realGet;
+    }
+    assert.deepStrictEqual((await rawGet(legacy))?.dxfUnderlays.map((u) => u.id), ['legacy-u'], 'the entry that could not be read is untouched');
+    assert.ok(!(localStorage.getItem('ifc-lite:drawing2d-legacy-checked:v1:dxf') ?? '').includes(identity), 'and the file is not recorded as checked');
+
+    // The same bytes opened again, now readable.
+    const again = fileWithBytes(63, 'read-failure-dxf.ifc');
+    await act(async () => {
+      useViewerStore.setState({ models: new Map([['read-failure-second', stubModel('read-failure-second', again)]]) });
+      useViewerStore.getState().setActiveModel('read-failure-second');
+    });
+    await until(async () => (await rawGet(legacy)) === undefined, 'the legacy entry to be moved on the later load');
+    assert.deepStrictEqual((await rawGet(identity))?.dxfUnderlays.map((u) => u.id), ['legacy-u']);
+  });
 });

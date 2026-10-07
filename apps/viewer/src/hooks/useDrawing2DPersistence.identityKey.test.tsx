@@ -289,6 +289,31 @@ describe('markup saved under the legacy key is moved to the identity key (#7035)
     assert.equal(localStorage.getItem(keyFor(legacyKeyOf(bytes))), null);
   });
 
+  it('a legacy entry that could not be removed is not recorded as checked, and the next load removes it', async () => {
+    const bytes = bytesOf(41);
+    saveDrawing2DEntry(legacyKeyOf(bytes), entryWith([measure('legacy-1')]));
+    const legacyStorageKey = keyFor(legacyKeyOf(bytes));
+    const realRemoveItem = localStorage.removeItem.bind(localStorage);
+    const stuck = mock.method(localStorage, 'removeItem', (key: string) => {
+      if (key === legacyStorageKey) throw new Error('simulated removal failure');
+      realRemoveItem(key);
+    });
+    const before = legacyPasses();
+    try {
+      await open(loadedModel('first', sourceFile(bytes), bytes));
+    } finally {
+      stuck.mock.restore();
+    }
+    assert.deepEqual(liveMeasures(), ['legacy-1'], 'the markup was moved and restored');
+    assert.ok(localStorage.getItem(legacyStorageKey), 'setup: the legacy entry is still there');
+    assert.ok(!(localStorage.getItem(CHECKED_LOCAL) ?? '').includes(identityOf(bytes)), 'so the file is not recorded as checked');
+
+    await open(loadedModel('second', sourceFile(bytes), bytes));
+    assert.equal(legacyPasses() - before, 2, 'the next load looks again');
+    assert.equal(localStorage.getItem(legacyStorageKey), null, 'and removes the leftover');
+    assert.deepEqual(liveMeasures(), ['legacy-1'], 'without duplicating what was already moved');
+  });
+
   it('an interrupted move (both entries present) recovers without loss, duplication or older-over-newer', async () => {
     const bytes = bytesOf(50);
     // The tab closed after the identity entry was written and before the

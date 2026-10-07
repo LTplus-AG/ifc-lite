@@ -102,11 +102,14 @@ function markChecked(store: LegacyStore, key: string, present: string[]): void {
   }
 }
 
-function removeLocal(storageKey: string): void {
+/** Returns whether the entry is gone. One that could not be removed must not be recorded as checked: the next load removes it. */
+function removeLocal(storageKey: string): boolean {
   try {
     localStorage.removeItem(storageKey);
+    return localStorage.getItem(storageKey) === null;
   } catch (err) {
     console.warn(`[drawing2D] could not remove ${storageKey} after moving it`, err);
+    return false;
   }
 }
 
@@ -125,7 +128,7 @@ const holdsAll = (stored: { id: string }[], moved: { id: string }[]) => {
   return moved.every((item) => ids.has(item.id));
 };
 
-/** Returns `false` when the legacy markup could not be confirmed under `key`; the legacy entry is then still in place. */
+/** Returns `false` when the legacy markup could not be confirmed under `key` (the legacy entry is then untouched) or could not be removed afterwards. */
 function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveContext['unionById']): boolean {
   const defaults = getDefaultDrawing2DState().drawing2DDisplayOptions;
   const old = loadDrawing2DEntry(legacy, defaults);
@@ -141,11 +144,10 @@ function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveCont
   } : old);
   const written = loadDrawing2DEntry(key, defaults);
   if (!written || !MARKUP_LISTS.every((list) => holdsAll(written[list], old[list]))) return false;
-  removeLocal(keyFor(legacy));
-  return true;
+  return removeLocal(keyFor(legacy));
 }
 
-/** Returns `false` when the legacy sheet could not be confirmed under `key`; the legacy entry is then still in place. */
+/** Returns `false` when the legacy sheet could not be confirmed under `key` (the legacy entry is then untouched) or could not be removed afterwards. */
 function moveLegacySheet(key: string, legacy: string): boolean {
   const old = loadSheet(legacy);
   if (!old) return true;
@@ -153,8 +155,7 @@ function moveLegacySheet(key: string, legacy: string): boolean {
     saveSheet(key, old);
     if (!loadSheet(key)) return false;
   }
-  removeLocal(sheetStorageKey(legacy));
-  return true;
+  return removeLocal(sheetStorageKey(legacy));
 }
 
 /**
@@ -185,7 +186,12 @@ export async function migrateLegacyDxfEntry(key: string, present: string[], ctx:
   if (!legacy) return;
   let left = present;
   const { dxf } = ctx;
-  const old = await dxf.load(legacy);
+  const hasLegacy = present.includes(legacy);
+  const old = hasLegacy ? await dxf.load(legacy) : null;
+  // `load` answers `null` for an unreadable value and for a failed read
+  // alike. Only the first may be recorded as checked: this read rejects on
+  // the second, which leaves the identity unmarked for the next load.
+  if (hasLegacy && !old) await dxf.request('readonly', (store) => store.get(legacy));
   if (old) {
     const moved = old.dxfUnderlays;
     if (stillCurrent()) {

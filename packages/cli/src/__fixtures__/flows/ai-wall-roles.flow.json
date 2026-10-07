@@ -1,0 +1,38 @@
+{
+  "flowVersion": 2,
+  "id": "example-ai-wall-roles",
+  "name": "AI wall roles (reviewed)",
+  "description": "Builds a wall table, asks the host AI model to label each wall as facade or partition with the columns it relied on, and pauses for your review before anything is written. Only after you approve the proposal does the run resume and write the approved labels into Pset_Coordination.WallRole; unknown rows are not written.",
+  "capabilities": ["model.read", "network.ai", "model.mutate:Pset_Coordination"],
+  "inputs": [],
+  "outputs": [
+    { "nodeId": "roles", "port": "table", "label": "Proposed wall roles" },
+    { "nodeId": "roles", "port": "coverage", "label": "Classification coverage" },
+    { "nodeId": "apply", "port": "entities", "label": "Walls written" }
+  ],
+  "nodes": [
+    { "id": "walls", "type": "model.select", "params": { "selector": "IfcWall" }, "pos": [0, 0] },
+    { "id": "table", "type": "table.fromEntities", "params": { "columns": ["Name", "Pset_WallCommon.IsExternal"] }, "pos": [260, 0] },
+    {
+      "id": "roles",
+      "type": "ai.classify",
+      "params": {
+        "categories": [
+          { "label": "Facade", "definition": "external wall that forms the building envelope" },
+          { "label": "Partition", "definition": "internal wall that separates spaces" }
+        ],
+        "version": "wall-roles-1",
+        "columns": ["Name", "Pset_WallCommon.IsExternal"],
+        "maxRows": 50,
+        "batchSize": 25
+      },
+      "pos": [520, 0]
+    },
+    { "id": "apply", "type": "model.applyTable", "params": { "mapping": [{ "column": "label", "pset": "Pset_Coordination", "prop": "WallRole" }] }, "pos": [780, 0] }
+  ],
+  "edges": [
+    { "from": ["walls", "entities"], "to": ["table", "entities"] },
+    { "from": ["table", "table"], "to": ["roles", "table"] },
+    { "from": ["roles", "table"], "to": ["apply", "table"] }
+  ]
+}

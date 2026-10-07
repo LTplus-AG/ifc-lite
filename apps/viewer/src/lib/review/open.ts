@@ -38,7 +38,7 @@ export function openOriginal(finding: ReviewFinding, openPanel: (panel: Workspac
   if (evidence.kind === 'clash') state.setClashSelectedId(evidence.clashId);
   else if (evidence.kind === 'bcf') state.setActiveTopic(evidence.topicGuid);
   else if (evidence.kind === 'validation') {
-    const sourceGlobalId = state.models.get(evidence.modelId)?.ifcDataStore.entities.getGlobalId(evidence.expressId);
+    const sourceGlobalId = state.models.get(evidence.modelId)?.ifcDataStore?.entities.getGlobalId(evidence.expressId);
     const expected = finding.elements.find(element => element.modelId === evidence.modelId)?.globalId;
     if (sourceGlobalId && expected && sourceGlobalId !== expected) return false;
     if (!selectChangedEntity(evidence.modelId, evidence.expressId)) return false;

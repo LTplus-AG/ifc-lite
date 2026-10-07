@@ -16,7 +16,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { cn } from '@/lib/utils';
 import { selectChangedEntity } from '@/lib/changes/select-changed-entity';
-import type { ChangeScalar, ModelChangeBatch } from '@/lib/actions/model-change';
+import type { ChangeScalar, ModelChangeBatch } from '@ifc-lite/ai/artifacts';
 import { previewCounts, previewModelChanges, type PreviewRow, type RowStatus } from '@/lib/actions/model-change-preview';
 import { changeField, commitModelChanges, undoModelChanges, type ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import { modelChangeLibrary, useModelChangeReceipts } from '@/lib/actions/receipts';

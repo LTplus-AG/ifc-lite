@@ -294,13 +294,19 @@ export function useIfcLoader() {
     let abortGeometry: (() => void) | null = null; // set once the geometry pool starts
     let cancelOwnedStream: (() => void) | null = null;
     const metadataAbort = new AbortController();
+    let activityPublished = false;
+    let activityError: string | undefined;
     let modelCompletion: ReturnType<typeof createModelLoadCompletion> | undefined;
     const releaseCanceller = installModelLoadCanceller(target.kind, () => {
       cancelled = true;
       if (target.kind === 'primary' && loadSessionRef.current === currentSession) loadSessionRef.current += 1;
       metadataAbort.abort();
       abortGeometry?.();
-    }, () => cancelOwnedStream); // #5849: federated cancellation preserves loaded models
+    }, () => cancelOwnedStream, {
+      subject: file.name,
+      result: () => ({ outcome: cancelled ? 'cancelled' : activityError ? 'failed' : activityPublished ? 'completed' : 'cancelled',
+        ...(activityError ? { detail: activityError } : {}) }),
+    }); // #5849: federated cancellation preserves loaded models
 
     // Cold-storage residency (issue #1682 phase 3b): any new load invalidates
     // the previous entry-backed provider — a primary load replaces the model,
@@ -449,8 +455,10 @@ export function useIfcLoader() {
     // Every load failure the user sees goes through here (#5618); `retry`
     // is fixed to THIS call so no call site below can omit or go stale.
     const retryThisLoad = () => { void loadFile(file, target, options); };
-    const showLoadError = (message: string, code: string) =>
+    const showLoadError = (message: string, code: string) => {
+      activityError = message;
       reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, message, code, retryThisLoad);
+    };
     const settleResumable = beginResumableLoad(file); // carried across a stale-deployment reload
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
@@ -645,6 +653,7 @@ export function useIfcLoader() {
             ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
           };
           useViewerStore.getState().addModel(federatedModel);
+          activityPublished = true;
           // The registry also holds scans that arrived before any compatible
           // anchor. Once this model is visible to `findReferenceSpatialModel`,
           // recompute all scan matrices atomically against the live anchor.
@@ -694,6 +703,7 @@ export function useIfcLoader() {
           ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
           ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
         });
+        activityPublished = true;
         modelCompletion?.settleModel();
       };
       // Point clouds stream from Blob; only their head is needed for detection.
@@ -2032,6 +2042,7 @@ export function useIfcLoader() {
                   // the same retryable load error used by every other path.
                   showLoadError(formatLoadError(err, file.name, 'geometry_processing'), 'geometry_processing');
                 } else {
+                  activityError = formatLoadError(err, file.name, 'geometry_processing');
                   updateModel(modelId, {
                     loadState: 'error',
                     loadError: formatLoadError(err, file.name, 'geometry_processing'),
@@ -2068,6 +2079,7 @@ export function useIfcLoader() {
         updateModel(modelId, { loadState: 'error', loadError: geometryError });
         if (surfaceStaleDeployment(err)) noteStaleDeploymentLoadFailure(file); // resumed after the reload
         else showLoadError(geometryError, kind);
+        activityError = geometryError;
         // Flat properties: posthog-js spreads this object onto the event, so a
         // wrapper key would bury `error_kind` in an unfilterable nested blob.
         posthog.captureException(err, {
@@ -2187,6 +2199,7 @@ export function useIfcLoader() {
       if (await tryResourceRetry(err, kind, 'ifc_model_load')) return;
 
       const friendly = formatLoadError(err, file.name, 'ifc_model_load');
+      activityError = friendly;
       updateModel(modelId, {
         loadState: 'error',
         loadError: friendly,

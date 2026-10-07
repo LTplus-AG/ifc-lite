@@ -7,7 +7,7 @@
  * (U02, #6925). Nothing here runs a job or changes one; each recorder watches
  * the native running flag and records start, phase and the native outcome:
  *
- *   load    `loading` / `geometryStreamingActive`, `progress`, `error`, `loadCancelSeq`; cancel = `selectLoadCanceller`
+ *   load    recorded per canonical load by modelLoadCanceller, independent of shared UI flags
  *   clash   `clashRunning`, `clashProgress`, `clashError`, `clashRunSeq` (bumped only on success)
  *   ids     `idsLoading` with `idsProgress`, `idsError`, `idsValidationReport`
  *   flow    `flowRunning`, `flowProgress`, `flowLastRun.ok`, `flowLastError`, the run's abort signal; cancel = `cancelWorkflowRun`
@@ -23,7 +23,6 @@
 
 import { en } from '@/i18n/en';
 import type { TranslationKey } from '@/i18n';
-import { selectActiveLoadProgress, selectLoadCanceller } from '@/store/slices/loadingSlice';
 import type { ViewerState } from '@/store';
 import { activeWorkflowSignal, cancelWorkflowRun } from '@/lib/flow/run-session';
 import { useRequestReceipts, type UsageReceipt } from '@/lib/llm/request-receipts';
@@ -65,37 +64,6 @@ function watch<B>(store: ViewerStoreLike, spec: Watch<B>): () => void {
   };
   observe(store.getState());
   return store.subscribe((state) => observe(state));
-}
-
-function watchLoads(store: ViewerStoreLike): () => void {
-  return watch(store, {
-    running: (s) => s.loading || s.geometryStreamingActive,
-    start: (s) => {
-      const canceller = selectLoadCanceller(s);
-      return {
-        job: {
-          kind: 'load', title: 'activityTray.job.load', panel: 'loadReport',
-          ...(s.loadingFileName ? { subject: s.loadingFileName } : {}),
-          // Read the CURRENT canceller at click time; a later load phase may replace it.
-          ...(canceller ? { cancel: () => selectLoadCanceller(store.getState())?.() } : {}),
-        },
-        baseline: { cancels: s.loadCancelSeq, geometry: s.geometryResult, store: s.ifcDataStore,
-          models: new Map([...s.models].map(([id, model]) => [id, model.ifcDataStore])) },
-      };
-    },
-    // The file name can land after the loading flag; pick it up while running.
-    tick: (s) => ({ phase: selectActiveLoadProgress(s)?.phase, ...(s.loadingFileName ? { subject: s.loadingFileName } : {}),
-      cancel: selectLoadCanceller(s) ? () => selectLoadCanceller(store.getState())?.() : null }),
-    // A cancel from any button bumps the counter before the loading flags drop.
-    end: (s, before) => {
-      if (s.loadCancelSeq > before.cancels) return { outcome: 'cancelled' };
-      if (s.error) return { outcome: 'failed', detail: s.error };
-      const published = (s.geometryResult !== null && s.geometryResult !== before.geometry)
-        || (s.ifcDataStore !== null && s.ifcDataStore !== before.store)
-        || [...s.models].some(([id, model]) => model.ifcDataStore && model.ifcDataStore !== before.models.get(id));
-      return { outcome: published ? 'completed' : 'cancelled' };
-    },
-  });
 }
 
 function watchClash(store: ViewerStoreLike): () => void {
@@ -186,7 +154,7 @@ export function startActivityRecorders(store: ViewerStoreLike): () => void {
     restored = true;
     restoreActivityJournal(isCataloguedKey);
   }
-  const stops = [watchLoads(store), watchClash(store), watchValidation(store), watchFlow(store), watchRequests()];
+  const stops = [watchClash(store), watchValidation(store), watchFlow(store), watchRequests()];
   return () => { for (const stop of stops) stop(); };
 }
 

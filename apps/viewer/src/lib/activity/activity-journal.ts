@@ -246,7 +246,7 @@ export function restoreActivityJournal(known: (key: string) => key is Translatio
     if (!job) return [];
     if (job.outcome !== 'running') return [job];
     interrupted++;
-    return [{ ...job, outcome: 'interrupted' as const }];
+    return [{ ...job, outcome: 'interrupted' as const, phase: undefined, progress: undefined }];
   });
   const live = useActivityJournal.getState().jobs;
   commit(() => [...restored.filter((job) => !live.some((current) => current.id === job.id)), ...live]);

@@ -120,6 +120,6 @@ describe('Charts PDF report export in the activity tray', () => {
     click(button(/^Report$/)!);
     await act(async () => { document.body.querySelector<HTMLButtonElement>('[data-report-export]')!.click(); });
     await waitFor(() => jobs()[0]?.outcome === 'failed', 'the export failed');
-    assert.deepEqual([jobs()[0].subject, jobs()[0].detail], ['Export report', 'PDF library unavailable']);
+    assert.deepEqual([jobs()[0].subject, jobs()[0].detail], ['Overview', 'PDF library unavailable']);
   });
 });

@@ -89,7 +89,7 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
     try {
       // Outside ExportDialogShell, so it records itself in the activity tray (#6925).
       const result = await recordActivity(
-        { kind: 'export', title: 'activityTray.job.export', subject: t('reportExportDialog.dialogTitle') },
+        { kind: 'export', title: 'activityTray.job.export', subject: dashboard.name },
         async () => {
           const s = await (seams ? seams() : browserReportSeams(snapshots ? snapshot?.capture ?? null : null));
           const pdf = await generateReportPdf({

@@ -23,8 +23,8 @@ import { cancelWorkflowRun, startWorkflowRun, type WorkflowRun } from '@/lib/flo
 import { installModelLoadCanceller } from '@/hooks/modelLoadCanceller';
 import { fixtureModel } from '@/test/store-fixture';
 import { selectLoadCanceller } from '@/store/slices/loadingSlice';
-import { ACTIVITY_STORAGE_KEY, activityCanceller, useActivityJournal, type ActivityJob } from './activity-journal.js';
-import { resetActivityRecordersForTest, startActivityRecorders } from './activity-recorders.js';
+import { activityCanceller, restoreActivityJournal, updateActivity, useActivityJournal, type ActivityJob } from './activity-journal.js';
+import { isCataloguedKey, resetActivityRecordersForTest, startActivityRecorders } from './activity-recorders.js';
 
 const initial = useViewerStore.getState();
 const originalFetch = globalThis.fetch;
@@ -117,50 +117,65 @@ describe('validation, Flow and load recorders', () => {
     assert.deepEqual([only().outcome, only().detail], ['failed', 'Node 3 threw']);
   });
 
-  it('a model load records the file and its failure', () => {
-    let cancelled = 0;
-    // The loading flag flips before the file name lands, as in the real loader.
-    useViewerStore.setState({ loading: true, activeLoadCanceller: () => { cancelled++; } });
-    useViewerStore.setState({ loadingFileName: 'AC20-FZK-Haus.ifc' });
-    assert.deepEqual([only().subject, only().panel], ['AC20-FZK-Haus.ifc', 'loadReport']);
-    assert.match(sessionStorage.getItem(ACTIVITY_STORAGE_KEY) ?? '', /AC20-FZK-Haus\.ifc/, 'a reload would still name the file');
-    activityCanceller(only().id)?.();
-    assert.equal(cancelled, 1, 'tray Cancel calls the load UI\'s own canceller');
-    useViewerStore.setState({ loading: false, error: 'Unsupported schema' });
-    assert.deepEqual([only().outcome, only().detail], ['failed', 'Unsupported schema']);
-  });
-
-  it('#6952 a load that stops without a new result is cancelled', () => {
-    useViewerStore.setState({ loading: true });
-    useViewerStore.setState({ loading: false });
-    assert.equal(only().outcome, 'cancelled');
-  });
-
-  it('#6952 a newly published model completes a load and a late canceller reaches the tray', () => {
-    useViewerStore.setState({ loading: true });
-    assert.equal(activityCanceller(only().id), null);
-    let cancels = 0;
-    installModelLoadCanceller('primary', () => { cancels++; });
-    assert.ok(activityCanceller(only().id));
-    activityCanceller(only().id)!();
-    assert.equal(cancels, 1);
-    assert.equal(only().outcome, 'cancelled');
-    useViewerStore.setState({ loading: true });
-    const model = fixtureModel('new');
-    useViewerStore.setState({ loading: false, models: new Map([[model.id, model]]) });
-    assert.equal(jobs()[1].outcome, 'completed');
-  });
-
-  for (const kind of ['primary', 'federated'] as const) {
-    it(`a ${kind} load cancelled from the status bar or loading card is cancelled, not completed (PR #6952 review)`, () => {
-      useViewerStore.setState({ loading: true, loadingFileName: 'AC20-FZK-Haus.ifc' });
-      installModelLoadCanceller(kind, () => {});
-      // StatusBar's and ViewportLoadingCard's Cancel: the load UI's own canceller, not the tray's.
-      selectLoadCanceller(useViewerStore.getState())!();
-      assert.equal(useViewerStore.getState().loading, false, 'the real canceller ended the load');
-      assert.equal(only().outcome, 'cancelled');
+  it('#6952 concurrent federated loads have independent cancellation and completion', () => {
+    let firstCancelled = 0;
+    let secondCancelled = 0;
+    const first = fixtureModel('first');
+    const releaseFirst = installModelLoadCanceller('federated', () => { firstCancelled++; }, () => null, {
+      subject: 'first.ifc', result: () => ({ outcome: useViewerStore.getState().models.has(first.id) ? 'completed' : 'cancelled' }),
     });
-  }
+    useViewerStore.setState({ loading: true });
+    const releaseSecond = installModelLoadCanceller('federated', () => { secondCancelled++; }, () => null, {
+      subject: 'second.ifc', result: () => ({ outcome: 'cancelled' }),
+    });
+    assert.deepEqual(jobs().map(job => [job.subject, job.outcome]), [['first.ifc', 'running'], ['second.ifc', 'running']]);
+    // StatusBar Cancel ends the latest add, not its independent predecessor.
+    selectLoadCanceller(useViewerStore.getState())!();
+    assert.equal(secondCancelled, 1);
+    assert.equal(firstCancelled, 0);
+    assert.deepEqual(jobs().map(job => job.outcome), ['running', 'cancelled']);
+    assert.ok(activityCanceller(jobs()[0].id), 'the earlier load keeps its own Cancel');
+    useViewerStore.setState({ loading: false, models: new Map([[first.id, first]]) });
+    assert.equal(jobs()[0].outcome, 'running', 'shared loading flags cannot settle this file');
+    releaseFirst();
+    releaseSecond();
+    assert.deepEqual(jobs().map(job => job.outcome), ['completed', 'cancelled']);
+  });
+
+  it('#6952 cancelling an earlier add does not cancel or clear the latest load UI', () => {
+    let firstCancelled = 0;
+    let secondCancelled = 0;
+    const releaseFirst = installModelLoadCanceller('federated', () => { firstCancelled++; }, () => null, {
+      subject: 'first.ifc', result: () => ({ outcome: 'cancelled' }),
+    });
+    const second = fixtureModel('second');
+    const releaseSecond = installModelLoadCanceller('federated', () => { secondCancelled++; }, () => null, {
+      subject: 'second.ifc', result: () => ({ outcome: useViewerStore.getState().models.has(second.id) ? 'completed' : 'cancelled' }),
+    });
+    useViewerStore.setState({ loading: true, loadingFileName: 'second.ifc' });
+    activityCanceller(jobs()[0].id)!();
+    assert.equal(firstCancelled, 1);
+    assert.equal(secondCancelled, 0);
+    assert.equal(useViewerStore.getState().loading, true);
+    assert.equal(useViewerStore.getState().loadingFileName, 'second.ifc');
+    useViewerStore.setState({ models: new Map([[second.id, second]]) });
+    releaseFirst();
+    releaseSecond();
+    assert.deepEqual(jobs().map(job => job.outcome), ['cancelled', 'completed']);
+  });
+
+  it('#6952 late subject persistence never restores an active phase after reload', () => {
+    const release = installModelLoadCanceller('primary', () => {}, () => null, {
+      subject: 'initial.ifc', result: () => ({ outcome: 'cancelled' }),
+    });
+    useViewerStore.getState().setProgress({ phase: 'Parsing', percent: 20 });
+    updateActivity(only().id, { phase: 'Parsing', subject: 'late.ifc' });
+    useActivityJournal.setState({ jobs: [] });
+    restoreActivityJournal(isCataloguedKey);
+    assert.deepEqual([only().subject, only().outcome, only().phase, only().progress], ['late.ifc', 'interrupted', undefined, undefined]);
+    release();
+  });
+
 });
 
 describe('assistant request recorder', () => {

@@ -38,7 +38,8 @@ export function publicationActivity(record: BcfPublication): PublicationActivity
   const uncertain = count(states, 'uncertain');
   const blocked = count(states, 'blocked');
   const total = states.length;
-  const outcome: PublicationOutcome = count(states, 'sending') > 0 ? 'running'
+  const outcome: PublicationOutcome = total === 0 ? 'blocked'
+    : count(states, 'sending') > 0 ? 'running'
     : uncertain > 0 ? 'uncertain'
       : blocked > 0 ? 'blocked'
         : count(states, 'queued') > 0 ? 'queued'

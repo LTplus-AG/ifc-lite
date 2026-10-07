@@ -26,6 +26,15 @@ import type { BcfPublication, OutboxState } from '@/lib/bcf-publication/outbox-t
 import { publicationActivity } from '@/lib/activity/publication-activity';
 import { ActivityTrayButton } from './ActivityTray';
 
+async function openTray(button: HTMLButtonElement): Promise<void> {
+  click(button);
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (document.querySelector('[aria-label="Jobs"]') || document.body.textContent?.includes('No jobs in this session yet.')) return;
+    await advance(20);
+  }
+  assert.fail('Activity contents did not appear');
+}
+
 const initial = useViewerStore.getState();
 const T0 = 1_760_000_000_000;
 
@@ -51,8 +60,8 @@ function publication(id: string, states: OutboxState[], updatedAt = '2025-10-09T
 const text = (root: ParentNode) => root.textContent?.replace(/\s+/g, ' ') ?? '';
 const rows = () => [...document.body.querySelectorAll('ul[aria-label="Jobs"] > li')];
 
-describe('publication outcome (U02, #6925)', () => {
-  it('an unknown server effect outranks failure and success; never reads as completed', () => {
+describe('publication outcome (U02, #6925)', async () => {
+  it('an unknown server effect outranks failure and success; never reads as completed', async () => {
     const outcome = (states: OutboxState[]) => publicationActivity(publication('x', states)).outcome;
     assert.equal(outcome(['done', 'sending']), 'running');
     assert.equal(outcome(['done', 'uncertain', 'failed']), 'uncertain');
@@ -64,8 +73,8 @@ describe('publication outcome (U02, #6925)', () => {
   });
 });
 
-describe('activity tray (U02, #6925)', () => {
-  it('lists running jobs first, with outcomes in words and only real actions', () => {
+describe('activity tray (U02, #6925)', async () => {
+  it('lists running jobs first, with outcomes in words and only real actions', async () => {
     let flowCancels = 0;
     const exportJob = beginActivity({ kind: 'export', title: 'activityTray.job.export', subject: 'Export IFC' }, T0);
     finishActivity(exportJob, 'failed', { detail: 'Disk full' }, T0 + 1);
@@ -75,7 +84,7 @@ describe('activity tray (U02, #6925)', () => {
     const ui = render(<ActivityTrayButton />);
     const trigger = ui.querySelector('button')!;
     assert.equal(trigger.getAttribute('aria-label'), 'Activity: 1 job running');
-    click(trigger);
+    await openTray(trigger);
 
     const [flow, publicationRow, exported] = rows();
     assert.match(text(flow), /Flow run.*Door check.*Running/);
@@ -88,25 +97,25 @@ describe('activity tray (U02, #6925)', () => {
     assert.equal(flowCancels, 1);
   });
 
-  it('Open shows the panel that owns the job and closes the tray', () => {
+  it('Open shows the panel that owns the job and closes the tray', async () => {
     const opened: string[] = [];
     useViewerStore.setState({ openWorkspacePanel: (panel) => { opened.push(panel); } });
     const id = beginActivity({ kind: 'check', title: 'activityTray.job.clash', panel: 'clash' }, T0);
     finishActivity(id, 'completed', {}, T0 + 1);
     const ui = render(<ActivityTrayButton />);
-    click(ui.querySelector('button')!);
+    await openTray(ui.querySelector('button')!);
     click(document.body.querySelector('button[aria-label="Open Clash detection"]')!);
     assert.deepEqual(opened, ['clash']);
     assert.equal(rows().length, 0, 'the tray closed');
   });
 
-  it('a job cut off by a reload shows as interrupted with no Cancel', () => {
+  it('a job cut off by a reload shows as interrupted with no Cancel', async () => {
     beginActivity({ kind: 'check', title: 'activityTray.job.validation', panel: 'validation', cancel: () => {} }, T0);
     useActivityJournal.setState({ jobs: [] }); // the page went away
     restoreActivityJournal(isCataloguedKey);
     const ui = render(<ActivityTrayButton />);
     assert.equal(ui.querySelector('button')!.getAttribute('aria-label'), 'Activity', 'nothing is running any more');
-    click(ui.querySelector('button')!);
+    await openTray(ui.querySelector('button')!);
     const [row] = rows();
     assert.match(text(row), /Data validation.*Interrupted.*did not finish/);
     assert.equal(row.querySelector('button[aria-label^="Cancel"]'), null);
@@ -117,7 +126,7 @@ describe('activity tray (U02, #6925)', () => {
     finishActivity(useActivityJournal.getState().jobs[0].id, 'completed', {}, T0 + 1);
     useBcfOutbox.setState({ entries: [publication('b2', ['done'])] });
     const ui = render(<ActivityTrayButton />);
-    click(ui.querySelector('button')!);
+    await openTray(ui.querySelector('button')!);
     assert.equal(rows().length, 2);
     await act(async () => {
       [...document.body.querySelectorAll('button')].find((button) => button.textContent === 'Clear finished')!.click();
@@ -125,14 +134,14 @@ describe('activity tray (U02, #6925)', () => {
     assert.deepEqual(rows().map((row) => /BCF publication/.test(text(row))), [true]);
   });
 
-  it('says so when nothing has run', () => {
+  it('says so when nothing has run', async () => {
     const ui = render(<ActivityTrayButton />);
-    click(ui.querySelector('button')!);
+    await openTray(ui.querySelector('button')!);
     assert.match(text(document.body), /No jobs in this session yet\./);
   });
 });
 
-describe('activity tray announcements (U02, #6925)', () => {
+describe('activity tray announcements (U02, #6925)', async () => {
   it('announces a job that finishes while the viewer is open, without opening the tray', async () => {
     const done = beginActivity({ kind: 'export', title: 'activityTray.job.export', subject: 'Export IFC' }, T0);
     finishActivity(done, 'completed', {}, T0 + 1); // finished before mount (e.g. restored): not news
@@ -171,7 +180,7 @@ describe('activity tray announcements (U02, #6925)', () => {
   });
 });
 
-describe('activity tray on phones (U02, #6925)', () => {
+describe('activity tray on phones (U02, #6925)', async () => {
   it('the overflow menu opens the same jobs in a dialog, since phones show no status bar', async () => {
     beginActivity({ kind: 'flow', title: 'activityTray.job.flow', subject: 'Door check', panel: 'flow', cancel: () => {} }, T0);
     render(<BimReactContext.Provider value={{} as BimContext}><MobileToolbar /></BimReactContext.Provider>);
@@ -195,4 +204,25 @@ describe('activity tray on phones (U02, #6925)', () => {
     await act(async () => { finishActivity(beginActivity({ kind: 'flow', title: 'activityTray.job.flow' }), 'cancelled'); });
     assert.equal(text(live).trim(), 'Flow run: Cancelled');
   });
+});
+
+// PR #6952 review: absent effects and absent failure explanations must be explicit.
+it('an empty publication is blocked and says no server effects were queued (#6952)', async () => {
+  useBcfOutbox.setState({ entries: [publication('empty', [])] });
+  const ui = render(<ActivityTrayButton />);
+  await openTray(ui.querySelector('button')!);
+  const [row] = rows();
+  assert.match(text(row), /Blocked/);
+  assert.match(text(row), /No server effects were queued/);
+  assert.doesNotMatch(text(row), /Complete/);
+});
+
+it('a failed job with an empty source message has an explanation after reload (#6952)', async () => {
+  const job = beginActivity({ kind: 'export', title: 'activityTray.job.export', subject: 'Export IFC' });
+  finishActivity(job, 'failed', { detail: '' });
+  useActivityJournal.setState({ jobs: [] });
+  restoreActivityJournal(isCataloguedKey);
+  const ui = render(<ActivityTrayButton />);
+  await openTray(ui.querySelector('button')!);
+  assert.match(text(rows()[0]), /Failed.*The job failed without an explanation from its source/);
 });

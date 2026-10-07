@@ -51,7 +51,9 @@ function jobRow(job: ActivityJob): ActivityRow {
     ...(job.phase ? { phase: job.phase } : {}),
     ...(job.progress ? { progress: job.progress } : {}),
     ...(job.detail ? { detail: job.detail } : {}),
-    ...(job.outcome === 'interrupted' ? { detailKey: 'activityTray.interruptedHint' as const } : job.detailKey ? { detailKey: job.detailKey } : {}),
+    ...(job.outcome === 'interrupted' ? { detailKey: 'activityTray.interruptedHint' as const }
+      : job.outcome === 'failed' && !job.detail?.trim() ? { detailKey: 'activityTray.failureNoDetail' as const }
+        : job.detailKey ? { detailKey: job.detailKey } : {}),
     ...(job.panel ? { panel: job.panel } : {}),
   };
 }
@@ -64,7 +66,9 @@ export function useActivityRows(): ActivityRow[] {
     for (const record of publications) {
       const activity = publicationActivity(record);
       const parsed = Date.parse(activity.updatedAt);
-      const detail = activity.attention > 0
+      const detail = activity.total === 0
+        ? { detailKey: 'activityTray.publication.empty' as const }
+        : activity.attention > 0
         ? { detailKey: 'activityTray.publication.attention' as const, detailCount: activity.attention }
         : activity.failed > 0 ? { detailKey: 'activityTray.publication.failed' as const, detailCount: activity.failed } : {};
       rows.push({

@@ -102,4 +102,49 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     }
     if (state.snapshot.source === 'clash') system = `${system}\n${CLASH_GROUP_OUTPUT_GUIDANCE}`;
     // Corrections are proposals only: the user reviews each change before anything is applied.
+    if (isReportSource(state.snapshot.source)) system = `${system}\n${MODEL_CHANGE_OUTPUT_GUIDANCE}\n${REPORT_CLAIMS_OUTPUT_GUIDANCE}`;
+    // Scene actions are proposals too: nothing changes the view until the user applies them.
+    if (!isFlowSource(state.snapshot.source)) system = `${system}\n${SCENE_ACTION_OUTPUT_GUIDANCE}`;
+    // IDS, information rules and report outlines are drafted from validation results or any loaded model (P07).
+    if (state.snapshot.source === 'validation' || state.snapshot.source === 'loadReport') system = `${system}\n${CHECK_AUTHORING_GUIDANCE}`;
+    // Filters, lists, lenses and charts (P13) are proposals reviewed against the loaded models; only a bounded schema digest is sent.
+    if (!isFlowSource(state.snapshot.source)) {
+      const guidance = await artifactGuidance(useViewerStore.getState(), controller.signal);
+      if (!ownsRequest()) return false;
+      system = `${system}\n${guidance}`;
+    }
     system = `${system}\n${generationLanguageInstruction(state.language)}`;
+    // Every source now carries guidance, so the full system prompt is re-bounded.
+    if (JSON.stringify(messages).length + system.length > 90_000) { fail('context-limit'); return false; }
+    if (attachments.screenshot) {
+      messages[messages.length - 1] = { role: 'user', content: [{ type: 'image_url', image_url: { url: attachments.screenshot } }, { type: 'text', text: userText }] };
+    }
+    const outcome = await runModelRequest({
+      route, proxyUrl, messages, system, maxOutputTokens: ASSISTANT_OUTPUT_TOKENS, budget, signal: controller.signal,
+      timeoutMs: ASSISTANT_TIMEOUT_MS,
+      onChunk: chunk => { if (ownsRequest()) useAssistant.setState(s => ({ output: s.output + chunk })); },
+    });
+    if (!ownsRequest()) return false;
+    if (outcome.kind === 'completed' || outcome.kind === 'truncated') {
+      useAssistant.setState({
+        messages: [...state.messages, { role: 'user', content: userText },
+          { role: 'assistant', content: outcome.text, model: route.model, receipt: outcome.receipt }],
+        pendingPrompt: null, output: '', status: 'idle', controller: null,
+        error: outcome.kind === 'truncated' ? 'truncated-output' : null,
+      });
+      return true;
+    }
+    if (outcome.kind === 'refused') fail('budget-exhausted');
+    else if (outcome.kind === 'timeout') fail('request-timeout');
+    else if (outcome.kind === 'error') fail(outcome.message);
+    // A cancelled outcome is already reflected by whoever cancelled (Cancel, Refresh, a stale model).
+    return false;
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+    return false;
+  } finally {
+    unsubscribe();
+    detachSource?.();
+    if (ownsRequest()) useAssistant.setState({ controller: null, pendingPrompt: null, status: 'idle' });
+  }
+}

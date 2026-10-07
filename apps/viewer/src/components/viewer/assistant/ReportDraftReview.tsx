@@ -86,3 +86,30 @@ export function ReportDraftReview() {
           <p className="font-semibold break-words">{draft.document.name}</p>
           <p className="text-2xs text-muted-foreground">{draft.source.messages.at(-1)?.model} · {reportLanguageName(draft.language, locale)}</p>
         </div>
+        {declaredLanguageDiffers(draft.declaredLanguage, draft.language) && <output className="block rounded border border-amber-500/40 bg-amber-500/10 p-2">
+          {t('aiReports.languageMismatch', { declared: draft.declaredLanguage ?? '', chosen: draft.language })}</output>}
+        {draft.prose.trim() && <blockquote className="whitespace-pre-wrap break-words border-l-2 border-border pl-2">{draft.prose}</blockquote>}
+        <ReportClaimList key={draft.document.id} claims={draft.claims} disabled={busy || saved || !current} onEdit={(id, text) => revise(id, { text })} onRemove={id => revise(id, 'remove')} />
+        <details><summary className="cursor-pointer py-1 text-muted-foreground hover:text-foreground">{t('assistant.evidenceDetails')}</summary>
+          <div className="mt-2"><EvidenceView evidence={draft.source.evidence} state="historical" /></div>
+        </details>
+        <details><summary className="cursor-pointer py-1 text-muted-foreground hover:text-foreground">{t('assistant.reportContents')}</summary><pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{draft.documentJson}</pre></details>
+        {!current && !saved && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('assistant.reportStale')}</p>}
+        <label className="flex min-h-6 items-center gap-2"><input type="checkbox" className="h-4 w-4 shrink-0" checked={approved} disabled={!current || busy || saved}
+          onChange={event => setApproved(event.target.checked)} />{t('assistant.reportApproved')}</label>
+        <div className="flex flex-wrap gap-1">
+          <Button size="sm" className="h-7" disabled={!approved || !current || busy || saved || blocked} onClick={() => void save()}>{t('assistant.saveReport')}</Button>
+          <Button variant="outline" size="sm" className="h-7" disabled={!approved || busy || blocked} onClick={() => exportDocument(draft.document)}>{t('assistant.exportReport')}</Button>
+        </div>
+        {saved && <div aria-live="polite" className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2 space-y-2">
+          <p>{t('assistant.reportSaved')}</p>
+          <Button variant="outline" size="sm" className="h-7" onClick={() => {
+            store.setActiveDocumentId(draft.document.id); panels.openInHome('document');
+          }}>{t('assistant.openReport')}</Button>
+        </div>}
+      </>}
+      {error && <p role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive">{error}</p>}
+    </div>
+    <ContentStorageNotice status={store.documentsStorage} retry={store.retryDocumentsSave} restore={store.restoreDocuments} />
+  </details>;
+}

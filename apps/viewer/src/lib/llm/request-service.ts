@@ -23,6 +23,16 @@ import { streamAnthropicChat, streamOpenAiChat } from './stream-direct.js';
 
 export type SendableRoute = Exclude<StreamRoute, { kind: 'missing-key' }>;
 
+/**
+ * Root budget helpers for hosts that pair them with `runModelRequest` (the
+ * Flow AI service). Re-exported here so on-demand modules reach them through
+ * this module rather than splitting the shared budget code into its own chunk.
+ */
+export { createRootBudget, restoreRootBudget } from '@ifc-lite/ai';
+
+/** The hosted LLM proxy every proxy-routed request uses. */
+export const LLM_PROXY_URL: string = import.meta.env.VITE_LLM_PROXY_URL || '/api/chat';
+
 export interface ModelRequest {
   route: SendableRoute;
   proxyUrl: string;

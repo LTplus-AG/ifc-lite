@@ -1,6 +1,34 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { flowReviewEn } from './catalogues/flow-review.en';
+type ReviewKey = keyof typeof flowReviewEn extends `flowReview.${infer Key}` ? Key : never;
+/** Exact lazy keys and parameters validate contributed locales before feature code loads. */
+const flowReviewShape = {
+  "title": [],
+  "paused": ["nodes"],
+  "node": ["node", "type"],
+  "digest": ["digest"],
+  "created": ["time"],
+  "coverage.classify": ["classified", "failed", "model", "notSent", "requests", "rows", "unknown"],
+  "coverage.summarize": ["model", "requests", "rows", "sections", "sent", "uncited"],
+  "coverage.extract": ["model", "passages", "records", "requests", "sent", "unsupported"],
+  "approve": [],
+  "resume": [],
+  "reject": [],
+  "dismiss": [],
+  "state.prepared": [],
+  "state.reviewed": [],
+  "state.applying": [],
+  "state.completed": [],
+  "state.partial": ["reason"],
+  "state.rejected": [],
+  "refused.graph-changed": [],
+  "refused.sources-changed": [],
+  "refused.other": ["reason"],
+  "notSaved": ["reason"],
+  "needsModel": [],
+} satisfies Record<ReviewKey, readonly string[]>;
 import type { semanticAssistEn } from './catalogues/semantic-assist.en';
 
 type SemanticKey = keyof typeof semanticAssistEn extends `semanticAssist.${infer Key}` ? Key : never;
@@ -99,7 +127,7 @@ const semanticMessageShape = {
 
 import type { reviewWorkspaceEn } from './catalogues/review-workspace.en';
 
-type ReviewKey = keyof typeof reviewWorkspaceEn extends `reviewWorkspace.${infer Key}` ? Key : never;
+type WorkspaceReviewKey = keyof typeof reviewWorkspaceEn extends `reviewWorkspace.${infer Key}` ? Key : never;
 /** Startup validation needs keys and parameters, while the panel's prose stays lazy. */
 const reviewMessageShape = {
   "title": [],
@@ -212,16 +240,20 @@ const reviewMessageShape = {
   "actions.reportFailed": [],
   "actions.openDocument": [],
   "actions.openDrafts": [],
-} as const satisfies Record<ReviewKey, readonly string[]>;
+} as const satisfies Record<WorkspaceReviewKey, readonly string[]>;
 
 export function lazyMessageParameters(key: string): readonly string[] | null {
+  if (key.startsWith('flowReview.')) {
+    const tail = key.slice('flowReview.'.length);
+    return Object.hasOwn(flowReviewShape, tail) ? flowReviewShape[tail as ReviewKey] : null;
+  }
   if (key.startsWith('semanticAssist.')) {
     const tail = key.slice('semanticAssist.'.length);
     return Object.hasOwn(semanticMessageShape, tail) ? semanticMessageShape[tail as SemanticKey] : null;
   }
   if (key.startsWith('reviewWorkspace.')) {
     const tail = key.slice('reviewWorkspace.'.length);
-    return Object.hasOwn(reviewMessageShape, tail) ? reviewMessageShape[tail as ReviewKey] : null;
+    return Object.hasOwn(reviewMessageShape, tail) ? reviewMessageShape[tail as WorkspaceReviewKey] : null;
   }
   return null;
 }

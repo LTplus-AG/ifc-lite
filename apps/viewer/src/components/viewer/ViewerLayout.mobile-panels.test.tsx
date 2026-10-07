@@ -24,7 +24,7 @@ import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
-import { englishCatalogue as en } from '@/i18n/en';
+import { englishMessage } from '@/i18n/registry';
 import { activeBottomPanel } from '@/lib/panels/bottom-panels';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { isCollabEnabled } from '@/lib/collab/config';
@@ -44,7 +44,7 @@ function expectedRailIds(): WorkspacePanelId[] {
 }
 
 function panelName(id: WorkspacePanelId): string {
-  const value = en[getPanelDef(id)!.titleKey];
+  const value = englishMessage(getPanelDef(id)!.titleKey);
   if (typeof value !== 'string') throw new Error(`Panel ${id} has no text title`);
   return value;
 }

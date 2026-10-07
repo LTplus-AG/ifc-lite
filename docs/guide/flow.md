@@ -245,7 +245,7 @@ missing citations and quotes absent from the passage are dropped or marked.
 Rows omitted from a classification reply count as `failed`; an explicit
 `unknown` answer remains distinct in the per-row outcome and coverage counts.
 Hosts save the original root budget in `createCheckpoint({ ...input, budget })`.
-CLI resume refuses a missing or malformed budget receipt before claiming a
+CLI and viewer resume refuse a missing or malformed budget receipt before claiming a
 checkpoint when downstream AI nodes remain; it never grants a fresh allowance.
 When a paused CLI run exports with `--out`, resume uses that exported IFC file,
 whose exact bytes are bound into the checkpoint even for a read-only run.
@@ -304,10 +304,23 @@ detached copy of the approved values before any asynchronous downstream work.
 Every resume uses the original claim returned by a successful `updateCheckpoint`
 compare-and-swap. A persisted `applying` record is not an ownership receipt: another
 tab or process cannot resume it, and a lost owner is recovered as partially committed.
-A host that persists checkpoints supplies a durable store. This layer supplies the checkpoint API and CLI review commands. Native viewer
-approval controls ship in the subsequent P19 viewer layer. MCP currently reports AI nodes unavailable. Pass the effective
-node registry when creating a checkpoint and computing its claim digest so a changed
-review policy refuses the resume. Graph identities, names and node labels also bind the digest,
+
+**In the viewer**, AI nodes use the model chosen for the Assistant (the
+hosted proxy or your own key), and every request has a usage receipt. A run
+that pauses shows a review card under the canvas with every row of the
+proposal and its coverage; **Approve and resume** approves exactly that
+proposal and runs the rest of the graph from it, **Reject** ends it. The
+checkpoint is kept in the browser, so after a reload with the same model
+files and no edits the same proposal can still be approved; any edit, undo
+or model change in between refuses the resume and asks for a new run. Graph
+writes before and after the pause are separate undo steps.
+
+In a real host the transitions go through `updateCheckpoint` with a durable
+store; the CLI's `flow run --checkpoint` / `flow review` / `flow resume`
+(see the [CLI guide](cli.md)) and the viewer's Flow
+panel do exactly that. MCP currently reports AI nodes unavailable.
+Pass the effective node registry when creating a checkpoint and computing its
+claim digest so a changed review policy refuses the resume. Graph identities, names and node labels also bind the digest,
 because they determine default write tracking keys. Cached proposals still pause
 for review on every new run; only an approved checkpoint restores them for resume.
 

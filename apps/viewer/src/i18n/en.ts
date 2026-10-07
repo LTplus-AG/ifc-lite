@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { LazyTranslationKey } from './lazy-catalogues';
 import { automationEditorEn } from './catalogues/automation-editor.en';
 import { spaceEnvelopeEn } from './catalogues/space-envelope.en';
 import { semanticIdentityEn } from './catalogues/semantic-identity.en';
@@ -281,6 +282,6 @@ export const en = {
 
 /** Strings that load with the panels that use them (see `registerEnglish`); their keys are typed here, their text is not in the eager bundle. */
 type LazyEnglish = typeof semanticAssistEn;
-export type TranslationKey = keyof typeof en | keyof LazyEnglish | keyof typeof reviewWorkspaceEn;
+export type TranslationKey = keyof typeof en | keyof LazyEnglish | LazyTranslationKey | keyof typeof reviewWorkspaceEn;
 /** The live English catalogue: `en` plus whatever lazy catalogues have registered. */
 export const englishCatalogue: Partial<Record<TranslationKey, TranslationValue>> = en;

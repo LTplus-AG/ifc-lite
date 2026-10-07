@@ -17,6 +17,7 @@
  */
 
 import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -24,8 +25,12 @@ import { newFlowDocument } from '@/lib/flow/persistence';
 import { addNode, toggleInput, toggleOutput } from '@/lib/flow/editor-ops';
 import { BimProvider } from '@/sdk/BimProvider';
 import { useViewerStore } from '@/store';
-import { cleanup, render } from '@/test/render';
+import { cleanup, render, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { FLOW_VERSION, type FlowDocument } from '@ifc-lite/flow';
+import { flowRegistry } from '@/lib/flow/runner';
+import { useFlowReview } from '@/lib/flow/review-session';
+import { openFlowSample } from '@/test/flow-sample-fixture';
 import { FlowPanel } from './FlowPanel.js';
 
 class MemoryStorage {
@@ -315,4 +320,61 @@ describe('FlowPanel — Player mode and Publish button (#5167)', () => {
     assert.doesNotMatch(bar.textContent ?? '', /Run finished/);
   });
 
+});
+
+afterEach(() => { cleanup(); useViewerStore.setState(initialState); });
+
+// #7038: exercise the caller, not only eligibility, with real IFC + SDK mutations.
+for (const reviewOnWriter of [false, true]) it(`#7038 mounted paused writes remain publishable when review is ${reviewOnWriter ? 'on the writer' : 'downstream'}`, async () => {
+  const model = await openFlowSample();
+  assert.ok(model.bim.query().byType('IfcWall').count() > 0, 'the committed IFC sample supplies the targets');
+  const registry = flowRegistry();
+  const writerType = reviewOnWriter ? 'test.publish-reviewed-writer' : 'model.setProperty';
+  if (reviewOnWriter) {
+    const writer = registry.get('model.setProperty');
+    assert.ok(writer);
+    registry.register({ ...writer, type: writerType, review: 'required' });
+  }
+  const reviewType = `test.publish-review-${reviewOnWriter}`;
+  const finishType = `test.publish-finish-${reviewOnWriter}`;
+  registry.registerAll([
+    { type: reviewType, title: 'Review upstream edits', category: 'test',
+      inputs: [{ name: 'entity', type: { kind: 'entity', access: 'item' } }],
+      outputs: [{ name: 'proposal', type: { kind: 'scalar', access: 'item' } }], params: [], capabilities: [],
+      ...(!reviewOnWriter ? { review: 'required' as const } : {}), run: () => ({ proposal: 'Review the pending upstream property change' }) },
+    { type: finishType, title: 'Finish', category: 'test',
+      inputs: [{ name: 'proposal', type: { kind: 'scalar', access: 'item' } }], outputs: [], params: [], capabilities: [], run: () => ({}) },
+  ]);
+  const doc: FlowDocument = { flowVersion: FLOW_VERSION, id: `mounted-review-publish-${reviewOnWriter}`, name: 'Review before publish',
+    capabilities: ['model.read', 'model.mutate:Pset_ReviewTest'], inputs: [], outputs: [], nodes: [
+      { id: 'walls', type: 'model.byType', params: { type: 'IfcWall' } }, { id: 'first', type: 'core.first' },
+      { id: 'value', type: 'core.string', params: { value: 'reviewed' } },
+      { id: 'writer', type: writerType, params: { pset: 'Pset_ReviewTest', property: 'Status' } },
+      { id: 'proposal', type: reviewType }, { id: 'finish', type: finishType },
+    ], edges: [
+      { from: ['walls', 'entities'], to: ['first', 'items'] }, { from: ['first', 'item'], to: ['writer', 'entity'] },
+      { from: ['value', 'value'], to: ['writer', 'value'] }, { from: ['writer', 'entity'], to: ['proposal', 'entity'] },
+      { from: ['proposal', 'proposal'], to: ['finish', 'proposal'] },
+    ] };
+  useViewerStore.getState().importFlow(doc);
+  const ui = mountFlowPanel();
+  click(byText(ui, 'button', 'Run'));
+  await waitFor(() => !!useViewerStore.getState().flowLastRun && !useViewerStore.getState().flowRunning, 'paused run completes');
+  const paused = useViewerStore.getState().flowLastRun!;
+  assert.equal(paused.ok, true, useViewerStore.getState().flowLastError ?? JSON.stringify(paused.log));
+  assert.deepEqual(paused.review, [reviewOnWriter ? 'writer' : 'proposal']);
+  const before = useViewerStore.getState().flowLastRunWindow!;
+  assert.equal(before.mutationIds.size, 1, 'one real SDK property mutation is pending');
+  assert.equal(before.checkpointId, useFlowReview.getState().checkpoint?.id);
+  assert.equal(byText<HTMLButtonElement>(ui, 'button', 'Publish').disabled, true);
+  await waitFor(() => [...ui.querySelectorAll('button')].some(button => button.textContent?.trim() === 'Approve and resume'), 'review control mounted');
+  click(byText(ui, 'button', 'Approve and resume'));
+  await waitFor(() => useViewerStore.getState().flowLastRun?.review.length === 0 && !useViewerStore.getState().flowRunning, 'native reviewed resume');
+  const completed = useViewerStore.getState();
+  assert.equal(completed.flowLastRun!.ok, true, completed.flowLastError ?? 'resume succeeds');
+  assert.equal(completed.flowLastRun!.writes, 0, 'the resumed tail writes nothing');
+  assert.equal(completed.flowLastRun!.reports.find(report => report.nodeId === 'writer')?.status, 'restored');
+  assert.deepEqual(completed.flowLastRunWindow!.mutationIds, before.mutationIds, 'the upstream edit is retained exactly once');
+  assert.deepEqual(completed.flowLastRunWindow!.writingNodes, [{ nodeId: 'writer', trackingKey: 'writer' }]);
+  assert.equal(byText<HTMLButtonElement>(ui, 'button', 'Publish').disabled, false, 'completed upstream writes remain publishable');
 });

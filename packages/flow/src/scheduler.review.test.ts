@@ -10,12 +10,12 @@
  * pause is not repeated.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { FLOW_VERSION, type FlowDocument } from './document.js';
 import { NodeRegistry } from './registry.js';
 import { MemoCache, runFlow } from './scheduler.js';
 import { createCheckpoint, resumeOutputs, graphDigest } from './checkpoint-record.js';
-import { approveCheckpoint, claimCheckpoint } from './checkpoint-state.js';
+import { approveCheckpoint, claimCheckpoint, MemoryCheckpointStore, updateCheckpoint } from './checkpoint-state.js';
 import type { FlowData } from './values.js';
 
 interface Host {
@@ -68,11 +68,13 @@ const doc: FlowDocument = {
   ],
 };
 
-function reviewedOutputs(paused: Awaited<ReturnType<typeof runFlow>>, outputs = paused.outputs) {
+async function reviewedOutputs(paused: Awaited<ReturnType<typeof runFlow>>, outputs = paused.outputs) {
   const checkpoint = createCheckpoint({ doc, registry, result: { ...paused, outputs }, sourceDigest: 'test-source' });
-  return resumeOutputs(claimCheckpoint(approveCheckpoint(checkpoint, checkpoint.proposalDigest), {
+  const store = new MemoryCheckpointStore();
+  await store.write(approveCheckpoint(checkpoint, checkpoint.proposalDigest), null);
+  return resumeOutputs(await updateCheckpoint(store, checkpoint.id, current => claimCheckpoint(current, {
     owner: 'native-test', graphDigest: graphDigest(doc, {}, registry), sourceDigest: 'test-source', leaseMs: 60_000,
-  }));
+  })));
 }
 
 const statuses = (result: Awaited<ReturnType<typeof runFlow>>) => Object.fromEntries(result.reports.map((r) => [r.nodeId, r.status]));
@@ -91,7 +93,7 @@ describe('review checkpoints', () => {
   it('resumes with the reviewed outputs without running any completed node again', async () => {
     const host: Host = { executed: [], sunk: [] };
     const paused = await runFlow(doc, { host, registry });
-    const resumed = await runFlow(doc, { host, registry, resume: reviewedOutputs(paused) });
+    const resumed = await runFlow(doc, { host, registry, resume: await reviewedOutputs(paused) });
     expect(resumed.ok).toBe(true);
     expect(resumed.review).toEqual([]);
     expect(statuses(resumed)).toMatchObject({ src: 'restored', w: 'restored', p: 'restored', sink: 'ok', src2: 'restored', sink2: 'restored' });
@@ -106,7 +108,7 @@ describe('review checkpoints', () => {
     const paused = await runFlow(doc, { host, registry });
     const reviewed = new Map(paused.outputs);
     reviewed.set('p', new Map<string, FlowData>([['proposal', { kind: 'item', value: 'edited-by-reviewer' }]]));
-    await runFlow(doc, { host, registry, resume: reviewedOutputs(paused, reviewed) });
+    await runFlow(doc, { host, registry, resume: await reviewedOutputs(paused, reviewed) });
     expect(host.sunk).toEqual([2, 'edited-by-reviewer']);
     expect(host.executed.filter((n) => n === 'propose')).toHaveLength(1);
   });
@@ -121,11 +123,11 @@ describe('review checkpoints', () => {
   it('#7038 refuses mutated or reused authorized outputs before a downstream write', async () => {
     const host: Host = { executed: [], sunk: [] };
     const paused = await runFlow(doc, { host, registry });
-    const changed = reviewedOutputs(paused);
+    const changed = await reviewedOutputs(paused);
     changed.delete('p');
     await expect(runFlow(doc, { host, registry, resume: changed })).rejects.toThrow(/unchanged outputs/);
     expect(host.sunk).toEqual([2]);
-    const approved = reviewedOutputs(paused);
+    const approved = await reviewedOutputs(paused);
     await runFlow(doc, { host, registry, resume: approved });
     await expect(runFlow(doc, { host, registry, resume: approved })).rejects.toThrow(/actively claimed/);
     expect(host.sunk).toEqual([2, 'label-for-7']);
@@ -152,11 +154,36 @@ it('#7038 one claim cannot issue multiple maps to replay downstream effects', as
   const host: Host = { executed: [], sunk: [] };
   const paused = await runFlow(doc, { host, registry });
   const checkpoint = createCheckpoint({ doc, registry, result: paused, sourceDigest: 'test-source' });
-  const claimed = claimCheckpoint(approveCheckpoint(checkpoint, checkpoint.proposalDigest), {
+  const store = new MemoryCheckpointStore();
+  await store.write(approveCheckpoint(checkpoint, checkpoint.proposalDigest), null);
+  const claimed = await updateCheckpoint(store, checkpoint.id, current => claimCheckpoint(current, {
     owner: 'one-map', graphDigest: graphDigest(doc, {}, registry), sourceDigest: 'test-source', leaseMs: 60_000,
-  });
+  }));
   const approved = resumeOutputs(claimed);
   expect(() => resumeOutputs(JSON.parse(JSON.stringify(claimed)))).toThrow(/already supplied/);
   await runFlow(doc, { host, registry, resume: approved });
+  expect(host.sunk).toEqual([2, 'label-for-7']);
+});
+
+
+it('#7038 another process cannot resume a persisted applying checkpoint', async () => {
+  const host: Host = { executed: [], sunk: [] };
+  const paused = await runFlow(doc, { host, registry });
+  const checkpoint = createCheckpoint({ doc, registry, result: paused, sourceDigest: 'test-source' });
+  const store = new MemoryCheckpointStore();
+  await store.write(approveCheckpoint(checkpoint, checkpoint.proposalDigest), null);
+  const claimed = await updateCheckpoint(store, checkpoint.id, current => claimCheckpoint(current, {
+    owner: 'first-process', graphDigest: graphDigest(doc, {}, registry), sourceDigest: 'test-source', leaseMs: 60_000,
+  }));
+  // A fresh module instance has the same empty ownership cache as another process.
+  vi.resetModules();
+  const otherProcess = await import('./checkpoint-record.js');
+  const persisted = (await store.read(checkpoint.id))!.checkpoint;
+  expect(() => otherProcess.resumeOutputs(persisted)).toThrow(/successful store claim/);
+  expect(() => resumeOutputs(persisted)).toThrow(/successful store claim/);
+  await expect(updateCheckpoint(store, checkpoint.id, current => claimCheckpoint(current, {
+    owner: 'second-process', graphDigest: graphDigest(doc, {}, registry), sourceDigest: 'test-source', leaseMs: 60_000,
+  }))).rejects.toThrow(/not reviewed|applying/);
+  await runFlow(doc, { host, registry, resume: resumeOutputs(claimed) });
   expect(host.sunk).toEqual([2, 'label-for-7']);
 });

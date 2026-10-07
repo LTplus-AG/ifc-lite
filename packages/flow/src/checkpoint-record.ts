@@ -149,9 +149,9 @@ export function fromPortable(data: PortableFlowData): FlowData {
 
 function portableOutputs(outputs: RunResult['outputs']): PortableOutputs {
   const problems: string[] = [];
-  const out: Record<string, Record<string, PortableFlowData>> = {};
+  const out: Record<string, Record<string, PortableFlowData>> = Object.create(null);
   for (const [nodeId, ports] of outputs) {
-    out[nodeId] = {};
+    out[nodeId] = Object.create(null);
     for (const [port, data] of ports) out[nodeId][port] = toPortable(data, `${nodeId}.${port}`, problems);
   }
   if (problems.length > 0) throw new CheckpointNotPortableError(problems);
@@ -217,7 +217,13 @@ function restoreMap(checkpoint: FlowCheckpoint): Map<string, Map<string, FlowDat
 }
 
 const authorizedResumes = new WeakMap<object, { graph: string; outputs: string; expires: number }>();
-const issuedClaims = new Map<string, number>();
+const ownedClaims = new WeakMap<object, string>();
+
+/** Internal: only a successful CAS claim yields a process-local ownership receipt. */
+export function registerOwnedClaim(checkpoint: FlowCheckpoint): void {
+  ownedClaims.set(checkpoint, digest({ id: checkpoint.id, graph: checkpoint.graphDigest,
+    source: checkpoint.sourceDigest, proposal: checkpoint.proposalDigest, claim: checkpoint.claim }));
+}
 
 /** Scheduler-only boundary: raw, changed, expired or reused maps cannot bypass review. */
 export function consumeReviewedResume(outputs: ReadonlyMap<string, ReadonlyMap<string, FlowData>>, doc: FlowDocument,
@@ -239,11 +245,12 @@ export function resumeOutputs(checkpoint: FlowCheckpoint, now = Date.now()): Map
     throw new Error('only an actively claimed, approved checkpoint can supply resume outputs');
   }
   const outputs = restoreMap(checkpoint);
-  const issuedAt = Date.now();
-  for (const [key, until] of issuedClaims) if (until <= issuedAt) issuedClaims.delete(key);
-  const claimKey = digest({ id: checkpoint.id, claim: checkpoint.claim });
-  if (issuedClaims.has(claimKey)) throw new Error('this checkpoint claim already supplied resume outputs');
-  issuedClaims.set(claimKey, issuedAt + (checkpoint.claim.leaseUntil - now));
+  const ownership = digest({ id: checkpoint.id, graph: checkpoint.graphDigest,
+    source: checkpoint.sourceDigest, proposal: checkpoint.proposalDigest, claim: checkpoint.claim });
+  if (ownedClaims.get(checkpoint) !== ownership) {
+    throw new Error('resume requires the original successful store claim; a persisted or already supplied claim cannot resume');
+  }
+  ownedClaims.delete(checkpoint);
   authorizedResumes.set(outputs, { graph: checkpoint.graphDigest, outputs: digest(portableOutputs(outputs)),
     expires: Date.now() + (checkpoint.claim.leaseUntil - now) });
   return outputs;

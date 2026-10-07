@@ -51,6 +51,12 @@ async function paused(host: Host = { sunk: [] }): Promise<FlowCheckpoint> {
 
 const claim = (owner: string, now = 2_000) => ({ owner, graphDigest: graphDigest(doc, {}, registry), sourceDigest: 'model-hash-1', leaseMs: 60_000, now });
 
+async function ownedClaim(checkpoint: FlowCheckpoint, input: Parameters<typeof claimCheckpoint>[1]): Promise<FlowCheckpoint> {
+  const store = new MemoryCheckpointStore();
+  await store.write(checkpoint, null);
+  return updateCheckpoint(store, checkpoint.id, current => claimCheckpoint(current, input));
+}
+
 describe('createCheckpoint', () => {
   it('is plain JSON that round-trips and resumes the downstream node once with the reviewed value', async () => {
     const checkpoint = await paused();
@@ -59,7 +65,7 @@ describe('createCheckpoint', () => {
     expect(checkpoint).toMatchObject({ state: 'prepared', reviewNodes: ['ai'], budget: { requests: 2 } });
     expect([...checkpointProposal(revived).keys()]).toEqual(['ai']);
     const host: Host = { sunk: [] };
-    const resumed = await runFlow(doc, { host, registry, resume: resumeOutputs(claimCheckpoint(approveCheckpoint(revived, revived.proposalDigest, 1_500), claim('owner')), 2_001) });
+    const resumed = await runFlow(doc, { host, registry, resume: resumeOutputs(await ownedClaim(approveCheckpoint(revived, revived.proposalDigest, 1_500), claim('owner')), 2_001) });
     expect(host.sunk).toEqual([['wall', 'unknown']]);
     expect(resumed.reports.find((r) => r.nodeId === 'ai')?.status).toBe('restored');
   });
@@ -292,4 +298,34 @@ it('#7038 rejected, partial and expired checkpoints cannot supply downstream wri
   expect(() => resumeOutputs(applying, 62_000)).toThrow(/actively claimed/);
   // Review inspection does not authorize a resume.
   expect([...checkpointProposal(prepared).keys()]).toEqual(['ai']);
+});
+
+
+it('#7038 prototype-named completed nodes and ports survive checkpoints without repeating writes', async () => {
+  for (const special of ['__proto__', 'constructor', 'toString']) {
+    let writes = 0;
+    const ownRegistry = new NodeRegistry<Host>().registerAll([
+      { type: 't.write', title: 'Write', category: 't', inputs: [], outputs: [{ name: special, type: table }],
+        params: [], capabilities: [], writes: 'model',
+        run: () => { writes++; return Object.fromEntries([[special, { columns: [], rows: [] }]]); } },
+      registry.get('t.classify')!, registry.get('t.sink')!,
+    ]);
+    const graph: FlowDocument = { ...doc,
+      nodes: [{ id: special, type: 't.write' }, { id: 'ai', type: 't.classify' }, { id: 'sink', type: 't.sink' }],
+      edges: [{ from: [special, special], to: ['ai', 't'] }, { from: ['ai', 'labels'], to: ['sink', 'v'] }],
+    };
+    const host: Host = { sunk: [] };
+    const paused = await runFlow(graph, { host, registry: ownRegistry });
+    expect(writes).toBe(1);
+    const checkpoint = parseCheckpoint(JSON.parse(JSON.stringify(createCheckpoint({ doc: graph, registry: ownRegistry, result: paused, sourceDigest: 'source' }))));
+    expect(Object.hasOwn(checkpoint.outputs, special)).toBe(true);
+    expect(Object.hasOwn(checkpoint.outputs[special], special)).toBe(true);
+    const owned = await ownedClaim(approveCheckpoint(checkpoint, checkpoint.proposalDigest), {
+      owner: 'owner', graphDigest: graphDigest(graph, {}, ownRegistry), sourceDigest: 'source', leaseMs: 60_000,
+    });
+    const completed = await runFlow(graph, { host, registry: ownRegistry, resume: resumeOutputs(owned) });
+    expect(completed.ok).toBe(true);
+    expect(writes).toBe(1);
+    expect(host.sunk).toEqual([['wall', 'unknown']]);
+  }
 });

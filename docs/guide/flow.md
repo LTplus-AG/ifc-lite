@@ -248,7 +248,7 @@ handle) makes the run uncheckpointable, named by node and port.
 
 ```ts
 import { runFlow, type FlowDocument, type NodeRegistry } from '@ifc-lite/flow';
-import { approveCheckpoint, claimCheckpoint, createCheckpoint, finishCheckpoint, graphDigest, resumeOutputs } from '@ifc-lite/flow/checkpoint';
+import { approveCheckpoint, claimCheckpoint, createCheckpoint, finishCheckpoint, graphDigest, resumeOutputs, MemoryCheckpointStore, updateCheckpoint } from '@ifc-lite/flow/checkpoint';
 import type { FlowHost } from '@ifc-lite/flow-nodes';
 
 async function reviewedRun(doc: FlowDocument, host: FlowHost, registry: NodeRegistry<FlowHost>, sourceDigest: string) {
@@ -257,15 +257,20 @@ async function reviewedRun(doc: FlowDocument, host: FlowHost, registry: NodeRegi
   const checkpoint = createCheckpoint({ doc, registry, result: paused, sourceDigest });
   // ...show the proposal (checkpointProposal) and collect the reviewer's approval...
   const approved = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
-  let claimed = claimCheckpoint(approved, { owner: 'me', graphDigest: graphDigest(doc, {}, registry), sourceDigest, leaseMs: 60_000 });
+  const store = new MemoryCheckpointStore(); // use a durable CAS store across tabs/processes
+  await store.write(approved, null);
+  let claimed = await updateCheckpoint(store, approved.id, current => claimCheckpoint(current,
+    { owner: 'me', graphDigest: graphDigest(doc, {}, registry), sourceDigest, leaseMs: 60_000 }));
   const resumed = await runFlow(doc, { host, registry, resume: resumeOutputs(claimed) });
-  claimed = finishCheckpoint(claimed, 'me', { ok: resumed.ok });
+  claimed = await updateCheckpoint(store, claimed.id, current => finishCheckpoint(current, 'me', { ok: resumed.ok }));
   return resumed;
 }
 ```
 
-A host that persists checkpoints applies transitions through `updateCheckpoint`
-with a durable store. This runtime layer supplies the checkpoint API; CLI commands
+Every resume uses the original claim returned by a successful `updateCheckpoint`
+compare-and-swap. A persisted `applying` record is not an ownership receipt: another
+tab or process cannot resume it, and a lost owner is recovered as partially committed.
+A host that persists checkpoints supplies a durable store. This runtime layer supplies the checkpoint API; CLI commands
 and viewer approval controls ship in the subsequent P19 host layer. Pass the effective
 node registry when creating a checkpoint and computing its claim digest so a changed
 review policy refuses the resume. Graph identities, names and node labels also bind the digest,

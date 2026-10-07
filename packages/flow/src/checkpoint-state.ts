@@ -23,7 +23,7 @@
  * the graph again as a new root.
  */
 
-import { CHECKPOINT_VERSION, nonPortable, proposalDigestOf, validPortableOutputs, type CheckpointState, type FlowCheckpoint } from './checkpoint-record.js';
+import { CHECKPOINT_VERSION, registerOwnedClaim, nonPortable, proposalDigestOf, validPortableOutputs, type CheckpointState, type FlowCheckpoint } from './checkpoint-record.js';
 
 export type CheckpointErrorCode =
   | 'invalid'
@@ -181,7 +181,10 @@ export async function updateCheckpoint(store: CheckpointStore, id: string, chang
     const stored = await store.read(id);
     if (!stored) throw new CheckpointError('invalid', `no checkpoint ${id}`);
     const next = change(stored.checkpoint);
-    if (await store.write(next, stored.revision)) return next;
+    if (await store.write(next, stored.revision)) {
+      if (stored.checkpoint.state === 'reviewed' && next.state === 'applying') registerOwnedClaim(next);
+      return next;
+    }
   }
   throw new CheckpointError('conflict', 'the checkpoint kept changing while it was being updated');
 }
@@ -191,13 +194,14 @@ export class MemoryCheckpointStore implements CheckpointStore {
   private readonly rows = new Map<string, StoredCheckpoint>();
 
   async read(id: string): Promise<StoredCheckpoint | null> {
-    return this.rows.get(id) ?? null;
+    const row = this.rows.get(id);
+    return row ? structuredClone(row) : null;
   }
 
   async write(checkpoint: FlowCheckpoint, expected: number | null): Promise<boolean> {
     const current = this.rows.get(checkpoint.id);
     if ((current?.revision ?? null) !== expected) return false;
-    this.rows.set(checkpoint.id, { checkpoint, revision: (current?.revision ?? 0) + 1 });
+    this.rows.set(checkpoint.id, { checkpoint: structuredClone(checkpoint), revision: (current?.revision ?? 0) + 1 });
     return true;
   }
 }

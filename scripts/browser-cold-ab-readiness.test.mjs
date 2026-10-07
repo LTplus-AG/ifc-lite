@@ -4,6 +4,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 
 /**
@@ -14,6 +16,7 @@ import { tsImport } from 'tsx/esm/api';
  * a private copy; these tests pin it to the page.
  */
 const COLD_AB = new URL('./perf/browser-cold-ab.mts', import.meta.url);
+const SAMPLE = new URL('./perf/browser-cold-sample.ts', import.meta.url);
 const PAGE = new URL('../tests/benchmark/viewer-benchmark-page.ts', import.meta.url);
 const SPAN_SPANS = ['parser.complete', 'geometry.streamComplete', 'scene.finalize'];
 
@@ -22,24 +25,12 @@ test('the cold A/B and the benchmark page modules exist', () => {
   assert.ok(existsSync(PAGE), 'tests/benchmark/viewer-benchmark-page.ts');
 });
 
-test('the cold A/B drives each sample through ViewerBenchmarkPage and owns no tracing or readiness logic of its own', () => {
+test('the cold A/B script still loads and its sample runner exists (child process: fixture-less run refuses with its own message)', () => {
   assert.ok(existsSync(COLD_AB), 'cold A/B source missing');
-  const source = readFileSync(COLD_AB, 'utf8');
-  for (const required of [
-    "from '../../tests/benchmark/viewer-benchmark-page.ts'",
-    'new ViewerBenchmarkPage(',
-    '.setup()',
-    '.loadUntilReady(',
-  ]) {
-    assert.ok(source.includes(required), `browser-cold-ab.mts no longer contains ${required}`);
-  }
-  for (const forbidden of [
-    '__IFC_LITE_PERF_TRACE', '__IFC_LITE_LOAD_TRACE__', 'perfTrace', 'addInitScript',
-    'waitForMetadataRenderReadiness', 'waitForCompletion', 'waitForFunction',
-    'scene.finalize', 'parser.complete', '[useIfc]', 'finalizeStreamingAsync',
-  ]) {
-    assert.ok(!source.includes(forbidden), `browser-cold-ab.mts carries its own copy of ${forbidden}; it belongs to ViewerBenchmarkPage`);
-  }
+  assert.ok(existsSync(SAMPLE), 'scripts/perf/browser-cold-sample.ts');
+  const run = spawnSync(process.execPath, ['--import', 'tsx', fileURLToPath(COLD_AB), '--dist-branch', fileURLToPath(new URL('./perf', import.meta.url))], { encoding: 'utf8', timeout: 60_000 });
+  assert.equal(run.status, 2, run.stderr);
+  assert.match(run.stderr, /no fixtures/);
 });
 
 /** A Playwright `Page` double: enough surface for setup + one load. */
@@ -122,4 +113,20 @@ test('loadUntilReady() fails finitely when the viewer never reports readiness', 
   const bp = new ViewerBenchmarkPage(fakePage({ spans: false, legacyLines: [] }), 'http://localhost:0');
   await bp.setup();
   await assert.rejects(bp.loadUntilReady('model.ifc', 50), /Timed out/);
+});
+
+test('runColdSample() runs setup, the caller checks, then loadUntilReady with metadata/render readiness required, all on the page itself', async () => {
+  const ViewerBenchmarkPage = await loadPage();
+  assert.ok(existsSync(SAMPLE), 'sample runner missing');
+  const { runColdSample } = await tsImport('./perf/browser-cold-sample.ts', import.meta.url);
+  const bp = new ViewerBenchmarkPage(fakePage({ spans: true, legacyLines: [] }), 'http://localhost:0');
+  const order = [];
+  for (const name of ['setup', 'loadFile', 'waitForCompletion']) {
+    const original = ViewerBenchmarkPage.prototype[name];
+    bp[name] = async (...args) => { order.push([name, ...args.slice(1)]); return original.apply(bp, args); };
+  }
+  const metrics = await runColdSample(bp, { fixturePath: 'model.ifc', timeoutMs: 2000, afterSetup: async () => { order.push(['afterSetup']); } });
+  assert.deepEqual(order.map((entry) => entry[0]), ['setup', 'afterSetup', 'loadFile', 'waitForCompletion']);
+  assert.equal(order[3][1], true, 'waitForCompletion must require metadata + render readiness');
+  assert.equal(metrics.canvasHasContent, true);
 });

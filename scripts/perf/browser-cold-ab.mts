@@ -26,6 +26,7 @@
 
 import { chromium, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { startStaticServer } from './browser-static-server.js';
+import { runColdSample } from './browser-cold-sample.js';
 import { browserFixtureKey, validateBrowserFixtures } from './browser-cold-fixtures.js';
 import { prepareBrowserOutputs } from './browser-cold-outputs.js';
 import { closeBrowserWithTimeout, closeContextWithTimeout, raceWithTimeout } from './browser-cold-teardown.js';
@@ -209,31 +210,30 @@ for (let iter = 1; iter <= ITERS; iter++) {
           });
         }
 
-        await bp.setup();
-        const isolation = await page.evaluate(() => ({
-          crossOriginIsolated: globalThis.crossOriginIsolated,
-          sharedArrayBufferAvailable: typeof SharedArrayBuffer !== 'undefined',
-        }));
-        record = { ...record, ...isolation };
-        // A software adapter (SwiftShader: the only WebGPU headless Chromium has in
-        // WSL/CI) initialises the renderer slowly enough to measure a different
-        // load than a real GPU does. Say so once, and archive it with the sample.
-        const adapter = await page.evaluate(async () => {
-          const a = await navigator.gpu?.requestAdapter();
-          return a ? { architecture: a.info?.architecture ?? '', fallback: Boolean(a.isFallbackAdapter ?? a.info?.isFallbackAdapter) } : null;
-        }).catch(() => null);
-        record.gpuAdapter = adapter;
-        if (!warnedSoftwareAdapter && (!adapter || adapter.fallback || adapter.architecture === 'swiftshader')) {
-          warnedSoftwareAdapter = true;
-          console.warn(`browser-cold-ab: WARNING ${adapter ? `software WebGPU adapter (${adapter.architecture || 'fallback'})` : 'no WebGPU adapter'}; timings are not real-GPU numbers. For a real GPU from WSL use a Windows Chrome launcher (see scripts/perf/frame-gpu-chrome.ts).`);
-        }
-        if (!isolation.crossOriginIsolated || !isolation.sharedArrayBufferAvailable) {
-          throw new Error('Viewer is not cross-origin isolated; worker-pool sample invalid');
-        }
         const sizeMB = statSync(fixture.path).size / (1024 * 1024);
         const timeoutMs = Math.max(TIMEOUT_MS, sizeMB > 200 ? 600000 : sizeMB > 50 ? 300000 : TIMEOUT_MS);
-        await bp.loadUntilReady(fixture.path, timeoutMs);
-        const metrics = bp.getMetrics();
+        const metrics = await runColdSample(bp, { fixturePath: fixture.path, timeoutMs, afterSetup: async () => {
+          const isolation = await page!.evaluate(() => ({
+            crossOriginIsolated: globalThis.crossOriginIsolated,
+            sharedArrayBufferAvailable: typeof SharedArrayBuffer !== 'undefined',
+          }));
+          record = { ...record, ...isolation };
+          // A software adapter (SwiftShader: the only WebGPU headless Chromium has in
+          // WSL/CI) initialises the renderer slowly enough to measure a different
+          // load than a real GPU does. Say so once, and archive it with the sample.
+          const adapter = await page!.evaluate(async () => {
+            const a = await navigator.gpu?.requestAdapter();
+            return a ? { architecture: a.info?.architecture ?? '', fallback: Boolean(a.isFallbackAdapter ?? a.info?.isFallbackAdapter) } : null;
+          }).catch(() => null);
+          record.gpuAdapter = adapter;
+          if (!warnedSoftwareAdapter && (!adapter || adapter.fallback || adapter.architecture === 'swiftshader')) {
+            warnedSoftwareAdapter = true;
+            console.warn(`browser-cold-ab: WARNING ${adapter ? `software WebGPU adapter (${adapter.architecture || 'fallback'})` : 'no WebGPU adapter'}; timings are not real-GPU numbers. For a real GPU from WSL use a Windows Chrome launcher (see scripts/perf/frame-gpu-chrome.ts).`);
+          }
+          if (!isolation.crossOriginIsolated || !isolation.sharedArrayBufferAvailable) {
+            throw new Error('Viewer is not cross-origin isolated; worker-pool sample invalid');
+          }
+        } });
         if (metrics.streamCompleteMs == null || !metrics.totalMeshes) {
           throw new Error('load did not reach streamCompleteMs / produced 0 meshes');
         }

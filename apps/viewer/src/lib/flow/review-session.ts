@@ -68,7 +68,10 @@ export function viewerSourceDigest(): string {
   // Content, not session ids: the same file reloaded is the same source; a model without a content hash only matches itself.
   const models = [...state.models].map(([id, model]) => model.sourceContentHash ?? `model:${id}`).sort();
   const mutations = [...state.undoStacks.values()].flat().map((mutation) => mutation.id).sort();
-  return digest({ models, mutations });
+  const active = state.activeModelId
+    ? state.models.get(state.activeModelId)?.sourceContentHash ?? `model:${state.activeModelId}`
+    : null;
+  return digest({ models, mutations, active });
 }
 
 /** Save a paused run's proposal as a `prepared` checkpoint and show it. Nothing downstream has run. */

@@ -6,6 +6,7 @@ import type { TranslationValue } from '../types';
 
 /** Viewer AI P20: task recipes, save-to-Flow and project preferences (`components/viewer/assistant/*`, Ideas). */
 export const assistantReuseEn = {
+  'assistantRecipes.need.evidence': 'Capture the native evidence for this source first',
   'assistantRecipes.title': 'Task recipes',
   'assistantRecipes.hint': 'Recipes walk you through native steps. Each step opens the tool that does the work; nothing is sent, applied or published for you.',
   'assistantRecipes.saved': 'Saved and imported',

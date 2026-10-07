@@ -13,7 +13,7 @@ import { flowRegistry } from '@/lib/flow/runner';
 import { RECIPE_VERSION, type AssistantRecipe, type ReviewedAction } from '@/lib/assistant/reuse/recipe';
 import { assistantRecipeLibrary } from '@/lib/assistant/reuse/recipe-library';
 import { buildWorkflowGraph, conversationWorkflowSpec, type SaveRefusal } from '@/lib/assistant/reuse/save-to-flow';
-import { panelTitleKey } from '@/lib/panels/registry';
+import { adapterFor } from '@/lib/assistant/adapters/registry';
 import { proposalOf } from './AssistantConversation';
 
 const ACTION: Record<string, ReviewedAction> = { clash: 'clash.groups', flow: 'flow.patch', changes: 'model.changes', authoring: 'model.authoring' };
@@ -44,7 +44,7 @@ export function SaveToFlow() {
   // A graph discussion is already a native graph; native Save keeps it reusable.
   if (!evidence || evidence.source === 'flow' || !state.messages.length || state.status === 'streaming') return null;
   const save = async () => {
-    const title = name.trim() || t('assistantReuse.defaultName', { source: t(panelTitleKey(evidence.source)) });
+    const title = name.trim() || t('assistantReuse.defaultName', { source: t(adapterFor(evidence.source).titleKey) });
     const spec = conversationWorkflowSpec(title, evidence.source, state.messages, actionOf);
     if (report && !spec.actions.includes('report.draft')) spec.actions.push('report.draft');
     const graph = buildWorkflowGraph(spec, flowRegistry());
@@ -55,7 +55,7 @@ export function SaveToFlow() {
     const flowId = store.importFlow(graph.doc);
     if (!flowId) { setResult({ refused: REFUSAL['library-full'] }); return; }
     const recipe: AssistantRecipe = { version: RECIPE_VERSION, id: crypto.randomUUID(), origin: 'conversation', revision: 1, title,
-      description: t('assistantReuse.savedDescription', { source: t(panelTitleKey(evidence.source)) }), createdAt: new Date().toISOString(),
+      description: t('assistantReuse.savedDescription', { source: t(adapterFor(evidence.source).titleKey) }), createdAt: new Date().toISOString(),
       steps: [{ kind: 'analysis', source: evidence.source }, ...spec.prompts.map(prompt => ({ kind: 'ask' as const, source: evidence.source, prompt })),
         ...spec.actions.map(action => ({ kind: 'review' as const, action })), { kind: 'flow', flowId }] };
     await assistantRecipeLibrary.put(recipe.id, recipe);

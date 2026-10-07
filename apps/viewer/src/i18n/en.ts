@@ -43,6 +43,7 @@ import { chatByokEn } from './catalogues/chat-byok.en';
 import { modelChangesEn } from './catalogues/model-changes.en';
 import { clashGroupApplyEn } from './catalogues/clash-group-apply.en';
 import { tableCorrectionsEn } from './catalogues/table-corrections.en';
+import { assistantReuseEn } from './catalogues/assistant-reuse.en';
 import { assistantUsageEn } from './catalogues/assistant-usage.en';
 import { aiReportsEn } from './catalogues/ai-reports.en';
 import { flowAssistantEn } from './catalogues/flow-assistant.en';
@@ -247,6 +248,7 @@ export const en = {
   ...clashGroupApplyEn,
   ...tableCorrectionsEn,
   ...assistantUsageEn,
+  ...assistantReuseEn,
   ...aiReportsEn,
   ...flowAssistantEn,
   ...modelAuthoringEn,

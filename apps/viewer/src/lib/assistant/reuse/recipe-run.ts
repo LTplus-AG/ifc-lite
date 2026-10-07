@@ -12,6 +12,7 @@
 
 import { create } from 'zustand';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
+import { adapterFor } from '../adapters/registry';
 import type { AssistantSource } from '../sources';
 import type { AssistantRecipe, RecipeStep } from './recipe';
 import { recipeRefusals, type HostSnapshot, type RecipeRefusal } from './recipe-availability';
@@ -57,7 +58,7 @@ export type StepAction =
   | { kind: 'flow'; flowId: string };
 export function stepAction(step: RecipeStep): StepAction {
   switch (step.kind) {
-    case 'analysis': return { kind: 'panel', panel: step.source };
+    case 'analysis': return { kind: 'panel', panel: adapterFor(step.source).panelIds[0] };
     case 'ask': return { kind: 'ask', source: step.source, prompt: step.prompt };
     case 'review': return { kind: 'panel', panel: step.action === 'bcf.drafts' ? 'clash' : 'assistant' };
     case 'publish': return { kind: 'panel', panel: 'bcf' };

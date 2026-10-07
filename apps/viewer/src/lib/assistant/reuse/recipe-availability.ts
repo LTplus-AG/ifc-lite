@@ -18,16 +18,18 @@
 import { loadBcfServerConfig } from '@/services/bcf-server-config';
 import { UNCONFIGURED_MODEL_ID } from '@/lib/llm/models';
 import type { ViewerState } from '@/store';
+import { ADAPTERS } from '../adapters/registry';
 import type { AssistantSource } from '../sources';
 import type { AssistantRecipe, RecipeStep } from './recipe';
 
 export type HostRequirement =
-  | 'models' | 'twoModels' | 'clashResult' | 'validationReport' | 'compareResult' | 'flowGraph'
+  | 'evidence' | 'models' | 'twoModels' | 'clashResult' | 'validationReport' | 'compareResult' | 'flowGraph'
   | 'assistantModel' | 'bcfServer' | 'savedFlow';
 export const GRANT_REQUIREMENTS: ReadonlySet<HostRequirement> = new Set(['assistantModel', 'bcfServer', 'savedFlow']);
 
 export interface HostSnapshot {
   modelCount: number;
+  readySources: ReadonlySet<AssistantSource>;
   clashResult: boolean;
   validationReport: boolean;
   compareResult: boolean;
@@ -37,12 +39,11 @@ export interface HostSnapshot {
   savedFlowIds: ReadonlySet<string>;
 }
 
-type HostState = Pick<ViewerState, 'models' | 'clashResult' | 'idsValidationReport' | 'compareResult' | 'flowDoc' | 'savedFlows' | 'chatActiveModel'>;
-
 /** Reads what the host offers now. The BCF connection is read from its native storage. */
-export function readHostSnapshot(state: HostState, bcfConfigured = loadBcfServerConfig() !== null): HostSnapshot {
+export function readHostSnapshot(state: ViewerState, bcfConfigured = loadBcfServerConfig() !== null): HostSnapshot {
   return {
     modelCount: state.models.size,
+    readySources: new Set(ADAPTERS.filter(adapter => adapter.readiness(state).ready).map(adapter => adapter.id)),
     clashResult: !!state.clashResult,
     validationReport: !!state.idsValidationReport,
     compareResult: !!state.compareResult,
@@ -53,18 +54,11 @@ export function readHostSnapshot(state: HostState, bcfConfigured = loadBcfServer
   };
 }
 
-/** The native result each analysis source produces; `loadReport` exists once models load. */
-const SOURCE_RESULT: Record<AssistantSource, HostRequirement> = {
-  clash: 'clashResult', validation: 'validationReport', compare: 'compareResult', flow: 'flowGraph', loadReport: 'models',
-};
-const SOURCE_INPUT: Record<AssistantSource, HostRequirement[]> = {
-  clash: ['models'], validation: ['models'], compare: ['twoModels'], flow: [], loadReport: ['models'],
-};
-
 export function stepRequirements(step: RecipeStep): HostRequirement[] {
   switch (step.kind) {
-    case 'analysis': return SOURCE_INPUT[step.source];
-    case 'ask': return ['assistantModel', SOURCE_RESULT[step.source]];
+    case 'analysis': return step.source === 'compare' ? ['twoModels']
+      : ['flow', 'flowRun', 'script', 'document'].includes(step.source) ? [] : ['models'];
+    case 'ask': return ['assistantModel', 'evidence'];
     case 'review':
       if (step.action === 'clash.groups' || step.action === 'bcf.drafts') return ['clashResult'];
       if (step.action === 'flow.patch') return ['flowGraph'];
@@ -77,6 +71,7 @@ export function stepRequirements(step: RecipeStep): HostRequirement[] {
 
 function met(requirement: HostRequirement, step: RecipeStep, host: HostSnapshot): boolean {
   switch (requirement) {
+    case 'evidence': return (step.kind === 'analysis' || step.kind === 'ask') && host.readySources.has(step.source);
     case 'models': return host.modelCount > 0;
     case 'twoModels': return host.modelCount >= 2;
     case 'savedFlow': return step.kind === 'flow' && host.savedFlowIds.has(step.flowId);
@@ -93,8 +88,7 @@ export function stepAvailability(step: RecipeStep, host: HostSnapshot): StepAvai
 /** Whether an analysis or ask step's evidence now exists; other steps are confirmed by the user. */
 export function stepProduced(step: RecipeStep, host: HostSnapshot): boolean {
   if (step.kind !== 'analysis') return false;
-  const requirement = SOURCE_RESULT[step.source];
-  return met(requirement, step, host);
+  return host.readySources.has(step.source);
 }
 
 export interface RecipeRefusal { stepIndex: number; requirement: HostRequirement }

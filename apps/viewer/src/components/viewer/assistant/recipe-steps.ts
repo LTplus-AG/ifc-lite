@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { usePanelControls } from '@/hooks/usePanelControls';
-import { panelTitleKey } from '@/lib/panels/registry';
+import { adapterFor, ADAPTERS } from '@/lib/assistant/adapters/registry';
 import { subscribeBcfServer, loadBcfServerConfig } from '@/services/bcf-server-config';
 import { captureEvidence, evidenceIsCurrent } from '@/lib/assistant/evidence';
 import { replaceEvidence, useAssistant } from '@/lib/assistant/conversation';
@@ -17,7 +17,7 @@ import { readHostSnapshot, type HostRequirement, type HostSnapshot } from '@/lib
 import { stepAction, useRecipeRun } from '@/lib/assistant/reuse/recipe-run';
 
 export const REQUIREMENT_KEY: Record<HostRequirement, TranslationKey> = {
-  models: 'assistantRecipes.need.models', twoModels: 'assistantRecipes.need.twoModels',
+  evidence: 'assistantRecipes.need.evidence', models: 'assistantRecipes.need.models', twoModels: 'assistantRecipes.need.twoModels',
   clashResult: 'assistantRecipes.need.clashResult', validationReport: 'assistantRecipes.need.validationReport',
   compareResult: 'assistantRecipes.need.compareResult', flowGraph: 'assistantRecipes.need.flowGraph',
   assistantModel: 'assistantRecipes.need.assistantModel', bcfServer: 'assistantRecipes.need.bcfServer',
@@ -33,7 +33,7 @@ export function useStepLabel(): (step: RecipeStep) => string {
   const { t } = useTranslation();
   return (step) => {
     switch (step.kind) {
-      case 'analysis': return t('assistantRecipes.step.analysis', { source: t(panelTitleKey(step.source)) });
+      case 'analysis': return t('assistantRecipes.step.analysis', { source: t(adapterFor(step.source).titleKey) });
       case 'ask': return t('assistantRecipes.step.ask', { prompt: step.prompt });
       case 'review': return t(REVIEW_KEY[step.action]);
       case 'publish': return t('assistantRecipes.step.publish');
@@ -44,17 +44,15 @@ export function useStepLabel(): (step: RecipeStep) => string {
 
 /** Live host availability: store changes and BCF connection changes both re-read it. */
 export function useHostSnapshot(): HostSnapshot {
-  const models = useViewerStore(s => s.models);
-  const clashResult = useViewerStore(s => s.clashResult);
-  const idsValidationReport = useViewerStore(s => s.idsValidationReport);
-  const compareResult = useViewerStore(s => s.compareResult);
-  const flowDoc = useViewerStore(s => s.flowDoc);
-  const savedFlows = useViewerStore(s => s.savedFlows);
-  const chatActiveModel = useViewerStore(s => s.chatActiveModel);
+  const state = useViewerStore(s => s);
   const [bcfServer, setBcfServer] = useState(() => loadBcfServerConfig() !== null);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const stops = ADAPTERS.flatMap(adapter => adapter.subscribe ? [adapter.subscribe(() => setRevision(value => value + 1))] : []);
+    return () => stops.forEach(stop => stop());
+  }, []);
   useEffect(() => subscribeBcfServer(() => setBcfServer(loadBcfServerConfig() !== null)), []);
-  return useMemo(() => readHostSnapshot({ models, clashResult, idsValidationReport, compareResult, flowDoc, savedFlows, chatActiveModel }, bcfServer),
-    [models, clashResult, idsValidationReport, compareResult, flowDoc, savedFlows, chatActiveModel, bcfServer]);
+  return useMemo(() => readHostSnapshot(state, bcfServer), [state, bcfServer, revision]);
 }
 
 /** Performs a step's native action. Asking attaches fresh evidence when needed and only fills the composer. */

@@ -365,6 +365,21 @@ describe('markup saved under the legacy key is moved to the identity key (#7035)
     assert.equal(localStorage.getItem(legacyStorageKey), null);
   });
 
+  it('on a shared id the entry saved later wins, also when that is the legacy one', async () => {
+    const bytes = bytesOf(44);
+    // The identity entry was written first; a tab on the previous viewer then
+    // edited the same measurement and saved it under the legacy key.
+    localStorage.setItem(keyFor(identityOf(bytes)), JSON.stringify({ ...entryWith([measure('shared', 5), measure('identity-only')]), savedAt: 1000 }));
+    localStorage.setItem(keyFor(legacyKeyOf(bytes)), JSON.stringify({ ...entryWith([measure('shared', 99)], SECTION), savedAt: 2000 }));
+
+    await open(loadedModel('m1', sourceFile(bytes), bytes));
+    assert.deepEqual(liveMeasures(), ['identity-only', 'shared']);
+    const stored = loadDrawing2DEntry(identityOf(bytes), DEFAULTS)!;
+    assert.equal(stored.measure2DResults.find((m) => m.id === 'shared')?.distance, 99, 'the later edit is kept');
+    assert.deepEqual(stored.sectionConfig, SECTION);
+    assert.equal(localStorage.getItem(keyFor(legacyKeyOf(bytes))), null);
+  });
+
   it('an interrupted move (both entries present) recovers without loss, duplication or older-over-newer', async () => {
     const bytes = bytesOf(50);
     // The tab closed after the identity entry was written and before the

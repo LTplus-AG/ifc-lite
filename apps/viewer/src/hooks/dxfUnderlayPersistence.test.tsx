@@ -567,6 +567,33 @@ describe('dxfUnderlays saved under the legacy whole-file key (#7035)', () => {
     assert.deepStrictEqual((await rawGet(identity))?.dxfUnderlays.map((u) => u.id).sort(), ['added-meanwhile', 'legacy-u']);
   });
 
+  it('a legacy underlay edited in place by the previous viewer during the move is not removed with the stale copy moved', async () => {
+    const { file, legacy, identity } = await legacyFixture(66, 'edited-dxf.ifc');
+    await rawPut(legacy, [sampleUnderlay('legacy-u')]);
+    const realPut = IDBObjectStore.prototype.put;
+    let edited = false;
+    IDBObjectStore.prototype.put = function put(this: IDBObjectStore, value: unknown, storeKey?: IDBValidKey) {
+      const request = realPut.call(this, value, storeKey);
+      // Same underlay id, new opacity, a later save time: only the time tells
+      // this write from the one that was read for the move.
+      if (storeKey === identity && !edited) {
+        edited = true;
+        realPut.call(this, { dxfUnderlays: [{ ...sampleUnderlay('legacy-u'), opacity: 0.25 }], savedAt: Date.now() + 60_000 }, legacy);
+      }
+      return request;
+    };
+    try {
+      useViewerStore.setState({ models: new Map([['edited-dxf-model', stubModel('edited-dxf-model', file)]]) });
+      await mount();
+      useViewerStore.getState().setActiveModel('edited-dxf-model');
+      await until(async () => edited, 'the move to store the underlays');
+      await flushDeep();
+    } finally {
+      IDBObjectStore.prototype.put = realPut;
+    }
+    assert.equal((await rawGet(legacy))?.dxfUnderlays[0]?.opacity, 0.25, 'the edited legacy entry is still stored');
+  });
+
   it('a legacy entry whose read fails is not recorded as checked, and a later load moves it', async () => {
     const { file, legacy, identity } = await legacyFixture(63, 'read-failure-dxf.ifc');
     await rawPut(legacy, [sampleUnderlay('legacy-u')]);

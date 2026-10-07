@@ -22,16 +22,22 @@
  * entries; the retry merges them again, which changes nothing.
  *
  * ## The merge rule
- * An entry already under the identity key was written by a viewer that has
- * identity keys, so it is normally the newer of the two (the exception is a
- * legacy entry written afterwards by a tab still on the previous viewer).
  * Markup items and DXF underlays are independent records with their own `id`,
- * so the two sets are united and, for an `id` in both, the identity-key item
- * is kept. Values that cannot be united come from the identity-key entry when
- * there is one: its display options, and its sheet. Its section plane too,
- * unless it records none: a stored `null` means that session saved before it
+ * so the entry under the identity key and the legacy one are united.
+ *
+ * Markup: for an `id` in both, and for the display options, the entry saved
+ * later wins (`savedAt`). That is the identity-key entry, written by a viewer
+ * that has identity keys, unless a tab still on the previous viewer saved the
+ * legacy one afterwards. The section plane is the later entry's too, unless
+ * it records none: a stored `null` means that session saved before it
  * generated a drawing (the viewer never saves a plane as cleared), so the
- * legacy entry's plane is carried over then.
+ * other entry's plane is carried over then.
+ *
+ * DXF underlays: for an `id` in both, the identity-key underlay is kept. The
+ * stored time cannot decide here: the restore that runs before this move
+ * saves the identity entry again, so it always looks newer.
+ *
+ * Sheet: the identity-key sheet when there is one, else the legacy sheet.
  */
 // TODO(remove-by: browsers no longer hold drawing entries under a bare SHA-256 key, maintainers): delete this module and its two callers in `drawingPersistenceKey.ts` (#7035).
 
@@ -142,14 +148,17 @@ function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveCont
   const old = loadDrawing2DEntry(legacy, defaults);
   if (!old) return true;
   const current = loadDrawing2DEntry(key, defaults);
-  const merged = current ? {
-    ...current,
-    measure2DResults: unionById(old.measure2DResults, current.measure2DResults),
-    polygonArea2DResults: unionById(old.polygonArea2DResults, current.polygonArea2DResults),
-    textAnnotations2D: unionById(old.textAnnotations2D, current.textAnnotations2D),
-    cloudAnnotations2D: unionById(old.cloudAnnotations2D, current.cloudAnnotations2D),
-    sectionConfig: current.sectionConfig ?? old.sectionConfig,
-  } : old;
+  // `later` was saved last and wins what the two entries share.
+  const later = current && current.savedAt >= old.savedAt ? current : old;
+  const earlier = later === old ? current : old;
+  const merged = earlier ? {
+    ...later,
+    measure2DResults: unionById(earlier.measure2DResults, later.measure2DResults),
+    polygonArea2DResults: unionById(earlier.polygonArea2DResults, later.polygonArea2DResults),
+    textAnnotations2D: unionById(earlier.textAnnotations2D, later.textAnnotations2D),
+    cloudAnnotations2D: unionById(earlier.cloudAnnotations2D, later.cloudAnnotations2D),
+    sectionConfig: later.sectionConfig ?? earlier.sectionConfig,
+  } : later;
   saveDrawing2DEntry(key, merged);
   // The entry read back must hold everything the legacy one contributed. The
   // plane is compared too: when only the plane was missing, an entry whose
@@ -189,10 +198,14 @@ export async function migrateLegacyLocalEntries(key: string, present: string[], 
 
 // ── DXF underlays (IndexedDB) ────────────────────────────────────────
 
-/** The ids of a raw stored entry's underlays, in order, as one comparable string. */
-function underlayIds(entry: unknown): string {
-  const underlays = (entry as { dxfUnderlays?: unknown } | undefined)?.dxfUnderlays;
-  return JSON.stringify(Array.isArray(underlays) ? underlays.map((underlay) => (underlay as { id?: unknown } | null)?.id ?? null) : null);
+/**
+ * What identifies one write of a raw stored entry: its save time and the ids
+ * of its underlays, in order. Every save stamps a new time, so this also
+ * changes when an underlay is edited in place.
+ */
+function writeStamp(entry: unknown): string {
+  const { dxfUnderlays, savedAt } = (entry ?? {}) as { dxfUnderlays?: unknown; savedAt?: unknown };
+  return JSON.stringify([savedAt ?? null, Array.isArray(dxfUnderlays) ? dxfUnderlays.map((underlay) => (underlay as { id?: unknown } | null)?.id ?? null) : null]);
 }
 
 /**
@@ -207,12 +220,12 @@ export async function migrateLegacyDxfEntry(key: string, present: string[], ctx:
   let left = present;
   const { dxf } = ctx;
   const hasLegacy = present.includes(legacy);
-  // The underlay ids as stored now, to tell at removal time whether a tab on
-  // the previous viewer rewrote the entry meanwhile. This read also rejects
+  // The entry's write stamp as stored now, to tell at removal time whether a
+  // tab on the previous viewer rewrote the entry meanwhile. This read also rejects
   // when the entry cannot be read, which leaves the identity unmarked for the
   // next load: `load` below answers `null` for a failed read and for an
   // unreadable value alike, and only the second may be recorded as checked.
-  const seen = hasLegacy ? underlayIds(await dxf.request('readonly', (store) => store.get(legacy))) : '';
+  const seen = hasLegacy ? writeStamp(await dxf.request('readonly', (store) => store.get(legacy))) : '';
   const old = hasLegacy ? await dxf.load(legacy) : null;
   if (old) {
     const moved = old.dxfUnderlays;
@@ -237,7 +250,7 @@ export async function migrateLegacyDxfEntry(key: string, present: string[], ctx:
     await dxf.request('readwrite', (store) => {
       const read = store.get(legacy);
       read.addEventListener('success', () => {
-        if (underlayIds(read.result) !== seen) return;
+        if (writeStamp(read.result) !== seen) return;
         store.delete(legacy);
         removed = true;
       });

@@ -76,12 +76,10 @@ const STATE_ORDER: Record<CardState, number> = { current: 0, 'not-evaluated': 1,
 
 export function buildCards(findings: readonly ReviewFinding[], models: readonly ReviewModel[]): { cards: CoordinationCard[]; totals: ReviewTotals } {
   const groups = new Map<string, { identity: CoordinationCard['identity']; elements: Map<string, CardElement>; findings: ReviewFinding[] }>();
-  const unverified = new Set<string>();
   for (const finding of findings) {
     const elements = finding.elements.map((element): CardElement => {
       const resolution = resolveElement(element, models);
       if (resolution.state !== 'resolved') {
-        unverified.add(`${element.modelName ?? ''}\u001f${element.globalId}`);
         return { ...element, key: null, resolution: resolution.state, expressId: null, resolvedModelId: null };
       }
       return { ...element, modelName: resolution.modelName, key: elementKey(resolution.modelName, element.globalId),
@@ -117,14 +115,20 @@ export function buildCards(findings: readonly ReviewFinding[], models: readonly 
       models: [...new Set(elements.flatMap(element => element.modelName ? [element.modelName] : []))].sort() };
   }).sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || b.sources.length - a.sources.length
     || b.findings.length - a.findings.length || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  return { cards, totals: totalsForCards(cards) };
+}
+
+/** Totals for the exact cards included in an action, independently of workspace filters. */
+export function totalsForCards(cards: readonly CoordinationCard[]): ReviewTotals {
   const validatedElements = new Set(cards.flatMap(card => card.elements.flatMap(element => element.key ? [element.key] : [])));
-  const analysis = findings.filter(finding => finding.source !== 'bcf');
-  return { cards, totals: {
+  const unverifiedElements = new Set(cards.flatMap(card => card.elements.filter(element => !element.key).map(element => `${element.modelName ?? ''}\u001f${element.globalId}`)));
+  const analysis = cards.flatMap(card => card.findings).filter(finding => finding.source !== 'bcf');
+  return {
     uniqueElements: validatedElements.size,
-    unverifiedElements: unverified.size,
+    unverifiedElements: unverifiedElements.size,
     currentFindings: analysis.filter(finding => finding.run.temporal === 'current').length,
     historicalFindings: analysis.filter(finding => finding.run.temporal === 'historical').length,
     cards: cards.length,
     topics: new Set(cards.flatMap(card => card.topics)).size,
-  } };
+  };
 }

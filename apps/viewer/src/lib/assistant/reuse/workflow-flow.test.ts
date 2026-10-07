@@ -116,7 +116,7 @@ test('#6924 workflow generation cannot obtain a fresh request pool after its con
   const budget = useAssistant.getState().budget;
   budget.requests = budget.maxRequests;
   let calls = 0; globalThis.fetch = async () => { calls++; throw new Error('An exhausted budget must refuse before the provider'); };
-  await assert.rejects(proposeWorkflowFlow(intent, new AbortController().signal), /refused/);
+  await assert.rejects(proposeWorkflowFlow(intent, new AbortController().signal), /budget is exhausted/);
   assert.equal(calls, 0);
 });
 

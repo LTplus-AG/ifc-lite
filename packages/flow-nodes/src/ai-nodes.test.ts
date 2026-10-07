@@ -312,3 +312,16 @@ it('does not certify a fabricated suffix by truncating the claimed quote', async
   if (records?.kind !== 'item') throw new Error('missing records');
   expect((records.value as Table).rows[0].outcome).toBe('unsupported');
 });
+
+it('#7039 a missing extraction records array is a failed batch, not a successful empty finding', async () => {
+  const model = standIn(() => ({}));
+  const extract = aiNodes.find(node => node.type === 'ai.extract')!;
+  const warnings: string[] = [];
+  const out = await extract.run({ host: host(model.service), laneKey: null, log: (_level, message) => warnings.push(message) },
+    { passages: ['Door D1 has a fire rating of 30 minutes.'] },
+    { fields: [{ name: 'minutes', type: 'number' }], maxPassages: 50, batchSize: 10, maxRecords: 200, maxOutputTokens: 2000 }) as { records: Table; coverage: Record<string, unknown> };
+  expect(out.records.rows).toEqual([]);
+  expect(out.coverage).toMatchObject({ sent: 1, failed: 1, records: 0 });
+  expect(warnings).toContain('passages 1-1: reply must contain a records array');
+  expect(model.calls).toHaveLength(1);
+});

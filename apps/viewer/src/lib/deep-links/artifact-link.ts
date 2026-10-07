@@ -49,11 +49,12 @@ export function parseDeepLink(search: string | URLSearchParams): ParsedDeepLink 
   if (rawPanel === null && kinds.length === 0) return null;
   let artifact: ArtifactRef | null = null;
   if (kinds.length > 0) {
-    // One artifact per link; the first in a fixed order wins deterministically.
+    // One artifact per link; ambiguous destinations are refused.
     const kind = kinds[0];
     const id = params.get(kind) ?? '';
-    if (!ID_PATTERN.test(id)) return { ok: false, reason: 'invalid-id', kind };
+    if (params.getAll(kind).length !== 1 || !ID_PATTERN.test(id)) return { ok: false, reason: 'invalid-id', kind };
     artifact = { kind, id };
+    if (kinds.length > 1) return { ok: false, reason: 'conflicting-target', panel: ARTIFACT_PANEL[kind], artifact };
   }
   if (rawPanel === null) return { ok: true, panel: ARTIFACT_PANEL[artifact!.kind], artifact };
   const panel = migratePanelId(rawPanel);

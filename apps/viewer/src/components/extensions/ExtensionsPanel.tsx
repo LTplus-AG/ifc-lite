@@ -296,6 +296,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
           void handleFiles(e.dataTransfer.files);
         }}
       >
+        <UnavailablePlacements />
         {installed.length === 0 ? (
           <div className="flex flex-col items-center gap-3 px-6 py-8">
             <div className="flex flex-col items-center gap-2 text-center">
@@ -346,8 +347,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
               {t('extensionsFlavors.extensionsPanel.emptyState.cliHint')}
             </div>
           </div>
-        ) : (<>
-          <UnavailablePlacements />
+        ) : (
           <ul className="divide-y">
             {installed.map((record) => (
               <li key={record.id} className="px-4 py-3">

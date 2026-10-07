@@ -77,7 +77,7 @@ export function buildHelp(version: string): string {
               query --endpoint URL --host HOST [--query F] [--kind json|select|construct] [--bearer-env NAME] [--relay-provider ID] [--allow-loopback-http]
               serve --config F --cert F --key F [--port N]  Authenticated HTTPS relay (env credential references only)
               assets [--profile F] [--artifact schema|context|shapes|vocabulary|profile]  Generate profile artifacts
-    flow      <run|describe|validate> <graph.flow.json> [<file.ifc>] [--input k=v] [--out F]  Evaluate a node graph headlessly
+    flow      <run|resume|review|describe|validate> <graph.flow.json> [<file.ifc>] [--input k=v] [--out F] [--checkpoint F]  Evaluate a node graph headlessly; pause and resume reviewed AI proposals
 
   Options:
     --help, -h           Show help

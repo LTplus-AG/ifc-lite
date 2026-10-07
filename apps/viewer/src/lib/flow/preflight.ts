@@ -3,15 +3,29 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { checkAvailability, validateFlowWiring, type FlowDocument, type HostFeatures } from '@ifc-lite/flow';
-import { parseCapabilities, parseCapability, hasCapability } from '@ifc-lite/extensions';
+import { parseCapabilities, parseCapability, hasCapability, type Capability } from '@ifc-lite/extensions';
 import { isModelSelector, parseTagRules } from '@ifc-lite/flow-nodes';
 import { validateReportDocumentTemplate, type DocumentMappingJob, type DocumentResultMapping } from '@/lib/document/build-report-document';
 import type { DocumentSpec } from '@/lib/document/types';
 import { validateFileSlots } from './file-values';
 import { jobsWithFiles, prepareCheck, readHistorical, historicalJobId } from './check-resources';
 import type { WorkflowRun } from './run-session';
-import { flowRegistry } from './runner';
+import { ensureFlowAiNodes, flowRegistry } from './runner';
 import { withUpstream } from './upstream';
+
+/**
+ * Whether a graph's grants cover a capability its node type declares. A node
+ * declaring a wildcard target (`model.mutate:*`, whose pset is a parameter)
+ * checks the concrete target at run time, so any grant of the same scope and
+ * action covers the declaration; every other capability must be granted as is.
+ */
+export function nodeCapabilityGranted(grants: readonly Capability[], raw: string): boolean {
+  const wanted = parseCapability(raw);
+  if (!wanted.ok) return false;
+  return raw.endsWith(':*')
+    ? grants.some((g) => g.scope === wanted.value.scope && g.action === wanted.value.action)
+    : hasCapability(grants, wanted.value);
+}
 
 /** Session automation graphs run without an active model; every other graph needs one (the Flow panel's Run gate). */
 export function isAutomationGraph(doc: FlowDocument): boolean {
@@ -20,9 +34,16 @@ export function isAutomationGraph(doc: FlowDocument): boolean {
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** Validate every selected definition and capability before side effects. */
-export async function preflightWorkflow(run: WorkflowRun, doc: FlowDocument, values: Readonly<Record<string, unknown>>, features: HostFeatures): Promise<Record<string, unknown>> {
+/**
+ * Validate every selected definition and capability before side effects.
+ * `restored` names nodes a resume restores from a reviewed checkpoint: they
+ * do not run again, so their host services need not be available.
+ */
+export async function preflightWorkflow(
+  run: WorkflowRun, doc: FlowDocument, values: Readonly<Record<string, unknown>>, features: HostFeatures, restored: ReadonlySet<string> = new Set(),
+): Promise<Record<string, unknown>> {
   run.check();
+  if (doc.nodes.some((node) => node.type.startsWith('ai.'))) await ensureFlowAiNodes();
   const registry = flowRegistry();
   if (isAutomationGraph(doc)) {
     const modelWrite = (capability: string) => /^model\.(create|delete|mutate)(:|$)/.test(capability);
@@ -38,13 +59,36 @@ export async function preflightWorkflow(run: WorkflowRun, doc: FlowDocument, val
   }
   const wiring = validateFlowWiring(doc, registry);
   if (wiring.length) throw new Error(wiring.map((p) => p.message).join('; '));
-  const unavailable = checkAvailability(doc, registry, features).filter((n) => n.status === 'unknown' || n.status === 'unavailable');
+  const unavailable = checkAvailability(doc, registry, features).filter((n) => !restored.has(n.nodeId) && (n.status === 'unknown' || n.status === 'unavailable'));
   if (unavailable.length) throw new Error(unavailable.map((n) => `${n.nodeId}: ${n.reasons.join(', ')}`).join('; '));
   const grants = parseCapabilities(doc.capabilities);
   if (!grants.ok) throw new Error(grants.errors.map((e) => e.message).join('; '));
   for (const node of doc.nodes) for (const capability of registry.get(node.type)?.capabilities ?? []) {
-    const parsed = parseCapability(capability);
-    if (!parsed.ok || !hasCapability(grants.value, parsed.value)) throw new Error(`Workflow capability denied: ${capability}`);
+    if (!nodeCapabilityGranted(grants.value, capability)) throw new Error(`Workflow capability denied: ${capability}`);
+  }
+  // #7040: resolve concrete mutation parameters before any graph node runs.
+  for (const node of doc.nodes) {
+    if (restored.has(node.id)) continue;
+    const definition = registry.get(node.type);
+    const p: Record<string, unknown> = Object.fromEntries((definition?.params ?? []).map(param => [param.name, param.default]));
+    Object.assign(p, node.params);
+    for (const [key, value] of Object.entries(values)) if (key.startsWith(`${node.id}.`)) p[key.slice(node.id.length + 1)] = value;
+    const targets: string[] = [];
+    if (node.type === 'model.setProperty') {
+      if (typeof p.pset !== 'string' || p.pset.length === 0) throw new Error(`Invalid property set for ${node.id}`);
+      targets.push(`model.mutate:${p.pset}`);
+    }
+    if (node.type === 'model.setAttribute') {
+      if (typeof p.attribute !== 'string' || p.attribute.length === 0) throw new Error(`Invalid attribute for ${node.id}`);
+      targets.push(`model.mutate:attr.${p.attribute}`);
+    }
+    if (node.type === 'model.applyTable' && Array.isArray(p.mapping)) {
+      for (const mapping of p.mapping) if (isRecord(mapping) && typeof mapping.pset === 'string') targets.push(`model.mutate:${mapping.pset}`);
+    }
+    for (const target of targets) {
+      const capability = parseCapability(target);
+      if (!capability.ok || !hasCapability(grants.value, capability.value)) throw new Error(`Workflow capability denied: ${target}`);
+    }
   }
   const inputs = { ...values };
   let modelCount = 0, jobCount = 0;

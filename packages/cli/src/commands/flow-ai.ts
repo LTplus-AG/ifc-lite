@@ -1,0 +1,73 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * The CLI's AI service for `ai.*` Flow nodes (#6923).
+ *
+ * Opt-in through the environment, never through the graph:
+ *
+ *   IFC_LITE_AI_MODEL     model id sent to the provider (required)
+ *   IFC_LITE_AI_API_KEY   bearer key (required; never logged, never in a checkpoint)
+ *   IFC_LITE_AI_BASE_URL  OpenAI-compatible endpoint, default https://openrouter.ai/api/v1
+ *
+ * Without both required variables the host does not list the `ai` feature,
+ * so a graph with AI nodes fails availability before anything runs. Every
+ * request goes through the shared `@ifc-lite/ai` core against ONE root budget
+ * for the whole run, restored from the checkpoint on resume so a pause never
+ * resets what was spent.
+ */
+
+import { chatCompletionsUsage, createRootBudget, runModelRequest, type AiTransport, type RootBudget } from '@ifc-lite/ai';
+import { FLOW_AI_BUDGET, type FlowAiService } from '@ifc-lite/flow-nodes/ai';
+
+const ROUTE_CEILING = 8_192;
+const TIMEOUT_MS = 120_000;
+
+export interface FlowAiConfig {
+  readonly model: string;
+  readonly apiKey: string;
+  readonly baseUrl: string;
+}
+
+export function flowAiConfig(env: NodeJS.ProcessEnv): FlowAiConfig | null {
+  const model = env.IFC_LITE_AI_MODEL?.trim();
+  const apiKey = env.IFC_LITE_AI_API_KEY?.trim();
+  if (!model || !apiKey) return null;
+  return { model, apiKey, baseUrl: (env.IFC_LITE_AI_BASE_URL?.trim() || 'https://openrouter.ai/api/v1').replace(/\/+$/, '') };
+}
+
+/** One non-streaming OpenAI-compatible chat completion, reported through the core's callbacks. */
+function chatCompletionsTransport(config: FlowAiConfig, fetchImpl: typeof fetch = fetch): AiTransport<string> {
+  return async (call) => {
+    const response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
+      body: JSON.stringify({
+        model: call.model,
+        max_tokens: call.maxOutputTokens,
+        messages: [...(call.system ? [{ role: 'system', content: call.system }] : []), ...call.messages.map((content) => ({ role: 'user', content }))],
+      }),
+      signal: call.signal,
+    });
+    if (!response.ok) throw new Error(`the AI provider answered HTTP ${response.status}`);
+    const body = await response.json() as { choices?: { message?: { content?: unknown }; finish_reason?: string | null }[] };
+    const usage = chatCompletionsUsage(body);
+    if (usage) call.onTokenUsage(usage);
+    const choice = body.choices?.[0];
+    const text = typeof choice?.message?.content === 'string' ? choice.message.content : '';
+    if (text) call.onChunk(text);
+    call.onFinishReason(choice?.finish_reason ?? null);
+    call.onComplete(text);
+  };
+}
+
+export function createCliAiService(config: FlowAiConfig, budget: RootBudget = createRootBudget(FLOW_AI_BUDGET), transport = chatCompletionsTransport(config)): FlowAiService {
+  return {
+    model: config.model,
+    request: (call) => runModelRequest({
+      model: config.model, route: 'cli', transport, budget, routeCeiling: ROUTE_CEILING, timeoutMs: TIMEOUT_MS,
+      messages: [call.prompt], system: call.system, maxOutputTokens: call.maxOutputTokens, signal: call.signal,
+    }),
+  };
+}

@@ -143,3 +143,6 @@ export function resolveEnglish(key: TranslationKey, params: TranslationParameter
   const template = typeof value === 'string' ? value : pluralForm(value, params, 'en');
   return interpolate(template, params);
 }
+
+/** English message after its optional catalogue registers. */
+export function englishMessage(key: TranslationKey): TranslationValue | undefined { return english[key]; }

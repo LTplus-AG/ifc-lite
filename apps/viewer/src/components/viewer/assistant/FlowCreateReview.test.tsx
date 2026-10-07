@@ -76,7 +76,7 @@ test('mounted debug review cites native errors and requires acknowledging owned 
   localStorage.setItem(`ifc-lite-flow-tracking:${doc.id}`, JSON.stringify({ version: TRACKING_SIDECAR_VERSION, pinnedTo: 'content:h', sets: {
     'Columns/add': { trackingKey: 'Columns/add', generation: 0, nodeType: 'model.addElement',
       entries: { a: { globalId: 'g1', digest: 'd1' }, b: { globalId: 'g2', digest: 'd2' } } } } }));
-  const run: RunResult = { ok: false, writes: 0, outputs: new Map(), graphOutputs: [], log: [], reports: [
+  const run: RunResult = { ok: false, writes: 0, outputs: new Map(), graphOutputs: [], log: [], review: [], reports: [
     { nodeId: 'add', status: 'error', durationMs: 1, lanes: 0, laneErrors: 0, missing: { spec: ['spec'] }, warnings: [], error: 'missing required input "spec"' }] };
   useViewerStore.getState().setFlowLastRun(run, null, null);
   // The run bar's source (`flowRun`) pins the run a diagnosis cites.

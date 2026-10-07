@@ -19,7 +19,7 @@
  *
  * The CLI is a trusted caller running a local file, so no capability grants
  * are applied to model/viewer/export capabilities; the graph's declared
- * `capabilities` are still reported. `network.fetch:<host>` and
+ * `capabilities` are still reported. `network.ai`, `network.fetch:<host>` and
  * `secret.read:<NAME>` are the exception: they are ALWAYS checked against
  * the graph's own declared capabilities regardless of trust level (see
  * `FlowHost.networkGrants`'s doc comment in `@ifc-lite/flow-nodes`) — a
@@ -64,7 +64,7 @@ import { createRootBudget, restoreRootBudget } from '@ifc-lite/ai';
 import { createHeadlessContext } from '../loader.js';
 import { createCliAiService, flowAiConfig } from './flow-ai.js';
 import { sourceDigestOf } from './flow-checkpoint.js';
-import { checkpointNodes, claimForResume, finishResume, PAUSED_FOR_REVIEW, reportPause, reviewCommand, savePause, type Resume } from './flow-review.js';
+import { checkPauseDestination, checkpointNodes, claimForResume, failResume, finishResume, PAUSED_FOR_REVIEW, preparePause, reportPause, reviewCommand, savePause, type Resume } from './flow-review.js';
 import { createCliFlowSession } from './flow-host.js';
 import { fatal, getAllFlags, hasFlag, printJson } from '../output.js';
 import { defaultTrackingPath, FileTrackingStore } from './flow-tracking.js';
@@ -243,6 +243,14 @@ export async function flowCommand(args: string[]): Promise<void> {
   const unavailable = checkAvailability(doc, registry, cliFeatures())
     .filter((node) => !restored.has(node.nodeId) && (node.status === 'unknown' || node.status === 'unavailable'));
   if (unavailable.length) fatal(`Flow cannot run on this host: ${unavailable.map((node) => `${node.nodeId}: ${node.reasons.join('; ')}`).join(' | ')}`);
+  const reviewsAhead = doc.nodes.some((n) => registry.get(n.type)?.review && !restored.has(n.id));
+  const nextCheckpoint = sub === 'resume' ? requireFlagValue(args, '--next-checkpoint') : checkpointPath;
+  if (reviewsAhead && !nextCheckpoint) {
+    fatal(sub === 'resume' ? 'this graph pauses for review again after the checkpoint; pass --next-checkpoint <file>' : 'this graph pauses for review; pass --checkpoint <file> to save the proposal');
+  }
+  if (reviewsAhead && nextCheckpoint) {
+    try { await checkPauseDestination(nextCheckpoint); } catch (error) { fatal((error as Error).message); }
+  }
   const modelBytes = await readFile(modelPath);
   // The claim is taken before anything runs, against the model this resume starts from.
   const resume: Resume | undefined = sub === 'resume' ? await claimForResume(checkpointPath!, doc, inputs, sourceDigestOf(modelBytes), registry) : undefined;
@@ -258,11 +266,6 @@ export async function flowCommand(args: string[]): Promise<void> {
     maxRequests: budgetLimit(args, '--ai-max-requests', FLOW_AI_BUDGET.maxRequests),
     maxOutputTokens: budgetLimit(args, '--ai-max-output-tokens', FLOW_AI_BUDGET.maxOutputTokens),
   });
-  const reviewsAhead = doc.nodes.some((n) => registry.get(n.type)?.review && !restored.has(n.id));
-  const nextCheckpoint = sub === 'resume' ? requireFlagValue(args, '--next-checkpoint') : checkpointPath;
-  if (reviewsAhead && !nextCheckpoint) {
-    fatal(sub === 'resume' ? 'this graph pauses for review again after the checkpoint; pass --next-checkpoint <file>' : 'this graph pauses for review; pass --checkpoint <file> to save the proposal');
-  }
   const initialModel = await createHeadlessContext(modelPath);
   const session = createCliFlowSession(initialModel, capsResult.value, aiConfig ? createCliAiService(aiConfig, budget) : undefined);
   const host = session.host;
@@ -292,31 +295,33 @@ export async function flowCommand(args: string[]): Promise<void> {
     modelRevisions: { [host.defaultModelId ?? 'model']: 0 },
     tracking,
   });
-  const trackingWritten = tracking ? await tracking.flush() : false;
-
-  // A failed run can still have written through earlier nodes. Exporting
-  // that half-applied state would hand the next step a model no graph run
-  // ever produced, under a green-looking file on disk.
   const out = requireFlagValue(args, '--out');
   const paused = result.ok && result.review.length > 0;
-  // A pause after a write must hand the resume the model state it wrote: the
-  // checkpoint pins the bytes the resume has to start from.
   const activeModelChanged = session.active() !== initialModel;
-  if (paused && activeModelChanged && out === undefined) fatal('the run opened a different model before pausing for review; pass --out so the resume starts from that model');
-  if (paused && result.writes > 0 && out === undefined) fatal('the run wrote to the model before pausing for review; pass --out so the resume can start from that model');
   const wrote = out !== undefined && result.ok;
-  let written: string | Uint8Array | undefined;
-  if (wrote) {
-    const { bim, store } = session.active();
-    const content = bim.export.ifc(null, { schema: (store.schemaVersion as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined) ?? 'IFC4', includeMutations: true });
-    written = typeof content === 'string' ? content : Buffer.from(content);
-    await writeFile(out, written);
+  let trackingWritten = false;
+  let pause: Awaited<ReturnType<typeof savePause>> | undefined;
+  try {
+    if (paused && activeModelChanged && out === undefined) throw new Error('the run opened a different model before pausing for review; pass --out so the resume starts from that model');
+    if (paused && result.writes > 0 && out === undefined) throw new Error('the run wrote to the model before pausing for review; pass --out so the resume can start from that model');
+    if (paused && !nextCheckpoint) throw new Error(`the run paused for review at ${result.review.join(', ')} with no checkpoint file to save it to`);
+    let written: string | Uint8Array | undefined;
+    if (wrote) {
+      const { bim, store } = session.active();
+      const content = bim.export.ifc(null, { schema: (store.schemaVersion as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined) ?? 'IFC4', includeMutations: true });
+      written = typeof content === 'string' ? content : Buffer.from(content);
+    }
+    // Refuse secrets in every restored output before either durable side effect.
+    const proposal = paused ? preparePause({ registry, doc, result, inputs, sourceDigest: sourceDigestOf((result.writes > 0 || activeModelChanged) && written !== undefined ? written : modelBytes), budget: { ...budget } }, redaction) : undefined;
+    if (written !== undefined) await writeFile(out!, written);
+    trackingWritten = tracking ? await tracking.flush() : false;
+    if (proposal) pause = await savePause(nextCheckpoint!, proposal);
+    if (resume) await finishResume(resume, result);
+  } catch (error) {
+    const message = redactDeep((error as Error).message, redaction);
+    if (resume) await failResume(resume, message);
+    fatal(message);
   }
-  if (resume) await finishResume(resume, result);
-  if (paused && !nextCheckpoint) fatal(`the run paused for review at ${result.review.join(', ')} with no checkpoint file to save it to`);
-  const pause = paused
-    ? await savePause(nextCheckpoint!, { registry, doc, result, inputs, sourceDigest: sourceDigestOf((result.writes > 0 || activeModelChanged) && written !== undefined ? written : modelBytes), budget: { ...budget } })
-    : undefined;
 
   // Redaction runs at the OUTER boundary, right before anything leaves this
   // process — on the whole summary object (`--json` output included), not

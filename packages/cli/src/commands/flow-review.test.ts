@@ -48,7 +48,7 @@ function provider(): { calls: string[] } {
     const data = /<data>\n([\s\S]*)\n<\/data>/.exec(body.messages.at(-1)!.content)![1].split('\n').map((l) => JSON.parse(l) as Record<string, unknown>);
     const items = data.map((row) => ({
       key: row.key,
-      label: row['Pset_WallCommon.IsExternal'] === true ? 'Facade' : 'Partition',
+      label: (row.values as Record<string, unknown>)['Pset_WallCommon.IsExternal'] === true ? 'Facade' : 'Partition',
       evidence: ['Pset_WallCommon.IsExternal'],
     }));
     return new Response(JSON.stringify({
@@ -275,4 +275,72 @@ it('#7039 an opened model survives reviewed pause and resume through the require
   expect((await createHeadlessContext(done)).bim.query().byType('IfcWall').count()).toBe(1);
   const written = await roles(done);
   expect(written.Facade + written.Partition).toBe(1);
+});
+
+it('#7039 refuses a configured provider when network.ai is undeclared', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-grant-'));
+  const graph = JSON.parse(await readFile(AI_FLOW, 'utf-8')) as { capabilities: string[] };
+  graph.capabilities = graph.capabilities.filter(cap => cap !== 'network.ai');
+  const path = join(dir, 'graph.json');
+  await writeFile(path, JSON.stringify(graph));
+  const model = provider();
+  const c = capture();
+  exits();
+  await expect(flowCommand(['run', path, SAMPLE_IFC, '--checkpoint', join(dir, 'cp.json'), '--no-tracking'])).rejects.toThrow('exit 1');
+  expect(model.calls).toHaveLength(0);
+  expect(c.err.join('')).toContain('network.ai');
+});
+
+it('#7039 refuses persisted and displayed checkpoint outputs containing a declared secret', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-secret-'));
+  const secret = 'private-credential-value-7039';
+  vi.stubEnv('CHECKPOINT_TOKEN', secret);
+  const graph = JSON.parse(await readFile(AI_FLOW, 'utf-8')) as { capabilities: string[]; nodes: unknown[] };
+  graph.capabilities.push('secret.read:CHECKPOINT_TOKEN');
+  graph.nodes.unshift({ id: 'private', type: 'core.string', params: { value: '{{secret:CHECKPOINT_TOKEN}}' } });
+  const path = join(dir, 'graph.json');
+  await writeFile(path, JSON.stringify(graph));
+  provider();
+  const c = capture();
+  exits();
+  const checkpoint = join(dir, 'cp.json');
+  await expect(flowCommand(['run', path, SAMPLE_IFC, '--checkpoint', checkpoint, '--no-tracking'])).rejects.toThrow('exit 1');
+  expect(c.err.join('')).toContain('paused outputs contain a secret');
+  expect(c.out.join('') + c.err.join('')).not.toContain(secret);
+  await expect(readFile(checkpoint)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it('#7039 validates a second pause destination before consuming approval', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-second-pause-'));
+  const graph = JSON.parse(await readFile(AI_FLOW, 'utf-8')) as { nodes: Array<{ id: string; type: string; params: Record<string, unknown> }>; outputs: unknown[] };
+  const apply = graph.nodes.find(node => node.id === 'apply')!;
+  apply.type = 'ai.summarize';
+  apply.params = { columns: ['label'] };
+  graph.outputs = [];
+  const path = join(dir, 'graph.json');
+  await writeFile(path, JSON.stringify(graph));
+  provider();
+  capture();
+  exits();
+  const checkpoint = join(dir, 'first.json');
+  await expect(flowCommand(['run', path, SAMPLE_IFC, '--checkpoint', checkpoint, '--no-tracking', '--json'])).rejects.toThrow('exit 3');
+  vi.restoreAllMocks();
+  capture();
+  const digest = (await new FileCheckpointStore(checkpoint).load()).checkpoint.proposalDigest;
+  await flowCommand(['review', checkpoint, '--approve', digest]);
+  vi.restoreAllMocks();
+  let c = capture();
+  exits();
+  await expect(flowCommand(['resume', path, SAMPLE_IFC, '--checkpoint', checkpoint, '--no-tracking'])).rejects.toThrow('exit 1');
+  expect(c.err.join('')).toContain('--next-checkpoint');
+  expect((await new FileCheckpointStore(checkpoint).load()).checkpoint.state).toBe('reviewed');
+  vi.restoreAllMocks();
+  c = capture();
+  exits();
+  const next = join(dir, 'occupied.json');
+  await writeFile(next, 'original');
+  await expect(flowCommand(['resume', path, SAMPLE_IFC, '--checkpoint', checkpoint, '--next-checkpoint', next, '--no-tracking'])).rejects.toThrow('exit 1');
+  expect(c.err.join('')).toContain('already exists');
+  expect((await new FileCheckpointStore(checkpoint).load()).checkpoint.state).toBe('reviewed');
+  expect(await readFile(next, 'utf-8')).toBe('original');
 });

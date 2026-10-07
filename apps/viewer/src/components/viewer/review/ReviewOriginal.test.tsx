@@ -51,6 +51,7 @@ test('#7015 saved comparison original opens the requested report and uncapped ro
   act(() => { assert.equal(openOriginal(original, () => {}), true); });
   await waitFor(() => ui.querySelector('[data-original-comparison="row-104"]') !== null, 'exact historical row');
   assert.equal(ui.querySelector('select')?.value, second.id);
+  assert.equal(ui.querySelector('tbody tr')?.getAttribute('data-original-comparison'), 'row-104', 'the original is the first visible row, without scrolling');
   assert.match(ui.querySelector('[data-original-comparison="row-104"]')?.textContent ?? '', /Evidence row 104/);
   assert.equal(openOriginal({ ...original, evidence: { kind: 'saved-comparison', comparisonId: 'deleted', key: 'row-104' } }, () => assert.fail('missing history cannot open')), false);
 });

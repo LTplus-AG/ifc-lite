@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,9 +16,18 @@ export function ReviewDecision({ cardKey, decision }: { cardKey: string; decisio
   const { t, locale } = useTranslation();
   const [status, setStatus] = useState<HumanStatus>(decision?.status ?? 'open');
   const [comment, setComment] = useState(decision?.comment ?? '');
+  const [clearAvailable, setClearAvailable] = useState(decision !== null);
+  useEffect(() => {
+    // A staged Clear may remove the prop before its durable write succeeds.
+    if (decision) { setStatus(decision.status); setComment(decision.comment); setClearAvailable(true); }
+  }, [decision]);
   const save = async (next: { status: HumanStatus; comment: string } | null) => {
     const saved = await saveCardDecision(cardKey, next);
-    if (saved) toast.success(t(next ? 'reviewWorkspace.decision.saved' : 'reviewWorkspace.decision.cleared'));
+    if (saved) {
+      setClearAvailable(next !== null);
+      if (next === null) { setStatus('open'); setComment(''); }
+      toast.success(t(next ? 'reviewWorkspace.decision.saved' : 'reviewWorkspace.decision.cleared'));
+    }
     else toast.error(t('reviewWorkspace.decision.unsaved'));
   };
   const selectId = useId();
@@ -38,7 +47,7 @@ export function ReviewDecision({ cardKey, decision }: { cardKey: string; decisio
       </Field>
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => void save({ status, comment })}>{t('reviewWorkspace.decision.save')}</Button>
-        {decision && <Button size="sm" variant="ghost" onClick={() => { setStatus('open'); setComment(''); void save(null); }}>{t('reviewWorkspace.decision.clear')}</Button>}
+        {(clearAvailable || decision) && <Button size="sm" variant="ghost" onClick={() => void save(null)}>{t('reviewWorkspace.decision.clear')}</Button>}
         {decision && <span className="text-2xs text-muted-foreground">
           {t('reviewWorkspace.decision.updated', { time: new Date(decision.updatedAt).toLocaleString(locale) })}</span>}
       </div>

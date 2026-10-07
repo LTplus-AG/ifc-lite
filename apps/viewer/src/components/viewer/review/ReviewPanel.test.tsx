@@ -9,7 +9,7 @@ import { refuseContentWrites } from '@/test/content-fixture';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import type { BCFProject, BCFTopic } from '@ifc-lite/bcf';
-import { cleanup, click, render, waitFor } from '@/test/render';
+import { cleanup, click, render, type, waitFor } from '@/test/render';
 import { fixtureModel } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
@@ -19,7 +19,7 @@ import { saveRevisionBaseline } from '@/lib/clash/revision-baseline';
 import { useOriginalClashBaseline } from '@/lib/clash/original-baseline';
 import { ClashRevisionCompareDialog } from '../ClashRevisionCompareDialog';
 import { Toaster } from '@/components/ui/toast';
-import { currentReviewWorkspace, useReviewWorkspaces } from '@/lib/review/workspace';
+import { currentReviewWorkspace, DEFAULT_REVIEW_WORKSPACE, useReviewWorkspaces } from '@/lib/review/workspace';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); useReviewAssistantCard.setState({ card: null, project: null }); useOriginalClashBaseline.setState({ finding: null }); localStorage.removeItem('ifc-lite-clash-revision-baseline'); });
@@ -219,4 +219,32 @@ test('#7015 another tab clearing the baseline clears an open original and refres
   await waitFor(() => document.querySelector('[data-original-baseline]') === null, 'revoked original cleared');
   await waitFor(() => ui.querySelector('[data-run-temporal="historical"]') === null, 'historical snapshot refreshed');
   assert.equal(useOriginalClashBaseline.getState().finding, null);
+});
+
+
+// #7015: a refused Clear must preserve the editable comment and saved decision for retry.
+test('#7015 refused decision Clear preserves the comment and status until storage succeeds', async () => {
+  setup();
+  const ui = mount();
+  await waitFor(() => ui.querySelector('[data-review-card]') !== null, 'card');
+  click(button(ui, 'Show findings of'));
+  const select = ui.querySelector<HTMLSelectElement>('select')!;
+  select.value = 'accepted'; select.dispatchEvent(new Event('change', { bubbles: true }));
+  const comment = ui.querySelector<HTMLTextAreaElement>('textarea')!;
+  type(comment, 'Keep this coordination decision');
+  click(button(ui, 'Save decision'));
+  await waitFor(() => currentReviewWorkspace(useReviewWorkspaces.getState().entries).decisions.some(d => d.comment === 'Keep this coordination decision'), 'saved comment');
+  await waitFor(() => useReviewWorkspaces.getState().status.items[DEFAULT_REVIEW_WORKSPACE] === 'saved', 'comment committed');
+  const refusal = refuseContentWrites();
+  try {
+    click(button(ui, 'Clear decision'));
+    await waitFor(() => refusal.mock.callCount() > 0 && useReviewWorkspaces.getState().status.items[DEFAULT_REVIEW_WORKSPACE] !== 'saving', 'refused write settled');
+    assert.equal(select.value, 'accepted');
+    assert.equal(comment.value, 'Keep this coordination decision');
+    const { readContentRows } = await import('@/lib/storage/content-database');
+    const persisted = await readContentRows('reviewWorkspaces');
+    assert.match(JSON.stringify(persisted), /Keep this coordination decision/, 'the stored decision survives refusal');
+  } finally { refusal.mock.restore(); }
+  click(button(ui, 'Clear decision'));
+  await waitFor(() => comment.value === '' && select.value === 'open', 'successful clear');
 });

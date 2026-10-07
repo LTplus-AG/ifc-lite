@@ -38,7 +38,12 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
   const visibleRows = selected?.report.rows.slice(0, 100) ?? [];
   const requestedRow = requested?.comparisonId === selected?.id
     ? selected?.report.rows.find(row => (row.key ?? row.globalId) === requested?.key) : undefined;
-  if (requestedRow && !visibleRows.includes(requestedRow)) visibleRows.push(requestedRow);
+  // The requested evidence is visible immediately, including rows beyond the display cap.
+  if (requestedRow) {
+    const prior = visibleRows.indexOf(requestedRow);
+    if (prior >= 0) visibleRows.splice(prior, 1);
+    visibleRows.unshift(requestedRow);
+  }
   const canSave = !!result && !running && !stale && models.has(result.baseModelId) && models.has(result.headModelId)
     && (result.mutationVersion === undefined || result.mutationVersion === mutationVersion);
   const persisted = (ok: boolean): void => { if (!ok) toast.error(t('comparePanel.saved.storageFailed')); };

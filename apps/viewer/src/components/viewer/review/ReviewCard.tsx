@@ -103,7 +103,7 @@ export function ReviewCard({ card, titles, decision, expanded, selected, onToggl
             <Button size="sm" variant="outline" onClick={ask}><Sparkles className="mr-1 h-3.5 w-3.5" aria-hidden="true" />{t('reviewWorkspace.ask')}</Button>
             <Button size="sm" variant="outline" onClick={onDraft}>{t('reviewWorkspace.draftOne')}</Button>
           </div>
-          <ReviewDecision key={`${card.key}:${decision?.updatedAt ?? ''}`} cardKey={card.key} decision={decision} />
+          <ReviewDecision key={card.key} cardKey={card.key} decision={decision} />
         </div>
       )}
     </li>

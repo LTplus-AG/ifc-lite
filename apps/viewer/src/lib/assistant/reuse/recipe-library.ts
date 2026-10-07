@@ -84,18 +84,18 @@ export function parseRecipeBundle(text: string): { ok: true; bundle: RecipeBundl
  * Imports referenced graphs through the native Flow library (`importFlow`
  * returns the id it assigned, or null when the library refused), then saves
  * fresh-identity recipe copies. A step whose graph could not be imported
- * keeps its reference and shows as unavailable rather than pointing elsewhere.
+ * gets a fresh unavailable reference rather than resolving a same-id graph on the destination.
  */
-export async function importRecipeBundle(bundle: RecipeBundle, importFlow: (doc: FlowDocument) => string | null): Promise<AssistantRecipe[]> {
-  const ids = new Map<string, string>();
+export async function importRecipeBundle(bundle: RecipeBundle, importFlow: (doc: FlowDocument) => string | null): Promise<{ recipes: AssistantRecipe[]; saved: boolean }> {
+  const ids = new Map<string, string>([...flowIdsOf(bundle.recipes)].map(id => [id, crypto.randomUUID()]));
   for (const doc of bundle.flows) {
     const id = importFlow(doc);
     if (id) ids.set(doc.id, id);
   }
   const imported = bundle.recipes.map((recipe): AssistantRecipe => ({
     ...structuredClone(recipe), id: crypto.randomUUID(), origin: 'imported',
-    steps: recipe.steps.map(step => step.kind === 'flow' ? { kind: 'flow', flowId: ids.get(step.flowId) ?? step.flowId } : step),
+    steps: recipe.steps.map(step => step.kind === 'flow' ? { kind: 'flow', flowId: ids.get(step.flowId)! } : step),
   }));
-  await Promise.all(imported.map(recipe => assistantRecipeLibrary.put(recipe.id, recipe)));
-  return imported;
+  const saved = await Promise.all(imported.map(recipe => assistantRecipeLibrary.put(recipe.id, recipe)));
+  return { recipes: imported, saved: saved.every(Boolean) };
 }

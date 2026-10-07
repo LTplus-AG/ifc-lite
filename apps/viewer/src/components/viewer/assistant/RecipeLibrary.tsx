@@ -49,7 +49,9 @@ export function RecipeLibrary() {
     // The native Flow import opens each graph; never replace an unsaved open graph.
     if (parsed.bundle.flows.length && useViewerStore.getState().flowDirty) { setMessage({ alert: true, text: t(BUNDLE_REFUSAL['flow-dirty']) }); return; }
     const imported = await importRecipeBundle(parsed.bundle, doc => useViewerStore.getState().importFlow(doc));
-    setMessage({ alert: false, text: t('assistantRecipes.imported', { count: imported.length }) });
+    setMessage(imported.saved
+      ? { alert: false, text: t('assistantRecipes.imported', { count: imported.recipes.length }) }
+      : { alert: true, text: t('contentStorage.someUnsaved') });
   };
   const row = (recipe: AssistantRecipe) => {
     const available = recipe.steps.filter(step => stepAvailability(step, host).available).length;

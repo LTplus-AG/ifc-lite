@@ -38,3 +38,16 @@ test('#6924 recipe import reports refused persistent writes and retains the reco
     assert.equal(useAssistantRecipes.getState().status.items[result.recipes[0].id], 'unavailable');
   } finally { refusal.mock.restore(); }
 });
+
+// #7055: every successful export must fit the native importer count limits.
+test('#7055 recipe export enforces the importable recipe and graph boundaries', () => {
+  const recipes = Array.from({ length: 51 }, (_, i) => ({ ...recipe, id: `recipe-${i}` }));
+  const acceptedRecipes = exportRecipeBundle(recipes.slice(0, 50), bundle.flows);
+  assert.ok(acceptedRecipes.ok); assert.ok(parseRecipeBundle(acceptedRecipes.json).ok);
+  assert.deepEqual(exportRecipeBundle(recipes, bundle.flows), { ok: false, reason: 'too-large' });
+  const flows = Array.from({ length: 21 }, (_, i) => ({ ...bundle.flows[0], id: `flow-${i}` }));
+  const linked = flows.map(flow => ({ ...recipe, id: `recipe-${flow.id}`, steps: [{ kind: 'flow' as const, flowId: flow.id }] }));
+  const acceptedFlows = exportRecipeBundle(linked.slice(0, 20), flows);
+  assert.ok(acceptedFlows.ok); assert.ok(parseRecipeBundle(acceptedFlows.json).ok);
+  assert.deepEqual(exportRecipeBundle(linked, flows), { ok: false, reason: 'too-large' });
+});

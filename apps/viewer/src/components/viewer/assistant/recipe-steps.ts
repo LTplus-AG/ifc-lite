@@ -77,7 +77,7 @@ export function useRunStep(): (step: RecipeStep) => Promise<void> {
         && !await confirmDialog({ description: t('assistant.switchConfirm') })) return;
       replaceEvidence(captureEvidence(action.source));
     }
-    useRecipeRun.setState({ draftPrompt: action.prompt });
+    if (action.kind === 'ask') useRecipeRun.setState({ draftPrompt: action.prompt });
     panels.openInHome('assistant');
   };
 }

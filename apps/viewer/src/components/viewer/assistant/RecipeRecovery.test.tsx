@@ -21,6 +21,9 @@ import { useAssistantPreferences, projectScope, preferencesFor } from '@/lib/ass
 import { useRecipeRun, stopRecipe } from '@/lib/assistant/reuse/recipe-run';
 import { useAssistantDraft, setAssistantDraft } from '@/lib/assistant/composer-draft';
 import { useAssistant } from '@/lib/assistant/conversation';
+import { RecipeLibrary } from './RecipeLibrary';
+import { usePreferredModel } from '@/lib/assistant/reuse/preference-hooks';
+import { savePreferences } from '@/lib/assistant/reuse/preferences';
 import { assistantLibrary } from '@/lib/assistant/library';
 
 const initial = useViewerStore.getState();
@@ -108,4 +111,41 @@ test('#7055 confirming an earlier recipe prompt cannot overwrite a newer compose
   click(button('Confirm'));
   await act(async () => { await Promise.resolve(); });
   assert.equal(useAssistantDraft.getState().text, 'Newer composer edit');
+});
+
+function PreferredModelHost() { usePreferredModel(); return <span>Project model preference active</span>; }
+test('#7055 returning through an unconfigured project reapplies its saved model once', async () => {
+  const first = { ...fixtureModel('preferred'), sourceFingerprint: 'preferred-source' };
+  const second = { ...fixtureModel('unconfigured'), sourceFingerprint: 'unconfigured-source' };
+  const scope = projectScope([first]); assert.ok(scope);
+  assert.ok((await savePreferences(scope, { model: 'gpt-6.1-sol' })).ok);
+  useViewerStore.setState({ ...fixtureModels(first), chatActiveModel: 'gpt-6-astra' });
+  render(<PreferredModelHost />);
+  assert.equal(useViewerStore.getState().chatActiveModel, 'gpt-6.1-sol');
+  act(() => useViewerStore.getState().setChatActiveModel('gpt-6-astra'));
+  assert.equal(useViewerStore.getState().chatActiveModel, 'gpt-6-astra', 'manual selection remains within this visit');
+  act(() => useViewerStore.setState(fixtureModels(second)));
+  act(() => useViewerStore.setState(fixtureModels(first)));
+  assert.equal(useViewerStore.getState().chatActiveModel, 'gpt-6.1-sol', 'native scope change reapplies the saved preference');
+});
+
+test('#7055 recipe file import refuses to replace a clean graph while its execution is running', async () => {
+  const running = { flowVersion: FLOW_VERSION, id: 'running', name: 'Executing graph', nodes: [], edges: [], inputs: [], outputs: [], capabilities: [] };
+  const imported = { ...running, id: 'imported', name: 'Imported graph' };
+  const bundle = { format: 'ifc-lite-assistant-recipes', version: 1, exportedAt: '2026-10-07T00:00:00Z', flows: [imported],
+    recipes: [{ version: 1, id: 'imported-recipe', origin: 'imported', revision: 1, title: 'Imported recipe', description: '',
+      createdAt: '2026-10-07T00:00:00Z', steps: [{ kind: 'flow', flowId: imported.id }] }] };
+  useViewerStore.setState({ flowDoc: running, activeFlowId: running.id, flowRunning: true, flowDirty: false });
+  render(<RecipeLibrary />);
+  const input = document.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+  const file = new File([JSON.stringify(bundle)], 'recipe.json', { type: 'application/json' });
+  Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+  await act(async () => { input.dispatchEvent(new window.Event('change', { bubbles: true })); await Promise.resolve(); });
+  await waitFor(() => !!document.querySelector('[role="alert"]'), 'running graph import refusal');
+  assert.equal(useViewerStore.getState().flowDoc, running);
+  assert.equal(useViewerStore.getState().activeFlowId, running.id);
+  act(() => useViewerStore.setState({ flowRunning: false }));
+  await act(async () => { input.dispatchEvent(new window.Event('change', { bubbles: true })); await Promise.resolve(); });
+  await waitFor(() => useViewerStore.getState().flowDoc?.name === imported.name, 'native import after execution finishes');
+  assert.notEqual(useViewerStore.getState().flowDoc?.id, imported.id, 'native import assigns a fresh graph identity');
 });

@@ -34,6 +34,6 @@ it('#6926 Customize previews, applies and restores a coordinator layout through 
   assert.equal(useViewerStore.getState().sidebarActivePanel, 'properties');
   assert.equal(useViewerStore.getState().sidebarSecondaryPanel, null);
   assert.equal(useViewerStore.getState().sidebarSplitRatio, 0.63);
-  assert.match(ui.querySelector('[role="status"]')?.textContent ?? '', /previous layout is restored/);
+  assert.match(ui.querySelector('output[aria-live="polite"]')?.textContent ?? '', /previous layout is restored/);
   assert.equal(document.activeElement, button('Apply Coordinator review'), 'removing Restore keeps keyboard focus in the customizer');
 });

@@ -16,13 +16,16 @@ import { AssistantPanel } from './AssistantPanel';
 import { UNCONFIGURED_MODEL_ID } from '@/lib/llm/models';
 import { useAssistant, cancelAssistant, replaceEvidence } from '@/lib/assistant/conversation';
 import { captureEvidence } from '@/lib/assistant/evidence';
+import { setGenerationLanguagePreference, useGenerationLanguagePreference } from '@/lib/assistant/language';
 import { setAssistantDraft } from '@/lib/assistant/composer-draft';
 import { useAssistantPlacement } from '@/lib/assistant/placement';
 import { summarizeClashes, type Clash } from '@ifc-lite/clash';
 
 const initial = useViewerStore.getState();
+const initialGenerationLanguage = useGenerationLanguagePreference.getState().language;
 const initialPlacement = useAssistantPlacement.getState();
 afterEach(() => {
+  setGenerationLanguagePreference(initialGenerationLanguage);
   cleanup(); setAssistantDraft(''); cancelAssistant(); setValidationSourceChoice(null); useViewerStore.setState(initial, true);
   useAssistantPlacement.setState(initialPlacement, true);
   useAssistant.setState({ snapshot: null, archived: null, messages: [], error: null, status: 'idle' });
@@ -166,4 +169,21 @@ test('#6926 an unsent composer draft survives a host remount and stays editable'
   assert.equal(prompt.disabled, false);
   type(prompt, 'Revised request');
   assert.equal(prompt.value, 'Revised request');
+});
+
+
+test('#6926 answer language changes the conversation without replacing evidence or the editable draft', () => {
+  replaceEvidence(captureEvidence('clash'));
+  const evidence = useAssistant.getState().snapshot;
+  const ui = render(<AssistantPanel />);
+  type(ui.querySelector('textarea')!, 'Keep this question');
+  const language = ui.querySelector<HTMLSelectElement>('#assistant-generation-language');
+  assert.ok(language, 'the answer language control is mounted');
+  act(() => { language.value = 'de'; language.dispatchEvent(new window.Event('change', { bubbles: true })); });
+  assert.equal(useAssistant.getState().language.generation, 'de');
+  assert.equal(useAssistant.getState().snapshot, evidence);
+  assert.equal(ui.querySelector('textarea')!.value, 'Keep this question');
+  act(() => useAssistant.setState({ status: 'streaming' }));
+  assert.equal(language.disabled, true, 'an in-flight request keeps its captured language');
+  assert.equal(ui.querySelector('textarea')!.disabled, false, 'the next question stays editable');
 });

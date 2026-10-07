@@ -9,9 +9,9 @@ import { useTransientSurface } from './useTransientSurface';
 export function TransientSurface({ label, onClose, fallback, children }: {
   label: string; onClose: () => void; fallback?: string; children: ReactNode;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLFieldSetElement>(null);
   useTransientSurface(ref, onClose, { fallback });
-  return <div ref={ref} role="group" aria-label={label} tabIndex={-1} className="outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring">
+  return <fieldset ref={ref} aria-label={label} tabIndex={-1} className="min-w-0 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring">
     {children}
-  </div>;
+  </fieldset>;
 }

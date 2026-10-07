@@ -59,6 +59,33 @@ If the source or model changes, sending is disabled. **Refresh evidence and star
 
 Model selection and API keys use the existing scripting assistant controls. A request has an output budget and time limit. Incomplete answers are marked. Cancel stops the active request. Failed or cancelled questions stay in the composer for retry and do not consume conversation history.
 
+## Placement, keyboard and answer language
+
+Use the Assistant header's **Assistant placement** menu to choose a split beside
+the source, the side dock, or a floating panel. Contextual **Discuss with AI**
+uses that preference. When the source is hidden, **Back to …** reopens it. On
+narrow screens, the Assistant uses the existing panel sheet; returning to the
+source and reopening the Assistant preserves captured evidence and an unsent
+question. Moving between hosts also keeps the draft.
+
+Source selection, saved conversations and citation details move keyboard focus
+into their labelled region. **Escape** closes the focused region and returns
+focus to its opener. It leaves an active answer running. Completion is announced
+through a restrained live region; focus moves to an answer only if its previous
+target has disappeared.
+
+The **Answer language** selector changes the conversation's generation language
+independently of the viewer's UI language. New conversations capture both; saved
+conversations keep them. An active request keeps its captured language. Element
+names, property values, IFC names, IDs and quoted evidence retain their original
+spelling.
+
+Open **Customize sidebar**, preview **Coordinator review**, and choose **Apply**
+to bring coordination tools forward with Clash and BCF in the existing split.
+The preview lists missing reserved tools rather than inventing panels. **Restore
+my layout** returns to the preceding rail and dock arrangement. Applying the
+preset preserves detached panels, saved widths and all available tools.
+
 ## Budgets and usage
 
 Each answer has an output ceiling of 4,096 tokens (lower if the selected route allows less) and a two-minute limit. Every attached evidence snapshot also gets one conversation budget: 16 requests and 40,960 output tokens, shared by first questions, retries and **Ask for a corrected proposal** follow-ups. When it is used up, sending is refused with a message and nothing reaches the provider; **Refresh evidence** or switching source starts a new budget. Failed and cancelled requests count as requests. Output tokens are charged as the provider reports them; when the provider reports nothing, the full ceiling is charged, except for a request that returned no text at all.

@@ -119,7 +119,7 @@ export function LayoutPresetSection() {
           <p id="layout-preset-restore-hint" className="sr-only">{t('layoutPresets.restoreHint')}</p>
         </div>
       )}
-      <div role="status" aria-live="polite" className="sr-only">{resolveLiveMessage(t, announcement)}</div>
+      <output aria-live="polite" className="sr-only">{resolveLiveMessage(t, announcement)}</output>
     </section>
   );
 }

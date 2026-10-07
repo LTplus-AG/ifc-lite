@@ -43,7 +43,7 @@ export function AssistantAnnouncer() {
     if (answered) setMessage({ key: 'assistantA11y.answered' });
     else setMessage(error ? null : { key: 'assistantA11y.cancelled' });
   }, () => setMessage({ key: 'assistantA11y.answering' }));
-  return <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">{resolveLiveMessage(t, message)}</div>;
+  return <output aria-live="polite" aria-atomic="true" className="sr-only">{resolveLiveMessage(t, message)}</output>;
 }
 
 /** Move focus to the newest answer when, and only when, focus would otherwise be lost. */

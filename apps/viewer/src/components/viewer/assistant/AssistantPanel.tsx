@@ -139,6 +139,7 @@ export function AssistantPanel() {
       <div ref={endRef} />
     </div>
     <form className="shrink-0 border-t border-border p-2 space-y-1" onSubmit={event => { event.preventDefault(); submit(); }}>
+      <GenerationLanguagePicker disabled={busy} />
       <ComposerAttachments model={model} value={attachments} onChange={setAttachments} disabled={!canAsk} sent={sent} />
       <label className="sr-only" htmlFor="assistant-prompt">{t('assistant.prompt')}</label>
       {/* Stays editable while an answer streams, so typing the next question never loses focus; sending waits for canAsk. */}

@@ -24,6 +24,7 @@ export function flowPublishEligibility(
   lastRun: RunResult | null, lastError: string | null, pendingOutsideRun = 0, pendingInRun = 1,
 ): FlowPublishEligibility {
   if (!lastRun) return { canPublish: false, reason: lastError ? 'flowPanel.publish.reason.failed' : 'flowPanel.publish.reason.noRun' };
+  if (lastRun.review.length > 0) return { canPublish: false, reason: 'flowPanel.publish.reason.review' };
   if (!lastRun.ok) return { canPublish: false, reason: 'flowPanel.publish.reason.failed' };
   if (lastRun.writes === 0) return { canPublish: false, reason: 'flowPanel.publish.reason.noWrites' };
   // The run wrote, but none of its edits is still pending: they were already

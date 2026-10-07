@@ -120,6 +120,7 @@ export const flowPanelEn = {
   'flowPanel.publish.hint': 'Publish this run’s writes as a layer, with the graph recorded as provenance',
   'flowPanel.publish.success': 'Published layer {layerId}… onto "{ref}"',
   'flowPanel.publish.reason.noRun': 'Run the graph before publishing',
+  'flowPanel.publish.reason.review': 'Review and finish the graph before publishing',
   'flowPanel.publish.reason.failed': 'The last run failed — fix it before publishing',
   'flowPanel.publish.reason.noWrites': 'The last run wrote nothing to publish',
   'flowPanel.publish.reason.nothingPending': 'This run\'s edits are no longer pending: they were already published or undone. Run the graph again to publish.',

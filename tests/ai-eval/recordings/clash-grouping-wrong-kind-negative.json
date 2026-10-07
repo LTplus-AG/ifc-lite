@@ -94,6 +94,10 @@
           "tolerance": 0.002,
           "excludeVoidsAndHosts": true
         },
+        "units": {
+          "distance": "m",
+          "tolerance": "m"
+        },
         "taxonomyLimitations": "Default taxonomy: native status (detection type) and severity plus discipline pairs. disciplineCandidates are native IFC-type selector hints for each side, not verified project mappings. Multiple candidates are ambiguous; an empty list is unknown. Preserve all alternatives and side/model identities. Detection status is not human review status. Never change native severity or infer resolved/accepted from grouping. Omitted findings remain unclassified. BCF assignees stay empty until a verified project mapping is chosen."
       },
       "rows": [
@@ -394,7 +398,7 @@
             "rule": "cli-rule",
             "status": "clearance",
             "severity": "info",
-            "distance": 9.5367431640625e-07,
+            "distance": 9.5367431640625e-7,
             "distanceKind": "mesh",
             "disciplineCandidates": {
               "a": [

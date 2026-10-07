@@ -31,13 +31,13 @@ interface LoadActivity {
 /** Per-load publication and error evidence; shared UI flags cannot settle a file. */
 export function createModelLoadActivity(subject: string) {
   return {
-    subject, published: false, error: undefined as string | undefined,
+    subject, published: false, cancelled: false, error: undefined as string | undefined,
     fail(message: string): string {
       this.error = message;
       return message;
     },
     result(): { outcome: 'completed' | 'failed' | 'cancelled'; detail?: string } {
-      return { outcome: this.error ? 'failed' : this.published ? 'completed' : 'cancelled',
+      return { outcome: this.cancelled ? 'cancelled' : this.error ? 'failed' : this.published ? 'completed' : 'cancelled',
         ...(this.error ? { detail: this.error } : {}) };
     },
   };

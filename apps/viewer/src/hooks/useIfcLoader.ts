@@ -919,6 +919,7 @@ export function useIfcLoader() {
           // the status bar shows "Cancelled" instead of a scary error.
           const isAbort = err instanceof DOMException && err.name === 'AbortError';
           if (isAbort) {
+            activity.cancelled = true;
             useViewerStore.getState().noteLoadCancelled();
             console.log(
               `[useIfc] pointcloud ingest cancelled (model=${modelId}, handle=${ingest.rendererHandle.id})`,

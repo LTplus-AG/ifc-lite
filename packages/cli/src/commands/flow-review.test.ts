@@ -15,7 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { copyFile, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -98,6 +98,13 @@ describe('ifc-lite flow: reviewed AI pause and resume', () => {
     const loser = candidates.find(candidate => candidate.id !== winner.checkpoint.id)!;
     expect(await new FileCheckpointStore(racePath).write(loser, null)).toBe(false);
     expect((await new FileCheckpointStore(racePath).load()).checkpoint).toEqual(winner.checkpoint);
+    // #7039 A dead writer's stale lock is reclaimed within this first write.
+    const stalePath = join(dir, 'stale.json');
+    await writeFile(`${stalePath}.lock`, '');
+    await utimes(`${stalePath}.lock`, new Date(0), new Date(0));
+    expect(await new FileCheckpointStore(stalePath).write(candidates[0], null)).toBe(true);
+    expect((await new FileCheckpointStore(stalePath).load()).checkpoint.id).toBe(candidates[0].id);
+
 
     vi.restoreAllMocks();
 

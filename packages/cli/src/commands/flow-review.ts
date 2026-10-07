@@ -83,7 +83,7 @@ export async function reviewCommand(args: string[], path: string | undefined, js
     fatal((error as Error).message);
   }
   if (json) return printJson({ id: next.id, state: next.state, proposalDigest: next.proposalDigest, reviewNodes: next.reviewNodes,
-    proposal: Object.fromEntries([...checkpointProposal(next)].map(([node, ports]) => [node, Object.fromEntries(ports)])) });
+    proposal: Object.fromEntries([...checkpointProposal(next).keys()].map(node => [node, next.outputs[node]])) });
   for (const line of describe(next)) process.stdout.write(`${line}\n`);
 }
 

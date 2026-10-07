@@ -19,6 +19,10 @@ import { copyFile, mkdtemp, readFile, utimes, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { FLOW_VERSION, type FlowDocument, type RunResult } from '@ifc-lite/flow';
+import { createCheckpoint } from '@ifc-lite/flow/checkpoint';
+import { createStandardRegistry } from '@ifc-lite/flow-nodes';
+import { aiNodes } from '@ifc-lite/flow-nodes/ai';
 import { flowCommand } from './flow.js';
 import { FileCheckpointStore } from './flow-checkpoint.js';
 import { createHeadlessContext } from '../loader.js';
@@ -372,4 +376,21 @@ it('#7039 an upstream tracked creation refused without --out never flushes its s
   expect(model.calls).toHaveLength(1);
   expect(c.err.join('')).toContain('wrote to the model before pausing');
   await expect(readFile(tracking)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it('#7039 JSON review preserves every grouped proposal branch and nested value', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-group-review-'));
+  const path = join(dir, 'group.checkpoint.json');
+  const doc: FlowDocument = { flowVersion: FLOW_VERSION, id: 'recorded-grouped-proposal', name: 'Grouped proposal',
+    capabilities: ['network.ai'], inputs: [], outputs: [], nodes: [{ id: 'proposal', type: 'ai.classify' }], edges: [] };
+  const table = { key: 'key', columns: [{ name: 'key', type: 'identifier' }, { name: 'label', type: 'label' }],
+    rows: [{ key: 'source-key', label: 'Recorded review value' }] };
+  const branches: Array<[string, unknown[]]> = [['branch-A', [table]], ['branch-B', [table]]];
+  const result: RunResult = { ok: true, writes: 0, graphOutputs: [], log: [], reports: [], review: ['proposal'],
+    outputs: new Map([['proposal', new Map([['table', { kind: 'group' as const, branches: new Map(branches) }]])]]) };
+  const checkpoint = createCheckpoint({ doc, registry: createStandardRegistry().registerAll(aiNodes), result, sourceDigest: 'recorded-source' });
+  expect(await new FileCheckpointStore(path).write(checkpoint, null)).toBe(true);
+  const c = capture();
+  await flowCommand(['review', path, '--json']);
+  expect(c.json()).toMatchObject({ proposal: { proposal: { table: { kind: 'group', branches } } } });
 });

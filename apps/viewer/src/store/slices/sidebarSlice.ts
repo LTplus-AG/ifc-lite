@@ -257,7 +257,7 @@ export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice
       }
       // Save the current layout before queuing the import notice: the first
       // pending review must retain the actual pre-import state (#6927).
-      if (!writeSidebarLayout(next, changes.length > 0) && changes.length > 0) {
+      if (!writeSidebarLayout(next, true)) {
         throw new Error('Cannot import the layout without preserving the current stored layout');
       }
       set({

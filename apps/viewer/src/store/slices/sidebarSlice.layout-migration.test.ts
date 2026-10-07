@@ -157,3 +157,87 @@ test('#6927 a denied import backup leaves the current layout active through late
     assert.ok(warnings.length > 0);
   } finally { Object.defineProperty(localStorage, 'setItem', { configurable: true, value: original }); console.warn = warn; }
 });
+
+
+for (const retainCompanion of [false, true]) {
+  test(`#7054 a rejected import cannot seed future rollback placements (companion=${retainCompanion})`, () => {
+    const companionKey = 'ifc-lite:sidebar-layout-placements-v2';
+    const store = createStore(createSidebarSlice);
+    store.getState().setSidebarWidthPct(41);
+    if (!retainCompanion) localStorage.removeItem(companionKey);
+    const originalLayout = localStorage.getItem(layoutKey);
+    const originalCompanion = localStorage.getItem(companionKey);
+    const setItem = localStorage.setItem.bind(localStorage);
+    const warn = console.warn;
+    const warnings: unknown[] = [];
+    Object.defineProperty(localStorage, 'setItem', { configurable: true, value: (key: string, value: string) => {
+      if (key === layoutKey) throw new DOMException('Full', 'QuotaExceededError');
+      setItem(key, value);
+    } });
+    console.warn = (...args: unknown[]) => { warnings.push(args); };
+    try {
+      assert.throws(() => store.getState().applySidebarLayout({ order: ['bcf', 'extension:failed-import', 'properties'] }), /Cannot import/);
+      assert.equal(localStorage.getItem(layoutKey), originalLayout);
+      assert.equal(localStorage.getItem(companionKey), originalCompanion);
+      assert.ok(warnings.length > 0);
+    } finally { Object.defineProperty(localStorage, 'setItem', { configurable: true, value: setItem }); console.warn = warn; }
+    // Simulate the already-released four-field writer, then return to this build.
+    localStorage.setItem(layoutKey, JSON.stringify({ mode: 'collapsed', widthPct: 44, order: ['bcf', 'properties'], hiddenIds: [] }));
+    const recovered = createStore(createSidebarSlice).getState();
+    assert.equal(recovered.sidebarWidthPct, 44);
+    assert.ok(!recovered.sidebarPreserved.some(placement => placement.id === 'extension:failed-import'));
+  });
+}
+
+// #6927 / #7054: complete panel sets can produce no migration notice. Import
+// still replaces persisted user state and must preserve/refuse it truthfully.
+for (const version of [undefined, 2]) {
+  test(`#7054 a complete-panel import backs up a width-only change (version=${version})`, () => {
+    const store = createStore(createSidebarSlice);
+    store.getState().setSidebarWidthPct(41);
+    const original = localStorage.getItem(layoutKey)!;
+    const imported = { ...JSON.parse(original), version, widthPct: 24, order: [...store.getState().sidebarOrder].reverse() };
+    assert.deepEqual(store.getState().applySidebarLayout(imported), [], 'a complete panel set needs no migration changes');
+    assert.equal(JSON.parse(localStorage.getItem(backupKey)!).raw, original, 'an ordinary import retains the exact pre-import layout');
+    assert.equal(createStore(createSidebarSlice).getState().sidebarWidthPct, 24);
+  });
+  test(`#7054 a refused complete-panel import keeps active and persisted state (version=${version})`, () => {
+    const store = createStore(createSidebarSlice);
+    store.getState().setSidebarWidthPct(41);
+    const original = localStorage.getItem(layoutKey)!;
+    const imported = { ...JSON.parse(original), version, widthPct: 24, order: [...store.getState().sidebarOrder].reverse() };
+    const setItem = localStorage.setItem.bind(localStorage);
+    const warn = console.warn;
+    const warnings: unknown[] = [];
+    Object.defineProperty(localStorage, 'setItem', { configurable: true, value: (key: string, value: string) => {
+      if (key === layoutKey) throw new DOMException('Full', 'QuotaExceededError');
+      setItem(key, value);
+    } });
+    console.warn = (...args: unknown[]) => { warnings.push(args); };
+    try {
+      assert.throws(() => store.getState().applySidebarLayout(imported), /Cannot import/);
+      assert.equal(store.getState().sidebarWidthPct, 41);
+      assert.equal(localStorage.getItem(layoutKey), original);
+      assert.ok(warnings.length > 0);
+    } finally { Object.defineProperty(localStorage, 'setItem', { configurable: true, value: setItem }); console.warn = warn; }
+    assert.equal(createStore(createSidebarSlice).getState().sidebarWidthPct, 41, 'reload agrees with the refusal');
+  });
+}
+
+test('#7054 unavailable browser storage refuses a complete-panel import before changing the layout', () => {
+  const store = createStore(createSidebarSlice);
+  store.getState().setSidebarWidthPct(41);
+  const imported = { ...JSON.parse(localStorage.getItem(layoutKey)!), widthPct: 24 };
+  const descriptor = Object.getOwnPropertyDescriptor(window, 'localStorage');
+  assert.ok(descriptor);
+  const warn = console.warn;
+  const warnings: unknown[] = [];
+  Object.defineProperty(window, 'localStorage', { configurable: true, get: () => { throw new DOMException('Denied', 'SecurityError'); } });
+  console.warn = (...args: unknown[]) => { warnings.push(args); };
+  try {
+    assert.throws(() => store.getState().applySidebarLayout(imported), /Cannot import/);
+    assert.equal(store.getState().sidebarWidthPct, 41);
+    assert.ok(warnings.length > 0);
+  } finally { Object.defineProperty(window, 'localStorage', descriptor); console.warn = warn; }
+  assert.equal(createStore(createSidebarSlice).getState().sidebarWidthPct, 41);
+});

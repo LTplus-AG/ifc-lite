@@ -17,7 +17,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
-import { statusLabelKey, type ResultStatus } from '../result/StatusChip';
+import type { ResultStatus } from '../result/StatusChip';
+import { statusLabelKey } from '../result/status-label';
 import { useActivityRows } from './useActivityRows';
 
 const ActivityTrayList = lazy(() => import('./ActivityTrayList').then(module => ({ default: module.ActivityTrayList })));

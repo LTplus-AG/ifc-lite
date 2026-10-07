@@ -396,3 +396,16 @@ it('#7038 cannot renew an expired real lease with its historical claim timestamp
   const owned = await ownedClaim(approveCheckpoint(checkpoint, checkpoint.proposalDigest), claim('owner', Date.now() - 60_001));
   expect(() => resumeOutputs(owned, owned.claim!.at)).toThrow(/actively claimed/);
 });
+
+
+it('#7039 refuses removal or inflation of the approved root budget', async () => {
+  const result = await runFlow(doc, { host: { sunk: [] }, registry });
+  const checkpoint = createCheckpoint({ doc, registry, result, sourceDigest: 'source', budget: { maxRequests: 2, requests: 1 } });
+  const approved = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
+  const { budget: _budget, ...withoutBudget } = approved;
+  for (const edited of [withoutBudget, { ...approved, budget: { maxRequests: 100, requests: 0 } }]) {
+    expect(() => parseCheckpoint(JSON.parse(JSON.stringify(edited)))).toThrow(/proposal digest/);
+    expect(() => claimCheckpoint(edited, { ...claim('owner', Date.now()), sourceDigest: 'source' })).toThrow();
+  }
+  expect(parseCheckpoint(JSON.parse(JSON.stringify(approved))).budget).toEqual({ maxRequests: 2, requests: 1 });
+});

@@ -158,8 +158,8 @@ function portableOutputs(outputs: RunResult['outputs']): PortableOutputs {
   return JSON.parse(JSON.stringify(out)) as PortableOutputs;
 }
 
-export function proposalDigestOf(outputs: PortableOutputs, reviewNodes: readonly string[]): string {
-  return digest({ reviewNodes, outputs });
+export function proposalDigestOf(outputs: PortableOutputs, reviewNodes: readonly string[], budget?: unknown): string {
+  return digest({ reviewNodes, outputs, ...(budget !== undefined ? { budget } : {}) });
 }
 
 export interface CreateCheckpointInput {
@@ -185,7 +185,7 @@ export function createCheckpoint(input: CreateCheckpointInput): FlowCheckpoint {
   if (pausedRunGraphs.get(result) !== graph) {
     throw new Error('the checkpoint graph and Player inputs must match the actual paused run');
   }
-  const proposal = proposalDigestOf(outputs, result.review);
+  const proposal = proposalDigestOf(outputs, result.review, input.budget);
   const now = input.now ?? Date.now();
   if (!Number.isFinite(now)) throw new Error('the checkpoint timestamp must be finite');
   return {
@@ -208,7 +208,7 @@ export function createCheckpoint(input: CreateCheckpointInput): FlowCheckpoint {
 /** Decode a detached snapshot for inspection or an owned resume. */
 function restoreMap(checkpoint: FlowCheckpoint): Map<string, Map<string, FlowData>> {
   if (!validPortableOutputs(checkpoint.outputs)
-    || proposalDigestOf(checkpoint.outputs, checkpoint.reviewNodes) !== checkpoint.proposalDigest) {
+    || proposalDigestOf(checkpoint.outputs, checkpoint.reviewNodes, checkpoint.budget) !== checkpoint.proposalDigest) {
     throw new Error('the checkpoint outputs no longer match their reviewed snapshot');
   }
   const outputs = JSON.parse(JSON.stringify(checkpoint.outputs)) as PortableOutputs;

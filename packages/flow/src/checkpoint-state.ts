@@ -75,7 +75,7 @@ export function parseCheckpoint(value: unknown): FlowCheckpoint {
   if (value.budget !== undefined) nonPortable(value.budget, 'budget', problems);
   if (problems.length) bad('budget must be plain JSON');
   const checkpoint = value as unknown as FlowCheckpoint;
-  if (proposalDigestOf(checkpoint.outputs, checkpoint.reviewNodes) !== checkpoint.proposalDigest) {
+  if (proposalDigestOf(checkpoint.outputs, checkpoint.reviewNodes, checkpoint.budget) !== checkpoint.proposalDigest) {
     bad('the proposal values do not match the proposal digest');
   }
   return checkpoint;

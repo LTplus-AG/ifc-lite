@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { toast } from '@/components/ui/toast';
 import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import { useTranslation } from '@/i18n';
-import { clashReportRevision, defaultClashReportName, snapshotClashReport, type SavedClashReport } from '@/lib/clash/saved-report';
+import { CLASH_REPORT_LIMITS, clashReportRevision, defaultClashReportName, snapshotClashReport, type SavedClashReport } from '@/lib/clash/saved-report';
 import { clashReportLimitBadges } from '@/lib/charts/clash-report-source';
 import { useViewerStore } from '@/store';
 
@@ -36,7 +36,7 @@ function ReportRow({ report }: { report: SavedClashReport }) {
     <li className="space-y-1 rounded-md border border-border p-2" data-clash-report={report.id}>
       <div className="flex gap-1.5">
         <input className="min-w-0 flex-1 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs" value={name}
-          onChange={(event) => setName(event.target.value)} aria-label={t('clashTools.savedReports.renameLabel', { name: report.name })} />
+          maxLength={CLASH_REPORT_LIMITS.name} onChange={(event) => setName(event.target.value)} aria-label={t('clashTools.savedReports.renameLabel', { name: report.name })} />
         <Button variant="outline" size="sm" className="h-6 px-2 text-xs" disabled={!name.trim() || name.trim() === report.name}
           onClick={() => void state().renameSavedClashReport(report.id, name).then(persisted)}>{t('clashTools.savedReports.renameButton')}</Button>
         {!confirming && <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => setConfirming(true)}>{t('clashTools.savedReports.deleteButton')}</Button>}
@@ -92,7 +92,7 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
           <div className="space-y-1.5 rounded-md border border-border p-2.5">
             <div className="flex gap-1.5">
               <input className="min-w-0 flex-1 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs" value={name}
-                onChange={(event) => setName(event.target.value)} aria-label={t('clashTools.savedReports.nameLabel')}
+                maxLength={CLASH_REPORT_LIMITS.name} onChange={(event) => setName(event.target.value)} aria-label={t('clashTools.savedReports.nameLabel')}
                 placeholder={result ? defaultClashReportName(result, new Date()) : t('clashTools.savedReports.nameLabel')} />
               <Button variant="outline" size="sm" className="h-7 shrink-0 gap-1" disabled={!result || running} onClick={() => void saveCurrent()}>
                 <Save className="h-3.5 w-3.5" />

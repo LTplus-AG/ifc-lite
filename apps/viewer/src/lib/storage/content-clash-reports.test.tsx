@@ -154,6 +154,20 @@ describe('Saved clash reports in the library backup (#6947)', () => {
     assert.equal(JSON.stringify(renamed), JSON.stringify({ ...a, name: 'Run A renamed' }));
   });
 
+  it('refuses a name over the 200-character limit without touching the saved report', async () => {
+    const state = useViewerStore.getState();
+    await act(async () => { assert.equal(await state.renameSavedClashReport(a.id, 'n'.repeat(201)), false, 'a name the report format rejects is refused'); });
+    assert.equal(savedClashReports().find((entry) => entry.id === a.id)?.name, 'Run A', 'the refused name is not left in memory as an unsaved draft');
+    assert.equal(useViewerStore.getState().savedClashReportsStorage.items[a.id], 'saved', 'and the report is not marked as failing to save');
+    await act(async () => { assert.equal(await state.renameSavedClashReport(a.id, 'n'.repeat(200)), true, 'control: the limit itself is accepted'); });
+    // The dialog's two name fields cannot exceed the limit in the first place.
+    const open = [...document.body.querySelectorAll('button')].find((button) => button.getAttribute('aria-label') === 'Saved clash reports'); assert.ok(open); click(open);
+    await waitFor(() => document.body.querySelector('input[aria-label="Report name"]') !== null, 'the dialog opens');
+    const fields = [...document.body.querySelectorAll<HTMLInputElement>('[role="dialog"] input')];
+    assert.ok(fields.length >= 3, 'the save field and one rename field per report');
+    assert.deepEqual([...new Set(fields.map((field) => field.maxLength))], [200]);
+  });
+
   it('refuses a backup whose clash report is not a valid report', async () => {
     const backup = (report: unknown) => JSON.stringify({ version: 1, exportedAt: '', libraries: { validation: [], comparison: [], document: [], clashReports: [report] } });
     assert.equal(parseContentBackup(backup(a)).libraries.clashReports?.length, 1, 'control: the real report is accepted');

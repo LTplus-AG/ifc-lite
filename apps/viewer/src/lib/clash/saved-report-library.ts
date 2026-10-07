@@ -44,7 +44,9 @@ export function clashReportActions(library: Controller, reports: () => readonly 
     },
     rename: (id, name) => {
       const entry = reports().find((value) => value.id === id);
-      return entry && name.trim() ? library.put(id, { ...entry, name: name.trim() }) : Promise.resolve(false);
+      // Checked here, not left to the controller: it would keep a refused name in memory as an unsaved draft.
+      const renamed = entry && { ...entry, name: name.trim() };
+      return renamed && isSavedClashReport(renamed) ? library.put(id, renamed) : Promise.resolve(false);
     },
     remove: (id) => library.put(id, null),
   };

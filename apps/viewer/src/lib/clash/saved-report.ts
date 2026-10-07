@@ -16,7 +16,7 @@ import { analysisStampOf, isAnalysisStale } from '@/hooks/useAnalysisStaleness';
 import type { ViewerState } from '@/store';
 import { clashGroupTitles, liveClashFacts, type ClashDatasetState } from '@/lib/charts/datasets/clash';
 import { clashReviewKey } from '@ifc-lite/clash';
-import type { SavedClash, SavedClashElement, SavedClashModel, SavedClashReport, SavedClashRule } from './saved-report-schema';
+import { CLASH_REPORT_LIMITS, type SavedClash, type SavedClashElement, type SavedClashModel, type SavedClashReport, type SavedClashRule } from './saved-report-schema';
 
 export * from './saved-report-schema';
 export * from './saved-report-revision';
@@ -107,5 +107,5 @@ export function snapshotClashReport(state: ClashReportCaptureState, name: string
 export function defaultClashReportName(result: Pick<ClashResult, 'rulesRun'>, now: Date): string {
   const names = result.rulesRun.map((rule) => rule.name).filter(Boolean);
   const rules = names.length === 0 ? 'Clash run' : names.length <= 2 ? names.join(', ') : `${names[0]} +${names.length - 1}`;
-  return `${rules} ${now.toISOString().slice(0, 16).replace('T', ' ')}`.slice(0, 200);
+  return `${rules} ${now.toISOString().slice(0, 16).replace('T', ' ')}`.slice(0, CLASH_REPORT_LIMITS.name);
 }

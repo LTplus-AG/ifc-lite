@@ -27,7 +27,7 @@ import { AssistantConversation } from './AssistantConversation';
 import { FreeQuotaNote } from './AssistantUsage';
 import { attachmentsForSend, ComposerAttachments, NO_ATTACHMENTS } from './ComposerAttachments';
 import { RecipeRunCard } from './RecipeRunCard';
-import { usePreferredModel } from './ProjectPreferences';
+import { usePreferredModel } from '@/lib/assistant/reuse/preference-hooks';
 import { takeDraftPrompt, useRecipeRun } from '@/lib/assistant/reuse/recipe-run';
 
 const FlowProposalReview = lazy(() => import('./FlowProposalReview').then(m => ({ default: m.FlowProposalReview })));

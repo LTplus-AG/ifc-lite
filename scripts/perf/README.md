@@ -3554,3 +3554,7 @@ Deferring popup initialization and journal restoration increased eager bytes in
 the production bundle and was discarded. The verdict is a deliberately approved
 startup cost, not a speed improvement. Measure the complete eager chunk graph:
 extracting a module can increase shared imports even when its entry chunk shrinks.
+
+### Viewer preferences editor imports (P20, #6924)
+
+A hook used by the Assistant must live separately from the optional preferences editor: importing the hook from the editor makes its dynamic import ineffective. Keep the live project/model hook in a small module and load the form through its native lazy boundary. The remaining content-library registration and recipe run state still participate in startup, so the combined bundle must be measured before claiming a size win.

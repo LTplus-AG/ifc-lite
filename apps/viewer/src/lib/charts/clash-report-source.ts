@@ -67,16 +67,32 @@ export function clashReportLimitBadges(report: SavedClashReport, revision: Clash
   ];
 }
 
-/** Short labels for a chart card, most important first: what the source is, then what limits it. */
+/**
+ * Short labels for a chart card. The limits come before the name: the card
+ * cuts a long subtitle off at its right edge, and a cut-off line must lose the
+ * report's name before it loses the warning.
+ */
 export function clashReportChartBadges(source: ClashReportChartSource, t: Translate): string[] {
   if (source.status !== 'saved') return [];
-  return [t('chartClashReport.badgeSaved', { name: source.report.name }), ...clashReportLimitBadges(source.report, source.revision, t)];
+  return [...clashReportLimitBadges(source.report, source.revision, t), t('chartClashReport.badgeSaved', { name: source.report.name })];
 }
 
-/** The full statement: printed under a document chart, read by the editor and the card's tooltip. */
+/**
+ * The one-line caption under a document chart, or why a bound report is
+ * unavailable. Limits first for the same reason as the card: the document
+ * fits the caption to the chart's column and truncates the rest.
+ */
 export function clashReportChartMessage(source: ClashReportChartSource, t: Translate): string | undefined {
   if (source.status === 'live') return undefined;
   if (source.status === 'missing') return t('chartClashReport.missing');
+  const { report } = source;
+  return [...clashReportLimitBadges(report, source.revision, t),
+    t('chartClashReport.caption', { name: report.name, date: new Date(report.savedAt).toLocaleDateString() })].join(' · ');
+}
+
+/** The full statement in sentences, for the chart editor and the card's tooltip, where nothing is cut off. */
+export function clashReportChartDetail(source: ClashReportChartSource, t: Translate): string | undefined {
+  if (source.status !== 'saved') return clashReportChartMessage(source, t);
   const { report } = source;
   return [
     t('chartClashReport.recorded', { name: report.name, date: new Date(report.savedAt).toLocaleDateString() }),

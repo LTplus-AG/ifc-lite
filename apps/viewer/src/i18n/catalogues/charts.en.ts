@@ -44,6 +44,7 @@ export const chartsEn = {
   'chartClashReport.none': 'Save a clash result in the Clash panel to chart it here.',
   'chartClashReport.missing': 'Saved clash report unavailable in this browser. Choose the current result or another saved report; the current result is not shown in its place.',
   'chartClashReport.chooseSource': 'Choose a source',
+  'chartClashReport.caption': 'Saved clash report: {name}, saved {date}',
   'chartClashReport.recorded': 'Saved clash report: {name}, saved {date}.',
   'chartClashReport.partial': {
     one: 'Partial run: {count} candidate pair was not checked.',

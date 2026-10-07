@@ -133,6 +133,36 @@ reviews.set(key, { status: 'accepted', comment: 'Coordinated with structural' })
 const topicStatus = aggregateReviewStatus(members.map((c) => reviews.get(clashReviewKey(c))?.status ?? 'open'));
 ```
 
+### Saved reports
+
+A new run replaces the result on screen. To keep one, open **Saved clash
+reports** in the viewer's Clash panel header, give the result a name and
+choose **Save current result**. The report records the clashes as the panel
+shows them (after your exclusions), each with the review status, comment,
+group and storey it had at that moment, together with the rules and settings
+of the run and the names and source identities of the models it ran on.
+Later reviews, regrouping and re-runs leave a saved report unchanged; only
+its name can be edited.
+
+The dialog says before you save when the result is not a complete, current
+run, and the report keeps that fact: a run that stopped at its candidate-pair
+limit is saved as a **Partial run**, and a result whose model was edited or
+moved after the run is saved as **Models changed before saving**. Run the
+check again first if you want a current result.
+
+Saved reports are stored in this browser's saved content library with saved
+validation reports and comparisons. They survive a reload and are part of
+**Storage and backup → Download library backup**; importing a backup brings
+them back, and a report that conflicts with one you already have arrives as a
+separate copy. Deleting a report warns that charts reading it will show it as
+unavailable.
+
+Each [clash chart](charts.md#saved-clash-report-charts) can read the current
+result or one saved report, which is how two charts show two runs side by
+side. A saved report is evidence of the model it ran on. It is never matched
+to a different revision: when the loaded model is another revision, charts
+label the report as historical and keep showing the recorded results.
+
 ### BCF export
 
 In the viewer, once a result is on screen the panel header offers **Re-run**, the same place IDS and Compare keep theirs. It repeats the run that produced the result ("Detect all clashes", the enabled rule set, a single rule, or "Find duplicates"), with the current mode and tolerance settings, and its tooltip names what it will repeat. While a run is in flight it reads **Cancel**. Before the first run, with no model of your own open, **Try with demo data** loads the demo revision B, which carries one injected clash.

@@ -81,7 +81,7 @@ describe('Document chart bound to a saved clash report (#6947)', () => {
   it('preview and PDF read the saved rows, not a later run, and the PDF states the provenance and that the run was partial', async () => {
     mountClashPanel();
     await detectCoincidentWalls(2);
-    const dropped = (await publishCappedRun()).truncated.droppedPairs;
+    await publishCappedRun();
     const saved = await saveCurrentResultAs('Capped run');
     const recorded = saved.clashes.length;
     await detectCoincidentWalls(4);
@@ -93,14 +93,13 @@ describe('Document chart bound to a saved clash report (#6947)', () => {
     assert.equal(data?.aggregations.get('clash-block')?.total, recorded, 'the preview aggregates the saved rows');
     assert.equal(data?.chartErrors?.has('clash-block'), false, 'a saved source is provenance, not a failure');
     const caption = data?.chartMessages.get('clash-block') ?? '';
-    assert.match(caption, /^Saved clash report: Capped run, saved /);
-    assert.match(caption, new RegExp(`Partial run: ${dropped} candidate pairs? (was|were) not checked\\.`));
+    assert.match(caption, /^Partial run · .*Saved clash report: Capped run, saved /, 'the limit leads the caption, so fitting it to the column cannot cut it off');
 
     const printed = await print(document);
     assert.deepEqual(printed.warnings, []);
     assert.equal(printed.snapshots, 0, 'saved rows name no loaded element, so the block asks for no 3D snapshot of whatever is loaded');
     assert.match(printed.text, /Saved clash report: Capped run, saved /, 'the PDF prints which report the chart shows');
-    assert.match(printed.text, /Partial run:/, 'and that the run was partial');
+    assert.match(printed.text, /Partial run · /, 'and that the run was partial');
     const live = await print(documentFor(chart()));
     assert.doesNotMatch(live.text, /Saved clash report|Partial run/, 'control: an unbound chart of the current result prints no such statement');
     assert.equal(live.snapshots, 1, 'control: the same block on the current result does ask for its snapshot');

@@ -69,7 +69,8 @@ function watch<B>(store: ViewerStoreLike, spec: Watch<B>): () => void {
 function watchClash(store: ViewerStoreLike): () => void {
   return watch(store, {
     running: (s) => s.clashRunning,
-    start: (s) => ({ job: { kind: 'check', title: 'activityTray.job.clash', panel: 'clash' }, baseline: s.clashRunSeq }),
+    start: (s) => ({ job: { kind: 'check', title: 'activityTray.job.clash', panel: 'clash',
+      subject: [...s.models.values()].map(model => model.name).join(', ') || undefined }, baseline: s.clashRunSeq }),
     tick: (s) => (s.clashProgress && s.clashProgress.total > 0
       ? { progress: { done: s.clashProgress.done, total: s.clashProgress.total } }
       : {}),
@@ -83,7 +84,7 @@ function watchValidation(store: ViewerStoreLike): () => void {
   return watch(store, {
     running: (s) => s.idsLoading && s.idsProgress !== null,
     start: (s) => ({
-      job: { kind: 'check', title: 'activityTray.job.validation', panel: 'validation' },
+      job: { kind: 'check', title: 'activityTray.job.validation', panel: 'validation', subject: s.idsDocument?.info.title },
       baseline: s.idsValidationReport,
     }),
     tick: (s) => (s.idsProgress && s.idsProgress.totalSpecifications > 0

@@ -54,7 +54,9 @@ const only = (): ActivityJob => {
 describe('clash run recorder', () => {
   it('records progress, then completed only when a new result was published', () => {
     const store = useViewerStore.getState();
+    useViewerStore.setState({ models: new Map([['m', { ...fixtureModel('m'), name: 'coordination.ifc' }]]) });
     store.setClashRunning(true);
+    assert.equal(only().subject, 'coordination.ifc', '#6952 names the actual loaded input');
     store.setClashProgress({ phase: 'narrow', rule: 'hard-clash', done: 3, total: 10 });
     assert.deepEqual([only().outcome, only().panel, only().progress], ['running', 'clash', { done: 3, total: 10 }]);
     store.bumpClashRunSeq();

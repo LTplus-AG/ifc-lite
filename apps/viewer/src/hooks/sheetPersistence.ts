@@ -115,8 +115,18 @@ export function createSheetPersistence() {
       }
       if (current === entry && !state.models.has(modelId)) sheets.delete(modelId);
     },
+    /** Whether `source`'s session holds an edit that only a resolved key can save (#7035). */
+    hasUnsavedEdit(modelId: string, source: File): boolean {
+      const current = sheets.get(modelId);
+      const entry = current?.source === source ? current : pendingReplacements.get(source)?.get(modelId);
+      return !!entry?.dirty && entry.hash === undefined;
+    },
     dispose: unsubscribe,
   };
+}
+
+export function hasUnsavedSheetEdit(modelId: string, source: File): boolean {
+  return persistence?.hasUnsavedEdit(modelId, source) ?? false;
 }
 
 let persistence: ReturnType<typeof createSheetPersistence> | undefined;

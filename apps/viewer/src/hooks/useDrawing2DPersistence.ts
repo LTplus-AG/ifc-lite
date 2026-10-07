@@ -7,8 +7,7 @@
  *
  * `drawing2DSlice.ts` is at its module-size budget, and the scoping key this
  * needs — a model content hash — is not known at slice-init time (no model
- * is loaded yet when the store is constructed) nor is it a field on
- * `FederatedModel` (adding one would grow `store/types.ts`, also at budget).
+ * is loaded yet when the store is constructed).
  * So this lives as an external bridge instead of slice actions: this React
  * hook resolves the active model's content hash and restores its markup;
  * `drawingMarkupSave.ts` (split out at the same time, module-size budget)
@@ -35,7 +34,7 @@
 import { useEffect, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice.js';
-import { computeFullSourceHashFromBlob } from '@/utils/sourceContentHash.js';
+import { migrateLegacyDxfUnderlays, resolveDrawingPersistenceKey, unionById } from './drawingPersistenceKey.js';
 import { loadDrawing2DEntry, defaultMarkupPatch, suppressNextSaveFor } from '@/store/slices/drawing2DSlice.persistence.js';
 import { setCachedHash, notifyDecided } from './drawingMarkupRestorePrecedence.js';
 import { resetSaveState, beginRestore, endRestore, setRestoredSectionConfig, ensureSaveSubscription } from './drawingMarkupSave.js';
@@ -53,22 +52,23 @@ export { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './dr
 const sourceHashes = new WeakMap<File, string | null>();
 
 /**
- * Resolves the active model's content hash (from `FederatedModel.sourceFile`)
- * and restores that model's persisted markup into the store. This is a TRUE
- * full-content SHA-256 (`computeFullSourceHashFromBlob`), NOT the
+ * Resolves the active model's content hash and restores that model's
+ * persisted markup into the store. The hash is the load's placement identity
+ * (`FederatedModel.sourceContentHash`, a SHA-256 over every byte of the file
+ * in 1 MiB chunks; see `drawingPersistenceKey.ts`, #7035), NOT the
  * window-sampled fingerprint `services/ifc-cache.ts` keys its geometry cache
  * on: that sampler is a deliberately O(1) cache-lookup key with a proven
  * blind spot (an edit landing between its sample windows is invisible to
  * it — see `@ifc-lite/cache`'s `source-fingerprint.ts`'s docs), safe there only because a
- * false key-hit is still gated by an mtime guard and this same full hash as
- * a background revalidation layer. Markup restore has no such second gate —
+ * false key-hit is still gated by an mtime guard and a full-content
+ * revalidation layer. Markup restore has no such second gate —
  * whatever this resolves to is used directly as the `localStorage` key — so
  * it must be an identity that cannot collide on two genuinely different
  * models, not merely a fast one. Restores defaults (i.e. does nothing — the
  * fields are already `[]`/defaults after `resetViewerState`) when nothing is
- * saved for the hash, or when a hash cannot be computed at all (no
- * `sourceFile` — e.g. a cache-restored model), which degrades to today's
- * non-persisted behaviour for that load rather than throwing.
+ * saved for the hash, or when there is no hash at all (no `sourceFile`, or
+ * no digest available), which leaves that load non-persisted rather than
+ * throwing.
  *
  * ## Precedence over #4170's IFC-embedded restore (`useDrawingMarkupRestoreOnLoad.ts`)
  * `applyHash` below writes unconditionally — no emptiness check — by
@@ -152,17 +152,23 @@ export function useDrawing2DPersistence(): void {
       // rather than a replace. Not awaited: it guards its own staleness via
       // `stillCurrent`, the same closure every other async step here uses.
       if (!skipDxfRestore) void restoreDxfUnderlaysFor(hash, stillCurrent);
+      if (activeSourceFile) migrateLegacyDxfUnderlays(hash, activeModelId, activeSourceFile, stillCurrent);
 
       const defaults = getDefaultDrawing2DState().drawing2DDisplayOptions;
       const entry = loadDrawing2DEntry(hash, defaults);
       if (!entry) return;
 
       setRestoredSectionConfig(activeModelId, entry.sectionConfig);
+      // The fields were cleared when this model became active, so anything in
+      // them now was drawn while the key was resolving (#7035: that can last
+      // until the load ends when a legacy entry is being moved). Keep it
+      // beside the saved items; the save this patch triggers stores both.
+      const live = useViewerStore.getState();
       useViewerStore.setState({
-        measure2DResults: entry.measure2DResults,
-        polygonArea2DResults: entry.polygonArea2DResults,
-        textAnnotations2D: entry.textAnnotations2D,
-        cloudAnnotations2D: entry.cloudAnnotations2D,
+        measure2DResults: unionById(entry.measure2DResults, live.measure2DResults),
+        polygonArea2DResults: unionById(entry.polygonArea2DResults, live.polygonArea2DResults),
+        textAnnotations2D: unionById(entry.textAnnotations2D, live.textAnnotations2D),
+        cloudAnnotations2D: unionById(entry.cloudAnnotations2D, live.cloudAnnotations2D),
         drawing2DDisplayOptions: entry.drawing2DDisplayOptions,
       });
     };
@@ -198,7 +204,7 @@ export function useDrawing2DPersistence(): void {
       return;
     }
 
-    computeFullSourceHashFromBlob(sourceFile)
+    resolveDrawingPersistenceKey(activeModelId, sourceFile)
       .then((hash) => {
         if (!cacheHash(hash)) { settleSheetHash(activeModelId, hash, sourceFile); return; }
         applyHash(hash, settleHash(hash));

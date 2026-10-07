@@ -80,7 +80,8 @@ function enqueueSave(hash: string, dxfUnderlays: DxfUnderlayState[]): void {
   void drain(hash);
 }
 
-async function waitForPendingSave(hash: string): Promise<void> {
+/** Resolves once no write for `hash` is in flight or queued behind one. */
+export async function waitForPendingDxfUnderlaySave(hash: string): Promise<void> {
   const active = drainsByHash.get(hash);
   if (active) await active;
 }
@@ -146,7 +147,7 @@ export async function restoreDxfUnderlaysFor(
   // A cached A→B→A switch can arrive while A's latest removal is coalesced
   // behind an in-flight write. Reading before that drain commits would merge
   // the older saved underlay back into the live workspace.
-  await waitForPendingSave(hash);
+  await waitForPendingDxfUnderlaySave(hash);
   if (!stillCurrent()) return;
   const saved = await loadDxfUnderlaysEntry(hash);
   if (!stillCurrent()) return;

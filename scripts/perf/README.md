@@ -592,6 +592,31 @@ the next lever, not part of this change. Freeing a span from the critical path
 only helps if nothing parallel ends at the same moment; check the next span's
 end, not just this one's start.
 
+## Drawing persistence keyed by the load's identity (#7035)
+
+The second full-source pass #7022 found is gone. 2D-drawing persistence
+(markup and sheet in localStorage, DXF underlays in IndexedDB) was keyed by a
+bare whole-file SHA-256 that `useDrawing2DPersistence` computed by re-reading
+the file. It is now keyed by the placement identity already on the model
+record, so a primary load makes one `hash.fullSource` pass and the FZK
+benchmark pins that at 1.
+
+Entries saved under the old key are moved, not dropped. A bare 64-hex key can
+be told from an identity key by its shape, so a load pays for the old hash
+only when some old-shaped entry is stored, only after the model has finished
+loading, and once per file: an identity that has been checked is remembered.
+That pass is counted as `hash.drawingLegacyKey`, apart from `hash.fullSource`.
+Each move writes under the identity key, reads it back and only then removes
+the old entry.
+
+Verdict: structural win (one pass per load instead of two), no timing claim.
+The removed pass ran beside the load, not in front of it.
+
+Lesson: one key served three stores. The issue named the markup; the same
+hash also keyed the sheet and the DXF underlays, and re-keying only the markup
+would have kept the whole-file hash alive for the other two. Before removing a
+derived value, list every store keyed by it.
+
 ## Placement identity from memory (#6431)
 
 Before parsing, the loader awaited a full-content SHA-256 identity (1 MiB chunks)

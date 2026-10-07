@@ -123,7 +123,10 @@ jobs:
             exit 0
           fi
           MARKER="<!-- field-verdict:$SHORT -->"
-          if gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[].body' | grep -qF "$MARKER"; then
+          # Capture first: `grep -q` would close the pipe early and, under
+          # pipefail, a SIGPIPE'd gh would read as "no marker" and post twice.
+          BODIES="$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[].body')"
+          if printf '%s\n' "$BODIES" | grep -F -- "$MARKER" >/dev/null; then
             echo "PR #$PR already has the verdict for $SHORT."
             exit 0
           fi

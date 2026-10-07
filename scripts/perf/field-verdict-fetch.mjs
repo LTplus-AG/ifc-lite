@@ -22,20 +22,43 @@ import { verdictSql } from './field-verdict.mjs';
 export const DEFAULT_HOST = 'https://eu.posthog.com';
 export const DEFAULT_PROJECT = '199147';
 
-/** POST the HogQL; resolves the `{ columns, results }` response. */
-export async function fetchVerdictRows({ sql, apiKey, host = DEFAULT_HOST, project = DEFAULT_PROJECT, fetchImpl = globalThis.fetch }) {
+export const PAGE_SIZE = 10_000;
+export const MAX_PAGES = 20;
+
+/**
+ * Run the HogQL page by page (`LIMIT`/`OFFSET` over its total `ORDER BY`)
+ * until the result is complete; resolves `{ columns, results }`. More than
+ * `maxPages` pages is an error, never a silently truncated verdict.
+ */
+export async function fetchVerdictRows({
+  sql, apiKey, host = DEFAULT_HOST, project = DEFAULT_PROJECT, fetchImpl = globalThis.fetch,
+  pageSize = PAGE_SIZE, maxPages = MAX_PAGES,
+}) {
   if (!apiKey) throw new Error('field-verdict-fetch: POSTHOG_PERSONAL_API_KEY is not set');
-  const response = await fetchImpl(`${host.replace(/\/$/, '')}/api/projects/${encodeURIComponent(project)}/query/`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: { kind: 'HogQLQuery', query: sql }, name: 'field-verdict (#6961)' }),
-  });
-  const text = await response.text();
-  if (!response.ok) throw new Error(`field-verdict-fetch: PostHog answered ${response.status}: ${text.slice(0, 500)}`);
-  const body = JSON.parse(text);
-  if (!Array.isArray(body.results) || !Array.isArray(body.columns)) throw new Error('field-verdict-fetch: response has no columns/results');
-  if (body.hasMore) throw new Error('field-verdict-fetch: result truncated (hasMore); narrow the baseline window');
-  return { columns: body.columns, results: body.results };
+  if (/\bLIMIT\s+\d+\s*$/i.test(sql.trim())) throw new Error('field-verdict-fetch: the query must not carry its own LIMIT; paging adds it');
+  const url = `${host.replace(/\/$/, '')}/api/projects/${encodeURIComponent(project)}/query/`;
+  let columns = null;
+  const results = [];
+  for (let page = 0; page < maxPages; page++) {
+    const response = await fetchImpl(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: { kind: 'HogQLQuery', query: `${sql.trim()}\nLIMIT ${pageSize} OFFSET ${page * pageSize}` },
+        name: 'field-verdict (#6961)',
+      }),
+    });
+    const text = await response.text();
+    if (!response.ok) throw new Error(`field-verdict-fetch: PostHog answered ${response.status}: ${text.slice(0, 500)}`);
+    const body = JSON.parse(text);
+    if (!Array.isArray(body.results) || !Array.isArray(body.columns)) throw new Error('field-verdict-fetch: response has no columns/results');
+    if (columns && JSON.stringify(columns) !== JSON.stringify(body.columns)) throw new Error('field-verdict-fetch: columns changed between pages');
+    columns = body.columns;
+    results.push(...body.results);
+    // A page shorter than the limit is the last one, unless PostHog itself says more is coming.
+    if (!body.hasMore && body.results.length < pageSize) return { columns, results };
+  }
+  throw new Error(`field-verdict-fetch: still incomplete after ${maxPages} pages of ${pageSize} cell rows; refusing a partial verdict`);
 }
 
 async function main(argv) {

@@ -67,6 +67,12 @@ test('#6961 a group inside the band is flat, and no paired cell says so plainly'
     }
   }
   assert.equal(fieldVerdict(rows).pooled[0].status, 'flat');
+  // Paired cells exist, but no pooled group reached minCells: insufficient, never a pass.
+  const thin = fieldVerdict(rows, { minCells: 6 });
+  assert.equal(thin.pooled[0].status, 'insufficient');
+  const thinMd = renderMarkdown(thin);
+  assert.match(thinMd, /Insufficient paired data/);
+  assert.doesNotMatch(thinMd, /No pooled group regressed/);
   const empty = fieldVerdict([]);
   assert.equal(empty.cells, 0);
   assert.match(renderMarkdown(empty, { build: 'abc123def456' }), /No \(person, model\) cell has loads in both windows/);
@@ -117,23 +123,46 @@ test('#6961 the HogQL comes from the README block, filled in, with a validated b
   assert.match(sql, /app_build_sha\) = '3c3cb1fada2f'/, 'the build is the 12-character app_build_sha');
   assert.match(sql, /INTERVAL 21 DAY/);
   assert.throws(() => verdictSql({ build: "x' OR 1=1 --" }), /hex commit sha/);
-  assert.throws(() => verdictSql({ build: 'abcdef1', readme: 'no block here' }), /no sql block/);
+  assert.throws(() => verdictSql({ build: 'abcdef123456', readme: 'no block here' }), /no sql block/);
+  // Events carry the 12-character app_build_sha; a short prefix would match nothing.
+  assert.throws(() => verdictSql({ build: '3c3cb1f' }), /at least 12 characters/);
+  assert.ok(!/\bLIMIT\b/.test(sql), 'paging adds the LIMIT, the README block has none');
 });
 
-test('#6961 the fetch is one read-only query POST, and a truncated result is an error', async () => {
+test('#6961 the fetch is a read-only query POST, paged until complete, never partial', async () => {
   const { fetchVerdictRows } = await load(FETCH);
   const calls = [];
-  const reply = (status, body) => async (url, init) => {
+  const replies = (...bodies) => async (url, init) => {
     calls.push({ url, init });
+    const [status, body] = bodies[Math.min(calls.length - 1, bodies.length - 1)];
     return { ok: status < 400, status, text: async () => JSON.stringify(body) };
   };
-  const rows = await fetchVerdictRows({ sql: 'SELECT 1', apiKey: 'k', fetchImpl: reply(200, { columns: ['a'], results: [[1]] }) });
+  const rows = await fetchVerdictRows({ sql: 'SELECT 1', apiKey: 'k', fetchImpl: replies([200, { columns: ['a'], results: [[1]] }]) });
   assert.deepEqual(rows, { columns: ['a'], results: [[1]] });
   assert.equal(calls[0].url, 'https://eu.posthog.com/api/projects/199147/query/');
   assert.equal(calls[0].init.method, 'POST');
   assert.equal(calls[0].init.headers.Authorization, 'Bearer k');
-  assert.deepEqual(JSON.parse(calls[0].init.body).query, { kind: 'HogQLQuery', query: 'SELECT 1' });
-  await assert.rejects(fetchVerdictRows({ sql: 's', apiKey: '', fetchImpl: reply(200, {}) }), /POSTHOG_PERSONAL_API_KEY/);
-  await assert.rejects(fetchVerdictRows({ sql: 's', apiKey: 'k', fetchImpl: reply(403, { detail: 'no' }) }), /answered 403/);
-  await assert.rejects(fetchVerdictRows({ sql: 's', apiKey: 'k', fetchImpl: reply(200, { columns: [], results: [], hasMore: true }) }), /truncated/);
+  assert.deepEqual(JSON.parse(calls[0].init.body).query, { kind: 'HogQLQuery', query: 'SELECT 1\nLIMIT 10000 OFFSET 0' });
+
+  // Paged: full pages and hasMore keep it fetching; the short last page ends it.
+  calls.length = 0;
+  const paged = await fetchVerdictRows({
+    sql: 'SELECT a', apiKey: 'k', pageSize: 2,
+    fetchImpl: replies(
+      [200, { columns: ['a'], results: [[1], [2]], hasMore: true }],
+      [200, { columns: ['a'], results: [[3], [4]], hasMore: true }],
+      [200, { columns: ['a'], results: [[5]], hasMore: false }],
+    ),
+  });
+  assert.deepEqual(paged.results, [[1], [2], [3], [4], [5]]);
+  assert.deepEqual(calls.map((c) => JSON.parse(c.init.body).query.query.split('\n').pop()), ['LIMIT 2 OFFSET 0', 'LIMIT 2 OFFSET 2', 'LIMIT 2 OFFSET 4']);
+
+  // Past the hard cap it fails loudly instead of judging a partial result.
+  await assert.rejects(
+    fetchVerdictRows({ sql: 'SELECT a', apiKey: 'k', pageSize: 1, maxPages: 3, fetchImpl: replies([200, { columns: ['a'], results: [[1]], hasMore: true }]) }),
+    /still incomplete after 3 pages/,
+  );
+  await assert.rejects(fetchVerdictRows({ sql: 'SELECT a LIMIT 5', apiKey: 'k', fetchImpl: replies([200, {}]) }), /must not carry its own LIMIT/);
+  await assert.rejects(fetchVerdictRows({ sql: 's', apiKey: '', fetchImpl: replies([200, {}]) }), /POSTHOG_PERSONAL_API_KEY/);
+  await assert.rejects(fetchVerdictRows({ sql: 's', apiKey: 'k', fetchImpl: replies([403, { detail: 'no' }]) }), /answered 403/);
 });

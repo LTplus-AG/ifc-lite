@@ -2179,7 +2179,10 @@ pooled group regresses is the next step and is not wired yet.
 
 The HogQL the script expects (`__BUILD__` is the 12-character
 `app_build_sha`, `__BASELINE_DAYS__` the baseline length; the script reads it
-from this block):
+from this block). It already aggregates to one row per (person, model,
+journey, arm, metric, window) cell, not per load; `field-verdict-fetch.mjs`
+appends `LIMIT`/`OFFSET` and pages over the fully ordered result until it is
+complete, and fails rather than judge a partial one:
 
 <!-- field-verdict-hogql -->
 ```sql
@@ -2261,7 +2264,6 @@ FROM (
 )
 GROUP BY event, journey, arm, person, model, metric, window
 ORDER BY event, journey, metric, person, model, window
-LIMIT 50000
 ```
 
 ### Source and buffer ownership during WASM prepass (#3989)

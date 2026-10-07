@@ -158,7 +158,9 @@ export function renderMarkdown(verdict, { build } = {}) {
   const title = build ? `Field verdict for build \`${build}\`` : 'Field verdict';
   const headline = verdict.cells === 0
     ? 'No (person, model) cell has loads in both windows yet, so there is no paired ratio to report.'
-    : verdict.regressed.length > 0
+    : verdict.pooled.every((g) => g.status === 'insufficient')
+      ? `**Insufficient paired data:** no pooled group reached ${verdict.minCells} paired cells, so there is no verdict for this build (not a pass).`
+      : verdict.regressed.length > 0
       ? `**${verdict.regressed.length} pooled group(s) regressed** (speed below ${verdict.threshold}).`
       : `No pooled group regressed (speed threshold ${verdict.threshold}, at least ${verdict.minCells} paired cells).`;
   return [
@@ -183,7 +185,9 @@ export function renderMarkdown(verdict, { build } = {}) {
 
 /** The HogQL from README.md, with the judged build and baseline length filled in. */
 export function verdictSql({ build, baselineDays = 14, readme = readFileSync(README, 'utf8') }) {
-  if (!/^[0-9a-f]{7,40}$/.test(build ?? '')) throw new Error('field-verdict: --build must be a hex commit sha');
+  // Events carry the 12-character `app_build_sha`; a shorter prefix would
+  // match nothing (or, worse, be mistaken for a build with no traffic).
+  if (!/^[0-9a-f]{12,40}$/.test(build ?? '')) throw new Error('field-verdict: --build must be a hex commit sha of at least 12 characters (the app_build_sha length)');
   if (!Number.isInteger(baselineDays) || baselineDays < 1 || baselineDays > 60) throw new Error('field-verdict: --baseline-days must be 1-60');
   const at = readme.indexOf(SQL_MARKER);
   const fence = at === -1 ? null : /```sql\n([\s\S]*?)```/.exec(readme.slice(at));

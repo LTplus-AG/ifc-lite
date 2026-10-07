@@ -14,5 +14,3 @@ import type { flowReviewEn } from './catalogues/flow-review.en';
 
 export type LazyTranslationKey = keyof typeof flowReviewEn;
 
-/** Key prefixes the lazy catalogues own, so a locale may translate them before the feature loads. */
-export const LAZY_NAMESPACES: readonly string[] = ['flowReview.'];

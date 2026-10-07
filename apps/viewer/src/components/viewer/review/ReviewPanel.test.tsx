@@ -13,12 +13,12 @@ import { fixtureModel } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { clash, clashResult } from '@/lib/review/test-support';
-import { useReviewAssistantCard } from '@/lib/review/assistant';
+import { useReviewAssistantCard } from '@/lib/review/assistant-state';
 import { Toaster } from '@/components/ui/toast';
 import { currentReviewWorkspace, useReviewWorkspaces } from '@/lib/review/workspace';
 
 const initial = useViewerStore.getState();
-afterEach(() => { cleanup(); useViewerStore.setState(initial, true); useReviewAssistantCard.setState({ card: null, decision: null }); });
+afterEach(() => { cleanup(); useViewerStore.setState(initial, true); useReviewAssistantCard.setState({ card: null, project: null }); });
 
 const GW = '0wall000000000000000001';
 const GP = '0pipe000000000000000001';

@@ -10,15 +10,17 @@
  * identity, so pinning another card makes earlier evidence stale.
  */
 
-import { create } from 'zustand';
+import { take } from '../assistant/adapters/types';
+import { useReviewAssistantCard } from './assistant-state';
 import type { CoordinationCard } from './cards';
 import type { CardDecision } from './workspace';
 
-export const useReviewAssistantCard = create<{ card: CoordinationCard | null; decision: CardDecision | null }>(() => ({ card: null, decision: null }));
-
 /** Pin one card (and the person's decision on it) for the next assistant attachment. */
 export function pinReviewCard(card: CoordinationCard, decision: CardDecision | null): void {
-  useReviewAssistantCard.setState({ card, decision });
+  useReviewAssistantCard.setState({ card, project: limit => ({
+    summary: reviewCardSummary(card, decision), rows: take(card.findings, limit).map(reviewFindingRow),
+    totalRows: card.findings.length, availability: 'available',
+  }) });
 }
 
 export const REVIEW_EVIDENCE_LIMITATIONS =

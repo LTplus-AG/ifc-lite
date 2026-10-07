@@ -10,8 +10,8 @@
  * outside the viewer store, so `subscribe` lets an open picker follow it.
  */
 
-import { reviewCardSummary, reviewFindingRow, useReviewAssistantCard } from '../../review/assistant';
-import { take, unavailableCapture, type EvidenceAdapter } from './types';
+import { useReviewAssistantCard } from '../../review/assistant-state';
+import { unavailableCapture, type EvidenceAdapter } from './types';
 
 export const reviewAdapter: EvidenceAdapter = {
   id: 'review', group: 'coordination', panelIds: ['review'],
@@ -26,9 +26,7 @@ export const reviewAdapter: EvidenceAdapter = {
   },
   identity: () => useReviewAssistantCard.getState().card,
   capture: (_state, limit) => {
-    const { card, decision } = useReviewAssistantCard.getState();
-    if (!card) return unavailableCapture();
-    return { summary: reviewCardSummary(card, decision), rows: take(card.findings, limit).map(reviewFindingRow),
-      totalRows: card.findings.length, availability: 'available' };
+    const { card, project } = useReviewAssistantCard.getState();
+    return card && project ? project(limit) : unavailableCapture();
   },
 };

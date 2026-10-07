@@ -7,13 +7,14 @@ import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { buildCards } from '@/lib/review/cards';
-import { pinReviewCard, useReviewAssistantCard } from '@/lib/review/assistant';
+import { pinReviewCard } from '@/lib/review/assistant';
+import { useReviewAssistantCard } from '@/lib/review/assistant-state';
 import { element, fakeModel, finding, run } from '@/lib/review/test-support';
 import { captureEvidence, evidenceIsCurrent } from '../evidence';
 import { adapterFor } from './registry';
 
 const initial = useViewerStore.getState();
-afterEach(() => { useViewerStore.setState(initial, true); useReviewAssistantCard.setState({ card: null, decision: null }); });
+afterEach(() => { useViewerStore.setState(initial, true); useReviewAssistantCard.setState({ card: null, project: null }); });
 
 const models = [fakeModel('m1', 'arch.ifc', ['W1'])];
 const historical = run('clash:baseline', 'clash', { temporal: 'historical', complete: false, incomplete: [{ code: 'truncated', detail: 'cap' }] });

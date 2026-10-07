@@ -42,7 +42,7 @@
 //!
 //! * The host is never moved.
 //! * The nearest host vertex wins and a tie goes to the smallest grid
-//!   position, so the answer does not depend on vertex order.
+//!   position, so the position chosen does not depend on vertex order.
 //! * A host vertex that two distinct cutter positions would land on, or that
 //!   another cutter vertex already occupies, is given to neither: merging
 //!   them would collapse a cutter edge.
@@ -52,8 +52,11 @@
 //!   by a step across the wall's thickness, one end of the cutter's edge
 //!   agreed with the arris and the other was a step off; moving that end
 //!   took the wall from 32 open edges to 45 (it is torn either way, and why
-//!   it got worse was not traced). A host arris like that has no single
-//!   position for the cutter to agree with, so the cutter is left as it was.
+//!   it got worse was not traced). That wall is cut with its depth along a
+//!   coordinate axis, where the two ends of a cutter edge share their other
+//!   two coordinates and so round alike: an end that disagrees there says
+//!   the HOST arris leans, and a leaning arris has no single position for
+//!   the cutter to agree with. So the cutter is left as it was.
 //!
 //! # What it does not do
 //!
@@ -63,6 +66,12 @@
 //! * An opening that pokes out of its host has its outer ring at no host
 //!   vertex, so by the depth-edge rule its corners are not moved even where
 //!   the inner ring is a step off. Not measured on any model.
+//! * Where the depth axis is oblique to the coordinate axes, the two ends of
+//!   a cutter edge round independently, so one end a step off and the other
+//!   agreeing is an ordinary outcome there and not a sign of a creased host.
+//!   The depth-edge rule declines that case all the same, and such a corner
+//!   stays a step off. Not measured on any model; the slabs this was written
+//!   for are cut with their depth along an axis.
 //! * The step is not widened where f32 is itself coarser than the grid
 //!   (coordinates past 256 units). Two roundings can differ by more than a
 //!   step there, and such a pair is left alone. No model was measured there.
@@ -77,8 +86,9 @@ use rustc_hash::FxHashMap;
 /// A position in whole grid steps: what `mesh_to_tris`'s snap makes of it.
 type Cell = [i64; 3];
 
-/// Past this the grid index is not exact in `f64`, and f32 is far coarser
-/// than the grid anyway.
+/// Coordinates are keyed up to here: well inside the range where the grid
+/// index is exact in `f64` (about 1.4e11), and far past where f32 is coarser
+/// than the grid, so nothing beyond it could be reconciled anyway.
 const MAX_KEYED_COORD: f32 = 1.0e9;
 
 fn cell(p: &[f32]) -> Cell {
@@ -117,14 +127,21 @@ fn depth_edges(cutter: &Mesh, depth: Vector3<f64>) -> Vec<(Cell, Cell)> {
 /// `cutter` with every vertex that is one grid step from a host vertex moved
 /// onto it; the module docs give the rule. `depth` is the opening's unit
 /// depth axis. Returned as it came when nothing qualifies, which is every
-/// opening that shares no corner with its host.
+/// opening that shares no corner with its host. Where two host vertices snap
+/// to one position, the first in the host's order supplies the coordinates;
+/// the kernel's snap makes them the same vertex either way.
 pub(super) fn reconcile_with_host_vertices(
     mut cutter: Mesh,
     host: &Mesh,
     depth: Vector3<f64>,
 ) -> Mesh {
-    // `abs() <= ..` is false for NaN, so a non-finite cutter bails too.
-    if cutter.positions.is_empty() || !cutter.positions.iter().all(|v| v.abs() <= MAX_KEYED_COORD) {
+    // `abs() <= ..` is false for NaN, so a non-finite cutter bails too. So
+    // does a non-finite axis: it would find no depth edge and so switch that
+    // rule off while vertices still moved.
+    if cutter.positions.is_empty()
+        || !cutter.positions.iter().all(|v| v.abs() <= MAX_KEYED_COORD)
+        || !depth.iter().all(|v| v.is_finite())
+    {
         return cutter;
     }
     // Only host vertices within a step of the cutter's box can match. The

@@ -92,6 +92,11 @@ fn the_nearest_host_vertex_wins_whatever_the_host_order() {
     let (below, above) = ([1.0 - g(1), 2.0, 3.0], [1.0 + g(1), 2.0, 3.0]);
     assert_eq!(reconciled(&cutter, &[below, above]), [below]);
     assert_eq!(reconciled(&cutter, &[above, below]), [below]);
+    // A tie across two axes: the smaller POSITION is the one lower in x,
+    // though a search that walks y first would meet the other one first.
+    let (low_x, low_y) = ([1.0 - g(1), 2.0, 3.0], [1.0, 2.0 - g(1), 3.0]);
+    assert_eq!(reconciled(&cutter, &[low_x, low_y]), [low_x]);
+    assert_eq!(reconciled(&cutter, &[low_y, low_x]), [low_x]);
 }
 
 #[test]
@@ -118,6 +123,16 @@ fn a_coordinate_the_grid_cannot_index_is_never_keyed() {
         assert_eq!(got[0], near, "cutter carrying {bad}");
         let got = reconciled(&[near], &[[bad, 2.0, 3.0], host[0], [1.0, bad, 3.0]]);
         assert_eq!(got, host, "host carrying {bad}");
+    }
+    // A depth axis that is not a direction: no depth edge could be found, so
+    // nothing is moved at all.
+    for bad in [f64::NAN, f64::INFINITY] {
+        let got = reconcile_with_host_vertices(
+            points(&[near]),
+            &points(&host),
+            Vector3::new(0.0, bad, 1.0),
+        );
+        assert_eq!(got.positions, near, "depth axis carrying {bad}");
     }
 }
 

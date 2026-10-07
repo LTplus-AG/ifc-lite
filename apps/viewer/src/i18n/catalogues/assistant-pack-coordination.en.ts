@@ -33,4 +33,11 @@ export const assistantPackCoordinationEn = {
   'assistantSources.semantic.none': 'No records loaded',
   'assistantSources.semantic.suggestUnresolved': 'Which records do not resolve to a model element, and why?',
   'assistantSources.semantic.suggestFindings': 'Explain the validation findings',
+  'assistantSources.review.description': 'One coordination card from the Review workspace: findings from several analyses on the same validated elements.',
+  'assistantSources.review.rows': 'Rows represent the findings in the card, each with its source analysis, native status and whether its run is current, historical or partial.',
+  'assistantSources.review.unavailable': 'No card is pinned. Choose Ask about this card on a card in the Review workspace.',
+  'assistantSources.review.ready': { one: '{count} finding in the pinned card', other: '{count} findings in the pinned card' },
+  'assistantSources.review.none': 'No card pinned',
+  'assistantSources.review.suggestExplain': 'Why do these findings point at the same elements?',
+  'assistantSources.review.suggestNext': 'What would a coordinator check next on this card?',
 } as const satisfies Record<string, TranslationValue>;

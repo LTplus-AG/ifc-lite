@@ -313,6 +313,9 @@ export default defineConfig({
       },
       output: {
         manualChunks(id) {
+          // Assistant text edits need ChangeSet, not the lazy CodeMirror editor UI.
+          // Keep state separate so sharing it cannot pull the whole editor into startup.
+          if (id.includes('/node_modules/@codemirror/state/')) return 'codemirror-state';
           if (id.includes('/packages/sandbox/')) return 'sandbox';
           if (id.includes('/packages/export/')) return 'exporters';
           if (id.includes('/packages/server-client/')) return 'server-client';

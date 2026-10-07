@@ -43,3 +43,16 @@ test('an empty name falls back to a title and a subset of cards says how many of
   assert.equal(doc.name, 'Coordination review');
   assert.match(text(doc), /1 of 2 card\(s\) included/);
 });
+
+// #7015: selected-card actions must not inherit hidden workspace totals.
+test('native report creation counts only the selected card and its findings', async () => {
+  const { addCardsToReport } = await import('./actions');
+  const { useViewerStore } = await import('@/store');
+  const result = await addCardsToReport('Selected card', cards.slice(0, 1));
+  const document = useViewerStore.getState().documents.find(entry => entry.id === result.id);
+  assert.ok(document);
+  const body = text(document);
+  assert.match(body, /1 unique validated element\(s\)/);
+  assert.match(body, /1 current finding\(s\), 0 historical finding\(s\), 1 card\(s\)/);
+  assert.doesNotMatch(body, /Baseline|W2/);
+});

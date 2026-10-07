@@ -297,8 +297,8 @@ detached copy of the approved values before any asynchronous downstream work.
 Every resume uses the original claim returned by a successful `updateCheckpoint`
 compare-and-swap. A persisted `applying` record is not an ownership receipt: another
 tab or process cannot resume it, and a lost owner is recovered as partially committed.
-A host that persists checkpoints supplies a durable store. This runtime layer supplies the checkpoint API; CLI commands
-and viewer approval controls ship in the subsequent P19 host layer. Pass the effective
+A host that persists checkpoints supplies a durable store. This layer supplies the checkpoint API and CLI review commands. Native viewer
+approval controls ship in the subsequent P19 viewer layer. MCP currently reports AI nodes unavailable. Pass the effective
 node registry when creating a checkpoint and computing its claim digest so a changed
 review policy refuses the resume. Graph identities, names and node labels also bind the digest,
 because they determine default write tracking keys. Cached proposals still pause
@@ -866,7 +866,7 @@ Download can be retried without rerunning checks while that artifact is valid.
 
 AI review checkpoints require an explicit `network.ai` grant, including trusted CLI runs. Selected source columns are sent inside each row’s `values` object; the outer `key` is the host-assigned review identity. A summary stopped by the shared budget remains a reviewable empty draft with all rows counted as not sent.
 
-The CLI refuses to save or display a checkpoint if any restored output contains a declared secret. It checks the next checkpoint destination before consuming approval, validates pause output requirements before flushing tracking, and completes the previous checkpoint only after saving a subsequent proposal. A persistence failure after a claim is recorded as partially committed.
+CLI approval also binds the effective tracking sidecar and its canonical destination. Changing that sidecar, selecting another tracking file or disabling tracking refuses resume before consuming approval. The CLI refuses to save or display a checkpoint if any restored output contains a declared secret. It checks the next checkpoint destination before consuming approval, validates pause output requirements before flushing tracking, and completes the previous checkpoint only after saving a subsequent proposal. A persistence failure after a claim is recorded as partially committed.
 
 `ifc-lite flow review <checkpoint> --json` includes the exact proposal values by review node and output port, alongside their approval digest. Extraction replies without the required `records` array count as failed passages and emit a warning; they never count as a successful empty extraction.
 

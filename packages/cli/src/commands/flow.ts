@@ -262,8 +262,20 @@ export async function flowCommand(args: string[]): Promise<void> {
   const redaction = buildRedactionMap(secretValues);
   const runDoc = interpolateSecrets(doc, secretValues);
   const modelBytes = await readFile(modelPath);
+  let tracking: FileTrackingStore | undefined;
+  // An existing sidecar is opened even when no node is tracked any more:
+  // that is how a set whose node was deleted gets removed from the model.
+  const wantsTracking = doc.nodes.some((n) => registry.get(n.type)?.tracked) || (await stat(trackingPath).then(() => true, () => false));
+  if (!hasFlag(args, '--no-tracking') && wantsTracking) {
+    const pin = `file:${createHash('sha256').update(modelBytes).digest('hex')}`;
+    tracking = await FileTrackingStore.open(trackingPath, pin);
+    if (tracking.loadedPin !== undefined && tracking.loadedPin !== pin) {
+      process.stderr.write(`  warn  tracking sidecar ${tracking.path} was written against another model state; tracked elements that are missing will be re-created\n`);
+    }
+  }
+
   // Bind approval to the exact execution graph, including resolved secret parameters.
-  const resume: Resume | undefined = sub === 'resume' ? await claimForResume(checkpointPath!, runDoc, inputs, sourceDigestOf(modelBytes), registry) : undefined;
+  const resume: Resume | undefined = sub === 'resume' ? await claimForResume(checkpointPath!, runDoc, inputs, sourceDigestOf(modelBytes, tracking?.fingerprint()), registry) : undefined;
 
   // The host follows the model the graph works on: `model.openFromSource`
   // can replace the command-line model mid-run (see `flow-host.ts`).
@@ -273,17 +285,6 @@ export async function flowCommand(args: string[]): Promise<void> {
   const session = createCliFlowSession(initialModel, capsResult.value, aiConfig ? createCliAiService(aiConfig, budget) : undefined);
   const host = session.host;
 
-  let tracking: FileTrackingStore | undefined;
-  // An existing sidecar is opened even when no node is tracked any more:
-  // that is how a set whose node was deleted gets removed from the model.
-  const wantsTracking = doc.nodes.some((n) => registry.get(n.type)?.tracked) || (await stat(trackingPath).then(() => true, () => false));
-  if (!hasFlag(args, '--no-tracking') && wantsTracking) {
-    const pin = `file:${createHash('sha256').update(await readFile(modelPath)).digest('hex')}`;
-    tracking = await FileTrackingStore.open(trackingPath, pin);
-    if (tracking.loadedPin !== undefined && tracking.loadedPin !== pin) {
-      process.stderr.write(`  warn  tracking sidecar ${tracking.path} was written against another model state; tracked elements that are missing will be re-created\n`);
-    }
-  }
 
   const result = await runFlow(runDoc, {
     host,
@@ -313,7 +314,7 @@ export async function flowCommand(args: string[]): Promise<void> {
       written = typeof content === 'string' ? content : Buffer.from(content);
     }
     // Refuse secrets in every restored output before either durable side effect.
-    const proposal = paused ? preparePause({ registry, doc: runDoc, result, inputs, sourceDigest: sourceDigestOf((result.writes > 0 || activeModelChanged) && written !== undefined ? written : modelBytes), budget: { ...budget } }, redaction) : undefined;
+    const proposal = paused ? preparePause({ registry, doc: runDoc, result, inputs, sourceDigest: sourceDigestOf((result.writes > 0 || activeModelChanged) && written !== undefined ? written : modelBytes, tracking?.fingerprint()), budget: { ...budget } }, redaction) : undefined;
     if (written !== undefined) await writeFile(out!, written);
     trackingWritten = tracking ? await tracking.flush() : false;
     if (proposal) pause = await savePause(nextCheckpoint!, proposal);

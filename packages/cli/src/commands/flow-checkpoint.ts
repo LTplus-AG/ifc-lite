@@ -75,7 +75,9 @@ export class FileCheckpointStore implements CheckpointStore {
   }
 }
 
-/** What a resume must start from: the model bytes the paused run left behind. */
-export function sourceDigestOf(bytes: Uint8Array | string): string {
-  return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+/** What a resume must start from: the model bytes and effective tracking state the paused run left behind. */
+export function sourceDigestOf(bytes: Uint8Array | string, trackingFingerprint?: string): string {
+  const hash = createHash('sha256').update(bytes);
+  if (trackingFingerprint !== undefined) hash.update(`\0tracking:${trackingFingerprint}`);
+  return `sha256:${hash.digest('hex')}`;
 }

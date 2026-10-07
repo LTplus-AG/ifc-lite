@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { render, click, cleanup } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { clashDiscussion, seedClashResult, typedReport } from '@/test/ai-report-fixture';
@@ -80,4 +80,23 @@ test('an out-of-date native result is refused in the viewer language, and change
   assert.equal(ui.querySelector('[role="note"]')?.textContent,
     'The loaded models differ from those this report was drafted against. Claims will be re-checked against the loaded models.');
   assert.equal(applied.length, 0);
+});
+
+test('a plan prepared for an earlier version of the document is withdrawn when applying it is refused', () => {
+  clashDiscussion(typedReport('Two findings [E1].', [{ text: 'c1 overlaps by 35 mm.', facts: [{ citation: 'E2', field: 'distance', value: -35, unit: 'mm' }] }]));
+  const saved = prepareReportDraft('Saved report').document;
+  seedClashResult([-0.02, -0.04, -0.05]);
+  function Host() {
+    const [document, setDocument] = useState(saved);
+    return <><button type="button" onClick={() => setDocument(current => ({ ...current, name: 'Renamed while the plan was open' }))}>edit</button>
+      <AiReportRefresh document={document} onChange={setDocument} /></>;
+  }
+  const ui = render(<Host />);
+  const button = (text: string) => [...ui.querySelectorAll('button')].find(candidate => candidate.textContent?.trim() === text);
+  click(button('Refresh evidence')!);
+  click(button('edit')!);
+  click(button('Apply refresh')!);
+  assert.equal(ui.querySelector('[role="alert"]')?.textContent, 'The document changed while the refresh was open. Refresh evidence again.');
+  assert.equal(button('Apply refresh'), undefined, 'the stale plan is gone');
+  assert.ok(button('Refresh evidence'), 'the reviewer can prepare a new refresh straight away');
 });

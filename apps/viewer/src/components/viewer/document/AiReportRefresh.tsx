@@ -29,6 +29,8 @@ export function AiReportRefresh({ document, onChange }: { document: DocumentSpec
   // A refusal the reviewer can act on is shown in the viewer language; anything else is unexpected and logged.
   const fail = (error: unknown) => {
     if (!(error instanceof ReportRefreshError)) console.error('[AI report] Refresh failed', error);
+    // A plan prepared for an earlier version of the document can never apply again: withdraw it.
+    if (error instanceof ReportRefreshError && error.key === 'aiReports.documentChanged') setPlan(null);
     setMessage({ error: true, text: error instanceof ReportRefreshError ? t(error.key) : error instanceof Error ? error.message : String(error) });
   };
   const refresh = () => {

@@ -201,3 +201,22 @@ test('saving a replacement native baseline clears an open original finding', asy
   assert.equal(useOriginalClashBaseline.getState().finding, null);
   assert.equal(useReviewAssistantCard.getState().card, null, '#7015 replacing the native baseline invalidates its pinned card');
 });
+
+
+test('#7015 another tab clearing the baseline clears an open original and refreshes historical cards', async () => {
+  setup();
+  const original = useViewerStore.getState().clashResult!;
+  assert.equal(saveRevisionBaseline({ result: original, modelNames: { A: 'arch.ifc', B: 'mep.ifc' }, takenAt: 1_760_000_000_000 }).ok, true);
+  const current = clashResult([]);
+  useViewerStore.setState({ clashResult: current, clashRawResult: current });
+  const ui = render(<>{renderPanelBody('review', () => {})}<ClashRevisionCompareDialog /></>);
+  await waitFor(() => ui.querySelector('[data-review-card]') !== null, 'historical card');
+  click(button(ui, 'Show findings of'));
+  click(ui.querySelector<HTMLButtonElement>('[data-run-temporal="historical"] button')!);
+  await waitFor(() => document.querySelector('[data-original-baseline]') !== null, 'native original');
+  localStorage.removeItem('ifc-lite-clash-revision-baseline');
+  window.dispatchEvent(new window.StorageEvent('storage', { key: 'ifc-lite-clash-revision-baseline', newValue: null }));
+  await waitFor(() => document.querySelector('[data-original-baseline]') === null, 'revoked original cleared');
+  await waitFor(() => ui.querySelector('[data-run-temporal="historical"]') === null, 'historical snapshot refreshed');
+  assert.equal(useOriginalClashBaseline.getState().finding, null);
+});

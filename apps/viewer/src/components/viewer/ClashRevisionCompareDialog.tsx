@@ -41,6 +41,7 @@ import {
   captureModelNames,
   loadRevisionBaseline,
   saveRevisionBaseline,
+  subscribeRevisionBaseline,
   type ClashRevisionBaseline,
 } from '@/lib/clash/revision-baseline';
 
@@ -128,6 +129,12 @@ export function ClashRevisionCompareDialog() {
 
   const [baseline, setBaseline] = useState<ClashRevisionBaseline | null>(() => loadRevisionBaseline());
   const [comparison, setComparison] = useState<ClashRevisionComparison | null>(null);
+  useEffect(() => subscribeRevisionBaseline(() => {
+    useOriginalClashBaseline.setState({ finding: null });
+    setBaseline(loadRevisionBaseline());
+    setComparison(null);
+  }), []);
+
 
   const saveBaseline = useCallback(() => {
     if (!clashResult) return;

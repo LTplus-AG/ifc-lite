@@ -10,23 +10,11 @@
  */
 
 import { create } from 'zustand';
+import type { UsageReceipt as SharedUsageReceipt } from '@ifc-lite/ai';
 import type { StreamRoute } from './byok-guard.js';
-import type { TokenUsage } from './token-usage.js';
 
-export type RequestOutcomeKind = 'completed' | 'truncated' | 'cancelled' | 'timeout' | 'error';
-
-interface ReceiptBase {
-  id: string;
-  model: string;
-  route: Exclude<StreamRoute['kind'], 'missing-key'>;
-  /** Epoch ms. */
-  startedAt: number;
-  finishedAt: number;
-  outcome: RequestOutcomeKind;
-}
-
-/** Counts appear only when the provider reported them; there is no estimate. */
-export type UsageReceipt = ReceiptBase & ({ usageReported: true } & TokenUsage | { usageReported: false });
+/** The shared receipt, narrowed to the viewer's routes. Counts appear only when the provider reported them. */
+export type UsageReceipt = SharedUsageReceipt<Exclude<StreamRoute['kind'], 'missing-key'>>;
 
 /** Enough for a session's recent history without growing unbounded. */
 export const RECEIPT_LIMIT = 50;

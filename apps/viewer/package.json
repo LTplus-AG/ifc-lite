@@ -29,6 +29,7 @@
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.13",
     "@floating-ui/dom": "^1.8.0",
+    "@ifc-lite/ai": "workspace:^",
     "@ifc-lite/bcf": "workspace:^",
     "@ifc-lite/bcf-api": "workspace:^",
     "@ifc-lite/cache": "workspace:^",

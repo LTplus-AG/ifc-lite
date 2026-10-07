@@ -29,7 +29,6 @@ export const chatEn = {
   'assistant.flowTarget': 'Target graph: {name} ({id})',
   'assistant.flowGrants': 'Additional graph capabilities: {capabilities}',
   'assistant.none': 'None',
-  'assistant.flowTrackingWarning': 'Tracking changes or node deletion may change ownership or remove tracked elements on a future Run. Inspect the graph before applying.',
   'assistant.flowProposalStale': 'Graph or evidence changed. This proposal cannot be applied.',
   'assistant.flowBefore': 'Graph before changes',
   'assistant.flowAfter': 'Graph after changes',

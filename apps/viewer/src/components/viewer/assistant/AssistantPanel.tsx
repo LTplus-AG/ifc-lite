@@ -18,7 +18,7 @@ import { useAssistant, cancelAssistant, replaceEvidence } from '@/lib/assistant/
 import { captureEvidence, evidenceIsCurrent, type AssistantSource } from '@/lib/assistant/evidence';
 import { ASSISTANT_PROXY_URL, sendAssistant } from '@/lib/assistant/request';
 import { adapterFor } from '@/lib/assistant/adapters/registry';
-import { isReportSource } from '@/lib/assistant/sources';
+import { isFlowSource, isReportSource } from '@/lib/assistant/sources';
 import { resolveCapturedClash } from '@/lib/assistant/clash-group-proposal';
 import { useClash } from '@/hooks/useClash';
 import { EvidenceSummary } from './EvidenceSummary';
@@ -114,12 +114,12 @@ export function AssistantPanel() {
         output={state.output} streaming={busy} error={errorText} canAsk={canAsk} onSuggest={suggest}
         evidencePayload={evidence?.payload ?? null} focusCitation={focusCitation} />
       {evidence?.source === 'clash' && <Suspense fallback={null}><ClashGroupReview /></Suspense>}
-      {evidence?.source === 'flow' && <Suspense fallback={null}><FlowProposalReview /></Suspense>}
+      {evidence && isFlowSource(evidence.source) && <Suspense fallback={null}><FlowProposalReview /></Suspense>}
       {evidence && isReportSource(evidence.source) && <Suspense fallback={null}><ModelChangeProposal /></Suspense>}
       {(evidence?.source === 'validation' || evidence?.source === 'loadReport') && <Suspense fallback={null}><CheckAuthoringProposal /></Suspense>}
       {evidence && isReportSource(evidence.source) && <Suspense fallback={null}><ReportDraftReview /></Suspense>}
-      {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><SceneActionReview /></Suspense>}
-      {evidence && evidence.source !== 'flow' && <Suspense fallback={null}><ArtifactProposalReview onAsk={canAsk ? suggest : null} /></Suspense>}
+      {evidence && !isFlowSource(evidence.source) && <Suspense fallback={null}><SceneActionReview /></Suspense>}
+      {evidence && !isFlowSource(evidence.source) && <Suspense fallback={null}><ArtifactProposalReview onAsk={canAsk ? suggest : null} /></Suspense>}
       </>}
       <Suspense fallback={null}><SceneRestoreBar /></Suspense>
       <div ref={endRef} />

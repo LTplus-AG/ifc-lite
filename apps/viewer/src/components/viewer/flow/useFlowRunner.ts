@@ -22,7 +22,7 @@ import { viewerTableAccess } from '@/lib/flow/viewer-tables';
 import { openBackendWriteCapture } from '@/sdk/adapters/backend-write-capture';
 import { createViewerOpenModel } from '@/lib/flow/open-model';
 import { createAutomationHost } from '@/lib/flow/automation-host';
-import { preflightWorkflow } from '@/lib/flow/preflight';
+import { preflightWorkflow, isAutomationGraph } from '@/lib/flow/preflight';
 import { startWorkflowRun, cancelWorkflowRun } from '@/lib/flow/run-session';
 
 /** Ids of every pending mutation, on every model. */
@@ -52,7 +52,7 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
     return () => { for (const off of offs) off(); };
   }, [bim]);
 
-  const automationGraph = flowDoc?.nodes.some((n) => /^(session\.|validation\.|comparison\.|report\.)/.test(n.type)) ?? false;
+  const automationGraph = flowDoc ? isAutomationGraph(flowDoc) : false;
   const canRun = flowDoc !== null && !flowRunning && (activeModelId !== null || automationGraph);
 
   const run = useCallback(async (inputs?: Record<string, unknown>) => {

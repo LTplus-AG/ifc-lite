@@ -11,7 +11,7 @@ import { validateDocumentSpec } from '../document/types';
 import { cancelAssistant, replaceEvidence, useAssistant } from './conversation';
 import { captureEvidence } from './evidence';
 import { contradictedClaims, prepareReportDraft, reviseReportClaim, saveReportDraft } from './report-draft';
-import { ASSISTANT_SOURCES, isReportSource } from './sources';
+import { ASSISTANT_SOURCES, isFlowSource, isReportSource } from './sources';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cancelAssistant(); useViewerStore.setState(initial, true); });
@@ -39,7 +39,7 @@ function adapterPayload(source: string, capturedAt: string, seed: number): { pay
 // #6918: report drafts from every registered evidence adapter, through one generic path.
 test('every registered analysis source drafts a native report with checked claims', async () => {
   const sources = ASSISTANT_SOURCES.filter(isReportSource);
-  assert.ok(sources.length >= 4 && !sources.some(source => source === 'flow'));
+  assert.ok(sources.length >= 4 && !sources.some(isFlowSource));
   for (const [index, source] of sources.entries()) {
     const snapshot = captureEvidence(source);
     const { payload, rows, values } = adapterPayload(source, snapshot.capturedAt, 6918 + index);
@@ -77,6 +77,9 @@ test('every registered analysis source drafts a native report with checked claim
 
 test('Flow graph evidence is not an analysis result and cannot become a report', () => {
   assert.equal(isReportSource('flow'), false);
+  // Flow run evidence answers with graph proposals too: no report, model-change, scene or artifact proposals.
+  assert.equal(isReportSource('flowRun'), false);
+  assert.deepEqual(ASSISTANT_SOURCES.filter(isFlowSource), ['flow', 'flowRun']);
   replaceEvidence(captureEvidence('flow'));
   useAssistant.setState({ messages: [{ role: 'user', content: 'x' }, { role: 'assistant', model: 'm', content: 'y' }] });
   assert.throws(() => prepareReportDraft('Flow'), /completed analysis answer/);

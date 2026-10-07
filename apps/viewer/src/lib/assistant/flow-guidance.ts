@@ -5,8 +5,11 @@
 import { flowRegistry } from '../flow/runner';
 import { useViewerStore } from '@/store';
 
-/** Native declarations only; no copied node catalog and no node run functions. */
-export function flowPatchGuidance(): string {
+/**
+ * Native declarations only; no copied node catalog and no node run functions.
+ * `run`: the evidence is the last run (`flowRun`), so a patch may carry a diagnosis (#6919).
+ */
+export function flowPatchGuidance(options: { run?: boolean } = {}): string {
   const registry = flowRegistry();
   const selected = new Set(useViewerStore.getState().flowDoc?.nodes.map(node => node.type));
   const definitions = registry.list();
@@ -22,7 +25,8 @@ export function flowPatchGuidance(): string {
   }
   return `If the user asks to draft Flow changes, return only a complete JSON object:
 {"version":1,"kind":"flow.patch","operations":[...]}
-Operations: addNode {alias,type,pos:[x,y]}; removeNode {node}; moveNode {node,pos}; setParam {node,param,value}; unsetParam {node,param}; updateNode {node,patch:{label?,lacing?,tracking?,trackingKey?}}; connect {from:[node,port],to:[node,port]}; disconnect {to:[node,port]}; rename {name}. Each operation also has its exact op name as "op". Do not add other fields. Maximum 50 operations. New node aliases cannot shadow existing IDs and later operations reference the aliases. No graph or model is executed by this draft. Review will validate native types, parameters, wiring, capabilities and stale state. The frozen evidence omits existing parameter values: preserve them unless the user explicitly supplies a correction. Never invent a node or parameter contract; contracts not included below require clarification, not guessing. Tracking changes or deletion may affect element ownership on a future Run. Grants needed by new nodes will appear in the review before applying.
-Available native types: ${definitions.map(d => d.type).join(', ')}
+Operations: addNode {alias,type,pos:[x,y]}; removeNode {node}; moveNode {node,pos}; setParam {node,param,value}; unsetParam {node,param}; updateNode {node,patch:{label?,lacing?,tracking?,trackingKey?}}; connect {from:[node,port],to:[node,port]}; disconnect {to:[node,port]}; rename {name}. Each operation also has its exact op name as "op". Do not add other fields. Maximum 50 operations. New node aliases cannot shadow existing IDs and later operations reference the aliases. No graph or model is executed by this draft. Review will validate native types, parameters, wiring, capabilities and stale state. ${options.run ? 'The frozen evidence omits parameter values except on nodeResult rows of failing nodes and the nodes feeding them' : 'The frozen evidence omits existing parameter values'}: preserve them unless the user explicitly supplies a correction. Never invent a node or parameter contract; contracts not included below require clarification, not guessing. Tracking changes or deletion may affect element ownership on a future Run. Grants needed by new nodes will appear in the review before applying.
+${options.run ? `To fix a failed or lane-error run, add "diagnosis":{"nodes":[failing node ids],"explanation":"why they failed, citing the native error"} to the flow.patch. Cite only nodeResult rows with failing=true, and change those nodes or their inputs (each row lists its incoming edges). Never claim the fix works: the user preflights and reruns it in Flow.
+` : ''}Available native types: ${definitions.map(d => d.type).join(', ')}
 Native contracts (${contracts.length} of ${definitions.length}; omitted contracts are unavailable for this draft): ${JSON.stringify(contracts)}`;
 }

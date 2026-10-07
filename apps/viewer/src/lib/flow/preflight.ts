@@ -11,6 +11,12 @@ import { validateFileSlots } from './file-values';
 import { jobsWithFiles, prepareCheck, readHistorical, historicalJobId } from './check-resources';
 import type { WorkflowRun } from './run-session';
 import { flowRegistry } from './runner';
+import { withUpstream } from './upstream';
+
+/** Session automation graphs run without an active model; every other graph needs one (the Flow panel's Run gate). */
+export function isAutomationGraph(doc: FlowDocument): boolean {
+  return doc.nodes.some((node) => /^(session\.|validation\.|comparison\.|report\.)/.test(node.type));
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -18,7 +24,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 export async function preflightWorkflow(run: WorkflowRun, doc: FlowDocument, values: Readonly<Record<string, unknown>>, features: HostFeatures): Promise<Record<string, unknown>> {
   run.check();
   const registry = flowRegistry();
-  if (doc.nodes.some((node) => /^(session\.|validation\.|comparison\.|report\.)/.test(node.type))) {
+  if (isAutomationGraph(doc)) {
     const modelWrite = (capability: string) => /^model\.(create|delete|mutate)(:|$)/.test(capability);
     const scriptsCanWrite = doc.capabilities.some(modelWrite);
     const writers = doc.nodes.filter((node) => {
@@ -118,14 +124,8 @@ export async function preflightWorkflow(run: WorkflowRun, doc: FlowDocument, val
       && typeof m.blockId === 'string' && typeof m.jobId === 'string' && (m.resultId === undefined || typeof m.resultId === 'string')))) throw new Error('Invalid document result mappings');
     if (config.template !== undefined) {
       if (!isRecord(config.template)) throw new Error('Invalid native document template');
-      const ancestors = new Set<string>();
-      const pending = [node.id];
-      while (pending.length) {
-        const id = pending.pop()!;
-        for (const edge of doc.edges) if (edge.to[0] === id && !ancestors.has(edge.from[0])) {
-          ancestors.add(edge.from[0]); pending.push(edge.from[0]);
-        }
-      }
+      const ancestors = withUpstream(doc, [node.id]);
+      ancestors.delete(node.id);
       const documentJobs = [...ancestors].flatMap((id) => jobsByNode.get(id) ?? []);
       const errors = validateReportDocumentTemplate(config.template as unknown as DocumentSpec, (config.mappings ?? []) as DocumentResultMapping[], documentJobs);
       if (errors.length) throw new Error(errors.join('; '));

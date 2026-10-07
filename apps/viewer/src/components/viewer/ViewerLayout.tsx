@@ -31,6 +31,7 @@ import { ShieldAlert } from 'lucide-react';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { ExtensionKeyboardBindings } from '@/components/extensions/ExtensionKeyboardBindings';
 import { useModelUrlAutoload } from '@/hooks/useModelUrlAutoload';
+import { useArtifactDeepLink } from '@/hooks/useArtifactDeepLink';
 import { useViewerStore } from '@/store';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { toast } from '@/components/ui/toast';
@@ -48,6 +49,7 @@ import { SearchModal } from './SearchModal';
 import { FlowStartupPrompt } from './flow/FlowStartupPrompt';
 import { TourHost } from '@/components/tours/TourHost';
 import { SidebarDock } from './sidebar/SidebarDock';
+import { WorkspaceMigrationNotice } from './WorkspaceMigrationNotice';
 import { FloatingPanelHost } from './dock/FloatingPanelHost';
 import { PanelWindowHost } from './dock/PanelWindowHost';
 import {
@@ -83,10 +85,9 @@ export function ViewerLayout() {
   usePrivacyDisclosure();
   const shortcutsDialog = useKeyboardShortcutsDialog();
 
-  // Auto-load a model from ?model=<URL> (extracted to its own hook, #5851:
-  // a malformed/cross-origin/failed fetch now shows the load-error card
-  // instead of only `console.error`; see the hook's docblock).
+  // ?model=<URL> autoload (#5851, load errors shown) and ?panel=/artifact deep links (#6927).
   useModelUrlAutoload();
+  useArtifactDeepLink();
 
   // Deep-link collaboration join: a share link is `?room=…&t=…`. The recipient
   // joins the room; with seed-into-room the model hydrates from the Y.Doc, so
@@ -263,6 +264,7 @@ export function ViewerLayout() {
         {isMobile
           ? <MobileToolbar />
           : <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />}
+        <WorkspaceMigrationNotice />
 
         {/* Main Content Area - Desktop Layout */}
         {!isMobile && (

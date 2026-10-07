@@ -107,10 +107,10 @@ export function SidebarDock() {
             aria-label={t('shellChrome.sidebarDock.resizeAriaLabel')}
           />
           <div
-            className="h-full min-w-0 overflow-hidden panel-container"
+            className="h-full min-w-0 overflow-hidden panel-container flex flex-col"
             style={{ width: contentPx ?? `${effectivePct}%` }}
           >
-            <SidebarPanelHost />
+            <div className="min-h-0 flex-1"><SidebarPanelHost /></div>
           </div>
         </>
       )}

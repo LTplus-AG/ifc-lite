@@ -110,15 +110,15 @@ describe('sidebarSlice (#1208)', () => {
     s.getState().applySidebarLayout({
       mode: 'nope',
       widthPct: 'x',
-      order: ['bcf', 'not-a-panel', 'bcf'],
+      order: ['bcf', 'not-a-panel', 'bcf', 'compare'],
       hiddenIds: ['properties', 'lens'],
     });
     assert.ok(['expanded', 'collapsed'].includes(s.getState().sidebarMode));
     assert.ok(Number.isFinite(s.getState().sidebarWidthPct));
-    // order: Hierarchy is migrated to the top (#1267), then the persisted bcf,
-    // no dupes / unknowns, every registry panel present.
+    // Hierarchy remains at the top (#1267), and captured panels retain their
+    // relative order while new tools join their task group (#6927).
     assert.strictEqual(s.getState().sidebarOrder[0], 'hierarchy');
-    assert.strictEqual(s.getState().sidebarOrder[1], 'bcf');
+    assert.ok(s.getState().sidebarOrder.indexOf('bcf') < s.getState().sidebarOrder.indexOf('compare'));
     assert.strictEqual(new Set(s.getState().sidebarOrder).size, WORKSPACE_PANELS.length);
     // Information is never hidden; a valid id is.
     assert.ok(!s.getState().sidebarHiddenIds.includes('properties'));

@@ -48,6 +48,9 @@ Loading the sidebar customizer only when opened brought the combined bundle
 inside the approved allowance without changing its ceiling or tolerance.
 The real activity-bar regression opens the customizer, previews and applies
 the coordinator preset, then restores the original layout and keyboard focus.
+Reset also retires the saved preset through a small startup gateway instead
+of importing the optional preview and placement controls. The mounted
+regression reopens customization after Reset and confirms Restore is gone.
 This is a bundle-size verdict; it makes no model-load speed claim.
 Lesson: measure queued viewer features together, and keep optional editor
 surfaces behind their actual entry point.

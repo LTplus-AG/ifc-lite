@@ -198,3 +198,58 @@ it('#7038 distinct runs at the same millisecond retain independent approvals', a
   expect((await store.read(first.id))?.checkpoint.state).toBe('reviewed');
   expect((await store.read(second.id))?.checkpoint.state).toBe('prepared');
 });
+
+// #7038 portability and approval bind the values actually resumed.
+it('#7038 rejects nonportable budgets and snapshots caller-owned values', async () => {
+  const result = await runFlow(doc, { host: { sunk: [] }, registry });
+  const prepared = await paused();
+  for (const budget of [new Map([['spent', 2]]), Infinity, () => 2]) {
+    expect(() => createCheckpoint({ doc, registry, result, sourceDigest: 'source', budget })).toThrow(/budget/);
+    expect(() => parseCheckpoint({ ...prepared, budget })).toThrow(/budget/);
+  }
+  const budget = { requests: 2 };
+  const checkpoint = createCheckpoint({ doc, registry, result, sourceDigest: 'source', budget });
+  budget.requests = 9;
+  const labels = result.outputs.get('ai')!.get('labels')!;
+  if (labels.kind !== 'list') throw new Error('expected label list');
+  (labels.items as string[])[0] = 'changed';
+  expect(checkpoint.budget).toEqual({ requests: 2 });
+  expect(checkpoint.outputs.ai.labels).toEqual({ kind: 'list', items: ['wall', 'unknown'] });
+});
+
+it('#7038 rejects proposal mutations during the in-memory approval lifecycle', async () => {
+  const checkpoint = await paused();
+  const reviewed = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
+  const labels = reviewed.outputs.ai.labels;
+  if (labels.kind !== 'list') throw new Error('expected label list');
+  (labels.items as string[])[0] = 'changed';
+  expect(() => claimCheckpoint(reviewed, claim('owner'))).toThrow(/proposal digest/);
+});
+
+it('#7038 rejects invalid leases before claiming and permits recovery of valid claims', async () => {
+  const checkpoint = await paused();
+  const reviewed = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
+  for (const leaseMs of [Infinity, NaN, 0, -1]) {
+    expect(() => claimCheckpoint(reviewed, { ...claim('owner'), leaseMs })).toThrow(/finite positive lease/);
+  }
+  expect(reviewed.state).toBe('reviewed');
+  const applying = claimCheckpoint(reviewed, claim('owner'));
+  expect(parseCheckpoint(JSON.parse(JSON.stringify(applying)))).toEqual(applying);
+  expect(recoverCheckpoint(applying, applying.claim!.leaseUntil)?.state).toBe('partially-committed');
+});
+
+it('#7038 refuses duplicate portable group keys instead of dropping one branch', async () => {
+  const checkpoint = await paused();
+  expect(() => parseCheckpoint({ ...checkpoint, outputs: { ...checkpoint.outputs, rows: { t: { kind: 'group', branches: [['zone', [1]], ['zone', [2]]] } } } }))
+    .toThrow(/malformed or non-portable/);
+});
+
+it('#7038 file-slot bindings are already included through Player input definitions', async () => {
+  const checkpoint = await paused();
+  const reviewed = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
+  const changed: FlowDocument = { ...doc, inputs: [{ nodeId: 'rows', param: 'sources', label: 'Files', kind: 'files',
+    fileSlots: [{ id: 'models', label: 'Models', accept: '.ifc', multiple: true, required: true }] }] };
+  expect(() => claimCheckpoint(reviewed, { ...claim('owner'), graphDigest: graphDigest(changed, {}, registry) }))
+    .toThrow(expect.objectContaining({ code: 'graph-changed' }));
+  expect(graphDigest(changed, {}, registry)).not.toBe(graphDigest({ ...changed, inputs: [{ ...changed.inputs[0], nodeId: 'sink' }] }, {}, registry));
+});

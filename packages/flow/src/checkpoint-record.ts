@@ -91,7 +91,7 @@ export function graphDigest(doc: FlowDocument, inputs: Readonly<Record<string, u
   });
 }
 
-function nonPortable(value: unknown, path: string, out: string[]): void {
+export function nonPortable(value: unknown, path: string, out: string[]): void {
   const pending: Array<[unknown, string, number, boolean?]> = [[value, path, 0]];
   const active = new Set<object>();
   let work = 0;
@@ -133,6 +133,7 @@ export function validPortableOutputs(outputs: Readonly<Record<string, Readonly<R
     else if (data.kind === 'list') { if (!Array.isArray(data.items)) return false; nonPortable(data.items, `${node}.${port}`, problems); }
     else if (data.kind === 'group') {
       if (!Array.isArray(data.branches) || !data.branches.every(branch => Array.isArray(branch) && branch.length === 2 && typeof branch[0] === 'string' && Array.isArray(branch[1]))) return false;
+      if (new Set(data.branches.map(branch => branch[0])).size !== data.branches.length) return false;
       nonPortable(data.branches, `${node}.${port}`, problems);
     } else return false;
     if (problems.length) return false;
@@ -154,7 +155,7 @@ function portableOutputs(outputs: RunResult['outputs']): PortableOutputs {
     for (const [port, data] of ports) out[nodeId][port] = toPortable(data, `${nodeId}.${port}`, problems);
   }
   if (problems.length > 0) throw new CheckpointNotPortableError(problems);
-  return out;
+  return JSON.parse(JSON.stringify(out)) as PortableOutputs;
 }
 
 export function proposalDigestOf(outputs: PortableOutputs, reviewNodes: readonly string[]): string {
@@ -176,6 +177,9 @@ export function createCheckpoint(input: CreateCheckpointInput): FlowCheckpoint {
   const { doc, result } = input;
   if (result.review.length === 0) throw new Error('the run did not pause for review');
   if (!result.ok) throw new Error('a run with failed nodes cannot be resumed; fix the graph and run it again');
+  const problems: string[] = [];
+  if (input.budget !== undefined) nonPortable(input.budget, 'budget', problems);
+  if (problems.length) throw new CheckpointNotPortableError(problems);
   const outputs = portableOutputs(result.outputs);
   const graph = graphDigest(doc, input.inputs, input.registry);
   const proposal = proposalDigestOf(outputs, result.review);
@@ -190,7 +194,7 @@ export function createCheckpoint(input: CreateCheckpointInput): FlowCheckpoint {
     reviewNodes: [...result.review],
     proposalDigest: proposal,
     outputs,
-    ...(input.budget !== undefined ? { budget: input.budget } : {}),
+    ...(input.budget !== undefined ? { budget: JSON.parse(JSON.stringify(input.budget)) as unknown } : {}),
     state: 'prepared',
     createdAt: now,
     updatedAt: now,

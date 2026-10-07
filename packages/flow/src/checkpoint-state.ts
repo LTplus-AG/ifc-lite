@@ -23,7 +23,7 @@
  * the graph again as a new root.
  */
 
-import { CHECKPOINT_VERSION, proposalDigestOf, validPortableOutputs, type CheckpointState, type FlowCheckpoint } from './checkpoint-record.js';
+import { CHECKPOINT_VERSION, nonPortable, proposalDigestOf, validPortableOutputs, type CheckpointState, type FlowCheckpoint } from './checkpoint-record.js';
 
 export type CheckpointErrorCode =
   | 'invalid'
@@ -71,6 +71,9 @@ export function parseCheckpoint(value: unknown): FlowCheckpoint {
     || !Number.isFinite(value.claim.leaseUntil) || !Number.isFinite(value.claim.at))) bad('invalid claim');
   if (value.review !== undefined && (!isRecord(value.review) || !['approved', 'rejected'].includes(String(value.review.decision))
     || typeof value.review.proposalDigest !== 'string' || !Number.isFinite(value.review.at))) bad('invalid review');
+  const problems: string[] = [];
+  if (value.budget !== undefined) nonPortable(value.budget, 'budget', problems);
+  if (problems.length) bad('budget must be plain JSON');
   const checkpoint = value as unknown as FlowCheckpoint;
   if (proposalDigestOf(checkpoint.outputs, checkpoint.reviewNodes) !== checkpoint.proposalDigest) {
     bad('the proposal values do not match the proposal digest');
@@ -109,6 +112,7 @@ export interface ClaimInput {
 /** Take single ownership of a reviewed checkpoint for one resume. */
 export function claimCheckpoint(checkpoint: FlowCheckpoint, input: ClaimInput): FlowCheckpoint {
   requireState(checkpoint, 'reviewed', 'not-reviewed');
+  parseCheckpoint(checkpoint);
   if (checkpoint.review?.decision !== 'approved' || checkpoint.review.proposalDigest !== checkpoint.proposalDigest) {
     throw new CheckpointError('digest-mismatch', 'the approval does not name this proposal');
   }
@@ -119,6 +123,10 @@ export function claimCheckpoint(checkpoint: FlowCheckpoint, input: ClaimInput): 
     throw new CheckpointError('sources-changed', 'the models or files the run read changed after review; run it again for a new review');
   }
   const now = input.now ?? Date.now();
+  if (!Number.isFinite(input.leaseMs) || input.leaseMs <= 0 || !Number.isFinite(now)
+    || !Number.isFinite(now + input.leaseMs) || now + input.leaseMs <= now) {
+    throw new CheckpointError('invalid', 'the claim needs a finite positive lease and timestamp');
+  }
   return { ...checkpoint, state: 'applying', updatedAt: now, claim: { owner: input.owner, leaseUntil: now + input.leaseMs, at: now } };
 }
 

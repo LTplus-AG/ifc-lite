@@ -74,7 +74,7 @@ test('review workspace joins clash findings and a BCF topic into one card with o
   await expect.poll(() => page.evaluate(({ key }) => (globalThis as unknown as Record<string, Store>)[key].getState().sidebarActivePanel, { key: store })).toBe('clash');
   await page.screenshot({ path: testInfo.outputPath('review-3-original.png') });
 
-  // The decision survives a reload of the saved libraries.
+  // Reopening the Review panel keeps the saved decision selected.
   await page.evaluate(({ key }) => (globalThis as unknown as Record<string, { getState(): { openPanelInHome(panel: string): void } }>)[key].getState().openPanelInHome('review'), { key: store });
   await expect(page.getByRole('region', { name: 'Review results' }).locator('[data-review-card]').first()).toContainText('In progress');
 

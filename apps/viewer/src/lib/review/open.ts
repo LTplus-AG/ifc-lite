@@ -12,6 +12,8 @@
 import { clashReviewKey } from '@ifc-lite/clash';
 import { loadRevisionBaseline } from '../clash/revision-baseline';
 import { useOriginalClashBaseline } from '../clash/original-baseline';
+import { useSemanticSession } from '@/lib/semantic/session';
+import { useSavedComparisonFocus, useSemanticRecordFocus } from '@/lib/panels/evidence-focus';
 import { useViewerStore } from '@/store';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
 import { selectChangedEntity } from '../changes/select-changed-entity';
@@ -35,7 +37,22 @@ export function openOriginal(finding: ReviewFinding, openPanel: (panel: Workspac
   }
   if (evidence.kind === 'clash') state.setClashSelectedId(evidence.clashId);
   else if (evidence.kind === 'bcf') state.setActiveTopic(evidence.topicGuid);
-  else if (evidence.kind === 'validation') selectChangedEntity(evidence.modelId, evidence.expressId);
+  else if (evidence.kind === 'validation') {
+    const sourceGlobalId = state.models.get(evidence.modelId)?.ifcDataStore.entities.getGlobalId(evidence.expressId);
+    const expected = finding.elements.find(element => element.modelId === evidence.modelId)?.globalId;
+    if (sourceGlobalId && expected && sourceGlobalId !== expected) return false;
+    if (!selectChangedEntity(evidence.modelId, evidence.expressId)) return false;
+  } else if (evidence.kind === 'comparison') {
+    if (!state.compareResult?.diff.entries.some(entry => entry.key === evidence.key)) return false;
+    state.setCompareSelectedKey(evidence.key);
+  } else if (evidence.kind === 'saved-comparison') {
+    const saved = state.savedComparisons.find(item => item.id === evidence.comparisonId);
+    if (saved?.report.rows.filter(row => (row.key ?? row.globalId) === evidence.key).length !== 1) return false;
+    useSavedComparisonFocus.setState({ record: { comparisonId: evidence.comparisonId, key: evidence.key } });
+  } else if (evidence.kind === 'linked') {
+    if (!useSemanticSession.getState().document?.resources.some(resource => resource.id === evidence.resourceId)) return false;
+    useSemanticRecordFocus.setState({ record: { resourceId: evidence.resourceId } });
+  }
   openPanel(EVIDENCE_PANEL[evidence.kind]);
   return true;
 }

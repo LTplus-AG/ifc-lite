@@ -10,275 +10,78 @@
   },
   "minimumParticipantsPerRole": 3,
   "roles": [
-    {
-      "id": "coordinator",
-      "description": "BIM coordinator who reviews clashes and delivery checks weekly."
-    },
-    {
-      "id": "author",
-      "description": "Model or workflow author who builds checks, edits and Flow graphs."
-    },
-    {
-      "id": "occasional",
-      "description": "Occasional viewer who opens models to inspect and comment."
-    }
+    { "id": "coordinator", "description": "BIM coordinator who reviews clashes and delivery checks weekly." },
+    { "id": "author", "description": "Model or workflow author who builds checks, edits and Flow graphs." },
+    { "id": "occasional", "description": "Occasional viewer who opens models to inspect and comment." }
   ],
   "variants": [
-    {
-      "id": "current",
-      "description": "The shipped viewer without the Assistant: ribbon, activity rail, panels and bottom editors."
-    },
-    {
-      "id": "assisted",
-      "description": "The same viewer with the Assistant available from native source panels; the participant may use it or not."
-    }
+    { "id": "current", "description": "The shipped viewer without the Assistant: ribbon, activity rail, panels and bottom editors." },
+    { "id": "assisted", "description": "The same viewer with the Assistant available from native source panels; the participant may use it or not." }
   ],
   "design": "Within-subject. Every participant attempts every task in both variants on the same labelled sample scene; variant order alternates by participant id to cancel learning effects, and the second attempt of a task uses its alternate start state. A facilitator reads the participant prompt verbatim, does not hint unless the participant is stuck for 2 minutes (logged as a hinted discovery), and stops a task at its time cap. Schedule the task set in multiple counterbalanced blocks with breaks; do not run the expanded set as one fatigue-heavy sitting. A facilitator prepares and independently verifies each named native oracle and fixture before a session. Unprepared inputs or unavailable capabilities are recorded as blocked attempts, never as completed tasks. Full-program acceptance still requires the recorded end-to-end evidence register in addition to this study.",
   "measures": [
-    {
-      "id": "completed",
-      "description": "Success criterion met as judged by the facilitator from the observable criteria below."
-    },
-    {
-      "id": "seconds",
-      "description": "Time from the prompt being read to the criterion being met or the cap."
-    },
-    {
-      "id": "discovery",
-      "description": "unaided: found the entry point alone; hinted: needed a facilitator hint; failed."
-    },
-    {
-      "id": "backtracks",
-      "description": "Navigation steps undone: panel closed or switched back, ribbon tab changed back."
-    },
-    {
-      "id": "panelSwitches",
-      "description": "Distinct panel or ribbon-tab changes needed to finish."
-    },
-    {
-      "id": "scopeErrors",
-      "description": "Acted on the wrong model, selection or population."
-    },
-    {
-      "id": "wrongTargetEffects",
-      "description": "A scope error that changed or exported the wrong target (before undo)."
-    },
-    {
-      "id": "accidentalEffects",
-      "description": "Any unintended applied effect, whether or not it hit the wrong target."
-    },
-    {
-      "id": "obscuredSeconds",
-      "description": "Time the 3D model was fully covered by panels."
-    }
+    { "id": "completed", "description": "Success criterion met as judged by the facilitator from the observable criteria below." },
+    { "id": "seconds", "description": "Time from the prompt being read to the criterion being met or the cap." },
+    { "id": "discovery", "description": "unaided: found the entry point alone; hinted: needed a facilitator hint; failed." },
+    { "id": "backtracks", "description": "Navigation steps undone: panel closed or switched back, ribbon tab changed back." },
+    { "id": "panelSwitches", "description": "Distinct panel or ribbon-tab changes needed to finish." },
+    { "id": "scopeErrors", "description": "Acted on the wrong model, selection or population." },
+    { "id": "wrongTargetEffects", "description": "A scope error that changed or exported the wrong target (before undo)." },
+    { "id": "accidentalEffects", "description": "Any unintended applied effect, whether or not it hit the wrong target." },
+    { "id": "obscuredSeconds", "description": "Time the 3D model was fully covered by panels." }
   ],
   "tasks": [
     {
-      "id": "find-check",
-      "title": "Find a check",
-      "journey": "delivery-validation",
-      "scene": "validation-sample",
-      "roles": [
-        "coordinator",
-        "author",
-        "occasional"
-      ],
-      "capSeconds": 180,
+      "id": "find-check", "title": "Find a check", "journey": "delivery-validation", "scene": "validation-sample",
+      "roles": ["coordinator", "author", "occasional"], "capSeconds": 180,
       "participantPrompt": "The project has information requirements for walls and spaces. Find where you would check the model against them and tell me when you are on that screen.",
       "startState": "Sample loaded; no panel open.",
-      "success": [
-        "The Validation panel is open with the model scope selected."
-      ],
-      "entry": {
-        "current": {
-          "group": "check",
-          "panels": [
-            "validation"
-          ]
-        },
-        "assisted": {
-          "group": "check",
-          "panels": [
-            "validation",
-            "assistant"
-          ]
-        }
-      }
+      "success": ["The Validation panel is open with the model scope selected."],
+      "entry": { "current": { "group": "check", "panels": ["validation"] }, "assisted": { "group": "check", "panels": ["validation", "assistant"] } }
     },
     {
-      "id": "trace-failure",
-      "title": "Trace a failure to 3D evidence",
-      "journey": "delivery-validation",
-      "scene": "validation-sample",
-      "roles": [
-        "coordinator",
-        "author",
-        "occasional"
-      ],
-      "capSeconds": 300,
+      "id": "trace-failure", "title": "Trace a failure to 3D evidence", "journey": "delivery-validation", "scene": "validation-sample",
+      "roles": ["coordinator", "author", "occasional"], "capSeconds": 300,
       "participantPrompt": "The check has a failing wall. Show me which wall in the 3D model is failing and what the requirement was.",
       "startState": "Sample loaded with the sample IDS already run (2 failing specifications).",
-      "success": [
-        "The failing wall 'plumbing wall' is selected and visible in 3D.",
-        "The participant states the IsExternal requirement."
-      ],
-      "entry": {
-        "current": {
-          "group": "check",
-          "panels": [
-            "validation",
-            "properties"
-          ]
-        },
-        "assisted": {
-          "group": "check",
-          "panels": [
-            "validation",
-            "assistant"
-          ]
-        }
-      }
+      "success": ["The failing wall 'plumbing wall' is selected and visible in 3D.", "The participant states the IsExternal requirement."],
+      "entry": { "current": { "group": "check", "panels": ["validation", "properties"] }, "assisted": { "group": "check", "panels": ["validation", "assistant"] } }
     },
     {
-      "id": "review-group",
-      "title": "Review a clash group",
-      "journey": "clash-coordination",
-      "scene": "clash-rev-b",
-      "roles": [
-        "coordinator",
-        "author"
-      ],
-      "capSeconds": 420,
+      "id": "review-group", "title": "Review a clash group", "journey": "clash-coordination", "scene": "clash-rev-b",
+      "roles": ["coordinator", "author"], "capSeconds": 420,
       "participantPrompt": "Nine clashes were found in this revision. Decide which ones belong together for one coordination issue and show me one group you would raise.",
       "startState": "Rev-B sample with the clash run loaded.",
-      "success": [
-        "A group of at least two related findings is formed or accepted.",
-        "Every finding is either in a group or visibly left unclassified."
-      ],
-      "entry": {
-        "current": {
-          "group": "check",
-          "panels": [
-            "clash"
-          ]
-        },
-        "assisted": {
-          "group": "check",
-          "panels": [
-            "clash",
-            "assistant"
-          ]
-        }
-      }
+      "success": ["A group of at least two related findings is formed or accepted.", "Every finding is either in a group or visibly left unclassified."],
+      "entry": { "current": { "group": "check", "panels": ["clash"] }, "assisted": { "group": "check", "panels": ["clash", "assistant"] } }
     },
     {
-      "id": "draft-bcf",
-      "title": "Draft a BCF topic",
-      "journey": "clash-coordination",
-      "scene": "clash-rev-b",
-      "roles": [
-        "coordinator"
-      ],
-      "capSeconds": 420,
+      "id": "draft-bcf", "title": "Draft a BCF topic", "journey": "clash-coordination", "scene": "clash-rev-b",
+      "roles": ["coordinator"], "capSeconds": 420,
       "participantPrompt": "Prepare a BCF issue for the duct that hits the left outer wall, ready for you to review before it is sent.",
       "startState": "Rev-B sample with the clash run loaded.",
-      "success": [
-        "A BCF topic draft names both elements and carries a viewpoint.",
-        "Nothing was published."
-      ],
-      "entry": {
-        "current": {
-          "group": "check",
-          "panels": [
-            "clash",
-            "bcf"
-          ]
-        },
-        "assisted": {
-          "group": "check",
-          "panels": [
-            "clash",
-            "bcf",
-            "assistant"
-          ]
-        }
-      }
+      "success": ["A BCF topic draft names both elements and carries a viewpoint.", "Nothing was published."],
+      "entry": { "current": { "group": "check", "panels": ["clash", "bcf"] }, "assisted": { "group": "check", "panels": ["clash", "bcf", "assistant"] } }
     },
     {
-      "id": "author-flow",
-      "title": "Author a Flow",
-      "journey": "flow-authoring",
-      "scene": "flow-empty",
-      "roles": [
-        "author",
-        "coordinator"
-      ],
-      "capSeconds": 480,
+      "id": "author-flow", "title": "Author a Flow", "journey": "flow-authoring", "scene": "flow-empty",
+      "roles": ["author", "coordinator"], "capSeconds": 480,
       "participantPrompt": "Build a small workflow that adds the numbers 7 and 5 and shows you the result.",
       "startState": "New empty Flow graph.",
-      "success": [
-        "The graph has two number nodes and a math node wired together.",
-        "Running the graph yields 12."
-      ],
-      "entry": {
-        "current": {
-          "group": "automate",
-          "panels": [
-            "flow"
-          ]
-        },
-        "assisted": {
-          "group": "automate",
-          "panels": [
-            "flow",
-            "assistant"
-          ]
-        }
-      }
+      "success": ["The graph has two number nodes and a math node wired together.", "Running the graph yields 12."],
+      "entry": { "current": { "group": "automate", "panels": ["flow"] }, "assisted": { "group": "automate", "panels": ["flow", "assistant"] } }
     },
     {
-      "id": "locate-output",
-      "title": "Locate the saved output",
-      "journey": "reuse-and-recovery",
-      "scene": "flow-empty",
-      "roles": [
-        "author",
-        "coordinator",
-        "occasional"
-      ],
-      "capSeconds": 240,
+      "id": "locate-output", "title": "Locate the saved output", "journey": "reuse-and-recovery", "scene": "flow-empty",
+      "roles": ["author", "coordinator", "occasional"], "capSeconds": 240,
       "participantPrompt": "You saved that workflow yesterday. Find it again and tell me where its result would be kept.",
       "startState": "The Flow from the previous task is saved; the page has been reloaded.",
-      "success": [
-        "The saved Flow is open.",
-        "The participant names where the artifact is kept (Flow library, document or export)."
-      ],
-      "entry": {
-        "current": {
-          "group": "automate",
-          "panels": [
-            "flow"
-          ]
-        },
-        "assisted": {
-          "group": "automate",
-          "panels": [
-            "flow",
-            "assistant"
-          ]
-        }
-      }
+      "success": ["The saved Flow is open.", "The participant names where the artifact is kept (Flow library, document or export)."],
+      "entry": { "current": { "group": "automate", "panels": ["flow"] }, "assisted": { "group": "automate", "panels": ["flow", "assistant"] } }
     },
     {
-      "id": "correct-and-recheck",
-      "title": "Correct a requirement with a conflict",
-      "journey": "batch-correction",
-      "scene": "validation-sample",
-      "roles": [
-        "coordinator",
-        "author"
-      ],
-      "capSeconds": 900,
+      "id": "correct-and-recheck", "title": "Correct a requirement with a conflict", "journey": "batch-correction", "scene": "validation-sample",
+      "roles": ["coordinator", "author"], "capSeconds": 900,
       "participantPrompt": "Review the supplied correction mapping for the failing wall. Show what happens when another person edits that value, apply only the corrections you approve, and check the exported model and the requirement again.",
       "startState": "Committed sample in Edit mode with its IDS run and a facilitator-prepared mapping targeting the failing wall by GlobalId. Keep an independent native IDS report and export/reparse oracle. After preview, the facilitator changes one expected property through the native editor; log this intervention without giving navigation hints. Start the alternate variant from a freshly loaded sample and the same mapping.",
       "success": [
@@ -289,34 +92,13 @@
         "Export/reparse verifies the approved values and a fresh native IDS run confirms the changed requirement outcome."
       ],
       "entry": {
-        "current": {
-          "group": "author",
-          "panels": [
-            "model",
-            "changes",
-            "validation"
-          ]
-        },
-        "assisted": {
-          "group": "author",
-          "panels": [
-            "model",
-            "changes",
-            "validation",
-            "assistant"
-          ]
-        }
+        "current": {"group": "author", "panels": ["model", "changes", "validation"]},
+        "assisted": {"group": "author", "panels": ["model", "changes", "validation", "assistant"]}
       }
     },
     {
-      "id": "author-and-verify",
-      "title": "Author a wall and verify its export",
-      "journey": "native-model-authoring",
-      "scene": "authoring-sample",
-      "roles": [
-        "author"
-      ],
-      "capSeconds": 900,
+      "id": "author-and-verify", "title": "Author a wall and verify its export", "journey": "native-model-authoring", "scene": "authoring-sample",
+      "roles": ["author"], "capSeconds": 900,
       "participantPrompt": "Add a wall named Annex south on the ground floor between the two marked points, 4 metres long, 200 millimetres thick and 3 metres high. Inspect it before committing, undo and redo it, then show that the exported model contains that wall.",
       "startState": "Committed sample in Edit mode. Facilitator marks storey 1Ano2ZUxnEIvVQ_beukl8b and storey-local IFC Z-up endpoints (10000,10000,0) and (14000,10000,0) mm. Independent builder/export oracle verifies placement, dimensions and containment. Reset the model before the alternate variant.",
       "success": [
@@ -327,33 +109,13 @@
         "Export/reparse resolves the wall GlobalId, exact dimensions and storey containment."
       ],
       "entry": {
-        "current": {
-          "group": "author",
-          "panels": [
-            "model",
-            "properties"
-          ]
-        },
-        "assisted": {
-          "group": "author",
-          "panels": [
-            "model",
-            "properties",
-            "assistant"
-          ]
-        }
+        "current": {"group": "author", "panels": ["model", "properties"]},
+        "assisted": {"group": "author", "panels": ["model", "properties", "assistant"]}
       }
     },
     {
-      "id": "review-flow-ai",
-      "title": "Review a paused AI workflow",
-      "journey": "flow-ai-execution",
-      "scene": "clash-rev-b",
-      "roles": [
-        "author",
-        "coordinator"
-      ],
-      "capSeconds": 900,
+      "id": "review-flow-ai", "title": "Review a paused AI workflow", "journey": "flow-ai-execution", "scene": "clash-rev-b",
+      "roles": ["author", "coordinator"], "capSeconds": 900,
       "participantPrompt": "Use the supplied workflow to classify and summarize these findings. Inspect its request limits, review the paused result, and continue only after you approve it. Show where its draft report is kept and explain what happened when the request limit was reached.",
       "startState": "Rev-B sample and pinned nine-finding native clearance run. Facilitator supplies a registered native classify/summarize graph, one root request budget, review-required node, draft document downstream and the recorded provider responses. Prepare a separate exhausted-budget run. Do not use real publication targets. Start the alternate variant from a fresh graph/checkpoint copy.",
       "success": [
@@ -364,32 +126,13 @@
         "The native draft document names its evidence and storage status; nothing is published."
       ],
       "entry": {
-        "current": {
-          "group": "automate",
-          "panels": [
-            "flow",
-            "document"
-          ]
-        },
-        "assisted": {
-          "group": "automate",
-          "panels": [
-            "flow",
-            "document",
-            "assistant"
-          ]
-        }
+        "current": {"group": "automate", "panels": ["flow", "document"]},
+        "assisted": {"group": "automate", "panels": ["flow", "document", "assistant"]}
       }
     },
     {
-      "id": "review-revision",
-      "title": "Review current and historical coordination evidence",
-      "journey": "cross-analysis-review",
-      "scene": "clash-rev-b",
-      "roles": [
-        "coordinator"
-      ],
-      "capSeconds": 900,
+      "id": "review-revision", "title": "Review current and historical coordination evidence", "journey": "cross-analysis-review", "scene": "clash-rev-b",
+      "roles": ["coordinator"], "capSeconds": 900,
       "participantPrompt": "Compare the revisions and inspect the coordination review. Show which findings are current, follow one existing topic back to its elements, and add only supported conclusions to a report. Do not resolve an issue just because it is absent from this run.",
       "startState": "Facilitator loads the committed architecture revisions, native comparison and validation runs, the pinned rev-B clash result, and a local BCF draft with durable element references. Capture native per-source counts and model fingerprints before the task. An incomplete rerun is supplied as the alternate start state; local topic only, no publication server.",
       "success": [
@@ -400,38 +143,14 @@
         "An explicit human decision and source-linked report preserve their native save status."
       ],
       "entry": {
-        "current": {
-          "group": "coordinate",
-          "panels": [
-            "review",
-            "compare",
-            "bcf",
-            "document"
-          ]
-        },
-        "assisted": {
-          "group": "coordinate",
-          "panels": [
-            "review",
-            "compare",
-            "bcf",
-            "document",
-            "assistant"
-          ]
-        }
+        "current": {"group": "coordinate", "panels": ["review", "compare", "bcf", "document"]},
+        "assisted": {"group": "coordinate", "panels": ["review", "compare", "bcf", "document", "assistant"]}
       }
     },
     {
-      "id": "report-analysis-coverage",
-      "title": "Report analysis coverage and units",
-      "journey": "universal-analysis-reporting",
-      "scene": "authoring-sample",
-      "roles": [
-        "coordinator",
-        "author"
-      ],
-      "capSeconds": 900,
-      "participantPrompt": "Inspect the prepared analysis results, including quantities, cost, manual answers and linked records. Prepare a report that states each result\u2019s actual population, units and limitations, and show one unavailable result without inventing a value.",
+      "id": "report-analysis-coverage", "title": "Report analysis coverage and units", "journey": "universal-analysis-reporting", "scene": "authoring-sample",
+      "roles": ["coordinator", "author"], "capSeconds": 900,
+      "participantPrompt": "Inspect the prepared analysis results, including quantities, cost, manual answers and linked records. Prepare a report that states each result’s actual population, units and limitations, and show one unavailable result without inventing a value.",
       "startState": "Facilitator prepares the native adapter inventory as a checklist. Run available quantities/cost and checks against the committed sample, enter a labelled manual answer, and use a local linked-record fixture with exact passages. Record native values, denominators, revisions and omissions independently. Specialized or endpoint-dependent analyses without a prepared result stay explicitly unavailable. Reset results and use alternate labelled manual answers for the second variant.",
       "success": [
         "Each registered source is marked inspected, unavailable or unprepared on the checklist; skipped sources cannot count as accepted.",
@@ -441,69 +160,25 @@
         "The native document preserves source links and draft/save status; semantic support of every narrative claim is judged independently."
       ],
       "entry": {
-        "current": {
-          "group": "quantify",
-          "panels": [
-            "measurements",
-            "cost",
-            "validation",
-            "semantic",
-            "document"
-          ]
-        },
-        "assisted": {
-          "group": "quantify",
-          "panels": [
-            "measurements",
-            "cost",
-            "validation",
-            "semantic",
-            "document",
-            "assistant"
-          ]
-        }
+        "current": {"group": "quantify", "panels": ["measurements", "cost", "validation", "semantic", "document"]},
+        "assisted": {"group": "quantify", "panels": ["measurements", "cost", "validation", "semantic", "document", "assistant"]}
       }
     },
     {
-      "id": "explore-and-restore",
-      "title": "Save analysis artifacts and restore a view",
-      "journey": "everyday-exploration",
-      "scene": "authoring-sample",
-      "roles": [
-        "coordinator",
-        "author",
-        "occasional"
-      ],
-      "capSeconds": 900,
+      "id": "explore-and-restore", "title": "Save analysis artifacts and restore a view", "journey": "everyday-exploration", "scene": "authoring-sample",
+      "roles": ["coordinator", "author", "occasional"], "capSeconds": 900,
       "participantPrompt": "Find the walls in this model, review the filter, and save a list, lens and chart for them. Inspect those walls in 3D, then restore the view you started with.",
       "startState": "Committed sample loaded with a facilitator-recorded native wall population, property bindings, list units and chart aggregation. Record selection, visibility, colours, section and camera before the task. Use a different initial camera and selection for the alternate variant, with the same native population oracle.",
       "success": [
         "The query and editable filter use exact native property bindings and explicitly state the model/population scope.",
-        "Saved list, lens and chart reopen in their native editors and match the oracle\u2019s population, units and aggregation.",
+        "Saved list, lens and chart reopen in their native editors and match the oracle’s population, units and aggregation.",
         "The intended walls are inspected in 3D without effects on an unrelated model.",
         "Restore returns owned view channels to the recorded start state and respects intervening user edits.",
         "Each artifact reports its actual durable or in-memory save state."
       ],
       "entry": {
-        "current": {
-          "group": "coordinate",
-          "panels": [
-            "properties",
-            "lists",
-            "lens",
-            "charts"
-          ]
-        },
-        "assisted": {
-          "group": "coordinate",
-          "panels": [
-            "properties",
-            "lists",
-            "lens",
-            "charts",
-            "assistant"
-          ]
-        }
+        "current": {"group": "coordinate", "panels": ["properties", "lists", "lens", "charts"]},
+        "assisted": {"group": "coordinate", "panels": ["properties", "lists", "lens", "charts", "assistant"]}
       }
     }
   ]

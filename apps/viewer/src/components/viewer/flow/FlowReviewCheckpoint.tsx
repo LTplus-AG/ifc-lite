@@ -20,7 +20,7 @@ import { registerEnglish, type TranslationKey } from '@/i18n';
 import { flowReviewEn } from '@/i18n/catalogues/flow-review.en';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
-import { approveReview, loadGraphReview, rejectReview, useFlowReview, type ReviewProblem } from '@/lib/flow/review-session';
+import { approveReview, loadGraphReview, rejectReview, useFlowReview, viewerSourceDigest, type ReviewProblem } from '@/lib/flow/review-session';
 import { FlowValuePreview } from './FlowValuePreview';
 
 registerEnglish(flowReviewEn);
@@ -64,6 +64,11 @@ export function FlowReviewCheckpoint({ doc, onResume }: {
   // resume could not start (a failed preflight) can be resumed again.
   const approve = async () => {
     if (!shown) return;
+    if (shown.sourceDigest !== viewerSourceDigest()) {
+      useFlowReview.setState({ problem: { kind: 'refused', code: 'sources-changed',
+        message: 'The loaded sources changed after the proposal was prepared. Run the graph again.' } });
+      return;
+    }
     const approved = shown.state === 'reviewed' ? shown : await approveReview(shown.proposalDigest);
     if (approved) await onResume(approved, values);
   };

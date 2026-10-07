@@ -6,7 +6,8 @@ import { create } from 'zustand';
 import { createContentLibrary, initialContentStatus, type ContentStatus } from '../storage/content-library';
 import { assistantContent, type SavedConversation } from './persistence';
 import { useAssistant, cancelAssistant } from './conversation';
-import { currentConversationLanguage } from './language';
+import { baseLanguage } from './language';
+import { getLocale } from '@/i18n';
 
 export const useAssistantLibrary = create<{ entries: SavedConversation[]; status: ContentStatus }>(() => ({ entries: [], status: initialContentStatus() }));
 export const assistantLibrary = createContentLibrary(assistantContent,
@@ -17,5 +18,5 @@ export function openConversation(entry: SavedConversation): void {
   cancelAssistant();
   // Archived evidence is never treated as current, even if model names happen to match.
   useAssistant.setState({ snapshot: null, archived: structuredClone(entry), messages: entry.messages,
-    error: null, status: 'idle', output: '', pendingPrompt: null, language: entry.language ?? currentConversationLanguage() });
+    error: null, status: 'idle', output: '', pendingPrompt: null, language: entry.language ?? { ui: getLocale(), generation: baseLanguage(getLocale()) } });
 }

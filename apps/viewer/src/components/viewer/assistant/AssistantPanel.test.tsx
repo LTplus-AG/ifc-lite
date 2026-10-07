@@ -217,3 +217,19 @@ test('#7053 a floating Assistant keeps Back to Clash when the native sidebar is 
   assert.equal(useViewerStore.getState().sidebarMode, 'expanded');
   assert.equal(useViewerStore.getState().sidebarActivePanel, 'clash');
 });
+
+test('#7053 legacy archived language follows UI locale despite a different new-conversation preference', async () => {
+  const { openConversation } = await import('@/lib/assistant/library');
+  const { decodeConversation } = await import('@/lib/assistant/persistence');
+  setGenerationLanguagePreference('de');
+  const now = new Date().toISOString();
+  const entry = decodeConversation({ version: 1, id: 'legacy-language', name: 'Legacy record', savedAt: now, model: 'recorded-model',
+    evidence: { source: 'clash', capturedAt: now, payload: JSON.stringify({ source: 'clash', capturedAt: now, totalRows: 0, includedRows: 0, projectionTruncated: false, rows: [] }),
+      totalRows: 0, includedRows: 0, projectionTruncated: false }, messages: [] });
+  assert.ok(entry);
+  openConversation(entry);
+  const ui = render(<AssistantPanel />);
+  assert.equal(ui.querySelector<HTMLSelectElement>('#assistant-generation-language')?.value, 'en');
+  assert.deepEqual(useAssistant.getState().language, { ui: 'en', generation: 'en' });
+  assert.equal(useGenerationLanguagePreference.getState().language, 'de', 'the new-conversation preference remains independent');
+});

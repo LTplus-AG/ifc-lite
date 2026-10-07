@@ -103,8 +103,8 @@
    926 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    893 apps/viewer/src/components/viewer/useMouseControls.ts
    461 apps/viewer/src/components/viewer/ViewerLayout.tsx
-  1641 apps/viewer/src/components/viewer/Viewport.tsx
-  1089 apps/viewer/src/components/viewer/ViewportContainer.tsx
+  1632 apps/viewer/src/components/viewer/Viewport.tsx
+   885 apps/viewer/src/components/viewer/ViewportContainer.tsx
    500 apps/viewer/src/components/viewer/ZonesPanel.tsx
    847 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts

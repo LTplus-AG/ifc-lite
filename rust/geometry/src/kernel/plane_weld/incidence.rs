@@ -16,6 +16,12 @@
 //! the corner onto it and so OFF the wall it was on. Cutter wall and host
 //! wall stop being coplanar by micrometres, and the arrangement tears.
 //!
+//! That the corner starts as a host vertex is not a given: in some vertex
+//! frames it arrives one snap step off, on neither wall, and this guard has
+//! nothing exact to keep. The void router makes the two one vertex again
+//! before it extends the cutter (`router/voids/synthesis/host_vertices.rs`);
+//! the two rules are needed together, and neither closes the slabs alone.
+//!
 //! # The rule
 //!
 //! A weld of a vertex onto target face `f` is refused when the vertex is

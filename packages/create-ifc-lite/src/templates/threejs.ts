@@ -280,7 +280,7 @@ npm run dev
 
 Open the URL Vite prints (http://localhost:5173 by default) and pick an IFC file.
 
-No IFC file handy? [AC20-FZK-Haus.ifc](https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d) is a small public test model.
+No IFC file handy? [AC20-FZK-Haus.ifc](https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5) is a small public test model.
 
 ## Learn More
 

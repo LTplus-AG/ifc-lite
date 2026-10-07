@@ -13,7 +13,7 @@ import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignmen
 import { analysisPanelEn } from './catalogues/analysis-panel.en';
 import { resultViewEn } from './catalogues/result-view.en';
 import { activityTrayEn } from './catalogues/activity-tray.en';
-import { reviewWorkspaceEn } from './catalogues/review-workspace.en';
+import type { reviewWorkspaceEn } from './catalogues/review-workspace.en';
 import { panelNoModelEn } from './catalogues/panel-no-model.en';
 import { annotationsEn } from './catalogues/annotations.en';
 import { anonymizedExportEn } from './catalogues/anonymized-export.en';
@@ -148,7 +148,7 @@ export const en = {
   ...analysisPanelEn,
   ...resultViewEn,
   ...activityTrayEn,
-  ...reviewWorkspaceEn,
+  'reviewWorkspace.title': 'Review',
   ...panelNoModelEn,
   ...annotationsEn,
   ...anonymizedExportEn,
@@ -281,6 +281,6 @@ export const en = {
 
 /** Strings that load with the panels that use them (see `registerEnglish`); their keys are typed here, their text is not in the eager bundle. */
 type LazyEnglish = typeof semanticAssistEn;
-export type TranslationKey = keyof typeof en | keyof LazyEnglish;
+export type TranslationKey = keyof typeof en | keyof LazyEnglish | keyof typeof reviewWorkspaceEn;
 /** The live English catalogue: `en` plus whatever lazy catalogues have registered. */
 export const englishCatalogue: Partial<Record<TranslationKey, TranslationValue>> = en;

@@ -10,6 +10,8 @@
  * treats a partial run as resolution, and opens the original evidence.
  */
 
+import '@/i18n/catalogues/review-workspace.register';
+
 import { useMemo, useState } from 'react';
 import { ListChecks, RefreshCw } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';

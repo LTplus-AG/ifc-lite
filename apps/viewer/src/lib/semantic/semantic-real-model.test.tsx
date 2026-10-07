@@ -28,14 +28,15 @@ test('charter #6643: ArchiCAD 20 FZK door identity, federated selection and proj
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') { context.skip('Run pnpm fixtures to fetch the canonical ArchiCAD fixture'); return; }
     throw error;
   }
-  // Ground truth is the externally authored, hash-verified manifest file; no fabricated geometry or GUID oracle.
-  assert.equal(createHash('sha256').update(bytes).digest('hex'), 'ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d');
+  // #7046 scrubbed the STEP author header; the externally authored DATA section is unchanged.
+  // Keep the whole-file pin aligned with the published fixture, retaining the native GUID/export oracle.
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), 'd42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5');
   const parser = new IfcParser(); const store = await parser.parseColumnar(new Uint8Array(bytes).buffer, { disableWorkerScan: true });
   const GlobalId = '1Oms875aH3Wg$9l65H2ZGw'; const expressId = 17468;
   assert.equal(store.entities.getExpressIdByGlobalId(GlobalId), expressId);
   assert.equal(store.entities.getTypeName(expressId), 'IfcDoor');
   const source = 'https://example.org/charter-6643/archicad-reference';
-  const revision = `${source}/revision/manifest-ea6f04ea`;
+  const revision = `${source}/revision/manifest-d42ab0de`;
   const product: SemanticResource = { id: `${source}/synthetic-product`, type: 'Product', label: 'Synthetic fire rating declaration', fireRating: 'EI30' };
   const installation: SemanticResource = { id: `${source}/door-link`, type: 'Installation', label: 'ArchiCAD reference door', GlobalId, modelRevision: revision, productId: product.id };
   const models = ['archicad-a', 'archicad-b'].map((id, index) => ({ ...fixtureModel(id, { idOffset: index * 1000000 }), ifcDataStore: store,

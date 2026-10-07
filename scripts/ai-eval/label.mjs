@@ -46,6 +46,17 @@ export function sheetFileErrors(files, recordings, schema = SCHEMA) {
       const rebuilt = buildSheet({ recording, kind: 'claims', answer, reviewerId: 'x' }).claims;
       if (JSON.stringify(rebuilt.map(claim => claim.text)) !== JSON.stringify(sheet.claims.map(claim => claim.text))) errors.push(`label ${name}: claim text no longer matches the answer`);
     }
+    if (sheet.kind === 'grouping' && Array.isArray(sheet.findings) && sheet.proposal) {
+      // The findings and the proposal are what the score is computed from: they must be the recording's, unedited.
+      let rebuilt = null;
+      try { rebuilt = buildSheet({ recording, kind: 'grouping', answer, reviewerId: 'x' }); }
+      catch (error) { errors.push(`label ${name}: ${error instanceof Error ? error.message : String(error)}`); }
+      if (rebuilt) {
+        if (JSON.stringify(rebuilt.findings.map(finding => finding.citation)) !== JSON.stringify(sheet.findings.map(finding => finding.citation))) errors.push(`label ${name}: finding citations no longer match the recording`);
+        const proposal = groups => JSON.stringify(groups.map(group => [group.name, group.citations]));
+        if (proposal(rebuilt.proposal.groups) !== proposal(sheet.proposal.groups ?? [])) errors.push(`label ${name}: the proposal no longer matches the recorded answer`);
+      }
+    }
   }
   return errors;
 }

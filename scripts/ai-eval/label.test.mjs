@@ -74,3 +74,16 @@ test('committed label sheets are validated by the manifest gate', () => {
     assert.ok(run(root).errors.some(error => /label stale\.json: the recorded answer changed/.test(error)));
   } finally { cleanup(); }
 });
+
+test('a complete claims sheet must have judged claims, and grouping sheets cannot edit the findings or proposal they score', () => {
+  const claims = sheetOf('clash-summary-release', 'claims');
+  claims.reviewer.status = 'complete';
+  delete claims.claims;
+  assert.match(sheetFileErrors([{ name: 's', sheet: claims }], recordings).join(), /claims sheet lists the answer's claims/);
+  const grouping = sheetOf('clash-grouping-release', 'grouping');
+  grouping.proposal.groups[0].citations = ['E1'];
+  grouping.findings[0].citation = 'E999';
+  const errors = sheetFileErrors([{ name: 'g', sheet: grouping }], recordings).join('\n');
+  assert.match(errors, /finding citations no longer match/);
+  assert.match(errors, /proposal no longer matches/);
+});

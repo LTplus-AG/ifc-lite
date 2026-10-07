@@ -96,6 +96,13 @@ export function summarize(protocol, sessions) {
   const short = protocol.roles.filter(role => participants[role.id] < protocol.minimumParticipantsPerRole).map(role => role.id);
   const base = { thresholdsStatus: protocol.status, participants, minimumParticipantsPerRole: protocol.minimumParticipantsPerRole, perTask };
   if (short.length) return { ...base, verdict: 'insufficient-data', reason: `fewer than ${protocol.minimumParticipantsPerRole} participants for: ${short.join(', ')}; no threshold is judged` };
+  // Within-subject design: every task x variant cell needs enough distinct participants of each role the task is for,
+  // or a missing cell would silently skip its threshold.
+  const thin = protocol.tasks.flatMap(task => protocol.variants.flatMap(variant => (task.roles ?? protocol.roles.map(role => role.id)).flatMap(role => {
+    const seen = new Set(sessions.filter(session => session.task === task.id && session.variant === variant.id && session.role === role).map(session => session.participant)).size;
+    return seen < protocol.minimumParticipantsPerRole ? [`${task.id}/${variant.id}/${role} (${seen})`] : [];
+  })));
+  if (thin.length) return { ...base, verdict: 'insufficient-data', reason: `fewer than ${protocol.minimumParticipantsPerRole} participants in: ${thin.join(', ')}; no threshold is judged` };
   const failures = [];
   for (const row of perTask) {
     const { current, assisted } = row.variants;

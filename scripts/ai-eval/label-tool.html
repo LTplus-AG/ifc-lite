@@ -63,7 +63,7 @@ function render() {
         textInput('note (optional)', claim.note, value => { claim.note = value; })));
     }
   } else {
-    const grouped = sheet.findings.every(finding => finding.group);
+    const grouped = sheet.findings.length > 0 && sheet.findings.every(finding => finding.group);
     form.append(el('p', {}, 'Step 1. Give each finding a group label of your own, or __unclassified__ to leave it out. Findings with the same label are one group.'));
     for (const finding of sheet.findings) {
       form.append(el('fieldset', {}, el('legend', {}, finding.citation), el('p', {}, finding.summary),
@@ -90,7 +90,7 @@ function render() {
 function refresh() {
   // The grouping form reveals step 2 once step 1 is done, so re-render only when that changes.
   if (sheet?.kind === 'grouping') {
-    const unlocked = sheet.findings.every(finding => finding.group);
+    const unlocked = sheet.findings.length > 0 && sheet.findings.every(finding => finding.group);
     if (unlocked !== (document.querySelector('[aria-label="corrections needed"]') !== null)) render();
   }
 }

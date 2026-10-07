@@ -97,3 +97,14 @@ test('summaries use the median time and sum the error counts', () => {
   assert.equal(cell.medianSeconds, 20);
   assert.equal(cell.scopeErrors, 3);
 });
+
+test('every task x variant cell needs enough participants of each of its roles before any threshold is judged', () => {
+  // Three of each role, but every session is find-check in the current viewer: role counts pass, cells do not.
+  const sessions = protocol.roles.flatMap(role => [1, 2, 3].map(i => session(`${role.id}-${i}`, role.id, 'find-check', 'current')));
+  const result = summarize(protocol, sessions);
+  assert.equal(result.verdict, 'insufficient-data');
+  assert.match(result.reason, /find-check\/assisted\/coordinator \(0\)/);
+  const dropped = cohort(3).filter(row => !(row.task === 'draft-bcf' && row.variant === 'assisted' && row.participant === 'p01'));
+  assert.equal(summarize(protocol, dropped).verdict, 'insufficient-data', 'one missing assisted session leaves that cell short');
+  assert.equal(summarize(protocol, cohort(3)).verdict, 'met');
+});

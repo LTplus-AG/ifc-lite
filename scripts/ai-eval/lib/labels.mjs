@@ -30,7 +30,7 @@ export const answerSha256 = text => createHash('sha256').update(text).digest('he
 
 /** Sentences of a prose answer with the evidence rows each cites, in order. */
 export function claimUnits(text) {
-  const sentences = text.replace(/\r\n?/g, '\n').split(/\n+|(?<=[.!?])\s+(?=[A-Z\[(])/).map(part => part.trim()).filter(Boolean);
+  const sentences = text.replace(/\r\n?/g, '\n').split(/\n+|(?<=[.!?])\s+(?=[A-Z[(])/).map(part => part.trim()).filter(Boolean);
   return sentences.map((sentence, index) => ({ id: `c${index + 1}`, text: sentence,
     citations: [...new Set([...sentence.matchAll(/\bE\d+\b/g)].map(match => match[0]))], verdict: null, note: '' }));
 }
@@ -62,6 +62,7 @@ export function buildSheet({ recording, kind, answer, reviewerId }) {
   const groups = proposedGroups(answer);
   if (!groups) throw new Error(`${recording.id}: the answer is not a clash.groups proposal`);
   const rows = Array.isArray(recording.evidence?.evidence?.rows) ? recording.evidence.evidence.rows : [];
+  if (!rows.length) throw new Error(`${recording.id}: no captured findings to group`);
   return { ...sheet,
     findings: rows.map(row => ({ citation: row.citation, summary: label(row), group: null })),
     proposal: { groups: groups.map(group => ({ ...group, verdict: null, note: '' })), corrections: null } };
@@ -72,6 +73,11 @@ export function sheetErrors(sheet, schema) {
   const errors = validateSchema(schema, sheet);
   if (errors.length) return errors;
   const complete = sheet.reviewer.status === 'complete';
+  if (sheet.kind === 'claims' && !Array.isArray(sheet.claims)) errors.push('claims: a claims sheet lists the answer\'s claims');
+  if (complete && sheet.kind === 'claims' && Array.isArray(sheet.claims) && !sheet.claims.length) errors.push('claims: a complete claims sheet judged at least one claim');
+  if (sheet.kind === 'grouping' && (!Array.isArray(sheet.findings) || !sheet.proposal)) errors.push('findings: a grouping sheet lists the captured findings and the proposal');
+  if (complete && sheet.kind === 'grouping' && Array.isArray(sheet.findings) && !sheet.findings.length) errors.push('findings: a complete grouping sheet grouped at least one finding');
+  if (errors.length) return errors;
   for (const claim of sheet.claims ?? []) {
     if (claim.verdict !== null && !CLAIM_VERDICTS.includes(claim.verdict)) errors.push(`claim ${claim.id}: unknown verdict ${claim.verdict}`);
     if (complete && claim.verdict === null) errors.push(`claim ${claim.id}: a complete sheet has a verdict for every claim`);

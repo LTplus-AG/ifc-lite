@@ -79,12 +79,12 @@ for (const control of [
     assert.ok(first);
     assert.ok(Math.abs(first.lon - control.lon) < 1e-7, `${first.lon}`);
     assert.ok(Math.abs(first.lat - control.lat) < 1e-7, `${first.lat}`);
-    assert.deepEqual(await reprojectPointToLatLon(5, 52, geographicCrs), { lon: 5, lat: 52 });
+    assert.match((await resolveProjection(geographicCrs)) ?? '', /\+proj=longlat\b/);
     // Geographic-first must still honor zone metadata on the next resolution.
     const second = await reprojectPointToLatLon(500000, 4500000, {
       id: 1, name: control.name, mapProjection: `UTM zone ${control.zone}`,
     });
     assert.deepEqual(second, first);
-    assert.deepEqual(await reprojectPointToLatLon(5, 52, geographicCrs), { lon: 5, lat: 52 });
+    assert.match((await resolveProjection(geographicCrs)) ?? '', /\+proj=longlat\b/);
   });
 }

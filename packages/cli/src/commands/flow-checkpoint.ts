@@ -78,7 +78,13 @@ export class FileCheckpointStore implements CheckpointStore {
       await unlink(lock).catch((error: unknown) => {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       });
-      return false;
+      try {
+        await (await open(lock, 'wx')).close();
+        return true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+        return false;
+      }
     }
   }
 }

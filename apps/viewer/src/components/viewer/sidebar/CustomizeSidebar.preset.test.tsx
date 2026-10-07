@@ -14,6 +14,19 @@ const initial = useViewerStore.getState();
 const placement = useAssistantPlacement.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); useAssistantPlacement.setState(placement); useLayoutPreset.setState({ record: null }); });
 
+it('#6926 Restore reinstalls split restoration before Assistant has opened in this session', () => {
+  // A reloaded preset record can restore an Assistant that displaced BCF in the previous session.
+  // Do not call openAssistant: that would install the subscription and hide the reload defect.
+  useViewerStore.setState({ sidebarActivePanel: 'properties', sidebarSecondaryPanel: 'assistant', isMobile: false, floatingPanels: [], poppedOutIds: [] });
+  useAssistantPlacement.setState({ placement: 'split', displacedSecondary: 'bcf' });
+  applyLayoutPreset('coordinator');
+  useAssistantPlacement.setState({ displacedSecondary: null });
+  assert.equal(restoreLayoutBeforePreset(), true);
+  assert.equal(useViewerStore.getState().sidebarSecondaryPanel, 'assistant');
+  useViewerStore.getState().setSidebarSecondaryPanel(null);
+  assert.equal(useViewerStore.getState().sidebarSecondaryPanel, 'bcf', 'closing the restored Assistant returns BCF without reopening Assistant first');
+});
+
 it('#6926 Coordinator restore retains the panel displaced by a split Assistant', () => {
   useViewerStore.setState({ sidebarActivePanel: 'properties', sidebarSecondaryPanel: 'bcf', isMobile: false, floatingPanels: [], poppedOutIds: [] });
   useAssistantPlacement.setState({ placement: 'split', displacedSecondary: null });

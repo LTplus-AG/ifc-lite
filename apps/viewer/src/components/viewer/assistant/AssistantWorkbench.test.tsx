@@ -84,15 +84,20 @@ test('#6926 the narrow Assistant sheet returns to its source and preserves evide
   assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [42]);
 });
 
-test('#7053 Reset after Coordinator and Floating restores the default contextual split placement', () => {
+for (const placement of ['floating', 'split'] as const) {
+test(`#7053 Reset after Coordinator and ${placement} restores the default unsplit layout`, () => {
   useViewerStore.setState({ isMobile: false, sidebarActivePanel: 'properties', sidebarSecondaryPanel: null, floatingPanels: [] });
   applyLayoutPreset('coordinator');
-  setAssistantPlacement('floating');
+  setAssistantPlacement(placement);
   openAssistant('clash');
-  assert.ok(useViewerStore.getState().floatingPanels.some(panel => panel.id === 'assistant'));
+  if (placement === 'floating') assert.ok(useViewerStore.getState().floatingPanels.some(panel => panel.id === 'assistant'));
+  else assert.equal(useAssistantPlacement.getState().displacedSecondary, 'bcf');
   resetLayout();
+  assert.equal(useViewerStore.getState().sidebarSecondaryPanel, null, 'Reset must not restore the displaced BCF pane');
+  assert.equal(useAssistantPlacement.getState().displacedSecondary, null);
   assert.equal(localStorage.getItem(ASSISTANT_PLACEMENT_STORAGE_KEY), null);
   openAssistant('properties');
   assert.equal(useViewerStore.getState().sidebarSecondaryPanel, 'assistant');
   assert.equal(useViewerStore.getState().floatingPanels.some(panel => panel.id === 'assistant'), false);
 });
+}

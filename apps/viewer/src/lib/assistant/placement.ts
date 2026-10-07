@@ -83,7 +83,7 @@ type ViewerStoreApi = ReturnType<typeof getViewerStoreApi>;
 const restoreSubscriptions = new WeakSet<ViewerStoreApi>();
 
 /** Put a displaced split half back once the Assistant leaves the split for nothing else. */
-function watchSplitRestore(store: ViewerStoreApi): void {
+export function watchSplitRestore(store: ViewerStoreApi): void {
   if (restoreSubscriptions.has(store)) return;
   restoreSubscriptions.add(store);
   store.subscribe((state, previous) => {

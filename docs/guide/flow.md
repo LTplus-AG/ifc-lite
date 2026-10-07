@@ -865,3 +865,11 @@ AI review checkpoints require an explicit `network.ai` grant, including trusted 
 The CLI refuses to save or display a checkpoint if any restored output contains a declared secret. It checks the next checkpoint destination before consuming approval, validates pause output requirements before flushing tracking, and completes the previous checkpoint only after saving a subsequent proposal. A persistence failure after a claim is recorded as partially committed.
 
 `ifc-lite flow review <checkpoint> --json` includes the exact proposal values by review node and output port, alongside their approval digest. Extraction replies without the required `records` array count as failed passages and emit a warning; they never count as a successful empty extraction.
+
+CLI checkpoint, next-checkpoint, output and tracking destinations must be distinct.
+Checkpoint file locks are never reclaimed automatically based on age. If a process
+crashes while holding a `.lock`, confirm that its writer has stopped before removing
+that lock and retrying; an old lock alone does not establish that a writer stopped.
+Checkpoint compatibility uses the executed graph, including resolved secret parameters;
+the checkpoint stores its digest, not those credentials. Changing the execution parameters
+requires a new run and review.

@@ -202,3 +202,35 @@ test('#7040 switching the active source among already loaded models invalidates 
   assert.equal(problem?.kind === 'refused' ? problem.code : null, 'sources-changed');
   assert.equal(useFlowReview.getState().checkpoint?.state, 'reviewed', 'a refused source switch does not consume approval');
 });
+
+
+test('#7040 switching the Assistant model after review refuses the continuing AI run', async () => {
+  const model = await openFlowSample();
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini' });
+  const doc = example();
+  await pausedRun(model, doc);
+  await approveReview(useFlowReview.getState().checkpoint!.proposalDigest);
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o' });
+  assert.equal(await claimReview(doc, {}), null);
+  const problem = useFlowReview.getState().problem;
+  assert.equal(problem?.kind === 'refused' ? problem.code : null, 'sources-changed');
+  assert.equal(useFlowReview.getState().checkpoint?.state, 'reviewed');
+  assert.equal(requests, 1, 'switching providers cannot send a continuing request');
+});
+
+test('#7040 switching between two loaded instances of identical IFC bytes refuses approval', async () => {
+  const model = await openFlowSample();
+  const state = useViewerStore.getState();
+  const loaded = state.models.get('arch')!;
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini', models: new Map([
+    ...state.models, ['duplicate', { ...loaded, id: 'duplicate' }],
+  ]) });
+  const doc = example();
+  await pausedRun(model, doc);
+  await approveReview(useFlowReview.getState().checkpoint!.proposalDigest);
+  useViewerStore.getState().setActiveModel('duplicate');
+  assert.equal(await claimReview(doc, {}), null);
+  const problem = useFlowReview.getState().problem;
+  assert.equal(problem?.kind === 'refused' ? problem.code : null, 'sources-changed');
+  assert.equal(useFlowReview.getState().checkpoint?.state, 'reviewed');
+});

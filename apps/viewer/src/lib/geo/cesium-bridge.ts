@@ -26,6 +26,7 @@
  */
 
 import proj4 from 'proj4';
+import { projectedDefinitionInMetres } from './proj4-utils';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry, resolveProjection } from './reproject';
@@ -149,7 +150,7 @@ export async function computeCesiumModelOrigin(
   const height = placementHeightOverride ?? ifcOriginHeight;
 
   try {
-    const [lon, lat] = proj4(projDef, 'WGS84', [easting, northing]);
+    const [lon, lat] = proj4(projectedDefinitionInMetres(projDef), 'WGS84', [easting, northing]);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
     // IFC OrthogonalHeight is orthometric (above the vertical datum); Cesium
     // places geometry by ellipsoidal height. Add the geoid undulation N so the
@@ -211,7 +212,7 @@ export function computeGridConvergence(
   const step = 1.0; // one projected-metre step along grid north
   let lon2: number, lat2: number;
   try {
-    [lon2, lat2] = proj4(projDef, 'WGS84', [easting, northing + step]);
+    [lon2, lat2] = proj4(projectedDefinitionInMetres(projDef), 'WGS84', [easting, northing + step]);
   } catch (err) {
     // Zero is not a neutral answer here: it is indistinguishable from a
     // genuinely zero convergence, so the model silently keeps its GRID
@@ -481,7 +482,7 @@ export async function createCesiumBridge(
       + ordi * originScaleX * ifcX + absc * originScaleY * ifcY;
     const height = mapConversion.orthogonalHeight * mapScale + originScaleZ * ifcZ;
     try {
-      const [lon, lat] = proj4(projDef!, 'WGS84', [easting, northing]);
+      const [lon, lat] = proj4(projectedDefinitionInMetres(projDef!), 'WGS84', [easting, northing]);
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
       return { longitude: lon, latitude: lat, height };
     } catch {

@@ -13,3 +13,15 @@ export function utmProj4String(zone: string): string | null {
   if (zoneNumber < 1 || zoneNumber > 60) return null;
   return `+proj=utm +zone=${zoneNumber}${match[2].toUpperCase() === 'N' ? '' : ' +south'} +datum=WGS84 +units=m +no_defs`;
 }
+
+/**
+ * Geometry and spatial references carry projected distances in metres. PROJ
+ * strings instead describe the CRS's native output unit (e.g. US survey ft).
+ * Override that unit at the metre-coordinate boundary; projection offsets
+ * +x_0/+y_0 are already metres and must remain untouched.
+ * https://proj.org/en/stable/usage/projections.html#projection-units
+ */
+export function projectedDefinitionInMetres(definition: string): string {
+  if (isGeographicProj4(definition)) return definition;
+  return `${definition.replace(/(?:^|\s)\+(?:units|to_meter)=\S+/g, '').trim()} +units=m`;
+}

@@ -26,17 +26,16 @@
  *    Lat-Lon) never render without a loaded model whose `IfcMapConversion`
  *    resolves — standing that up is `useAnchorGeoreference`'s own fixture
  *    cost, not this file's;
- *  - the quantities panel's declared/geometry/derived-mass rows and their
- *    footnotes need a real `IfcDataStore` with quantity sets, mesh geometry
- *    and material densities — `measure-quantities-derived-weight.test.tsx`
- *    and `measure-quantities-mesh-area.test.tsx` already build exactly that
- *    fixture to prove the ARITHMETIC; re-building it here would duplicate
- *    that cost only to prove the LABEL calls `t()`, which the source diff
- *    already shows.
+ *  - computed mesh and derived-mass rows need geometry/material fixtures
+ *    exercised by the existing mesh-area and derived-weight tests. The
+ *    authored-only IFC invariant below covers partial Qto labels without
+ *    manufacturing computed geometry.
  */
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
@@ -50,6 +49,10 @@ import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { SceneOverlayRoot } from '../../viewport-ui/scene/index.js';
 import { SourceQuantityContent } from './SourceQuantityInspection.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from '@ifc-lite/geometry';
+import { IfcParser } from '@ifc-lite/parser';
+import { fixtureModel } from '@/test/store-fixture';
+import { ensureWasm } from '@/test/scan-slab-fixture';
+import { entityRefToString } from '@/store/types';
 
 /** The shipped surfaces together: the HUD host (the bar and hint portal into
  *  it), the scene root (the world labels portal into it), the tool's
@@ -202,12 +205,17 @@ const RESET = {
   selectedEntity: null,
   selectedEntitiesSet: new Set<string>(),
   measureReferencePoint: null,
+  models: new Map(),
+  activeModelId: null,
+  ifcDataStore: null,
+  geometryResult: null,
 } as Partial<ReturnType<typeof useViewerStore.getState>>;
 
 /** Every STATIC_KEY the English pass actually found on screen, accumulated
  *  across every `it` below — checked for completeness in the final test. */
 const coveredStatic = new Set<MeasureKey>();
 const coveredParams = new Set<MeasureKey>();
+let authoredFixtureUnavailable = false;
 
 beforeEach(() => {
   setLocale('en');
@@ -247,14 +255,11 @@ const NOT_RENDERED_IN_THIS_STATE: MeasureKey[] = [
   'measure.point.rowAnchor',
   'measure.point.rowRender',
   'measure.point.anchorModelFallback',
-  // The quantities panel's declared/geometry/derived-mass rows and their
-  // footnotes need a real IfcDataStore with quantity sets, mesh geometry and
-  // material densities — see this file's own doc comment.
+  // These quantity/mass bases need source quantities or computed geometry
+  // beyond the authored NetSideArea-only IFC invariant below.
   'measure.qty.length',
-  'measure.qty.area',
   'measure.qty.volume',
   'measure.qty.weight',
-  'measure.basis.net',
   'measure.basis.gross',
   'measure.weight.massDerived',
   'measure.weight.massEstimated',
@@ -264,12 +269,9 @@ const NOT_RENDERED_IN_THIS_STATE: MeasureKey[] = [
   'measure.quantities.volumeMeshTitle',
   'measure.quantities.areaMeshLabel',
   'measure.quantities.areaMeshTitle',
-  'measure.quantities.legend',
   'measure.quantities.massLegend',
   'measure.quantities.massLegendWithEstimated',
-  // These headings appear only when a loaded model supplies authored Qto or
-  // computed mesh quantities; the unresolved selection above supplies neither.
-  'measure.quantities.authoredHeading',
+  // The metadata-only IFC fixture supplies authored Qto but no computed mesh.
   'measure.quantities.computedHeading',
   // MeasurementsVisibilityChip.tsx's own rows (#5893) — a separate,
   // always-mounted HUD chip this suite's `renderMeasure()` never renders
@@ -287,9 +289,8 @@ const NOT_RENDERED_PARAMS: MeasureKey[] = [
   'measure.readout.latLon', // needs a resolved anchor, see above
   'measure.point.rebasedNote', // needs frame.rebased, see above
   'measure.quantities.densityAmbiguous', // needs a real IfcDataStore fixture, see above
+  'measure.quantities.noDensity', // needs a proved volume and absent density; this metadata-only fixture has no geometry
   'measure.quantities.weightUnitIsForce',
-  'measure.quantities.unprovedVolume',
-  'measure.quantities.noMeshToMeasure',
   'measure.quantities.meshAreaIncomplete',
   'measure.quantities.rescaledVolume',
   'measure.chip.label', // MeasurementsVisibilityChip.tsx, see NOT_RENDERED_IN_THIS_STATE above
@@ -567,13 +568,91 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
 
     assertStaticCoverage(english, after);
     assertMarked(after, 'measure.quantities.header');
-    assertMarked(after, 'measure.quantities.elementsCount', { count: 1 });
+    assertMarked(after, 'measure.quantities.selectedPopulation', { count: 1 });
+    assertMarked(after, 'measure.quantities.coverageCounts', { authored: 0, volumes: 0, areas: 0 });
+    assert.ok(container.querySelector('[data-result-state="partial"]'), 'Unavailable measurements retain the Partial result state');
+    assert.equal(container.querySelector('[data-result-state="no-findings"]'), null);
     assertMarked(after, 'measure.quantities.nothingFound');
     assertMarked(after, 'measure.quantities.unresolvedElements', { count: 1 });
     coveredStatic.add('measure.quantities.header');
     coveredStatic.add('measure.quantities.selectPrompt'); // selectPrompt itself only shows with NO selection; covered by the prior test.
-    coveredParams.add('measure.quantities.elementsCount');
+    coveredParams.add('measure.quantities.selectedPopulation');
+    coveredParams.add('measure.quantities.coverageCounts');
     coveredParams.add('measure.quantities.unresolvedElements');
+  });
+
+  // #7184: stated IFC invariant: two selected walls, only the first has an
+  // authored area. The real parser and native quantity summary must disclose
+  // partial authored coverage, including after a live locale switch.
+  it('localizes partial authored quantity coverage and unavailable model identity (#7184)', async t => {
+    if (!ensureWasm(t)) {
+      authoredFixtureUnavailable = true;
+      return;
+    }
+    t.diagnostic(JSON.stringify({ actualRuntime: ['ifc-lite.js', 'ifc-lite_bg.wasm'].map(file => ({ file,
+      sha256: createHash('sha256').update(readFileSync(new URL('../../../../../../packages/wasm/pkg/' + file, import.meta.url))).digest('hex'),
+    })) }));
+    const bytes = new TextEncoder().encode(`ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('partial-quantities.ifc','2026-10-08T00:00:00',(),(),'fixture','fixture','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCWALL('0000000000000000000001',$,'First wall',$,$,$,$,$,$);
+#2=IFCWALL('0000000000000000000002',$,'Second wall',$,$,$,$,$,$);
+#10=IFCQUANTITYAREA('NetSideArea',$,$,12.,$);
+#11=IFCELEMENTQUANTITY('0000000000000000000011',$,'Qto_WallBaseQuantities',$,$,(#10));
+#12=IFCRELDEFINESBYPROPERTIES('0000000000000000000012',$,$,$,(#1),#11);
+#20=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#21=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
+#22=IFCUNITASSIGNMENT((#20,#21));
+#23=IFCPROJECT('0000000000000000000023',$,'Partial quantities',$,$,$,$,(),#22);
+ENDSEC;
+END-ISO-10303-21;`);
+    const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+    const model = { ...fixtureModel('partial'), name: 'Partial quantities.ifc', ifcDataStore: store };
+    useViewerStore.setState({ models: new Map([['partial', model]]), activeModelId: 'partial', ifcDataStore: store,
+      selectedEntity: { modelId: 'partial', expressId: 1 }, selectedEntitiesSet: new Set([
+        entityRefToString({ modelId: 'partial', expressId: 1 }), entityRefToString({ modelId: 'partial', expressId: 2 }),
+      ]) });
+    const container = renderMeasure();
+    openSection(container, 'Qty');
+    const english = new Set<string>();
+    addReadable(document.body, english);
+    assert.ok(container.querySelector('[data-status="partial"]'), 'One authored row for two selected walls has Partial coverage');
+    const areaLabel = [...container.querySelectorAll('span')].find(node => node.textContent?.trim() === 'Area net');
+    assert.ok(areaLabel, 'The actual authored NetSideArea has its own quantity row');
+    assert.equal(areaLabel.nextElementSibling?.textContent, '12 m²', 'The parsed IFC area is displayed in SI square metres');
+    assert.equal(areaLabel.nextElementSibling?.nextElementSibling?.textContent, '1/2', 'Only one of the two selected IFC walls contributes authored area');
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = new Set<string>();
+    addReadable(document.body, after);
+    assertStaticCoverage(english, after);
+    assertMarked(after, 'measure.quantities.selectedPopulation', { count: 2 });
+    assertMarked(after, 'measure.quantities.coverageCounts', { authored: 1, volumes: 0, areas: 0 });
+    assertMarked(after, 'measure.quantities.authoredIncomplete');
+    assertMarked(after, 'measure.quantities.authoredHeading');
+    // The row joins these two labels into one text node; assert each actual
+    // translated DOM token before recording their individual coverage.
+    assertMarked(after, 'measure.qty.area');
+    assertMarked(after, 'measure.basis.net');
+    coveredStatic.add('measure.qty.area');
+    coveredStatic.add('measure.basis.net');
+    assertMarked(after, 'measure.quantities.unprovedVolume', { count: 2 });
+    assertMarked(after, 'measure.quantities.noMeshToMeasure', { count: 2 });
+    coveredParams.add('measure.quantities.unprovedVolume');
+    coveredParams.add('measure.quantities.noMeshToMeasure');
+    coveredParams.add('measure.quantities.selectedPopulation');
+    coveredParams.add('measure.quantities.coverageCounts');
+
+    act(() => useViewerStore.setState({ selectedEntity: { modelId: 'missing', expressId: 1 }, selectedEntitiesSet: new Set() }));
+    const unavailable = new Set<string>();
+    addReadable(document.body, unavailable);
+    assertMarked(unavailable, 'measure.quantities.unavailableModel', { id: 'missing' });
+    assert.ok(container.querySelector('[data-result-state="partial"]'), 'Unavailable measurements retain the Partial result state');
+    coveredParams.add('measure.quantities.unavailableModel');
   });
 
   it('source quantities: localized provenance, values and loading state (#6439)', () => {
@@ -704,7 +783,11 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     assertStaticCoverage(english, after);
   });
 
-  it('accounts for every key across all renders, or a documented reason', () => {
+  it('accounts for every key across all renders, or a documented reason', t => {
+    if (authoredFixtureUnavailable) {
+      t.skip('Full Measure localization accounting requires the actual authored IFC fixture; run pnpm build:wasm:fetch');
+      return;
+    }
     const uncoveredStatic = STATIC_KEYS.filter(
       (key) => !coveredStatic.has(key) && !NOT_RENDERED_IN_THIS_STATE.includes(key),
     );

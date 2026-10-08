@@ -164,6 +164,35 @@ test('#7139 source-empty transport missing classification inventories has an unk
   assert.deepEqual(row.classifications, []);
 });
 
+// #7139 graph-proved assignments to absent/wrong-type records are unreadable,
+// rather than evidence that the selected occurrence is unclassified.
+test('#7139 unreadable classification targets preserve known association counts', async t => {
+  const fixture = new URL('../../../../../../tests/models/ara3d/AC20-FZK-Haus.ifc', import.meta.url);
+  let bytes: Uint8Array;
+  try { bytes = new Uint8Array(await readFile(fixture)); }
+  catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') { t.skip('run pnpm fixtures to fetch AC20-FZK-Haus.ifc'); return; }
+    throw error;
+  }
+  const source = await parseStep(bytes); seedModel('broken-target', 0, source, 20909);
+  const view = getOrCreateMutationView(useViewerStore, 'broken-target'); assert.ok(view);
+  const readbacks: Row[] = [];
+  for (const targetId of [999999, 20909]) {
+    view.setPositionalAttribute(21173, 5, `#${targetId}`);
+    const file = await exportAndReparse('broken-target', source);
+    assert.deepEqual(file.onDemandClassificationMap?.get(20909), [targetId]);
+    if (targetId === 999999) assert.equal(file.entityIndex.byId.has(targetId), false);
+    else assert.equal(file.entities.getTypeName(targetId), 'IfcSpace');
+    seedModel(`readback-${targetId}`, 0, file, 20909);
+    readbacks.push(rows()[0]);
+  }
+  for (const row of readbacks) {
+    assert.equal(row.classificationCount, 1);
+    assert.deepEqual(row.classifications.map(reference => [reference.Name, reference.system, reference.verification]),
+      [[null, null, 'unverified']]);
+  }
+});
+
 // #7139 full counts and bounded text/rows are measured on real public authored references.
 test('#7139 authored classification fan-out is sampled with full known counts', async () => {
   const source = await readFile(new URL('../../../../public/samples/building-architecture.ifc', import.meta.url), 'utf8');

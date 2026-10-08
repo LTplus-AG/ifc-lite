@@ -42,8 +42,11 @@ export function ListResultChrome({ result, visibleCount, filters, actions, child
 /** The engine records matches, while only an explicit empty snapshot proves no applicable population. */
 export function ListResultEmptyState({ result }: { result: ListResult }) {
   const { t } = useTranslation();
+  const models = listRunModels(result);
+  const unevaluated = !listRunDefinition(result) || !models || models.omittedModels.length > 0 || models.unavailableSnapshotModels > 0;
   const kind = result.rows.length > 0 ? 'filtered' : result.totalCount > 0 ? 'partial'
-    : listRunModels(result)?.emptyPopulation ? 'no-population' : 'no-findings';
+    : models?.emptyPopulation ? 'no-population' : unevaluated ? 'partial' : 'no-findings';
   return <ResultState kind={kind} title={t(kind === 'filtered' ? 'lists.resultChrome.noVisibleRows'
-    : kind === 'partial' ? 'lists.resultChrome.noReturnedRows' : kind === 'no-population' ? 'lists.resultChrome.noPopulation' : 'lists.resultsTable.noRows')} />;
+    : kind === 'partial' ? result.totalCount > 0 ? 'lists.resultChrome.noReturnedRows' : 'lists.resultChrome.incompleteEvaluation'
+      : kind === 'no-population' ? 'lists.resultChrome.noPopulation' : 'lists.resultsTable.noRows')} />;
 }

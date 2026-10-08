@@ -196,6 +196,8 @@ it('#7166 selected entities from a removed snapshot model disclose incomplete sc
   assert.equal(Boolean(run.ui.querySelector('[data-result-state="no-population"]')), false, 'selected source members were unavailable, not absent');
   assert.match(region(run.ui).textContent ?? '', /Partial/);
   assert.match(region(run.ui).textContent ?? '', /unavailable model/);
+  assert.equal(Boolean(run.ui.querySelector('[data-result-state="no-findings"]')), false, 'unavailable selected members are not no findings');
+  assert.ok(run.ui.querySelector('[data-result-state="partial"]'), 'incomplete evaluation has an honest empty state');
 });
 
 it('#7166 native model-tag scope with zero targeted models refuses before any successful result', async () => {
@@ -260,4 +262,24 @@ it('#7166 unavailable matched rows remain distinct from live filtering over retu
   await act(async () => { useViewerStore.getState().setListResult(carryListRun(actual, { ...actual, rows: [] }, executed)); });
   assert.ok(run.ui.querySelector('[data-result-state="partial"]'), 'no returned matches disclose partial availability');
   assert.equal(Boolean(run.ui.querySelector('[data-result-state="filtered"]')), false, 'unreturned population is not a filter-empty state');
+});
+
+it('#7166 native regrouping of an unrecorded result cannot create executed-source provenance', async () => {
+  const run = await setup(); await run.run();
+  const actual = useViewerStore.getState().listResult; assert.ok(actual);
+  await act(async () => { useViewerStore.getState().setListResult({ ...actual }); });
+  const unknown = run.ui.querySelector('section[aria-label="Unrecorded list source results"]'); assert.ok(unknown);
+  const options = unknown.querySelector('button[aria-label="Column options"]'); assert.ok(options);
+  press(options, 'ArrowDown');
+  await waitFor(() => [...document.querySelectorAll('[role="menuitem"]')].some(item => item.textContent?.includes('Group by this column')), 'native column grouping menu');
+  const group = [...document.querySelectorAll('[role="menuitem"]')].find(item => item.textContent?.includes('Group by this column')); assert.ok(group);
+  click(group);
+  await waitFor(() => Boolean(useViewerStore.getState().listResult?.groups?.length), 'actual native unrecorded rows regroup');
+  const regrouped = useViewerStore.getState().listResult; assert.ok(regrouped);
+  assert.equal(regrouped.groups?.[0].label, run.guid);
+  assert.equal(regrouped.rows[0].values[0], run.guid);
+  assert.equal(listRunDefinition(regrouped), null, 'grouping cannot reconstruct what produced these rows');
+  const stillUnknown = run.ui.querySelector('section[aria-label="Unrecorded list source results"]'); assert.ok(stillUnknown);
+  assert.match(stillUnknown.textContent ?? '', /Outcome unknown/);
+  assert.doesNotMatch(stillUnknown.textContent ?? '', /Captured architecture.ifc/);
 });

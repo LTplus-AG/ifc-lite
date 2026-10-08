@@ -63,7 +63,8 @@ export function recordListRun(result: ListResult, definition: ListDefinition, st
  * keeps the original run's stamp: its rows are no fresher than that run.
  */
 export function carryListRun(from: ListResult, to: ListResult, definition: ListDefinition): ListResult {
-  runDefinitions.set(to, definition);
+  // Regrouping can carry an executed source, but cannot reconstruct an unrecorded one.
+  if (runDefinitions.has(from)) runDefinitions.set(to, definition);
   const models = runModels.get(from);
   if (models) runModels.set(to, models);
   const stamp = analysisStampOf(from);

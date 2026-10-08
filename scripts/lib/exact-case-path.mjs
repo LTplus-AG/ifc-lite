@@ -34,7 +34,8 @@ import { join } from 'node:path';
 function readNames(root, dir) {
   try {
     return new Set(readdirSync(join(root, dir)));
-  } catch {
+  } catch (err) {
+    console.warn(`[exact-case-path] cannot list ${join(root, dir)} to verify its spelling`, err);
     return null;
   }
 }

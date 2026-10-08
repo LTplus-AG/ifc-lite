@@ -14,6 +14,7 @@
  */
 
 import { evaluateAutoColorLens, evaluateLens, type Lens } from '@ifc-lite/lens';
+import type { CapturedEntityScope } from '@ifc-lite/rules';
 import type { ViewerState } from '@/store';
 import { createLensDataProvider } from '@/lib/lens';
 import { evaluateLensGroups } from '@/lib/lens/evaluate-lens-groups';
@@ -21,10 +22,11 @@ import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags
 import type { LensProposal } from './lens-proposal';
 import { populationOf, revisionOf, type ArtifactPreview, type PreviewBucket } from './preview-shared';
 
-export async function previewLens(proposal: LensProposal, state: ViewerState, signal?: AbortSignal): Promise<ArtifactPreview> {
+export async function previewLens(proposal: LensProposal, state: ViewerState, signal?: AbortSignal, capturedScope?: CapturedEntityScope): Promise<ArtifactPreview> {
   const id = `lens-${crypto.randomUUID()}`;
   const { name, rules, autoColor } = proposal.lens;
   const lens: Lens = autoColor ? { id, name, rules: [], autoColor } : { id, name, rules };
+  if (capturedScope) lens.capturedScope = capturedScope;
   const provider = createLensDataProvider(state.models, state.ifcDataStore, state.mutationViews, (globalId) => state.resolveGlobalIdFromModels(globalId));
   let colored: number[];
   let buckets: PreviewBucket[];

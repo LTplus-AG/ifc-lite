@@ -31,14 +31,13 @@ export function useActiveSchemaVersion(): string | undefined {
 }
 
 export function SearchModalFilterSelector() {
-  const limit = useViewerStore((s) => s.searchFilter.limit);
   const groups = useViewerStore((s) => s.searchFilter.groups);
   const setSearchFilter = useViewerStore((s) => s.setSearchFilter);
   const schemaVersion = useActiveSchemaVersion();
 
   const handleChange = useCallback(
-    (nextGroups: FilterGroup[]) => setSearchFilter({ groups: nextGroups, limit }),
-    [limit, setSearchFilter],
+    (nextGroups: FilterGroup[]) => setSearchFilter({ ...useViewerStore.getState().searchFilter, groups: nextGroups }),
+    [setSearchFilter],
   );
 
   return (

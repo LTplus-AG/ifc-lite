@@ -31,12 +31,13 @@
  * fields do.
  */
 
+import type { DrawingSheet } from '@ifc-lite/drawing-2d';
 import { useEffect, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice.js';
 import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
-import { loadDrawing2DEntry, defaultMarkupPatch, suppressNextSaveFor } from '@/store/slices/drawing2DSlice.persistence.js';
+import { loadDrawing2DEntry, defaultMarkupPatch, suppressNextSaveFor, type PersistedDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
 import { setCachedHash, notifyDecided } from './drawingMarkupRestorePrecedence.js';
 import { resetSaveState, beginRestore, endRestore, setRestoredSectionConfig, ensureSaveSubscription } from './drawingMarkupSave.js';
 import { ensureSheetPersistence, hasUnsavedSheetEdit, settleSheetHash } from './sheetPersistence.js';
@@ -156,7 +157,7 @@ export function useDrawing2DPersistence(): void {
     // restore time was drawn while the key was resolving (#7035: that can
     // last until the load ends when a legacy entry is being moved). Only the
     // asynchronous path passes it; the cached path restores at once.
-    const applyHash = (hash: string | null, skipDxfRestore = false, drawnMeanwhile: UnionById = (stored) => stored) => {
+    const applyHash = (hash: string | null, skipDxfRestore = false, drawnMeanwhile: UnionById = (stored) => stored, fallback?: PersistedDrawing2DEntry) => {
       if (!stillCurrent()) return;
       endRestore(activeModelId);
       if (!hash) return;
@@ -181,7 +182,7 @@ export function useDrawing2DPersistence(): void {
       else void restoreDxfUnderlaysFor(hash, stillCurrent).then(moveLegacy, moveLegacy);
 
       const defaults = getDefaultDrawing2DState().drawing2DDisplayOptions;
-      const entry = loadDrawing2DEntry(hash, defaults);
+      const entry = fallback ?? loadDrawing2DEntry(hash, defaults);
       if (!entry) return;
 
       setRestoredSectionConfig(activeModelId, entry.sectionConfig);
@@ -196,14 +197,14 @@ export function useDrawing2DPersistence(): void {
     };
 
     const sourceFile = activeSourceFile;
-    const settleHash = (hash: string | null) => {
-      settleSheetHash(activeModelId, hash, sourceFile);
+    const settleHash = (hash: string | null, fallback?: DrawingSheet) => {
+      settleSheetHash(activeModelId, hash, sourceFile, fallback);
       return settleDxfUnderlayHash(activeModelId, hash);
     };
-    const cacheHash = (hash: string | null) => {
+    const cacheHash = (hash: string | null, retry = false, legacyMarkupKey?: string) => {
       if (useViewerStore.getState().models.get(activeModelId)?.sourceFile !== sourceFile) return false;
-      if (sourceFile) sourceHashes.set(sourceFile, hash);
-      setCachedHash(activeModelId, hash);
+      if (sourceFile && !retry) sourceHashes.set(sourceFile, hash);
+      setCachedHash(activeModelId, hash, legacyMarkupKey);
       return true;
     };
     const cached = sourceFile ? sourceHashes.get(sourceFile) : undefined;
@@ -228,9 +229,9 @@ export function useDrawing2DPersistence(): void {
 
     drawingKey()
       .then(async (key) => {
-        const hash = await key.resolveDrawingPersistenceKey(activeModelId, sourceFile, keyHost);
-        if (!cacheHash(hash)) { settleSheetHash(activeModelId, hash, sourceFile); return; }
-        applyHash(hash, settleHash(hash), key.unionById);
+        const { key: hash, local } = await key.resolveDrawingPersistenceKey(activeModelId, sourceFile, keyHost);
+        if (!cacheHash(hash, local?.retry, local?.legacyMarkupKey)) { settleSheetHash(activeModelId, hash, sourceFile, local?.sheet); return; }
+        applyHash(hash, settleHash(hash, local?.sheet), key.unionById, local?.markup);
         notifyDecided(activeModelId);
       })
       .catch((err) => {

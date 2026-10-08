@@ -641,7 +641,10 @@ only when some old-shaped entry is stored, only after the model has finished
 loading, and once per file: an identity that has been checked is remembered.
 That pass is counted as `hash.drawingLegacyKey`, apart from `hash.fullSource`.
 Each move writes under the identity key, reads it back and only then removes
-the old entry.
+the old entry. When a quota failure prevents that write, restore still uses
+the readable merged entry while retaining the original and retrying the move
+on the next activation. A cleared sheet is an explicit stored choice, so a
+legacy sheet cannot revive it.
 
 Verdict: structural win (one pass per load instead of two), no timing claim.
 The removed pass ran beside the load, not in front of it.

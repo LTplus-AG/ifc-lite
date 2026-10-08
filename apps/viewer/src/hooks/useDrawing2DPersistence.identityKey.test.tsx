@@ -25,7 +25,7 @@ import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store';
 import type { Measure2DResult } from '@/store/slices/drawing2DSlice.js';
 import { keyFor, loadDrawing2DEntry, saveDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
-import { sheetStorageKey } from '@/store/slices/sheetSlice.persistence';
+import { saveSheet, sheetStorageKey } from '@/store/slices/sheetSlice.persistence';
 import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
 import { hasPersistedMarkupEntryFor, useDrawing2DPersistence } from './useDrawing2DPersistence.js';
 
@@ -276,7 +276,12 @@ describe('markup saved under the legacy key is moved to the identity key (#7035)
       realSetItem(key, value);
     });
     try {
-      await open(loadedModel('first', sourceFile(bytes), bytes));
+      const file = sourceFile(bytes);
+      await open(loadedModel('first', file, bytes));
+      assert.deepEqual(liveMeasures(), ['legacy-1'], 'quota failure still restores readable legacy markup (#7035)');
+      assert.equal(hasPersistedMarkupEntryFor('first'), true, 'the legacy fallback still outranks IFC-embedded markup');
+      await open(loadedModel('again', file, bytes));
+      assert.deepEqual(liveMeasures(), ['legacy-1'], 'reactivation with the same File retries the failed migration');
     } finally {
       quota.mock.restore();
     }
@@ -432,6 +437,34 @@ describe('markup saved under the legacy key is moved to the identity key (#7035)
     await waitFor(() => hasPersistedMarkupEntryFor('m1') !== 'pending', 'the restore to settle');
     assert.deepEqual(liveMeasures(), ['drawn-in-other-tab', 'legacy-1']);
     assert.deepEqual(storedMeasures(identityOf(bytes)), ['drawn-in-other-tab', 'legacy-1'], 'the other tab\'s entry is not overwritten');
+  });
+
+  it('an explicit cleared sheet stays cleared when a previous viewer writes the legacy sheet again (#7035)', async () => {
+    const bytes = bytesOf(71);
+    useViewerStore.getState().createSheet({ paperId: 'A4_PORTRAIT' });
+    const sheet = useViewerStore.getState().activeSheet!;
+    saveSheet(identityOf(bytes), null);
+    localStorage.setItem(sheetStorageKey(legacyKeyOf(bytes)), JSON.stringify({ sheet, savedAt: 1 }));
+    await open(loadedModel('m1', sourceFile(bytes), bytes));
+    assert.equal(useViewerStore.getState().activeSheet, null, 'clearing is a saved choice, not a missing entry');
+    assert.equal(localStorage.getItem(sheetStorageKey(legacyKeyOf(bytes))), null, 'superseded legacy sheet is removed');
+  });
+
+  it('a readable legacy sheet restores when the identity-key write fails (#7035)', async () => {
+    const bytes = bytesOf(72);
+    useViewerStore.getState().createSheet({ paperId: 'A4_PORTRAIT' });
+    const sheet = useViewerStore.getState().activeSheet!;
+    localStorage.setItem(sheetStorageKey(legacyKeyOf(bytes)), JSON.stringify({ sheet, savedAt: 1 }));
+    const realSetItem = localStorage.setItem.bind(localStorage);
+    const quota = mock.method(localStorage, 'setItem', (key: string, value: string) => {
+      if (key === sheetStorageKey(identityOf(bytes))) throw new Error('simulated quota exceeded');
+      realSetItem(key, value);
+    });
+    try {
+      await open(loadedModel('m1', sourceFile(bytes), bytes));
+      assert.deepEqual(useViewerStore.getState().activeSheet, sheet, 'the readable sheet is shown even before migration can succeed');
+      assert.ok(localStorage.getItem(sheetStorageKey(legacyKeyOf(bytes))), 'an unconfirmed move retains its original');
+    } finally { quota.mock.restore(); }
   });
 
   it('a sheet saved under the legacy key is moved with it', async () => {

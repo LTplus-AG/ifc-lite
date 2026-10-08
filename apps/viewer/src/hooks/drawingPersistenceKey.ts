@@ -150,19 +150,23 @@ function legacyLocalKeys(): string[] {
  * entry is found on the load that migrates it and still outranks IFC-embedded
  * markup.
  */
-export async function resolveDrawingPersistenceKey(modelId: string, file: File, host: DrawingKeyHost): Promise<string | null> {
+export interface DrawingPersistenceResolution { key: string | null; local?: import('./drawingLegacyKeyMigration.js').LegacyLocalRestore }
+
+export async function resolveDrawingPersistenceKey(modelId: string, file: File, host: DrawingKeyHost): Promise<DrawingPersistenceResolution> {
   const key = await identityOf(modelId, file, host);
   const legacy = key ? legacyLocalKeys() : [];
   if (key && legacy.length) {
     try {
-      await (await legacyMove()).migrateLegacyLocalEntries(key, legacy, moveContext(modelId, file, host));
+      const local = await (await legacyMove()).migrateLegacyLocalEntries(key, legacy, moveContext(modelId, file, host));
+      return { key, local };
     } catch (err) {
       // The legacy entry is untouched; the next load moves it and merges it
       // with whatever this session saves under `key`.
       console.warn('[drawing2D] legacy markup not moved', err);
+      return { key, local: { retry: true } };
     }
   }
-  return key;
+  return { key };
 }
 
 /** After `key`'s restore has settled: move DXF underlays still stored under a legacy key. They merge additively, so they never hold the restore. */

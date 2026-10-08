@@ -37,7 +37,7 @@
  * stored time cannot decide here: the restore that runs before this move
  * saves the identity entry again, so it always looks newer.
  *
- * Sheet: the identity-key sheet when there is one, else the legacy sheet.
+ * Sheet: the identity-key choice (including an explicit clear), else the legacy sheet.
  */
 // TODO(remove-by: browsers no longer hold drawing entries under a bare SHA-256 key, maintainers): delete this module and its two callers in `drawingPersistenceKey.ts` (#7035).
 
@@ -45,9 +45,18 @@ import { perfTally } from '@ifc-lite/load-trace';
 import { useViewerStore } from '@/store';
 import { sha256Hex } from '@/utils/sourceContentHash.js';
 import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice.js';
-import { keyFor, loadDrawing2DEntry, saveDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
-import { loadSheet, saveSheet, sheetStorageKey } from '@/store/slices/sheetSlice.persistence';
+import { keyFor, loadDrawing2DEntry, saveDrawing2DEntry, type PersistedDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
+import { hasSavedSheetChoice, loadSheet, saveSheet, sheetStorageKey } from '@/store/slices/sheetSlice.persistence';
+import type { DrawingSheet } from '@ifc-lite/drawing-2d';
 import type { LegacyMoveContext } from './drawingPersistenceKey.js';
+
+export interface LegacyLocalRestore {
+  retry: boolean;
+  markup?: PersistedDrawing2DEntry;
+  legacyMarkupKey?: string;
+  sheet?: DrawingSheet;
+}
+interface LocalMove<T> { complete: boolean; fallback?: T }
 
 const legacyKeys = new WeakMap<File, Promise<string | null>>();
 
@@ -141,12 +150,12 @@ const holdsAll = (stored: { id: string }[], moved: { id: string }[]) => {
   return moved.every((item) => ids.has(item.id));
 };
 
-/** Returns `false` when the legacy markup could not be confirmed under `key` (the legacy entry is then untouched) or could not be removed afterwards. */
-function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveContext['unionById']): boolean {
+/** Keeps readable merged markup as a restore fallback until the write is confirmed; incomplete moves retry on activation. */
+function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveContext['unionById']): LocalMove<PersistedDrawing2DEntry> {
   const defaults = getDefaultDrawing2DState().drawing2DDisplayOptions;
   const raw = localStorage.getItem(keyFor(legacy));
   const old = loadDrawing2DEntry(legacy, defaults);
-  if (!old) return true;
+  if (!old) return { complete: true };
   const current = loadDrawing2DEntry(key, defaults);
   // `later` was saved last and wins what the two entries share.
   const later = current && current.savedAt >= old.savedAt ? current : old;
@@ -167,20 +176,20 @@ function moveLegacyMarkup(key: string, legacy: string, unionById: LegacyMoveCont
   const written = loadDrawing2DEntry(key, defaults);
   const same = (pick: (entry: typeof merged) => unknown) => !!written && JSON.stringify(pick(written)) === JSON.stringify(pick(merged));
   if (!MARKUP_LISTS.every((list) => same((entry) => entry[list]))
-    || !same((entry) => entry.sectionConfig) || !same((entry) => entry.drawing2DDisplayOptions)) return false;
-  return removeLocal(keyFor(legacy), raw);
+    || !same((entry) => entry.sectionConfig) || !same((entry) => entry.drawing2DDisplayOptions)) return { complete: false, fallback: merged };
+  return { complete: removeLocal(keyFor(legacy), raw) };
 }
 
-/** Returns `false` when the legacy sheet could not be confirmed under `key` (the legacy entry is then untouched) or could not be removed afterwards. */
-function moveLegacySheet(key: string, legacy: string): boolean {
+/** Keeps a readable legacy sheet available when its identity-key write fails, while respecting explicit clears. */
+function moveLegacySheet(key: string, legacy: string): LocalMove<DrawingSheet> {
   const raw = localStorage.getItem(sheetStorageKey(legacy));
   const old = loadSheet(legacy);
-  if (!old) return true;
-  if (!loadSheet(key)) {
+  if (!old) return { complete: true };
+  if (!hasSavedSheetChoice(key)) {
     saveSheet(key, old);
-    if (!loadSheet(key)) return false;
+    if (!loadSheet(key)) return { complete: false, fallback: old };
   }
-  return removeLocal(sheetStorageKey(legacy), raw);
+  return { complete: removeLocal(sheetStorageKey(legacy), raw) };
 }
 
 /**
@@ -188,14 +197,17 @@ function moveLegacySheet(key: string, legacy: string): boolean {
  * was already checked or the model closed first. `present` are the localStorage
  * keys of the legacy entries stored right now.
  */
-export async function migrateLegacyLocalEntries(key: string, present: string[], ctx: LegacyMoveContext): Promise<void> {
+export async function migrateLegacyLocalEntries(key: string, present: string[], ctx: LegacyMoveContext): Promise<LegacyLocalRestore> {
   const legacy = await legacyKeyToMove('local', key, present, ctx);
-  if (!legacy) return;
+  if (!legacy) return { retry: false };
   const markup = moveLegacyMarkup(key, legacy, ctx.unionById);
   const sheet = moveLegacySheet(key, legacy);
   // Checked against what is left: an entry that reappears under a removed key is new.
   const removed = [keyFor(legacy), sheetStorageKey(legacy)].filter((moved) => localStorage.getItem(moved) === null);
-  if (markup && sheet) markChecked('local', key, present.filter((other) => !removed.includes(other)));
+  const complete = markup.complete && sheet.complete;
+  if (complete) markChecked('local', key, present.filter((other) => !removed.includes(other)));
+  return { retry: !complete, ...(markup.fallback ? { markup: markup.fallback, legacyMarkupKey: legacy } : {}),
+    ...(sheet.fallback ? { sheet: sheet.fallback } : {}) };
 }
 
 // ── DXF underlays (IndexedDB) ────────────────────────────────────────

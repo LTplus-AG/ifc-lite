@@ -14,7 +14,7 @@ export interface LoadTraceProbe {
   loadPath?: string;
   /** Finished spans among `READINESS_SPANS`. */
   done: string[];
-  /** Finished spans among `READINESS_SPANS` that carry `error: true`. */
+  /** Failure markers from every span, including unfinished work. */
   failed: string[];
 }
 
@@ -24,6 +24,29 @@ export interface LoadTraceProbe {
  * post-stream rebuild (`scene.finalize`, recorded by the scene itself).
  */
 export const READINESS_SPANS = ['parser.complete', 'parser.failed', 'cache.storeReady', 'geometry.streamComplete', 'scene.finalize'] as const;
+
+
+/** Self-contained page callback: Playwright serializes this function without
+ * its module closure. Completion filtering must never hide failures (#7180).
+ */
+export function probePageLoadTrace({ key, names }: { key: string; names: readonly string[] }): LoadTraceProbe | null {
+  type Span = { name: string; end: number | null; attrs?: Record<string, unknown> };
+  const api = (globalThis as unknown as Record<string, {
+    latest?: () => { end: number | null; spans: Span[]; attrs?: { loadPath?: unknown } } | null;
+  } | undefined>)[key];
+  const snapshot = api?.latest?.() ?? null;
+  if (!snapshot) return null;
+  const done: string[] = [];
+  const failed: string[] = [];
+  for (const span of snapshot.spans) {
+    if (span.name === 'parser.failed' || span.attrs?.error === true) failed.push(span.name);
+    if (span.end !== null && names.includes(span.name)) done.push(span.name);
+  }
+  return {
+    ended: snapshot.end !== null, done, failed,
+    loadPath: typeof snapshot.attrs?.loadPath === 'string' ? snapshot.attrs.loadPath : undefined,
+  };
+}
 
 export function metadataCompletionSpan(loadPath: string | undefined): 'parser.complete' | 'cache.storeReady' {
   return loadPath === 'cache' ? 'cache.storeReady' : 'parser.complete';
@@ -82,13 +105,14 @@ export async function waitForMetadataRenderReadiness(options: {
     const done = new Set(probe?.done ?? []);
     const failed = new Set(probe?.failed ?? []);
     const metadataSpan = metadataCompletionSpan(probe?.loadPath);
-    if (done.has('parser.failed') || failed.has(metadataSpan) || (!probe && legacy.metadataFailed)) {
+    if (done.has('parser.failed') || failed.has('parser.failed') || failed.has(metadataSpan) || (!probe && legacy.metadataFailed)) {
       throw new Error('Metadata failed before metadata/render readiness');
     }
     if (failed.has('geometry.streamComplete')) throw new Error('Geometry failed before metadata/render readiness');
     if (failed.has('scene.finalize') || logs.some(log => RENDERER_INIT_FAILED.test(log))) {
       throw new Error('Renderer failed before metadata/render readiness');
     }
+    if (failed.size > 0) throw new Error(`Load failed before metadata/render readiness: ${[...failed].join(', ')}`);
     const metadata = probe ? done.has(metadataSpan) : legacy.metadata;
     const geometry = probe ? done.has('geometry.streamComplete') : legacy.geometry;
     // A present probe is authoritative for every completion, including the

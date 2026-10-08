@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tsImport } from 'tsx/esm/api';
-const { waitForMetadataRenderReadiness } = await tsImport('../tests/benchmark/metadata-render-readiness.ts', import.meta.url);
+const { waitForMetadataRenderReadiness, probePageLoadTrace, READINESS_SPANS } = await tsImport('../tests/benchmark/metadata-render-readiness.ts', import.meta.url);
 
 /**
  * #6979: readiness comes from the load-trace spans. Each event lands at `at`
@@ -124,5 +124,44 @@ test('#7036 actual geometry stream error refuses both fresh and cache readiness'
     const input=scenario({loadPath,metadataSpan:loadPath==='cache'?'cache.storeReady':'parser.complete'});
     const original=input.trace;input.trace=async()=>{const state=await original();return {...state,failed:state.done.includes('geometry.streamComplete')?['geometry.streamComplete']:[]};};
     await assert.rejects(waitForMetadataRenderReadiness(input),/Geometry failed/);
+  }
+});
+
+// Execute the exact callback passed to page.evaluate against the canonical
+// recorder, then consume that projection through readiness (#7180).
+const { createLoadTracer } = await tsImport('../packages/load-trace/src/load-trace.ts', import.meta.url);
+for (const failure of ['parser.failed', 'worker.scan']) {
+  test(`#7180 page callback preserves unfinished ${failure} before readiness filtering`, async () => {
+    const key = `__7180_probe_${failure}`;
+    const tracer = createLoadTracer({ enabled: true, now: () => 20, sink: null, counters: null });
+    const trace = tracer.startLoad('failed-load', { loadPath: 'wasm' }, 0);
+    for (const name of ['parser.complete', 'geometry.streamComplete', 'scene.finalize']) trace.milestone(name, 10);
+    trace.begin(failure, failure === 'parser.failed' ? undefined : { error: true });
+    globalThis[key] = tracer;
+    try {
+      const input = scenario();
+      input.trace = async () => probePageLoadTrace({ key, names: READINESS_SPANS });
+      await assert.rejects(waitForMetadataRenderReadiness(input), failure === 'parser.failed' ? /Metadata failed/ : /Load failed.*worker.scan/);
+    } finally {
+      delete globalThis[key];
+    }
+  });
+}
+test('#7180 page callback allows ordinary unfinished work without waiting for root finish', async () => {
+  const key = '__7180_probe_ordinary';
+  const tracer = createLoadTracer({ enabled: true, now: () => 20, sink: null, counters: null });
+  const trace = tracer.startLoad('ready-load', { loadPath: 'wasm' }, 0);
+  for (const name of ['parser.complete', 'geometry.streamComplete', 'scene.finalize']) trace.milestone(name, 10);
+  trace.begin('worker.scan');
+  globalThis[key] = tracer;
+  try {
+    const input = scenario({ canvasAt: 0 });
+    input.trace = async () => probePageLoadTrace({ key, names: READINESS_SPANS });
+    const elapsed = input.now;
+    input.now = () => 20 + elapsed();
+    assert.equal(await waitForMetadataRenderReadiness(input), 20);
+    assert.equal(probePageLoadTrace({ key, names: READINESS_SPANS }).ended, false);
+  } finally {
+    delete globalThis[key];
   }
 });

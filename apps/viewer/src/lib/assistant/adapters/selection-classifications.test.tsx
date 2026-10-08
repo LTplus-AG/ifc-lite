@@ -225,6 +225,7 @@ test('#7139 authored classification paths retain native order and bounded ancest
   const file = await exportAndReparse('path', store);
   const native = extractClassificationsOnDemand(file, 52)[0];
   assert.equal(native.system, 'Path system');
+  assert.ok(native.path);
   assert.deepEqual(native.path, Array.from({ length: 20 }, (_, i) => `Level ${i}`));
   const row = rows()[0];
   assert.ok(Array.isArray(row.classifications), 'native classification path must be included');

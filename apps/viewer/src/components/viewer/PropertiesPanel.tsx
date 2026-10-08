@@ -30,7 +30,6 @@ import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeNa
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
 import type { ZoneSet } from '@/lib/zones';
-import { overlayClassifications } from '@/lib/authoring/association-overlay';
 import { effectiveMaterials, effectiveMaterialProperties } from './properties/effectiveMaterials';
 import { withInheritedTypeQuantities } from '@/lib/zones/inherited-quantities';
 import { CoordVal, CoordRow } from './properties/CoordinateDisplay';
@@ -610,8 +609,7 @@ export function PropertiesPanel() {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return [];
     const view = mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId);
-    return [...extractClassificationsOnDemand(dataStore as IfcDataStore, lookupExpressId),
-      ...overlayClassifications(view, [selectedEntity.expressId, lookupExpressId], dataStore.schemaVersion, dataStore as IfcDataStore)]; // session-created (#5876)
+    return extractClassificationsOnDemand(dataStore as IfcDataStore, selectedEntity.expressId, view);
   }, [selectedEntity, lookupExpressId, model, ifcDataStore, mutationViews, mutationVersion]);
 
   // Extract materials for the selected entity from the IFC data store —

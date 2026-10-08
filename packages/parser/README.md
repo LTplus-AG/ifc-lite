@@ -90,6 +90,8 @@ const material = extractMaterialsOnDemand(store, wallId);
 //   { name: 'Concrete C30/37', layers: [{ name: 'Concrete', thickness: 0.15 }, ...] }
 
 const classifications = extractClassificationsOnDemand(store, wallId);
+// Pass a native mutation view to read current classification edits before export.
+// const currentClassifications = extractClassificationsOnDemand(store, wallId, mutationView);
 //   [{ system: 'Uniclass 2015', identification: 'Pr_60_10_32', name: 'External walls', ... }]
 ```
 

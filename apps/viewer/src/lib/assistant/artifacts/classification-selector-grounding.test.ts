@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs';
 import { afterEach, test } from 'node:test';
 import { evaluateFilterGroupsFederated } from '@ifc-lite/rules';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { EMPTY_SOURCE_BYTES } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { configureMutationView } from '@/utils/configureMutationView';
@@ -137,7 +138,7 @@ test('#7131 source-empty live classification edits explicitly refuse an unavaila
   const state = useViewerStore.getState();
   const id = [...state.models.keys()][0];
   const model = state.models.get(id)!;
-  const store = { ...model.ifcDataStore!, source: new Uint8Array() };
+  const store = { ...model.ifcDataStore!, source: EMPTY_SOURCE_BYTES };
   useViewerStore.setState({ models: new Map([[id, { ...model, ifcDataStore: store }]]) });
   const view = new MutablePropertyView(store.properties, id);
   configureMutationView(view, store);

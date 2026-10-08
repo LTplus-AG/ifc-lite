@@ -21,6 +21,13 @@ const records = new WeakMap<IfcDataStore, WeakMap<ClassificationReadView, { revi
 // Native edited/created '$' denotes absent data. The canonical source reader
 // retains '*', and a quoted '$' in the original file remains literal text.
 const editValue = (value: unknown): unknown => value === '$' ? null : value;
+// Created/positional attributes use serializeStepValueAt, which trims marker
+// tokens; named STRING attributes preserve whitespace as literal text.
+const positionalValue = (value: unknown): unknown => {
+  if (typeof value !== 'string') return value;
+  const token = value.trim();
+  return token === '$' ? null : token === '*' ? '*' : value;
+};
 
 export function classificationRecord(store: IfcDataStore, expressId: number, view?: ClassificationReadView): EffectiveEntityRecord | null {
   if (view?.isDeleted(expressId)) return null;
@@ -33,14 +40,14 @@ export function classificationRecord(store: IfcDataStore, expressId: number, vie
   const created = view?.getNewEntity(expressId);
   // Source-empty stores cannot reveal source attributes through a stale accessor closure.
   // Named/positional edits may still supply a known field on an otherwise unreadable row.
-  const base = created ? { ...created, attributes: created.attributes.map(editValue) } : (store.source?.length ? store.getEntity(expressId) : {
+  const base = created ? { ...created, attributes: created.attributes.map(positionalValue) } : (store.source?.length ? store.getEntity(expressId) : {
     type: store.entities.getTypeName(expressId), attributes: [],
   });
   if (!base) return null;
   const result = resolveEffectiveEntityRecord(base, {
     retype: view?.getTypeMutations?.().get(expressId)?.newType,
     named: view?.getAttributeMutationsForEntity(expressId).map(row => [row.name, editValue(row.value)] as const) ?? [],
-    positional: [...(view?.getPositionalMutationsForEntity(expressId) ?? [])].map(([index, value]) => [index, editValue(value)] as const),
+    positional: [...(view?.getPositionalMutationsForEntity(expressId) ?? [])].map(([index, value]) => [index, positionalValue(value)] as const),
   }, store.schemaVersion);
   memo?.rows.set(expressId, result);
   return result;

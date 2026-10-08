@@ -29,10 +29,12 @@ export function hasClassificationEdits(
   });
 }
 
-/** A source-empty transport cannot reconstruct live source membership edits (#7131). */
+/** Missing source membership inputs or edits cannot prove a complete population (#7131). */
 export function classificationPopulationUnavailable(
   store: IfcDataStore | null | undefined,
   view: MutablePropertyView | null | undefined,
 ): boolean {
-  return Boolean(store && !store.source?.length && hasClassificationEdits(store, view));
+  return Boolean(store && !store.source?.length && (
+    (!store.onDemandClassificationMap && !store.relationships) || hasClassificationEdits(store, view)
+  ));
 }

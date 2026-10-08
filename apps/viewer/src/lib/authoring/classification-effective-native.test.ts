@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { readFileSync } from 'node:fs';
-import { IfcParser, extractClassificationsOnDemand, extractClassificationSystemsOnDemand } from '@ifc-lite/parser';
+import { IfcParser, extractClassificationsOnDemand, extractClassificationSystemsOnDemand, EMPTY_SOURCE_BYTES } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { evaluateFilterGroupsFederated } from '@ifc-lite/rules';
 import { useViewerStore } from '@/store';
@@ -142,7 +142,7 @@ test('#7131 federated views sharing immutable source keep their classification p
 
 test('#7131 source-empty classification reads do not recover missing source through a retained accessor closure', async () => {
   const { store, view } = await authoredAssociation();
-  const transport = { ...store, source: new Uint8Array() };
+  const transport = { ...store, source: EMPTY_SOURCE_BYTES };
   const refs = extractClassificationsOnDemand(transport, 262, view);
   assert.equal(refs[0]?.identification, 'E-AAA-WALL', 'the complete authored reference remains readable');
   assert.equal(refs[0]?.system, undefined, 'the reused source system has no readable Name');

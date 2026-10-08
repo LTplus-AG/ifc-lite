@@ -5,6 +5,7 @@ import { iterateEffectiveEntityIds, type StoreEditor, type MutablePropertyView }
 import { splitElementsInStore } from '@ifc-lite/create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerState } from '@/store';
+import { readAttributes } from '@/lib/placement-edit';
 import type { AuthoringOp, ModelAuthoringBatch } from './model-authoring';
 import { readSplitSnapshot, sameSplitSnapshot } from './model-authoring-split-state';
 import { splitCutInMetres } from './model-authoring-split-params';
@@ -17,8 +18,10 @@ type Split = Extract<AuthoringOp, { op: 'element.split' }>;
 export function uniqueSplitGuid(store: IfcDataStore, editor: StoreEditor, guid: string): boolean {
   let hits = 0;
   const view = editor.getMutationView();
+  const changed = new Set(view.getEffectiveChanges().map(change => change.entityId));
   for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
-    const native = view.getNewEntity(expressId)?.attributes[0] ?? store.entities.getGlobalId(expressId);
+    const native = changed.has(expressId) || view.getNewEntity(expressId)
+      ? readAttributes(store, view, editor, expressId)?.[0] : store.entities.getGlobalId(expressId);
     if (native === guid && ++hits > 1) return false;
   }
   return hits === 1;

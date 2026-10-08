@@ -18,6 +18,7 @@
  * counter-clockwise seen from above. Nothing here writes.
  */
 
+import { parseShapeParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
 import { parseGlobalIdTarget, parseLength, parsePoint, parseRef, parseText, record, type LengthRange } from './model-authoring-fields';
 
 export const AUTHORING_CLASSES = ['IfcWall', 'IfcSlab', 'IfcRoof', 'IfcPlate', 'IfcColumn', 'IfcBeam', 'IfcMember', 'IfcSpace'] as const;
@@ -40,7 +41,7 @@ export interface AxisParams { start: Point3; end: Point3; thickness?: number; wi
 export interface BoxParams { position: Point3; width: number; depth: number; thickness?: number; height?: number }
 
 export type AuthoringOp =
-  | { op: 'element.create'; ref: string; ifcClass: AuthoringClass; storey: StoreyTarget; name: string; params: AxisParams | BoxParams }
+  | { op: 'element.create'; ref: string; ifcClass: AuthoringClass; storey: StoreyTarget; name: string; params: AxisParams | BoxParams | ShapeParams }
   | { op: 'element.delete'; target: ExistingElement }
   /** Horizontal move by a storey-local delta; `from` optionally pins today's placement origin [x, y] in the storey. */
   | { op: 'element.move'; target: ExistingElement; delta: [number, number]; from?: [number, number] }
@@ -102,14 +103,16 @@ function element(value: unknown, at: string, refs: ReadonlyMap<string, Authoring
 
 /** A wall by its expected class, or a wall an earlier `element.create` builds. */
 function isWall(target: ElementTarget, refs: ReadonlyMap<string, AuthoringOp>): boolean {
-  if (!isNewElement(target)) return /^IfcWall/.test(target.ifcClass);
+  if (!isNewElement(target)) return target.ifcClass.startsWith('IfcWall');
   const creator = refs.get(target.ref);
   return creator?.op === 'element.create' && creator.ifcClass === 'IfcWall';
 }
 
-function createParams(value: Record<string, unknown>, ifcClass: AuthoringClass, units: AuthoringUnits, at: string): AxisParams | BoxParams {
+function createParams(value: Record<string, unknown>, ifcClass: AuthoringClass, units: AuthoringUnits, at: string): AxisParams | BoxParams | ShapeParams {
   const p = value.params;
   if (!record(p)) throw new Error(`${at} needs params`);
+  const shape = parseShapeParams(p, ifcClass, units, at);
+  if (shape) return shape;
   const length = (key: string, range: LengthRange) => parseLength(p[key], units, range, `${at} ${key}`);
   if (ifcClass === 'IfcWall' || ifcClass === 'IfcBeam' || ifcClass === 'IfcMember') {
     const start = parsePoint(p.start, units, R.coordinate, `${at} start`);
@@ -229,6 +232,8 @@ export function parseModelAuthoringBatch(answer: string): ModelAuthoringBatch {
   const refs = new Map<string, AuthoringOp>();
   const units = value.units;
   const operations = value.operations.map((op, index) => operation(op, index, units, refs));
+  const outlineWork = operations.reduce((sum, op) => sum + (op.op === 'element.create' && 'OuterCurve' in op.params ? op.params.OuterCurve.length ** 2 : 0), 0);
+  if (outlineWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`The polygon preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; split this proposal into smaller batches`);
   return { version: 1, kind: 'model.authoring', title, ...(typeof value.rationale === 'string' ? { rationale: value.rationale } : {}),
     units, frame: 'storey-local', operations };
 }

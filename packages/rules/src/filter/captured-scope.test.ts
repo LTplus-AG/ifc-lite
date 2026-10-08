@@ -92,6 +92,21 @@ describe('#7186 captured native membership', () => {
     recovered.restoreNewEntity({ ...structuredClone(original), attributes: ['same-authored-identity', null, 'Edited original fields'] });
     expect(resolveCapturedEntityScope(scope, [source('a', recovered)]).get('a')?.has(original.expressId)).toBe(true);
   });
+  it('#7186 keeps original provenance through native detached transaction commit and rollback', () => {
+    const view = new MutablePropertyView(store.properties, 'a');
+    view.setExpressIdWatermark(100000);
+    const entity = view.createEntity('IfcWall', ['atomic-authored-guid', null, 'Original wall']);
+    const creation = view.getMutations().find(mutation => mutation.type === 'CREATE_ENTITY')!;
+    const scope = scopeFor(entity.expressId, creation.id);
+    const prepared = view.prepareAtomic(draft => draft.setAttribute(entity.expressId, 'Name', 'Atomic wall edit', true));
+    prepared.commit();
+    expect(view.getNewEntity(entity.expressId)).not.toBe(entity);
+    expect(view.getNewEntity(entity.expressId)?.creationId).toBe(creation.id);
+    expect(resolveCapturedEntityScope(scope, [source('a', view)]).get('a')?.has(entity.expressId)).toBe(true);
+    prepared.rollback();
+    expect(view.getNewEntity(entity.expressId)?.creationId).toBe(creation.id);
+    expect(resolveCapturedEntityScope(scope, [source('a', view)]).get('a')?.has(entity.expressId)).toBe(true);
+  });
   it('rejects duplicate identities, duplicate members, and oversized snapshots', () => {
     const scope = scopeFor(wallId);
     expect(isCapturedEntityScope(scope)).toBe(true);

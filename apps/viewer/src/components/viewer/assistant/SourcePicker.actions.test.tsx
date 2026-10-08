@@ -61,12 +61,21 @@ test('#7160 drained native IFNS input stays offered only for its own eligible mo
       originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
       shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }, hasLargeCoordinates: false } } };
   useViewerStore.setState({ ...fixtureModels(model), clashResult: null, clashRawResult: null, clashRunning: false });
-  const ui = render(<SourcePicker current={null} onAttach={() => undefined} onCancel={null} />);
+  let attached = 0;
+  const ui = render(<SourcePicker current={null} onAttach={() => { attached++; }} onCancel={null} />);
   const run = () => Array.from(ui.querySelectorAll<HTMLButtonElement>('li[data-source="clash"] button'))
     .find(button => button.textContent?.includes('Run clash detection'));
   assert.equal(run()?.disabled, true);
   act(() => { useViewerStore.getState().appendInstancedShards(owner, [shard]); useViewerStore.getState().clearInstancedShards(); });
   assert.equal(run()?.disabled, false, 'queue drain and absent optional hashes do not erase native input availability');
+  // Input delivery cannot stand in for live renderer residency. The actual native host refuses it.
+  const offered = run();
+  assert.ok(offered);
+  click(offered);
+  for (let attempt = 0; attempt < 100 && !ui.querySelector('[role="alert"]'); attempt++) await advance(20);
+  assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /No model geometry is loaded/);
+  assert.equal(attached, 0);
+  assert.equal(useViewerStore.getState().clashResult, null);
   act(() => useViewerStore.setState({ models: new Map([['unrelated-source', { ...model, id: 'unrelated-source' }]]) }));
   assert.equal(run()?.disabled, true, 'another model cannot claim the owner handoff');
   act(() => useViewerStore.setState({ models: new Map([[owner, { ...model, ifcDataStore: null }]]) }));

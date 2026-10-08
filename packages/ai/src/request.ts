@@ -17,6 +17,7 @@
 import { reserveRequest, settleRequest, type RootBudget } from './budget.js';
 import type { RequestProvenance, UsageReceipt } from './receipt.js';
 import { logicalInputDigest, textDigest } from './request-digest.js';
+import { prepareInput } from './request-input.js';
 import type { TokenUsage } from './usage.js';
 import type { JsonResponseSchema, OutputFormat } from './response-schema.js';
 
@@ -57,6 +58,11 @@ export interface ModelRequest<Message, Route extends string = string> {
   readonly messages: readonly Message[];
   readonly system?: string;
   readonly outputSchema?: JsonResponseSchema;
+  /** Explicit native JSON producer: serialize {messages, system?, outputSchema?} once.
+   * Preparation runs under the parent deadline. The core dispatches the parsed snapshot
+   * and digests that same data. Without this boundary, opaque messages remain untouched
+   * and their logical digest stays unknown. Serialization must be owned by the producer. */
+  readonly prepareInput?: () => string;
   /** A bounded producer-owned prompt version. Generic hosts may leave it unknown. */
   readonly promptVersion?: string;
   /** Requested output ceiling; clamped to `routeCeiling` and the root budget. */
@@ -161,7 +167,12 @@ export async function runModelRequest<Message, Route extends string>(
   try {
     hooks.onStart?.({ id, model, route, startedAt, cancel: () => controller.abort() });
     if (!controller.signal.aborted) {
-      const inputDigest = logicalInputDigest({ version: 'ifc-lite.ai.logical-input.v1', system: request.system, messages: request.messages, outputSchema: request.outputSchema });
+      const serializeInput = request.prepareInput;
+      const input = serializeInput ? prepareInput<Message>(serializeInput())
+        : { messages: request.messages, system: request.system, outputSchema: request.outputSchema };
+      const inputDigest = serializeInput
+        ? logicalInputDigest({ version: 'ifc-lite.ai.logical-input.v1', ...input })
+        : { unavailable: 'opaque-input' as const };
       if (performance.now() >= deadlineAt) { timedOut = true; controller.abort(new Error('request-timeout')); }
       if (!controller.signal.aborted) {
         provenance = {
@@ -171,9 +182,9 @@ export async function runModelRequest<Message, Route extends string>(
         };
         await request.transport({
           model,
-          messages: request.messages,
-          system: request.system,
-          outputSchema: request.outputSchema,
+          messages: input.messages,
+          system: input.system,
+          outputSchema: input.outputSchema,
           onOutputFormat: format => { outputFormat = format; },
           maxOutputTokens: grant.maxOutputTokens,
           signal: controller.signal,

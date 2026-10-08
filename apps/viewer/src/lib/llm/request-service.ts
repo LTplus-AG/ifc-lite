@@ -78,6 +78,7 @@ export function runModelRequest(request: ModelRequest): Promise<RequestOutcome> 
     model: route.model,
     route: route.kind,
     transport: viewerTransport(route, request.proxyUrl, request.onUsageInfo),
+    prepareInput: () => JSON.stringify({ messages: request.messages, system: request.system, outputSchema: request.outputSchema }),
     messages: request.messages,
     system: request.system,
     outputSchema: request.outputSchema,

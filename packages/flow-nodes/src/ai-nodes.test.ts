@@ -31,6 +31,7 @@ function standIn(answer: (rows: Record<string, unknown>[], call: FlowAiCall) => 
     model: 'stand-in',
     request: (call) => runModelRequest({
       model: 'stand-in', route: 'test', budget, routeCeiling: 4000, timeoutMs: 5000,
+      prepareInput: () => JSON.stringify({ messages: [call.prompt], system: call.system, outputSchema: call.outputSchema }),
       messages: [call.prompt], system: call.system, promptVersion: call.promptVersion, maxOutputTokens: call.maxOutputTokens, signal: call.signal,
       transport: async (t) => {
         calls.push(call);

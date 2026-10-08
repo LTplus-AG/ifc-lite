@@ -8,10 +8,8 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 const encoder = new TextEncoder();
 export const textDigest = (text: string): string => bytesToHex(sha256(encoder.encode(text)));
 
-/** Sorted-key JSON, iteratively serialized so deep input cannot exhaust the stack.
- * Generic hosts may supply non-JSON messages. Those remain explicitly unknown;
- * never hash String(value), a credential-bearing host config, or a guessed wire body.
- */
+/** Sorted-key JSON from the core's OWN parsed producer snapshot, iteratively serialized.
+ * No caller objects, getters, proxies or guessed wire bodies enter this private helper. */
 function digestDataProperties(value: unknown): { value: string } | { unavailable: 'non-json-input' | 'digest-limit' } {
   type Task = { value: unknown } | { token: string } | { leave: object };
   const pending: Task[] = [{ value }];
@@ -63,17 +61,7 @@ function digestDataProperties(value: unknown): { value: string } | { unavailable
   return { value: textDigest(tokens.join('')) };
 }
 
-/** Metadata cannot invoke accessors or make an opaque host input fail its native transport. */
+/** Only the private parsed-snapshot boundary calls this function. Generic input is unknown. */
 export function logicalInputDigest(value: unknown): { value: string } | { unavailable: 'non-json-input' | 'digest-limit' } {
-  try {
-    const result = digestDataProperties(value);
-    if ('unavailable' in result) return result;
-    // Native clone rejection detects proxies that can expose a different value than their descriptors.
-    // Probe only after bounded accessor-free traversal; never expand an unbounded input first.
-    structuredClone(value);
-    return result;
-  } catch {
-    console.warn('AI logical-input digest unavailable: unsupported non-data input');
-    return { unavailable: 'non-json-input' };
-  }
+  return digestDataProperties(value);
 }

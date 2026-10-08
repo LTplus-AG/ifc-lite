@@ -19,6 +19,7 @@ async function execute(options: { reason?: string | null; messages?: typeof mess
   if (!budget) throw new Error('Native resumed budget must be valid');
   const request = {
     model: 'native-test', route: 'test', messages: options.messages ?? messages, system: options.system ?? system,
+    prepareInput: () => JSON.stringify({ messages: options.messages ?? messages, system: options.system ?? system }),
     maxOutputTokens: 100, routeCeiling: 80, budget, timeoutMs: 123_456, promptVersion: 'native-test.v1',
     transport: async (call: TransportCall<(typeof messages)[number]>) => {
       calls.push(call); call.onChunk(output); call.onFinishReason(options.reason === undefined ? 'stop' : options.reason);
@@ -97,6 +98,7 @@ it('captures schema and image content in the logical digest without retaining ei
     const input = [{ role: 'user', content: [{ type: 'image_url', image_url: { url: image } }] }];
     const outputSchema = { name: 'native_fields', schema: { type: 'object', properties: { [field]: { type: 'string' } }, required: [field], additionalProperties: false } };
     const result = await runModelRequest({ model: 'native-test', route: 'test', messages: input, outputSchema,
+      prepareInput: () => JSON.stringify({ messages: input, outputSchema }),
       budget: createRootBudget({ maxRequests: 1, maxOutputTokens: 100 }), maxOutputTokens: 100, routeCeiling: 80, timeoutMs: 100,
       transport: async call => { call.onChunk(output); call.onComplete(output); } });
     if (result.kind !== 'completed') throw new Error('Expected native completion');
@@ -120,6 +122,7 @@ it('matches real headless chat-completions wire grant and terminal reason withou
     return new Response(JSON.stringify({ choices: [{ message: { content: output }, finish_reason: 'length' }], usage: { prompt_tokens: 11, completion_tokens: 2 } }), { status: 200 });
   };
   const result = await runModelRequest({ model: 'native-test', route: 'cli', messages: ['headless private evidence'], system,
+    prepareInput: () => JSON.stringify({ messages: ['headless private evidence'], system }),
     maxOutputTokens: 100, routeCeiling: 80, budget: createRootBudget({ maxRequests: 1, maxOutputTokens: 37 }), timeoutMs: 100,
     transport: chatCompletionsTransport({ model: 'native-test', apiKey: 'private-api-key', baseUrl: 'https://private-endpoint.invalid' }, fetchImpl) });
   expect(body?.max_tokens).toBe(37);
@@ -127,6 +130,10 @@ it('matches real headless chat-completions wire grant and terminal reason withou
   expect(result).toMatchObject({ kind: 'truncated', receipt: { usageReported: true, outputTokens: 2, provenance: { grantedOutputTokens: 37, finishReason: 'length' } } });
   if (result.kind !== 'truncated') throw new Error('Expected headless truncation');
   expect(result.receipt.provenance).not.toHaveProperty('promptVersion');
+  const sent = body?.messages as { role: string; content: string }[];
+  const logicalSent = JSON.stringify({ messages: sent.filter(message => message.role === 'user').map(message => message.content),
+    system: sent.find(message => message.role === 'system')?.content, version: 'ifc-lite.ai.logical-input.v1' });
+  expect(result.receipt.provenance?.inputDigest?.value).toBe(sha(logicalSent));
   for (const secret of ['private-api-key', 'private-endpoint.invalid', 'headless private evidence']) expect(JSON.stringify(result.receipt)).not.toContain(secret);
 });
 
@@ -154,7 +161,7 @@ it('keeps generic non-JSON logical input explicitly unknown rather than hashing 
   const result = await runModelRequest({ model: 'generic-host', route: 'test', messages: [input],
     budget: createRootBudget({ maxRequests: 1, maxOutputTokens: 100 }), maxOutputTokens: 100, routeCeiling: 80, timeoutMs: 100,
     transport: async call => { call.onChunk(output); call.onComplete(output); } });
-  expect(result).toMatchObject({ kind: 'completed', receipt: { provenance: { inputDigestUnavailable: 'non-json-input' } } });
+  expect(result).toMatchObject({ kind: 'completed', receipt: { provenance: { inputDigestUnavailable: 'opaque-input' } } });
   if (result.kind !== 'completed') throw new Error('Expected generic host completion');
   expect(result.receipt.provenance).not.toHaveProperty('inputDigest');
 });
@@ -164,6 +171,7 @@ it('digests finalized logical input after native onStart observers and omits pro
     const input = [{ role: 'user', content: 'before observer' }];
     let sent = false;
     const result = await runModelRequest({ model: 'native-test', route: 'test', messages: input,
+      prepareInput: () => JSON.stringify({ messages: input }),
       budget: createRootBudget({ maxRequests: 1, maxOutputTokens: 100 }), maxOutputTokens: 100, routeCeiling: 80, timeoutMs: 100,
       transport: async call => { sent = true; expect(call.messages[0].content).toBe('finalized observer value'); call.onChunk(output); call.onComplete(output); } },
     { onStart: started => { input[0].content = 'finalized observer value'; if (cancel) started.cancel(); } });
@@ -192,6 +200,7 @@ it('bounds digest-only expansion of shared JSON DAGs without refusing the native
   for (let depth = 0; depth < 12; depth++) input = [input, input, input];
   let dispatched = false;
   const result = await runModelRequest({ model: 'generic-host', route: 'test', messages: [input],
+    prepareInput: () => JSON.stringify({ messages: [input] }),
     budget: createRootBudget({ maxRequests: 1, maxOutputTokens: 100 }), maxOutputTokens: 100, routeCeiling: 80, timeoutMs: 10_000,
     transport: async call => { dispatched = true; call.onChunk(output); call.onComplete(output); } });
   expect(dispatched).toBe(true);
@@ -205,6 +214,7 @@ it('retains a full digest across the established viewer context and image size c
   const image = 'A'.repeat(1_200_000), context = 'C'.repeat(90_000);
   const input = [{ role: 'user', content: [{ type: 'image_url', image_url: { url: image } }] }];
   const result = await runModelRequest({ model: 'native-test', route: 'test', messages: input, system: context,
+    prepareInput: () => JSON.stringify({ messages: input, system: context }),
     budget: createRootBudget({ maxRequests: 1, maxOutputTokens: 100 }), maxOutputTokens: 100, routeCeiling: 80, timeoutMs: 10_000,
     transport: async call => { call.onChunk(output); call.onComplete(output); } });
   if (result.kind !== 'completed') throw new Error('Expected completed size-bound request');
@@ -217,6 +227,7 @@ it('does not dispatch after the actual parent deadline elapsed during native log
   let phaseStarted = 0, handoffElapsed = 0, dispatched = false;
   const budget = createRootBudget({ maxRequests: 1, maxOutputTokens: 100 });
   const result = await runModelRequest({ model: 'native-test', route: 'test', messages: ['A'.repeat(1_200_000)],
+    prepareInput: () => JSON.stringify({ messages: ['A'.repeat(1_200_000)] }),
     budget, maxOutputTokens: 100, routeCeiling: 80, timeoutMs: 1,
     transport: async call => {
       dispatched = true; handoffElapsed = performance.now() - phaseStarted;
@@ -239,5 +250,5 @@ it('leaves accessor-induced caller cancellation to the actual native transport i
   expect(result.kind).toBe('cancelled');
   expect(dispatched).toBe(true);
   if (result.kind !== 'cancelled') throw new Error('Expected native caller cancellation');
-  expect(result.receipt).toMatchObject({ provenance: { inputDigestUnavailable: 'non-json-input', grantedOutputTokens: 80 } });
+  expect(result.receipt).toMatchObject({ provenance: { inputDigestUnavailable: 'opaque-input', grantedOutputTokens: 80 } });
 });

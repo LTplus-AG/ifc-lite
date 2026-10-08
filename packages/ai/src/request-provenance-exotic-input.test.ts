@@ -12,7 +12,7 @@ async function send<Message>(message: Message, consume: (call: TransportCall<Mes
     budget: createRootBudget({ maxRequests: 1, maxOutputTokens: 100 }), maxOutputTokens: 100, routeCeiling: 80, timeoutMs: 1000,
     transport: async call => { dispatched = true; const text = consume(call); call.onChunk(text); call.onComplete(text); } });
   expect(dispatched).toBe(true);
-  expect(result).toMatchObject({ kind: 'completed', receipt: { provenance: { inputDigestUnavailable: 'non-json-input' } } });
+  expect(result).toMatchObject({ kind: 'completed', receipt: { provenance: { inputDigestUnavailable: 'opaque-input' } } });
   return result;
 }
 

@@ -33,7 +33,8 @@ async function run(reply: unknown = answer(), patch: Record<string, unknown> = {
   const prompts: string[] = [];
   const receipts: UsageReceipt[] = [];
   const ai: FlowAiService = { model: 'fixture', request: call => runModelRequest({ model: 'fixture', route: 'fixture', budget,
-    routeCeiling: 1000, timeoutMs: 1000, messages: [call.prompt], system: call.system, promptVersion: call.promptVersion, signal: call.signal, maxOutputTokens: call.maxOutputTokens,
+    routeCeiling: 1000, timeoutMs: 1000, prepareInput: () => JSON.stringify({ messages: [call.prompt], system: call.system, outputSchema: call.outputSchema }),
+      messages: [call.prompt], system: call.system, promptVersion: call.promptVersion, signal: call.signal, maxOutputTokens: call.maxOutputTokens,
     transport: async transport => { prompts.push(call.prompt); const text = JSON.stringify(reply); transport.onChunk(text);
       transport.onFinishReason(options.finish ?? 'stop'); transport.onComplete(text); },
   }, { onReceipt: receipt => receipts.push(receipt) }) };

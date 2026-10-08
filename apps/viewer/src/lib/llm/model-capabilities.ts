@@ -27,10 +27,11 @@ export interface ModelCapabilities {
   /** The hard output ceiling the route enforces (client and server side). */
   maxOutputTokens: number;
   /**
-   * Whether a route requests provider-enforced JSON (`response_format`,
-   * tool schemas). None does today: typed replies are parsed strictly from text.
+   * Whether the direct transport implements a provider JSON Schema request.
+   * This is a protocol capability, not a live-model success claim. Unsupported
+   * models fail their schema request without silently retrying as plain text.
    */
-  structuredOutput: false;
+  structuredOutput: boolean;
   /** Whether provider usage can arrive on this route's stream. */
   usageReporting: 'provider' | 'upstream-dependent';
 }
@@ -50,7 +51,7 @@ export function modelCapabilities(modelId: string): ModelCapabilities {
     tier: model?.tier ?? 'unknown',
     contextWindow: model && model.tier === 'byok' ? model.contextWindow : null,
     maxOutputTokens: OUTPUT_CEILING[route],
-    structuredOutput: false,
+    structuredOutput: route !== 'proxy',
     // Anthropic always reports usage; OpenAI does when `include_usage` is sent,
     // which the direct client does. The proxy forwards whatever its upstream sends.
     usageReporting: route === 'proxy' ? 'upstream-dependent' : 'provider',

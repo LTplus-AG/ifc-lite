@@ -1,0 +1,190 @@
+{
+  "$schema": "../recording.schema.json",
+  "version": 1,
+  "id": "list-quantity-gaps-release",
+  "task": "list-quantity-gaps",
+  "scene": "lists-sample",
+  "corpus": "release",
+  "prompt": "Summarize this wall list and explain which quantities are missing without treating them as zero",
+  "route": {
+    "kind": "proxy",
+    "model": "openai/gpt-4o-mini"
+  },
+  "provenance": {
+    "kind": "authored",
+    "recordedAt": "2026-10-08",
+    "note": "Authored offline response replayed against native fixture evidence; no live-provider or human-quality claim."
+  },
+  "response": {
+    "status": 200,
+    "events": [
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "This native list contains four IfcWall rows [E1][E2][E3][E4]. Length is present in the source, while Height is null in every captured row [E1][E2][E3][E4]. Keep those Height cells empty and request the missing source information; neither zero nor an inferred dimension is supported. The result describes this list scope rather than every entity in the model."
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {},
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 100,
+          "completion_tokens": 100,
+          "total_tokens": 200
+        }
+      }
+    ],
+    "done": true
+  },
+  "evidence": {
+    "source": "lists",
+    "models": [
+      {
+        "id": "arch",
+        "name": "arch"
+      }
+    ],
+    "totalModels": 1,
+    "modelMetadataTruncated": false,
+    "sourceAvailability": "available",
+    "reportProvenance": {
+      "mutationVersion": 0,
+      "geometryContentVersion": 0
+    },
+    "totalRows": 4,
+    "includedRows": 4,
+    "sampled": false,
+    "projectionTruncated": false,
+    "evidence": {
+      "summary": {
+        "kind": "list-result",
+        "definitionId": "eval-wall-list",
+        "definitionName": "Native wall quantities and gaps",
+        "definitionProvenance": "executed-definition",
+        "columns": [
+          {
+            "id": "Name",
+            "label": "Name",
+            "source": "attribute",
+            "psetName": null,
+            "propertyName": "Name",
+            "quantityKind": null,
+            "dataType": null,
+            "unit": null,
+            "unitsByModel": null,
+            "mixedSourceUnits": false
+          },
+          {
+            "id": "Length",
+            "label": "Length",
+            "source": "quantity",
+            "psetName": "Qto_WallBaseQuantities",
+            "propertyName": "Length",
+            "quantityKind": "Length",
+            "dataType": null,
+            "unit": "mm",
+            "unitsByModel": {
+              "arch": "mm"
+            },
+            "mixedSourceUnits": false
+          },
+          {
+            "id": "Height",
+            "label": "Height",
+            "source": "quantity",
+            "psetName": "Qto_WallBaseQuantities",
+            "propertyName": "Height",
+            "quantityKind": null,
+            "dataType": null,
+            "unit": null,
+            "unitsByModel": null,
+            "mixedSourceUnits": false
+          }
+        ],
+        "totalCount": 4,
+        "modelCount": 1,
+        "executionTimeMs": 0,
+        "grouping": null,
+        "nativeSummary": null,
+        "nativeGroups": null,
+        "groupCount": 0,
+        "groupsTruncated": false,
+        "sumsWithheldForMixedUnits": [],
+        "limitations": "Values are as the source files declare them (columns[].unit / unitsByModel), not converted to display-unit overrides. Native sums cover only the configured sum columns; a sum over models with different declared units is withheld (null). Rows are the list as executed at its run stamp; they do not establish anything outside the list scope, filters, or columns."
+      },
+      "rows": [
+        {
+          "citation": "E1",
+          "data": {
+            "kind": "list-row",
+            "modelId": "arch",
+            "expressId": 262,
+            "globalId": "1AQAupaRP1txwK1AGiN61V",
+            "values": {
+              "Name": "house - outer wall - house right front",
+              "Length": 1799.9999999999711,
+              "Height": null
+            }
+          }
+        },
+        {
+          "citation": "E2",
+          "data": {
+            "kind": "list-row",
+            "modelId": "arch",
+            "expressId": 291,
+            "globalId": "3wdauVJT5Fx9drrREiDqA$",
+            "values": {
+              "Name": "house - outer wall - house right back",
+              "Length": 4200.000000000067,
+              "Height": null
+            }
+          }
+        },
+        {
+          "citation": "E3",
+          "data": {
+            "kind": "list-row",
+            "modelId": "arch",
+            "expressId": 315,
+            "globalId": "0OfZwWc8j9QP5uX8xPTxDH",
+            "values": {
+              "Name": "house - outer wall - house left",
+              "Length": 6000.000000000036,
+              "Height": null
+            }
+          }
+        },
+        {
+          "citation": "E4",
+          "data": {
+            "kind": "list-row",
+            "modelId": "arch",
+            "expressId": 353,
+            "globalId": "1uS5vfZPn9R8PlAaVd73on",
+            "values": {
+              "Name": "plumbing wall",
+              "Length": 3800.000000000086,
+              "Height": null
+            }
+          }
+        }
+      ]
+    }
+  },
+  "expect": {
+    "outcome": "completed",
+    "violations": [],
+    "proposal": null,
+    "review": {
+      "kind": "report"
+    }
+  }
+}

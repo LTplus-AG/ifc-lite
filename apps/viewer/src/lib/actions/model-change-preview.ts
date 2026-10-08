@@ -10,7 +10,7 @@
 
 import type { ViewerState } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
-import type { ChangeScalar, ModelChange, ModelChangeBatch } from './model-change';
+import type { ChangeScalar, ModelChange, ModelChangeBatch } from '@ifc-lite/ai/artifacts';
 import { resolveGlobalId } from './resolve-global-id';
 import { currentValue, modelReader, sameValue, UNSUPPORTED_VALUE, type CurrentValue } from './model-change-values';
 

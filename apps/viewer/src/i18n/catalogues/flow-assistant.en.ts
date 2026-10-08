@@ -5,11 +5,32 @@
 import type { TranslationValue } from '../types';
 
 /**
- * Assistant Flow run diagnosis, tracked-element effects and preflight
- * (`FlowProposalReview.tsx`, `FlowPreflight.tsx`, `FlowTrackingImpacts.tsx`).
+ * Assistant Flow creation, run diagnosis, tracked-element effects and
+ * preflight (`FlowCreateReview.tsx`, `FlowProposalReview.tsx`,
+ * `FlowPreflight.tsx`, `FlowTrackingImpacts.tsx`).
  */
 export const flowAssistantEn = {
   'flowAssistant.suggestDebug': 'Why did the last run fail, and how can the graph be fixed?',
+  'flowAssistant.suggestCreate': 'Create a new Flow graph that counts the walls on each storey',
+  'flowAssistant.pickCreate': 'No graph open · describe a new one',
+  'flowAssistant.proposalCreate': 'New Flow graph proposal',
+  'flowAssistant.proposalCreateSummary': { one: '{count} node', other: '{count} nodes' },
+  'flowAssistant.createTitle': 'Review new Flow graph',
+  'flowAssistant.createHint': 'Creating saves a new graph and opens it in Flow. It never replaces an existing graph and never runs it.',
+  'flowAssistant.reviewCreate': 'Review new graph',
+  'flowAssistant.createName': 'New graph: {name}',
+  'flowAssistant.createSize': '{nodes} nodes · {edges} edges',
+  'flowAssistant.createOrder': 'Nodes in execution order',
+  'flowAssistant.createCapabilities': 'Capabilities the graph declares: {capabilities}',
+  'flowAssistant.createWriters': 'Nodes that edit the model when run: {nodes}',
+  'flowAssistant.createUnavailable': 'Not runnable in this viewer: {nodes}',
+  'flowAssistant.createApproved': 'I reviewed the new graph, its capabilities and the elements it will own when run.',
+  'flowAssistant.createApply': 'Create and open graph',
+  'flowAssistant.created': 'Created “{name}” as a new saved graph and opened it in Flow. Nothing was run.',
+  'flowAssistant.openFlow': 'Open in Flow',
+  'flowAssistant.blockedRunning': 'A workflow is running. Wait for it or cancel it before creating the graph.',
+  'flowAssistant.blockedUnsaved': 'The open graph has unsaved changes. Save or discard them in Flow before creating the graph.',
+  'flowAssistant.removeCreated': 'Remove created graph',
   'flowAssistant.diagnosisTitle': 'Diagnosis of the last run',
   'flowAssistant.diagnosisNode': '{node}: {status} · lane errors: {count}',
   'flowAssistant.codeTitle': 'Script code this change sets',

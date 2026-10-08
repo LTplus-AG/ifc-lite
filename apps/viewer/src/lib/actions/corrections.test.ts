@@ -15,7 +15,7 @@ import { getCorrectableRequirements } from '@/hooks/ids/idsCorrectableRequiremen
 import { runIdsCheck } from '@/lib/validation/run-ids-check';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { installSampleModel, parseIfcBytes, sampleIdsXml, SAMPLE_WALLS } from '@/test/sample-corrections-fixture';
-import { MODEL_CHANGE_LIMIT, type ModelChange } from './model-change';
+import { MODEL_CHANGE_LIMIT, type ModelChange } from '@ifc-lite/ai/artifacts';
 import { previewModelChanges } from './model-change-preview';
 import { commitModelChanges } from './model-change-commit';
 import { decodeModelChangeReceipt } from './receipts';

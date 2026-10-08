@@ -15,9 +15,9 @@ import { EvidenceView, sourceAvailability } from '../analysis/EvidenceView';
 type EvidenceState = 'captured' | 'stale' | 'historical';
 const STATE_LABEL = { captured: 'assistant.stateCaptured', stale: 'assistant.stateStale', historical: 'assistant.stateHistorical' } as const;
 const STATE_TONE: Record<EvidenceState, string> = {
-  captured: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-  stale: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
-  historical: 'bg-muted text-muted-foreground',
+  captured: 'border border-transparent bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+  stale: 'border border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400',
+  historical: 'border border-transparent bg-muted text-muted-foreground',
 };
 
 /** One-glance scope of what the assistant sees; full caveats stay in Evidence details. */
@@ -39,7 +39,7 @@ export function EvidenceSummary({ evidence, state, onReturn, onRefresh, onChange
       <span className="font-semibold truncate">{t(adapter.titleKey)}</span>
       <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-2xs font-medium', STATE_TONE[state])}>{t(STATE_LABEL[state])}</span>
       <div className="ml-auto flex shrink-0 items-center">
-        <IconButton label={t('assistant.changeSource')} className="h-7 w-7" onClick={onChange}><ArrowLeftRight className="h-3.5 w-3.5" /></IconButton>
+        <IconButton label={t('assistant.changeSource')} className="h-7 w-7" data-assistant-change-source="" onClick={onChange}><ArrowLeftRight className="h-3.5 w-3.5" /></IconButton>
         <IconButton label={t('assistant.returnSource')} className="h-7 w-7" onClick={onReturn}><ArrowUpRight className="h-3.5 w-3.5" /></IconButton>
         <IconButton label={t('assistant.refresh')} className="h-7 w-7" onClick={onRefresh}><RefreshCw className="h-3.5 w-3.5" /></IconButton>
       </div>
@@ -54,7 +54,7 @@ export function EvidenceSummary({ evidence, state, onReturn, onRefresh, onChange
       <Button size="sm" className="h-7" onClick={onRefresh}><RefreshCw className="h-3 w-3 mr-1" />{t('assistant.refreshShort')}</Button>
     </div>}
     <details className="group">
-      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">{t('assistant.evidenceDetails')}</summary>
+      <summary className="cursor-pointer py-1 text-muted-foreground hover:text-foreground">{t('assistant.evidenceDetails')}</summary>
       <div className="mt-2"><EvidenceView evidence={evidence} state={state} /></div>
     </details>
   </div>;

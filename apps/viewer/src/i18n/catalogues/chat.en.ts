@@ -134,7 +134,6 @@ export const chatEn = {
   'assistant.pickRunning': 'Running…',
   'assistant.pickNoReport': 'No report yet',
   'assistant.pickNeedsTwoModels': 'Needs two models',
-  'assistant.pickNoGraph': 'No graph open',
   'assistant.pickNoModels': 'No model loaded',
   'assistant.pickDiscuss': 'Discuss',
   'assistant.pickDiscussLabel': 'Discuss {source}',

@@ -5,10 +5,12 @@
 import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { render, click, cleanup } from '@/test/render';
+import { createElement } from 'react';
+import { render, click, cleanup, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { useViewerStore } from '@/store';
+import { SidebarPanelHost } from '@/components/viewer/sidebar/SidebarPanelHost';
+import { useAssistantPlacement } from './placement';
 import { captureEvidence, evidenceIsCurrent } from './evidence';
 import { replaceEvidence, useAssistant, cancelAssistant } from './conversation';
 import { decodeConversation } from './persistence';
@@ -20,7 +22,8 @@ import type { FederatedModel } from '@/store';
 function model(id: string, fields: Partial<FederatedModel>): FederatedModel { return { ...fixtureModel(id), ...fields }; }
 
 const initial = useViewerStore.getState();
-afterEach(() => { cleanup(); cancelAssistant(); useViewerStore.setState(initial, true); });
+const initialPlacement = useAssistantPlacement.getState();
+afterEach(() => { cleanup(); cancelAssistant(); useViewerStore.setState(initial, true); useAssistantPlacement.setState(initialPlacement, true); });
 const diagnostics: GeometryDiagnostics = { schemaVersion: 3, totalCsgFailures: 3, productsWithFailures: 2,
   hostsWithOpenings: 2, classification: { rectangular: 2, diagonal: 0, nonRectangular: 0, total: 2 },
   failuresByReason: [{ reason: 'native cut failure', count: 3 }], silentNoOps: 0,
@@ -65,15 +68,20 @@ test('large load populations advertise exact native model-report counts and boun
   assert.ok(snapshot.payload.length <= 48_000);
 });
 
-test('native load panel action produces portable conversation and native report evidence', () => {
+// #7076: the split Assistant keeps the native source panel visible.
+test('native load panel action produces portable conversation and native report evidence', async () => {
   useViewerStore.setState(fixtureModels(model('cache-model', { diagnostics: null, loadPath: 'cache' })));
-  const ui = render(renderPanelBody('loadReport', () => undefined));
+  useViewerStore.getState().showWorkspacePanel('loadReport');
+  useAssistantPlacement.setState({ placement: 'split' });
+  const ui = render(createElement(SidebarPanelHost));
   const region = ui.querySelector('section[aria-label="Load report"]');
   assert.ok(region);
   const button = region.querySelector('button[aria-label="Discuss with AI"]');
   assert.ok(button);
   click(button);
-  assert.equal(useViewerStore.getState().sidebarActivePanel, 'assistant');
+  assert.equal(useViewerStore.getState().sidebarActivePanel, 'loadReport', 'Discuss preserves the source panel');
+  assert.equal(useViewerStore.getState().sidebarSecondaryPanel, 'assistant');
+  await waitFor(() => !!ui.querySelector('section[aria-label="Assistant"]'), 'Assistant mounts beside the source report');
   const snapshot = useAssistant.getState().snapshot;
   assert.equal(snapshot?.source, 'loadReport');
   assert.ok(snapshot);

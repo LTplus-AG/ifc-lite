@@ -16,7 +16,7 @@
  */
 
 import type { LiveEntity, Resolution, SemanticDocument, ValidationFinding } from '@ifc-lite/semantic';
-import { evidenceRow, unavailableCapture, type EvidenceAdapter } from './types';
+import { evidenceRow, unavailableCapture, type AdapterReadiness, type EvidenceAdapter } from './types';
 import { semanticEvidenceAccess, subscribeSemanticEvidence, type SemanticSessionView } from './semantic-access';
 
 const LABEL_CHARS = 200;
@@ -41,6 +41,8 @@ export function safeIri(value: string): string {
   url.username = ''; url.password = ''; url.search = ''; url.hash = '';
   return bounded(url.href, LABEL_CHARS);
 }
+
+const NO_ASSIST = { summary: {}, passageRows: [], passageTotal: 0, limitation: '' };
 
 function sessionView(): SemanticSessionView | null {
   return semanticEvidenceAccess()?.session.getState() ?? null;
@@ -80,55 +82,65 @@ export const semanticAdapter: EvidenceAdapter = {
   id: 'semantic', group: 'coordination', panelIds: ['semantic'],
   titleKey: 'semantic.title', descriptionKey: 'assistantSources.semantic.description',
   rowMeaningKey: 'assistantSources.semantic.rows', unavailableKey: 'assistantSources.semantic.unavailable',
-  suggestionKeys: ['assistantSources.semantic.suggestUnresolved', 'assistantSources.semantic.suggestFindings'],
+  suggestionKeys: ['assistantSources.semantic.suggestUnresolved', 'assistantSources.semantic.suggestFindings',
+    'semanticAssist.suggestRequirements', 'semanticAssist.suggestMapping', 'semanticAssist.suggestQuery', 'semanticAssist.suggestProjection'],
+  // Attached texts and the endpoint grant (never its content) are part of what the assistant is shown.
   subscribe: subscribeSemanticEvidence,
-  readiness: () => {
+  readiness: (): AdapterReadiness => {
     const view = sessionView();
-    if (!hasEvidence(view)) return { status: { labelKey: 'assistantSources.semantic.none' }, ready: false };
+    if (!hasEvidence(view)) {
+      const texts = semanticEvidenceAccess()?.assist.count() ?? 0;
+      return texts ? { status: { labelKey: 'semanticAssist.pickTexts', params: { count: texts } }, ready: true }
+        : { status: { labelKey: 'assistantSources.semantic.none' }, ready: false };
+    }
     return { status: { labelKey: 'assistantSources.semantic.ready',
       params: { count: view.document?.resources.length ?? 0, findings: view.findings.length } }, ready: true };
   },
   // Session setters replace these refs; resolution also depends on the identity settings and revision links.
   identity: () => {
     const view = sessionView();
-    return view ? [view.document, view.findings, view.report, view.results, view.revisions, view.strategy,
-      view.links, view.uriConfig, view.identityFields] : null;
+    return [...(view ? [view.document, view.findings, view.report, view.results, view.revisions, view.strategy,
+      view.links, view.uriConfig, view.identityFields, view.profile, view.pendingRevisions] : []), ...(semanticEvidenceAccess()?.assist.identity() ?? [])];
   },
   capture: (_s, limit) => {
     const access = semanticEvidenceAccess();
-    const view = sessionView();
-    if (!access || !hasEvidence(view)) return unavailableCapture();
-    const resources = view.document?.resources ?? [];
-    const entities: LiveEntity[] = resources.length ? access.liveEntities() : [];
+    const session = sessionView();
+    const assist = access?.assist.capture({ view: session, mappings: access.projectionMappings(), safeIri }) ?? NO_ASSIST;
+    const view = hasEvidence(session) ? session : null;
+    if (!view && !assist.passageTotal) return unavailableCapture();
+    const resources = view?.document?.resources ?? [];
+    const entities: LiveEntity[] = access && resources.length ? access.liveEntities() : [];
     const liveGlobalIds = new Map(entities.map(entity => [`${entity.modelId}:${entity.expressId}`, entity.GlobalId]));
-    const resolutions = resources.map(resource => access.resolve(resource, entities, view.revisions));
-    const rows: unknown[] = [];
+    const resolutions = access && view ? resources.map(resource => access.resolve(resource, entities, view.revisions)) : [];
+    // Attached passages come first so a quoted span can always be checked; records and findings share the rest.
+    const rows: unknown[] = assist.passageRows.slice(0, limit);
     for (let i = 0; i < resources.length && rows.length < limit; i++) rows.push(resolutionRow(resources[i], resolutions[i], liveGlobalIds));
-    for (const finding of view.findings) {
+    for (const finding of view?.findings ?? []) {
       if (rows.length >= limit) break;
       rows.push(findingRow(finding));
     }
-    const report = view.report;
+    const report = view?.report;
     return {
       summary: {
         kind: 'linked-records',
-        mode: view.document ? 'records' : 'graph-only',
-        profile: view.document?.profile ? safeIri(view.document.profile) : null,
-        completeness: view.document?.completeness ?? null,
+        mode: view?.document ? 'records' : view ? 'graph-only' : 'texts-only',
+        profile: view?.document?.profile ? safeIri(view.document.profile) : null,
+        completeness: view?.document?.completeness ?? null,
         recordCount: resources.length, recordsByType: countBy(resources, resource => resource.type),
         resolution: countBy(resolutions, resolution => resolution.status),
-        identityStrategy: view.strategy, associatedRevisions: view.revisions.size,
-        findingCount: view.findings.length, findingsBySeverity: countBy(view.findings, finding => finding.severity ?? 'Violation'),
+        identityStrategy: view?.strategy ?? null, associatedRevisions: view?.revisions.size ?? 0,
+        findingCount: view?.findings.length ?? 0, findingsBySeverity: countBy(view?.findings ?? [], finding => finding.severity ?? 'Violation'),
         validation: report ? { scope: report.scope, completeness: report.completeness, conforms: report.conforms,
           truncated: report.truncated, counts: report.counts, engines: report.engines, limits: report.limits,
           profile: report.profile } : null,
-        queryResults: view.results ? { columnCount: view.results.columns.length, rowCount: view.results.rows.length } : null,
-        graphLoaded: view.graph.length > 0,
+        queryResults: view?.results ? { columnCount: view.results.columns.length, rowCount: view.results.rows.length } : null,
+        graphLoaded: (view?.graph.length ?? 0) > 0,
+        assist: assist.summary,
         limitations: 'Resolution is against all loaded models with the session\'s identity strategy; the panel\'s model scope filter is not applied. '
           + 'A partial document is not the whole external dataset. No validation report means validation was not run, not that records conform. '
-          + 'Record properties, query result values, the graph text and the source location are not included; endpoints and credentials are never captured.',
+          + 'Record properties, query result values, the graph text and the source location are not included; endpoints and credentials are never captured. ' + assist.limitation,
       },
-      rows, totalRows: resources.length + view.findings.length, availability: 'available',
+      rows, totalRows: assist.passageTotal + resources.length + (view?.findings.length ?? 0), availability: 'available',
     };
   },
 };

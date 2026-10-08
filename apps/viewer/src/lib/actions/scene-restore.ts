@@ -10,6 +10,7 @@
  * reported as `changed`, so the card can say what could not be restored.
  */
 
+import { sceneSourcesAreCurrent } from './scene-source-ownership';
 import { useViewerStore } from '@/store';
 import { ownsCurrentVisibility } from '@/lib/visibility/ownership';
 import { setActiveApplication, type RestoreChannel, type RestoreOutcome, type RestoreReport, type SceneApplication } from './scene-session';
@@ -19,9 +20,8 @@ export function restoreSceneApplication(application: SceneApplication): RestoreR
   const report = (channel: RestoreChannel, outcome: RestoreOutcome) => channels.push({ channel, outcome });
   const touched = (['selection', 'isolate', 'hide', 'colour', 'section', 'camera'] as const).filter(channel => application[channel]);
 
-  const models = [...useViewerStore.getState().models.keys()];
-  if (models.length !== application.modelIds.length || models.some(id => !application.modelIds.includes(id))) {
-    // Captured ids name models that are gone (or a different federation); applying them would be wrong, not stale.
+  if (!sceneSourcesAreCurrent(application.sources, useViewerStore.getState())) {
+    // Captured channels belong to an earlier loaded source, including same-ID reloads.
     for (const channel of touched) report(channel, 'models-changed');
     const result = { title: application.title, channels };
     setActiveApplication(null, result);

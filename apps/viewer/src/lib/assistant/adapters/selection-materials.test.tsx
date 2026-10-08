@@ -6,15 +6,13 @@ import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { EMPTY_SOURCE_BYTES, extractAllMaterialsOnDemand, extractClassificationsOnDemand, extractMaterialPropertiesOnDemand } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand } from '@ifc-lite/parser';
 import { advance, render, cleanup } from '@/test/render';
 import { exportAndReparse, parseStep, seedModel } from '@/test/properties-panel-harness';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { useViewerStore } from '@/store';
 import { entityRefToString } from '@/store/entity-ref';
-import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
-import { relationshipsForSelection } from '@/components/viewer/properties/merge-relationship-data';
 import { captureEvidence, evidenceIsCurrent } from '../evidence';
 
 const initial = useViewerStore.getState();
@@ -28,8 +26,10 @@ interface Material {
   MaterialConstituents?: Array<{ Name: string; Fraction: number; Material: { Name: string } }>;
   MaterialProfiles?: Array<{ Name: string; Material: { Name: string } }>;
 }
+interface Relationship { relationshipId: number; relationshipType: string; direction: 'forward' | 'inverse';
+  entity: { expressId: number } }
 interface Row { modelId: string; classificationStatus: string; classificationCount: number | null; classifications: unknown[];
-  relationshipStatus: string; relationshipCount: number | null; relationships: unknown[]; materialCount: number | null; materialsStatus: string; materials: Material[];
+  relationshipStatus: string; relationshipCount: number | null; relationships: Relationship[]; materialCount: number | null; materialsStatus: string; materials: Material[];
   materialPropertiesStatus: string; materialPropertyGroupCount: number | null;
   materialProperties: Array<{ modelId: string; expressId: number; psetCount: number | null;
     psets: Array<{ name: string; propertyCount: number | null; properties: Record<string, string> }> }> }
@@ -218,19 +218,28 @@ test('#7119 all selection caveats reach the snapshot without projection truncati
   seedModel('arch', 0, store, 52);
   const snapshot = captureEvidence('selection');
   const summary = JSON.parse(snapshot.payload).evidence.summary;
-  // #7183/#7185 now include these native sections; keep their availability,
-  // full known counts and bounded display consistent with the actual fixture.
-  const nativeRelationships = relationshipsForSelection(createQueryAdapter(useViewerStore).relationships,
-    { modelId: 'arch', expressId: 52 }, 52).relations ?? [];
-  assert.ok(nativeRelationships.length > 0, 'the real slab has native relationship edges');
+  // #7119/#7214: independent authored-edge oracle from the actual SketchUp
+  // building-architecture.ifc STEP rows #51, #58, #61, #67 and #68. Production
+  // must not supply the expected population through its own relationship helper.
+  const authoredRelationships = [
+    [51, 'IfcRelDefinesByType', 'inverse', 50],
+    [58, 'IfcRelDefinesByProperties', 'inverse', 57],
+    [61, 'IfcRelAssociatesMaterial', 'inverse', 62],
+    [67, 'IfcRelDefinesByProperties', 'inverse', 66],
+    [68, 'IfcRelContainedInSpatialStructure', 'inverse', 43],
+  ];
   const row = rows()[0];
   assert.equal(row.classificationStatus, 'available');
-  const nativeClassificationCount = extractClassificationsOnDemand(store, 52).length;
-  assert.equal(row.classificationCount, nativeClassificationCount);
-  assert.equal(row.classifications.length, Math.min(nativeClassificationCount, summary.perElementBounds.classifications));
+  // The fixture's only classification relationship #36 assigns building #30,
+  // not slab #52 or its type #50; the selected slab has a known empty population.
+  assert.equal(row.classificationCount, 0);
+  assert.deepEqual(row.classifications, []);
+  assert.equal(row.classifications.length, Math.min(0, summary.perElementBounds.classifications));
   assert.equal(row.relationshipStatus, 'available');
-  assert.equal(row.relationshipCount, nativeRelationships.length);
-  assert.equal(row.relationships.length, Math.min(nativeRelationships.length, summary.perElementBounds.relationships));
+  assert.equal(row.relationshipCount, authoredRelationships.length);
+  assert.deepEqual([...row.relationships].sort((a, b) => a.relationshipId - b.relationshipId)
+    .map(edge => [edge.relationshipId, edge.relationshipType, edge.direction, edge.entity.expressId]), authoredRelationships);
+  assert.equal(row.relationships.length, Math.min(authoredRelationships.length, summary.perElementBounds.relationships));
   assert.match(summary.limitations, /Sections use perElementBounds and full known counts/);
   assert.match(summary.limitations, /Selection is sampled/);
   assert.equal(snapshot.projectionTruncated, false);

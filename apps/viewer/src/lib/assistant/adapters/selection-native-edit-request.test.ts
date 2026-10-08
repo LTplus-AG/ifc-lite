@@ -35,7 +35,7 @@ test('#7264 provider request contains authoritative native dimensions and comple
   replaceEvidence(captureEvidence('selection'));
   let request = '';
   intercept(body => { request = body; });
-  assert.equal(await sendAssistant('Review editable selected geometry', 'openai/gpt-free'), true);
+  assert.equal(await sendAssistant('Review editable selected geometry', 'openai/gpt-free', '/api/chat'), true);
   assert.match(request, /nativeEdit/);
   assert.match(request, /RectangleHollow/);
   assert.match(request, /InnerFilletRadius/);

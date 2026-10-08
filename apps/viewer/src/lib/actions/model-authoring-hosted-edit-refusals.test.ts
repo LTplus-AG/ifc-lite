@@ -137,7 +137,7 @@ test('#7265 a native same-model duplicate IfcRoot GUID refuses hosted editing be
   assert.equal(saved.getEntity(f.id)?.attributes[0], op.target.globalId);
   const before = await exportedEntities(f.dataStore, f.view);
   const preview = previewModelAuthoring(useViewerStore.getState(), f.batch({ Sill: .9 }));
-  assert.equal(preview.rows[0].status, 'ambiguous-target', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ambiguous-target', preview.rows[0].issue ?? 'Duplicate roots must refuse the reviewed target');
   assert.throws(() => editor.runAtomic(draft => writeHostedEdit(f.batch({ Sill: .9 }), f.dataStore, draft, f.id, op.expected, op.edit, op.target.globalId)), /GlobalId is not unique/, 'the canonical draft inventory also guards native writing');
   assert.deepEqual(await exportedEntities(f.dataStore, f.view), before);
 });
@@ -158,7 +158,7 @@ test(`#7265 ${transport} non-root material Name collision retains real hosted ed
     mutationViews: new Map([[SAMPLE_MODEL, view]]), storeEditors: new Map() });
   const before = await exportedEntities(source, view);
   const preview = previewModelAuthoring(useViewerStore.getState(), f.batch({ Sill: .9 }));
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'A non-root Name must not block a genuine hosted target');
   const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'non-root hosted identity');
   assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason);
   const after = await parseIfc(editedModelBytes(source, view));

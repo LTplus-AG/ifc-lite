@@ -24,7 +24,7 @@ export function ArtifactAmbiguity({ unresolved, onResolve, onAsk }: {
   const { t } = useTranslation();
   const [picks, setPicks] = useState<Record<number, string>>({});
   const complete = unresolved.every((_, index) => picks[index] !== undefined);
-  const named = (set: string, name: string) => `${set}.${name}`;
+  const named = (set: string, name: string) => set ? `${set}.${name}` : name;
   const whereText = (where: FieldWhere): string => {
     switch (where.kind) {
       case 'rule': return where.lensRule === undefined ? t('assistantArtifacts.where.rule', { group: where.group, rule: where.rule })
@@ -39,7 +39,7 @@ export function ArtifactAmbiguity({ unresolved, onResolve, onAsk }: {
     <p className="font-medium">{t('assistantArtifacts.ambiguityTitle')}</p>
     <p>{t('assistantArtifacts.ambiguityHint')}</p>
     {unresolved.map((resolution, index) => <fieldset key={`${fieldKey(resolution.site)}:${index}`} className="min-w-0 space-y-1">
-      <legend className="font-medium break-words">{t(resolution.site.kind === 'quantity' ? 'assistantArtifacts.ambiguityQuantity' : 'assistantArtifacts.ambiguityProperty',
+      <legend className="font-medium break-words">{t(resolution.site.kind === 'classification' ? 'assistantArtifacts.ambiguityClassification' : resolution.site.kind === 'quantity' ? 'assistantArtifacts.ambiguityQuantity' : 'assistantArtifacts.ambiguityProperty',
         { field: named(resolution.site.set, resolution.site.name), where: whereText(resolution.site.where) })}</legend>
       {resolution.candidates.length === 0 ? <p>{t('assistantArtifacts.ambiguityNone')}</p>
         : resolution.candidates.map((candidate) => {
@@ -48,7 +48,7 @@ export function ArtifactAmbiguity({ unresolved, onResolve, onAsk }: {
             <input type="radio" name={`artifact-ambiguity-${index}`} checked={picks[index] === key}
               onChange={() => setPicks((current) => ({ ...current, [index]: key }))} />
             <span className="min-w-0 break-words"><span className="font-mono break-all">{named(candidate.set, candidate.name)}</span>
-              {' '}<span className="text-muted-foreground">{t('assistantArtifacts.ambiguityPresence', { count: candidate.count, models: candidate.byModel.size })}</span></span>
+              {' '}<span className="text-muted-foreground">{t(candidate.kind === 'classification' ? 'assistantArtifacts.classificationPresence' : 'assistantArtifacts.ambiguityPresence', { count: candidate.count, models: candidate.byModel.size })}</span></span>
           </label>;
         })}
     </fieldset>)}

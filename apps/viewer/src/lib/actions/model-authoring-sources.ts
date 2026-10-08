@@ -7,7 +7,7 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ViewerState } from '@/store';
 import type { ModelAuthoringPreview } from './model-authoring-preview';
 
-interface Source { modelId: string; store: IfcDataStore | undefined; source: IfcDataStore['source']; hash: string | undefined; view: MutablePropertyView | undefined; revision: number | undefined }
+interface Source { modelId: string; store: IfcDataStore | undefined; source: IfcDataStore['source'] | undefined; hash: string | undefined; view: MutablePropertyView | undefined; revision: number | undefined }
 const sources = new WeakMap<ModelAuthoringPreview, Source[]>();
 
 /** Copy approval belongs to these loaded sources, never to a later reload with matching names/ids. */

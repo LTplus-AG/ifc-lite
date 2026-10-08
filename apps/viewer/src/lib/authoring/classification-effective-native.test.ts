@@ -181,3 +181,19 @@ test('#7131 classification reference retyping and deletion describe the native e
   view.deleteEntity(reference.expressId);
   assert.deepEqual(extractClassificationsOnDemand(store, 262, view), [], 'a deleted target contributes no live classification reference');
 });
+
+test('#7131 named unset markers and explicit empty classification strings preserve native export semantics', async () => {
+  const { store, view } = await authoredAssociation();
+  const reference = [...view.getNewEntitiesOfType('IFCCLASSIFICATIONREFERENCE')][0];
+  for (const value of ['$', '', '*']) {
+    view.setAttribute(34, 'Name', value);
+    view.setAttribute(reference.expressId, 'Identification', value);
+    view.setAttribute(reference.expressId, 'Name', value);
+    const out = new StepExporter(store, view).export({ schema: 'IFC4', visibleOnly: false, hiddenEntityIds: new Set<number>() });
+    const text = typeof out.content === 'string' ? out.content : new TextDecoder().decode(out.content);
+    const reparsed = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer, { disableWorkerScan: true });
+    const expected = extractClassificationsOnDemand(reparsed, 262);
+    assert.equal(expected[0]?.system, value === '' ? '' : undefined, 'declared IFC strings retain explicit empty text, while STEP markers are absent');
+    assert.deepEqual(extractClassificationsOnDemand(store, 262, view), expected);
+  }
+});

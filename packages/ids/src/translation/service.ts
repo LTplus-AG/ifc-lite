@@ -25,6 +25,7 @@ import { en } from './locales/en.js';
 import { de } from './locales/de.js';
 import { fr } from './locales/fr.js';
 import { it } from './locales/it.js';
+import { describeWithNestedFacets } from '../preview/partof-nested.js';
 
 type Translations = typeof en;
 
@@ -99,15 +100,11 @@ class IDSTranslationServiceImpl implements TranslationService {
     return renderConstraint(constraint, this.translations);
   }
 
-  /**
-   * Describe a facet in human-readable form
-   */
+  /** Describe a facet in human-readable form */
   describeFacet(
     facet: IDSFacet,
     context: 'applicability' | 'requirement'
   ): string {
-    const t = this.translations;
-
     switch (facet.type) {
       case 'entity':
         return this.describeEntityFacet(facet, context);
@@ -119,8 +116,8 @@ class IDSTranslationServiceImpl implements TranslationService {
         return this.describeClassificationFacet(facet, context);
       case 'material':
         return this.describeMaterialFacet(facet, context);
-      case 'partOf':
-        return this.describePartOfFacet(facet, context);
+      case 'partOf': // IDS 1.1 PREVIEW nested facets, if any, follow in brackets
+        return describeWithNestedFacets(facet, this.describePartOfFacet(facet, context), (n) => this.describeFacet(n, 'applicability'));
       default:
         return 'Unknown facet';
     }
@@ -367,9 +364,7 @@ class IDSTranslationServiceImpl implements TranslationService {
     }
   }
 
-  /**
-   * Describe a failure in human-readable form
-   */
+  /** Describe a failure in human-readable form */
   describeFailure(result: IDSRequirementResult): string {
     const t = this.translations.failures;
 

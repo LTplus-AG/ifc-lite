@@ -26,11 +26,20 @@ import type {
 } from '../types.js';
 import { XmlLines } from './xml-lines.js';
 import { writeConstraint } from './constraint.js';
+import { assertIds11Allowed } from '../preview/features.js';
+import type { IDSPreviewFlags } from '../preview/types.js';
 
 const IDS_NS = 'http://standards.buildingsmart.org/IDS';
 const XS_NS = 'http://www.w3.org/2001/XMLSchema';
 const XSI_NS = 'http://www.w3.org/2001/XMLSchema-instance';
 const SCHEMA_LOCATION = `${IDS_NS} http://standards.buildingsmart.org/IDS/1.0/ids.xsd`;
+/**
+ * IDS 1.1 PREVIEW. buildingSMART has not published a 1.1 schema URL; this
+ * follows the 1.0 pattern and the `version="1.1.0"` of the upstream
+ * `ver/1.1.x` branch's `ids.xsd`. An assumption, recorded in the P-12 worklog.
+ */
+const SCHEMA_LOCATION_11_PREVIEW = `${IDS_NS} http://standards.buildingsmart.org/IDS/1.1/ids.xsd`;
+const IDS11_PREVIEW_NOTE = 'IDS 1.1 PREVIEW: uses unreleased candidate features; not valid IDS 1.0.';
 
 /**
  * `IfcRelContainedInSpatialStructure` -> the XSD's upper-case `relations`
@@ -58,7 +67,28 @@ function dataTypeAttr(facet: Extract<IDSFacet, { type: 'property' }>): string | 
   return facet.dataType.value;
 }
 
-function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefined, instructions?: string): void {
+/**
+ * Where a facet is written. IDS 1.0 knows applicability and requirements;
+ * `nested` is a facet inside `partOf` (IDS 1.1 PREVIEW, #379/#380).
+ */
+type FacetContext = 'applicability' | 'requirement' | 'nested';
+
+/**
+ * The facet's `instructions` attribute. A requirement's comes from
+ * `IDSRequirement.instructions` (IDS 1.0); an applicability facet's from the
+ * facet itself (IDS 1.1 PREVIEW, #154). The facet-level field anywhere else
+ * has no XML home and is refused rather than dropped.
+ */
+function instructionsFor(facet: IDSFacet, context: FacetContext, requirementInstructions?: string): string | undefined {
+  if (context === 'applicability') return facet.instructions;
+  if (facet.instructions !== undefined) {
+    throw new Error(`writeIdsXml: a ${context} ${facet.type} facet cannot carry facet-level instructions${context === 'requirement' ? '; use IDSRequirement.instructions' : ''}`);
+  }
+  return requirementInstructions;
+}
+
+function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefined, context: FacetContext, requirementInstructions?: string): void {
+  const instructions = instructionsFor(facet, context, requirementInstructions);
   switch (facet.type) {
     case 'entity':
       writeEntity(xml, facet, { instructions });
@@ -70,20 +100,20 @@ function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefi
       xml.close('attribute');
       return;
     case 'property':
-      xml.open('property', { dataType: dataTypeAttr(facet), cardinality, instructions });
+      xml.open('property', { dataType: dataTypeAttr(facet), cardinality, instructions, uri: facet.uri });
       writeConstraint(xml, 'propertySet', facet.propertySet);
       writeConstraint(xml, 'baseName', facet.baseName);
       if (facet.value) writeConstraint(xml, 'value', facet.value);
       xml.close('property');
       return;
     case 'classification':
-      xml.open('classification', { cardinality, instructions });
+      xml.open('classification', { cardinality, instructions, uri: facet.uri });
       if (facet.value) writeConstraint(xml, 'value', facet.value);
       if (facet.system) writeConstraint(xml, 'system', facet.system);
       xml.close('classification');
       return;
     case 'material':
-      xml.open('material', { cardinality, instructions });
+      xml.open('material', { cardinality, instructions, uri: facet.uri });
       if (facet.value) writeConstraint(xml, 'value', facet.value);
       xml.close('material');
       return;
@@ -94,6 +124,8 @@ function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefi
       if (!facet.entity) throw new Error('writeIdsXml: a partOf facet needs its related entity');
       xml.open('partOf', { relation: relationToken(facet.relation), cardinality, instructions });
       writeEntity(xml, facet.entity);
+      // IDS 1.1 PREVIEW (#379/#380): conditions on the related parent.
+      for (const nested of facet.facets ?? []) writeFacet(xml, nested, undefined, 'nested');
       xml.close('partOf');
       return;
   }
@@ -102,7 +134,7 @@ function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefi
 function writeRequirement(xml: XmlLines, requirement: IDSRequirement): void {
   // IDS 1.0 has no cardinality on an entity facet inside requirements.
   const cardinality = requirement.facet.type === 'entity' ? undefined : requirement.optionality;
-  writeFacet(xml, requirement.facet, cardinality, requirement.instructions);
+  writeFacet(xml, requirement.facet, cardinality, 'requirement', requirement.instructions);
 }
 
 /** Formatting of `writeIdsXml`'s output. Every option changes layout or order only, never meaning. */
@@ -163,7 +195,7 @@ function writeSpecification(xml: XmlLines, spec: IDSSpecification, canonical: bo
   });
   const maxOccurs = spec.maxOccurs === undefined ? 'unbounded' : String(spec.maxOccurs);
   xml.open('applicability', { minOccurs: String(spec.minOccurs ?? 0), maxOccurs });
-  for (const facet of facets) writeFacet(xml, facet, undefined);
+  for (const facet of facets) writeFacet(xml, facet, undefined, 'applicability');
   xml.close('applicability');
   if (spec.requirements.length > 0) {
     xml.open('requirements');
@@ -173,8 +205,24 @@ function writeSpecification(xml: XmlLines, spec: IDSSpecification, canonical: bo
   xml.close('specification');
 }
 
-/** `doc` as an IDS 1.0 XML string, laid out per `fmt` (two-space indent, `\n`, authored order by default). */
-export function writeIdsXml(doc: IDSDocument, fmt: IdsXmlFormat = {}): string {
+/** What `writeIdsXml` may write, as opposed to how (`IdsXmlFormat`). */
+export interface IdsXmlWriteOptions {
+  /**
+   * IDS 1.1 PREVIEW (unstable). Without `ids11`, a document using a 1.1
+   * candidate feature is refused with `IDS11PreviewRequiredError`; with it,
+   * such a document is written against the 1.1 schema location. A document
+   * using no 1.1 feature is written as IDS 1.0 either way, byte for byte.
+   */
+  preview?: IDSPreviewFlags;
+}
+
+/**
+ * `doc` as an IDS 1.0 XML string, laid out per `fmt` (two-space indent,
+ * `\n`, authored order by default). IDS 1.1 PREVIEW output needs
+ * `options.preview.ids11`.
+ */
+export function writeIdsXml(doc: IDSDocument, fmt: IdsXmlFormat = {}, options: IdsXmlWriteOptions = {}): string {
+  const ids11 = assertIds11Allowed(doc, options.preview, 'writeIdsXml', true).length > 0;
   const xml = new XmlLines(indentUnit(fmt.indent));
   const newline = fmt.newline ?? '\n';
   const canonical = fmt.canonical ?? false;
@@ -182,8 +230,9 @@ export function writeIdsXml(doc: IDSDocument, fmt: IdsXmlFormat = {}): string {
     xmlns: IDS_NS,
     'xmlns:xs': XS_NS,
     'xmlns:xsi': XSI_NS,
-    'xsi:schemaLocation': SCHEMA_LOCATION,
+    'xsi:schemaLocation': ids11 ? SCHEMA_LOCATION_11_PREVIEW : SCHEMA_LOCATION,
   });
+  if (ids11) xml.comment(IDS11_PREVIEW_NOTE);
   xml.open('info');
   // The `ids.xsd` info sequence. `date` (xs:date) and `author` (an e-mail
   // pattern) are written as given; `auditIDSDocument` reports malformed ones.

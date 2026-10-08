@@ -103,6 +103,15 @@ for (const spec of idsSpec.specifications) {
 | `Enumeration` | One-of-list |
 | `Bounds` | Numeric range (min/max, inclusive/exclusive) |
 
+## IDS 1.1 preview (unstable)
+
+IDS 1.1 is not released. Candidate features from the buildingSMART 1.1
+milestone (`uri` and `instructions` on applicability facets, facets nested in
+`partOf`, the #418 tolerance rule, identifier uniqueness) are available only
+with `preview: { ids11: true }` on `parseIDS`, `writeIdsXml`, `validateIDS`
+and `auditIDSDocument`. Without the flag the package is IDS 1.0 only. See
+[IDS 1.1 preview](https://ifclite.dev/docs/guide/ids/#ids-11-preview-unstable).
+
 ## API
 
 See the [IDS Guide](https://ifclite.dev/docs/guide/ids/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-liteids).

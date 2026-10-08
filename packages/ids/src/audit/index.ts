@@ -35,6 +35,7 @@ import type {
   IDSAuditReport,
 } from './types.js';
 import { runXsdAudit } from './xsd/index.js';
+import { acceptIds11SchemaLocation, runIds11PreviewAudit } from '../preview/audit.js';
 
 export type {
   IDSAuditCode,
@@ -53,7 +54,8 @@ export async function auditIDSDocument(
   xml: string | ArrayBuffer,
   options: IDSAuditOptions = {}
 ): Promise<IDSAuditReport> {
-  const { document, issues } = permissiveParse(xml);
+  const ids11 = options.preview?.ids11 === true;
+  const { document, issues } = permissiveParse(xml, { preview: options.preview });
   if (!document) {
     return finalise(issues);
   }
@@ -63,7 +65,7 @@ export async function auditIDSDocument(
   const structuralIssues =
     options.xsdValidation === false
       ? []
-      : await runStructuralAudit(xml);
+      : await runStructuralAudit(xml, ids11);
   const downstream = await auditIDSStructure(document, options);
   return finalise(
     [...issues, ...structuralIssues, ...downstream.issues],
@@ -91,6 +93,10 @@ export async function auditIDSStructure(
     issues.push(
       ...(await runIfcSchemaAudit(doc, { ifcVersion: options.ifcVersion }))
     );
+  }
+  if (options.preview?.ids11 === true) {
+    // IDS 1.1 PREVIEW: accept its schema URL, label every 1.1 feature use.
+    return finalise([...acceptIds11SchemaLocation(issues), ...runIds11PreviewAudit(doc)], doc);
   }
   return finalise(issues, doc);
 }

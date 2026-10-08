@@ -5,6 +5,7 @@
 /** IDS (Information Delivery Specification) types, per buildingSMART IDS 1.0. */
 
 import type { IDSConstraint } from './constraint-types.js';
+import type { IDS11FacetInstructions as Ins, IDS11FacetUri as Uri, IDSPreviewFlags } from './preview/types.js';
 
 // ============================================================================
 // IDS Document Structure
@@ -130,7 +131,7 @@ export type IDSFacet =
 export type FacetType = IDSFacet['type'];
 
 /** Entity facet - match by IFC entity type */
-export interface IDSEntityFacet {
+export interface IDSEntityFacet extends Ins {
   type: 'entity';
   /** Entity type name constraint (e.g., "IFCWALL") */
   name: IDSConstraint;
@@ -139,7 +140,7 @@ export interface IDSEntityFacet {
 }
 
 /** Attribute facet - match by IFC attribute value */
-export interface IDSAttributeFacet {
+export interface IDSAttributeFacet extends Ins {
   type: 'attribute';
   /** Attribute name constraint (e.g., "Name", "Description") */
   name: IDSConstraint;
@@ -148,7 +149,7 @@ export interface IDSAttributeFacet {
 }
 
 /** Property facet - match by property set and property value */
-export interface IDSPropertyFacet {
+export interface IDSPropertyFacet extends Ins, Uri {
   type: 'property';
   /** Property set name constraint */
   propertySet: IDSConstraint;
@@ -161,7 +162,7 @@ export interface IDSPropertyFacet {
 }
 
 /** Classification facet - match by classification reference */
-export interface IDSClassificationFacet {
+export interface IDSClassificationFacet extends Ins, Uri {
   type: 'classification';
   /** Optional classification system name constraint */
   system?: IDSConstraint;
@@ -170,14 +171,14 @@ export interface IDSClassificationFacet {
 }
 
 /** Material facet - match by material assignment */
-export interface IDSMaterialFacet {
+export interface IDSMaterialFacet extends Ins, Uri {
   type: 'material';
   /** Optional material value/name constraint */
   value?: IDSConstraint;
 }
 
 /** PartOf facet - match by spatial/compositional relationship */
-export interface IDSPartOfFacet {
+export interface IDSPartOfFacet extends Ins {
   type: 'partOf';
   /** Relationship type (normalised; defaults to `IfcRelContainedInSpatialStructure` when unrecognised). */
   relation: PartOfRelation;
@@ -190,6 +191,8 @@ export interface IDSPartOfFacet {
   rawRelation?: string;
   /** Optional entity constraint for the related parent */
   entity?: IDSEntityFacet;
+  /** IDS 1.1 PREVIEW (#379, draft PR #380): further facets the related parent must satisfy. */
+  facets?: Array<IDSAttributeFacet | IDSPropertyFacet | IDSClassificationFacet | IDSMaterialFacet>;
 }
 
 export type PartOfRelation =
@@ -232,8 +235,7 @@ export type {
 // a fabricated object. That enrichment is what lets the IDS-specific
 // result types below be zero-duplication NARROWINGS of the general ones.
 // ============================================================================
-// Only the names actually referenced below need a local binding; the rest
-// are re-exported (next statement) without one.
+// Local bindings only for names referenced below; the rest are re-exported.
 import type {
   RequirementSummary,
   RequirementResult,
@@ -539,18 +541,12 @@ export interface ParentInfo {
   expressId: number;
   /** Parent entity type */
   entityType: string;
-  /**
-   * Parent's raw `PredefinedType` enum token (`BEAM`, `USERDEFINED`,
-   * `NOTDEFINED`, …), if available. Mirrors `IFCDataAccessor.getPredefinedTypeRaw`.
-   */
+  /** Parent's raw `PredefinedType` token (`BEAM`, `USERDEFINED`, …); mirrors `getPredefinedTypeRaw`. */
   predefinedType?: string;
   /**
-   * Parent's user-defined name (`ObjectType`/`ElementType`/`ProcessType`) —
-   * only meaningful as a fallback when `predefinedType` is `USERDEFINED`.
-   * Mirrors `IFCDataAccessor.getObjectType`. Kept distinct from
-   * `predefinedType` so partOf's predefinedType match can reproduce the
-   * same two-branch (raw-token-first, user-name-fallback) semantics
-   * `entity-facet.ts` uses for a direct entity check.
+   * Parent's user-defined name (`ObjectType`/`ElementType`/`ProcessType`), the
+   * USERDEFINED fallback; mirrors `IFCDataAccessor.getObjectType`. Kept apart
+   * from `predefinedType` for the raw-token-first match `entity-facet.ts` uses.
    */
   objectType?: string;
 }
@@ -577,6 +573,8 @@ export interface ValidatorOptions {
    * cannot paint a single frame for the whole run.
    */
   yieldEveryMs?: number;
+  /** IDS 1.1 PREVIEW: required to validate a document that uses 1.1 candidate features. */
+  preview?: IDSPreviewFlags;
 }
 
 /** Validation progress information */

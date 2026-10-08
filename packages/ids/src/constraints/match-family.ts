@@ -113,7 +113,7 @@ function matchSimpleValue(
   // A non-numeric, non-boolean literal can only match through string
   // equality — skip the comparators that would return undefined anyway.
   if (!isCoercibleSimpleValue(constraint)) return false;
-  const numericResult = compareNumeric(expected, actualValue);
+  const numericResult = compareNumeric(expected, actualValue, constraint.toleranceRule);
   if (numericResult !== undefined) return numericResult;
   const booleanResult = compareBoolean(expected, actualValue);
   if (booleanResult !== undefined) return booleanResult;
@@ -295,7 +295,7 @@ function matchEnumeration(
   return constraint.values.some((v) => {
     const stringResult = compareString(v, actualValue, caseInsensitive);
     if (stringResult !== undefined) return stringResult;
-    const numericResult = compareNumeric(v, actualValue);
+    const numericResult = compareNumeric(v, actualValue, constraint.toleranceRule);
     if (numericResult !== undefined) return numericResult;
     const booleanResult = compareBoolean(v, actualValue);
     if (booleanResult !== undefined) return booleanResult;

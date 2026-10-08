@@ -222,7 +222,7 @@
   1536 packages/geometry/src/index.ts
    730 packages/geometry/src/native-bridge.ts
    904 packages/ids/src/audit/ifc-schema/index.ts
-   566 packages/ids/src/audit/structural/index.ts
+   411 packages/ids/src/audit/structural/index.ts
    445 packages/ids/src/facets/property-facet.ts
    597 packages/ids/src/parser/xml-parser.ts
    628 packages/ids/src/translation/service.ts

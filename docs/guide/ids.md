@@ -332,6 +332,74 @@ wrote with the same `fmt`. `IFC4X3` is written as the IDS 1.0 token
 fills alone is refused, since IDS 1.0 only has the combined
 `IFCRELVOIDSELEMENT IFCRELFILLSELEMENT`.
 
+## IDS 1.1 preview (unstable)
+
+!!! warning "Preview"
+    IDS 1.1 is not released. The features below are **candidates** from the
+    buildingSMART IDS 1.1 milestone. They are off unless you pass
+    `preview: { ids11: true }`, and they will change or disappear when
+    upstream decides. A document that uses them is not valid IDS 1.0.
+
+Pass the flag to every entry point that should see the candidates:
+`parseIDS(xml, { preview })`, `writeIdsXml(doc, fmt, { preview })`,
+`validateIDS(doc, accessor, modelInfo, { preview })` and
+`auditIDSDocument(xml, { preview })`. Without it, nothing changes: the parser
+ignores the 1.1 attributes and elements, the audit reports them as IDS 1.0
+errors, and every buildingSMART IDS 1.0 corpus file writes byte for byte the
+same with the flag on as off. A document that does use a 1.1 feature is
+never quietly downgraded: the writer and the validator throw
+`IDS11PreviewRequiredError` when it reaches them without the flag.
+
+| Feature | Upstream | What the preview does |
+|---|---|---|
+| `uri` on property, classification and material facets in applicability | IDS #188, #251 (merged on the upstream 1.1 branch) | Read and written; informational, never checked against a model |
+| `instructions` on applicability facets | IDS #154 (open proposal) | Read and written. Requirement instructions stay on the requirement, as in 1.0 |
+| Attribute, property, classification and material facets nested in `partOf` | IDS #379, draft PR #380 | The related element must match the entity **and** every nested facet. Exactly one related entity is required |
+| Specification identifiers should be unique | IDS #339 (resolved as documentation) | The preview audit warns on a duplicate (`W_IDS11_IDENTIFIER_DUPLICATE`) |
+| Equality tolerance: inclusive bounds, rounded to 15 decimals | IDS #418 (open) | Simple values and enumerations compare with `v ∓ (abs(v)·1e-6 + 1e-6)`, bounds rounded half-to-even to 15 decimal places, ends included. Ranges never use tolerance |
+
+The audit with the flag reports each use as `I_IDS11_PREVIEW_FEATURE` (an
+`info` issue naming the upstream issue), so a report always says which parts
+are preview. The writer marks preview output with an XML comment and the
+schema location `http://standards.buildingsmart.org/IDS/1.1/ids.xsd`, which
+buildingSMART has not published yet.
+
+```typescript
+import {
+  parseIDS, writeIdsXml, validateIDS, auditIDSDocument, findIds11Features,
+} from '@ifc-lite/ids';
+
+declare const idsXml: string;
+const preview = { ids11: true };
+
+const doc = parseIDS(idsXml, { preview });
+for (const use of findIds11Features(doc)) console.log(use.feature, use.path);
+
+const audit = await auditIDSDocument(idsXml, { preview });
+const report = await validateIDS(doc, accessor, { modelId: 'model', schemaVersion: 'IFC4', entityCount: 0 }, { preview });
+const xml = writeIdsXml(doc, {}, { preview });
+```
+
+The nested partOf facet expresses a case IDS 1.0 cannot: "the spaces of the
+storey named `01` must be named `01-…`" (#379). The partOf finds the storey,
+and the nested attribute facet is a condition on that storey:
+
+```xml
+<partOf relation="IFCRELAGGREGATES">
+  <entity><name><simpleValue>IFCBUILDINGSTOREY</simpleValue></name></entity>
+  <attribute>
+    <name><simpleValue>Name</simpleValue></name>
+    <value><simpleValue>01</simpleValue></value>
+  </attribute>
+</partOf>
+```
+
+Where upstream is undecided the preview takes the most conservative reading:
+for example the extra `partOf` relation of #247 (`IfcRelSpaceBoundary`) and
+the inverse partOf of #200 are not modelled, and translations of names and
+descriptions (#154) have no XML form until upstream gives them one. The
+decisions are recorded in the IDS Studio P-12 work log.
+
 ## Viewer Integration
 
 In the IFClite viewer, IDS validation is integrated through the Data validation panel's IDS validation entry:

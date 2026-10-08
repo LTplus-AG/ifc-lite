@@ -133,7 +133,9 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
         {t('assistantArtifacts.indexFailed', { reason: indexError })}</p>}
       {resolutions.some((resolution) => resolution.status === 'exact') && <ul aria-label={t('assistantArtifacts.checkedFields')} className="text-muted-foreground">
         {resolutions.flatMap((resolution, i) => resolution.status === 'exact' ? [<li key={i} className="break-words">
-          {t('assistantArtifacts.checkedField', { field: `${resolution.presence.set}.${resolution.presence.name}`, count: resolution.presence.count })}
+          {resolution.presence.kind === 'classification'
+            ? t('assistantArtifacts.checkedClassification', { field: resolution.presence.name, models: resolution.presence.byModel.size })
+            : t('assistantArtifacts.checkedField', { field: `${resolution.presence.set}.${resolution.presence.name}`, count: resolution.presence.count })}
         </li>] : [])}
       </ul>}
       {unresolved.length > 0 && <ArtifactAmbiguity unresolved={unresolved} onAsk={onAsk}

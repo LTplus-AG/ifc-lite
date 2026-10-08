@@ -1,0 +1,3 @@
+Fresh isolated source head `4730edf575c91d417e812425444e1aef342857df` atop the standalone readiness prerequisite ran three actual Windows CPU controller controls, plain root typecheck and the listed light gates. No source or programme changed during qualification. Exact raw logs, original process identities, packets and fixture files are archived with original/archive SHA-256 mappings.
+
+The source includes one shared Job backend. This layer adds no worker-pool runtime, native acceptance runner or observer, and proves no Chrome compatibility, native GPU output, performance or resident-memory verdict. The historical inverse artifacts retain their original head/path context.

@@ -129,13 +129,13 @@ export async function runModelRequest<Message, Route extends string>(
   request: ModelRequest<Message, Route>,
   hooks: RequestHooks<Route> = {},
 ): Promise<RequestOutcome<Route>> {
-  const { budget, signal } = request;
+  const { budget, signal, model, route } = request;
   let startedAt = Date.now();
   let id = `req-${startedAt}-${++receiptSequence}`;
   let outputFormat: OutputFormat | undefined;
   let provenance: RequestProvenance | undefined;
   const receiptFor = (outcome: UsageReceipt['outcome'], usage: TokenUsage | null): UsageReceipt<Route> => ({
-    id, model: request.model, route: request.route, startedAt, finishedAt: Date.now(), outcome,
+    id, model, route, startedAt, finishedAt: Date.now(), outcome,
     ...(request.outputSchema && outputFormat ? { outputFormat } : {}),
     ...(provenance ? { provenance } : {}),
     ...(usage ? { usageReported: true as const, ...usage } : { usageReported: false as const }),
@@ -159,7 +159,7 @@ export async function runModelRequest<Message, Route extends string>(
 
   const seen: Seen = { streamed: false, finishReason: null, text: null, failure: null, usage: null };
   try {
-    hooks.onStart?.({ id, model: request.model, route: request.route, startedAt, cancel: () => controller.abort() });
+    hooks.onStart?.({ id, model, route, startedAt, cancel: () => controller.abort() });
     if (!controller.signal.aborted) {
       const inputDigest = logicalInputDigest({ version: 'ifc-lite.ai.logical-input.v1', system: request.system, messages: request.messages, outputSchema: request.outputSchema });
       if (performance.now() >= deadlineAt) { timedOut = true; controller.abort(new Error('request-timeout')); }
@@ -170,7 +170,7 @@ export async function runModelRequest<Message, Route extends string>(
           ...('value' in inputDigest ? { inputDigest: { algorithm: 'sha256', referent: 'logical-input.v1', value: inputDigest.value } } : { inputDigestUnavailable: inputDigest.unavailable }),
         };
         await request.transport({
-          model: request.model,
+          model,
           messages: request.messages,
           system: request.system,
           outputSchema: request.outputSchema,

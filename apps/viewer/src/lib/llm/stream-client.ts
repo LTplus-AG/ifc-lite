@@ -51,6 +51,10 @@ export interface UsageInfo {
 }
 
 export interface StreamOptions {
+  /** Shared budget owners disable the development proxy retry probe. */
+  allowProxyFallback?: boolean;
+  /** The shared core supplies the overall deadline through its abort signal. */
+  useParentDeadline?: boolean;
   /** Proxy URL (Edge Function) */
   proxyUrl: string;
   /** Model ID */
@@ -85,7 +89,7 @@ const STREAM_REQUEST_TIMEOUT_MS = 45_000;
  */
 export async function streamChat(options: StreamOptions): Promise<void> {
   const { proxyUrl, model, messages, system, signal, onChunk, onComplete, onError, onUsageInfo, onFinishReason, onTokenUsage } = options;
-  const isDev = Boolean((import.meta as unknown as { env?: Record<string, unknown> }).env?.DEV);
+  const isDev = Boolean(import.meta.env.DEV);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -108,7 +112,8 @@ export async function streamChat(options: StreamOptions): Promise<void> {
   });
   const fetchChat = async (url: string) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(new Error('Chat request timed out. Please try again.')), STREAM_REQUEST_TIMEOUT_MS);
+    const timeoutId = options.useParentDeadline ? undefined
+      : setTimeout(() => controller.abort(new Error('Chat request timed out. Please try again.')), STREAM_REQUEST_TIMEOUT_MS);
     const abortFromParent = () => controller.abort(signal?.reason);
     if (signal) {
       if (signal.aborted) {
@@ -135,7 +140,7 @@ export async function streamChat(options: StreamOptions): Promise<void> {
       signal?.removeEventListener('abort', abortFromParent);
     }
   };
-  const canFallbackToAppProxy = isDev && proxyUrl !== '/api/chat';
+  const canFallbackToAppProxy = options.allowProxyFallback !== false && isDev && proxyUrl !== '/api/chat';
 
   let response: Response;
   try {
@@ -166,7 +171,7 @@ export async function streamChat(options: StreamOptions): Promise<void> {
         response = retry;
       }
     } catch {
-      // ignore fallback failure, original response handling below will surface error
+      console.warn('[Chat] Development proxy fallback failed; retaining the original response');
     }
   }
 
@@ -216,7 +221,7 @@ export async function streamChat(options: StreamOptions): Promise<void> {
         errorDetail = `${errorBody.error ?? `Request failed (${response.status})`}\nProvider: ${errorBody.providerMessage}`;
       }
     } catch {
-      // ignore parse failure
+      console.warn('[Chat] Error response could not be decoded as JSON');
     }
     onError(new Error(errorDetail));
     return;

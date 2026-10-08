@@ -90,13 +90,18 @@ for (const duplicate of [false,true]) {
   const made=useViewerStore.getState().addWall(SAMPLE_MODEL,dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY),{Start:[20,20,0],End:[24,20,0],Thickness:.2,Height:3,Name:'Current identity wall'});
   assert.ok('expressId' in made);const id=made.expressId,editor=new StoreEditor(dataStore,view),guid=generateIfcGuid();
   editor.setAttribute(id,'GlobalId',guid);
-  if(duplicate){const record=effectiveMetadataRecord(dataStore,id,view);assert.ok(record);editor.addEntity(record.type,record.attributes);}
   const saved=await parseIfc(editedModelBytes(dataStore,view));assert.equal(saved.getEntity(id)?.attributes[0],guid);
+  if(duplicate){
+    const record=saved.getEntity(id);assert.ok(record);
+    const peer=editor.addEntity(record.type,record.attributes);
+    const duplicated=await parseIfc(editedModelBytes(dataStore,view));
+    assert.equal(duplicated.getEntity(peer.expressId)?.attributes[0],guid,'independent STEP proves the duplicate current root before review');
+  }
   const expected=readSplitSnapshot(dataStore,editor,id,'m');
   const batch=parseModelAuthoringBatch(JSON.stringify({version:1,kind:'model.authoring',title:'Current native GUID',units:'m',frame:'storey-local',operations:[{op:'element.split',target:{modelId:SAMPLE_MODEL,globalId:guid,ifcClass:'IfcWall',name:'Current identity wall'},expected,cut:{kind:'wall',distance:2}}]}));
   const preview=previewModelAuthoring(useViewerStore.getState(),batch);
   if(duplicate){assert.notEqual(preview.rows[0].status,'ready','review entry refuses a genuine current named-GUID root duplicate');return;}
-  assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+  assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? 'native current identity split status');
   const outcome=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native identity control');assert.ok(outcome.ok,outcome.ok?'':outcome.detail??outcome.reason);
   const after=await parseIfc(editedModelBytes(dataStore,view));assert.equal(after.getEntity(id)?.attributes[0],guid,'accepted native split preserves independently exported current source identity');
   useViewerStore.getState().undo(SAMPLE_MODEL);

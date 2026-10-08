@@ -4,6 +4,7 @@
 
 export const structuralPropertiesEn = {
   'properties.structural.heading': 'Structural Analysis',
+  'properties.structural.sourceUnavailable': 'Original structural fields and complete membership cannot be verified without the IFC source. Available authored fields are shown.',
   'properties.structural.loadsTruncatedTooltip':
     'One or more applied loads were bounded during extraction — this member may carry more load data than shown',
   'properties.structural.truncatedBadge': 'Truncated',

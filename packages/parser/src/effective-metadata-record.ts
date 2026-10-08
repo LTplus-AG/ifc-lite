@@ -5,6 +5,8 @@
 import type { EffectiveEntityOverlay, IfcAttributeValue } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { resolveEffectiveEntityRecord, type EffectiveEntityRecord } from './effective-entity-record.js';
+import { normalizeIfcTypeName } from './ifc-schema.js';
+import { namedMetadataValue, positionalMetadataValue } from './metadata-edit-value.js';
 
 export interface MetadataReadView extends EffectiveEntityOverlay {
   getNewEntities(): ReadonlyArray<{ readonly expressId: number; readonly type: string; readonly attributes: IfcAttributeValue[] }>;
@@ -16,16 +18,6 @@ export interface MetadataReadView extends EffectiveEntityOverlay {
 }
 
 const records = new WeakMap<IfcDataStore, WeakMap<MetadataReadView, { revision: number; source: IfcDataStore['source']; rows: Map<number, EffectiveEntityRecord | null> }>>();
-// Native edited/created '$' denotes absent data. The canonical source reader
-// retains '*', and a quoted '$' in the original file remains literal text.
-const editValue = (value: unknown): unknown => value === '$' ? null : value;
-// Created/positional attributes use serializeStepValueAt, which trims marker
-// tokens; named STRING attributes preserve whitespace as literal text.
-const positionalValue = (value: unknown): unknown => {
-  if (typeof value !== 'string') return value;
-  const token = value.trim();
-  return token === '$' ? null : token === '*' ? '*' : value;
-};
 
 export function effectiveMetadataRecord(store: IfcDataStore, expressId: number, view?: MetadataReadView): EffectiveEntityRecord | null {
   if (view?.isDeleted(expressId)) return null;
@@ -38,16 +30,18 @@ export function effectiveMetadataRecord(store: IfcDataStore, expressId: number, 
   const created = view?.getNewEntity(expressId);
   // Source-empty stores cannot reveal source attributes through a stale accessor closure.
   // Named/positional edits may still supply a known field on an otherwise unreadable row.
-  const base = created ? { ...created, attributes: created.attributes.map(positionalValue) } : (store.source?.length ? store.getEntity(expressId) : {
+  const base = created ? { ...created, attributes: created.attributes.map(positionalMetadataValue) } : (store.source?.length ? store.getEntity(expressId) : {
     type: store.entities.getTypeName(expressId), attributes: [],
   });
   if (!base) return null;
+  const retype = view?.getTypeMutations?.().get(expressId)?.newType;
   const result = resolveEffectiveEntityRecord(base, {
-    retype: view?.getTypeMutations?.().get(expressId)?.newType,
-    named: view?.getAttributeMutationsForEntity(expressId).map(row => [row.name, editValue(row.value)] as const) ?? [],
-    positional: [...(view?.getPositionalMutationsForEntity(expressId) ?? [])].map(([index, value]) => [index, positionalValue(value)] as const),
+    retype,
+    named: view?.getAttributeMutationsForEntity(expressId).map(row => [row.name, namedMetadataValue(row.value, retype ?? base.type, row.name, store.schemaVersion)] as const) ?? [],
+    positional: [...(view?.getPositionalMutationsForEntity(expressId) ?? [])].map(([index, value]) => [index, positionalMetadataValue(value)] as const),
   }, store.schemaVersion);
-  memo?.rows.set(expressId, result);
-  return result;
+  const normalized = { ...result, type: normalizeIfcTypeName(result.type) };
+  memo?.rows.set(expressId, normalized);
+  return normalized;
 }
 

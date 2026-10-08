@@ -58,7 +58,7 @@ test('#7195 native structural named and positional edits agree with exported pre
   view.setAttribute(memberId, 'Thickness', '0.5');
   view.setPositionalAttribute(memberId, getAttributeNames('IfcStructuralSurfaceMember').indexOf('Thickness'), 0.75);
   const saved = await exportAndReparse('native', file); assert.equal(extractStructuralOnDemand(saved).members[0].thickness, 0.75);
-  assert.equal(extractStructuralOnDemand(file, effectiveStructuralView(view)).members[0].thickness, 0.75);
+  assert.equal(extractStructuralOnDemand(file, effectiveStructuralView(view, file)).members[0].thickness, 0.75);
   assert.equal(row().structural?.member.Thickness, 0.75);
 });
 
@@ -67,13 +67,13 @@ test('#7195 native structural applied-load source edits agree with exported load
   const view = getOrCreateMutationView(useViewerStore, 'native'); assert.ok(view);
   view.setAttribute(loadId, 'ForceX', '2345');
   const saved = await exportAndReparse('native', file); assert.equal(force(extractStructuralOnDemand(saved)), 2345);
-  assert.equal(force(extractStructuralOnDemand(file, effectiveStructuralView(view))), 2345);
+  assert.equal(force(extractStructuralOnDemand(file, effectiveStructuralView(view, file))), 2345);
   assert.equal(createStructuralAdapter(useViewerStore).data('native').activities[0].appliedLoad?.components.ForceX, 2345);
 });
 
 test('#7195 native structural session-created loads and activities are readable before export', async () => {
   const { file, saved, view } = await fixture(false); assert.equal(force(extractStructuralOnDemand(saved)), 1234);
-  assert.equal(force(extractStructuralOnDemand(file, effectiveStructuralView(view))), 1234);
+  assert.equal(force(extractStructuralOnDemand(file, effectiveStructuralView(view, file))), 1234);
   assert.equal(row().structural?.activities[0].AppliedLoad?.components.ForceX, 1234);
 });
 

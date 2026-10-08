@@ -24,11 +24,11 @@ import { formatLocaleList } from '@/i18n/intlFormat';
 import { EXPRESS_PREDEFINED_TYPE_ATTRIBUTE, EXPRESS_THICKNESS_ATTRIBUTE } from './express-labels';
 import type {
   StructuralExtraction,
-  StructuralMemberInfo,
   StructuralConnectionInfo,
   StructuralActivityInfo,
   StructuralLoadInfo,
 } from '@ifc-lite/parser';
+import { selectedStructuralMember } from './selectedStructuralMember';
 import { PersistentCollapsible } from './PersistentCollapsible';
 
 interface StructuralCardProps {
@@ -38,16 +38,17 @@ interface StructuralCardProps {
   selectedExpressId: number | null;
   /** Selected entity's globalId (federation-safe match, preferred over expressId). */
   selectedGlobalId?: string | null;
+  sourceUnavailable?: boolean;
 }
 
 export function StructuralCard({
   structuralData,
   selectedExpressId,
-  selectedGlobalId,
+  selectedGlobalId, sourceUnavailable = false,
 }: StructuralCardProps) {
   const { t, locale } = useTranslation();
   const member = useMemo(
-    () => findMember(structuralData, selectedExpressId, selectedGlobalId),
+    () => selectedStructuralMember(structuralData, selectedExpressId, selectedGlobalId),
     [structuralData, selectedExpressId, selectedGlobalId],
   );
 
@@ -107,6 +108,7 @@ export function StructuralCard({
         <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
+        {sourceUnavailable && <p role="status" className="p-3 text-xs text-amber-700 dark:text-amber-300">{t('properties.structural.sourceUnavailable')}</p>}
         <div className="border-t-2 border-violet-200 dark:border-violet-800 divide-y divide-violet-100 dark:divide-violet-900/30">
           <div className="px-3 py-2 text-xs">
             <div className="grid grid-cols-[minmax(70px,auto)_1fr] gap-x-2 gap-y-0.5 text-2xs">
@@ -251,28 +253,4 @@ function formatDofs(components: Record<string, number | boolean>, t: Translate, 
     elastic > 0 ? label(elastic, 'properties.structural.elasticDofs') : null,
     free > 0 ? label(free, 'properties.structural.freeDofs') : null,
   ].filter((part): part is string => part !== null));
-}
-
-/**
- * Find the structural member matching the current selection.
- *
- * Federation-aware, matching `ScheduleCard`'s convention: prefer globalId
- * whenever the extraction and the selection both carry one — local
- * expressIds can collide across federated models. Fall back to expressId
- * only when no globalId match is possible.
- */
-function findMember(
-  data: StructuralExtraction | null,
-  selectedExpressId: number | null,
-  selectedGlobalId: string | null | undefined,
-): StructuralMemberInfo | null {
-  if (!data || data.members.length === 0) return null;
-  if (selectedGlobalId) {
-    const byGlobalId = data.members.find((m) => m.globalId === selectedGlobalId);
-    if (byGlobalId) return byGlobalId;
-  }
-  if (selectedExpressId !== null && selectedExpressId > 0) {
-    return data.members.find((m) => m.expressId === selectedExpressId) ?? null;
-  }
-  return null;
 }

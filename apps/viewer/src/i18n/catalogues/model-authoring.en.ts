@@ -37,6 +37,8 @@ export const modelAuthoringEn = {
   'modelAuthoring.layersElementNote': 'Assign to this element. Body dimensions remain unchanged; no changed-body preview is available. This is not an engineering check.',
   'modelAuthoring.op.material.assign': 'Assign material',
   'modelAuthoring.op.walls.join': 'Join walls',
+  'modelAuthoring.op.hosted.edit': 'Edit hosted occurrence',
+  'modelAuthoring.hostedEditBoundsPreview': 'Preview shows the opening bounds only; filling geometry, styles and detailed cut shapes are authoritative at native commit.',
   'modelAuthoring.op.hosted.create': 'Place in wall',
   'modelAuthoring.status.invalid': 'Refused by the model',
   'modelAuthoring.status.blocked': 'Needs another row',

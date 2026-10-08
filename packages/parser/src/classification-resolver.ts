@@ -142,6 +142,7 @@ function classificationInfoForRef(store: IfcDataStore, classRefId: number, view?
     if (!entity) return { unresolved: true };
     const typeUpper = entity.type.toUpperCase();
     const attrs = entity.attributes || [];
+    const unreadableSource = !store.source?.length && !view?.getNewEntity(classRefId);
 
     if (typeUpper === 'IFCCLASSIFICATIONREFERENCE') {
         // IfcClassificationReference: [Location, Identification, Name, ReferencedSource, Description, Sort]
@@ -150,6 +151,7 @@ function classificationInfoForRef(store: IfcDataStore, classRefId: number, view?
             identification: typeof attrs[1] === 'string' ? attrs[1] : undefined,
             name: typeof attrs[2] === 'string' ? attrs[2] : undefined,
             description: typeof attrs[4] === 'string' ? attrs[4] : undefined,
+            ...(unreadableSource ? { unresolved: true } : {}),
         };
 
         // Walk up to find the classification system name
@@ -180,6 +182,7 @@ function classificationInfoForRef(store: IfcDataStore, classRefId: number, view?
             name: typeof attrs[3] === 'string' ? attrs[3] : undefined,
             description: typeof attrs[4] === 'string' ? attrs[4] : undefined,
             location: typeof attrs[5] === 'string' ? attrs[5] : undefined,
+            ...(unreadableSource ? { unresolved: true } : {}),
         };
     }
     // An association aimed at a non-IfcClassificationSelect entity is broken,
@@ -278,6 +281,7 @@ function walkClassificationChain(
     const codes: string[] = [];
     let currentId: number | undefined = startId;
     const visited = new Set<number>();
+    let unreadableSourceReference = false;
 
     while (currentId !== undefined) {
         if (visited.has(currentId)) {
@@ -298,10 +302,11 @@ function walkClassificationChain(
         if (typeUpper === 'IFCCLASSIFICATION') {
             // Root: IfcClassification [Source, Edition, EditionDate, Name, ...]
             const systemName = typeof attrs[3] === 'string' ? attrs[3] : undefined;
-            return { systemName, codes, chainUnresolved: !store.source?.length && systemName === undefined && !view?.getNewEntity(currentId) };
+            return { systemName, codes, chainUnresolved: unreadableSourceReference || (!store.source?.length && systemName === undefined && !view?.getNewEntity(currentId)) };
         }
 
         if (typeUpper === 'IFCCLASSIFICATIONREFERENCE') {
+            unreadableSourceReference ||= !store.source?.length && !view?.getNewEntity(currentId);
             // IfcClassificationReference [Location, Identification, Name, ReferencedSource, ...]
             const code = typeof attrs[1] === 'string' ? attrs[1] :
                          typeof attrs[2] === 'string' ? attrs[2] : undefined;
@@ -316,5 +321,5 @@ function walkClassificationChain(
     // `currentId` became `undefined`: `ReferencedSource` was omitted (`$`).
     // Schema-legal, not malformed — an `IfcClassificationReference` is
     // allowed to not name a system.
-    return { codes, chainUnresolved: false };
+    return { codes, chainUnresolved: unreadableSourceReference };
 }

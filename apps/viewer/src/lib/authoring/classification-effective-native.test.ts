@@ -61,6 +61,27 @@ test('#7131 native list classifications agree with independently reparsed author
   const { store, view, expected } = await authoredAssociation();
   assert.deepEqual(createListDataProvider(store, '', undefined, view).getClassifications?.(262), expected.map(row => ({ system: row.system, code: row.identification, name: row.name })));
 });
+test('#7131 an authored association cannot verify unreadable source reference leaf fields', async () => {
+  const { reparsed, view: originalView } = await authoredAssociation();
+  const sourceRef = [...originalView.getNewEntitiesOfType('IFCCLASSIFICATIONREFERENCE')][0];
+  useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), ifcDataStore: reparsed, maxExpressId: 20000 }), mutationViews: new Map(), storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(), dirtyModels: new Set(), editEnabled: true, collabRole: null });
+  assert.deepEqual(addClassificationAssociation('m', 52, { system: 'CCI Construction', identification: 'NEW-52' }), { ok: true });
+  const view = useViewerStore.getState().mutationViews.get('m')!;
+  const relation = [...view.getNewEntitiesOfType('IFCRELASSOCIATESCLASSIFICATION')][0];
+  view.setPositionalAttribute(relation.expressId, 5, `#${sourceRef.expressId}`);
+  const out = new StepExporter(reparsed, view).export({ schema: 'IFC4', visibleOnly: false, hiddenEntityIds: new Set<number>() });
+  const text = typeof out.content === 'string' ? out.content : new TextDecoder().decode(out.content);
+  const exported = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer, { disableWorkerScan: true });
+  assert.equal(extractClassificationsOnDemand(exported, 52)[0]?.identification, 'E-AAA-WALL', 'independent export proves the actual source leaf');
+  const transport = { ...reparsed, source: EMPTY_SOURCE_BYTES };
+  assert.deepEqual(extractClassificationsOnDemand(transport, 52, view).map(row => [row.identification, row.unresolved]), [[undefined, true]], 'an authored edge does not recover unavailable source reference attributes');
+  view.setAttribute(sourceRef.expressId, 'Name', 'Known authored partial name');
+  assert.deepEqual(extractClassificationsOnDemand(transport, 52, view).map(row => [row.name, row.unresolved]), [['Known authored partial name', true]], 'known edited fields remain partial and unverified');
+  const authoredRef = [...view.getNewEntitiesOfType('IFCCLASSIFICATIONREFERENCE')][0];
+  view.setPositionalAttribute(relation.expressId, 5, `#${authoredRef.expressId}`);
+  view.setPositionalAttribute(authoredRef.expressId, 3, `#${sourceRef.expressId}`);
+  assert.deepEqual(extractClassificationsOnDemand(transport, 52, view).map(row => [row.identification, row.unresolved]), [['NEW-52', true]], 'an authored leaf retains known fields while its unreadable source chain remains unresolved');
+});
 test('#7131 native lens classifications agree with independently reparsed authoring output', async () => {
   const { state, expected } = await authoredAssociation();
   assert.deepEqual(createLensDataProvider(state.models, null, state.mutationViews).getClassifications?.(262), expected);

@@ -360,6 +360,10 @@ function checkPredefinedType(
       // already have flagged the structural mismatch indirectly.
       break;
   }
+  // Conjunctive siblings (IDS-010) must hold too, so each is checked like the primary.
+  if (c.type !== 'simpleValue') {
+    c.and?.forEach((sibling, i) => checkPredefinedType(sibling, entity, version, `${path}.and[${i}]`, issues));
+  }
 }
 
 async function auditPropertyFacet(

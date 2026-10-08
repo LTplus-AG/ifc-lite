@@ -117,3 +117,22 @@ test('#7132 nested optional parameters and cyclic schemas refuse before the netw
   }
   assert.equal(requests, 0);
 });
+
+
+test('#7132 wide all-required schemas refuse without overflowing the preflight or spending budget', async () => {
+  const keys = Array.from({ length: 200_000 }, (_, i) => `Field${i}`);
+  const schema = { type: 'object', properties: Object.fromEntries(keys.map(key => [key, { type: 'string' }])),
+    required: keys, additionalProperties: false };
+  let requests = 0;
+  globalThis.fetch = async () => { requests++; throw new Error('Oversized schema must never dispatch'); };
+  for (const wide of [schema, { allOf: keys.map(() => ({ type: 'string' })) }, { $defs: schema.properties }]) {
+    const call = request({ name: 'wide', schema: wide });
+    const outcome = await runModelRequest(call);
+    assert.ok(outcome.kind === 'refused' && outcome.reason === 'unsupported-schema');
+    assert.match(outcome.message, /too large or cyclic/);
+    assert.equal(call.budget.requests, 0);
+    assert.equal(call.budget.outputTokens, 0);
+    assert.deepEqual(useRequestReceipts.getState(), { receipts: [], inFlight: [] });
+  }
+  assert.equal(requests, 0);
+});

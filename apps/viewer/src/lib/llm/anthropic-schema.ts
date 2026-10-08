@@ -7,10 +7,15 @@ import type { JsonResponseSchema } from '@ifc-lite/ai';
 
 export function anthropicSchemaLimitation(contract: JsonResponseSchema): string | null {
   const pending: unknown[] = [contract.schema];
-  let unions = 0, optional = 0, work = 0;
+  const limit = 'The Anthropic response schema is too large or cyclic; simplify the field constraints';
+  let unions = 0, optional = 0, scheduled = 1;
+  const enqueue = (value: unknown): boolean => {
+    if (++scheduled > 20_000) return false;
+    pending.push(value);
+    return true;
+  };
   while (pending.length) {
-    // Iterative and bounded even for a malformed cyclic caller-supplied schema.
-    if (++work > 20_000) return 'The Anthropic response schema is too large or cyclic; simplify the field constraints';
+    // Bound scheduling, including wide fan-out, rather than only work after dequeue.
     const value = pending.pop();
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
     const schema = value as Record<string, unknown>;
@@ -18,19 +23,28 @@ export function anthropicSchemaLimitation(contract: JsonResponseSchema): string 
     if (unions > 16) return 'Anthropic response schemas support at most 16 union parameters; choose fewer fields or another provider';
     if (schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)) {
       const properties = schema.properties as Record<string, unknown>;
-      const required = new Set(Array.isArray(schema.required) ? schema.required : []);
-      optional += Object.keys(properties).filter(key => !required.has(key)).length;
-      if (optional > 24) return 'Anthropic response schemas support at most 24 optional parameters; require more fields or choose another provider';
-      pending.push(...Object.values(properties));
+      const requiredKeys = Array.isArray(schema.required) ? schema.required : [];
+      if (requiredKeys.length > 20_000) return limit;
+      const required = new Set(requiredKeys);
+      for (const key in properties) {
+        if (!Object.hasOwn(properties, key)) continue;
+        if (!required.has(key)) optional++;
+        if (optional > 24) return 'Anthropic response schemas support at most 24 optional parameters; require more fields or choose another provider';
+        if (!enqueue(properties[key])) return limit;
+      }
     }
     for (const key of ['anyOf', 'allOf', 'oneOf']) {
       const branches = schema[key];
-      if (Array.isArray(branches)) pending.push(...branches);
+      if (Array.isArray(branches)) for (const branch of branches) if (!enqueue(branch)) return limit;
     }
-    if (schema.items) pending.push(schema.items);
+    if (schema.items && !enqueue(schema.items)) return limit;
     for (const key of ['$defs', 'definitions']) {
       const definitions = schema[key];
-      if (definitions && typeof definitions === 'object' && !Array.isArray(definitions)) pending.push(...Object.values(definitions));
+      if (definitions && typeof definitions === 'object' && !Array.isArray(definitions)) {
+        for (const name in definitions) {
+          if (Object.hasOwn(definitions, name) && !enqueue((definitions as Record<string, unknown>)[name])) return limit;
+        }
+      }
     }
   }
   return null;

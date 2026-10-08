@@ -127,3 +127,27 @@ it('clearing the native layout owner refuses a pending cut before any graph writ
     assert.equal(depth(), undo);
   } finally { prepared.dispose(); }
 });
+
+it('exposes detached post-cut contours for a session-only layout before approval (#7286)', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const { adapter, view } = await seed();
+  const native = await adapter.roomCommand!(MODEL, 42, { action: 'query', weld: .05 });
+  assert.equal(native.candidates.length, 1);
+  const before = structuredClone(view.getEffectiveChanges());
+  const prepared = await prepareNativeRoomCommand(useViewerStore, MODEL, 42, {
+    action: 'edit', weld: .05, operation: { kind: 'split', a: [21,20], b: [21,23] }, tolerance: .01,
+  });
+  try {
+    assert.equal(prepared.result.created.length, 0, 'the edit has no materialized IFC rooms');
+    assert.equal(prepared.result.candidates.length, 1, 'the legacy native result preserves its before population');
+    assert.deepEqual(view.getEffectiveChanges(), before, 'native cut preparation remains inert');
+    assert.equal(prepared.layoutAfter?.length, 2, 'the review must show both detached post-cut contours');
+    assert.ok(prepared.layoutAfter!.every(face => face.centre.length >= 3));
+    prepared.commit();
+    const current = await adapter.roomCommand!(MODEL, 42, { action: 'query', weld: .05 });
+    assert.deepEqual(current.candidates.map(face => face.centre), prepared.layoutAfter!.map(face => face.centre));
+    useViewerStore.getState().undo(MODEL);
+    assert.equal((await adapter.roomCommand!(MODEL, 42, { action: 'query', weld: .05 })).candidates.length, 1);
+    assert.deepEqual(view.getEffectiveChanges(), before);
+  } finally { prepared.dispose(); }
+});

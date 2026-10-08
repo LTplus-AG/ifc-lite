@@ -964,7 +964,11 @@ Native Room SDK preparation raises `RoomCommandConflictError` when another Room 
 Hosts that use `createRoomCommandBackend` can call its asynchronous
 `prepareRoomCommand(modelId, storeyExpressId, command)` before asking for
 approval. The returned `PreparedRoomCommand` exposes a detached native
-`preview` model and the planned `result`; preparation changes no live IFC
+`preview` model and the planned `result`. For an edit, `layoutAfter` contains
+the detached post-edit native faces, including a layout-only cut with no
+materialized IfcSpace. The existing `result.candidates` keeps its pre-edit
+candidate meaning; hosts show `layoutAfter` to review the approved new layout.
+Preparation changes no live IFC
 graph or Undo history. `validate()` checks the captured model, overlay,
 history and retained layout. `commit()` applies the whole captured action
 synchronously through the host recorder, once. Auto approves every captured

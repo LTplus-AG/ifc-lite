@@ -8,7 +8,7 @@ import {
   storeyFootprintFaceInStore, roomOutline, updateRoomOutlineInStore, applyLayoutOp, readFaces,
   syncRoomLayoutInStore, occupancyTest, existingSpaceFootprintEntriesByStorey,
   type RoomPlateFactory, type RoomWallRect, type SpaceFootprint, type RoomCandidate, type RoomBoundary,
-  type LayoutOp, type ElementSplitOptions,
+  type LayoutOp, type LayoutFace, type ElementSplitOptions,
 } from '@ifc-lite/create';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { CostStoreModelResolution } from './cost-store-backend.js';
@@ -70,6 +70,8 @@ const overlayRevision = (model: CostStoreModelResolution) => model.mutationView.
 /** An inert native draft. Approval commits this whole action, never a subset of Auto faces. */
 export interface PreparedRoomCommand {
   readonly result: RoomCommandResult;
+  /** Detached native post-edit faces, including a session-only layout with no materialized IfcSpace. */
+  readonly layoutAfter?: readonly LayoutFace[];
   readonly preview: CostStoreModelResolution;
   validate(): void;
   commit(): RoomCommandResult;
@@ -139,7 +141,7 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
       const rooms = roomCandidatesFromFaces(filterRoomFaces(entry.faces, op.action === 'edit' || op.action === 'update' ? 0 : minArea), occupied, spaces);
       const ref = (expressId: number): EntityRef => ({ modelId, expressId });
       const result = (created: readonly number[] = [], updated: readonly number[] = [], deleted: readonly number[] = [], skipped: readonly number[] = []): RoomCommandResult => ({ created: created.map(ref), updated: updated.map(ref), deleted: deleted.map(ref), skipped: skipped.map(ref), candidates: structuredClone(rooms) });
-      const prepare = (write: (draft: CostStoreModelResolution) => RoomCommandResult, afterCommit?: () => void, release?: () => void): PreparedRoomCommand => {
+      const prepare = (write: (draft: CostStoreModelResolution) => RoomCommandResult, afterCommit?: () => void, release?: () => void, layoutAfter?: readonly LayoutFace[]): PreparedRoomCommand => {
         let disposed = false, committed = false;
         let applied: RoomCommandResult | null = null;
         const draft = model.mutationView.prepareAtomic(view => {
@@ -152,7 +154,7 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
           if (host.layouts.version() !== layoutVersion) throw new RoomCommandConflictError('The native Room layout changed; prepare it again');
           draft.validate();
         };
-        return { result: structuredClone(draft.result.result), preview: draft.result.preview, validate,
+        return { result: structuredClone(draft.result.result), preview: draft.result.preview, ...(layoutAfter ? { layoutAfter: structuredClone(layoutAfter) } : {}), validate,
           commit: () => {
             validate();
             applied = op.action === 'query' ? draft.result.result : host.record(modelId, write);
@@ -178,7 +180,7 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
           }, () => {
             host.layouts.file(modelId, storeyId, weld, host.historyHead(modelId), entry.walls, plate, after);
             transferred = true;
-          }, () => { if (!transferred) plate.free(); });
+          }, () => { if (!transferred) plate.free(); }, after);
         } catch (error) { if (!transferred) plate.free(); throw error; }
       }
       if (op.action === 'update') return prepare(draft => {

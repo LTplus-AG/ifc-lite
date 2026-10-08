@@ -32,13 +32,15 @@ async function pdfText(blob: Blob) {
     return content.items.flatMap(item => 'str' in item ? [item.str] : []).join(' ');
   } finally { await task.destroy(); }
 }
-for (const refused of [false, true]) it(`#7128 native document PDF ${refused ? 'download failure' : 'publication'} settles Activity without invented Cancel`, async () => {
+for (const mode of ['publication', 'download failure', 'partial coverage'] as const) it(`#7128 native document PDF ${mode} settles Activity without invented Cancel`, async () => {
+  const refused = mode === 'download failure';
+  const partial = mode === 'partial coverage';
   useActivityJournal.setState({ jobs: [] });
   const bytes = await readFile(new URL('../../../../public/samples/building-architecture.ifc', import.meta.url));
   const store = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
   const model = { ...fixtureModel('authored-document'), ifcDataStore: store };
   const documentSpec: DocumentSpec = { version: DOCUMENT_VERSION, id: 'native-document', name: 'Native document',
-    page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'text', id: 'count', style: 'body', text: 'Authored walls: {Count[IfcWall]}' }] };
+    page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'text', id: 'count', style: 'body', text: `Authored walls: {Count[IfcWall]}${partial ? ' at {IfcBuildingStorey["Unavailable #7128"].Name}' : ''}` }] };
   useViewerStore.setState({ ...fixtureModels(model), dashboards: [], documents: [], activeDocumentId: null, bcfProject: null });
   await useViewerStore.getState().upsertDocument(documentSpec);
   useViewerStore.getState().setActiveDocumentId(documentSpec.id);
@@ -67,7 +69,8 @@ for (const refused of [false, true]) it(`#7128 native document PDF ${refused ? '
     await act(async () => release());
     await waitFor(() => useActivityJournal.getState().jobs.at(-1)?.outcome !== 'running', 'native PDF publication settled');
     const finished = useActivityJournal.getState().jobs.at(-1)!;
-    assert.equal(finished.outcome, refused ? 'failed' : 'completed');
+    assert.equal(finished.outcome, refused ? 'failed' : partial ? 'partial' : 'completed');
+    if (partial) assert.match(finished.detail ?? '', /1 binding unresolved/);
     assert.equal(activityCanceller(row.id), null);
     if (refused) { assert.equal(printed, undefined); assert.match(finished.detail ?? '', /Native PDF download refused #7128/); }
     else {

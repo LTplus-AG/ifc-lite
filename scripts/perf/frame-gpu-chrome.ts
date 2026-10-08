@@ -4,7 +4,7 @@
 
 /** Canonical exclusively owned Windows Chrome lifecycle for native browser rigs. */
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -80,26 +80,12 @@ function removeProfile(profileWsl: string, deadline: number): void {
 }
 function profileProcessesScript(profileWin: string): string {
   const literal = profileWin.replace(/'/g, "''");
-  // Parse Windows quoting through its own API; match the complete profile argument, never a prefix.
-  return `Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public static class IfcChromeArgs {
-  [DllImport("shell32.dll", SetLastError=true)] static extern IntPtr CommandLineToArgvW([MarshalAs(UnmanagedType.LPWStr)] string line, out int count);
-  [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr value);
-  public static string[] Split(string line) {
-    int count; IntPtr result=CommandLineToArgvW(line,out count);
-    if(result==IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-    try { string[] values=new string[count]; for(int i=0;i<count;i++) values[i]=Marshal.PtrToStringUni(Marshal.ReadIntPtr(result,i*IntPtr.Size)); return values; }
-    finally { LocalFree(result); }
-  }
-}
-'@
-$profile='${literal}'; function Owned { @(Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object { $_.CommandLine -and ([IfcChromeArgs]::Split($_.CommandLine) -contains ('--user-data-dir='+$profile)) }) };`;
+  return `${readFileSync(new URL('./frame-gpu-owned-profile.ps1', import.meta.url), 'utf8')}
+$profile='${literal}'; function Owned([switch]$BrowserRoot,[switch]$RequireCompleteObservation) { @(Get-OwnedChromeProcesses -Profile $profile -BrowserRoot:$BrowserRoot -RequireCompleteObservation:$RequireCompleteObservation) };`;
 }
 function verifyEndpointOwner(profileWin: string, port: number, deadline: number): void {
   const script = `$ErrorActionPreference='Stop'; ${profileProcessesScript(profileWin)}
-    $owners=@(Owned | Where-Object { -not ([IfcChromeArgs]::Split($_.CommandLine) | Where-Object {$_.StartsWith('--type=')}) });
+    $owners=@(Owned -BrowserRoot);
     if($owners.Count -ne 1 -or -not ([IfcChromeArgs]::Split($owners[0].CommandLine) -contains '--remote-debugging-port=${port}')) { throw 'Owned browser endpoint process missing' }
     $listeners=@(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction Stop);
     if($listeners.Count -eq 0 -or @($listeners | Where-Object {$_.OwningProcess -ne $owners[0].ProcessId}).Count -ne 0) { throw 'CDP endpoint is not owned by allocated profile' }`;
@@ -109,13 +95,13 @@ function verifyEndpointOwner(profileWin: string, port: number, deadline: number)
 async function disposeProfile(profileWin: string, profileWsl: string, deadline: number): Promise<string | null> {
   try {
     const script = `$ErrorActionPreference='Stop'; ${profileProcessesScript(profileWin)}
-      foreach($owned in (Owned)) {
-        $current=@(Owned | Where-Object {$_.ProcessId -eq $owned.ProcessId -and $_.CreationDate -eq $owned.CreationDate});
-        if($current.Count -eq 1) { try { Stop-Process -Id $owned.ProcessId -Force -ErrorAction Stop } catch { if((Owned | Where-Object {$_.ProcessId -eq $owned.ProcessId -and $_.CreationDate -eq $owned.CreationDate})) { throw } } }
+      foreach($owned in (Owned -RequireCompleteObservation)) {
+        $current=@(Owned -RequireCompleteObservation | Where-Object {$_.ProcessId -eq $owned.ProcessId -and $_.CreationDate -eq $owned.CreationDate});
+        if($current.Count -eq 1) { try { Stop-Process -Id $owned.ProcessId -Force -ErrorAction Stop } catch { if((Owned -RequireCompleteObservation | Where-Object {$_.ProcessId -eq $owned.ProcessId -and $_.CreationDate -eq $owned.CreationDate})) { throw } } }
       }
       $clock=[Diagnostics.Stopwatch]::StartNew();
-      while((Owned).Count -gt 0 -and $clock.ElapsedMilliseconds -lt ${Math.max(1, deadline - 1000)}) { Start-Sleep -Milliseconds 100 }
-      if((Owned).Count -ne 0) { throw 'Owned profile process termination unproved' }`;
+      while((Owned -RequireCompleteObservation).Count -gt 0 -and $clock.ElapsedMilliseconds -lt ${Math.max(1, deadline - 1000)}) { Start-Sleep -Milliseconds 100 }
+      if((Owned -RequireCompleteObservation).Count -ne 0) { throw 'Owned profile process termination unproved' }`;
     run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], deadline);
     // A separate owned deletion process gives filesystem cleanup a real deadline.
     removeProfile(profileWsl, deadline);

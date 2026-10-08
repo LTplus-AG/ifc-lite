@@ -12,6 +12,7 @@ export function finiteNonnegative(value,name) {
 }
 export function requireEpoch(snapshot, previousId) {
   if (!snapshot || typeof snapshot.loadId!=='string' || !snapshot.loadId.trim() || snapshot.loadId === previousId) throw Error('Missing fresh load epoch');
+  if(finiteNonnegative(snapshot.timeOrigin,'load.timeOrigin')===0)throw Error('Missing positive load time origin');
   const end=finiteNonnegative(snapshot.end,'load.end'),start=finiteNonnegative(snapshot.start,'load.start');
   if(end<start)throw Error('Load end precedes start');
   if(!Array.isArray(snapshot.spans))throw Error('Missing actual span array');
@@ -82,16 +83,51 @@ export function requireSample(row) {
   if (!row.watcher?.length || row.watcher.some(x=>x.graphs.length)) throw Error('Competing observable graph');
   if (!row.physical?.length || !row.physical.every(x=>x.admitted===true)) throw Error('Physical session admission failed');
   if(!row.epochs?.length)throw Error('Missing actual lifecycle epochs');
-  for(const e of row.epochs){requireEpoch(e.trace,e.previousId);
+  const fixtures=workloadFixtures(row.workload);
+  if(row.epochs.length!==fixtures.length)throw Error('Lifecycle epoch count differs from workload');
+  const epochIds=new Set();let priorLoadId=null,priorOrigin=null;
+  for(const [index,e] of row.epochs.entries()){
+    if(e.fixture!==fixtures[index])throw Error('Lifecycle epoch fixture order mismatch');
+    const generation=row.workload.mode==='cache'?index:0;
+    if(e.pageGeneration!==generation)throw Error('Lifecycle epoch page generation mismatch');
+    const reloaded=generation>0;
+    const origin=finiteNonnegative(e.pageTimeOrigin,'epoch.pageTimeOrigin');
+    if(origin===0)throw Error('Missing lifecycle epoch page origin');
+    if(finiteNonnegative(e.trace.timeOrigin,'load.timeOrigin')!==origin)throw Error('Trace time origin differs from observed browser page');
+    if(index>0&&(reloaded?origin<=priorOrigin:origin!==priorOrigin))throw Error('Lifecycle epoch origin disagrees with actual reload boundary');
+    if(e.reloadCompleted!==reloaded)throw Error('Lifecycle epoch reload completion mismatch');
+    priorOrigin=origin;
+    if(reloaded&&e.previousId!==null)throw Error('Reloaded lifecycle epoch retained previous page identity');
+    if(e.previousId!==null&&(typeof e.previousId!=='string'||!e.previousId.trim()))throw Error('Invalid observed previous epoch identity');
+    requireEpoch(e.trace,index===0?e.previousId:reloaded?null:priorLoadId);
+    const expectedLoadPath=reloaded?'cache':'wasm';
+    if(e.trace.attrs?.loadPath!==expectedLoadPath)throw Error('Lifecycle epoch load path differs from planned route');
+    if(epochIds.has(e.trace.loadId))throw Error('Duplicate lifecycle epoch identity');
+    if(index>0&&!reloaded&&e.previousId!==priorLoadId)throw Error('Lifecycle epoch predecessor mismatch');
+    epochIds.add(e.trace.loadId);priorLoadId=e.trace.loadId;
     for(const name of ['firstBatchWaitMs','firstVisibleGeometryMs','totalWallClockMs','metadataRenderReadyMs'])if(!(name==='firstBatchWaitMs'&&e.trace.attrs?.loadPath==='cache'))finiteNonnegative(e.metrics?.[name],`timing.${name}`);
   }
   return row;
+}
+function workloadFixtures(workload) {
+  if(!workload||!['immediate','idle-ready','replace','federated','cache','expiry','drain'].includes(workload.mode))throw Error('Invalid lifecycle workload mode');
+  const fixtures=workload.loads??[workload.first];
+  if(!Array.isArray(fixtures)||!fixtures.length||fixtures.some(key=>typeof key!=='string'||!key.trim()))throw Error('Missing workload fixture sequence');
+  return fixtures;
+}
+function sameWorkload(actual,expected) {
+  // Full immutable options participate, not only the human-readable workload name.
+  const keys=new Set([...Object.keys(actual),...Object.keys(expected)]);
+  return [...keys].every(key=>JSON.stringify(actual[key])===JSON.stringify(expected[key]));
 }
 export function pairedReport(rows, schedule) {
   if(rows.length!==schedule.length)throw Error('Incomplete cohort; no substitution');
   const groups=new Map();
   for(let i=0;i<rows.length;i++){
     const row=requireSample(rows[i]), expected=schedule[i];
+    if(!sameWorkload(row.workload,expected.workload))throw Error('Scheduled workload options differ');
+    const expectedFixtures=workloadFixtures(expected.workload);
+    if(row.epochs.length!==expectedFixtures.length||row.epochs.some((epoch,index)=>epoch.fixture!==expectedFixtures[index]))throw Error('Scheduled lifecycle epoch sequence mismatch');
     if(row.index!==expected.index || row.side!==expected.side || row.pair!==expected.pair || row.contrast!==expected.contrast || row.workload?.name!==expected.workload.name || row.source!==expected.source || row.query!==expected.query)throw Error('Schedule reordered or replaced');
     const key=`${expected.contrast}/${expected.workload.name}/${expected.pair}`;
     const pair=groups.get(key)??[];pair.push(row);groups.set(key,pair);
@@ -100,7 +136,7 @@ export function pairedReport(rows, schedule) {
     if(pair.length!==2 || new Set(pair.map(x=>x.side)).size!==2)throw Error('Incomplete pair');
     if(pair[0].identity.digest!==pair[1].identity.digest)throw Error('Payload identity mismatch');
     const a=pair.find(r=>r.side==='A'),b=pair.find(r=>r.side==='B');
-    if(a.epochs.length!==b.epochs.length)throw Error('Lifecycle epoch count mismatch');
+    if(a.epochs.length!==b.epochs.length||a.epochs.some((epoch,index)=>epoch.fixture!==b.epochs[index].fixture))throw Error('Lifecycle epoch sequence mismatch');
     const epochs=a.epochs.map((epoch,index)=>({index,fixture:epoch.fixture,metrics:Object.fromEntries(['firstBatchWaitMs','firstVisibleGeometryMs','totalWallClockMs','metadataRenderReadyMs'].map(name=>{const av=epoch.metrics[name],bv=b.epochs[index].metrics[name];return [name,{base:av,candidate:bv,deltaMs:Number.isFinite(av)&&Number.isFinite(bv)?bv-av:null,ratio:av>0&&Number.isFinite(bv)?bv/av:null}];}))}));
     return {key,identical:true,rows:pair.map(x=>x.index),performanceAdmitted:pair.every(r=>r.performanceAdmitted===true&&r.mode==='timing'&&r.memory.identityDuringInterval===false),epochs};
   });

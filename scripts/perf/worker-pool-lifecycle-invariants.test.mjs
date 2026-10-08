@@ -4,9 +4,10 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fixtureSchedule from './worker-pool-lifecycle-schedule.fixture.json' with {type:'json'};
 import {requireEpoch,ownedTree,requireSample,pairedReport} from './worker-pool-lifecycle-invariants.mjs';
-const trace=()=>({loadId:'next',start:0,end:20,spans:['parser.complete','geometry.streamComplete','scene.finalize'].map(name=>({name,start:0,end:20}))});
-const row=()=>({index:0,pair:1,side:'A',contrast:'c',workload:{name:'w'},source:'base',query:'warmPool=0',cleanup:{error:null},ok:true,identity:{complete:true,digest:'complete-source'},adapter:{vendor:'nvidia',isFallbackAdapter:false},memory:{rows:[{privateResidentBytes:30000,privateCommitBytes:40000,residentBytesSharedDoubleCount:50000,elapsedMs:1,rootPid:1,rootStart:1,processes:[{pid:1,parent:0,started:1,privateResidentBytes:30000,privateCommitBytes:40000,residentBytes:50000,lifetimePeakResidentBytes:55000}]}],maxGapMs:1,coverageEndElapsedMs:2},admission:[{quiet:true,main:{quiet:true},windows:{quiet:true}}],watcher:[{graphs:[]}],physical:[{admitted:true}],epochs:[{previousId:'prior',trace:trace(),metrics:{firstBatchWaitMs:3,firstVisibleGeometryMs:5,totalWallClockMs:10,metadataRenderReadyMs:12}}]});
+const trace=()=>({loadId:'next',timeOrigin:1000,attrs:{loadPath:'wasm'},start:0,end:20,spans:['parser.complete','geometry.streamComplete','scene.finalize'].map(name=>({name,start:0,end:20}))});
+const row=()=>({index:0,pair:1,side:'A',contrast:'c',workload:{name:'w',mode:'replace',loads:['fzk']},source:'base',query:'warmPool=0',cleanup:{error:null},ok:true,identity:{complete:true,digest:'complete-source'},adapter:{vendor:'nvidia',isFallbackAdapter:false},memory:{rows:[{privateResidentBytes:30000,privateCommitBytes:40000,residentBytesSharedDoubleCount:50000,elapsedMs:1,rootPid:1,rootStart:1,processes:[{pid:1,parent:0,started:1,privateResidentBytes:30000,privateCommitBytes:40000,residentBytes:50000,lifetimePeakResidentBytes:55000}]}],maxGapMs:1,coverageEndElapsedMs:2},admission:[{quiet:true,main:{quiet:true},windows:{quiet:true}}],watcher:[{graphs:[]}],physical:[{admitted:true}],epochs:[{fixture:'fzk',pageGeneration:0,pageTimeOrigin:1000,reloadCompleted:false,previousId:'prior',trace:trace(),metrics:{firstBatchWaitMs:3,firstVisibleGeometryMs:5,totalWallClockMs:10,metadataRenderReadyMs:12}}]});
 test('#7036 new epoch cannot reuse an ended old root or skip actual finalize',()=>{
  assert.throws(()=>requireEpoch(trace(),'next'),/fresh/);
  const incomplete=trace();incomplete.spans.pop();assert.throws(()=>requireEpoch(incomplete,'prior'),/scene.finalize/);
@@ -74,4 +75,51 @@ test('#7036 production report cannot match absent root and process identity fiel
  const stamps=row();delete stamps.memory.rows[0].rootStart;delete stamps.memory.rows[0].processes[0].started;assert.throws(()=>requireSample(stamps),/rootStart/);
  const unsafe=row();unsafe.memory.rows[0].rootStart=Number.MAX_SAFE_INTEGER+1;unsafe.memory.rows[0].processes[0].started=Number.MAX_SAFE_INTEGER+1;assert.throws(()=>requireSample(unsafe),/rootStart/);
  const ticks=row();ticks.memory.rows[0].rootStart='639007040001234567';ticks.memory.rows[0].processes[0].started='639007040001234567';assert.equal(requireSample(ticks).ok,true);
+});
+
+test('#7036 lifecycle report derives adjacent epoch identity and rejects duplicate or misdeclared predecessors',()=>{
+ const duplicate=row();duplicate.workload.loads.push('fzk');duplicate.epochs.push(structuredClone(duplicate.epochs[0]));assert.throws(()=>requireSample(duplicate),/epoch|Epoch/);
+ const chain=row();const second=structuredClone(chain.epochs[0]);second.trace.loadId='third';second.previousId=chain.epochs[0].trace.loadId;chain.workload.loads.push('fzk');chain.epochs.push(second);assert.equal(requireSample(chain).ok,true);
+ const bad=structuredClone(chain);bad.epochs[1].previousId='invented';assert.throws(()=>requireSample(bad),/epoch|Epoch/);
+ const revisit=structuredClone(chain);const third=structuredClone(chain.epochs[0]);third.previousId='third';revisit.workload.loads.push('fzk');revisit.epochs.push(third);assert.throws(()=>requireSample(revisit),/epoch|Epoch/);
+});
+
+test('#7036 cache page reload admits fresh generation while same-page replacement requires adjacent predecessor',()=>{
+ const cached=row();cached.workload={name:'cache',mode:'cache',loads:['fzk','fzk']};const next=structuredClone(cached.epochs[0]);next.trace.loadId='cache-next';next.trace.attrs={loadPath:'cache'};next.trace.spans[0].name='cache.storeReady';next.previousId=null;next.pageGeneration=1;next.pageTimeOrigin=2000;next.trace.timeOrigin=2000;next.reloadCompleted=true;cached.epochs.push(next);assert.equal(requireSample(cached).ok,true);
+ const invented=structuredClone(cached);invented.workload.mode='replace';assert.throws(()=>requireSample(invented),/generation/);
+ const stale=structuredClone(cached);stale.epochs[1].previousId='next';assert.throws(()=>requireSample(stale),/previous page/);
+});
+
+test('#7036 reload flags cannot substitute observed distinct browser time origin',()=>{
+ const cached=row();cached.workload={name:'cache',mode:'cache',loads:['fzk','fzk']};const next=structuredClone(cached.epochs[0]);next.trace.loadId='cache-next';next.trace.attrs={loadPath:'cache'};next.trace.spans[0].name='cache.storeReady';next.previousId=null;next.pageGeneration=1;next.reloadCompleted=true;cached.epochs.push(next);assert.throws(()=>requireSample(cached),/origin/);
+ next.pageTimeOrigin=2000;next.trace.timeOrigin=2000;assert.equal(requireSample(cached).ok,true);
+ const missing=structuredClone(cached);delete missing.epochs[1].pageTimeOrigin;assert.throws(()=>requireSample(missing),/pageTimeOrigin/);
+ const unobserved=structuredClone(cached);unobserved.epochs[1].reloadCompleted=false;assert.throws(()=>requireSample(unobserved),/reload completion/);
+});
+
+test('#7036 actual planned replace/cache cohort refuses missing, reordered, substituted fixtures and same-name mode changes',()=>{
+ const schedule=fixtureSchedule.rows.slice(0,2);
+ const make=spec=>{const sample={...row(),...structuredClone(spec)};sample.epochs=spec.workload.loads.map((fixture,index)=>({...structuredClone(row().epochs[0]),fixture,previousId:index?`epoch-${index-1}`:null,trace:{...trace(),loadId:`epoch-${index}`}}));return sample;};
+ const rows=schedule.map(make);assert.equal(pairedReport(rows,schedule).length,1);
+ const missing=structuredClone(rows);for(const sample of missing)sample.epochs.pop();assert.throws(()=>pairedReport(missing,schedule),/count/);
+ const order=structuredClone(rows);for(const sample of order)[sample.epochs[0].fixture,sample.epochs[1].fixture]=[sample.epochs[1].fixture,sample.epochs[0].fixture];assert.throws(()=>pairedReport(order,schedule),/fixture/);
+ const substituted=structuredClone(rows);substituted[1].epochs[1].fixture='fzk';assert.throws(()=>pairedReport(substituted,schedule),/fixture/);
+ const mode=structuredClone(rows);for(const sample of mode)sample.workload.mode='immediate';assert.throws(()=>pairedReport(mode,schedule),/workload/);
+ const altered=structuredClone(rows);for(const sample of altered)sample.workload.loads[1]='fzk';for(const sample of altered)sample.epochs[1].fixture='fzk';assert.throws(()=>pairedReport(altered,schedule),/workload/);
+ const cachedSchedule=fixtureSchedule.rows.slice(2);const cached=cachedSchedule.map(make);for(const sample of cached){sample.epochs[1].pageGeneration=1;sample.epochs[1].pageTimeOrigin=2000;sample.epochs[1].trace.timeOrigin=2000;sample.epochs[1].reloadCompleted=true;sample.epochs[1].previousId=null;sample.epochs[1].trace.attrs={loadPath:'cache'};sample.epochs[1].trace.spans[0].name='cache.storeReady';}assert.equal(pairedReport(cached,cachedSchedule).length,1);
+});
+
+test('#7036 first observed epoch rejects the pre-load root and routes are bound to immutable cache plan',()=>{
+ const old=row();old.epochs[0].previousId=old.epochs[0].trace.loadId;assert.throws(()=>requireSample(old),/fresh/);
+ const absent=row();delete absent.epochs[0].previousId;assert.throws(()=>requireSample(absent),/previous epoch/);
+ const idle=row();idle.workload={name:'idle-ready',mode:'idle-ready',first:'fzk'};assert.equal(requireSample(idle).ok,true);
+ const cache=row();cache.workload={name:'cache',mode:'cache',loads:['fzk','fzk']};const next=structuredClone(cache.epochs[0]);next.trace.loadId='cached';next.previousId=null;next.pageGeneration=1;next.pageTimeOrigin=2000;next.trace.timeOrigin=2000;next.reloadCompleted=true;cache.epochs.push(next);assert.throws(()=>requireSample(cache),/load path/);
+ next.trace.attrs.loadPath='cache';next.trace.spans[0].name='cache.storeReady';assert.equal(requireSample(cache).ok,true);
+ const fresh=row();fresh.epochs[0].trace.attrs.loadPath='cache';fresh.epochs[0].trace.spans[0].name='cache.storeReady';assert.throws(()=>requireSample(fresh),/load path/);
+});
+
+test('#7036 copied old-page trace cannot borrow a fresh observed page time origin',()=>{
+ const old=row();old.epochs[0].pageTimeOrigin=2000;assert.throws(()=>requireSample(old),/Trace time origin/);
+ const missing=row();delete missing.epochs[0].trace.timeOrigin;assert.throws(()=>requireSample(missing),/timeOrigin/);
+ const invalid=row();invalid.epochs[0].trace.timeOrigin=NaN;assert.throws(()=>requireSample(invalid),/timeOrigin/);
 });

@@ -1,0 +1,13 @@
+{
+  "historicalHead": "4ebf52ad9a",
+  "scope": "Corrected prerequisite controls only; native Chrome/GPU/performance UNRUN",
+  "sourceSHA256": {
+    "scripts/perf/frame-gpu-chrome.ts": "0af0660713e3ad39ee1ccd1c3d1d353240986d3ee8e381e168292b196cff8ddf",
+    "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs": "31f54ab8ddc537760676083bc408cce10b87461a1cb8ec41c7616d7fae8fd799",
+    "scripts/perf/frame-gpu-owned-profile.ps1": "c99c404ee7768b78da00aeb73d1471da46de0dd2503967c1457c7c0f215de7a3",
+    "scripts/perf/frame-gpu-owned-profile.test.mjs": "41eb0be49af9b943b9bdac5e46a27968ba9632b170161d6119d3bc4936895cb5",
+    "scripts/perf/worker-pool-lifecycle-invariants.mjs": "dce3b27a69b7dd9f37727de1ed1b33e99d423fe8a41615991e82f52e95dff4d7",
+    "scripts/perf/worker-pool-lifecycle-invariants.test.mjs": "47656360014da39769ade4361b6f9ffea17e6698413c0ea6c1152c01a5d2305e",
+    "scripts/perf/worker-pool-lifecycle-schedule.fixture.json": "0c77eb9cef81d0f49a1d29c2cacb1d6a3660bb4b92e38fcc8b7df848c7228cf2"
+  }
+}

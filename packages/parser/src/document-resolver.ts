@@ -124,7 +124,10 @@ export function extractDocumentsOnDemand(store: IfcDataStore, entityId: number, 
   // Retained source closures cannot reconstruct absent bytes. Forwarded graph
   // rows remain known source-origin markers; complete authored rows are separate.
   const original = new Set(forwardedReferences(store, subjects));
-  const markers: DocumentInfo[] = [...original].map(id => ({ expressId: id, type: normalizeIfcTypeName(
-    store.entityIndex.byId.get(id)?.type ?? store.entities.getTypeName(id)), unresolved: true, sourceOrigin: true }));
+  const markers: DocumentInfo[] = [...original].map(id => {
+    // @raw-entity-enumeration-ok class identity of a forwarded immutable source-origin marker, not a current entity enumeration
+    const type = store.entityIndex.byId.get(id)?.type ?? store.entities.getTypeName(id);
+    return { expressId: id, type: normalizeIfcTypeName(type), unresolved: true, sourceOrigin: true };
+  });
   return [...markers, ...[...new Set(live)].filter(id => !original.has(id)).map(id => documentRecord(store, id, view))];
 }

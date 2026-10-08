@@ -33,7 +33,7 @@ export function effectiveMetadataRecord(store: IfcDataStore, expressId: number, 
   if (!modelRecords) { modelRecords = new WeakMap(); records.set(store, modelRecords); }
   const revision = view?.getMutationRevision();
   let memo = view ? modelRecords.get(view) : undefined;
-  if (view && (memo?.revision !== revision || memo.source !== store.source)) { memo = { revision: revision!, source: store.source, rows: new Map() }; modelRecords.set(view, memo); }
+  if (view && (!memo || memo.revision !== revision || memo.source !== store.source)) { memo = { revision: revision!, source: store.source, rows: new Map() }; modelRecords.set(view, memo); }
   if (memo?.rows.has(expressId)) return memo.rows.get(expressId) ?? null;
   const created = view?.getNewEntity(expressId);
   // Source-empty stores cannot reveal source attributes through a stale accessor closure.

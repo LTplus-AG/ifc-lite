@@ -6,6 +6,7 @@ import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { RelationshipType } from '@ifc-lite/data';
 import { EMPTY_SOURCE_BYTES } from '@ifc-lite/parser';
 import { extractDocumentsOnDemand as documents } from '../../../../../../packages/parser/src/document-resolver.js';
 import { parseStep, seedModel, exportAndReparse } from '@/test/properties-panel-harness';
@@ -109,4 +110,45 @@ test('#7187 source removal invalidates previously decoded leaf fields in the sam
   const current = documents(source, 89, edits)[0];
   assert.equal(current.unresolved, true); assert.equal(current.location, undefined);
   assert.equal(current.name, undefined); assert.equal(current.revision, undefined);
+});
+
+test('#7187 native occurrence and inherited type documents share current memberships', async () => {
+  const { file, view, referenceId, relationshipId } = await fixture();
+  const type = view.createEntity('IfcSlabType', ['0000000000000000000003', null, 'Authored roof type', null, null, null, null, null, null, '.ROOF.']);
+  view.createEntity('IfcRelDefinesByType', ['0000000000000000000004', null, null, null, ['#52'], `#${type.expressId}`]);
+  view.setPositionalAttribute(relationshipId, 4, [`#${type.expressId}`]);
+  const saved = await exportAndReparse('native', file);
+  assert.equal(documents(saved, 52)[0].expressId, referenceId);
+  assert.ok(saved.relationships?.getRelated(52, RelationshipType.DefinesByType, 'inverse').includes(type.expressId));
+  assert.deepEqual(documents(file, 52, view), documents(saved, 52));
+  const extra = view.createEntity('IfcDocumentReference', ['occurrence.pdf', 'OCC', 'Occurrence document', null, null]);
+  view.createEntity('IfcRelAssociatesDocument', ['0000000000000000000005', null, null, null, ['#52'], `#${extra.expressId}`]);
+  const both = await exportAndReparse('native', file);
+  assert.deepEqual(new Set(documents(file, 52, view).map(row => row.expressId)), new Set(documents(both, 52).map(row => row.expressId)));
+  assert.equal(documents(both, 52).length, 2);
+});
+
+test('#7187 known native associations retain unresolved wrong/missing document targets', async () => {
+  const { file, view, relationshipId } = await fixture();
+  for (const target of [999999, 89]) {
+    view.setPositionalAttribute(relationshipId, 5, `#${target}`);
+    const saved = await exportAndReparse('native', file);
+    assert.equal(saved.getEntity(relationshipId)?.attributes[5], target);
+    assert.equal(documents(saved, 52)[0].expressId, target);
+    assert.equal(documents(saved, 52)[0].unresolved, true);
+    assert.equal(documents(saved, 52)[0].name, undefined);
+    assert.deepEqual(documents(file, 52, view), documents(saved, 52));
+  }
+});
+
+test('#7187 source-free sparse indexed document edits make population availability unknown', async () => {
+  const { file, relationshipId } = await fixture();
+  const source = await exportAndReparse('native', file);
+  useViewerStore.setState({ mutationViews: new Map() }); seedModel('native', 0, source, 52);
+  const edits = getOrCreateMutationView(useViewerStore, 'native'); assert.ok(edits);
+  source.source = EMPTY_SOURCE_BYTES;
+  source.entities.getTypeName = () => 'Unknown';
+  assert.equal(source.entityIndex.byId.get(relationshipId)?.type, 'IFCRELASSOCIATESDOCUMENT');
+  edits.setPositionalAttribute(relationshipId, 4, ['#89']);
+  assert.equal(documentPopulationUnavailable(source, edits), true);
 });

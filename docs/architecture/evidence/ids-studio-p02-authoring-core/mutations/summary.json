@@ -104,11 +104,24 @@
     ]
   },
   "reducer-inverse-drops-description": {
-    "verdict": "UNOBSERVED",
-    "exitCode": 1,
-    "reason": "all 1 changed executable test file(s) passed before and after the revert.",
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/reducer/apply.test.ts; that file has a green, attributable baseline.",
     "base": "51dc46793237427db42b12c01ab9073069c515df",
-    "head": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "head": "385ad04ba8ec755b6544b360339a5458853fc8f8",
+    "production": [
+      "packages/ids-authoring/src/reducer/facet-ops.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/reducer/apply.test.ts"
+    ]
+  },
+  "reducer-inverse-drops-instructions": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/reducer/apply.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "385ad04ba8ec755b6544b360339a5458853fc8f8",
     "production": [
       "packages/ids-authoring/src/reducer/facet-ops.ts"
     ],

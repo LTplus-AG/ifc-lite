@@ -25,9 +25,15 @@ Each patch is written mutant→fixed (the orientation of `git diff base...head`)
 | `reidentify-empty-identifier-matches.patch` | `match/reidentify.ts` | the `identifier` step matches two specs that both lack an identifier | `match/reidentify.test.ts` |
 | `uuidv7-same-ms-reseeds.patch` | `uuid.ts` | ids minted in the same millisecond reseed the counter instead of incrementing it, breaking strict ordering | `uuid.test.ts` |
 
-## Coverage finding (UNOBSERVED)
+## Coverage finding (UNOBSERVED, now fixed)
 
-`reducer-inverse-drops-description.patch` (`reducer/facet-ops.ts`) drops `description` from the same restore snapshot. The oracle reported `UNOBSERVED` (exit 1): `reducer/apply.test.ts` stays green. The seeded apply∘inverse property test starts from buildingSMART corpus documents, and no corpus requirement facet carries a `description` or `instructions` attribute. Descriptions that ops add are undone by their own inverse, which masks the loss, and intermediate states are never compared. So the snapshot of `description` (and, by the same argument, `instructions`) on a requirement that existed before the batch is not observed by any test. The record is kept in `summary.json`. It is not part of the evidence set, and the cardinality mutation above covers the same decision. A fix would seed the property test with requirement descriptions and instructions, as `withImportLeftovers` already does for `cardinalityRaw`.
+At capture, `reducer-inverse-drops-description.patch` (`reducer/facet-ops.ts`, which drops `description` from the restore snapshot) came back `UNOBSERVED` (exit 1). The seeded apply∘inverse property test starts from buildingSMART corpus documents, and no corpus requirement carries a `description` or `instructions` attribute.
+
+Fixed in 385ad04ba: `withImportLeftovers` in `reducer/apply.test.ts` now also gives requirements a `description` and `instructions`. Re-run at 385ad04ba:
+- `reducer-inverse-drops-description.patch` is now `OBSERVED` (exit 0).
+- `reducer-inverse-drops-instructions.patch` (`return snap;` instead of adding `instructions`) is also `OBSERVED` (exit 0).
+
+`summary.json` holds the re-run records for both.
 
 ## Replay
 Use a clean checkout of the branch with workspace packages built (`pnpm install --frozen-lockfile && pnpm turbo build --filter=@ifc-lite/ids-authoring...`). Copy the patches outside the tree, because the oracle refuses a dirty tree. Then run, for example:

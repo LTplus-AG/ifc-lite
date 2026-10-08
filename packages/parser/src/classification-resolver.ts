@@ -182,7 +182,9 @@ function classificationInfoForRef(store: IfcDataStore, classRefId: number, view?
             location: typeof attrs[5] === 'string' ? attrs[5] : undefined,
         };
     }
-    return null;
+    // An association aimed at a non-IfcClassificationSelect entity is broken,
+    // rather than proof that the subject has no classification membership.
+    return { unresolved: true };
 }
 
 /** Result of {@link extractClassificationSystemsOnDemand}. */

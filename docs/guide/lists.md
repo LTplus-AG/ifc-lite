@@ -294,3 +294,23 @@ const straddlers = await evaluateFilterGroupsFederated(
 | `ENTITY_ATTRIBUTES` | The attribute names available to `attribute` columns |
 
 See the [package README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/lists) and the type definitions (`ListDefinition`, `ColumnDefinition`, `PropertyCondition`, `ListDataProvider`) for the full API.
+
+## Result source and coverage
+
+The results header identifies the executed list and the models its native IFC
+providers evaluated. It retains that identity when the current model picker or
+model names change. Known targeted models without IFC table data are named as
+coverage gaps; a stored result without recorded provenance reports an unknown
+source rather than borrowing the current picker.
+Selected snapshot entities from a removed model remain an unavailable coverage
+gap. An unavailable provider outside that snapshot does not create a gap, and
+the native model-tag scope still determines which snapshot members apply.
+
+Matched entities, returned rows and currently visible rows have separate counts.
+Matches absent from the returned rows remain a partial coverage gap; they are
+not attributed to search or visibility filters. Search and visibility filters
+keep the native result intact, and a filtered-empty table
+is distinct from an explicit empty element scope. The viewer does not infer a
+scanned-entity denominator from the match count. Nested and schedule tables use
+the same result vocabulary, while their native grouping, units, selection and
+exports remain available. Native run errors retain their existing error surface.

@@ -22,10 +22,9 @@ import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '@/lib/comman
 import { planElementTransform, type TransformRoot } from '@/lib/element-transform/plan';
 import { describeRefusal } from '@/lib/element-transform/commit';
 import { copiedProductsInStore, createCopyContext, productStoreyOrigin, liveEntityConforms } from '@ifc-lite/create';
-import type { RowStatus } from './model-change-preview';
 import { batchDigest } from './model-change-preview';
 import { isNewElement, toMetres, type AuthoringOp, type ElementTarget, type ExistingElement, type ModelAuthoringBatch } from './model-authoring';
-import { dryRunAuthoring, type ElementId, type ResolvedOp } from './model-authoring-native';
+import { dryRunAuthoring, type ElementId } from './model-authoring-native';
 import {
   authoringReader, className, conforms, deletionRefusal, materialNameOf, nameOf, placementAngle, typeNameOf, type AuthoringReader,
 } from './model-authoring-read';
@@ -34,61 +33,18 @@ import { resolveGlobalId } from './resolve-global-id';
 import { readElementProfileFromTarget } from '@/store/slices/mutation-element-profile';
 import { readAuthoringSizeFromTarget, sameNativeDimensions } from './model-authoring-size';
 import { verifyReachExpected, reachBefore } from './model-authoring-reach';
-import { sizeInMetres, type ExpectedSize } from './model-authoring-size-params';
+import { sizeInMetres } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
 import { authoringHostedEditGhost } from './model-authoring-hosted-edit-ghost';
 import { hostedFillRefusal } from '@/store/slices/mutation-hosted-fill';
-import { readExpectedHostedEdit, sameHostedEdit, type ExpectedHostedEdit } from './model-authoring-hosted-edit';
-import type { ProfileSection } from '@ifc-lite/create';
-import { readSplitSnapshot, sameSplitSnapshot, type SplitSnapshot } from './model-authoring-split-state';
+import { readExpectedHostedEdit, sameHostedEdit } from './model-authoring-hosted-edit';
+import { readSplitSnapshot, sameSplitSnapshot } from './model-authoring-split-state';
 import { uniqueSplitGuid } from './model-authoring-split';
 import { authoringSplitMarker } from './model-authoring-split-ghost';
 import { authoringSizeGhost } from './model-authoring-size-ghost';
 
-/** P04's statuses plus `invalid` (a native builder or planner refused it) and `blocked` (it needs a row that is not ready). */
-export type AuthoringRowStatus = RowStatus | 'invalid' | 'blocked';
-
-/** What the element is now, for the before → after summary. */
-export interface AuthoringBefore {
-  hosted?: ExpectedHostedEdit;
-  split?: SplitSnapshot;
-  size?: ExpectedSize;
-  reach?: Record<string, unknown>;
-  Profile?: ProfileSection;
-  ifcClass?: string;
-  name?: string;
-  storeyName?: string;
-  type?: string | null;
-  material?: string | null;
-  /** Placement origin in the storey, metres. */
-  origin?: [number, number];
-  angleDeg?: number;
-}
-
-export interface AuthoringRow {
-  previewUnavailable?: boolean;
-  previewOmitted?: string[];
-  previewOuterBodyOnly?: boolean;
-  index: number;
-  op: AuthoringOp;
-  status: AuthoringRowStatus;
-  modelId: string | null;
-  /** The existing element the operation acts on (the host for a hosted element), when it has one. */
-  expressId: number | null;
-  resolved: ResolvedOp;
-  before: AuthoringBefore;
-  /** Indices of the rows whose creations this one uses. */
-  dependsOn: number[];
-  /** Why the row is not ready: the native refusal, the expectation that failed, or the edit gate's reason. */
-  issue?: string;
-}
-
-export interface ModelAuthoringPreview {
-  batch: ModelAuthoringBatch;
-  rows: AuthoringRow[];
-  mutationVersion: number;
-  digest: string;
-}
+import type { AuthoringRowStatus, AuthoringRow, ModelAuthoringPreview } from './model-authoring-preview-types';
+export type { AuthoringRowStatus, AuthoringBefore, AuthoringRow, ModelAuthoringPreview } from './model-authoring-preview-types';
 
 class Refusal extends Error {
   constructor(readonly status: AuthoringRowStatus, message: string) { super(message); }

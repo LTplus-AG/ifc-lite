@@ -42,6 +42,7 @@ import { LENS_PALETTE, ENTITY_ATTRIBUTE_NAMES, AUTO_COLOR_SOURCES } from '@/stor
 import { useTranslation } from '@/i18n';
 import { TYPE_LABEL_KEYS } from './lens-editor-labels';
 import { LensRuleEditor } from './LensRuleEditor';
+import { useLensEditorRequest } from './useArtifactEditorRequest';
 import { RuleRow, AutoColorRow } from './LensLegendRows';
 import { AssistantAction } from './assistant/AssistantAction';
 
@@ -783,10 +784,11 @@ export function LensPanel({ onClose }: LensPanelProps) {
   // `{ ...r }` per rule would still alias a compound rule's `conditions`
   // array with the store's copy, so an edit-then-cancel-elsewhere sequence
   // (or a future in-place mutation) could corrupt the saved lens.
-  const handleEditLens = useCallback((lens: Lens) => {
-    setEditingLens({ ...lens, rules: cloneLensRules(lens.rules) });
+  const handleEditLens = useCallback((lens: Lens | null) => {
+    setCreatingAutoColor(false);
+    setEditingLens(lens ? { ...lens, rules: cloneLensRules(lens.rules) } : null);
   }, []);
-
+  const editorRequestVersion = useLensEditorRequest(handleEditLens);
   /** Duplicate a lens (incl. a builtin) and open the editable copy for editing. */
   const handleDuplicateLens = useCallback((id: string) => {
     const result = duplicateLens(id);
@@ -919,7 +921,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
           editingLens?.id === lens.id ? (
             editingLens.autoColor ? (
               <AutoColorEditor
-                key={lens.id}
+                key={`${lens.id}:${editorRequestVersion}`}
                 initial={{ id: editingLens.id, name: editingLens.name, autoColor: editingLens.autoColor }}
                 onSave={handleSaveLens}
                 onCancel={() => setEditingLens(null)}
@@ -928,7 +930,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
               />
             ) : (
               <LensEditor
-                key={lens.id}
+                key={`${lens.id}:${editorRequestVersion}`}
                 initial={editingLens}
                 onSave={handleSaveLens}
                 onCancel={() => setEditingLens(null)}

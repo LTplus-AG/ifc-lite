@@ -24,6 +24,7 @@ import { DASHBOARD_PRESETS, duplicateChart, modelOverviewDashboard, newChartSpec
 import { AssistantAction } from '@/components/viewer/assistant/AssistantAction';
 import { ChartCard } from './ChartCard';
 import { ChartEditor, type ClashRuleOption } from './ChartEditor';
+import { useChartEditorRequest } from '../useArtifactEditorRequest';
 import { isRecordedChart } from '@/lib/charts/chart-source';
 import { DashboardGrid } from './DashboardGrid';
 import { DashboardMenu } from './DashboardMenu';
@@ -85,6 +86,7 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
   const dashboard = useMemo(() => dashboards.find((d) => d.id === activeDashboardId) ?? null, [dashboards, activeDashboardId]);
   const scope = dashboard?.scope ?? { kind: 'all' as const };
   const [editing, setEditing] = useState<ChartSpec | null>(null);
+  const editorRequestVersion = useChartEditorRequest(setEditing);
   // Only SAVED charts decide which IFC fields the shared datasets carry. The
   // editor's draft binds to a synthesized column of its own (`editorColumns`),
   // so picking through fields never rebuilds every card's dataset (#4833).
@@ -258,7 +260,7 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
       {editing && (
         <div className="border-b border-border bg-muted/20">
           <ChartEditor
-            key={editing.id}
+            key={`${editing.id}:${editorRequestVersion}`}
             spec={editing}
             isNew={!dashboard?.charts.some((chart) => chart.id === editing.id)}
             datasets={datasets}

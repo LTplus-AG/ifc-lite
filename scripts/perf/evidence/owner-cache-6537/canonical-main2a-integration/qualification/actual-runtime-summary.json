@@ -1,0 +1,15 @@
+{
+  "rows": 22,
+  "pids": 11,
+  "actualPerPidWasmHashes": [
+    "51894fa5372ddb361221bde3b60b2c8239db206a81f7c09b1c14e617fb4d5593"
+  ],
+  "actualPerPidJsHashes": [
+    "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39"
+  ],
+  "pairedBeforeAfterExact": true,
+  "gcChildPids": [
+    61651
+  ],
+  "scope": "Process-scoped runtime-file hashes before/exit. RealBonsai source reads/initSync actualsamepathWASM, then emitsmeshSHA. PureTS/GCcontrols do not claimWASMexecution merely becausepreloadhashes runtimefile."
+}

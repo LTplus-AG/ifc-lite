@@ -1,0 +1,26 @@
+{
+  "review": "6584 inherited raw material source-class point lookup",
+  "reviewedCommit": "295a2439e533af87a838ee2f252d87da19755890",
+  "timestampUtc": "2026-10-08T10:03:10.071002+00:00",
+  "sourceHashes": {
+    "packages/parser/src/material-resolver.ts": "618c414780bfa4d0cddd74aa29a19186cec98e2231522f3c242a702db9287110",
+    "packages/parser/src/material-overlay.ts": "7f65b831e98d64893061dbc77de6a71cb62217f2d611b3df8f0c4ef625f768eb",
+    "packages/mutations/src/source-entity-index.ts": "30399b3fba90818ec5fe2e405f1994b221a16576cf3dd493463757e8e57d576d",
+    "packages/mutations/src/index.ts": "0e62ee0a75eb4fde34ee51590ca11cbda86dc105c21e36598be0a499234659bd",
+    "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx": "4aaeebfed3c34bb6c29b815c367f1666e9a6453364ff27cdc9a7404107ea229a",
+    "scripts/check-raw-entity-enumeration.mjs": "c600baf7352e909db125186e0277a77dea8c8d01536ce4d07155bda31be98bab"
+  },
+  "finding": "The original source-class lookup is intentional for invalidating source-empty forwarded material evidence, including edited/deleted/retyped nested material members whose id differs from the top-level definition. Effective class can lose the old material identity.",
+  "minimalCorrection": "Add explicit @raw-entity-enumeration-ok reason immediately above sourceType lookup; preserve primary/deferred immutable source union and behavior. No gate or budget changes.",
+  "proposedComment": "// @raw-entity-enumeration-ok source-class point lookup invalidates forwarded material evidence after edits, deletion or retyping, including deferred material atoms",
+  "canonicalApiAssessment": "Inspected mutations sourceEntityRef has same immutable union but is internal, not exported by index.ts. Existing parser-local getRef carries another intentional point lookup for parsed definition/member refs. No new package dependency or API surface is warranted for this integration annotation.",
+  "existingBehaviorEvidence": [
+    "#7119 source-empty material field edits cannot reuse stale forwarded source fields (actual public SketchUp building-architecture.ifc parsed then source bytes removed; forwarded Name initially present; native material edit yields unverified material marker)",
+    "Existing source association deletion/retarget and native STEP export readback controls are adjacent but do not separately prove nested-member deletion/retype for source-empty forwarded evidence."
+  ],
+  "limitations": [
+    "Read-only source review; no tests run by reviewer.",
+    "Root owns integration correction and exact-head qualification.",
+    "Nested member deletion/retype necessity is source-derived, not an independently executed counterexample."
+  ]
+}

@@ -27,16 +27,13 @@ import { cleanup, click, render, type as typeInput } from '@/test/render.js';
 import { AddMaterialDialog } from '@/components/viewer/PropertyEditor.js';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel.js';
 
-// Guarded: both modules are new in #5876. With the fix reverted they are
-// absent, and the tests must fail on an assertion, not on a load error.
+// Guarded writer: absence must fail an assertion, rather than a load error (#5876).
 const writer: Partial<typeof import('./associations.js')> = await import('./associations.js').catch(() => ({}));
-const reader: Partial<typeof import('./association-overlay.js')> = await import('./association-overlay.js').catch(() => ({}));
 function api() {
   const { addClassificationAssociation, addMaterialAssociation } = writer;
-  const { overlayMaterials } = reader;
-  assert.ok(addClassificationAssociation && addMaterialAssociation && overlayMaterials,
-    'lib/authoring exports the association writer and overlay readers (#5876)');
-  return { addClassificationAssociation, addMaterialAssociation, overlayMaterials };
+  assert.ok(addClassificationAssociation && addMaterialAssociation,
+    'lib/authoring exports the native association writers (#5876)');
+  return { addClassificationAssociation, addMaterialAssociation };
 }
 
 const step = (schema: string, data: string) => `ISO-10303-21;
@@ -208,7 +205,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.doesNotMatch(text, /Material \[/, 'no look-alike property set');
       const read = extractAllMaterialsOnDemand(reparsed, 10);
       assert.deepEqual(read.map((m) => [m.type, m.name, m.category]), [['Material', 'Steel', 'Metal']]);
-      assert.deepEqual(api().overlayMaterials(view(), [10], 'IFC4').map((m) => m.name), ['Steel']);
+      assert.deepEqual(extractAllMaterialsOnDemand(store, 10, view()).map((m) => m.name), ['Steel']);
     });
 
     it('a same-named material reuses its entity and association, preserving its original fields', async () => {
@@ -216,7 +213,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       api().addMaterialAssociation('m', 12, { name: 'Steel', category: 'Wood' });
       assert.equal([...view().getNewEntitiesOfType('IFCMATERIAL')].length, 1);
       assert.equal([...view().getNewEntitiesOfType('IFCRELASSOCIATESMATERIAL')].length, 1);
-      assert.deepEqual(api().overlayMaterials(view(), [12], 'IFC4').map((m) => m.category), ['Metal']);
+      assert.deepEqual(extractAllMaterialsOnDemand(store, 12, view()).map((m) => m.category), ['Metal']);
       const { reparsed } = await exportAndReparse(store, 'IFC4');
       assert.deepEqual(extractAllMaterialsOnDemand(reparsed, 12).map((m) => m.category), ['Metal']);
     });
@@ -225,7 +222,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Concrete' }), { ok: true });
       assert.equal(view().getNewEntities().length, 0, 'source material and relationship are reused');
       assert.deepEqual(view().getPositionalMutationsForEntity(21)?.get(4), ['#11', '#10']);
-      assert.deepEqual(api().overlayMaterials(view(), [10], 'IFC4', store).map((m) => m.name), ['Concrete']);
+      assert.deepEqual(extractAllMaterialsOnDemand(store, 10, view()).map((m) => m.name), ['Concrete']);
       const { reparsed } = await exportAndReparse(store, 'IFC4');
       assert.deepEqual(extractAllMaterialsOnDemand(reparsed, 10).map((m) => m.name), ['Concrete']);
       useViewerStore.getState().undo('m');
@@ -295,9 +292,8 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       api().addClassificationAssociation('m', 10, { system: 'Uniclass', identification: 'Ss_25' });
       api().addMaterialAssociation('m', 10, { name: 'Steel' });
       view().setEntityAlias(99, 10);
-      // A duplicate (say #99) resolving to base #10 reads [99, 10], as the panel passes it.
       assert.equal(extractClassificationsOnDemand(store, 99, view()).length, 1);
-      assert.equal(api().overlayMaterials(view(), [99, 10], 'IFC4').length, 1);
+      assert.equal(extractAllMaterialsOnDemand(store, 99, view()).length, 1);
     });
 
     it('refuses a conflicting material association on an element that already has one', () => {

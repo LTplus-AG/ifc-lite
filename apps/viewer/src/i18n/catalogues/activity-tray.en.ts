@@ -45,6 +45,7 @@ export const activityTrayEn = {
   'activityTray.job.flow': 'Flow run',
   'activityTray.job.ai': 'Assistant request',
   'activityTray.job.export': 'Export',
+  'activityTray.job.bcfArchive': 'Export BCF archive',
   'activityTray.job.validationBcf': 'Export validation report as BCF',
   'activityTray.job.publication': 'BCF publication',
 

@@ -13,7 +13,7 @@ import { ARCH, WALL, seedArtifactModels } from '@/test/artifact-models-fixture';
 import { parseArtifactProposal, type ArtifactKind } from './proposal-kinds';
 import { previewArtifact, previewFilterGroups } from './artifact-preview';
 import { artifactCapturedScope, type PreviewArtifact } from './preview-shared';
-import { saveArtifact } from './artifact-save';
+import { saveArtifact, type SavedArtifact } from './artifact-save';
 import { loadSavedFilters } from '@/lib/search/saved-filters';
 import { loadListDefinitions } from '@/lib/lists/persistence';
 import { prepareListProviders } from '@/lib/lists/prepare-providers';
@@ -31,6 +31,7 @@ import { AutoColorEditor } from '@/components/viewer/AutoColorEditor';
 import { ListBuilder } from '@/components/viewer/lists/ListBuilder';
 import { SearchModalFilterBuilder } from '@/components/viewer/SearchModal.filter.builder';
 import { filterCandidates } from '@/lib/search/filter-candidates';
+import { fixtureModels } from '@/test/store-fixture';
 
 const original = useViewerStore.getState();
 const groups = [{ combinator: 'AND' as const, rules: [{ kind: 'ifcType' as const, op: 'in' as const, values: ['IfcWall', 'IfcWallStandardCase'] }] }];
@@ -40,9 +41,7 @@ const cases: Array<{ kind: ArtifactKind; label: string; body: Record<string, unk
   { kind: 'lens.proposal', label: 'manual lens', body: { lens: { name: 'Captured manual wall colors', rules: [{ name: 'Walls', groups, action: 'colorize', color: '#223344' }] } } },
   { kind: 'lens.proposal', label: 'auto-color lens', body: { lens: { name: 'Captured automatic colors', autoColor: { source: 'ifcType' } } } },
 ];
-beforeEach(async () => {
-  localStorage.clear();
-  useViewerStore.setState(original, true);
+async function loadActualSources() {
   await seedArtifactModels({ federated: true });
   const models = new Map(useViewerStore.getState().models);
   for (const [id, model] of models) {
@@ -52,17 +51,28 @@ beforeEach(async () => {
     models.set(id, { ...model, sourceContentHash });
   }
   useViewerStore.setState({ models });
+}
+beforeEach(async () => {
+  localStorage.clear();
+  useViewerStore.setState(original, true);
+  await loadActualSources();
 });
 afterEach(() => { cleanup(); useViewerStore.setState(original, true); localStorage.clear(); });
 
 /** Replay native persisted definitions through their native engines, never a metadata-only readback. */
+const savedIdentities = new WeakMap<PreviewArtifact, SavedArtifact>();
 async function replaySaved(artifact: PreviewArtifact): Promise<number> {
-  const outcome = saveArtifact(artifact);
-  assert.ok(outcome.ok, 'the real native library accepts the reviewed artifact');
+  let identity = savedIdentities.get(artifact);
+  if (!identity) {
+    const outcome = saveArtifact(artifact);
+    assert.ok(outcome.ok, 'the real native library accepts the reviewed artifact');
+    identity = outcome.saved;
+    savedIdentities.set(artifact, identity);
+  }
   const state = useViewerStore.getState();
   switch (artifact.kind) {
     case 'filter.proposal': {
-      const saved = loadSavedFilters().find(row => row.name === outcome.saved.name);
+      const saved = loadSavedFilters().find(row => row.name === identity.name);
       assert.ok(saved);
       return (await previewFilterGroups(saved.name, saved.groups, state, undefined, saved.capturedScope)).matched;
     }
@@ -209,7 +219,13 @@ for (const mode of ['selected', 'visible'] as const) for (const entry of cases) 
     const rerun = await previewArtifact(proposal, useViewerStore.getState(), undefined, pinned);
     assert.deepEqual(rerun.population.map(row => [row.modelId, row.count]), [[ARCH, 1], [WALL, 0]], 'a native review rerun keeps the original capture despite a changed selection');
     assert.equal(await replaySaved(preview.artifact), 1, 'native persistence or Lens JSON export/import retains the captured engine population');
-    act(() => useViewerStore.getState().removeModel(ARCH));
+    await loadActualSources(); // Fresh native IfcParser stores from the original files.
+    act(() => useViewerStore.setState(fixtureModels(...[...useViewerStore.getState().models].map(([id, model]) => ({ ...model, id: `reloaded-${id}` })))));
+    const reloaded = await previewArtifact(proposal, useViewerStore.getState(), undefined, pinned);
+    assert.deepEqual(reloaded.population.map(row => [row.modelId, row.count]), [[`reloaded-${ARCH}`, 1], [`reloaded-${WALL}`, 0]],
+      'fresh source stores with new runtime model IDs resolve the original native capture');
+    assert.equal(await replaySaved(preview.artifact), 1, 'the actual persisted native definition replays against freshly parsed sources and new runtime model IDs');
+    act(() => useViewerStore.getState().removeModel(`reloaded-${ARCH}`));
     await assert.rejects(previewArtifact(proposal, useViewerStore.getState(), undefined, pinned), /Captured scope source is missing, replaced, or ambiguous/,
       'unloading the captured file must refuse instead of evaluating the remaining loaded file');
   });

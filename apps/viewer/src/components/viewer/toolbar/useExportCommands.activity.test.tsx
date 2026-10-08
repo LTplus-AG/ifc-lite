@@ -41,8 +41,10 @@ async function setup(federated = false) {
   URL.createObjectURL = blob => { assert.ok(blob instanceof Blob); blobs.push(blob); return `blob:csv-${blobs.length}`; };
   URL.revokeObjectURL = () => {};
   let running: Promise<void> | undefined;
+  let commandsSnapshot: ReturnType<typeof useExportCommands> | undefined;
   function Harness() {
     const commands = useExportCommands('ribbon');
+    commandsSnapshot = commands;
     return <>{modes.map(mode => <button key={mode} onClick={() => { running = commands.handleExportCSV(mode); }}>{mode}</button>)}<ActivityTrayList /></>;
   }
   const ui = render(<Harness />);
@@ -50,7 +52,8 @@ async function setup(federated = false) {
     const button = [...ui.querySelectorAll('button')].find(candidate => candidate.textContent === mode); assert.ok(button);
     click(button); assert.ok(running); return running;
   };
-  return { ui, blobs, start, wall, store, guid: store.entities.getGlobalId(wall) };
+  const captureCSV = () => { assert.ok(commandsSnapshot); return commandsSnapshot.handleExportCSV; };
+  return { ui, blobs, start, captureCSV, wall, store, guid: store.entities.getGlobalId(wall) };
 }
 function latest() {
   const job = useActivityJournal.getState().jobs.at(-1); assert.ok(job, '#7162 native CSV invocation enters Activity'); return job;
@@ -148,4 +151,37 @@ it('#7162 real CSV keeps invocation source identity when active model switches d
     assert.ok((await run.blobs[0].text()).includes('Reviewed CSV wall'), 'actual exported A edit survived switching to unedited B');
     assert.deepEqual(names, ['Authored_entities.csv'], 'browser filename identifies the same source as bytes and Activity row');
   } finally { release?.(); await pending; }
+});
+
+it('#7162 retained native CSV callback reads store and source identity from one invocation snapshot before React rerenders', async t => {
+  if (!ensureWasm(t)) return;
+  const run = await setup();
+  const retained = run.captureCSV();
+  const bytes = await readFile(new URL('../../../../public/samples/hello-wall.ifc', import.meta.url));
+  const otherStore = await new IfcParser().parseColumnar(new Uint8Array(bytes).buffer, { disableWorkerScan: true });
+  const wall = otherStore.entityIndex.byType.get('IFCWALL')?.[0]; assert.ok(wall);
+  const guid = otherStore.entities.getGlobalId(wall); assert.ok(guid); assert.notEqual(guid, run.guid);
+  const other = { ...fixtureModel('other'), name: 'Bonsai.ifc', ifcDataStore: otherStore };
+  const names: string[] = [];
+  mock.method(HTMLAnchorElement.prototype, 'click', function(this: HTMLAnchorElement) { names.push(this.download); });
+  await act(async () => {
+    useViewerStore.setState({ ...fixtureModels(other, { ...fixtureModel('authored'), name: 'Authored.ifc', ifcDataStore: run.store }),
+      ifcDataStore: otherStore, mutationViews: new Map() });
+    await retained('entities');
+  });
+  assert.match(latest().subject ?? '', /Bonsai.ifc.*active model only.*1 other loaded model/); assert.equal(latest().outcome, 'completed');
+  assert.deepEqual(names, ['Bonsai_entities.csv']); assert.equal(run.blobs.length, 1);
+  const csv = await run.blobs[0].text();
+  assert.ok(csv.includes(guid), 'actual writer consumes the invocation source store');
+  assert.equal(Boolean(csv.includes(run.guid ?? 'missing-guid')), false, 'stale render source bytes are excluded');
+});
+
+it('#7162 retained native CSV callback refuses a removed source before React rerenders without a fictitious job', async () => {
+  const run = await setup();
+  const retained = run.captureCSV();
+  await act(async () => {
+    useViewerStore.setState({ models: new Map(), activeModelId: null, ifcDataStore: null, mutationViews: new Map() });
+    await retained('entities');
+  });
+  assert.equal(useActivityJournal.getState().jobs.length, 0); assert.equal(run.blobs.length, 0);
 });

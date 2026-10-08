@@ -51,6 +51,13 @@ const CSV_ACTIVITY_TITLE = {
   spatial: 'activityTray.job.csvSpatial',
 } as const;
 
+function activeModelExportNote(modelCount: number): string {
+  const otherModelCount = Math.max(0, modelCount - 1);
+  return otherModelCount > 0
+    ? ` — active model only, ${otherModelCount} other loaded model${otherModelCount === 1 ? '' : 's'} not included`
+    : '';
+}
+
 export function useExportCommands(surface: ExportSurface) {
   const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
   const modelCount = useViewerStore(selectModelCount);
@@ -77,23 +84,21 @@ export function useExportCommands(surface: ExportSurface) {
    * are unaffected — they go through their own dialogs, which handle the
    * federation themselves.
    */
-  const otherModelCount = Math.max(0, modelCount - 1);
-  const activeModelOnlyNote =
-    otherModelCount > 0
-      ? ` — active model only, ${otherModelCount} other loaded model${otherModelCount === 1 ? '' : 's'} not included`
-      : '';
+  const activeModelOnlyNote = activeModelExportNote(modelCount);
 
   const handleExportCSV = useCallback(async (type: CsvExportType) => {
-    if (!ifcDataStore || ifcDataStore.source.byteLength <= 0) return;
+    const state = useViewerStore.getState();
+    const sourceStore = state.ifcDataStore;
+    if (!sourceStore || sourceStore.source.byteLength <= 0) return;
     try {
-      const state = useViewerStore.getState();
+      const activeModelOnlyNote = activeModelExportNote(selectModelCount(state));
       const sourceName = activeModelName(state);
       const filename = modelExportFilename(sourceName, 'csv', CSV_SUFFIX[type]);
       const mutationView = state.activeModelId ? state.getMutationView(state.activeModelId) : null;
       await recordActivity({ kind: 'export', title: CSV_ACTIVITY_TITLE[type],
         subject: `${sourceName}${activeModelOnlyNote}` }, async () => {
         // The model as edited, not the file as loaded (#5397).
-        const bytes = editedModelBytes(ifcDataStore, mutationView);
+        const bytes = editedModelBytes(sourceStore, mutationView);
         const csv = await exportCsvFromBytes(bytes, type, { includeProperties: type === 'entities' });
         downloadFile(csv, filename, 'text/csv');
       });
@@ -103,7 +108,7 @@ export function useExportCommands(surface: ExportSurface) {
       console.error('CSV export failed:', err);
       toast.error(`CSV export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-  }, [ifcDataStore, activeModelOnlyNote, surface]);
+  }, [surface]);
 
   const handleExportJSON = useCallback(() => {
     if (!ifcDataStore) return;

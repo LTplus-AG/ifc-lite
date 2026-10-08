@@ -5,7 +5,8 @@
 import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractStructuralOnDemand } from '@ifc-lite/parser';
+import { extractStructuralOnDemand, getAttributeNames } from '@ifc-lite/parser';
+import type { IfcAttributeValue } from '@ifc-lite/data';
 import { recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { structuralEvidenceFixture as fixture } from '@/test/structural-evidence-fixture';
 import { exportAndReparse } from '@/test/properties-panel-harness';
@@ -55,4 +56,27 @@ test('#7195 native structural same EXPRESS identities in two models remain isola
   assert.equal(extractStructuralOnDemand(a.file).activities[0].appliedLoad?.components.ForceX, 1234);
   assert.deepEqual(rows().map(row => [row.data.modelId, row.data.structural.activities[0].AppliedLoad?.components.ForceX]),
     [['a', 1234], ['b', 2345]]);
+});
+
+test('#7195 selected structural samples retain exact native totals above the reported row bound', async () => {
+  const { file, memberId, loadId } = await fixture();
+  const view = getOrCreateMutationView(useViewerStore, 'native'); assert.ok(view); view.setExpressIdWatermark(200_000);
+  const author = (type: string, fields: Record<string, IfcAttributeValue>) =>
+    view.createEntity(type, getAttributeNames(type).map(name => fields[name] ?? null));
+  for (let i = 0; i < 20; i++) {
+    const action = author('IfcStructuralSurfaceAction', {
+      GlobalId: String(100 + i).padStart(22, '0'), Name: `Additional force ${i}`, AppliedLoad: `#${loadId}`,
+      GlobalOrLocal: '.GLOBAL_COORDS.', DestabilizingLoad: false, PredefinedType: '.CONST.',
+    });
+    author('IfcRelConnectsStructuralActivity', {
+      GlobalId: String(200 + i).padStart(22, '0'), RelatingElement: `#${memberId}`, RelatedStructuralActivity: `#${action.expressId}`,
+    });
+  }
+  const saved = await exportAndReparse('native', file);
+  const native = extractStructuralOnDemand(saved);
+  assert.equal(native.members[0].activityGlobalIds.length, 21);
+  assert.ok(native.activities.every(activity => activity.appliedLoad?.components.ForceX === 1234));
+  const structural = rows()[0].data.structural;
+  assert.equal(structural.nativeResolvedActivityCount, 21);
+  assert.equal(structural.activities.length, 16);
 });

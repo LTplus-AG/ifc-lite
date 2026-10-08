@@ -168,8 +168,8 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
   const { op, resolved } = row;
   switch (op.op) {
     case 'hosted.edit':
-      writeHostedEdit(batch, dataStore, draft, resolved.target!, op.expected, op.edit);
-      break;
+      writeHostedEdit(batch, dataStore, draft, resolved.target!, op.expected, op.edit, op.target.globalId);
+      return;
     case 'element.split':
       resolved.splitEffects = writeNativeSplit(batch, op, dataStore, draft, resolved.target!, splitScopes);
       return;

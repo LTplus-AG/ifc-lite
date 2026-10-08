@@ -78,7 +78,7 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       if (refusal) throw new Error(refusal);
       const source = tx.api.getState().models.get(modelId)?.ifcDataStore;
       if (!source) throw new Error('The native hosted source is unavailable');
-      const read = recordModellingEdit(tx.api, modelId, (_methods, draft) => writeHostedEdit(batch, source, draft, resolved.target!, op.expected, op.edit), tx.batchId);
+      const read = recordModellingEdit(tx.api, modelId, (_methods, draft) => writeHostedEdit(batch, source, draft, resolved.target!, op.expected, op.edit, op.target.globalId), tx.batchId);
       written.remesh.push(read.hostId, read.openingId, ...(read.fillingId === null ? [] : [read.fillingId]));
       return [{ ...base, globalId: op.target.globalId, field: 'Hosted occurrence', before: JSON.stringify(before.hosted), after: JSON.stringify(op.edit) }];
     }

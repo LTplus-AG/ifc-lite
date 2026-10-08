@@ -23,7 +23,7 @@ export function authoringHostedEditGhost(state: ViewerState, batch: ModelAuthori
   if (!source || !view) return null;
   return view.prepareAtomic(draft => {
     const editor = new StoreEditor(source, draft);
-    const read = writeHostedEdit(batch, source, editor, expressId, op.expected, op.edit);
+    const read = writeHostedEdit(batch, source, editor, expressId, op.expected, op.edit, op.target.globalId);
     const derived: ViewerState = { ...state, mutationViews: new Map([...state.mutationViews, [modelId, draft]]),
       storeEditors: new Map([...state.storeEditors, [modelId, editor]]) };
     const storeyId = elementStoreyId(derived, modelId, read.hostId);

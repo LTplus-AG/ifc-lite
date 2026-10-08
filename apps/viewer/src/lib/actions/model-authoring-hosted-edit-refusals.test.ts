@@ -14,6 +14,7 @@ import { parseModelAuthoringBatch } from './model-authoring';
 import { previewModelAuthoring } from './model-authoring-preview';
 import { commitModelAuthoring } from './model-authoring-commit';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
+import { writeHostedEdit } from './model-authoring-hosted-edit';
 
 const initial = useViewerStore.getState();
 afterEach(() => useViewerStore.setState(initial));
@@ -121,4 +122,48 @@ test('#7265 source-free transport refuses hosted geometry editing despite retain
   assert.equal(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'source-free hosted edit').ok, false);
   assert.equal(f.view.getMutationCount(), count);
   assert.deepEqual(readHostedFill(await parseIfc(editedModelBytes(f.dataStore, f.view)), f.id), f.binding);
+});
+
+test('#7265 a native same-model duplicate IfcRoot GUID refuses hosted editing before any writes', async () => {
+  const f = await fixture();
+  const op = f.batch({ Sill: .9 }).operations[0]; assert.ok(op.op === 'hosted.edit');
+  const editor = new StoreEditor(f.dataStore, f.view);
+  const psetId = f.dataStore.entityIndex.byType.get('IFCPROPERTYSET')?.[0]; assert.ok(psetId);
+  const pset = f.dataStore.getEntity(psetId); assert.ok(pset);
+  assert.ok(Array.isArray(pset.attributes[4]) && pset.attributes[4].length > 0, 'native duplicate control preserves an existing nonempty property set shape');
+  const duplicate = editor.addEntity('IfcPropertySet', [op.target.globalId, ...pset.attributes.slice(1)]);
+  const saved = await parseIfc(editedModelBytes(f.dataStore, f.view));
+  assert.equal(saved.getEntity(duplicate.expressId)?.attributes[0], op.target.globalId);
+  assert.equal(saved.getEntity(f.id)?.attributes[0], op.target.globalId);
+  const before = await exportedEntities(f.dataStore, f.view);
+  const preview = previewModelAuthoring(useViewerStore.getState(), f.batch({ Sill: .9 }));
+  assert.equal(preview.rows[0].status, 'ambiguous-target', preview.rows[0].issue);
+  assert.throws(() => editor.runAtomic(draft => writeHostedEdit(f.batch({ Sill: .9 }), f.dataStore, draft, f.id, op.expected, op.edit, op.target.globalId)), /GlobalId is not unique/, 'the canonical draft inventory also guards native writing');
+  assert.deepEqual(await exportedEntities(f.dataStore, f.view), before);
+});
+
+for (const transport of ['live', 'saved', 'saved-deleted-material'] as const)
+test(`#7265 ${transport} non-root material Name collision retains real hosted edit, export and Undo`, async () => {
+  const f = await fixture();
+  const op = f.batch({ Sill: .9 }).operations[0]; assert.ok(op.op === 'hosted.edit');
+  const material = new StoreEditor(f.dataStore, f.view).addEntity('IfcMaterial', [op.target.globalId, null, null]);
+  const saved = await parseIfc(editedModelBytes(f.dataStore, f.view));
+  assert.equal(saved.getEntity(material.expressId)?.attributes[0], op.target.globalId);
+  assert.equal(saved.getEntity(f.id)?.attributes[0], op.target.globalId);
+  const source = transport === 'live' ? f.dataStore : saved;
+  const view = transport === 'live' ? f.view : new MutablePropertyView(saved.properties, SAMPLE_MODEL);
+  if (transport === 'saved-deleted-material') assert.equal(new StoreEditor(source, view).removeEntity(material.expressId), true);
+  const model = useViewerStore.getState().models.get(SAMPLE_MODEL); assert.ok(model);
+  useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, ifcDataStore: source }]]),
+    mutationViews: new Map([[SAMPLE_MODEL, view]]), storeEditors: new Map() });
+  const before = await exportedEntities(source, view);
+  const preview = previewModelAuthoring(useViewerStore.getState(), f.batch({ Sill: .9 }));
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'non-root hosted identity');
+  assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason);
+  const after = await parseIfc(editedModelBytes(source, view));
+  assert.equal(readHostedFill(after, f.id)?.sill, .9);
+  assert.equal(after.getEntity(material.expressId)?.attributes[0], transport === 'saved-deleted-material' ? undefined : op.target.globalId);
+  useViewerStore.getState().undo(SAMPLE_MODEL);
+  assert.deepEqual(await exportedEntities(source, view), before, 'one grouped Undo preserves the original native graph and prior material deletion');
 });

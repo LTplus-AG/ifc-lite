@@ -164,6 +164,7 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       const r = reader(ctx, row.modelId!);
       const refusal = hostedFillRefusal(ctx.state, row.modelId!);
       if (refusal) throw new Refusal('unsupported', refusal);
+      if (!uniqueSplitGuid(r.dataStore, r.editor, op.target.globalId)) throw new Refusal('ambiguous-target', 'The native hosted target GlobalId is not unique in its owning model');
       try { row.before.hosted = readExpectedHostedEdit(r.dataStore, r.editor, row.expressId, ctx.batch.units); }
       catch (error) { throw new Refusal('invalid', error instanceof Error ? error.message : String(error)); }
       if (!sameHostedEdit(row.before.hosted, op.expected)) throw new Refusal('conflict', 'The current native hosted binding, position or dimensions differ from the expected state');

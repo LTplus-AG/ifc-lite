@@ -7,6 +7,7 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import { parseLength, parsePoint, record } from './model-authoring-fields';
 import type { AuthoringUnits, ModelAuthoringBatch } from './model-authoring';
+import { uniqueSplitGuid } from './model-authoring-split';
 
 export type ExpectedHostedEdit = HostedFillRead & { size: HostedElementSize | null };
 const editFields = ['Offset', 'Sill', 'OverallWidth', 'OverallHeight'] as const;
@@ -67,7 +68,9 @@ export function sameHostedEdit(a: ExpectedHostedEdit, b: ExpectedHostedEdit): bo
     && (a.size === null ? b.size === null : b.size !== null && a.size.OverallWidth === b.size.OverallWidth && a.size.OverallHeight === b.size.OverallHeight);
 }
 export function writeHostedEdit(batch: ModelAuthoringBatch, store: IfcDataStore, editor: StoreEditor, expressId: number,
-  expected: ExpectedHostedEdit, edit: HostedElementEdit): HostedFillRead {
-  if (!sameHostedEdit(readExpectedHostedEdit(store, editor, expressId, batch.units), expected)) throw new Error('The native hosted binding, position or dimensions changed after review');
+  expected: ExpectedHostedEdit, edit: HostedElementEdit, globalId: string): HostedFillRead {
+  const current = readExpectedHostedEdit(store, editor, expressId, batch.units);
+  if (!uniqueSplitGuid(store, editor, globalId)) throw new Error('The native hosted target GlobalId is not unique in its owning model');
+  if (!sameHostedEdit(current, expected)) throw new Error('The native hosted binding, position or dimensions changed after review');
   return editHostedElementInStore(store, editor, expressId, hostedEditMetres(edit, batch.units));
 }

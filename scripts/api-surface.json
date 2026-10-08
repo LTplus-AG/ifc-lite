@@ -6623,6 +6623,13 @@
     "translateXsdRegex: function",
     "validateIDS: function"
   ],
+  "@ifc-lite/ids-authoring": [
+    "Uuid: type",
+    "UuidV7Source: interface",
+    "deriveId: function",
+    "isUuid: function",
+    "uuidv7: function"
+  ],
   "@ifc-lite/ids/bridge": [
     "EntityMeasureScales: interface",
     "EntityVisibilityView: interface",

@@ -18,7 +18,7 @@ afterEach(() => useViewerStore.setState(initial, true));
 // #7238 independently recorded actual AC20 source#21173 RelatedObjects, not an aggregate reader result.
 const SPACES = [20909, 21283, 21640, 33774, 34191, 34763, 76214];
 interface Aggregate { requested: number; scanned: number; classified: number; unclassified: number; unknown: number;
-  status: string; models: Array<{ modelId: string; classified: number; unclassified: number; unknown: number }>;
+  status: string; omittedLabelGroups: number; omittedModelGroups: number; referenceRows: number; models: Array<{ modelId: string; classified: number; unclassified: number; unknown: number }>;
   labels: Array<{ modelId: string; system: string | null; Identification?: string; ItemReference?: string; elements: number }> }
 const aggregate = (capture: { summary: unknown }): Aggregate | undefined =>
   (capture.summary as { classifications?: Aggregate }).classifications;
@@ -139,4 +139,31 @@ test('#7238 practical native scan ceiling exposes unscanned requested refs as un
   assert.equal(facts.classified, known); assert.equal(facts.unclassified, 50_000 - known);
   assert.equal(facts.unknown, 1); assert.equal(facts.status, 'partial');
   assert.equal(facts.classified + facts.unclassified + facts.unknown, 50_001);
+});
+
+
+test('#7238 native label/model display bounds disclose omitted groups without changing membership totals', async t => {
+  const a = await model(t); if (!a) return;
+  seedModel('a', 0, a.store, SPACES[0]); const view = getOrCreateMutationView(useViewerStore, 'a'); assert.ok(view);
+  for (let n = 0; n < 51; n++) {
+    const ref = view.createEntity('IfcClassificationReference', [null, `AUTHORED-${n}`, null, null, null, null]);
+    view.createEntity('IfcRelAssociatesClassification', [`0000000000000000000${String(n).padStart(3, '0')}`, null, null, null, ['#20909'], `#${ref.expressId}`]);
+  }
+  const file = await exportAndReparse('a', a.store);
+  assert.equal(file.entityIndex.byType.get('IFCCLASSIFICATIONREFERENCE')?.length, 52);
+  useViewerStore.setState({ selectedEntities: [], selectedEntitiesSet: new Set([entityRefToString({ modelId: 'a', expressId: 20909 })]) });
+  const labels = aggregate(selectionAdapter.capture(useViewerStore.getState(), 1)); assert.ok(labels);
+  assert.equal(labels.classified, 1); assert.equal(labels.referenceRows, 52);
+  assert.equal(labels.labels.length, 50); assert.equal(labels.omittedLabelGroups, 2);
+  const base = useViewerStore.getState().models.get('a'); assert.ok(base);
+  const models = new Map<string, typeof base>();
+  const refs = Array.from({ length: 26 }, (_, n) => {
+    const modelId = `source-${n}`;
+    models.set(modelId, { ...base, id: modelId, name: modelId, idOffset: n * 1_000_000 });
+    return { modelId, expressId: SPACES[0] };
+  });
+  useViewerStore.setState({ models, mutationViews: new Map(), selectedEntitiesSet: new Set(refs.map(entityRefToString)) });
+  const facts = aggregate(selectionAdapter.capture(useViewerStore.getState(), 1)); assert.ok(facts);
+  assert.equal(facts.requested, 26); assert.equal(facts.classified, 26); assert.equal(facts.unknown, 0);
+  assert.equal(facts.models.length, 25); assert.equal(facts.omittedModelGroups, 1);
 });

@@ -45,8 +45,8 @@ test('a model rule names loaded models; they stay names until the review resolve
   const proposal = parseFilterProposal(json({ version: 1, kind: 'filter.proposal', title: 'T', name: 'N',
     groups: [{ combinator: 'AND', rules: [{ kind: 'model', op: 'in', values: ['hello-wall.ifc'] }] }] }));
   assert.deepEqual(proposal.groups[0].rules[0], { kind: 'model', op: 'in', values: ['hello-wall.ifc'] });
-  assert.throws(() => parseListProposal(json({ version: 1, kind: 'list.proposal', title: 'T', scope: 'selected',
-    list: { name: 'L', columns: [{ id: 'a', source: 'attribute', propertyName: 'Name' }] } })), /list\.proposal runs over every loaded model/);
+  assert.throws(() => parseListProposal(json({ version: 1, kind: 'list.proposal', title: 'T', scope: 'unknown',
+    list: { name: 'L', columns: [{ id: 'a', source: 'attribute', propertyName: 'Name' }] } })), /scope must be all, selected, or visible/);
 });
 
 test('filter proposals refuse with reasons a person can act on', () => {

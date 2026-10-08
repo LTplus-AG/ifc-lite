@@ -191,6 +191,20 @@ reprojected into another CRS is also refused.
 Spaces carrying `ElevationWithFlooring` allow ceiling edits, but refuse floor
 moves until the building elevation frame can be resolved.
 
+## Selection quantity results
+
+Open **Measurements → Qty** to read quantities for the selected elements. The
+results header identifies the selected models and population. Authored IFC
+quantity rows, proved enclosed volumes and triangulated mesh areas keep their
+separate bases and display units; the source inspection remains in the evidence
+region.
+
+Coverage reports unavailable model data, unproved or alignment-invalidated
+volumes, missing or incomplete mesh areas and withheld derived mass. A usable
+mesh area remains visible when the model's quantity tables or volume proof are
+unavailable. Empty selection asks for elements; selected elements with no usable
+measurements report Partial. Finite zero-valued measurements remain results.
+
 ## Autodesk cloud sources
 
 Open **Cloud sources** from Coordinate mode and select **Autodesk Forma / Data Exchange**. The viewer administrator configures either a public APS application ID for static sign-in or a same-origin hosted session service. Hosted mode keeps Autodesk tokens on the server. Static mode keeps tokens in memory and requires sign-in after a reload. A cancelled sign-in cannot complete the pending transaction.
@@ -198,6 +212,12 @@ Open **Cloud sources** from Coordinate mode and select **Autodesk Forma / Data E
 Browse account projects and choose **Forma Data Management files** or **Data Exchanges**. For Forma Site Design, paste a Forma site link in the project entry. IFC, IFCX/IFC5 and GLB files download through the normal loader, pinned to the listed revision. Unsupported resources show an explanation. **Cancel download** stops the active batch; completed models remain loaded.
 
 The hosted service includes a Rust Forma proposal importer and a Windows Autodesk SDK Data Exchange exporter. Enable them with absolute executable paths in the service configuration. The details panel offers file/proposal version selection; whole-exchange IFC export supports the current version only. Generated resources remain disabled when their native importer is not configured. Configuration, deployment limits, current capabilities and the live-account verification checklist are in [Autodesk source setup](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/source-autodesk/README.md) and [the session service guide](https://github.com/LTplus-AG/ifc-lite/blob/main/apps/autodesk-service/README.md).
+
+## Deviation result sources and coverage
+
+The BIM ↔ scan deviation result identifies the scan assets represented by its held distance readback. Its population counts scan points, with finite measured points shown separately from unmeasured and compute-limit-clipped points. The native summary, tolerance band, colour range, histogram and CSV retain their existing behavior. Source evidence lists captured scan GlobalIds and classes; loaded IFC models are not presented as scan sources.
+
+Incomplete point measurements or unavailable scan identity show Partial. A summary without recorded source provenance shows Outcome unknown. Missing readback statistics show Running while they are derived. No finite measured distances produce a partial readback state, rather than claiming no findings or an absent scan population. Captured source identity remains attached through native tolerance recounts and panel remounts.
 
 ## Layout migration and saved-artifact links
 

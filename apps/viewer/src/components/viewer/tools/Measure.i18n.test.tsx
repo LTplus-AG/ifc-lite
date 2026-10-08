@@ -48,6 +48,10 @@ import { MeasureOverlay } from './MeasurePanel.js';
 import { MeasurementsPanel } from '../MeasurementsPanel.js';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { SceneOverlayRoot } from '../../viewport-ui/scene/index.js';
+import { QuantityResultView } from './QuantityResultView.js';
+import { rollupQuantities, rollupGeometryVolumes, rollupMeshArea } from './measure-modes/quantities.js';
+import { fixtureModel } from '@/test/store-fixture.js';
+import { resolveElementWeight, rollupWeights } from './measure-modes/weight.js';
 import { SourceQuantityContent } from './SourceQuantityInspection.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from '@ifc-lite/geometry';
 
@@ -567,13 +571,40 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
 
     assertStaticCoverage(english, after);
     assertMarked(after, 'measure.quantities.header');
-    assertMarked(after, 'measure.quantities.elementsCount', { count: 1 });
+    assertMarked(after, 'measure.quantities.selectedPopulation', { count: 1 });
     assertMarked(after, 'measure.quantities.nothingFound');
     assertMarked(after, 'measure.quantities.unresolvedElements', { count: 1 });
     coveredStatic.add('measure.quantities.header');
     coveredStatic.add('measure.quantities.selectPrompt'); // selectPrompt itself only shows with NO selection; covered by the prior test.
-    coveredParams.add('measure.quantities.elementsCount');
+    coveredParams.add('measure.quantities.selectedPopulation');
     coveredParams.add('measure.quantities.unresolvedElements');
+  });
+
+  it('partial authored quantity coverage is localized (#7254)', () => {
+    // Invariant: one authored area among two selected elements remains partial.
+    const declared = rollupQuantities([[{ quantityType: 1, basis: 'net', value: 4,
+      provenance: 'Qto_WallBaseQuantities.NetSideArea' }], []]);
+    assert.equal(declared[0].contributing, 1);
+    const quantities = { refs: [{ modelId: 'missing', expressId: 1 }, { modelId: 'missing', expressId: 2 }],
+      models: new Map([['loaded', fixtureModel('loaded')]]), activeModelId: null, summary: { declared,
+        geometry: rollupGeometryVolumes([]), meshArea: rollupMeshArea([]), weights: rollupWeights([resolveElementWeight({ volumeTrusted: true, volume: 1 })]),
+        meshAreaIncomplete: 0, elements: 2, withoutStore: 0, rescaled: 0 } };
+    const container = render(<QuantityResultView quantities={quantities} />);
+    const english = chromeStrings(container);
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+    assertStaticCoverage(english, after);
+    assertMarked(after, 'measure.quantities.authoredIncomplete');
+    assertMarked(after, 'measure.quantities.selectedPopulation', { count: 2 });
+    assertMarked(after, 'measure.quantities.coverageCounts', { authored: 1, volumes: 0, areas: 0 });
+    assertMarked(after, 'measure.quantities.unavailableModel', { id: 'missing' });
+    assertMarked(after, 'measure.quantities.noDensity', { count: 1 });
+    coveredParams.add('measure.quantities.unavailableModel');
+    coveredParams.add('measure.quantities.noDensity');
+    coveredStatic.add('measure.quantities.authoredIncomplete');
+    coveredParams.add('measure.quantities.selectedPopulation');
+    coveredParams.add('measure.quantities.coverageCounts');
   });
 
   it('source quantities: localized provenance, values and loading state (#6439)', () => {

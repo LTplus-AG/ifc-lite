@@ -42,6 +42,13 @@ export interface ArtifactEnvelope {
   rationale?: string;
 }
 
+export type NativeArtifactScope = 'all' | 'selected' | 'visible';
+export function parseNativeArtifactScope(value: unknown): NativeArtifactScope | undefined {
+  if (value === undefined) return undefined;
+  if (value !== 'all' && value !== 'selected' && value !== 'visible') throw new Error('The artifact scope must be all, selected, or visible.');
+  return value;
+}
+
 /**
  * Parse a complete JSON answer (optionally one fenced block) declaring `kind`.
  * Returns the raw object plus the common envelope; the caller reads its own body.
@@ -55,12 +62,6 @@ export function parseEnvelope(answer: string, kind: ArtifactKind, bodyKeys: read
   catch (error) { throw new Error(`The proposal is not one complete JSON object (${error instanceof Error ? error.message : String(error)})`); }
   if (!record(value) || value.kind !== kind) throw new Error(`Not a ${kind}`);
   if (value.version !== 1) throw new Error(`A ${kind} must declare "version": 1`);
-  // Only a chart carries a scope (its dashboard's). A saved filter, list or lens cannot hold runtime visibility or selection,
-  // so a proposal claiming one is refused instead of silently running over everything.
-  if (value.scope !== undefined && !bodyKeys.includes('scope')) {
-    throw new Error(`A ${kind} runs over every loaded model, or the models a "model" rule names; "visible" and "selected" are not part of it. `
-      + 'Ask for a chart in the visible or basket scope instead, or select the result from the Filter tab.');
-  }
   onlyKeys(value, ['version', 'kind', 'title', 'rationale', ...bodyKeys], `The ${kind}`);
   const title = requiredText(value.title, 'The title');
   if (value.rationale !== undefined && !text(value.rationale, RATIONALE_LIMIT)) throw new Error('The rationale must be text');

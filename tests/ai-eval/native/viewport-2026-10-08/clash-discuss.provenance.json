@@ -1,0 +1,32 @@
+{
+  "capturedUTC": "2026-10-08T14:46:06.896889+00:00",
+  "sourceWorktree": "/tmp/ifc-campaign-extension-export-activity",
+  "sourceHEAD": "8cd134304970f81f85d3d1da8a32d969eab222c8",
+  "browserURL": "http://localhost:4197/?model=/samples/building-architecture-rev-b.ifc",
+  "nativeModelSHA256": "0dfb7152db0a845747d2f35ee5ba9ba3772744072cb23040353c469c2a05f366",
+  "observations": [
+    "Real committed SketchUp revision B model rendered with roof/walls; Ready12 elements WebGPU",
+    "Existing hard detection completed with1Major IfcWall\u00d7IfcDuctSegment overlap -0.150m",
+    "Native Discuss with AI button opened current clash context with1of1 rows attached",
+    "No model configured; no provider request sent"
+  ],
+  "limits": [
+    "This records existing completed native hard run and Discuss interaction, not a fresh Run invocation",
+    "Committed CLI clearance result has different options; its9-result count is not the GUI hard-mode oracle",
+    "No independent human classification, labels, fixture approval or coordinator study",
+    "Current main qualification is not claimed for this immutable earlier source",
+    "Earlier4hour recording exceeded50MiB and was not transferred; new short recording transferred successfully"
+  ],
+  "video": {
+    "path": "clash-discuss.mp4",
+    "bytes": 908073,
+    "sha256": "59b93a543203e0b602d6bea47fd9fbe191a5d09b56a5be1c5742700cecf05ba8",
+    "createdUTC": "2026-10-08T14:43:13.398Z"
+  },
+  "version": 1,
+  "review": {
+    "privacy": "pending",
+    "licence": "unrecorded",
+    "humanAcceptance": "pending"
+  }
+}

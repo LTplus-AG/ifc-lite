@@ -494,6 +494,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
           />
         ) : (
           <BCFTopicList
+            projectName={bcfProject?.name}
             topics={topics}
             onSelectTopic={setActiveTopic}
             onCreateTopic={() => setShowCreateForm(true)}

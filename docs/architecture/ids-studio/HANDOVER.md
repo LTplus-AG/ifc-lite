@@ -76,6 +76,11 @@ All PRs are **drafts** until their pitch's "Done means" (in its pitch file) is m
   2. Run `node scripts/check-test-revert-oracle.mjs --base <PR base> --only <module> --test <its test> --mutation <patch> --ci --json` until each is `OBSERVED`.
   3. Commit patches + README + `summary.json` under `docs/architecture/evidence/<pitch>/mutations/` (template: P-08's).
   4. Ask the maintainer for the `revert-oracle-exempt` label in a PR comment.
+- **Stacked PRs get no CI lanes.** `test.yml` only triggers for PRs based on `main`. A PR stacked on another pitch branch therefore runs no test lanes, and `PR review signal` fails with "NOT ONE lane from test.yml appeared". An empty commit doesn't help. Until the base merges and the PR is retargeted to `main`:
+  1. Run the package checks locally.
+  2. Run the revert oracle with `--base <pitch base branch>`.
+  3. Paste the results into the PR body.
+  CodeRabbit also skips `low-risk`-labelled PRs, so its result carries no review verdict either.
 - **Superseded runs.** `Build + WASM + Rust + Node` reports *failure* when its jobs were cancelled by a newer push. Check the log before acting; a cancelled-only run needs nothing.
 
 ## 7. Contacts and authority

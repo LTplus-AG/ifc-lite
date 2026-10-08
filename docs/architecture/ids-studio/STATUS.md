@@ -19,8 +19,8 @@ Umbrella PR: #7143 (this tracker).
 | P-07 Agent | `claude/ids-studio-p07-agent` | #7148 | 🟨 | Base P-04 (P-04 merged in); implementation running (session 1) |
 | P-08 Eval | `claude/ids-studio-p08-eval` | #7149 | 🟨 | E2 (307 cases), E4 (24), E5 (19), scorer done; self-check 307/307. Human review + runner pending |
 | P-09 Ingestion & documents | `claude/ids-studio-p09-ingestion` | #7150 | ⬜ | Draft PR open (charter + work log); not started |
-| P-10 Trust & teamwork | `claude/ids-studio-p10-trust` | #7151 | ⬜ | Draft PR open (charter + work log); not started |
-| P-11 Headless | `claude/ids-studio-p11-headless` | #7152 | ⬜ | Draft PR open (charter + work log); not started |
+| P-10 Trust & teamwork | `claude/ids-studio-p10-trust` | #7151 | 🟨 | Base P-04 (P-04 merged in); implementation running (session 1) |
+| P-11 Headless | `claude/ids-studio-p11-headless` | #7152 | 🟨 | Base P-04 (P-04 merged in); implementation running (session 1) |
 | P-12 Standards leadership | `claude/ids-studio-p12-standards` | #7153 | 🟨 | Draft PR (base P-01): IDS-124–126 done; 1.1 preview flag, engine-neutral conformance dashboard (334/334), 5 upstream drafts (not sent) |
 
 ## Backlog items
@@ -214,6 +214,7 @@ Umbrella PR: #7143 (this tracker).
 
 | Date | Session | Summary |
 |---|---|---|
+| 2026-10-08 | 1 | `main` broken twice by #7124 (raw-entity gate + `serverDataModel` material test); evidence and patches on #7171. Found that stacked PRs get no CI lanes (HANDOVER §6). P-10/P-11 started on P-04 |
 | 2026-10-08 | 1 | P-04 lint done (#7144, 43 rules) and P-12 standards done (#7153, engine-neutral per ADR-014). P-02/P-08 revert-oracle evidence pushed; P-02 undo-coverage gap fixed. Main is red on `check-raw-entity-enumeration` (#7124), patch proposed on #7171. P-03/P-06/P-07 started on P-04 |
 | 2026-10-08 | 1 | P-01 pushed: draft PR #7171 (writer complete, audit 27/27, 0 false positives, `it`). **Merge-order note:** when #7171 merges, empty `AUDIT_FALSE_POSITIVES` in the P-08 E2 scorer (#7149) in the same step. P-04 started on top of P-02 |
 | 2026-10-08 | 1 | P-02 pushed: `@ifc-lite/ids-authoring` (IDS-015–026, IDS-027 partial), 173 tests; draft PR #7168. 11 spec deviations recorded in worklog/P-02.md and folded into 02-document-model-and-ops.md |

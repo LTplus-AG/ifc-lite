@@ -71,6 +71,7 @@ describe('#7186 captured native membership', () => {
   it('rejects duplicate identities, duplicate members, and oversized snapshots', () => {
     const scope = scopeFor(wallId);
     expect(isCapturedEntityScope(scope)).toBe(true);
+    expect(isCapturedEntityScope({ ...scope, mode: JSON.parse('{"toString":null}') })).toBe(false);
     expect(isCapturedEntityScope({ ...scope, sources: [...scope.sources, ...scope.sources] })).toBe(false);
     expect(isCapturedEntityScope({ ...scope, sources: [{ ...scope.sources[0], members: [{ expressId: wallId }, { expressId: wallId }] }] })).toBe(false);
     expect(isCapturedEntityScope({ ...scope, sources: [{ ...scope.sources[0], members: Array.from({ length: 20001 }, (_, i) => ({ expressId: i + 1 })) }] })).toBe(false);

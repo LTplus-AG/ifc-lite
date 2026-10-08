@@ -27,7 +27,7 @@ const text = (value: unknown, max: number): value is string =>
 
 /** Shared storage/import boundary. Malformed snapshots must never become all. */
 export function isCapturedEntityScope(value: unknown): value is CapturedEntityScope {
-  if (!record(value) || value.version !== 1 || !['selected', 'visible'].includes(String(value.mode))
+  if (!record(value) || value.version !== 1 || (value.mode !== 'selected' && value.mode !== 'visible')
     || typeof value.capturedAt !== 'number' || !Number.isFinite(value.capturedAt) || value.capturedAt <= 0
     || !Array.isArray(value.sources) || value.sources.length === 0 || value.sources.length > MAX_SOURCES) return false;
   let count = 0;

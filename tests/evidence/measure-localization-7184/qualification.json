@@ -1,0 +1,192 @@
+{
+  "issue": "https://github.com/LTplus-AG/ifc-lite/issues/7184",
+  "scope": "Existing measure localization regressions; current native quantity labels and strict key accounting. No QuantityResultView behavior change.",
+  "base": "4b4e0e5ccca5c2c11fe7809d2cdea57de810b430",
+  "sourcePins": {
+    "apps/viewer/src/components/viewer/tools/Measure.i18n.test.tsx": "f2ac63b9a450455deaaa019d8a36f00a08d658bc1b6e5e69cb812ae7142cd0b8",
+    "apps/viewer/src/i18n/catalogues/measure.en.ts": "3e7ee7923fe1252fe658f9e2ef3bfdec3c1e3069587950cc8b6a0d1c17edb55e"
+  },
+  "dependencyPreparation": {
+    "dependencyCommand": "corepack pnpm install --offline --frozen-lockfile --ignore-scripts",
+    "dependencyHandle": 91651,
+    "dependencyExit": 0,
+    "dependencyLog": "/tmp/7184-offline-dependencies.log",
+    "rustTrees": {
+      "/tmp/ifc-7184-quantity-localization": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+      "/tmp/ifc-7036-cache-route-oracle": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20"
+    },
+    "unchangedTypes": true,
+    "copiedExistingRuntimeNotNewBuild": [
+      {
+        "file": "ifc-lite.js",
+        "source": "/tmp/ifc-7036-cache-route-oracle/packages/wasm/pkg/ifc-lite.js",
+        "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39"
+      },
+      {
+        "file": "ifc-lite_bg.wasm",
+        "source": "/tmp/ifc-7036-cache-route-oracle/packages/wasm/pkg/ifc-lite_bg.wasm",
+        "sha256": "b5de9e0b6aed093390edf2368297749bfd31c872b3bbcdde89d01cb0b5c97e19"
+      },
+      {
+        "file": "package.json",
+        "source": "/tmp/ifc-7036-cache-route-oracle/packages/wasm/pkg/package.json",
+        "sha256": "10f68fc85e7a0c3f9cf57d1343f9909a5220c2711d98a454cc0b04b59a38cf45"
+      }
+    ]
+  },
+  "runs": [
+    {
+      "session": 26318,
+      "exit": 1,
+      "pass": 17,
+      "fail": 1,
+      "skip": 0,
+      "scope": "Historical incomplete combined-label accounting, excluded as final qualification",
+      "log": "focused-green.log"
+    },
+    {
+      "session": 40143,
+      "exit": 0,
+      "pass": 18,
+      "fail": 0,
+      "skip": 0,
+      "log": "corrected-focused-green.log"
+    },
+    {
+      "session": 86598,
+      "exit": 1,
+      "sourceRestoredExactly": true,
+      "restoredPins": {
+        "apps/viewer/src/components/viewer/tools/Measure.i18n.test.tsx": "f2ac63b9a450455deaaa019d8a36f00a08d658bc1b6e5e69cb812ae7142cd0b8",
+        "apps/viewer/src/i18n/catalogues/measure.en.ts": "3e7ee7923fe1252fe658f9e2ef3bfdec3c1e3069587950cc8b6a0d1c17edb55e"
+      },
+      "postRuntime": {
+        "ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "ifc-lite_bg.wasm": "1548ae57020949abff44f96d2b9f23bc0864b2553c97db99abc14162e603e569"
+      },
+      "label": "exact-main4b stale-test/catalogue baseline reproduction, not production inverse",
+      "pass": 15,
+      "fail": 2,
+      "skip": 0,
+      "log": "baseline-reproduction.log",
+      "assertions": [
+        "retired elementsCount label",
+        "uncovered authoredIncomplete key"
+      ]
+    },
+    {
+      "session": 81572,
+      "exit": 0,
+      "pass": 18,
+      "fail": 0,
+      "skip": 0,
+      "log": "restored-focused-green.log",
+      "actualRuntimeDiagnostics": [
+        {
+          "actualRuntime": [
+            {
+              "file": "ifc-lite.js",
+              "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39"
+            },
+            {
+              "file": "ifc-lite_bg.wasm",
+              "sha256": "1548ae57020949abff44f96d2b9f23bc0864b2553c97db99abc14162e603e569"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "session": 24335,
+      "exit": 0,
+      "testFileAudit": 3739,
+      "packages": 62,
+      "viewerTestFiles": 2066,
+      "log": "root-typecheck.log",
+      "programmeScope": "Canonical base4b turbo typecheck + test audit. No unmerged scripts/perf programme is present or claimed."
+    },
+    {
+      "session": 46265,
+      "exit": 0,
+      "checks": [
+        {
+          "name": "touched-oxlint",
+          "command": [
+            "pnpm",
+            "exec",
+            "oxlint",
+            "apps/viewer/src/components/viewer/tools/Measure.i18n.test.tsx",
+            "apps/viewer/src/i18n/catalogues/measure.en.ts"
+          ],
+          "exit": 0
+        },
+        {
+          "name": "source-text",
+          "command": [
+            "node",
+            "scripts/check-source-text-assertions.mjs"
+          ],
+          "exit": 0
+        },
+        {
+          "name": "test-wiring",
+          "command": [
+            "node",
+            "scripts/check-test-wiring.mjs"
+          ],
+          "exit": 0
+        },
+        {
+          "name": "module-size",
+          "command": [
+            "node",
+            "scripts/check-module-size.mjs"
+          ],
+          "exit": 0
+        },
+        {
+          "name": "mpl",
+          "command": [
+            "node",
+            "scripts/add-license-headers.mjs",
+            "--check"
+          ],
+          "exit": 0
+        },
+        {
+          "name": "diff",
+          "command": [
+            "git",
+            "diff",
+            "--check"
+          ],
+          "exit": 0
+        }
+      ]
+    }
+  ],
+  "commands": {
+    "focused": "NODE_OPTIONS=--max-old-space-size=6144 TEST_PATTERN=Measure.i18n pnpm test --env-mode=loose --concurrency=1 --filter=@ifc-lite/viewer",
+    "typecheck": "NODE_OPTIONS=--max-old-space-size=6144 pnpm typecheck"
+  },
+  "runtimeAfterRootTypecheck": {
+    "ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+    "ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143"
+  },
+  "logsSHA256": {
+    "root-typecheck.log": "11da33046ff2a13e1a274ff4dfeb24af33b52818b08cf955b0896d538db0db59",
+    "baseline-reproduction.log": "6ca93c027f1a80ddb7bd4b76c9bf6186d61b99411e048830a6a7214f661321c7",
+    "corrected-focused-green.log": "b219bd109199f9d13a420b768bd343c81587a6366a4a3149da7322e6d982ae63",
+    "source-text.log": "2163cf4b83bf83a49f5206afc25f09f284baa1c470090c83d409dd2386ff5342",
+    "diff.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "test-wiring.log": "41e9eb8de4eb493a9247c869033610dd424f4f7dd01c0d422f61bf691c9883a2",
+    "mpl.log": "d8c9814187bcc921d2ca9e54eef80e9070d6f7d34c3fa9041595139e7eedb446",
+    "module-size.log": "2599cd8401ee8a3472088a48f6f5a722472e26ae4c6e89289dfc698dc45b6d82",
+    "restored-focused-green.log": "328cdc82f2b4558d776542962025ad08e2815b568b29c1c53a2cac4af39823c4",
+    "touched-oxlint.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "focused-green.log": "8fd865eabaafb1b8eb68f9865ae5d7329e259135ca0634364b98f1be7579849b"
+  },
+  "fixtureContract": "Stated IFC4 invariant parsed by actual WASM: two selected IfcWall entities, one authored NetSideArea=12 m2; no fabricated geometry and no authoring-tool or completed-scene claim.",
+  "missingWasmPolicy": "Authored test and final dependent key accounting explicitly skip when canonical ensureWasm unavailable; qualified actual run had zero skips.",
+  "publication": "Unpublished, pending parent independent source/archive review. Main integration and current-head required CI remain separate."
+}

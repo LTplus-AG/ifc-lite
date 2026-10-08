@@ -17,8 +17,11 @@
  * Both are written in the same undo step as the size.
  */
 
-import { AUTHORED_KINDS, authoredKindOf, layerSetOf, type LiveModel } from '@/lib/commands/modeling/authored-kinds';
-import { recordModellingEdit, type ModellingStore } from '@/store/slices/mutation-modelling-records';
+import { setElementSizeInStore } from '@ifc-lite/create';
+import type { StoreEditor } from '@ifc-lite/mutations';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { AUTHORED_KINDS, authoredKindOf, layerSetOf, type LiveLayerSet, type LiveModel } from '@/lib/commands/modeling/authored-kinds';
+import { recordModellingEdit, type ModellingMethods, type ModellingStore } from '@/store/slices/mutation-modelling-records';
 import { setElementSize, type ElementSizeOutcome, type ElementSizePatch } from '@/store/slices/mutation-element-size';
 
 /** The smallest a layer may be squeezed to before the set is scaled instead (metres). */
@@ -36,24 +39,43 @@ export function commitElementSize(store: ModellingStore, modelId: string, expres
   const get = store.getState;
   const dataStore = get().models.get(modelId)?.ifcDataStore;
   const live: LiveModel | null = dataStore ? { dataStore, view: get().mutationViews.get(modelId) } : null;
+  const layers = layerResizePlan(live, expressId, patch);
+  const outcome = setElementSize(store, modelId, expressId, patch);
+  if (needsLayerResize(layers, outcome, expressId)) recordModellingEdit(store, modelId, (methods) => writeLayerResize(methods, modelId, expressId, layers!));
+  return outcome;
+}
+
+interface LayerResize { before: LiveLayerSet; direction: 'AXIS1' | 'AXIS2' | 'AXIS3'; thickness: number }
+
+function layerResizePlan(live: LiveModel | null, expressId: number, patch: ElementSizePatch): LayerResize | null {
   const thickness = patch.kind === 'wall' || patch.kind === 'slab' ? patch.thickness : undefined;
   const kind = live && thickness !== undefined ? authoredKindOf(live, expressId) : null;
   const direction = kind === null ? undefined : AUTHORED_KINDS[kind].layers;
   const before = live && direction ? layerSetOf(live, expressId) : null;
-  const outcome = setElementSize(store, modelId, expressId, patch);
-  if (!outcome.ok || !before || !direction || thickness === undefined || !outcome.remesh.includes(expressId)) return outcome;
+  return before && direction && thickness !== undefined ? { before, direction, thickness } : null;
+}
 
-  const total = before.layers.reduce((sum, l) => sum + l.thickness, 0);
-  if (Math.abs(total - thickness) < 1e-6) return outcome;
+function needsLayerResize(layers: LayerResize | null, outcome: ElementSizeOutcome, expressId: number): boolean {
+  return outcome.ok && layers !== null && outcome.remesh.includes(expressId)
+    && Math.abs(layers.before.layers.reduce((sum, layer) => sum + layer.thickness, 0) - layers.thickness) >= 1e-6;
+}
+
+function writeLayerResize(methods: ModellingMethods, modelId: string, expressId: number, { before, direction, thickness }: LayerResize): void {
   const next = layersForThickness(before.layers.map((l) => l.thickness), thickness);
-  recordModellingEdit(store, modelId, (m) => {
-    const setId = m.addMaterialLayerSet(modelId, {
+  const setId = methods.addMaterialLayerSet(modelId, {
       MaterialLayers: before.layers.map((layer, i) => ({ LayerThickness: next[i], Material: layer.materialId ?? undefined })),
     }).expressId;
-    const usage = m.addMaterialLayerSetUsage(modelId, {
+  const usage = methods.addMaterialLayerSetUsage(modelId, {
       ForLayerSet: setId, LayerSetDirection: direction, OffsetFromReferenceLine: direction === 'AXIS2' ? -thickness / 2 : 0,
     }).expressId;
-    m.assignMaterial(modelId, usage, [expressId]);
-  });
+  methods.assignMaterial(modelId, usage, [expressId]);
+}
+
+/** #7229: the same native size/layer write on an unpublished atomic draft. */
+export function draftElementSize(dataStore: IfcDataStore, draft: StoreEditor, methods: ModellingMethods, modelId: string, expressId: number, patch: ElementSizePatch): ElementSizeOutcome {
+  const view = draft.getMutationView();
+  const layers = layerResizePlan({ dataStore, view }, expressId, patch);
+  const outcome = setElementSizeInStore({ dataStore, view, editor: draft }, expressId, patch);
+  if (needsLayerResize(layers, outcome, expressId)) writeLayerResize(methods, modelId, expressId, layers!);
   return outcome;
 }

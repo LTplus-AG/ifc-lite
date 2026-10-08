@@ -33,6 +33,7 @@ import { useLensDiscovery } from '@/hooks/useLensDiscovery';
 import { createLensDataProvider } from '@/lib/lens';
 import { LensEditor } from './LensEditor';
 import { cloneLensRules } from './lens-editor-utils';
+import { TYPE_LABEL_KEYS } from './lens-editor-labels';
 import { AutoColorEditor } from './AutoColorEditor';
 export { AutoColorEditor } from './AutoColorEditor';
 import { importLensFile } from './lens-import';
